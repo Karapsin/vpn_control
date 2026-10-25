@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "<string>", line 48, in diagnosing_submit
+    try:return original_submit(request)
+               ~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/ssh_tmux_session_ssh.py", line 411, in submit
+    value = self._action(request, "prepare")
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/ssh_tmux_session_ssh.py", line 424, in _action
+    self._saved(request, admission=mutation))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/ssh_tmux_mcp_adapter.py", line 235, in _saved
+    self._public_intent(request,admission=admission)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/ssh_tmux_mcp_adapter.py", line 220, in _public_intent
+    owner=self._private_owner(path)
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/ssh_tmux_mcp_adapter.py", line 188, in _private_owner
+    owner=ssh_transport._automatic_module()._private_config().PrivateConfigCustody(path)
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/ssh_automatic_program.py", line 132, in _private_config
+    return _bound_helper(_PRIVATE_CONFIG_PATH, _PRIVATE_CONFIG_SHA, 'private_config')
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/ssh_automatic_program.py", line 119, in _bound_helper
+    raw = held.read(str(path), digest, max_bytes=MAX_PROGRAM_BYTES)
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpzwhccary/native/agent_tools/native_review_source_closure.py", line 141, in read
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                 dir_fd=self.directory(parent))
+FileNotFoundError: [Errno 2] No such file or directory: 'private_config_custody.py'
+Traceback (most recent call last):
+  File "<string>", line 53, in <module>
+    assert result['state']=='submitted',result
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'state': 'unknown', 'correlationId': '3bdc0ae2-c0bf-4c2a-a786-f6986bf72d4d', 'reason': 'submission-response-lost', 'replayAllowed': False}

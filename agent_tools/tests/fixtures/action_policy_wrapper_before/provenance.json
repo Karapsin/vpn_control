@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/mcp_server.py",
+  "sourceCommit": "d24c19047ec15689948404ede40f50c5ec284e77",
+  "sourceFileSha256": "36ecd6b24c2097478c458b72f2064e7bf332845d0b33e79f04d3d448acb76ff6",
+  "function": "_native_source_request",
+  "extractedSourceSha256": "fa8eb8003b53fa0da5ec13129e10f850cd35e045082d630c414b5faed462a723",
+  "extractedSourceBytes": 712,
+  "scope": "Complete authentic pre-policy request wrapper; same real source loader and harmless generated adapter import in owned temporary directory; no remote, guest or runtime actions."
+}

@@ -1,0 +1,15 @@
+E
+======================================================================
+ERROR: test_real_source_request_preserves_context_manager_and_closes_capability (agent_tools.tests.test_readiness_vm_dispatch.VmDispatchTests.test_real_source_request_preserves_context_manager_and_closes_capability)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_readiness_vm_dispatch.py", line 112, in test_real_source_request_preserves_context_manager_and_closes_capability
+    broken = adapter._session.hold_result(namespace['admitted_dispatch'](self.root, 'artifact-find', {}))
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/source_module_loader.py", line 238, in hold_result
+    raise ValueError('foreign_adapter_context')
+ValueError: foreign_adapter_context
+
+----------------------------------------------------------------------
+Ran 1 test in 0.142s
+
+FAILED (errors=1)

@@ -1,0 +1,13 @@
+import os,sys,hashlib,stat
+from pathlib import Path
+if len(sys.argv)!=1 or os.geteuid()!=502:raise SystemExit(3)
+for path,digest in [('/usr/local/libexec/vpn-tool-recovery-idle-4a9f62cc-6a93-4cd7-86c3-4b4ab81a4dc7/main.py', 'b94198b6c5457a5a6ab438577a9fed8e955a0c32dd3e214d5c7e08bd03af2bbb'), ('/usr/local/libexec/vpn-tool-recovery-idle-4a9f62cc-6a93-4cd7-86c3-4b4ab81a4dc7/caller.py', '950d371680c7d8f42fda76b89ee9af480e046689c51268917b2074de2f2b3eea')]:
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  a=os.fstat(fd)
+  if not stat.S_ISREG(a.st_mode)or a.st_uid!=0 or a.st_mode&0o022 or not 0<a.st_size<=524288:raise SystemExit(3)
+  body=os.read(fd,a.st_size+1);b=os.fstat(fd);c=os.lstat(path)
+  fields=('st_dev','st_ino','st_mode','st_nlink','st_uid','st_gid','st_size','st_mtime_ns','st_ctime_ns')
+  if len(body)!=a.st_size or hashlib.sha256(body).hexdigest()!=digest or any(getattr(a,k)!=getattr(b,k)or getattr(a,k)!=getattr(c,k)for k in fields):raise SystemExit(3)
+ finally:os.close(fd)
+os.execv('/usr/local/libexec/vpn-tool-recovery-cont-63517582/python/bin/python3.12',['/usr/local/libexec/vpn-tool-recovery-cont-63517582/python/bin/python3.12','-I','-B','/usr/local/libexec/vpn-tool-recovery-idle-4a9f62cc-6a93-4cd7-86c3-4b4ab81a4dc7/caller.py'])

@@ -1,0 +1,43 @@
+def dispatch(mode,path,manifest_sha,driver_sha):
+ need(mode in{'submit','observe','collect'},'public_dispatch_mode');D=bootstrap();need(hashlib.sha256(Path(__file__).read_bytes()).hexdigest()==driver_sha,'public_reviewed_driver');raw=Path(path).read_bytes();need(hashlib.sha256(raw).hexdigest()==manifest_sha,'public_reviewed_manifest');manifest=D._json(raw)
+ need(manifest['operationId']==OP and manifest['driverSha256']==driver_sha and manifest['inputAuthority']is False and manifest['wholeCompileAllowed']is True,'public_reviewed_scope');cap=D.Capsule(LOCAL/('observation-'+str(uuid.uuid4())),manifest['sourceHashes']);retained=False
+ try:
+  cap.read(Path(__file__).absolute());e=enrolled(D);need(e==manifest['enrollment'],'public_root_receipt_changed')
+  with D.binding_metadata()as(binding,guard,metadata),D.sources(cap,manifest['sourceHashes'])as(request,owner):
+   need(metadata==manifest['bindingMetadata'],'public_fixture_changed');p,module=status_packet(cap,request,owner,binding);need(p['controllerSha256']==manifest['controllerSha256'],'public_original_probe_changed');fp,fm=failure_packet(cap,request,owner,binding,module,p);need(fp['sourceSha256']==manifest['failureReaderSourceSha256'],'public_original_failure_reader_changed');D._load_closure(cap,request);guard()
+   transport=request.session.load('ssh_transport');readiness=request.session.load('readiness');deadline=time.monotonic()+180
+   context=request.session.hold_result(transport.admitted_transport(D.ROOT,'archlinux',OP if mode=='submit'else str(uuid.uuid4()),deadline=deadline,requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'}))))
+   with context as admitted:
+    ready=admitted.ready;need(e['enrollment']['hostBoot']==ready.boot==binding['context']['hostBootId']and e['trustedMachine']==ready.machine and e['enrollment']['account']==ready.account.split(':',1)[0],'public_actual_host_epoch')
+    action='observe'
+    if mode=='submit'and claim(D,{'operationId':OP,'purpose':'windows-public-csharp-fixed-compile','controllerSha256':p['controllerSha256'],'enrollment':e,'replayAllowed':False}):action='submit'
+    elif mode=='collect':action='collect'
+    source=outer(owner,p,e,action);cap.save('caller.py',source);command=['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(source).decode())+'))']
+    argv=request.session.hold_result(transport.build_ssh_argv(transport.load_config(D.ROOT),'archlinux',command=command));request.guard();cap.guard();guard();admitted.revalidate();cap.save('dispatch.intent.json',{'operationId':OP,'action':action,'sourceSha256':hashlib.sha256(source).hexdigest(),'hostBoot':ready.boot,'inputAuthority':False})
+    result=None
+    try:
+     try:result=transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=min(50,max(.1,deadline-time.monotonic())),check=False)
+     except transport.SubmittedResultReadinessChanged as changed:result=changed.take_submitted_result()
+    except BaseException as error:retain_callback(cap,result,error);retained=True;raise
+    retain_callback(cap,result);retained=True;request.guard();cap.guard();guard();need(result.returncode==0 and not result.stderr and len(result.stdout)<=1048576,'public_original_transport_unknown');value=D._json(result.stdout);cap.save('result.json',value)
+    if mode=='collect':
+     # Preserve both owner streams before typed causal success gates.
+     for role in('stdout','stderr'):
+      raw=base64.b64decode(value[role],validate=True);need(len(raw)<=1048576,'public_collected_bound');cap.save('owner.'+role,raw)
+     try:
+      out=base64.b64decode(value['stdout'],validate=True);err=base64.b64decode(value['stderr'],validate=True)
+      need(len(out)<=1048576 and not err,'public_controller_streams');status=value['status'];terminal=status.get('terminal')
+      need(status.get('state')=='terminal'and type(terminal)is dict and terminal.get('programSha256')==p['controllerSha256']and type(terminal.get('exitCode'))is int and terminal['exitCode']==0 and terminal.get('streamsClosed')is True,'public_owner_terminal')
+      reply=D._json(out)
+      if type(reply)is dict and reply.get('state')=='blocked':collect_public_failure(cap,request,guard,admitted,transport,fp,fm,D,deadline)
+      module.retain_public_streams(cap,reply,p)
+      qualification=module.validate_complete(p,value)
+      cap.save('qualification.json',qualification)
+     except BaseException:
+      # The original raw owner streams were already retained; a semantic refusal
+      # still receives truthful closing-source evidence if every guard passes.
+      request.guard();cap.guard();guard();cap.save('source-closure.after.json',{'state':'source-closed-semantic-refusal','sources':cap.sources,'callbackRetained':True,'inputAuthority':False});raise
+    request.guard();cap.guard();guard();cap.save('source-closure.after.json',{'state':'source-closed','sources':cap.sources,'callbackRetained':True,'inputAuthority':False});return cap.path,value
+ except BaseException as error:
+  cap.save('unknown.json',{'operationId':OP,'errorClass':type(error).__name__,'callbackRetained':retained,'replayAllowed':False,'inputAuthority':False});raise
+ finally:cap.close()

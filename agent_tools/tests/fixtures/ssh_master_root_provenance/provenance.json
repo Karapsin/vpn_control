@@ -1,0 +1,18 @@
+{
+  "authority": "Complete authenticated master modules execute with real private journals, process birth, UDS socket and separate Python observer processes; no TCP/SSH. Complete start executes only to exact controlled pre-SSH boundary, or root rejection before admission. Fixture beforeimages execute only named selected methods/assignment under owned TempFS callbacks.",
+  "controls": 21,
+  "failure": "fresh original connection observer with different TMPDIR rejects original durable master socket via current environment equality",
+  "nativeRequalificationPending": true,
+  "originalNativeHelperSha256": "6a541e0cc24f740772ebc2c02d825ef3e7ff2d3d480512b63404e317ff1a9857",
+  "pins": {
+    "readiness_ssh_master.before.source": "478a1f2772bd7af9624d7a494f9c6e893641367143d245f79b130e4fc5c5d706",
+    "readiness_ssh_master.creator.before.source": "072411377f0bcbb3b822aefc826ee3428ba4f019ae5035194c7f51d07129185a",
+    "readiness_ssh_master.fixed.source": "ee9fbb43f5413dd2b63d33d5c0db604694fa0c47ab9c13288bac689e00f91a29",
+    "readiness_ssh_master.parent-closing.before.source": "770136aa4b7db3beba519fb78e2dfac0683050785cb8eb3c5eb9d1f1d846b96c",
+    "test-fixture-canonical-root.fixed.source": "259d8314814494f77260333f395794ad17f2e1f5a09f6db0634c9191c6b3141f",
+    "test-fixture-creator-name.before.source": "43ee3cd03bdca848e980be2849b611da170c578e6efcce6ebc702e205dfb8fc4",
+    "test-fixture-module-registration.before.source": "437dbe852585419e188c9d74b03e9670ca4704b9784f3b9774bb6a66dd7e8920",
+    "test-fixture-uncanonical-root.before.source": "83974b43af38f4199f855df8ab58558e1259112427e175134f381c07c6bb7c00"
+  },
+  "schemaVersion": 1
+}

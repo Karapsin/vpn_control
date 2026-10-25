@@ -1,0 +1,9 @@
+{
+  "cause": "SourceSession treats actual stdlib generator contextmanager as decorator-callable, losing context protocol; isolated top-level SSH import omits parent package bootstrap.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "native-failures.txt": "8a749621cb28f63bf570ccf7e4cf41e4795588613e2d6c85893ee9baabb2c2ef",
+    "source_module_loader.py.before.source": "cf7a077e83e97022675c57296810e2fbac1cd8f4d2213c1f54bdeaccc3a46230",
+    "ssh_transport.py.before.source": "8e736a9bef5e0af44577caf9acb05f7ed754029e2056cef3f28248c66785f6b7"
+  }
+}

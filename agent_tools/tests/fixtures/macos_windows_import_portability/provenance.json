@@ -1,0 +1,13 @@
+{
+  "boundary": "Host repository source portability only. Installed native-qualified guest producer b144 and original namespace/lease capsules are immutable and never upgraded by this fixture.",
+  "failure": "Actual Windows-local import blocks eager pwd before pure tests collect; original unit mocks also require absent POSIX OS/pwd module attributes.",
+  "schemaVersion": 1,
+  "sourceCaptureBeforeSha256": "c4e4082317f0b332482ad07b3680af20b49c48d7fe97840b21bef9a11efb9403",
+  "sourceCaptureFailure": "Actual Windows-local pure unit source builder hits missing O_NOFOLLOW before finite unsupported-coordinator guard; original log current-full-tests.log retained.",
+  "sourceSha256": {
+    "tart_macos_probe.py": "b144862272b3bbb5464bcdb3ed57403d76d4f5418c4388c859195f9afb3c38ab",
+    "tart_macos_service_census.py": "46fff3b34994f63c11045da358e9444b4bbec49b8ca003ac1e7f424add40efe8",
+    "test_tart_macos_probe.py": "b3c2a845211700a828ef9103416a4ab4e5f8db330a51d3e988ec82d3e35be361",
+    "test_tart_macos_service_census.py": "cee7d04d7007e0979039f72f48dbf74a1f5ac86e76a4ff7464836ee0476c2a1d"
+  }
+}

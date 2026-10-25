@@ -1,0 +1,1 @@
+{"evidence": "real 8-thread consume test rejected unsafe private file before proposed fix", "failure": "concurrent atomic publication temporarily has two links; private snapshot rejects before journal finite normalization", "sha256": "83e0b1e85e9f3bc265feba4fd82d4c523bc7f47b614e67cbee92e6748392b295"}

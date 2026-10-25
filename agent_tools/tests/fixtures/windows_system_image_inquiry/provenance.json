@@ -1,0 +1,46 @@
+{
+  "before": "Actual f71 strict generic private Pin blocks links2, not a reparse. That guard remains byte-identical; fixed is a different evidence-only API purpose, not a relaxed admission policy.",
+  "facts": "Raw stdout comes from actual SYS0 owned-fixture read-only inquiry. Parent/child/controller fields are explicit public projection of original validated terminal; test outer envelope is controlled, never a new historical receipt.",
+  "files": {
+    "child.fixed.source": {
+      "bytes": 7116,
+      "sha256": "33399ec35b9a4fd8c5b9c5c3902830396d0b860bba77cda4c69b02b906a752b6"
+    },
+    "methods.fixed.source": {
+      "bytes": 15419,
+      "sha256": "566cb7369354feeb41bacac57f6b9e10c1188bf8219b1a7617e80781406b3e13"
+    },
+    "native-before-stdout.json": {
+      "bytes": 756,
+      "sha256": "c67622ce50bddb1db0fc7ded55a95e52830c834c2181d24bc735bfa29eee1dc8"
+    },
+    "native-closed-public.json": {
+      "bytes": 1333,
+      "sha256": "3c1e87a16adbff2ec02f399892cafa13cf70c534e789009d7a5b69a5d4881e58"
+    },
+    "native-evidence-stdout.json": {
+      "bytes": 3411,
+      "sha256": "73f92dfc5c005cca19e08b8e3f19d49f421f44bc56e741ccd780ff23b823966b"
+    },
+    "native.before.source": {
+      "bytes": 89083,
+      "sha256": "21a0185c5bee3d0ec6045a64ba319ab396f4aceabd82f8b981cbd2aa503121b3"
+    },
+    "native.fixed.source": {
+      "bytes": 104502,
+      "sha256": "d761bc4c8e4c581af05559d27855562e9324d86b8839e5b63eac7eb9927cda5b"
+    },
+    "owner.fixed.source": {
+      "bytes": 27035,
+      "sha256": "3ec1220bd38862f9edba1c622c21754b795a8da5b5b14c7536824e377b9cd07a"
+    },
+    "validator.fixed.source": {
+      "bytes": 11464,
+      "sha256": "ea2ed80e4c83957d636118993ddb3580805d6389fac5c501e2873e94433dc318"
+    }
+  },
+  "schemaVersion": 1,
+  "scope": "Source-owned public image evidence; no image admission, UI or credential input",
+  "session": "Current console not intended ordinary session; no token query nor old profile adopted",
+  "signature": "Offline WinTrust nonzero retained as unverified; no catalog/embedded diagnosis or trust admission asserted"
+}

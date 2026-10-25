@@ -37,19 +37,22 @@ jobs:
         run: ./scripts/check_release_hygiene.sh
 
       - name: Set up JDK 17
+        if: ${{ !cancelled() }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Install pinned Android native build tools
+        if: ${{ !cancelled() }}
         run: bash scripts/prepare_android_native_tools.sh
 
       - name: Set up Gradle
+        if: ${{ !cancelled() }}
         uses: gradle/actions/setup-gradle@v4
 
       - name: Prepare stable Android signing
-        if: github.event_name != 'pull_request'
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
@@ -89,10 +92,12 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build release APK
-        run: ./gradlew --no-build-cache clean :app:assembleRelease
+        id: build-release-apk
+        if: ${{ !cancelled() }}
+        run: ./gradlew --continue --no-build-cache clean :app:assembleRelease
 
       - name: Verify stable APK signer
-        if: github.event_name != 'pull_request'
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && steps.build-release-apk.outcome == 'success' }}
         shell: bash
         run: |
           apk_path=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)
@@ -112,6 +117,7 @@ jobs:
           }
 
       - name: Upload release APK
+        if: ${{ !cancelled() && steps.build-release-apk.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: vpn-control-android-release-apk

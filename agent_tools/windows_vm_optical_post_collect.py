@@ -1,5 +1,6 @@
 """Read-only collection of the sealed post-frame from the fixed third Windows VM attempt."""
 from __future__ import annotations
+from . import ssh_transport
 
 import hashlib
 import os
@@ -66,7 +67,7 @@ def _bounded_ssh(root: str | Path, program: str, timeout_seconds: int) -> bytes:
     argv = boot.ssh_transport.build_ssh_argv(
         config, boot.HOST, min(timeout_seconds, 30),
         command=("python3", "-c", "exec(" + repr(program) + ")"))
-    process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+    process = ssh_transport.popen_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     selector = selectors.DefaultSelector()
     try:
@@ -97,6 +98,8 @@ def _bounded_ssh(root: str | Path, program: str, timeout_seconds: int) -> bytes:
             process.wait()
         if process.stdout is not None:
             process.stdout.close()
+
+        ssh_transport.finish_ssh(process)
 
 
 def _ppm(raw: bytes, expected_sha256: str) -> tuple[int, int, bytes]:

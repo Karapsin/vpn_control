@@ -1,0 +1,34 @@
+"""Ignored offline preparation only; no submission or runtime chmod fallback."""
+import hashlib,json,os,stat
+from pathlib import Path
+MANIFEST_SHA='757ff4c25a6b29ccdd9c0d5208ea991f4fa56446e3636964fb66699b98ef0166'
+NAMES=('macos-v12-durable-controller.inert.py','macos-v12-public-rpc-capture.inert.py','macos-known-session-wake-review.inert.py')
+def generation(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def prepare(directory,records):
+ if set(records)!=set(NAMES):raise ValueError('preparation_fixed_producers_changed')
+ root=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);fds=[];rows={}
+ try:
+  info=os.fstat(root)
+  if info.st_uid!=os.geteuid() or bool(info.st_mode&0o022):raise ValueError('preparation_parent_unsafe')
+  for name in NAMES:
+   pin=records[name];fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=root);fds.append((name,fd));s=os.fstat(fd)
+   if not stat.S_ISREG(s.st_mode)or s.st_uid!=os.geteuid()or s.st_nlink!=1 or generation(s)!=pin['generation']or generation(os.stat(name,dir_fd=root,follow_symlinks=False))!=pin['generation']:raise ValueError('preparation_generation_changed')
+   raw=os.pread(fd,s.st_size+1,0)
+   if len(raw)!=s.st_size or hashlib.sha256(raw).hexdigest()!=pin['sha256']:raise ValueError('preparation_source_changed')
+  # Every producer is authenticated before the first permission mutation.
+  for name,fd in fds:
+   if generation(os.fstat(fd))!=records[name]['generation']or generation(os.stat(name,dir_fd=root,follow_symlinks=False))!=records[name]['generation']:raise ValueError('preparation_generation_changed')
+   os.fchmod(fd,0o600);os.fsync(fd);s=os.fstat(fd)
+   if generation(s)!=generation(os.stat(name,dir_fd=root,follow_symlinks=False))or stat.S_IMODE(s.st_mode)!=0o600 or hashlib.sha256(os.pread(fd,s.st_size+1,0)).hexdigest()!=records[name]['sha256']:raise ValueError('preparation_postcheck_failed')
+   rows[name]={'generation':generation(s),'sha256':records[name]['sha256']}
+  os.fsync(root);return rows
+ finally:
+  for name,fd in fds:os.close(fd)
+  os.close(root)
+if __name__=='__main__':
+ here=Path(__file__).resolve().parent;raw=(here/'preparation-manifest.json').read_bytes()
+ if hashlib.sha256(raw).hexdigest()!=MANIFEST_SHA:raise ValueError('preparation_manifest_changed')
+ m=json.loads(raw);result=prepare(Path(m['directory']),m['records']);body=json.dumps({'schemaVersion':1,'state':'prepared_owner_0600','records':result},sort_keys=True).encode();fd=os.open(here/'prepared.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ try:os.write(fd,body);os.fsync(fd)
+ finally:os.close(fd)
+ print('fixed producer permission preparation closed; no native dispatch')

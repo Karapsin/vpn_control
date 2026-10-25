@@ -1,0 +1,269 @@
+"""Owned direct SSH masters, separate from jobs and historical outer sessions.
+
+Foreground masters retain their owner until explicit close; ControlPersist18000
+is configured, but an anchored -N master has no idle expiry. No VPN or VM power
+operation is available. Missing/uncertain launch records never permit replay.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager
+from dataclasses import asdict
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import socket
+import stat
+import subprocess
+import tempfile
+import threading
+import time
+
+from . import private_inventory_lock as private
+from . import ssh_connection_session as session
+from . import ssh_channel_keeper_entry as keeper
+from . import ssh_transport as transport
+
+GROUP = '.rag_index/readiness-ssh-master'
+HASH = re.compile('[0-9a-f]{64}')
+
+
+class MasterUnknown(ValueError):
+    pass
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
+
+
+def identity(config, host):
+    """Trust-route digest excludes passwords, private keys and their hashes."""
+    route = transport._route_hosts(config.hosts, host)
+    rows = []
+    for entry in route:
+        row = {'alias': entry.alias, 'host': entry.host, 'port': entry.port,
+               'user': entry.user, 'transport': entry.transport,
+               'gateway': entry.gateway, 'remoteHostAlias': entry.remote_host_alias,
+               'remoteConfig': str(entry.remote_config_file),
+               'identityPath': str(entry.identity_file), 'trustPath': str(entry.known_hosts_file)}
+        if entry.transport == 'direct':
+            # This public trust file is not a credential. Read it through the
+            # existing strict nofollow single-link generation checker.
+            raw, _ = session._bytes(entry.known_hosts_file, private=False)
+            row['trustSha256'] = hashlib.sha256(raw).hexdigest()
+            _, key_generation = session._bytes(entry.identity_file)
+            row['keyGeneration'] = key_generation
+        rows.append(row)
+    return hashlib.sha256(_json(rows)).hexdigest()
+
+
+def _path(root, host):
+    if type(host) is not str or transport._ALIAS_RE.fullmatch(host) is None:
+        raise ValueError('invalid_master_host')
+    return Path(root).absolute() / GROUP / host
+
+
+def initialize(root, host):
+    root = Path(root).resolve(strict=True)
+    for path in (root / '.rag_index', root / GROUP, _path(root, host)):
+        path.mkdir(mode=0o700, exist_ok=True)
+        with private.Directory(path):
+            if stat.S_IMODE(path.stat().st_mode) != 0o700:
+                raise MasterUnknown('master_private_directory')
+    return _path(root, host)
+
+
+class Lock(private.InventoryLock):
+    name = 'master.lock'
+    body = b'readiness-master-v1\n'
+
+
+@contextmanager
+def locked(root, host):
+    with private.Directory(initialize(root, host)) as directory, Lock(directory):
+        yield directory
+
+
+def _read(directory, name):
+    with private.Snapshot(directory, name) as held:
+        value = json.loads(held.body, object_pairs_hook=transport._reject_duplicate_keys)
+        held.guard()
+        return value
+
+
+def _save(directory, name, value):
+    directory.guard()
+    session._create(directory.path / name, value, directory.fd)
+    if _read(directory, name) != value:
+        raise MasterUnknown('master_record_changed')
+
+
+def _current(directory):
+    value = _read(directory, 'current.json')
+    if type(value) is not dict or set(value) != {'recoveryId'} or HASH.fullmatch(value['recoveryId']) is None:
+        raise MasterUnknown('master_current_binding')
+    return value['recoveryId']
+
+
+def _publish(directory, recovery_id):
+    value = {'recoveryId': recovery_id}
+    name = 'pointer-' + recovery_id + '.json'
+    _save(directory, name, value)
+    temporary = 'publish-' + recovery_id + '.json'
+    _save(directory, temporary, value)
+    directory.guard()
+    os.replace(temporary, 'current.json', src_dir_fd=directory.fd, dst_dir_fd=directory.fd)
+    os.fsync(directory.fd); directory.guard()
+
+
+def prefix(config, host):
+    target = config.hosts[host]
+    if target.transport != 'direct' or target.password is not None:
+        raise MasterUnknown('master_direct_key_only')
+    # A fixed -F /dev/null route cannot inherit forwards, hooks or proxy commands.
+    return ['/usr/bin/ssh', '-F', '/dev/null', '-p', str(target.port), '-l', target.user,
+            '-i', str(target.identity_file), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=' + str(target.known_hosts_file),
+            '-o', 'PermitLocalCommand=no', '-o', 'ClearAllForwardings=yes',
+            '-o', 'UpdateHostKeys=no', '-o', 'ConnectTimeout=10'], target.host
+
+
+def _socket(intent):
+    path = Path(intent['socketPath'])
+    if (not path.is_absolute() or path.name != 'm' or len(os.fsencode(path)) >= 90
+            or path.parent.parent != Path(tempfile.gettempdir()).resolve()):
+        raise MasterUnknown('master_socket_provenance')
+    if session._directory(path.parent) != intent['socketParent']:
+        raise MasterUnknown('master_socket_parent_changed')
+    return path
+
+
+def _alive(intent, child, ready=None):
+    path = _socket(intent)
+    try:
+        actual = keeper.actor(child['pid'])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # Exact PID absence, not a changed actor or unavailable visibility.
+        result = subprocess.run(['/bin/ps', '-p', str(child['pid']), '-o', 'pid='],
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=3)
+        if result.returncode == 1 and result.stdout == result.stderr == b'':
+            return 'dead'
+        raise MasterUnknown('master_actor_unknown') from None
+    if actual != child['actor']:
+        raise MasterUnknown('master_actor_changed')
+    if ready is not None and session._socket(path, intent['socketParent']) != ready['socketFingerprint']:
+        raise MasterUnknown('master_socket_changed')
+    return 'ready' if path.exists() else 'starting'
+
+
+def status(root, host, config=None):
+    """Observation only: no journal creation, launch, cleanup or reconnect."""
+    config = transport.load_config(root) if config is None else config
+    path = _path(root, host)
+    if not os.path.lexists(path):
+        return {'state': 'absent'}
+    with private.Directory(path) as directory:
+        try:
+            recovery_id = _current(directory)
+        except FileNotFoundError:
+            return {'state': 'absent'}
+        intent = _read(directory, recovery_id + '.intent.json')
+        if (intent.get('recoveryId') != recovery_id or intent.get('host') != host
+                or intent.get('machine') != identity(config, host)):
+            raise MasterUnknown('master_authority_changed')
+        try:
+            child = _read(directory, recovery_id + '.child.json')
+        except FileNotFoundError:
+            return {'state': 'unknown', 'recoveryId': recovery_id}
+        if child.get('recoveryId') != recovery_id:
+            raise MasterUnknown('master_child_binding')
+        try:
+            ready = _read(directory, recovery_id + '.ready.json')
+        except FileNotFoundError:
+            ready = None
+        state = _alive(intent, child, ready)
+        return {'state': state, 'recoveryId': recovery_id, 'intent': intent, 'child': child,
+                'ready': ready, 'socketPath': intent['socketPath']}
+
+
+def options(root, host, config):
+    value = status(root, host, config)
+    if value['state'] == 'absent':
+        return None
+    if value['state'] != 'ready':
+        raise MasterUnknown('master_not_ready')
+    return ['-S', value['socketPath'], '-o', 'ControlMaster=no', '-o', 'ControlPersist=no',
+            '-o', 'ProxyCommand=false', '-o', 'BatchMode=yes']
+
+
+def command_argv(config, host, command, value=None):
+    value = status(config.root, host, config) if value is None else value
+    if value['state'] != 'ready':
+        raise MasterUnknown('master_not_ready')
+    base, endpoint = prefix(config, host)
+    return [*base, '-S', value['socketPath'], '-o', 'ControlMaster=no',
+            '-o', 'ControlPersist=no', '-o', 'ProxyCommand=false', '-T', endpoint, shlex.join(command)]
+
+
+def _reap(process):
+    threading.Thread(target=process.wait, daemon=True, name='readiness-master-reaper').start()
+
+
+def start(root, host, recovery_id, *, deadline, clock=time.monotonic, sleep=time.sleep):
+    """One create-only launch; observe original after lost acknowledgement."""
+    if type(recovery_id) is not str or HASH.fullmatch(recovery_id) is None:
+        raise ValueError('master_recovery_id')
+    config = transport.load_config(root)
+    with locked(root, host) as directory:
+        previous = status(root, host, config)
+        if previous['state'] in {'ready', 'starting', 'unknown'}:
+            return previous
+        if previous['state'] == 'dead':
+            # Preserve history and never remove the old socket or process.
+            _save(directory, previous['recoveryId'] + '.retired.json',
+                  {'state': 'retired', 'recoveryId': previous['recoveryId'],
+                   'pidAbsent': True, 'oldHistoryRetained': True})
+        parent = Path(tempfile.mkdtemp(prefix='vcrd-')).resolve(strict=True)
+        parent.chmod(0o700)
+        intent = {'version': 1, 'host': host, 'machine': identity(config, host),
+                  'recoveryId': recovery_id, 'socketPath': str(parent / 'm'),
+                  'socketParent': session._directory(parent)}
+        _save(directory, recovery_id + '.intent.json', intent)
+        _publish(directory, recovery_id)
+        base, endpoint = prefix(config, host)
+        argv = [*base, '-S', intent['socketPath'], '-M', '-N', '-o', 'ControlMaster=yes',
+                '-o', 'ControlPersist=18000', '-o', 'ForkAfterAuthentication=no',
+                '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3', endpoint]
+        if identity(transport.load_config(root), host) != intent['machine']:
+            raise MasterUnknown('master_authority_changed')
+        # The existing primitive bounds stderr before exec and owns its PID.
+        stderr = directory.path / (recovery_id + '.stderr.private')
+        # _spawn uses sibling launch.json; each generation gets a private subdir.
+        launch_dir = directory.path / (recovery_id + '.launch')
+        launch_dir.mkdir(mode=0o700)
+        process = session._spawn(argv, launch_dir / 'stderr.private')
+        _reap(process)
+        try:
+            actor = keeper.actor(process.pid)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return {'state': 'unknown', 'recoveryId': recovery_id}
+        _save(directory, recovery_id + '.child.json',
+              {'recoveryId': recovery_id, 'pid': process.pid, 'actor': actor})
+        while clock() < deadline:
+            value = status(root, host, config)
+            if value['state'] in {'ready', 'dead', 'unknown'}:
+                if value['state'] == 'ready':
+                    check = subprocess.run([*base, '-S', intent['socketPath'], '-o', 'ControlMaster=no',
+                        '-o', 'ProxyCommand=false', '-O', 'check', endpoint], stdin=subprocess.DEVNULL,
+                        capture_output=True, timeout=min(3, max(.01, deadline-clock())))
+                    match = re.fullmatch(rb'Master running \(pid=([1-9][0-9]*)\)\r?\n?', check.stdout+check.stderr)
+                    if check.returncode != 0 or match is None or int(match[1]) != process.pid:
+                        return {'state': 'unknown', 'recoveryId': recovery_id}
+                    _save(directory, recovery_id + '.ready.json', {'recoveryId': recovery_id,
+                        'socketFingerprint': session._socket(parent / 'm', intent['socketParent']), 'masterActor': actor})
+                    return status(root, host, config)
+                return value
+            sleep(min(.1, max(0, deadline-clock())))
+        return {'state': 'unknown', 'recoveryId': recovery_id}

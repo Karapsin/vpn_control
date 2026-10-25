@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "originalWorkerPid": 58526,
+  "originalRunnerSha256": "0e9aa5efc2d6f44e69714dae05ccb985e330d2c311c0f50aa7dd762a852cdbdd",
+  "observed": {
+    "descendantLeak": true,
+    "sessionAbsent": true,
+    "fixtureRootRemoved": true
+  },
+  "identityAvailable": false,
+  "causeAvailable": false,
+  "sourceReason": "Original close_session only checks killpg(process.pid,0), marks leak, sends original-session TERM/KILL and returns two booleans. It does not capture process members, native births, roles or test attribution.",
+  "authority": "No synthetic identity, attribution or terminal success inferred. Original report remains incomplete; no live process action performed."
+}

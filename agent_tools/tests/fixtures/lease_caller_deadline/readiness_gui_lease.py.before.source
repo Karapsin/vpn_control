@@ -1,0 +1,180 @@
+"""Automatic, expiring keep-awake ownership around admitted GUI work.
+
+The child operation is deterministic for the original GUI operation and actual
+guest boot. Acquiring, observing or cancelling never invents a successor UUID.
+The registered-provider facade owns the protected settings/executor binding.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+import math
+import os
+from pathlib import Path
+import stat
+import time
+from uuid import UUID, uuid5
+
+from . import readiness
+from . import private_inventory_lock as private
+from . import readiness_fixture_registry as fixtures
+from . import readiness_lease_workflow as workflow
+
+DEFAULT_TTL_SECONDS = 18_000
+
+
+def _uuid(value):
+    if type(value) is not str or str(UUID(value)) != value:
+        raise ValueError("gui_lease_identity_invalid")
+    return value
+
+
+def _finite(result, operation):
+    if type(result) is not dict or result.get("operationId") != operation:
+        raise readiness.ReadinessBlocked("gui_lease_original_unknown", operation)
+    state, job = result.get("state"), result.get("jobState", "unknown")
+    if (type(state) is not str or state not in {"starting", "active", "unknown", "unsubmitted", "cancelled", "expired", "failed", "restore_blocked", "blocked", "restoring", "restored"}
+            or type(job) is not str or job not in {"running", "terminal", "unsubmitted", "unknown"}
+            or "restored" in result and type(result["restored"]) is not bool):
+        raise readiness.ReadinessBlocked("gui_lease_original_unknown", operation)
+    return result
+
+
+@dataclass(frozen=True)
+class GuiLease:
+    root: Path
+    fixture_id: str
+    parent_operation: str
+    operation_identity: str
+    identities: tuple
+    ttl_seconds: float
+
+    def record(self):
+        return {"schemaVersion": 1, "fixtureId": self.fixture_id, "parentOperationId": self.parent_operation,
+                "operationId": self.operation_identity, "identities": list(self.identities), "ttlSeconds": self.ttl_seconds}
+
+    def _call(self, action):
+        inputs = {"fixtureId": self.fixture_id, "operationId": self.operation_identity}
+        if action == "acquire":
+            inputs["ttlSeconds"] = self.ttl_seconds
+        try:
+            return _finite(workflow.workflow(self.root, action, inputs), self.operation_identity)
+        except readiness.ReadinessBlocked:
+            raise readiness.ReadinessBlocked("gui_lease_original_unknown", self.parent_operation) from None
+        except Exception:
+            raise readiness.ReadinessBlocked("gui_lease_original_unknown", self.parent_operation) from None
+
+    def guard(self):
+        """Pure local observation of the retained original lease owner."""
+        result = self._call("status")
+        if result.get("state") != "active" or result.get("jobState") != "running":
+            raise readiness.ReadinessBlocked("gui_lease_not_active", self.parent_operation)
+
+    def cancel(self, *, deadline=None):
+        """One cancel request, then observe original restoration and streams."""
+        limit = min(time.monotonic() + readiness.NORMAL_BUDGET, deadline or float("inf"))
+        try:
+            result = self._call("cancel")
+        except readiness.ReadinessBlocked:
+            result = self._call("status")
+        restoration_requested = False
+        while True:
+            state, job = result.get("state"), result.get("jobState")
+            if state in {"cancelled", "expired", "restored"} and result.get("restored") is True and job == "terminal":
+                return result
+            if state == "cancelled" and job == "unsubmitted":
+                return result
+            if (state == "restore_blocked" and job == "terminal" and result.get("restored") is False
+                    and result.get("restorationState") == "unsubmitted" and result.get("nextAction") == "reconcile_original"
+                    and not restoration_requested):
+                if time.monotonic() >= limit:
+                    raise readiness.ReadinessBlocked("gui_lease_restoration_deadline", self.parent_operation)
+                # One qualified repair of the original failed setting. This
+                # never acquires a new assertion or authorizes more GUI input.
+                restoration_requested = True
+                try:
+                    result = self._call("reconcile")
+                except readiness.ReadinessBlocked:
+                    result = self._call("status")
+                continue
+            if (state in {"failed", "restore_blocked", "blocked"} or job not in {"running", "terminal", "unsubmitted", "unknown"}
+                    or job == "terminal"):
+                raise readiness.ReadinessBlocked("gui_lease_restoration_unresolved", self.parent_operation)
+            if time.monotonic() >= limit:
+                raise readiness.ReadinessBlocked("gui_lease_restoration_deadline", self.parent_operation)
+            time.sleep(min(.05, max(0, limit - time.monotonic())))
+            result = self._call("status")
+
+
+def from_record(root, value):
+    fields = {"schemaVersion", "fixtureId", "parentOperationId", "operationId", "identities", "ttlSeconds"}
+    if type(value) is not dict or set(value) != fields or type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1:
+        raise ValueError("gui_lease_record_invalid")
+    fixtures._id(value["fixtureId"])
+    parent = _uuid(value["parentOperationId"]); operation = _uuid(value["operationId"])
+    identities = value["identities"]
+    if type(identities) is not list or len(identities) != 6 or any(type(v) is not str or not v for v in identities):
+        raise ValueError("gui_lease_record_invalid")
+    ttl = value["ttlSeconds"]
+    if type(ttl) not in (int, float) or not math.isfinite(ttl) or not .1 <= ttl <= DEFAULT_TTL_SECONDS:
+        raise ValueError("gui_lease_ttl_invalid")
+    expected = str(uuid5(UUID(parent), json.dumps(["automatic-gui-lease-v1", *identities[:2], identities[3]], separators=(",", ":"))))
+    if operation != expected:
+        raise ValueError("gui_lease_record_invalid")
+    return GuiLease(Path(root).resolve(strict=True), value["fixtureId"], parent, operation, tuple(identities), ttl)
+
+
+def acquire(root, fixture_id, parent_operation, ready, *, ttl_seconds=DEFAULT_TTL_SECONDS, deadline=None):
+    """Admit once; uncertain acquisition is observed, never resubmitted."""
+    parent_operation = _uuid(parent_operation)
+    identities = list(ready.identities())
+    value = {"schemaVersion": 1, "fixtureId": fixture_id, "parentOperationId": parent_operation,
+             "operationId": str(uuid5(UUID(parent_operation), json.dumps(
+                 ["automatic-gui-lease-v1", *identities[:2], identities[3]], separators=(",", ":")))),
+             "identities": identities, "ttlSeconds": ttl_seconds}
+    lease = from_record(root, value)
+    limit = min(time.monotonic() + readiness.NORMAL_BUDGET, deadline or float("inf"))
+    # Persist the parent/child relation before any child admission. A client
+    # dying before its direct caller receipt still leaves the original lease
+    # discoverable for cancellation or fresh-agent reconciliation.
+    current = lease.root
+    for name in (".rag_index", "readiness-gui-leases"):
+        presented = private.PresentedPath(current)
+        with private.Directory(presented.canonical) as held:
+            try:
+                os.mkdir(name, 0o700, dir_fd=held.fd)
+            except FileExistsError:
+                pass
+            info = os.stat(name, dir_fd=held.fd, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
+                raise ValueError("gui_lease_parent_directory_unsafe")
+            held.guard(); presented.guard()
+        current = current / name
+    with readiness.RecoveryJournal(current).locked(deadline=limit), private.Directory(current) as held:
+        name = lease.operation_identity + ".json"
+        try:
+            descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=held.fd)
+        except FileExistsError:
+            with private.Snapshot(held, name) as original:
+                if json.loads(original.body) != lease.record():
+                    raise ValueError("gui_lease_original_parent_conflict")
+        else:
+            with os.fdopen(descriptor, "w") as stream:
+                json.dump(lease.record(), stream, sort_keys=True); stream.write("\n"); stream.flush(); os.fsync(stream.fileno())
+            os.fsync(held.fd)
+        held.guard()
+    try:
+        result = lease._call("acquire")
+    except readiness.ReadinessBlocked:
+        result = lease._call("status")
+    while True:
+        if result.get("state") == "active" and result.get("jobState") == "running":
+            lease.guard()
+            return lease
+        if (result.get("state") in {"failed", "restore_blocked", "blocked", "expired", "cancelled", "unsubmitted"}
+                or result.get("jobState") not in {"running", "unknown"}):
+            raise readiness.ReadinessBlocked("gui_lease_acquisition_unresolved", parent_operation)
+        if time.monotonic() >= limit:
+            raise readiness.ReadinessBlocked("gui_lease_acquisition_deadline", parent_operation)
+        time.sleep(min(.05, max(0, limit - time.monotonic())))
+        result = lease._call("status")

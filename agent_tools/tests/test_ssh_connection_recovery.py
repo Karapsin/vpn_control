@@ -1,4 +1,5 @@
 from dataclasses import replace
+import hashlib
 import importlib.util
 import json
 import os
@@ -286,7 +287,9 @@ class SshConnectionRecoveryTest(unittest.TestCase):
         target = self.config().hosts["archlinux"]
         command = recovery._remote_command(target, 30, transport.PurePosixPath("/remote/r-1234567890abcdef"),
                                            "/remote/r-1234567890abcdef/m")
-        argv = transport.build_ssh_argv(self.config(), "gateway", 30, command=command)
+        # A command-builder fixture must not inherit a real coordinator journal.
+        with tempfile.TemporaryDirectory() as directory:
+            argv = transport.build_ssh_argv(replace(self.config(),root=Path(directory)), "gateway", 30, command=command)
         self.assertNotIn("\n", command[2])
         self.assertIn("exec(", command[2])
         self.assertEqual("gateway.example", argv[-2])
@@ -478,6 +481,51 @@ class FencedConfiguredSocketTests(unittest.TestCase):
                 self.assertEqual('unknown',recovery.configured_master_fenced_status(self.root,host,timeout)['nestedState'])
             (self.fixture.journal()/'ready.json').unlink()
             self.assertEqual('unknown',recovery.configured_master_fenced_status(self.root,'archlinux')['nestedState'])
+
+
+@unittest.skipUnless(os.name == 'posix', 'complete POSIX recovery program')
+class FiveHourPersistenceTests(unittest.TestCase):
+    def emitted_launch(self, source):
+        # Run the complete generated recovery program and real child processes.
+        # The inert SSH executable records launch options; no VM or VPN changes.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            ssh = root / 'ssh'
+            record = root / 'launch.json'
+            ssh.write_text('#!' + sys.executable + '\n' +
+                'import json,os,sys\nfrom pathlib import Path\n'
+                'if sys.argv[1] == "-G":print("userknownhostsfile /fixture/known")\n'
+                'elif sys.argv[1] == "-M":Path(os.environ["SSH_FIXTURE_RECORD"]).write_text(json.dumps(sys.argv[1:]))\n')
+            ssh.chmod(0o700)
+            control = root / 'owned-control'
+            result = subprocess.run([sys.executable, '-I', '-B', '-c', source,
+                    '', 'fixture', '5', str(control), str(control / 'master.sock')],
+                input=json.dumps({'passphrase': 'inert fixture input'}), text=True,
+                capture_output=True, timeout=10,
+                env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
+                     'SSH_FIXTURE_RECORD': str(record)})
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual('ready', json.loads(result.stdout)['state'])
+            self.assertEqual('', result.stderr)
+            self.assertFalse((control / 'askpass-password').exists())
+            self.assertFalse((control / 'askpass').exists())
+            return json.loads(record.read_text())
+
+    def test_original_one_hour_red_current_five_hour_green(self):
+        fixture = Path(__file__).parent / 'fixtures/ssh_five_hour_persistence'
+        before = (fixture / 'recovery.before.source').read_bytes()
+        provenance = json.loads((fixture / 'provenance.json').read_bytes())
+        self.assertEqual(provenance['beforeRemoteSha256'], hashlib.sha256(before).hexdigest())
+        def oracle(argv):
+            self.assertIn('ControlPersist=18000', argv)
+            self.assertIn('ConnectTimeout=5', argv)
+            self.assertIn('StrictHostKeyChecking=yes', argv)
+            self.assertIn('NumberOfPasswordPrompts=1', argv)
+        old = self.emitted_launch(before.decode())
+        self.assertIn('ControlPersist=3600', old)
+        with self.assertRaises(AssertionError):
+            oracle(old)
+        oracle(self.emitted_launch(recovery._REMOTE_RECOVERY_SCRIPT))
 
 
 if __name__ == "__main__":

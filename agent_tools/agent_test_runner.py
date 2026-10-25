@@ -488,12 +488,14 @@ def worker(plan: dict, directory: Path, *, isolation=None) -> int:
 
 def _stop_workers(active: list[dict]) -> None:
     # Only sessions created by this invocation are signalled; no PID rediscovery.
+    # A worker that exits just before its signal can leave only unreaped zombies
+    # in its group, which Darwin reports as EPERM: nothing live is left to signal.
     for item in active:
         process = item["process"]
         if process.poll() is None:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 pass
     deadline = time.monotonic() + 3
     for item in active:
@@ -503,40 +505,90 @@ def _stop_workers(active: list[dict]) -> None:
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
                 pass
             process.wait()
 
 
+def _group_present(pgid: int, signum: int = 0) -> bool:
+    """Signal (0: probe) one owned group; only ESRCH proves that the group is gone.
+
+    Darwin killpg returns EPERM while the group still exists but every remaining
+    member is an unreaped zombie (an orphan awaiting launchd, or a child of a
+    process that left the group). EPERM never proves absence.
+    """
+    try:
+        os.killpg(pgid, signum)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True
+
+
+def _group_gone(pgid: int, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while _group_present(pgid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+    return True
+
+
 def close_session(process) -> tuple[bool, bool]:
     """Refuse success for a terminal worker that left an owned descendant."""
-    try:
-        os.killpg(process.pid, 0)
-    except ProcessLookupError:
+    if not _group_present(process.pid):
         return True, False
     # Never rediscover or signal unrelated processes; this is the same new session.
     leaked = True
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return True, leaked
-    deadline = time.monotonic() + 1
-    while time.monotonic() < deadline:
-        try:
-            os.killpg(process.pid, 0)
-        except ProcessLookupError:
+    for signum, seconds in ((signal.SIGTERM, 1), (signal.SIGKILL, 2)):
+        if not _group_present(process.pid, signum) or _group_gone(process.pid, seconds):
             return True, leaked
-        time.sleep(0.02)
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return True, leaked
     # Unknown descendants remain an incomplete result, never a success receipt.
-    try:
-        os.killpg(process.pid, 0)
-    except ProcessLookupError:
-        return True, leaked
     return False, leaked
+
+
+def _session_observer():
+    # Only the parent coordinator needs this native metadata collector. Finite
+    # isolated worker snapshots must not import an unlisted helper at startup.
+    if __package__:
+        from . import agent_test_session_observer
+    else:
+        import agent_test_session_observer
+    return agent_test_session_observer
+
+
+def _session_admission(process):
+    try:
+        observer = _session_observer()
+    except Exception:
+        return None, {'state': 'incomplete', 'reason': 'session_admission_unavailable', 'cleanupAuthority': False}
+    try:
+        owner = observer.admit(process)
+        return owner, observer.admission_record(owner)
+    except Exception as error:
+        return None, observer.refusal(error)
+
+
+def _session_snapshot(owner, phase):
+    if owner is None:
+        return {'state': 'incomplete', 'reason': 'session_admission_unavailable', 'cleanupAuthority': False}
+    try:
+        observer = _session_observer()
+    except Exception:
+        return {'state': 'incomplete', 'reason': 'session_observation_unavailable', 'cleanupAuthority': False}
+    try:
+        return {'state': 'observed', **observer.snapshot(owner, phase)}
+    except Exception as error:
+        return observer.refusal(error)
+
+
+def _record_session_before_cleanup(item):
+    item["sessionBeforeCleanup"] = _session_snapshot(item["_sessionOwner"], 'before_cleanup')
+    try:
+        write_json(item["directory"] / 'session-before-cleanup.json', item["sessionBeforeCleanup"])
+    except Exception:
+        item["sessionObservationRetentionFailed"] = True
 
 
 def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
@@ -593,16 +645,19 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
                     worker_source = (leaf / "sources" / RUNNER_SELF_PATH
                                      if isolation is not None and RUNNER_SELF_PATH in isolation
                                      else Path(__file__).resolve())
+                    # Selected tests never read the coordinator's own stdin stream.
                     process = subprocess.Popen([sys.executable, "-B", str(worker_source), "--worker-plan", str(leaf / "plan.json"),
-                                                "--worker-dir", str(leaf)], cwd=root, env=env,
+                                                "--worker-dir", str(leaf)], cwd=root, env=env, stdin=subprocess.DEVNULL,
                                                stdout=out, stderr=err, start_new_session=True)
+                    session_owner, session_admission = _session_admission(process)
                 finally:
                     out.close(); err.close()
                 item = {"process": process, "directory": leaf, "isolated": isolated, "modules": modules,
                         "startedMonotonic": time.monotonic(), "pid": process.pid,
-                        "fixtureRoot": str(fixture_root), "fixtureRootGeneration": fixture_pin}
+                        "fixtureRoot": str(fixture_root), "fixtureRootGeneration": fixture_pin,
+                        "_sessionOwner": session_owner, "sessionObservationAdmission": session_admission}
                 active.append(item)
-                write_json(leaf / "started.json", {key: value for key, value in item.items() if key not in ("process", "directory")})
+                write_json(leaf / "started.json", {key: value for key, value in item.items() if key not in ("process", "directory", "_sessionOwner")})
                 next_group += 1
                 if not isolated:
                     break
@@ -617,6 +672,8 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
     except Exception as error:
         infrastructure_error = type(error).__name__
     finally:
+        for item in active:
+            _record_session_before_cleanup(item)
         _stop_workers(active)
         for item in active:
             item["returncode"] = item["process"].returncode
@@ -630,9 +687,17 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
     worker_failure = False
     for item in completed:
         leaf = item["directory"]
-        record = {key: value for key, value in item.items() if key not in ("process", "directory")}
+        if "sessionBeforeCleanup" not in item:
+            _record_session_before_cleanup(item)
+        record = {key: value for key, value in item.items() if key not in ("process", "directory", "_sessionOwner")}
         record["reaped"] = item["process"].poll() is not None
         record["sessionAbsent"], record["descendantLeak"] = close_session(item["process"])
+        record["sessionAfterCleanup"] = _session_snapshot(item["_sessionOwner"], 'after_cleanup')
+        record["sessionObservationComplete"] = (
+            record["sessionObservationAdmission"].get('state') == 'admitted' and
+            record["sessionBeforeCleanup"].get('state') == 'observed' and
+            record["sessionAfterCleanup"].get('state') == 'observed' and
+            not record.get('sessionObservationRetentionFailed', False))
         try:
             result = json.loads((leaf / "result.json").read_text())
             if (result["state"] != "complete" or result["sourceFingerprint"] != plan["sourceFingerprint"]
@@ -668,7 +733,7 @@ def run_plan(plan: dict, directory: Path, *, stream=sys.stderr) -> dict:
                    or any(not sources_match(root, sources) for sources in reviewed_constraints))
     except OSError:
         changed = True
-    incomplete = cancellation[0] or infrastructure_error is not None or len(completed) != len(groups) or changed or any(x["state"] != "complete" or not x["sessionAbsent"] or x["descendantLeak"] or not x["fixtureRootRemoved"] for x in records)
+    incomplete = cancellation[0] or infrastructure_error is not None or len(completed) != len(groups) or changed or any(x["state"] != "complete" or not x["sessionAbsent"] or x["descendantLeak"] or not x["fixtureRootRemoved"] or not x["sessionObservationComplete"] for x in records)
     state = "cancelled" if cancellation[0] else "incomplete" if incomplete else "failed" if worker_failure else "complete"
     report = {"schemaVersion": 1, "state": state, "successful": state == "complete", "sourceFingerprint": plan["sourceFingerprint"],
               "moduleHashes": module_hashes, "reviewedSourceHashes": reviewed_hashes, "counts": total, "timings": timings, "workers": records,

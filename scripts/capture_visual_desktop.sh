@@ -113,7 +113,7 @@ if [[ -n "$native_scenes" ]]; then
   done
 fi
 
-validation=(python3 scripts/visual_platform.py capture-local --platform "$platform_name" --driver /usr/bin/true --output "$output_dir")
+validation=(python3 scripts/visual_platform.py capture-local --platform "$platform_name" --target "native:$platform_name" --driver /usr/bin/true --output "$output_dir")
 if [[ -n "$scene_csv" ]]; then
   IFS=',' read -r -a scenes <<< "$scene_csv"
   for scene in "${scenes[@]}"; do

@@ -1,0 +1,191 @@
+"""Private inputs use descriptor/byte custody and never durable content hashes."""
+from pathlib import Path
+import dataclasses
+import hashlib
+import importlib
+import py_compile
+import json
+import os
+import secrets
+import shutil
+import subprocess
+import sys
+import tempfile
+import types
+import unittest
+import uuid
+from unittest import mock
+
+from agent_tools import private_config_custody as private
+from agent_tools import ssh_automatic_program as automatic
+from agent_tools import ssh_transport as transport
+from agent_tools import ssh_tmux_mcp_adapter as adapter
+from agent_tools.tests.test_ssh_automatic_program import PeerFixture
+
+TOOLS=Path(__file__).resolve().parents[1]
+FIXTURE=Path(__file__).parent/'fixtures/ssh_privileged_program'
+
+
+@unittest.skipUnless(os.name=='posix','private descriptor custody')
+class PrivateConfigTests(unittest.TestCase):
+    def setUp(self):
+        temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
+        self.root=Path(temporary.name).resolve();self.root.chmod(0o700);self.peer=PeerFixture(self.root)
+        self.secret=secrets.token_hex(24)
+        self.peer.hosts['unused-secret-peer']={**self.peer.hosts['explicit-peer'],'password':self.secret}
+        self.peer.write_config();self.config=transport.load_config(self.root)
+
+    def before(self,filename,source_name):
+        path=FIXTURE/filename;manifest=json.loads((FIXTURE/'provenance.json').read_bytes())
+        self.assertEqual(manifest['beforeimages'][source_name]['sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
+        directory=self.root/('before-'+uuid.uuid4().hex);directory.mkdir()
+        source=directory/'owner.py';source.write_bytes(path.read_bytes())
+        shutil.copyfile(TOOLS/'native_review_source_closure.py',directory/'native_review_source_closure.py')
+        name='agent_tools._private_config_before_'+uuid.uuid4().hex;module=types.ModuleType(name);module.__file__=str(source);module.__package__='agent_tools'
+        with mock.patch.dict(sys.modules,{name:module}):exec(compile(path.read_bytes(),str(source),'exec'),module.__dict__)
+        return module
+
+    def command(self):
+        source='PADDING='+repr('X'*68000)+'\nfrom pathlib import Path\nPath('+repr(str(self.root/'once'))+').write_text("once")\nprint("public")\n'
+        return ('python3','-I','-B','-c','exec('+repr(source)+')')
+
+    def test_complete_before_hashed_secret_and_fixed_call_never_hashes_inventory(self):
+        before=self.before('config_hash.before.source','ssh_automatic_program.py.config-hash')
+        digest=hashlib.sha256
+        seen=[]
+        def guarded(raw=b'',*args,**kwargs):
+            if self.secret.encode() in raw:
+                seen.append(True);raise AssertionError('private_input_reached_digest')
+            return digest(raw,*args,**kwargs)
+        with mock.patch.object(hashlib,'sha256',side_effect=guarded):
+            with mock.patch.object(transport,'_automatic_module',return_value=before),self.assertRaisesRegex(AssertionError,'private_input_reached_digest'):
+                transport.build_ssh_argv(self.config,'explicit-peer',5,command=self.command(),ssh_binary=str(self.peer.binary))
+            self.assertFalse(self.peer.events());self.assertFalse((self.root/'once').exists())
+            plan=transport.build_ssh_argv(self.config,'explicit-peer',5,command=self.command(),ssh_binary=str(self.peer.binary))
+            with self.peer.environment():result=transport.run_ssh(plan,input=b'public',capture_output=True,timeout=10)
+        self.assertTrue(seen);self.assertEqual(0,result.returncode,result.stderr)
+        self.assertEqual('once',(self.root/'once').read_text())
+        for path in (self.root/'.rag_index').rglob('*'):
+            if path.is_file():self.assertNotIn(self.secret.encode(),path.read_bytes())
+        self.assertNotIn(self.secret,repr(plan))
+        with self.assertRaisesRegex(ValueError,'private_config_snapshot_not_serializable'):dataclasses.asdict(plan)
+
+    def test_password_change_has_no_fingerprint_but_blocks_original_packet(self):
+        before=self.before('config_hash.before.source','ssh_automatic_program.py.config-hash')
+        original=automatic._config_sha(self.config);old_digest=before._config_sha(self.config)
+        plan=transport.build_ssh_argv(self.config,'explicit-peer',5,command=self.command(),ssh_binary=str(self.peer.binary))
+        stamp=self.peer.config_path.stat()
+        self.peer.hosts['unused-secret-peer']['password']=secrets.token_hex(24)
+        self.peer.write_config();os.utime(self.peer.config_path,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+        changed=transport.load_config(self.root)
+        self.assertEqual(original,automatic._config_sha(changed))
+        self.assertNotEqual(old_digest,before._config_sha(changed))
+        with self.peer.environment(),self.assertRaisesRegex(ValueError,'private_config_changed'):
+            transport.run_ssh(plan,input=b'public',capture_output=True,timeout=10)
+        self.assertFalse(self.peer.events());self.assertFalse((self.root/'once').exists())
+
+    def test_same_generation_changed_descriptor_bytes_are_still_rejected(self):
+        custody=private.PrivateConfigCustody(self.peer.config_path);self.addCleanup(custody.close)
+        real=os.pread
+        def changed(fd,size,offset):
+            part=real(fd,size,offset)
+            return (b'X'+part[1:]) if fd==custody._file and offset==0 else part
+        with mock.patch.object(os,'pread',side_effect=changed),self.assertRaisesRegex(ValueError,'private_config_changed'):
+            custody.check()
+        custody.check()
+
+    def test_replacement_and_symlink_never_adopted(self):
+        custody=private.PrivateConfigCustody(self.peer.config_path);self.addCleanup(custody.close)
+        replacement=self.root/'replacement';replacement.write_bytes(self.peer.config_path.read_bytes());replacement.chmod(0o600)
+        self.peer.config_path.unlink();self.peer.config_path.symlink_to(replacement)
+        with self.assertRaisesRegex(ValueError,'private_config_changed'):custody.check()
+        with self.assertRaises(OSError):private.PrivateConfigCustody(self.peer.config_path)
+
+    def test_private_payload_original_hash_red_and_nonce_only_green(self):
+        before=self.before('private_payload.before.source','ssh_tmux_mcp_adapter.py.private-payload')
+        payload=self.secret.encode()+b'\n{}';source='import sys;sys.stdin.buffer.read();print(\'{"public":true}\')'
+        authority={'phase':'status','snapshot':None,'sources':{},'transport':{},'local':{},'argvSha256':'a'*64}
+        def execute(module,private_mode=False):
+            def public(value):
+                if value!={'public':True}:raise ValueError('invalid_public_reply')
+                return value
+            extra={'private_payload':True,'public_reply':public} if private_mode else {}
+            result,path=module._capture(self.root,authority=authority,launch=lambda:subprocess.Popen([sys.executable,'-c',source],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE),payload=payload,guard=lambda:None,timeout_seconds=3,**extra)
+            self.assertEqual('captured',result['state'])
+            return json.loads((path/'intent.json').read_bytes()),path
+        old,_=execute(before)
+        self.assertEqual(hashlib.sha256(payload).hexdigest(),old['payloadSha256'])
+        digest=hashlib.sha256
+        def no_private(raw=b'',*args,**kwargs):
+            self.assertNotIn(self.secret.encode(),raw)
+            return digest(raw,*args,**kwargs)
+        with mock.patch.object(hashlib,'sha256',side_effect=no_private):current,path=execute(adapter,True)
+        self.assertNotIn('payloadSha256',current)
+        self.assertNotIn('payloadBytes',current);self.assertIs(True,current['privatePayload'])
+        self.assertEqual(str(uuid.UUID(current['inputNonce'])),current['inputNonce'])
+        self.assertEqual(authority,current['authority'])
+        for file in path.iterdir():self.assertNotIn(self.secret.encode(),file.read_bytes())
+
+    def test_private_capture_echo_actual_before_and_refused_sanitized_green(self):
+        before=self.before('private_echo.before.source','ssh_tmux_mcp_adapter.py.private-echo')
+        payload=self.secret.encode()+b'\n{}'
+        authority={'phase':'status','snapshot':None,'sources':{},'transport':{},'local':{},'argvSha256':'a'*64}
+        def execute(module,source,timeout=3):
+            def public(value):
+                if value!={'public':True}:raise ValueError('invalid_public_reply')
+                return value
+            extra={'public_reply':public} if module is adapter else {}
+            result,path=module._capture(self.root,authority=authority,
+                launch=lambda:subprocess.Popen([sys.executable,'-c',source],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE),
+                payload=payload,guard=lambda:None,timeout_seconds=timeout,private_payload=True,**extra)
+            return result,path,json.loads((path/'receipt.json').read_bytes())
+        echo='import sys;v=sys.stdin.buffer.readline();sys.stdout.buffer.write(v);sys.stderr.buffer.write(v)'
+        old,path,receipt=execute(before,echo)
+        self.assertEqual('captured',old['state']);self.assertIn(self.secret.encode(),(path/'stdout').read_bytes())
+        digest=hashlib.sha256
+        def no_private(raw=b'',*args,**kwargs):
+            self.assertNotIn(self.secret.encode(),raw)
+            return digest(raw,*args,**kwargs)
+        cases=[(echo,3,'private_input_echo'),
+               ('import sys;v=sys.stdin.buffer.readline();sys.stdout.buffer.write(v[:8])',3,'private_reply_malformed'),
+               ('import sys;v=sys.stdin.buffer.readline();print(\'{"public":true}\');sys.stderr.buffer.write(v[:8])',3,'private_reply_stderr'),
+               ('import sys,time;v=sys.stdin.buffer.readline();sys.stdout.buffer.write(v[:8]);sys.stdout.buffer.flush();time.sleep(3)',.05,'query_timeout'),
+               ('import sys;v=sys.stdin.buffer.readline();sys.stdout.buffer.write(v+b"X"*2200000)',3,'private_input_echo')]
+        for source,timeout,reason in cases:
+            with self.subTest(reason=reason),mock.patch.object(hashlib,'sha256',side_effect=no_private):
+                result,path,receipt=execute(adapter,source,timeout)
+            self.assertEqual('unknown',result['state']);self.assertEqual(reason,receipt['failure'])
+            self.assertEqual(b'',(path/'stdout').read_bytes());self.assertEqual(b'',(path/'stderr').read_bytes())
+            for file in path.iterdir():self.assertNotIn(self.secret.encode(),file.read_bytes())
+
+    def test_helper_timestamp_valid_pyc_actual_red_and_held_bytes_green(self):
+        preserved=FIXTURE/'helper_import.before.source';manifest=json.loads((FIXTURE/'provenance.json').read_bytes())
+        self.assertEqual(manifest['beforeimages']['ssh_automatic_program.py.helper-import']['sha256'],hashlib.sha256(preserved.read_bytes()).hexdigest())
+        for helper,method in (('private_config_custody.py','_private_config'),('ssh_privileged_program.py','_privileged')):
+            for use_before in (True,False):
+                with self.subTest(helper=helper,before=use_before):
+                    directory=self.root/('helper-'+uuid.uuid4().hex);directory.mkdir()
+                    for name in ('ssh_automatic_program.py','private_config_custody.py','ssh_privileged_program.py','native_review_source_closure.py'):
+                        shutil.copyfile(TOOLS/name,directory/name)
+                    if use_before:(directory/'ssh_automatic_program.py').write_bytes(preserved.read_bytes())
+                    source=directory/helper;raw=source.read_bytes();marker=directory/'untrusted-cache-executed'
+                    poison=('from pathlib import Path\nPath('+repr(str(marker))+').write_text("untrusted")\nraise ValueError("untrusted_cache")\n').encode()
+                    self.assertLess(len(poison),len(raw));source.write_bytes(poison+b'\n#'+b'X'*(len(raw)-len(poison)-2))
+                    stamp=source.stat();py_compile.compile(str(source),doraise=True,invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP)
+                    source.write_bytes(raw);os.utime(source,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+                    name='_private_helper_'+uuid.uuid4().hex;package=types.ModuleType(name);package.__path__=[str(directory)];sys.modules[name]=package
+                    try:
+                        owner=importlib.import_module(name+'.ssh_automatic_program')
+                        if use_before:
+                            with self.assertRaisesRegex(ValueError,'untrusted_cache'):getattr(owner,method)()
+                            self.assertTrue(marker.exists(),'Preserved helper import did not reproduce pre-check execution')
+                        else:
+                            module=getattr(owner,method)()
+                            self.assertEqual(str(source),module.__file__)
+                            self.assertFalse(marker.exists(),'Untrusted pyc executed before helper source authentication')
+                    finally:
+                        for key in list(sys.modules):
+                            if key==name or key.startswith(name+'.'):sys.modules.pop(key,None)
+
+
+if __name__=='__main__':unittest.main()

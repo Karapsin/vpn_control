@@ -28,7 +28,7 @@ from .macos_machine_acceptance import VM_NAME
 _SOURCE = re.compile(r"[0-9a-f]{40}\Z")
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _START = re.compile(r"darwin:[1-9][0-9]*:[0-9]{1,6}\Z")
-_FIELDS = {"schemaVersion", "sourceSha", "correlationId", "scenario", "jobId",
+_FIELDS = {"schemaVersion", "vmName", "sourceSha", "correlationId", "scenario", "jobId",
            "operationId", "bootSessionUuid", "reservationId", "fixtureReceiptArtifactId",
            "serverInstanceId", "serverPid", "serverProcessStartIdentity", "readySha256"}
 
@@ -90,6 +90,7 @@ def _request(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping) or set(value) != _FIELDS or type(value.get("schemaVersion")) is not int or value["schemaVersion"] != 1:
         raise MacReceiptError("Mac server stop request fields are invalid.")
     result = dict(value)
+    _qualified_target(result)
     binding = ReceiptBinding(*(result[key] for key in (
         "sourceSha", "correlationId", "scenario", "jobId", "operationId",
         "bootSessionUuid", "reservationId", "fixtureReceiptArtifactId")))
@@ -103,10 +104,40 @@ def _request(value: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _trusted_campaign(root: Path, request: Mapping[str, Any]) -> None:
+def _qualified_target(request: Mapping[str, Any]) -> str:
+    # This legacy provider has qualified only one retained campaign VM. Naming
+    # another guest cannot adopt it, and omitting a name cannot select a default.
+    target = request.get("vmName")
+    if type(target) is not str or target != VM_NAME:
+        raise MacReceiptError("Explicit Mac server stop VM is unavailable or unqualified.")
+    return target
+
+
+def _existing_directory(root: Path, name: str) -> Path:
+    """Read-only journal lookup; never materialize a missing history."""
+    root = root.resolve(strict=True)
+    parent = root / ".rag_index"
+    path = parent / name
+    for node in (parent, path):
+        try:
+            info = node.lstat()
+        except OSError:
+            raise MacReceiptError("Mac server stop target history is unavailable.") from None
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+            raise MacReceiptError("Mac server stop target history is unsafe.")
+    return path
+
+
+def _campaign(root: Path, correlation: str, *, create: bool):
+    group = acceptance._private_group(root) if create else _existing_directory(root, "macos-machine-acceptance")
+    # The same no-follow, one-link private read is used for the getter and the
+    # mutating entrypoint; accepted-campaign records retain their 8192-byte cap.
+    return _read(group / (correlation + ".json"), limit=8192)
+
+
+def _trusted_campaign(root: Path, request: Mapping[str, Any], *, create: bool = True) -> None:
     """A stop cannot invent a new campaign around a same-prefix guest path."""
-    group = acceptance._private_group(root)
-    prior = acceptance._read(group / (request["correlationId"] + ".json"))
+    prior = _campaign(root, request["correlationId"], create=create)
     if not isinstance(prior, dict) or prior.get("state") not in {"unknown", "complete"} or \
             prior.get("operationId") != request["operationId"] or \
             prior.get("jobId") != request["jobId"] or \
@@ -118,8 +149,27 @@ def _trusted_campaign(root: Path, request: Mapping[str, Any]) -> None:
     if any(prior["request"].get(name) != request[field]
            for name, field in expected_request.items()) or \
             prior["admission"].get("bootSessionUuid") != request["bootSessionUuid"] or \
-            prior["admission"].get("reservationId") != request["reservationId"]:
+            prior["admission"].get("reservationId") != request["reservationId"] or \
+            prior["admission"].get("vmName") != request["vmName"]:
         raise MacReceiptError("Mac server stop does not match the accepted full-source campaign.")
+
+
+def _retained_request(root: Path, value: Mapping[str, Any], *, create: bool = True) -> dict[str, Any]:
+    """Read a historical target only from its original persisted campaign.
+
+    Legacy stop journals predate the explicit selector. They may still be
+    observed, but cannot invent a target from today's fixed provider constant.
+    This normalization never rewrites the original request or sends a signal.
+    """
+    if isinstance(value, Mapping) and set(value) == _FIELDS - {"vmName"}:
+        correlation = _uuid(value["correlationId"])
+        prior = _campaign(root, correlation, create=create)
+        admission = prior.get("admission") if isinstance(prior, dict) else None
+        target = admission.get("vmName") if isinstance(admission, dict) else None
+        value = {**value, "vmName": target}
+    request = _request(value)
+    _trusted_campaign(root, request, create=create)
+    return request
 
 
 class Boundary(Protocol):
@@ -132,15 +182,22 @@ class TartBoundary:
         self.runner = runner
 
     def request_stop(self, request: Mapping[str, Any]) -> None:
+        request = _request(request)
+        target = _qualified_target(request)
         TartReadOnlyProvider(runner=self.runner)._require_running()
-        result = self.runner(["tart", "exec", VM_NAME, "/usr/bin/python3", "-c", _GUEST_STOP,
-                              json.dumps(request, sort_keys=True, separators=(",", ":"))],
+        # vmName is host-side admission metadata. The already qualified guest
+        # server's strict intent/receipt protocol retains its original fields.
+        wire = {key: value for key, value in request.items() if key != "vmName"}
+        result = self.runner(["tart", "exec", target, "/usr/bin/python3", "-c", _GUEST_STOP,
+                              json.dumps(wire, sort_keys=True, separators=(",", ":"))],
                              capture_output=True, text=True, timeout=30, check=False)
         if result.returncode != 0:
             raise MacReceiptError("Mac fixture stop signal is unconfirmed.")
 
     def observe_stop(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         try:
+            request = _request(request)
+            _qualified_target(request)
             receipt = read_guest_candidate(request["sourceSha"], request["correlationId"],
                                            "server-stop", runner=self.runner)
             observed = observe_server_generation(request["sourceSha"], request["correlationId"],
@@ -174,19 +231,41 @@ def _directory(root: Path) -> Path:
     return path
 
 
-def _read(path: Path) -> dict[str, Any] | None:
+def _read(path: Path, *, limit: int = 16384) -> dict[str, Any] | None:
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except FileNotFoundError:
         return None
     with os.fdopen(fd, "r", encoding="utf-8") as stream:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size > 16384:
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size > limit:
             raise MacReceiptError("Mac server stop journal is unsafe.")
         value = json.load(stream)
     if not isinstance(value, dict):
         raise MacReceiptError("Mac server stop journal is invalid.")
     return value
+
+
+def original_vm_name(root: Path, correlation_id: str) -> str:
+    """Pure original-target lookup for normal tool routing.
+
+    New journals bind the explicit VM. A legacy journal can recover its target
+    only through its retained accepted campaign. No directories, connection,
+    provider, guest observation or replacement stop are created here.
+    """
+    correlation = _uuid(correlation_id)
+    directory = _existing_directory(root, "macos-machine-server-stop")
+    record = _read(directory / (correlation + ".json"))
+    if (record is None or set(record) != {"schemaVersion", "request", "state", "receipt"}
+            or type(record.get("schemaVersion")) is not int or record["schemaVersion"] != 1
+            or record.get("state") not in {"unknown", "complete"}
+            or record.get("state") == "unknown" and record.get("receipt") is not None
+            or record.get("state") == "complete" and not isinstance(record.get("receipt"), dict)):
+        raise MacReceiptError("Mac server stop original target journal is invalid.")
+    request = _retained_request(root, record.get("request"), create=False)
+    if request["correlationId"] != correlation:
+        raise MacReceiptError("Mac server stop original target correlation changed.")
+    return request["vmName"]
 
 
 def _save(path: Path, record: Mapping[str, Any]) -> None:
@@ -212,6 +291,9 @@ def _public(record: Mapping[str, Any]) -> dict[str, Any]:
     result = {"state": record["state"], "sourceSha": request["sourceSha"],
               "correlationId": request["correlationId"], "serverInstanceId": request["serverInstanceId"],
               "replayAllowed": False}
+    target = record.get("observedVmName", request.get("vmName"))
+    if type(target) is str:
+        result["vmName"] = target
     if record["state"] == "complete":
         result["receipt"] = record["receipt"]
     return result
@@ -236,9 +318,9 @@ def start(root: Path, inputs: Mapping[str, Any], boundary: Boundary | None = Non
         path = directory / (request["correlationId"] + ".json")
         record = _read(path)
         if record is not None:
-            if record.get("request") != request:
+            if _retained_request(root, record.get("request")) != request:
                 raise MacReceiptError("Mac server stop correlation is already bound.")
-            return _public(record)
+            return _public({**record, "observedVmName": request["vmName"]})
         others = list(directory.glob("*.json"))
         if len(others) > 128:
             raise MacReceiptError("Mac server stop journal is unbounded.")
@@ -265,18 +347,19 @@ def status(root: Path, correlation_id: str, boundary: Boundary | None = None) ->
         record = _read(path)
         if record is None:
             raise MacReceiptError("Mac server stop correlation is unknown.")
+        request = _retained_request(root, record["request"])
         try:
-            receipt = boundary.observe_stop(record["request"])
+            receipt = boundary.observe_stop(request)
         except Exception:
             receipt = None
         if receipt is None:
             # Keep the historical receipt, but never reuse it as a current
             # stop claim after a changed guest generation or reopened port.
-            return _public({**record, "state": "unknown", "receipt": None})
+            return _public({**record, "state": "unknown", "receipt": None, "observedVmName": request["vmName"]})
         if record.get("state") != "complete" or record.get("receipt") != receipt:
             record = {**record, "state": "complete", "receipt": dict(receipt)}
             _save(path, record)
-        return _public(record)
+        return _public({**record, "observedVmName": request["vmName"]})
 
 
 def collect(root: Path, correlation_id: str) -> dict[str, Any]:

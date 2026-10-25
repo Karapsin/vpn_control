@@ -1,0 +1,20 @@
+F
+======================================================================
+FAIL: test_actual_current_source_pin_closes_only_original_outer_master (agent_tools.tests.test_ssh_connection_session_close.CloseTests.test_actual_current_source_pin_closes_only_original_outer_master)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_connection_session_close.py", line 128, in test_actual_current_source_pin_closes_only_original_outer_master
+    ready, paths = self.successful_close('')
+                   ~~~~~~~~~~~~~~~~~~~~~^^^^
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_connection_session_close.py", line 123, in successful_close
+    self.assertEqual('exit_sent', close.close(self.root, 'archlinux', ready['receiptSha256'])['state'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'exit_sent' != 'unknown'
+- exit_sent
++ unknown
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.025s
+
+FAILED (failures=1)

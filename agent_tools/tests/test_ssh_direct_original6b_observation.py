@@ -4,12 +4,14 @@ Original authority constants are explicitly modeled to inert fixture digests.
 Remote facts use a real bounded byte-consuming Python child; no actual SSH/config.
 """
 import ast,copy,hashlib,json,os,shlex,sys,tempfile,threading,types,unittest
+import agent_tools
 from pathlib import Path
 from unittest import mock
 from agent_tools import ssh_direct_nested_channel as direct
 if direct.coordinator_capable():
  from agent_tools import ssh_fresh_nested_channel as channel,ssh_transport as transport,ssh_connection_session as session
 from agent_tools.tests import test_ssh_direct_ended_source_transition as history
+from agent_tools.tests.test_ssh_direct_ended_inventory_successor import historical_sources
 CHECKPOINT74_PROVIDER_BEFORE=history.CHECKPOINT74_PROVIDER_BEFORE
 MCP_REVIEWED_AFTER=history.MCP_REVIEWED_AFTER
 TRANSPORT_BEFORE74=history.TRANSPORT_BEFORE74
@@ -25,6 +27,16 @@ _PIN_SOURCE_GROWTH_BEFORE="def _pin_source(name):\n f=os.open(_STAGE+'/'+name,os
 class Original6bObservationTests(unittest.TestCase):
  def setUp(self):
   self.f=history.ProviderEndedHistoryTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups);f=self.f
+  # This is the immutable original v1 authority/observation graph. Current v3
+  # private-generation authority is independently covered by current fixtures.
+  sources=historical_sources()
+  for name,body in sources.items():(f.source/name).write_bytes(body)
+  self.historical_direct=types.ModuleType('agent_tools._original6b_direct_epoch')
+  self.historical_direct.__file__=str(f.source/'ssh_direct_nested_channel.py');self.historical_direct.__package__='agent_tools'
+  exec(compile(sources['ssh_direct_nested_channel.py'],self.historical_direct.__file__,'exec'),vars(self.historical_direct))
+  for owner in (agent_tools,history.fixture_owner):
+   patch=mock.patch.object(owner,'ssh_direct_nested_channel'if owner is agent_tools else'direct',self.historical_direct);patch.start();self.addCleanup(patch.stop)
+  patch=mock.patch.object(self.historical_direct,'_dependencies',side_effect=lambda:(session,f.module,history._Held));patch.start();self.addCleanup(patch.stop)
   f.corr=CORR;f.owner.corr=CORR;f.result={**f.result,'correlationId':CORR,'controlPath':'/tmp/vpn-channel-'+CORR+'/m'}
   for name,body in [('ssh_fresh_nested_channel.py',CHECKPOINT74_PROVIDER_BEFORE),('mcp_server.py',MCP_REVIEWED_AFTER),('ssh_transport.py',TRANSPORT_BEFORE74),('native_review_source_closure.py',CURRENT_CLOSURE)]:
    (f.source/name).write_bytes(body)
@@ -47,7 +59,7 @@ class Original6bObservationTests(unittest.TestCase):
    return child
   self.consumer=consume
  def invoke(self,method='status',corr=CORR):
-  with mock.patch('subprocess.Popen',side_effect=self.consumer):return getattr(direct,method)(self.f.root,'archlinux',corr)
+  with mock.patch('subprocess.Popen',side_effect=self.consumer):return getattr(self.historical_direct,method)(self.f.root,'archlinux',corr)
  def assert_originals(self):
   self.assertEqual(self.original,{k:(self.f.journal/(CORR+'.'+k+'.json')).read_bytes()for k in self.original})
  def refuse(self):

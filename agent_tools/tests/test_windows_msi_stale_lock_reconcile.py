@@ -7,13 +7,20 @@ from agent_tools import windows_msi_stale_lock_reconcile as reconcile
 D=('windows-cp117','/qga',589342,520739,'S-1-5-21-1-2-3-1002')
 L={'state':'absent','sourceSha':reconcile.stale._SOURCE,'correlationId':reconcile.stale._CORRELATION,'ownerProcesses':'none','installerProcesses':'none','consentProcesses':'none','runtimeProcesses':'none','stateLeaves':'none','runtimeOff':True,'replayAllowed':False,'nativeActionAllowed':False}
 class ReconcileTests(TestCase):
+ def setUp(self):
+     target = reconcile.stale
+     request = {'host':'archlinux','correlationId':target._CORRELATION,'sourceSha':target._SOURCE,**target._ARTIFACTS,'expectedCurrentVersion':'2.1.17'}
+     intent = {'request':request,'environment':D[0],'socketPath':D[1],'pid':D[2],'startTicks':D[3],'expectedSid':D[4]}
+     for patcher in (mock.patch.object(target.base,'_private_intent',return_value=intent),mock.patch.object(target.base,'_descriptor',return_value=(object(),object(),D))):
+         patcher.start();self.addCleanup(patcher.stop)
+
  def _old(self,root):
   g,e=reconcile.stale._evidence(D);reconcile.stale._write_intent(root,{'version':1,'correlationId':reconcile.stale._CORRELATION,'sourceSha':reconcile.stale._SOURCE,'guestGeneration':g,'evidenceSha256':e,'state':'intent'})
  def test_original_invocation_failure_never_creates_new_intent_or_replays(self):
   with tempfile.TemporaryDirectory() as t:
    r=Path(t);self._old(r)
    with mock.patch.object(reconcile.stale,'_admit',return_value=(object(),D,'a'*64)),mock.patch.object(reconcile.stale,'diagnose',return_value={'state':'diagnosed','category':'lock-open-invocation','replayAllowed':False,'nativeActionAllowed':False}),mock.patch.object(reconcile.stale,'_run') as remove:
-    self.assertEqual(reconcile.reconcile(r,{'host':'archlinux'}),reconcile._UNKNOWN);remove.assert_not_called();self.assertIsNone(reconcile._read(r))
+    self.assertEqual(reconcile.reconcile(r,{'host':'archlinux','vmIdentity':'589342:520739'}),reconcile._UNKNOWN);remove.assert_not_called();self.assertIsNone(reconcile._read(r))
  def test_new_intent_is_durable_before_remove_and_unknown_never_replays(self):
   with tempfile.TemporaryDirectory() as t:
    r=Path(t);self._old(r)
@@ -21,8 +28,8 @@ class ReconcileTests(TestCase):
    def lost(*_):
     self.assertEqual(reconcile._read(r)['state'],'intent');return None
    with mock.patch.object(reconcile.stale,'_admit',return_value=(object(),D,'a'*64)),mock.patch.object(reconcile.stale,'diagnose',return_value=safe),mock.patch.object(reconcile.stale,'_run',side_effect=lost) as remove:
-    self.assertEqual(reconcile.reconcile(r,{'host':'archlinux'}),reconcile._UNKNOWN);self.assertEqual(reconcile._read(r)['state'],'intent');remove.assert_called_once()
-    self.assertEqual(reconcile.reconcile(r,{'host':'archlinux'}),reconcile._UNKNOWN);self.assertEqual(remove.call_count,1)
+    self.assertEqual(reconcile.reconcile(r,{'host':'archlinux','vmIdentity':'589342:520739'}),reconcile._UNKNOWN);self.assertEqual(reconcile._read(r)['state'],'intent');remove.assert_called_once()
+    self.assertEqual(reconcile.reconcile(r,{'host':'archlinux','vmIdentity':'589342:520739'}),reconcile._UNKNOWN);self.assertEqual(remove.call_count,1)
  def test_new_fixed_correlation_is_distinct_from_the_armed_c32_intent(self):
   self.assertNotEqual(reconcile._CORRELATION,reconcile.stale._CORRELATION)
  def test_read_only_status_then_explicit_close_requires_absent_terminal_proof(self):

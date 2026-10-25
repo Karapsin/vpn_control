@@ -124,11 +124,13 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(0o600,Path(result['path']).stat().st_mode&0o777)
 
     def test_current_binding_and_source_refusal_precedes_large_child(self):
-        self.assertEqual(41,len(bundle.FILES));self.assertEqual(41,len(set(bundle.FILES)))
+        self.assertEqual(43,len(bundle.FILES));self.assertEqual(43,len(set(bundle.FILES)))
         self.assertIn('agent_tools/android_api35_coldboot_product_observation.py',bundle.FILES)
+        # ssh_transport subclasses readiness blockers; the closure carries both.
+        self.assertLessEqual({'agent_tools/readiness.py','agent_tools/private_inventory_lock.py'},set(bundle.FILES))
         self.assertEqual(bundle.FILES,_fixture_catalogue(bundle.FILES))
         historical=tuple(name for name in bundle.FILES if name not in EXTRA)
-        self.assertEqual(38,len(historical));self.assertEqual(set(bundle.FILES),set(_fixture_catalogue(historical)))
+        self.assertEqual(40,len(historical));self.assertEqual(set(bundle.FILES),set(_fixture_catalogue(historical)))
         backend,request,_,log=self.fixture()
         request['device']='android-api35'
         with self.assertRaises(ValueError):backup.create(self.case.receipt,backend,request)

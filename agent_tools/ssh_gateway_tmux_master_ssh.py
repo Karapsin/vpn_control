@@ -10,6 +10,8 @@ import hashlib
 import fcntl
 import json
 import os
+import selectors
+import time
 from pathlib import Path
 import subprocess
 import sys
@@ -23,6 +25,7 @@ try:
     from . import ssh_connection_recovery as recovery
     from . import ssh_recovery_adoption as adoption
     from . import ssh_gateway_tmux_master as owner
+    from . import ssh_gateway_tmux_owner_v2 as new_owner
 except ImportError:  # Existing CLI/MCP top-level module loading.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from agent_tools import private_inventory_lock as inventory
@@ -31,9 +34,17 @@ except ImportError:  # Existing CLI/MCP top-level module loading.
     from agent_tools import ssh_connection_recovery as recovery
     from agent_tools import ssh_recovery_adoption as adoption
     from agent_tools import ssh_gateway_tmux_master as owner
+    from agent_tools import ssh_gateway_tmux_owner_v2 as new_owner
 
 
 MAX_REPLY = 65536
+GROUP = 'ssh-gateway-tmux-master-v2'
+
+
+def _client_limit():
+    # The local SSH writer remains kernel bounded; remote owners keep their own limits.
+    import resource
+    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_REPLY, resource.getrlimit(resource.RLIMIT_FSIZE)[1]))
 EXEC = 'import json,os,resource,sys;resource.setrlimit(resource.RLIMIT_FSIZE,(65536,resource.getrlimit(resource.RLIMIT_FSIZE)[1]));a=json.loads(sys.argv[1]);os.execv(a[0],a)'
 
 
@@ -101,20 +112,30 @@ class LocalAuthority:
         self.root = self.presented.canonical
         self.files, self.directories = {}, {}
         try:
-            for module in (owner, transport, connection, inventory, recovery, adoption): self.capture(Path(module.__file__).absolute(), private=False)
+            for module in (owner, new_owner, transport, connection, inventory, recovery, adoption): self.capture(Path(module.__file__).absolute(), private=False)
             self.capture(Path(__file__).absolute(), private=False)
             _mark(diagnostic, 'config')
-            config_path = transport._private_config_path(self.root); self.capture(config_path)
-            self.config, self.outer, snapshot = connection._snapshot(self.root, 'archlinux')
-            self.snapshot = snapshot
+            self.config_path = transport._private_config_path(self.root)
+            automatic = transport._automatic_module()
+            private = automatic._private_config()
+            for module in (automatic, private): self.capture(Path(module.__file__).absolute(), private=False)
+            self.private_config = private.PrivateConfigCustody(self.config_path)
+            self.stack.callback(self.private_config.close)
+            self.config = transport.load_config(self.root)
+            require(self.private_config.matches_text(transport._read_private_config(self.config_path)), 'private_config_changed')
+            route = transport._route_hosts(self.config.hosts, 'archlinux')
+            require(len(route) == 2 and route[-1].transport == 'direct' and route[-1].password is None, 'fixed_two_hop_route')
+            self.outer = route[-1]
+            self.public_route = {'host': 'archlinux', 'aliases': [item.alias for item in route],
+                                 'publicConfigSha256': automatic._config_sha(self.config)}
+            self.config_identity = config_identity(self.config_path)
             target = self.config.hosts['archlinux']
             require(target.transport == 'nested' and target.gateway == self.outer.alias
                     and len(transport._route_hosts(self.config.hosts, 'archlinux')) == 2, 'fixed_two_hop_route')
             self.target = target
             _mark(diagnostic, 'authority')
-            for item in snapshot['files']:
-                captured = self.capture(Path(item['path']), private=False)
-                require(captured.pin['sha256'] == item['sha256'], 'credential_source')
+            for path in (self.outer.identity_file, self.outer.known_hosts_file):
+                self.capture(Path(path), private=False)
             self.guard()
         except BaseException: self.close(); raise
 
@@ -128,6 +149,7 @@ class LocalAuthority:
 
     def capture(self, path, **kw):
         path = Path(path)
+        require(path != transport._private_config_path(self.root), 'private_config_not_hashable')
         if path not in self.files:
             self.files[path] = self.stack.enter_context(owner.Capture(self.directory(path.parent), path.name, **kw))
         return self.files[path]
@@ -136,18 +158,21 @@ class LocalAuthority:
 
     def guard(self):
         self.presented.guard()
-        require(connection._snapshot(self.root, 'archlinux')[2] == self.snapshot, 'local_authority_changed')
+        self.private_config.check()
+        require(config_identity(self.config_path) == self.config_identity, 'private_config_changed')
+        require(self.private_config.matches_text(transport._read_private_config(self.config_path)), 'private_config_changed')
         for captured in self.files.values(): captured.guard()
         self.generations()
 
     def generations(self):
+        self.private_config.check()
         for captured in self.files.values(): captured.generations()
         for directory in self.directories.values(): directory.guard()
         self.presented.guard()
 
     def group(self, create=False):
         parent = self.root
-        for name in ('.rag_index', 'ssh-gateway-tmux-master'):
+        for name in ('.rag_index', GROUP):
             opened = self.directory(parent)
             path = parent / name
             if create and not os.path.lexists(path):
@@ -162,19 +187,63 @@ class LocalAuthority:
 
 def packet(authority, corr, target=None):
     target = target or authority.target
-    worker = authority.files[Path(owner.__file__).absolute()]
-    base = {str(path): captured.pin for path, captured in authority.files.items()}
-    return {'version': 1, 'purpose': owner.PURPOSE, 'host': 'archlinux', 'correlationId': corr,
+    worker = authority.files[Path(new_owner.__file__).absolute()]
+    base = {'sources': authority.pins(), 'publicRoute': authority.public_route, 'configIdentity': authority.config_identity}
+    return {'version': 2, 'purpose': new_owner.PURPOSE, 'host': 'archlinux', 'correlationId': corr,
             'localAuthoritySha256': digest(canonical(base)), 'workerSha256': worker.pin['sha256'],
             'configuredControlPath': str(target.remote_control_path),
             'masterControlPath': str(recovery._recovery_socket_path(target, UUID(corr).hex)[1]),
             'profile': target.remote_host_alias, 'configFile': str(target.remote_config_file) if target.remote_config_file else None}
 
 
+def _public_exchange(process, payload, deadline):
+    """Bound both untrusted streams in memory; no raw bytes enter evidence."""
+    outputs = {'stdout': bytearray(), 'stderr': bytearray()}
+    offset = 0
+    with selectors.DefaultSelector() as selector:
+        for name, event in (('stdin', selectors.EVENT_WRITE), ('stdout', selectors.EVENT_READ), ('stderr', selectors.EVENT_READ)):
+            stream = getattr(process, name); os.set_blocking(stream.fileno(), False)
+            selector.register(stream, event, name)
+        try:
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0: return 'timeout', None, b'', b''
+                for key, _ in selector.select(min(remaining, .1)):
+                    name, stream = key.data, key.fileobj
+                    if name == 'stdin':
+                        try: offset += os.write(stream.fileno(), payload[offset:offset + 16384])
+                        except BrokenPipeError:
+                            selector.unregister(stream); stream.close()
+                            if offset != len(payload): return 'stdin_incomplete', None, b'', b''
+                        else:
+                            if offset == len(payload): selector.unregister(stream); stream.close()
+                    else:
+                        part = os.read(stream.fileno(), min(16384, MAX_REPLY + 1 - len(outputs[name])))
+                        if not part: selector.unregister(stream); stream.close()
+                        else:
+                            outputs[name].extend(part)
+                            if len(outputs[name]) >= MAX_REPLY: return 'overflow', None, b'', b''
+            remaining = deadline - time.monotonic()
+            if remaining <= 0: return 'timeout', None, b'', b''
+            try: code = process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired: return 'timeout', None, b'', b''
+            return 'completed', code, bytes(outputs['stdout']), bytes(outputs['stderr'])
+        finally:
+            for name in ('stdin', 'stdout', 'stderr'):
+                stream = getattr(process, name)
+                if stream is not None and not stream.closed: stream.close()
+            # Only our local observation channel is reaped. The original remote
+            # durable owner, master and submitted intent are never signalled.
+            if process.poll() is None:
+                process.kill()
+                try: process.wait(timeout=1)
+                except subprocess.TimeoutExpired: pass
+
+
 def query(authority, job, action, raw, anchor_pin=None):
     diagnostic = getattr(authority, 'diagnostic', None)
     _mark(diagnostic, 'source')
-    worker = authority.files[Path(owner.__file__).absolute()]
+    worker = authority.files[Path(new_owner.__file__).absolute()]
     encoded = base64.b64encode(worker.body).decode()
     # All executed remote bytes are the originally held reviewed worker. There
     # are no command, host, path, executable, or transport overrides in inputs.
@@ -182,9 +251,7 @@ def query(authority, job, action, raw, anchor_pin=None):
     command = ('python3', '-I', '-B', '-c', program)
     _mark(diagnostic, 'localmaster')
     argv = transport.build_ssh_argv(authority.config, authority.outer.alias, 10,
-                                    command=command, ssh_binary='/usr/bin/ssh')
-    argv[1:1] = ['-F', '/dev/null', '-o', 'ControlMaster=no', '-o', 'ControlPath=none',
-                 '-o', 'ClearAllForwardings=yes', '-o', 'PermitLocalCommand=no', '-o', 'UpdateHostKeys=no']
+                                    command=command, ssh_binary='/usr/bin/ssh', fresh_direct=True)
     request = {'action': action, 'packet': raw}
     if anchor_pin is not None: request['anchorPin'] = anchor_pin
     if action == 'release':
@@ -196,37 +263,39 @@ def query(authority, job, action, raw, anchor_pin=None):
     name = 'query-' + uuid4().hex
     os.mkdir(name, 0o700, dir_fd=directory.fd); os.fsync(directory.fd)
     capsule = job / name; destination = authority.directory(capsule, True)
-    out_fd = os.open('stdout.private', os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=destination.fd)
-    err_fd = os.open('stderr.private', os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=destination.fd)
-    process = None; outcome = 'error'; code = None
+    process = None; outcome = 'start_error'; code = None
+    public = None
     try:
-        with tempfile.TemporaryDirectory(prefix='vpn-gateway-owner-askpass-') as askpass:
-            env = None
-            if authority.outer.password is not None:
-                _, env = transport._askpass_environment(authority.outer.password, Path(askpass))
-            authority.guard(); authority.generations()
-            _mark(diagnostic, 'remotequery')
-            process = subprocess.Popen([sys.executable, '-I', '-B', '-c', EXEC, json.dumps(argv)],
-                                       stdin=subprocess.PIPE, stdout=out_fd, stderr=err_fd, env=env)
+        authority.guard(); authority.generations()
+        _mark(diagnostic, 'remotequery')
+        deadline = time.monotonic() + transport._remaining_timeout(30)
+        process = transport.popen_ssh(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, preexec_fn=_client_limit, bufsize=0)
+        outcome, code, output, error = _public_exchange(process, input_bytes, deadline)
+        authority.guard(); authority.generations()
+        if outcome == 'completed' and code == 0 and not error:
+            _mark(diagnostic, 'parser')
             try:
-                process.communicate(input=input_bytes, timeout=30)
-                code = process.returncode; outcome = 'completed'
-            except subprocess.TimeoutExpired:
-                outcome = 'timeout'; code = process.poll()
-            os.fsync(out_fd); os.fsync(err_fd); os.fsync(destination.fd)
+                public = owner.value(output)
+                reply(public, action, raw.get('correlationId'), raw)
+            except (ValueError, TypeError, KeyError, IndexError):
+                public = None; outcome = 'reply_invalid'
+        elif outcome == 'completed': outcome = 'transport_unknown'
+        # The only persisted stdout is a complete schema-checked public reply.
+        # Arbitrary echo, partial JSON and stderr never receive a file or hash.
+        owner.create(destination, 'stdout.private', canonical(public) if public is not None else b'')
+        owner.create(destination, 'stderr.private', b'')
         out = authority.capture(capsule / 'stdout.private', maximum=MAX_REPLY)
         err = authority.capture(capsule / 'stderr.private', maximum=MAX_REPLY)
         owner.create(destination, 'receipt.json', canonical({'action': action,
-                     'packetSha256': digest(canonical(raw)), 'argvSha256': digest(canonical(argv)),
+                     'packetSha256': digest(canonical(raw)), 'argvSha256': transport.argv_sha256(argv),
                      'outcome': outcome, 'exitCode': code, 'stdout': out.pin, 'stderr': err.pin, 'replayAllowed': False}))
+        transport.finish_ssh(process, failed=outcome != 'completed')
         authority.guard()
-        require(outcome == 'completed' and code == 0 and len(out.body) < MAX_REPLY and len(err.body) < MAX_REPLY, 'transport_unknown')
-        _mark(diagnostic, 'parser')
-        result = owner.value(out.body)
-        require(result.get('replayAllowed') is False or action == 'availability', 'reply')
-        return result
+        require(public is not None, 'transport_unknown')
+        return public
     finally:
-        os.fsync(out_fd); os.fsync(err_fd); os.close(out_fd); os.close(err_fd)
+        transport.finish_ssh(process, failed=True)
 
 
 def operate(root, action, inputs, *, _diagnostic=None):
@@ -237,6 +306,7 @@ def operate(root, action, inputs, *, _diagnostic=None):
         if action == 'availability': require(inputs == {}, 'availability_inputs')
         with LocalAuthority(root, diagnostic=_diagnostic) as authority:
             _mark(_diagnostic, 'authority')
+            require(not os.path.lexists(authority.root / '.rag_index' / 'ssh-gateway-tmux-master' / corr), 'legacy_receipt_blocker')
             group = authority.group(create=action in ('availability', 'prepare'))
             job = group / corr
             if action in ('availability', 'prepare'):
@@ -245,8 +315,8 @@ def operate(root, action, inputs, *, _diagnostic=None):
                 os.mkdir(corr, 0o700, dir_fd=parent.fd); os.fsync(parent.fd)
                 directory = authority.directory(job, True)
                 raw = {} if action == 'availability' else packet(authority, corr)
-                record = {'packet': raw, 'authority': authority.pins(), 'action': action,
-                          'configBytes': base64.b64encode(authority.files[transport._private_config_path(authority.root)].body).decode()}
+                record = {'version': 2, 'packet': raw, 'authority': authority.pins(), 'action': action,
+                          'publicRoute': authority.public_route, 'configIdentity': authority.config_identity}
                 owner.create(directory, 'intent.json', canonical(record)); authority.capture(job / 'intent.json')
                 authority.guard()
                 result = query(authority, job, action, raw)
@@ -255,7 +325,7 @@ def operate(root, action, inputs, *, _diagnostic=None):
                 owner.create(directory, 'anchor.json', canonical(result)); authority.capture(job / 'anchor.json'); authority.guard()
                 return result
             directory = authority.directory(job, True)
-            intent = authority.capture(job / 'intent.json'); record = owner.value(intent.body)
+            record, intent = read_public_intent(authority, job, corr, action)
             raw = original_authority(authority, job, corr, action, record)
             anchor = authority.capture(job / 'anchor.json'); observed = owner.value(anchor.body)
             reply(observed, 'prepare', corr, raw)
@@ -270,9 +340,12 @@ def operate(root, action, inputs, *, _diagnostic=None):
             _mark(_diagnostic, 'authority')
             authority.guard()
             return result
-    except (OSError, ValueError, TypeError, KeyError, IndexError, subprocess.SubprocessError):
+    except (OSError, ValueError, TypeError, KeyError, IndexError, subprocess.SubprocessError) as error:
         if _diagnostic is not None:
             _diagnostic['failed'] = True
+        reason = str(error) if type(error) is ValueError else ''
+        if reason in ('legacy_receipt_blocker', 'legacy_source_blocker', 'public_route_changed', 'private_config_changed'):
+            return {'state': 'unknown', 'reason': reason, 'replayAllowed': False}
         return {'state': 'unknown', 'replayAllowed': False}
 
 
@@ -296,41 +369,43 @@ def configured_status_diagnostic(root, inputs):
     return {**result, 'nativeActionAllowed': False}
 
 
+def config_identity(path):
+    info = os.stat(path, follow_symlinks=False)
+    # File custody also checks exact private bytes and full generation in memory.
+    # Content length and credential-derived digests do not enter public receipts.
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def read_public_intent(authority, job, corr, action):
+    private = transport._automatic_module()._private_config()
+    held = private.PrivateConfigCustody(job / 'intent.json')
+    try:
+        raw, _ = connection._bytes(job / 'intent.json')
+        require(held.matches_text(raw.decode('utf-8')), 'private_config_changed')
+        record = owner.value(raw)
+        require(type(record.get('version')) is int and record['version'] == 2, 'legacy_receipt_blocker')
+        original_authority(authority, job, corr, action, record)
+        held.check()
+        intent = authority.capture(job / 'intent.json')
+        held.check()
+        return record, intent
+    finally: held.close()
+
+
 def original_authority(authority, job, corr, action, record):
-    require(set(record) == {'packet', 'authority', 'action', 'configBytes'} and record['action'] == 'prepare', 'original_authority')
-    original = base64.b64decode(record['configBytes'], validate=True)
-    original_config = adoption._validate_candidate(original, authority.root)
-    target = original_config.hosts['archlinux']
-    config_path = transport._private_config_path(authority.root)
-    baseline = record['authority']; current = {str(path): item.pin for path, item in authority.files.items() if path != job / 'intent.json'}
-    require(set(baseline) == set(current) and digest(original) == baseline[str(config_path)]['sha256'], 'authority_binding')
-    require(all(canonical(pin) == canonical(current[path]) for path, pin in baseline.items() if path != str(config_path)), 'original_sources')
-    raw = record['packet']; expected = packet(authority, corr, target)
-    expected['localAuthoritySha256'] = digest(canonical(baseline))
-    require(canonical(raw) == canonical(expected), 'packet_binding')
-    if canonical(baseline[str(config_path)]) == canonical(current[str(config_path)]):
-        require(authority.files[config_path].body == original, 'original_config')
-        return raw
-    # A status observer follows only one separately proven adoption. Release and
-    # every effect retain the original inventory fence; this never publishes it.
-    require(action == 'status', 'effect_requires_original_config')
-    candidate = owner.value(original); candidate['hosts']['archlinux']['remoteControlPath'] = raw['masterControlPath']
-    require(authority.files[config_path].body == canonical(candidate) + b'\n', 'adopted_config_bytes')
-    route_sha = adoption._route_sha(original, original_config, 'archlinux')
-    key = adoption._route_key('archlinux', raw['configuredControlPath'], raw['masterControlPath'], UUID(corr).hex, route_sha)
-    parent = authority.root / adoption._RECEIPTS
-    lock = authority.capture(parent / inventory.InventoryLock.name)
-    require(lock.body == inventory.InventoryLock.body, 'adoption_lock')
-    fcntl.flock(lock.fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
-    intent = authority.capture(recovery._intent_path(authority.root, 'archlinux', target))
-    require(owner.value(intent.body) == recovery._intent_value('archlinux', target, UUID(corr).hex, 'ready', raw['masterControlPath']), 'adoption_intent')
-    pending = authority.capture(parent / (key + '.pending.json'))
-    terminal = authority.capture(parent / (key + '.adopted.json'))
-    value = {'schemaVersion': 1, 'host': 'archlinux', 'oldControlPath': raw['configuredControlPath'],
-             'controlPath': raw['masterControlPath'], 'correlationId': UUID(corr).hex, 'routeSha256': route_sha,
-             'source': {**baseline[str(config_path)], 'size': len(original)}, 'intent': snapshot_pin(intent),
-             'ownershipLock': snapshot_pin(lock)}
-    require(canonical(owner.value(pending.body)) == canonical({**value, 'state': 'pending'})
-            and canonical(owner.value(terminal.body)) == canonical({**value, 'state': 'adopted', 'adopted': snapshot_pin(authority.files[config_path])}), 'adoption_terminal')
+    require(type(record.get('version')) is int and record['version'] == 2, 'legacy_receipt_blocker')
+    require(set(record) == {'version', 'packet', 'authority', 'action', 'publicRoute', 'configIdentity'}
+            and record['action'] == 'prepare', 'original_authority')
+    require(record['publicRoute'] == authority.public_route, 'public_route_changed')
+    require(record['configIdentity'] == authority.config_identity, 'private_config_changed')
+    baseline = record['authority']
+    current = {str(path): item.pin for path, item in authority.files.items() if path != job / 'intent.json'}
+    require(type(baseline) is dict and baseline == current, 'legacy_source_blocker')
+    raw = record['packet']
+    expected = packet(authority, corr)
+    expected['localAuthoritySha256'] = digest(canonical({'sources': baseline, 'publicRoute': authority.public_route,
+                                                       'configIdentity': authority.config_identity}))
+    require(raw == expected, 'packet_binding')
     authority.guard(); authority.generations()
     return raw

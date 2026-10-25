@@ -1,0 +1,15 @@
+{
+  "beforeSha256": {
+    "agent_tools/android_installer_component_bundle.py": "e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a",
+    "agent_tools/android_installer_component_adapter.py": "4297e000ed3ff823795e276a3aec545bd655e3a6712b84f7d5a38a0638437a98",
+    "scripts/android_installer_lifecycle.py": "3c5ed91a0b06f2726dce8557d26d7beb2c498afefd25c431b22a15de28047033"
+  },
+  "originalFailure": "Full source-closed component factory cannot import ssh_transport readiness/private dependency; fallback reports component_bundle_external_import. Updated lifecycle eager direct-entrypoint import then requests unrelated provider registry; adapter also retains old producer source pins.",
+  "initialEvidence": ".runtime/tool-recovery/android-component-closure-before/actual-factory-red.log",
+  "scope": "Actual whole staged importer/production factories and generated command paths, controlled disposable process/socket endpoints only. No native device/VM, no old receipt adoption or product parity acceptance.",
+  "beforeRunAdmittedSha256": "69361b0287351c166d88f0329b6a57de91e64ee428b3edcf68637d343f453489",
+  "beforeFixtureSha256": {
+    "test_android_api35_os_session_projection.py": "c55980714bace305a22620466c5bee5a87f257dc05e17a2ac80580c910034b7c",
+    "test_android_install_recovery_mcp_route.py": "b042a9b9186b02741aac33223ec060b6d79cc251f2ac8b6b093ad4612223c006"
+  }
+}

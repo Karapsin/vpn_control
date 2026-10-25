@@ -1,0 +1,1 @@
+{"failure": "Canonical namespace enrollment succeeded, but identical namespace data reloaded from sorted custody JSON produced a different PARAMETERS key order and was rejected before inventory dispatch.", "nativeEvidence": ".runtime/tool-recovery-qemu/canonical-order-before/", "schemaVersion": 1, "sha256": "0e97210330503522cfeb0d3f958ec85c5194086e9fb98d33c1f88f4939f3099f"}

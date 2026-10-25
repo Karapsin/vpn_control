@@ -1,0 +1,224 @@
+"""Bounded public v12 RPC evidence for the private qualification caller.
+
+This is an internal capture helper, not a provider/tool action. Its caller must
+admit the fixed target/source before constructing argv. It signals only its own
+original Popen actor after exact kernel birth and parent checks. A timeout never
+cancels the guest operation or grants permission to submit it again.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import selectors
+import stat
+import subprocess
+import time
+
+
+class CaptureUnknown(RuntimeError):
+    pass
+
+
+def _identity(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid, info.st_nlink)
+
+
+def _generation(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _write(fd, raw):
+    view = memoryview(raw)
+    while view:
+        n = os.write(fd, view)
+        if n <= 0:
+            raise OSError('capture_short_write')
+        view = view[n:]
+    os.fsync(fd)
+
+
+class PublicRpcCapture:
+    """Preopen all output leaves against a held directory before dispatch.
+
+    Raw bytes always go to those original descriptors, including when a named
+    route is replaced. Final evidence precedes external source/semantic guards.
+    The helper retains bounded prefixes only; overflow/partial EOF is UNKNOWN.
+    """
+    limits = {'stdout': 262144, 'stderr': 65536}
+
+    def __init__(self, directory, label):
+        if os.name != 'posix' or not re.fullmatch(r'call-[1-9][0-9]*-(?:factory|lease|executor|namespace|inventory|root-before|root-after|public|once|observer|source-close)', label):
+            raise ValueError('capture_scope')
+        directory.guard()
+        self.directory = directory
+        self.fd = os.dup(directory.fd)
+        self.identity = _identity(os.fstat(self.fd))[:5]
+        self.leaves = {}
+        self.callback = bytearray()
+        try:
+            for role, suffix in (('stdout', '.stdout.json'), ('stderr', '.stderr.txt'), ('callback', '.capture.jsonl')):
+                name = label + suffix
+                fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=self.fd)
+                self.leaves[role] = (fd, name, _identity(os.fstat(fd)))
+            os.fsync(self.fd)
+            self._guard_routes()
+        except BaseException:
+            self.close()
+            raise
+
+    def _guard_routes(self):
+        self.directory.guard()
+        if _identity(os.fstat(self.fd))[:5] != self.identity:
+            raise CaptureUnknown('capture_directory_changed')
+        for fd, name, identity in self.leaves.values():
+            if _identity(os.fstat(fd)) != identity or _identity(os.stat(name, dir_fd=self.fd, follow_symlinks=False)) != identity:
+                raise CaptureUnknown('capture_output_route_changed')
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600:
+                raise CaptureUnknown('capture_output_generation_changed')
+
+    def _record(self, value):
+        raw = (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode()
+        if len(self.callback) + len(raw) > 16384: raise CaptureUnknown('capture_callback_limit')
+        _write(self.leaves['callback'][0], raw)
+        self.callback.extend(raw)
+
+    def run(self, argv, payload, *, deadline, birth, parent):
+        """One admitted RPC; birth/parent are pure source-held kernel getters."""
+        if type(payload) is not bytes or len(payload) > 262144 or not time.monotonic() < deadline <= time.monotonic() + 90:
+            raise ValueError('capture_bound')
+        self._guard_routes()
+        data = {name: bytearray() for name in self.limits}
+        eof = {name: False for name in self.limits}
+        overflow = {name: False for name in self.limits}
+        process = None; actor = None; failure = None; cleanup = None; sent = 0; code = None
+        selector = selectors.DefaultSelector()
+
+        def owned():
+            return (actor is not None and actor['birth'] is not None and birth(actor['pid']) == actor['birth']
+                    and parent(actor['pid']) == actor['parent'])
+
+        def event(key):
+            nonlocal sent, failure
+            pipe = key.fileobj; role = key.data
+            if role == 'stdin':
+                try:
+                    n = os.write(pipe.fileno(), memoryview(payload)[sent:sent + 65536])
+                except (BlockingIOError, InterruptedError):
+                    return
+                except BrokenPipeError:
+                    selector.unregister(pipe); pipe.close(); failure = failure or 'stdin_closed'; return
+                if n <= 0:
+                    raise OSError('capture_stdin_write')
+                sent += n
+                if sent == len(payload):
+                    selector.unregister(pipe); pipe.close()
+                return
+            try:
+                block = os.read(pipe.fileno(), 65536)
+            except (BlockingIOError, InterruptedError):
+                return
+            if not block:
+                eof[role] = True; selector.unregister(pipe); pipe.close(); return
+            room = self.limits[role] - len(data[role])
+            keep = block[:room]
+            if keep:
+                # Retain immediately, before any external source/actor guard.
+                _write(self.leaves[role][0], keep); data[role].extend(keep)
+            if len(block) > room:
+                overflow[role] = True; failure = failure or 'output_limit'
+
+        try:
+            process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env={k: v for k, v in os.environ.items() if not k.startswith('DYLD_')}, close_fds=True, bufsize=0)
+            actor = {'pid': process.pid, 'birth': birth(process.pid), 'parent': os.getpid()}
+            self._record({'schemaVersion': 1, 'stage': 'started', 'actor': actor, 'replayAllowed': False})
+            for role in ('stdout', 'stderr', 'stdin'):
+                pipe = getattr(process, role); os.set_blocking(pipe.fileno(), False)
+                if role == 'stdin' and not payload:
+                    pipe.close(); continue
+                selector.register(pipe, selectors.EVENT_WRITE if role == 'stdin' else selectors.EVENT_READ, role)
+            if not owned():
+                failure = 'actor_not_owned'
+            while selector.get_map() and failure is None:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    failure = 'timeout'; break
+                for key, _ in selector.select(min(.05, left)):
+                    event(key)
+                    if failure: break
+            if failure is None:
+                try: code = process.wait(timeout=max(.001, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired: failure = 'timeout'
+        except BaseException as error:
+            failure = failure or 'capture_' + type(error).__name__
+        finally:
+            # No source/named-output guards may run before bounded drainage and
+            # callback retention. Never signal a group/manager/guest process.
+            if process is not None:
+                try:
+                    if process.poll() is None:
+                        if owned(): process.kill()
+                        else: cleanup = 'original_actor_not_owned_no_signal'
+                    end = time.monotonic() + 2
+                    # Read remaining queued output after exact-child cleanup;
+                    # inherited descendants holding pipes cannot wait forever.
+                    while selector.get_map() and time.monotonic() < end:
+                        for key, _ in selector.select(min(.05, max(0, end - time.monotonic()))):
+                            if key.data == 'stdin':
+                                selector.unregister(key.fileobj); key.fileobj.close()
+                            else: event(key)
+                    try: code = process.wait(timeout=max(.001, end - time.monotonic()))
+                    except subprocess.TimeoutExpired: cleanup = cleanup or 'original_actor_wait_timeout'
+                except BaseException as error:
+                    cleanup = cleanup or 'cleanup_' + type(error).__name__
+                finally:
+                    for pipe in (process.stdin, process.stdout, process.stderr):
+                        if pipe is not None and not pipe.closed:
+                            try: pipe.close()
+                            except OSError: cleanup = cleanup or 'pipe_close_failed'
+            selector.close()
+            try:
+                actor_absent = actor is not None and actor['birth'] is not None and birth(actor['pid']) != actor['birth']
+            except BaseException:
+                actor_absent = False
+            if not actor_absent: cleanup = cleanup or 'original_actor_absence_unproven'
+            result = {'schemaVersion': 1, 'stage': 'retained', 'actor': actor, 'returncode': code,
+                'actorAbsent': actor_absent, 'outputGenerations': {role: list(_generation(os.fstat(self.leaves[role][0]))) for role in self.limits},
+                'stdinBytesWritten': sent, 'stdoutBytes': len(data['stdout']), 'stderrBytes': len(data['stderr']),
+                'stdoutEof': eof['stdout'], 'stderrEof': eof['stderr'],
+                'stdoutOverflow': overflow['stdout'], 'stderrOverflow': overflow['stderr'],
+                'partial': bool(failure or cleanup) or not all(eof.values()) or sent != len(payload) or any(overflow.values()),
+                'failure': failure, 'cleanupFailure': cleanup, 'replayAllowed': False,
+                'originalOutcome': 'unknown_no_replay' if failure or cleanup else 'callback_retained_not_semantic_success',
+                'stdoutSha256': hashlib.sha256(data['stdout']).hexdigest(), 'stderrSha256': hashlib.sha256(data['stderr']).hexdigest()}
+            self._record(result)
+            os.fsync(self.fd)
+        # Original raw/callback are durable even if this final custody check fails.
+        self._guard_routes()
+        for role in self.limits:
+            fd = self.leaves[role][0]
+            before = _generation(os.fstat(fd))
+            if list(before) != result['outputGenerations'][role]:
+                raise CaptureUnknown('capture_output_generation_changed')
+            if os.pread(self.leaves[role][0], self.limits[role] + 1, 0) != bytes(data[role]):
+                raise CaptureUnknown('capture_output_bytes_changed')
+            if _generation(os.fstat(fd)) != before:
+                raise CaptureUnknown('capture_output_generation_changed')
+        if os.pread(self.leaves['callback'][0], 16385, 0) != bytes(self.callback):
+            raise CaptureUnknown('capture_callback_changed')
+        self._guard_routes()
+        if failure or cleanup or result['partial']:
+            raise CaptureUnknown('namespace_original_rpc_unknown_no_replay')
+        return subprocess.CompletedProcess(argv, code, bytes(data['stdout']), bytes(data['stderr'])), result
+
+    def close(self):
+        for fd, _, _ in self.leaves.values(): os.close(fd)
+        self.leaves.clear()
+        if self.fd >= 0: os.close(self.fd); self.fd = -1
+
+    def __enter__(self): return self
+    def __exit__(self, *_): self.close()

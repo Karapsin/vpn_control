@@ -1,0 +1,800 @@
+"""Durable Android shell jobs owned by a fixed, source-bound internal producer.
+
+Public qualification accepts only a registered fixture and original UUID. It
+runs one harmless counter. This is not a public shell/source/input API. Internal
+producers may bind reviewed source; credentials and interactive input are never
+accepted. A consumed guest admission without a receipt remains UNKNOWN.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import selectors
+import shlex
+import stat
+import subprocess
+import time
+import uuid
+
+from . import durable_remote_job as files
+
+MAX_SOURCE = 65536
+MAX_STREAM = 262144
+MAX_REPLY = 2 * MAX_STREAM + 16384
+_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,191}\Z")
+_HEX = re.compile(r"[0-9a-f]{64}\Z")
+_SOURCE_SHA = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+class AndroidJobError(ValueError):
+    """Only fixed public identifiers; never attach command/input/output."""
+
+
+def _need(condition, reason):
+    if not condition:
+        raise AndroidJobError(reason)
+
+
+def _sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _uuid(value):
+    try:
+        _need(type(value) is str and str(uuid.UUID(value)) == value, 'android_job_operation_invalid')
+    except (ValueError, TypeError, AttributeError):
+        raise AndroidJobError('android_job_operation_invalid') from None
+    return value
+
+
+def _token(value):
+    _need(type(value) is str and bool(_TOKEN.fullmatch(value)), 'android_job_binding_invalid')
+    return value
+
+
+@dataclass(frozen=True)
+class FixedProgram:
+    """Internal, reviewed producer bytes; no private input or public code API."""
+    purpose: str
+    source: bytes
+    generator_sha256: str
+    stream_limit: int = MAX_STREAM
+
+    def __post_init__(self):
+        _token(self.purpose)
+        _need(type(self.source) is bytes and 0 < len(self.source) <= MAX_SOURCE and
+              b'\0' not in self.source and b'\r' not in self.source and not self.source.endswith(b'\n'),
+              'android_job_source_invalid')
+        _need(type(self.generator_sha256) is str and bool(_HEX.fullmatch(self.generator_sha256)),
+              'android_job_generator_invalid')
+        _need(type(self.stream_limit) is int and 1024 <= self.stream_limit <= MAX_STREAM,
+              'android_job_stream_limit_invalid')
+        try:
+            self.source.decode('utf-8', errors='strict')
+        except UnicodeError:
+            raise AndroidJobError('android_job_source_invalid') from None
+
+    @property
+    def digest(self):
+        return _sha(self.source)
+
+
+@dataclass(frozen=True)
+class ShellRuntime:
+    """Guest image's qualified fixed executables; never a public selector."""
+    shell: str = '/system/bin/sh'
+    toolbox: str = '/system/bin/toybox'
+    getprop: str = '/system/bin/getprop'
+    proc: str = '/proc'
+    parent: str = '/data/local/tmp'
+
+    def __post_init__(self):
+        for value in asdict(self).values():
+            _need(type(value) is str and value.startswith('/') and
+                  re.fullmatch(r'/[A-Za-z0-9_./-]+', value) is not None and
+                  not any(part in ('', '.', '..') for part in value.split('/')[1:]),
+                  'android_job_runtime_invalid')
+
+
+@dataclass(frozen=True)
+class GuestRoot:
+    target: str
+    machine: str
+    boot: str
+    account: str
+    serial: str
+    path: str
+    generation: str
+
+    def __post_init__(self):
+        for key in ('target', 'machine', 'account', 'serial'):
+            _token(getattr(self, key))
+        _uuid(self.boot)
+        _need(self.account.isdigit() and re.fullmatch(r'[0-9]+:[0-9]+', self.generation) is not None,
+              'android_job_guest_identity_invalid')
+        _need(self.path.startswith('/') and bool(re.fullmatch(r'/[A-Za-z0-9_./-]+', self.path)),
+              'android_job_root_invalid')
+
+
+@dataclass(frozen=True)
+class OriginalJob:
+    operation_id: str
+    guest: GuestRoot
+    program: FixedProgram
+    runtime: ShellRuntime = ShellRuntime()
+
+    def __post_init__(self):
+        _uuid(self.operation_id)
+
+
+class AdbExecutor:
+    """One bounded owned ADB child; no server/guest lifecycle or retry here."""
+    def __init__(self, binding, owner_guard, *, ready_guard=lambda: None, clock=time.monotonic):
+        self.binding, self.owner_guard, self.ready_guard, self.clock = binding, owner_guard, ready_guard, clock
+        _need(Path(binding.adb).is_absolute() and re.fullmatch(r'emulator-[0-9]+', binding.serial) is not None
+              and type(binding.server_port) is int and 1024 <= binding.server_port <= 65535,
+              'android_job_transport_invalid')
+
+    def execute(self, command, payload=b'', *, deadline=None):
+        _need(type(command) is str and '\0' not in command and len(command.encode()) <= 60000
+              and type(payload) is bytes and len(payload) <= MAX_SOURCE, 'android_job_packet_invalid')
+        self.ready_guard(); connection = self.owner_guard()
+        _token(connection)
+        deadline = min(self.clock() + 30, deadline) if deadline is not None else self.clock() + 30
+        _need(math.isfinite(deadline) and deadline > self.clock(), 'android_job_deadline')
+        argv = [str(self.binding.adb), '-H', '127.0.0.1', '-P', str(self.binding.server_port), '-s', self.binding.serial,
+                'shell', '-T', command]
+        process = None; selector = selectors.DefaultSelector(); out = bytearray(); err = bytearray()
+        pending = memoryview(payload); failure = None
+        try:
+            # Only this constructor's refusal proves the ADB executable did not
+            # start. No transport error after it authorizes another mutation.
+            try:
+                process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, bufsize=0)
+            except OSError:
+                raise AndroidJobError('android_job_client_unsubmitted') from None
+            for stream, label in ((process.stdin, 'in'), (process.stdout, 'out'), (process.stderr, 'err')):
+                os.set_blocking(stream.fileno(), False)
+                if label == 'in' and not pending:
+                    stream.close()
+                else:
+                    selector.register(stream, selectors.EVENT_WRITE if label == 'in' else selectors.EVENT_READ, label)
+            while selector.get_map():
+                remaining = deadline - self.clock()
+                _need(remaining > 0, 'android_job_transport_timeout')
+                for key, _ in selector.select(min(.1, remaining)):
+                    if key.data == 'in':
+                        try:
+                            count = os.write(key.fd, pending[:65536])
+                        except BlockingIOError:
+                            continue
+                        _need(count > 0, 'android_job_transport_unknown')
+                        pending = pending[count:]
+                        if not pending:
+                            selector.unregister(key.fileobj); key.fileobj.close()
+                    else:
+                        try:
+                            block = os.read(key.fd, 65536)
+                        except BlockingIOError:
+                            continue
+                        if not block:
+                            selector.unregister(key.fileobj); continue
+                        target = out if key.data == 'out' else err
+                        target.extend(block)
+                        _need(len(out) + len(err) <= MAX_REPLY, 'android_job_reply_overflow')
+            code = process.wait(timeout=max(.001, deadline - self.clock()))
+            _need(code == 0 and not err and not pending, 'android_job_transport_unknown')
+            self.ready_guard()
+            _need(self.owner_guard() == connection, 'android_job_connection_changed')
+            return bytes(out)
+        except AndroidJobError:
+            raise
+        except (OSError, ValueError, subprocess.SubprocessError):
+            raise AndroidJobError('android_job_transport_unknown') from None
+        finally:
+            selector.close()
+            if process is not None:
+                # Own local ADB client only. Guest execution has independent
+                # ownership and is neither signalled nor replaced.
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    if not stream.closed:
+                        stream.close()
+
+
+_COMMON = r'''
+set -f
+umask 077
+fail() { printf '%s\n' "VCADB_ERROR=$1"; exit 71; }
+number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
+generation() { "$T" stat -c '%d:%i' "$1"; }
+size() {
+ value=$("$T" wc -c < "$1") || fail size_unavailable
+ set -- $value
+ [ "$#" = 1 ] && number "$1" || fail size_invalid
+ printf '%s' "$1"
+}
+private_dir() {
+ [ -d "$1" ] && [ ! -L "$1" ] || fail private_directory
+ [ "$("$T" stat -c '%u:%a' "$1")" = "$U:700" ] || fail private_directory
+}
+private_file() {
+ [ -f "$1" ] && [ ! -L "$1" ] || fail private_file
+ [ "$("$T" stat -c '%u:%a:%h' "$1")" = "$U:600:1" ] || fail private_file
+}
+identity() {
+ B=$("$T" cat "$P/sys/kernel/random/boot_id") || fail boot_unavailable
+ U=$("$T" id -u) || fail account_unavailable
+ A=$("$G" ro.serialno) || fail machine_unavailable
+ case "$B" in ????????-????-????-????-????????????) ;; *) fail boot_invalid;; esac
+ number "$U" || fail account_invalid
+ case "$A" in ''|*[!A-Za-z0-9_.:-]*) fail machine_invalid;; esac
+}
+birth() {
+ number "$1" || return 1
+ line=$("$T" cat "$P/$1/stat" 2>/dev/null) || return 1
+ tail=${line##*) }; index=1; start=''; state=''
+ for field in $tail; do
+  [ "$index" = 1 ] && state=$field
+  [ "$index" = 20 ] && start=$field
+  index=$((index+1))
+ done
+ [ "$state" != Z ] && number "$start" && printf '%s' "$start"
+}
+checked_root() {
+ identity
+ [ "$U" = "$EU" ] && [ "$A" = "$EA" ] || fail guest_identity_changed
+ [ "$B" = "$EB" ] || [ "$OBSERVE_BOOT" = 1 ] || fail guest_boot_changed
+ private_dir "$R"
+ [ "$(generation "$R")" = "$RG" ] || fail root_generation_changed
+}
+digest() { "$T" sha256sum | { read -r hash ignored; printf '%s' "$hash"; }; }
+'''
+
+
+_PROBE = r'''
+identity
+[ "$("$T" readlink -f "$Q")" = "$Q" ] || fail parent_changed
+if [ "$CREATE" = 1 ] && [ ! -e "$R" ]; then "$T" mkdir -m 700 "$R" || fail root_create_unknown; fi
+private_dir "$R"
+RG=$(generation "$R") || fail root_generation_unavailable
+# Native qualification requires these actual commands, not shell syntax alone.
+"$T" nohup "$T" true </dev/null >/dev/null 2>&1 || fail nohup_unavailable
+"$T" setsid "$T" true </dev/null >/dev/null 2>&1 || fail setsid_unavailable
+"$T" sync || fail sync_unavailable
+printf 'VCADB_ROOT_V1\nboot=%s\naccount=%s\nserial=%s\ngeneration=%s\nEND\n' "$B" "$U" "$A" "$RG"
+'''
+
+_LAUNCH = r'''
+checked_root
+J="$R/$O"
+# Atomic guest admission is consumed BEFORE reading source or starting a child.
+# An interrupted creator remains UNKNOWN; another caller never fills the gap.
+"$T" mkdir -m 700 "$J" 2>/dev/null || fail admission_exists
+printf '%s\n' "$O" "$EB" "$EU" "$EA" "$RG" "$H" "$GH" "$PURPOSE" "$LIMIT" > "$J/intent"
+"$T" cat > "$J/program" || fail source_receive_unknown
+private_file "$J/program"
+[ "$(size "$J/program")" = "$SIZE" ] || fail source_size_changed
+[ "$(digest < "$J/program")" = "$H" ] || fail source_hash_changed
+"$T" sync || fail intent_sync_unknown
+"$T" nohup "$T" setsid "$S" -c "$WORKER" -- "$T" "$G" "$P" "$R" "$O" "$EB" "$EU" "$EA" "$RG" "$H" "$GH" "$PURPOSE" "$LIMIT" </dev/null >/dev/null 2>&1 &
+printf 'VCADB_ADMITTED_V1\noperation=%s\nEND\n' "$O"
+'''
+
+_WORKER = r'''
+OBSERVE_BOOT=0
+T=$1; G=$2; P=$3; R=$4; O=$5; EB=$6; EU=$7; EA=$8; RG=$9; shift 9
+H=$1; GH=$2; PURPOSE=$3; LIMIT=$4
+''' + _COMMON + r'''
+checked_root
+J="$R/$O"; private_dir "$J"; private_file "$J/intent"; private_file "$J/program"
+EXPECTED=$(printf '%s\n' "$O" "$EB" "$EU" "$EA" "$RG" "$H" "$GH" "$PURPOSE" "$LIMIT")
+[ "$("$T" cat "$J/intent")" = "$EXPECTED" ] || fail intent_changed
+RAW=$("$T" cat "$J/program") || fail source_unavailable
+[ "$(printf '%s' "$RAW" | digest)" = "$H" ] || fail source_hash_changed
+PID=$$; START=$(birth "$PID") || fail owner_generation_unavailable
+# A second worker cannot overwrite any original owner/stream/terminal record.
+"$T" mkdir -m 700 "$J/owner-claim" 2>/dev/null || fail owner_already_claimed
+printf '%s\n' "$PID" "$START" > "$J/owner.tmp"
+"$T" mv "$J/owner.tmp" "$J/owner" || fail owner_publish_unknown
+"$T" sync || fail owner_sync_unknown
+# Android shell_data_file can prohibit named FIFOs. Anonymous shell pipes
+# split stdout/stderr via descriptor3 and drain to EOF without filesystem FIFOs.
+# Each collector publishes success only after its final writer has closed.
+capture() {
+ NAME=$1
+ "$T" head -c "$LIMIT" > "$J/$NAME" || return 1
+ "$T" head -c 1 > "$J/$NAME.overflow" || return 1
+ "$T" cat >/dev/null || return 1
+ printf '0\n' > "$J/$NAME.capture" || return 1
+}
+{
+ {
+  ( eval "$RAW" ) 3>&-
+  CODE=$?
+  printf '%s\n' "$CODE" > "$J/payload-exit"
+ } 2>&1 1>&3 | capture stderr
+} 3>&1 | capture stdout
+private_file "$J/stdout.capture"; private_file "$J/stderr.capture"; private_file "$J/payload-exit"
+[ "$("$T" cat "$J/stdout.capture")" = 0 ] && [ "$("$T" cat "$J/stderr.capture")" = 0 ] || fail stream_capture_unknown
+CODE=$("$T" cat "$J/payload-exit") || fail payload_exit_unknown
+number "$CODE" && [ "$CODE" -le 255 ] || fail payload_exit_invalid
+private_file "$J/stdout"; private_file "$J/stderr"
+N=$(size "$J/stdout"); M=$(size "$J/stderr")
+number "$N" && number "$M" || fail stream_size_invalid
+[ "$N" -le "$LIMIT" ] && [ "$M" -le "$LIMIT" ] || fail stream_overflow
+X=$(digest < "$J/stdout"); Y=$(digest < "$J/stderr")
+CAPPED=0
+[ ! -s "$J/stdout.overflow" ] && [ ! -s "$J/stderr.overflow" ] || CAPPED=1
+checked_root
+printf '%s\n' "$O" "$EB" "$EU" "$EA" "$RG" "$H" "$GH" "$PURPOSE" "$LIMIT" "$PID" "$START" "$CODE" "$N" "$M" "$X" "$Y" "$CAPPED" > "$J/terminal.tmp"
+"$T" sync && "$T" mv "$J/terminal.tmp" "$J/terminal" && "$T" sync || fail terminal_publish_unknown
+'''
+
+_OBSERVE = r'''
+OBSERVE_BOOT=1
+checked_root
+J="$R/$O"
+[ "$B" = "$EB" ] || [ -f "$J/terminal" ] || fail boot_changed_unresolved
+if [ ! -e "$J" ]; then
+ printf 'VCADB_JOB_V1\nstate=unsubmitted\noperation=%s\nEND\n' "$O"; exit 0
+fi
+private_dir "$J"
+STATE=unknown; PID=0; START=0; CODE=0; N=0; M=0; X=''; Y=''; CAPPED=0
+if [ -f "$J/intent" ]; then
+ private_file "$J/intent"
+ EXPECTED=$(printf '%s\n' "$O" "$EB" "$EU" "$EA" "$RG" "$H" "$GH" "$PURPOSE" "$LIMIT")
+ [ "$("$T" cat "$J/intent")" = "$EXPECTED" ] || fail intent_changed
+else fail admission_incomplete
+fi
+if [ -f "$J/owner" ]; then
+ private_file "$J/owner"
+ { read -r PID; read -r START; } < "$J/owner"
+ number "$PID" && number "$START" || fail owner_invalid
+ if [ "$(birth "$PID")" = "$START" ]; then STATE=running; fi
+fi
+if [ -f "$J/stdout" ]; then
+ private_file "$J/stdout"; N=$(size "$J/stdout")
+fi
+if [ -f "$J/stderr" ]; then
+ private_file "$J/stderr"; M=$(size "$J/stderr")
+fi
+number "$N" && number "$M" && [ "$N" -le "$LIMIT" ] && [ "$M" -le "$LIMIT" ] || fail stream_overflow
+if [ -f "$J/terminal" ]; then
+ private_file "$J/terminal"
+ { read -r TO; read -r TB; read -r TU; read -r TA; read -r TR; read -r TH; read -r TG; read -r TP; read -r TL; read -r TI; read -r TS; read -r CODE; read -r TN; read -r TM; read -r X; read -r Y; read -r CAPPED; } < "$J/terminal"
+ [ "$TO:$TB:$TU:$TA:$TR:$TH:$TG:$TP:$TL:$TI:$TS:$TN:$TM" = "$O:$EB:$EU:$EA:$RG:$H:$GH:$PURPOSE:$LIMIT:$PID:$START:$N:$M" ] || fail terminal_identity_changed
+ number "$CODE" && [ "$CODE" -le 255 ] || fail terminal_exit_invalid
+ case "$CAPPED" in 0|1) ;; *) fail terminal_capped_invalid;; esac
+ [ "$(digest < "$J/stdout")" = "$X" ] && [ "$(digest < "$J/stderr")" = "$Y" ] || fail terminal_stream_changed
+ STATE=terminal
+fi
+printf 'VCADB_JOB_V1\nstate=%s\noperation=%s\npid=%s\nbirth=%s\nexit=%s\nstdoutBytes=%s\nstderrBytes=%s\nstdoutSha=%s\nstderrSha=%s\ncapped=%s\nEND\n' "$STATE" "$O" "$PID" "$START" "$CODE" "$N" "$M" "$X" "$Y" "$CAPPED"
+[ "$N" = 0 ] || "$T" head -c "$N" "$J/stdout"
+[ "$M" = 0 ] || "$T" head -c "$M" "$J/stderr"
+'''
+
+
+def _packet(runtime, body, values):
+    names = {'T': runtime.toolbox, 'G': runtime.getprop, 'P': runtime.proc,
+             'S': runtime.shell, 'Q': runtime.parent, 'OBSERVE_BOOT': 0, **values}
+    source = ';'.join(name + '=' + shlex.quote(str(value)) for name, value in names.items()) + '\n' + _COMMON + body
+    result = shlex.join((runtime.shell, '-c', source))
+    _need(len(result.encode()) <= 60000, 'android_job_packet_oversized')
+    return result
+
+
+def _reply(raw, marker):
+    _need(type(raw) is bytes and len(raw) <= MAX_REPLY, 'android_job_reply_invalid')
+    head, separator, payload = raw.partition(b'END\n')
+    _need(bool(separator) and len(head) <= 16384, 'android_job_reply_invalid')
+    try:
+        lines = head.decode('ascii').splitlines()
+        _need(lines and lines[0] == marker, 'android_job_reply_invalid')
+        values = {}
+        for line in lines[1:]:
+            key, equals, value = line.partition('=')
+            _need(bool(equals) and key not in values, 'android_job_reply_invalid')
+            values[key] = value
+        return values, payload
+    except UnicodeError:
+        raise AndroidJobError('android_job_reply_invalid') from None
+
+
+def initialize(executor, target, machine, *, runtime=ShellRuntime(), create=True):
+    _token(target); _token(machine)
+    key = _sha(json.dumps([target, machine], separators=(',', ':')).encode())
+    path = runtime.parent + '/vpn-control-jobs-' + key
+    raw = executor.execute(_packet(runtime, _PROBE, {'R': path, 'CREATE': int(create)}))
+    value, payload = _reply(raw, 'VCADB_ROOT_V1')
+    _need(set(value) == {'boot', 'account', 'serial', 'generation'} and not payload,
+          'android_job_root_reply_invalid')
+    return GuestRoot(target, machine, value['boot'], value['account'], value['serial'], path, value['generation'])
+
+
+def _values(original):
+    g, p = original.guest, original.program
+    return {'R': g.path, 'O': original.operation_id, 'EB': g.boot, 'EU': g.account, 'EA': g.serial,
+            'RG': g.generation, 'H': p.digest, 'GH': p.generator_sha256, 'PURPOSE': p.purpose,
+            'LIMIT': p.stream_limit}
+
+
+def submit(executor, original):
+    """One admission attempt; caller reconciles any missing acknowledgement."""
+    values = {**_values(original), 'SIZE': len(original.program.source), 'WORKER': _WORKER}
+    raw = executor.execute(_packet(original.runtime, _LAUNCH, values), original.program.source)
+    value, payload = _reply(raw, 'VCADB_ADMITTED_V1')
+    _need(value == {'operation': original.operation_id} and not payload, 'android_job_admission_unknown')
+    return {'state': 'pending', 'operationId': original.operation_id, 'replayAllowed': False}
+
+
+def observe(executor, original):
+    """Read the original owner/result; a missing owner never means retry."""
+    raw = executor.execute(_packet(original.runtime, _OBSERVE, _values(original)))
+    value, payload = _reply(raw, 'VCADB_JOB_V1')
+    _need(value.get('operation') == original.operation_id, 'android_job_observation_identity_changed')
+    if value.get('state') == 'unsubmitted':
+        _need(set(value) == {'state', 'operation'} and not payload, 'android_job_reply_invalid')
+        return {'state': 'unsubmitted', 'operationId': original.operation_id, 'stdout': b'', 'stderr': b'',
+                'provenUnsubmitted': True, 'replayAllowed': False}
+    fields = {'state', 'operation', 'pid', 'birth', 'exit', 'stdoutBytes', 'stderrBytes', 'stdoutSha', 'stderrSha', 'capped'}
+    _need(set(value) == fields and value['state'] in {'running', 'unknown', 'terminal'}, 'android_job_reply_invalid')
+    for key in ('pid', 'birth', 'exit', 'stdoutBytes', 'stderrBytes'):
+        _need(value[key].isdigit() and len(value[key]) <= 24, 'android_job_reply_invalid')
+    count, errors = int(value['stdoutBytes']), int(value['stderrBytes'])
+    _need(count <= original.program.stream_limit and errors <= original.program.stream_limit
+          and len(payload) == count + errors and int(value['exit']) <= 255 and value['capped'] in {'0', '1'}, 'android_job_stream_invalid')
+    stdout, stderr = payload[:count], payload[count:]
+    if value['state'] == 'terminal':
+        _need(_HEX.fullmatch(value['stdoutSha']) and _HEX.fullmatch(value['stderrSha'])
+              and _sha(stdout) == value['stdoutSha'] and _sha(stderr) == value['stderrSha'], 'android_job_terminal_invalid')
+    return {'state': value['state'], 'operationId': original.operation_id,
+            'owner': {'pid': int(value['pid']), 'birth': value['birth']}, 'exitCode': int(value['exit']),
+            'stdout': stdout, 'stderr': stderr, 'streamCapped': value['capped'] == '1', 'provenUnsubmitted': False, 'replayAllowed': False}
+
+
+def counter_program(*, steps=80, interval='.25'):
+    """Fixed public qualification producer; accelerated values are internal tests."""
+    _need(type(steps) is int and 1 <= steps <= 1000 and type(interval) is str and
+          re.fullmatch(r'(?:0?\.[0-9]{1,3}|[1-9][0-9]?)', interval), 'android_job_counter_invalid')
+    source = ("printf 'owner-start\\n' >&2\n"
+              "printf 'once\\n' >> executions\n"
+              "i=1\nwhile [ \"$i\" -le " + str(steps) + " ]; do\n"
+              " printf 'counter %s\\n' \"$i\"\n"
+              " printf '%s\\n' \"$i\" > counter.tmp\n"
+              " \"$T\" mv counter.tmp counter\n"
+              " \"$T\" sleep " + interval + "\n"
+              " i=$((i+1))\ndone\nprintf 'owner-terminal\\n' >&2")
+    # Producer executes in the operation directory, never the ADB shell cwd.
+    source = 'cd "$J" || exit 73\n' + source
+    return FixedProgram('android-counter-qualification', source.encode(), _SOURCE_SHA)
+
+
+def _fixture_id(value):
+    _need(type(value) is str and re.fullmatch(r'[a-z0-9][a-z0-9-]{0,95}', value), 'android_job_fixture_invalid')
+    return value
+
+
+def _directory(path, *, create):
+    if create:
+        try:
+            path.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+    return files._root(path)
+
+
+def _operation_path(root, fixture_id, operation, *, create=False):
+    root = Path(root).resolve(strict=True)
+    _fixture_id(fixture_id); _uuid(operation)
+    if create:
+        _need(os.name == 'posix', 'android_job_coordinator_unsupported')
+    rag = _directory(root / '.rag_index', create=create)
+    base = _directory(rag / 'android-guest-jobs', create=create)
+    fixture = _directory(base / fixture_id, create=create)
+    path = fixture / operation
+    if create:
+        path.mkdir(mode=0o700)  # create-once, including interrupted preparation
+    return files._root(path)
+
+
+def _local_read(path, limit):
+    from . import private_inventory_lock as private
+    path = Path(path)
+    presented = private.PresentedPath(path.parent)
+    with private.Directory(presented.canonical) as directory:
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory.fd)
+        try:
+            info = os.fstat(fd)
+            _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and
+                  stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1 and
+                  0 <= info.st_size <= limit, 'android_job_local_file_unsafe')
+            chunks = []; size = 0
+            while size <= limit:
+                block = os.read(fd, min(65536, limit + 1 - size))
+                if not block:
+                    break
+                chunks.append(block); size += len(block)
+            _need(size == info.st_size and
+                  private._generation(os.fstat(fd)) == private._generation(info) ==
+                  private._generation(os.stat(path.name, dir_fd=directory.fd, follow_symlinks=False)),
+                  'android_job_local_file_changed')
+            presented.guard(); directory.guard()
+            return b''.join(chunks)
+        finally:
+            os.close(fd)
+
+
+def _record(path):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            _need(key not in result, 'android_job_local_record_invalid')
+            result[key] = value
+        return result
+    try:
+        value = json.loads(_local_read(path, 16384), object_pairs_hook=pairs)
+        _need(type(value) is dict, 'android_job_local_record_invalid')
+        return value
+    except (UnicodeError, json.JSONDecodeError):
+        raise AndroidJobError('android_job_local_record_invalid') from None
+
+
+def _admit(path, fixture_id, original, binding, ready_identities):
+    generator = Path(__file__).read_bytes()
+    _need(_sha(generator) == original.program.generator_sha256 == _SOURCE_SHA,
+          'android_job_generator_changed')
+    files._create(path / 'program.source', original.program.source)
+    files._create(path / 'generator.source', generator)
+    value = {'schemaVersion': 1, 'fixtureId': fixture_id, 'operationId': original.operation_id,
+             'guest': asdict(original.guest), 'runtime': asdict(original.runtime),
+             'purpose': original.program.purpose, 'programSha256': original.program.digest,
+             'programBytes': len(original.program.source), 'generatorSha256': original.program.generator_sha256,
+             'streamLimit': original.program.stream_limit, 'provider': 'android-emulator',
+             'adb': {'path': str(binding.adb), 'serial': binding.serial,
+                     'port': binding.server_port, 'avdName': binding.avd_name},
+             'readyIdentities': list(ready_identities)}
+    files._publish(path / 'admission.json', value)
+    return value
+
+
+def _original(path, fixture_id, operation):
+    value = _record(path / 'admission.json')
+    fields = {'schemaVersion', 'fixtureId', 'operationId', 'guest', 'runtime', 'purpose', 'programSha256',
+              'programBytes', 'generatorSha256', 'streamLimit', 'provider', 'adb', 'readyIdentities'}
+    _need(set(value) == fields and type(value['schemaVersion']) is int and value['schemaVersion'] == 1
+          and value['fixtureId'] == fixture_id and value['operationId'] == operation
+          and value['provider'] == 'android-emulator', 'android_job_admission_invalid')
+    _need(type(value['guest']) is dict and set(value['guest']) == set(GuestRoot.__dataclass_fields__)
+          and type(value['runtime']) is dict and set(value['runtime']) == set(ShellRuntime.__dataclass_fields__),
+          'android_job_admission_invalid')
+    guest = GuestRoot(**value['guest']); runtime = ShellRuntime(**value['runtime'])
+    expected_path = runtime.parent + '/vpn-control-jobs-' + _sha(json.dumps([guest.target, guest.machine], separators=(',', ':')).encode())
+    _need(guest.path == expected_path, 'android_job_admission_invalid')
+    body = _local_read(path / 'program.source', MAX_SOURCE)
+    generator = _local_read(path / 'generator.source', 1048576)
+    _need(type(value['programBytes']) is int and len(body) == value['programBytes']
+          and _sha(body) == value['programSha256'] and _sha(generator) == value['generatorSha256'],
+          'android_job_source_changed')
+    program = FixedProgram(value['purpose'], body, value['generatorSha256'], value['streamLimit'])
+    _need(type(value['adb']) is dict and set(value['adb']) == {'path', 'serial', 'port', 'avdName'}
+          and type(value['adb']['path']) is str and Path(value['adb']['path']).is_absolute()
+          and re.fullmatch(r'emulator-[0-9]+', value['adb']['serial'])
+          and type(value['adb']['port']) is int and 1024 <= value['adb']['port'] <= 65535
+          and type(value['readyIdentities']) is list and len(value['readyIdentities']) == 6,
+          'android_job_admission_invalid')
+    return OriginalJob(operation, guest, program, runtime), value
+
+
+def _observations(path):
+    directory = path / 'observations'
+    if not directory.exists():
+        return []
+    files._root(directory)
+    names = sorted(directory.iterdir())
+    _need(len(names) <= 10000 and all(re.fullmatch(r'[0-9]{8}', item.name) for item in names),
+          'android_job_observation_history_invalid')
+    return names
+
+
+def _cached(path, operation):
+    found = None
+    for item in reversed(_observations(path)):
+        files._root(item)
+        if not (item / 'receipt.json').exists():
+            continue  # interrupted local observation cannot manufacture completion
+        record = _record(item / 'receipt.json')
+        fields = {'schemaVersion', 'operationId', 'state', 'owner', 'exitCode', 'reason',
+                  'streamCapped', 'stdoutSha256', 'stderrSha256', 'stdoutBytes', 'stderrBytes'}
+        _need(set(record) == fields and record['schemaVersion'] == 1 and record['operationId'] == operation
+              and type(record['schemaVersion']) is int and record['state'] in {'running', 'unknown', 'terminal', 'unsubmitted'}
+              and type(record['streamCapped']) is bool and type(record['exitCode']) is int
+              and 0 <= record['exitCode'] <= 255, 'android_job_cache_invalid')
+        owner = record['owner']
+        _need(owner is None or type(owner) is dict and set(owner) == {'pid', 'birth'}
+              and type(owner['pid']) is int and owner['pid'] >= 0 and type(owner['birth']) is str
+              and owner['birth'].isdigit() and len(owner['birth']) <= 24, 'android_job_cache_invalid')
+        _need(record['reason'] is None or type(record['reason']) is str and
+              re.fullmatch(r'android_job_[a-z0-9_]{1,96}', record['reason']), 'android_job_cache_invalid')
+        stdout = _local_read(item / 'stdout', MAX_STREAM); stderr = _local_read(item / 'stderr', MAX_STREAM)
+        _need(record['stdoutSha256'] == _sha(stdout) and record['stderrSha256'] == _sha(stderr)
+              and record['stdoutBytes'] == len(stdout) and record['stderrBytes'] == len(stderr),
+              'android_job_cache_changed')
+        result = {**record, 'stdout': stdout, 'stderr': stderr}
+        # A later transport failure never discards the sealed original result.
+        if record['state'] == 'terminal':
+            return result
+        if found is None:
+            found = result
+    return found
+
+
+def _cache(path, result, operation, *, reason=None):
+    import fcntl
+    lock = os.open(path / 'observation.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(lock)
+        _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and
+              stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1, 'android_job_local_lock_unsafe')
+        # This section writes only bounded local files; no network/wait occurs.
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        previous = _cached(path, operation)
+        if previous and previous['state'] == 'terminal':
+            return previous
+        state = result['state']
+        stdout = result.get('stdout', previous['stdout'] if previous else b'')
+        stderr = result.get('stderr', previous['stderr'] if previous else b'')
+        _need(type(stdout) is bytes and type(stderr) is bytes and len(stdout) <= MAX_STREAM
+              and len(stderr) <= MAX_STREAM, 'android_job_stream_invalid')
+        base = _directory(path / 'observations', create=True)
+        names = _observations(path)
+        index = int(names[-1].name) + 1 if names else 0
+        target = base / f'{index:08d}'; target.mkdir(mode=0o700)
+        files._create(target / 'stdout', stdout); files._create(target / 'stderr', stderr)
+        record = {'schemaVersion': 1, 'operationId': operation, 'state': state,
+                  'owner': result.get('owner', previous['owner'] if previous else None),
+                  'exitCode': result.get('exitCode', 0), 'reason': reason,
+                  'streamCapped': result.get('streamCapped', False),
+                  'stdoutSha256': _sha(stdout), 'stderrSha256': _sha(stderr),
+                  'stdoutBytes': len(stdout), 'stderrBytes': len(stderr)}
+        files._publish(target / 'receipt.json', record)
+        return {**record, 'stdout': stdout, 'stderr': stderr}
+    finally:
+        os.close(lock)
+
+
+def _public(value, fixture_id, operation):
+    state = value['state'] if value else 'pending'
+    result = {'schemaVersion': 1, 'provider': 'android-emulator', 'fixtureId': fixture_id,
+              'operationId': operation, 'state': state, 'durableProtocol': 1,
+              'replayAllowed': False, 'qualificationScope': 'fixed-counter',
+              'nextAction': 'collect_original' if state == 'terminal' else 'reconcile_original'}
+    if value:
+        result.update(owner=value['owner'], reason=value['reason'], streamCapped=value['streamCapped'],
+                      stdoutBytes=len(value['stdout']), stderrBytes=len(value['stderr']))
+        if state == 'terminal':
+            result['exitCode'] = value['exitCode']
+    return result
+
+
+def _executor(fixture, context, ready):
+    from . import readiness
+    backend = fixture.adapter.backend
+    _need(fixture.adapter.support.lane == 'android-emulator' and backend is not None
+          and hasattr(backend, 'binding') and hasattr(backend, 'adb'), 'android_job_provider_unavailable')
+    return AdbExecutor(backend.binding, backend.adb.owner_guard,
+                       ready_guard=lambda: readiness.revalidate(context, ready))
+
+
+def workflow(root, action, inputs, *, deadline=None):
+    """Normal tool surface; local status/collect perform no connection recovery."""
+    _need(os.name == 'posix', 'android_job_coordinator_unsupported')
+    _need(action in {'start', 'status', 'reconcile', 'collect'} and type(inputs) is dict
+          and set(inputs) == {'fixtureId', 'operationId'}, 'android_job_inputs_invalid')
+    fixture_id, operation = _fixture_id(inputs['fixtureId']), _uuid(inputs['operationId'])
+    root = Path(root).resolve(strict=True)
+    existing = root / '.rag_index' / 'android-guest-jobs' / fixture_id / operation
+    if os.path.lexists(existing):
+        path = _operation_path(root, fixture_id, operation)
+        original, admission = _original(path, fixture_id, operation)
+        cached = _cached(path, operation)
+        if action in {'status', 'collect'}:
+            result = _public(cached, fixture_id, operation)
+            if action == 'collect' and cached and cached['state'] == 'terminal':
+                result.update(stdout=cached['stdout'].decode('utf-8', errors='replace'),
+                              stderr=cached['stderr'].decode('utf-8', errors='replace'),
+                              complete=not cached['streamCapped'], nextAction='none')
+            return result
+    else:
+        _need(action == 'start', 'android_job_original_admission_missing')
+        path = None; original = None; admission = None
+
+    from . import readiness
+    from . import readiness_fixture_registry as fixtures
+    fixture = fixtures.registered_fixture(root, fixture_id)
+    _need(fixture.adapter.support.lane == 'android-emulator', 'android_job_provider_unavailable')
+    if original:
+        _need((fixture.target, fixture.machine) == (original.guest.target, original.guest.machine),
+              'android_job_target_changed')
+    context = fixture.context(deadline=deadline)
+    recoveries = {'reconnect'} if original is not None else {'reconnect', 'start', 'resume'}
+    requirements = readiness.Requirements(frozenset({'guest_agent'}), frozenset(recoveries))
+    with fixture.adapter.operation_scope(deadline=deadline or time.monotonic() + 180):
+        ready = readiness.ensure_ready(context, requirements, operation)
+        executor = _executor(fixture, context, ready)
+        if original is None:
+            # The provider operator lease spans readiness, root generation and
+            # local durable admission, so an idle reboot cannot cross this gap.
+            guest = initialize(executor, fixture.target, fixture.machine)
+            _need(guest.boot == ready.boot and guest.account == '2000', 'android_job_guest_identity_changed')
+            program = counter_program()
+            original = OriginalJob(operation, guest, program)
+            path = _operation_path(root, fixture_id, operation, create=True)
+            admission = _admit(path, fixture_id, original, fixture.adapter.backend.binding, ready.identities())
+            files._publish(path / 'dispatch-intent.json', {'operationId': operation, 'replayAllowed': False})
+            try:
+                submit(executor, original)
+            except AndroidJobError as error:
+                return _public(_cache(path, {'state': 'unknown'}, operation, reason=str(error)), fixture_id, operation)
+        else:
+            binding = fixture.adapter.backend.binding
+            _need(admission['adb'] == {'path': str(binding.adb), 'serial': binding.serial,
+                                      'port': binding.server_port, 'avdName': binding.avd_name},
+                  'android_job_transport_binding_changed')
+        try:
+            result = observe(executor, original)
+            if result['state'] == 'unsubmitted':
+                # Exact private-root generation, boot and account were freshly
+                # checked by the observer. Only this original immutable source
+                # may now be submitted; no new UUID or replacement is created.
+                marker = path / ('retry-' + str(uuid.uuid4()) + '.json')
+                files._publish(marker, {'operationId': operation, 'provenUnsubmitted': True,
+                                        'rootGeneration': original.guest.generation, 'replayAllowed': False})
+                submit(executor, original)
+                result = observe(executor, original)
+            return _public(_cache(path, result, operation, reason=('android_job_original_owner_unresolved'
+                           if result['state'] == 'unknown' else None)), fixture_id, operation)
+        except AndroidJobError as error:
+            return _public(_cache(path, {'state': 'unknown'}, operation, reason=str(error)), fixture_id, operation)
+
+
+def active_operations(root, target, machine):
+    """Local-only positive-idle contribution; incomplete visibility blocks power."""
+    result = {'visibility': True, 'reservations': [], 'runningJobs': [], 'unknownJobs': []}
+    try:
+        _token(target); _token(machine)
+        base = Path(root).resolve(strict=True) / '.rag_index' / 'android-guest-jobs'
+        if not base.exists():
+            return result
+        files._root(base)
+        fixture_paths = list(base.iterdir())
+        _need(len(fixture_paths) <= 1000, 'android_job_inventory_overflow')
+        for fixture in fixture_paths:
+            _fixture_id(fixture.name); files._root(fixture)
+            operations = list(fixture.iterdir())
+            _need(len(operations) <= 10000, 'android_job_inventory_overflow')
+            for path in operations:
+                operation = _uuid(path.name); files._root(path)
+                original, unused = _original(path, fixture.name, operation)
+                if (original.guest.target, original.guest.machine) != (target, machine):
+                    continue
+                observed = _cached(path, operation)
+                state = observed['state'] if observed else 'pending'
+                if state == 'terminal':
+                    continue
+                category = ('runningJobs' if state == 'running' else
+                            'reservations' if state in {'pending', 'unsubmitted'} else 'unknownJobs')
+                result[category].append(operation)
+        for key in ('reservations', 'runningJobs', 'unknownJobs'):
+            result[key] = sorted(set(result[key]))
+    except (OSError, ValueError, TypeError, KeyError):
+        result['visibility'] = False
+    return result

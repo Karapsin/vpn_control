@@ -294,7 +294,7 @@ class WindowsVmVirtFirmwareInstallTest(unittest.TestCase):
                                   return_value=SimpleNamespace(password=None)), \
                 mock.patch.object(installer.ssh_transport, "build_ssh_argv",
                                   return_value=["ssh", "archlinux"]) as argv, \
-                mock.patch.object(installer.subprocess, "run", return_value=completed) as run:
+                mock.patch.object(installer.ssh_transport, "run_ssh", return_value=completed) as run:
             result = installer._remote(".", CORR, "start", 60, credential=SECRET)
         self.assertEqual(result["state"], "verified")
         self.assertEqual(run.call_args.kwargs["input"], SECRET)
@@ -318,7 +318,7 @@ class WindowsVmVirtFirmwareInstallTest(unittest.TestCase):
                     "pacmanSignatureVerified": True, "packageIntegrityVerified": True,
                     "firmwareToolPresent": True}
         with mock.patch.object(installer.ssh_transport, "load_config", return_value=config), \
-                mock.patch.object(installer.subprocess, "run",
+                mock.patch.object(installer.ssh_transport, "run_ssh",
                                   return_value=SimpleNamespace(returncode=0, stdout=json.dumps(response).encode())) as run:
             installer._remote(root, CORR, "start", 60, credential=SECRET)
         argv = run.call_args.args[0]

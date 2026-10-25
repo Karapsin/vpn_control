@@ -260,7 +260,8 @@ class VmWorkflowTest(unittest.TestCase):
             "scenarioCorrelationId": "00000000-0000-4000-8000-000000000173",
         }
         server = vm_workflow.REPO_ROOT / "agent_tools" / "mcp_server.py"
-        source = f'''import importlib
+        with tempfile.TemporaryDirectory() as temporary:
+            source = f'''import importlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -270,11 +271,16 @@ sys.path[:0] = [str(repository / "scripts"), str(repository / "agent_tools"), st
 spec = importlib.util.spec_from_file_location("mcp_server", {str(server)!r})
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+# Adapters still load from this checkout, but the private host inventory and
+# native failure evidence resolve under an empty temporary root.
+module.REPO_ROOT = Path({temporary!r})
 for name in module._VM_NATIVE_ADAPTERS:
     adapter = module._agent_module(name)
     assert adapter.__name__ == "agent_tools." + name, adapter
 result = module.vm_workflow("fixture-preflight", {preflight_request!r})
 assert result["tool"] == "vm_workflow", result
+# Require check()'s typed result so the empty root cannot mask a helper load error.
+assert result.get("scenarioId") == {preflight_request["scenarioId"]!r} and isinstance(result.get("requirements"), dict), result
 assert "AttributeError" not in str(result), result
 # Invalid request exercises the real import and parser without substituting a
 # cached canonical class for the source-backed adapter's implementation.
@@ -282,13 +288,13 @@ result = module.vm_workflow("batch-plan", {{}})
 assert result["ok"] is False, result
 assert "AttributeError" not in str(result), result
 '''
-        result = subprocess.run(
-            [sys.executable, "-c", source],
-            cwd=vm_workflow.REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+            result = subprocess.run(
+                [sys.executable, "-c", source],
+                cwd=vm_workflow.REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         self.assertEqual(0, result.returncode, result.stderr)
 
 

@@ -52,11 +52,12 @@ class AvailabilityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'host_or_adb_generation_changed'):scope['probe'](str(path),SERIAL,2,None)
     def test_actual_shared_ssh_builder_accepts_exact_probe_carrier(self):
         host=availability.ssh_transport.SshHost(alias='arch',host='127.0.0.1',port=22,user='fixture',identity_file=pathlib.Path('/tmp/key'),known_hosts_file=pathlib.Path('/tmp/known'))
-        config=availability.ssh_transport.SshConfig(root=pathlib.Path('.').absolute(),hosts={'arch':host})
+        tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);root=pathlib.Path(tmp.name).resolve()  # Never the checkout: its private inventory or route state must not bind this synthetic route.
+        config=availability.ssh_transport.SshConfig(root=root,hosts={'arch':host})
         profile={'adb':'/remote/tools/adb','cli':'/remote/tools/vpn-control','serial':SERIAL,'expectedAvd':'api29','api':29}
         builder=availability.ssh_transport.build_ssh_argv
         with mock.patch.object(availability.ssh_transport,'load_config',return_value=config),mock.patch.object(availability.ssh_transport,'build_ssh_argv',wraps=builder) as actual,mock.patch.object(availability.android_observation,'_run_probe',return_value=(0,json.dumps(self.payload()).encode())) as probe:
-            result=availability.observe(pathlib.Path('.'),'arch',profile)
+            result=availability.observe(root,'arch',profile)
         self.assertEqual('configured_device_not_found',result['reason']);probe.assert_called_once()
         command=actual.call_args.kwargs['command'];self.assertFalse(any('\n' in arg for arg in command))
         expression=ast.parse(command[2]).body[0].value;self.assertEqual('exec',expression.func.id);self.assertEqual(availability._REMOTE,ast.literal_eval(expression.args[0]))

@@ -1,0 +1,115 @@
+"""Native expired-master qualification in a new unshared transport context."""
+from pathlib import Path
+import datetime,hashlib,json,os,signal,subprocess,sys,time,uuid,select,socket,threading
+sys.path.insert(0,str(Path.cwd()))
+from agent_tools import readiness_workflow as rw,readiness_ssh_master as master,ssh_transport as t,source_module_loader as loader,ssh_program_execution as execution,ssh_channel_keeper_entry as keeper
+checkout=Path.cwd();evidence=checkout/'.rag_index/tool-recovery/durable-jobs'
+context_id=str(uuid.uuid4());root=evidence/('private-context-'+context_id);root.mkdir(mode=0o700)
+original=json.loads((checkout/'.vm-hosts.local.json').read_bytes());source=original['hosts']['gateway']
+class Proxy:
+ def __init__(self):
+  self.server=socket.socket();self.server.bind(('127.0.0.1',0));self.server.listen();self.server.settimeout(.1)
+  self.port=self.server.getsockname()[1];self.active=[];self.stopped=False;self.ready=threading.Event()
+  self.thread=threading.Thread(target=self.accept,daemon=True);self.thread.start()
+ def accept(self):
+  while not self.stopped:
+   try:client,_=self.server.accept()
+   except socket.timeout:continue
+   except OSError:break
+   upstream=socket.create_connection((source['host'],source['port']),timeout=10);upstream.settimeout(None)
+   pair={'client':client,'upstream':upstream,'drop':False};self.active.append(pair);self.ready.set()
+   threading.Thread(target=self.forward,args=(pair,),daemon=True).start()
+ def forward(self,pair):
+  try:
+   while not self.stopped:
+    ready,_,_=select.select([pair['client'],pair['upstream']],[],[],.1)
+    for stream in ready:
+     body=stream.recv(65536)
+     if not body:return
+     if not pair['drop']:(pair['upstream']if stream is pair['client']else pair['client']).sendall(body)
+  except OSError:pass
+  finally:
+   for stream in (pair['client'],pair['upstream']):
+    try:stream.close()
+    except OSError:pass
+ def close(self):
+  self.stopped=True;self.server.close()
+  for pair in self.active:
+   for stream in (pair['client'],pair['upstream']):
+    try:stream.shutdown(socket.SHUT_RDWR)
+    except OSError:pass
+    stream.close()
+proxy=Proxy()
+lookup=source['host']if source['port']==22 else '['+source['host']+']:'+str(source['port'])
+trust=subprocess.run(['/usr/bin/ssh-keygen','-F',lookup,'-f',source['knownHostsFile']],capture_output=True,check=True)
+entries=[]
+for line in trust.stdout.decode().splitlines():
+ if not line or line.startswith('#'):continue
+ fields=line.split()
+ if fields[0].startswith('@') or len(fields)<3:raise ValueError('original_trust_schema')
+ entries.append('[127.0.0.1]:'+str(proxy.port)+' '+' '.join(fields[1:3]))
+if not entries:raise ValueError('original_trust_unavailable')
+known=root/'known_hosts';known.write_text('\n'.join(entries)+'\n');known.chmod(0o600)
+inventory={'schemaVersion':1,'hosts':{'gateway':{**source,'host':'127.0.0.1','port':proxy.port,'knownHostsFile':str(known)}}}
+
+fd=os.open(root/'.vm-hosts.local.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(fd,'w') as stream:json.dump(inventory,stream)
+probe_operation=str(uuid.uuid4());rw.ensure_ssh(root,'gateway',probe_operation);config=t.load_config(root)
+def remote(code):
+ argv=t.build_ssh_argv(config,'gateway',15,command=('python3','-I','-B','-c','exec('+repr(code)+')'))
+ with t.automatic_submission(argv) as submitted:result=subprocess.run(submitted,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20)
+ if result.returncode:raise RuntimeError('private_context_read_only_observation_failed')
+ return json.loads(result.stdout)
+actual=remote("import json,os,pwd,pathlib\nu=pwd.getpwuid(os.geteuid());print(json.dumps({'kind':'ssh','uid':os.geteuid(),'principal':u.pw_name,'home':u.pw_dir,'bootId':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))")
+operation=str(uuid.uuid4());remote_root='/tmp/vpn-control-program-'+str(actual['uid'])+'-'+operation;counter=remote_root+'/private-master-counter'
+source="from pathlib import Path\nimport sys,time\np=Path("+repr(counter)+")\nwith p.open('x') as out:\n out.write('execution\\n');out.flush()\n for n in range(60):\n  out.write(str(n)+'\\n');out.flush();print(n,flush=True);time.sleep(.08)\nsys.stderr.write('private master retained stderr\\n')\n"
+request={'operationId':operation,'program':{'language':'python3','source':source,'args':['private-master-loss'],'cwd':'/tmp','targetContext':actual}}
+proxy=loader.Adapter(checkout/'agent_tools','ssh_program_execution')
+try:proxy.start(root,'gateway',request,source_context=proxy._session)
+finally:proxy.close()
+directory=root/'.rag_index/ssh-program-execution'/operation
+deadline=time.monotonic()+20
+while time.monotonic()<deadline:
+ if (directory/'remote-admission.json').exists():
+  snapshot=remote("import json,pathlib\np=pathlib.Path("+repr(counter)+");print(json.dumps({'lines':len(p.read_text().splitlines()) if p.exists() else 0}))")
+  if snapshot['lines']>=3:break
+ time.sleep(.05)
+else:raise RuntimeError('private_sentinel_not_ready')
+old=master.status(root,'gateway');assert keeper.actor(old['child']['pid'])==old['child']['actor']
+original_owner=remote("from pathlib import Path\nprint(Path("+repr(remote_root+'/'+operation+'/owner.json')+").read_text())")['owner']
+before=snapshot['lines']
+assert len(proxy.active)>=1
+# Close only this task's original forwarded network connection. The proxy
+# listener remains available so the actual fixed readiness flow must reconnect.
+original_pair=proxy.active[0]
+for stream in (original_pair['client'],original_pair['upstream']):
+ try:stream.shutdown(socket.SHUT_RDWR)
+ except OSError:pass
+ stream.close()
+# No recovery command is issued here. The original program worker must establish
+# readiness itself and select a new connection while preserving its job UUID.
+deadline=time.monotonic()+120
+new=None
+while time.monotonic()<deadline:
+ try:
+  observed=master.status(root,'gateway')
+  if observed['state']=='ready' and observed['recoveryId']!=old['recoveryId']:new=observed;break
+ except ValueError:pass
+ time.sleep(.05)
+assert new is not None,'worker failed to recover dead private master'
+after=remote("import json,pathlib\nprint(json.dumps(len(pathlib.Path("+repr(counter)+").read_text().splitlines())))")
+assert after>before
+while time.monotonic()<deadline:
+ result=execution.status(root,'gateway',{'operationId':operation})
+ if result['state']=='terminal':break
+ time.sleep(.05)
+assert result['state']=='terminal' and result['remoteOwner']==original_owner
+out=(directory/'stdout.private').read_bytes();err=(directory/'stderr.private').read_bytes()
+assert out.splitlines()==[str(n).encode() for n in range(60)] and err==b'private master retained stderr\n'
+lines=remote("import json,pathlib\nprint(json.dumps(pathlib.Path("+repr(counter)+").read_text().splitlines()))")
+assert lines.count('execution')==1
+report={'passed':True,'operationId':operation,'privateContext':str(root),'probeOperationId':probe_operation,'oldConnectionRecoveryId':old['recoveryId'],'newConnectionRecoveryId':new['recoveryId'],'newMasterActor':new['child']['actor'],'newMasterSocket':new['socketPath'],'originalOwner':original_owner,'beforeLines':before,'afterLines':after,'invocations':1,'stdoutLines':60,'exactStreams':True,'oldHistoryRetained':(master._path(root,'gateway')/(old['recoveryId']+'.retired.json')).exists(),'originalJobRetained':True,'sourcePins':json.loads((directory/'intent.json').read_bytes())['sourcePins'],'idleQualificationStartUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'transportConnections':len(proxy.active),'scope':'new private strict-hostkey proxy context only; closed its original socket pair; shared gateway master untouched; no VM/runtime actions'}
+fd=os.open(evidence/('private-master-result-'+operation+'.json'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(fd,'w') as stream:json.dump(report,stream,sort_keys=True,indent=2)
+proxy.close()
+print(json.dumps({k:report[k] for k in ('passed','operationId','oldConnectionRecoveryId','newConnectionRecoveryId','beforeLines','afterLines','invocations','stdoutLines','oldHistoryRetained','privateContext','idleQualificationStartUtc')}))

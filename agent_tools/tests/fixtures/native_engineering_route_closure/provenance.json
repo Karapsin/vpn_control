@@ -1,0 +1,7 @@
+{
+  "sourcePath": "agent_tools/tests/test_native_engineering_mcp_route.py",
+  "sourceSha256": "90f19416fc98df98be77b7955e2164d135312c7d4de9375e24d0ae959d3f96b9",
+  "sourceSize": 3361,
+  "failure": "NameError:_vm_invalid_before_recovery",
+  "originalEvidence": ".runtime/tool-recovery/native-diagnostic-first-errors.log"
+}

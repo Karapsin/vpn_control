@@ -1,0 +1,25 @@
+{
+  "files": {
+    "ssh_tmux_mcp_adapter.before.source": {
+      "sha256": "ce0fc71c2165a08af326caf3a03d0c3af5816a6aca780515711b7b60d146ddbd",
+      "bytes": 15629
+    },
+    "ssh_tmux_privileged_terminal_closure.before.source": {
+      "sha256": "51b09eb53e9d01e26e1bb40adeba302c41b4d8bc74ab4bb386dfdc154c383dc1",
+      "bytes": 23784
+    },
+    "ssh_tmux_resource_admission.before.source": {
+      "sha256": "f782f05689d46272e4286158d737099bd982fc817ec66301afeff1e9145f0db0",
+      "bytes": 19637
+    },
+    "ssh_tmux_terminal_closure.before.source": {
+      "sha256": "f8d49f05186f441594f28e59e2922b0145ac1bdfe363fcfbaf8d6510e0306304",
+      "bytes": 19474
+    },
+    "ssh_tmux_privileged_terminal_claim_bridge.before.source": {
+      "sha256": "c69412413ca4d27477c7d96c56904a9cff7e0868322f379df7cfb3b0d3f86c2c",
+      "bytes": 6379
+    }
+  },
+  "failure": "valid JSON private prefix retained before semantic validation"
+}

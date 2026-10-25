@@ -54,6 +54,8 @@ FILES = (
     'agent_tools/android_package_install.py',
     'agent_tools/android_public_inspect.py',
     'agent_tools/native_artifact_registry.py',
+    'agent_tools/private_inventory_lock.py',
+    'agent_tools/readiness.py',
     'agent_tools/ssh_connection_recovery.py',
     'agent_tools/ssh_transfer.py',
     'agent_tools/ssh_transport.py',

@@ -236,10 +236,33 @@ class AutomaticProgramTests(unittest.TestCase):
         needed = captured | {
             "mcp_server.py", "affected_agent_tests.py", "affected_agent_test_dependencies.json",
             "agent_test_runner.py", "native_review_source_closure.py", "source_module_loader.py",
-            "ssh_transfer.py", "ssh_transport.py", "ssh_automatic_program.py",
+            "ssh_transfer.py", "ssh_transport.py", "ssh_automatic_program.py", "private_config_custody.py",
+            "readiness.py", "private_inventory_lock.py", "tool_action_policy.py", "tool_action_policy.json",
         }
+        needed.update({'readiness_vm_dispatch.py','readiness_vm_dispatch.json',
+                       'android_observation.py','readiness_transport.py','readiness_ssh_master.py'})
+        # The real mandatory VM admission imports its finite transitive Python
+        # closure. Include complete source files, not replacement dispatch code.
+        pending=list(needed);scripts=set()
+        while pending:
+            name=pending.pop()
+            if not name.endswith('.py'):continue
+            for node in ast.walk(ast.parse((TOOLS/name).read_bytes())):
+                if not isinstance(node,ast.ImportFrom):continue
+                modules=([node.module.split('.')[0]]if node.module else [v.name for v in node.names])if node.level==1 else []
+                if node.level==0 and node.module=='agent_tools':modules=[v.name for v in node.names]
+                elif node.level==0 and node.module and node.module.startswith('agent_tools.'):
+                    modules=[node.module.removeprefix('agent_tools.').split('.')[0]]
+                for module in modules:
+                    child=module+'.py'
+                    if (TOOLS/child).is_file()and child not in needed:needed.add(child);pending.append(child)
+                if node.level==0 and node.module and node.module.startswith('scripts.'):
+                    scripts.add(node.module.removeprefix('scripts.').replace('.','/')+'.py')
         for name in sorted(needed):
             shutil.copyfile(TOOLS / name, directory / name)
+        if scripts:
+            (self.root/'scripts').mkdir(mode=0o700)
+            for name in scripts:shutil.copyfile(TOOLS.parent/'scripts'/name,self.root/'scripts'/name)
         adapter = directory / "android_proxy_recovery.py"
         adapter.write_text(
             "import json\nfrom pathlib import Path\n"
@@ -257,18 +280,59 @@ class AutomaticProgramTests(unittest.TestCase):
             " return {'ok':code==0,'state':'observed','nativeActionAllowed':False,"
             "'replayAllowed':False,'localFixtureOnly':True,'observed':json.loads(output)}\n"
         )
+        # This deliberately inert adapter has its own explicitly reviewed
+        # physical fixture digest; retain the production target-source guards.
+        manifest=directory/'readiness_vm_dispatch.json'
+        body=json.loads(manifest.read_bytes())
+        body['sourcePins']['android_proxy_recovery']=hashlib.sha256(adapter.read_bytes()).hexdigest()
+        manifest.write_text(json.dumps(body,sort_keys=True)+'\n')
+        readiness_binary=self.root/'readiness-fixture-ssh'
+        readiness_binary.write_text('#!'+sys.executable+'\n'+(Path(__file__).parent/'fixtures/readiness_transport/ssh_peer.source').read_text())
+        readiness_binary.chmod(0o700)
         package_name = "_physical_automatic_public_" + uuid.uuid4().hex
         package = types.ModuleType(package_name)
         package.__path__ = [str(directory)]
         sys.modules[package_name] = package
         public = None
+        self._public_fixture_sources=tuple(sorted({'agent_tools/'+name for name in needed}|{'scripts/'+name for name in scripts}))
         try:
             spec = importlib.util.spec_from_file_location(package_name + ".mcp_server", directory / "mcp_server.py")
             public = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = public
             spec.loader.exec_module(public)
-            with mock.patch.object(public, "_native_response", side_effect=lambda tool, action, result, request: result):
-                yield public
+            # Only the SSH executable path is substituted. The genuine
+            # coordinator, journal, kernel actor join and real Unix socket peer
+            # establish readiness before the generated file transfer caller.
+            children=[]
+            public._fixture_readiness_children=children
+            try:
+                with public._SOURCE_MODULE_LOADER.request_scope(directory):
+                    loaded=public._agent_module('ssh_transport')._module
+                    master=public._agent_module('readiness_ssh_master')._module
+                    prefix=loaded.fresh_direct_prefix;spawn=master.session._spawn;builder=loaded._build_ssh_argv
+                    def fixture_prefix(config,host):
+                        argv,endpoint=prefix(config,host)
+                        return [str(readiness_binary),*argv[1:]],endpoint
+                    def tracked_spawn(*args,**kwargs):
+                        child=spawn(*args,**kwargs);children.append(child);return child
+                    def fixture_builder(*args,**kwargs):
+                        argv=builder(*args,**kwargs)
+                        if argv[0] in ('ssh','/usr/bin/ssh'):argv[0]=str(readiness_binary)
+                        return argv
+                    with mock.patch.object(loaded,'fresh_direct_prefix',side_effect=fixture_prefix), \
+                         mock.patch.object(loaded,'_build_ssh_argv',side_effect=fixture_builder), \
+                         mock.patch.object(master.session,'_spawn',side_effect=tracked_spawn), \
+                         mock.patch.dict(os.environ,{'VC_READINESS_FIXTURE_MODE':str(self.root/'readiness-mode')}), \
+                         mock.patch.object(public, "_native_response", side_effect=lambda tool, action, result, request: result):
+                        yield public
+            except ValueError:
+                # The explicit drift test also invalidates this outer retained
+                # source scope after the tool already reports its closed guard.
+                if not (self.root/'drift').exists():raise
+            finally:
+                for child in children:
+                    if child.poll()is None:child.terminate()
+                    child.wait(timeout=3)
         finally:
             for name in list(sys.modules):
                 if (name == package_name or name.startswith(package_name + ".") or
@@ -277,6 +341,19 @@ class AutomaticProgramTests(unittest.TestCase):
                         name.startswith("_vpn_native_core_" + str(public._MCP_BOOT_TIME_NS) + "."))):
                     sys.modules.pop(name, None)
 
+    def test_previous_public_vm_fixture_lacks_real_readiness_causal_red(self):
+        fixture=Path(__file__).parent/'fixtures/readiness_submission'
+        raw=(fixture/'test_ssh_automatic_program.py.before-vm-admission.source').read_bytes()
+        expected=json.loads((fixture/'provenance.json').read_bytes())['beforeSha256']['test_ssh_automatic_program.py.vm-admission']
+        self.assertEqual(expected,hashlib.sha256(raw).hexdigest())
+        name='agent_tools.tests._automatic_vm_fixture_before_'+uuid.uuid4().hex
+        old=types.ModuleType(name);old.__file__=str(fixture/'test_ssh_automatic_program.py.before-vm-admission.source')
+        with mock.patch.dict(sys.modules,{name:old}):exec(compile(raw,old.__file__,'exec'),old.__dict__)
+        old.TOOLS=TOOLS
+        owner=old.AutomaticProgramTests('runTest');owner.setUp();self.addCleanup(owner.doCleanups)
+        with self.assertRaises(AssertionError):owner.test_registered_public_vm_route_reaches_automatic_real_child_path()
+        self.assertEqual([],owner.peer.events())
+
     def test_registered_public_vm_route_reaches_automatic_real_child_path(self):
         with self.physical_public_server() as public, self.peer.environment():
             result = public.vm_workflow("android-proxy-recovery-status", {
@@ -284,6 +361,8 @@ class AutomaticProgramTests(unittest.TestCase):
             self.assertIs(True, result.get("ok"), result)
             self.assertEqual("observed", result.get("state"), result)
             self.assertIs(True, result.get("localFixtureOnly"), result)
+            self.assertEqual(1,len(public._fixture_readiness_children))
+            self.assertIsNone(public._fixture_readiness_children[0].poll())
             self.assertEqual("PUBLIC", result["observed"]["marker"])
             self.assertEqual(hashlib.sha256(b"PUBLIC_MCP_INPUT").hexdigest(), result["observed"]["stdinSha256"])
             self.assertEqual(2, len(self.peer.events()))
@@ -468,7 +547,7 @@ class AutomaticProgramTests(unittest.TestCase):
     def test_small_argv_is_unchanged_without_automatic_state(self):
         _, transport = self.implementation()
         argv = self.argv(transport, ("python3", "-I", "-B", "-c", "print('PUBLIC_SMALL')"))
-        self.assertIs(type(argv), list)
+        self.assertIsInstance(argv, list)
         with self.peer.environment(), self.automatic().automatic_submission(argv) as submitted:
             self.assertIs(submitted, argv)
             result = self.execute(submitted)
@@ -759,7 +838,7 @@ class AutomaticProgramTests(unittest.TestCase):
     def copied_transport_bundle(self, *, custody_symlink=False, before_custody=False):
         directory = self.root / ("physical-module-bundle-" + uuid.uuid4().hex)
         directory.mkdir(mode=0o700)
-        for name in ("ssh_transport.py", "ssh_automatic_program.py", "native_review_source_closure.py"):
+        for name in ("ssh_transport.py", "ssh_automatic_program.py", "private_config_custody.py", "native_review_source_closure.py", "readiness.py", "private_inventory_lock.py"):
             shutil.copyfile(TOOLS / name, directory / name)
         if before_custody:
             preserved = FIXTURE / "custody_preexec.before.source"

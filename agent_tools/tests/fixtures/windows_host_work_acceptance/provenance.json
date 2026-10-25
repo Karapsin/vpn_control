@@ -1,0 +1,8 @@
+{
+  "cause": "Canonical acceptance omitted immutable original artifact pins and rebuilt freshpins at lookup, permitting changed bytes or samecontent inode replacement.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "actual-failure.txt": "42d226d696154a1e6993f1ecab68cfa60f9c55a59054e66dc7defc5d85a3cffc",
+    "before.source": "c07b281a0c9d01d327f0654a1c5b91e22d69693de516466c7bfa0adc400daadb"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "beforeSha256": {
+    "readiness_nested_channel.py": "99464a86f3181986ff76bffb635788c9523025865acfcb241fc8c3d7835cb0f1",
+    "ssh_direct_nested_channel.py": "510b467449da50e611886d21cc97d5e0e299372a836d996679f6cd9db2cd91f3",
+    "ssh_fresh_nested_channel.py": "179c978945eb348dc74314e98cd2b3d18cc5fedc3a1069fe5630940daaa2b577"
+  }
+}

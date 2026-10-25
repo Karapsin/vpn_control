@@ -1,0 +1,35 @@
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18'){throw 'SYSTEM_REQUIRED'}
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+public static class SessionFacts {
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]public struct Level1 {
+ public UInt32 SessionId;public Int32 State;public Int32 Flags;
+ [MarshalAs(UnmanagedType.ByValTStr,SizeConst=33)]public string Station;
+ [MarshalAs(UnmanagedType.ByValTStr,SizeConst=21)]public string User;
+ [MarshalAs(UnmanagedType.ByValTStr,SizeConst=18)]public string Domain;
+ public Int64 Logon;public Int64 Connect;public Int64 Disconnect;public Int64 LastInput;public Int64 Current;
+ public UInt32 InBytes;public UInt32 OutBytes;public UInt32 InFrames;public UInt32 OutFrames;public UInt32 InCompressed;public UInt32 OutCompressed;
+ }
+ [StructLayout(LayoutKind.Sequential)]public struct Info {public UInt32 Level;public Level1 Data;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]public struct Session {public Int32 Id;public string Name;public Int32 State;}
+ [DllImport("kernel32.dll")]public static extern UInt32 WTSGetActiveConsoleSessionId();
+ [DllImport("wtsapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool WTSQuerySessionInformationW(IntPtr server,UInt32 session,int info,out IntPtr buffer,out int bytes);
+ [DllImport("wtsapi32.dll")]static extern void WTSFreeMemory(IntPtr ptr);
+ [DllImport("wtsapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool WTSEnumerateSessionsW(IntPtr server,int reserved,int version,out IntPtr buffer,out int count);
+ [DllImport("wtsapi32.dll",SetLastError=true)]static extern bool WTSQueryUserToken(UInt32 session,out IntPtr token);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);
+ public static Info Read(UInt32 id){IntPtr p;int bytes;if(!WTSQuerySessionInformationW(IntPtr.Zero,id,26,out p,out bytes))throw new Win32Exception();try{if(bytes<Marshal.SizeOf(typeof(Info)))throw new Exception("WTS_SIZE");return (Info)Marshal.PtrToStructure(p,typeof(Info));}finally{WTSFreeMemory(p);}}
+ public static Session[] All(){IntPtr p;int count;if(!WTSEnumerateSessionsW(IntPtr.Zero,0,1,out p,out count))throw new Win32Exception();try{if(count<0||count>128)throw new Exception("WTS_COUNT");var result=new Session[count];int size=Marshal.SizeOf(typeof(Session));for(int i=0;i<count;i++)result[i]=(Session)Marshal.PtrToStructure(IntPtr.Add(p,i*size),typeof(Session));return result;}finally{WTSFreeMemory(p);}}
+ public static string Sid(UInt32 id){IntPtr token;if(!WTSQueryUserToken(id,out token))throw new Win32Exception();try{using(var identity=new WindowsIdentity(token)){return identity.User.Value;}}finally{CloseHandle(token);}}
+}
+'@
+$id=[SessionFacts]::WTSGetActiveConsoleSessionId();$info=[SessionFacts]::Read($id);$user=Get-LocalUser -Name recovery
+$admins=@(Get-LocalGroupMember -SID 'S-1-5-32-544' | ForEach-Object {$_.SID.Value})
+$os=Get-CimInstance Win32_OperatingSystem
+$result=[ordered]@{boot=$os.LastBootUpTime.ToUniversalTime().ToString('o');console=$id;infoLevel=$info.Level;session=$info.Data;tokenSid=[SessionFacts]::Sid($id);expectedSid=$user.SID.Value;ordinary=($admins -notcontains $user.SID.Value);sessions=@([SessionFacts]::All());explorers=@(Get-Process explorer -ErrorAction SilentlyContinue | Select-Object Id,SessionId)}
+[Console]::WriteLine(($result|ConvertTo-Json -Depth 6 -Compress))

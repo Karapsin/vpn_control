@@ -69,6 +69,9 @@ def _remote_main():
         for fd,path,expected in pins:
             if generation(os.fstat(fd))!=expected or generation(os.stat(path,follow_symlinks=False))!=expected:reject('asset_identity')
     def run(argv,limit=65536):
+        # These are installed-host package queries. Sync repository configuration
+        # must not affect local file verification or select another database.
+        argv=[argv[0],'--config','/dev/null','--root','/','--dbpath','/var/lib/pacman',*argv[1:]]
         p=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,check=False,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
         if len(p.stdout)>limit or len(p.stderr)>limit:reject('package_integrity')
         return p
@@ -161,7 +164,7 @@ def _apply_host_policy():
             return raw,shape(before)
         finally:os.close(fd)
     def query():
-        p=subprocess.run(['/usr/bin/pacman','-Qkk','swtpm'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
+        p=subprocess.run(['/usr/bin/pacman','--config','/dev/null','--root','/','--dbpath','/var/lib/pacman','-Qkk','swtpm'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20,env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
         if len(p.stdout)>8192 or len(p.stderr)>8192:raise ValueError('policy_package_capture')
         return p
     def no_tpm():
@@ -237,6 +240,9 @@ def _peer_main():
 
 
 def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None,media_reader=None,operation_id=None)->bytes:
+    if mode in ('secure-resolve','secure-continue','secure-continue-status'):
+        from . import windows_secure_recovery as recovery
+        return recovery.program(spec,mode,setup=setup,context=context,operation_id=operation_id)
     if mode in ('frame','frame-collect'):
         from .windows_vm_instance import inspection_program
         return inspection_program(spec.as_dict(),setup,context,operation_id,return_frame=True,read_existing=mode=='frame-collect')
@@ -286,6 +292,9 @@ def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None,media_rea
 
 
 def validate_result(spec,mode,value):
+    if mode in ('secure-resolve','secure-continue','secure-continue-status'):
+        from . import windows_secure_recovery as recovery
+        return recovery.validate_result(spec,mode,value)
     base={'schemaVersion','deploymentId','mode','state','reason','nativeActionAllowed','replayAllowed'}
     if (type(value)is not dict or type(value.get('schemaVersion'))is not int or value['schemaVersion']!=1
             or value.get('deploymentId')!=spec.deployment_id or value.get('mode')!=mode

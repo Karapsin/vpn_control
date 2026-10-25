@@ -15,14 +15,14 @@ from unittest.mock import patch
 
 
 SOURCE_HASHES = {
-    'windows_cp117_secure_input_observe.py': '836d2d13dea8604d8d9f3c409db7d15fde349ceb0ecade06ce704a3a2693f590',
-    'windows_cp117_secure_input_tuple_observe.py': 'a763bec79923cd09a450f5b635c6c61a059c1fa3f488eb14cff35f687bfd04bc',
-    'windows_cp117_secure_input_geometry_observe.py': '9f9efa88a58588d67afbf52f68ca201b11575aa1edf744941f1c42894f1cddcf',
-    'windows_cp117_secure_input_descendants_observe.py': '571bc5a22dcdcdb11e49e6572a50b123339a8b6b39e6f8e154e960583f0f306b',
-    'windows_cp117_windowless_candidate_observe.py': '554416b9f6ba89da838aadb32f33f1b1b6428c8e577edd421e5e56e7db1c83ed',
-    'windows_cp117_windowless_edit_observe.py': '584b2dab158f95ffee3c95def3d6e33b3c2d2d5701af95885d7f7e1b2914eed1',
-    'windows_cp117_windowless_gui_login.py': 'afaa1184bc10f9358d57238e2d6d736de2435c0f7b2553a7aaf7343efe9ae7a8',
-    'windows_cp117_windowless_provider_login.py': '3447001b51cb4df248e4566135bba568c5e3e090a9a9744d4ba3eafc4e9a8c12',
+    'windows_cp117_secure_input_observe.py': '032dd9225f3ea79dfe31aebbd1e039977c228d1f93507c9446a3682c6bc49dbc',
+    'windows_cp117_secure_input_tuple_observe.py': 'fb8d6b3f2bdaab3b97039e784c04fd555d2b0710f1018f935953900f370b4522',
+    'windows_cp117_secure_input_geometry_observe.py': '832746a0a990dc42b6e82f799d52dbab42b8424c1be4fab54da171af522f32c7',
+    'windows_cp117_secure_input_descendants_observe.py': 'c11d73f56e89219c64ae820e9986fea33a7749479101c7bc8bd8913e043e8d70',
+    'windows_cp117_windowless_candidate_observe.py': '2909daf02f73c2ac3622a16156743d5be3d3d869fe7e297fef26d39acd10df9f',
+    'windows_cp117_windowless_edit_observe.py': '73414896403937d5040a0132e5d407483287c922b1a0b96b387d058661d3e9f3',
+    'windows_cp117_windowless_gui_login.py': 'afd3a4a99f82b861bc83e227f842486a84f0b7ed8a8d332e3bb248ecc67bb822',
+    'windows_cp117_windowless_provider_login.py': 'c6415d2856248cc967ca4f1278143390f53b3b832e11b22c753ef417dc4372a3',
     'provider_f54029cf.source': 'f54029cf3259011d71df93c51f15b3c2b7a886470008427cf85c8e127c567a72',
 }
 _LINKS = ('m', 'original', 'role', 'geometry', 'windowless', 'original_semantic',

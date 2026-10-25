@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import random
 import re
+import tempfile
 import time
 import types
 import unittest
@@ -90,14 +91,16 @@ class OsSessionProjectionTest(unittest.TestCase):
         ns={};exec(path.read_bytes(),ns);ns['binary']=types.SimpleNamespace(sha=lambda raw:hashlib.sha256(raw).hexdigest())
         source=b'print("fixed owned record only")\n'
         before=ns['before_bootstrap'](source);fixed=ns['fixed_bootstrap'](source)
-        config=types.SimpleNamespace(hosts={'archlinux':types.SimpleNamespace(alias='archlinux')},root=ROOT)
+        temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
+        root=Path(temporary.name).resolve()
+        config=types.SimpleNamespace(hosts={'archlinux':types.SimpleNamespace(alias='archlinux')},root=root)
         with self.assertRaisesRegex(ssh_transport.SshConfigError,'safe strings'):
             ssh_transport.build_ssh_argv(config,'archlinux',30,command=before)
         seen=[]
         route=[config.hosts['archlinux']]
-        selection=types.SimpleNamespace(selection_present=lambda root,alias:root==ROOT and alias=='archlinux')
+        selection=types.SimpleNamespace(selection_present=lambda selected_root,alias:selected_root==root and alias=='archlinux')
         with patch.object(ssh_transport,'_route_hosts',return_value=route), \
-             patch.object(ssh_transport.os.path,'lexists',return_value=True), \
+             patch.object(ssh_transport.os.path,'lexists',side_effect=lambda path:Path(path)==root/'.rag_index/ssh-channel-selection'), \
              patch.object(ssh_transport,'_selection_module',return_value=selection), \
              patch.object(ssh_transport,'_build_selected_arch_argv',side_effect=lambda config,route,command,*rest:seen.append(command)or ['inert-no-process']):
             self.assertEqual(ssh_transport.build_ssh_argv(config,'archlinux',30,command=fixed),['inert-no-process'])

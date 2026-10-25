@@ -1,0 +1,18 @@
+{
+  "capture_visual_android.sh.before.source": {
+    "sha256": "c1726fd9191f2dd7336438eab3a75ae06dd8f03ea5d140ef7b92576873d0005e",
+    "source": "scripts/capture_visual_android.sh"
+  },
+  "capture_visual_macos_tart.py.before.source": {
+    "sha256": "1af64671ee531ced9c3aab808f2072d568e669b1a6fb2cc551b79093bcbf5d57",
+    "source": "scripts/capture_visual_macos_tart.py"
+  },
+  "capture_visual_windows_qemu.py.before.source": {
+    "sha256": "588b1b3c8c192df3e92275ed6c5d6af55b06ff6cbb1a15cf2028aba7d4189731",
+    "source": "scripts/capture_visual_windows_qemu.py"
+  },
+  "readiness_entrypoints.py.before.source": {
+    "sha256": "3d9cce02a974446fcd47c72b648a0585918e74b0c59616f2e6bf22957f65d5ea",
+    "source": "agent_tools/readiness_entrypoints.py"
+  }
+}

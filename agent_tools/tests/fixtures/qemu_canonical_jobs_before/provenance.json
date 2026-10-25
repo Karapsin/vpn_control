@@ -1,0 +1,9 @@
+{
+  "failureType": "canonical durable owner intent is invisible to obsolete state.json-only idle observer",
+  "sourceSha256": {
+    "readiness_qemu_guest.py": "49298d4fbb40f10b4e38c85c96aeebdd5e2f1b692002a937b62a5f5170adcf86",
+    "readiness_qemu_remote.py": "80b7a2152bed2c64a5292d1a728fd31d877c7e599b725f8bb5200850217bf48f",
+    "readiness_qemu.py": "08ac45381c201dbc34a7013cbc3c54c97a4ccf080b22e8015759365abd4522f6"
+  },
+  "nativeNamespaceBeforeEdit": "absent; no guestjob admitted; native canonical-owner regression required after enrollment"
+}

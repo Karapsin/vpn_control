@@ -1,0 +1,10 @@
+{
+  "cause": "Routingtestsmock eventual nativeoperationbutomit newlyrequiredreadiness boundary; purebuilderusesrealCWDjournal; isolated helpercopy omitsnewreadiness source dependency.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "native-failures.txt": "fd488ab0e133b0bcddd98b619e121be59bd9c88bb4e5d58fcad035084b4a792e",
+    "test_private_config_custody.py.before.source": "6c55fc75ae5ec3906d3dc22883a1a64ba336dd9ec247a377bb05a1c1360f5919",
+    "test_ssh_acceptance_route_integration.py.before.source": "9116bf7d974530ffadd30aa069cc4e438ed4333527e7c755dfcb9dc99ad0ea47",
+    "test_ssh_connection_recovery.py.before.source": "ceba4c39d627a350ac748473c02e9ff9cc0f09d796f5ca02ff6802e564af7a27"
+  }
+}

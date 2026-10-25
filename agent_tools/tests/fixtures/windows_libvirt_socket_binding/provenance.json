@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "b26d92af3c1d21df84ef64f98e2501568f8b7b62a761d8b687de247ed090714e",
+  "nativeBeforeOperation": "51b93207-aa71-4843-b780-ed85f02e2875",
+  "nativeEndpointComparison": "857c75c1-d50a-404a-b0e7-5ec546ca1e0d",
+  "failure": "Implicit libvirt session URI selected a different owned daemon by XDG_RUNTIME_DIR and falsely reported the original active domain stopped."
+}

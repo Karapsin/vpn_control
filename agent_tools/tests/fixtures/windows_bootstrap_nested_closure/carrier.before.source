@@ -1,0 +1,47 @@
+@contextmanager
+def admitted_transport(root, host, operation_identity, *, deadline=None, requirements=None):
+    if host != 'lab-one':raise ValueError('controlled_carrier_wrong_target')
+    class Admission:
+        def revalidate(self):pass
+    yield Admission()
+
+def build_ssh_argv(config, host, timeout_seconds=60, *, command=None, **kwargs):
+    if host != 'lab-one' or type(command) is not tuple:raise ValueError('controlled_carrier_wrong_target')
+    return command
+
+def run_ssh(argv, *, runner=None, **kwargs):
+    import ast
+    if type(argv) is not tuple or len(argv)!=5 or argv[:4]!=('python3','-I','-B','-c'):
+        raise ValueError('controlled_carrier_command_mismatch')
+    tree=ast.parse(argv[4],mode='eval').body
+    if not(isinstance(tree,ast.Call)and isinstance(tree.func,ast.Name)and tree.func.id=='exec'and len(tree.args)==1 and not tree.keywords and isinstance(tree.args[0],ast.Constant)and type(tree.args[0].value)is str):
+        raise ValueError('controlled_carrier_program_mismatch')
+    payload=tree.args[0].value.encode()
+    if os.environ.get('VPN_CONTROL_BOOTSTRAP_CARRIER_FAULT') == 'malformed':
+        payload=b'import sys;print("malformed-public-reply");print("public-controller-failure",file=sys.stderr);sys.exit(9)'
+    timeout=kwargs.pop('timeout',None)
+    if 'stdin'in kwargs or 'input'in kwargs or kwargs.pop('check',False):
+        raise ValueError('controlled_carrier_input_mismatch')
+    command=[sys.executable,'-I','-B','-c','import sys;exec(compile(sys.stdin.buffer.read(),"controlled-public-observer","exec"))']
+    with subprocess.Popen(command,stdin=subprocess.PIPE,**kwargs)as child:
+        def birth():
+            try:
+                with open('/proc/'+str(child.pid)+'/stat')as status:row=status.read().rsplit(')',1)[1].split()
+                return 'linux:'+row[19]if row[0]!='Z'else None
+            except(FileNotFoundError,ProcessLookupError):return None
+        before=birth()if sys.platform.startswith('linux')else None
+        try:stdout,stderr=child.communicate(input=payload,timeout=timeout)
+        except BaseException:
+            child.kill();child.communicate();raise
+        after=birth()if sys.platform.startswith('linux')else None
+        if child.returncode is None or(before is not None and before==after):raise AssertionError('controlled_child_not_reaped')
+        globals().setdefault('_BOOTSTRAP_CONTROLLED_CHILDREN',[]).append({'pid':child.pid,'birth':before,'reaped':True,'sameOriginalBirthPresent':False})
+        return subprocess.CompletedProcess(command,child.returncode,stdout,stderr)
+
+class Guard:
+    def __init__(self, root, *, host):
+        if host != 'lab-one':raise ValueError('controlled_guard_wrong_target')
+        self.config = object()
+    def __enter__(self):return self
+    def __exit__(self,*error):return False
+    def guard(self):pass

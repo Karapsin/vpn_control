@@ -163,13 +163,14 @@ class Probe:
     def _argv(self):
         program="import base64;OWNER_SOURCE=base64.b64decode("+repr(base64.b64encode(self.owner_raw).decode())+");WORKER_SOURCE=base64.b64decode("+repr(base64.b64encode(WORKER.encode()).decode())+");OWNER_SHA="+repr(OWNER_SHA)+";exec("+repr("try:\n exec(compile(base64.b64decode("+repr(base64.b64encode(REMOTE.encode()).decode())+"),'fixed-inert-probe','exec'))\nexcept Exception:\n import sys\n sys.stderr.write('probe_validation_unknown\\n')\n raise SystemExit(73)")+")"
         command=('/usr/bin/python3','-I','-B','-c',program)
-        if self.hop=='archlinux':
-            nested=['/usr/bin/ssh','-T']+(['-F',str(self.target.remote_config_file)] if self.target.remote_config_file else [])
-            nested+=['-S',str(self.target.remote_control_path),'-o','ControlMaster=no','-o','ProxyCommand=false','-o','BatchMode=yes','-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(self.target.known_hosts_file),self.target.remote_host_alias,shlex.join(command)]
-            command=tuple(nested)
-        argv=transport.build_ssh_argv(self.config,self.outer.alias,10,command=command,ssh_binary='/usr/bin/ssh')
-        argv[1:1]=['-F','/dev/null','-T','-o','ControlMaster=no','-o','ControlPath=none','-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no']
-        return [sys.executable,'-I','-B','-c',EXEC,json.dumps(argv)]
+        host=self.target.alias if self.hop=='archlinux' else self.outer.alias
+        return transport.build_ssh_argv(self.config,host,10,command=command,
+            ssh_binary='/usr/bin/ssh',nested_ssh_binary='/usr/bin/ssh',fresh_direct=True)
+
+    @staticmethod
+    def _client_limit():
+        import resource
+        resource.setrlimit(resource.RLIMIT_FSIZE,(4096,resource.getrlimit(resource.RLIMIT_FSIZE)[1]))
 
     def _query(self,action,keep=False):
         name='query-'+uuid4().hex;os.mkdir(name,0o700,dir_fd=self.directory.fd);os.fsync(self.directory.fd)
@@ -178,7 +179,7 @@ class Probe:
         err=os.open('stderr.private',os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory.fd)
         child=None;outcome='start_error';code=None;failure=None;argv=self._argv()
         try:
-            self._guard();child=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=out,stderr=err);outcome='awaiting_reply'
+            self._guard();child=transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=out,stderr=err,preexec_fn=self._client_limit);outcome='awaiting_reply'
             child.stdin.write(pins.canonical({'action':action,'packet':self.packet,'anchorPin':self.anchor})+b'\n');child.stdin.flush()
             if keep:
                 self.client=child;self.client_argv=argv
@@ -200,7 +201,9 @@ class Probe:
         except (OSError,ValueError):
             pins.create(directory,'receipt.json',pins.canonical({'action':action,'outcome':'capture_unknown','replayAllowed':False}))
             raise
-        pins.create(directory,'receipt.json',pins.canonical({'action':action,'outcome':outcome,'exitCode':code,'stdout':stdout.pin,'stderr':stderr.pin,'argvSha':pins.sha(pins.canonical(argv)),'client':self.birth if keep else None}))
+        pins.create(directory,'receipt.json',pins.canonical({'action':action,'outcome':outcome,'exitCode':code,'stdout':stdout.pin,'stderr':stderr.pin,'argvSha':transport.argv_sha256(argv),'client':self.birth if keep else None}))
+        if child is not None and not keep:
+            transport.finish_ssh(child,failed=failure is not None or outcome!='completed')
         self._guard()
         if failure is not None:raise failure
         pins.need((outcome=='connected' if keep else outcome=='completed' and code==0) and len(stdout.body)<LIMIT and not stderr.body and stdout.body.endswith(b'\n'),'query_unknown')
@@ -253,6 +256,8 @@ class Probe:
         except (OSError,ValueError,TypeError,KeyError,subprocess.SubprocessError):return {'state':'unknown','replayAllowed':False,'productAcceptance':False}
 
     def close(self):
+        if self.client is not None:
+            transport.finish_ssh(self.client,failed=self.client.poll() is None or self.client.returncode!=0 or (self.client.stdin is not None and not self.client.stdin.closed))
         # Closing evidence descriptors has no signal/release/remote effect.
         for fd in self.raw_fds:os.close(fd)
         self.raw_fds=[];self.authority.close()

@@ -1,0 +1,88 @@
+{
+  "bundleName": "active-work-4a9f62cc",
+  "files": {
+    "authorization.applescript": {
+      "bytes": 1585,
+      "sha256": "0789f24b63699510350dfd1ca5af37c82c3551442fe1c05befc1fbe46079b713",
+      "stagingGeneration": [
+        16777231,
+        269288892,
+        33152,
+        503,
+        20,
+        1,
+        1585,
+        1792570309990933477,
+        1792570309990933477
+      ]
+    },
+    "bundle.json": {
+      "bytes": 659,
+      "sha256": "f455a83e9cc64870810ac09cdd8ccd0904750b9b4b54b579822898ba39f03ff1",
+      "stagingGeneration": [
+        16777231,
+        269288891,
+        33152,
+        503,
+        20,
+        1,
+        659,
+        1792570309990856478,
+        1792570309990856478
+      ]
+    },
+    "caller.py": {
+      "bytes": 9114,
+      "sha256": "950d371680c7d8f42fda76b89ee9af480e046689c51268917b2074de2f2b3eea",
+      "stagingGeneration": [
+        16777231,
+        269288890,
+        33152,
+        503,
+        20,
+        1,
+        9114,
+        1792570309990781230,
+        1792570309990781230
+      ]
+    },
+    "install.py": {
+      "bytes": 31367,
+      "sha256": "6b89032e966861dbee0664d96f6c7a2b610708948a66b1bf6e57998e5a3ef42e",
+      "stagingGeneration": [
+        16777231,
+        269288888,
+        33152,
+        503,
+        20,
+        1,
+        31367,
+        1792570309990445236,
+        1792570309990445236
+      ]
+    },
+    "main.py": {
+      "bytes": 186511,
+      "sha256": "b94198b6c5457a5a6ab438577a9fed8e955a0c32dd3e214d5c7e08bd03af2bbb",
+      "stagingGeneration": [
+        16777231,
+        269288889,
+        33152,
+        503,
+        20,
+        1,
+        186511,
+        1792570309990614983,
+        1792570309990614983
+      ]
+    }
+  },
+  "idleAuthority": false,
+  "inputAuthority": false,
+  "lifecycleAuthority": false,
+  "nativeQualified": false,
+  "operationId": "ca6919f5-137e-4a1e-a68b-bef546c230da",
+  "publicationGenerationPins": null,
+  "schemaVersion": 1,
+  "state": "staged_not_published_not_installed"
+}

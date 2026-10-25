@@ -1,0 +1,28 @@
+{
+  "nativeEvidence": [
+    {
+      "artifact": "native-public-MacMeta-selectall-failure-1792510986253610000",
+      "keysym": 65511,
+      "publicObservation": "Option+A inserted å; selection failed",
+      "role": "option",
+      "sourceSha256": "4b83be6b11f98c496c1ebad1c947883d3062160d039a11e3f3cc536df49911b1"
+    },
+    {
+      "artifact": "native-public-MacMeta-SuperL-selectall-failure-1792511225927702000",
+      "keysym": 65515,
+      "publicObservation": "OLDPUBLICaNewProof!?; selection failed",
+      "role": "unqualified",
+      "sourceSha256": "8dbd9f8256232a449c8628e63cf09c2d0949f62935ee29cc91b1c8759dc0cd2c"
+    },
+    {
+      "artifact": "native-public-existing-Alt-diagnostic-1792511303827478000",
+      "keysym": 65513,
+      "publicObservation": "OldMarker! replaced by NewMarker?; old text absent",
+      "role": "command",
+      "sourceSha256": "8dbd9f8256232a449c8628e63cf09c2d0949f62935ee29cc91b1c8759dc0cd2c"
+    }
+  ],
+  "privateInputCreatedOrSubmitted": false,
+  "schemaVersion": 1,
+  "scope": "Tart 2.32.1 Apple Virtualization VNC owned macOS fixture; not generic VNC"
+}

@@ -1,0 +1,238 @@
+"""UNEXECUTED private fixed-operation confinement qualifier; no package evaluation or VM effects.
+Run ONLY as the exact reviewed durable Program assembled by confinement_control.
+"""
+from pathlib import Path
+import copy,errno,hashlib,json,os,plistlib,selectors,shutil,signal,socket,stat,subprocess,sys,time,types
+W=Path('/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart-suspend-preparation-134a68b4-4521-467c-a8fc-3d66d69d647c')
+ROOT=W.parents[2]
+OP='58a90aca-ad23-4aa3-b755-14d0c809d0ac'
+IMAGE=W/'confinement-2gib.dmg';MOUNT=W/'confinement-volume'
+CLAIM='suspend-confinement-'+OP
+FILE_CAP=2*1024**3;WORKING=4*1024**3
+# Injected by exact authenticated durable bootstrap, never caller source.
+need=lambda value,reason:None if value else (_ for _ in()).throw(ValueError(reason))
+INPUTS=_CONFINEMENT_INPUTS
+HOLDS=_CONFINEMENT_HOLDS
+OWNER_DEADLINE=time.monotonic()+360
+
+def generation(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def guard():
+    need(time.monotonic()<OWNER_DEADLINE,'owner_deadline')
+    for path,fd,g,digest in HOLDS:
+        need(generation(os.fstat(fd))==g and generation(path.lstat())==g,'input_changed')
+    for alias in INPUTS['aliases']:
+        path=Path(alias['path']);need(generation(path.lstat())==alias['generation']and str(path.resolve())==alias['resolved'],'input_alias_changed')
+    sdk=Path(INPUTS['sdk']['path'])
+    need(generation(sdk.lstat())==INPUTS['sdk']['generation'],'sdk_root_changed')
+
+def write(name,data):
+    path=Path(name);need(path.is_absolute()and(path.is_relative_to(W)or path.is_relative_to(MOUNT)),'evidence_path')
+    raw=data if isinstance(data,bytes)else(json.dumps(data,indent=2,sort_keys=True)+'\n').encode()
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,0o600)
+    with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+    return hashlib.sha256(raw).hexdigest()
+
+# Exact held local modules under two isolated packages; no normal project importer.
+for package in ('agent_tools','_confinement_scripts'):
+    module=types.ModuleType(package);module.__path__=[];sys.modules[package]=module
+modules={}
+for name,relative in (
+ ('agent_tools.durable_remote_job','agent_tools/durable_remote_job.py'),
+ ('agent_tools.private_inventory_lock','agent_tools/private_inventory_lock.py'),
+ ('_confinement_scripts.fixture_environment','scripts/fixture_environment.py'),
+ ('_confinement_scripts.native_fixture_storage','scripts/native_fixture_storage.py'),
+ ('_confinement_scripts.visual_target','scripts/visual_target.py'),
+ ('_confinement_scripts.visual_platform','scripts/visual_platform.py')):
+    path=ROOT/relative;held=next(item for item in HOLDS if item[0]==path)
+    raw=os.pread(held[1],os.fstat(held[1]).st_size+1,0)
+    need(hashlib.sha256(raw).hexdigest()==held[3],'module_sha_changed')
+    module=types.ModuleType(name);module.__file__=str(path);module.__package__=name.rsplit('.',1)[0]
+    sys.modules[name]=module;exec(compile(raw,str(path),'exec'),module.__dict__)
+    setattr(sys.modules[module.__package__],name.rsplit('.',1)[1],module);modules[name]=module
+jobs=modules['agent_tools.durable_remote_job'];storage=modules['_confinement_scripts.native_fixture_storage'];v=modules['_confinement_scripts.visual_platform']
+# Existing observation bodies stay unchanged; exact executable dispatch removes
+# PATH lookup for the three source-owned readonly resource commands.
+_original_run=v._run
+def fixed_observation_run(command,**kwargs):
+    need(command[0]in('tart','sysctl','vm_stat'),'resource_executable_scope')
+    guard();mapped=[INPUTS['tools'][command[0]]['path'],*command[1:]]
+    result=_original_run(mapped,**kwargs);guard();return result
+v._run=fixed_observation_run
+need(os.geteuid()!=0,'ordinary_user_required');PID=os.getpid();BIRTH=jobs._birth(PID);need(BIRTH is not None,'writer_birth_unavailable')
+COMMANDS=[]
+
+class Uncertain(Exception):pass
+
+def run(name,argv,limit=30,out_cap=2*1024**2,*,directory=None,env=None):
+    """Direct owned child, close_fds, bounded retained pipes and actual waitpid.
+    No reconstructed birth. An unavailable quick-child birth is reported as such.
+    Unknown child/pipe outcome prevents detach and claim reconciliation.
+    """
+    guard();started=time.monotonic();limit=min(limit,max(.01,OWNER_DEADLINE-started))
+    if name=='create':need(not os.path.lexists(IMAGE),'image_create_only_preexec')
+    child=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+        close_fds=True,start_new_session=True,env=env or {'PATH':'/usr/bin:/bin:/usr/sbin:/sbin'})
+    birth=jobs._birth(child.pid);destination=directory or W
+    write(destination/(name+'.started.json'),{'operationId':OP,'name':name,'pid':child.pid,'observedBirth':birth,'argv':argv,'deadlineSeconds':limit})
+    sel=selectors.DefaultSelector();buffers={'stdout':bytearray(),'stderr':bytearray()};counts={'stdout':0,'stderr':0}
+    for key,pipe in [('stdout',child.stdout),('stderr',child.stderr)]:sel.register(pipe,selectors.EVENT_READ,key)
+    term_sent=False;deadline=started+limit
+    while sel.get_map():
+        if time.monotonic()>deadline:
+            # Graceful signal ONLY if the same actual direct child is still known.
+            if not term_sent and birth is not None and jobs._birth(child.pid)==birth:
+                write(destination/(name+'.term.intent.json'),{'operationId':OP,'pid':child.pid,'birth':birth,'signal':'SIGTERM','cause':'own-step-deadline'})
+                os.kill(child.pid,signal.SIGTERM);term_sent=True;deadline=time.monotonic()+5
+            else:
+                for pipe in (child.stdout,child.stderr):pipe.close()
+                sel.close()
+                for stream,data in buffers.items():write(destination/(name+'.'+stream+'.partial'),bytes(data))
+                write(destination/(name+'.uncertain.json'),{'operationId':OP,'pid':child.pid,'observedBirth':birth,'counts':counts,'streamsEOF':False,'claimRetained':True})
+                raise Uncertain('original_child_or_stream_deadline:'+name)
+        for key,_ in sel.select(.1):
+            chunk=os.read(key.fileobj.fileno(),65536);stream=key.data
+            if not chunk:sel.unregister(key.fileobj);key.fileobj.close();continue
+            counts[stream]+=len(chunk);buffers[stream].extend(chunk[:max(0,out_cap-len(buffers[stream]))])
+    sel.close()
+    try:code=child.wait(timeout=max(.01,deadline-time.monotonic()))
+    except subprocess.TimeoutExpired:raise Uncertain('original_direct_child_wait_unknown:'+name)
+    row={'name':name,'argv':argv,'pid':child.pid,'observedBirth':birth,'closure':'source-owned-direct-waitpid',
+        'exitCode':code,'streamsEOF':True,'elapsedSeconds':round(time.monotonic()-started,4),
+        'stdoutBytes':counts['stdout'],'stderrBytes':counts['stderr'],'overflow':any(counts[k]>len(buffers[k])for k in counts),
+        'termSent':term_sent,'grandchildKernelBirthClaim':False}
+    for key,data in buffers.items():write(destination/(name+'.'+key),bytes(data))
+    write(destination/(name+'.json'),row);COMMANDS.append(row)
+    need(not row['overflow']and not term_sent and code==0,'command_refused:'+name);guard()
+    return bytes(buffers['stdout'])
+
+def hdi_info(name):return plistlib.loads(run(name,['/usr/bin/hdiutil','info','-plist']))
+def own_mount_entries(info):
+    return [row for row in info.get('images',[])if str(row.get('image-path',''))==str(IMAGE)]
+
+def admit():
+    guard();need(not os.path.lexists(IMAGE)and not os.path.lexists(MOUNT),'create_only_target_exists')
+    plan={'platform':'macos','directory':str(W),'disks':[{'path':str(IMAGE),'capacityBytes':FILE_CAP}],
+        'workingBytes':WORKING,'writerPid':PID,'state':'pending','stagingBytes':0}
+    plans=storage.StoragePlans(ROOT/'.runtime/visual-vms')
+    with v._resource_lock():
+        policy,policy_path=v._resource_policy();alloc=v._reservation_allocations(v._read_reservations())+v._tart_running_allocations()
+        samples=[v._host_memory_snapshot(),v._host_memory_snapshot()]
+        for sample in samples:
+            need(sample['pressure_critical']is False and sample['available_mib']>=policy['minimum_available_mib']+2048,'tool_memory_available')
+            need(sample['physical_mib']>=sum(alloc)+policy['build_headroom_mib']+2048,'tool_memory_physical')
+        need(samples[0]['physical_mib']==samples[1]['physical_mib']and samples[1]['swap_used_mib']<=samples[0]['swap_used_mib'],'tool_memory_samples')
+        with plans._locked():
+            state=plans._read();before=copy.deepcopy(state);need(CLAIM not in state['plans'],'claim_already_consumed');plans._validate(CLAIM,plan)
+            seen=set();dev=W.stat().st_dev;candidate=plans._growth(plan,dev,seen);others=sum(plans._growth(p,dev,seen)for p in state['plans'].values());free=shutil.disk_usage(W).free
+            need(free>=candidate+others+storage.HEADROOM_BYTES,'tool_storage_capacity');need(jobs._birth(PID)==BIRTH,'writer_changed');guard()
+            before_sha=write(W/'confinement-ledger-before.private.json',before)
+            state['plans'][CLAIM]=plan;need({k:x for k,x in state['plans'].items()if k!=CLAIM}==before['plans'],'other_plan_changed');plans._save(state)
+            admission={'candidateGrowthBytes':candidate,'otherGrowthBytes':others,'headroomBytes':storage.HEADROOM_BYTES,'freeBytes':free,'requiredBytes':candidate+others+storage.HEADROOM_BYTES}
+    return write(W/'confinement-admission.json',{'beforeLedgerSha256':before_sha,'operationId':OP,'writer':{'pid':PID,'birth':BIRTH},'claim':CLAIM,'plan':plan,'storage':admission,
+        'memorySamples':samples,'configuredAndRetainedMiB':sum(alloc),'nonVmToolBudgetMiB':2048,'noVmAuthority':True})
+
+def safe_path(path):
+    value=str(path);need(path.is_absolute()and all(c.isascii()and(c.isalnum()or c in '/._-')for c in value),'profile_literal_path')
+    return value
+
+def profile(binary,*,compile_phase=False):
+    held=next(x for x in HOLDS if x[0]==W/'confinement_probe.sb.template')
+    text=os.pread(held[1],os.fstat(held[1]).st_size+1,0).decode();text=text.replace('@WORK_VOLUME@',safe_path(MOUNT)).replace('@PROBE_BINARY@',safe_path(binary))
+    ancestors=set(MOUNT.parents)|set(binary.parents)
+    text=text.replace('@EXACT_ANCESTOR_METADATA_RULES@','\n'.join('(allow file-read-metadata (literal '+json.dumps(safe_path(p))+'))'for p in sorted(ancestors,key=str)))
+    if compile_phase:
+        text=text.replace('(allow process-exec (literal '+json.dumps(str(binary))+'))',
+            '(allow process-exec (literal '+json.dumps(str(binary))+') (literal '+json.dumps(INPUTS['tools']['ld']['path'])+'))')
+    need('@'not in text,'profile_unfilled');return text.encode()
+
+def drain(tcp,udp):
+    connections=0;datagrams=[]
+    for sock in (tcp,udp):sock.setblocking(False)
+    while True:
+        try:connection,_=tcp.accept();connections+=1;connection.close()
+        except BlockingIOError:break
+    while True:
+        try:payload,_=udp.recvfrom(64);datagrams.append(payload.hex())
+        except BlockingIOError:break
+    return {'connections':connections,'datagrams':datagrams}
+
+def main():
+    admission_sha=admit();need(not own_mount_entries(hdi_info('hdi-before')),'image_already_attached')
+    run('create',['/usr/bin/hdiutil','create','-size','2g','-type','UDIF','-fs','APFS','-volname','ConfinementQualification',str(IMAGE)])
+    info=IMAGE.lstat();need(stat.S_ISREG(info.st_mode)and info.st_uid==os.geteuid()and info.st_nlink==1 and info.st_size<=FILE_CAP,'created_image_shape');os.chmod(IMAGE,0o600)
+    image_info=plistlib.loads(run('imageinfo',['/usr/bin/hdiutil','imageinfo','-plist',str(IMAGE)]))
+    props=image_info['Properties'];need(image_info.get('Format')=='UDRW'and props.get('Compressed')=='no'and props.get('Encrypted')is False and props.get('Partitioned')is False,'image_not_plain_udrw')
+    sectors=image_info.get('Size Information',{}).get('Sector Count');need(sectors is not None and sectors*512==FILE_CAP and image_info['Size Information'].get('Total Bytes')==FILE_CAP and IMAGE.stat().st_size==FILE_CAP and IMAGE.stat().st_blocks*512<=FILE_CAP,'image_geometry')
+    MOUNT.mkdir(mode=0o700)
+    attached=plistlib.loads(run('attach',['/usr/bin/hdiutil','attach','-plist','-nobrowse','-noautoopen','-owners','on','-mountpoint',str(MOUNT),str(IMAGE)]))
+    entities=attached.get('system-entities',[]);mounted=[x for x in entities if x.get('mount-point')==str(MOUNT)];need(len(mounted)==1,'mounted_volume_identity')
+    devices=[x['dev-entry']for x in entities if set(x)=={'dev-entry','potentially-mountable'}and x['potentially-mountable']is False and str(x['dev-entry']).startswith('/dev/disk')];need(len(devices)==1,'attach_device_absent');device=devices[0]
+    os.chmod(MOUNT,0o700);ms=MOUNT.stat();need(ms.st_dev!=W.stat().st_dev and ms.st_uid==os.geteuid()and stat.S_IMODE(ms.st_mode)==0o700,'owned_mounted_volume')
+    for relative in ['src','bin','cache','cache/modules','tmp','proof']:(MOUNT/relative).mkdir(mode=0o700)
+    for source in ['confinement_probe.c']:
+        held=next(x for x in HOLDS if x[0]==W/source);write(MOUNT/'src'/source,os.pread(held[1],os.fstat(held[1]).st_size+1,0))
+    clang=Path(INPUTS['tools']['clang']['path']);binary=MOUNT/'bin/confinement-probe'
+    compile_profile=MOUNT/'proof/compile.sb';write(compile_profile,profile(clang,compile_phase=True))
+    env={'PATH':'/Library/Developer/CommandLineTools/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin','TMPDIR':str(MOUNT/'tmp'),
+         'CLANG_MODULE_CACHE_PATH':str(MOUNT/'cache/modules'),'SDKROOT':INPUTS['sdk']['path']}
+    # No HOME/home/CODEX_HOME assignments or overrides, in parent or child.
+    compile_argv=['/usr/bin/sandbox-exec','-f',str(compile_profile),str(clang),'-O0','-fno-modules','-fno-implicit-modules',
+        '-fmodules-cache-path='+str(MOUNT/'cache/modules'),'-isysroot',INPUTS['sdk']['path'],str(MOUNT/'src/confinement_probe.c'),'-o',str(binary)]
+    need(not os.path.lexists(binary),'probe_output_create_only')
+    run('compile',compile_argv,30,directory=MOUNT/'proof',env=env)
+    bs=binary.lstat();need(stat.S_ISREG(bs.st_mode)and bs.st_uid==os.geteuid()and bs.st_nlink==1,'probe_binary_shape')
+    bfd=os.open(binary,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC);binary_sha=hashlib.sha256(os.pread(bfd,bs.st_size+1,0)).hexdigest()
+    probe_profile=MOUNT/'proof/probe.sb';write(probe_profile,profile(binary))
+    read_control=W/'confinement-public-read-control';write(read_control,b'public-sentinel\n')
+    read_fd=os.open(read_control,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC);read_gen=generation(os.fstat(read_fd))
+    negative_write=W/'confinement-denied-write-control';baseline_write=W/'confinement-baseline-write-control'
+    need(not os.path.lexists(negative_write)and not os.path.lexists(baseline_write),'outside_control_consumed')
+    tcp=socket.socket();tcp.bind(('127.0.0.1',0));tcp.listen(4);port=tcp.getsockname()[1]
+    udp=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);udp.bind(('127.0.0.1',port))
+    def probe_argv(write_control):return[str(binary),'child',str(MOUNT),str(read_control),str(write_control),str(port)]
+    baseline=json_lines(run('baseline',probe_argv(baseline_write),15,8192,directory=MOUNT/'proof',env=env))
+    baseline_network=drain(tcp,udp)
+    need(all(x['allowedWrite']and x['outsideReadFd']>=0 and x['tcpRc']==0 and x['udpRc']==1 and x['machLookupRc']==0 for x in baseline),'baseline_incomplete')
+    baseline_child=next(x for x in baseline if x['level']==1);baseline_grandchild=next(x for x in baseline if x['level']==2)
+    need(baseline_child['outsideWriteFd']>=0 and baseline_grandchild['outsideWriteFd']==-1 and baseline_grandchild['outsideWriteErrno']==errno.EEXIST,'baseline_write_control')
+    need(baseline_network=={'connections':2,'datagrams':['50','50']},'baseline_network_incomplete')
+    need(generation(os.fstat(bfd))==generation(bs)and generation(binary.lstat())==generation(bs),'probe_binary_changed')
+    constrained=json_lines(run('constrained',['/usr/bin/sandbox-exec','-f',str(probe_profile),*probe_argv(negative_write)],15,8192,directory=MOUNT/'proof',env=env))
+    negative_network=drain(tcp,udp);tcp.close();udp.close()
+    for x in constrained:
+        need(x['allowedWrite']and x['outsideReadFd']==-1 and x['outsideReadErrno']in(errno.EPERM,errno.EACCES),'private_read_not_denied')
+        need(x['outsideWriteFd']==-1 and x['outsideWriteErrno']in(errno.EPERM,errno.EACCES),'outside_write_not_denied')
+        need(x['tcpRc']==-1 and x['tcpErrno']in(errno.EPERM,errno.EACCES)and x['udpRc']==-1 and x['udpErrno']in(errno.EPERM,errno.EACCES),'network_not_denied')
+        need(x['machLookupRc']!=0,'mach_lookup_not_denied')
+    need(negative_network=={'connections':0,'datagrams':[]}and not os.path.lexists(negative_write)and generation(os.fstat(read_fd))==read_gen and generation(read_control.lstat())==read_gen and os.pread(read_fd,32,0)==b'public-sentinel\n','outside_control_changed')
+    result={'schemaVersion':1,'operationId':OP,'writer':{'pid':PID,'birth':BIRTH},'claim':CLAIM,'admissionSha256':admission_sha,'baseline':baseline,'constrained':constrained,
+        'grandchildClosure':'source-owned exact waitpid-only; no retrospectively asserted kernel birth',
+        'probeBinarySha256':binary_sha,'commands':COMMANDS,'logicalImageCapBytes':FILE_CAP,'hostCowAggregateUpperBoundProven':False,
+        'brokerLimits':'No Mach lookup exceptions; inherited rights/XPC proxy completeness not proved by these probes.','noManifestOrProjectBuild':True,'noVmAuthority':True}
+    write(MOUNT/'proof/prototype-result.json',result);os.close(bfd);os.close(read_fd)
+    # No writable file/descriptor remains held by this owner within the volume.
+    current=own_mount_entries(hdi_info('hdi-pre-detach'));need(len(current)==1 and any(x.get('dev-entry')==device for x in current[0].get('system-entities',[])),'detach_original_device_changed')
+    run('detach',['/usr/bin/hdiutil','detach',device],30)
+    need(not own_mount_entries(hdi_info('hdi-after'))and MOUNT.stat().st_dev==W.stat().st_dev,'own_mount_not_absent')
+    guard();result.update({'state':'prototype-qualified-detached','detachDevice':device,'mountPositivelyAbsent':True,'commands':COMMANDS,
+        'imageMetadata':{'bytes':IMAGE.stat().st_size,'allocatedBytes':IMAGE.stat().st_blocks*512,'generation':generation(IMAGE.lstat())}})
+    result_sha=write(W/'confinement-result.json',result)
+    print(json.dumps({'state':result['state'],'resultSha256':result_sha,'operationId':OP,'claim':CLAIM,'grandchildKernelBirthClaim':False,'noVmAuthority':True}),flush=True)
+
+
+def json_lines(raw):
+    need(len(raw)<=8192,'probe_stream_size');rows=[json.loads(line)for line in raw.splitlines()]
+    keys={'schemaVersion','pid','parentPid','level','allowedWrite','allowedErrno','outsideReadFd','outsideReadRc','outsideReadErrno','outsideWriteFd','outsideWriteErrno','tcpRc','tcpErrno','udpRc','udpErrno','machLookupRc'}
+    need(len(rows)==2 and all(type(x)is dict and set(x)==keys and type(x['allowedWrite'])is bool and all(type(v)is int for k,v in x.items()if k!='allowedWrite')and x['schemaVersion']==1 and x['pid']>0 and x['parentPid']>0 for x in rows)and {x['level']for x in rows}=={1,2},'probe_rows')
+    child=next(x for x in rows if x['level']==1);grandchild=next(x for x in rows if x['level']==2)
+    need(grandchild['parentPid']==child['pid']and grandchild['pid']!=child['pid'],'source_owned_waitpid_ancestry')
+    expected=COMMANDS[-1]['pid'];need(child['pid']==expected,'original_direct_child_pid_mismatch')
+    return rows
+
+try:main()
+except BaseException as error:
+    # Deliberately no cleanup retry, forced detach, child replacement or claim
+    # release on failure. Original actor/partial/mount remain for reconciliation.
+    print(json.dumps({'state':'unknown-or-preserved-failure','operationId':OP,'reason':str(error)[:200],
+        'claimRetained':True,'commands':COMMANDS,'noVmAuthority':True}),flush=True)
+    raise

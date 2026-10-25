@@ -5,6 +5,7 @@ private fixture root; an uncertain SSH result preserves that directory for
 inspection and never retries a product mutation.
 """
 from __future__ import annotations
+from . import ssh_transport
 
 import ast
 import base64
@@ -33,7 +34,7 @@ _PREFLIGHT_STAGES = ("uid", "api", "kernel_avd", "boot_avd", "abi", "package",
 
 def _run_stream_probe(argv: list[str], timeout_seconds: int) -> tuple[int | None, list[dict[str, Any]], bool]:
     """Keep bounded completed stage events even if the SSH observer times out."""
-    process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+    process = ssh_transport.popen_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     assert process.stdout is not None
     lines: list[dict[str, Any]] = []
@@ -80,6 +81,8 @@ def _run_stream_probe(argv: list[str], timeout_seconds: int) -> tuple[int | None
         if process.poll() is None: process.kill()
         process.wait()
         process.stdout.close()
+
+        ssh_transport.finish_ssh(process)
 
 
 def _remote_preflight() -> str:

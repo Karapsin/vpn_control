@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "originalInstallerSha256": "5826cd285ce5d35f0b32671974732928a318b539f5a0ae7346b6e208dc2ae9b6",
+  "fixedContinuationSha256": "d1274d5aa33b254ce7792e861c419566b3076b334a065a0738d6ee790c5ae5f3",
+  "originalPublicManifestSha256": "f60d216deb5c24c7b14add46caebb1ffd8b05b36d67b38cc664adfe8eecc1d7e",
+  "publicManifestRows": 1826,
+  "nativeHarmlessProbe": {
+    "captureBasename": "public-native-copy-xattr-old-RED-new-X-probe-1792514000994372000.png",
+    "captureSha256": "b775c5a2b55ef94c4db919cb757e103d0c737cb8e125ed4167e9531eee85da81",
+    "sourceRelativePath": "python/python/bin/python3",
+    "oldFlags": "-RP",
+    "oldExitCode": 1,
+    "newFlags": "-RPX",
+    "newExitCode": 0,
+    "errorPhase": "symlink_extended_attributes",
+    "error": "Too many levels of symbolic links",
+    "bothRemainSymlinks": true,
+    "bothLinkTarget": "python3.12",
+    "bothDisplayedModeOctal": "0755",
+    "sameNativeProbeRoot": "/tmp/vpn-tool-recovery-copy-36ba0ac3"
+  },
+  "originalPartialPrefix": {
+    "path": "/usr/local/libexec/vpn-tool-recovery",
+    "rootInode": 44063,
+    "startedMarkerInode": 44064,
+    "automaticReplay": false,
+    "retained": true
+  },
+  "newContinuationPrefix": "/usr/local/libexec/vpn-tool-recovery-cont-63517582",
+  "fullNativeContinuationQualified": true,
+  "scope": "Public native harmless-copy facts only. Root-owned full continuation is qualified separately by the Tart operator; no credentials, private inputs or GUI effects are reproduced by this routine fixture.",
+  "fullNativeCopyContinuation": {
+    "installerSha256": "d1274d5aa33b254ce7792e861c419566b3076b334a065a0738d6ee790c5ae5f3",
+    "publicTerminalCapture": "public-new-continuation-terminal-public-completion-1792515175787907000.png",
+    "publicTerminalCaptureSha256": "2586dda6638a3780b36651c32fe77370baa972a2ebf732ebc57b3db500e55813",
+    "observedTerminalText": "qualified_continuation_complete_links_modes_root_ownership",
+    "originalPartialPrefixRetained": true,
+    "agentRpcAcceptance": "separate_unresolved_timeout"
+  }
+}

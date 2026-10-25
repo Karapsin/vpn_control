@@ -1,0 +1,45 @@
+def s3_precondition(operation):
+ fixture=registry.registered_fixture(ROOT,ID);backend=fixture.adapter.backend;deadline=time.monotonic()+180
+ before,_=backend._run('observe',operation,deadline)
+ save(operation+'-before.json',before)
+ assert before['state']=='observed'and before['facts']['guest']=='running'and set(before['facts']['idleVisibility'])==q.readiness.IDLE_VISIBILITY and not before['facts']['idleBlockers'],before
+ original=q.packets.program
+ def suspend_packet(*args,**kwargs):
+  source=original(*args,**kwargs)
+  extra="""            need(observed['guest']=='running' and observed['boot']==S3_BOOT and observed['owner']==S3_OWNER and len(observed['idleVisibility'])==7 and not observed['idleBlockers'],'s3_positive_idle_proof')
+            info=rpc('qmp.sock','query-current-machine')
+            need(info.get('wakeup-suspend-support') is True,'s3_wakeup_support')
+            info=rpc('qga.sock','guest-info',agent=True)
+            need(any(row.get('name')=='guest-suspend-ram' and row.get('enabled') is True for row in info.get('supported_commands',[])),'s3_guest_support')
+            save(manager/('s3-test-'+S3_OPERATION+'.json'),{'operationId':S3_OPERATION,'action':'intentional-s3','owner':owner,'boot':observed['boot'],'idleVisibility':observed['idleVisibility'],'idleBlockers':observed['idleBlockers'],'controllerSourceSha256':CONTROLLER_SOURCE_SHA})
+            closing()
+            result['s3Submission']=rpc('qga.sock','guest-suspend-ram',agent=True)
+            time.sleep(.15)
+            result['s3AfterChannelClose']=rpc('qmp.sock','query-status')['status']
+"""
+  needle='            closing(); print(json.dumps(result, sort_keys=True)); return\n';assert source.count(needle)==1
+  source=source.replace(needle,extra+needle)
+  needle='                for _ in range(32):\n                    response = json.loads(read())';assert source.count(needle)==1
+  quiet="""                if agent and item=='guest-suspend-ram':
+                    for settle in range(250):
+                        if __import__('select').select([client],[],[],0)[0]:
+                            response=json.loads(read())
+                            need(False,'s3_agent_replied_before_suspend')
+                        if rpc('qmp.sock','query-status')['status']=='suspended':
+                            response={'return':{'submittedNoReply':True,'suspendedObserved':True}};break
+                        time.sleep(.02)
+                    else:
+                        raise ValueError('s3_not_observed_in_controller')
+                    break
+"""
+  source=source.replace(needle,quiet+needle)
+  return 'S3_BOOT='+repr(before['facts']['boot'])+'\nS3_OWNER='+repr(before['facts']['owner'])+'\nS3_OPERATION='+repr(operation)+'\n'+source
+ q.packets.program=suspend_packet
+ try:sent,_=backend._run('observe',operation,deadline)
+ finally:q.packets.program=original
+ save(operation+'-suspend-returned.json',sent);assert sent['state']=='observed'and sent['s3Submission']=={'submittedNoReply':True,'suspendedObserved':True}and sent['s3AfterChannelClose']=='suspended'
+ for attempt in range(8):
+  asleep,_=backend._run('observe',operation,deadline);save(operation+'-sleep-observation-'+str(attempt)+'.json',asleep)
+  if asleep['state']=='observed'and asleep['facts']['guest']=='suspended':
+   assert asleep['facts']['owner']==before['facts']['owner'];return before['facts'],asleep['facts']
+ raise ValueError('owned_intentional_s3_not_observed')

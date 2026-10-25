@@ -13,6 +13,18 @@ not fresh readiness or instructions to repeat an original operation. Observe an
 unknown original only through its existing identity. A recipe or diagnostic alone
 grants no lease release, credential change, runtime interruption or native action.
 
+## Local inventory and capture qualification
+
+The pure local platform probe reports `infrastructureAvailable` and
+`candidateKinds` for configured lifecycle candidates. These observations do not
+qualify an interactive desktop or release capture. Without a source-owned
+qualification consumer it reports `ready: false`, empty `capabilities` and
+`qualificationState: unqualified` (or `unavailable` when no candidate exists).
+The capture planner requires qualified capabilities. Explicit bootstrap and
+start use infrastructure availability, so an existing stopped VM remains a
+startup candidate and is not rebuilt because capture qualification is absent.
+Actual capture retains its separate target, session and input admission checks.
+
 ## Windows retained input observer
 
 `vm_workflow` exposes `windows-input-start`, `windows-input-observe`,
@@ -405,10 +417,22 @@ observed evidence. The credential-input driver must separately use the existing
 prompt freshness guard immediately before input. This metadata/pixel check never
 types a credential or establishes installer success.
 
+The historical `windows-msi-owner-relaunch-launch`, `windows-msi-stale-lock-recover`,
+`windows-msi-stale-lock-reconcile`, and `windows-fixture-stage-recover-7f27`
+mutation or associated cleanup phases require exactly `host` and `vmIdentity`.
+Use the original QEMU process generation as `vmIdentity` in canonical
+`<qemuPid>:<startTicks>` form. The selector must match the retained original
+operation's environment, socket and account binding and its current configured
+binding before recovery or transport. This selects the original actor; it does
+not establish an SMBIOS UUID or historical host boot absent from the old record.
+Status, diagnosis and terminal-close actions retain their original schemas.
+
 `vm_workflow("windows-credential-probe-start", inputs=...)` and
 `vm_workflow("windows-credential-probe-status", inputs=...)` are the only
-credential-probe actions. Both accept exactly `host`, `correlationId`, and the
-optional `timeoutSeconds`; the first two are nonempty strings, `correlationId`
+credential-probe actions. New starts require `host`, `environment`, `correlationId`,
+and optional `timeoutSeconds`. The environment must match the configured VM before
+private input or transport; status accepts only the original `host`, `correlationId`,
+and optional timeout. Identity fields are nonempty strings, `correlationId`
 must be a UUID, and `timeoutSeconds` is an integer from 1 through 60 (15 by
 default). They do not accept a password, account, SID, QGA command, executable,
 arguments, script, or guest path.
@@ -463,7 +487,7 @@ establish native Windows/QGA acceptance; native verification remains pending.
 
 ```text
 vm_workflow("windows-credential-probe-start", {
-  "host": "<host-alias>",
+  "host": "<host-alias>", "environment": "<configured Windows environment>",
   "correlationId": "<new UUID>",
   "timeoutSeconds": 15
 })
@@ -506,16 +530,17 @@ intent retains the prior private credential reference and refuses publication if
 that reference or the VM/account binding has changed.
 
 `vm_workflow("windows-credential-recover-start", inputs=...)` and
-`vm_workflow("windows-credential-recover-status", inputs=...)` accept exactly
-`host`, `correlationId`, and optional integer `timeoutSeconds` from 1 through 60
-(15 by default). `vm_workflow("credential-status", inputs=...)` accepts exactly
+`vm_workflow("windows-credential-recover-status", inputs=...)` require `host`,
+`correlationId`, and optional integer `timeoutSeconds` from 1 through 60 (15 by
+default). New starts also require an explicit `environment` matching the configured
+Windows VM. `vm_workflow("credential-status", inputs=...)` accepts exactly
 `host`, `correlationId`, and opaque `handle`; it reports availability plus the
 bound environment, account name, SID, purpose, and correlation, never credential
 bytes. `correlationId` must be a UUID.
 
 ```text
 vm_workflow("windows-credential-recover-start", {
-  "host": "<host-alias>", "correlationId": "<new UUID>", "timeoutSeconds": 15
+  "host": "<host-alias>", "environment": "<configured Windows environment>", "correlationId": "<new UUID>", "timeoutSeconds": 15
 })
 vm_workflow("windows-credential-recover-status", {
   "host": "<host-alias>", "correlationId": "<same UUID>", "timeoutSeconds": 15

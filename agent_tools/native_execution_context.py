@@ -24,16 +24,46 @@ _CORE = frozenset('agent_tools/'+name+'.py' for name in (
 _REQUIRED_SCRIPTS = frozenset('scripts/'+name for name in (
     'version_metadata.py','prepare_desktop_update_fixture.py','fixture_environment.py',
     'native_fixture_run.sh','prepare_sing_box_desktop_runtime.sh','test_jpackage_launcher.py'))
-# Only these known check-output/lifetime helpers are unrelated to the fixed
-# native build procedure. A new unknown tool file is never silently excluded.
-_UNRELATED = frozenset({'agent_tools/managed_check_lease.py','agent_tools/check_output_retention.py'})
-_DYNAMIC = {'agent_tools/ssh_transport.py': frozenset({'ssh_connection_session','ssh_channel_selection','ssh_automatic_program'})}
+# This known check-lifetime helper is unrelated to the fixed native build.
+# Output retention is now used by the channel keeper and must be held as source.
+# A new unknown tool file is never silently excluded.
+_UNRELATED = frozenset({'agent_tools/managed_check_lease.py'})
+_DYNAMIC = {'agent_tools/ssh_transport.py': frozenset({
+    'ssh_connection_session','ssh_channel_selection','ssh_automatic_program',
+    'readiness_nested_channel','readiness_ssh_master','readiness'})}
+_STDLIB_DYNAMIC = {
+    'agent_tools/ssh_direct_nested_channel.py': frozenset({'shlex'}),
+    'agent_tools/readiness_transport.py': frozenset({'contextlib'}),
+    'agent_tools/readiness_nested_channel.py': frozenset({'__future__'}),
+}
 
 class ExecutionContextError(ValueError):
     pass
 
 def _need(value, reason):
     if not value:raise ExecutionContextError(reason)
+
+def _dynamic_name(arg):
+    if isinstance(arg,ast.Constant) and isinstance(arg.value,str):
+        return arg.value.removeprefix('agent_tools.')
+    if (isinstance(arg,ast.JoinedStr) and len(arg.values)==2
+            and isinstance(arg.values[0],ast.FormattedValue)
+            and isinstance(arg.values[0].value,ast.Name)
+            and arg.values[0].value.id=='__package__'
+            and arg.values[0].conversion==-1 and arg.values[0].format_spec is None
+            and isinstance(arg.values[1],ast.Constant)
+            and isinstance(arg.values[1].value,str) and arg.values[1].value.startswith('.')):
+        return arg.values[1].value[1:]
+    # The reviewed nested caller supports package and standalone execution.
+    # Both branches must resolve to the same finite repository-owned module.
+    if (isinstance(arg,ast.IfExp) and isinstance(arg.test,ast.Name)
+            and arg.test.id=='__package__' and isinstance(arg.body,ast.JoinedStr)
+            and isinstance(arg.orelse,ast.Constant) and isinstance(arg.orelse.value,str)
+            and arg.orelse.value.startswith('agent_tools.')):
+        name=_dynamic_name(arg.body)
+        _need(arg.orelse.value=='agent_tools.'+name,'native_dependency_dynamic_unknown')
+        return name
+    raise ExecutionContextError('native_dependency_dynamic_unknown')
 
 def _safe(path):
     return path in _UNRELATED or path == 'README.md' or path.startswith(('docs/','agent_docs/','agent_tools/tests/','tests/'))
@@ -207,11 +237,11 @@ def _catalogue(root, sha):
             dynamic=(isinstance(func,ast.Name) and func.id=='__import__' or isinstance(func,ast.Attribute) and func.attr in ('import_module','__import__'))
             if not dynamic:continue
             _need(len(node.args)==1 and not node.keywords,'native_dependency_dynamic_unknown');arg=node.args[0]
-            if isinstance(arg,ast.Constant) and isinstance(arg.value,str):name=arg.value.removeprefix('agent_tools.')
-            elif (isinstance(arg,ast.JoinedStr) and len(arg.values)==2 and isinstance(arg.values[0],ast.FormattedValue)
-                  and isinstance(arg.values[0].value,ast.Name) and arg.values[0].value.id=='__package__' and isinstance(arg.values[1],ast.Constant)):
-                name=arg.values[1].value.removeprefix('.')
-            else:raise ExecutionContextError('native_dependency_dynamic_unknown')
+            name=_dynamic_name(arg)
+            if name in _STDLIB_DYNAMIC.get(path,frozenset()):
+                _need(isinstance(arg,ast.Constant) and arg.value==name
+                      and name in stdlib,'native_dependency_dynamic_unknown')
+                continue
             _need(name in _DYNAMIC.get(path,frozenset()) and 'agent_tools/'+name+'.py' in rows,'native_dependency_dynamic_unknown')
             pending.append('agent_tools/'+name+'.py')
     # Actual source consumed by the native tooling retains the existing held-FD

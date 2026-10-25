@@ -198,14 +198,33 @@ class DurableTransportTest(unittest.TestCase):
         self.assertTrue(client.eof)
         self.assertEqual(client.child.returncode, 0)
 
+    def test_preserved_elapsed_exit_phase_refuses_a_slow_actual_client(self):
+        import types
+        folder=Path(__file__).parent/'fixtures/ssh_stream_e2big';path=folder/'test_windows_parallel_vm_prepare_transport.py.before.source'
+        raw=path.read_bytes();self.assertEqual(json.loads((folder/'provenance.json').read_bytes())['beforeimages'][Path(__file__).name],hashlib.sha256(raw).hexdigest())
+        previous=types.ModuleType('agent_tools.tests._elapsed_exit_before');previous.__file__=str(path);previous.__package__='agent_tools.tests'
+        exec(compile(raw,str(path),'exec'),previous.__dict__)
+        original=self.client
+        def delayed(code):return original('import time;time.sleep(.25);'+code)
+        self.client=delayed
+        try:
+            with self.assertRaises(AssertionError):previous.DurableTransportTest.test_actual_exited_client_held_descendant_pipe_is_unknown_until_real_eof(self)
+        finally:self.client=original
+
     def test_actual_exited_client_held_descendant_pipe_is_unknown_until_real_eof(self):
-        code = "import subprocess,sys;subprocess.Popen([sys.executable,'-c','import time;time.sleep(.35)']);print('PUBLIC',flush=True)"
+        gate=self.root/'held-descendant-release'
+        descendant="from pathlib import Path;import time;p=Path("+repr(str(gate))+");end=time.monotonic()+5\nwhile not p.exists() and time.monotonic()<end:time.sleep(.01)"
+        code = "import os,subprocess,sys;subprocess.Popen([sys.executable,'-c',"+repr(descendant)+"]);print('PUBLIC',flush=True);os._exit(0)"
         client, evidence = self.client(code)
-        with self.assertRaises(transport.ClientUnknown):
-            client.observe(.1)
-        self.assertEqual(client.child.poll(), 0)
-        self.assertFalse(client.eof)
-        self.assertEqual((evidence / 'transport.stdout.private').read_bytes(), b'PUBLIC\n')
+        # Actual original exit, rather than elapsed wall time, admits this
+        # inherited-pipe test phase even on a saturated fixture host.
+        self.assertEqual(0,client.child.wait(timeout=3))
+        try:
+            with self.assertRaises(transport.ClientUnknown):client.observe(.1)
+            self.assertEqual(client.child.poll(), 0)
+            self.assertFalse(client.eof)
+            self.assertEqual((evidence / 'transport.stdout.private').read_bytes(), b'PUBLIC\n')
+        finally:gate.touch()
         self.assertEqual(client.observe(2), b'PUBLIC\n')
         self.assertTrue(client.eof)
 

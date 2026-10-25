@@ -13,6 +13,24 @@ FIXTURES=Path(__file__).parent/'fixtures'/'ssh_direct_inventory_diagnostic'
 FRESH_BEFORE='f569a8b606d207b4d5a5623cc580216a595f2826ed93ebca5f2ab38cb1a55663'
 DIRECT_BEFORE='99c6ce89cda8431936220be31ea0b6c989b78668d1a155b71cbb98d85c23ce0f'
 DIRECT_AFTER='5b82a0a63fbd2fbc44aa4203c76060ede36236a11cdc8399e186bf7c69cc2ff3'
+ARCHIVE_PROVENANCE_SHA='36be70baabf05dd6378a9cda0a534d0e6ad1a609881977d656fa5758fa1bbb52'
+
+def historical_sources(folder=None):
+    """Authenticate the frozen graph and read its own declared dependency epoch."""
+    folder=history.CURRENT_PROVIDER_SOURCE.parent if folder is None else Path(folder)
+    raw=(folder/'provenance.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=ARCHIVE_PROVENANCE_SHA:raise ValueError('historical_manifest_changed')
+    provenance=json.loads(raw);records=provenance['sources'];bodies={}
+    for record in records:
+        name=record['path']
+        if name in bodies or Path(name).name!=name:raise ValueError('historical_source_name')
+        body=(folder/name).read_bytes()
+        if hashlib.sha256(body).hexdigest()!=record['sourceSha256']:raise ValueError('historical_source_changed')
+        bodies[name]=body
+    declarations=[ast.literal_eval(node.value)for node in ast.parse(bodies['ssh_direct_nested_channel.py']).body
+                  if isinstance(node,ast.Assign)and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)and node.targets[0].id=='_SOURCE_NAMES']
+    if len(declarations)!=1 or set(declarations[0])!=set(bodies)or len(declarations[0])!=len(bodies):raise ValueError('historical_source_closure_changed')
+    return {name:bodies[name]for name in declarations[0]}
 
 def load_public(path,name):
     spec=importlib.util.spec_from_file_location('agent_tools._ended_inventory_fixture_'+name,path)
@@ -25,9 +43,8 @@ class EndedInventorySuccessorTests(unittest.TestCase):
         self.fd_before=len(os.listdir('/dev/fd'))
         self.f=fixtures.DirectChannelTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups)
         self.old_dir=self.f.root/'old-public-source';self.old_dir.mkdir()
-        for name in direct._SOURCE_NAMES:
-            source=history.CURRENT_PROVIDER_SOURCE.with_name(name)
-            shutil.copyfile(source,self.old_dir/name)
+        for name,body in historical_sources().items():
+            (self.old_dir/name).write_bytes(body)
         for name,fixture,expected in (('ssh_direct_nested_channel.py','direct_before.py',DIRECT_BEFORE),('ssh_fresh_nested_channel.py','fresh_before.py',FRESH_BEFORE)):
             body=(FIXTURES/fixture).read_bytes()
             self.assertEqual(expected,hashlib.sha256(body).hexdigest())
@@ -35,8 +52,8 @@ class EndedInventorySuccessorTests(unittest.TestCase):
         self.old_direct=load_public(self.old_dir/'ssh_direct_nested_channel.py','direct')
         self.old_fresh=load_public(self.old_dir/'ssh_fresh_nested_channel.py','fresh')
         self.reviewed_dir=self.f.root/'reviewed-v1-source';self.reviewed_dir.mkdir()
-        for name in direct._SOURCE_NAMES:
-            shutil.copyfile(history.CURRENT_PROVIDER_SOURCE.with_name(name),self.reviewed_dir/name)
+        for name,body in historical_sources().items():
+            (self.reviewed_dir/name).write_bytes(body)
         self.reviewed_direct=load_public(self.reviewed_dir/'ssh_direct_nested_channel.py','reviewed-direct')
         self.reviewed_fresh=load_public(self.reviewed_dir/'ssh_fresh_nested_channel.py','reviewed-fresh')
 

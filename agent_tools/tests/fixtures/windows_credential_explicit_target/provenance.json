@@ -1,0 +1,27 @@
+{
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "new credential start silently selects configured VM without explicit environment",
+  "files": {
+    "windows_credential_probe_ssh.before.source": {
+      "originalPath": "agent_tools/windows_credential_probe_ssh.py",
+      "sha256": "51a041d48a50002e99bd0bcb5bd76d65e0ebd54ee023c3049132332e25ec77ee"
+    },
+    "windows_credential_recovery_ssh.before.source": {
+      "originalPath": "agent_tools/windows_credential_recovery_ssh.py",
+      "sha256": "e9f1d567eb6b2fe47fdb9b9b633945608151fb0ddd60d2b82e2cd4fbfc40d8c8"
+    },
+    "mcp_server.before.source": {
+      "originalPath": "agent_tools/mcp_server.py",
+      "sha256": "f0648edeaafecdfc7f35d52b3e17430726a74ed5ce0f9bea841faa4171a7cf66"
+    },
+    "probe_transport_test.before.source": {
+      "originalPath": "agent_tools/tests/test_windows_credential_probe_ssh.py",
+      "sha256": "de1db0019cbb9030aa897e74dd1fd72b07045f8a04c9aebaf6e5d791c1735351",
+      "kind": "test-seam-beforeimage-after-explicit-environment-call-update"
+    },
+    "probe-test-failure.json": {
+      "sha256": "50de4eb8be6b158dbdb0a6a761febad611a48aea0a48772c4e56ce823082c009"
+    }
+  }
+}

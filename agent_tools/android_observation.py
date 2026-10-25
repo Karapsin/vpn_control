@@ -166,8 +166,7 @@ print(json.dumps({"baseline": baseline, "admitted": True, "status": summary(stat
 
 def _run_probe(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
     try:
-        with ssh_transport.automatic_submission(argv) as submitted:
-            return _run_probe_submitted(submitted, timeout_seconds)
+        return _run_probe_submitted(argv, timeout_seconds)
     except ValueError as error:
         raise RuntimeError(str(error)) from error
 
@@ -175,7 +174,7 @@ def _run_probe(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
 def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
     """Run one SSH observer, retaining at most MAX_OUTPUT_BYTES."""
     try:
-        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        process = ssh_transport.popen_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except OSError as exc:
         raise RuntimeError("transport_unavailable") from exc
     assert process.stdout is not None
@@ -196,6 +195,7 @@ def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, by
         if process.poll() is None: process.kill()
         process.wait()
         process.stdout.close()
+        ssh_transport.finish_ssh(process)
 
 
 def _unknown(reason: str) -> dict[str, Any]:

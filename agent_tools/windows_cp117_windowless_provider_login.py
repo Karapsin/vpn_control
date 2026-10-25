@@ -4,12 +4,13 @@ The immutable observed role reader supplies current secure-field admission. A
 noninheritable duplicate of the original QGA stdin pipe is granted only to the
 held suspended diagnostic child. Secret bytes remain in that original pipe.
 """
+from . import ssh_transport
 import ast,base64,gzip,hashlib,inspect,json,os,re,stat,time
 from pathlib import Path
 from . import windows_cp117_windowless_gui_login as role
 from .windows_diagnostic_authority_capture import AuthorityCapture
-ROLE_SHA='afaa1184bc10f9358d57238e2d6d736de2435c0f7b2553a7aaf7343efe9ae7a8'
-SECURE_SHA='bbcb1de84c89b44d7e541a35a2634ba0cf644e89f5cef7d9061e3a33e6499782'
+ROLE_SHA='afd3a4a99f82b861bc83e227f842486a84f0b7ed8a8d332e3bb248ecc67bb822'
+SECURE_SHA='26bafc28d72bc08baa673012a1ea7649d7b531f6328623668198974589de84df'
 login=role.login
 CORRELATION='ab9a3ed5-b49f-4b4f-8efb-2f590fb0370d'
 NONCE='7a12a8bd-c74e-4509-8f06-4fc5407bda1a'
@@ -295,14 +296,14 @@ def _inert_terminal(value,nonce,sha,pid):
     return answer
 
 
-ROLE_STREAM_SHA='f31d295b9b1692eb53d31672577bdd77af4dd5c20c0320b1b1f59e0f44ea6d1a'
+ROLE_STREAM_SHA='4e7ea6f9a08207384b991bf160a281db4d60a25ec50c13b172d68da6e05ae189'
 def _stream(argv,capture,diagnostic,nonce,sha,qemu,secret):
     _sources()
     if hashlib.sha256(inspect.getsource(role._stream).encode()).hexdigest()!=ROLE_STREAM_SHA:raise ValueError('provider-fixed-stream')
     import selectors,subprocess
     r=login.guest.recovery
     if secret is not None and(not isinstance(secret,bytes)or len(secret)>512):raise ValueError('gui-private-input-bound')
-    process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    process=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     selector=selectors.DefaultSelector();chunks={'stdout':bytearray(),'stderr':bytearray()};pending=bytearray();events=[];child=None;deadline=time.monotonic()+60
     selector.register(process.stdout,selectors.EVENT_READ,'stdout');selector.register(process.stderr,selectors.EVENT_READ,'stderr')
     try:
@@ -340,6 +341,8 @@ def _stream(argv,capture,diagnostic,nonce,sha,qemu,secret):
     finally:
         capture.create(diagnostic+'-transport.stdout.private',bytes(chunks['stdout']));capture.create(diagnostic+'-transport.stderr.private',bytes(chunks['stderr']));os.fsync(capture.fd)
         selector.close();process.stdin.close();process.stdout.close();process.stderr.close()
+
+        ssh_transport.finish_ssh(process)
 
 
 _STDIN_PROTECT="$inputAcl=[Security.AccessControl.FileSecurity]::new();$inputAcl.SetSecurityDescriptorSddlForm('O:SYG:SYD:P(A;;FA;;;SY)');[IO.File]::SetAccessControl((Join-Path $dir 'stdin.json'),$inputAcl);\n$inputPath=Join-Path $dir 'stdin.json';if(([IO.File]::GetAttributes($inputPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'PROVIDER_INPUT_REPARSE'}\n$inputCheck=[IO.FileStream]::new($inputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);try{\n$acl=$inputCheck.GetAccessControl();$sid=[Security.Principal.SecurityIdentifier];$rules=@($acl.GetAccessRules($true,$true,$sid));$sddl=$acl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)\n if(-not $acl.AreAccessRulesProtected -or $acl.GetOwner($sid).Value -cne 'S-1-5-18' -or $acl.GetGroup($sid).Value -cne 'S-1-5-18' -or $rules.Count -ne 1 -or @($acl.GetAuditRules($true,$true,$sid)).Count -ne 0){throw 'PROVIDER_INPUT_ACL'}\n $rule=$rules[0];if($rule.IdentityReference.Value -cne 'S-1-5-18' -or $rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or [int]$rule.FileSystemRights -ne 2032127 -or [int]$rule.InheritanceFlags -ne 0 -or [int]$rule.PropagationFlags -ne 0){throw 'PROVIDER_INPUT_ACL'}\n\n}finally{$inputCheck.Dispose()}"
@@ -389,10 +392,10 @@ def _login_sequence(auth,prepare,write,submit,owner,retain,qemu):
 from . import windows_cp117_secure_input_geometry_observe as geometry
 from . import windows_cp117_recovered_owner_observe as owner_reader
 windowless=role
-GEOMETRY_SHA='9f9efa88a58588d67afbf52f68ca201b11575aa1edf744941f1c42894f1cddcf'
+GEOMETRY_SHA='832746a0a990dc42b6e82f799d52dbab42b8424c1be4fab54da171af522f32c7'
 WINDOWLESS_SHA=ROLE_SHA
 LOGIN_SHA=role.LOGIN_SHA
-OWNER_SHA='9ff8275a77e71e8b1a7ae90ee4e7dd5a1910ad130720e4621ff85a6fe9b38342'
+OWNER_SHA='5efac98768379da2266974ac0d35f13f43d09e40f9bc5979e812c6239b358399'
 WAKE_CORRELATION='1d572c4e-b45c-4baf-ab23-3db84a747984'
 WAKE_FACTORY_SHA='7406ba6cc52a320258126365614a2aa2e74f9824a1304cc262eceea8b31074fb'
 _LOGIN_SLOTS={
@@ -658,7 +661,7 @@ def start(root):
             capture.create('wake-remote.py',source.encode());capture.create('wake-attempt.json',json.dumps({'state':'consumed','flow':LOGIN_FLOW,'sourceSha256':hashlib.sha256(source.encode()).hexdigest()},sort_keys=True).encode());os.fsync(capture.fd);verify()
             argv=r.authority.closure.base.ssh_transport.build_ssh_argv(config,r.HOST,60,command=r.authority.closure.base.windows_credential_probe_ssh._remote_command(source))
             import subprocess
-            try:completed=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
+            try:completed=r.authority.closure.base.ssh_transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
             except subprocess.TimeoutExpired as error:
                 capture.create('wake-stdout-partial',(error.stdout or b'')[:1000000]);capture.create('wake-stderr-partial',(error.stderr or b'')[:131072]);os.fsync(capture.fd);raise ValueError('login-wake-unknown')from None
             capture.create('wake-stdout.private',completed.stdout[:1000000]);capture.create('wake-stderr.private',completed.stderr[:131072]);os.fsync(capture.fd);verify()

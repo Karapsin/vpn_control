@@ -623,11 +623,11 @@ def _remote(captured: Mapping[str, Any], program: str, args: tuple[str, ...],
     argv = ssh_transport.build_ssh_argv(config, _HOST, 30, command=command)
     connection = ssh_transport.connection_host(config, _HOST)
     context = tempfile.TemporaryDirectory(prefix="vpn-rpm-server-askpass-") if connection.password else nullcontext(None)
-    with context as temporary, ssh_transport.automatic_submission(argv) as submitted:
+    with context as temporary:
         environment = (ssh_transport._askpass_environment(connection.password, Path(temporary))[1]
                        if temporary is not None else None)
         try:
-            process = subprocess.Popen(submitted, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            process = ssh_transport.popen_ssh(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                        stderr=subprocess.DEVNULL, env=environment)
         except OSError:
             return None
@@ -662,7 +662,8 @@ def _remote(captured: Mapping[str, Any], program: str, args: tuple[str, ...],
         finally:
             timer.cancel()
             process.stdout.close()
-        writer.join(timeout=1)
+            writer.join(timeout=1)
+            ssh_transport.finish_ssh(process, failed=bool(errors) or timed_out.is_set())
         if timed_out.is_set() or errors or process.returncode != 0 or len(output) > 8192:
             return None
         try:

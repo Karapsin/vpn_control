@@ -1,0 +1,38 @@
+def _resolution(records, operation, actual, binding, source_sha):
+    """Called only with a fresh observation obtained by resolve_original."""
+    original, pins, secret, submit = records
+    expected = unlock._identity(original['recipient'], binding)
+    unlock._identity(actual, binding, expected, allow_sleeping=True)
+    _need(expected['console']['locked'] is True and actual['console']['locked'] is False,
+          'macos_unlock_original_not_observed_unlocked')
+    return {'schemaVersion': 1, 'operationId': operation, 'secretOperationId': secret, 'returnOperationId': submit,
+            'state': 'observed_unlocked', 'replacementForbidden': True, 'originalPins': pins,
+            'recipient': deepcopy(expected), 'observation': deepcopy(actual), 'observerSourceSha256': source_sha}
+
+
+def _new_incidents(directory, current_operation, binding, accepted_resolution_sources):
+    """Every new production incident, including another UUID, is accounted for."""
+    directory.guard(); names = set(os.listdir(directory.fd))
+    _need(len(names) <= 10000, 'macos_unlock_incident_inventory_overflow')
+    original_ids, related = set(), set()
+    for name in names:
+        match = _ORIGINAL.fullmatch(name)
+        if match:
+            original_ids.add(unlock._uuid(match[1]))
+    for operation in original_ids:
+        original, pins, secret, submit = _original_records(directory, operation)
+        related.update({'macos-unlock-' + operation + '.json', secret + '.json',
+                        'macos-unlock-password-' + secret + '.json', 'macos-unlock-return-' + submit + '.json',
+                        'macos-unlock-resolution-' + operation + '.json'})
+        _need(operation != current_operation, 'macos_unlock_original_pending')
+        resolution, _ = _read(directory, 'macos-unlock-resolution-' + operation + '.json')
+        _need(type(resolution.get('observerSourceSha256')) is str
+              and resolution['observerSourceSha256'] in accepted_resolution_sources,
+              'macos_unlock_resolution_source_unqualified')
+        expected = _resolution((original, pins, secret, submit), operation,
+                               resolution.get('observation'), binding, resolution['observerSourceSha256'])
+        _need(resolution == expected, 'macos_unlock_incident_unresolved')
+    _need(not {name for name in names if name.startswith('macos-unlock-')} - related,
+          'macos_unlock_orphan_incident_unresolved')
+    _need(set(os.listdir(directory.fd)) == names, 'macos_unlock_incident_inventory_changed')
+    directory.guard()

@@ -1,0 +1,7 @@
+{
+  "beforeCallerSha256": "f564de53c75f70f10a60653b4dfc6201c54fb22528f5f05e501b1ddebbd3ffc8",
+  "currentCallerSha256": "8d90bf9bf7c423580729bb7b0b6f7e557cbf32d75b2b50641a91549653b8cdac",
+  "failure": "The preserved caller did not establish suspended state before later ordinary observations. The controlled delayed-suspend endpoint proves this independent protocol ordering flaw. Original native brief automatic wake cause remains UNPROVEN; retain both native attempts, terminal correlations and quiet-native failure.",
+  "nativeFailureEvidence": ".runtime/tool-recovery-qemu/sdk-s3-before/failure.json",
+  "nativeTerminalCorrelation": ".runtime/tool-recovery-qemu/sdk-s3-before/event-correlation-summary.json"
+}

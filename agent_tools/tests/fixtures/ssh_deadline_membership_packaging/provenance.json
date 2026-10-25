@@ -1,0 +1,6 @@
+{
+  "source": "agent_tools/tests/test_ssh_absolute_deadline.py",
+  "beforeSha256": "48bdce51b64673c5927a6aac99ca16839b9defabfaa159cd91c20b80efef28cf",
+  "failure": "Complete frozen caller omitted readiness_nested_membership.py; source-held import raises FileNotFoundError before establishing transport.",
+  "evidence": ".runtime/tool-recovery/ssh-native-diagnostic-current/result.log"
+}

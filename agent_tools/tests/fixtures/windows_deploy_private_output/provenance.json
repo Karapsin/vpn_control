@@ -1,0 +1,6 @@
+{
+  "beforeSha256": "9ef83ed3d11e79c39054385627c4b279fcb292791f8f4ac623925838f59c62e6",
+  "failure": "Windows deployment gateway only redacts SSH passphrase; raw sudo/bootstrap/final password echo may be base64 persisted and content hashed before owner validation",
+  "nativeEffects": false,
+  "source": "agent_tools/windows_vm_deploy.py"
+}

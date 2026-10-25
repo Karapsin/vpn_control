@@ -131,7 +131,7 @@ jobs:
           adb -s "$ANDROID_SERIAL" shell settings put global transition_animation_scale 0
           adb -s "$ANDROID_SERIAL" shell settings put global animator_duration_scale 0
           adb -s "$ANDROID_SERIAL" shell settings put system font_scale 1.0
-          scripts/capture_visual_android.sh build/visual-actual/android "$VISUAL_SCENES"
+          scripts/capture_visual_android.sh --target android:vpn-control-visual-hosted build/visual-actual/android "$VISUAL_SCENES"
       - name: Upload capture evidence
         if: always()
         uses: actions/upload-artifact@v4

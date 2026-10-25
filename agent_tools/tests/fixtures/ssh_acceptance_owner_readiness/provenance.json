@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "sourceOnly": true,
+  "actualOriginalControllerSha256": "14d50b0ccccaf944d92a9c5784fbb0f6deeb7910289f579b8b1b54ac24d6de3d",
+  "originalProbeRawUnavailable": true,
+  "originalFirstProbeCauseKnown": false,
+  "nativeAcceptanceClaim": false,
+  "scope": "Whole14d AST tests use supplied fixed public results only. Full dada helper tests use actual private temporary FS replacement. No network, job start, process signal or private input. Fixed helper remains an unqualified private prototype resource, not a tool API.",
+  "files": {
+    "controller14d.before.source": "14d50b0ccccaf944d92a9c5784fbb0f6deeb7910289f579b8b1b54ac24d6de3d",
+    "ordinary_controller.before.source": "dada60de15b5847c2b497fdfba954e1c914180a9fc4f9cfba86bcc5bda5ba868",
+    "ordinary_controller.fixed.source": "2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f",
+    "original61bd.failure.txt": "c8d02aee88cd371583ead067cccc3e88467854005b27d2ceff4bd5ecbaad9d19",
+    "original61bd.failure-provenance.json": "55cbe1d429b905075a4bd02faa0def597b5229975c52849bd5e545bb250bb3b7"
+  }
+}

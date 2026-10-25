@@ -1,0 +1,20 @@
+from pathlib import Path
+import hashlib,json,os,runpy,time
+from uuid import uuid4
+from agent_tools import readiness_fixture_registry as registry
+p=Path.cwd();root=p/'.runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9';h=runpy.run_path(str(p/'.runtime/tool-recovery/tart/macos-provision-ui-helper.py'))
+source=(p/'.runtime/tool-recovery/macos-service-capability-draft-v2/source.py').read_bytes();assert hashlib.sha256(source).hexdigest()=='aef79cd3d6055dc60b5685980368a54752802ea01f956f26a9acff7387089257'
+operation=str(uuid4());folder=root/('native-service-capability-'+operation);folder.mkdir(mode=0o700)
+for name,body in [('source.py',source)]:
+ fd=os.open(folder/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(body)
+h['record'](folder/'intent.json',{'operationId':operation,'sourceSha256':hashlib.sha256(source).hexdigest(),'action':'finite_ordinary_get_only_sm_volume_capability','nativeIdleAuthority':False})
+f=registry.registered_fixture(p,'tart-macos-independent-v6');backend=f.adapter.backend
+try:
+ with backend.guest_job_executor(deadline=time.monotonic()+45)as executor:r=executor.execute_source(source.decode())
+ for name,body in [('stdout.json',r.stdout),('stderr.txt',r.stderr)]:
+  fd=os.open(folder/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+  with os.fdopen(fd,'wb')as stream:stream.write(body)
+ value=json.loads(r.stdout);h['record'](folder/'result.json',{'operationId':operation,'returncode':r.returncode,'stderrBytes':len(r.stderr),'reply':value})
+ print(json.dumps({'folder':str(folder),'result':value,'returncode':r.returncode},sort_keys=True))
+finally:backend.custody.close()

@@ -1,0 +1,921 @@
+"""Protected Windows credential entry for reviewed owned-fixture login screens.
+
+No password or secret-derived key request is part of a generated packet. A
+consumed credential admission is observed, never replayed after a lost reply.
+"""
+from __future__ import annotations
+import hashlib,inspect,json,re,textwrap
+from uuid import UUID
+from . import readiness_windows_remote as packets
+from .private_inventory_lock import _rename_create_only
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+
+LOGIN_ACCOUNT=r'''
+$ExpectedUser=__USER__
+$u=Get-LocalUser -Name $ExpectedUser
+$key=Get-ItemProperty -LiteralPath 'Registry::HKEY_USERS\.DEFAULT\Keyboard Layout\Preload'
+[Console]::WriteLine(([ordered]@{name=$u.Name;fullName=$u.FullName;sid=$u.SID.Value;enabled=$u.Enabled;loginKeyboard=$key.'1'}|ConvertTo-Json -Compress))
+'''
+
+class _LoginDeadlineUnsubmitted(ValueError):
+    """Owner proof: no target submission was attempted within this admission."""
+
+class PrivateInputUnknown(ValueError):
+    """Finite result only; no private request or reply is exposed."""
+
+class _ProtectedOwner:
+    """One Linux memory-only owner; no SSH descriptor or private stream survives."""
+    def __init__(self,root,operation,identity,source_sha,original_sha,approved=None):
+        import os,re
+        self.root=root;self.operation=operation;self.identity=identity;self.source_sha=source_sha;self.original_sha=original_sha;self.child=False;self.lock=None;self.intent=None
+        if not all(type(v)is str and re.fullmatch('[0-9a-f]{64}',v)for v in (source_sha,original_sha)):raise ValueError('instance_login_owner_source')
+        self.approved={}if approved is None else approved
+        if type(self.approved)is not dict or len(self.approved)>256:raise ValueError('instance_login_history_bound')
+        for op,row in self.approved.items():
+            from uuid import UUID
+            if type(op)is not str or str(UUID(op))!=op or type(row)is not dict or set(row)!={'sourceSha256','identitySha256'}or any(type(v)is not str or re.fullmatch('[0-9a-f]{64}',v)is None for v in row.values()):raise ValueError('instance_login_history_invalid')
+        self.prefix='login-owner-'+operation
+    def _same(self,left,right):
+        if type(left)is not type(right):return False
+        if type(left)is dict:return set(left)==set(right)and all(self._same(left[k],right[k])for k in left)
+        if type(left)is list:return len(left)==len(right)and all(self._same(a,b)for a,b in zip(left,right))
+        return left==right
+    def _pin(self,s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+    def _root_pin(self):
+        import os,stat
+        s=os.lstat(self.root)
+        if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.geteuid()or s.st_mode&0o077:raise ValueError('instance_login_owner_root')
+        return self._pin(s)[:5]
+    def _read(self,suffix):
+        import os,stat,json
+        fd=os.open(self.root/(self.prefix+suffix),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            s=os.fstat(fd)
+            if self._pin(os.lstat(self.root/(self.prefix+suffix)))!=self._pin(s):raise ValueError('instance_login_owner_receipt')
+            if not stat.S_ISREG(s.st_mode)or s.st_uid!=os.geteuid()or s.st_mode&0o077 or s.st_nlink!=1 or not 0<s.st_size<=262144:raise ValueError('instance_login_owner_receipt')
+            raw=os.read(fd,262145)
+            if len(raw)!=s.st_size or self._pin(os.fstat(fd))!=self._pin(s)or self._pin(os.lstat(self.root/(self.prefix+suffix)))!=self._pin(s):raise ValueError('instance_login_owner_receipt')
+            def pairs(rows):
+                result={}
+                for k,v in rows:
+                    if k in result:raise ValueError('instance_login_owner_receipt')
+                    result[k]=v
+                return result
+            return json.loads(raw,object_pairs_hook=pairs)
+        finally:os.close(fd)
+    def _save(self,suffix,value):
+        import os,json,uuid
+        target=self.root/(self.prefix+suffix);temporary=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp')
+        directory=os.open(self.root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:
+            fd=os.open(temporary.name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+            with os.fdopen(fd,'wb')as stream:stream.write(json.dumps(value,sort_keys=True,separators=(',',':')).encode());stream.flush();os.fsync(stream.fileno())
+            _rename_create_only(directory,temporary.name,target.name)
+        finally:
+            try:
+                try:os.unlink(temporary.name,dir_fd=directory)
+                except FileNotFoundError:pass
+            finally:
+                try:os.fsync(directory)
+                finally:os.close(directory)
+    def _birth(self,pid):
+        from pathlib import Path
+        try:
+            row=Path('/proc/'+str(pid)+'/stat').read_text().rsplit(')',1)[1].split()
+            return None if row[0]=='Z'else int(row[19])
+        except (OSError,ValueError,IndexError):return None
+    def guard(self,deadline=True):
+        import os,stat,time
+        from pathlib import Path
+        if self.intent is None:return
+        if Path('/proc/sys/kernel/random/boot_id').read_text().strip()!=self.intent['hostBoot']:raise ValueError('instance_login_owner_boot_changed')
+        if deadline and time.monotonic_ns()>self.intent['deadlineNs']:raise ValueError('instance_login_owner_deadline')
+        named=os.lstat(self.root/'intent.json')
+        if (self._root_pin()!=self.intent['root']or self._pin(named)!=self.intent['lock']or not stat.S_ISREG(named.st_mode)or named.st_uid!=os.geteuid()or named.st_nlink!=1 or named.st_mode&0o077):raise ValueError('instance_login_owner_lock_changed')
+        if self.lock is not None and self._pin(os.fstat(self.lock))!=self.intent['lock']:raise ValueError('instance_login_owner_lock_changed')
+    def existing(self):
+        import os
+        if not os.path.lexists(self.root/(self.prefix+'.intent.json')):return None
+        value=self._read('.intent.json')
+        if set(value)!={'schemaVersion','operationId','identity','sourceSha256','root','lock','hostBoot','creator','deadlineNs','replayAllowed'}or type(value['schemaVersion'])is not int or value['schemaVersion']!=2 or value['operationId']!=self.operation or not self._same(value['identity'],self.identity) or value['sourceSha256']!=self.original_sha or value['replayAllowed']is not False or value['hostBoot']!=self.identity['hostBoot']or type(value['deadlineNs'])is not int or type(value['creator'])is not dict or set(value['creator'])!={'pid','birth'}or any(type(value['creator'][k])is not int for k in ('pid','birth'))or any(type(value[k])is not list or len(value[k])!=n or any(type(x)is not int for x in value[k])for k,n in (('root',5),('lock',9))):raise ValueError('instance_login_owner_identity')
+        self.intent=value;self.guard(False)
+        if os.path.lexists(self.root/(self.prefix+'.terminal.json')):
+            terminal=self._read('.terminal.json')
+            owner=self._read('.owner.json')
+            if not self._same(terminal.get('admission'),value)or not self._same(terminal.get('owner'),owner) or set(terminal)!={'admission','owner','packet'}:raise ValueError('instance_login_owner_terminal')
+            self._owner_valid(owner)
+            packet=terminal['packet']
+            if type(packet)is not dict or packet.get('operationId')!=self.operation or packet.get('replayAllowed')is not False:raise ValueError('instance_login_owner_terminal')
+            if packet.get('state')=='blocked':
+                if set(packet)!={'state','operationId','reason','replayAllowed'}or packet['reason']not in globals().get('LOGIN_PUBLIC_REASONS',{'instance_login_entry_unknown'}):raise ValueError('instance_login_owner_terminal')
+            elif packet.get('state')=='owner-terminal':
+                if set(packet)!={'state','operationId','loginState','boot','account','console','logon','replayAllowed'}or packet['loginState']not in {'ready','credential-submitted','credential-submission-unresolved'}or packet['boot']!=self.identity['expected']['boot']or packet['account']!=self.identity['account']or type(packet['console'])is not int or type(packet['logon'])is not int:raise ValueError('instance_login_owner_terminal')
+            else:raise ValueError('instance_login_owner_terminal')
+            return {'state':'terminal','packet':packet}
+        try:owner=self._read('.owner.json')
+        except FileNotFoundError:return {'state':'unknown'}
+        self._owner_valid(owner)
+        return {'state':'running'if self._birth(owner['pid'])==owner['birth']else'unknown'}
+    def _owner_valid(self,owner):
+        if type(owner)is not dict or set(owner)!={'operationId','sourceSha256','pid','birth'}or owner['operationId']!=self.operation or owner['sourceSha256']!=self.original_sha or type(owner['pid'])is not int or owner['pid']<=0 or type(owner['birth'])is not int or owner['birth']<=0:raise ValueError('instance_login_owner_identity')
+    def block_prior(self):
+        """A new UUID cannot replace active, uncertain or untrusted prior input."""
+        import hashlib,json,os,re
+        from uuid import UUID
+        names=[p.name for p in self.root.iterdir()]
+        if len(names)>8192:raise ValueError('instance_login_history_bound')
+        operations=set(self.approved)
+        for name in names:
+            match=re.fullmatch(r'login-owner-([0-9a-f-]{36})\.intent\.json',name)
+            if match:operations.add(match[1])
+            elif name.startswith('login-owner-')and name.endswith('.intent.json'):raise ValueError('instance_login_history_invalid')
+        approved_ready=set()
+        for operation in sorted(operations-{self.operation}):
+            if str(UUID(operation))!=operation or operation not in self.approved:raise ValueError('instance_login_prior_source_untrusted')
+            approval=self.approved[operation]
+            prior=_ProtectedOwner(self.root,operation,{},approval['sourceSha256'],approval['sourceSha256'])
+            try:
+                intent=prior._read('.intent.json');identity=intent['identity']
+                digest=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+                if digest!=approval['identitySha256']:raise ValueError('instance_login_prior_source_untrusted')
+                prior.identity=identity;value=prior.existing()
+                if value is None or value.get('state')!='terminal' or value['packet'].get('state')!='owner-terminal' or value['packet'].get('loginState')!='ready':raise ValueError('instance_login_prior_owner_unresolved')
+                # The terminal is useful only with the original canonical phase
+                # chain, not a ready boolean added to a historical JSON file.
+                terminal=value['packet'];credential='login-credential-'+operation
+                prepared=['login-preparation-'+operation+'-'+phase for phase in ('wake','dismiss')]
+                def record(name):
+                    old=prior.prefix;prior.prefix=name
+                    try:return prior._read('')
+                    finally:prior.prefix=old
+                expected={'operationId':operation,'state':'ready','boot':identity['expected']['boot'],'account':identity['account'],'console':terminal['console'],'logon':terminal['logon'],'settingsChanged':False,'replayAllowed':False}
+                has_credential=os.path.lexists(self.root/(credential+'.intent.json'))
+                if has_credential:
+                    admitted=record(credential+'.intent.json')
+                    if not self._same(admitted,{'operationId':operation,'expected':identity['expected'],'profile':identity['profile'],'account':identity['account'],'replayAllowed':False})or not self._same(record(credential+'.terminal.json'),expected):raise ValueError('instance_login_prior_phase_unresolved')
+                    if not self._same(prior._read('.phase-credential.terminal.json'),{'operationId':operation,'sourceSha256':approval['sourceSha256'],'phase':'credential','state':'submitted','replayAllowed':False}):raise ValueError('instance_login_prior_phase_unresolved')
+                elif not self._same(prior._read('.phase-credential.terminal.json'),{'operationId':operation,'sourceSha256':approval['sourceSha256'],'phase':'credential','state':'not-needed','replayAllowed':False}):raise ValueError('instance_login_prior_phase_unresolved')
+                for phase,prefix in zip(('wake','dismiss'),prepared):
+                    if not os.path.lexists(self.root/(prefix+'.intent.json')):continue
+                    if not has_credential:raise ValueError('instance_login_prior_phase_unresolved')
+                    admitted={'operationId':operation,'phase':phase,'expected':identity['expected'],'replayAllowed':False}
+                    if phase=='dismiss':admitted['profile']=identity['profile']['lockscreen']
+                    if not self._same(record(prefix+'.intent.json'),admitted)or not self._same(record(prefix+'.terminal.json'),{**expected,'phase':phase,'state':'ready-observed'})or not self._same(prior._read('.phase-'+phase+'.terminal.json'),{'operationId':operation,'sourceSha256':approval['sourceSha256'],'phase':phase,'state':'submitted','replayAllowed':False}):raise ValueError('instance_login_prior_phase_unresolved')
+                approved_ready.add(operation)
+            except (FileNotFoundError,KeyError,TypeError):raise ValueError('instance_login_prior_owner_unresolved')from None
+        for name in names:
+            if name.endswith('.intent.json')and name.startswith(('login-wake-','login-dismiss-')):raise ValueError('instance_login_legacy_original_unresolved')
+            match=re.fullmatch(r'login-(?:credential-([0-9a-f-]{36})|preparation-([0-9a-f-]{36})-(?:wake|dismiss))\.intent\.json',name)
+            if not match and name.endswith('.intent.json')and name.startswith(('login-credential-','login-preparation-')):raise ValueError('instance_login_history_invalid')
+            if match and (match[1]or match[2])not in approved_ready:raise ValueError('instance_login_legacy_original_unresolved')
+    def start(self,lock,held,stream,*,wait_seconds=70,budget_seconds=180):
+        import os,sys,time,stat,math
+        if type(budget_seconds)not in {int,float}or not math.isfinite(budget_seconds)or not 0<budget_seconds<=180:raise ValueError('instance_login_owner_deadline')
+        if not sys.platform.startswith('linux'):raise ValueError('instance_login_owner_platform')
+        self.lock=lock;self.intent={'schemaVersion':2,'operationId':self.operation,'identity':self.identity,'sourceSha256':self.source_sha,'root':self._root_pin(),'lock':self._pin(os.fstat(lock)),'hostBoot':self.identity['hostBoot'],'creator':{'pid':os.getpid(),'birth':self._birth(os.getpid())},'deadlineNs':time.monotonic_ns()+int(budget_seconds*1_000_000_000),'replayAllowed':False};self.guard()
+        self.block_prior()
+        import resource
+        resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+        # A complete framed payload is admitted before any wire or GUI effect.
+        header=stream.read(4)
+        if len(header)!=4:raise ValueError('instance_login_input_incomplete')
+        count=int.from_bytes(header,'big')
+        if not 1<=count<=64:raise ValueError('instance_login_input_unsupported')
+        secret=stream.read(count)
+        if len(secret)!=count or stream.read(1):raise ValueError('instance_login_input_incomplete')
+        private_keys(secret);self.guard();self._save('.intent.json',self.intent)
+        pid=os.fork()
+        if pid:
+            secret=None;limit=time.monotonic()+min(wait_seconds,budget_seconds)
+            while time.monotonic()<limit:
+                value=self.existing()
+                if value['state']=='terminal':
+                    try:os.waitpid(pid,os.WNOHANG)
+                    except ChildProcessError:pass
+                    return value['packet']
+                if value['state']=='unknown'and self._birth(pid)is None:break
+                time.sleep(.05)
+            return {'state':'owner-running'if self._birth(pid)is not None else'owner-unknown','operationId':self.operation,'replayAllowed':False}
+        self.child=True
+        try:
+            os.setsid();keep=set(held)|{lock}
+            for name in os.listdir('/proc/self/fd'):
+                fd=int(name)
+                if fd>2 and fd not in keep:
+                    try:os.close(fd)
+                    except OSError:pass
+            null=os.open(os.devnull,os.O_RDWR)
+            for fd in (0,1,2):os.dup2(null,fd)
+            if null>2:os.close(null)
+            self.guard();birth=self._birth(os.getpid())
+            if birth is None:raise ValueError('instance_login_owner_generation')
+            self.owner={'operationId':self.operation,'sourceSha256':self.source_sha,'pid':os.getpid(),'birth':birth}
+            self._save('.owner.json',self.owner);self.guard();return secret
+        except BaseException:os._exit(70)
+    def phase(self,name,state='submitted'):
+        if name not in {'wake','dismiss','credential'}or state not in {'submitted','not-needed'}or state=='not-needed'and name!='credential':raise ValueError('instance_login_owner_phase')
+        self.guard();self._save('.phase-'+name+'.terminal.json',{'operationId':self.operation,'sourceSha256':self.original_sha,'phase':name,'state':state,'replayAllowed':False});self.guard()
+    def finish(self,packet):
+        import re
+        if type(packet)is not dict:raise ValueError('instance_login_owner_terminal')
+        if packet.get('state')=='blocked':
+            reason=packet.get('reason')
+            if type(reason)is not str or reason not in globals().get('LOGIN_PUBLIC_REASONS',{'instance_login_entry_unknown'}):reason='instance_login_entry_unknown'
+            public={'state':'blocked','operationId':self.operation,'reason':reason,'replayAllowed':False}
+        else:
+            expected=self.identity['expected'];value=packet.get('sessionFacts');outcome=packet.get('login')
+            if type(value)is not dict or type(outcome)is not dict or packet.get('operationId')!=self.operation or value.get('boot')!=expected['boot']or value.get('expectedSid')!=self.identity['account']or value.get('ordinary')is not True or outcome.get('state')not in {'ready','credential-submitted','credential-submission-unresolved'}:raise ValueError('instance_login_owner_terminal')
+            row=value.get('session')
+            if type(row)is not dict or type(value.get('console'))is not int or type(row.get('Logon'))is not int:raise ValueError('instance_login_owner_terminal')
+            if outcome['state']=='ready'and not(value.get('tokenSid')==self.identity['account']and type(row.get('User'))is str and row['User'].casefold()==self.identity['user'].casefold()and row.get('Flags')==1 and row.get('State')==0 and sum(x.get('SessionId')==value['console']for x in value.get('explorers',[]))==1):raise ValueError('instance_login_owner_terminal')
+            public={'state':'owner-terminal','operationId':self.operation,'loginState':outcome['state'],'boot':expected['boot'],'account':self.identity['account'],'console':value['console'],'logon':row['Logon'],'replayAllowed':False}
+        self.guard(False);self._save('.terminal.json',{'admission':self.intent,'owner':self.owner,'packet':public});self.guard(False)
+
+def private_keys(secret):
+    if type(secret)is not bytes or not 1<=len(secret)<=64:raise PrivateInputUnknown('instance_login_input_unsupported')
+    shifted={'!':'1','@':'2','#':'3','$':'4','%':'5','^':'6','&':'7','*':'8','(':'9',')':'0','_':'minus','+':'equal','{':'bracket_left','}':'bracket_right','|':'backslash',':':'semicolon','"':'apostrophe','<':'comma','>':'dot','?':'slash','~':'grave_accent'}
+    plain={' ':'spc','-':'minus','=':'equal','[':'bracket_left',']':'bracket_right','\\':'backslash',';':'semicolon',"'":'apostrophe',',':'comma','.':'dot','/':'slash','`':'grave_accent'}
+    result=[]
+    for byte in secret:
+        c=chr(byte);shift=False
+        if 'A'<=c<='Z':key=c.lower();shift=True
+        elif 'a'<=c<='z'or '0'<=c<='9':key=c
+        elif c in plain:key=plain[c]
+        elif c in shifted:key=shifted[c];shift=True
+        else:raise PrivateInputUnknown('instance_login_input_unsupported')
+        result.append({'keys':([{'type':'qcode','data':'shift'}]if shift else[])+[{'type':'qcode','data':key}],'hold-time':80})
+    return result
+
+def enter_private(secret,send,guard):
+    """Send only to the private monitor; never publish per-key progress."""
+    import time
+    requests=private_keys(secret)
+    try:
+        for request in requests:
+            guard();send(request);time.sleep(.11)
+        guard();send({'keys':[{'type':'qcode','data':'ret'}],'hold-time':80});guard()
+    except BaseException:raise PrivateInputUnknown('instance_login_entry_unknown')from None
+    finally:secret=None;requests=None
+
+def ppm(raw):
+    if type(raw)is not bytes or len(raw)>16*1024**2:raise ValueError('instance_login_screen_bound')
+    parts=raw.split(b'\n',3)
+    if len(parts)!=4 or parts[0]!=b'P6'or parts[2]!=b'255':raise ValueError('instance_login_screen_unrecognized')
+    fields=parts[1].split()
+    if len(fields)!=2 or any(not x.isdigit()for x in fields):raise ValueError('instance_login_screen_unrecognized')
+    w,h=map(int,fields)
+    if not 320<=w<=4096 or not 200<=h<=2160 or len(parts[3])!=w*h*3:raise ValueError('instance_login_screen_unrecognized')
+    return w,h,parts[3]
+
+def screen_gate(raw,profile):
+    w,h,pixels=ppm(raw)
+    if type(profile)is not dict or set(profile)!={'width','height','crops'}or (w,h)!=(profile['width'],profile['height'])or type(profile['crops'])is not list or not 1<=len(profile['crops'])<=8:raise ValueError('instance_login_screen_unrecognized')
+    for row in profile['crops']:
+        if type(row)is not dict or set(row)!={'rect','sha256'}or type(row['rect'])is not list or len(row['rect'])!=4 or any(type(v)is not int for v in row['rect'])or type(row['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',row['sha256'])is None:raise ValueError('instance_login_screen_profile')
+        x0,y0,x1,y1=row['rect']
+        if not 0<=x0<x1<=w or not 0<=y0<y1<=h:raise ValueError('instance_login_screen_profile')
+        crop=b''.join(pixels[(y*w+x0)*3:(y*w+x1)*3]for y in range(y0,y1))
+        if hashlib.sha256(crop).hexdigest()!=row['sha256']:raise ValueError('instance_login_screen_unrecognized')
+    return True
+
+def wait_known_field(shot,profile,guard,*,seconds=5):
+    """Wait for the exact reviewed empty field; animation is never admitted."""
+    import time
+    deadline=time.monotonic()+seconds
+    while True:
+        guard()
+        try:screen_gate(shot(),profile);return
+        except ValueError as error:
+            if str(error)!='instance_login_screen_unrecognized'or time.monotonic()>=deadline:raise
+        time.sleep(min(.25,max(0,deadline-time.monotonic())))
+
+def prepare_screen(shot,monitor,guard,save,read,exists,operation,profile,expected):
+    """Wake/dismiss only recognized public screens, before private admission."""
+    import time
+    bundle=type(profile)is dict and set(profile)=={'password','lockscreen'}
+    field=profile['password']if bundle else profile
+    raw=shot()
+    try:screen_gate(raw,field);return
+    except ValueError:
+        if not bundle:raise
+    w,h,pixels=ppm(raw)
+    if not any(pixels):
+        name='login-preparation-'+operation+'-wake.intent.json';identity={'operationId':operation,'phase':'wake','expected':expected,'replayAllowed':False}
+        if exists(name):
+            if read(name)!=identity:raise ValueError('instance_login_preparation_changed')
+            raise ValueError('instance_login_wake_unresolved')
+        mice=monitor('query-mice',None);selected=[x for x in mice if type(x)is dict and x.get('current')is True]
+        if len(selected)!=1 or type(selected[0].get('absolute'))is not bool:raise ValueError('instance_login_mouse_unrecognized')
+        events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
+        guard();save(name,identity);monitor('input-send-event',{'events':events});guard()
+        if globals().get('LOGIN_OWNER_PHASE'):LOGIN_OWNER_PHASE('wake')
+        time.sleep(1);raw=shot()
+        try:screen_gate(raw,field);return
+        except ValueError:pass
+    screen_gate(raw,profile['lockscreen'])
+    name='login-preparation-'+operation+'-dismiss.intent.json';identity={'operationId':operation,'phase':'dismiss','expected':expected,'profile':profile['lockscreen'],'replayAllowed':False}
+    if exists(name):
+        if read(name)!=identity:raise ValueError('instance_login_preparation_changed')
+        raise ValueError('instance_login_dismiss_unresolved')
+    guard();save(name,identity);monitor('send-key',{'keys':[{'type':'qcode','data':'ret'}],'hold-time':80});guard()
+    if globals().get('LOGIN_OWNER_PHASE'):LOGIN_OWNER_PHASE('dismiss')
+    time.sleep(1)
+    wait_known_field(shot,field,guard);guard()
+
+def _login_flow(root,read,save,monitor,guard,script,fresh,before):
+    import base64,os,stat,sys,time,zlib
+    original_save=save
+    def save(name,value):
+        original_save(name,value)
+        descriptor=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:os.fsync(descriptor)
+        finally:os.close(descriptor)
+    def need(ok,code):
+        if not ok:raise ValueError(code)
+    need(fresh['machine'].lower()==SPEC['deploymentId'] and fresh['expectedSid']==LOGIN_SID and fresh['ordinary']is True,'instance_login_account_mismatch')
+    if LOGIN_MODE=='login-original-screens':
+        need(LOGIN_ORIGINAL is not None and not os.path.lexists(root/('login-credential-'+LOGIN_ORIGINAL+'.intent.json')),'instance_login_original_submission_exists')
+        paths=sorted(root.glob('login-'+LOGIN_ORIGINAL+'-*.ppm'),key=lambda p:p.stat().st_mtime_ns)
+        need(1<=len(paths)<=32,'instance_login_original_screens_bound');frames=[]
+        for path in paths[LOGIN_FRAME:LOGIN_FRAME+1]:
+            s=path.lstat();need(stat.S_ISREG(s.st_mode)and s.st_uid==os.geteuid()and s.st_nlink==1 and s.st_size<=16*1024**2,'instance_login_screen_identity')
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                raw=os.read(fd,16*1024**2+1);need(len(raw)==s.st_size,'instance_login_screen_changed');ppm(raw)
+            finally:os.close(fd)
+            frames.append({'name':path.name,'screenZlib':base64.b64encode(zlib.compress(raw)).decode()})
+        guard();return {'login':{'state':'original-precredential-screens','originalOperationId':LOGIN_ORIGINAL,'originalCredentialIntentAbsent':True,'frames':frames},'sessionFacts':fresh}
+    account=script('login-account-'+os.urandom(6).hex(),LOGIN_ACCOUNT_SCRIPT)
+    need(account['name'].casefold()==SETUP['user'].casefold()and account['sid']==LOGIN_SID and account['enabled']is True,'instance_login_account_mismatch')
+    need(account['loginKeyboard']=='00000409','instance_login_keyboard_unrecognized')
+    def shot():
+        name='login-'+OPERATION+'-'+os.urandom(8).hex()+'.ppm';path=root/name
+        guard();monitor('screendump',{'filename':str(path),'format':'ppm'});s=os.lstat(path)
+        need(stat.S_ISREG(s.st_mode)and s.st_uid==os.geteuid()and s.st_nlink==1 and s.st_size<=16*1024**2,'instance_login_screen_identity')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            raw=b''
+            while len(raw)<=16*1024**2:
+                chunk=os.read(fd,65536)
+                if not chunk:break
+                raw+=chunk
+            need(len(raw)==s.st_size,'instance_login_screen_changed');ppm(raw);guard();return raw
+        finally:os.close(fd)
+    if LOGIN_MODE=='login-lock-fixture':
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        row=fresh['session'];need(fresh['tokenSid']==LOGIN_SID and row['User'].casefold()==SETUP['user'].casefold()and row['Flags']==1 and row['State']==0 and row['Logon']==LOGIN_EXPECTED.get('logon')and fresh['console']==LOGIN_EXPECTED.get('console'),'instance_login_lock_session_changed')
+        name='login-test-lock-'+OPERATION+'.intent.json';intent={'operationId':OPERATION,'intentionalTestState':'locked','expected':LOGIN_EXPECTED,'account':LOGIN_SID,'replayAllowed':False}
+        if not os.path.lexists(root/name):
+            guard();save(name,intent);monitor('send-key',{'keys':[{'type':'qcode','data':'meta_l'},{'type':'qcode','data':'l'}],'hold-time':80})
+        else:need(read(name)==intent,'instance_login_original_lock_changed')
+        return {'login':{'state':'intentional-lock-submitted','operationId':OPERATION,'replayAllowed':False},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-reference':
+        need(LOGIN_ORIGINAL is not None and not os.path.lexists(root/('login-credential-'+LOGIN_ORIGINAL+'.intent.json')),'instance_login_original_submission_exists')
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        try:prepare_screen(shot,monitor,guard,save,read,lambda name:os.path.lexists(root/name),OPERATION,LOGIN_PROFILE,LOGIN_EXPECTED)
+        except ValueError as error:
+            if str(error)!='instance_login_screen_unrecognized':raise
+        time.sleep(4);raw=shot();return {'login':{'state':'precredential-reference','originalCredentialIntentAbsent':True,'screenZlib':base64.b64encode(zlib.compress(raw)).decode(),'screenBytes':len(raw)},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-dismiss':
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        name='login-dismiss-'+OPERATION+'.intent.json'
+        if not os.path.lexists(root/name):
+            screen_gate(shot(),LOGIN_PROFILE);guard();save(name,{'operationId':OPERATION,'action':'dismiss','expected':LOGIN_EXPECTED,'profile':LOGIN_PROFILE,'replayAllowed':False});monitor('send-key',{'keys':[{'type':'qcode','data':'ret'}],'hold-time':80});time.sleep(1)
+        else:need(read(name)=={'operationId':OPERATION,'action':'dismiss','expected':LOGIN_EXPECTED,'profile':LOGIN_PROFILE,'replayAllowed':False},'instance_login_original_dismiss_changed')
+        raw=shot();return {'login':{'state':'dismiss-observed','account':account,'screenZlib':base64.b64encode(zlib.compress(raw)).decode(),'screenBytes':len(raw)},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-wake':
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        name='login-wake-'+OPERATION+'.intent.json'
+        if not os.path.lexists(root/name):
+            mice=monitor('query-mice');selected=[v for v in mice if type(v)is dict and v.get('current')is True]
+            need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_login_mouse_unrecognized')
+            events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
+            save(name,{'operationId':OPERATION,'action':'wake','expected':LOGIN_EXPECTED,'replayAllowed':False});guard();monitor('input-send-event',{'events':events});time.sleep(1)
+        else:need(read(name)=={'operationId':OPERATION,'action':'wake','expected':LOGIN_EXPECTED,'replayAllowed':False},'instance_login_original_wake_changed')
+        raw=shot();return {'login':{'state':'wake-observed','account':account,'screenZlib':base64.b64encode(zlib.compress(raw)).decode(),'screenBytes':len(raw)},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-probe':
+        if LOGIN_ORIGINAL is not None:need(not os.path.lexists(root/('login-credential-'+LOGIN_ORIGINAL+'.intent.json')),'instance_login_original_submission_exists')
+        raw=shot();return {'login':{'state':'observed','account':account,'screenZlib':base64.b64encode(zlib.compress(raw)).decode(),'screenBytes':len(raw)},'sessionFacts':fresh}
+    need(LOGIN_MODE in {'login-submit','login-status'},'instance_login_action')
+    need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+    session=fresh['session']
+    need(not session['User']or session['User'].casefold()==SETUP['user'].casefold()and fresh['tokenSid']==LOGIN_SID,'instance_login_wrong_account')
+    def ready(value):
+        row=value['session']
+        return (value['boot']==LOGIN_EXPECTED['boot']and value['expectedSid']==LOGIN_SID and value['ordinary']is True and value['tokenSid']==LOGIN_SID and row['User'].casefold()==SETUP['user'].casefold()and row['Flags']==1 and row['State']==0 and sum(x['SessionId']==value['console']for x in value['explorers'])==1)
+    name='login-credential-'+OPERATION+'.intent.json'
+    admission={'operationId':OPERATION,'expected':LOGIN_EXPECTED,'profile':LOGIN_PROFILE,'account':LOGIN_SID,'replayAllowed':False}
+    def close_ready(value):
+        row=value['session'];terminal={'operationId':OPERATION,'state':'ready','boot':value['boot'],'account':LOGIN_SID,'console':value['console'],'logon':row['Logon'],'settingsChanged':False,'replayAllowed':False}
+        closed='login-credential-'+OPERATION+'.terminal.json'
+        if not os.path.lexists(root/closed):guard();save(closed,terminal)
+        else:
+            old=read(closed);need(type(old)is dict and set(old)==set(terminal)and all(old[k]==terminal[k]for k in ('operationId','state','boot','account','settingsChanged','replayAllowed'))and type(old['console'])is int and type(old['logon'])is int,'instance_login_terminal_changed')
+        for phase in ('wake','dismiss'):
+            prefix='login-preparation-'+OPERATION+'-'+phase;prepared=prefix+'.intent.json'
+            if not os.path.lexists(root/prepared):continue
+            original=read(prepared);need(original.get('operationId')==OPERATION and original.get('phase')==phase and original.get('expected')==LOGIN_EXPECTED and original.get('replayAllowed')is False,'instance_login_preparation_changed')
+            done={**terminal,'phase':phase,'state':'ready-observed'};closed=prefix+'.terminal.json'
+            if not os.path.lexists(root/closed):guard();save(closed,done)
+            else:need(read(closed)==done,'instance_login_terminal_changed')
+    if LOGIN_MODE=='login-status'or os.path.lexists(root/name):
+        need(os.path.lexists(root/name),'instance_login_original_submission_unknown')
+        need(read(name)==admission,'instance_login_original_changed')
+        if ready(fresh):close_ready(fresh)
+        return {'login':{'state':'ready'if ready(fresh)else'credential-submission-unresolved','operationId':OPERATION,'interactiveSessionVerified':ready(fresh),'replayAllowed':False},'sessionFacts':fresh}
+    if ready(fresh):
+        if globals().get('LOGIN_OWNER_PHASE'):LOGIN_OWNER_PHASE('credential','not-needed')
+        return {'login':{'state':'ready','operationId':OPERATION,'interactiveSessionVerified':True,'replayAllowed':False},'sessionFacts':fresh}
+    need(session['SessionId']==LOGIN_EXPECTED.get('console')and session['Logon']==LOGIN_EXPECTED.get('logon')and session['User']==LOGIN_EXPECTED.get('user'),'instance_login_session_changed')
+    prepare_screen(shot,monitor,guard,save,read,lambda name:os.path.lexists(root/name),OPERATION,LOGIN_PROFILE,LOGIN_EXPECTED)
+    current=script('login-admission-'+os.urandom(6).hex(),SESSION_SCRIPT)
+    need(current['ordinary']is True and current['expectedSid']==LOGIN_SID,'instance_login_account_mismatch')
+    need(current['boot']==fresh['boot']and current['console']==fresh['console']and current['tokenSid']==fresh['tokenSid']and current['session']['Logon']==fresh['session']['Logon']and current['session']['User']==fresh['session']['User']and current['session']['State']==fresh['session']['State']and current['session']['Flags']==fresh['session']['Flags'],'instance_login_session_changed')
+    secret=globals().pop('LOGIN_OWNER_SECRET',None)
+    if secret is None:secret=sys.stdin.buffer.read(65)
+    # Validate all private bytes before journaling and before the first key. No
+    # count, derived key request, echo or hash is retained by either path.
+    private_keys(secret);guard();save(name,admission)
+    try:enter_private(secret,lambda arguments:monitor('send-key',arguments),guard)
+    finally:secret=None
+    if globals().get('LOGIN_OWNER_PHASE'):LOGIN_OWNER_PHASE('credential')
+    after=script('login-after-'+os.urandom(6).hex(),SESSION_SCRIPT)
+    need(after['boot']==fresh['boot']and after['expectedSid']==LOGIN_SID and after['ordinary']is True,'instance_login_session_changed')
+    if globals().get('LOGIN_OWNER_PHASE'):
+        deadline=time.monotonic()+30
+        while not ready(after)and time.monotonic()<deadline:
+            guard();time.sleep(.5);after=script('login-after-'+os.urandom(6).hex(),SESSION_SCRIPT)
+            need(after['boot']==fresh['boot']and after['expectedSid']==LOGIN_SID and after['ordinary']is True,'instance_login_session_changed')
+    if ready(after):close_ready(after)
+    return {'login':{'state':'ready'if ready(after)else'credential-submitted','operationId':OPERATION,'interactiveSessionVerified':ready(after),'replayAllowed':False},'sessionFacts':after}
+
+def program(binding,mode,operation,*,expected_sid,profile=None,expected=None,original_operation=None,original_frame=0):
+    if mode not in {'login-probe','login-wake','login-dismiss','login-submit','login-status','login-original-screens','login-reference','login-lock-fixture'}or type(operation)is not str or str(UUID(operation))!=operation:raise ValueError('windows_login_action')
+    if type(expected_sid)is not str or re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',expected_sid)is None:raise ValueError('windows_login_account')
+    if type(original_frame)is not int or not 0<=original_frame<=31:raise ValueError('windows_login_original_frame')
+    if original_operation is not None and (type(original_operation)is not str or str(UUID(original_operation))!=original_operation):raise ValueError('windows_login_original')
+    base=packets.program(binding,'observe',operation)
+    helpers='import hashlib,re,os\n'+_publication_source()+'\nLOGIN_MODE='+repr(mode)+'\nLOGIN_SID='+repr(expected_sid)+'\nLOGIN_PROFILE='+repr(profile)+'\nLOGIN_EXPECTED='+repr(expected)+'\nLOGIN_ORIGINAL='+repr(original_operation)+'\nLOGIN_FRAME='+repr(original_frame)+'\n'
+    account="$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"+LOGIN_ACCOUNT.replace('__USER__',repr(binding['setup']['user']))
+    helpers+='LOGIN_ACCOUNT_SCRIPT='+repr(account)+'\n'
+    for fn in (PrivateInputUnknown,_ProtectedOwner,private_keys,enter_private,ppm,screen_gate,wait_known_field,prepare_screen,_login_flow):helpers+=inspect.getsource(fn)+'\n'
+    marker="        elif MODE in {'observe','idle-inventory','reboot'}:\n"
+    extension="        elif MODE in {'login-probe','login-wake','login-dismiss','login-submit','login-status','login-original-screens','login-reference','login-lock-fixture'}:\n            require(state=='running','instance_guest_not_ready')\n            fresh=script('login-session-'+os.urandom(6).hex(),SESSION_SCRIPT)\n            result['guestAgent']=True\n            result.update(_login_flow(root,read,save,monitor,vm_guard,script,fresh,result))\n"
+    source=base.decode()
+    if source.count(marker)!=1 or source.count("MODE='observe'")!=1:raise ValueError('windows_login_producer_changed')
+    source=source.replace("MODE='observe'","MODE="+repr(mode),1).replace(marker,extension+marker,1)
+    # The owner forks before opening provider connections or creating wire files.
+    # Only public source metadata travels in argv; private input is framed stdin.
+    owner_init="""        epoch();chain()
+        login_owner=None
+        if MODE in {'login-submit','login-status'}:
+            import sys
+            require(len(sys.argv)==5,'instance_login_owner_source')
+            identity={'expected':LOGIN_EXPECTED,'profile':LOGIN_PROFILE,'account':LOGIN_SID,'machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],'user':SETUP['user']}
+            login_owner=_ProtectedOwner(root,OPERATION,identity,sys.argv[1],sys.argv[2],json.loads(sys.argv[4]))
+            existing=login_owner.existing()
+            if existing is not None:
+                if existing['state']!='terminal':
+                    print(json.dumps({'state':'owner-'+existing['state'],'operationId':OPERATION,'replayAllowed':False}));return
+                print(json.dumps(existing['packet']));return
+    """.rstrip()
+    if source.count('        epoch();chain()')!=1:raise ValueError('windows_login_owner_producer_changed')
+    source=source.replace('        epoch();chain()',owner_init,1)
+    marker="        if PROVIDER=='libvirt-windows':\n            import libvirt,libvirt_qemu"
+    owner_enter="""        if login_owner is not None:
+            login_owner.lock=lock
+            if login_owner.intent is None and MODE=='login-submit':
+                launched=login_owner.start(lock,held,sys.stdin.buffer,budget_seconds=float(sys.argv[3]))
+                if type(launched)is dict:print(json.dumps(launched));return
+                globals()['LOGIN_OWNER_SECRET']=launched
+                globals()['LOGIN_OWNER_PHASE']=login_owner.phase
+            plain_guard=vm_guard
+            def vm_guard():
+                login_owner.guard(login_owner.child);plain_guard()
+        if PROVIDER=='libvirt-windows':
+            import libvirt,libvirt_qemu"""
+    if source.count(marker)!=1:raise ValueError('windows_login_owner_producer_changed')
+    source=source.replace(marker,owner_enter,1)
+    finish="        vm_guard();print(json.dumps(result))"
+    if source.count(finish)!=1:raise ValueError('windows_login_owner_producer_changed')
+    source=source.replace(finish,"        vm_guard()\n        if login_owner is not None and login_owner.child:login_owner.finish(result)\n        print(json.dumps(result))",1)
+    failure="        print(json.dumps({'state':'blocked','operationId':OPERATION,'reason':reason,'errorClass':type(error).__name__,'replayAllowed':False}))"
+    if source.count(failure)!=1:raise ValueError('windows_login_owner_producer_changed')
+    source=source.replace(failure,"        failed={'state':'blocked','operationId':OPERATION,'reason':reason,'errorClass':type(error).__name__,'replayAllowed':False}\n        if locals().get('login_owner')is not None and login_owner.child:\n            try:login_owner.finish(failed)\n            except BaseException:pass\n        print(json.dumps(failed))",1)
+    final='        for descriptor in reversed(held):os.close(descriptor)'
+    source=source.replace(final,final+"\n        if locals().get('login_owner')is not None and login_owner.child:os._exit(0)",1)
+    import ast
+    reasons=sorted({node.value for node in ast.walk(ast.parse(helpers+source))if isinstance(node,ast.Constant)and type(node.value)is str and re.fullmatch('instance_[a-z_]{1,64}',node.value)})
+    source='LOGIN_PUBLIC_REASONS='+repr(reasons)+'\n'+helpers+source
+    compile(source,'fixed protected Windows login','exec');return source.encode()
+
+
+def decode_precredential_reference(stdout,stderr=b'',returncode=0):
+    """Decode a bounded public reference only after original-input absence."""
+    import base64,zlib
+    if returncode or stderr or type(stdout)is not bytes or not 0<len(stdout)<=4194304:raise ValueError('windows_login_reference_bound')
+    value=json.loads(stdout)
+    if type(value)is not dict or value.get('state')!='observed'or type(value.get('login'))is not dict:raise ValueError('windows_login_reference_reply')
+    result=value['login']
+    if result.get('state')!='precredential-reference'or result.get('originalCredentialIntentAbsent')is not True or type(result.get('screenZlib'))is not str or type(result.get('screenBytes'))is not int or not 0<result['screenBytes']<=16777216:raise ValueError('windows_login_reference_reply')
+    compressed=base64.b64decode(result['screenZlib'],validate=True);decoder=zlib.decompressobj();raw=decoder.decompress(compressed,16777217)
+    if len(raw)!=result['screenBytes']or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:raise ValueError('windows_login_reference_bound')
+    ppm(raw);return value,raw
+
+
+def _collect_terminal_remote(binding,original,stages,boot_path='/proc/sys/kernel/random/boot_id',stage_parent='/tmp'):
+    """Observe immutable historical receipts; never enter a guest or read input."""
+    import hashlib,json,os,pathlib,pwd,stat
+    held=[];pins=[];directories=[];phase='original_submission_receipt_unavailable'
+    def need(ok,reason):
+        if not ok:raise ValueError(reason)
+    def generation(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+    def structure(s):return generation(s)[:5]
+    def directory(path,private=False):
+        path=pathlib.Path(path);need(path.is_absolute()and str(path)==os.path.normpath(str(path)),'instance_login_terminal_path')
+        descriptor=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(descriptor)
+        for name in path.parts[1:]:
+            descriptor=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=descriptor);held.append(descriptor)
+            ancestor=os.fstat(descriptor);need((ancestor.st_uid in (0,os.geteuid())and not ancestor.st_mode&0o022)or ancestor.st_uid==0 and ancestor.st_mode&stat.S_ISVTX,'instance_login_terminal_ancestry')
+        info=os.fstat(descriptor)
+        need(not private or info.st_uid==os.geteuid()and stat.S_IMODE(info.st_mode)==0o700,'instance_login_terminal_owner')
+        directories.append((path,descriptor,structure(info)));return path
+    def body(path,maximum=65536,expected=None):
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);info=os.fstat(fd)
+        need(stat.S_ISREG(info.st_mode)and info.st_uid==os.geteuid()and stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1 and 0<info.st_size<=maximum,'instance_login_terminal_owner')
+        need(expected is None or generation(info)==expected,'instance_login_terminal_generation')
+        chunks=[];total=0
+        while True:
+            chunk=os.read(fd,min(65536,maximum+1-total))
+            if not chunk:break
+            chunks.append(chunk);total+=len(chunk);need(total<=maximum,'instance_login_terminal_bound')
+        raw=b''.join(chunks);need(len(raw)==info.st_size,'instance_login_terminal_changed');pins.append((path,fd,generation(info)));return raw
+    def document(path):return json.loads(body(path))
+    def close_check():
+        for path,fd,pin in pins:need(generation(os.fstat(fd))==pin and generation(os.lstat(path))==pin,'instance_login_terminal_changed')
+        for path,fd,pin in directories:need(structure(os.fstat(fd))==pin and structure(os.lstat(path))==pin,'instance_login_terminal_changed')
+        need(pathlib.Path(boot_path).read_text().strip()==binding['context']['hostBootId'],'instance_login_terminal_host_changed')
+    try:
+        need(pathlib.Path(boot_path).read_text().strip()==binding['context']['hostBootId'],'instance_login_terminal_host_changed')
+        for index,stage in enumerate(stages):
+            phase='original_submission_receipt_unavailable'if index==0 else'original_observer_receipt_unavailable'
+            identity=stage['identity'];account=pwd.getpwuid(os.geteuid())
+            need(identity=={'uid':os.geteuid(),'principal':account.pw_name,'home':account.pw_dir,'boot':binding['context']['hostBootId']},'instance_login_terminal_principal')
+            path=directory(stage['directory'],True)
+            need(str(path)==stage_parent+'/vpn-control-auto-'+stage['correlationId']and structure(os.lstat(path))==stage['directoryIdentity'],'instance_login_terminal_stage')
+            raw=body(path/'program.source',1048576,stage['generation'])
+            need(len(raw)==stage['programBytes']and hashlib.sha256(raw).hexdigest()==stage['programSha256'],'instance_login_terminal_source')
+            need(document(path/'receipt.json')==stage and document(path/'execution-intent.json')==stage,'instance_login_terminal_source')
+        phase='original_instance_receipt_unavailable'
+        root=directory(binding['spec']['root'],True);start=document(root/'intent.json')
+        need(type(start)is dict and set(start)=={'schemaVersion','spec','setup','hostBootId','rootIdentity','assetIdentities'}and type(start['schemaVersion'])is int and start['schemaVersion']==1 and type(start['assetIdentities'])is dict and set(start['assetIdentities'])=={'firmwareCode','installer','drivers'}and start['spec']==binding['spec']and start['setup']==binding['setup']and start['hostBootId']==binding['context']['hostBootId']and start['rootIdentity']==structure(os.lstat(root)),'instance_login_terminal_instance')
+        operation=original['identity']['operationId'];identity=original['identity']
+        expected={'operationId':operation,'expected':identity['expected'],'profile':identity['profile'],'account':identity['expectedSid'],'replayAllowed':False}
+        phase='original_credential_admission_unavailable'
+        need(document(root/('login-credential-'+operation+'.intent.json'))==expected,'instance_login_original_changed')
+        phase='original_terminal_unavailable'
+        terminal=document(root/('login-credential-'+operation+'.terminal.json'))
+        fields={'operationId','state','boot','account','console','logon','settingsChanged','replayAllowed'}
+        need(type(terminal)is dict and set(terminal)==fields and terminal['operationId']==operation and terminal['state']=='ready'and terminal['boot']==identity['expected']['boot']and terminal['account']==identity['expectedSid']and type(terminal['console'])is int and terminal['console']==identity['expected']['console']and type(terminal['logon'])is int and terminal['logon']>0 and terminal['settingsChanged']is False and terminal['replayAllowed']is False,'instance_login_terminal_reply')
+        close_check();return {'state':'terminal','operationId':operation,'terminal':terminal,'currentDesktopVerified':False,'replayAllowed':False}
+    except FileNotFoundError:return {'state':'unknown','operationId':original['identity']['operationId'],'reason':phase,'replayAllowed':False}
+    except (ValueError,KeyError,TypeError,OSError):return {'state':'unknown','operationId':original['identity']['operationId'],'reason':'original_terminal_integrity_unresolved','replayAllowed':False}
+    finally:
+        for descriptor in reversed(held):os.close(descriptor)
+
+
+def _terminal_source_matches(actual,canonical):
+    """Only literal binding dictionary order may differ in retained packets."""
+    import ast
+    def normalized(raw):
+        tree=ast.parse(raw)
+        for node in tree.body:
+            if isinstance(node,ast.Assign)and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)and node.targets[0].id in {'LOGIN_PROFILE','LOGIN_EXPECTED','SPEC','SETUP','CONTEXT'}:
+                value=ast.literal_eval(node.value)
+                node.value=ast.Constant(json.dumps(value,sort_keys=True,separators=(',',':')))
+        return ast.dump(tree,include_attributes=False)
+    try:return normalized(actual)==normalized(canonical)
+    except (SyntaxError,ValueError,TypeError):return False
+
+
+def _terminal_command(source):
+    import base64
+    return ['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(source.encode()).decode())+'))']
+
+
+def collect_terminal(backend,operation,deadline):
+    """Collect the original credential terminal after a discarded callback."""
+    import base64,os,stat,subprocess,time
+    from pathlib import Path
+    from . import readiness,ssh_transport as transport
+    from .native_review_source_closure import _Held
+    from .ssh_automatic_program import PlannedArgv
+    if type(operation)is not str or str(UUID(operation))!=operation:raise ValueError('windows_login_identity')
+    backend._guard();root=backend.root;held=_Held()
+    def local(path,maximum=1048576):
+        from .native_review_source_closure import generation
+        parent=held.directory(str(path.parent));descriptor=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
+        try:
+            s=os.fstat(descriptor)
+            if not stat.S_ISREG(s.st_mode)or s.st_uid!=os.geteuid()or stat.S_IMODE(s.st_mode)!=0o600 or s.st_nlink!=1 or not 0<s.st_size<=maximum:raise ValueError('windows_login_terminal_custody')
+            raw=os.read(descriptor,maximum+1)
+            if len(raw)!=s.st_size or generation(os.fstat(descriptor))!=generation(s):raise ValueError('windows_login_terminal_custody')
+        finally:os.close(descriptor)
+        return held.read(str(path),hashlib.sha256(raw).hexdigest(),generation(s),max_bytes=maximum)
+    def wrapper(raw):return ('import base64;exec(base64.b64decode('+repr(base64.b64encode(raw).decode())+'))').encode()
+    try:
+        current=Path(__file__);own_source=current.read_bytes()
+        if _EXECUTING_CODE!=compile(own_source,str(current),'exec',dont_inherit=True):raise ValueError('windows_login_source_changed')
+        held.read(str(current),hashlib.sha256(own_source).hexdigest(),max_bytes=1048576)
+        directory=root/'.runtime/readiness-windows-login'/operation
+        for parent in (root/'.runtime/readiness-windows-login',directory):
+            info=parent.lstat()
+            if not stat.S_ISDIR(info.st_mode)or info.st_uid!=os.geteuid()or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('windows_login_terminal_custody')
+        original=json.loads(local(directory/'credential.intent.json',65536));identity=original['identity']
+        if set(original)!={'identity','callerSha256','replayAllowed'}or original['replayAllowed']is not False or set(identity)!={'operationId','binding','expectedSid','profile','expected'}or identity['operationId']!=operation or identity['binding']!=backend.binding or identity['expectedSid']!=backend.expected_sid:raise ValueError('windows_login_original_changed')
+        submitted=[raw for path in directory.glob('login-submit-*.py')if hashlib.sha256(raw:=local(path)).hexdigest()==original['callerSha256']]
+        if not submitted:raise ValueError('windows_login_terminal_source_unavailable')
+        status=program(backend.binding,'login-status',operation,expected_sid=backend.expected_sid,profile=identity['profile'],expected=identity['expected'])
+        statuses=[raw for path in directory.glob('login-status-*.py')if _terminal_source_matches(raw:=local(path),status)]
+        if not statuses:raise ValueError('windows_login_terminal_source_unavailable')
+        wanted=[wrapper(submitted[0]),wrapper(statuses[0])];stages=[]
+        for raw in wanted:
+            found=None
+            for child in sorted((root/'.rag_index/ssh-automatic-program').iterdir(),key=lambda item:item.stat().st_mtime_ns,reverse=True):
+                if not re.fullmatch('[0-9a-f]{32}',child.name):continue
+                path=child/'program.source'
+                if not path.exists()or path.stat().st_size!=len(raw):continue
+                candidate=local(path)
+                if candidate!=raw:continue
+                staged=json.loads(local(child/'staged.json',65536));intent=json.loads(local(child/'intent.json',65536));execution=json.loads(local(child/'execution-intent.json',65536))
+                digest=hashlib.sha256(raw).hexdigest();expected_keys={'schemaVersion','correlationId','directory','identity','programSha256','programBytes','generation','directoryIdentity'}
+                if set(staged)!=expected_keys or staged['schemaVersion']!=1 or staged['correlationId']!=child.name or staged['programSha256']!=digest or staged['programBytes']!=len(raw)or intent['programSha256']!=digest or execution!={'replayAllowed':False,'receiptSha256':hashlib.sha256(json.dumps(staged,sort_keys=True,separators=(',',':')).encode()).hexdigest()}:raise ValueError('windows_login_terminal_source_changed')
+                found=staged;break
+            if found is None:raise ValueError('windows_login_terminal_stage_unavailable')
+            stages.append(found)
+        source='BINDING='+repr(backend.binding)+'\nORIGINAL='+repr(original)+'\nSTAGES='+repr(stages)+'\n'+inspect.getsource(_collect_terminal_remote)+'\nimport json;print(json.dumps(_collect_terminal_remote(BINDING,ORIGINAL,STAGES),sort_keys=True))\n'
+        command=_terminal_command(source)
+        with transport.admitted_transport(root,backend.binding['spec']['host'],operation,deadline=deadline,requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})))as admission:
+            backend._guard();held.finish();held.final_identity_pass();remaining=deadline-time.monotonic()
+            if remaining<=0:raise ValueError('windows_login_terminal_deadline')
+            argv=transport.build_ssh_argv(transport.load_config(root),backend.binding['spec']['host'],command=command)
+            if isinstance(argv,PlannedArgv):raise ValueError('windows_login_terminal_packet_bound')
+            result=transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=remaining,check=False)
+            backend._guard();held.finish();held.final_identity_pass()
+        if result.returncode or result.stderr or len(result.stdout)>16384:raise ValueError('windows_login_terminal_reply')
+        value=json.loads(result.stdout,object_pairs_hook=transport._reject_duplicate_keys)
+        if value.get('operationId')!=operation or value.get('replayAllowed')is not False or value.get('state')not in {'terminal','unknown'}:raise ValueError('windows_login_terminal_reply')
+        return value
+    finally:held.close()
+
+
+def _publication_source():
+    """Pin the shared primitive and reject stale imported code before embedding."""
+    import os,stat,types
+    from pathlib import Path
+    from . import private_inventory_lock as publication
+    from .native_review_source_closure import _Held
+    path=Path(publication.__file__);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held=_Held()
+    try:
+        info=os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode)or info.st_mode&0o022 or not 0<info.st_size<=1048576:raise ValueError('windows_login_publication_source_changed')
+        raw=os.read(fd,1048577)
+        if len(raw)!=info.st_size:raise ValueError('windows_login_publication_source_changed')
+        held.read(str(path),hashlib.sha256(raw).hexdigest(),max_bytes=1048576)
+        compiled=compile(raw,str(path),'exec',dont_inherit=True)
+        code=next(value for value in compiled.co_consts if isinstance(value,types.CodeType)and value.co_name=='_rename_create_only')
+        if code!=_rename_create_only.__code__ or publication._rename_create_only is not _rename_create_only:raise ValueError('windows_login_publication_source_changed')
+        source=inspect.getsource(_rename_create_only);held.finish();held.final_identity_pass();return source
+    finally:os.close(fd);held.close()
+
+def _retain_local(directory,name,value):
+    """Publish complete public owner metadata once, with directory durability."""
+    import os,stat,uuid
+    from pathlib import Path
+    _publication_source()
+    directory=Path(directory)
+    if type(name)is not str or Path(name).name!=name or name in {'.','..'}:raise ValueError('windows_login_journal_name')
+    raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode()
+    descriptor=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    temporary='.'+name+'.'+uuid.uuid4().hex+'.tmp'
+    try:
+        info=os.fstat(descriptor);pin=(info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid)
+        def guard():
+            named=os.lstat(directory);actual=os.fstat(descriptor)
+            if not stat.S_ISDIR(actual.st_mode)or actual.st_uid!=os.getuid()or stat.S_IMODE(actual.st_mode)!=0o700 or any((row.st_dev,row.st_ino,row.st_mode,row.st_uid,row.st_gid)!=pin for row in (actual,named)):raise ValueError('windows_login_journal_owner')
+        guard();parent=os.open(directory.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:os.fsync(parent)
+        finally:os.close(parent)
+        fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=descriptor)
+        try:
+            file=os.fstat(fd)
+            if not stat.S_ISREG(file.st_mode)or file.st_uid!=os.getuid()or stat.S_IMODE(file.st_mode)!=0o600 or file.st_nlink!=1:raise ValueError('windows_login_journal_owner')
+            view=memoryview(raw)
+            while view:
+                count=os.write(fd,view)
+                if count<=0:raise ValueError('windows_login_journal_write')
+                view=view[count:]
+            os.fsync(fd);guard()
+            _rename_create_only(descriptor,temporary,name)
+        finally:os.close(fd)
+    finally:
+        try:os.unlink(temporary,dir_fd=descriptor)
+        except FileNotFoundError:pass
+        finally:
+            try:os.fsync(descriptor)
+            finally:os.close(descriptor)
+
+def _approved_predecessors(backend,operation,held):
+    """Authorize history from retained canonical original artifacts, not JSON claims."""
+    import os,stat
+    from pathlib import Path
+    parent=backend.root/'.runtime/readiness-windows-login';approved={}
+    def read(path,limit):
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            info=os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode)or info.st_uid!=os.getuid()or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or not 0<info.st_size<=limit:raise ValueError('windows_login_prior_artifact_unsafe')
+            raw=os.read(fd,limit+1)
+            if len(raw)!=info.st_size:raise ValueError('windows_login_prior_artifact_changed')
+        finally:os.close(fd)
+        if held.read(str(path),hashlib.sha256(raw).hexdigest(),max_bytes=limit)!=raw:raise ValueError('windows_login_prior_artifact_changed')
+        return raw
+    directories=sorted(parent.iterdir())
+    if len(directories)>4096:raise ValueError('windows_login_history_bound')
+    for directory in directories:
+        if directory.name==operation:continue
+        path=directory/'credential.intent.json'
+        if not os.path.lexists(path):continue
+        value=json.loads(read(path,65536));identity=value.get('identity')
+        if type(identity)is not dict:raise ValueError('windows_login_prior_artifact_invalid')
+        binding=identity.get('binding');spec=binding.get('spec')if type(binding)is dict else None
+        if type(spec)is not dict:raise ValueError('windows_login_prior_artifact_invalid')
+        if (spec.get('deploymentId'),spec.get('host'),spec.get('root'))!=(backend.machine,backend.binding['spec']['host'],backend.binding['spec']['root']):continue
+        original=directory.name
+        if str(UUID(original))!=original or set(value)!={'identity','callerSha256','replayAllowed'}or set(identity)!={'operationId','binding','expectedSid','profile','expected'}or identity['operationId']!=original or value['replayAllowed']is not False or type(value['callerSha256'])is not str or re.fullmatch('[0-9a-f]{64}',value['callerSha256'])is None:raise ValueError('windows_login_prior_artifact_invalid')
+        canonical=program(binding,'login-submit',original,expected_sid=identity['expectedSid'],profile=identity['profile'],expected=identity['expected'])
+        callers=sorted(directory.glob('login-submit-*.py'))
+        if not 1<=len(callers)<=64:raise ValueError('windows_login_prior_source_untrusted')
+        matched=False
+        for caller in callers:
+            source=read(caller,1048576)
+            if hashlib.sha256(source).hexdigest()!=value['callerSha256']:continue
+            if not _terminal_source_matches(source,canonical):raise ValueError('windows_login_prior_source_untrusted')
+            matched=True
+        if not matched:raise ValueError('windows_login_prior_source_untrusted')
+        public={'expected':identity['expected'],'profile':identity['profile'],'account':identity['expectedSid'],'machine':spec['deploymentId'],'hostBoot':binding['context']['hostBootId'],'user':binding['setup']['user']}
+        approved[original]={'sourceSha256':value['callerSha256'],'identitySha256':hashlib.sha256(json.dumps(public,sort_keys=True,separators=(',',':')).encode()).hexdigest()}
+        if len(approved)>256:raise ValueError('windows_login_history_bound')
+    if len(json.dumps(approved,separators=(',',':')).encode())>50000:raise ValueError('windows_login_history_bound')
+    return approved
+
+def execute(backend,operation,profile,expected,credential_file,deadline,*,status_only=False):
+    """Own one fixed protected attempt; repeats observe without reopening input."""
+    import math,os,stat,subprocess,time
+    from pathlib import Path
+    from . import ssh_transport as transport,readiness,ssh_dispatch_admission
+    from .private_credential_file import SecretFile
+    from .native_review_source_closure import _Held
+    _retain=_retain_local
+    from . import readiness_windows_guest as session_module
+    if type(operation)is not str or str(UUID(operation))!=operation or type(status_only)is not bool:raise ValueError('windows_login_identity')
+    if not math.isfinite(deadline)or deadline<=time.monotonic():raise ValueError('windows_login_deadline')
+    backend._guard();root=backend.root
+    if ssh_dispatch_admission.current(root,backend.binding['spec']['host'])is not None:raise ValueError('windows_login_requires_unwound_admission')
+    own_source=Path(__file__).read_bytes()
+    if _EXECUTING_CODE!=compile(own_source,str(Path(__file__)),'exec',dont_inherit=True):raise ValueError('windows_login_source_changed')
+    # Establish the actual transport before producing its guest-bound packet.
+    with transport.admitted_transport(root,backend.binding['spec']['host'],operation,deadline=deadline,requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})))as prepared:
+        prepared.revalidate()
+    parent=root/'.runtime/readiness-windows-login';parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    for directory in (root/'.runtime',parent):
+        s=directory.lstat()
+        if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.getuid()or s.st_mode&(0o022 if directory==root/'.runtime'else 0o077):raise ValueError('windows_login_journal_owner')
+        parent_fd=os.open(directory.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:os.fsync(parent_fd)
+        finally:os.close(parent_fd)
+    directory=parent/operation
+    try:directory.mkdir(mode=0o700)
+    except FileExistsError:
+        s=directory.lstat()
+        if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.getuid()or s.st_mode&0o077:raise ValueError('windows_login_journal_owner')
+    identity={'operationId':operation,'binding':backend.binding,'expectedSid':backend.expected_sid,'profile':profile,'expected':expected}
+    source=program(backend.binding,'login-submit',operation,expected_sid=backend.expected_sid,profile=profile,expected=expected)
+    intended={'identity':identity,'callerSha256':hashlib.sha256(source).hexdigest(),'replayAllowed':False}
+    intent=directory/'credential.intent.json';held=_Held();private=None;secret=None
+    try:
+        current=Path(__file__);held.read(str(current),hashlib.sha256(current.read_bytes()).hexdigest(),max_bytes=1048576)
+        from . import private_inventory_lock as publication
+        shared=Path(publication.__file__);held.read(str(shared),hashlib.sha256(shared.read_bytes()).hexdigest(),max_bytes=1048576)
+        _publication_source()
+        if status_only and not os.path.lexists(intent):return {'state':'blocked','reason':'original_submission_unknown','operationId':operation,'replayAllowed':False}
+        try:
+            if status_only:raise FileExistsError()
+            _retain(directory,intent.name,intended);mode='login-submit'
+        except FileExistsError:
+            descriptor=os.open(intent,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                s=os.fstat(descriptor)
+                if not stat.S_ISREG(s.st_mode)or s.st_uid!=os.getuid()or stat.S_IMODE(s.st_mode)!=0o600 or s.st_nlink!=1 or not 0<s.st_size<=65536:raise ValueError('windows_login_journal_owner')
+                raw=os.read(descriptor,65537)
+                if len(raw)!=s.st_size:raise ValueError('windows_login_journal_changed')
+                held.read(str(intent),hashlib.sha256(raw).hexdigest(),max_bytes=65536);original=json.loads(raw,object_pairs_hook=transport._reject_duplicate_keys)
+                if set(original)!={'identity','callerSha256','replayAllowed'}or original['identity']!=identity or original['replayAllowed']is not False or type(original['callerSha256'])is not str or re.fullmatch('[0-9a-f]{64}',original['callerSha256'])is None:raise ValueError('windows_login_original_changed')
+            finally:os.close(descriptor)
+            mode='login-status';source=program(backend.binding,mode,operation,expected_sid=backend.expected_sid,profile=profile,expected=expected)
+        # Passwords are opened only after the immutable local credential fence.
+        if mode=='login-submit':
+            try:
+                secret=SecretFile(credential_file);private=secret.text.encode('ascii');private_keys(private);secret.guard()
+            except BaseException:
+                if secret is not None:secret.close();secret=None
+                return {'state':'blocked','reason':'credential_unavailable','operationId':operation,'replayAllowed':False}
+        label=mode+'-'+__import__('uuid').uuid4().hex;path=directory/(label+'.py');_retain(directory,path.name,source)
+        held.read(str(path),hashlib.sha256(source).hexdigest(),max_bytes=1048576)
+        import base64
+        from contextlib import contextmanager
+        from . import ssh_dispatch_retry,ssh_dispatch_admission
+        command=['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(source).decode())+'))',hashlib.sha256(source).hexdigest(),intended['callerSha256']if mode=='login-submit'else original['callerSha256']]
+        approved=_approved_predecessors(backend,operation,held)if mode=='login-submit'else{}
+        original_intent_raw=(json.dumps(intended,sort_keys=True)+'\n').encode()
+        original_intent_sha=hashlib.sha256(original_intent_raw).hexdigest()
+        if mode=='login-submit':held.read(str(intent),original_intent_sha,max_bytes=65536)
+        consumed=[False]
+        @contextmanager
+        def factory(scope_root,host,owner,*,deadline):
+            with transport.admitted_transport(scope_root,host,owner,deadline=deadline,
+                    requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})))as admission:
+                backend._guard();held.finish();held.final_identity_pass()
+                # Guest boot/account/session and recognized field are observed
+                # again inside this fixed packet before every GUI effect. They
+                # are never inferred from a repaired connection generation.
+                ssh_dispatch_admission.add_dispatch_guard(admission,backend._guard)
+                yield admission
+        def build(admission,attempt):
+            backend._guard();held.finish();held.final_identity_pass()
+            return transport.build_ssh_argv(transport.load_config(root),backend.binding['spec']['host'],command=command+[str(min(180,max(0,deadline-time.monotonic()))),json.dumps(approved,sort_keys=True,separators=(',',':'))])
+        def submit(argv):
+            backend._guard();held.finish();held.final_identity_pass()
+            if secret is not None:secret.guard()
+            remaining=deadline-time.monotonic()
+            if remaining<=0:
+                if mode=='login-submit'and not consumed[0]:raise _LoginDeadlineUnsubmitted('windows_login_deadline_before_submission')
+                raise ValueError('windows_login_observation_deadline')
+            try:
+                result=transport.run_ssh(argv,input=(len(private).to_bytes(4,'big')+private)if private is not None else b'',stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=min(100,remaining),check=False)
+            except (transport.PrelaunchReadinessRefusal,transport.StagedExecutionUnsubmitted):raise
+            except BaseException:consumed[0]=True;raise
+            consumed[0]=True;return result
+        def unsubmitted(proof,attempt):
+            if mode!='login-submit'or consumed[0]:return None
+            held.finish();held.final_identity_pass()
+            if held.read(str(intent),original_intent_sha,max_bytes=65536)!=original_intent_raw:return None
+            return original_intent_sha
+        try:
+            if mode=='login-submit':
+                result=ssh_dispatch_retry.run_original(root,backend.binding['spec']['host'],operation,build=build,submit=submit,
+                        prove_operation_unsubmitted=unsubmitted,deadline=deadline,admission_factory=factory)
+            else:
+                with factory(root,backend.binding['spec']['host'],operation,deadline=deadline)as admission:result=submit(build(admission,1))
+        except _LoginDeadlineUnsubmitted:
+            proof={'operationId':operation,'reason':'deadline_before_submission','intentSha256':original_intent_sha,'targetExecutableStarted':False,'childHandleReturned':False,'privateInputSubmitted':False,'replayAllowed':False}
+            held.finish();held.final_identity_pass();_retain(directory,label+'.unsubmitted.json',proof)
+            return {'state':'blocked','reason':'deadline_before_submission','operationId':operation,'replayAllowed':False}
+        except BaseException as error:
+            sealed=getattr(transport,'SubmittedResultReadinessChanged',None)
+            if sealed is not None and type(error)is sealed:result=error.take_submitted_result()
+            else:return {'state':'unknown','reason':'credential_submission_unresolved','operationId':operation,'replayAllowed':False}
+        if secret is not None:secret.guard()
+        # No raw stdout/stderr, hashes or lengths from this private path are
+        # retained. Even a malicious reply echoing the input stays in memory.
+        if private and (private in result.stdout or private in result.stderr):return {'state':'unknown','reason':'private_reply_rejected','operationId':operation,'replayAllowed':False}
+        if result.returncode or len(result.stdout)>262144 or result.stderr:return {'state':'unknown','reason':'credential_submission_unresolved','operationId':operation,'replayAllowed':False}
+        try:
+            value=json.loads(result.stdout,object_pairs_hook=transport._reject_duplicate_keys)
+            if type(value)is dict and value.get('state')=='owner-terminal':
+                if set(value)!={'state','operationId','loginState','boot','account','console','logon','replayAllowed'}or value['operationId']!=operation or value['loginState']not in {'ready','credential-submitted','credential-submission-unresolved'}or value['boot']!=expected['boot']or value['account']!=backend.expected_sid or type(value['console'])is not int or type(value['logon'])is not int or value['replayAllowed']is not False:raise ValueError()
+                receipt={'state':'terminal','operationId':operation,'historicalTerminal':True,'currentDesktopVerified':False,'login':{'state':value['loginState']},'boot':value['boot'],'account':value['account'],'session':str(value['console'])+':'+str(value['logon']),'replayAllowed':False}
+                backend._guard();held.finish();held.final_identity_pass();_retain(directory,label+'.result.json',receipt);return receipt
+            if type(value)is dict and value.get('state')in {'owner-running','owner-unknown'}:
+                if set(value)!={'state','operationId','replayAllowed'}or value['operationId']!=operation or value['replayAllowed']is not False:raise ValueError()
+                receipt={'state':'unknown','reason':'original_owner_running'if value['state']=='owner-running'else'original_owner_unknown','operationId':operation,'replayAllowed':False}
+                backend._guard();held.finish();held.final_identity_pass();_retain(directory,label+'.result.json',receipt);return receipt
+            if value.get('state')=='blocked':
+                reason=value.get('reason')
+                if type(reason)is not str or re.fullmatch('instance_[a-z_]{1,64}',reason)is None:raise ValueError()
+                receipt={'state':'blocked','reason':reason,'operationId':operation,'replayAllowed':False}
+                backend._guard();held.finish();held.final_identity_pass();_retain(directory,label+'.result.json',receipt);return receipt
+            fields={'state','operationId','provider','machine','hostBoot','guest','actor','controlConnection','sessionFacts','displayFacts','guestAgent','idleFacts','hostWork','login'}
+            if type(value)is not dict or set(value)!=fields or value['operationId']!=operation or value['machine']!=backend.machine or value['state']!='observed':raise ValueError()
+            outcome=value['login']
+            if type(outcome)is not dict or set(outcome)!={'state','operationId','interactiveSessionVerified','replayAllowed'}or outcome['operationId']!=operation or outcome['state']not in {'ready','credential-submitted','credential-submission-unresolved'}or type(outcome['interactiveSessionVerified'])is not bool or outcome['replayAllowed']is not False:raise ValueError()
+            actual=session_module.validate_session(value['sessionFacts'],backend.expected_sid,backend.binding['setup']['user'],backend.machine)
+            if actual['boot']!=expected['boot']or outcome['interactiveSessionVerified']!=(actual['ordinary_session']=='ready'):raise ValueError()
+        except BaseException:return {'state':'unknown','reason':'private_reply_rejected','operationId':operation,'replayAllowed':False}
+        receipt={'state':'observed','operationId':operation,'machine':backend.machine,'login':outcome,'boot':actual['boot'],'account':backend.expected_sid,'session':actual['session'],'ordinarySession':actual['ordinary_session'],'replayAllowed':False}
+        backend._guard();held.finish();held.final_identity_pass();_retain(directory,label+'.result.json',receipt);return receipt
+    finally:
+        private=None
+        if secret is not None:secret.close()
+        held.close()

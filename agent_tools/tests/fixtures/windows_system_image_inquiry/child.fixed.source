@@ -1,0 +1,60 @@
+# Fixed evidence-only read method, no arbitrary path/command/target or input.
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$config=('__CHILD_CONFIG__'|ConvertFrom-Json)
+$job=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__CHILD_ROOT_BASE64__'))
+$self=[Diagnostics.Process]::GetCurrentProcess();$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if($sid -cne 'S-1-5-18' -or $self.SessionId -ne 0){throw 'COMPILE_CHILD_SYSTEM_SESSION'}
+$clock=[Diagnostics.Stopwatch]::StartNew()
+function Hash([byte[]]$b){$h=[Security.Cryptography.SHA256]::Create();try{return ([BitConverter]::ToString($h.ComputeHash($b))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}}
+function ReadExact([string]$p){$f=[IO.FileStream]::new($p,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);try{if($f.Length -le 0 -or $f.Length -gt 131072){throw 'COMPILE_CHILD_SOURCE_BOUND'};$b=New-Object byte[] ([int]$f.Length);$n=0;while($n -lt $b.Length){$k=$f.Read($b,$n,$b.Length-$n);if($k -le 0){throw 'COMPILE_CHILD_SOURCE_SHORT'};$n+=$k};return ,$b}finally{$f.Dispose()}}
+# Fixed .NET Framework creation primitive. Source-only until native qualified.
+function NewPrivateCompileFile([string]$path,[IO.FileShare]$share){
+ $acl=[Security.AccessControl.FileSecurity]::new()
+ $acl.SetSecurityDescriptorSddlForm('O:SYG:SYD:P(A;;FA;;;SY)')
+ [Security.AccessControl.FileSystemRights]$rights=[Security.AccessControl.FileSystemRights]::Write -bor [Security.AccessControl.FileSystemRights]::ReadPermissions -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::Synchronize
+ # Apply the actual ACL atomically at CreateNew, not via a write-data-only FD.
+ $file=[IO.FileStream]::new($path,[IO.FileMode]::CreateNew,$rights,$share,4096,[IO.FileOptions]::None,$acl)
+ try{
+  $actual=$file.GetAccessControl()
+  if(-not $actual.AreAccessRulesProtected -or -not $actual.AreAccessRulesCanonical -or $actual.GetOwner([Security.Principal.SecurityIdentifier]).Value -cne 'S-1-5-18' -or $actual.GetGroup([Security.Principal.SecurityIdentifier]).Value -cne 'S-1-5-18'){throw 'COMPILE_CREATE_ACL_OWNER'}
+  $rules=@($actual.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+  if($rules.Count -ne 1 -or $rules[0].IsInherited -or $rules[0].IdentityReference.Value -cne 'S-1-5-18' -or $rules[0].AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $rules[0].FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl){throw 'COMPILE_CREATE_ACL_RULE'}
+  return $file
+ }catch{$file.Dispose();throw}
+}
+
+$compilerCommand=Get-Command Add-Type -CommandType Cmdlet -ErrorAction SilentlyContinue
+$compilerMetadata=[ordered]@{powershell=$PSVersionTable.PSVersion.ToString();clr=[Environment]::Version.ToString();addTypePresent=($null -ne $compilerCommand);codeProviderTypeResolved=($null -ne [Type]::GetType('Microsoft.CSharp.CSharpCodeProvider, System',$false));actualCompilationProven=$false}
+$ready=[ordered]@{operationId=$config.operationId;pid=$self.Id;birth=$self.StartTime.ToUniversalTime().ToFileTimeUtc().ToString();sid=$sid;session=$self.SessionId;sourceSha256=(Hash ([Text.Encoding]::UTF8.GetBytes($s)));nativeSha256=$config.nativeSha256;releaseNonce=$config.releaseNonce;compilerMetadata=$compilerMetadata}
+$readyPath=Join-Path $job 'child.ready.json';$readyTemp=$readyPath+'.pending-'+[guid]::NewGuid().ToString('N')
+$bytes=[Text.Encoding]::UTF8.GetBytes(($ready|ConvertTo-Json -Compress));$file=NewPrivateCompileFile $readyTemp ([IO.FileShare]::None);try{$file.Write($bytes,0,$bytes.Length);$file.Flush($true)}finally{$file.Dispose()}
+[IO.File]::Move($readyTemp,$readyPath)
+while(-not (Test-Path -LiteralPath (Join-Path $job 'release.json'))){if($clock.Elapsed.TotalSeconds -ge $config.budgetSeconds){throw 'COMPILE_RELEASE_DEADLINE'};[Threading.Thread]::Sleep(10)}
+$release=([Text.Encoding]::UTF8.GetString((ReadExact (Join-Path $job 'release.json')))|ConvertFrom-Json)
+if($release.operationId -cne $config.operationId -or $release.releaseNonce -cne $config.releaseNonce -or $release.child.pid -ne $self.Id -or $release.child.birth -cne $ready.birth -or $release.nativeSha256 -cne $config.nativeSha256){throw 'COMPILE_RELEASE_IDENTITY'}
+$native=ReadExact (Join-Path $job 'native.cs')
+if((Hash $native) -cne $config.nativeSha256){throw 'COMPILE_CHILD_SOURCE_CHANGED'}
+try{
+ 'UIAutomationClient','UIAutomationTypes','WindowsBase','System.Management','System.Web.Extensions'|ForEach-Object {[void][Reflection.Assembly]::LoadWithPartialName($_)}
+ $compileDiagnostics=@()
+ Add-Type -ReferencedAssemblies @('System.dll','System.Core.dll','System.Management.dll','System.Web.Extensions.dll',[Windows.Automation.AutomationElement].Assembly.Location,[Windows.Automation.ControlType].Assembly.Location,[Windows.Rect].Assembly.Location) -TypeDefinition ([Text.Encoding]::UTF8.GetString($native)) -ErrorAction Continue -ErrorVariable compileDiagnostics
+ if(@($compileDiagnostics).Count -ne 0){foreach($diagnostic in @($compileDiagnostics)){[Console]::Error.WriteLine($diagnostic.ToString())};exit 65}
+ # Exactly the reviewed evidence-only method is invoked after current epoch/account checks.
+ # Fresh public account and epoch facts; no profile/credential/UI data.
+ $actualMachine=Get-CimInstance Win32_ComputerSystemProduct -Property UUID -OperationTimeoutSec 3
+ $actualOs=Get-CimInstance Win32_OperatingSystem -Property LastBootUpTime -OperationTimeoutSec 3
+ if(([guid]$actualMachine.UUID).ToString('D') -cne $config.machine -or $actualOs.LastBootUpTime.ToUniversalTime().ToString('o') -cne $config.boot){throw 'READONLY_GUEST_EPOCH'}
+ $account=Get-LocalUser -SID ([Security.Principal.SecurityIdentifier]::new($config.accountSid)) -ErrorAction Stop
+ $administrators=@(Get-LocalGroupMember -SID ([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')) -ErrorAction Stop|Where-Object {$_.SID.Value -ceq $config.accountSid})
+ $users=@(Get-LocalGroupMember -SID ([Security.Principal.SecurityIdentifier]::new('S-1-5-32-545')) -ErrorAction Stop|Where-Object {$_.SID.Value -ceq $config.accountSid})
+ if($account.Name -ine $config.accountName -or $account.SID.Value -cne $config.accountSid -or -not $account.Enabled -or $administrators.Count -ne 0 -or $users.Count -ne 1){throw 'READONLY_ORDINARY_ACCOUNT_CHANGED'}
+ $request=[ordered]@{operationId=$config.operationId;machine=$config.machine;boot=$config.boot;accountName=$config.accountName;accountSid=$config.accountSid;nativeSha256=$config.nativeSha256}
+ $facts=([SecureCheckClientV3]::InquireSystemImageAndSession(($request|ConvertTo-Json -Compress))|ConvertFrom-Json)
+ $facts|Add-Member -NotePropertyName actualAccount -NotePropertyValue ([ordered]@{name=$account.Name;sid=$account.SID.Value;enabled=$account.Enabled;isAdministrator=$false;isUsersMember=$true})
+ [Console]::Out.WriteLine(($facts|ConvertTo-Json -Depth 16 -Compress))
+ exit 0
+}catch{
+ # Source is fixed public C#, no credentials/profile/input have been opened.
+ [Console]::Error.WriteLine($_.ToString());exit 65
+}

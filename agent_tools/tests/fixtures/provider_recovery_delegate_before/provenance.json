@@ -1,0 +1,5 @@
+{
+  "path": "agent_tools/readiness_providers.py",
+  "sha256": "505e17bfb11da196691da2ae740998a65300b25351a6a835d48754e06ba32b59",
+  "reason": "Original ProviderAdapter lacks the original-owner reconciliation delegate used by the coordinator."
+}

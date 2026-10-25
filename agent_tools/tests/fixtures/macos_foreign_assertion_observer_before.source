@@ -1,0 +1,64 @@
+"""Owned IOPM native cancellation/death and finite original-only evidence."""
+from pathlib import Path
+import os,runpy,hashlib,json,time,base64,sys
+from agent_tools import durable_remote_job as jobs
+BASE=runpy.run_path(str(Path(__file__).with_name('qualify-native-iopm-v2.inert.py')))
+READ_ORIGINAL=r"""import base64
+b=binding();root,packet=namespace(b);op=CONFIG['operation'];original(root,op,b)
+status=J.observe(root/'jobs',op,b.job_binding(),generation=tuple(packet['jobGeneration']))
+rec=J._record(root/'jobs'/op/'lease-acquired.json');owner=rec['leaseOwner']
+scope={'D':vars(J),'P':vars(P)};exec(L._ASSERTIONS,scope);api=scope['MacAssertions'](L.asdict(b))
+properties=[]
+for identity in rec['assertions']:
+ value=api.io.IOPMAssertionCopyProperties(identity);properties.append({'id':identity,'present':bool(value)})
+ if value:api.cf.CFRelease(value)
+value={'status':status,'acquired':rec,'actualOwnerPresent':J._birth(owner['pid'])==owner['birth'],'nativeOwnerAbsent':api.owner_absent(owner),'properties':properties}
+if status['state']=='terminal':
+ terminal,stdout,stderr=J.collect(root/'jobs',op,b.job_binding(),generation=tuple(packet['jobGeneration']))
+ value.update(terminalStatus=terminal,leaseTerminal=J._record(root/'jobs'/op/'lease-terminal.json'),stdout=base64.b64encode(stdout).decode('ascii'),stderr=base64.b64encode(stderr).decode('ascii'))
+print(json.dumps(value,sort_keys=True))
+"""
+def evidence(case,op):
+ h=BASE['helper']();source=BASE['bridge'].source('status',BASE['binding'](),namespace=BASE['packet'](),operation=op);end=b'raise SystemExit(main())\n';assert source.endswith(end);source=source[:-len(end)]+READ_ORIGINAL.encode();name='original-evidence-'+str(time.time_ns());fd=os.open(case/(name+'.py'),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ with os.fdopen(fd,'wb')as out:out.write(source)
+ h['record'](case/(name+'-intent.json'),{'operationId':op,'action':'readonly_exact_original_owner_native_assertion_evidence','sourceSha256':hashlib.sha256(source).hexdigest(),'namespace':BASE['packet']()})
+ fixture=BASE['registry'].registered_fixture(BASE['PROJECT'],'tart-macos-independent-v5');backend=fixture.adapter.backend
+ try:
+  with backend.guest_job_executor(deadline=time.monotonic()+45)as e:
+   argv,payload=BASE['protocol'].stdin_command(source.decode());r=e.execute(argv,payload=payload)
+ finally:backend.custody.close()
+ for suffix,raw in [('stdout.json',r.stdout),('stderr.txt',r.stderr)]:
+  fd=os.open(case/(name+'-'+suffix),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+  with os.fdopen(fd,'wb')as out:out.write(raw)
+ value=json.loads(r.stdout)if r.stdout else None;h['record'](case/(name+'-result.json'),{'operationId':op,'returncode':r.returncode,'stderrBytes':len(r.stderr)})
+ if r.returncode!=0:raise RuntimeError('original_native_evidence_unavailable')
+ return value
+def finish(case,op,expected):
+ until=time.monotonic()+35
+ while time.monotonic()<until:
+  v=BASE['request'](case,'status',op)
+  if v.get('jobState')=='terminal':
+   proof=evidence(case,op)
+   BASE['helper']()['record'](case/'complete-original-evidence.json',{'operationId':op,'status':v,'originalEvidence':proof})
+   assert v.get('restored')is True and v.get('state')==expected,'native_original_not_restored'
+   assert proof['nativeOwnerAbsent']is True and proof['actualOwnerPresent']is False and all(x['present']is False for x in proof['properties']),'native_original_assertion_absence_unverified'
+   print(json.dumps({'operationId':op,'state':expected,'restored':True,'owner':proof['acquired']['leaseOwner'],'ids':proof['acquired']['assertions'],'namespace':BASE['packet']()['root']}),flush=True)
+   return proof
+  time.sleep(.2)
+ raise RuntimeError('native_original_lease_pending')
+def cancel_case():
+ case,op=BASE['admit_case']('cancel',20);BASE['request'](case,'acquire',op,20)
+ active=evidence(case,op);BASE['helper']()['record'](case/'native-active-evidence.json',active)
+ assert active['actualOwnerPresent']is True and active['nativeOwnerAbsent']is False and all(x['present']is True for x in active['properties']),'native_assertions_not_active'
+ BASE['request'](case,'cancel',op);return finish(case,op,'cancelled')
+def admit_death_case():
+ case,op=BASE['admit_case']('client-death',5)
+ BASE['helper']()['record'](BASE['DIRECTORY']/'client-death-original-pointer.json',{'case':str(case),'operationId':op,'ttlSeconds':5})
+ return case,op
+def death_submitter():
+ value=json.loads((BASE['DIRECTORY']/'client-death-original-pointer.json').read_text());case=Path(value['case']);op=value['operationId']
+ BASE['helper']()['record'](case/'controller-before-submit.json',{'pid':os.getpid(),'birth':jobs._birth(os.getpid()),'action':'one_acquire_then_abrupt_original_client_exit77'})
+ BASE['request'](case,'acquire',op,5)
+ os._exit(77)
+def observe_death_original():
+ value=json.loads((BASE['DIRECTORY']/'client-death-original-pointer.json').read_text());return finish(Path(value['case']),value['operationId'],'expired')

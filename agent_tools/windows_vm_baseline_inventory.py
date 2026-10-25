@@ -274,7 +274,7 @@ def observe(root: str | Path, host_alias: str, timeout_seconds: int = 20) -> dic
     command = ("python3", "-c", "exec(" + repr(_REMOTE) + ")")
     argv = ssh_transport.build_ssh_argv(config, host_alias, timeout_seconds, command=command)
     try:
-        completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        completed = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                    timeout=timeout_seconds + 1, check=False)
         if completed.returncode != 0 or len(completed.stdout) > _MAX_OUTPUT:
             raise ValueError("Read-only Windows baseline inventory is unavailable")
@@ -295,7 +295,7 @@ def media_fingerprint(root: str | Path, host_alias: str, timeout_seconds: int = 
     command = ("python3", "-c", "exec(" + repr(_MEDIA_HASH_REMOTE) + ")")
     argv = ssh_transport.build_ssh_argv(config, host_alias, 30, command=command)
     try:
-        completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        completed = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                    timeout=timeout_seconds, check=False)
         if completed.returncode != 0 or len(completed.stdout) > 4096:
             raise ValueError("Read-only Windows media fingerprint is unavailable")

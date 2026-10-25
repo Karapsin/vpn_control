@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "cause": "PowerShell diagnostic MethodInfo.Invoke did not convert wrapped PSObject values to actual CLR parameter types; production NativeJob C# direct calls unaffected",
+  "scope": "Complete preserved diagnostic beforeimages plus extracted original reflection wrapper and pure in-memory actual PowerShell ABI causal test; no NativeJob methods, filesystem, credential, VM or process mutation",
+  "sourceSha256": {
+    "start.before.source": "2680f4a70e15b2e48f793ec055749f714c6dad20264aa052a3b5665a6b67cd41",
+    "status.before.source": "36c50d40b48584934904b40bee195bcff050a0069ee37ab37858e1d31aa3da4c",
+    "child.before.source": "4a8107692e40447de750eb535da25796acdd88b13df69031ea9c311e3c7c819b",
+    "reflection.before.source": "c80d6cac217a602e0800d532ce0f7c7caa7936c6558a44cba3c69662b8878c85",
+    "reflection.fixed.source": "c9de468a0834bf00a220d006284d062234b51e07728d3206a1695d3a3a3d8c72",
+    "reflection.causal.ps1": "f126ae637299558dfc55c4de0051afb939759aaf703a9904f8fc19353a790318",
+    "native-failure.json": "6576ae795ef3043aec68965d2c98902f5c42a85b8e32e06d66ab56d3a3b66c1b",
+    "conversion.before.source": "38850ed65f8c22b3fa27c371abca3e9b0748a4060dd0341ca32225bbb3b1c205",
+    "reflection.causal-before-v2.source": "f69969e18e3eff4b53b7cf73e2f7eae0a7191712e7f0700fa9f6b99c70458ad2",
+    "native-conversion-failure.json": "c2f03f5a3e680622f2d3a30f7a71006b17b924b907aee04880190b50f6289139",
+    "native-green.json": "fe00eb6e37e9ccf8d1f9917959fe3505aa3727cab571b56d927a3445c4f41da4"
+  },
+  "conversionCause": "Actual native pure return probe confirms PSObject.BaseObject is transparently hidden/null; direct LanguagePrimitives.ConvertTo preserves literal, byte arrays and ref/out values without manual unwrapping.",
+  "nativeGreenOriginalReceiptSha256": "6d3704f675f4eae87ca5f3cd32cde28cae90c6694b8f96d3d25c11118cd1dd01"
+}

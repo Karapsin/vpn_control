@@ -1,0 +1,345 @@
+"""Minimum free-space admission before creating or starting disposable fixtures.
+
+These are bounded working-space budgets, not a reservation of the guest's entire
+virtual disk. A caller knowing a larger writable growth requirement must raise
+the bound. Existing sparse raw disks include their unallocated logical growth.
+The pure check never changes files or VM state. StoragePlans journals only capacity claims.
+"""
+from pathlib import Path
+from contextlib import contextmanager
+import json
+import os
+import re
+import shutil
+import stat
+import tempfile
+
+GIB = 1024**3
+# Android has a six-GiB data partition; bootstrapping additionally downloads and
+# unpacks SDK/image inputs. Windows bootstrap creates a 64-GiB system disk.
+# Tart image preparation needs more working space than starting an existing VM.
+_WORKING_GIB = {
+    "start": {"android": 6, "linux": 4, "windows": 8, "macos": 8},
+    "bootstrap": {"android": 14, "linux": 18, "windows": 64, "macos": 46},
+    # One bounded immutable restore-image download, before any VM creation.
+    "prepare-image": {"macos": 0},
+}
+HEADROOM_BYTES = 2 * GIB
+
+
+class FixtureStorageError(ValueError):
+    pass
+
+
+def _need(condition, reason):
+    if not condition:
+        raise FixtureStorageError(reason)
+
+
+def _existing_directory(path):
+    path = Path(path).absolute()
+    while not path.exists():
+        _need(path != path.parent, "fixture_disk_observation_unavailable")
+        path = path.parent
+    return path
+
+
+def require_fixture_storage(platform, phase, directory, *, sparse_raw_disks=(),
+                            writable_growth_bytes=0):
+    """Check the actual destination filesystem before any fixture writer runs."""
+    if platform not in _WORKING_GIB.get(phase, {}):
+        raise FixtureStorageError("fixture_disk_policy_unknown")
+    if type(writable_growth_bytes) is not int or writable_growth_bytes < 0:
+        raise FixtureStorageError("fixture_disk_requirement_invalid")
+    _need(phase != "prepare-image" or writable_growth_bytes > 0,
+          "fixture_disk_requirement_invalid")
+    growth = max(_WORKING_GIB[phase][platform] * GIB, writable_growth_bytes)
+    try:
+        sparse_growth = 0
+        seen = set()
+        for disk in sparse_raw_disks:
+            value = Path(disk).stat()
+            # st_blocks is absent on some supported systems. Never infer full
+            # allocation from st_size when physical allocation is unavailable.
+            allocated = getattr(value, "st_blocks", 0) * 512
+            identity = (getattr(value, "st_dev", None), getattr(value, "st_ino", str(Path(disk).resolve())))
+            if identity not in seen:
+                seen.add(identity)
+                sparse_growth += max(0, value.st_size - allocated)
+        growth = max(growth, sparse_growth)
+        destination = Path(directory).absolute()
+        while not destination.exists():
+            if destination == destination.parent:
+                raise FixtureStorageError("fixture_disk_observation_unavailable")
+            destination = destination.parent
+        free = shutil.disk_usage(destination).free
+    except (OSError, ValueError):
+        raise FixtureStorageError("fixture_disk_observation_unavailable") from None
+    if type(free) is not int or free < 0:
+        raise FixtureStorageError("fixture_disk_observation_unavailable")
+    required = growth + HEADROOM_BYTES
+    if free < required:
+        raise FixtureStorageError("fixture_disk_capacity_insufficient")
+    return {"platform": platform, "phase": phase, "freeBytes": free,
+            "requiredBytes": required, "headroomBytes": HEADROOM_BYTES}
+
+
+class StoragePlans:
+    """Cooperative capacity claims shared by all owned local provider writers.
+
+    This is capacity accounting, never VM/lifecycle authority. Call reserve
+    before submitting a writer, bind its original PID once, then settle only
+    after that actor is positively absent. Missing/uncertain writers keep their
+    full claim. Retiring additionally requires all owned disk names absent.
+    Existing retained fixtures must be registered before another writer starts.
+    """
+    def __init__(self, directory):
+        self.directory = Path(directory).absolute()
+
+    @staticmethod
+    def _image_destination(directory, disks, staging_bytes):
+        """An image claim cannot reserve a VM disk or implicit staging area."""
+        destination = Path(directory).absolute()
+        _need(type(disks) is list and len(disks) == 1 and type(disks[0]) is dict
+              and set(disks[0]) == {"path", "capacityBytes"}
+              and type(disks[0]["path"]) is str and type(disks[0]["capacityBytes"]) is int
+              and 0 < disks[0]["capacityBytes"] <= 4 * 1024**4
+              and staging_bytes == 0, "fixture_storage_image_plan_invalid")
+        path = Path(disks[0]["path"]).absolute()
+        _need(path.parent == destination and path.suffix == ".ipsw",
+              "fixture_storage_image_plan_invalid")
+        try:
+            info = destination.lstat()
+            _need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid()
+                  and stat.S_IMODE(info.st_mode) == 0o700 and destination.resolve() == destination,
+                  "fixture_storage_image_directory_unsafe")
+        except OSError:
+            raise FixtureStorageError("fixture_storage_image_directory_unsafe") from None
+
+    @contextmanager
+    def _locked(self):
+        _need(os.name == "posix", "fixture_storage_lock_unsupported")
+        import fcntl
+        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        info = self.directory.lstat()
+        _need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and not info.st_mode & 0o022
+              and self.directory.resolve() == self.directory, "fixture_storage_directory_unsafe")
+        path = self.directory / "storage-plans.lock"
+        descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        try:
+            value = os.fstat(descriptor)
+            _need(stat.S_ISREG(value.st_mode) and value.st_uid == os.geteuid() and value.st_nlink == 1
+                  and stat.S_IMODE(value.st_mode) == 0o600, "fixture_storage_lock_unsafe")
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            _need((value.st_dev, value.st_ino) == (path.lstat().st_dev, path.lstat().st_ino), "fixture_storage_lock_changed")
+            yield
+            _need((value.st_dev, value.st_ino) == (path.lstat().st_dev, path.lstat().st_ino), "fixture_storage_lock_changed")
+        finally:
+            os.close(descriptor)
+
+    def _read(self):
+        path = self.directory / "storage-plans.json"
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except FileNotFoundError:
+            return {"schemaVersion": 1, "plans": {}}
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+                  and stat.S_IMODE(info.st_mode) == 0o600 and info.st_size <= 1048576, "fixture_storage_ledger_unsafe")
+            raw = stream.read(1048577)
+        def pairs(values):
+            result = {}
+            for key, value in values:
+                _need(key not in result, "fixture_storage_duplicate_field")
+                result[key] = value
+            return result
+        try:
+            value = json.loads(raw, object_pairs_hook=pairs)
+        except (UnicodeError, json.JSONDecodeError):
+            raise FixtureStorageError("fixture_storage_ledger_invalid") from None
+        _need(type(value) is dict and set(value) == {"schemaVersion", "plans"} and type(value["schemaVersion"]) is int
+              and value["schemaVersion"] == 1 and type(value["plans"]) is dict, "fixture_storage_ledger_invalid")
+        for fixture_id, plan in value["plans"].items():
+            self._validate(fixture_id, plan)
+        return value
+
+    def _save(self, value):
+        descriptor, temporary = tempfile.mkstemp(prefix="storage-", suffix=".tmp", dir=self.directory)
+        try:
+            with os.fdopen(descriptor, "w") as stream:
+                json.dump(value, stream, sort_keys=True); stream.write("\n"); stream.flush(); os.fsync(stream.fileno())
+            os.replace(temporary, self.directory / "storage-plans.json")
+            directory = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+    @staticmethod
+    def _validate(fixture_id, plan):
+        _need(type(fixture_id) is str and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,95}", fixture_id), "fixture_storage_id_invalid")
+        fields = {"platform", "directory", "disks", "workingBytes", "writerPid", "state"}
+        _need(type(plan) is dict and set(plan) in (fields, fields | {"stagingBytes"}) and
+              ("stagingBytes" not in plan or type(plan["stagingBytes"]) is int and 0 <= plan["stagingBytes"] <= 4 * 1024**4) and plan["platform"] in _WORKING_GIB["start"]
+              and plan["state"] in {"pending", "retained", "retired"} and type(plan["workingBytes"]) is int
+              and plan["workingBytes"] >= 0 and type(plan["disks"]) is list and 1 <= len(plan["disks"]) <= 16
+              and (plan["writerPid"] is None or type(plan["writerPid"]) is int and plan["writerPid"] > 0), "fixture_storage_plan_invalid")
+        for text in [plan["directory"], *(disk.get("path") for disk in plan["disks"] if type(disk) is dict)]:
+            _need(type(text) is str and Path(text).is_absolute() and ".." not in Path(text).parts and "\0" not in text,
+                  "fixture_storage_path_invalid")
+            _need(Path(text).resolve() == Path(text), "fixture_storage_path_redirected")
+        for disk in plan["disks"]:
+            _need(type(disk) is dict and set(disk) == {"path", "capacityBytes"} and type(disk["capacityBytes"]) is int
+                  and 0 < disk["capacityBytes"] <= 4 * 1024**4, "fixture_storage_disk_invalid")
+
+    @staticmethod
+    def _absent(pid):
+        _need(type(pid) is int and pid > 0, "fixture_storage_writer_unresolved")
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            pass
+        # kill(0) also succeeds for a dead unreaped child. Observe its kernel
+        # terminal receipt without reaping it: only its original Popen owner may
+        # collect the exit status. Nonchildren/missing visibility remain blocked.
+        if hasattr(os, "waitid") and hasattr(os, "WNOWAIT"):
+            try:
+                terminal = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            except (OSError, ChildProcessError):
+                terminal = None
+            if terminal is not None and terminal.si_pid == pid:
+                return
+        raise FixtureStorageError("fixture_storage_writer_not_absent")
+
+    @staticmethod
+    def _growth(plan, device, seen):
+        if plan["state"] == "retired":
+            return 0
+        destination = _existing_directory(plan["directory"])
+        if destination.stat().st_dev != device:
+            return 0
+        total = 0
+        for disk in plan["disks"]:
+            path = Path(disk["path"])
+            _need(_existing_directory(path.parent).stat().st_dev == device, "fixture_storage_cross_filesystem_disk")
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                identity = ("pending", str(path))
+                allocated = 0
+            else:
+                _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+                      and not info.st_mode & 0o022, "fixture_storage_disk_unsafe")
+                identity = (info.st_dev, info.st_ino)
+                allocated = getattr(info, "st_blocks", 0) * 512
+                # Tart raw disks may share every allocated extent with a
+                # retained APFS clone source. st_blocks cannot prove exclusive
+                # ownership; reserve the full possible writable capacity.
+                if (plan["platform"] in {"linux", "macos"} and path.name == "disk.img"
+                        and path.parents[1] == Path.home() / ".tart/vms"):
+                    allocated = 0
+            if identity not in seen:
+                seen.add(identity)
+                total += max(0, disk["capacityBytes"] - allocated)
+        legacy_peak = 0
+        if ("stagingBytes" not in plan and plan["state"] == "pending" and
+                plan["workingBytes"] >= _WORKING_GIB["bootstrap"][plan["platform"]] * GIB and
+                any(Path(disk["path"]).name == "disk.img" and Path(disk["path"]).parents[1] == Path.home() / ".tart/vms"
+                    for disk in plan["disks"])):
+            legacy_peak = 2 * sum(disk["capacityBytes"] for disk in plan["disks"])
+        return max(total, plan["workingBytes"], legacy_peak)
+
+    def _check(self, state, platform, phase, directory, current_id=None, minimum_growth_bytes=0):
+        _need(platform in _WORKING_GIB.get(phase, {}), "fixture_disk_policy_unknown")
+        destination = _existing_directory(directory)
+        device = destination.stat().st_dev
+        seen = set()
+        _need(type(minimum_growth_bytes) is int and minimum_growth_bytes >= 0, "fixture_disk_requirement_invalid")
+        working = max(_WORKING_GIB[phase][platform] * GIB, minimum_growth_bytes)
+        current = state["plans"].get(current_id) if current_id is not None else None
+        _need(current_id is None or current is not None and current["state"] != "retired", "fixture_storage_current_plan_absent")
+        if phase == "prepare-image":
+            _need(current is not None or minimum_growth_bytes > 0, "fixture_disk_requirement_invalid")
+            if current is not None:
+                _need(current["platform"] == platform and current["directory"] == str(Path(directory).absolute())
+                      and current["workingBytes"] == 0, "fixture_storage_image_plan_invalid")
+                self._image_destination(directory, current["disks"], current.get("stagingBytes", 0))
+        candidate = max(working, self._growth(current, device, seen)) if current else working
+        retained = sum(self._growth(plan, device, seen) for key, plan in state["plans"].items() if key != current_id)
+        free = shutil.disk_usage(destination).free
+        _need(type(free) is int and free >= 0, "fixture_disk_observation_unavailable")
+        required = candidate + retained + HEADROOM_BYTES
+        _need(free >= required, "fixture_disk_capacity_insufficient")
+        return {"platform": platform, "phase": phase, "freeBytes": free, "requiredBytes": required,
+                "candidateGrowthBytes": candidate, "otherOwnedGrowthBytes": retained,
+                "headroomBytes": HEADROOM_BYTES, "planCount": len(state["plans"])}
+
+    def check(self, platform, phase, directory, *, current_fixture_id=None, minimum_growth_bytes=0):
+        with self._locked():
+            return self._check(self._read(), platform, phase, directory, current_fixture_id, minimum_growth_bytes)
+
+    def reserve(self, fixture_id, platform, phase, directory, disks, *, writer_pid=None, staging_growth_bytes=0):
+        """Durably claim before a writer; absent disk files reserve full capacity."""
+        _need(platform in _WORKING_GIB.get(phase, {}), "fixture_disk_policy_unknown")
+        _need(type(staging_growth_bytes) is int and 0 <= staging_growth_bytes <= 4 * 1024**4, "fixture_disk_requirement_invalid")
+        if phase == "prepare-image":
+            self._image_destination(directory, disks, staging_growth_bytes)
+        tart = any(Path(d["path"]).name == "disk.img" and Path(d["path"]).parents[1] == Path.home() / ".tart/vms" for d in disks)
+        if phase == "bootstrap" and tart and staging_growth_bytes == 0:
+            # Without a narrower verified artifact bound, both the downloaded
+            # immutable source/cache and the writable clone can reach capacity.
+            staging_growth_bytes = sum(d["capacityBytes"] for d in disks)
+        peak = sum(d["capacityBytes"] for d in disks) + staging_growth_bytes if staging_growth_bytes else 0
+        plan = {"platform": platform, "directory": str(Path(directory).absolute()),
+                "disks": [{"path": str(Path(d["path"]).absolute()), "capacityBytes": d["capacityBytes"]} for d in disks],
+                "workingBytes": max(_WORKING_GIB[phase][platform] * GIB, peak), "writerPid": writer_pid, "state": "pending",
+                "stagingBytes": staging_growth_bytes}
+        self._validate(fixture_id, plan)
+        with self._locked():
+            state = self._read()
+            existing = state["plans"].get(fixture_id)
+            if existing is not None:
+                _need({k: existing[k] for k in ("platform", "directory", "disks")} ==
+                      {k: plan[k] for k in ("platform", "directory", "disks")}, "fixture_storage_original_plan_conflict")
+                if staging_growth_bytes:
+                    _need(existing["workingBytes"] >= plan["workingBytes"], "fixture_storage_original_plan_conflict")
+            else:
+                state["plans"][fixture_id] = plan
+            result = self._check(state, platform, phase, directory, fixture_id)
+            if existing is None:
+                self._save(state)
+            return result
+
+    def bind_writer(self, fixture_id, pid):
+        _need(type(pid) is int and pid > 0, "fixture_storage_writer_invalid")
+        with self._locked():
+            state = self._read(); plan = state["plans"].get(fixture_id)
+            _need(plan is not None and plan["state"] in {"pending", "retained"}, "fixture_storage_original_plan_absent")
+            if plan["state"] == "retained":
+                self._absent(plan["writerPid"])
+                plan["state"] = "pending"
+            else:
+                _need(plan["writerPid"] in (None, pid), "fixture_storage_writer_conflict")
+            plan["writerPid"] = pid; self._save(state)
+
+    def settle(self, fixture_id, *, retire=False):
+        """No caller success flag: require original PID absent and actual disk facts."""
+        with self._locked():
+            state = self._read(); plan = state["plans"].get(fixture_id)
+            _need(plan is not None, "fixture_storage_original_plan_absent")
+            self._absent(plan["writerPid"])
+            for disk in plan["disks"]:
+                path = Path(disk["path"])
+                _need(not path.exists() and not path.is_symlink() if retire else path.is_file() and not path.is_symlink(),
+                      "fixture_storage_disk_closure_unproven")
+            plan["state"] = "retired" if retire else "retained"
+            plan["workingBytes"] = 0
+            self._save(state)

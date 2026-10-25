@@ -1,0 +1,103 @@
+"""PREPARED ONLY: one state-bound display wake; never ordinary credentials.
+
+A prior ACTIVE temporary lease is observed only. This driver never acquires,
+renews or cancels a lease, never unlocks, and never retries a partial key group.
+The parent public136 benchmark is a separate operation and executable packet.
+"""
+import argparse,hashlib,json,os,sys,time
+from pathlib import Path
+from contextlib import ExitStack
+_EXECUTING_CODE=sys._getframe().f_code
+PROJECT=Path(__file__).resolve().parents[3];sys.path.insert(0,str(PROJECT))
+from agent_tools.source_module_loader import SourceSession
+WAKE_SHA='823d178772a8ab449874671e8c76a7e80ffe6943bab827de601af4daf4ce59ad'
+NINE=('readiness_tart_macos','readiness_tart_macos_registry','readiness_fixture_registry','readiness_lease_workflow','readiness_tart_macos_lease_executor','readiness_tart_macos_lease_qualification','readiness_tart_macos_lease_bridge','readiness_tart_macos_session','readiness_tart_macos_session_stream')
+p=argparse.ArgumentParser();p.add_argument('--target',required=True);p.add_argument('--fixture-id',required=True);p.add_argument('--operation-id',required=True);p.add_argument('--benchmark-operation-id',required=True);p.add_argument('--lease-operation-id',required=True);args=p.parse_args()
+sources=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_wake')
+W=sources.module;R=sources.load('readiness_tart_macos_registry');F=sources.load('readiness_fixture_registry');M=sources.load('readiness_tart_macos');U=sources.load('readiness_tart_macos_unlock');P=sources.load('private_inventory_lock');J=sources.load('durable_remote_job');protocol=sources.load('readiness_qemu_jobs');L=sources.load('readiness_lease_workflow')
+for name in NINE:sources.load(name)
+def need(condition,reason):
+ if not condition:raise RuntimeError(reason)
+for op in (args.operation_id,args.benchmark_operation_id,args.lease_operation_id):W._id(op)
+need(len({args.operation_id,args.benchmark_operation_id,args.lease_operation_id})==3,'wake_related_operation_collision');F._id(args.fixture_id)
+raw=Path(__file__).read_bytes();need(_EXECUTING_CODE==compile(raw,__file__,'exec',dont_inherit=True),'wake_driver_executing_source_changed')
+self_source=R.PublicProof(Path(__file__).resolve(),{'generation':list(P._generation(Path(__file__).lstat())),'sha256':hashlib.sha256(raw).hexdigest()},private_file=False)
+c=None;out=None
+try:
+ with ExitStack()as held:
+  held.callback(sources.close);held.callback(self_source.close)
+  descriptor,pin=F._json(PROJECT/'.rag_index/readiness-fixtures'/(args.fixture_id+'.json'))
+  need(descriptor['provider']=='tart-macos'and args.target=='tart:'+descriptor['binding']['vm_name'],'wake_explicit_target_mismatch')
+  c=R.MacCustody(PROJECT,args.fixture_id,descriptor,pin);held.callback(c.close);backend=M.MacTartBackend(c.binding,c)
+  need(args.target=='tart:'+backend.binding.vm_name,'wake_explicit_target_mismatch')
+  wake_source=next(body for path,body in sources.cache.values()if Path(path).name=='readiness_tart_macos_wake.py')
+  need(hashlib.sha256(wake_source).hexdigest()==WAKE_SHA,'wake_qualified_source_changed')
+  folder=c.lifecycle_root/('native-known-session-wake-'+args.operation_id);folder.mkdir(mode=0o700)
+  out=held.enter_context(P.Directory(folder));deadline=time.monotonic()+60
+  def source_guard():sources.guard();self_source.guard();out.guard();need(time.monotonic()<deadline,'wake_driver_deadline')
+  def record(name,value):
+   source_guard();body=value if type(value)is bytes else json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+   fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd)
+   with os.fdopen(fd,'wb')as f:f.write(body);f.flush();os.fsync(f.fileno())
+   os.fsync(out.fd)
+  def closure():
+   source_guard();rows={Path(path).name:{'path':path,'sha256':hashlib.sha256(body).hexdigest()}for path,body in sources.cache.values()}
+   need(all(name+'.py'in rows for name in NINE),'wake_nine_source_closure_incomplete')
+   return {'namedNine':{name:rows[name+'.py']for name in NINE},'capturedSources':sorted(rows.values(),key=lambda row:row['path'])}
+  record('driver.source.py',raw);record('qualified-wake.source.py',wake_source)
+  record('intent.json',{'schemaVersion':1,'operationId':args.operation_id,'target':args.target,'fixtureId':args.fixture_id,'originalRunOperationId':c.run_intent['operationId'],'parentPublicBenchmarkOperationId':args.benchmark_operation_id,'observedLeaseOperationId':args.lease_operation_id,'driverSha256':hashlib.sha256(raw).hexdigest(),'qualifiedWakeSha256':WAKE_SHA,'registrationPin':pin,'maximumCallerSeconds':60,'maximumInputGroupSeconds':20,'maximumDisplayPollSeconds':20,'maximumInputGroups':1,'leaseAction':'status_only_no_acquire_renew_cancel','ordinaryCredentialReaderForbidden':True,'genericGuiInventoryAuthority':False})
+  record('source-capsule-before.json',closure())
+  # Observe the original lease before taking the target operator lock.  This
+  # does not submit a new lease or infer an unbounded extension of its TTL.
+  source_guard();lease=L.workflow(PROJECT,'status',{'fixtureId':args.fixture_id,'operationId':args.lease_operation_id});record('lease-original-status.json',lease)
+  need(lease.get('schemaVersion')==1 and type(lease['schemaVersion'])is int and lease.get('fixtureId')==args.fixture_id and lease.get('operationId')==args.lease_operation_id and lease.get('provider')=='tart-macos'and lease.get('qualificationScope')=='registered_guest_executor'and lease.get('ok')is True and lease.get('state')=='active'and lease.get('nativeState')=='active'and lease.get('jobState')=='running'and lease.get('reason')=='original_lease_owner_running'and lease.get('replayAllowed')is False,'wake_original_lease_not_active')
+  held.enter_context(backend.operation_scope(deadline=deadline))
+  def physical():
+   source_guard();c._operator.guard();c.guard(deadline=deadline)
+  executor=held.enter_context(backend.guest_job_executor(deadline=deadline,operation_id=args.operation_id))
+  need((executor.target,executor.machine,executor.uid)==(c.binding.target,c.binding.machine,c.binding.ordinary_uid),'wake_executor_identity_changed')
+  def root_probe(label):
+   physical();source=R.guest_probe_source(c.binding,prefix=c.guest_proof['prefix'],public_files=c.guest_proof['publicFiles'])
+   if type(source)is str:source=source.encode()
+   argv,payload=protocol.stdin_command(source.decode('utf-8'))
+   record(label+'.source.py',source);record(label+'.request.stdin',payload);record(label+'.request.json',{'operationId':args.operation_id,'target':args.target,'argv':list(argv),'payloadSha256':hashlib.sha256(payload).hexdigest(),'executorMachine':executor.machine,'executorRawBoot':executor.boot,'executorUid':executor.uid})
+   physical();reply=executor.execute(argv,payload=payload)
+   record(label+'.stdout.json',reply.stdout);record(label+'.stderr.txt',reply.stderr);record(label+'.result.json',{'returncode':reply.returncode,'stdoutBytes':len(reply.stdout),'stderrBytes':len(reply.stderr),'stdoutSha256':hashlib.sha256(reply.stdout).hexdigest(),'stderrSha256':hashlib.sha256(reply.stderr).hexdigest()})
+   physical();need(reply.returncode==0 and not reply.stderr,'wake_root_observer_failed');packet=L.jobs.json.loads(reply.stdout)
+   need(type(packet)is dict and set(packet)=={'facts','agent'},'wake_root_reply_invalid');M.guest_facts(packet['facts'],c.binding)
+   facts,agent=packet['facts'],packet['agent'];identity=U._identity({'target':c.binding.target,'machine':facts.get('machine'),'boot':facts.get('boot'),'rawBoot':agent.get('rawBoot'),'uid':facts.get('uid'),'principal':facts.get('account'),'home':facts.get('home'),'agent':{**agent['actor'],'uid':agent['uid']},'console':facts.get('console'),'display':facts.get('display')},c.binding,allow_sleeping=True)
+   need(identity['rawBoot']==executor.boot and identity['console']['locked']is True,'wake_actual_session_changed')
+   return identity
+  before=root_probe('root-before')
+  # Every older state-bound wake must retain BOTH its transport closure and an
+  # independent same-binding ready observation. A pending key group blocks.
+  for path in sorted(c.lifecycle_root.glob('macos-wake-*.json')):
+   suffix=path.name.removeprefix('macos-wake-').removesuffix('.json')
+   try:W._id(suffix)
+   except ValueError:continue
+   original,original_pin=F._json(path);transport,transport_pin=F._json(path.with_name('macos-wake-'+suffix+'-transport.json'));observed,observed_pin=F._json(path.with_name('macos-wake-'+suffix+'-observed.json'))
+   for name,item_pin in ((path,original_pin),(path.with_name('macos-wake-'+suffix+'-transport.json'),transport_pin),(path.with_name('macos-wake-'+suffix+'-observed.json'),observed_pin)):held.enter_context(R.PublicProof(name,item_pin))
+   need(original.get('operationId')==transport.get('operationId')==observed.get('operationId')==suffix and original.get('action')=='one_left_shift_down_up'and transport.get('state')=='input_group_transport_closed'and observed.get('state')=='observed_ready'and observed.get('binding')==original.get('binding')and observed.get('inputGroups')==1,'wake_other_original_unresolved')
+  physical()
+  if before['display']=='ready':outcome={'state':'already_ready','inputGroups':0,'replacementForbidden':True}
+  else:
+   need(before['display']=='sleeping','wake_display_unrecognized')
+   # Existing 823d implementation publishes UNKNOWN before auth or either key
+   # event. Its held source guard is extended with all current physical fences.
+   with W._held_source()as wake_guard:
+    def combined_guard():wake_guard();physical()
+    outcome=W._wake_once(backend,args.operation_id,deadline=deadline,source_guard=combined_guard)
+   record('original-wake-result.json',outcome)
+  after=root_probe('root-after');need(all(after[key]==before[key]for key in ('target','machine','boot','rawBoot','uid','principal','home','agent','console'))and after['display']=='ready','wake_final_identity_changed')
+  record('source-capsule-closed.json',closure());physical()
+  record('complete.json',{'schemaVersion':1,'target':args.target,'fixtureId':args.fixture_id,'operationId':args.operation_id,'parentPublicBenchmarkOperationId':args.benchmark_operation_id,'observedLeaseOperationId':args.lease_operation_id,'outcome':outcome,'before':before,'after':after,'ordinaryCredentialReaderOpened':False,'framebufferAccessed':False,'genericUnlockAuthority':False})
+  print(json.dumps({'operationId':args.operation_id,'state':'known_session_display_ready','inputGroups':outcome['inputGroups']}))
+except BaseException as error:
+ if out is not None:
+  try:
+   fd=os.open('failure.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd)
+   with os.fdopen(fd,'wb')as stream:stream.write(json.dumps({'operationId':args.operation_id,'failureClass':type(error).__name__,'replacementForbidden':True,'ordinaryCredentialReaderOpened':False}).encode())
+  except OSError:pass
+ raise
+finally:
+ self_source.close();sources.close()

@@ -1,0 +1,18 @@
+======================================================================
+ERROR: test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands (agent_tools.tests.test_native_mcp_routes.NativeRoutesTest.test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_routes.py", line 145, in test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands
+    self.assertEqual("submitted", mcp_server.vm_workflow("windows-credential-recover-start", request)["state"])
+                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+KeyError: 'state'
+
+======================================================================
+ERROR: test_windows_probe_routes_only_configured_identity_and_deadline (agent_tools.tests.test_native_mcp_routes.NativeRoutesTest.test_windows_probe_routes_only_configured_identity_and_deadline)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_routes.py", line 121, in test_windows_probe_routes_only_configured_identity_and_deadline
+    self.assertEqual("unknown", result["state"])
+                                ~~~~~~^^^^^^^^^
+KeyError: 'state'
+

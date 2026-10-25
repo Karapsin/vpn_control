@@ -17,18 +17,21 @@ class WindowsMsiStaleLockReconcileRouteTest(unittest.TestCase):
         guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         guard.start()
         self.addCleanup(guard.stop)
+        target = patch.object(reconcile, '_validate_target', return_value=('windows-cp117','/owned/qga',589342,520739,'S-1-5-21-1-2-3-1002'))
+        target.start(); self.addCleanup(target.stop)
 
     def test_exact_input_and_phase_projection(self):
         cases = (("windows-msi-stale-lock-reconcile", "reconcile", "recovered"),
                  ("windows-msi-stale-lock-reconcile-status", "status", "terminal-proven"),
                  ("windows-msi-stale-lock-reconcile-close", "close", "recovered"))
         for action, method, state in cases:
+            inputs = {"host":"archlinux", **({"vmIdentity":"589342:520739"} if method=="reconcile" else {})}
             observed = {"state": state, "replayAllowed": False,
                         "nativeActionAllowed": False}
             with self.subTest(action=action), patch.object(reconcile, method,
                 return_value=observed) as call:
-                result = mcp_server._vm_workflow_impl(action, {"host": "archlinux"})
-            call.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux"})
+                result = mcp_server._vm_workflow_impl(action, inputs)
+            call.assert_called_once_with(mcp_server.REPO_ROOT, inputs)
             self.assertTrue(result["ok"])
             self.assertFalse(result["nativeActionAllowed"])
         with patch.object(reconcile, "reconcile", side_effect=AssertionError("unsafe dispatch")):

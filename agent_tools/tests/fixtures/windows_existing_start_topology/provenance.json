@@ -1,0 +1,5 @@
+{
+  "sourcePath": "agent_tools/windows_vm_hardware.py",
+  "sourceSha256": "541d9ad4c733b0092254e991915f5f7ae631fe12249b1bd984a0c74002a1d4ad",
+  "failure": "Original fresh-setup argv refers to a dead /proc/self/fd executable, retired seed.iso/installer fdsets and installation once=d boot; it cannot describe an existing persisted instance restart."
+}

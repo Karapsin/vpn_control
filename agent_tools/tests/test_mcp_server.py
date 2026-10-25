@@ -35,9 +35,14 @@ def command_result(*, stdout: str = "", stderr: str = "", ok: bool = True) -> di
 
 class McpSurfaceTest(unittest.TestCase):
     def test_managed_agent_suite_runs_only_affected_modules(self) -> None:
-        selection = mcp_server.affected_agent_tests.Selection("a" * 40, ("agent_tools/docs_assistant.py",),
-                         ("agent_tools.tests.test_docs_assistant",), 2)
-        expected = selection.commands(mcp_server.AGENT_TEST_PYTHON)
+        # The SSH-close gate alone first, then the two hosted CI shards without it.
+        gate = "agent_tools.tests.test_ssh_connection_session_close"
+        modules = ("agent_tools.tests.test_agent_test_runner", "agent_tools.tests.test_docs_assistant",
+                   "agent_tools.tests.test_mcp_server", gate, "agent_tools.tests.test_ssh_transport",
+                   "agent_tools.tests.test_workflow_selection_blocker")
+        selection = mcp_server.affected_agent_tests.Selection("a" * 40, ("agent_tools/docs_assistant.py",), modules, 9)
+        unit = [mcp_server.AGENT_TEST_PYTHON, "-m", "unittest"]
+        expected = [unit + [gate], unit + [modules[0], modules[2], modules[4]], unit + [modules[1], modules[5]]]
         with mock.patch.object(mcp_server, "_agent_test_selection", return_value=selection):
             for area, level in (("agent_tools", "focused"), ("agent_tools", "prepush")):
                 commands = mcp_server._commands_for(area, level)
@@ -277,8 +282,13 @@ class FingerprintTest(unittest.TestCase):
         subprocess.run(["git", "commit", "-qm", "initial"], cwd=self.root, check=True)
         self.root_patch = mock.patch.object(mcp_server, "REPO_ROOT", self.root)
         self.root_patch.start()
+        # Import bound RECEIPT_PATH, and the TEST-006 failure set beside it, to
+        # the real checkout; keep that state under this temporary root too.
+        self.receipt_patch = mock.patch.object(mcp_server, "RECEIPT_PATH", self.root / ".rag_index" / "prepush_receipt.json")
+        self.receipt_patch.start()
 
     def tearDown(self) -> None:
+        self.receipt_patch.stop()
         self.root_patch.stop()
         self.temporary.cleanup()
 
@@ -342,6 +352,9 @@ class FingerprintTest(unittest.TestCase):
             hasattr(retention_os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "geteuid", "fsync"))
         command = [sys.executable, "-c",
                    "import sys; sys.stdout.buffer.write(b'private stdout\\n'); sys.stderr.buffer.write(b'private stderr\\n')"]
+        # Each platform scenario is an independent first pass; a recorded
+        # TEST-006 failure set from another scenario would refuse it.
+        receipt.with_name("managed_check_failures.json").unlink(missing_ok=True)
         with mock.patch.object(mcp_server, "RECEIPT_PATH", receipt), \
                 mock.patch.object(mcp_server, "_commands_for", return_value=[command]):
             result = mcp_server.run_checks(level="prepush")

@@ -1,0 +1,17 @@
+{
+  "before": {
+    "capsule.before.source": {
+      "originalPath": ".runtime/tool-recovery-windows/direct/run_transport_source_capsule.py",
+      "sha256": "86db23ae32fbe23eaa57c938cfe46aef7fc90de9b2592ad331da288d1685be58"
+    },
+    "outer.before.source": {
+      "originalPath": ".runtime/tool-recovery-windows/direct/run_windows_bootstrap_linux_once.py",
+      "sha256": "fe2baf937bb21f54335f827cc6f48fdb06f8b03448ab75a905b63b9728f2211c"
+    }
+  },
+  "discovery": "source review: stored mode reconstructs graph before comparison; returned submitted-readiness/timeout exceptions lose public callback",
+  "nativeFailureClaimed": false,
+  "oldPreparedOperation": "713f134e-6e89-444a-b37a-dfebeec4e17a",
+  "oldPreparedRemainsUnsubmitted": true,
+  "schemaVersion": 1
+}

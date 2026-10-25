@@ -6,7 +6,7 @@ from pathlib import Path
 from . import ssh_channel_keeper as core,ssh_fresh_nested_channel as channel,private_inventory_lock as private
 from . import native_review_source_closure as closure,check_output_retention as raw_store
 ROOT=Path(__file__).resolve().parents[1]
-NAMES=('ssh_channel_keeper_entry.py','ssh_channel_keeper.py','ssh_channel_inventory_diagnostics.py','ssh_fresh_nested_channel.py','private_inventory_lock.py','native_review_source_closure.py','check_output_retention.py','ssh_transport.py','ssh_connection_session.py','ssh_connection_recovery.py','ssh_nested_socket_owned_home_observation.py','ssh_channel_selection.py','mcp_server.py','ssh_nested_socket_noninteractive_observation.py','ssh_nested_socket_retirement.py','ssh_nested_socket_route_diagnostic.py','ssh_recovery_adoption.py')
+NAMES=('ssh_channel_keeper_entry.py','ssh_channel_keeper.py','ssh_channel_inventory_diagnostics.py','ssh_fresh_nested_channel.py','private_inventory_lock.py','native_review_source_closure.py','check_output_retention.py','ssh_transport.py','readiness.py','ssh_connection_session.py','ssh_connection_recovery.py','ssh_nested_socket_owned_home_observation.py','ssh_channel_selection.py','mcp_server.py','ssh_nested_socket_noninteractive_observation.py','ssh_nested_socket_retirement.py','ssh_nested_socket_route_diagnostic.py','ssh_recovery_adoption.py')
 SOURCE_FILES={name:ROOT/'agent_tools'/name for name in NAMES}
 PREFIX='native-receipt-bound-cooperative-busy-keeper-'
 def _sha(value):

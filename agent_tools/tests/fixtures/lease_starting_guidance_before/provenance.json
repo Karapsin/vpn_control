@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "originalPath": "agent_tools/native_next_action.py",
+  "beforeimageSha256": "6cf6309f3bd7331886737bb97bed592ccb385bb0eea40c1686e0007526fd2e42",
+  "modifications": [],
+  "failure": "qualified starting lease incorrectly resolves blocker instead of observing original owner"
+}

@@ -1,0 +1,7 @@
+{
+  "beforeSha256": "600d0d4776155f1b58248e377e89465ce5cc9ca87c6d229be432df4608529174",
+  "beforeSource": "ssh_program_execution.py.before.source",
+  "cause": "New ordinary program connectionPins included private-key content digest and the intent reader rehashed that private-derived receipt.",
+  "preservedActualOperation": "61bd241b-5633-46d8-9a7f-0e90d74bf5c0",
+  "privateOriginalIntentCopiedOrHashed": false
+}

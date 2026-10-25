@@ -1,0 +1,12 @@
+{
+  "actualOperationId": "b3d46903-00b3-4ed5-92c5-0bbee897878c",
+  "executionAuthority": "Execute only generation, directory_guard, parent_fd, and guard FunctionDefs from exact authenticated whole before/fixed archive source. No full module/native/archive/retirement execution.",
+  "failure": "Actual own create-only archive entry changed APFS output-directory st_nlink2\u21923 with dev/inode/mode/UID/GID unchanged; zero-byte partial, original image unchanged.",
+  "files": {
+    "native-failure.json": "5c1ed3c543ab7df0afc0a9cc5aeaf779df933037a3aea16423e8fe1ff1b24e41",
+    "writer.before.source": "b219e68e80873504a7a5809debdd88617783cb5d1ac0dfaf80143d36a666755f",
+    "writer.fixed.source": "1ff767d4bf0bbf09f82251e26238d84b112b2904a8a4a5cec2eb7c68f474f71d"
+  },
+  "regularFileGuardsUnchanged": true,
+  "schemaVersion": 1
+}

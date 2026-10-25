@@ -65,10 +65,19 @@ class TmuxDisconnectRoutes(unittest.TestCase):
         probe.release.assert_not_called(); probe.close.assert_called_once()
 
     def test_stale_helper_refuses_before_probe_construction(self):
-        from agent_tools import ssh_tmux_disconnect_probe as helper
-        with mock.patch.object(server, '_MCP_BOOT_TIME_NS', 0), mock.patch.object(helper, 'Probe') as call:
+        # The genuine loader owns the stale-code guard; the probe fake enters only through that seam,
+        # so a regressed guard fails here instead of building a real Probe from the private inventory.
+        original = server._agent_module; adapter = mock.Mock()
+        state = server.REPO_ROOT/'.rag_index'/'ssh-tmux-disconnect-probe'; existed = state.exists()
+        def stale(name):
+            module = original(name)
+            return adapter if name == 'ssh_tmux_disconnect_probe' else module
+        with mock.patch.object(server, '_MCP_EXECUTING_CODE', None), \
+                mock.patch.object(server, '_agent_module', side_effect=stale) as load:
             value = server._ssh_workflow_impl('tmux-disconnect-probe', 'archlinux', identity=dict(self.identity))
-        self.assertFalse(value['ok']); call.assert_not_called()
+        self.assertFalse(value['ok']); self.assertEqual('native_source_closure_unavailable', value.get('reason'))
+        self.assertEqual([mock.call('ssh_transport')], load.call_args_list); adapter.Probe.assert_not_called()
+        self.assertEqual(existed, state.exists())
 
     def test_bad_terminal_or_deadline_never_claims_completion(self):
         valid = {'state': 'completed', 'sequence': 20, 'replayAllowed': False, 'productAcceptance': False}
@@ -105,7 +114,7 @@ with mock.patch.object(s,'_agent_module',side_effect=lambda name:a if name=='ssh
 '''
         with tempfile.TemporaryDirectory() as directory:
             identity = Path(directory)/'identity.json'; identity.write_text(json.dumps(self.identity))
-            result = subprocess.run([sys.executable, '-I', '-c', program, str(Path(server.__file__).resolve()),
+            result = subprocess.run([sys.executable, '-I', '-B', '-c', program, str(Path(server.__file__).resolve()),
                                      str(identity)], cwd=directory, capture_output=True, text=True, timeout=30)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual('completed', json.loads(result.stdout)['state'])

@@ -4,6 +4,7 @@ import ast
 import json
 import types
 import unittest
+from agent_tools.tests import route_adapter
 from unittest import mock
 from agent_tools import mcp_server as server
 from agent_tools import android_consent_grant_acceptance as grant
@@ -24,7 +25,8 @@ def inputs(family,method):
     if method!='start':return {'correlationId':CORRELATION}
     if family=='android-runtime-acceptance':return {'correlationId':CORRELATION,'endpointCorrelationId':OTHER,'cliStageCorrelationId':STAGE}
     value=copy.deepcopy(BASE)
-    if family=='android-consent-grant-acceptance':value.update(host='archlinux',device='api35')
+    # Effectful starts name their explicit target; no default fixture is selected.
+    if family in {'android-consent-grant-acceptance','android-vpn-permission-reset'}:value.update(host='archlinux',device='api35')
     return value
 
 
@@ -70,7 +72,9 @@ class ParityResponseProjectionTests(unittest.TestCase):
         helper._SERVER_CLEANUP_SHA256=retire._SERVER_CLEANUP_SHA256;helper._CREDENTIAL_CLEANUP_SHA256=retire._CREDENTIAL_CLEANUP_SHA256
         module_name='windows_cp117_staged_fixture_retire' if family=='windows-cp117-staged-fixture-retire' else FAMILIES[family]
         original=server._agent_module
-        def module(name):return helper if name==module_name else original(name)
+        # Routing units keep the repository's inert preliminary admission seam.
+        readiness=route_adapter._routing_readiness()
+        def module(name):return helper if name==module_name else readiness if name=='readiness_vm_dispatch' else original(name)
         request={} if family=='windows-cp117-staged-fixture-retire' else inputs(family,method)
         with mock.patch.object(server,'_agent_module',side_effect=module):
             result=server._vm_workflow_impl(family+'-'+method,request)

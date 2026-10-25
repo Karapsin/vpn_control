@@ -1,0 +1,40 @@
+{
+  "benchmarkOperationId": "689a01c1-751c-4f37-a868-ea3407f070fb",
+  "callerBudgetsSeconds": {
+    "combinedMaximum": 150,
+    "leaseTtl": 180,
+    "publicBenchmark": 90,
+    "sequentialDispatchWithoutHumanReviewPause": true,
+    "sourceReviewMustPrecedeLeaseAcquisition": true,
+    "wake": 60
+  },
+  "fixtureId": "tart-macos-independent-catalog-v10",
+  "genericUnlockAuthority": false,
+  "lease": {
+    "acquireExactlyOnceBySoleOperator": true,
+    "automaticRenewal": false,
+    "cancelAndFullCollectAfterBenchmark": true,
+    "statusOriginalBeforeWake": true,
+    "ttlSeconds": 180
+  },
+  "leaseOperationId": "5e5e51db-b9e2-4785-a30b-da6bb2f0883c",
+  "noOrdinaryCredentialReader": true,
+  "predecessorPlanSha256": "85da590c8be7298a82bb7073bfbfc1f8ee960bb688e91464640656825e1926df",
+  "preparedPredecessorUnsubmitted": true,
+  "producers": {
+    "macos-known-session-wake-review.inert.py": "aa2d0429e2c83d7e46d33fbc85dc7a07b3f027209f785c92e26f4d4cf048dfac",
+    "macos-unlock-nonce-public-preflight.inert.py": "3c1cc8938349e5b92d7913b85f98a7f53cf5c3a84fbd24d9d8947c44994246b1"
+  },
+  "publicSourceFreezeUnchanged": true,
+  "schemaVersion": 1,
+  "state": "prepared_only_no_native_go",
+  "steps": [
+    "source_review_and_sole_operator_handoff",
+    "separately_approved_normal_lease_acquire_once_and_original_active_observation",
+    "separate_known_state_wake_packet_if_actual_display_sleeping",
+    "public_only_136_fresh_nonce_TIS_checks_no_input",
+    "original_lease_cancel_or_expiry_full_streams_and_kernel_absence"
+  ],
+  "target": "tart:vpn-tool-recovery-tart-macos-7686d4aa",
+  "wakeOperationId": "2dd616c6-90a3-4db7-8766-d446fec06177"
+}

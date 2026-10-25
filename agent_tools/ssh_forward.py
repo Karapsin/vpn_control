@@ -224,21 +224,25 @@ def _local_argv(config: ssh_transport.SshConfig, target: ssh_transport.SshHost, 
                 operation: str) -> list[str]:
     """Use the transport builder for fixed gateway authentication arguments."""
     assert target.gateway
-    base = ssh_transport.build_ssh_argv(config, target.gateway, TIMEOUT_SECONDS, command=("true",))
+    base = ssh_transport.build_ssh_argv(config, target.gateway, TIMEOUT_SECONDS, command=("true",), fresh_direct=True)
     gateway_host = base[-2]
     options = base[:-2]
     if operation == "open":
-        return [*options, "-M", "-N", "-S", control_path, "-o", "ControlMaster=yes",
+        result = [*options, "-M", "-N", "-S", control_path, "-o", "ControlMaster=yes",
                 "-o", "ControlPersist=no", "-o", "ExitOnForwardFailure=yes", "-L",
                 f"127.0.0.1:{LOCAL_PORT}:127.0.0.1:{LOCAL_PORT}", gateway_host]
-    if operation == "close":
-        return [*options, "-S", control_path, "-O", "exit", gateway_host]
-    if operation == "check":
-        return [*options, "-S", control_path, "-O", "check", gateway_host]
-    raise ValueError("unsupported fixed local action")
+    elif operation in {"close", "check"}:
+        result = [*options, "-S", control_path, "-O", "exit" if operation=="close" else "check", gateway_host]
+    else:
+        raise ValueError("unsupported fixed local action")
+    admission=ssh_transport._dispatch_binding(config,target.alias)
+    return (ssh_transport.BoundInlineArgv(None,original_argv=result,dispatch_admission=admission)
+            if admission is not None else result)
 
 
 def _remote_result(config: ssh_transport.SshConfig, target: ssh_transport.SshHost, action: str) -> bool | None:
+    admission=ssh_transport._dispatch_binding(config,target.alias)
+    if admission is not None:admission.revalidate()
     result = ssh_connection_recovery._gateway_run(config, target, _remote_forward_command(target, action), TIMEOUT_SECONDS)
     return None if result is None else result.returncode == 0
 
@@ -257,7 +261,7 @@ def _remote_master_identity(config: ssh_transport.SshConfig, target: ssh_transpo
 
 def _local_control_ready(config: ssh_transport.SshConfig, target: ssh_transport.SshHost, control_path: str) -> bool:
     try:
-        result = subprocess.run(_local_argv(config, target, control_path, "check"), stdin=subprocess.DEVNULL,
+        result = ssh_transport.run_ssh(_local_argv(config, target, control_path, "check"), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True,
                                 timeout=TIMEOUT_SECONDS, check=False)
         return result.returncode == 0
@@ -332,7 +336,7 @@ def open_forward(root: Path | str, host: str = HOST) -> dict[str, Any]:
         remote_created = {**pending, "state": "remote_created"}
         _replace_intent(root_path, remote_created)
         try:
-            process = subprocess.Popen(_local_argv(config, target, control_path, "open"), stdin=subprocess.DEVNULL,
+            process = ssh_transport.popen_ssh(_local_argv(config, target, control_path, "open"), stdin=subprocess.DEVNULL,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
         except OSError:
             return {"ok": False, "state": "local_forward_pending", "correlationId": correlation_id}
@@ -391,7 +395,7 @@ def close(root: Path | str, identity: dict[str, Any], host: str = HOST) -> dict[
             return {"ok": False, "state": "owner_unknown"}
         closing = {**intent, "state": "closing"}
         _replace_intent(root_path, closing)
-        local = subprocess.run(_local_argv(config, target, intent["localControlPath"], "close"), stdin=subprocess.DEVNULL,
+        local = ssh_transport.run_ssh(_local_argv(config, target, intent["localControlPath"], "close"), stdin=subprocess.DEVNULL,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True, timeout=TIMEOUT_SECONDS, check=False)
         if local.returncode != 0:
             return {"ok": False, "state": "close_pending", "correlationId": intent["correlationId"]}

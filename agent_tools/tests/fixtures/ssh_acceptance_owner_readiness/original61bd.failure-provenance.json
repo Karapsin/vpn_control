@@ -1,0 +1,10 @@
+{
+  "controllerSha256": "14d50b0ccccaf944d92a9c5784fbb0f6deeb7910289f579b8b1b54ac24d6de3d",
+  "operationId": "61bd241b-5633-46d8-9a7f-0e90d74bf5c0",
+  "firstSnapshotRawReturnRetained": false,
+  "firstSnapshotRawUnavailableReason": "Original remote() discarded CompletedProcess stdout/stderr on nonzero before controller raised; no reconstruction claimed",
+  "cause": "unresolved pending original-only authenticated observation",
+  "plannedFaultsEntered": false,
+  "originalOutcome": "UNKNOWN preserved",
+  "currentOriginalOutcome": "Original61bd later observed terminal with1600counterlines; no original operation replay authorized."
+}

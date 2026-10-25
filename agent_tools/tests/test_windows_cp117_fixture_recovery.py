@@ -168,7 +168,7 @@ class RecoveryTests(unittest.TestCase):
             finally:capture.close()
 
     def test_status_without_external_original_pin_cannot_submit(self):
-        with tempfile.TemporaryDirectory()as temp,mock.patch.object(r.subprocess,'run')as submit:
+        with tempfile.TemporaryDirectory()as temp,mock.patch.object(r.subprocess,'Popen')as submit:
             with self.assertRaisesRegex(r.RecoveryUnknown,'original-receipt-required'):r.status(temp,{})
             submit.assert_not_called()
 

@@ -12,9 +12,29 @@ from agent_tools import mcp_server
 
 class NativeRoutesTest(unittest.TestCase):
     def setUp(self):
+        from contextlib import nullcontext
+        from agent_tools import ssh_transport
+        # Response enrichment durably records each failed or unknown route under
+        # REPO_ROOT; synthetic outcomes stay out of the checkout's TEST-001 ledger.
+        root = tempfile.TemporaryDirectory(); self.addCleanup(root.cleanup)
+        repository = patch.object(mcp_server, "REPO_ROOT", Path(root.name).resolve()); repository.start(); self.addCleanup(repository.stop)
+        # These routing tests supply synthetic host profiles and adapter
+        # results. Real readiness/dispatch is covered by socket integration
+        # tests; this explicit seam keeps routing tests off private targets.
+        admission = patch.object(ssh_transport, "admitted_transport", return_value=nullcontext())
+        self.admission = admission.start()
+        self.addCleanup(admission.stop)
+        from agent_tools import readiness_vm_dispatch
+        # Synthetic routing profiles do not claim native readiness. The real
+        # resolver, generated carriers and public boundary have separate socket
+        # integration coverage; this seam only isolates adapter projection.
+        admission = patch.object(readiness_vm_dispatch, "admitted_dispatch", return_value=contextlib.nullcontext())
+        admission.start()
+        self.addCleanup(admission.stop)
         from agent_tools.tests.route_adapter import bind_cached_routes
         from agent_tools import mcp_server as _route_server
         bind_cached_routes(self,_route_server,
+            'readiness_vm_dispatch',
             'android_observation',
             'android_proxy_recovery',
             'native_artifact_registry',
@@ -88,7 +108,7 @@ class NativeRoutesTest(unittest.TestCase):
             inputs.write_text("{}")
             code = "import sys;from pathlib import Path;sys.path.insert(0,'agent_tools');import mcp_server;mcp_server.REPO_ROOT=Path(sys.argv[1]);mcp_server.main(['vm-workflow','baseline-source-inventory','--inputs-file',sys.argv[2]])"
             child = subprocess.run([sys.executable, "-c", code, str(fixture.root), str(inputs)],
-                                   cwd=mcp_server.REPO_ROOT, capture_output=True, text=True, timeout=30)
+                                   cwd=Path(mcp_server.__file__).resolve().parents[1], capture_output=True, text=True, timeout=30)
             self.assertEqual(0, child.returncode, child.stderr)
             self.assertEqual(result, json.loads(child.stdout))
             self.assertNotIn("credential-sentinel", child.stdout)
@@ -98,44 +118,85 @@ class NativeRoutesTest(unittest.TestCase):
             fixture.doCleanups()
 
     def test_windows_probe_routes_only_configured_identity_and_deadline(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
         from agent_tools import windows_credential_probe_ssh as probe
-        request = {"host": "owned", "correlationId": "00000000-0000-0000-0000-000000000001", "timeoutSeconds": 20}
-        with patch.object(probe, "start", return_value={"ok": False, "state": "unknown"}) as start:
+        target = SimpleNamespace(fixture_transfer_root=Path('/owned/fixtures'),
+            windows_credential_probe=SimpleNamespace(environment='selected-vm',
+                qga_socket_path=Path('/owned/selected/qga.sock'), qemu_pid=123,
+                qemu_start_ticks=456, account_name='fixtureuser',
+                expected_sid='S-1-5-21-11-22-33-1002', credential_path=Path('/owned/private-input')))
+        request = {"host": "owned", "environment": "selected-vm",
+                   "correlationId": "00000000-0000-0000-0000-000000000001", "timeoutSeconds": 20}
+        start = Mock(return_value={"ok": False, "state": "unknown"})
+        def admitted_start(root, host, correlation, timeout_seconds=15, *, environment=None):
+            # Preserve the backend's pure target gate before the mocked effect.
+            probe._admit_environment(root, host, environment)
+            return start(root, host, correlation, timeout_seconds=timeout_seconds, environment=environment)
+        with patch.object(probe, "_config", return_value=SimpleNamespace(hosts={'owned': target})), \
+             patch.object(probe, "start", new=admitted_start):
             result = mcp_server.vm_workflow("windows-credential-probe-start", request)
             self.assertEqual("unknown", result["state"])
-            start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", request["correlationId"], timeout_seconds=20)
-            start.reset_mock()
-            self.assertFalse(mcp_server.vm_workflow("windows-credential-probe-start", {**request, "command": "untrusted"})["ok"])
-            start.assert_not_called()
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", request["correlationId"],
+                                          timeout_seconds=20, environment="selected-vm")
+            for invalid in ({key: value for key, value in request.items() if key != 'environment'},
+                            {**request, 'environment': 'other-vm'},
+                            {**request, 'host': 'other-host'}, {**request, "command": "untrusted"}):
+                start.reset_mock()
+                self.assertFalse(mcp_server.vm_workflow("windows-credential-probe-start", invalid)["ok"])
+                start.assert_not_called()
+        original_request = {key: value for key, value in request.items() if key != 'environment'}
         with patch.object(probe, "status", side_effect=probe.WindowsCredentialProbeSshError("private sentinel")):
-            result = mcp_server.vm_workflow("windows-credential-probe-status", request)
+            result = mcp_server.vm_workflow("windows-credential-probe-status", original_request)
             self.assertFalse(result["ok"])
             self.assertNotIn("private sentinel", json.dumps(result))
 
     def test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands(self):
         from types import SimpleNamespace
         from unittest.mock import Mock
+        from agent_tools import windows_credential_probe_ssh as probe
         class PrivateError(ValueError):
             pass
-        backend = SimpleNamespace(start=Mock(return_value={"state": "submitted"}),
+        start = Mock(return_value={"state": "submitted"})
+        def admitted_start(root, host, correlation, timeout_seconds=15, *, environment=None):
+            try:
+                probe._admit_environment(root, host, environment)
+            except probe.WindowsCredentialProbeSshError:
+                raise PrivateError('controlled target refusal') from None
+            return start(root, host, correlation, timeout_seconds=timeout_seconds, environment=environment)
+        backend = SimpleNamespace(start=admitted_start,
                                   status=Mock(return_value={"state": "unknown"}),
                                   credential_status=Mock(return_value={"state": "ready"}),
                                   WindowsCredentialRecoveryError=PrivateError)
-        request = {"host": "owned", "correlationId": "00000000-0000-0000-0000-000000000001"}
+        target = SimpleNamespace(fixture_transfer_root=Path('/owned/fixtures'),
+            windows_credential_probe=SimpleNamespace(environment='selected-vm',
+                qga_socket_path=Path('/owned/selected/qga.sock'), qemu_pid=123,
+                qemu_start_ticks=456, account_name='fixtureuser',
+                expected_sid='S-1-5-21-11-22-33-1002', credential_path=Path('/owned/private-input')))
+        request = {"host": "owned", "environment": "selected-vm",
+                   "correlationId": "00000000-0000-0000-0000-000000000001"}
         original_module = mcp_server._agent_module
         def load(name):
             return backend if name == "windows_credential_recovery_ssh" else original_module(name)
-        with patch.object(mcp_server, "_agent_module", side_effect=load):
+        with patch.object(mcp_server, "_agent_module", side_effect=load), \
+             patch.object(probe, "_config", return_value=SimpleNamespace(hosts={'owned': target})):
             self.assertEqual("submitted", mcp_server.vm_workflow("windows-credential-recover-start", request)["state"])
-            backend.start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", request["correlationId"], timeout_seconds=15)
+            start.assert_called_once_with(mcp_server.REPO_ROOT, "owned", request["correlationId"],
+                                          timeout_seconds=15, environment="selected-vm")
+            for invalid in ({key: value for key, value in request.items() if key != 'environment'},
+                            {**request, 'environment': 'other-vm'}, {**request, 'host': 'other-host'}):
+                start.reset_mock()
+                self.assertFalse(mcp_server.vm_workflow("windows-credential-recover-start", invalid)["ok"])
+                start.assert_not_called()
             for forbidden in ("password", "command", "accountName", "expectedSid", "credentialPath"):
-                backend.start.reset_mock()
+                start.reset_mock()
                 self.assertFalse(mcp_server.vm_workflow("windows-credential-recover-start", {**request, forbidden: "private"})["ok"])
-                backend.start.assert_not_called()
-            mcp_server.vm_workflow("credential-status", {**request, "handle": "opaque"})
+                start.assert_not_called()
+            original_request = {key: value for key, value in request.items() if key != 'environment'}
+            mcp_server.vm_workflow("credential-status", {**original_request, "handle": "opaque"})
             backend.credential_status.assert_called_once_with(mcp_server.REPO_ROOT, "owned", "opaque", request["correlationId"])
             backend.status.side_effect = PrivateError("secret sentinel")
-            result = mcp_server.vm_workflow("windows-credential-recover-status", request)
+            result = mcp_server.vm_workflow("windows-credential-recover-status", original_request)
             self.assertFalse(result["ok"])
             self.assertNotIn("secret sentinel", json.dumps(result))
 
@@ -162,6 +223,7 @@ class NativeRoutesTest(unittest.TestCase):
             result = mcp_server.ssh_workflow("apk-publish", host="vm", transfer={"apkPath": "/file.apk"})
         self.assertFalse(result["ok"])
         publish.assert_not_called()
+        self.admission.assert_not_called()
 
     def test_apk_status_preserves_unknown_identity(self):
         from agent_tools import ssh_transfer
@@ -199,6 +261,7 @@ class NativeRoutesTest(unittest.TestCase):
             result = mcp_server.ssh_workflow("fixture-publish", host="vm", transfer={"command": "unexpected"})
         self.assertFalse(result["ok"])
         publish.assert_not_called()
+        self.admission.assert_not_called()
 
     def test_fixture_status_preserves_unknown_identity(self):
         from agent_tools import ssh_transfer
@@ -211,17 +274,19 @@ class NativeRoutesTest(unittest.TestCase):
         observe.assert_called_once()
 
     def test_command_noise_filter_preserves_real_errors_and_exit_status(self):
-        from subprocess import CompletedProcess
+        from unittest.mock import MagicMock
         noise = "2026-09-24 15:24:09.612 zsh[44632:4550809] [AppleSharpener] Not in Dock process (bundle ID: (null)), skipping setup\n"
         other = "2026-09-24 15:24:09.612 zsh[44632:4550809] [AppleSharpener] unexpected failure\n"
-        completed = CompletedProcess(["test"], 7, noise + "actual stdout\n", noise + other + "actual stderr\n")
-        with patch.object(mcp_server.subprocess, "run", return_value=completed) as run:
+        child = MagicMock(returncode=7)
+        child.__enter__.return_value, child.__exit__.return_value = child, False
+        child.communicate.return_value = (noise + "actual stdout\n", noise + other + "actual stderr\n")
+        with patch.object(mcp_server.subprocess, "Popen", return_value=child) as popen:
             result = mcp_server._run(["test"])
         self.assertEqual(7, result["returncode"])
         self.assertFalse(result["ok"])
         self.assertEqual("actual stdout", result["stdout"])
         self.assertEqual(other + "actual stderr", result["stderr"])
-        self.assertNotIn("DYLD_INSERT_LIBRARIES", run.call_args.kwargs["env"])
+        self.assertNotIn("DYLD_INSERT_LIBRARIES", popen.call_args.kwargs["env"])
 
     def test_private_inventory_cannot_be_managed_staged(self):
         self.assertIsNotNone(mcp_server._validate_commit_paths([".vm-hosts.local.json"]))
@@ -315,9 +380,17 @@ if __name__ == "__main__":
 
 class SourceReviewClosureRoutesTest(unittest.TestCase):
     def setUp(self):
+        from agent_tools import readiness_vm_dispatch
+        # Synthetic routing profiles do not claim native readiness. The real
+        # resolver, generated carriers and public boundary have separate socket
+        # integration coverage; this seam only isolates adapter projection.
+        admission = patch.object(readiness_vm_dispatch, "admitted_dispatch", return_value=contextlib.nullcontext())
+        admission.start()
+        self.addCleanup(admission.stop)
         from agent_tools.tests.route_adapter import bind_cached_routes
         from agent_tools import mcp_server as _route_server
         bind_cached_routes(self,_route_server,
+            'readiness_vm_dispatch',
             'android_observation',
             'android_proxy_recovery',
             'native_artifact_registry',
@@ -405,6 +478,14 @@ class SourceReviewClosureRoutesTest(unittest.TestCase):
 
 
 class SecondAbortFailureProjectionTests(unittest.TestCase):
+    def setUp(self):
+        from agent_tools import readiness_vm_dispatch
+        from agent_tools.tests.route_adapter import bind_routes
+        admission = patch.object(readiness_vm_dispatch, "admitted_dispatch", return_value=contextlib.nullcontext())
+        admission.start()
+        self.addCleanup(admission.stop)
+        bind_routes(self, mcp_server, readiness_vm_dispatch)
+
     correlation = "691bd32a-4ea6-42a6-a3a2-e28b8d3498ec"
     routes = (
         ("windows-fixture-server-second-abort-successor-start", "successorCorrelationId", "start"),
@@ -428,7 +509,11 @@ class SecondAbortFailureProjectionTests(unittest.TestCase):
                     adapter = SimpleNamespace(**{method: refuse})
                     # Only the native adapter and diagnostic storage are inert.
                     # The public route and response enrichment execute unchanged.
+                    from agent_tools import readiness, readiness_vm_dispatch, tool_action_policy
                     modules = {
+                        "readiness": readiness,
+                        "readiness_vm_dispatch": readiness_vm_dispatch,
+                        "tool_action_policy": tool_action_policy,
                         "windows_fixture_server_second_abort_successor": adapter,
                         "native_next_action": SimpleNamespace(next_action=lambda *args: {"kind": "inspect-evidence"}),
                         "native_failure_evidence": SimpleNamespace(bounded_failure_details=lambda *args: {},

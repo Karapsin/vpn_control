@@ -1,0 +1,35 @@
+from pathlib import Path
+from contextlib import ExitStack
+import ast,hashlib,json,os,sys,tempfile,time,types,unittest
+ROOT=Path.cwd();BASE=ROOT/'.runtime/tool-recovery/macos-component-acl-diagnostic'
+from agent_tools.source_module_loader import SourceSession
+class Checks(unittest.TestCase):
+ def test_capture_exact_new_scope_full_eof(self):
+  with ExitStack()as stack:
+   session=SourceSession(ROOT/'agent_tools','private_inventory_lock');stack.callback(session.close);P=session.module;J=session.load('durable_remote_job');R=session.load('readiness_tart_macos_registry')
+   module=types.ModuleType('_acl_capture_test');raw=(BASE/'rpc_capture.py').read_bytes();exec(compile(raw,str(BASE/'rpc_capture.py'),'exec'),module.__dict__)
+   before=types.ModuleType('_namespace_capture_test');raw=(BASE/'rpc-capture.before.source').read_bytes();exec(compile(raw,str(BASE/'rpc-capture.before.source'),'exec'),before.__dict__)
+   with tempfile.TemporaryDirectory(prefix='acl-capture-')as temp:
+    os.chmod(temp,0o700)
+    with P.Directory(Path(temp).resolve())as directory:
+     with self.assertRaises(ValueError):before.PublicRpcCapture(directory,'call-1-catalog')
+     with module.PublicRpcCapture(directory,'call-1-catalog')as retained:
+      result,receipt=retained.run([sys.executable,'-I','-B','-c','import sys,time;data=sys.stdin.buffer.read();time.sleep(.15);sys.stdout.buffer.write(data);sys.stderr.write("public-error")'],b'{"finite":true}',deadline=time.monotonic()+20,birth=J._birth,parent=lambda pid:R._parent(pid,time.monotonic()+2))
+     self.assertEqual(result.stdout,b'{"finite":true}');self.assertEqual(result.stderr,b'public-error');self.assertTrue(receipt['actorAbsent']);self.assertFalse(receipt['partial']);self.assertTrue(receipt['stdoutEof']and receipt['stderrEof'])
+     with self.assertRaises(ValueError):module.PublicRpcCapture(directory,'call-2-enroll')
+     self.assertEqual((Path(temp)/'call-1-catalog.stdout.json').stat().st_mode&0o777,0o600)
+ def test_filter_only_finite_output(self):
+  p=json.loads((BASE/'driver-plan.prepared.json').read_bytes());source=Path(p['driver']).read_text();tree=ast.parse(source)
+  names={'need','public_reply'};nodes=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))and n.name in names]
+  ns={'MACHINE':'ecdc399a-8f2b-5410-b85d-e4db56ddc6c1','RAW_BOOT':'87AC272F-619B-4CC0-B9FC-3E32DAEE5B18','uuid':__import__('uuid')};exec(compile(ast.Module(body=nodes,type_ignores=[]),'<exact-public-filter>','exec'),ns)
+  blocked={'public':{'state':'blocked','reason':'macos_component_acl_diagnostic_unavailable'}};self.assertEqual(ns['public_reply'](blocked,None),blocked['public'])
+  for bad in [{'public':{'state':'blocked','reason':'PRIVATE'}},{'public':{'state':'blocked','reason':'macos_component_acl_diagnostic_unavailable','path':'PRIVATE'}}]:
+   with self.assertRaises(RuntimeError):ns['public_reply'](bad,None)
+ def test_whole_packet_exact_captured_bytes_and_no_admission(self):
+  plan=json.loads((BASE/'controller-plan.prepared.json').read_bytes());program=(BASE/'controller.program.py').read_bytes();launcher=(BASE/'controller.py').read_bytes();driver=Path(plan['driver']).read_bytes()
+  self.assertEqual(hashlib.sha256(program).hexdigest(),plan['programSha256']);self.assertEqual(hashlib.sha256(launcher).hexdigest(),plan['launcherSha256']);self.assertEqual(hashlib.sha256(driver).hexdigest(),plan['driverSha256'])
+  with ExitStack()as stack:
+   session=SourceSession(ROOT/'agent_tools','durable_remote_job');stack.callback(session.close);J=session.module;self.assertEqual(J.Program('macos-acl-metadata-controller',program,1048576).digest,plan['programSha256'])
+  compile(driver,str(plan['driver']),'exec');compile(launcher,str(BASE/'controller.py'),'exec')
+  self.assertFalse(Path(plan['indexDirectory']).exists());self.assertFalse((Path(plan['jobRoot'])/plan['controllerOperationId']).exists())
+if __name__=='__main__':unittest.main(verbosity=2)

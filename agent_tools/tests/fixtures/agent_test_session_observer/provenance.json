@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "cause": "Original runner detects and cleans owned session descendant, but retains only leak/absence booleans and no native process identity. Historical actual cause remains unknown; prototype adds read-only before/after current kernel membership, without cleanup authority or retroactive attribution.",
+  "files": {
+    "before.source": "0e9aa5efc2d6f44e69714dae05ccb985e330d2c311c0f50aa7dd762a852cdbdd",
+    "actual-failure.json": "f307a1adad09c9e9dae41f534687e384c4e63d9d42f4f007eeb2a95aa39dcd59"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "source": "DIRECT generated guest idle query before MCP integration",
+  "sourceSha256": "d0d6a734b2f98e2d248e8abf1821b9019028b23971eb87d14187ef6d1cf27e51",
+  "failure": "Ubuntu loginctl rejects --json=short; reboot correctly blocked when operator visibility could not be established.",
+  "originalEvidence": ".runtime/tool-recovery-qemu/linux-idle-command-original.json"
+}

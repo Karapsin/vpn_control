@@ -1,0 +1,29 @@
+{
+  "beforeimages": {
+    "ssh_automatic_program.py": {
+      "sha256": "ba8208ebfc2fddece9d8b9d3ce58a83889cb76883b00497fa5b98db4bc7f9a25",
+      "reason": "Exact source before finite sudo carrier support; predicted oversize refuses before any submission."
+    },
+    "ssh_transport.py.cached-password": {
+      "sha256": "c9361f557872c8914865b74656c18c1f1895b4d7b87790ded52741ae2c518525",
+      "reason": "Exact transport before requiring framed saved-file execution for short sudo -S carriers; inline cached sudo can leave credential in original stdin.",
+      "origin": "Previously preserved ssh_generic_e2big/ssh_transport.py.before-popen.source; unchanged complete source, before secure sudo framing."
+    },
+    "ssh_automatic_program.py.config-hash": {
+      "sha256": "673d1e9ea2d288d655643b3fa80ca8465fb2492e862e9e7b673f4244c7dd62c7",
+      "reason": "Complete source before removing private inventory and configured-password content hashes; causal actual complete caller never reaches peer before secret-digest refusal."
+    },
+    "ssh_tmux_mcp_adapter.py.private-payload": {
+      "sha256": "0f0d41ad25edcde8189de82bc22ad62b2c4a241912bbc4f19891f8882b5e68b2",
+      "reason": "Complete source before private-payload nonce binding; original real child capture retains a password-derived payload digest in intent."
+    },
+    "ssh_tmux_mcp_adapter.py.private-echo": {
+      "sha256": "1995a035e8b43892fbeb2545ac8e59f259786668baa55fe77246a442f2dd2cbd",
+      "reason": "Complete nonce-only private-input capture before echoed credential/error streams were withheld before durable stream hashing."
+    },
+    "ssh_automatic_program.py.helper-import": {
+      "sha256": "71dd16cb3b2d98ade543dcf2c67aaa2942b004a2977690548b462684d4c62040",
+      "reason": "Complete source before authenticated held-byte helper execution; original imports helper before checking source/code and can execute timestamp-valid stale pyc."
+    }
+  }
+}

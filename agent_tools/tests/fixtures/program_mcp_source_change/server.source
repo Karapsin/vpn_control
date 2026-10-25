@@ -1,0 +1,44 @@
+"""Actual fixed stdio endpoint; detached harmless owner survives server loss."""
+import json,os,signal,sys,time
+from pathlib import Path
+from agent_tools import durable_remote_job as jobs
+ROOT=Path(__file__).resolve().parents[1]
+mode=(ROOT/'mode').read_text().strip()
+remote=ROOT/'remote';remote.mkdir(mode=0o700,exist_ok=True)
+binding=jobs.current_binding('fixed-protocol-fixture','owned-local-fixture')
+generation=jobs.root_generation(remote)
+def once(name):
+ try:fd=os.open(ROOT/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ except FileExistsError:return False
+ os.close(fd);return True
+def write(message):
+ sys.stdout.write(json.dumps(message)+'\n');sys.stdout.flush()
+for raw in sys.stdin:
+ message=json.loads(raw)
+ if 'id'not in message:continue
+ method=message['method'];params=message.get('params',{})
+ if method=='initialize':
+  result={'protocolVersion':params['protocolVersion'],'capabilities':{'tools':{}},'serverInfo':{'name':'fixed-fixture','version':'1'}}
+ elif method=='tools/list':result={'tools':[{'name':'ssh_workflow','inputSchema':{'type':'object'},'description':'fixed fixture'}]}
+ elif method=='tools/call':
+  request=params['arguments'];action=request['action'];operation=request.get('transfer',request.get('identity'))['operationId']
+  with (ROOT/'calls').open('a')as stream:stream.write(json.dumps({'action':action,'operationId':operation,'host':request['host']})+'\n')
+  if action=='program-start':
+   counter=ROOT/'counter'
+   source=("from pathlib import Path\nimport time\np=Path("+repr(str(counter))+")\nwith p.open('x')as out:\n out.write('execution\\n');out.flush()\n for n in range(12):\n  out.write(str(n)+'\\n');out.flush();print(n,flush=True);time.sleep(.04)\n")
+   jobs.submit(remote,operation,binding,jobs.Program('fixed-protocol-sentinel',source.encode()),generation=generation)
+   if mode in ('lost-start','always-loss')and once('lost-start'):
+    os.kill(os.getpid(),signal.SIGTERM)
+  status=jobs.observe(remote,operation,binding,generation=generation)
+  terminal=status['state']=='terminal'
+  value={'state':'terminal'if terminal else 'pending','operationId':operation,'host':request['host'],'replayAllowed':False,'durableProtocol':1,
+         'nextAction':{'kind':'complete'if terminal and action=='program-collect'else 'collect_original'if terminal else 'reconcile_original'}}
+  if terminal:value['owner']=status['owner']
+  if mode=='always-loss':os.kill(os.getpid(),signal.SIGTERM)
+  if mode=='typed-blocker':value.update(state='unknown',nextAction={'kind':'resolve_blocker'})
+  if terminal and mode=='lost-terminal'and once('lost-terminal'):os.kill(os.getpid(),signal.SIGTERM)
+  if terminal and mode=='source-change'and once('source-change'):
+   with Path(__file__).open('ab')as changed:changed.write(b'\n# controlled source changed after original terminal RPC\n')
+  result={'content':[{'type':'text','text':json.dumps(value)}],'structuredContent':value,'isError':False}
+ else:continue
+ write({'jsonrpc':'2.0','id':message['id'],'result':result})

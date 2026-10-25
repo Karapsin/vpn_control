@@ -1,0 +1,191 @@
+"""Read-only collection of one already admitted managed existing-instance start.
+
+This module cannot submit a start, wake a guest, connect TPM control, or issue a
+QGA request. It joins the original native intent/manager ACK to a fresh selected
+listener census and actual managed lineage. A dispatcher remains gated until
+this collector and renewed guest admission have native qualification.
+"""
+from dataclasses import dataclass
+import inspect
+import json
+import math
+from pathlib import Path
+import subprocess
+import time
+from uuid import UUID,uuid5
+
+from . import readiness_windows_lifecycle as lifecycle
+from . import readiness_windows_tpm_owner as owner
+from . import ssh_transport as transport
+from . import windows_vm_deploy as deploy
+
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+
+
+def _need(value):
+    if not value:raise ValueError('windows_managed_start_original_unresolved')
+
+
+@dataclass(frozen=True)
+class OriginalManagedStart:
+    _body:object
+
+    def as_dict(self):return lifecycle._plain(self._body)
+
+
+def original(binding,lineage,clean,operation,recovery_id):
+    """Build finite expected-original identity; grants no dispatch authority."""
+    _need(type(binding)is dict and binding.get('provider')=='libvirt-windows'
+          and type(lineage)is lifecycle.ExistingLineage and type(clean)is lifecycle.CleanStopped)
+    lifecycle.validate_lineage(binding,lineage.as_dict());lifecycle.validate_clean_stopped(binding,lineage,clean.as_dict())
+    _need(lifecycle._uuid(operation)and lifecycle._digest(recovery_id)
+          and operation==str(uuid5(UUID(binding['spec']['deploymentId']),recovery_id)))
+    body={'binding':binding,'lineage':lineage.as_dict(),'clean':clean.as_dict(),'intent':{
+        'schemaVersion':1,'kind':'windows-existing-start-v1','operationId':operation,'recoveryId':recovery_id,
+        'machine':binding['spec']['deploymentId'],'hostBoot':binding['context']['hostBootId'],
+        'lineageSha256':lifecycle._lineage_sha(lineage),'cleanPoweroffOperationId':clean.as_dict()['operationId'],
+        'replayAllowed':False}}
+    return OriginalManagedStart(lifecycle._freeze(json.loads(json.dumps(body,allow_nan=False))))
+
+
+def _admission(value):
+    _need(type(value)is OriginalManagedStart)
+    body=value.as_dict()
+    _need(type(body)is dict and set(body)=={'binding','lineage','clean','intent'}and type(body['intent'])is dict)
+    try:
+        lineage=lifecycle.validate_lineage(body['binding'],body['lineage'])
+        clean=lifecycle.validate_clean_stopped(body['binding'],lineage,body['clean'])
+        rebuilt=original(body['binding'],lineage,clean,body['intent']['operationId'],body['intent']['recoveryId'])
+        _need(rebuilt.as_dict()==body)
+    except owner.WitnessExpired:raise
+    except Exception:raise ValueError('windows_managed_start_original_unresolved')from None
+    return body
+
+
+def _original(expected,root,read,process,current_actor,manager,socket_pin,domain,generation,private):
+    """Finite original journal/actual manager generation gate; no publication."""
+    import os
+    def need(value):
+        if not value:raise ValueError('instance_lifecycle_original_start_unknown')
+    prefix='existing-start-'+expected['operationId'];intent_name=prefix+'.intent.json';ack_name=prefix+'.manager-ack.json'
+    before={name:list(generation(private(root/name)))for name in (intent_name,ack_name)}
+    intent=read(intent_name);ack=read(ack_name)
+    need(intent==expected and type(ack)is dict and set(ack)=={'operationId','recoveryId','domainId','actor','manager','socketIdentity','replayAllowed'}
+         and ack['operationId']==expected['operationId']and ack['recoveryId']==expected['recoveryId']
+         and ack['replayAllowed']is False and type(ack['domainId'])is int and ack['domainId']>0
+         and ack['domainId']==domain.ID()and ack['actor']==current_actor and ack['manager']==manager
+         and ack['socketIdentity']==list(socket_pin))
+    need(type(current_actor)is dict and type(manager)is dict);process(current_actor);process(manager)
+    need(before=={name:list(generation(private(root/name)))for name in (intent_name,ack_name)})
+    return {'intentGeneration':before[intent_name],'ackGeneration':before[ack_name],
+            'actor':{key:current_actor[key]for key in ('pid','startTicks','executableGeneration')},
+            'manager':{key:manager[key]for key in ('pid','startTicks','executableGeneration')},
+            'managerSocketIdentity':list(socket_pin),'domainId':ack['domainId']}
+
+
+def _validate_projection(value):
+    _need(type(value)is dict and set(value)=={'intentGeneration','ackGeneration','actor','manager','managerSocketIdentity','domainId'}
+          and lifecycle._pin(value['intentGeneration'],9)and lifecycle._pin(value['ackGeneration'],9)
+          and lifecycle._pin(value['managerSocketIdentity'],5)and type(value['domainId'])is int and value['domainId']>0)
+    for name in ('actor','manager'):
+        row=value[name];_need(type(row)is dict and set(row)=={'pid','startTicks','executableGeneration'}
+            and all(type(row[k])is int and row[k]>0 for k in ('pid','startTicks'))and lifecycle._pin(row['executableGeneration'],9))
+    return json.loads(json.dumps(value))
+
+
+def _validate_request(admission,value):
+    _need(type(admission)is OriginalManagedStart and type(value)is dict and set(value)=={'original','request'})
+    projection=_validate_projection(value['original']);request=owner.validate_request(value['request']);body=_admission(admission)
+    _need(request['machine']==body['intent']['machine']and request['hostBoot']==body['intent']['hostBoot']
+          and request['root']==body['binding']['spec']['root']
+          and request['qemu']['pid']==projection['actor']['pid']and request['qemu']['birth']==projection['actor']['startTicks']
+          and request['qemu']['executableGeneration']==projection['actor']['executableGeneration']
+          and (projection['actor']['pid'],projection['actor']['startTicks'])!=
+              (body['lineage']['qemu']['pid'],body['lineage']['qemu']['startTicks']))
+    return {'original':projection,'request':request}
+
+
+def program(admission,*,request=None,witness=None):
+    """Pure original-only packet. Native main's operator lock covers each gate."""
+    _need(type(admission)is OriginalManagedStart);body=_admission(admission);binding=body['binding'];intent=body['intent']
+    first=request is None and witness is None
+    _need(first or request is not None and type(witness)is owner.OwnerWitness)
+    if not first:
+        request=_validate_request(admission,request);witness.validate(request['request'])
+    source=lifecycle.libvirt_lineage_program(binding,intent['operationId'],request_only=first,owner_witness=witness)
+    source=source.decode();start=source.index('        print(json.dumps(_capture_libvirt_lineage(')
+    end=source.index('\n        return\n',start)
+    expression=source[start:end][len('        print(json.dumps('):-2]
+    branch="""        original_before=_managed_original(MANAGED_EXPECTED,root,read,process,current_actor,manager,socket_pin,domain,generation,private)
+        require((current_actor['pid'],current_actor['startTicks'])!=(MANAGED_OLD_ACTOR['pid'],MANAGED_OLD_ACTOR['startTicks']),
+                'instance_lifecycle_original_start_unknown')
+        if MANAGED_PRIOR_PROJECTION is not None:
+            require(original_before==MANAGED_PRIOR_PROJECTION,'instance_lifecycle_original_start_unknown')
+        observed="""+expression+"""
+        original_after=_managed_original(MANAGED_EXPECTED,root,read,process,current_actor,manager,socket_pin,domain,generation,private)
+        vm_guard();process(current_actor);process(manager)
+        require(original_before==original_after,'instance_lifecycle_original_start_unknown')
+        print(json.dumps({'original':original_after,'request':observed}if MANAGED_PRIOR_PROJECTION is None else
+                         {'original':original_after,'lineage':observed}))"""
+    source=source[:start]+branch+source[end:]
+    prefix='MANAGED_EXPECTED='+repr(intent)+'\nMANAGED_OLD_ACTOR='+repr({k:body['lineage']['qemu'][k]for k in ('pid','startTicks')})+'\n'
+    prefix+='MANAGED_PRIOR_PROJECTION='+repr(None if first else request['original'])+'\n'
+    prefix+=inspect.getsource(_original).replace('def _original(', 'def _managed_original(',1)+'\n'
+    packet=(prefix+source).encode();compile(packet,'original managed start collector','exec');return packet
+
+
+def _run(root,admission,source_factory,guard,deadline,*,witness=None,request=None):
+    _need(type(deadline)in (int,float)and math.isfinite(deadline)and deadline>time.monotonic())
+    body=_admission(admission);host=body['binding']['spec']['host'];operation=body['intent']['operationId']
+    def remaining():
+        value=min(60,deadline-time.monotonic());_need(value>0);return value
+    try:
+        with transport.admitted_transport(root,host,operation,deadline=deadline)as admitted:
+            with deploy.direct.Guard(root,host=host)as authority:
+                guard();source=source_factory()
+                if witness is not None:witness.guard_dispatch(admitted)
+                argv=transport.build_ssh_argv(authority.config,host,60,command=('python3','-I','-B','-c','exec('+repr(source.decode())+')'))
+                admitted.revalidate();authority.guard();guard()
+                reply=transport.run_ssh(argv,input=b'',stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=remaining(),cwd=root)
+                _need(reply.returncode==0 and type(reply.stdout)is bytes and len(reply.stdout)<=262144 and reply.stderr==b'')
+                value=json.loads(reply.stdout,object_pairs_hook=transport._reject_duplicate_keys)
+                admitted.revalidate();authority.guard();guard()
+                if (type(value)is dict and set(value)=={'state','operationId','reason','errorClass','replayAllowed'}
+                    and value=={'state':'blocked','operationId':operation,'reason':'instance_lifecycle_managed_tpm_owner_expired',
+                                'errorClass':'ValueError','replayAllowed':False}):raise owner.WitnessExpired()
+                return value
+    except owner.WitnessExpired:raise
+    except Exception:raise ValueError('windows_managed_start_original_unresolved')from None
+
+
+@dataclass(frozen=True)
+class CollectedManagedStart:
+    original:OriginalManagedStart
+    lineage:lifecycle.ExistingLineage
+    _projection:object
+    witness_receipt:object
+
+    def projection(self):return lifecycle._plain(self._projection)
+
+
+def collect(root,admission,credential_file,*,guard,deadline=None):
+    """Observe only this original start; never obtain replacement authority."""
+    _need(type(admission)is OriginalManagedStart and callable(guard))
+    deadline=time.monotonic()+180 if deadline is None else deadline
+    _need(type(deadline)in (int,float)and math.isfinite(deadline)and deadline>time.monotonic())
+    body=_admission(admission)
+    for attempt in range(3):
+        try:
+            request=_validate_request(admission,_run(root,admission,lambda:program(admission),guard,deadline))
+            with owner.observe(root,body['binding']['spec']['host'],request['request'],credential_file,guard=guard,deadline=deadline)as witness:
+                value=_run(root,admission,lambda:program(admission,request=request,witness=witness),guard,deadline,witness=witness,request=request['request'])
+                _need(type(value)is dict and set(value)=={'original','lineage'}and _validate_projection(value['original'])==request['original'])
+                lineage=lifecycle.validate_lineage(body['binding'],value['lineage']);actual=lineage.as_dict()
+                _need(actual['operationId']==body['intent']['operationId']and actual['qemu']['pid']==request['request']['qemu']['pid']
+                      and actual['qemu']['startTicks']==request['request']['qemu']['birth']
+                      and all(actual['executables'][key]==body['lineage']['executables'][key]for key in actual['executables'])
+                      and actual['firmware']['generation']==body['lineage']['firmware']['generation'])
+                return CollectedManagedStart(admission,lineage,lifecycle._freeze(request['original']),lifecycle._freeze(witness.receipt()))
+        except owner.WitnessExpired:
+            if attempt==2 or time.monotonic()>=deadline:raise

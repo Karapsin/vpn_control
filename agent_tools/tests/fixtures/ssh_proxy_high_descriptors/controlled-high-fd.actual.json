@@ -1,0 +1,1 @@
+{"actualSelectorBackend": "KqueueSelector", "allOwnedThreadsSocketsSelectorsClosed": true, "before": {"failedAtSelect": true, "inputDescriptors": [1154, 1155], "readBytes": 0, "sourceComplete": true, "valueError": true}, "externalNetworkCalls": 0, "fixed": {"bidirectional": true, "clientBytes": 27, "halfClosePreserved": true, "sourceComplete": true, "upstreamBytes": 29}}

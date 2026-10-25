@@ -120,7 +120,7 @@ with mock.patch.object(a,'status',return_value={'ok':False,'state':'consumed-unk
  print(json.dumps(value))
 '''
         with tempfile.TemporaryDirectory() as tmp:
-            value=subprocess.run([sys.executable,'-I','-c',program,str(Path(routes.__file__).resolve())],cwd=tmp,capture_output=True,text=True,timeout=15,check=True)
+            value=subprocess.run([sys.executable,'-I','-B','-c',program,str(Path(routes.__file__).resolve())],cwd=tmp,capture_output=True,text=True,timeout=15,check=True)
             self.assertFalse(json.loads(value.stdout)['ok'])
 
     def test_unknown_availability_exact_source_variants_stay_unknown(self):

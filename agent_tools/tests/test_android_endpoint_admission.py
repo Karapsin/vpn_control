@@ -168,7 +168,10 @@ class AndroidEndpointAdmissionTest(unittest.TestCase):
     def test_partial_status_reports_bounded_reverse_grammar_and_documented_host_route(self):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw).resolve(); root.chmod(0o700)
-            expected = {"host": "archlinux", "adb": "/bin/adb", "cli": "/bin/cli", "serial": "emulator-5554",
+            # The unmocked status exec below launches adb; bind an inert recorder, never a host adb or device.
+            adb = root / "inert-adb"; log = root / "inert-adb.log"
+            adb.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> ' + shlex.quote(str(log)) + '\nexit 1\n'); adb.chmod(0o700)
+            expected = {"host": "archlinux", "adb": str(adb), "cli": "/bin/cli", "serial": "emulator-5554",
                         "api": 35, "avd": "vpn-control-api35", "caSha256": "a" * 64}
             job = root / ("android-endpoint-" + CORRELATION); job.mkdir(mode=0o700)
             intent = job / "intent.json"; intent.write_text(json.dumps(expected)); intent.chmod(0o600)
@@ -194,6 +197,7 @@ class AndroidEndpointAdmissionTest(unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     exec(admission._REMOTE, namespace)
+            self.assertEqual(["-s emulator-5554 reverse --list", "-s emulator-5554 shell -T id -u"], log.read_text().splitlines())
             namespace["adb_call"] = lambda *_args, **_kwargs: "host tcp:18080 tcp:41001\n"
             self.assertEqual({18080: 41001}, namespace["routes"]())
 
@@ -326,7 +330,10 @@ class AndroidEndpointAdmissionTest(unittest.TestCase):
     def test_lost_response_after_mount_intent_is_partial_and_never_replayed(self):
         with tempfile.TemporaryDirectory() as raw:
             root = Path(raw).resolve(); root.chmod(0o700)
-            expected = {"host": "archlinux", "adb": "/bin/adb", "cli": "/bin/cli", "serial": "emulator-5554",
+            # Status launches adb unmocked; bind an inert recorder, never a host adb or device.
+            adb = root / "inert-adb"; log = root / "inert-adb.log"
+            adb.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> ' + shlex.quote(str(log)) + '\nexit 1\n'); adb.chmod(0o700)
+            expected = {"host": "archlinux", "adb": str(adb), "cli": "/bin/cli", "serial": "emulator-5554",
                         "api": 35, "avd": "vpn-control-api35", "caSha256": "a" * 64}
             job = root / ("android-endpoint-" + CORRELATION); job.mkdir(mode=0o700)
             for name, value in (("intent.json", expected),
@@ -343,6 +350,8 @@ class AndroidEndpointAdmissionTest(unittest.TestCase):
             receipt = json.loads(output.getvalue())
             self.assertEqual("partial", receipt["state"])
             self.assertEqual("mount-intent", receipt["phase"])
+            # Only the bounded read-only observations ran, through the inert transport; nothing was replayed.
+            self.assertEqual(["-s emulator-5554 reverse --list", "-s emulator-5554 shell -T id -u"], log.read_text().splitlines())
 
     def test_partial_cleanup_refuses_foreign_route_or_reused_zygote_before_unmount(self):
         with tempfile.TemporaryDirectory() as raw:

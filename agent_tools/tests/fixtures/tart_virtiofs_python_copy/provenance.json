@@ -1,0 +1,14 @@
+{
+  "sourceSha256": {
+    "bootstrap.before.sh": "5826cd285ce5d35f0b32671974732928a318b539f5a0ae7346b6e208dc2ae9b6",
+    "bootstrap-continuation.sh": "d1274d5aa33b254ce7792e861c419566b3076b334a065a0738d6ee790c5ae5f3",
+    "public-share-manifest.before.json": "f60d216deb5c24c7b14add46caebb1ffd8b05b36d67b38cc664adfe8eecc1d7e"
+  },
+  "nativePublicEvidenceSha256": "a8a77e8165b6e7198c8aafd374b18aef2ce35e5d603331dd3bda8baedd1b3d86",
+  "failure": "macOS cp -RP preserved public Python symlinks but failed copying their extended attributes from read-only VirtioFS; original bootstrap stopped with its partial prefix retained. New independent continuation uses -RPX.",
+  "controlledBoundary": "Only symlink extended-attribute failure is simulated. Real /bin/cp copies payload bytes, directories and symbolic links; source/destination types, modes, link targets and content are checked. Privileged installer, login, sudoers and launchd steps are never executed on the test host.",
+  "primaryReferences": [
+    "https://github.com/apple-oss-distributions/file_cmds/blob/main/cp/utils.c",
+    "https://github.com/apple-oss-distributions/file_cmds/blob/main/cp/cp.1"
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "sourceSha256": "1b1b0767f9f504c8da2e706d2f86e29f21fc465c87ca8a466bc96596c4f0cf9d",
+  "failure": "Shape validation accepted a source result with internally inconsistent QEMU UUID/CPU/memory or TPM state argv when its command digest was recomputed."
+}

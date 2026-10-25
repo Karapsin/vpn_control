@@ -1,0 +1,6 @@
+{
+  "sourceSha256": {
+    "providers.before.source": "b91169fd5c16b79060ff215410d72556a50ae7c70762e45e232fd0a213471439"
+  },
+  "failure": "Qualified backend AdapterBlocked lost its specific reason at ProviderAdapter.observe; ordinary credential/trust/identity blockers became provider_unavailable."
+}

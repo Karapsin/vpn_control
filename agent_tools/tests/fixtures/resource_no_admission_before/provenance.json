@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "1576cf7905bd39005c2054410aa5a4e7bce10b4b2c06243bc040614ae936c435",
+  "failure": "Exact core/native prelaunch proof before any resource admission cannot currently authorize original attempt2."
+}

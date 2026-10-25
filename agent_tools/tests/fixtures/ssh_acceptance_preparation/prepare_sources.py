@@ -1,0 +1,59 @@
+"""SOURCE-ONLY: copy current public sources, never read config or open a socket."""
+from pathlib import Path
+import hashlib,json,os,stat
+HERE=Path(__file__).resolve().parent
+CHECKOUT=HERE.parents[3]
+def fingerprint(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def public(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+ try:
+  before=os.fstat(fd);body=b''
+  if not stat.S_ISREG(before.st_mode)or before.st_nlink!=1:raise ValueError('public_source_shape')
+  while True:
+   part=os.read(fd,65536)
+   if not part:break
+   body+=part
+  if fingerprint(before)!=fingerprint(os.fstat(fd))or fingerprint(before)!=fingerprint(os.lstat(path)):raise ValueError('public_source_changed')
+  return body
+ finally:os.close(fd)
+def save(path,body,mode=0o600):
+ path.parent.mkdir(parents=True,mode=0o700,exist_ok=True)
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,mode)
+ with os.fdopen(fd,'wb')as f:f.write(body);f.flush();os.fsync(f.fileno())
+import ast
+controller_tree=ast.parse(public(HERE/'controller.py'));constants={}
+for node in controller_tree.body:
+ if isinstance(node,ast.Assign):
+  for target in node.targets:
+   if isinstance(target,ast.Name)and target.id in('CRITICAL','NEW_OPERATIONS','RETENTION_SHA'):constants[target.id]=ast.literal_eval(node.value)
+checkpoint=json.loads(public(HERE/'source-checkpoint.json'))
+if(checkpoint.get('stage')!='root-reviewed-source-and-metadata-closed'or checkpoint.get('controllerSha256')!=hashlib.sha256(public(HERE/'controller.py')).hexdigest()or checkpoint.get('retentionSha256')!=constants['RETENTION_SHA']or hashlib.sha256(public(HERE/'ordinary_retention.py')).hexdigest()!=constants['RETENTION_SHA']or checkpoint.get('criticalSourcePins')!=constants['CRITICAL']):raise ValueError('reviewed_source_checkpoint_required')
+for rel,digest in {**checkpoint['criticalSourcePins'],**checkpoint['metadataPins']}.items():
+ if not isinstance(rel,str)or Path(rel).is_absolute()or'..'in Path(rel).parts or hashlib.sha256(public(CHECKOUT/rel)).hexdigest()!=digest:raise ValueError('reviewed_source_checkpoint_changed')
+if set(checkpoint['metadataPins'])!={'agent_tools/affected_agent_test_dependencies.json','agent_tools/readiness_vm_dispatch.json','agent_tools/tool_action_policy.json','.github/required-workflows.json'}:raise ValueError('reviewed_metadata_checkpoint_scope')
+# Explicit fresh private campaign roots: mkdir(parents=True) does not apply
+# its mode to intermediate parents. Existing campaigns are never adopted.
+for mode in ('direct','nested'):
+ capsule=HERE/mode;capsule.mkdir(mode=0o700)
+ info=os.lstat(capsule)
+ if not stat.S_ISDIR(info.st_mode)or info.st_uid!=os.getuid()or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('private_campaign_root_required')
+paths=[]
+for base in ('agent_tools','scripts'):
+ for path in sorted((CHECKOUT/base).iterdir()):
+  if path.is_file()and not path.is_symlink()and path.suffix in ('.py','.json','.sh','.ps1','.kt','.txt'):paths.append(path)
+for rel in ('gradle.properties','.github/required-workflows.json','agent_docs/tools/lifecycle-and-api.md','agent_tools/README.md'):
+ path=CHECKOUT/rel
+ if path not in paths:paths.append(path)
+pins={}
+for path in paths:
+ rel=str(path.relative_to(CHECKOUT));body=public(path);pins[rel]=hashlib.sha256(body).hexdigest()
+ for mode in ('direct','nested'):
+  out=HERE/mode/rel
+  save(out,body,0o700 if path.suffix=='.sh'else 0o600)
+for mode in ('direct','nested'):
+ capsule=HERE/mode
+ (capsule/'.agent_venv').symlink_to(CHECKOUT/'.agent_venv',target_is_directory=True)
+ save(capsule/'planned-operation.json',json.dumps({'operationId':constants['NEW_OPERATIONS'][mode],'mode':mode,'count':1600,'intervalSeconds':.15,'budgetSeconds':600,'stage':'unsubmitted-source-only'},sort_keys=True).encode())
+ save(capsule/'capsule-origin.json',json.dumps({'schemaVersion':1,'sourceCheckout':str(CHECKOUT),'capsuleRoot':str(capsule),'serverRootExpected':str(capsule),'publicSources':pins,'privateInventoryCopied':False,'remoteEffects':0},sort_keys=True,indent=2).encode())
+save(HERE/'public-source-manifest.json',json.dumps({'schemaVersion':1,'sourceCheckout':str(CHECKOUT),'sources':pins},sort_keys=True,indent=2).encode())
+print(json.dumps({'stage':'source-only-capsules-prepared','capsules':[str(HERE/m)for m in ('direct','nested')],'publicSources':len(pins),'privateInventoryCopied':False,'connections':0,'jobs':0}))

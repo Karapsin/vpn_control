@@ -112,7 +112,7 @@ class WindowsVmSecurebootInventoryTest(unittest.TestCase):
         with mock.patch.object(inventory.ssh_transport, "load_config", return_value=fake_config), \
              mock.patch.object(inventory.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
              mock.patch.object(inventory.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]) as argv, \
-             mock.patch.object(inventory.subprocess, "run", return_value=completed) as run:
+             mock.patch.object(inventory.ssh_transport, "run_ssh", return_value=completed) as run:
             result = inventory.observe(".", {"host": "archlinux", "qemuPid": 3369984,
                                              "startTicks": 45177745, "timeoutSeconds": 30})
         self.assertEqual(result["state"], "observed")

@@ -1,0 +1,18 @@
+{
+  "durableProtocol": 1,
+  "fixtureId": "owned-windows-fixture",
+  "nextAction": {
+    "kind": "resolve_blocker",
+    "reason": "original guest program evidence is blocked or incomplete",
+    "replayAllowed": false,
+    "requiresFreshEvidence": true
+  },
+  "ok": false,
+  "operationId": "cd7ae194-d72a-4bd6-9d86-190f10a2931f",
+  "provider": "libvirt-windows",
+  "qualificationScope": "fixed-counter",
+  "reason": "original_owner_ack_pending",
+  "replayAllowed": false,
+  "schemaVersion": 1,
+  "state": "unknown"
+}

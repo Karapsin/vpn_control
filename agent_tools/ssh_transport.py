@@ -7,9 +7,13 @@ This module never includes passwords in command arguments, exceptions, or probe 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
+import copy
 from enum import Enum
+import errno
 import json
+import math
 import hashlib
 import importlib
 import os
@@ -20,8 +24,20 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any, Iterable, Mapping, Sequence
 import uuid
+
+
+if __package__:
+    from . import readiness as _readiness
+else:
+    _source_parent = str(Path(__file__).resolve().parent.parent)
+    sys.path.insert(0, _source_parent)
+    try:
+        _readiness = importlib.import_module('agent_tools.readiness')
+    finally:
+        sys.path.remove(_source_parent)
 
 
 _EXECUTING_CODE = sys._getframe().f_code
@@ -40,6 +56,202 @@ _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 class SshConfigError(ValueError):
     """A private VM inventory is missing or cannot safely be used."""
+
+
+class PrelaunchE2Big(OSError):
+    """Actual inline exec refusal; the SSH executable did not start.
+
+    Only ``popen_ssh`` creates this at its plain-list Popen boundary. The
+    operation owner must retain it before deciding on one saved-file fallback;
+    this exception does not itself retry or authorize a different request.
+    """
+    def __init__(self, original_error, attempted_argv_sha256):
+        if not isinstance(original_error, OSError) or original_error.errno != errno.E2BIG:
+            raise ValueError('ssh_prelaunch_e2big_cause')
+        super().__init__(original_error.errno, original_error.strerror, original_error.filename)
+        self.original_error = original_error
+        self.argv_sha256 = attempted_argv_sha256
+        self.child_handle_returned = False
+        self.executable_started = False
+
+
+class PrelaunchReadinessRefusal(_readiness.ReadinessBlocked):
+    """Exact initial dispatch guard failed before any exec or transfer child."""
+    def __init__(self, original_error, attempted_argv_sha256):
+        if (not isinstance(original_error,_readiness.ReadinessBlocked) or
+                isinstance(original_error,PrelaunchReadinessRefusal)):
+            raise ValueError('invalid_prelaunch_readiness_cause')
+        super().__init__(original_error.reason,original_error.operation_identity)
+        self.original_error=original_error
+        self.argv_sha256=attempted_argv_sha256
+        self.child_handle_returned=False
+        self.executable_started=False
+
+
+class StagedExecutionUnsubmitted(_readiness.ReadinessBlocked):
+    """A completed source transfer precedes a refused, never yielded target exec.
+
+    This is deliberately distinct from initial no-child proof: a transfer child
+    DID run. Only the saved-program generator owns this runtime boundary.
+    """
+    def __init__(self, original_error, attempted_argv_sha256, correlation, receipt_sha256):
+        if type(original_error) is not _readiness.ReadinessBlocked:
+            raise ValueError('invalid_staged_readiness_cause')
+        super().__init__(original_error.reason,original_error.operation_identity)
+        self.original_error=original_error
+        self.argv_sha256=attempted_argv_sha256
+        self.correlation=correlation
+        self.stage_receipt_sha256=receipt_sha256
+        self.transfer_submitted=True
+        self.target_executable_started=False
+        self.target_child_handle_returned=False
+
+
+class SubmittedResultReadinessChanged(_readiness.ReadinessBlocked):
+    """Private original returned body; an exact owner validator may consume once."""
+    __slots__=('_submitted_result',)
+    target_executable_started=True
+    replay_allowed=False
+    def __init__(self,error,result):
+        super().__init__(error.reason,error.operation_identity)
+        self._submitted_result=result
+    def take_submitted_result(self):
+        result=self._submitted_result
+        if result is None:raise ValueError('submitted_result_already_consumed')
+        self._submitted_result=None
+        return result
+
+
+class _ReturnedReadinessChanged(_readiness.ReadinessBlocked):
+    """Generator resumed normally after the owner's target returned."""
+
+
+_SUBMISSION_DEADLINE=ContextVar('ssh_submission_absolute_deadline',default=None)
+_QUALIFIED_ROUTE=ContextVar('ssh_qualified_original_route',default=())
+
+
+def _absolute_deadline(config=None,host=None):
+    values=[_SUBMISSION_DEADLINE.get()]
+    module=sys.modules.get((__package__ or 'agent_tools')+'.ssh_dispatch_admission')
+    active=()if module is None else module._ACTIVE.get()
+    values.extend(admission.context.deadline for admission in active)
+    if config is not None and host is not None:
+        admission=_dispatch_binding(config,host)
+        if admission is not None:values.append(admission.context.deadline)
+    return min((v for v in values if v is not None),default=None)
+
+
+def _remaining_timeout(timeout=None,*,config=None,host=None):
+    deadline=_absolute_deadline(config,host)
+    remaining=None if deadline is None else deadline-time.monotonic()
+    if remaining is not None and remaining<=0:
+        admission=None if config is None else _dispatch_binding(config,host)
+        if admission is None:
+            module=sys.modules.get((__package__ or 'agent_tools')+'.ssh_dispatch_admission')
+            active=()if module is None else module._ACTIVE.get()
+            admission=active[-1]if active else None
+        operation='unbound'if admission is None else admission.operation_identity
+        raise _readiness.ReadinessBlocked('readiness_deadline',operation)
+    return timeout if remaining is None else remaining if timeout is None else min(timeout,remaining)
+
+
+@contextmanager
+def _submission_budget(argv,timeout=None):
+    if timeout is not None and (not isinstance(timeout,(int,float))or not math.isfinite(timeout)or timeout<=0):
+        raise ValueError('invalid_ssh_submission_timeout')
+    plan=argv.saved_plan if isinstance(argv,BoundInlineArgv)else argv
+    admission=argv.dispatch_admission if isinstance(argv,BoundInlineArgv)else getattr(plan,'dispatch_admission',None)
+    limits=[_SUBMISSION_DEADLINE.get(),None if timeout is None else time.monotonic()+timeout,
+            None if admission is None else admission.context.deadline]
+    deadline=min((v for v in limits if v is not None),default=None)
+    token=_SUBMISSION_DEADLINE.set(deadline)
+    try:yield
+    finally:_SUBMISSION_DEADLINE.reset(token)
+
+
+@contextmanager
+def _qualified_route_scope(binding):
+    token=_QUALIFIED_ROUTE.set((*_QUALIFIED_ROUTE.get(),binding))
+    try:yield
+    finally:_QUALIFIED_ROUTE.reset(token)
+
+
+def _qualified_binding(config,host):
+    for binding in reversed(_QUALIFIED_ROUTE.get()):
+        if binding.root==str(config.root.resolve())and binding.host==host:
+            _readiness_nested_module().source_options(binding,config.root,host,config)
+            return binding
+    admission=_dispatch_binding(config,host)
+    pair=None if admission is None else getattr(admission.context.adapter,'_qualified_route',None)
+    if pair is not None and pair[1]==admission.ready.connection:
+        _readiness_nested_module().source_options(pair[0],config.root,host,config)
+        return pair[0]
+    return None
+
+
+def _raise_prelaunch_readiness(error, argv):
+    # A reused saved correlation may already own a remote transfer or exec.
+    # Its original owner must reconcile that history; a fresh guard refusal
+    # cannot prove that the original operation was never submitted.
+    plan=argv.saved_plan if isinstance(argv,BoundInlineArgv) else argv
+    if plan is not None and os.path.lexists(Path(plan.root)/'.rag_index/ssh-automatic-program'/plan.correlation):
+        raise error
+    raise PrelaunchReadinessRefusal(error,argv_sha256(argv))from error
+
+
+def _validate_submission_start(argv):
+    """Only actual initial submission boundaries may mint non-launch proof."""
+    try:
+        if isinstance(argv,BoundInlineArgv):argv.validate_original()
+        else:argv.check_source_lifetime()
+        _remaining_timeout()
+    except _readiness.ReadinessBlocked as error:
+        _raise_prelaunch_readiness(error,argv)
+
+
+class BoundInlineArgv(list):
+    """List-compatible inline argv with one immutable, preadmitted fallback.
+
+    A pure builder captures the same command/route/source closure before the
+    original exec. Low-level owners still receive PrelaunchE2Big themselves.
+    """
+    __slots__ = ('_saved_plan', '_original_argv', '_dispatch_admission')
+
+    def __init__(self, plan, *, original_argv=None, dispatch_admission=None):
+        original = plan.original_argv if plan is not None else tuple(original_argv)
+        super().__init__(original)
+        object.__setattr__(self, '_saved_plan', plan)
+        object.__setattr__(self, '_original_argv', original)
+        object.__setattr__(self, '_dispatch_admission', dispatch_admission)
+
+    @property
+    def original_argv(self):
+        return self._original_argv
+
+    @property
+    def saved_plan(self):
+        return self._saved_plan
+
+    @property
+    def dispatch_admission(self):
+        return self._dispatch_admission
+
+    def __setattr__(self, name, value):
+        raise SshConfigError('Bound SSH command cannot be mutated.')
+
+    def _refuse(self, *args, **kwargs):
+        raise SshConfigError('Bound SSH command cannot be mutated.')
+
+    __setitem__ = __delitem__ = append = extend = insert = pop = remove = clear = reverse = sort = __iadd__ = __imul__ = _refuse
+
+    def validate_original(self):
+        if self._saved_plan is not None:
+            self._saved_plan.check_source_lifetime()
+        if (self._dispatch_admission is not None and
+                (self._saved_plan is None or self._saved_plan.dispatch_admission is not self._dispatch_admission)):
+            self._dispatch_admission.revalidate()
+        if tuple(self) != self.original_argv:
+            raise SshConfigError('Bound SSH command changed before submission.')
 
 
 class ProbeStatus(str, Enum):
@@ -521,8 +733,13 @@ def connection_host(config: SshConfig, host: str) -> SshHost:
 def load_config(root: Path | str) -> SshConfig:
     """Load the private version-one inventory, rejecting insecure or malformed input."""
     path = _private_config_path(Path(root))
+    return _parse_config(root, _read_private_config(path))
+
+
+def _parse_config(root, text):
+    """Pure parser also used by an already held private inventory owner."""
     try:
-        raw = json.loads(_read_private_config(path), object_pairs_hook=_reject_duplicate_keys)
+        raw = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
     except json.JSONDecodeError as exc:
         raise SshConfigError("Private VM inventory is not valid JSON.") from exc
     if (not isinstance(raw, dict) or not {"schemaVersion", "hosts"} <= set(raw)
@@ -574,12 +791,92 @@ def _selection_module():
     return module
 
 
+def fresh_direct_prefix(config, host):
+    """Pure explicit recovery prefix; selected transport is not a fresh route."""
+    target = config.hosts[host]
+    if target.transport != 'direct' or target.password is not None:
+        raise SshConfigError('Fresh direct recovery requires a configured key-only target.')
+    return ['/usr/bin/ssh', '-F', '/dev/null', '-p', str(target.port), '-l', target.user,
+            '-i', str(target.identity_file), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=' + str(target.known_hosts_file),
+            '-o', 'PermitLocalCommand=no', '-o', 'ClearAllForwardings=yes',
+            '-o', 'UpdateHostKeys=no', '-o', 'ConnectTimeout=10'], target.host
+
+
+def _readiness_nested_module():
+    module=importlib.import_module(f'{__package__}.readiness_nested_channel' if __package__ else 'agent_tools.readiness_nested_channel')
+    source=getattr(module,'__file__',None)
+    if not isinstance(source,str) or Path(source).resolve()!=Path(__file__).resolve().with_name('readiness_nested_channel.py'):
+        raise SshConfigError('Readiness nested source is unavailable.')
+    return module
+
+
+def _build_readiness_nested_argv(config,route,command,ssh_binary,nested_ssh_binary,timeout_seconds):
+    try:
+        if len(route)!=2:raise ValueError('readiness_route')
+        nested=_readiness_nested_module()
+        binding=_qualified_binding(config,route[0].alias)
+        timeout=_remaining_timeout(timeout_seconds,config=config,host=route[0].alias)
+        metadata=(nested.source_options(binding,config.root,route[0].alias,config)if binding is not None else
+                  nested.route_options(config.root,route[0].alias,config,deadline=time.monotonic()+timeout))
+        target=route[0]
+        inner=[nested_ssh_binary]
+        if target.remote_config_file is not None:inner+=['-F',str(target.remote_config_file)]
+        inner+=['-S',metadata['controlPath'],'-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false',
+                '-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no',
+                '-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-T',target.remote_host_alias,shlex.join(command)]
+        prefix,endpoint=fresh_direct_prefix(config,route[-1].alias)
+        return [ssh_binary,*prefix[1:],'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-T',endpoint,shlex.join(inner)]
+    except _readiness.ReadinessBlocked:raise
+    except (OSError,ValueError,KeyError,TypeError):
+        raise SshConfigError('Admitted readiness nested channel is unavailable.') from None
+
+
+_PRIVATE_ADMISSION_CAPTURE = ContextVar("ssh_private_admission_capture", default=None)
+
+
+@contextmanager
+def _private_admission_capture():
+    # Request-local diagnostic data, never route or replay authority.
+    records = {"observations": [], "captureFailures": []}
+    token = _PRIVATE_ADMISSION_CAPTURE.set(records)
+    try:
+        yield records
+    finally:
+        _PRIVATE_ADMISSION_CAPTURE.reset(token)
+
+
+def _retain_private_admission(capture):
+    records = _PRIVATE_ADMISSION_CAPTURE.get()
+    if records is None:
+        return
+    try:
+        if type(capture) is not dict:
+            raise ValueError("private_admission_capture_shape")
+        records["observations"].append({"observation": len(records["observations"]) + 1,
+            "transportSourceSha256": _LOADED_SOURCE_SHA, "capture": copy.deepcopy(capture)})
+    except BaseException as error:
+        records["captureFailures"].append(type(error).__name__)
+
+
 def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary):
     selection=_selection_module()
     session=_session_module()
+    captures=[]; capture_failures=[]
+    def retain_private_capture(capture):
+        # This is the same already-required read-only observation, not a query.
+        # Failure of diagnostic retention never changes its admission decision.
+        try:
+            frozen=copy.deepcopy(dict(capture))
+            captures.append({"observation":len(captures)+1,"transportSourceSha256":_LOADED_SOURCE_SHA,
+                             "capture":frozen})
+            _retain_private_admission(frozen)
+        except BaseException as error:
+            capture_failures.append(type(error).__name__)
     try:
         host=route[0].alias
-        metadata=selection.selected_route_options(config.root,host,config)
+        capture_options={"_private_capture":retain_private_capture} if _PRIVATE_ADMISSION_CAPTURE.get() is not None else {}
+        metadata=selection.selected_route_options(config.root,host,config,**capture_options)
         if metadata is None or len(route)!=2:raise SshConfigError('Selected SSH channel is unavailable.')
         selected_config=session.transport.load_config(config.root)
         if asdict(selected_config)!=asdict(config):raise SshConfigError('Selected SSH configuration changed.')
@@ -593,13 +890,21 @@ def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
         inner.extend(('-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no',nested.remote_host_alias,shlex.join(command)))
         extra=['-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no'] if metadata.get('transportMode')=='direct' else []
         return [ssh_binary,*prefix[1:],*metadata['outerOptions'],*extra,'-T',endpoint,shlex.join(inner)]
-    except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError):
-        raise SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.') from None
+    except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError) as error:
+        refusal=SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.')
+        try:
+            refusal._private_selected_admission={"stage":"selected-route-admission",
+                "host":route[0].alias,"rawCaptureAvailable":bool(captures),
+                "captureFailures":capture_failures,"observations":captures,
+                "transportSourceSha256":_LOADED_SOURCE_SHA}
+        except BaseException:
+            pass
+        raise refusal from None
 
 
 def _build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
                    command: Sequence[str] = ("true",), ssh_binary: str = "ssh",
-                   nested_ssh_binary: str = "ssh") -> list[str]:
+                   nested_ssh_binary: str = "ssh", *, fresh_direct: bool = False) -> list[str]:
     """Build an argv-only OpenSSH invocation. No values are shell-interpolated."""
     if host not in config.hosts:
         raise SshConfigError("Unknown VM host alias.")
@@ -610,6 +915,25 @@ def _build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT
     ssh_binary = _string(ssh_binary, "ssh executable")
     nested_ssh_binary = _string(nested_ssh_binary, "nested ssh executable")
     route = _route_hosts(config.hosts, host)
+    if type(fresh_direct) is not bool:
+        raise SshConfigError('Fresh SSH route mode must be boolean.')
+    if fresh_direct:
+        # Explicit intentional/lifecycle route: use the configured nested
+        # sockets exactly, with one fresh trusted outer handshake. No selected
+        # master is retired, replaced, or silently inherited by this command.
+        for nested in route[:-1]:
+            if not nested.remote_host_alias or nested.remote_control_path is None:
+                raise SshConfigError('Fresh nested SSH needs its configured existing master.')
+            inner=[nested_ssh_binary]
+            if nested.remote_config_file is not None:inner+=['-F',str(nested.remote_config_file)]
+            inner+=['-T','-S',str(nested.remote_control_path),'-o','ControlMaster=no',
+                '-o','ControlPersist=no','-o','ProxyCommand=false','-o','BatchMode=yes',
+                '-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(nested.known_hosts_file),
+                '-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes',nested.remote_host_alias,shlex.join(command)]
+            command=inner
+        prefix,endpoint=fresh_direct_prefix(config,route[-1].alias)
+        return [ssh_binary,*prefix[1:],'-T','-S','none','-o','ControlMaster=no',
+                '-o','ControlPath=none','-o','ControlPersist=no',endpoint,shlex.join(command)]
     selected_aliases = set()
     if os.path.lexists(config.root/'.rag_index'/'ssh-channel-selection'):
         try:
@@ -621,12 +945,18 @@ def _build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT
     # Presence at entry determines the route. A disappearing selected pointer
     # still reaches its refusing reader; a later directory cannot switch routes.
     def selected_present(alias):return alias in selected_aliases
+    def readiness_present(alias):
+        return os.path.lexists(config.root/'.rag_index/readiness-nested-channel'/alias/'current.json')
+    if readiness_present(host):
+        return _build_readiness_nested_argv(config,route,command,ssh_binary,nested_ssh_binary,timeout_seconds)
     if selected_present(host):
         return _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
     # Compose from the destination outward. Each layer quotes one complete argv
     # for the shell used by that layer's OpenSSH remote command, retaining every
     # configured intermediate hop instead of replacing the previous last token.
     for index,nested in enumerate(route[:-1]):
+        if readiness_present(nested.alias):
+            return _build_readiness_nested_argv(config,route[index:],command,ssh_binary,nested_ssh_binary,timeout_seconds)
         if selected_present(nested.alias):
             # Compose every descendant first, then reuse only admitted Arch authority.
             return _build_selected_arch_argv(config,route[index:],command,ssh_binary,nested_ssh_binary)
@@ -668,6 +998,23 @@ def _build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT
             argv.extend(ssh_connection_session.selected_options(selected_config, host))
         except (ssh_connection_session.SessionUnknown, ssh_connection_session.transport.SshConfigError):
             raise SshConfigError('Configured outer SSH session is unavailable; inspect its existing receipt.') from None
+    # A selected readiness master supplies only read-only reuse options here.
+    # Missing inventory leaves existing direct transport unchanged. A present
+    # but unknown/dead owner refuses instead of silently opening another TCP.
+    if len(route) == 1 and os.path.lexists(config.root / '.rag_index/readiness-ssh-master' / target.alias):
+        try:
+            if __package__:
+                master = importlib.import_module(f'{__package__}.readiness_ssh_master')
+            else:
+                master = importlib.import_module('agent_tools.readiness_ssh_master')
+            source = getattr(master, '__file__', None)
+            if not isinstance(source, str) or Path(source).resolve() != Path(__file__).resolve().with_name('readiness_ssh_master.py'):
+                raise SshConfigError('Readiness SSH master source is unavailable.')
+            options = master.options(config.root, target.alias, config)
+            if options is not None:
+                argv.extend(options)
+        except (OSError, ValueError, KeyError, TypeError):
+            raise SshConfigError('Admitted readiness SSH master is unavailable.') from None
     argv.extend([target.host, shlex.join(command)])
     return argv
 
@@ -689,34 +1036,100 @@ def _automatic_module():
     return module
 
 
+def admitted_transport(root, host, operation_identity, *, deadline=None, requirements=None):
+    """Explicit readiness boundary before generating any remote command."""
+    from . import ssh_dispatch_admission
+    return ssh_dispatch_admission.admitted_transport(root, host, operation_identity,
+        deadline=deadline, requirements=requirements)
+
+
+def _dispatch_binding(config, host):
+    # Pure context lookup. Absence never starts readiness or changes a route.
+    module = sys.modules.get((__package__ or 'agent_tools') + '.ssh_dispatch_admission')
+    return None if module is None else module.current(config.root, host)
+
+
 def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
                    command: Sequence[str] = ('true',), ssh_binary: str = 'ssh',
-                   nested_ssh_binary: str = 'ssh') -> list[str]:
+                   nested_ssh_binary: str = 'ssh', *, fresh_direct: bool = False) -> list[str]:
     """Build only; oversized Python carriers require an owned submission."""
-    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary)
+    options={'fresh_direct':True} if fresh_direct else {}
+    if type(fresh_direct) is not bool:raise SshConfigError('Fresh SSH route mode must be boolean.')
+    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, **options)
+    admission = _dispatch_binding(config, host)
     if sum(len(part.encode('utf-8')) + 1 for part in argv) <= 60000:
-        return argv
+        # Binding is observation-only: no journal, upload or remote connection.
+        # Unsupported/raw commands retain their existing list boundary. Their
+        # eventual E2BIG has no safe reconstruction authority.
+        if (command and command[0] in ('python3', '/usr/bin/python3', 'sudo', '/usr/bin/sudo') and
+                _private_config_path(config.root).is_file()):
+            automatic = _automatic_module()
+            try:
+                plan = automatic.bind(config, host, timeout_seconds, tuple(command),
+                    ssh_binary, nested_ssh_binary, argv, force_file=True, **options)
+            except (automatic.AutomaticProgramError, OSError):
+                if automatic.password_carrier(command):
+                    raise SshConfigError('Unsupported or unavailable secure sudo password carrier.') from None
+                return (BoundInlineArgv(None, original_argv=argv, dispatch_admission=admission)
+                        if admission is not None else argv)
+            if automatic.password_carrier(command):
+                return plan
+            return BoundInlineArgv(plan, dispatch_admission=admission)
+        return (BoundInlineArgv(None, original_argv=argv, dispatch_admission=admission)
+                if admission is not None else argv)
     automatic = _automatic_module()
     return automatic.bind(config, host, timeout_seconds, tuple(command),
-                          ssh_binary, nested_ssh_binary, argv)
+                          ssh_binary, nested_ssh_binary, argv, **options)
 
 
-def automatic_submission(argv):
+def build_saved_program_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+                            command: Sequence[str] = ('true',), ssh_binary: str = 'ssh',
+                            nested_ssh_binary: str = 'ssh', *, fresh_direct: bool = False):
+    """Bind the normal saved-program transport even when inline argv fits.
+
+    This pure internal builder supplies no retry policy or no-start evidence.
+    Its caller owns that decision and retains the plan before submission.
+    Every existing residual-command, route and source guard remains in force.
+    """
+    if type(fresh_direct) is not bool:raise SshConfigError('Fresh SSH route mode must be boolean.')
+    options={'fresh_direct':True} if fresh_direct else {}
+    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, **options)
+    automatic = _automatic_module()
+    return automatic.bind(config, host, timeout_seconds, tuple(command),
+                          ssh_binary, nested_ssh_binary, argv, force_file=True, **options)
+
+
+def automatic_submission(argv, *, prelaunch_refusal=None):
     """Internal actual-submission boundary; never infer a route from an argv."""
     if isinstance(argv, list):
+        if isinstance(argv, BoundInlineArgv):
+            _validate_submission_start(argv)
         if sum(len(part.encode('utf-8')) + 1 for part in argv) > 60000:
             raise SshConfigError('Unbound oversized SSH command refuses submission.')
         return nullcontext(argv)
     automatic = _automatic_module()
-    return automatic.automatic_submission(argv)
+    return automatic.automatic_submission(argv, prelaunch_refusal=prelaunch_refusal)
 
 
-def popen_ssh(argv, **kwargs):
+def popen_ssh(argv, *, prelaunch_fallback=True, **kwargs):
     """Keep an existing pipe collector's one child and terminal ownership."""
     if isinstance(argv, list):
+        if isinstance(argv, BoundInlineArgv):
+            _validate_submission_start(argv)
         if sum(len(part.encode('utf-8')) + 1 for part in argv) > 60000:
             raise SshConfigError('Unbound oversized SSH command refuses submission.')
-        return subprocess.Popen(argv, **kwargs)
+        try:
+            return subprocess.Popen(argv, **kwargs)
+        except OSError as error:
+            if error.errno == errno.E2BIG:
+                refusal = PrelaunchE2Big(error, argv_sha256(argv))
+                if (prelaunch_fallback is True and isinstance(argv, BoundInlineArgv) and
+                        argv.saved_plan is not None):
+                    argv.validate_original()
+                    return _automatic_module().SubmittedProcess(argv.saved_plan,
+                        prelaunch_refusal=refusal, **kwargs)
+                raise refusal from error
+            raise
     automatic = _automatic_module()
     return automatic.SubmittedProcess(argv, **kwargs)
 
@@ -738,10 +1151,62 @@ def argv_sha256(argv):
     return hashlib.sha256(json.dumps(raw, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def _run_inline(argv, *, input=None, capture_output=False, timeout=None, check=False, **kwargs):
+    """stdlib.run semantics with proof minted at our exact Popen boundary."""
+    if input is not None:
+        if kwargs.get('stdin') is not None:
+            raise ValueError('stdin and input arguments may not both be used.')
+        kwargs['stdin'] = subprocess.PIPE
+    if capture_output:
+        if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+            raise ValueError('stdout and stderr arguments may not be used with capture_output.')
+        kwargs['stdout'] = kwargs['stderr'] = subprocess.PIPE
+    with popen_ssh(argv, prelaunch_fallback=False, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(input, timeout=_remaining_timeout(timeout))
+        except subprocess.TimeoutExpired as error:
+            process.kill()
+            if os.name == 'nt':
+                error.stdout, error.stderr = process.communicate()
+            else:
+                process.wait()
+            raise
+        except BaseException:
+            process.kill()
+            raise
+        returncode = process.poll()
+        if check and returncode:
+            raise subprocess.CalledProcessError(returncode, argv, output=stdout, stderr=stderr)
+    return subprocess.CompletedProcess(argv, returncode, stdout, stderr)
+
+
 def run_ssh(argv, *, runner=None, **kwargs):
-    """Keep an existing synchronous runner's stdin/output/exit and one intent."""
-    with automatic_submission(argv) as submitted:
-        return (subprocess.run if runner is None else runner)(submitted, **kwargs)
+    """One total preparation/transfer/execution budget; no unknown replay."""
+    with _submission_budget(argv,kwargs.get('timeout')):
+        result=None
+        try:
+            try:
+                if isinstance(argv,list) and (runner is None or runner is subprocess.run):
+                    options=dict(kwargs);options['timeout']=_remaining_timeout(options.get('timeout'))
+                    result=_run_inline(argv,**options)
+                else:
+                    with automatic_submission(argv) as submitted:
+                        options=dict(kwargs);options['timeout']=_remaining_timeout(options.get('timeout'))
+                        result=(_run_inline if runner is None or runner is subprocess.run else runner)(submitted,**options)
+            except PrelaunchE2Big as refusal:
+                if (not isinstance(argv, BoundInlineArgv) or argv.saved_plan is None or refusal.child_handle_returned is not False or
+                        refusal.executable_started is not False or refusal.argv_sha256 != argv_sha256(argv)):
+                    raise
+                argv.validate_original()
+                # The saved plan was captured before exec, not reconstructed after an
+                # uncertain outcome. Its existing custody guards revalidate everything.
+                with automatic_submission(argv.saved_plan, prelaunch_refusal=refusal) as submitted:
+                    options=dict(kwargs);options['timeout']=_remaining_timeout(options.get('timeout'))
+                    result=(subprocess.run if runner is None else runner)(submitted, **options)
+        except _ReturnedReadinessChanged as error:
+            if result is None:raise
+            raise SubmittedResultReadinessChanged(error,result)from None
+        return result
 
 
 def _sanitized_output(value: str | bytes | None, passwords: Iterable[str]) -> str:

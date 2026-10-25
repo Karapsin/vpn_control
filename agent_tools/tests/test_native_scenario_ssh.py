@@ -73,7 +73,7 @@ class NativeScenarioSshTest(unittest.TestCase):
                                   remote_config_file=transport.PurePosixPath("/owned/scp-config"))
         config = transport.SshConfig(self.work, {"gateway": direct, "arch": arch, "guest": guest})
         with mock.patch.object(transport, "_askpass_environment", return_value=(self.work / "askpass", {})) as askpass, \
-             mock.patch.object(ssh_driver.subprocess, "run", return_value=mock.Mock(returncode=0, stdout=b'{"ok":true}')) as run:
+             mock.patch.object(transport, "run_ssh", return_value=mock.Mock(returncode=0, stdout=b'{"ok":true}')) as run:
             self.assertEqual({"ok": True}, self.make()._run(config, "guest", ("true",), None))
         self.assertEqual("gateway-secret", askpass.call_args.args[0])
         self.assertIn("archlinux", run.call_args.args[0][-1])

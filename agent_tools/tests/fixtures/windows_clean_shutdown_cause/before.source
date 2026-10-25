@@ -1,0 +1,926 @@
+"""Source-bound lifecycle primitives for an existing owned Windows fixture.
+
+A plan describes topology; it grants no power, reservation or clean-stop
+permission. Program builders are pure; only the admitted durable host owner
+executes their finite power effects. The controller retains source/results and supplies those
+independent fences immediately before any existing-instance dispatch. Canonical
+argv[0] is descriptive: dispatch must use a newly held, generation-and-digest
+verified executable FD as Popen(executable=...), with that FD inherited. It
+must never resolve the canonical executable pathname again after validation.
+"""
+from dataclasses import dataclass
+import hashlib
+import inspect
+import json
+from pathlib import PurePosixPath
+import re
+from types import MappingProxyType
+from uuid import UUID
+
+from . import readiness_windows_remote as packets
+from . import durable_remote_job as durable
+from . import windows_vm_lifecycle as original_lifecycle
+from .windows_vm_lifecycle import _actor_absent
+from .native_vm_spec import FreshWindowsVmSpec
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+
+
+_KIND = 'windows-existing-lineage-v1'
+_KEYS = {'schemaVersion','kind','operationId','machine','provider','hostBoot','rootIdentity',
+         'qemu','tpm','executables','firmware','mutable','tpmState','libvirt'}
+
+
+def _need(value, reason='windows_lifecycle_lineage_invalid'):
+    if not value:
+        raise ValueError(reason)
+
+
+def _uuid(value):
+    try:return type(value) is str and str(UUID(value)) == value
+    except ValueError:return False
+
+
+def _pin(value, length):
+    return type(value) is list and len(value) == length and all(type(v) is int and v >= 0 for v in value)
+
+
+def _digest(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def _canonical(value):
+    return (type(value) is str and value.startswith('/') and str(PurePosixPath(value)) == value
+            and '..' not in PurePosixPath(value).parts and not any(ord(c) < 32 for c in value)
+            and not value.startswith(('/proc/','/dev/fd/')) and not value.endswith(' (deleted)'))
+
+
+def _freeze(value):
+    if type(value) is dict:return MappingProxyType({key:_freeze(item) for key,item in value.items()})
+    if type(value) is list:return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _plain(value):
+    if isinstance(value, MappingProxyType):return {key:_plain(item) for key,item in value.items()}
+    if type(value) is tuple:return [_plain(item) for item in value]
+    return value
+
+
+@dataclass(frozen=True)
+class ExistingLineage:
+    _body: object
+
+    def as_dict(self):
+        return _plain(self._body)
+
+
+@dataclass(frozen=True)
+class ExistingStartPlan:
+    machine: str
+    root: str
+    lineage_sha256: str
+    qemu_argv: tuple[str, ...]
+    tpm_argv: tuple[str, ...]
+    firmware_asset: str = 'firmware-code'
+
+
+def validate_lineage(binding, result):
+    """Validate source-bound observation shape, never infer stop authority."""
+    spec = FreshWindowsVmSpec.parse(binding['spec'])
+    managed=binding.get('provider')=='libvirt-windows'
+    _need(binding.get('provider')=='raw-qemu-windows'or managed and type(result)is dict
+          and type(result.get('libvirt'))is dict,'windows_lifecycle_libvirt_lineage_unqualified')
+    # Shape admission is pure: a command is generated only after readiness.
+    packets.validate_binding(binding)
+    _need(type(result) is dict and _uuid(result.get('operationId')))
+    _need(type(result) is dict and set(result) == _KEYS)
+    _need(type(result['schemaVersion']) is int and result['schemaVersion'] == 1
+          and result['kind'] == _KIND and _uuid(result['operationId']))
+    _need(result['machine'] == spec.deployment_id and result['provider'] == binding['provider']
+          and result['hostBoot'] == binding['context']['hostBootId'] and _pin(result['rootIdentity'],5)
+          and (managed or result['libvirt'] is None))
+    for actor_name in ('qemu','tpm'):
+        actor = result[actor_name]
+        _need(type(actor) is dict and set(actor) == {'pid','startTicks','argv','commandSha256','executableGeneration'})
+        _need(all(type(actor[key]) is int and actor[key] > 0 for key in ('pid','startTicks'))
+              and _pin(actor['executableGeneration'],9) and _digest(actor['commandSha256']))
+        argv = actor['argv']
+        _need(type(argv) is list and 0 < len(argv) <= 256
+              and all(type(word) is str and '\0' not in word and len(word.encode()) <= 8192 for word in argv))
+        _need(hashlib.sha256(b'\0'.join(word.encode() for word in argv)+b'\0').hexdigest() == actor['commandSha256'])
+    _need(result['qemu']['pid'] != result['tpm']['pid'])
+    for name,wanted in ((('-uuid',spec.deployment_id),)if managed else
+                       (('-uuid',spec.deployment_id),('-m',str(spec.memory_mib)),('-smp',str(spec.cpus)))):
+        words=result['qemu']['argv'];_need(words.count(name)==1)
+        index=words.index(name);_need(index+1<len(words) and words[index+1]==wanted)
+    words=result['tpm']['argv'];_need(words.count('--tpmstate')==1)
+    index=words.index('--tpmstate');_need(index+1<len(words)and words[index+1].split(',')[0]=='dir='+str(PurePosixPath(spec.root)/'tpm')
+                                      and (managed or words[index+1]=='dir='+str(PurePosixPath(spec.root)/'tpm')))
+    _need(type(result['executables']) is dict and set(result['executables']) == ({'qemu','swtpm','manager'}if managed else{'qemu','swtpm'}))
+    actors={'qemu':result['qemu'],'tpm':result['tpm']}
+    if managed:
+        manager=result['libvirt'];fields={'uri','domain','xmlSha256','manager','socketPath','socketIdentity'}
+        _need(set(manager)==fields and all(manager[k]==binding[k]for k in ('uri','domain','xmlSha256'))
+              and manager['socketPath']==str(PurePosixPath(spec.root).parent/'.cache/libvirt/virtqemud-sock')
+              and _pin(manager['socketIdentity'],5))
+        actor=manager['manager'];_need(type(actor)is dict and set(actor)==set(result['qemu'])
+              and all(type(actor[k])is int and actor[k]>0 for k in ('pid','startTicks'))
+              and _pin(actor['executableGeneration'],9)and _digest(actor['commandSha256']))
+        _need(type(actor['argv'])is list and 0<len(actor['argv'])<=256
+              and all(type(v)is str and '\0'not in v and len(v.encode())<=8192 for v in actor['argv'])
+              and hashlib.sha256(b'\0'.join(v.encode()for v in actor['argv'])+b'\0').hexdigest()==actor['commandSha256'])
+        actors['manager']=actor
+    for name,actor in (('qemu','qemu'),('swtpm','tpm'),*( (('manager','manager'),)if managed else())):
+        item=result['executables'][name]
+        _need(type(item) is dict and set(item) == {'path','generation','sha256'} and _canonical(item['path'])
+              and _pin(item['generation'],9) and item['generation'] == actors[actor]['executableGeneration']
+              and _digest(item['sha256']))
+    firmware=result['firmware'];asset=spec.firmware_code
+    _need(type(firmware) is dict and set(firmware) == ({'path','bytes','sha256','generation','ownership'}if managed else{'path','bytes','sha256','generation'})
+          and firmware['path'] == asset.path and firmware['bytes'] == asset.bytes and type(firmware['bytes']) is int
+          and firmware['sha256'] == asset.sha256 and _pin(firmware['generation'],9)
+          and firmware['generation'][6] == asset.bytes)
+    if managed:_need(firmware['ownership']in {'qemu-fd-observed','manager-path-held'})
+    _need(type(result['mutable']) is dict and set(result['mutable']) == {'disk.qcow2','uefi-vars.fd'}
+          and all(_pin(value,5) for value in result['mutable'].values()))
+    _need(type(result['tpmState']) is dict and set(result['tpmState']) == {'path','identity'}
+          and result['tpmState']['path'] == str(PurePosixPath(spec.root)/'tpm')
+          and _pin(result['tpmState']['identity'],5))
+    return ExistingLineage(_freeze(result))
+
+
+def existing_start_plan(binding, lineage):
+    """Return disk-only topology with symbolic freshly held firmware input."""
+    _need(type(lineage) is ExistingLineage)
+    _need(binding['provider']=='raw-qemu-windows','windows_lifecycle_libvirt_plan_required')
+    body=lineage.as_dict();validate_lineage(binding,body);spec=FreshWindowsVmSpec.parse(binding['spec'])
+    root=PurePosixPath(spec.root)
+    argv=[body['executables']['qemu']['path'],'-name','vpn-control-'+spec.deployment_id,'-uuid',spec.deployment_id,
+          '-machine','q35,smm=on','-accel','kvm','-cpu','host','-smp',str(spec.cpus),'-m',str(spec.memory_mib),
+          '-global','driver=cfi.pflash01,property=secure,value=on',
+          '-drive','if=pflash,format=raw,readonly=on,file=/dev/fdset/1',
+          '-drive','if=pflash,format=raw,file='+str(root/'uefi-vars.fd'),
+          '-drive','file='+str(root/'disk.qcow2')+',if=none,id=system,format=qcow2',
+          '-device','ide-hd,drive=system,bus=ide.0']
+    for bus,name in enumerate(('installer','drivers','seed'),1):
+        argv.extend(('-drive','media=cdrom,readonly=on,if=none,id='+name,
+                     '-device','ide-cd,drive='+name+',bus=ide.'+str(bus)))
+    argv.extend(('-chardev','socket,id=tpmchar,path='+str(root/'swtpm.sock'),
+                 '-tpmdev','emulator,id=tpm0,chardev=tpmchar','-device','tpm-tis,tpmdev=tpm0',
+                 '-device','virtio-serial-pci','-chardev','socket,path='+str(root/'qga.sock')+',server=on,wait=off,id=qga',
+                 '-device','virtserialport,chardev=qga,name=org.qemu.guest_agent.0',
+                 '-netdev','user,id=net0','-device','e1000e,netdev=net0','-boot','order=c,menu=off',
+                 '-display','none','-vnc','127.0.0.1:'+str(spec.vnc_port-5900),
+                 '-monitor','none','-qmp','unix:'+str(root/'qmp.sock')+',server=on,wait=off',
+                 '-add-fd','fd={firmware-code-fd},set=1,opaque=asset:firmwareCode'))
+    tpm=(body['executables']['swtpm']['path'],'socket','--tpm2','--tpmstate','dir='+str(root/'tpm'),
+         '--ctrl','type=unixio,path='+str(root/'swtpm.sock'))
+    digest=hashlib.sha256(json.dumps(body,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+    return ExistingStartPlan(spec.deployment_id,spec.root,digest,tuple(argv),tpm)
+
+
+def _lineage_sha(lineage):
+    return hashlib.sha256(json.dumps(lineage.as_dict(),sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+
+
+def _capture_existing_lineage(spec,context,operation,provider,root,current_actor,
+                              read,process,owns,vm_guard,closing,generation,structure,
+                              private,instance_intent,pin):
+    import hashlib,json,os,stat
+    def require(value,reason='instance_lifecycle_lineage'):
+        if not value:raise ValueError(reason)
+    require(provider=='raw-qemu-windows','instance_lifecycle_libvirt_lineage_unqualified')
+    vm_guard();intent=instance_intent();qemu=read('qemu-started.json');tpm=read('swtpm-started.json')
+    require(qemu==current_actor,'instance_lifecycle_original_actor')
+    process(qemu);process(tpm)
+    def executable(row):
+        path=os.path.realpath('/proc/'+str(row['pid'])+'/exe')
+        require(path.startswith('/') and not path.startswith(('/proc/','/dev/fd/'))
+                and not path.endswith(' (deleted)') and not any(ord(c)<32 for c in path),'instance_lifecycle_executable')
+        actual=os.stat('/proc/'+str(row['pid'])+'/exe')
+        require(list(generation(actual))==row['executableGeneration'],'instance_lifecycle_executable')
+        descriptor,digest=pin(path,executable=True)
+        require(generation(os.fstat(descriptor))==generation(actual),'instance_lifecycle_executable')
+        process(row)
+        return {'path':path,'generation':list(generation(actual)),'sha256':digest}
+    executables={'qemu':executable(qemu),'swtpm':executable(tpm)}
+    original=intent['assetIdentities']['firmwareCode'];asset=spec['assets']['firmwareCode']
+    descriptor,digest=pin(asset['path'],asset['sha256'],asset['bytes'])
+    firmware_generation=list(generation(os.fstat(descriptor)))
+    require(original['set']==1 and original['generation']==firmware_generation,'instance_lifecycle_firmware')
+    # Prove the held firmware inode remains an actual descriptor of this actor.
+    descriptors=os.listdir('/proc/'+str(qemu['pid'])+'/fd');require(len(descriptors)<=8192,'instance_fd_capacity')
+    matched=False
+    for name in descriptors:
+        try:actual=os.stat('/proc/'+str(qemu['pid'])+'/fd/'+name)
+        except FileNotFoundError:continue
+        if list(generation(actual))==firmware_generation:matched=True
+    require(matched,'instance_lifecycle_firmware_owner')
+    mutable=read('mutable-artifacts.json');require(set(mutable)=={'disk.qcow2','uefi-vars.fd'},'instance_lifecycle_mutable')
+    for name,identity in mutable.items():
+        require(identity==list(structure(private(root/name))),'instance_lifecycle_mutable')
+        owns(qemu['pid'],root/name)
+    tpm_path=root/'tpm';tpm_identity=structure(private(tpm_path,True))
+    state_files=[]
+    for name in os.listdir(tpm_path):
+        require(len(state_files)<128,'instance_lifecycle_tpm_state_capacity')
+        path=tpm_path/name;info=private(path)
+        state_files.append((path,structure(info)))
+    require(state_files,'instance_lifecycle_tpm_state')
+    tpm_fds=os.listdir('/proc/'+str(tpm['pid'])+'/fd');require(len(tpm_fds)<=8192,'instance_fd_capacity')
+    state_owned=False
+    for name in tpm_fds:
+        try:actual=os.stat('/proc/'+str(tpm['pid'])+'/fd/'+name)
+        except FileNotFoundError:continue
+        if any(structure(actual)==identity for path,identity in state_files):state_owned=True
+    require(state_owned,'instance_lifecycle_tpm_state_owner')
+    tpm_state={'path':str(tpm_path),'identity':list(tpm_identity)}
+    argv=tpm['argv'];require(argv.count('--tpmstate')==1,'instance_lifecycle_tpm_state')
+    index=argv.index('--tpmstate');require(index+1<len(argv)and argv[index+1]=='dir='+str(tpm_path),'instance_lifecycle_tpm_state')
+    owns(tpm['pid'],root/'swtpm.sock',True)
+    result={'schemaVersion':1,'kind':'windows-existing-lineage-v1','operationId':operation,
+            'machine':spec['deploymentId'],'provider':provider,'hostBoot':context['hostBootId'],
+            'rootIdentity':intent['rootIdentity'],'qemu':qemu,'tpm':tpm,'executables':executables,
+            'firmware':{'path':asset['path'],'bytes':asset['bytes'],'sha256':digest,'generation':firmware_generation},
+            'mutable':mutable,'tpmState':tpm_state,'libvirt':None}
+    vm_guard();process(qemu);process(tpm);closing()
+    require(structure(private(tpm_path,True))==tpm_identity,'instance_lifecycle_tpm_state_changed')
+    for path,identity in state_files:require(structure(private(path))==identity,'instance_lifecycle_tpm_state_changed')
+    return result
+
+
+def lineage_program(binding,operation):
+    """Generate only a fixed host observation; no QGA or VM/input mutation."""
+    _need(type(binding) is dict and binding.get('provider')=='raw-qemu-windows','windows_lifecycle_libvirt_lineage_unqualified')
+    packet=packets.program(binding,'observe',operation).decode()
+    marker="        if PROVIDER=='raw-qemu-windows':\n            suffix="
+    _need(packet.count(marker)==1,'windows_lifecycle_source_changed')
+    branch="""        print(json.dumps(_capture_existing_lineage(SPEC,CONTEXT,OPERATION,PROVIDER,root,current_actor,
+            read,process,owns,vm_guard,closing,generation,structure,private,instance_intent,pin)))
+        return
+"""
+    packet=packet.replace(marker,branch+marker)
+    marker='def _main():\n';_need(packet.count(marker)==1,'windows_lifecycle_source_changed')
+    packet=packet.replace(marker,inspect.getsource(_capture_existing_lineage)+'\n'+marker)
+    compile(packet,'existing Windows lineage packet','exec')
+    return packet.encode()
+
+
+def _capture_libvirt_lineage(spec,context,operation,root,current_actor,manager,socket_pin,
+                             domain,connection,uri,domain_name,xml_sha,socket_path,
+                             read,process,owns,vm_guard,closing,generation,structure,private,instance_intent,pin,birth,owner_witness=None,request_only=False):
+    import hashlib,json,os,pathlib,stat
+    from xml.etree import ElementTree as ET
+    def need(value,reason='instance_lifecycle_libvirt_lineage'):
+        if not value:raise ValueError(reason)
+    vm_guard();intent=instance_intent();need(current_actor is not None)
+    xml=domain.XMLDesc(2).encode();need(hashlib.sha256(xml).hexdigest()==xml_sha)
+    tree=ET.fromstring(xml)
+    need(tree.findtext('uuid')==spec['deploymentId']and tree.findtext('name')==domain_name)
+    memory=tree.find('memory');need(memory is not None and memory.get('unit','KiB')in {'KiB','kib'}
+         and int(memory.text)==spec['memoryMiB']*1024 and int(tree.findtext('vcpu'))==spec['cpus'])
+    for graphics in tree.findall('devices/graphics'):
+        need(not any(key in graphics.attrib for key in ('passwd','password')),'instance_lifecycle_private_graphics_unqualified')
+    backend=tree.find('devices/tpm/backend');need(backend is not None and backend.get('type')=='emulator'
+        and backend.get('version')=='2.0'and backend.get('persistent_state')=='yes'
+        and backend.find('encryption')is None,'instance_lifecycle_managed_tpm_unqualified')
+    source=backend.find('source');need(source is not None and source.get('type')=='dir'
+          and source.get('path')==str(root/'tpm'),'instance_lifecycle_managed_tpm_unqualified')
+    def executable(row,expected):
+        process(row);path=os.path.realpath('/proc/'+str(row['pid'])+'/exe')
+        need(path==expected,'instance_lifecycle_binary_changed')
+        fd,digest=pin(path,executable=True);info=os.fstat(fd)
+        need(info.st_uid==0 and not info.st_mode&0o022 and list(generation(info))==row['executableGeneration'],
+             'instance_lifecycle_binary_changed')
+        return {'path':path,'generation':list(generation(info)),'sha256':digest}
+    qemu_exe=executable(current_actor,'/usr/bin/qemu-system-x86_64')
+    manager_exe=executable(manager,'/usr/bin/virtqemud')
+    def options(value):
+        if value.startswith('{'):return json.loads(value)
+        result={}
+        for index,item in enumerate(value.split(',')):
+            if '='in item:
+                key,val=item.split('=',1);need(key not in result);result[key]=val
+            elif index==0:result['type']=item
+            else:need(False)
+        return result
+    words=current_actor['argv'];devices=[options(words[index+1])for index,word in enumerate(words[:-1])if word=='-tpmdev']
+    need(len(devices)==1 and devices[0].get('type',devices[0].get('driver'))=='emulator')
+    wanted=devices[0].get('chardev');channels=[options(words[index+1])for index,word in enumerate(words[:-1])if word=='-chardev']
+    selected=[value for value in channels if value.get('id')==wanted];need(len(selected)==1)
+    channel=selected[0];path=channel.get('path')
+    if path is None:
+        path=channel.get('backend',{}).get('data',{}).get('addr',{}).get('data',{}).get('path')
+    need(type(path)is str and pathlib.PurePosixPath(path).parent==root.parent/'.cache/libvirt/qemu/run/swtpm',
+         'instance_lifecycle_managed_tpm_unqualified')
+    with open('/proc/net/unix')as stream:wire=stream.read(1024**2+1)
+    need(len(wire)<=1024**2)
+    rows=[row.split()for row in wire.splitlines()[1:]]
+    sockets=[row[6]for row in rows if len(row)>=8 and row[-1]==path and row[3:6]==['00010000','0001','01']]
+    need(len(sockets)==1,'instance_lifecycle_managed_tpm_unqualified')
+    mutable=read('mutable-artifacts.json');need(set(mutable)=={'disk.qcow2','uefi-vars.fd'})
+    for name,identity in mutable.items():need(identity==list(structure(private(root/name))));owns(current_actor['pid'],root/name)
+    socket_info=os.lstat(path);need(stat.S_ISSOCK(socket_info.st_mode)and socket_info.st_uid==os.geteuid())
+    request={'schemaVersion':1,'kind':'windows-tpm-listener-request-v1','machine':spec['deploymentId'],
+        'hostBoot':context['hostBootId'],'root':str(root),'rootIdentity':intent['rootIdentity'],'mutable':mutable,
+        'qemu':{'pid':current_actor['pid'],'birth':current_actor['startTicks'],'uid':os.geteuid(),
+                'executableGeneration':current_actor['executableGeneration']},
+        'socket':{'path':path,'inode':int(sockets[0]),'identity':list(structure(socket_info))}}
+    if request_only:
+        vm_guard();process(current_actor);closing();return request
+    need(type(owner_witness)is dict and set(owner_witness)=={'request','result','sourceSha256'}
+         and owner_witness['request']==request,'instance_lifecycle_managed_tpm_owner_unqualified')
+    proof=owner_witness['result'];need(type(proof)is dict and set(proof)=={'complete','holders','observedNs','deadlineNs'}
+        and proof['complete']is True and type(proof['holders'])is list and len(proof['holders'])==1,
+        'instance_lifecycle_managed_tpm_owner_unqualified')
+    def witness_clock():
+        now=__import__('time').monotonic_ns()
+        need(all(type(proof[k])is int and proof[k]>0 for k in ('observedNs','deadlineNs'))
+             and proof['observedNs']<=now<=proof['deadlineNs']<=proof['observedNs']+30_000_000_000,
+             'instance_lifecycle_managed_tpm_owner_expired')
+    witness_clock()
+    holder=proof['holders'][0];need(type(holder)is dict and set(holder)=={'pid','uid','birth'}
+        and holder['uid']==os.geteuid()and all(type(holder[k])is int and holder[k]>0 for k in ('pid','birth')),
+        'instance_lifecycle_managed_tpm_owner_unqualified')
+    pid=holder['pid'];need(birth(pid)==holder['birth'],'instance_lifecycle_managed_tpm_owner_changed')
+    candidate=pathlib.Path('/proc',str(pid));need(candidate.stat().st_uid==holder['uid'])
+    raw=(candidate/'cmdline').read_bytes();argv=[os.fsdecode(v)for v in raw.split(b'\0')if v]
+    need(0<len(raw)<=32768 and argv[0]=='/usr/bin/swtpm'and len(argv)<=32,
+         'instance_lifecycle_managed_tpm_unqualified')
+    allowed={'--ctrl','--tpmstate','--log','--pid'};index=1
+    need(argv[index]=='socket');index+=1
+    while index<len(argv):
+        word=argv[index]
+        if word in {'--tpm2','--terminate'}:index+=1;continue
+        need(word in allowed and index+1<len(argv),'instance_lifecycle_managed_tpm_unqualified');index+=2
+    state_index=argv.index('--tpmstate');need(argv[state_index+1].split(',')[0]=='dir='+str(root/'tpm'))
+    tpm={'pid':pid,'startTicks':holder['birth'],'argv':argv,'commandSha256':hashlib.sha256(raw).hexdigest(),
+         'executableGeneration':list(generation(os.stat(candidate/'exe')))}
+    process(tpm)
+    tpm_exe=executable(tpm,'/usr/bin/swtpm');owns(tpm['pid'],path,True)
+    mutable=read('mutable-artifacts.json');need(set(mutable)=={'disk.qcow2','uefi-vars.fd'})
+    for name,identity in mutable.items():need(identity==list(structure(private(root/name))));owns(current_actor['pid'],root/name)
+    tpm_root=root/'tpm';tpm_identity=list(structure(private(tpm_root,True)));state_files=list(tpm_root.iterdir())
+    need(0<len(state_files)<=128);state_ids=[structure(private(value))for value in state_files]
+    descriptors=list(pathlib.Path('/proc',str(tpm['pid']),'fd').iterdir());need(len(descriptors)<=8192)
+    need(any(structure(os.stat(value))in state_ids for value in descriptors),'instance_lifecycle_managed_tpm_unqualified')
+    asset=spec['assets']['firmwareCode'];need(tree.findtext('os/loader')==asset['path'])
+    fd,digest=pin(asset['path'],asset['sha256'],asset['bytes']);firmware_pin=list(generation(os.fstat(fd)))
+    descriptors=list(pathlib.Path('/proc',str(current_actor['pid']),'fd').iterdir());need(len(descriptors)<=8192)
+    visible=any(list(generation(os.stat(value)))==firmware_pin for value in descriptors)
+    result={'schemaVersion':1,'kind':'windows-existing-lineage-v1','operationId':operation,'machine':spec['deploymentId'],
+        'provider':'libvirt-windows','hostBoot':context['hostBootId'],'rootIdentity':intent['rootIdentity'],
+        'qemu':current_actor,'tpm':tpm,'executables':{'qemu':qemu_exe,'swtpm':tpm_exe,'manager':manager_exe},
+        'firmware':{**asset,'generation':firmware_pin,'ownership':'qemu-fd-observed'if visible else'manager-path-held'},
+        'mutable':mutable,'tpmState':{'path':str(tpm_root),'identity':tpm_identity},
+        'libvirt':{'uri':uri,'domain':domain_name,'xmlSha256':xml_sha,'manager':manager,
+                   'socketPath':socket_path,'socketIdentity':list(socket_pin)}}
+    vm_guard();process(current_actor);process(tpm);closing();witness_clock();return result
+
+
+def libvirt_lineage_program(binding,operation,*,owner_witness=None,request_only=False):
+    """Read-only qualified-manager lineage; no QGA, GUI or domain mutation."""
+    _need(binding.get('provider')=='libvirt-windows','windows_lifecycle_provider_invalid')
+    from . import readiness_windows_tpm_owner as owner
+    _need(type(request_only)is bool,'windows_lifecycle_owner_mode')
+    witness=None
+    if owner_witness is not None:
+        _need(not request_only and type(owner_witness)is owner.OwnerWitness,'windows_lifecycle_owner_witness')
+        owner_witness.validate(owner_witness.request);owner_witness.consume(operation)
+        witness={'request':owner_witness.request,'result':owner_witness.result,'sourceSha256':owner_witness.source_sha256}
+    _need(request_only or witness is not None,'windows_lifecycle_managed_tpm_owner_unqualified')
+    source=packets.program(binding,'observe',operation).decode()
+    source='LIFECYCLE_TPM_OWNER='+repr(witness)+'\nLIFECYCLE_TPM_REQUEST_ONLY='+repr(request_only)+'\n'+source
+    marker="        if PROVIDER=='raw-qemu-windows':\n            suffix="
+    _need(source.count(marker)==1,'windows_lifecycle_source_changed')
+    branch="""        print(json.dumps(_capture_libvirt_lineage(SPEC,CONTEXT,OPERATION,root,current_actor,manager,socket_pin,
+            domain,connection,URI,DOMAIN,XML_SHA,SOCKET_PATH,read,process,owns,vm_guard,closing,generation,structure,
+            private,instance_intent,pin,birth,LIFECYCLE_TPM_OWNER,LIFECYCLE_TPM_REQUEST_ONLY)))
+        return
+"""
+    source=source.replace(marker,branch+marker)
+    marker='def _main():\n';_need(source.count(marker)==1,'windows_lifecycle_source_changed')
+    source=source.replace(marker,inspect.getsource(_capture_libvirt_lineage)+'\n'+marker)
+    compile(source,'owned libvirt lineage','exec');return source.encode()
+
+
+def _stopped_artifacts(spec):
+    """Metadata only: never read/hash mutable guest, TPM, NVRAM or RAM bytes."""
+    import os,stat
+    def identity(info):return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid]
+    def check(path,directory=False):
+        info=os.lstat(path)
+        if (not(stat.S_ISDIR(info.st_mode)if directory else stat.S_ISREG(info.st_mode))
+                or info.st_uid!=os.geteuid()or stat.S_IMODE(info.st_mode)!=(0o700 if directory else 0o600)
+                or not directory and info.st_nlink!=1):raise ValueError('instance_lifecycle_artifact_identity')
+        return identity(info)
+    root=spec['root'];tpm=root+'/tpm';names=sorted(os.listdir(tpm))
+    if not 0<len(names)<=128:raise ValueError('instance_lifecycle_tpm_state_capacity')
+    return {'rootIdentity':check(root,True),'mutable':{name:check(root+'/'+name)for name in ('disk.qcow2','uefi-vars.fd')},
+            'tpmState':{'path':tpm,'identity':check(tpm,True),'files':{name:check(tpm+'/'+name)for name in names}}}
+
+
+def _complete_powerdown(spec, context, operation, recovery_id, lineage_sha, before,
+                        read, save, process, birth, closing, *, timeout=90,tpm=None,managed=False,stopped_guard=None):
+    """Run inside the original durable owner after its sole QGA request.
+
+    QEMU is never signalled. Only after positive original QEMU death may its
+    original raw TPM helper receive one graceful SIGTERM through a pidfd.
+    Intent-before-signal and O_EXCL receipts preserve ambiguous crash windows.
+    """
+    import os, signal, time
+    def need(value, reason):
+        if not value:raise ValueError(reason)
+    qemu = before['actor']; tpm = read('swtpm-started.json')if tpm is None else tpm
+    end = time.monotonic()+timeout
+    def wait(row):
+        while not _actor_absent(row, process, birth):
+            closing();need(time.monotonic()<end,'instance_powerdown_original_pending');time.sleep(.05)
+    wait(qemu);closing()
+    if not managed and not _actor_absent(tpm, process, birth):
+        need(hasattr(os,'pidfd_open')and hasattr(signal,'pidfd_send_signal'),'instance_powerdown_pidfd_unavailable')
+        fd=os.pidfd_open(tpm['pid'],0)
+        try:
+            process(tpm);closing();need(_actor_absent(qemu,process,birth),'instance_powerdown_qemu_changed')
+            save('readiness-recovery-'+recovery_id+'.tpm-intent.json',
+                 {'operationId':operation,'actor':tpm,'replayAllowed':False})
+            signal.pidfd_send_signal(fd,signal.SIGTERM,None,0)
+        finally:os.close(fd)
+    wait(tpm);closing()
+    if stopped_guard is not None:stopped_guard()
+    terminal={'schemaVersion':1,'kind':'windows-clean-poweroff-v1','operationId':operation,
+              'recoveryId':recovery_id,'machine':spec['deploymentId'],'hostBoot':context['hostBootId'],
+              'actor':{key:qemu[key]for key in ('pid','startTicks')},
+              'tpm':{key:tpm[key]for key in ('pid','startTicks')},
+              'bootBefore':before['sessionFacts']['boot'],'account':before['sessionFacts']['expectedSid'],
+              'lineageSha256':lineage_sha,'artifacts':_stopped_artifacts(spec),
+              'cleanPoweroff':True,'guestJobsAbsent':True,'replayAllowed':False}
+    save('readiness-recovery-'+recovery_id+'.result.json',terminal)
+    return terminal
+
+
+@dataclass(frozen=True)
+class CleanStopped:
+    _body: object
+
+    def as_dict(self):return _plain(self._body)
+
+    def resource_release_proof(self):
+        value=self.as_dict()
+        return {'machineUuid':value['machine'],'hostBootId':value['hostBoot'],'actor':value['actor'],
+                'cleanPoweroffOperationId':value['operationId'],'cleanPoweroff':True,'guestJobsAbsent':True}
+
+
+def validate_clean_stopped(binding,lineage,terminal):
+    """Validate retained native terminal shape; caller also holds its receipt.
+
+    This cannot authorize a restart by itself. Dispatch still requires fresh
+    original-process absence, held artifact lineage and resource admission.
+    """
+    _need(type(lineage)is ExistingLineage)
+    saved=lineage.as_dict();validate_lineage(binding,saved)
+    fields={'schemaVersion','kind','operationId','recoveryId','machine','hostBoot','actor','tpm',
+            'bootBefore','account','lineageSha256','artifacts','cleanPoweroff','guestJobsAbsent','replayAllowed'}
+    _need(type(terminal)is dict and set(terminal)==fields,'windows_lifecycle_clean_stop_invalid')
+    _need(type(terminal['schemaVersion'])is int and terminal['schemaVersion']==1
+          and terminal['kind']=='windows-clean-poweroff-v1'and _uuid(terminal['operationId'])
+          and _digest(terminal['recoveryId'])and terminal['machine']==saved['machine']
+          and terminal['hostBoot']==saved['hostBoot']and terminal['cleanPoweroff']is True
+          and terminal['guestJobsAbsent']is True and terminal['replayAllowed']is False,
+          'windows_lifecycle_clean_stop_invalid')
+    _need(terminal['actor']=={key:saved['qemu'][key]for key in ('pid','startTicks')}
+          and terminal['tpm']=={key:saved['tpm'][key]for key in ('pid','startTicks')}
+          and terminal['lineageSha256']==_lineage_sha(lineage),
+          'windows_lifecycle_clean_stop_identity')
+    artifacts=terminal['artifacts']
+    _need(type(artifacts)is dict and set(artifacts)=={'rootIdentity','mutable','tpmState'}
+          and artifacts['rootIdentity']==saved['rootIdentity']and artifacts['mutable']==saved['mutable'],
+          'windows_lifecycle_clean_stop_identity')
+    tpm=artifacts['tpmState']
+    _need(type(tpm)is dict and set(tpm)=={'path','identity','files'}and tpm['path']==saved['tpmState']['path']
+          and tpm['identity']==saved['tpmState']['identity']and type(tpm['files'])is dict
+          and 0<len(tpm['files'])<=128 and all(type(name)is str and name not in {'.','..'}
+                and PurePosixPath(name).name==name and _pin(pin,5)for name,pin in tpm['files'].items()),
+          'windows_lifecycle_clean_stop_identity')
+    _need(type(terminal['bootBefore'])is str and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z',terminal['bootBefore'])
+          and type(terminal['account'])is str and re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',terminal['account']),
+          'windows_lifecycle_clean_stop_invalid')
+    return CleanStopped(_freeze(terminal))
+
+
+def powerdown_program(binding,lineage,operation,recovery_id,*,expected,expected_sid,
+                      reservation,lease_root_generation=None,job_root_generation=None,job_admission_generation=None,host_namespace=None):
+    """Build one existing-fixture graceful shutdown durable-owner program.
+
+    Internal only: the admitted main adapter must hold its private qualification,
+    source closure, reservation proof and original durable root generation.
+    Submitting this Program through durable_remote_job keeps the owner alive
+    after SSH/client loss. No public capability is granted by this builder.
+    """
+    _need(type(lineage)is ExistingLineage)
+    body=lineage.as_dict();validate_lineage(binding,body)
+    _need(_uuid(operation)and _digest(recovery_id),'windows_lifecycle_operation_invalid')
+    _need(type(expected)is dict and expected.get('actor')==body['qemu']
+          and expected.get('hostBoot')==body['hostBoot']and type(expected.get('controlConnection'))is str,
+          'windows_lifecycle_actor_changed')
+    # This preserves the existing complete guest/session/lease/job/process,
+    # installer, host-work, reservation and final source/peer guards verbatim.
+    source=packets.program(binding,'reboot',operation,expected=expected,recovery_id=recovery_id,
+                idle=True,expected_sid=expected_sid,reservation=reservation,
+                lease_root_generation=lease_root_generation,job_root_generation=job_root_generation,
+                job_admission_generation=job_admission_generation).decode()
+    old="'action':'reboot','recoveryId':RECOVERY_ID,'operationId':OPERATION,'before':result,'reservation':RESERVATION"
+    new="'action':'powerdown','recoveryId':RECOVERY_ID,'operationId':OPERATION,'before':result,'reservation':RESERVATION,'lineageSha256':LIFECYCLE_LINEAGE_SHA"
+    _need(source.count(old)==1,'windows_lifecycle_source_changed');source=source.replace(old,new)
+    old="rpc('guest-shutdown',{'mode':'reboot'})"
+    _need(source.count(old)==1,'windows_lifecycle_source_changed');source=source.replace(old,"rpc('guest-shutdown',{'mode':'powerdown'})")
+    old="""                result.update(state='submitted',guest='booting',shutdownAcknowledged=acknowledged)
+                save('readiness-recovery-'+RECOVERY_ID+'.result.json',result)"""
+    new="""                terminal=_complete_powerdown(SPEC,CONTEXT,OPERATION,RECOVERY_ID,LIFECYCLE_LINEAGE_SHA,result,
+                    read,save,process,birth,_lifecycle_closing,tpm=LIFECYCLE_TPM,managed=PROVIDER=='libvirt-windows',stopped_guard=_lifecycle_stopped)
+                print(json.dumps(terminal));return"""
+    _need(source.count(old)==1,'windows_lifecycle_source_changed');source=source.replace(old,new)
+    marker="                vm_guard();save('readiness-recovery-'+RECOVERY_ID+'.intent.json'"
+    _need(source.count(marker)==1,'windows_lifecycle_source_changed')
+    source=source.replace(marker,"                require(result['controlConnection']==EXPECTED.get('controlConnection'),'instance_lifecycle_connection_changed')\n                process(LIFECYCLE_QEMU);process(LIFECYCLE_TPM)\n                _lifecycle_closing()\n"+marker)
+    marker='    try:\n        epoch();chain()\n'
+    _need(source.count(marker)==1,'windows_lifecycle_source_changed')
+    guard="""    def _lifecycle_closing():
+        epoch()
+        if PROVIDER=='libvirt-windows':
+            require(manager['executableGeneration']==LIFECYCLE_MANAGED['manager']['executableGeneration'],
+                    'instance_lifecycle_manager_changed')
+            process(manager)
+            require(connection.getURI()==URI and domain.UUIDString()==SPEC['deploymentId']and domain.name()==DOMAIN,
+                    'instance_lifecycle_manager_changed')
+            require(hashlib.sha256(domain.XMLDesc(libvirt.VIR_DOMAIN_XML_INACTIVE).encode()).hexdigest()==XML_SHA
+                    and structure(os.lstat(SOCKET_PATH))==socket_pin,'instance_lifecycle_manager_changed')
+    def _lifecycle_stopped():
+        _lifecycle_closing()
+        if PROVIDER=='libvirt-windows':require(not domain.isActive(),'instance_lifecycle_domain_still_active')
+"""
+    source=source.replace(marker,guard+marker)
+    definitions=inspect.getsource(original_lifecycle._actor_absent)+'\n'+inspect.getsource(_stopped_artifacts)+'\n'+inspect.getsource(_complete_powerdown)+'\n'
+    constants='LIFECYCLE_LINEAGE_SHA='+repr(_lineage_sha(lineage))+'\nLIFECYCLE_QEMU='+repr(body['qemu'])+'\nLIFECYCLE_TPM='+repr(body['tpm'])+'\nLIFECYCLE_MANAGED='+repr(body['libvirt'])+'\n'
+    from . import readiness_windows_host_jobs as host_jobs
+    if host_namespace is not None:
+        value=host_namespace.as_dict()if type(host_namespace)is host_jobs.NamespaceHandle else host_namespace
+        host_jobs.namespace_from_observation(binding,lineage,{'namespace':value})
+        definitions=host_jobs.worker_inventory_definitions(host_namespace)+definitions
+    return host_jobs.sealed_program(durable.Program('windows-existing-graceful-powerdown',(constants+definitions+source).encode(),262144))
+
+
+def _start_capacity(spec,context,admission,fresh,measurement,operation):
+    import time
+    def need(value):
+        if not value:raise ValueError('instance_lifecycle_capacity_unavailable')
+    need(type(admission)is dict and set(admission)=={'hostBootId','census','inventorySha256','resourceAliases','pending','requestedMemoryBytes','headroomBytes'}
+         and fresh is admission['census'])
+    need(type(fresh)is dict and fresh.get('schemaVersion')==1 and type(fresh.get('schemaVersion'))is int
+         and fresh.get('deploymentId')==operation and fresh.get('mode')=='host-resources'
+         and fresh.get('state')=='resources-observed'and fresh.get('inventoryComplete')is True
+         and fresh.get('nativeActionAllowed')is False and fresh.get('replayAllowed')is False)
+    need(fresh['hostBootId']==context['hostBootId']==admission['hostBootId'])
+    need(type(admission['inventorySha256'])is str and __import__('re').fullmatch('[0-9a-f]{64}',admission['inventorySha256'])is not None
+         and type(admission['resourceAliases'])is list and spec['host']in admission['resourceAliases']
+         and len(admission['resourceAliases'])==len(set(admission['resourceAliases'])))
+    memory=spec['memoryMiB']*1024**2;headroom=spec['headroomMiB']*1024**2
+    need(admission['requestedMemoryBytes']==memory and admission['headroomBytes']==headroom)
+    pending=admission['pending'];need(type(pending)is list and len(pending)<=4096)
+    seen=set();reserved=0
+    for row in pending:
+        need(type(row)is dict and set(row)=={'id','memoryBytes'}and type(row['id'])is str
+             and row['id']not in seen and type(row['memoryBytes'])is int and row['memoryBytes']>0)
+        seen.add(row['id']);reserved+=row['memoryBytes']
+    need(measurement['physicalMemoryBytes']>=measurement['runningConfiguredMemoryBytes']+reserved+memory+headroom)
+    now=time.time_ns()//1000000;samples=measurement['samples']
+    need(samples[0]['observedAtUnixMs']<samples[1]['observedAtUnixMs']and samples[1]['observedAtUnixMs']-samples[0]['observedAtUnixMs']<=30000)
+    need(all(0<=now-s['observedAtUnixMs']<=60000 and s['psi']=='normal'
+             and s['availableMemoryBytes']>=memory+headroom for s in samples))
+    need(all(samples[0]['vmstat'][key]==samples[1]['vmstat'][key]for key in ('pswpout','oomKill')))
+
+
+def _storage_vm_coverage(state,census,birth):
+    """Prove every observed writable VM disk has an aggregate capacity claim."""
+    import os,stat
+    claimed=set()
+    for plan in state['plans'].values():
+        if plan['state']=='retired':continue
+        for disk in plan['disks']:
+            try:info=os.stat(disk['path'],follow_symlinks=False)
+            except FileNotFoundError:continue
+            if not stat.S_ISREG(info.st_mode):raise ValueError('instance_lifecycle_storage_coverage')
+            claimed.add((info.st_dev,info.st_ino))
+    for actor in census['vms']:
+        try:
+            if birth(actor['pid'])!=actor['startTicks']:raise ValueError('instance_lifecycle_storage_coverage')
+            base='/proc/'+str(actor['pid']);names=os.listdir(base+'/fd')
+            if len(names)>8192:raise ValueError('instance_lifecycle_storage_coverage')
+            for name in names:
+                try:
+                    info=os.stat(base+'/fd/'+name)
+                    if not stat.S_ISREG(info.st_mode):continue
+                    with open(base+'/fdinfo/'+name)as stream:fields=stream.read(8193).splitlines()
+                    flags=[row.split()[1]for row in fields if row.startswith('flags:')]
+                    if len(flags)!=1:raise ValueError('instance_lifecycle_storage_coverage')
+                    if int(flags[0],8)&os.O_ACCMODE==os.O_RDONLY:continue
+                    path=os.readlink(base+'/fd/'+name)
+                    if not(path.endswith(('.qcow2','.img','.raw','.vhd','.vhdx','.fd'))or info.st_size>=1024**3):continue
+                    if (info.st_dev,info.st_ino)not in claimed:raise ValueError('instance_lifecycle_storage_coverage')
+                except FileNotFoundError:continue
+            if birth(actor['pid'])!=actor['startTicks']:raise ValueError('instance_lifecycle_storage_coverage')
+        except (OSError,ValueError,IndexError):raise ValueError('instance_lifecycle_storage_coverage')from None
+
+
+def _prior_start_fence(root):
+    """Every historical start needs its actual two-original verified closure."""
+    import os,re
+    names=os.listdir(root)
+    if len(names)>4096:raise ValueError('instance_lifecycle_prior_start_unreconciled')
+    operations=set()
+    allowed={'.intent.json','.qemu-intent.json','.qemu-started.json','.tpm-started.json',
+             '.manager-ack.json','.result.json','.pending.json','.tpm.log','.closed.json'}
+    for name in names:
+        if not name.startswith('existing-start-'):continue
+        match=re.fullmatch(r'existing-start-([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(.*)',name)
+        if match is None or match[2]not in allowed:raise ValueError('instance_lifecycle_prior_start_unreconciled')
+        operations.add(match[1])
+    checks=globals().get('LIFECYCLE_PRIOR_CHECKS',{})
+    if type(checks)is not dict or any(operation not in checks or not callable(checks[operation])for operation in operations):
+        raise ValueError('instance_lifecycle_prior_start_unreconciled')
+    for operation in sorted(operations):checks[operation](publish=False,already_locked=True)
+
+
+def _existing_raw_start(spec,context,operation,recovery_id,lineage,clean,plan,admission,
+                        read,save,process,birth,closing,pin,private,structure,generation,held,managed_start=None):
+    import contextlib,io,json,os,pathlib,stat,subprocess,time
+    def need(value,reason):
+        if not value:raise ValueError(reason)
+    root=pathlib.Path(spec['root']);prefix='existing-start-'+operation
+    _prior_start_fence(root)
+    need(not os.path.lexists(root/(prefix+'.intent.json')),'instance_lifecycle_original_start_unknown')
+    need(_actor_absent(lineage['qemu'],process,birth)and _actor_absent(lineage['tpm'],process,birth),
+         'instance_lifecycle_old_actor_present')
+    need(_stopped_artifacts(spec)==clean['artifacts'],'instance_lifecycle_stopped_artifacts_changed')
+    if managed_start is None:
+        for name in ('qmp.sock','qga.sock','swtpm.sock'):
+            need(not os.path.lexists(root/name),'instance_lifecycle_stale_socket_unqualified')
+    # The existing ResourceAdmission consumed fence retains the complete
+    # privileged HOST census. The ordinary VM owner verifies that exact source-
+    # owned snapshot and freshness; it never reruns a root-only producer.
+    fresh=admission['census'];measurement=_lifecycle_measurement(fresh)
+    _start_capacity(spec,context,admission,fresh,measurement,operation)
+    executables={}
+    for name,item in lineage['executables'].items():
+        fd,digest=pin(item['path'],item['sha256'],executable=True)
+        need(list(generation(os.fstat(fd)))==item['generation'],'instance_lifecycle_binary_changed')
+        executables[name]=fd
+    firmware=lineage['firmware'];firmware_fd,_=pin(firmware['path'],firmware['sha256'],firmware['bytes'])
+    need(list(generation(os.fstat(firmware_fd)))==firmware['generation'],'instance_lifecycle_firmware_changed')
+    # Hold every mutable inode without reading private guest bytes.
+    for name in ('disk.qcow2','uefi-vars.fd'):
+        fd=os.open(root/name,os.O_RDWR|os.O_NOFOLLOW);held.append(fd)
+        need(list(structure(os.fstat(fd)))==clean['artifacts']['mutable'][name],
+             'instance_lifecycle_stopped_artifacts_changed')
+    tpm=root/'tpm';fd=os.open(tpm,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd)
+    need(list(structure(os.fstat(fd)))==clean['artifacts']['tpmState']['identity'],
+         'instance_lifecycle_stopped_artifacts_changed')
+    for name,identity in clean['artifacts']['tpmState']['files'].items():
+        fd=os.open(tpm/name,os.O_RDONLY|os.O_NOFOLLOW);held.append(fd)
+        need(list(structure(os.fstat(fd)))==identity,'instance_lifecycle_stopped_artifacts_changed')
+    ledger=root.parent/'.cache/vpn-control-fixture-storage'
+    need(ledger.is_dir()and not ledger.is_symlink(),'instance_lifecycle_storage_unenrolled')
+    storage=LIFECYCLE_STORAGE.StoragePlans(ledger);fixture_id='windows-'+spec['deploymentId']
+    with storage._locked():
+        state=storage._read();claim=state['plans'].get(fixture_id)
+        need(claim is not None and claim['state']=='retained'and claim['platform']=='windows'
+             and claim['directory']==str(root),'instance_lifecycle_storage_original_unknown')
+        disks={row['path']:row['capacityBytes']for row in claim['disks']}
+        need(disks.get(str(root/'disk.qcow2'))==spec['diskGiB']*1024**3,
+             'instance_lifecycle_storage_original_unknown')
+        storage._absent(claim['writerPid']);_storage_vm_coverage(state,fresh,birth)
+        storage._check(state,'windows','start',root,fixture_id)
+        closing();need(_stopped_artifacts(spec)==clean['artifacts'],'instance_lifecycle_stopped_artifacts_changed')
+        _start_capacity(spec,context,admission,fresh,_lifecycle_measurement(fresh),operation)
+        save(prefix+'.intent.json',{'schemaVersion':1,'kind':'windows-existing-start-v1','operationId':operation,
+             'recoveryId':recovery_id,'machine':spec['deploymentId'],'hostBoot':context['hostBootId'],
+             'lineageSha256':plan['lineageSha256'],'cleanPoweroffOperationId':clean['operationId'],'replayAllowed':False})
+        # Consume capacity before the first TPM or guest-disk writer. UNKNOWN
+        # remains pending even if this durable owner dies before exec.
+        claim['state']='pending';claim['writerPid']=os.getpid();storage._save(state)
+        if managed_start is not None:
+            actual=managed_start()
+            need(type(actual)is dict and set(actual)=={'schemaVersion','kind','state','operationId','recoveryId','machine','hostBoot','actor','replayAllowed'}
+                 and actual['schemaVersion']==1 and type(actual['schemaVersion'])is int
+                 and actual['kind']=='windows-existing-managed-start-pending-v1'and actual['state']=='postlaunch-observation-required'
+                 and actual['operationId']==operation and actual['recoveryId']==recovery_id
+                 and actual['machine']==spec['deploymentId']and actual['hostBoot']==context['hostBootId']and actual['replayAllowed']is False,
+                 'instance_lifecycle_manager_changed')
+            need(actual['actor']['executableGeneration']==lineage['executables']['qemu']['generation'],
+                 'instance_lifecycle_binary_changed')
+            # Exact new manager-owned QEMU is a known writer, while capacity
+            # remains pending until actual postlaunch lineage/guest admission.
+            save(prefix+'.pending.json',actual);claim['writerPid']=actual['actor']['pid'];storage._save(state)
+            print(json.dumps(actual));return actual
+        log=os.open(root/(prefix+'.tpm.log'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        try:
+            child=subprocess.Popen(plan['tpmArgv'],executable='/proc/self/fd/'+str(executables['swtpm']),
+                stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True,
+                pass_fds=(executables['swtpm'],),env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','HOME':str(root.parent)})
+        finally:os.close(log)
+        end=time.monotonic()+10
+        while not os.path.lexists(root/'swtpm.sock'):
+            need(child.poll()is None,'instance_lifecycle_tpm_ended');need(time.monotonic()<end,'instance_lifecycle_tpm_pending');time.sleep(.05)
+        tpm_actor={'pid':child.pid,'startTicks':birth(child.pid),'argv':plan['tpmArgv'],
+            'commandSha256':__import__('hashlib').sha256(b'\0'.join(os.fsencode(v)for v in plan['tpmArgv'])+b'\0').hexdigest(),
+            'executableGeneration':list(generation(os.fstat(executables['swtpm'])))}
+        process(tpm_actor);save(prefix+'.tpm-started.json',tpm_actor)
+        qemu=[word.replace('{firmware-code-fd}',str(firmware_fd))for word in plan['qemuArgv']]
+        actor={'pid':os.getpid(),'startTicks':birth(os.getpid()),'argv':qemu,
+            'commandSha256':__import__('hashlib').sha256(b'\0'.join(os.fsencode(v)for v in qemu)+b'\0').hexdigest(),
+            'executableGeneration':list(generation(os.fstat(executables['qemu'])))}
+        # This is expected exec identity, deliberately not a successful actor
+        # receipt. Main must verify actual executable/argv/artifact FDs anew.
+        save(prefix+'.qemu-intent.json',{'operationId':operation,'actor':actor,'replayAllowed':False})
+        closing();process(tpm_actor);os.set_inheritable(firmware_fd,True)
+        os.execve(executables['qemu'],qemu,{'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','HOME':str(root.parent)})
+
+
+def _existing_start_program(binding,lineage,clean,operation,recovery_id,resource_admission,*,prior_closures=(),managed_plan=None):
+    """Create a disk-only existing-instance durable program, never a new VM.
+
+    ResourceAdmission must already have consumed this exact dispatch; the
+    provider-host StoragePlans ledger must contain all retained/running claims.
+    Missing storage enrollment or stale sockets block before any writer.
+    """
+    from pathlib import Path
+    from . import readiness_resources as resources,windows_vm_resources as facts
+    _need(type(lineage)is ExistingLineage and type(clean)is CleanStopped,'windows_lifecycle_start_authority')
+    body=lineage.as_dict();validate_clean_stopped(binding,lineage,clean.as_dict())
+    if binding['provider']=='libvirt-windows':
+        from . import readiness_windows_managed_start as managed_module
+        expected=managed_module._admission(managed_plan)
+        _need(expected['binding']==binding and expected['lineage']==body and expected['clean']==clean.as_dict()
+              and expected['intent']['operationId']==operation and expected['intent']['recoveryId']==recovery_id,
+              'windows_lifecycle_managed_start_witness_unqualified')
+    else:_need(managed_plan is None,'windows_lifecycle_start_authority')
+    _need(_uuid(operation)and _digest(recovery_id),'windows_lifecycle_operation_invalid')
+    from uuid import uuid5
+    _need(str(uuid5(UUID(body['machine']),recovery_id))==operation,'windows_lifecycle_operation_invalid')
+    _need(type(resource_admission)is resources.ResourceAdmission
+          and resource_admission.machine_uuid==body['machine']and resource_admission.operation_id==operation
+          and resource_admission.target.deployment_id==operation
+          and resource_admission.target.host==binding['spec']['host']and resource_admission.target.root==binding['spec']['root'],
+          'windows_lifecycle_resource_authority')
+    admission=resource_admission.submission_snapshot()
+    managed=binding['provider']=='libvirt-windows'
+    plan=None if managed else existing_start_plan(binding,lineage)
+    _need(admission['hostBootId']==body['hostBoot'],'windows_lifecycle_resource_authority')
+    source=packets.program(binding,'observe',operation).decode()
+    marker=("        if PROVIDER=='raw-qemu-windows':\n            suffix="if managed else
+            "        if PROVIDER=='libvirt-windows':\n            import libvirt,libvirt_qemu")
+    _need(source.count(marker)==1,'windows_lifecycle_source_changed')
+    branch="""        started=_existing_raw_start(SPEC,CONTEXT,OPERATION,LIFECYCLE_RID,LIFECYCLE_LINEAGE,LIFECYCLE_CLEAN,
+            LIFECYCLE_PLAN,LIFECYCLE_ADMISSION,read,save,process,birth,epoch,pin,private,structure,generation,held,MANAGED_START)
+        return
+""".replace('MANAGED_START','_lifecycle_managed_start'if managed else'None')
+    source=source.replace(marker,branch+marker)
+    if managed:
+        marker='    try:\n        epoch();chain()\n';_need(source.count(marker)==1,'windows_lifecycle_source_changed')
+        helper="""    def _lifecycle_managed_start():
+        require(current_actor is None and not domain.isActive(),'instance_lifecycle_domain_already_active')
+        require(manager['executableGeneration']==LIFECYCLE_LINEAGE['executables']['manager']['generation'],
+                'instance_lifecycle_manager_changed')
+        vm_guard();domain.createWithFlags(0)
+        # The durable owner survives its SSH client. An ambiguous manager API
+        # result never authorizes another create; absent ACK remains UNKNOWN.
+        require(domain.isActive(),'instance_lifecycle_manager_start_unknown')
+        new_actor=actor()
+        save('existing-start-'+OPERATION+'.manager-ack.json',{'operationId':OPERATION,'recoveryId':LIFECYCLE_RID,
+             'domainId':domain.ID(),'actor':new_actor,'manager':manager,'socketIdentity':list(socket_pin),'replayAllowed':False})
+        vm_guard();process(new_actor);process(manager)
+        require(manager['executableGeneration']==LIFECYCLE_LINEAGE['executables']['manager']['generation'],
+                'instance_lifecycle_manager_changed')
+        return {'schemaVersion':1,'kind':'windows-existing-managed-start-pending-v1','state':'postlaunch-observation-required',
+            'operationId':OPERATION,'recoveryId':LIFECYCLE_RID,'machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],
+            'actor':new_actor,'replayAllowed':False}
+"""
+        source=source.replace(marker,helper+marker)
+    from . import readiness_windows_start_closure as closures
+    _need(type(prior_closures)is tuple,'windows_lifecycle_prior_start_unreconciled')
+    prior_sources=[];prior_functions={}
+    for value in prior_closures:
+        old_start,old_stop,old_body=closures._body(value)
+        _need(old_body['binding']['spec']==binding['spec']and old_body['binding']['provider']==binding['provider'],
+              'windows_lifecycle_prior_start_unreconciled')
+        old_operation,name,definition=closures.definitions(value)
+        _need(old_operation not in prior_functions and old_operation!=operation,'windows_lifecycle_prior_start_unreconciled')
+        prior_functions[old_operation]=name;prior_sources.append(definition)
+    storage=Path(__file__).parent.parent/'scripts/native_fixture_storage.py'
+    constants={'LIFECYCLE_RID':recovery_id,'LIFECYCLE_LINEAGE':body,'LIFECYCLE_CLEAN':clean.as_dict(),
+               'LIFECYCLE_PLAN':({'lineageSha256':_lineage_sha(lineage)}if managed else
+                    {'lineageSha256':plan.lineage_sha256,'qemuArgv':list(plan.qemu_argv),'tpmArgv':list(plan.tpm_argv)}),
+               'LIFECYCLE_ADMISSION':admission}
+    prefix='\n'.join(prior_sources)+'\n'
+    prefix+='LIFECYCLE_PRIOR_CHECKS={'+','.join(repr(key)+':'+name for key,name in prior_functions.items())+'}\n'
+    prefix+='\n'.join(key+'='+repr(value)for key,value in constants.items())+'\n'
+    prefix+='import types\nLIFECYCLE_STORAGE=types.ModuleType("owned_fixture_storage")\nexec(compile('+repr(storage.read_text())+',"<owned-fixture-storage>","exec"),LIFECYCLE_STORAGE.__dict__)\n'
+    prefix+=facts.definitions()+'\n'+inspect.getsource(facts.measurement).replace('def measurement(', 'def _lifecycle_measurement(',1)+'\n'
+    for fn in (original_lifecycle._actor_absent,_stopped_artifacts,_start_capacity,_storage_vm_coverage,_prior_start_fence,_existing_raw_start):prefix+=inspect.getsource(fn)+'\n'
+    from . import readiness_windows_host_jobs as host_jobs
+    return host_jobs.sealed_program(durable.Program('windows-persisted-managed-start'if managed else'windows-persisted-raw-start',(prefix+source).encode(),262144))
+
+
+def existing_start_program(binding,lineage,clean,operation,recovery_id,resource_admission,*,prior_closures=()):
+    """Raw existing-instance builder; managed qualification has a separate API."""
+    _need(binding.get('provider')=='raw-qemu-windows','windows_lifecycle_managed_start_witness_unqualified')
+    return _existing_start_program(binding,lineage,clean,operation,recovery_id,resource_admission,prior_closures=prior_closures)
+
+
+def _observe_started_raw(root,spec,context,operation,recovery_id,lineage,clean,
+                         read,process,birth,owns,closing,generation,structure,private):
+    import json,os,socket,stat,struct
+    def need(value):
+        if not value:raise ValueError('instance_lifecycle_original_start_unknown')
+    prefix='existing-start-'+operation;intent=read(prefix+'.intent.json')
+    need(intent=={'schemaVersion':1,'kind':'windows-existing-start-v1','operationId':operation,
+        'recoveryId':recovery_id,'machine':spec['deploymentId'],'hostBoot':context['hostBootId'],
+        'lineageSha256':LIFECYCLE_LINEAGE_SHA,'cleanPoweroffOperationId':clean['operationId'],'replayAllowed':False})
+    qemu=read(prefix+'.qemu-intent.json');need(set(qemu)=={'operationId','actor','replayAllowed'}
+        and qemu['operationId']==operation and qemu['replayAllowed']is False);qemu=qemu['actor']
+    tpm=read(prefix+'.tpm-started.json');process(qemu);process(tpm)
+    need(_actor_absent(lineage['qemu'],process,birth)and _actor_absent(lineage['tpm'],process,birth))
+    need(qemu['executableGeneration']==lineage['executables']['qemu']['generation']
+        and tpm['executableGeneration']==lineage['executables']['swtpm']['generation'])
+    for name,identity in clean['artifacts']['mutable'].items():
+        need(list(structure(private(root/name)))==identity);owns(qemu['pid'],root/name)
+    need(list(structure(private(root/'tpm',True)))==clean['artifacts']['tpmState']['identity'])
+    owns(tpm['pid'],root/'swtpm.sock',True);owns(qemu['pid'],root/'qmp.sock',True);owns(qemu['pid'],root/'qga.sock',True)
+    named=os.lstat(root/'qmp.sock');need(stat.S_ISSOCK(named.st_mode))
+    with socket.socket(socket.AF_UNIX)as client:
+        client.settimeout(3);client.connect(str(root/'qmp.sock'))
+        peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12));need(peer[:2]==(qemu['pid'],os.geteuid()))
+        with client.makefile('rwb',buffering=0)as stream:
+            def receive():
+                line=stream.readline(65537);need(0<len(line)<=65536);return json.loads(line)
+            need('QMP'in receive())
+            results={}
+            for index,command in enumerate(('qmp_capabilities','query-uuid','query-fdsets','query-status')):
+                stream.write((json.dumps({'execute':command,'id':index})+'\n').encode())
+                for _ in range(32):
+                    row=receive()
+                    if row.get('id')==index:break
+                else:need(False)
+                need('return'in row);results[command]=row['return']
+            need(results['query-uuid']=={'UUID':spec['deploymentId']})
+            sets=[row for row in results['query-fdsets']if row.get('fdset-id')==1]
+            need(len(sets)==1 and len(sets[0].get('fds',[]))==1);firmware=sets[0]['fds'][0]
+            need(firmware.get('opaque')=='asset:firmwareCode'and type(firmware.get('fd'))is int
+                and list(generation(os.stat('/proc/'+str(qemu['pid'])+'/fd/'+str(firmware['fd']))))==lineage['firmware']['generation'])
+    need(structure(os.lstat(root/'qmp.sock'))==structure(named));closing();process(qemu);process(tpm)
+    return {'schemaVersion':1,'kind':'windows-existing-start-observation-v1','state':'observed','operationId':operation,
+        'recoveryId':recovery_id,'machine':spec['deploymentId'],'hostBoot':context['hostBootId'],
+        'actor':qemu,'tpm':tpm,'qemuStatus':results['query-status']['status'],'guestReady':False,'replayAllowed':False}
+
+
+def start_observation_program(binding,lineage,clean,operation,recovery_id):
+    """Pure original-owner reconciliation. Never starts/wakes/admits a guest."""
+    _need(type(lineage)is ExistingLineage and type(clean)is CleanStopped,'windows_lifecycle_start_authority')
+    body=lineage.as_dict();validate_clean_stopped(binding,lineage,clean.as_dict())
+    from uuid import uuid5
+    _need(_uuid(operation)and _digest(recovery_id)and str(uuid5(UUID(body['machine']),recovery_id))==operation,
+          'windows_lifecycle_operation_invalid')
+    managed=binding['provider']=='libvirt-windows';source=packets.program(binding,'observe',operation).decode()
+    marker=("        if PROVIDER=='raw-qemu-windows':\n            suffix="if managed else
+            "        if PROVIDER=='libvirt-windows':\n            import libvirt,libvirt_qemu")
+    _need(source.count(marker)==1,'windows_lifecycle_source_changed')
+    if managed:
+        branch="""        prefix='existing-start-'+OPERATION;intent=read(prefix+'.intent.json')
+        require(intent=={'schemaVersion':1,'kind':'windows-existing-start-v1','operationId':OPERATION,
+            'recoveryId':LIFECYCLE_RID,'machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],
+            'lineageSha256':LIFECYCLE_LINEAGE_SHA,'cleanPoweroffOperationId':LIFECYCLE_CLEAN['operationId'],'replayAllowed':False},
+            'instance_lifecycle_original_start_unknown')
+        ack=read(prefix+'.manager-ack.json')
+        require(ack['operationId']==OPERATION and ack['recoveryId']==LIFECYCLE_RID and ack['replayAllowed']is False
+            and ack['actor']==current_actor,'instance_lifecycle_original_start_unknown')
+        actual=_capture_libvirt_lineage(SPEC,CONTEXT,OPERATION,root,current_actor,manager,socket_pin,
+            domain,connection,URI,DOMAIN,XML_SHA,SOCKET_PATH,read,process,owns,vm_guard,closing,generation,structure,
+            private,instance_intent,pin,birth)
+        require(all(actual['executables'][key]==LIFECYCLE_LINEAGE['executables'][key]for key in actual['executables'])
+            and actual['firmware']['generation']==LIFECYCLE_LINEAGE['firmware']['generation'],
+            'instance_lifecycle_binary_changed')
+        print(json.dumps({'schemaVersion':1,'kind':'windows-existing-start-observation-v1','state':'observed',
+            'operationId':OPERATION,'recoveryId':LIFECYCLE_RID,'machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],
+            'actor':actual['qemu'],'tpm':actual['tpm'],'lineage':actual,'guestReady':False,'replayAllowed':False}));return
+"""
+    else:
+        branch="""        print(json.dumps(_observe_started_raw(root,SPEC,CONTEXT,OPERATION,LIFECYCLE_RID,LIFECYCLE_LINEAGE,LIFECYCLE_CLEAN,
+            read,process,birth,owns,epoch,generation,structure,private)));return
+"""
+    source=source.replace(marker,branch+marker)
+    constants={'LIFECYCLE_RID':recovery_id,'LIFECYCLE_LINEAGE_SHA':_lineage_sha(lineage),
+               'LIFECYCLE_LINEAGE':body,'LIFECYCLE_CLEAN':clean.as_dict()}
+    prefix='\n'.join(key+'='+repr(value)for key,value in constants.items())+'\n'
+    for fn in (original_lifecycle._actor_absent,_capture_libvirt_lineage if managed else _observe_started_raw):prefix+=inspect.getsource(fn)+'\n'
+    result=(prefix+source).encode();compile(result,'original Windows start observation','exec');return result

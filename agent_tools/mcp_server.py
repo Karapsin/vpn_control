@@ -8,6 +8,7 @@ from datetime import date
 import hashlib
 import importlib
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -247,6 +248,7 @@ PREPUSH_COMMANDS = [
     ["./scripts/status_catalog_tool.py", "check"],
     [
         "./gradlew",
+        "--continue",
         ":shared:model:desktopTest",
         ":shared:core:desktopTest",
         ":shared:ui:desktopTest",
@@ -508,13 +510,24 @@ def run_checks(
     level: str = "focused",
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Run focused checks or the complete pre-push validation tier."""
-    if level not in {"focused", "prepush"}:
-        return _error("run_checks", "level must be 'focused' or 'prepush'")
+    """Run focused checks, recorded failures first, or the complete pre-push tier."""
+    if level not in {"focused", "failed", "prepush"}:
+        return _error("run_checks", "level must be 'focused', 'failed' or 'prepush'")
     source_error = _check_runner_source_error()
     if source_error:
         return source_error
-    selected_area = _infer_area("validation", None if area == "auto" else area, _changed_paths())
+    failures = _read_json(_failure_set_path())
+    if level == "prepush" and failures.get("state") == "failed":
+        # TEST-006: after a fix, the recorded failures pass before the complete tier.
+        return _error("run_checks", "Recorded check failures are unresolved; rerun them first with level='failed'.",
+                      blockers=[{"phase": "failed-first", "state": "unresolved"}])
+    if level == "failed" and failures.get("state") != "failed":
+        return _error("run_checks", "No unresolved recorded check failures to rerun.",
+                      blockers=[{"phase": "failed-first", "state": "absent"}])
+    if level == "failed":
+        selected_area = failures.get("area") if type(failures.get("area")) is str else "docs"
+    else:
+        selected_area = _infer_area("validation", None if area == "auto" else area, _changed_paths())
     planned_fingerprint = _snapshot_fingerprint() if level == "prepush" else None
     try:
         commands = _commands_for(selected_area, level)
@@ -530,9 +543,81 @@ def run_checks(
 
     try:
         with managed_check_lease.acquire(REPO_ROOT):
-            return _run_check_commands(selected_area, level, commands, planned_fingerprint)
+            result = _run_check_commands(selected_area, level, commands, planned_fingerprint)
+            _record_check_outcome(selected_area, level, commands, result, failures)
+            return result
     except managed_check_lease.ManagedCheckLeaseError as error:
         return _error("run_checks", str(error), blockers=[{"phase": "check-lease", "state": error.state}])
+
+
+def _failure_set_path() -> Path:
+    # TEST-006: the latest managed failure set lives beside the pre-push receipt.
+    return RECEIPT_PATH.with_name("managed_check_failures.json")
+
+
+def _failed_modules(command: list[str], result: dict[str, Any]) -> list[str] | None:
+    """Failed agent test modules, or None when the whole command must rerun."""
+    if command[1:3] != ["-m", "unittest"]:
+        return None
+    tests = (result.get("completionOutput") or {}).get("tests") or {}
+    identities = tests.get("identities") or []
+    if not identities or tests.get("truncated") or tests.get("unparsedHeaders"):
+        return None
+    modules = sorted({".".join(str(identity).split(".")[:3]) for identity in identities})
+    return modules if set(modules) <= set(command[3:]) else None
+
+
+def _record_check_outcome(area: str, level: str, commands: list[list[str]], result: dict[str, Any],
+                          previous: dict[str, Any]) -> None:
+    """Retain exactly which checks failed; only reruns or a full pass resolve them."""
+    executed = list(zip(commands, result.get("command_results") or []))
+    failed = [{"command": list(command), "modules": _failed_modules(command, outcome)}
+              for command, outcome in executed if not outcome.get("ok")]
+    if failed:
+        _write_json(_failure_set_path(), {"version": 1, "state": "failed", "level": level, "area": area,
+                                       "failed": failed, "createdAtEpoch": int(time.time())})
+    elif result.get("ok") is True and level == "failed":
+        _write_json(_failure_set_path(), {"version": 1, "state": "resolved", "previous": previous,
+                                       "createdAtEpoch": int(time.time())})
+    elif result.get("ok") is True and level == "prepush":
+        _write_json(_failure_set_path(), {"version": 1, "state": "clear", "createdAtEpoch": int(time.time())})
+
+
+def _failed_commands(failures: dict[str, Any]) -> list[list[str]]:
+    """Exactly the recorded failed checks; agent tests rerun only their failed modules."""
+    commands = []
+    selected = None
+    for row in failures.get("failed") or []:
+        command = [str(part) for part in row.get("command") or []]
+        if len(command) < 1:
+            continue
+        recorded = row.get("modules")
+        if recorded:
+            # A removed module cannot fail again; the complete tier still runs later.
+            modules = [name for name in recorded if (REPO_ROOT / (name.replace(".", "/") + ".py")).is_file()]
+            if not modules:
+                continue
+            command = [command[0], "-m", "unittest", *modules]
+        elif command[1:3] == ["-m", "unittest"] and len(command) > 3:
+            # A timed-out or unparsed agent command (no failed modules) reruns
+            # once without removed modules, never split recursively: the SSH-close
+            # gate alone when recorded, then the rest by index parity in the sorted
+            # union of the current selection and those modules. While all of them
+            # are still selected, each group is the row's part of one current CI
+            # shard, so for an unchanged selection a recorded shard reruns as
+            # itself. Only two or more non-gate modules consult the selection.
+            modules = {name for name in command[3:] if (REPO_ROOT / (name.replace(".", "/") + ".py")).is_file()}
+            gate = "agent_tools.tests.test_ssh_connection_session_close"
+            parity = dict.fromkeys(modules, 0)
+            if len(modules - {gate}) > 1:
+                selected = set(_agent_test_selection().modules) if selected is None else selected
+                parity = {name: index % 2 for index, name in enumerate(sorted(selected | modules))}
+            groups = [[gate] if gate in modules else []]
+            groups += [[name for name in sorted(modules - {gate}) if parity[name] == side] for side in (0, 1)]
+            commands.extend(command[:3] + group for group in groups if group)
+            continue
+        commands.append(command)
+    return commands
 
 
 def _check_runner_source_error(**extra: Any) -> dict[str, Any] | None:
@@ -569,6 +654,7 @@ def _run_check_commands(selected_area: str, level: str, commands: list[list[str]
     if planned_fingerprint is not None and planned_fingerprint != checked_fingerprint:
         return _error("run_checks", "Repository contents changed after planning; regenerate the check plan.")
     results = []
+    failed = []
     output_fingerprint = checked_fingerprint or hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     for index, command in enumerate(commands):
         source_error = _check_runner_source_error(command_results=results)
@@ -585,16 +671,23 @@ def _run_check_commands(selected_area: str, level: str, commands: list[list[str]
         result = _run(dispatched_command, timeout=50 * 60, output_capture=capture)
         results.append(result)
         if not result["ok"]:
-            return _error(
-                "run_checks",
-                f"Validation failed: {_display(command)}",
-                blockers=[_command_blocker("check", result)],
-                command_results=results,
-            )
+            # Independent checks keep running so one pass reports every
+            # failure. A failed SSH-close safety gate still never dispatches
+            # the consumers planned after it.
+            failed.append(command)
+            if command[1:] == ["-m", "unittest", "agent_tools.tests.test_ssh_connection_session_close"]:
+                break
 
     source_error = _check_runner_source_error(command_results=results)
     if source_error:
         return source_error
+    if failed:
+        return _error(
+            "run_checks",
+            f"Validation failed: {'; '.join(_display(command) for command in failed)}",
+            blockers=[_command_blocker("check", result) for result in results if not result["ok"]],
+            command_results=results,
+        )
     receipt = None
     if level == "prepush":
         if _snapshot_fingerprint() != checked_fingerprint:
@@ -1017,13 +1110,26 @@ def _agent_test_selection():
 
 
 def _commands_for(area: str, level: str) -> list[list[str]]:
+    if level == "failed":
+        return _failed_commands(_read_json(_failure_set_path()))
+    agent = []
+    if level == "prepush" or area == "agent_tools":
+        # Separately bounded commands, each with its own timeout: the SSH-close
+        # gate alone first, then the two hosted CI shards without it (sorted,
+        # alternating over the whole selection; duplicates are refused).
+        gate = "agent_tools.tests.test_ssh_connection_session_close"
+        selection = _agent_test_selection()
+        shards = [[name for name in affected_agent_tests.shard_selection(selection, index, 2).modules if name != gate]
+                  for index in (0, 1)]
+        agent = [[AGENT_TEST_PYTHON, "-m", "unittest", *group]
+                 for group in ([gate] if gate in selection.modules else [], *shards) if group]
     if level == "prepush":
         commands = [list(command) for command in PREPUSH_COMMANDS]
-        commands[3:3] = _agent_test_selection().commands(AGENT_TEST_PYTHON)
+        commands[3:3] = agent
         return commands
     commands = [list(command) for command in (FOCUSED_COMMANDS.get(area) or FOCUSED_COMMANDS["docs"])]
     if area == "agent_tools":
-        commands[0:0] = _agent_test_selection().commands(AGENT_TEST_PYTHON)
+        commands[0:0] = agent
     return commands
 
 
@@ -1854,16 +1960,37 @@ def _run(
                 "stdout": "", "stderr": str(exc)}
     environment.pop("DYLD_INSERT_LIBRARIES", None)
     try:
-        completed = subprocess.run(
+        # A check child never inherits this server's stdio transport or terminal.
+        with subprocess.Popen(
             command,
             cwd=REPO_ROOT,
+            stdin=subprocess.DEVNULL,
             text=output_capture is None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=timeout,
-            check=False,
             env=environment,
-        )
+        ) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                # SIGTERM first so an agent test runner stops its own worker
+                # sessions before the next check starts. Output keeps draining;
+                # SIGKILL follows only after a bounded grace (30 seconds, or the
+                # command's own shorter bound). Only the original timeout is
+                # reported, even when the drained text output does not decode.
+                process.terminate()
+                try:
+                    process.communicate(timeout=min(30, timeout))
+                except Exception:
+                    pass
+                finally:
+                    process.kill()  # A no-op once the child has exited.
+                    process.wait()
+                raise
+            except BaseException:
+                process.kill()
+                raise
+        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
         retention = None
         retention_error = None
         if output_capture is not None:
@@ -2107,13 +2234,15 @@ def _ssh_channel_workflow(action: str, host: str | None, timeout_seconds: int,
 from contextlib import contextmanager
 import ast,builtins,inspect,types,importlib.abc,importlib.util
 # Trusted shared custody primitive is imported with canonical server startup.
-_KEEPER_ROLES=('ssh_channel_keeper_entry.py','ssh_channel_keeper.py','ssh_channel_inventory_diagnostics.py','ssh_fresh_nested_channel.py','private_inventory_lock.py','native_review_source_closure.py','check_output_retention.py','ssh_transport.py','ssh_connection_session.py','ssh_connection_recovery.py','ssh_nested_socket_owned_home_observation.py','ssh_channel_selection.py','mcp_server.py','ssh_nested_socket_noninteractive_observation.py','ssh_nested_socket_retirement.py','ssh_nested_socket_route_diagnostic.py','ssh_recovery_adoption.py')
+_KEEPER_ROLES=('ssh_channel_keeper_entry.py','ssh_channel_keeper.py','ssh_channel_inventory_diagnostics.py','ssh_fresh_nested_channel.py','private_inventory_lock.py','native_review_source_closure.py','check_output_retention.py','ssh_transport.py','readiness.py','ssh_connection_session.py','ssh_connection_recovery.py','ssh_nested_socket_owned_home_observation.py','ssh_channel_selection.py','mcp_server.py','ssh_nested_socket_noninteractive_observation.py','ssh_nested_socket_retirement.py','ssh_nested_socket_route_diagnostic.py','ssh_recovery_adoption.py')
+_KEEPER_LEGACY_ROLES=tuple(name for name in _KEEPER_ROLES if name!='readiness.py')
 @contextmanager
 def _keeper_authenticated_entry(corr,digest=None):
     custody=_agent_module("native_review_source_closure");held=custody._Held();prefix='_keeper_'+uuid.uuid4().hex
     package=types.ModuleType(prefix);package.__path__=[];sys.modules[prefix]=package;finder=None
     try:
-        paths={str(REPO_ROOT/'agent_tools'/name) for name in _KEEPER_ROLES}
+        roles=_KEEPER_ROLES
+        paths={str(REPO_ROOT/'agent_tools'/name) for name in roles}
         if digest is None:
             pins={}
             for path in sorted(paths):
@@ -2121,7 +2250,10 @@ def _keeper_authenticated_entry(corr,digest=None):
         else:
             if type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None:raise ValueError('digest')
             manifest=REPO_ROOT/'.runtime/ssh-channel-keeper-source'/(corr+'.json');obj=json.loads(held.read(str(manifest),digest),object_pairs_hook=custody._pairs)
-            if type(obj)is not dict or set(obj)!={'inputs'} or type(obj['inputs'])is not dict or set(obj['inputs'])!=paths:raise ValueError('source_roles')
+            if type(obj)is not dict or set(obj)!={'inputs'} or type(obj['inputs'])is not dict:raise ValueError('source_roles')
+            legacy_paths={str(REPO_ROOT/'agent_tools'/name) for name in _KEEPER_LEGACY_ROLES}
+            if set(obj['inputs'])==legacy_paths:roles=_KEEPER_LEGACY_ROLES;paths=legacy_paths
+            elif set(obj['inputs'])!=paths:raise ValueError('source_roles')
             pins=obj['inputs']
         cached={}
         for path,pin in pins.items():
@@ -2159,6 +2291,12 @@ def _keeper_authenticated_entry(corr,digest=None):
                 if name in cached:return importlib.util.spec_from_loader(name,Loader(),origin=cached[name][0])
                 if name.startswith(prefix+'.'):raise ImportError('undeclared_keeper_module')
         finder=Finder();sys.meta_path.insert(0,finder);entry=_agent_module('ssh_channel_keeper_entry');held.finish()
+        if (tuple(entry.NAMES)!=roles or set(entry.SOURCE_FILES)!=set(roles)
+                or {str(path) for path in entry.SOURCE_FILES.values()}!=paths):raise ValueError('source_roles')
+        if digest is not None:
+            original=entry.SourceGuard(REPO_ROOT,corr,digest)
+            try:original.guard();held.finish()
+            finally:original.close()
         yield entry,held
     finally:
         if finder is not None:sys.meta_path.remove(finder)
@@ -2241,6 +2379,36 @@ def _ssh_direct_channel_workflow(action,host,timeout_seconds,identity,transfer,d
     except (OSError,ValueError,TypeError,KeyError,ImportError,AttributeError):return unknown
 
 
+def _ssh_invalid_before_recovery(action, arguments):
+    """Keep existing pure schema refusals ahead of any infrastructure effect."""
+    identity, transfer, device = (arguments.get(key) for key in ("identity", "transfer", "device"))
+    if action in {"apk-publish", "fixture-publish"}:
+        fields = ({"apkPath", "manifestPath", "receiptPath", "owner", "environment", "correlationId"}
+                  if action == "apk-publish" else {"sourceDirectory", "owner", "environment", "correlationId"})
+        return (not isinstance(transfer, dict) or set(transfer) != fields or
+                any(not isinstance(value, str) or not value for value in transfer.values()))
+    if action == "windows-caller-file-stage":
+        return (identity is not None or device is not None or type(transfer) is not dict or
+                set(transfer) != {"sourceFile", "sourceSha256", "correlationId"} or
+                arguments.get("timeout_seconds") != 60)
+    if action == "gateway-tmux-availability":
+        return arguments.get("host") != "archlinux" or any(value is not None for value in (identity, transfer, device))
+    if action == "job-status":
+        return not identity
+    if action == "android-observe":
+        if not device:
+            return True
+        if identity is not None:
+            return transfer is not None or type(identity) is not dict or set(identity) != {"cliArtifact"}
+        transport = _agent_module("ssh_transport")
+        try:
+            configured = transport.load_config(REPO_ROOT).hosts.get(arguments.get("host"))
+            return configured is None or device not in configured.android_devices
+        except transport.SshConfigError:
+            return True
+    return False
+
+
 def _native_source_request(function):
     """Keep shared captured imports alive until the complete native RPC closes."""
     @functools.wraps(function)
@@ -2248,6 +2416,46 @@ def _native_source_request(function):
         loader = _SOURCE_MODULE_LOADER
         try:
             with loader.request_scope(Path(__file__).resolve().parent):
+                # Classification is mandatory even for newly added dynamic
+                # routes. Local/retired actions only read this source policy;
+                # this guard performs no connection or provider recovery.
+                policy = loader.adapter(Path(__file__).resolve().parent, "tool_action_policy")
+                action = args[0] if args else kwargs.get("action", "inventory")
+                surface = "ssh_workflow" if function.__name__.startswith("_ssh") else "vm_workflow"
+                try:
+                    classified = policy.action_policy(surface, action)
+                except ValueError as error:
+                    if str(error) != "unclassified_tool_action":
+                        raise
+                    return {"tool": surface, "ok": False, "state": "refused",
+                            "reason": "unclassified_tool_action", "replayAllowed": False}
+                policy._session.held.read(str(Path(__file__).with_name("tool_action_policy.json")), policy.MANIFEST_SHA256)
+                if (surface == "ssh_workflow" and classified.requirements == {"transport"}
+                        and "reconnect" in classified.permitted_recoveries
+                        and action not in {"readiness-status", "readiness-ensure", "program-start", "program-reconcile"}):
+                    bound = inspect.signature(function).bind(*args, **kwargs)
+                    bound.apply_defaults()
+                    host = bound.arguments.get("host")
+                    timeout = bound.arguments.get("timeout_seconds")
+                    if (type(host) is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", host) is None
+                            or type(timeout) is not int or not 1 <= timeout <= 60):
+                        return function(*args, **kwargs)  # Existing pure input refusal.
+                    if _ssh_invalid_before_recovery(action, bound.arguments):
+                        return function(*args, **kwargs)
+                    operation = None
+                    for field in ("identity", "transfer"):
+                        body = bound.arguments.get(field)
+                        if type(body) is dict and type(body.get("operationId")) is str and _valid_uuid(body["operationId"]):
+                            operation = body["operationId"]
+                            break
+                    operation = operation or str(uuid.uuid4())
+                    core = _agent_module("readiness")
+                    try:
+                        with _agent_module("ssh_transport").admitted_transport(
+                                REPO_ROOT, host, operation, deadline=time.monotonic() + timeout):
+                            return function(*args, **kwargs)
+                    except core.ReadinessBlocked as error:
+                        return {"tool": surface, "host": host, **error.as_dict()}
                 return function(*args, **kwargs)
         except (ValueError, OSError):
             return {"tool": "ssh_workflow" if function.__name__.startswith("_ssh") else "vm_workflow",
@@ -2259,6 +2467,74 @@ def _native_source_request(function):
 @_native_source_request
 def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
     """Inspect configured SSH hosts, recover a nested connection, or transfer owned fixture helpers."""
+    if action in {"readiness-status", "readiness-ensure"}:
+        if transfer is not None or device is not None or type(host) is not str:
+            return _error("ssh_workflow", "Readiness requires a configured host and original operation identity.")
+        refusal = _readiness_input_refusal("ssh_workflow", action, identity)
+        if refusal is not None:
+            return {**refusal, "host": host}
+        try:
+            result = _agent_module("readiness_workflow").ssh_workflow(REPO_ROOT, action, host, identity)
+            return {"tool": "ssh_workflow", **result}
+        except Exception as error:
+            core = _agent_module("readiness")
+            if isinstance(error, core.ReadinessBlocked):
+                return {"tool": "ssh_workflow", **error.as_dict()}
+            return {"tool": "ssh_workflow", "ok": False, "state": "blocked",
+                    "reason": "readiness_admission_unavailable", "replayAllowed": False}
+    if action in {"program-start", "program-status", "program-collect", "program-reconcile"}:
+        unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                   "reason": "program_admission_unavailable", "replayAllowed": False}
+        if (os.name != "posix" or not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_DIRECTORY", "pread", "geteuid"))):
+            body = transfer if action == "program-start" else identity
+            operation = body.get("operationId") if type(body) is dict else None
+            return {"tool": "ssh_workflow", "ok": False, "state": "refused",
+                    "reason": "program_coordinator_unsupported", "host": host,
+                    "operationId": operation if _valid_uuid(operation) else None,
+                    "nativeActionAllowed": False, "replayAllowed": False}
+        if (type(host) is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", host) is None
+                or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60 or device is not None):
+            return unknown
+        if action == "program-start":
+            if identity is not None or type(transfer) is not dict or set(transfer) != {"operationId", "program"}:
+                return unknown
+        elif transfer is not None or type(identity) is not dict or set(identity) != {"operationId"}:
+            return unknown
+        try:
+            owner = _agent_module("ssh_program_execution")
+            if action == "program-start":
+                readiness_deadline = time.monotonic() + timeout_seconds
+                try:
+                    owner._request(host, transfer)  # Validate without a connection effect.
+                except (ValueError, TypeError, KeyError, SyntaxError):
+                    return {"tool": "ssh_workflow", **owner.admit_start(REPO_ROOT, host, transfer)}
+                configured = _agent_module("ssh_transport").load_config(REPO_ROOT)
+                if host not in configured.hosts or configured.hosts[host].user != transfer["program"]["targetContext"]["principal"]:
+                    return {"tool": "ssh_workflow", "ok": False, "state": "refused",
+                            "operationId": transfer["operationId"], "reason": "program_configured_principal", "replayAllowed": False}
+                ready = context = None
+                if not owner._directory(REPO_ROOT, transfer["operationId"]).exists():
+                    context, ready = _agent_module("readiness_workflow").ensure_ssh(
+                        REPO_ROOT, host, transfer["operationId"], deadline=readiness_deadline)
+                admission = owner.admit_start(REPO_ROOT, host, transfer)
+                if admission.get("ok") is not True:
+                    return {"tool": "ssh_workflow", **admission}
+                if ready is not None:
+                    _agent_module("readiness").revalidate(context, ready)
+                result = owner.start(REPO_ROOT, host, transfer, source_context=owner._session, deadline=readiness_deadline)
+            elif action == "program-reconcile":
+                result = owner.reconcile(REPO_ROOT, host, identity, source_context=owner._session)
+            else:
+                result = (owner.status if action == "program-status" else owner.collect)(REPO_ROOT, host, identity)
+            if (type(result) is not dict or result.get("state") not in {"running", "pending", "terminal", "unknown"}
+                    or result.get("replayAllowed") is not False):
+                return unknown
+            return {"tool": "ssh_workflow", "ok": result["state"] != "unknown", **result}
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, ImportError, SyntaxError) as error:
+            core = _agent_module("readiness")
+            if isinstance(error, core.ReadinessBlocked):
+                return {"tool": "ssh_workflow", **error.as_dict()}
+            return unknown
     if action == "windows-caller-file-receipt":
         if (type(host)is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}",host)is None or transfer is not None or device is not None
                 or type(identity) is not dict or set(identity) != {"correlationId"}):
@@ -2671,6 +2947,32 @@ def _native_fixed_dispatch(surface: str, action: str, inputs: dict[str, Any]) ->
 
 
 _VM_NATIVE_ADAPTERS = (
+    "readiness_vm_dispatch", "readiness_gui_lease", "readiness_adb_dispatch",
+    "readiness_guest_jobs", "readiness_qemu_jobs", "readiness_adb_jobs", "readiness_lease_reconciliation",
+    'readiness',
+    'readiness_workflow',
+    'ssh_dispatch_admission',
+    'readiness_transport',
+    'readiness_ssh_master',
+    'readiness_providers',
+    'readiness_fixture_registry',
+    'readiness_android',
+    'readiness_qemu',
+    'readiness_tart',
+    'readiness_tart_registry',
+    'readiness_windows',
+    'readiness_windows_guest',
+    'readiness_resources',
+    'readiness_entrypoints',
+    'private_config_custody',
+    'ssh_privileged_program',
+    'readiness_leases',
+    'readiness_lease_workflow',
+    'readiness_nested_channel',
+    'tool_action_policy',
+    'durable_remote_job',
+    'ssh_program_execution',
+    'ssh_program_execution_remote',
     'android_observation',
     'android_proxy_recovery',
     'android_qualified_cli_observation',
@@ -2868,8 +3170,26 @@ def _agent_module(name: str) -> Any:
 def _valid_uuid(value: str) -> bool:
     try:
         return str(uuid.UUID(value)) == value
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return False
+
+
+def _readiness_input_refusal(tool: str, action: str, value: Any) -> dict[str, Any] | None:
+    """Typed refusal for undocumented readiness inputs before any adapter exists."""
+    if tool == "ssh_workflow":
+        reason = "readiness_identity_invalid"
+        valid = type(value) is dict and set(value) == {"operationId"} and _valid_uuid(value["operationId"])
+    elif action == "readiness-providers":
+        reason = "readiness_inputs_invalid"
+        valid = type(value) is dict and not value
+    else:
+        reason = "readiness_inputs_invalid"
+        valid = (type(value) is dict and set(value) == {"fixtureId", "operationId"}
+                 and type(value["fixtureId"]) is str and _valid_uuid(value["operationId"]))
+    if valid:
+        return None
+    return {"tool": tool, "ok": False, "state": "refused", "reason": reason,
+            "nativeActionAllowed": False, "replayAllowed": False}
 
 
 def _windows_parallel_copy_result(value: Any, correlation: str, action: str, adapter: Any) -> dict[str, Any]:
@@ -2976,12 +3296,719 @@ def _windows_parallel_copy_result(value: Any, correlation: str, action: str, ada
     return value
 
 
+_WINDOWS_FIXTURE_LIFECYCLE = {
+    "windows-fixture-stage-start": ("windows_update_fixture_stage", "start", {"host", "correlationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"correlationId"}, {"submitted"}),
+    "windows-fixture-stage-status": ("windows_update_fixture_stage", "status", {"correlationId"}, {"correlationId"}, {"running", "staged-not-server-ready"}),
+    "windows-fixture-stage-collect": ("windows_update_fixture_stage", "collect", {"correlationId"}, {"correlationId"}, {"staged-not-server-ready"}),
+    "windows-fixture-credentials-start": ("windows_fixture_credentials", "start", {"host", "leaseId", "stageCorrelationId", "correlationId"}, {"leaseId", "stageCorrelationId", "correlationId"}, {"submitted"}),
+    "windows-fixture-credentials-status": ("windows_fixture_credentials", "status", {"correlationId"}, {"correlationId"}, {"ready"}),
+    "windows-fixture-credentials-collect": ("windows_fixture_credentials", "collect", {"correlationId"}, {"correlationId"}, {"ready"}),
+    "windows-fixture-server-start": ("windows_update_fixture_server", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"leaseId", "stageCorrelationId", "serverCorrelationId"}, {"submitted"}),
+    "windows-fixture-server-acl-preflight": ("windows_update_fixture_server", "acl_preflight", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"leaseId", "stageCorrelationId", "serverCorrelationId"}, {"ready"}),
+    "windows-fixture-server-status": ("windows_update_fixture_server", "status", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
+    "windows-fixture-server-collect": ("windows_update_fixture_server", "collect", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
+    "windows-fixture-server-stop-start": ("windows_update_fixture_server", "stop_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
+    "windows-fixture-server-stop-status": ("windows_update_fixture_server", "stop_status", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"running", "stopped"}),
+    "windows-fixture-server-stop-collect": ("windows_update_fixture_server", "stop_collect", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"stopped"}),
+    "windows-fixture-credentials-cleanup-start": ("windows_fixture_credentials", "cleanup_start", {"host", "leaseId", "stageCorrelationId", "correlationId"}, {"leaseId", "stageCorrelationId", "correlationId"}, {"submitted"}),
+    "windows-fixture-credentials-cleanup-status": ("windows_fixture_credentials", "cleanup_status", {"correlationId"}, {"correlationId"}, {"running", "cleaned"}),
+    "windows-fixture-credentials-cleanup-collect": ("windows_fixture_credentials", "cleanup_collect", {"correlationId"}, {"correlationId"}, {"cleaned"}),
+    "windows-fixture-server-abort-start": ("windows_update_fixture_server", "abort_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
+    "windows-fixture-server-abort-status": ("windows_update_fixture_server", "abort_status", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"running", "stopped"}),
+    "windows-fixture-server-abort-collect": ("windows_update_fixture_server", "abort_collect", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"stopped"}),
+    "windows-fixture-server-abort-successor-start": ("windows_fixture_server_abort_successor", "start", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"submitted"}),
+    "windows-fixture-server-abort-successor-status": ("windows_fixture_server_abort_successor", "status", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"running", "cleaned"}),
+    "windows-fixture-server-abort-successor-diagnostic": ("windows_fixture_server_abort_successor", "diagnose", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"observed", "diagnosed"}),
+    "windows-fixture-server-second-abort-successor-start": ("windows_fixture_server_second_abort_successor", "start", {"successorCorrelationId"}, {"successorCorrelationId"}, {"submitted"}),
+    "windows-fixture-server-second-abort-successor-status": ("windows_fixture_server_second_abort_successor", "status", {"successorCorrelationId"}, {"successorCorrelationId"}, {"cleaned"}),
+    "windows-fixture-server-second-abort-successor-diagnostic": ("windows_fixture_server_second_abort_successor", "diagnose", {"successorCorrelationId"}, {"successorCorrelationId"}, {"observed", "diagnosed"}),
+    "windows-fixture-server-second-abort-recovery-diagnose": ("windows_fixture_server_second_abort_successor", "resume_diagnose", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"observed", "diagnosed"}),
+    "windows-fixture-server-second-abort-recovery-start": ("windows_fixture_server_second_abort_successor", "resume_start", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"submitted"}),
+    "windows-fixture-server-second-abort-recovery-status": ("windows_fixture_server_second_abort_successor", "resume_status", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"cleaned"}),
+    "windows-fixture-server-resume-no-dispatch-start": ("windows_fixture_server_resume", "start", {"serverCorrelationId"}, {"serverCorrelationId"}, {"submitted"}),
+    "windows-fixture-server-post-resource-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose", {"serverCorrelationId"}, {"serverCorrelationId"}, {"diagnosed"}),
+    "windows-fixture-server-probe-events-acl-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose_events_acl", {"serverCorrelationId"}, {"serverCorrelationId"}, {"observed"}),
+    "windows-fixture-acl-preflight": ("windows_fixture_acl_preflight", "preflight", {"stageCorrelationId"}, {"stageCorrelationId"}, {"ready"}),
+    "windows-fixture-acl-preflight-status": ("windows_fixture_acl_preflight", "status", {"stageCorrelationId"}, {"stageCorrelationId"}, {"observed"}),
+    "windows-fixture-credentials-abort-start": ("windows_fixture_credentials", "abort_start", {"correlationId"}, {"correlationId"}, {"submitted"}),
+    "windows-fixture-credentials-abort-status": ("windows_fixture_credentials", "abort_status", {"correlationId"}, {"correlationId"}, {"running", "aborted-cleaned"}),
+    "windows-fixture-credentials-abort-collect": ("windows_fixture_credentials", "abort_collect", {"correlationId"}, {"correlationId"}, {"aborted-cleaned"}),
+    "windows-fixture-owner-network-start": ("windows_fixture_owner_network", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "ownerNetworkCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId", "controllerId", "ownerPid", "ownerStartedAtUtc"}, {"leaseId", "stageCorrelationId", "serverCorrelationId", "ownerNetworkCorrelationId"}, {"submitted"}),
+    "windows-fixture-owner-network-status": ("windows_fixture_owner_network", "status", {"ownerNetworkCorrelationId"}, {"ownerNetworkCorrelationId"}, {"correlated"}),
+    "windows-fixture-owner-network-collect": ("windows_fixture_owner_network", "collect", {"ownerNetworkCorrelationId"}, {"ownerNetworkCorrelationId"}, {"correlated"}),
+    "windows-fixture-network-probe-start": ("windows_fixture_network_probe", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "probeCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId", "controllerId", "ownerPid", "ownerStartedAtUtc"}, {"leaseId", "stageCorrelationId", "serverCorrelationId", "probeCorrelationId"}, {"submitted"}),
+    "windows-fixture-network-probe-status": ("windows_fixture_network_probe", "status", {"probeCorrelationId"}, {"probeCorrelationId"}, {"correlated"}),
+    "windows-fixture-network-probe-collect": ("windows_fixture_network_probe", "collect", {"probeCorrelationId"}, {"probeCorrelationId"}, {"correlated"}),
+}
+
+
+def _windows_fixture_lifecycle_refusal(action, inputs):
+    """Finite fixture lifecycle request refusal; None admits the exact request."""
+    route = _WINDOWS_FIXTURE_LIFECYCLE.get(action)
+    if route is None:
+        return _error("vm_workflow", "Unknown fixed Windows fixture lifecycle action.")
+    module_name, method_name, fields, uuid_fields, passing_states = route
+    if not isinstance(inputs, dict) or set(inputs) != fields or ("host" in fields and inputs.get("host") != "archlinux"):
+        return _error("vm_workflow", "Windows fixture lifecycle requires exact CP117 fields.")
+    if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_fields):
+        return _error("vm_workflow", "Windows fixture lifecycle correlation is invalid.")
+    if len({inputs[key] for key in uuid_fields}) != len(uuid_fields):
+        return _error("vm_workflow", "Windows fixture lifecycle correlations must differ.")
+    if "sourceSha" in fields and (not isinstance(inputs["sourceSha"], str) or not re.fullmatch(r"[0-9a-f]{40}", inputs["sourceSha"])):
+        return _error("vm_workflow", "Windows fixture lifecycle source SHA is invalid.")
+    for key in ("fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"):
+        if key in fields and (not isinstance(inputs[key], str) or not re.fullmatch(r"sha256-[0-9a-f]{64}", inputs[key])):
+            return _error("vm_workflow", "Windows fixture lifecycle artifact identity is invalid.")
+    if "controllerId" in fields and (not isinstance(inputs["controllerId"], str) or not _valid_uuid(inputs["controllerId"])):
+        return _error("vm_workflow", "Windows fixture controller identity is invalid.")
+    if "ownerPid" in fields and (type(inputs["ownerPid"]) is not int or inputs["ownerPid"] <= 0):
+        return _error("vm_workflow", "Windows fixture owner PID is invalid.")
+    if "ownerStartedAtUtc" in fields and (not isinstance(inputs["ownerStartedAtUtc"], str) or not re.fullmatch(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z", inputs["ownerStartedAtUtc"])):
+        return _error("vm_workflow", "Windows fixture owner start time is invalid.")
+    return None
+
+
+def _secureboot_clone_invalid(inputs):
+    return (set(inputs) != {"host", "ownerPid", "ownerStartTicks", "baselineReservationId", "timeoutSeconds"}
+            or inputs.get("host") != "archlinux"
+            or type(inputs.get("ownerPid")) is not int or inputs["ownerPid"] != 3369984
+            or type(inputs.get("ownerStartTicks")) is not int or inputs["ownerStartTicks"] != 45177745
+            or inputs.get("baselineReservationId") != "env-fc3b3308d6a07175d1e4e08330f7f3aa"
+            or type(inputs.get("timeoutSeconds")) is not int
+            or not 10 <= inputs["timeoutSeconds"] <= 60)
+
+
+def _secureboot_inventory_invalid(inputs):
+    return (set(inputs) != {"host", "qemuPid", "startTicks", "timeoutSeconds"}
+            or inputs.get("host") != "archlinux"
+            or type(inputs.get("qemuPid")) is not int or inputs["qemuPid"] != 3369984
+            or type(inputs.get("startTicks")) is not int or inputs["startTicks"] != 45177745
+            or type(inputs.get("timeoutSeconds")) is not int
+            or not 10 <= inputs["timeoutSeconds"] <= 60)
+
+
+def _virt_firmware_admission_invalid(inputs):
+    return (set(inputs) != {"host", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+            or type(inputs.get("timeoutSeconds")) is not int
+            or not 10 <= inputs["timeoutSeconds"] <= 30)
+
+
+def _secureboot_fresh_invalid(action, inputs):
+    required = {"host", "correlationId", "timeoutSeconds"}
+    if action.endswith("-start"):
+        required.add("reservationRequest")
+    return (set(inputs) != required or inputs.get("host") != "archlinux"
+            or not isinstance(inputs.get("correlationId"), str)
+            or not _valid_uuid(inputs["correlationId"])
+            or type(inputs.get("timeoutSeconds")) is not int
+            or not 30 <= inputs["timeoutSeconds"] <= 300
+            or action.endswith("-start") and not isinstance(inputs.get("reservationRequest"), dict))
+
+
+# Request-shape predicates and refusals owned by one dispatcher branch. The branch
+# and the pre-recovery gate call the same function, so both refuse exactly alike.
+def _deploy_frame_invalid(inputs):
+    return set(inputs) != {"deploymentId", "operationId"} or any(type(v) is not str for v in inputs.values())
+
+
+def _deploy_lifecycle_invalid(action, inputs):
+    starting = action.endswith("-start")
+    required = {"spec", "setup", "credentialFile"} if starting else {"deploymentId", "credentialFile"}
+    return (set(inputs) != required or type(inputs["credentialFile"]) is not str
+            or starting and (type(inputs["spec"]) is not dict or type(inputs["setup"]) is not dict)
+            or not starting and type(inputs["deploymentId"]) is not str)
+
+
+def _deploy_read_invalid(action, inputs):
+    resource_read = action.endswith("-resources")
+    return (set(inputs) != ({"spec", "credentialFile"} if resource_read else {"spec"})
+            or type(inputs["spec"]) is not dict
+            or resource_read and type(inputs["credentialFile"]) is not str)
+
+
+def _source_review_close_invalid(inputs):
+    required = {"manifestPath", "manifestSha256"}
+    allowed = required | {"packetManifestPath", "packetManifestSha256", "proofPath", "proofSha256"}
+    return bool(not required <= set(inputs) or set(inputs) - allowed)
+
+
+def _baseline_source_inventory_invalid(inputs):
+    return bool(inputs)
+
+
+def _c32_archive_lease_invalid(inputs):
+    return not isinstance(inputs, dict) or set(inputs) != {"leaseId"}
+
+
+def _matrix_equivalence_record_invalid(inputs):
+    return (set(inputs) != {"receiptId", "artifactSetId", "targetSourceSHA", "reviewerAttestation"}
+            or not isinstance(inputs["receiptId"], str)
+            or re.fullmatch(r"native-acceptance-[0-9a-f]{32}", inputs["receiptId"]) is None
+            or not isinstance(inputs["artifactSetId"], str)
+            or re.fullmatch(r"artifact-set-[0-9a-f]{64}", inputs["artifactSetId"]) is None
+            or not isinstance(inputs["targetSourceSHA"], str)
+            or re.fullmatch(r"[0-9a-f]{40}", inputs["targetSourceSHA"]) is None
+            or not isinstance(inputs["reviewerAttestation"], str)
+            or not inputs["reviewerAttestation"].strip()
+            or len(inputs["reviewerAttestation"]) > 240)
+
+
+def _android_admission_readback_invalid(inputs):
+    required = {"host", "device", "correlationId"}
+    optional = {"expectedBaseSha256", "timeoutSeconds"}
+    return bool(not isinstance(inputs, dict) or not required <= set(inputs) or set(inputs) - required - optional)
+
+
+def _android_unknown_install_invalid(action, inputs):
+    required = {"installCorrelationId", "currentReadbackCorrelationId",
+                "expectedCurrentOwner", "expectedCurrentRevision"}
+    if action.endswith("-release"):
+        required.add("reviewedProofSha256")
+    return (not isinstance(inputs, dict) or set(inputs) != required
+            or any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key])
+                   for key in ("installCorrelationId", "currentReadbackCorrelationId", "expectedCurrentOwner"))
+            or type(inputs["expectedCurrentRevision"]) is not int or inputs["expectedCurrentRevision"] < 0
+            or (action.endswith("-release")
+                and (not isinstance(inputs["reviewedProofSha256"], str)
+                     or re.fullmatch(r"[0-9a-f]{64}", inputs["reviewedProofSha256"]) is None)))
+
+
+def _obsolete_consent_denial_invalid(inputs):
+    return (not isinstance(inputs, dict) or set(inputs) != {"denialId"}
+            or not isinstance(inputs["denialId"], str) or not _valid_uuid(inputs["denialId"]))
+
+
+def _consent_grant_prompt_invalid(inputs):
+    return (not isinstance(inputs, dict) or set(inputs) != {"correlationId", "observationId"}
+            or any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in inputs))
+
+
+def _consent_grant_acceptance_refusal(action, inputs):
+    """Every pure consent grant refusal; None admits the exact request."""
+    start_action = action.endswith("-start")
+    required = ({"host", "device", "correlationId", "artifactId", "cliStageCorrelationId",
+                 "openingReadbackCorrelationId", "expectedBackupSha256",
+                 "expectedOwner", "expectedRevision"} if start_action else {"correlationId"})
+    if not isinstance(inputs, dict) or set(inputs) != required:
+        return _error("vm_workflow", "Android consent grant requires exact receipt bindings.")
+    uuid_keys = ({"correlationId", "cliStageCorrelationId", "openingReadbackCorrelationId",
+                  "expectedOwner"} if start_action else {"correlationId"})
+    if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_keys):
+        return _error("vm_workflow", "Android consent grant requires canonical correlations.")
+    if start_action and (not isinstance(inputs["artifactId"], str) or
+            re.fullmatch(r"sha256-[0-9a-f]{64}", inputs["artifactId"]) is None or
+            not isinstance(inputs["expectedBackupSha256"], str) or
+            re.fullmatch(r"[0-9a-f]{64}", inputs["expectedBackupSha256"]) is None or
+            type(inputs["expectedRevision"]) is not int or inputs["expectedRevision"] < 0):
+        return _error("vm_workflow", "Android consent grant requires exact artifact and revision.")
+    if start_action and (inputs["host"] != "archlinux" or inputs["device"] != "api35"):
+        return _error("vm_workflow", "Android grant requires the configured disposable API35 route.")
+    return None
+
+
+def _vpn_permission_reset_refusal(action, inputs):
+    """Every pure permission reset refusal; None admits the exact request."""
+    start_action = action.endswith("-start")
+    required = ({"host", "device", "correlationId", "artifactId", "cliStageCorrelationId",
+                 "openingReadbackCorrelationId", "expectedBackupSha256",
+                 "expectedOwner", "expectedRevision"} if start_action else {"correlationId"})
+    if not isinstance(inputs, dict) or set(inputs) != required:
+        return _error("vm_workflow", "Android permission reset requires exact receipt bindings.")
+    if start_action and any(type(inputs[key]) is not str or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", inputs[key]) is None for key in ("host", "device")):
+        return _error("vm_workflow", "Android permission reset requires explicit host and device aliases.")
+    uuid_keys = ({"correlationId", "cliStageCorrelationId", "openingReadbackCorrelationId",
+                  "expectedOwner"} if start_action else {"correlationId"})
+    if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_keys):
+        return _error("vm_workflow", "Android permission reset requires canonical correlations.")
+    if start_action and (not isinstance(inputs["artifactId"], str) or
+            re.fullmatch(r"sha256-[0-9a-f]{64}", inputs["artifactId"]) is None or
+            not isinstance(inputs["expectedBackupSha256"], str) or
+            re.fullmatch(r"[0-9a-f]{64}", inputs["expectedBackupSha256"]) is None or
+            type(inputs["expectedRevision"]) is not int or inputs["expectedRevision"] < 0):
+        return _error("vm_workflow", "Android permission reset requires exact artifact and revision.")
+    return None
+
+
+def _android_runtime_acceptance_invalid(action, inputs):
+    required = ({"correlationId", "endpointCorrelationId", "cliStageCorrelationId"}
+                if action.endswith("-start") else {"correlationId"})
+    return (not isinstance(inputs, dict) or set(inputs) != required
+            or any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in required))
+
+
+def _api35_remaining_proxy_status_invalid(inputs):
+    return bool(type(inputs) is not dict or inputs)
+
+
+def _fixture_tls_mint_invalid(inputs):
+    required = {"campaignId", "sourceSha", "baseArtifactId", "targetArtifactId"}
+    return (not isinstance(inputs, dict) or set(inputs) not in (required, required | {"sourceRoot"})
+            or not isinstance(inputs.get("campaignId"), str) or not _valid_uuid(inputs["campaignId"])
+            or not isinstance(inputs.get("sourceSha"), str) or not re.fullmatch(r"[0-9a-f]{40}", inputs["sourceSha"])
+            or any(not isinstance(inputs[key], str) or not re.fullmatch(r"sha256-[0-9a-f]{64}", inputs[key])
+                   for key in ("baseArtifactId", "targetArtifactId"))
+            or ("sourceRoot" in inputs and (not isinstance(inputs["sourceRoot"], str)
+                                            or not 1 <= len(inputs["sourceRoot"]) <= 4096 or "\x00" in inputs["sourceRoot"]
+                                            or not Path(inputs["sourceRoot"]).is_absolute())))
+
+
+def _endpoint_mount_collect_invalid(inputs):
+    return (not isinstance(inputs, dict) or set(inputs) != {"correlationId", "diagnosticCorrelationId"}
+            or any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in inputs)
+            or inputs["correlationId"] == inputs["diagnosticCorrelationId"])
+
+
+def _recovered_endpoint_stage_invalid(inputs):
+    required = {"correlationId", "historicalCorrelationId", "recoveryCorrelationId", "stageCorrelationId"}
+    return (not isinstance(inputs, dict) or set(inputs) != required
+            or any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in required)
+            or len(set(inputs.values())) != 4)
+
+
+def _endpoint_cleanup_readmission_invalid(inputs):
+    required = {"correlationId", "readmissionCorrelationId"}
+    uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+    return (not isinstance(inputs, dict) or set(inputs) != required
+            or any(not isinstance(inputs[key], str) or re.fullmatch(uuid_pattern, inputs[key]) is None
+                   for key in required)
+            or inputs["correlationId"] == inputs["readmissionCorrelationId"])
+
+
+def _consent_acceptance_preflight_invalid(inputs):
+    return set(inputs) != {"host", "device", "cliStageCorrelationId"}
+
+
+def _msi_preinstall_status_invalid(inputs):
+    required = {"host", "jobId"}
+    return bool(not isinstance(inputs, dict) or not required <= set(inputs)
+                or set(inputs) - required - {"timeoutSeconds"})
+
+
+def _msi_powershell_preflight_invalid(inputs):
+    return not isinstance(inputs, dict) or set(inputs) != {"host"}
+
+
+def _msi_base_finish_invalid(inputs):
+    return not isinstance(inputs, dict) or set(inputs) != {"correlationId"} or not isinstance(inputs["correlationId"], str)
+
+
+def _msiexec_service_diagnostic_invalid(inputs):
+    return (not isinstance(inputs, dict) or set(inputs) != {"action", "host"}
+            or inputs.get("action") not in {"preflight", "status"}
+            or inputs.get("host") != "archlinux")
+
+
+def _artifact_cache_check_invalid(inputs):
+    return (set(inputs) != {"sourceSha", "artifactSetId"} or not isinstance(inputs["sourceSha"], str)
+            or not re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", inputs["sourceSha"]))
+
+
+def _android_proxy_refusal(action, inputs):
+    """Every pure proxy recovery refusal; None admits the exact request."""
+    fields = ({"host", "device", "expectedPort", "correlationId"} if action == "android-proxy-recover"
+              else {"host", "device", "identity"})
+    if set(inputs) != fields or any(not isinstance(inputs[key], str) or not inputs[key] for key in ("host", "device")):
+        return _error("vm_workflow", "Proxy recovery requires an exact configured host/device and recovery identity.")
+    if action == "android-proxy-recover" and (type(inputs["expectedPort"]) is not int or not 1 <= inputs["expectedPort"] <= 65535
+                                              or not isinstance(inputs["correlationId"], str)):
+        return _error("vm_workflow", "Proxy recovery requires a task port and opaque correlation.")
+    return None
+
+
+def _credential_workflow_refusal(action, inputs):
+    """Every pure credential workflow refusal; None admits the exact request."""
+    required = {"host", "correlationId"}
+    optional = {"timeoutSeconds"}
+    if action == "windows-credential-recover-start":
+        required.add("environment")
+    if action == "credential-status":
+        required.add("handle")
+        optional = set()
+    if not required <= set(inputs) or set(inputs) - required - optional:
+        return _error("vm_workflow", "Credential workflow requires only configured identity and an opaque correlation or handle.")
+    if any(not isinstance(inputs[key], str) or not inputs[key] for key in required):
+        return _error("vm_workflow", "Credential workflow identity fields must be nonempty strings.")
+    timeout = inputs.get("timeoutSeconds", 15)
+    if type(timeout) is not int or not 1 <= timeout <= 60:
+        return _error("vm_workflow", "Credential workflow timeout must be between 1 and 60 seconds.")
+    return None
+
+
+def _credential_probe_refusal(action, inputs):
+    """Every pure credential probe refusal; None admits the exact request."""
+    required = {"host", "correlationId"} | ({"environment"} if action.endswith("-start") else set())
+    if set(inputs) - required - {"timeoutSeconds"} or not required <= set(inputs):
+        return _error("vm_workflow", "Credential probe new starts require host, environment and correlationId; status retains its original identity.")
+    if any(not isinstance(inputs[key], str) or not inputs[key] for key in required):
+        return _error("vm_workflow", "Credential probe identity fields must be nonempty strings.")
+    timeout = inputs.get("timeoutSeconds", 15)
+    if type(timeout) is not int or not 1 <= timeout <= 60:
+        return _error("vm_workflow", "Credential probe timeout must be between 1 and 60 seconds.")
+    return None
+
+
+def _parallel_vm_copy_invalid(action, inputs):
+    correlation = inputs.get("correlationId")
+    required = {"host", "correlationId", "timeoutSeconds"}
+    if action.endswith("-start"):
+        required.add("sourceEvidenceLeaf")
+    return (type(inputs) is not dict or set(inputs) != required or inputs.get("host") != "archlinux"
+            or type(inputs.get("host")) is not str or type(correlation) is not str or not _valid_uuid(correlation)
+            or type(inputs.get("timeoutSeconds")) is not int or not 5 <= inputs["timeoutSeconds"] <= 60
+            or (action.endswith("-start") and (type(inputs["sourceEvidenceLeaf"]) is not str
+                or re.fullmatch(r"windows-parallel-vm-source-read-[0-9a-f]{32}", inputs["sourceEvidenceLeaf"]) is None)))
+
+
+def _parallel_vm_source_inventory_invalid(inputs):
+    return (not isinstance(inputs, dict) or set(inputs) != {"host", "timeoutSeconds"}
+            or inputs.get("host") != "archlinux"
+            or type(inputs.get("timeoutSeconds")) is not int
+            or not 30 <= inputs["timeoutSeconds"] <= 300)
+
+
+def _swtpm_owner_observe_invalid(inputs):
+    return (set(inputs) != {"host", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+            or type(inputs.get("timeoutSeconds")) is not int or not 10 <= inputs["timeoutSeconds"] <= 60)
+
+
+def _optical_frame_collect_invalid(inputs):
+    correlation = "e80d5b29-d44f-4b22-a821-5612304564b5"
+    closure = "7cbc014c-3890-422a-891a-a114d7cb779e"
+    return (not isinstance(inputs, dict)
+            or set(inputs) != {"host", "correlationId", "closureCorrelationId", "timeoutSeconds"}
+            or inputs.get("host") != "archlinux"
+            or inputs.get("correlationId") != correlation
+            or inputs.get("closureCorrelationId") != closure
+            or type(inputs.get("timeoutSeconds")) is not int
+            or not 30 <= inputs["timeoutSeconds"] <= 300)
+
+
+def _vm_invalid_before_recovery(action, inputs):
+    """Keep finite native request-shape refusals ahead of target recovery."""
+    original_vm_mutations = {
+        'windows-msi-owner-relaunch-launch': 'windows_msi_owner_relaunch',
+        'windows-msi-stale-lock-recover': 'windows_msi_stale_lock_recovery',
+        'windows-msi-stale-lock-reconcile': 'windows_msi_stale_lock_reconcile',
+        'windows-fixture-stage-recover-7f27': 'windows_update_fixture_stage_recovery',
+    }
+    if action in original_vm_mutations:
+        if (set(inputs) != {'host','vmIdentity'} or inputs.get('host') != 'archlinux'
+                or type(inputs.get('vmIdentity')) is not str):
+            return True
+        try:
+            _agent_module(original_vm_mutations[action])._validate_target(REPO_ROOT, inputs)
+        except (ValueError, OSError, KeyError, TypeError):
+            return True
+        return False
+    if action in {"windows-credential-probe-start", "windows-credential-recover-start"}:
+        # The branch's own pure refusals, then the environment admission that each
+        # adapter's start performs before any effect.
+        if action == "windows-credential-probe-start":
+            refusal = _credential_probe_refusal(action, inputs)
+        else:
+            refusal = _credential_workflow_refusal("windows-credential-recover-start", inputs)
+        if refusal is not None:
+            return True
+        probe = _agent_module("windows_credential_probe_ssh")
+        try:
+            probe._admit_environment(REPO_ROOT, inputs["host"], inputs["environment"])
+        except probe.WindowsCredentialProbeSshError:
+            return True
+        return False
+    if action == "macos-machine-server-stop-start" and (type(inputs.get("vmName")) is not str or not inputs["vmName"]):
+        return True
+    if action in {"windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start",
+                  "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect",
+                  "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start",
+                  "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect",
+                  "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start",
+                  "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect",
+                  "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start",
+                  "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect",
+                  "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start",
+                  "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect"}:
+        # The same fixed-host request shape each Setup route refuses itself. Exact
+        # members only, so the action catalogue audit keeps a finite route bound.
+        return (set(inputs) != {"host", "nextCorrelationId", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+                or not isinstance(inputs.get("nextCorrelationId"), str) or not _valid_uuid(inputs["nextCorrelationId"])
+                or type(inputs.get("timeoutSeconds")) is not int or not 30 <= inputs["timeoutSeconds"] <= 300)
+    if action == "windows-vm-setup-install-disk-proof":
+        return (set(inputs) != {"host", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+                or type(inputs.get("timeoutSeconds")) is not int or not 30 <= inputs["timeoutSeconds"] <= 300)
+    if action == "windows-vm-secureboot-clone-preflight":
+        return _secureboot_clone_invalid(inputs)
+    if action == "windows-vm-secureboot-inventory":
+        return _secureboot_inventory_invalid(inputs)
+    if action == "windows-vm-virt-firmware-admission":
+        return _virt_firmware_admission_invalid(inputs)
+    if action in {"windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start",
+                  "windows-vm-secureboot-fresh-status"}:
+        return _secureboot_fresh_invalid(action, inputs)
+    if action in _WINDOWS_FIXTURE_LIFECYCLE:
+        # Exact table members only: the dispatcher refuses these same requests itself.
+        return _windows_fixture_lifecycle_refusal(action, inputs) is not None
+    # Every other branch's pure refusals before its first effect, for all actions of its
+    # group. A single branch shares its predicate or refusal helper with the gate; a
+    # predicate that several branches repeat is copied with their locals inlined and
+    # without the dict check that _vm_workflow_impl has already made.
+    # tests/test_pure_gates_before_readiness.py pins every action's entry to its branch.
+    if action in {"readiness-ensure", "readiness-providers", "readiness-reboot", "readiness-status"}:
+        return _readiness_input_refusal("vm_workflow", action, inputs) is not None
+    if action in {"windows-vm-deploy-qualify", "windows-vm-deploy-qualify-status", "windows-vm-deploy-secure",
+                  "windows-vm-deploy-secure-status"}:
+        return (set(inputs) != {"deploymentId", "operationId", "credentialFile"}
+                or any(type(v) is not str for v in inputs.values()))
+    if action in {"windows-vm-deploy-frame", "windows-vm-deploy-frame-collect"}:
+        return _deploy_frame_invalid(inputs)
+    if action in {"windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop"}:
+        return _deploy_lifecycle_invalid(action, inputs)
+    if action in {"windows-vm-deploy-media", "windows-vm-deploy-preflight", "windows-vm-deploy-resources"}:
+        return _deploy_read_invalid(action, inputs)
+    if action == "source-review-close":
+        return _source_review_close_invalid(inputs)
+    if action == "baseline-source-inventory":
+        return _baseline_source_inventory_invalid(inputs)
+    if action == "matrix-equivalence-record":
+        return _matrix_equivalence_record_invalid(inputs)
+    if action in {"windows-cp117-campaign-diagnostic", "windows-cp117-campaign-status",
+                  "windows-fixture-stage-recover-7f27-diagnostic", "windows-msi-owner-census",
+                  "windows-msi-owner-census-preflight", "windows-msi-owner-diagnostic",
+                  "windows-msi-owner-liveness", "windows-msi-owner-public-status-collect",
+                  "windows-msi-owner-public-status-diagnose", "windows-msi-owner-public-status-retry-collect",
+                  "windows-msi-owner-public-status-retry-diagnose",
+                  "windows-msi-owner-public-status-retry-observe",
+                  "windows-msi-owner-public-status-retry-preflight",
+                  "windows-msi-owner-public-status-retry-start", "windows-msi-owner-public-status-retry-status",
+                  "windows-msi-owner-public-status-start", "windows-msi-owner-public-status-status",
+                  "windows-msi-owner-public-status-third-collect",
+                  "windows-msi-owner-public-status-third-observe", "windows-msi-owner-public-status-third-start",
+                  "windows-msi-owner-public-status-third-status", "windows-msi-owner-quit-phase-collect",
+                  "windows-msi-owner-quit-phase-start", "windows-msi-owner-quit-phase-status",
+                  "windows-msi-owner-relaunch-quit-collect", "windows-msi-owner-relaunch-quit-diagnose",
+                  "windows-msi-owner-relaunch-quit-start", "windows-msi-owner-relaunch-quit-status",
+                  "windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic",
+                  "windows-msi-owner-relaunch-quit-v2-collect", "windows-msi-owner-relaunch-quit-v2-diagnose",
+                  "windows-msi-owner-relaunch-quit-v2-start", "windows-msi-owner-relaunch-quit-v2-status",
+                  "windows-msi-owner-relaunch-quit-v3-bootstrap-diagnostic",
+                  "windows-msi-owner-relaunch-quit-v3-collect", "windows-msi-owner-relaunch-quit-v3-diagnose",
+                  "windows-msi-owner-relaunch-quit-v3-start", "windows-msi-owner-relaunch-quit-v3-status",
+                  "windows-msi-owner-relaunch-quit-v3-task-result", "windows-msi-owner-relaunch-quit-v4-collect",
+                  "windows-msi-owner-relaunch-quit-v4-diagnose", "windows-msi-owner-relaunch-quit-v4-start",
+                  "windows-msi-owner-relaunch-quit-v4-status", "windows-msi-stale-lock-diagnose",
+                  "windows-msi-stale-lock-reconciliation-status"}:
+        return inputs != {"host": "archlinux"}
+    if action in {"windows-cp117-c32-host-archive-self-test", "windows-cp117-c32-host-archive-start",
+                  "windows-cp117-c32-host-archive-status", "windows-cp117-c32-retained-parser",
+                  "windows-cp117-c32-retained-task-retire-preflight",
+                  "windows-cp117-c32-retained-task-retire-start",
+                  "windows-cp117-c32-retained-task-retire-status", "windows-cp117-cp95-retained-tasks",
+                  "windows-cp117-cp95-task-retire-diagnose", "windows-cp117-cp95-task-retire-finish",
+                  "windows-cp117-cp95-task-retire-finish-diagnose", "windows-cp117-cp95-task-retire-preflight",
+                  "windows-cp117-cp95-task-retire-start", "windows-cp117-cp95-task-retire-status",
+                  "windows-cp117-cp95-task-retire-successor-admission-diagnose",
+                  "windows-cp117-cp95-task-retire-successor-start",
+                  "windows-cp117-cp95-task-retire-successor-status",
+                  "windows-cp117-cp95-task-retire-tail-close-pre-effect",
+                  "windows-cp117-cp95-task-retire-tail-diagnose", "windows-cp117-cp95-task-retire-tail-start",
+                  "windows-cp117-cp95-task-retire-tail-status", "windows-cp117-e848-http-task",
+                  "windows-cp117-e848-http-task-retire-preflight", "windows-cp117-e848-http-task-retire-start",
+                  "windows-cp117-e848-http-task-retire-status", "windows-cp117-guest-agent-recovery-diagnose",
+                  "windows-cp117-guest-agent-recovery-journal", "windows-cp117-guest-agent-recovery-parser",
+                  "windows-cp117-guest-agent-recovery-preflight", "windows-cp117-guest-agent-recovery-start",
+                  "windows-cp117-guest-agent-recovery-status",
+                  "windows-cp117-guest-agent-recovery-successor-parser",
+                  "windows-cp117-guest-agent-recovery-successor-preflight",
+                  "windows-cp117-guest-agent-recovery-successor-start",
+                  "windows-cp117-guest-agent-recovery-successor-status",
+                  "windows-cp117-historical-base-archives", "windows-cp117-retirement-recovery-finish",
+                  "windows-cp117-retirement-recovery-parser", "windows-cp117-retirement-recovery-preflight",
+                  "windows-cp117-retirement-recovery-start", "windows-cp117-retirement-recovery-status",
+                  "windows-cp117-source-pre-effect-close", "windows-cp117-source-pre-effect-diagnose",
+                  "windows-cp117-source-pre-effect-status", "windows-cp117-staged-fixture-retire-boundary",
+                  "windows-cp117-staged-fixture-retire-diagnose",
+                  "windows-cp117-staged-fixture-retire-guard-diagnostic",
+                  "windows-cp117-staged-fixture-retire-locks", "windows-cp117-staged-fixture-retire-parser",
+                  "windows-cp117-staged-fixture-retire-preflight", "windows-cp117-staged-fixture-retire-start",
+                  "windows-cp117-staged-fixture-retire-status", "windows-cp117-staged-fixture-retire-tree"}:
+        return inputs != {}
+    if action in {"windows-cp117-c32-archive-diagnose", "windows-cp117-c32-archive-preflight"}:
+        return _c32_archive_lease_invalid(inputs)
+    if action == "android-admission-readback":
+        return _android_admission_readback_invalid(inputs)
+    if action in {"android-admission-preflight", "android-admission-status"}:
+        return bool(not {"host", "device", "correlationId"} <= set(inputs)
+                    or set(inputs) - {"host", "device", "correlationId"} - {"timeoutSeconds"})
+    if action in {"android-package-install-unknown-proof", "android-package-install-unknown-release"}:
+        return _android_unknown_install_invalid(action, inputs)
+    if action in {"android-consent-grant-acceptance-diagnose", "android-consent-grant-acceptance-reconcile",
+                  "android-consent-grant-acceptance-reconcile-diagnose",
+                  "android-consent-grant-acceptance-reconcile-status"}:
+        return (set(inputs) != {"correlationId"} or not isinstance(inputs["correlationId"], str)
+                or not _valid_uuid(inputs["correlationId"]))
+    if action == "android-obsolete-consent-denial-collect":
+        return _obsolete_consent_denial_invalid(inputs)
+    if action == "android-consent-grant-prompt-collect":
+        return _consent_grant_prompt_invalid(inputs)
+    if action in {"android-consent-grant-acceptance-collect", "android-consent-grant-acceptance-start",
+                  "android-consent-grant-acceptance-status"}:
+        return _consent_grant_acceptance_refusal(action, inputs) is not None
+    if action in {"android-vpn-permission-reset-collect", "android-vpn-permission-reset-start",
+                  "android-vpn-permission-reset-status"}:
+        return _vpn_permission_reset_refusal(action, inputs) is not None
+    if action == "android-fixture-tls-mint":
+        return _fixture_tls_mint_invalid(inputs)
+    if action in {"android-runtime-acceptance-collect", "android-runtime-acceptance-start",
+                  "android-runtime-acceptance-status"}:
+        return _android_runtime_acceptance_invalid(action, inputs)
+    if action == "android-api35-remaining-proxy-status":
+        return _api35_remaining_proxy_status_invalid(inputs)
+    if action in {"android-endpoint-cleanup-mount-diagnostic", "android-endpoint-cleanup-readmission-status",
+                  "android-endpoint-cleanup-readmitted-status"}:
+        return (set(inputs) != {"correlationId", "readmissionCorrelationId"}
+                or any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key])
+                       for key in {"correlationId", "readmissionCorrelationId"})
+                or inputs["correlationId"] == inputs["readmissionCorrelationId"])
+    if action == "android-endpoint-mount-diagnostic-collect":
+        return _endpoint_mount_collect_invalid(inputs)
+    if action == "android-recovered-endpoint-stage-collect":
+        return _recovered_endpoint_stage_invalid(inputs)
+    if action in {"android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmitted"}:
+        return _endpoint_cleanup_readmission_invalid(inputs)
+    if action == "android-consent-acceptance-preflight":
+        return _consent_acceptance_preflight_invalid(inputs)
+    if action == "windows-msi-preinstall-status":
+        return _msi_preinstall_status_invalid(inputs)
+    if action == "windows-msi-powershell-preflight":
+        return _msi_powershell_preflight_invalid(inputs)
+    if action == "windows-msiexec-service-diagnostic":
+        try:
+            return _msiexec_service_diagnostic_invalid(inputs)
+        except TypeError:  # An unhashable value, which the dispatcher's own handler refuses.
+            return True
+    if action in {"windows-msi-owner-relaunch-collect", "windows-msi-owner-relaunch-detail",
+                  "windows-msi-owner-relaunch-diagnose", "windows-msi-owner-relaunch-endpoint-access",
+                  "windows-msi-owner-relaunch-status", "windows-msi-stale-lock-reconcile-close",
+                  "windows-msi-stale-lock-reconcile-status"}:
+        return set(inputs) != {"host"} or inputs.get("host") != "archlinux"
+    if action in {"windows-msi-base-pre-effect-close", "windows-msi-base-pre-effect-status"}:
+        return set(inputs) != {"host"} or inputs["host"] != "archlinux"
+    if action == "windows-msi-base-finish-observed":
+        return _msi_base_finish_invalid(inputs)
+    if action == "artifact-cache-check":
+        return _artifact_cache_check_invalid(inputs)
+    if action in {"android-proxy-recover", "android-proxy-recovery-status"}:
+        return _android_proxy_refusal(action, inputs) is not None
+    if action in {"credential-status", "windows-credential-recover-status"}:
+        return _credential_workflow_refusal(action, inputs) is not None
+    if action == "windows-credential-probe-status":
+        return _credential_probe_refusal(action, inputs) is not None
+    if action in {"linux-package-fixture-build-pre-effect-close",
+                  "linux-package-fixture-build-terminal-ready-close"}:
+        return (set(inputs) != {"correlationId", "closureDigest"} or not isinstance(inputs.get("correlationId"), str)
+                or not _valid_uuid(inputs["correlationId"]) or not isinstance(inputs.get("closureDigest"), str)
+                or re.fullmatch(r"[0-9a-f]{64}", inputs["closureDigest"]) is None)
+    if action in {"linux-package-fixture-build-pre-effect-status",
+                  "linux-package-fixture-build-terminal-ready-status"}:
+        return (set(inputs) != {"correlationId"} or not isinstance(inputs.get("correlationId"), str)
+                or not _valid_uuid(inputs["correlationId"]))
+    if action in {"arch-ai-loop-observe", "arch-qemu-holder-census"}:
+        return (set(inputs) != {"host", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+                or type(inputs.get("timeoutSeconds")) is not int or not 1 <= inputs["timeoutSeconds"] <= 30)
+    if action in {"windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status"}:
+        return _parallel_vm_copy_invalid(action, inputs)
+    if action == "windows-parallel-vm-source-inventory":
+        return _parallel_vm_source_inventory_invalid(inputs)
+    if action in {"windows-vm-swtpm-repair-preflight", "windows-vm-swtpm-repair-start",
+                  "windows-vm-swtpm-repair-status", "windows-vm-virt-firmware-install-preflight",
+                  "windows-vm-virt-firmware-install-start", "windows-vm-virt-firmware-install-status"}:
+        return (set(inputs) != {"host", "correlationId", "timeoutSeconds"} or inputs.get("host") != "archlinux"
+                or not isinstance(inputs.get("correlationId"), str) or not _valid_uuid(inputs["correlationId"])
+                or type(inputs.get("timeoutSeconds")) is not int or not 10 <= inputs["timeoutSeconds"] <= 300)
+    if action == "windows-vm-swtpm-owner-observe":
+        return _swtpm_owner_observe_invalid(inputs)
+    if action == "windows-vm-optical-attempt3-frame-collect":
+        return _optical_frame_collect_invalid(inputs)
+    if action == "android-observe":
+        return True  # No VM route exists: the dispatcher refuses it unconditionally.
+    return False
+
+
 @_native_source_request
 def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Admit the actual native target before generating remote commands."""
+    if not isinstance(inputs, dict):
+        return _error("vm_workflow", "VM workflow inputs must be an object.")
+    if _vm_invalid_before_recovery(action, inputs):
+        return _vm_workflow_dispatch(action, inputs)
+    if action in {"windows-fixture-server-second-abort-successor-start",
+                  "windows-fixture-server-second-abort-successor-status",
+                  "windows-fixture-server-second-abort-successor-diagnostic",
+                  "windows-fixture-server-second-abort-recovery-diagnose",
+                  "windows-fixture-server-second-abort-recovery-start",
+                  "windows-fixture-server-second-abort-recovery-status"}:
+        field = "successorCorrelationId" if "successor" in action else "recoveryCorrelationId"
+        if set(inputs) != {field} or not _valid_uuid(inputs.get(field)):
+            return _vm_workflow_dispatch(action, inputs)
+    try:
+        policy = _agent_module("tool_action_policy").action_policy("vm_workflow", action)
+        if not policy.requirements:
+            return _vm_workflow_dispatch(action, inputs)
+        with _agent_module("readiness_vm_dispatch").admitted_dispatch(REPO_ROOT, action, inputs):
+            return _vm_workflow_dispatch(action, inputs)
+    except Exception as error:
+        core = _agent_module("readiness")
+        if isinstance(error, core.ReadinessBlocked):
+            return {"tool": "vm_workflow", **error.as_dict()}
+        raise
+
+
+def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
     """Dispatch finite native workflows with explicit source and ownership gates."""
     try:
         if not isinstance(inputs, dict):
             return _error("vm_workflow", "VM workflow inputs must be an object.")
+        if action in {"guest-program-start", "guest-program-status", "guest-program-reconcile", "guest-program-collect",
+                      "android-program-start", "android-program-status", "android-program-reconcile", "android-program-collect"}:
+            android = action.startswith("android-program-")
+            module = "readiness_adb_jobs" if android else "readiness_guest_jobs"
+            verb = action.removeprefix("android-program-" if android else "guest-program-")
+            try:
+                result = _agent_module(module).workflow(REPO_ROOT, verb, inputs)
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") in {"running", "terminal"}}
+            except Exception as error:
+                core = _agent_module("readiness")
+                if isinstance(error, core.ReadinessBlocked):
+                    return {"tool": "vm_workflow", **error.as_dict()}
+                if not isinstance(error, (OSError, ValueError, TypeError, KeyError, AttributeError)):
+                    raise
+                identity = inputs.get("operationId")
+                fixture = inputs.get("fixtureId")
+                bound = ({"operationId": identity, "fixtureId": fixture}
+                         if _valid_uuid(identity) and type(fixture) is str
+                         and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", fixture) else {})
+                return {"tool": "vm_workflow", "ok": False, "state": "blocked", **bound,
+                        "reason": "android_program_admission_unavailable" if android else "guest_program_admission_unavailable",
+                        "replayAllowed": False}
+        if action in {"readiness-lease-acquire", "readiness-lease-status", "readiness-lease-cancel", "readiness-lease-reconcile"}:
+            try:
+                result = _agent_module("readiness_lease_workflow").workflow(REPO_ROOT, action.removeprefix("readiness-lease-"), inputs)
+                return {"tool": "vm_workflow", **result, "ok": result.get("ok") is True or result.get("state") in {"active", "starting", "expired", "cancelled", "restoring", "restored"}}
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "blocked",
+                        "reason": "readiness_lease_admission_unavailable", "replayAllowed": False}
+        if action in {"readiness-status", "readiness-ensure", "readiness-reboot", "readiness-providers"}:
+            refusal = _readiness_input_refusal("vm_workflow", action, inputs)
+            if refusal is not None:
+                return refusal
+            try:
+                result = _agent_module("readiness_workflow").vm_workflow(REPO_ROOT, action, inputs)
+                return {"tool": "vm_workflow", **result}
+            except Exception as error:
+                core = _agent_module("readiness")
+                if isinstance(error, core.ReadinessBlocked):
+                    return {"tool": "vm_workflow", **error.as_dict()}
+                return {"tool": "vm_workflow", "ok": False, "state": "blocked",
+                        "reason": "readiness_admission_unavailable", "replayAllowed": False}
         if action in {'windows-vm-deploy-secure','windows-vm-deploy-secure-status'}:
             if set(inputs)!={'deploymentId','operationId','credentialFile'} or any(type(v)is not str for v in inputs.values()):
                 return _error('vm_workflow','Secure setup requires deploymentId, operationId and credentialFile.')
@@ -2991,7 +4018,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError):
                 return {'tool':'vm_workflow','ok':False,'state':'unknown','reason':'deployment_secure_unavailable','nativeActionAllowed':False,'replayAllowed':False,'productAction':False}
         if action in {'windows-vm-deploy-frame','windows-vm-deploy-frame-collect'}:
-            if set(inputs)!={'deploymentId','operationId'} or any(type(v)is not str for v in inputs.values()):
+            if _deploy_frame_invalid(inputs):
                 return _error('vm_workflow','Frame capture requires deploymentId and operationId.')
             try:
                 result=_agent_module('windows_vm_deploy').frame(REPO_ROOT,inputs['deploymentId'],inputs['operationId'],collect=action.endswith('-collect'))
@@ -3009,10 +4036,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if action in {'windows-vm-deploy-start','windows-vm-deploy-status','windows-vm-deploy-stop'}:
             starting=action.endswith('-start')
             stopping=action.endswith('-stop')
-            required={'spec','setup','credentialFile'} if starting else {'deploymentId','credentialFile'}
-            if (set(inputs)!=required or type(inputs['credentialFile'])is not str or
-                    starting and (type(inputs['spec'])is not dict or type(inputs['setup'])is not dict) or
-                    not starting and type(inputs['deploymentId'])is not str):
+            if _deploy_lifecycle_invalid(action, inputs):
                 return _error('vm_workflow','Windows VM start requires spec, setup and credentialFile; status requires deploymentId and credentialFile.')
             try:
                 deploy=_agent_module('windows_vm_deploy')
@@ -3026,8 +4050,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if action in {"windows-vm-deploy-preflight", "windows-vm-deploy-resources", "windows-vm-deploy-media"}:
             resource_read=action.endswith('-resources')
             media_read=action.endswith('-media')
-            if (set(inputs)!=({'spec','credentialFile'} if resource_read else {'spec'}) or type(inputs['spec'])is not dict
-                    or resource_read and type(inputs['credentialFile'])is not str):
+            if _deploy_read_invalid(action, inputs):
                 return _error("vm_workflow", "Windows deployment requires a typed spec and an explicit credential file for the privileged resource read.")
             try:
                 deploy=_agent_module("windows_vm_deploy")
@@ -3042,10 +4065,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                   "windows-input-decision", "windows-input-finish"}:
             return _agent_module("windows_guest_input").dispatch(REPO_ROOT, action, inputs)
         if action == "source-review-close":
-            required = {"manifestPath", "manifestSha256"}
-            allowed = required | {"packetManifestPath", "packetManifestSha256",
-                                  "proofPath", "proofSha256"}
-            if not required <= set(inputs) or set(inputs) - allowed:
+            if _source_review_close_invalid(inputs):
                 return _error("vm_workflow", "Invalid source closure input fields.")
             try:
                 result = _agent_module("native_review_source_closure").close_review_sources(
@@ -3172,7 +4192,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                 return _error("vm_workflow", "Build timing source changed during the read-only report.")
             return {"tool": "vm_workflow", "ok": True, "evidenceClass": "source-bound-build-timing", **result}
         if action == "baseline-source-inventory":
-            if inputs:
+            if _baseline_source_inventory_invalid(inputs):
                 return {"tool": "vm_workflow", "ok": False,
                         "reason": "baseline-source-inventory-requires-empty-inputs",
                         "nativeActionAllowed": False, "readinessVerified": False}
@@ -3198,16 +4218,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             unknown = {"tool": "vm_workflow", "ok": False, "state": "unknown",
                        "replayAllowed": False, "nativeActionPerformed": False,
                        "currentChecksCompleted": False}
-            if (set(inputs) != {"receiptId", "artifactSetId", "targetSourceSHA", "reviewerAttestation"}
-                    or not isinstance(inputs["receiptId"], str)
-                    or re.fullmatch(r"native-acceptance-[0-9a-f]{32}", inputs["receiptId"]) is None
-                    or not isinstance(inputs["artifactSetId"], str)
-                    or re.fullmatch(r"artifact-set-[0-9a-f]{64}", inputs["artifactSetId"]) is None
-                    or not isinstance(inputs["targetSourceSHA"], str)
-                    or re.fullmatch(r"[0-9a-f]{40}", inputs["targetSourceSHA"]) is None
-                    or not isinstance(inputs["reviewerAttestation"], str)
-                    or not inputs["reviewerAttestation"].strip()
-                    or len(inputs["reviewerAttestation"]) > 240):
+            if _matrix_equivalence_record_invalid(inputs):
                 return unknown
             try:
                 result = _agent_module("native_acceptance_matrix").matrix_equivalence_record(REPO_ROOT, inputs)
@@ -3254,8 +4265,8 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             if action.endswith("-start"):
                 required = {"schemaVersion", "sourceSha", "correlationId", "scenario", "jobId",
                             "operationId", "bootSessionUuid", "reservationId", "fixtureReceiptArtifactId",
-                            "serverInstanceId", "serverPid", "serverProcessStartIdentity", "readySha256"}
-                if (set(inputs) != required or type(inputs["schemaVersion"]) is not int or
+                            "serverInstanceId", "serverPid", "serverProcessStartIdentity", "readySha256", "vmName"}
+                if (set(inputs) != required or type(inputs.get("vmName")) is not str or not inputs["vmName"] or type(inputs["schemaVersion"]) is not int or
                         inputs["schemaVersion"] != 1 or
                         not isinstance(inputs["sourceSha"], str) or
                         re.fullmatch(r"[0-9a-f]{40}", inputs["sourceSha"]) is None or
@@ -3814,9 +4825,12 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "evidenceClass": "causal-diagnostic", "productAction": False,
                     "nativeActionAllowed": False}
         if action == "windows-fixture-stage-recover-7f27":
-            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
-                return _error("vm_workflow", "Exact CP117 stage recovery host is required.")
+            if not isinstance(inputs, dict) or set(inputs) != {"host", "vmIdentity"} or inputs.get('host') != 'archlinux':
+                return _error("vm_workflow", "Explicit original VM process generation is required for stage recovery.")
             recovery = _agent_module("windows_update_fixture_stage_recovery")
+            try: recovery._validate_target(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error('vm_workflow', 'Original VM selector is missing, mismatched or unavailable.')
             try:
                 result = recovery.recover(REPO_ROOT, inputs)
             except (ValueError, OSError, KeyError, TypeError):
@@ -4399,7 +5413,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return {"tool":"vm_workflow","state":"passed" if passed else "failed" if observed else "unknown","phase":result["phase"],"scripts":{k:result[k] for k in ("strict","diagnostic")},
                 "replayAllowed":False,"nativeActionAllowed":False,"productAction":False,"ok":passed,"evidenceClass":"native-parser"}
         if action in {"windows-cp117-c32-archive-diagnose", "windows-cp117-c32-archive-preflight"}:
-            if not isinstance(inputs, dict) or set(inputs) != {"leaseId"}:
+            if _c32_archive_lease_invalid(inputs):
                 return _error("vm_workflow", "Fixed archive observation requires its new lease only.")
             archive = _agent_module("windows_cp117_c32_archive_admission")
             try:
@@ -4918,72 +5932,36 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return {"tool": "vm_workflow", **result, "ok": valid and result["state"] == "observed",
                     "evidenceClass": "causal-diagnostic", "productAction": False,
                     "nativeActionAllowed": False}
-        if action in {"windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status"} or action.startswith("windows-fixture-stage-") or action.startswith("windows-fixture-credentials-") or action.startswith("windows-fixture-server-") or action.startswith("windows-fixture-owner-network-") or action.startswith("windows-fixture-network-probe-"):
-            lifecycle = {
-                "windows-fixture-stage-start": ("windows_update_fixture_stage", "start", {"host", "correlationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"correlationId"}, {"submitted"}),
-                "windows-fixture-stage-status": ("windows_update_fixture_stage", "status", {"correlationId"}, {"correlationId"}, {"running", "staged-not-server-ready"}),
-                "windows-fixture-stage-collect": ("windows_update_fixture_stage", "collect", {"correlationId"}, {"correlationId"}, {"staged-not-server-ready"}),
-                "windows-fixture-credentials-start": ("windows_fixture_credentials", "start", {"host", "leaseId", "stageCorrelationId", "correlationId"}, {"leaseId", "stageCorrelationId", "correlationId"}, {"submitted"}),
-                "windows-fixture-credentials-status": ("windows_fixture_credentials", "status", {"correlationId"}, {"correlationId"}, {"ready"}),
-                "windows-fixture-credentials-collect": ("windows_fixture_credentials", "collect", {"correlationId"}, {"correlationId"}, {"ready"}),
-                "windows-fixture-server-start": ("windows_update_fixture_server", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"leaseId", "stageCorrelationId", "serverCorrelationId"}, {"submitted"}),
-                "windows-fixture-server-acl-preflight": ("windows_update_fixture_server", "acl_preflight", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"}, {"leaseId", "stageCorrelationId", "serverCorrelationId"}, {"ready"}),
-                "windows-fixture-server-status": ("windows_update_fixture_server", "status", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
-                "windows-fixture-server-collect": ("windows_update_fixture_server", "collect", {"serverCorrelationId"}, {"serverCorrelationId"}, {"live"}),
-                "windows-fixture-server-stop-start": ("windows_update_fixture_server", "stop_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
-                "windows-fixture-server-stop-status": ("windows_update_fixture_server", "stop_status", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"running", "stopped"}),
-                "windows-fixture-server-stop-collect": ("windows_update_fixture_server", "stop_collect", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"stopped"}),
-                "windows-fixture-credentials-cleanup-start": ("windows_fixture_credentials", "cleanup_start", {"host", "leaseId", "stageCorrelationId", "correlationId"}, {"leaseId", "stageCorrelationId", "correlationId"}, {"submitted"}),
-                "windows-fixture-credentials-cleanup-status": ("windows_fixture_credentials", "cleanup_status", {"correlationId"}, {"correlationId"}, {"running", "cleaned"}),
-                "windows-fixture-credentials-cleanup-collect": ("windows_fixture_credentials", "cleanup_collect", {"correlationId"}, {"correlationId"}, {"cleaned"}),
-                "windows-fixture-server-abort-start": ("windows_update_fixture_server", "abort_start", {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"leaseId", "serverCorrelationId", "cleanupCorrelationId"}, {"submitted"}),
-                "windows-fixture-server-abort-status": ("windows_update_fixture_server", "abort_status", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"running", "stopped"}),
-                "windows-fixture-server-abort-collect": ("windows_update_fixture_server", "abort_collect", {"cleanupCorrelationId"}, {"cleanupCorrelationId"}, {"stopped"}),
-                "windows-fixture-server-abort-successor-start": ("windows_fixture_server_abort_successor", "start", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"submitted"}),
-                "windows-fixture-server-abort-successor-status": ("windows_fixture_server_abort_successor", "status", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"running", "cleaned"}),
-                "windows-fixture-server-abort-successor-diagnostic": ("windows_fixture_server_abort_successor", "diagnose", {"successorCleanupCorrelationId"}, {"successorCleanupCorrelationId"}, {"observed", "diagnosed"}),
-                "windows-fixture-server-second-abort-successor-start": ("windows_fixture_server_second_abort_successor", "start", {"successorCorrelationId"}, {"successorCorrelationId"}, {"submitted"}),
-                "windows-fixture-server-second-abort-successor-status": ("windows_fixture_server_second_abort_successor", "status", {"successorCorrelationId"}, {"successorCorrelationId"}, {"cleaned"}),
-                "windows-fixture-server-second-abort-successor-diagnostic": ("windows_fixture_server_second_abort_successor", "diagnose", {"successorCorrelationId"}, {"successorCorrelationId"}, {"observed", "diagnosed"}),
-                "windows-fixture-server-second-abort-recovery-diagnose": ("windows_fixture_server_second_abort_successor", "resume_diagnose", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"observed", "diagnosed"}),
-                "windows-fixture-server-second-abort-recovery-start": ("windows_fixture_server_second_abort_successor", "resume_start", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"submitted"}),
-                "windows-fixture-server-second-abort-recovery-status": ("windows_fixture_server_second_abort_successor", "resume_status", {"recoveryCorrelationId"}, {"recoveryCorrelationId"}, {"cleaned"}),
-                "windows-fixture-server-resume-no-dispatch-start": ("windows_fixture_server_resume", "start", {"serverCorrelationId"}, {"serverCorrelationId"}, {"submitted"}),
-                "windows-fixture-server-post-resource-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose", {"serverCorrelationId"}, {"serverCorrelationId"}, {"diagnosed"}),
-                "windows-fixture-server-probe-events-acl-diagnostic": ("windows_fixture_post_resource_diagnostic", "diagnose_events_acl", {"serverCorrelationId"}, {"serverCorrelationId"}, {"observed"}),
-                "windows-fixture-acl-preflight": ("windows_fixture_acl_preflight", "preflight", {"stageCorrelationId"}, {"stageCorrelationId"}, {"ready"}),
-                "windows-fixture-acl-preflight-status": ("windows_fixture_acl_preflight", "status", {"stageCorrelationId"}, {"stageCorrelationId"}, {"observed"}),
-                "windows-fixture-credentials-abort-start": ("windows_fixture_credentials", "abort_start", {"correlationId"}, {"correlationId"}, {"submitted"}),
-                "windows-fixture-credentials-abort-status": ("windows_fixture_credentials", "abort_status", {"correlationId"}, {"correlationId"}, {"running", "aborted-cleaned"}),
-                "windows-fixture-credentials-abort-collect": ("windows_fixture_credentials", "abort_collect", {"correlationId"}, {"correlationId"}, {"aborted-cleaned"}),
-                "windows-fixture-owner-network-start": ("windows_fixture_owner_network", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "ownerNetworkCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId", "controllerId", "ownerPid", "ownerStartedAtUtc"}, {"leaseId", "stageCorrelationId", "serverCorrelationId", "ownerNetworkCorrelationId"}, {"submitted"}),
-                "windows-fixture-owner-network-status": ("windows_fixture_owner_network", "status", {"ownerNetworkCorrelationId"}, {"ownerNetworkCorrelationId"}, {"correlated"}),
-                "windows-fixture-owner-network-collect": ("windows_fixture_owner_network", "collect", {"ownerNetworkCorrelationId"}, {"ownerNetworkCorrelationId"}, {"correlated"}),
-                "windows-fixture-network-probe-start": ("windows_fixture_network_probe", "start", {"host", "leaseId", "stageCorrelationId", "serverCorrelationId", "probeCorrelationId", "sourceSha", "fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId", "controllerId", "ownerPid", "ownerStartedAtUtc"}, {"leaseId", "stageCorrelationId", "serverCorrelationId", "probeCorrelationId"}, {"submitted"}),
-                "windows-fixture-network-probe-status": ("windows_fixture_network_probe", "status", {"probeCorrelationId"}, {"probeCorrelationId"}, {"correlated"}),
-                "windows-fixture-network-probe-collect": ("windows_fixture_network_probe", "collect", {"probeCorrelationId"}, {"probeCorrelationId"}, {"correlated"}),
-            }
-            route = lifecycle.get(action)
-            if route is None:
-                return _error("vm_workflow", "Unknown fixed Windows fixture lifecycle action.")
-            module_name, method_name, fields, uuid_fields, passing_states = route
-            if not isinstance(inputs, dict) or set(inputs) != fields or ("host" in fields and inputs.get("host") != "archlinux"):
-                return _error("vm_workflow", "Windows fixture lifecycle requires exact CP117 fields.")
-            if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_fields):
-                return _error("vm_workflow", "Windows fixture lifecycle correlation is invalid.")
-            if len({inputs[key] for key in uuid_fields}) != len(uuid_fields):
-                return _error("vm_workflow", "Windows fixture lifecycle correlations must differ.")
-            if "sourceSha" in fields and (not isinstance(inputs["sourceSha"], str) or not re.fullmatch(r"[0-9a-f]{40}", inputs["sourceSha"])):
-                return _error("vm_workflow", "Windows fixture lifecycle source SHA is invalid.")
-            for key in ("fixtureReceiptArtifactId", "baseMsiArtifactId", "targetMsiArtifactId"):
-                if key in fields and (not isinstance(inputs[key], str) or not re.fullmatch(r"sha256-[0-9a-f]{64}", inputs[key])):
-                    return _error("vm_workflow", "Windows fixture lifecycle artifact identity is invalid.")
-            if "controllerId" in fields and (not isinstance(inputs["controllerId"], str) or not _valid_uuid(inputs["controllerId"])):
-                return _error("vm_workflow", "Windows fixture controller identity is invalid.")
-            if "ownerPid" in fields and (type(inputs["ownerPid"]) is not int or inputs["ownerPid"] <= 0):
-                return _error("vm_workflow", "Windows fixture owner PID is invalid.")
-            if "ownerStartedAtUtc" in fields and (not isinstance(inputs["ownerStartedAtUtc"], str) or not re.fullmatch(r"20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z", inputs["ownerStartedAtUtc"])):
-                return _error("vm_workflow", "Windows fixture owner start time is invalid.")
+        if action in {"windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect",
+                      "windows-fixture-credentials-start", "windows-fixture-credentials-status",
+                      "windows-fixture-credentials-collect", "windows-fixture-server-start",
+                      "windows-fixture-server-acl-preflight", "windows-fixture-server-status",
+                      "windows-fixture-server-collect", "windows-fixture-server-stop-start",
+                      "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect",
+                      "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status",
+                      "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start",
+                      "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect",
+                      "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status",
+                      "windows-fixture-server-abort-successor-diagnostic",
+                      "windows-fixture-server-second-abort-successor-start",
+                      "windows-fixture-server-second-abort-successor-status",
+                      "windows-fixture-server-second-abort-successor-diagnostic",
+                      "windows-fixture-server-second-abort-recovery-diagnose",
+                      "windows-fixture-server-second-abort-recovery-start",
+                      "windows-fixture-server-second-abort-recovery-status",
+                      "windows-fixture-server-resume-no-dispatch-start",
+                      "windows-fixture-server-post-resource-diagnostic",
+                      "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight",
+                      "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start",
+                      "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect",
+                      "windows-fixture-owner-network-start", "windows-fixture-owner-network-status",
+                      "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start",
+                      "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect"}:
+            # Exact _WINDOWS_FIXTURE_LIFECYCLE members: a prefix gate is an unbounded route.
+            refusal = _windows_fixture_lifecycle_refusal(action, inputs)
+            if refusal is not None:
+                return refusal
+            module_name, method_name, fields, uuid_fields, passing_states = _WINDOWS_FIXTURE_LIFECYCLE[action]
             try:
                 adapter = _agent_module(module_name)
                 result = getattr(adapter, method_name)(REPO_ROOT, inputs)
@@ -5045,9 +6023,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError) as error:
                 return _error("vm_workflow", str(error))
         if action == "android-admission-readback":
-            required = {"host", "device", "correlationId"}
-            optional = {"expectedBaseSha256", "timeoutSeconds"}
-            if not isinstance(inputs, dict) or not required <= set(inputs) or set(inputs) - required - optional:
+            if _android_admission_readback_invalid(inputs):
                 return _error("vm_workflow", "Android admission readback requires a configured host/device and correlationId only, with optional expectedBaseSha256 and timeoutSeconds.")
             reader = _agent_module("android_admission_readback")
             try:
@@ -5148,17 +6124,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action in {"android-package-install-unknown-proof", "android-package-install-unknown-release"}:
-            required = {"installCorrelationId", "currentReadbackCorrelationId",
-                        "expectedCurrentOwner", "expectedCurrentRevision"}
-            if action.endswith("-release"):
-                required.add("reviewedProofSha256")
-            if (not isinstance(inputs, dict) or set(inputs) != required or
-                    any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key])
-                        for key in ("installCorrelationId", "currentReadbackCorrelationId", "expectedCurrentOwner")) or
-                    type(inputs["expectedCurrentRevision"]) is not int or inputs["expectedCurrentRevision"] < 0 or
-                    (action.endswith("-release") and
-                     (not isinstance(inputs["reviewedProofSha256"], str) or
-                      re.fullmatch(r"[0-9a-f]{64}", inputs["reviewedProofSha256"]) is None))):
+            if _android_unknown_install_invalid(action, inputs):
                 return _error("vm_workflow", "Android unknown-install recovery requires exact reviewed correlations, owner, revision and proof digest.")
             installer = _agent_module("android_package_install")
             try:
@@ -5358,8 +6324,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return {"tool": "vm_workflow", **projection, **flags, "ok": valid,
                     "correlationId": inputs["correlationId"], "evidenceClass": "native-reconciliation"}
         if action == "android-obsolete-consent-denial-collect":
-            if (not isinstance(inputs, dict) or set(inputs) != {"denialId"} or
-                    not isinstance(inputs["denialId"], str) or not _valid_uuid(inputs["denialId"])):
+            if _obsolete_consent_denial_invalid(inputs):
                 return _error("vm_workflow", "Obsolete dialog collection requires only its canonical denial correlation.")
             flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
             result = None
@@ -5392,8 +6357,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "grantObserved": False, "evidenceClass": "native-reconciliation",
                     **({"proof": dict(proof)} if valid else {})}
         if action == "android-consent-grant-prompt-collect":
-            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId", "observationId"} or
-                    any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in inputs)):
+            if _consent_grant_prompt_invalid(inputs):
                 return _error("vm_workflow", "Prompt collection requires canonical original and observation correlations.")
             flags = {"replayAllowed": False, "nativeActionAllowed": False, "productAction": False, "claimsReleased": False}
             result = None
@@ -5444,24 +6408,10 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "correlationId": inputs["correlationId"], "evidenceClass": "native-observation"}
         if action in {"android-consent-grant-acceptance-start", "android-consent-grant-acceptance-status",
                       "android-consent-grant-acceptance-collect"}:
+            refusal = _consent_grant_acceptance_refusal(action, inputs)
+            if refusal is not None:
+                return refusal
             start_action = action.endswith("-start")
-            required = ({"host", "device", "correlationId", "artifactId", "cliStageCorrelationId",
-                         "openingReadbackCorrelationId", "expectedBackupSha256",
-                         "expectedOwner", "expectedRevision"} if start_action else {"correlationId"})
-            if not isinstance(inputs, dict) or set(inputs) != required:
-                return _error("vm_workflow", "Android consent grant requires exact receipt bindings.")
-            uuid_keys = ({"correlationId", "cliStageCorrelationId", "openingReadbackCorrelationId",
-                          "expectedOwner"} if start_action else {"correlationId"})
-            if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_keys):
-                return _error("vm_workflow", "Android consent grant requires canonical correlations.")
-            if start_action and (not isinstance(inputs["artifactId"], str) or
-                    re.fullmatch(r"sha256-[0-9a-f]{64}", inputs["artifactId"]) is None or
-                    not isinstance(inputs["expectedBackupSha256"], str) or
-                    re.fullmatch(r"[0-9a-f]{64}", inputs["expectedBackupSha256"]) is None or
-                    type(inputs["expectedRevision"]) is not int or inputs["expectedRevision"] < 0):
-                return _error("vm_workflow", "Android consent grant requires exact artifact and revision.")
-            if start_action and (inputs["host"] != "archlinux" or inputs["device"] != "api35"):
-                return _error("vm_workflow", "Android grant requires the configured disposable API35 route.")
             reset = _agent_module("android_consent_grant_acceptance")
             try:
                 if start_action:
@@ -5479,28 +6429,17 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "evidenceClass": "native-consent-grant-acceptance"}
         if action in {"android-vpn-permission-reset-start", "android-vpn-permission-reset-status",
                       "android-vpn-permission-reset-collect"}:
+            refusal = _vpn_permission_reset_refusal(action, inputs)
+            if refusal is not None:
+                return refusal
             start_action = action.endswith("-start")
-            required = ({"correlationId", "artifactId", "cliStageCorrelationId",
-                         "openingReadbackCorrelationId", "expectedBackupSha256",
-                         "expectedOwner", "expectedRevision"} if start_action else {"correlationId"})
-            if not isinstance(inputs, dict) or set(inputs) != required:
-                return _error("vm_workflow", "Android permission reset requires exact receipt bindings.")
-            uuid_keys = ({"correlationId", "cliStageCorrelationId", "openingReadbackCorrelationId",
-                          "expectedOwner"} if start_action else {"correlationId"})
-            if any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key]) for key in uuid_keys):
-                return _error("vm_workflow", "Android permission reset requires canonical correlations.")
-            if start_action and (not isinstance(inputs["artifactId"], str) or
-                    re.fullmatch(r"sha256-[0-9a-f]{64}", inputs["artifactId"]) is None or
-                    not isinstance(inputs["expectedBackupSha256"], str) or
-                    re.fullmatch(r"[0-9a-f]{64}", inputs["expectedBackupSha256"]) is None or
-                    type(inputs["expectedRevision"]) is not int or inputs["expectedRevision"] < 0):
-                return _error("vm_workflow", "Android permission reset requires exact artifact and revision.")
             reset = _agent_module("android_vpn_permission_reset")
             try:
                 if start_action:
                     result = reset.start(REPO_ROOT, inputs["correlationId"], inputs["artifactId"],
                         inputs["cliStageCorrelationId"], inputs["openingReadbackCorrelationId"],
-                        inputs["expectedBackupSha256"], inputs["expectedOwner"], inputs["expectedRevision"])
+                        inputs["expectedBackupSha256"], inputs["expectedOwner"], inputs["expectedRevision"],
+                        host=inputs["host"], device=inputs["device"])
                 else:
                     method = reset.status if action.endswith("-status") else reset.collect
                     result = method(REPO_ROOT, inputs["correlationId"])
@@ -5512,11 +6451,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "evidenceClass": "native-vpn-permission-reset"}
         if action in {"android-runtime-acceptance-start", "android-runtime-acceptance-status",
                       "android-runtime-acceptance-collect"}:
-            required = ({"correlationId", "endpointCorrelationId", "cliStageCorrelationId"}
-                        if action.endswith("-start") else {"correlationId"})
-            if (not isinstance(inputs, dict) or set(inputs) != required or
-                    any(not isinstance(inputs[key], str) or not _valid_uuid(inputs[key])
-                        for key in required)):
+            if _android_runtime_acceptance_invalid(action, inputs):
                 return _error("vm_workflow", "Android runtime requires exact canonical correlations.")
             runtime = _agent_module("android_runtime_acceptance")
             try:
@@ -5559,7 +6494,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             unknown = {"tool": "vm_workflow", "ok": False, "state": "diagnostic-only",
                        "reason": "observation_unknown", "productAdmitted": False,
                        "acceptanceComplete": False, "replayAllowed": False, "productAction": False}
-            if type(inputs) is not dict or inputs:
+            if _api35_remaining_proxy_status_invalid(inputs):
                 return unknown
             try:
                 result = _agent_module("android_api35_remaining_proxy_status_routes").dispatch(REPO_ROOT, action, {})
@@ -5583,15 +6518,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError, TypeError):
                 return unknown
         if action == "android-fixture-tls-mint":
-            required = {"campaignId", "sourceSha", "baseArtifactId", "targetArtifactId"}
-            if (not isinstance(inputs, dict) or set(inputs) not in (required, required | {"sourceRoot"}) or
-                    not isinstance(inputs.get("campaignId"), str) or not _valid_uuid(inputs["campaignId"]) or
-                    not isinstance(inputs.get("sourceSha"), str) or not re.fullmatch(r"[0-9a-f]{40}", inputs["sourceSha"]) or
-                    any(not isinstance(inputs[key], str) or not re.fullmatch(r"sha256-[0-9a-f]{64}", inputs[key])
-                        for key in ("baseArtifactId", "targetArtifactId")) or
-                    ("sourceRoot" in inputs and (not isinstance(inputs["sourceRoot"], str) or
-                     not 1 <= len(inputs["sourceRoot"]) <= 4096 or "\x00" in inputs["sourceRoot"] or
-                     not Path(inputs["sourceRoot"]).is_absolute()))):
+            if _fixture_tls_mint_invalid(inputs):
                 return _error("vm_workflow", "TLS mint requires exact source-bound local fixture fields.")
             try:
                 result = _agent_module("android_fixture_tls_routes").run(REPO_ROOT, inputs)
@@ -5724,9 +6651,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return {"tool": "vm_workflow", **projection, **flags, **inputs, "ok": False,
                     "observationOnly": True, "nativeActionAllowed": False, "productAction": False, "evidenceClass": "native-observation"}
         if action == "android-endpoint-mount-diagnostic-collect":
-            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId", "diagnosticCorrelationId"} or
-                    any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in inputs) or
-                    inputs["correlationId"] == inputs["diagnosticCorrelationId"]):
+            if _endpoint_mount_collect_invalid(inputs):
                 return _error("vm_workflow", "Mount collection requires distinct canonical endpoint and diagnostic correlations.")
             result = None
             try:
@@ -5747,10 +6672,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "observationOnly": True, "replayAllowed": False, "nativeActionAllowed": False, "productAction": False,
                     "evidenceClass": "native-observation", **({"sha256": result["sha256"], "bytes": result["bytes"]} if valid else {})}
         if action == "android-recovered-endpoint-stage-collect":
-            required = {"correlationId", "historicalCorrelationId", "recoveryCorrelationId", "stageCorrelationId"}
-            if (not isinstance(inputs, dict) or set(inputs) != required or
-                    any(not isinstance(inputs[k], str) or not _valid_uuid(inputs[k]) for k in required) or
-                    len(set(inputs.values())) != 4):
+            if _recovered_endpoint_stage_invalid(inputs):
                 return _error("vm_workflow", "Recovered-stage collection requires four distinct canonical correlations.")
             flags = {"replayAllowed": False, "productMutationAllowed": False, "installerTargetAdmitted": False}
             result = None
@@ -5846,11 +6768,8 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     **inputs, "observationOnly": True, "nativeActionAllowed": False, "productAction": False,
                     "evidenceClass": "native-observation"}
         if action in {"android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmitted"}:
-            required = {"correlationId", "readmissionCorrelationId"}
             uuid_pattern = r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
-            if (not isinstance(inputs, dict) or set(inputs) != required or
-                    any(not isinstance(inputs[key], str) or re.fullmatch(uuid_pattern, inputs[key]) is None
-                        for key in required) or inputs["correlationId"] == inputs["readmissionCorrelationId"]):
+            if _endpoint_cleanup_readmission_invalid(inputs):
                 return _error("vm_workflow", "Endpoint cleanup readmission requires two distinct canonical correlations.")
             endpoint = _agent_module("android_endpoint_admission")
             try:
@@ -6037,7 +6956,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "correlationId": inputs["correlationId"],
                         "nativeActionAllowed": False, "replayAllowed": False}
         if action == "android-consent-acceptance-preflight":
-            if set(inputs) != {"host", "device", "cliStageCorrelationId"}:
+            if _consent_acceptance_preflight_invalid(inputs):
                 return _error("vm_workflow", "Android consent preflight requires exact host, device and stage correlation.")
             consent = _agent_module("android_consent_acceptance")
             result = consent.preflight(REPO_ROOT, inputs["host"], inputs["device"], inputs["cliStageCorrelationId"])
@@ -6117,8 +7036,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action == "windows-msi-preinstall-status":
-            required = {"host", "jobId"}
-            if not isinstance(inputs, dict) or not required <= set(inputs) or set(inputs) - required - {"timeoutSeconds"}:
+            if _msi_preinstall_status_invalid(inputs):
                 return _error("vm_workflow", "Windows MSI preinstall status requires configured host and exact jobId, with optional timeoutSeconds.")
             windows = _agent_module("windows_msi_public_scenario")
             try:
@@ -6128,7 +7046,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action == "windows-msi-powershell-preflight":
-            if not isinstance(inputs, dict) or set(inputs) != {"host"}:
+            if _msi_powershell_preflight_invalid(inputs):
                 return _error("vm_workflow", "Windows MSI PowerShell preflight requires only the configured host.")
             windows = _agent_module("windows_msi_public_scenario")
             try:
@@ -6398,9 +7316,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     else "native-transfer", "productAction": False,
                     "nativeActionAllowed": False}
         if action == "windows-msiexec-service-diagnostic":
-            if (not isinstance(inputs, dict) or set(inputs) != {"action", "host"}
-                    or inputs.get("action") not in {"preflight", "status"}
-                    or inputs.get("host") != "archlinux"):
+            if _msiexec_service_diagnostic_invalid(inputs):
                 return _error("vm_workflow", "Exact CP117 installer-service diagnostic inputs are required.")
             observer = _agent_module("windows_msiexec_service_diagnostic")
             try:
@@ -6550,9 +7466,12 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "evidenceClass": "causal-diagnostic", "productAction": False,
                     "nativeActionAllowed": False}
         if action == "windows-msi-stale-lock-recover":
-            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
-                return _error("vm_workflow", "Exact CP117 stale-lock recovery host is required.")
+            if not isinstance(inputs, dict) or set(inputs) != {"host", "vmIdentity"} or inputs.get('host') != 'archlinux':
+                return _error("vm_workflow", "Explicit original VM process generation is required for lock recovery.")
             recovery = _agent_module("windows_msi_stale_lock_recovery")
+            try: recovery._validate_target(REPO_ROOT, inputs)
+            except (ValueError, OSError, KeyError, TypeError):
+                return _error('vm_workflow', 'Original VM selector is missing, mismatched or unavailable.')
             try:
                 result = recovery.recover(REPO_ROOT, inputs)
             except (ValueError, OSError, KeyError, TypeError):
@@ -6602,10 +7521,15 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if action in {"windows-msi-owner-relaunch-launch", "windows-msi-owner-relaunch-status",
                       "windows-msi-owner-relaunch-collect", "windows-msi-owner-relaunch-diagnose",
                       "windows-msi-owner-relaunch-detail", "windows-msi-owner-relaunch-endpoint-access"}:
-            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+            fields = {"host", "vmIdentity"} if action.endswith('-launch') else {"host"}
+            if not isinstance(inputs, dict) or set(inputs) != fields or inputs.get('host') != 'archlinux':
                 return _error("vm_workflow", "Exact CP117 owner relaunch host is required.")
             relaunch = _agent_module("windows_msi_owner_relaunch")
             phase = action.removeprefix("windows-msi-owner-relaunch-")
+            if phase == 'launch':
+                try: relaunch._validate_target(REPO_ROOT, inputs)
+                except (ValueError, OSError, KeyError, TypeError):
+                    return _error('vm_workflow', 'Original VM selector is missing, mismatched or unavailable.')
             try:
                 result = relaunch.workflow(REPO_ROOT, phase, inputs)
             except (ValueError, OSError, KeyError, TypeError):
@@ -6997,10 +7921,15 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "productAction": phase == "start", "nativeActionAllowed": False}
         if action in {"windows-msi-stale-lock-reconcile", "windows-msi-stale-lock-reconcile-status",
                       "windows-msi-stale-lock-reconcile-close"}:
-            if not isinstance(inputs, dict) or inputs != {"host": "archlinux"}:
+            fields = {'host', 'vmIdentity'} if action == 'windows-msi-stale-lock-reconcile' else {'host'}
+            if not isinstance(inputs, dict) or set(inputs) != fields or inputs.get('host') != 'archlinux':
                 return _error("vm_workflow", "Exact CP117 stale-lock reconciliation host is required.")
             reconcile = _agent_module("windows_msi_stale_lock_reconcile")
             phase = action.removeprefix("windows-msi-stale-lock-reconcile")
+            if not phase:
+                try: reconcile._validate_target(REPO_ROOT, inputs)
+                except (ValueError, OSError, KeyError, TypeError):
+                    return _error('vm_workflow', 'Original VM selector is missing, mismatched or unavailable.')
             try:
                 result = (reconcile.status(REPO_ROOT, inputs) if phase == "-status" else
                           reconcile.close(REPO_ROOT, inputs) if phase == "-close" else
@@ -7024,9 +7953,9 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "evidenceClass": "causal-status" if phase == "-status" else "native-recovery",
                     "productAction": False, "nativeActionAllowed": False}
         if action == "windows-msi-base-finish-observed":
-            if (not isinstance(inputs, dict) or set(inputs) != {"correlationId"}
-                    or not isinstance(inputs["correlationId"], str)
-                    or not _agent_module("windows_msi_base_prepare")._UUID.fullmatch(inputs["correlationId"])):
+            if _msi_base_finish_invalid(inputs):
+                return _error("vm_workflow", "Exact CP117 base finish correlation is required.")
+            if not _agent_module("windows_msi_base_prepare")._UUID.fullmatch(inputs["correlationId"]):
                 return _error("vm_workflow", "Exact CP117 base finish correlation is required.")
             base = _agent_module("windows_msi_base_prepare")
             correlation = inputs["correlationId"]
@@ -7205,7 +8134,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return {"tool": "vm_workflow", "ok": accepted,
                     "evidenceScope": "artifact-byte-reuse" if action == "artifact-reuse-check" else "artifact-bytes", **result}
         if action == "artifact-cache-check":
-            if set(inputs) != {"sourceSha", "artifactSetId"} or not isinstance(inputs["sourceSha"], str) or not re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", inputs["sourceSha"]):
+            if _artifact_cache_check_invalid(inputs):
                 return _error("vm_workflow", "Artifact cache check requires exact sourceSha and artifactSetId.")
             reuse = _agent_module("native_artifact_reuse")
             result = reuse.artifact_reuse_check(REPO_ROOT, {"artifactSetId": inputs["artifactSetId"]})
@@ -7220,11 +8149,9 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     "nativeActionAllowed": False, "productAction": False,
                     "evidenceClass": "source-bound-artifact-cache", **result}
         if action in ("android-proxy-recover", "android-proxy-recovery-status"):
-            fields = {"host", "device", "expectedPort", "correlationId"} if action == "android-proxy-recover" else {"host", "device", "identity"}
-            if set(inputs) != fields or any(not isinstance(inputs[key], str) or not inputs[key] for key in ("host", "device")):
-                return _error("vm_workflow", "Proxy recovery requires an exact configured host/device and recovery identity.")
-            if action == "android-proxy-recover" and (type(inputs["expectedPort"]) is not int or not 1 <= inputs["expectedPort"] <= 65535 or not isinstance(inputs["correlationId"], str)):
-                return _error("vm_workflow", "Proxy recovery requires a task port and opaque correlation.")
+            refusal = _android_proxy_refusal(action, inputs)
+            if refusal is not None:
+                return refusal
             proxy_recovery = _agent_module("android_proxy_recovery")
             try:
                 if action == "android-proxy-recover":
@@ -7235,18 +8162,10 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except proxy_recovery.AndroidProxyRecoveryError:
                 return _error("vm_workflow", "Proxy recovery could not be admitted or observed; private diagnostics are retained locally.")
         if action in ("windows-credential-recover-start", "windows-credential-recover-status", "credential-status"):
-            required = {"host", "correlationId"}
-            optional = {"timeoutSeconds"}
-            if action == "credential-status":
-                required.add("handle")
-                optional = set()
-            if not required <= set(inputs) or set(inputs) - required - optional:
-                return _error("vm_workflow", "Credential workflow requires only configured identity and an opaque correlation or handle.")
-            if any(not isinstance(inputs[key], str) or not inputs[key] for key in required):
-                return _error("vm_workflow", "Credential workflow identity fields must be nonempty strings.")
+            refusal = _credential_workflow_refusal(action, inputs)
+            if refusal is not None:
+                return refusal
             timeout = inputs.get("timeoutSeconds", 15)
-            if type(timeout) is not int or not 1 <= timeout <= 60:
-                return _error("vm_workflow", "Credential workflow timeout must be between 1 and 60 seconds.")
             recovery = _agent_module("windows_credential_recovery_ssh")
             try:
                 if action == "credential-status":
@@ -7254,23 +8173,22 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                     accepted = result.get("available") is True
                 else:
                     function = recovery.start if action.endswith("-start") else recovery.status
-                    result = function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout)
+                    result = function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout,
+                                      **({"environment": inputs["environment"]} if action.endswith("-start") else {}))
                     accepted = result.get("state") in {"submitted", "verifying"} or (result.get("state") == "terminal" and result.get("success") is True)
                 return {"tool": "vm_workflow", **result, "ok": accepted}
             except recovery.WindowsCredentialRecoveryError:
                 return _error("vm_workflow", "Credential workflow could not be admitted or observed; private input details are withheld.")
         if action in ("windows-credential-probe-start", "windows-credential-probe-status"):
-            if set(inputs) - {"host", "correlationId", "timeoutSeconds"} or not {"host", "correlationId"} <= set(inputs):
-                return _error("vm_workflow", "Credential probe requires a configured host and correlationId only, with an optional timeoutSeconds.")
-            if any(not isinstance(inputs[key], str) or not inputs[key] for key in ("host", "correlationId")):
-                return _error("vm_workflow", "Credential probe identity fields must be nonempty strings.")
+            refusal = _credential_probe_refusal(action, inputs)
+            if refusal is not None:
+                return refusal
             timeout = inputs.get("timeoutSeconds", 15)
-            if type(timeout) is not int or not 1 <= timeout <= 60:
-                return _error("vm_workflow", "Credential probe timeout must be between 1 and 60 seconds.")
             probe = _agent_module("windows_credential_probe_ssh")
             try:
                 function = probe.start if action.endswith("-start") else probe.status
-                result = function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout)
+                result = function(REPO_ROOT, inputs["host"], inputs["correlationId"], timeout_seconds=timeout,
+                                  **({"environment": inputs["environment"]} if action.endswith("-start") else {}))
                 accepted = result.get("state") == "submitted" or (result.get("state") == "terminal" and result.get("success") is True)
                 return {"tool": "vm_workflow", **result, "ok": accepted}
             except probe.WindowsCredentialProbeSshError:
@@ -7322,8 +8240,14 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             environment = _agent_module("native_environment")
             try:
                 if action == "environment-reserve":
+                    # Rows of operator readiness-resources are ResourceAdmission's own; this proof-free route never touches one.
+                    claimed = inputs.get("reservationIdentity")
+                    if "readiness-resources" in (inputs.get("operator"), claimed.get("operator") if isinstance(claimed, dict) else None):
+                        return _error("vm_workflow", "readiness_resources_owned_reservation")
                     result = environment.reserve_environment(REPO_ROOT, inputs)
                 elif action == "environment-release":
+                    if inputs.get("operator") == "readiness-resources":
+                        return _error("vm_workflow", "readiness_resources_owned_reservation")
                     result = environment.release_environment(REPO_ROOT, inputs)
                 elif inputs.get("hostAlias"):
                     observer = _agent_module("native_environment_observation")
@@ -7580,14 +8504,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                        "correlationId": correlation if type(correlation) is str and _valid_uuid(correlation) else None,
                        "replayAllowed": False, "nativeGuestStarted": False, "launchAdmitted": False,
                        "productAcceptance": False, "productAction": False, "nativeActionAllowed": False}
-            required = {"host", "correlationId", "timeoutSeconds"}
-            if action.endswith("-start"):
-                required.add("sourceEvidenceLeaf")
-            if (type(inputs) is not dict or set(inputs) != required or inputs.get("host") != "archlinux"
-                    or type(inputs.get("host")) is not str or type(correlation) is not str or not _valid_uuid(correlation)
-                    or type(inputs.get("timeoutSeconds")) is not int or not 5 <= inputs["timeoutSeconds"] <= 60
-                    or (action.endswith("-start") and (type(inputs["sourceEvidenceLeaf"]) is not str
-                        or re.fullmatch(r"windows-parallel-vm-source-read-[0-9a-f]{32}", inputs["sourceEvidenceLeaf"]) is None))):
+            if _parallel_vm_copy_invalid(action, inputs):
                 return unknown
             try:
                 adapter = _agent_module("windows_parallel_vm_prepare_transport")
@@ -7603,10 +8520,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except Exception:
                 return unknown
         if action == "windows-parallel-vm-source-inventory":
-            if (not isinstance(inputs, dict) or set(inputs) != {"host", "timeoutSeconds"}
-                    or inputs.get("host") != "archlinux"
-                    or type(inputs.get("timeoutSeconds")) is not int
-                    or not 30 <= inputs["timeoutSeconds"] <= 300):
+            if _parallel_vm_source_inventory_invalid(inputs):
                 return _error("vm_workflow", "Windows parallel source inventory requires fixed Arch host and bounded timeoutSeconds.")
             try:
                 inventory = _agent_module("windows_parallel_vm_source_inventory")
@@ -7683,12 +8597,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action == "windows-vm-secureboot-inventory":
-            if (set(inputs) != {"host", "qemuPid", "startTicks", "timeoutSeconds"}
-                    or inputs.get("host") != "archlinux"
-                    or type(inputs.get("qemuPid")) is not int or inputs["qemuPid"] != 3369984
-                    or type(inputs.get("startTicks")) is not int or inputs["startTicks"] != 45177745
-                    or type(inputs.get("timeoutSeconds")) is not int
-                    or not 10 <= inputs["timeoutSeconds"] <= 60):
+            if _secureboot_inventory_invalid(inputs):
                 return _error("vm_workflow", "Windows secure boot inventory requires exact Arch VM generation and bounded timeout.")
             inventory = _agent_module("windows_vm_secureboot_inventory")
             try:
@@ -7700,9 +8609,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError, TypeError) as error:
                 return _error("vm_workflow", str(error))
         if action == "windows-vm-virt-firmware-admission":
-            if (set(inputs) != {"host", "timeoutSeconds"} or inputs.get("host") != "archlinux"
-                    or type(inputs.get("timeoutSeconds")) is not int
-                    or not 10 <= inputs["timeoutSeconds"] <= 30):
+            if _virt_firmware_admission_invalid(inputs):
                 return _error("vm_workflow", "Virt-firmware admission requires exact Arch host and bounded timeout.")
             try:
                 result = _agent_module("windows_vm_virt_firmware_admission").observe(REPO_ROOT, inputs)
@@ -7818,8 +8725,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             except (ValueError, OSError, KeyError, TypeError):
                 return {"tool": "vm_workflow", "ok": False, "state": "unknown", "host": "archlinux", "correlationId": inputs.get("correlationId"), "package": "swtpm", "version": "0.10.2-1", "pacmanSignatureVerified": False, "packageIntegrityVerified": False, "activeSwtpmProcesses": False, "replayAllowed": False, "nativeActionAllowed": False, "productAction": action.endswith("-start")}
         if action == "windows-vm-swtpm-owner-observe":
-            if (set(inputs) != {"host", "timeoutSeconds"} or inputs.get("host") != "archlinux" or
-                    type(inputs.get("timeoutSeconds")) is not int or not 10 <= inputs["timeoutSeconds"] <= 60):
+            if _swtpm_owner_observe_invalid(inputs):
                 return _error("vm_workflow", "swtpm owner observation requires exact Arch host and bounded timeout.")
             try:
                 result = _agent_module("windows_vm_swtpm_repair").owner_observe(
@@ -7847,13 +8753,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "censusComplete": False, "activeSwtpmProcesses": False, "processes": [],
                         "nativeActionAllowed": False, "productAction": False}
         if action == "windows-vm-secureboot-clone-preflight":
-            required = {"host", "ownerPid", "ownerStartTicks", "baselineReservationId", "timeoutSeconds"}
-            if (set(inputs) != required or inputs.get("host") != "archlinux"
-                    or type(inputs.get("ownerPid")) is not int or inputs["ownerPid"] != 3369984
-                    or type(inputs.get("ownerStartTicks")) is not int or inputs["ownerStartTicks"] != 45177745
-                    or inputs.get("baselineReservationId") != "env-fc3b3308d6a07175d1e4e08330f7f3aa"
-                    or type(inputs.get("timeoutSeconds")) is not int
-                    or not 10 <= inputs["timeoutSeconds"] <= 60):
+            if _secureboot_clone_invalid(inputs):
                 return _error("vm_workflow", "Secure Boot clone preflight requires exact Arch source and reservation pins.")
             try:
                 result = _agent_module("windows_vm_secureboot_clone").preflight(REPO_ROOT, inputs)
@@ -7919,15 +8819,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
                         "nativeActionAllowed": False, "productAction": False}
         if action in {"windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start",
                       "windows-vm-secureboot-fresh-status"}:
-            required = {"host", "correlationId", "timeoutSeconds"}
-            if action.endswith("-start"):
-                required.add("reservationRequest")
-            if (set(inputs) != required or inputs.get("host") != "archlinux"
-                    or not isinstance(inputs.get("correlationId"), str)
-                    or not _valid_uuid(inputs["correlationId"])
-                    or type(inputs.get("timeoutSeconds")) is not int
-                    or not 30 <= inputs["timeoutSeconds"] <= 300
-                    or action.endswith("-start") and not isinstance(inputs.get("reservationRequest"), dict)):
+            if _secureboot_fresh_invalid(action, inputs):
                 return _error("vm_workflow", "Secure Boot fresh VM needs fixed host, correlation, timeout and exact start reservation.")
             setup = _agent_module("windows_vm_secureboot_fresh")
             try:
@@ -8198,13 +9090,7 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if action == "windows-vm-optical-attempt3-frame-collect":
             correlation = "e80d5b29-d44f-4b22-a821-5612304564b5"
             closure = "7cbc014c-3890-422a-891a-a114d7cb779e"
-            if (not isinstance(inputs, dict) or
-                    set(inputs) != {"host", "correlationId", "closureCorrelationId", "timeoutSeconds"} or
-                    inputs.get("host") != "archlinux" or
-                    inputs.get("correlationId") != correlation or
-                    inputs.get("closureCorrelationId") != closure or
-                    type(inputs.get("timeoutSeconds")) is not int or
-                    not 30 <= inputs["timeoutSeconds"] <= 300):
+            if _optical_frame_collect_invalid(inputs):
                 return _error("vm_workflow", "Windows optical post-frame collection requires fixed Arch host, exact third-attempt and closure correlations, and bounded timeoutSeconds.")
             try:
                 result = _agent_module("windows_vm_optical_post_collect").collect(
@@ -8508,6 +9394,11 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
         if typed_token(phase) and typed_token(failure_type):
             enriched["uncertainty"] = {"phase": phase, "failureType": failure_type}
     enriched["nextAction"] = guidance.next_action(tool, action, enriched)
+    if (action == "readiness-status" and tool in {"ssh_workflow", "vm_workflow"}
+            and enriched["nextAction"].get("kind") == "ensure_ready"):
+        # A typed not-ready observation with a proven continuation is not a
+        # native failure, and status writes no local failure evidence.
+        return enriched
     if (tool == "vm_workflow" and action == "environment-status" and
             enriched.get("requestedProbesReady") is True and
             enriched.get("state") == "UNKNOWN"):
@@ -8758,14 +9649,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     subparsers.add_parser("serve")
     ssh_parser = subparsers.add_parser("ssh-workflow")
-    ssh_parser.add_argument("action", choices=("windows-caller-file-stage", "windows-caller-file-receipt", "connection-direct-channel-prepare", "connection-direct-channel-status", "connection-direct-channel-select", "connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
+    ssh_parser.add_argument("action", choices=("readiness-status", "readiness-ensure", "program-start", "program-status", "program-collect", "program-reconcile", "windows-caller-file-stage", "windows-caller-file-receipt", "connection-direct-channel-prepare", "connection-direct-channel-status", "connection-direct-channel-select", "connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status", "connection-channel-prepare", "connection-channel-status", "connection-channel-ensure", "connection-master-status", "gateway-tmux-status-diagnostic", "tmux-disconnect-probe", "gateway-tmux-reconciliation-status", "gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status", "inventory", "probe", "job-status", "fixture-publish", "fixture-status", "android-observe", "connection-recover", "connection-adopt", "connection-session-prepare", "connection-session-status", "connection-session-retire", "connection-session-retirement-status", "connection-session-close", "connection-session-close-status", "connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability", "apk-publish", "apk-status", "forward-open", "forward-status", "forward-close"))
     ssh_parser.add_argument("--host")
     ssh_parser.add_argument("--device")
     ssh_parser.add_argument("--timeout-seconds", type=int, default=15)
     ssh_parser.add_argument("--identity-file")
     ssh_parser.add_argument("--transfer-file")
     vm_parser = subparsers.add_parser("vm-workflow")
-    vm_parser.add_argument("action", choices=("windows-vm-deploy-secure", "windows-vm-deploy-secure-status", "windows-vm-deploy-frame", "windows-vm-deploy-frame-collect", "windows-vm-deploy-qualify", "windows-vm-deploy-qualify-status", "windows-vm-deploy-media", "windows-vm-deploy-preflight", "windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop", "windows-vm-deploy-resources", "fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "baseline-source-inventory", "matrix-record", "matrix-retract", "matrix-status", "matrix-equivalence-record", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "android-api35-large-routing-observe", "android-coldboot-product-api29-observe", "linux-package-tmux-resource-prepare", "linux-package-tmux-availability", "linux-package-tmux-preflight", "linux-package-tmux-start", "linux-package-tmux-status", "linux-package-tmux-collect", "arch-tmux-install-preflight", "arch-tmux-install-start", "arch-tmux-install-status", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-parallel-vm-source-inventory", "windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-acl-preflight", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status", "windows-fixture-server-abort-successor-diagnostic", "windows-fixture-server-resume-no-dispatch-start", "windows-fixture-server-post-resource-diagnostic", "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-obsolete-consent-denial-collect", "android-consent-grant-prompt-collect", "android-consent-grant-acceptance-start", "android-consent-grant-acceptance-diagnose", "android-consent-grant-acceptance-reconcile", "android-consent-grant-acceptance-reconcile-status", "android-consent-grant-acceptance-reconcile-diagnose", "android-consent-grant-acceptance-status", "android-consent-grant-acceptance-collect", "android-vpn-permission-reset-start", "android-vpn-permission-reset-status", "android-vpn-permission-reset-collect", "android-runtime-acceptance-start", "android-runtime-acceptance-status", "android-runtime-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-api35-remaining-proxy-status", "android-fixture-tls-mint", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-endpoint-mount-diagnostic-collect", "android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmission-status", "android-endpoint-cleanup-readmitted-status", "android-recovered-endpoint-stage-collect", "android-endpoint-cleanup-mount-diagnostic", "android-endpoint-cleanup-readmitted", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
+    vm_parser.add_argument("action", choices=("guest-program-start", "guest-program-status", "guest-program-reconcile", "guest-program-collect", "android-program-start", "android-program-status", "android-program-reconcile", "android-program-collect", "readiness-lease-acquire", "readiness-lease-status", "readiness-lease-cancel", "readiness-lease-reconcile", "readiness-status", "readiness-ensure", "readiness-reboot", "readiness-providers", "windows-vm-deploy-secure", "windows-vm-deploy-secure-status", "windows-vm-deploy-frame", "windows-vm-deploy-frame-collect", "windows-vm-deploy-qualify", "windows-vm-deploy-qualify-status", "windows-vm-deploy-media", "windows-vm-deploy-preflight", "windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop", "windows-vm-deploy-resources", "fixture-preflight", "batch-plan", "batch-start", "batch-status", "batch-resume", "batch-collect", "baseline-capture", "baseline-verify", "baseline-restore", "baseline-preflight", "baseline-source-inventory", "matrix-record", "matrix-retract", "matrix-status", "matrix-equivalence-record", "acceptance-status", "vm-preflight-batch", "build-timing-report", "artifact-set-freeze", "artifact-set-verify", "artifact-reuse-check", "artifact-cache-check", "inspect-input", "admit-plan", "artifact-register", "artifact-find", "artifact-verify", "bundle-prepare", "bundle-verify", "environment-status", "environment-reserve", "environment-release", "linux-guest-park-preflight", "linux-guest-park-start", "linux-guest-park-status", "linux-package-fixture-build-preflight", "linux-package-fixture-build-start", "linux-package-fixture-build-status", "linux-package-fixture-build-collect", "linux-package-fixture-build-pre-effect-status", "linux-package-fixture-build-pre-effect-close", "linux-package-fixture-build-terminal-ready-status", "linux-package-fixture-build-terminal-ready-close", "android-api35-large-routing-observe", "android-coldboot-product-api29-observe", "linux-package-tmux-resource-prepare", "linux-package-tmux-availability", "linux-package-tmux-preflight", "linux-package-tmux-start", "linux-package-tmux-status", "linux-package-tmux-collect", "arch-tmux-install-preflight", "arch-tmux-install-start", "arch-tmux-install-status", "linux-deb-arch-guest-prepare-preflight", "linux-deb-arch-guest-prepare-start", "linux-deb-arch-guest-prepare-status", "linux-deb-arch-acceptance-preflight", "linux-deb-arch-acceptance-start", "linux-deb-arch-acceptance-status", "linux-vm-readonly-inventory", "arch-qemu-holder-census", "windows-vm-baseline-inventory", "windows-parallel-vm-source-inventory", "windows-parallel-vm-copy-start", "windows-parallel-vm-copy-status", "windows-vm-secureboot-inventory", "windows-vm-virt-firmware-admission", "windows-vm-secureboot-clone-preflight", "windows-vm-secureboot-fresh-preflight", "windows-vm-secureboot-fresh-start", "windows-vm-secureboot-fresh-status", "windows-vm-media-fingerprint", "windows-vm-driver-fetch-start", "windows-vm-driver-fetch-status", "windows-vm-disk-probe-start", "windows-vm-disk-probe-status", "windows-vm-fresh-preflight", "windows-vm-fresh-start", "windows-vm-fresh-status", "windows-vm-fresh-screen-start", "windows-vm-fresh-screen-status", "windows-vm-optical-boot-preflight", "windows-vm-optical-boot-start", "windows-vm-optical-boot-status", "windows-vm-optical-close-preflight", "windows-vm-optical-close-start", "windows-vm-optical-close-status", "windows-vm-optical-attempt2-preflight", "windows-vm-optical-attempt2-start", "windows-vm-optical-attempt2-status", "windows-vm-optical-attempt2-phase-probe", "windows-vm-optical-attempt2-close-preflight", "windows-vm-optical-attempt2-close-start", "windows-vm-optical-attempt2-close-status", "windows-vm-optical-attempt3-preflight", "windows-vm-optical-attempt3-start", "windows-vm-optical-attempt3-status", "windows-vm-optical-attempt3-frame-collect", "windows-vm-optical-current-screen-preflight", "windows-vm-optical-current-screen-start", "windows-vm-optical-current-screen-status", "windows-vm-optical-current-screen-collect", "windows-vm-setup-language-next-preflight", "windows-vm-setup-language-next-start", "windows-vm-setup-language-next-status", "windows-vm-setup-language-next-collect", "windows-vm-setup-keyboard-next-preflight", "windows-vm-setup-keyboard-next-start", "windows-vm-setup-keyboard-next-status", "windows-vm-setup-keyboard-next-collect", "windows-vm-setup-install-disk-proof", "windows-vm-setup-install-focus-preflight", "windows-vm-setup-install-focus-start", "windows-vm-setup-install-focus-status", "windows-vm-setup-install-focus-collect", "windows-vm-setup-install-ack-preflight", "windows-vm-setup-install-ack-start", "windows-vm-setup-install-ack-status", "windows-vm-setup-install-ack-collect", "windows-vm-setup-install-next-preflight", "windows-vm-setup-install-next-start", "windows-vm-setup-install-next-status", "windows-vm-setup-install-next-collect", "scenario-start", "scenario-status", "scenario-resume", "scenario-collect", "rpm-public-install-start", "rpm-public-install-status", "rpm-public-install-collect", "linux-rpm-fixture-dispatch", "linux-rpm-fixture-status", "linux-rpm-fixture-server-start", "linux-rpm-fixture-server-status", "linux-rpm-fixture-server-collect", "linux-rpm-fixture-server-stop", "linux-rpm-workspace-recovery-status", "linux-rpm-workspace-cleanup-start", "linux-rpm-workspace-cleanup-status", "linux-owner-public-quit-start", "linux-owner-public-quit-status", "linux-owner-public-quit-collect", "linux-rpm-protected-job-observe", "windows-msi-fixture-dispatch", "windows-msi-fixture-status", "windows-msi-fixture-collect", "windows-msi-fixture-failed-log", "windows-fixture-python-preflight", "windows-fixture-stage-start", "windows-fixture-stage-status", "windows-fixture-stage-collect", "windows-fixture-credentials-start", "windows-fixture-credentials-status", "windows-fixture-credentials-collect", "windows-fixture-server-start", "windows-fixture-server-acl-preflight", "windows-fixture-server-status", "windows-fixture-server-collect", "windows-fixture-server-stop-start", "windows-fixture-server-stop-status", "windows-fixture-server-stop-collect", "windows-fixture-credentials-cleanup-start", "windows-fixture-credentials-cleanup-status", "windows-fixture-credentials-cleanup-collect", "windows-fixture-server-abort-start", "windows-fixture-server-abort-status", "windows-fixture-server-abort-collect", "windows-fixture-server-abort-successor-start", "windows-fixture-server-abort-successor-status", "windows-fixture-server-abort-successor-diagnostic", "windows-fixture-server-resume-no-dispatch-start", "windows-fixture-server-post-resource-diagnostic", "windows-fixture-server-probe-events-acl-diagnostic", "windows-fixture-acl-preflight", "windows-fixture-acl-preflight-status", "windows-fixture-credentials-abort-start", "windows-fixture-credentials-abort-status", "windows-fixture-credentials-abort-collect", "windows-fixture-owner-network-start", "windows-fixture-owner-network-status", "windows-fixture-owner-network-collect", "windows-fixture-network-probe-start", "windows-fixture-network-probe-status", "windows-fixture-network-probe-collect", "linux-rpm-base-prepare-preflight", "linux-rpm-base-prepare-start", "linux-rpm-base-prepare-status", "linux-rpm-owner-observe", "rpm-proc-observe", "rpm-proc-observe-privileged", "android-admission-readback", "android-admission-status", "android-admission-preflight", "android-readback-start", "android-readback-status", "android-readback-collect", "android-package-install-start", "android-package-install-status", "android-package-install-collect", "android-package-install-reconcile", "android-package-install-unknown-proof", "android-package-install-unknown-release", "android-cli-stage-start", "android-cli-stage-status", "android-cli-stage-collect", "android-document-acceptance-start", "android-document-acceptance-status", "android-document-acceptance-collect", "android-document-retry-start", "android-document-retry-status", "android-document-retry-collect", "android-document-retry-recovery-start", "android-document-retry-recovery-status", "android-document-retry-recovery-collect", "android-document-retry-recovery-finalize", "android-document-retry-unknown-diagnose", "android-document-retry-unknown-close", "android-obsolete-consent-denial-collect", "android-consent-grant-prompt-collect", "android-consent-grant-acceptance-start", "android-consent-grant-acceptance-diagnose", "android-consent-grant-acceptance-reconcile", "android-consent-grant-acceptance-reconcile-status", "android-consent-grant-acceptance-reconcile-diagnose", "android-consent-grant-acceptance-status", "android-consent-grant-acceptance-collect", "android-vpn-permission-reset-start", "android-vpn-permission-reset-status", "android-vpn-permission-reset-collect", "android-runtime-acceptance-start", "android-runtime-acceptance-status", "android-runtime-acceptance-collect", "android-action-acceptance-start", "android-action-acceptance-status", "android-action-acceptance-collect", "android-api35-remaining-proxy-status", "android-fixture-tls-mint", "android-native-fixture-start", "android-native-fixture-status", "android-native-fixture-stop", "android-native-fixture-collect", "android-endpoint-admission-start", "android-endpoint-admission-status", "android-endpoint-admission-cleanup", "android-endpoint-mount-diagnostic-collect", "android-endpoint-cleanup-readmission", "android-endpoint-cleanup-readmission-status", "android-endpoint-cleanup-readmitted-status", "android-recovered-endpoint-stage-collect", "android-endpoint-cleanup-mount-diagnostic", "android-endpoint-cleanup-readmitted", "android-installer-dispatch-start", "android-installer-dispatch-status", "android-installer-dispatch-collect", "android-installer-callback-handoff-ready", "android-installer-callback-continue", "android-installer-callback-status-handoff-ready", "android-installer-callback-status-continue", "android-installer-abort-prelaunch", "android-installer-reconcile", "android-consent-acceptance-preflight", "android-consent-acceptance-start", "android-consent-acceptance-status", "android-consent-acceptance-collect", "android-document-recovery-start", "android-document-recovery-status", "android-document-recovery-collect", "android-document-recovery-finalize", "android-public-inspect", "windows-msi-preinstall-status", "windows-msi-powershell-preflight", "windows-msi-base-preflight", "windows-msi-base-readiness", "windows-msi-base-start", "windows-msi-base-status", "windows-msi-base-pre-effect-status", "windows-msi-base-pre-effect-close", "windows-msi-owner-observe-preflight", "windows-msi-owner-observe-start", "windows-msi-owner-observe-status", "windows-msi-owner-observe-collect", "windows-msi-owner-quit-preflight", "windows-msi-owner-quit-start", "windows-msi-owner-quit-status", "windows-msi-owner-quit-collect", "windows-msi-target-preflight", "windows-msi-target-readiness", "windows-msi-target-start", "windows-msi-target-status", "windows-msi-public-start", "windows-msi-public-status", "windows-msi-public-collect", "windows-credential-probe-start", "windows-credential-probe-status", "windows-credential-recover-start", "windows-credential-recover-status", "credential-status", "android-proxy-recover", "android-proxy-recovery-status", "macos-installer-recovery-status", "macos-machine-server-stop-start", "macos-machine-server-stop-status", "macos-machine-server-stop-collect", "macos-fixture-guest-stage-start", "macos-fixture-guest-stage-status", "macos-fixture-guest-stage-collect"))
     vm_parser._actions[-1].choices = (*vm_parser._actions[-1].choices,
                                       "source-review-close",
                                       "macos-fixture-stage-start",
@@ -8988,7 +9879,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     status.add_argument("--instructions-read", action="store_true")
     checks = subparsers.add_parser("run-checks")
     checks.add_argument("--area", default="auto")
-    checks.add_argument("--level", choices=("focused", "prepush"), default="focused")
+    checks.add_argument("--level", choices=("focused", "failed", "prepush"), default="focused")
     checks.add_argument("--dry-run", action="store_true")
     bump = subparsers.add_parser("version-bump")
     bump.add_argument("--summary")

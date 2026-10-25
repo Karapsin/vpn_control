@@ -175,15 +175,57 @@ jobs:
         run: ./scripts/check_release_hygiene.sh
 
       - name: Check documentation hygiene
+        if: ${{ !cancelled() }}
         run: ./scripts/check_docs_hygiene.sh
 
       - name: Check whitespace
+        if: ${{ !cancelled() }}
         run: python3 scripts/check_source_whitespace.py
 
       - name: Install qemu-img for agent fixtures
+        if: ${{ !cancelled() }}
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-utils
 
+      - name: Test real Linux TPM ownership census
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          sudo -- "$pythonLocation/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+          import unittest
+          if os.geteuid() != 0:
+              raise SystemExit('Linux native census requires root')
+          caps = int(next(line.split()[1] for line in Path('/proc/self/status').read_text().splitlines() if line.startswith('CapEff:')), 16)
+          if not caps & (1 << 19):
+              raise SystemExit('Linux native census requires CAP_SYS_PTRACE')
+          suite = unittest.defaultTestLoader.loadTestsFromName('agent_tools.tests.test_windows_tpm_owner.LinuxKernelCausalTests.test_whole_before_unrelated_nondumpable_red_privileged_full_generated_observer_green')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.testsRun != 1 or result.skipped or not result.wasSuccessful():
+              raise SystemExit('Linux native census must run once without skips')
+          PY
+
+      - name: Test real Linux creator pre-VM root census
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
+        run: |
+          sudo -- "$pythonLocation/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+          import unittest
+          if os.geteuid() != 0:
+              raise SystemExit('Linux native creator census requires root')
+          caps = int(next(line.split()[1] for line in Path('/proc/self/status').read_text().splitlines() if line.startswith('CapEff:')), 16)
+          if not caps & (1 << 19):
+              raise SystemExit('Linux native creator census requires CAP_SYS_PTRACE')
+          suite = unittest.defaultTestLoader.loadTestsFromName('agent_tools.tests.test_windows_creator_prevm_refusal_recovery.LinuxRootCensusCausalTests.test_whole_before_ordinary_scan_red_generated_root_census_green')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.testsRun != 1 or result.skipped or not result.wasSuccessful():
+              raise SystemExit('Linux native creator root census must run once without skips')
+          PY
+
       - name: Test affected agent tools
+        if: ${{ !cancelled() }}
         timeout-minutes: 50
         env:
           AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.baseline || github.sha) || '' }}
@@ -209,6 +251,7 @@ jobs:
           retention-days: 7
 
       - name: Check fixed UI theme and visual comparator
+        if: ${{ !cancelled() }}
         run: |
           python scripts/check_ui_theme.py
           python scripts/test_visual_regression.py
@@ -223,42 +266,54 @@ jobs:
           python -m py_compile scripts/capture_visual_macos_tart.py scripts/capture_visual_windows_qemu.py
 
       - name: Set up JDK 17
+        if: ${{ !cancelled() }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Install pinned Android native build tools
+        if: ${{ !cancelled() }}
         run: bash scripts/prepare_android_native_tools.sh
 
       - name: Verify Windows admission diagnostic behavior
+        if: ${{ !cancelled() }}
         run: python scripts/test_windows_install_admission_diagnostic.py
 
       - name: Verify Windows PowerShell command bounds
+        if: ${{ !cancelled() }}
         run: python scripts/test_windows_qga_powershell_size.py
 
       - name: Set up Gradle
+        if: ${{ !cancelled() }}
         uses: gradle/actions/setup-gradle@v4
 
       - name: Check localization catalogs
+        if: ${{ !cancelled() }}
         run: ./scripts/check_localization.py
 
       - name: Check typed status catalogs
+        if: ${{ !cancelled() }}
         run: ./scripts/status_catalog_tool.py check
 
       - name: Install windowless desktop test display
+        if: ${{ !cancelled() }}
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb xauth
 
       - name: Run fast unit tests
-        run: ./gradlew :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
+        if: ${{ !cancelled() }}
+        run: ./gradlew --continue :shared:model:desktopTest :shared:core:desktopTest :shared:ui:desktopTest :desktopApp:test :app:testDebugUnitTest :app:compileDebugKotlin :app:compileDebugAndroidTestKotlin :app:verifyDebugAndroidTestSignatures
 
       - name: Verify desktop build without Android SDK
+        if: ${{ !cancelled() }}
         run: python scripts/test_desktop_sdk_independence.py
 
       - name: Verify Windows packaging task graph
+        if: ${{ !cancelled() }}
         run: python scripts/test_windows_packaging_graph.py
 
       - name: Verify Android instrumentation signature guard
+        if: ${{ !cancelled() }}
         run: python scripts/test_android_instrumentation_signatures.py
 
   agent-tests-shard-1:

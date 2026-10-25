@@ -251,7 +251,7 @@ def _remote(root: str | Path, correlation_id: str, mode: str, timeout_seconds: i
     program=_REMOTE.replace('__MODE__',repr(mode)).replace('__CORR__',repr(correlation_id));config=ssh_transport.load_config(Path(root).resolve(strict=True))
     if HOST not in config.hosts or ssh_transport.connection_host(config,HOST).password is not None: raise ValueError("Configured Arch transport is unavailable.")
     argv=ssh_transport.build_ssh_argv(config,HOST,min(timeout_seconds,60),command=('/usr/bin/python3','-c','exec('+repr(program)+')'),ssh_binary='/usr/bin/ssh',nested_ssh_binary='/usr/bin/ssh')
-    run=subprocess.run(argv,input=credential,stdin=subprocess.DEVNULL if credential is None else None,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=timeout_seconds,check=False)
+    run=ssh_transport.run_ssh(argv,input=credential,stdin=subprocess.DEVNULL if credential is None else None,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=timeout_seconds,check=False)
     if run.returncode or not 0<len(run.stdout)<=1024: raise ValueError("swtpm repair transport is unknown.")
     value=json.loads(run.stdout);required={'schemaVersion','host','correlationId','state','package','version','pacmanSignatureVerified','packageIntegrityVerified','activeSwtpmProcesses'}
     states={'verified','already-healthy','integrity-failed','package-not-exact','active-swtpm-processes','process-census-unavailable','transaction-failed','unknown'}
@@ -273,7 +273,7 @@ def owner_observe(root: str | Path, *, host: str, timeout_seconds: int = 30) -> 
         command=("/usr/bin/python3", "-c", "import base64;exec(base64.b64decode(" + repr(encoded) + "))"),
         ssh_binary="/usr/bin/ssh", nested_ssh_binary="/usr/bin/ssh")
     try:
-        run = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        run = ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
         value = json.loads(run.stdout)
         if run.returncode or not isinstance(value, Mapping) or set(value) != {

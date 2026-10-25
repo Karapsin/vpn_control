@@ -10,6 +10,7 @@ import os
 import subprocess
 import unittest
 from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import historical_current_package
+from agent_tools.tests.fixtures.windows_cp117_migration_head.context import sealed_context_worker
 from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 from agent_tools import windows_cp117_base_source_refresh as refresh
@@ -1475,6 +1476,7 @@ class PublicCurrentContextWholeEntryTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.enterContext(historical_current_package())
+        self.enterContext(sealed_context_worker())
 
     def test_actual_prepare_and_all_six_builders_no_guest_child(self):
         from agent_tools.tests.fixtures.windows_cp117_public_context.whole_entry import exercise
@@ -1489,6 +1491,7 @@ class PublicTerminalSourceCustodyTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.enterContext(historical_current_package())
+        self.enterContext(sealed_context_worker())
 
     def test_actual_context_late_parent_unlink_old_red_current_refusal(self):
         from agent_tools.tests.fixtures.windows_cp117_public_context.whole_entry import exercise

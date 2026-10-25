@@ -1,0 +1,4 @@
+{
+  "sha256": "03fbec4380fa01efeea534c44482fba3f97d703fbc1f8231a57915738ebdd793",
+  "failure": "Actual concurrent generated submit returned rc1 record_unavailable after original mkdir before intent publication; owner remained once. Whole before-source retained for forced-publication-window process regression."
+}

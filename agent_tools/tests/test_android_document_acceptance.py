@@ -19,6 +19,12 @@ from agent_tools import android_admission_readback, android_document_acceptance 
 
 
 class AndroidDocumentAcceptanceTest(unittest.TestCase):
+    def setUp(self):
+        # In-process remote programs set umask 077; never leak it to later suites.
+        mask = os.umask(0o022)
+        os.umask(mask)
+        self.addCleanup(os.umask, mask)
+
     def test_public_preflight_accepts_terminal_history_but_rejects_active_or_unknown(self) -> None:
         owner = "e8d73f61-f7bf-4e24-b13a-aff40b1c8e1b"
         base = {"ok": True, "final": True, "code": "OK", "controllerId": owner,

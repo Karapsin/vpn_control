@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "268fa7e3926640888cd626340ef0cfae2e6eebfc9464848bd6bab34f03f0663d",
+  "preservedAtOperation": "3d4bf14c-536c-49f0-b318-985bb99283a4",
+  "failure": "Once-only resource dispatch blocks the same proven-unsubmitted original recovery at its second core dispatch attempt."
+}

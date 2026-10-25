@@ -1,0 +1,8 @@
+{
+  "failure": "Suspended S3 was resumed with cont, which retains suspended state; system_wakeup is required after actual machine wake support is verified.",
+  "nativeCapabilityEvidence": ".runtime/tool-recovery-qemu/s3-capability-7442034d.json",
+  "sourceSha256": {
+    "readiness_qemu_remote.py": "54d632b36b30824f5c0080ec7add2a458be5657779118f5d984b60e1f1913265",
+    "windows_vm_resources.py": "2659a18cd8683c8d3b1b5ff749803c052fcf7e17dc1e669d2d57fb67c67396a0"
+  }
+}

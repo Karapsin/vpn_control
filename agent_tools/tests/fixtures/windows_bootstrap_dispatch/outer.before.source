@@ -1,0 +1,132 @@
+from pathlib import Path
+import sys,base64,json,zlib,uuid,hashlib,importlib
+from agent_tools.native_review_source_closure import _Held
+GROUPS={
+ 'bootstrap':(('test_windows_bootstrap_durable','test_windows_bootstrap_integration','test_windows_managed_admission'),('windows_bootstrap_durable','windows_seed_reader_scope','windows_bootstrap_integration','windows_managed_admission')),
+ 'seed':(('test_windows_seed_detach','test_windows_seed_reader_scope','test_windows_seed_executing_code'),('windows_seed_reader_scope','windows_seed_executing_code')),
+ 'host':(
+  ('test_windows_host_jobs','test_windows_host_admission_lock','test_windows_host_local_custody','test_windows_start_closure'),
+  ('windows_host_admission_lock','windows_host_local_custody','windows_start_verified_closure','windows_host_test_portability')),
+ 'lifecycle':(
+  ('test_windows_clean_shutdown_cause','test_windows_start_capacity','test_windows_lifecycle_dispatch','test_windows_start_history','test_readiness_windows_lifecycle'),
+  ('windows_clean_shutdown_cause','windows_start_capacity','windows_lifecycle_pure_validation','windows_tpm_owner','windows_existing_start_topology','windows_existing_lineage_identity_before')),
+ 'managed':(
+  ('test_windows_managed_host_original','test_windows_tpm_owner','test_windows_managed_start'),
+  ('windows_managed_host_original','windows_tpm_owner','windows_tpm_witness')),
+ 'witness':(('test_windows_tpm_witness',),('windows_tpm_witness',)),
+ 'creator':(('test_windows_managed_create','test_windows_creator_bootstrap_closure','test_windows_creator_canonical_xml','test_windows_creator_registry','test_windows_creator_observer_integration','test_windows_creator_admission_index'),('windows_creator_bootstrap_closure','windows_creator_observer_integration','windows_creator_admission_index')),
+}
+name=sys.argv[1];selected,families=GROUPS[name]
+for module in selected:importlib.import_module('agent_tools.tests.'+module)
+# The portable Windows-collection subprocess imports this finite module by name.
+if name=='host':importlib.import_module('agent_tools.tests.test_windows_managed_host_original')
+if name in {'seed','bootstrap'}:importlib.import_module('agent_tools.tests.test_windows_host_jobs')
+if name=='witness':
+ importlib.import_module('agent_tools.tests.test_readiness_transport')
+ importlib.import_module('agent_tools.ssh_dispatch_admission')
+ for dependency_name in ('ssh_automatic_program','private_config_custody','ssh_privileged_program'):importlib.import_module('agent_tools.'+dependency_name)
+# These finite function-local producer imports execute only while tests build packets.
+for dependency in ('readiness_windows_host_work','readiness_windows_tpm_owner','readiness_windows_idle','readiness_windows_leases','readiness_windows_host_jobs','readiness_windows_managed_start','readiness_windows_start_closure'):
+ importlib.import_module('agent_tools.'+dependency)
+# Exercise fixed packet construction to load its finite function-local imports.
+from agent_tools.tests.test_readiness_windows_lifecycle import binding as packet_binding
+from agent_tools.tests.test_readiness_windows_guest import SID
+from agent_tools import readiness_windows_remote as packets
+packets.program(packet_binding(),'observe',str(uuid.uuid4()),idle=True,expected_sid=SID)
+if name in {'creator','seed','bootstrap'}:
+ from agent_tools import readiness_windows as backend
+ backend._source_pins()
+root=Path.cwd();op=str(uuid.UUID(sys.argv[sys.argv.index('--operation')+1]))if '--operation'in sys.argv else str(uuid.uuid4());held=_Held();files={}
+try:
+ for module in tuple(sys.modules.values()):
+  p=getattr(module,'__file__',None)
+  if p:
+   path=Path(p).resolve()
+   if path.is_relative_to(root)and path.suffix=='.py'and path.parts[len(root.parts)]in{'agent_tools','scripts'}:
+    raw=path.read_bytes();held.read(str(path),hashlib.sha256(raw).hexdigest());files[str(path.relative_to(root))]=base64.b64encode(raw).decode()
+ if name in {'creator','seed','bootstrap'}:
+  # Exact already-qualified public reader sources, never a provider install.
+  import importlib.metadata
+  from agent_tools import windows_vm_media as media
+  for source_name,path,raw in media.dependency_sources():
+   held.read(str(path),hashlib.sha256(raw).hexdigest());files[source_name]=base64.b64encode(raw).decode()
+  distribution=importlib.metadata.distribution('pycdlib')
+  entries=[entry for entry in distribution.files if str(entry).endswith(('.dist-info/METADATA','.dist-info/RECORD'))]
+  assert len(entries)==2
+  for entry in entries:
+   path=distribution.locate_file(entry).resolve(strict=True);raw=path.read_bytes();held.read(str(path),hashlib.sha256(raw).hexdigest());files[str(entry)]=base64.b64encode(raw).decode()
+ # Policy is a finite non-Python import-time dependency of the fixed packet.
+ policy=root/'agent_tools/tool_action_policy.json';raw=policy.read_bytes();held.read(str(policy),hashlib.sha256(raw).hexdigest());files[str(policy.relative_to(root))]=base64.b64encode(raw).decode()
+ if name=='witness':
+  p=root/'agent_tools/tests/fixtures/readiness_transport/ssh_peer.source';raw=p.read_bytes();held.read(str(p),hashlib.sha256(raw).hexdigest());files[str(p.relative_to(root))]=base64.b64encode(raw).decode()
+ # Every selected fixture is a finite owner-specified family, never a whole tree.
+ for family in families:
+  folder=root/'agent_tools/tests/fixtures'/family
+  if not folder.exists():raise ValueError('missing_finite_fixture:'+family)
+  paths=sorted(folder.iterdir())
+  if not paths or len(paths)>40 or any(not p.is_file()or p.is_symlink()for p in paths):raise ValueError('unreviewed_fixture_shape')
+  for p in paths:
+   raw=p.read_bytes();held.read(str(p),hashlib.sha256(raw).hexdigest());files[str(p.relative_to(root))]=base64.b64encode(raw).decode()
+ # Public source families are strict UTF-8. Encoding them as JSON text avoids
+ # redundant per-file base64 while reconstructing every original byte exactly.
+ text_files={name:base64.b64decode(raw).decode('utf-8','strict')for name,raw in files.items()}
+ assert all(text_files[name].encode('utf-8')==base64.b64decode(raw)for name,raw in files.items())
+ encoded=base64.b64encode(zlib.compress(json.dumps(text_files).encode(),9)).decode()
+ caller=f'''import base64,zlib,json,pathlib,sys,unittest,io,os,importlib
+root=pathlib.Path('/home/kardinal/vc-windows-harmless-{op[:8]}');root.mkdir(mode=0o700)
+files=json.loads(zlib.decompress(base64.b64decode({encoded!r})))
+for name,encoded in files.items():
+ p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(encoded.encode('utf-8'));p.chmod(0o600)
+sys.path.insert(0,str(root))
+modules=[importlib.import_module('agent_tools.tests.'+name)for name in {selected!r}]
+stream=io.StringIO();result=unittest.TextTestRunner(stream=stream,verbosity=2).run(unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromModule(module)for module in modules]))
+print(json.dumps({{'state':'passed'if result.wasSuccessful()else'failed','testsRun':result.testsRun,'errors':len(result.errors),'failures':len(result.failures),'skips':len(result.skipped),'log':stream.getvalue(),'ownedClosures':[row for module in modules for row in getattr(module,'OWNED_CLOSURES',[])]}}))
+'''.encode()
+ if len(caller)>1048576:raise ValueError('split_source_byte_bound_exceeded:'+str(len(caller)))
+ print(json.dumps({'group':name,'operationId':op,'callerBytes':len(caller),'sourceFiles':len(files),'submitted':False}),flush=True)
+ if '--prepare-only'in sys.argv:
+  packet=root/'.runtime/tool-recovery-windows/direct'/('bootstrap-linux-packet-'+op);packet.mkdir(mode=0o700)
+  def create(path,raw):
+   with path.open('xb')as output:output.write(raw)
+   path.chmod(0o600)
+  create(packet/'caller.py',caller)
+  create(packet/'driver.source',Path(__file__).read_bytes())
+  capsule=root/'.runtime/tool-recovery-windows/direct/run_transport_source_capsule.py'
+  held.read(str(Path(__file__).absolute()),hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+  held.read(str(capsule),hashlib.sha256(capsule.read_bytes()).hexdigest())
+  records=[]
+  for path,entry in sorted(held.files.items()):
+   relative=str(Path(path).relative_to(root))if Path(path).is_relative_to(root)else 'dependencies/'+entry[2]+'/'+Path(path).name
+   dest=packet/'sources'/relative;dest.parent.mkdir(parents=True,exist_ok=True);create(dest,entry[3])
+   records.append({'path':path,'generation':list(entry[1]),'sha256':entry[2],'bytes':len(entry[3]),'copy':str(dest.relative_to(packet))})
+  manifest={'schemaVersion':1,'operationId':op,'group':name,'callerSha256':hashlib.sha256(caller).hexdigest(),'callerBytes':len(caller),'sourceFiles':len(files),'sources':records,'nativeSubmitted':False,'vmCalls':0}
+  raw=json.dumps(manifest,sort_keys=True,indent=2).encode()+b'\n';create(packet/'manifest.json',raw)
+  held.finish();held.final_identity_pass()
+  print(json.dumps({'packet':str(packet),'manifestSha256':hashlib.sha256(raw).hexdigest(),'callerSha256':manifest['callerSha256'],'submitted':False}))
+  raise SystemExit(0)
+ if '--operation'in sys.argv:
+  # Exact reviewed public packet, held source generations and one original
+  # admitted directory; the underlying dispatcher creates that directory once.
+  packet=root/'.runtime/tool-recovery-windows/direct'/('bootstrap-linux-packet-'+op)
+  expected=sys.argv[sys.argv.index('--packet-sha256')+1]
+  manifest=json.loads(held.read(str(packet/'manifest.json'),expected))
+  assert manifest['operationId']==op and manifest['group']==name and manifest['nativeSubmitted']is False
+  assert manifest['callerSha256']==hashlib.sha256(caller).hexdigest()and manifest['callerBytes']==len(caller)
+  assert held.read(str(packet/'caller.py'),manifest['callerSha256'],max_bytes=1048576)==caller
+  for row in manifest['sources']:held.read(row['path'],row['sha256'],tuple(row['generation']),max_bytes=max(1,row['bytes']))
+ if '--build-only'in sys.argv:held.finish();held.final_identity_pass();raise SystemExit(0)
+ if '--local-check'in sys.argv:
+  import subprocess,tempfile
+  with tempfile.TemporaryDirectory(dir='/tmp')as temporary:
+   local=caller.replace(('/home/kardinal/vc-windows-harmless-'+op[:8]).encode(),str(Path(temporary).resolve()/'capsule').encode())
+   result=subprocess.run([sys.executable,'-I','-B','-c','import sys;exec(compile(sys.stdin.buffer.read(),"local-public-source-capsule","exec"))'],input=local,capture_output=True,timeout=50)
+   print(result.stdout.decode());print(result.stderr.decode());held.finish();held.final_identity_pass()
+   raise SystemExit(result.returncode if result.returncode else(0 if json.loads(result.stdout)['state']=='passed'else 1))
+ driver=root/'.runtime/tool-recovery-windows/direct/run_transport_source_capsule.py'
+ outer_path=Path(__file__).absolute();outer_source=held.read(str(outer_path),hashlib.sha256(outer_path.read_bytes()).hexdigest())
+ held.read(str(driver),hashlib.sha256(driver.read_bytes()).hexdigest())
+ custody=[{'path':path,'generation':list(entry[1]),'sha256':entry[2],'bytes':len(entry[3])}for path,entry in sorted(held.files.items())]
+ def outer_guard():held.finish();held.final_identity_pass()
+ exec(compile(driver.read_bytes(),str(driver),'exec'),{'__file__':str(driver),'OPERATION':op,'PROCEDURE':'Harmless bounded Linux '+name+' owner/socket/source tests only; no VM/GUI/protocol access; ROOT case separately qualified','CALLER':caller,'OUTER_SOURCE':outer_source,'SOURCE_CUSTODY':custody,'OUTER_GUARD':outer_guard})
+ held.finish();held.final_identity_pass()
+finally:held.close()

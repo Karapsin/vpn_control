@@ -1,0 +1,7 @@
+{
+  "sourceSha256": {
+    "native_restore_image.py": "6fb7c118d77372b84aa6f3ccee4c84bc3bb0d9cd4ad4ca3f2d9cc57879949ed0",
+    "test_native_restore_image.py": "6283679708b94b5388c62af8e5c9ef9f37df708eabfb45cabbbe1b7158d5f684"
+  },
+  "reason": "Before any Mac writer, the authorized engineering choice uses25 decimal GB while preserving exact source/ZIP/all retained growth/headroom; original29GB qualified profile does not fit positive measured capacity."
+}

@@ -1,0 +1,9 @@
+{
+  "cause": "Installer tests patch eager attribute removed by approvedlazyimport; nativeJVMtest choosesunrelated PATHmacOScompilerstub despite selectedrealJDKruntime.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "actual-failures.txt": "a189318103df86d14ba46fe316d40a5b9d9d50ece188e7ac68935e63a688e9bb",
+    "test_android_installer_lifecycle.py.before.source": "87dbb6ba70c2d6442d9acbbe42a19efc8f28b5d1e4a00ab7951d0d7bb3be25c7",
+    "test_native_jvm_tests.py.before.source": "b498893e6524372677fa904bdb2f15d422d78b911280aa5908f6fb478977b51e"
+  }
+}

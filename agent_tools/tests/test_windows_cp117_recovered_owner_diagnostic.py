@@ -1,4 +1,5 @@
-from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import HistoricalFactoryTestCase as HistoryCase, provider as historical_provider
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import provider as historical_provider
+from agent_tools.tests.fixtures.windows_cp117_migration_head.context import HistoricalFactoryTestCase as HistoryCase
 import ast,base64,copy,json,unittest,tempfile,os,sys
 from pathlib import Path
 from agent_tools.tests.fixtures.windows_replacement_fixture_sections import inert_remote_definitions
@@ -108,7 +109,8 @@ class DiagnosticTests(HistoryCase):
             self.assertIn(predicate,body)
         for forbidden in ('Start-Process','Stop-Process','SetValue(', 'LogonUser(', 'SendInput(', 'msiexec.exe /'):
             self.assertNotIn(forbidden,body)
-        with patch.object(owner,'_PS',owner._PS+'\nforeign'):
+        # The frozen diagnostic reads the exact owner its OWNER_SHA binds.
+        with patch.object(d.owner,'_PS',d.owner._PS+'\nforeign'):
             with self.assertRaises(ValueError):d.body()
     def test_consumed_correlation_never_queries(self):
         with tempfile.TemporaryDirectory()as directory:
@@ -118,6 +120,10 @@ class DiagnosticTests(HistoryCase):
 
 @unittest.skipIf(os.name=='nt','POSIX repository transport')
 class ActualStreamTests(HistoryCase):
+    def setUp(self):
+        super().setUp()
+        from agent_tools.tests.fixtures.windows_cp117_migration_head.context import sealed_role
+        self.enterContext(sealed_role(d.flow))
     def run_child(self,tail,deadline=False):
         from agent_tools.windows_diagnostic_authority_capture import AuthorityCapture
         event={'kind':'submitted','diagnosticId':d.CORRELATION,'nonce':d.NONCE,'sourceSha256':'a'*64,'qemu':{'pid':12},'pid':456}

@@ -1,0 +1,12 @@
+{
+  "failure": "Native OpenSSH ControlPersist18000 forks with -N; original local PID exited0 while dedicated socket daemon remained. PID absence alone must not authorize replacement.",
+  "sourceOperationId": "4d9231fa-d3e3-4701-8df9-6f0c0769f764",
+  "beforeSha256": "c612af567255bc9333ab0984e94f33b432a520930c7db9c625dc2b4872ef0c72",
+  "nativeEvidence": ".runtime/tool-recovery/transport-native/direct-result.json",
+  "beforeTransportSha256": "05135d82b4f0e5f0b14e8eb7bf1ae8b73b0d3c58c472addf9f51419f5b0d222b",
+  "beforeDirectSha256": "aabf8db22153eadd1288bb13a4dc0b44e7db7be3ea7f3c97d581bb7bf8af611c",
+  "beforeUnavailableSha256": {
+    "readiness_transport.py": "91fdc4941b423ac2599dcb2d3cbd0a9915e235731399c05c4b91c43483b7e3e0",
+    "readiness_ssh_master.py": "edce5d0575164e9a82d8d213acb9c62e3fc43eb590dae7152303570d2830a464"
+  }
+}

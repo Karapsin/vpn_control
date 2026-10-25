@@ -102,9 +102,11 @@ class QualifiedCliSelectorTest(unittest.TestCase):
         config = types.SimpleNamespace(hosts={"archlinux":configured})
         expected = {"available":True,"outcome":"available","ownerConsistency":"consistent","reason":"ok"}
         with mock.patch.object(transport, "load_config", return_value=config), \
+             mock.patch.object(transport, "admitted_transport", return_value=ExitStack()) as admission, \
              mock.patch.object(ordinary, "observe", return_value=expected) as old, \
              mock.patch.object(qualified, "observe") as selected:
             value = server._ssh_workflow_impl("android-observe", "archlinux", 15, device="api35")
+        self.assertEqual((server.REPO_ROOT, "archlinux"), admission.call_args.args[:2])
         old.assert_called_once_with(server.REPO_ROOT, "archlinux", PROFILE, 15)
         selected.assert_not_called()
         self.assertEqual({"tool":"ssh_workflow","ok":True,**expected},value)
@@ -113,10 +115,12 @@ class QualifiedCliSelectorTest(unittest.TestCase):
         config = types.SimpleNamespace(hosts={"archlinux":configured})
         value = {"state":"observed","available":True,"engineeringOnly":True,"productAcceptance":False,"sourceClosing":True}
         with mock.patch.object(transport, "load_config", return_value=config), \
+             mock.patch.object(transport, "admitted_transport", return_value=ExitStack()) as admission, \
              mock.patch.object(ordinary, "observe", return_value={"available":False,"reason":"wrong_cli_context"}) as wrong, \
              mock.patch.object(qualified, "observe", return_value=value) as selected:
             result = server._ssh_workflow_impl("android-observe", "archlinux", 15,
                         identity={"cliArtifact":qualified.SELECTOR},device="api35")
+        self.assertEqual((server.REPO_ROOT, "archlinux"), admission.call_args.args[:2])
         selected.assert_called_once_with(server.REPO_ROOT,"archlinux","api35",qualified.SELECTOR,15)
         wrong.assert_not_called()
         self.assertTrue(result["ok"])
@@ -518,10 +522,12 @@ class FastMcpQualifiedRoutingTest(unittest.IsolatedAsyncioTestCase):
                     "selected MCP route accessed current configuration")) if selected else
                     mock.patch.object(self.transport, "load_config", return_value=config))
                 with mock.patch.object(self.server, "REPO_ROOT", self.root), config_patch as config_call, \
+                     mock.patch.object(self.transport, "admitted_transport", return_value=ExitStack()) as admission, \
                      mock.patch.object(self.qualified, "observe", return_value=expected) as selected_call, \
                      mock.patch.object(self.ordinary, "observe", return_value=expected) as default_call:
                     response = await handler(request)
                 self.assertIsInstance(response, mcp_types.ServerResult)
+                self.assertEqual((self.root, "archlinux"), admission.call_args.args[:2])
                 restored = mcp_types.ServerResult.model_validate_json(response.model_dump_json())
                 result = restored.root
                 self.assertIsInstance(result, mcp_types.CallToolResult)
@@ -544,14 +550,15 @@ class FastMcpQualifiedRoutingTest(unittest.IsolatedAsyncioTestCase):
                 else:
                     default_call.assert_called_once_with(self.root, "archlinux", _ROUTING_PROFILE, 15)
                     selected_call.assert_not_called()
-                    config_call.assert_called_once_with(self.root)
+                    # Device pre-validation before admission, then the default observer.
+                    self.assertEqual([mock.call(self.root)] * 2, config_call.call_args_list)
 
 
 # This child bootstrap has fixed public module names and receives reviewed file
 # paths from the injected module objects. It never selects code from environment
 # variables, and calls the actual candidate main with the child's real sys.argv.
 _ROUTING_CLI_BOOTSTRAP = r'''
-import importlib.util,json,sys,types
+import contextlib,importlib.util,json,sys,types
 from pathlib import Path
 fixture=json.loads(FIXTURE_JSON)
 sys.path.insert(0,fixture["dependencyRoot"])
@@ -567,7 +574,7 @@ server=load("agent_tools.mcp_server_qualified_candidate",fixture["serverSource"]
 from agent_tools import android_observation as ordinary,ssh_transport as transport
 root=Path(fixture["root"])
 server.REPO_ROOT=root
-calls={"selected":0,"default":0,"config":0}
+calls={"selected":0,"default":0,"config":0,"admission":0}
 def answer(route,forwarded):
     return {"state":"observed","available":True,"engineeringOnly":True,
             "productAcceptance":False,"fixtureOnly":True,"actualAndroidAuthority":False,
@@ -586,9 +593,15 @@ def load_config(area):
     if area!=root:raise AssertionError("CLI changed owned fixture root")
     return types.SimpleNamespace(hosts={"archlinux":types.SimpleNamespace(
         android_devices={"api35":fixture["profile"]})})
+def admitted_transport(area,host,operation,deadline):
+    # Routing fixture: inert readiness; real transport custody has its own callers.
+    calls["admission"]+=1
+    if area!=root or host!="archlinux":raise AssertionError("CLI changed admitted transport target")
+    return contextlib.nullcontext()
 qualified.observe=selected
 ordinary.observe=default
 transport.load_config=load_config
+transport.admitted_transport=admitted_transport
 real_adapter=server._agent_module
 route_dependencies={'android_qualified_cli_observation':qualified,'android_observation':ordinary,'ssh_transport':transport}
 server._agent_module=lambda name:route_dependencies[name] if name in route_dependencies else real_adapter(name)
@@ -634,8 +647,10 @@ class CliQualifiedRoutingTest(unittest.TestCase):
                              if route == "selected" else [str(self.root), "archlinux", _ROUTING_PROFILE, 15])
                 for key, expected in _routing_result(route, forwarded).items():
                     self.assertEqual(expected, value[key], key)
-                self.assertEqual({"selected": 1, "default": 0, "config": 0} if route == "selected" else
-                                 {"selected": 0, "default": 1, "config": 1}, value["fixtureCalls"])
+                # Default reads its profile twice: request validation before
+                # readiness recovery, then the admitted observer.
+                self.assertEqual({"selected": 1, "default": 0, "config": 0, "admission": 1} if route == "selected" else
+                                 {"selected": 0, "default": 1, "config": 2, "admission": 1}, value["fixtureCalls"])
 
 
 

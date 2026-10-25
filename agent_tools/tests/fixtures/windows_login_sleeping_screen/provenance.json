@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "619040a9e0cd6ab93622e545d5866ca076fae8925c8463aa73ba16b57e747e3d",
+  "nativeOperationId": "edeab7bb-f1cf-42b2-a1a7-f69d056f1953",
+  "failure": "Direct protected pipeline required currently awake password field although target may sleep or return to public lockscreen before credential admission. Actual native screen_gate blocked before reading private stdin or creating remote credential intent.",
+  "originalLocalHelperRetained": true
+}

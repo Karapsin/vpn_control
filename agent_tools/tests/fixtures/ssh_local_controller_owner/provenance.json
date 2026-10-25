@@ -1,0 +1,13 @@
+{
+  "authority": "Reviewed fixed source fixtures; no native acceptance or private inventory authority",
+  "files": {
+    "controller.4674.before.source": "46748882bd73fd27b51ccb03e33da057749b7e805c4b20b8b3634310e3a77660",
+    "local-owner-source/local_owner.pre-deadline.before.source": "4ad1031649008aa4954337cf1024cf872d8c2948a30b1e2baeb7fee5ef47249d",
+    "local-owner-source/local_owner.py": "667be765e108e62534d9ca30f4e4d9f7885087f0cbbe73d52e4c2dbb4ae67e08",
+    "local-owner-source/local_owner_v2.py": "0aaf58a4b01ef34d10d21db97ecfd6a067ae7c6b806342ef5cbd0baadf009841",
+    "local-owner-source/test_local_owner_v2.py": "0cd8e806cf1f650371a911629d968616d98996d5769855ef65b20bc76a54368b",
+    "ordinary_retention.py": "2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f"
+  },
+  "schemaVersion": 1,
+  "sourceOnly": true
+}

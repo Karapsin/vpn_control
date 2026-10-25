@@ -1,0 +1,59 @@
+"""Fixed normal Mac lease facade; all public output retained before assertion."""
+import argparse,ast,hashlib,json,os,sys,time
+_EXECUTING_CODE=sys._getframe().f_code
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[3];sys.path.insert(0,str(ROOT))
+from agent_tools.source_module_loader import SourceSession
+p=argparse.ArgumentParser();p.add_argument('--target',required=True);p.add_argument('--fixture-id',required=True)
+p.add_argument('--operation-id',required=True);p.add_argument('--action',required=True,choices=('acquire','status','cancel','reconcile','evidence'));args=p.parse_args()
+session=SourceSession(ROOT/'agent_tools','readiness_lease_workflow')
+mac=session.load('readiness_tart_macos_registry')
+raw=Path(__file__).read_bytes()
+if _EXECUTING_CODE!=compile(raw,__file__,'exec',dont_inherit=True):raise SystemExit('normal_helper_executing_source_changed')
+held=mac.PublicProof(Path(__file__).resolve(),{'generation':list(mac.private._generation(Path(__file__).stat())),'sha256':hashlib.sha256(raw).hexdigest()},private_file=False)
+def guard():session.guard();held.guard()
+try:
+    flow=session.module;registry=session.load('readiness_fixture_registry');jobs=session.load('durable_remote_job')
+    jobs._uuid(args.operation_id);registry._id(args.fixture_id)
+    descriptor,_=registry._json(ROOT/'.rag_index/readiness-fixtures'/(args.fixture_id+'.json'))
+    if descriptor['provider']!='tart-macos' or args.target!='tart:'+descriptor['binding']['vm_name']:raise SystemExit('explicit_target_mismatch')
+    inputs={'fixtureId':args.fixture_id,'operationId':args.operation_id}
+    if args.action=='acquire':inputs['ttlSeconds']=6
+    if args.action=='evidence':
+        state,_=flow._paths(ROOT,args.fixture_id,create=False)
+        admission=flow._external_admission(jobs._record(state/(args.operation_id+'.json')),args.fixture_id,args.operation_id)
+        original=registry.lease_executor_from_snapshot(ROOT,admission['executor'])
+        try:
+            producer=original.custody.lifecycle_root/'native-iopm-v2-qualification-64faf820-ed64-44fc-a4f0-bfb8f31c2241/cancel-death-and-original-evidence-v2.inert.py'
+            producer_pin={'generation':list(mac.private._generation(producer.lstat())),'sha256':'e0837869809c8a31f03d7db33028467581a37126227964dcd8fbfd343911ff19'}
+            if not 0<producer_pin['generation'][6]<=262144:raise SystemExit('native_evidence_producer_changed')
+            with mac.PublicProof(producer,producer_pin)as producer_held:producer_raw=producer_held.body
+            body=next(node.value.value for node in ast.parse(producer_raw).body if isinstance(node,ast.Assign)and any(isinstance(name,ast.Name)and name.id=='READ_ORIGINAL'for name in node.targets))
+            bridge=session.load('readiness_tart_macos_lease_bridge');protocol=session.load('readiness_qemu_jobs')
+            captured=original._capsule()
+            source=bridge.observer_source(captured,'status',expected_sha256=admission['executor']['capsule']['pin']['sha256'],operation=args.operation_id)
+            end=b'raise SystemExit(main())\n'
+            if not source.endswith(end):raise SystemExit('original_observer_shape_changed')
+            source=source[:-len(end)]+body.encode();argv,payload=protocol.stdin_command(source.decode())
+            folder=ROOT/'.runtime/tool-recovery/direct-entrypoints'/('macos-normal-lease-'+args.operation_id)
+            try:folder.mkdir(mode=0o700)
+            except FileExistsError:pass
+            jobs._root(folder)
+            jobs._create(folder/'evidence-source.py',source)
+            jobs._publish(folder/'evidence-source-admission.json',{'operationId':args.operation_id,'target':args.target,'fixtureId':args.fixture_id,
+                'purpose':'readonly_original_fullstreams_and_native_assertion_inventory','sourceSha256':hashlib.sha256(source).hexdigest(),
+                'sourcePins':mac._source_pins(),'originalCapsule':admission['executor']['capsule'],'binding':admission['executor']['binding'],
+                'namespace':admission['executor']['namespace'],'literalProducer':{'path':str(producer),'pin':producer_pin}})
+            guard()
+            with original.custody.operator(deadline=time.monotonic()+30):
+                response=mac.MacCustody.ordinary_guest_call(original.custody,original.custody.binding,argv,payload,time.monotonic()+30)
+            guard()
+            result={'operationId':args.operation_id,'returncode':response.returncode,'stdout':response.stdout.decode(),'stderr':response.stderr.decode(),
+                    'sourceSha256':hashlib.sha256(source).hexdigest()}
+        finally:original.custody.close()
+    else:
+        guard();result=flow.workflow(ROOT,args.action,inputs);guard()
+    print(json.dumps(result,sort_keys=True))
+
+finally:
+    held.close();session.close()

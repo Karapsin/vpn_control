@@ -1,5 +1,7 @@
 """Fresh MCP CLI and package dispatch retain the reviewed finite routes."""
 import json
+from contextlib import nullcontext
+from types import SimpleNamespace
 from pathlib import Path
 import subprocess
 import sys
@@ -9,15 +11,15 @@ from unittest import mock
 
 from agent_tools import mcp_server as server
 from agent_tools import ssh_acceptance_observation_routes as routes
+from agent_tools import ssh_transport
 
 
 class AcceptanceRouteIntegration(unittest.TestCase):
     def setUp(self):
-        from agent_tools.tests.route_adapter import bind_cached_routes
+        from agent_tools.tests.route_adapter import bind_routes
         from agent_tools import mcp_server as _route_server
-        bind_cached_routes(self,_route_server,
-            'ssh_acceptance_observation_routes',
-        )
+        transport=SimpleNamespace(**{**vars(ssh_transport),'admitted_transport':lambda *a,**k:nullcontext()})
+        bind_routes(self,_route_server,routes,transport)
 
     def test_public_cli_accepts_fixed_actions(self):
         for action in routes.ACTIONS:
@@ -39,18 +41,21 @@ class AcceptanceRouteIntegration(unittest.TestCase):
         program = '''import importlib.util,json,sys
 from pathlib import Path
 from unittest import mock
+from contextlib import nullcontext
+from types import SimpleNamespace
 source=%r
 sys.path.insert(0,str(Path(source).parent))
 spec=importlib.util.spec_from_file_location('fresh_acceptance_server',source)
 server=importlib.util.module_from_spec(spec);spec.loader.exec_module(server)
-from agent_tools import ssh_acceptance_observation_routes as routes
+from agent_tools import ssh_acceptance_observation_routes as routes,ssh_transport
 real_adapter=server._agent_module
-server._agent_module=lambda name:routes if name=='ssh_acceptance_observation_routes' else real_adapter(name)
+transport=SimpleNamespace(**{**vars(ssh_transport),'admitted_transport':lambda *a,**k:nullcontext()})
+server._agent_module=lambda name:routes if name=='ssh_acceptance_observation_routes' else transport if name=='ssh_transport' else real_adapter(name)
 with mock.patch.object(routes,'dispatch',return_value={'ok':True,'replayAllowed':False}) as call:
  result=server._ssh_workflow_impl('android-availability','archlinux',device='api35')
  assert call.call_count==1
  print(json.dumps(result))
 ''' % source
         with tempfile.TemporaryDirectory() as directory:
-            result = subprocess.run([sys.executable, '-I', '-c', program], cwd=directory, capture_output=True, text=True, timeout=15, check=True)
+            result = subprocess.run([sys.executable, '-I', '-B', '-c', program], cwd=directory, capture_output=True, text=True, timeout=15, check=True)
             self.assertEqual(json.loads(result.stdout), {'ok': True, 'replayAllowed': False})

@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "7e2175c5d55235435039f562f04adc48900bd5b3760e3a48472d80851689fb47",
+  "originalSource": "scripts/native_fixture_storage.py",
+  "change": "Finite separate restore-image preparation phase; original bootstrap and start budgets remain unchanged."
+}

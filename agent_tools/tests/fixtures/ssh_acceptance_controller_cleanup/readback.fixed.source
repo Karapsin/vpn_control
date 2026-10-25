@@ -1,0 +1,76 @@
+"""Authorized original-only df797590 readback over a fresh trusted direct route."""
+from pathlib import Path
+from types import ModuleType
+from contextlib import ExitStack
+import ast,hashlib,json,os,stat,subprocess,sys,time,uuid
+HERE=Path(__file__).resolve().parent;REPO=HERE.parents[3];OP='df797590-6f43-4b6b-8a79-54fc8460067d'
+JOB=HERE/'direct/.rag_index/ssh-program-execution'/OP
+WRAPPER='0aaf58a4b01ef34d10d21db97ecfd6a067ae7c6b806342ef5cbd0baadf009841'
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def load(name,path,digest):
+ raw=path.read_bytes();assert sha(raw)==digest;m=ModuleType(name);m.__file__=str(path);m.__package__=None;sys.modules[name]=m;exec(compile(raw,str(path),'exec'),m.__dict__);return m
+def save(path,body):
+ path.parent.mkdir(mode=0o700,parents=True,exist_ok=True);fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(body);f.flush();os.fsync(f.fileno())
+def sj(path,value):save(path,(json.dumps(value,sort_keys=True,indent=2)+'\n').encode())
+local=load('_df797590_original_custody',HERE/'local-owner-source/local_owner_v2.py',WRAPPER)
+builder=load('_df797590_original_shared',HERE/'build_controller_program_final.py','39f13e45d97d5d85c9e83a75ae7d4261095ef9315dcb7a6b05d1e8e6f86710bc')
+RB=HERE/('original-readback-'+uuid.uuid4().hex);RB.mkdir(mode=0o700);deadline=time.monotonic()+180
+with ExitStack()as stack:
+ scope=stack.enter_context(builder.SharedSourceScope(local.Held));hold=scope.hold
+ manifest=json.loads(hold(HERE/'public-source-manifest.json').raw)['sources']
+ intent_hold=hold(JOB/'intent.json');packet_hold=hold(JOB/'remote-admission.json');request_hold=hold(HERE/'direct/request.json');route_hold=hold(HERE/'direct/route-template.private.json')
+ intent=json.loads(intent_hold.raw);packet=json.loads(packet_hold.raw);request=json.loads(request_hold.raw);route=json.loads(route_hold.raw)
+ assert request['operationId']==intent['operationId']==packet['operationId']==OP
+ assert intent['request']['program']==request['program']and intent['request']['host']=='gateway'
+ assert packet['requestSha256']==sha(json.dumps(request['program'],sort_keys=True,separators=(',',':'),ensure_ascii=False).encode())and packet['ownerSourceSha256']==manifest['agent_tools/durable_remote_job.py']
+ assert intent['requestSha256']==sha(json.dumps(intent['request'],sort_keys=True,separators=(',',':'),ensure_ascii=False).encode())
+ assert packet['binding']['boot']==request['program']['targetContext']['bootId']and packet['binding']['account']==str(request['program']['targetContext']['uid'])
+ assert set(route['hosts'])=={'gateway'}and route['hosts']['gateway']['transport']=='direct'
+ for rel,digest in manifest.items():
+  value=hold(HERE/'direct'/rel);original=hold(REPO/rel);assert sha(value.raw)==sha(original.raw)==digest
+  save(RB/rel,value.raw)
+  if Path(rel).suffix=='.sh':os.chmod(RB/rel,0o700)
+ save(RB/'.vm-hosts.local.json',route_hold.raw)
+ (RB/'.agent_venv').symlink_to(REPO/'.agent_venv',target_is_directory=True)
+ sys.path.insert(0,str(RB))
+ from agent_tools import ssh_transport as t,ssh_program_execution_remote as remote,readiness_ssh_master as master
+ # Exact original observer is rendered BEFORE dispatch and can never call submit.
+ command=remote.durable_command(OP,request['program'],packet,mode='observe',wait_seconds=5)
+ inner=ast.literal_eval(ast.parse(command[4],mode='eval').body.args[0])
+ expected=request['program']['targetContext']
+ prefix="EXPECTED_CONTEXT="+repr(expected)+"\nimport os,pwd,pathlib\nu=pwd.getpwuid(os.geteuid())\nactual={'kind':'ssh','uid':os.geteuid(),'principal':u.pw_name,'home':u.pw_dir,'bootId':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()}\nif actual!=EXPECTED_CONTEXT:raise ValueError('original_observer_target_changed')\n"
+ observer_source=prefix+inner;command=('python3','-I','-B','-c','exec('+repr(observer_source)+')')
+ save(RB/'observer.source',observer_source.encode())
+ sj(RB/'before-dispatch-original-join.json',{'schemaVersion':1,'operationId':OP,'mode':'observe','requestSha256':packet['requestSha256'],'ownerSourceSha256':packet['ownerSourceSha256'],'packetSha256':sha(packet_hold.raw),'packetGeneration':packet_hold.pin,'intentGeneration':intent_hold.pin,'sourceSha256':sha(observer_source.encode()),'originalBinding':packet['binding'],'originalRootGeneration':packet['generation'],'configuredAlias':'gateway','trustedOriginalTransportValuesUnchanged':True,'newReadbackRoot':str(RB),'submitOrReplacementAllowed':False})
+ retention=load('_original_public_retention',HERE/'ordinary_retention.py','2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f')
+ def guard():
+  for value in scope.files:value.guard()
+ retained=None;result=None;ready_master=None
+ try:
+  with retention._OutputCapture(RB,'counter-000001')as capture:
+   try:
+    with t.admitted_transport(RB,'gateway',str(uuid.uuid4()),deadline=deadline):
+     ready_master=master.status(RB,'gateway');sj(RB/'owned-transport-before.json',{k:ready_master.get(k)for k in('state','recoveryId','child','socketPath')})
+     guard();argv=t.build_ssh_argv(t.load_config(RB),'gateway',20,command)
+     if time.monotonic()>=deadline:raise ValueError('original_readback_deadline')
+     try:result=t.run_ssh(argv,stdin=subprocess.DEVNULL,capture_output=True,timeout=min(40,deadline-time.monotonic()))
+     except t.SubmittedResultReadinessChanged as error:result=error.take_submitted_result();retained=retention._retain(capture,OP,result);raise
+     retained=retention._retain(capture,OP,result)
+   finally:
+    if result is not None and retained is None:retained=retention._retain(capture,OP,result)
+  if result.returncode!=0:raise ValueError('original_readback_remote_refused')
+  reply=json.loads(result.stdout);assert reply['schemaVersion']==1 and reply['operationId']==OP
+  sj(RB/'original-observation.json',reply)
+  print(json.dumps({'readbackRoot':str(RB),'operationId':OP,'state':reply['status']['state'],'reason':reply['status']['reason'],'remoteOwner':reply['status'].get('owner'),'rawRetained':True,'originalOnly':True},sort_keys=True))
+ finally:
+  # Close only this explicitly new private control socket, after source-owned
+  # status revalidates its original PID generation. Never signal a remote owner.
+  if ready_master is not None:
+   current=master.status(RB,'gateway')
+   if current.get('state')=='ready'and current['recoveryId']==ready_master['recoveryId']and current['child']==ready_master['child']and current['socketPath']==ready_master['socketPath']:
+    config=t.load_config(RB);host=config.hosts['gateway']
+    close=subprocess.run(['/usr/bin/ssh','-F','/dev/null','-S',current['socketPath'],'-o','ControlMaster=no','-o','ProxyCommand=false','-O','exit',route['hosts']['gateway']['user']+'@'+route['hosts']['gateway']['host']],stdin=subprocess.DEVNULL,capture_output=True,timeout=10)
+    save(RB/'transport-close.stdout',close.stdout);save(RB/'transport-close.stderr',close.stderr);sj(RB/'transport-close.json',{'returnCode':close.returncode,'ownRecoveryId':current['recoveryId'],'remoteOwnerSignalled':False,'sharedMasterSignalled':False})
+   sj(RB/'owned-transport-after.json',{k:master.status(RB,'gateway').get(k)for k in('state','recoveryId','child','socketPath')})
+  guard();sj(RB/'source-closing.json',{'sourceClosing':True,'originalOperationId':OP,'heldSourceFiles':len(scope.files),'mode':'observe-only','submitCalls':0})

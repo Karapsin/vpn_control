@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "c1ff6a2cd8b577ddf2bb66f0f41e563ffd318d9d70c62a7c2ee4b63120830ebb",
+  "failure": "Protected executor broad BaseException handler discarded central typed non-submission proof, returningUNKNOWN instead of regenerating one unsubmitted packet. Fixed wrapper retries only exact central proof plus held original local credential admission; accepted/uncertain effects remain observation-only.",
+  "relatedOriginalPrelaunchDiagnostic": "04f5c82e-57a1-4856-8029-2425456e3973",
+  "credentialEffectsBeforeRefusal": false
+}

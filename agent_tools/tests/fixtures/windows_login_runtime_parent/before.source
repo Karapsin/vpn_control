@@ -1,0 +1,241 @@
+"""Protected Windows credential entry for reviewed owned-fixture login screens.
+
+No password or secret-derived key request is part of a generated packet. A
+consumed credential admission is observed, never replayed after a lost reply.
+"""
+from __future__ import annotations
+import hashlib,inspect,json,re,textwrap
+from uuid import UUID
+from . import readiness_windows_remote as packets
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+
+LOGIN_ACCOUNT=r'''
+$ExpectedUser=__USER__
+$u=Get-LocalUser -Name $ExpectedUser
+$key=Get-ItemProperty -LiteralPath 'Registry::HKEY_USERS\.DEFAULT\Keyboard Layout\Preload'
+[ordered]@{name=$u.Name;fullName=$u.FullName;sid=$u.SID.Value;enabled=$u.Enabled;loginKeyboard=$key.'1'}|ConvertTo-Json -Compress
+'''
+
+class PrivateInputUnknown(ValueError):
+    """Finite result only; no private request or reply is exposed."""
+
+def private_keys(secret):
+    if type(secret)is not bytes or not 1<=len(secret)<=64:raise PrivateInputUnknown('instance_login_input_unsupported')
+    shifted={'!':'1','@':'2','#':'3','$':'4','%':'5','^':'6','&':'7','*':'8','(':'9',')':'0','_':'minus','+':'equal','{':'bracket_left','}':'bracket_right','|':'backslash',':':'semicolon','"':'apostrophe','<':'comma','>':'dot','?':'slash','~':'grave_accent'}
+    plain={' ':'spc','-':'minus','=':'equal','[':'bracket_left',']':'bracket_right','\\':'backslash',';':'semicolon',"'":'apostrophe',',':'comma','.':'dot','/':'slash','`':'grave_accent'}
+    result=[]
+    for byte in secret:
+        c=chr(byte);shift=False
+        if 'A'<=c<='Z':key=c.lower();shift=True
+        elif 'a'<=c<='z'or '0'<=c<='9':key=c
+        elif c in plain:key=plain[c]
+        elif c in shifted:key=shifted[c];shift=True
+        else:raise PrivateInputUnknown('instance_login_input_unsupported')
+        result.append({'keys':([{'type':'qcode','data':'shift'}]if shift else[])+[{'type':'qcode','data':key}],'hold-time':80})
+    return result
+
+def enter_private(secret,send,guard):
+    """Send only to the private monitor; never publish per-key progress."""
+    import time
+    requests=private_keys(secret)
+    try:
+        for request in requests:
+            guard();send(request);time.sleep(.11)
+        guard();send({'keys':[{'type':'qcode','data':'ret'}],'hold-time':80});guard()
+    except BaseException:raise PrivateInputUnknown('instance_login_entry_unknown')from None
+    finally:secret=None;requests=None
+
+def ppm(raw):
+    if type(raw)is not bytes or len(raw)>16*1024**2:raise ValueError('instance_login_screen_bound')
+    parts=raw.split(b'\n',3)
+    if len(parts)!=4 or parts[0]!=b'P6'or parts[2]!=b'255':raise ValueError('instance_login_screen_unrecognized')
+    fields=parts[1].split()
+    if len(fields)!=2 or any(not x.isdigit()for x in fields):raise ValueError('instance_login_screen_unrecognized')
+    w,h=map(int,fields)
+    if not 320<=w<=4096 or not 200<=h<=2160 or len(parts[3])!=w*h*3:raise ValueError('instance_login_screen_unrecognized')
+    return w,h,parts[3]
+
+def screen_gate(raw,profile):
+    w,h,pixels=ppm(raw)
+    if type(profile)is not dict or set(profile)!={'width','height','crops'}or (w,h)!=(profile['width'],profile['height'])or type(profile['crops'])is not list or not 1<=len(profile['crops'])<=8:raise ValueError('instance_login_screen_unrecognized')
+    for row in profile['crops']:
+        if type(row)is not dict or set(row)!={'rect','sha256'}or type(row['rect'])is not list or len(row['rect'])!=4 or any(type(v)is not int for v in row['rect'])or type(row['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',row['sha256'])is None:raise ValueError('instance_login_screen_profile')
+        x0,y0,x1,y1=row['rect']
+        if not 0<=x0<x1<=w or not 0<=y0<y1<=h:raise ValueError('instance_login_screen_profile')
+        crop=b''.join(pixels[(y*w+x0)*3:(y*w+x1)*3]for y in range(y0,y1))
+        if hashlib.sha256(crop).hexdigest()!=row['sha256']:raise ValueError('instance_login_screen_unrecognized')
+    return True
+
+def _login_flow(root,read,save,monitor,guard,script,fresh,before):
+    import base64,os,stat,sys,time,zlib
+    def need(ok,code):
+        if not ok:raise ValueError(code)
+    need(fresh['machine'].lower()==SPEC['deploymentId'] and fresh['expectedSid']==LOGIN_SID and fresh['ordinary']is True,'instance_login_account_mismatch')
+    account=script('login-account-'+os.urandom(6).hex(),LOGIN_ACCOUNT_SCRIPT)
+    need(account['name'].casefold()==SETUP['user'].casefold()and account['sid']==LOGIN_SID and account['enabled']is True,'instance_login_account_mismatch')
+    need(account['loginKeyboard']=='00000409','instance_login_keyboard_unrecognized')
+    def shot():
+        name='login-'+OPERATION+'-'+os.urandom(8).hex()+'.ppm';path=root/name
+        guard();monitor('screendump',{'filename':str(path),'format':'ppm'});s=os.lstat(path)
+        need(stat.S_ISREG(s.st_mode)and s.st_uid==os.geteuid()and s.st_nlink==1 and s.st_size<=16*1024**2,'instance_login_screen_identity')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            raw=b''
+            while len(raw)<=16*1024**2:
+                chunk=os.read(fd,65536)
+                if not chunk:break
+                raw+=chunk
+            need(len(raw)==s.st_size,'instance_login_screen_changed');ppm(raw);guard();return raw
+        finally:os.close(fd)
+    if LOGIN_MODE=='login-dismiss':
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        name='login-dismiss-'+OPERATION+'.intent.json'
+        if not os.path.lexists(root/name):
+            screen_gate(shot(),LOGIN_PROFILE);guard();save(name,{'operationId':OPERATION,'action':'dismiss','expected':LOGIN_EXPECTED,'profile':LOGIN_PROFILE,'replayAllowed':False});monitor('send-key',{'keys':[{'type':'qcode','data':'ret'}],'hold-time':80});time.sleep(1)
+        else:need(read(name)=={'operationId':OPERATION,'action':'dismiss','expected':LOGIN_EXPECTED,'profile':LOGIN_PROFILE,'replayAllowed':False},'instance_login_original_dismiss_changed')
+        raw=shot();return {'login':{'state':'dismiss-observed','account':account,'screenZlib':base64.b64encode(zlib.compress(raw)).decode(),'screenBytes':len(raw)},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-wake':
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        name='login-wake-'+OPERATION+'.intent.json'
+        if not os.path.lexists(root/name):
+            mice=monitor('query-mice');selected=[v for v in mice if type(v)is dict and v.get('current')is True]
+            need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_login_mouse_unrecognized')
+            events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
+            save(name,{'operationId':OPERATION,'action':'wake','expected':LOGIN_EXPECTED,'replayAllowed':False});guard();monitor('input-send-event',{'events':events});time.sleep(1)
+        else:need(read(name)=={'operationId':OPERATION,'action':'wake','expected':LOGIN_EXPECTED,'replayAllowed':False},'instance_login_original_wake_changed')
+        raw=shot();return {'login':{'state':'wake-observed','account':account,'screenZlib':base64.b64encode(zlib.compress(raw)).decode(),'screenBytes':len(raw)},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-probe':
+        raw=shot();return {'login':{'state':'observed','account':account,'screenZlib':base64.b64encode(zlib.compress(raw)).decode(),'screenBytes':len(raw)},'sessionFacts':fresh}
+    need(LOGIN_MODE in {'login-submit','login-status'},'instance_login_action')
+    need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+    session=fresh['session']
+    need(not session['User']or session['User'].casefold()==SETUP['user'].casefold()and fresh['tokenSid']==LOGIN_SID,'instance_login_wrong_account')
+    def ready(value):
+        row=value['session']
+        return (value['boot']==LOGIN_EXPECTED['boot']and value['expectedSid']==LOGIN_SID and value['ordinary']is True and value['tokenSid']==LOGIN_SID and row['User'].casefold()==SETUP['user'].casefold()and row['Flags']==1 and row['State']==0 and sum(x['SessionId']==value['console']for x in value['explorers'])==1)
+    name='login-credential-'+OPERATION+'.intent.json'
+    admission={'operationId':OPERATION,'expected':LOGIN_EXPECTED,'profile':LOGIN_PROFILE,'account':LOGIN_SID,'replayAllowed':False}
+    if LOGIN_MODE=='login-status'or os.path.lexists(root/name):
+        need(os.path.lexists(root/name),'instance_login_original_submission_unknown')
+        need(read(name)==admission,'instance_login_original_changed')
+        return {'login':{'state':'ready'if ready(fresh)else'credential-submission-unresolved','operationId':OPERATION,'interactiveSessionVerified':ready(fresh),'replayAllowed':False},'sessionFacts':fresh}
+    if ready(fresh):return {'login':{'state':'ready','operationId':OPERATION,'interactiveSessionVerified':True,'replayAllowed':False},'sessionFacts':fresh}
+    need(session['SessionId']==LOGIN_EXPECTED.get('console')and session['Logon']==LOGIN_EXPECTED.get('logon')and session['User']==LOGIN_EXPECTED.get('user'),'instance_login_session_changed')
+    screen_gate(shot(),LOGIN_PROFILE)
+    secret=sys.stdin.buffer.read(65)
+    # Validate all private bytes before journaling and before the first key. No
+    # count, derived key request, echo or hash is retained by either path.
+    private_keys(secret);guard();save(name,admission)
+    try:enter_private(secret,lambda arguments:monitor('send-key',arguments),guard)
+    finally:secret=None
+    after=script('login-after-'+os.urandom(6).hex(),SESSION_SCRIPT)
+    need(after['boot']==fresh['boot']and after['expectedSid']==LOGIN_SID and after['ordinary']is True,'instance_login_session_changed')
+    return {'login':{'state':'ready'if ready(after)else'credential-submitted','operationId':OPERATION,'interactiveSessionVerified':ready(after),'replayAllowed':False},'sessionFacts':after}
+
+def program(binding,mode,operation,*,expected_sid,profile=None,expected=None):
+    if mode not in {'login-probe','login-wake','login-dismiss','login-submit','login-status'}or type(operation)is not str or str(UUID(operation))!=operation:raise ValueError('windows_login_action')
+    if type(expected_sid)is not str or re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',expected_sid)is None:raise ValueError('windows_login_account')
+    base=packets.program(binding,'observe',operation)
+    helpers='import hashlib,re\nLOGIN_MODE='+repr(mode)+'\nLOGIN_SID='+repr(expected_sid)+'\nLOGIN_PROFILE='+repr(profile)+'\nLOGIN_EXPECTED='+repr(expected)+'\n'
+    account="$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"+LOGIN_ACCOUNT.replace('__USER__',repr(binding['setup']['user']))
+    helpers+='LOGIN_ACCOUNT_SCRIPT='+repr(account)+'\n'
+    for fn in (PrivateInputUnknown,private_keys,enter_private,ppm,screen_gate,_login_flow):helpers+=inspect.getsource(fn)+'\n'
+    marker="        elif MODE=='observe':\n"
+    extension="        elif MODE in {'login-probe','login-wake','login-dismiss','login-submit','login-status'}:\n            require(state=='running','instance_guest_not_ready')\n            fresh=script('login-session-'+os.urandom(6).hex(),SESSION_SCRIPT)\n            result.update(_login_flow(root,read,save,monitor,vm_guard,script,fresh,result))\n"
+    source=base.decode()
+    if source.count(marker)!=1 or source.count("MODE='observe'")!=1:raise ValueError('windows_login_producer_changed')
+    source=source.replace("MODE='observe'","MODE="+repr(mode),1).replace(marker,extension+marker,1)
+    source=helpers+source
+    compile(source,'fixed protected Windows login','exec');return source.encode()
+
+
+def execute(backend,operation,profile,expected,credential_file,deadline,*,status_only=False):
+    """Own one fixed protected attempt; repeats observe without reopening input."""
+    import math,os,stat,subprocess,time
+    from pathlib import Path
+    from . import ssh_transport as transport,readiness
+    from .private_credential_file import SecretFile
+    from .native_review_source_closure import _Held
+    from .ssh_source_file_stage_direct import _retain
+    from . import readiness_windows_guest as session_module
+    if type(operation)is not str or str(UUID(operation))!=operation or type(status_only)is not bool:raise ValueError('windows_login_identity')
+    if not math.isfinite(deadline)or deadline<=time.monotonic():raise ValueError('windows_login_deadline')
+    backend._guard();root=backend.root
+    own_source=Path(__file__).read_bytes()
+    if _EXECUTING_CODE!=compile(own_source,str(Path(__file__)),'exec',dont_inherit=True):raise ValueError('windows_login_source_changed')
+    # Establish the actual transport before producing its guest-bound packet.
+    with transport.admitted_transport(root,backend.binding['spec']['host'],operation,deadline=deadline,requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})))as prepared:
+        prepared.revalidate()
+    parent=root/'.runtime/readiness-windows-login';parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    for directory in (root/'.runtime',parent):
+        s=directory.lstat()
+        if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.getuid()or s.st_mode&0o077:raise ValueError('windows_login_journal_owner')
+    directory=parent/operation
+    try:directory.mkdir(mode=0o700)
+    except FileExistsError:
+        s=directory.lstat()
+        if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.getuid()or s.st_mode&0o077:raise ValueError('windows_login_journal_owner')
+    identity={'operationId':operation,'binding':backend.binding,'expectedSid':backend.expected_sid,'profile':profile,'expected':expected}
+    source=program(backend.binding,'login-submit',operation,expected_sid=backend.expected_sid,profile=profile,expected=expected)
+    intended={'identity':identity,'callerSha256':hashlib.sha256(source).hexdigest(),'replayAllowed':False}
+    intent=directory/'credential.intent.json';held=_Held();private=None;secret=None
+    try:
+        current=Path(__file__);held.read(str(current),hashlib.sha256(current.read_bytes()).hexdigest(),max_bytes=1048576)
+        if status_only and not os.path.lexists(intent):return {'state':'blocked','reason':'original_submission_unknown','operationId':operation,'replayAllowed':False}
+        try:
+            if status_only:raise FileExistsError()
+            _retain(directory,intent.name,intended);mode='login-submit'
+        except FileExistsError:
+            descriptor=os.open(intent,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                s=os.fstat(descriptor)
+                if not stat.S_ISREG(s.st_mode)or s.st_uid!=os.getuid()or stat.S_IMODE(s.st_mode)!=0o600 or s.st_nlink!=1 or not 0<s.st_size<=65536:raise ValueError('windows_login_journal_owner')
+                raw=os.read(descriptor,65537)
+                if len(raw)!=s.st_size:raise ValueError('windows_login_journal_changed')
+                held.read(str(intent),hashlib.sha256(raw).hexdigest(),max_bytes=65536);original=json.loads(raw)
+                if set(original)!={'identity','callerSha256','replayAllowed'}or original['identity']!=identity or original['replayAllowed']is not False or type(original['callerSha256'])is not str or re.fullmatch('[0-9a-f]{64}',original['callerSha256'])is None:raise ValueError('windows_login_original_changed')
+            finally:os.close(descriptor)
+            mode='login-status';source=program(backend.binding,mode,operation,expected_sid=backend.expected_sid,profile=profile,expected=expected)
+        # Passwords are opened only after the immutable local credential fence.
+        if mode=='login-submit':
+            try:
+                secret=SecretFile(credential_file);private=secret.text.encode('ascii');private_keys(private);secret.guard()
+            except BaseException:
+                if secret is not None:secret.close();secret=None
+                return {'state':'blocked','reason':'credential_unavailable','operationId':operation,'replayAllowed':False}
+        label=mode+'-'+__import__('uuid').uuid4().hex;path=directory/(label+'.py');_retain(directory,path.name,source)
+        held.read(str(path),hashlib.sha256(source).hexdigest(),max_bytes=1048576)
+        with transport.admitted_transport(root,backend.binding['spec']['host'],operation,deadline=deadline,
+                requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})))as admission:
+            import base64
+            command=['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(source).decode())+'))']
+            argv=transport.build_ssh_argv(transport.load_config(root),backend.binding['spec']['host'],command=command)
+            backend._guard();held.finish();held.final_identity_pass();admission.revalidate()
+            if secret is not None:secret.guard()
+            try:result=transport.run_ssh(argv,input=private if private is not None else b'',stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=max(.1,min(100,deadline-time.monotonic())),check=False)
+            except BaseException:return {'state':'unknown','reason':'credential_submission_unresolved','operationId':operation,'replayAllowed':False}
+            if secret is not None:secret.guard()
+            # No raw stdout/stderr, hashes or lengths from this private path are
+            # retained. Even a malicious reply echoing the input stays in memory.
+            if private and (private in result.stdout or private in result.stderr):return {'state':'unknown','reason':'private_reply_rejected','operationId':operation,'replayAllowed':False}
+            if result.returncode or len(result.stdout)>262144 or result.stderr:return {'state':'unknown','reason':'credential_submission_unresolved','operationId':operation,'replayAllowed':False}
+            try:
+                value=json.loads(result.stdout)
+                if value.get('state')=='blocked':
+                    reason=value.get('reason')
+                    if type(reason)is not str or re.fullmatch('instance_[a-z_]{1,64}',reason)is None:raise ValueError()
+                    return {'state':'blocked','reason':reason,'operationId':operation,'replayAllowed':False}
+                fields={'state','operationId','provider','machine','hostBoot','guest','actor','controlConnection','sessionFacts','displayFacts','guestAgent','login'}
+                if type(value)is not dict or set(value)!=fields or value['operationId']!=operation or value['machine']!=backend.machine or value['state']!='observed':raise ValueError()
+                outcome=value['login']
+                if type(outcome)is not dict or set(outcome)!={'state','operationId','interactiveSessionVerified','replayAllowed'}or outcome['operationId']!=operation or outcome['state']not in {'ready','credential-submitted','credential-submission-unresolved'}or type(outcome['interactiveSessionVerified'])is not bool or outcome['replayAllowed']is not False:raise ValueError()
+                actual=session_module.validate_session(value['sessionFacts'],backend.expected_sid,backend.binding['setup']['user'],backend.machine)
+                if actual['boot']!=expected['boot']or outcome['interactiveSessionVerified']!=(actual['ordinary_session']=='ready'):raise ValueError()
+            except BaseException:return {'state':'unknown','reason':'private_reply_rejected','operationId':operation,'replayAllowed':False}
+            receipt={'state':'observed','operationId':operation,'machine':backend.machine,'login':outcome,'boot':actual['boot'],'account':backend.expected_sid,'session':actual['session'],'ordinarySession':actual['ordinary_session'],'replayAllowed':False}
+            backend._guard();held.finish();held.final_identity_pass();_retain(directory,label+'.result.json',receipt);return receipt
+    finally:
+        private=None
+        if secret is not None:secret.close()
+        held.close()

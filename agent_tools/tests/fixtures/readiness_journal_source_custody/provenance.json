@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "before.source": "b218d0e477d29bd2150bf9b02bff18c0a9e0a2ff1dc02ccdb08409dbabf1e078"
+  },
+  "actualFailure": "native original085c/7e8 resource mark_submitting refused readiness_journal_unavailable before resource submitting/creator Program/submission/handoff; broad wrapper alone did not identify cause",
+  "causalObservation": "actual SourceSession hold_result(existing journal) instruments RecoveryJournal; original generator pending_dispatches rejects lazy export at _ensure_ready587, masked749; local source-held exact prelude reproduces fixed lazy_adapter_exports_require_explicit_custody",
+  "nativeEvidence": "original b2cf3d626bd8b0aac4032cc916669f9829553c119b36ad8098e6658150d684a8 retained privately; routine reads no ignored artifacts/private state",
+  "executedScope": "Complete authenticated original readiness module via actual SourceSession; explicit copied current private_inventory_lock and native_review_source_closure helpers only; actual owned temporary journals/locks, controlled adapters, no SSH/native effects"
+}

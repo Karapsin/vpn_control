@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "1a6fe2bc59756b531e19dc54f9bf88076494066c204ddcc7f8df5887efa001ae",
+  "origin": "unexposed-source-review",
+  "failure": "canonical top-level function replaced by non-function skipped executing-code comparison",
+  "nativeQualification": false
+}

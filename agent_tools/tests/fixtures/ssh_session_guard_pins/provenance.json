@@ -1,0 +1,13 @@
+{
+  "sourceSha256": {
+    "ssh_connection_session_close.py": "dabfc17c1faf6ae14825bcc1dd465e818a625c888ada276624bec25cc40ac965",
+    "ssh_connection_session_retirement.py": "de86f7fdd82132ec5e1586f5b50a9a95f395ad8653cb10b3d2d43532f558d867"
+  },
+  "failure": "Reviewed command-deadline and atomic-lock updates left generic close and completed-session retirement pinned to prior dependency sources. Both refuse current, newly prepared owned sessions before any effect.",
+  "originalEvidence": ".runtime/tool-recovery/ssh-close-pin-diagnosis/initial-full-affected.log",
+  "originalFailureCounts": {
+    "closeFailures": 28,
+    "closeErrors": 5
+  },
+  "scope": "Inert disposable session histories, real temporary private files and Unix sockets, one redirected local Python control child; never actual SSH, VM input, signals or historical unknown adoption."
+}

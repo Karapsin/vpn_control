@@ -1,0 +1,5 @@
+{
+  "beforeLocalLimitSha256": "c4ee18c3e35247ee364b6c731a6de68ff3627f35edca5de38ed0190f07078e87",
+  "bytes": 2321,
+  "scope": "Original complete same-process SSH guest fixture before separating guest from kernel-capped local master"
+}

@@ -2,8 +2,18 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-runtime_dir="$repo_root/.runtime/visual-vms/windows"
-disk_path="$runtime_dir/vpn-control-win11.qcow2"
+[[ "${1:-}" == "--target" && -n "${2:-}" ]] || {
+  echo "Explicit --target qemu:<absolute configured disk> is required." >&2; exit 2;
+}
+target="$2"
+shift 2
+if [[ $# -ne 0 ]]; then
+  [[ $# -eq 2 && -n "$2" && ( "$1" == "--install" || "$1" == "--provision-drivers" ) ]] || {
+    echo "Unknown or incomplete start arguments." >&2; exit 2;
+  }
+fi
+disk_path="$(python3 "$repo_root/scripts/visual_target.py" --platform windows --target "$target")" || exit 2
+runtime_dir="$(dirname "$disk_path")"
 uefi_vars="$runtime_dir/edk2-arm-vars.fd"
 guest_agent_socket="$runtime_dir/qga.sock"
 install_iso=""
@@ -14,12 +24,12 @@ if [[ "${1:-}" == "--install" ]]; then
 elif [[ "${1:-}" == "--provision-drivers" ]]; then
   driver_iso="${2:-}"
 fi
-[[ -f "$disk_path" ]] || { echo "Run scripts/bootstrap_windows_visual_vm.sh first." >&2; exit 1; }
+[[ -f "$disk_path" ]] || { echo "Run scripts/bootstrap_windows_visual_vm.sh --target qemu:<absolute configured disk> first." >&2; exit 1; }
 if command -v lsof >/dev/null 2>&1; then
   disk_users="$(lsof -t -- "$disk_path" 2>/dev/null | sort -u || true)"
   [[ -z "$disk_users" ]] || {
     echo "Managed Windows visual disk is already in use by PID(s): ${disk_users//$'\n'/, }." >&2
-    echo "Use scripts/visual_platform.py stop --platform windows before starting another VM." >&2
+    echo "Use scripts/visual_platform.py stop --platform windows --target "$target" before starting another VM." >&2
     exit 1
   }
 fi
@@ -64,7 +74,7 @@ args=(
   -display none
   -vnc 127.0.0.1:5
   -qmp "unix:$runtime_dir/qmp.sock,server=on,wait=off"
-  -name vpn-control-win11
+  -name "$(basename "$disk_path" .qcow2)"
 )
 if [[ "$(uname -m)" == arm64 ]]; then
   qemu_share="${VPN_CONTROL_QEMU_FIRMWARE_DIR:-$(cd "$(dirname "$qemu_binary")/../share/qemu" && pwd)}"

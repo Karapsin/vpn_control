@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "39bd09149af405baec197d3319a7b093cb338635ae8931a5bfcb6a02800a4fdb",
+  "sourcePath": "agent_tools/readiness_windows_managed_create.py",
+  "evidence": "Reviewed controller-terminal0 versus unresolved bootstrap state gap before any native creator namespace enrollment; actual controlled durable-owner RED/GREEN."
+}

@@ -28,12 +28,48 @@ UPDATE_SIGNER = 'a43b5330501b02f5558fa381c52e7f7dcdd9db362d6807d449d7bbb5e207c5a
 def update_equal(a, b):
     return update_json.dumps(a, sort_keys=True, separators=(',', ':'), allow_nan=False) == update_json.dumps(b, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
-def update_main_factory(selected, args, backend):
-    """Actual main body, two finite substitutions; unchanged action/TLS semantics.
+UPDATE_MAIN_READINESS = (
+    "port = os.environ.get('ANDROID_ADB_SERVER_PORT', '5037')",
+    "if not port.isdecimal() or not 1024 <= int(port) <= 65535:\n    raise SystemExit('fixture_entrypoint_mismatch')",
+    "adb_socket = os.environ.get('ADB_SERVER_SOCKET', 'tcp:localhost:' + port)",
+    "if adb_socket not in {'tcp:localhost:' + port, 'tcp:127.0.0.1:' + port}:\n    raise SystemExit('fixture_entrypoint_mismatch')",
+    'adb_path = shutil.which(args.adb)',
+    "if adb_path is None:\n    raise SystemExit('fixture_entrypoint_mismatch')",
+    'from agent_tools import readiness_entrypoints',
+    "args.readiness_admission = readiness_entrypoints.from_environment(ROOT, 'android_installer_lifecycle', 'run', expected_binding={'adb': str(Path(adb_path).resolve(strict=True)), 'serial': args.serial, 'avd': args.avd, 'serverPort': int(port)})",
+    "try:\n    if args.cli.suffix.lower() != '.py':\n        from agent_tools import readiness_adb_dispatch\n        args.cli_environment = readiness_adb_dispatch.environment(args.readiness_admission, args.cli_environment)\n    _run_admitted(args)\nfinally:\n    args.readiness_admission.close()",
+)
+UPDATE_MAIN_ADMITTED = 'args.readiness_admission = UPDATE_READINESS_ADMISSION\ntry:\n    _run_admitted(args)\nfinally:\n    args.readiness_admission.close()'
+
+
+class UpdateOuterAdmission:
+    """Narrow staged readiness bound to the actor's original outer task guard.
+
+    The actor already holds the exact installer lease, reservation and intent.
+    This never admits, recovers, persists, wraps ADB or names a successor.
+    """
+
+    def __init__(self, guard):
+        self._guard = guard
+        self._closed = False
+
+    def revalidate(self):
+        if self._closed:
+            raise ValueError('update_readiness_admission_closed')
+        self._guard._task_guard()
+
+    def close(self):
+        self._closed = True
+
+
+def update_main_factory(selected, args, backend, guard):
+    """Actual main body, three finite substitutions; unchanged action/TLS semantics.
 
     parse_args is replaced by already typed/bound exact args. Environment is
     explicitly the seven-key LAUNCH source authority, passed to the ORIGINAL
-    public_cli_environment. No subprocess, action or cleanup statement changes.
+    public_cli_environment. The direct readiness tail is replaced by the actor's
+    outer guard: no second admission, ADB wrapper or unstaged import. No
+    subprocess, action or cleanup statement changes.
     """
     lifecycle = selected['lifecycle']
     source = COMPONENT_BUNDLE.load(COMPONENT_RECEIPT)['scripts/android_installer_lifecycle.py']
@@ -50,8 +86,13 @@ def update_main_factory(selected, args, backend):
     if len(matches) != 1 or update_ast.unparse(matches[0]) != 'tls.public_cli_environment(args.adb, args.cli)':
         raise ValueError('update_main_environment_changed')
     matches[0].args.append(update_ast.Name(id='UPDATE_SOURCE_ENVIRONMENT', ctx=update_ast.Load()))
+    tail = [index for index, statement in enumerate(node.body) if update_ast.unparse(statement) == UPDATE_MAIN_READINESS[0]]
+    if len(tail) != 1 or tuple(update_ast.unparse(statement) for statement in node.body[tail[0]:]) != UPDATE_MAIN_READINESS:
+        raise ValueError('update_main_readiness_changed')
+    node.body[tail[0]:] = update_ast.parse(UPDATE_MAIN_ADMITTED).body
     scope = dict(lifecycle.__dict__)
-    scope.update(UPDATE_BOUND_ARGS=args, UPDATE_SOURCE_ENVIRONMENT=update_copy.deepcopy(backend['LAUNCH']['environment']))
+    scope.update(UPDATE_BOUND_ARGS=args, UPDATE_SOURCE_ENVIRONMENT=update_copy.deepcopy(backend['LAUNCH']['environment']),
+                 UPDATE_READINESS_ADMISSION=UpdateOuterAdmission(guard))
     exec(compile(update_ast.fix_missing_locations(update_ast.Module(body=[node], type_ignores=[])), str(lifecycle.__file__), 'exec', dont_inherit=True), scope)
     return scope['complete_update_main']
 
@@ -111,7 +152,7 @@ class CompleteUpdate:
         self.guard()
         self.started = True
         self.restore = self.selected['adapter'].install(self.lifecycle, self.tls, self.backend, self.args, self.guard)
-        main = update_main_factory(self.selected, self.args, self.backend)
+        main = update_main_factory(self.selected, self.args, self.backend, self.guard)
 
         def worker():
             try:

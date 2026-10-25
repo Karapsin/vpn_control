@@ -99,7 +99,7 @@ class WakeTests(unittest.TestCase):
     def test_consumed_original_wake_no_remote_submit(self):
         with tempfile.TemporaryDirectory()as d:
             root=Path(d).resolve();leaf=root/'.runtime/parity-evidence'/('windows-cp117-lock-wake-'+login.WAKE_CORRELATION);leaf.mkdir(parents=True)
-            with patch.object(login,'AuthorityCapture')as capture,patch.object(login.subprocess,'run')as transport:
+            with patch.object(login,'AuthorityCapture')as capture,patch.object(login.subprocess,'Popen')as transport:
                 result=login.wake(root)
             self.assertEqual(result['phase'],'wake-consumed');transport.assert_not_called()
     def test_fixed_wake_correlation_refused(self):

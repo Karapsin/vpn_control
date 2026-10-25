@@ -1,0 +1,201 @@
+"""Actual detached ordinary HOST owners, original source and private admission."""
+import base64
+import copy
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+from uuid import UUID,uuid5
+
+from agent_tools import durable_remote_job as jobs
+from agent_tools import readiness_windows_host_jobs as subject
+from agent_tools import readiness_windows_lifecycle as lifecycle
+from agent_tools.tests.test_readiness_windows_lifecycle import binding,sample
+
+
+@unittest.skipIf(os.geteuid()==0,'ordinary HOST account required')
+class WindowsHostOwnerTests(unittest.TestCase):
+    def setUp(self):
+        temporary=tempfile.TemporaryDirectory(dir=Path('/tmp').resolve());self.addCleanup(temporary.cleanup)
+        self.root=Path(temporary.name);self.root.chmod(0o700);self.vm=self.root/'vm';self.vm.mkdir(mode=0o700)
+        self.bound=binding();self.bound['spec']['root']=str(self.vm);self.bound['context']['hostBootId']=str(UUID(jobs._boot()))
+        body=sample(self.bound);info=self.vm.stat();body['rootIdentity']=[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid]
+        jobs._publish(self.vm/'intent.json',{'spec':self.bound['spec'],'hostBootId':self.bound['context']['hostBootId'],'rootIdentity':body['rootIdentity']})
+        self.lineage=lifecycle.validate_lineage(self.bound,body)
+        self.namespace=subject.namespace_from_observation(self.bound,self.lineage,self.run_source(subject.enroll_program(self.bound,self.lineage)))
+        self.rid='7'*64;self.operation=str(uuid5(UUID(body['machine']),self.rid))
+
+    def run_source(self,source):
+        result=subprocess.run([sys.executable,'-I','-B','-c','import sys;exec(compile(sys.stdin.buffer.read(),"controlled-outer-host-caller","exec"))'],input=source,capture_output=True,timeout=5)
+        self.assertEqual(result.returncode,0,result.stderr.decode());return json.loads(result.stdout)
+
+    def original(self,source):
+        return subject.retain(self.root,self.namespace,self.operation,self.rid,jobs.Program('windows-persisted-raw-start',source))
+
+    def observe(self,original,*,submit=False):
+        return subject.validate_result(original,self.run_source(subject.operation_program(original,submit=submit)))
+
+    def terminal(self,original):
+        end=time.monotonic()+5
+        while True:
+            reply=self.observe(original)
+            if reply['status']['state']=='terminal':return reply
+            self.assertLess(time.monotonic(),end,reply);time.sleep(.03)
+
+    def test_one_actual_owner_survives_client_exit_duplicate_and_fresh_local_reopen(self):
+        marker=self.vm/'executions';source=('from pathlib import Path\nimport time\np=Path('+repr(str(marker))+')\np.open("ab").write(b"once\\n")\n'
+            'for i in range(8):\n print(i,flush=True);time.sleep(.04)\n').encode()
+        original=self.original(source);first=self.observe(original,submit=True)
+        self.assertIn(first['status']['state'],{'running','unknown','terminal'})
+        bound=self.namespace['binding'];fresh=subject.reopen(self.root,bound['target'],bound['machine'],self.operation)
+        # The initial foreground carrier process has already exited. A new
+        # carrier deduplicates, then collects the exact retained detached job.
+        self.observe(fresh,submit=True);final=self.terminal(fresh)
+        self.assertEqual(marker.read_bytes(),b'once\n');self.assertEqual(base64.b64decode(final['stdoutBase64']),b'0\n1\n2\n3\n4\n5\n6\n7\n')
+        self.assertEqual(final['status']['terminal']['exitCode'],0)
+        before={p.relative_to(self.root):(p.stat().st_ino,p.stat().st_mtime_ns)for p in self.root.rglob('*')}
+        subject.reopen(self.root,bound['target'],bound['machine'],self.operation)
+        self.assertEqual(before,{p.relative_to(self.root):(p.stat().st_ino,p.stat().st_mtime_ns)for p in self.root.rglob('*')})
+
+    def test_consumed_index_missing_owner_is_unknown_and_never_replaced(self):
+        marker=self.vm/'never';original=self.original(('from pathlib import Path\nPath('+repr(str(marker))+').touch()\n').encode())
+        remote=Path(self.namespace['root']);index=remote/'admissions'/(self.operation+'.json')
+        record=original.as_dict();jobs._publish(index,{'operationId':self.operation,'binding':self.namespace['binding'],'purpose':record['purpose'],
+            'programSha256':record['programSha256'],'streamLimit':record['streamLimit']})
+        for submit in (False,True):
+            result=self.observe(original,submit=submit);self.assertEqual(result['status']['state'],'unknown')
+            self.assertEqual(result['status']['reason'],'original_host_admission_consumed')
+        self.assertFalse(marker.exists());self.assertFalse((remote/self.operation).exists())
+
+    @unittest.skipUnless(sys.platform.startswith('linux'),'Linux actual provider process/proc contract')
+    def test_exact_live_vm_child_owner_can_be_baseline_but_missing_intent_cannot(self):
+        stop=self.vm/'controlled-child-stop';ready=self.vm/'controlled-child-actor';body=self.lineage.as_dict()
+        clean={'operationId':str(uuid5(UUID(self.operation),'earlier-clean'))}
+        native={'schemaVersion':1,'kind':'windows-existing-start-v1','operationId':self.operation,'recoveryId':self.rid,
+            'machine':body['machine'],'hostBoot':body['hostBoot'],'lineageSha256':lifecycle._lineage_sha(self.lineage),
+            'cleanPoweroffOperationId':clean['operationId'],'replayAllowed':False}
+        payload="""import os,json,hashlib,time
+from pathlib import Path
+pid=os.getpid();base=Path('/proc')/str(pid);raw=(base/'stat').read_text();words=raw[raw.rfind(')')+2:].split();cmd=(base/'cmdline').read_bytes();info=os.stat(base/'exe')
+actor={'pid':pid,'startTicks':int(words[19]),'argv':[os.fsdecode(w)for w in cmd.split(b'\\0')if w],'commandSha256':hashlib.sha256(cmd).hexdigest(),'executableGeneration':[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]}
+"""+'root=Path('+repr(str(self.vm))+')\n'+'native='+repr(native)+'\n'+'operation='+repr(self.operation)+'\n'+"""for name,value in [('existing-start-'+operation+'.intent.json',native),('existing-start-'+operation+'.qemu-intent.json',{'operationId':operation,'actor':actor,'replayAllowed':False}),('controlled-child-actor',actor)]:
+ path=root/name;path.write_text(json.dumps(value));path.chmod(0o600)
+while not (root/'controlled-child-stop').exists():time.sleep(.02)
+"""
+        source='\n'.join(key+'='+repr(value)for key,value in {'SPEC':self.bound['spec'],'OPERATION':self.operation,
+            'LIFECYCLE_RID':self.rid,'LIFECYCLE_LINEAGE':body,'LIFECYCLE_CLEAN':clean}.items())+'\nimport os,sys\nos.execv(sys.executable,[sys.executable,"-I","-B","-c",'+repr(payload)+'])\n'
+        original=self.original(source.encode());self.observe(original,submit=True)
+        try:
+            end=time.monotonic()+5
+            while not ready.exists():self.assertLess(time.monotonic(),end);time.sleep(.01)
+            actor=json.loads(ready.read_text());namespace={};exec(subject.observer_inventory_definitions(self.namespace),namespace)
+            result=namespace['_lifecycle_host_work'](actor);self.assertTrue(result['idle']);self.assertEqual(result['vmOwnerOperationId'],self.operation)
+            path=self.vm/('existing-start-'+self.operation+'.qemu-intent.json');path.rename(path.with_suffix('.held'))
+            with self.assertRaises(Exception):namespace['_lifecycle_host_work'](actor)
+        finally:stop.touch();self.terminal(original)
+
+    def test_only_actual_current_worker_parent_and_complete_code_can_be_own_controller(self):
+        source=('OPERATION='+repr(self.operation)+'\n'+subject.worker_inventory_definitions(self.namespace)+
+            '\nimport json,os,fcntl\nlock=os.open('+repr(str(self.vm/'intent.json'))+',os.O_RDONLY|os.O_NOFOLLOW)\nfcntl.flock(lock,fcntl.LOCK_EX)\nprint(json.dumps(_lifecycle_host_work(operator_fd=lock)))\n').encode()
+        program=subject.sealed_program(jobs.Program('windows-existing-graceful-powerdown',source))
+        original=subject.retain(self.root,self.namespace,self.operation,self.rid,program)
+        self.observe(original,submit=True);terminal=self.terminal(original)
+        self.assertEqual(terminal['status']['terminal']['exitCode'],0)
+        inventory=json.loads(base64.b64decode(terminal['stdoutBase64']))
+        self.assertTrue(inventory['idle']);self.assertEqual(inventory['ownOperationId'],self.operation)
+        self.assertEqual(inventory['jobs'][0]['status']['state'],'running')
+        # Executing the identical bytes in an unrelated carrier has no durable
+        # owner parent and therefore cannot claim that running work is itself.
+        outside=subprocess.run([sys.executable,'-I','-B','-c','import sys;exec(compile(sys.stdin.buffer.read(),"fixed-purpose-program","exec"))'],
+            input=program.source,capture_output=True,timeout=5)
+        self.assertNotEqual(outside.returncode,0)
+        unrelated=str(uuid5(UUID(self.operation),'unknown'))
+        jobs._publish(Path(self.namespace['root'])/'admissions'/(unrelated+'.json'),{
+            'operationId':unrelated,'binding':self.namespace['binding'],'purpose':program.purpose,'programSha256':program.digest,'streamLimit':program.stream_limit})
+        second_rid='8'*64;second=str(uuid5(UUID(self.namespace['binding']['machine']),second_rid))
+        source=('OPERATION='+repr(second)+'\n'+subject.worker_inventory_definitions(self.namespace)+'\nimport json,os,fcntl\nlock=os.open('+repr(str(self.vm/'intent.json'))+',os.O_RDONLY|os.O_NOFOLLOW)\nfcntl.flock(lock,fcntl.LOCK_EX)\nprint(json.dumps(_lifecycle_host_work(operator_fd=lock)))\n').encode()
+        second_original=subject.retain(self.root,self.namespace,second,second_rid,subject.sealed_program(jobs.Program('windows-existing-graceful-powerdown',source)))
+        self.observe(second_original,submit=True);result=self.terminal(second_original)
+        self.assertEqual(result['status']['terminal']['exitCode'],0)
+        self.assertFalse(json.loads(base64.b64decode(result['stdoutBase64']))['idle'])
+
+    def test_private_namespace_handle_load_is_local_pure_original_and_target_exact(self):
+        handle=subject.retain_namespace(self.root,self.bound,self.lineage,{'namespace':self.namespace})
+        with self.assertRaises(TypeError):subject.NamespaceHandle()
+        before={path.relative_to(self.root):(path.stat().st_ino,path.stat().st_mtime_ns)for path in self.root.rglob('*')}
+        loaded=subject.load_namespace(self.root,self.bound);self.assertEqual(loaded.as_dict(),self.namespace)
+        self.assertEqual(before,{path.relative_to(self.root):(path.stat().st_ino,path.stat().st_mtime_ns)for path in self.root.rglob('*')})
+        changed=copy.deepcopy(self.bound);changed['spec']['memoryMiB']+=1024
+        with self.assertRaises(ValueError):subject.load_namespace(self.root,changed)
+        with mock.patch.object(jobs,'owner_source',return_value=b'NEW_OWNER_VERSION_NOT_OLD_AUTHORITY'):
+            source=subject.observer_inventory_definitions(loaded);self.assertNotIn('NEW_OWNER_VERSION_NOT_OLD_AUTHORITY',source)
+            namespace={};exec(source,namespace);self.assertTrue(namespace['_lifecycle_host_work']()['idle'])
+        exposed=loaded.as_dict();exposed['binding']['machine']='foreign'
+        self.assertEqual(handle.as_dict(),self.namespace)
+
+    def test_normal_repository_mode_keeps_only_private_child_journals(self):
+        self.root.chmod(0o755)
+        original=self.original(b'print("repository metadata only")\n')
+        self.assertEqual(self.root.stat().st_mode&0o777,0o755)
+        directory=subject._ORIGINALS[original][0]
+        self.assertEqual(directory.stat().st_mode&0o777,0o700)
+        self.assertEqual((directory/'original.json').stat().st_mode&0o777,0o600)
+        self.observe(original,submit=True);self.terminal(original)
+
+    def test_complete_namespace_inventory_running_terminal_unknown_and_unadmitted(self):
+        original=self.original(b'import time\nprint("owned",flush=True)\ntime.sleep(.4)\n')
+        self.observe(original,submit=True)
+        def inventory():return subject.validate_inventory(original,self.run_source(subject.inventory_program(original)))
+        active=inventory();self.assertFalse(active['idle']);self.assertEqual(len(active['jobs']),1)
+        self.assertIn(active['jobs'][0]['status']['state'],{'running','unknown'})
+        self.terminal(original);closed=inventory();self.assertTrue(closed['idle'])
+        self.assertNotIn('stdoutBase64',closed['jobs'][0]);self.assertTrue(closed['jobs'][0]['status']['terminal']['streamsClosed'])
+        remote=Path(self.namespace['root']);second=str(uuid5(UUID(self.operation),'unresolved'))
+        record=original.as_dict();jobs._publish(remote/'admissions'/(second+'.json'),{'operationId':second,'binding':self.namespace['binding'],
+            'purpose':record['purpose'],'programSha256':record['programSha256'],'streamLimit':record['streamLimit']})
+        unresolved=inventory();self.assertFalse(unresolved['idle'])
+        self.assertEqual([r for r in unresolved['jobs']if r['operationId']==second][0]['status']['state'],'unknown')
+        (remote/'unadmitted').mkdir(mode=0o700)
+        result=subprocess.run([sys.executable,'-I','-B','-c','import sys;exec(sys.stdin.buffer.read())'],
+            input=subject.inventory_program(original),capture_output=True,timeout=5)
+        self.assertNotEqual(result.returncode,0)
+
+    def test_original_public_constructor_source_change_foreign_target_and_generation_refuse(self):
+        original=self.original(b'print("public sentinel")\n')
+        with self.assertRaises(TypeError):subject.OriginalHostJob()
+        forged=object.__new__(subject.OriginalHostJob)
+        with self.assertRaises(ValueError):subject.operation_program(forged)
+        bound=self.namespace['binding']
+        with self.assertRaises(Exception):subject.reopen(self.root,bound['target']+'-foreign',bound['machine'],self.operation)
+        with mock.patch.object(jobs,'owner_source',return_value=b'CURRENT_DIFFERENT_SOURCE'):
+            # Observation retains actual original source, not new owner bytes.
+            packet=subject.operation_program(original);self.assertNotIn(b'CURRENT_DIFFERENT_SOURCE',packet)
+            self.observe(original,submit=True);self.terminal(original)
+        foreign=copy.deepcopy(self.namespace);foreign['generation'][1]+=1
+        record=original.as_dict();packet=subject._render(foreign,'observe',record=record,program=b'print("public sentinel")\n',owner=jobs.owner_source())
+        result=subprocess.run([sys.executable,'-I','-B','-c','import sys;exec(sys.stdin.buffer.read())'],input=packet,capture_output=True,timeout=5)
+        self.assertNotEqual(result.returncode,0)
+        path=subject._ORIGINALS[original][0]/'program.source';path.write_bytes(b'print("altered source")\n')
+        with self.assertRaises(ValueError):subject.operation_program(original)
+
+    def test_foreign_preexisting_namespace_never_adopted_and_original_result_correlation(self):
+        original=self.original(b'print("terminal")\n');self.observe(original,submit=True);reply=self.terminal(original)
+        for key,value in [('operationId',str(uuid5(UUID(self.operation),'foreign'))),('programSha256','0'*64),('streamsClosed',False)]:
+            altered=copy.deepcopy(reply);altered['status']['terminal'][key]=value
+            with self.assertRaises(ValueError):subject.validate_result(original,altered)
+        altered=copy.deepcopy(reply);altered['stdoutBase64']=base64.b64encode(b'foreign').decode()
+        with self.assertRaises(ValueError):subject.validate_result(original,altered)
+        # Existing unknown namespace without its enrolled private marker cannot
+        # be adopted even if all paths and the selected VM root appear right.
+        shutil.rmtree(Path(self.namespace['root']));Path(self.namespace['root']).mkdir(mode=0o700)
+        result=subprocess.run([sys.executable,'-I','-B','-c','import sys;exec(sys.stdin.buffer.read())'],input=subject.enroll_program(self.bound,self.lineage),capture_output=True,timeout=5)
+        self.assertNotEqual(result.returncode,0)
+
+
+if __name__=='__main__':unittest.main()

@@ -1,0 +1,21 @@
+def validate_result(packet,status,stdout,stderr):
+ """DATA validation after authoritative original jobs.collect verified streams.
+
+ Parsed booleans alone never grant native, input or idle authority. Compiler
+ failure remains a collected failure, never grounds for a replacement job.
+ """
+ need(type(status)is dict and status.get('state')=='terminal' and type(status.get('terminal'))is dict,'compile_owner_not_terminal')
+ receipt=status['terminal'];need(receipt.get('programSha256')==packet['controllerSha256'] and receipt.get('exitCode')==0 and type(receipt.get('exitCode'))is int and receipt.get('streamsClosed')is True,'compile_owner_terminal_binding')
+ need(type(stderr)is bytes and not stderr,'compile_controller_stderr');r=_load(stdout)
+ c=packet['config'];need(type(r)is dict and r.get('state')=='observed' and r.get('operationId')==c['operationId'] and r.get('machine')==c['machine'] and r.get('provider')=='raw-qemu-windows' and r.get('guest')=='running' and r.get('guestAgent')is True,'compile_vm_result')
+ g=r.get('sessionFacts');need(type(g)is dict and g.get('schemaVersion')==1 and type(g.get('schemaVersion'))is int and g.get('operationId')==c['operationId'] and g.get('state')=='terminal' and g.get('nativeSha256')==NATIVE_SHA and g.get('inputAuthority')is False and g.get('nativeQualified')is False and g.get('replayAllowed')is False,'compile_guest_result')
+ for key in ('waitSignaled','stdoutEOF','stderrEOF'):need(g.get(key)is True,'compile_guest_closure_unknown')
+ need(g.get('overflow')is False and type(g.get('compileSucceeded'))is bool and type(g.get('exitCode'))is int,'compile_guest_output_unknown')
+ parent=g.get('parent');child=g.get('child')
+ need(type(parent)is dict and type(child)is dict and parent.get('sourceSha256')==packet['sourceSha256'] and parent.get('sid')=='S-1-5-18' and parent.get('session')==0 and type(parent.get('session'))is int,'compile_parent_identity')
+ for actor in (parent,child):
+  need(type(actor.get('pid'))is int and actor['pid']>0 and type(actor.get('birth'))is str and re.fullmatch('[1-9][0-9]{0,19}',actor['birth'])is not None and type(actor.get('image'))is str and actor['image'].lower().endswith('\\system32\\windowspowershell\\v1.0\\powershell.exe'),'compile_actor_identity')
+ need(child.get('session')==0 and type(child.get('session'))is int and child.get('sid')=='S-1-5-18' and type(child.get('sourceSha256'))is str and re.fullmatch('[0-9a-f]{64}',child['sourceSha256'])is not None,'compile_child_source')
+ for role in ('stdout','stderr'):
+  need(type(g.get(role+'Bytes'))is int and 0<=g[role+'Bytes']<=1048576 and type(g.get(role+'Sha256'))is str and re.fullmatch('[0-9a-f]{64}',g[role+'Sha256'])is not None,'compile_stream_metadata')
+ return {'state':'compiled'if g['compileSucceeded']else'compile-failed','operationId':c['operationId'],'parent':parent,'child':child,'nativeSha256':NATIVE_SHA,'diagnosticsRetained':True,'inputAuthority':False,'nativeQualified':False,'replayAllowed':False}

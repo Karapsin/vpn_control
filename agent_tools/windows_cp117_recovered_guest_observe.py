@@ -4,6 +4,7 @@ The original launch is immutable. Socket ownership includes accepted connections
 no process is adopted from a PID or pathname alone. No installer admission here.
 """
 from __future__ import annotations
+from . import ssh_transport
 import base64, hashlib, inspect, json, os, selectors, subprocess, time, uuid
 from pathlib import Path
 from . import windows_cp117_fixture_recovery_short_socket as recovery
@@ -147,7 +148,7 @@ def program(record,diagnostic,nonce,observation='readiness'):
     return common+'\n'+qga+support+remote,sha
 
 def _stream(argv,capture,diagnostic,nonce,sha,qemu):
-    p=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    p=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     selector=selectors.DefaultSelector();chunks={'stdout':bytearray(),'stderr':bytearray()};pending=bytearray();events=[];child=None;deadline=time.monotonic()+60
     selector.register(p.stdout,selectors.EVENT_READ,'stdout');selector.register(p.stderr,selectors.EVENT_READ,'stderr')
     try:
@@ -185,6 +186,8 @@ def _stream(argv,capture,diagnostic,nonce,sha,qemu):
     finally:
         capture.create('transport.stdout.private',bytes(chunks['stdout']));capture.create('transport.stderr.private',bytes(chunks['stderr']));os.fsync(capture.fd)
         selector.close();p.stdin.close();p.stdout.close();p.stderr.close()
+
+        ssh_transport.finish_ssh(p)
 
 def observe(root,observation='readiness'):
     root=Path(root).resolve(strict=True);original=AuthorityCapture(root,'windows-cp117-recovery-'+recovery.CORRELATION)

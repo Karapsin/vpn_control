@@ -367,7 +367,7 @@ class WorkflowExecutionTests(unittest.TestCase):
         self.workflow_source=os.environ.get("AGENT_SELECTION_WORKFLOW_SOURCE")
         GitSelectionTests.setUp(self)
         tools=Path(__file__).resolve().parents[1]
-        for name in ('affected_agent_tests.py','affected_agent_test_dependencies.json','agent_test_runner.py','agent_ci_evidence.py'):
+        for name in ('affected_agent_tests.py','affected_agent_test_dependencies.json','agent_test_runner.py','agent_test_session_observer.py','agent_ci_evidence.py'):
             shutil.copy2(tools/name,self.root/'agent_tools'/name)
         self.write('.gitignore','.rag_index/\n__pycache__/\n')
         self.write('agent_tools/tests/test_leaf.py','import unittest\nfrom agent_tools import leaf\nclass Case(unittest.TestCase):\n def test_value(self): self.assertGreater(leaf.value,0)\n')
@@ -448,18 +448,22 @@ def _native_m_workflow():
     return raw
 
 
-def _native_causal_commands(raw):
+def _native_causal_commands(raw, steps=_NATIVE_CAUSAL_STEPS):
     assert len(raw) <= 65536, 'native workflow source bound'
     text = raw.decode('utf-8').replace('\r\n', '\n')
     assert '\r' not in text, 'lone CR in native workflow'
     lines = text.splitlines()
     commands = {}
-    for name in _NATIVE_CAUSAL_STEPS:
+    for name in steps:
         starts = [i for i, line in enumerate(lines) if line == '      - name: ' + name]
         assert len(starts) == 1, 'native causal step must be unique'
         start = starts[0]
         end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('      - ')), len(lines))
         block = lines[start:end]
+        # TEST-006 continuation runs the step after an earlier failed check;
+        # every other condition or ignored failure is still refused.
+        if block[1:2] == ['        if: ${{ !cancelled() }}']:
+            block = block[:1] + block[2:]
         assert not any(line.startswith(('        if:', '        continue-on-error:')) for line in block), 'native causal step must fail normally and remain unconditional'
         runs = [i for i, line in enumerate(block) if line.startswith('        run:')]
         assert len(runs) == 1, 'native causal run must be unique'
@@ -499,7 +503,7 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
     def _assert_command_covers_unaffected(self, raw, name):
         if not hasattr(self, 'native_event'):
             self._controls()
-        actual = _native_causal_commands(raw)[name]
+        actual = _native_causal_commands(raw, (name,))[name]
         include = actual.index('--include')
         ids = ['agent_tools.tests.test_leaf.Case.test_value',
                'agent_tools.tests.test_unaffected.Case.test_value']
@@ -541,9 +545,8 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
             self.assertEqual([(item['testId'], item['outcome']) for item in rows],
                              [('agent_tools.tests.test_leaf.Case.test_value', 'success')])
 
-    def test_both_audit_head_commands_preserve_all_immutable_m_selectors(self):
+    def _assert_immutable_selectors(self, raw):
         before = _native_causal_commands(_native_m_workflow())
-        raw = (Path(__file__).resolve().parents[2] / '.github/workflows/windows-desktop.yml').read_bytes()
         for variant in (raw, raw.decode('utf-8').replace('\r\n', '\n').replace('\n', '\r\n').encode('utf-8')):
             current = _native_causal_commands(variant)
             for name in _NATIVE_CAUSAL_STEPS:
@@ -552,8 +555,46 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
                 self.assertEqual(actual[:actual.index('--include') + 1],
                                  ['python', 'agent_tools/affected_agent_tests.py', '--audit', '--baseline', 'HEAD', '--run', '--include'])
                 self.assertEqual(actual[actual.index('--include') + 1:], expected[expected.index('--include') + 1:])
+
+    def test_both_audit_head_commands_preserve_all_immutable_m_selectors(self):
+        raw = (Path(__file__).resolve().parents[2] / '.github/workflows/windows-desktop.yml').read_bytes()
+        self._assert_immutable_selectors(raw)
         with self.assertRaisesRegex(AssertionError, 'lone CR'):
             _native_causal_commands(raw.replace(b'\r\n', b'\n').replace(b'jobs:\n', b'jobs:\r', 1))
+
+    def test_preserved_readiness_step_collision_is_causal_RED(self):
+        folder = Path(__file__).parent / 'fixtures/windows_readiness_workflow_before'
+        raw = (folder / 'windows-desktop.yml').read_bytes()
+        provenance = json.loads((folder / 'provenance.json').read_bytes())
+        self.assertEqual(provenance['sha256'], hashlib.sha256(raw).hexdigest())
+        with self.assertRaises(AssertionError):
+            self._assert_immutable_selectors(raw)
+        current = (Path(__file__).resolve().parents[2] / '.github/workflows/windows-desktop.yml').read_bytes()
+        self._assert_immutable_selectors(current)
+
+    def test_readiness_native_step_runs_explicit_unaffected_controls(self):
+        raw = (Path(__file__).resolve().parents[2] / '.github/workflows/windows-desktop.yml').read_bytes()
+        name = 'Verify Windows readiness native causal guards'
+        actual = _native_causal_commands(raw, (name,))[name]
+        self.assertEqual(actual, ['python', 'agent_tools/affected_agent_tests.py', '--audit', '--baseline', 'HEAD', '--run', '--include',
+            'agent_tools.tests.test_readiness_windows_guest.NativeWindowsWtsTests',
+            'agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_actual_complete_census_before_RED_fixed_native_identity_GREEN',
+            'agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_actual_native_process_handle_birth_and_image',
+            'agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_complete_background_before_RED_verified_role_GREEN',
+            'agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_signature_account_session_and_path_mismatches_remain_blocked',
+            'agent_tools.tests.test_readiness_windows_leases.WindowsLeaseProtocolTests.test_actual_windows_native_program_compiles_without_any_execution_state_effect',
+            'agent_tools.tests.test_readiness_windows_leases.WindowsLeaseProtocolTests.test_native_restore_previous_output_buffer_reproduces_ack_failure_and_null_output_restores',
+            'agent_tools.tests.test_windows_detach_reflection',
+            'agent_tools.tests.test_windows_jobs_directory_security',
+            'agent_tools.tests.test_windows_compile_acl_creation',
+            'agent_tools.tests.test_windows_public_compile_causals.StreamRetention.test_actual_windows_powershell_old_RED_fixed_GREEN',
+            'agent_tools.tests.test_windows_compile_followup.NativeCompiler.test_actual_complete_before_sources_RED_fixed_GREEN_without_methods_invoked',
+            'agent_tools.tests.test_windows_system_image_inquiry.Evidence.test_windows_framework_compiles_exact_before_and_inquiry_without_invoking_methods',
+            'agent_tools.tests.test_windows_preexec_inventory_clr',
+            'agent_tools.tests.test_windows_defender_service_roles.NativeWindowsDefenderServiceTests',
+            'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_complete_before_RED_fixed_desktop_roles_GREEN',
+            'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_target_parent_package_account_and_configured_mismatches_block'])
+        self._assert_command_covers_unaffected(raw, name)
 
 
 class DocumentationResourceSelectionTests(unittest.TestCase):
@@ -784,13 +825,17 @@ class ActualPlannerPolicyTests(unittest.TestCase):
         for n in tree.body:
             if isinstance(n,ast.FunctionDef) and n.name=='_commands_for':chosen.append(n)
             elif isinstance(n,(ast.Assign,ast.AnnAssign)) and any(isinstance(t,ast.Name) and t.id in {'FOCUSED_COMMANDS','PREPUSH_COMMANDS'} for t in (n.targets if isinstance(n,ast.Assign) else [n.target])):chosen.append(n)
-        ns={'sys':sys,'AGENT_TEST_PYTHON':sys.executable,'REPO_ROOT':source.parents[1],'_agent_test_selection':lambda:selection}
+        ns={'sys':sys,'AGENT_TEST_PYTHON':sys.executable,'REPO_ROOT':source.parents[1],'affected_agent_tests':selector,'_agent_test_selection':lambda:selection}
         exec(compile(ast.Module(chosen,[]),str(source),'exec'),ns);return ns
     def test_actual_product_prepush_omits_agent_commands(self):
         ns=self.actual(selector.Selection('a',('Feature.kt',),(),2))
         self.assertFalse(any('unittest' in c for c in ns['_commands_for']('desktop','prepush')))
     def test_actual_focused_runs_selected_modules(self):
-        selection=selector.Selection('a',('agent_tools/leaf.py',),('agent_tools.tests.test_leaf',),2);ns=self.actual(selection)
-        self.assertEqual(selection.commands(sys.executable)+[['./scripts/check_docs_hygiene.sh']],ns['_commands_for']('agent_tools','focused'))
+        # The SSH-close gate alone first, then the two hosted CI shards without it.
+        names=['agent_tools.tests.test_'+name for name in ('a','b','ssh_connection_session_close','t','x','z')];unit=[sys.executable,'-m','unittest']
+        selection=selector.Selection('a',('agent_tools/leaf.py',),tuple(names),9);ns=self.actual(selection)
+        halves=[[name for name in selector.shard_selection(selection,index,2).modules if name!=names[2]] for index in (0,1)]
+        self.assertEqual([[names[0],names[4]],[names[1],names[3],names[5]]],halves)
+        self.assertEqual([unit+[names[2]],*(unit+half for half in halves),['./scripts/check_docs_hygiene.sh']],ns['_commands_for']('agent_tools','focused'))
 
 if __name__=='__main__':unittest.main()

@@ -1,0 +1,17 @@
+{
+  "physicalMemoryBytes": 64823275520,
+  "runningConfiguredMemoryBytes": 27917287424,
+  "availableMemoryBytes": 33565622272,
+  "minimumAvailableMemoryBytes": 33564393472,
+  "ownActor": {
+    "pid": 1513999,
+    "startTicks": 148588308,
+    "configuredMemoryBytes": 2147483648
+  },
+  "otherReservationMemoryBytes": [
+    6442450944,
+    6442450944,
+    6442450944
+  ],
+  "headroomBytes": 17179869184
+}

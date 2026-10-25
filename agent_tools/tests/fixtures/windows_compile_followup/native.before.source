@@ -1,0 +1,411 @@
+using Microsoft.Win32.SafeHandles;
+using System.Collections.Generic;
+using System.Collections;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO.Pipes;
+using System.IO;
+using System.Linq;
+using System.Management;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Cryptography;
+using System.Security.Principal;
+using System.Text;
+using System.Threading.Tasks;
+using System.Threading;
+using System.Web.Script.Serialization;
+using System.Windows.Automation;
+using System;
+public static class SessionFacts {
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]public struct Level1 {
+ public UInt32 SessionId;public Int32 State;public Int32 Flags;
+ [MarshalAs(UnmanagedType.ByValTStr,SizeConst=33)]public string Station;
+ [MarshalAs(UnmanagedType.ByValTStr,SizeConst=21)]public string User;
+ [MarshalAs(UnmanagedType.ByValTStr,SizeConst=18)]public string Domain;
+ public Int64 Logon;public Int64 Connect;public Int64 Disconnect;public Int64 LastInput;public Int64 Current;
+ public UInt32 InBytes;public UInt32 OutBytes;public UInt32 InFrames;public UInt32 OutFrames;public UInt32 InCompressed;public UInt32 OutCompressed;
+ }
+ [StructLayout(LayoutKind.Sequential)]public struct Info {public UInt32 Level;public Level1 Data;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]public struct Session {public Int32 Id;public string Name;public Int32 State;}
+ [DllImport("kernel32.dll")]public static extern UInt32 WTSGetActiveConsoleSessionId();
+ [DllImport("wtsapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool WTSQuerySessionInformationW(IntPtr server,UInt32 session,int info,out IntPtr buffer,out int bytes);
+ [DllImport("wtsapi32.dll")]static extern void WTSFreeMemory(IntPtr ptr);
+ [DllImport("wtsapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool WTSEnumerateSessionsW(IntPtr server,int reserved,int version,out IntPtr buffer,out int count);
+ [DllImport("wtsapi32.dll",SetLastError=true)]static extern bool WTSQueryUserToken(UInt32 session,out IntPtr token);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);
+ public static Info Read(UInt32 id){IntPtr p;int bytes;if(!WTSQuerySessionInformationW(IntPtr.Zero,id,25,out p,out bytes))throw new Win32Exception();try{if(bytes<Marshal.SizeOf(typeof(Info)))throw new Exception("WTS_SIZE");Info result=(Info)Marshal.PtrToStructure(p,typeof(Info));if(result.Level!=1||result.Data.SessionId!=id)throw new Exception("WTS_IDENTITY");return result;}finally{WTSFreeMemory(p);}}
+ public static Session[] All(){IntPtr p;int count;if(!WTSEnumerateSessionsW(IntPtr.Zero,0,1,out p,out count))throw new Win32Exception();try{if(count<0||count>128)throw new Exception("WTS_COUNT");var result=new Session[count];int size=Marshal.SizeOf(typeof(Session));for(int i=0;i<count;i++)result[i]=(Session)Marshal.PtrToStructure(IntPtr.Add(p,i*size),typeof(Session));return result;}finally{WTSFreeMemory(p);}}
+ public static string Sid(UInt32 id){IntPtr token;if(!WTSQueryUserToken(id,out token))throw new Win32Exception();try{using(var identity=new WindowsIdentity(token)){return identity.User.Value;}}finally{CloseHandle(token);}}
+}
+
+public static class ConsoleDisplayFacts {
+ static readonly Guid Setting=new Guid("6fe69556-704a-47a0-8f24-c28d936fda47");
+ [UnmanagedFunctionPointer(CallingConvention.Winapi)]delegate UInt32 Callback(IntPtr context,UInt32 type,IntPtr value);
+ [StructLayout(LayoutKind.Sequential)]struct Subscriber {public IntPtr Callback;public IntPtr Context;}
+ [DllImport("powrprof.dll")]static extern UInt32 PowerSettingRegisterNotification(ref Guid setting,UInt32 flags,ref Subscriber subscriber,out IntPtr handle);
+ [DllImport("powrprof.dll")]static extern UInt32 PowerSettingUnregisterNotification(IntPtr handle);
+ sealed class State {public readonly object Gate=new object();public readonly ManualResetEvent Ready=new ManualResetEvent(false);public int Value=-1;public bool Invalid=false;}
+ public static int Read(){
+  var state=new State();Callback callback=delegate(IntPtr context,UInt32 type,IntPtr value){
+   try{if(type!=0x8013||value==IntPtr.Zero)return 0;
+    Guid guid=(Guid)Marshal.PtrToStructure(value,typeof(Guid));if(guid!=Setting)return 0;
+    int length=Marshal.ReadInt32(value,16);int current=length==4?Marshal.ReadInt32(value,20):-1;
+    lock(state.Gate){if(current<0||current>2)state.Invalid=true;else state.Value=current;}state.Ready.Set();
+   }catch{lock(state.Gate){state.Invalid=true;}state.Ready.Set();}return 0;
+  };
+  var subscriber=new Subscriber{Callback=Marshal.GetFunctionPointerForDelegate(callback),Context=IntPtr.Zero};
+  Guid setting=Setting;IntPtr registration;UInt32 code=PowerSettingRegisterNotification(ref setting,2,ref subscriber,out registration);
+  if(code!=0)throw new Exception("DISPLAY_NOTIFICATION_UNAVAILABLE");
+  try{
+   if(!state.Ready.WaitOne(2000))throw new Exception("DISPLAY_INITIAL_VALUE_UNAVAILABLE");
+   Thread.Sleep(100);lock(state.Gate){if(state.Invalid||state.Value<0)throw new Exception("DISPLAY_VALUE_UNRECOGNIZED");return state.Value;}
+  }finally{UInt32 removed=PowerSettingUnregisterNotification(registration);GC.KeepAlive(callback);state.Ready.Dispose();if(removed!=0)throw new Exception("DISPLAY_NOTIFICATION_RELEASE_UNVERIFIED");}
+ }
+}
+// Current finite read-only getter. Called only by the separate owned monitor.
+public static class SecureRecipientV2 {
+ static readonly JavaScriptSerializer J=new JavaScriptSerializer{MaxJsonLength=32768,RecursionLimit=32};
+ [StructLayout(LayoutKind.Sequential)] struct Rect{public int a,b,c,d;}
+ [StructLayout(LayoutKind.Sequential)] struct Gui{public uint size,flags;public IntPtr active,focus,capture,menu,move,caret;public Rect rect;}
+ [DllImport("user32.dll",SetLastError=true)]static extern bool GetGUIThreadInfo(uint id,ref Gui gui);
+ [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr w,out uint pid);
+ [DllImport("user32.dll")]static extern IntPtr GetKeyboardLayout(uint id);
+ [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr w,uint kind);
+ [DllImport("user32.dll")]static extern bool IsChild(IntPtr parent,IntPtr child);
+ [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")]static extern IntPtr GetProcessWindowStation();
+ [DllImport("user32.dll")]static extern IntPtr GetThreadDesktop(uint thread);
+ [DllImport("kernel32.dll")]static extern uint GetCurrentThreadId();
+ [DllImport("user32.dll",SetLastError=true)]static extern IntPtr OpenInputDesktop(uint flags,bool inherit,uint access);
+ [DllImport("user32.dll")]static extern bool CloseDesktop(IntPtr desktop);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern bool GetUserObjectInformation(IntPtr h,int kind,StringBuilder value,uint bytes,out uint required);
+ [DllImport("wtsapi32.dll",SetLastError=true)]static extern bool WTSQueryUserToken(uint id,out IntPtr token);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);
+ static void Need(bool ok,string reason){if(!ok)throw new InvalidOperationException(reason);}
+ static Dictionary<string,object> D(object x){return (Dictionary<string,object>)x;}
+ static string S(object x){Need(x is string,"PUBLIC_STRING");return (string)x;}
+ static long L(object x){Need(x is int||x is long,"PUBLIC_INTEGER");return Convert.ToInt64(x);}
+ static object[] A(object x){return ((IEnumerable)x).Cast<object>().ToArray();}
+ static int[] Id(object x){var a=A(x);Need(a.Length>0&&a.Length<=32,"RUNTIME_BOUND");return a.Select(n=>{Need(n is int,"RUNTIME_INTEGER");return (int)n;}).ToArray();}
+ static bool Same(int[] a,int[] b){return a!=null&&b!=null&&a.SequenceEqual(b);}
+ static Dictionary<string,object> O(params object[] fields){var d=new Dictionary<string,object>();for(int n=0;n<fields.Length;n+=2)d.Add((string)fields[n],fields[n+1]);return d;}
+ static string Birth(Process p){return p.StartTime.ToUniversalTime().ToFileTimeUtc().ToString();}
+ static string ObjectName(IntPtr h){var b=new StringBuilder(128);uint size;Need(h!=IntPtr.Zero&&GetUserObjectInformation(h,2,b,256,out size)&&size<=256,"DESKTOP_UNAVAILABLE");return b.ToString();}
+ static string Wmi(string query,string key){using(var s=new ManagementObjectSearcher(query))using(var rows=s.Get()){Need(rows.Count==1,"GUEST_QUERY_AMBIGUOUS");foreach(ManagementObject row in rows)using(row)return (string)row[key];}throw new InvalidOperationException("GUEST_QUERY_UNAVAILABLE");}
+ static Dictionary<string,object> Identity(Dictionary<string,object> c){
+  var e=D(c["expected"]);Need(WindowsIdentity.GetCurrent().User.Value=="S-1-5-18","SYSTEM_REQUIRED");using(var p=Process.GetCurrentProcess())Need(p.SessionId==L(e["console"]),"HELPER_SESSION_CHANGED");
+  string m=new Guid(Wmi("SELECT UUID FROM Win32_ComputerSystemProduct","UUID")).ToString("D"),boot=ManagementDateTimeConverter.ToDateTime(Wmi("SELECT LastBootUpTime FROM Win32_OperatingSystem","LastBootUpTime")).ToUniversalTime().ToString("o");
+  Need(m==S(e["machine"])&&boot==S(e["boot"]),"GUEST_EPOCH_CHANGED");uint console=SessionFacts.WTSGetActiveConsoleSessionId();Need(console==L(e["console"]),"CONSOLE_CHANGED");var w=SessionFacts.Read(console).Data;
+  Need(w.SessionId==console&&w.Station=="Console"&&w.State==0&&w.Flags==0&&w.Logon==L(e["logon"])&&w.User==S(e["user"]),"ORDINARY_SESSION_CHANGED");
+  IntPtr token;Need(WTSQueryUserToken(console,out token),"ORDINARY_TOKEN_UNAVAILABLE");try{using(var i=new WindowsIdentity(token)){Need(i.User.Value==S(e["accountSid"]),"ORDINARY_SID_CHANGED");var groups=i.Groups.Select(g=>g.Value).ToArray();Need(groups.Contains("S-1-5-32-545")&&!groups.Contains("S-1-5-32-544"),"ACCOUNT_NOT_ORDINARY");}}finally{CloseHandle(token);}
+  Need(ConsoleDisplayFacts.Read()==1,"DISPLAY_NOT_AWAKE");return O("machine",m,"boot",boot,"console",(int)console,"logon",w.Logon,"accountSid",e["accountSid"],"user",w.User,"ordinary",true,"displayState",1);
+ }
+ static void PublicAccount(Dictionary<string,object> c){
+  var e=D(c["expected"]);var p=D(c["publicPolicy"]);string rule=S(p["displayRule"]),label=S(p["expectedDisplayName"]);int count=0;bool selected=false;
+  Need(rule=="sam-name"||rule=="full-name-if-set","DISPLAY_RULE_UNSUPPORTED");
+  using(var q=new ManagementObjectSearcher("SELECT SID,Name,FullName,Disabled FROM Win32_UserAccount WHERE LocalAccount=TRUE"))using(var rows=q.Get()){
+   Need(rows.Count<=128,"PUBLIC_ACCOUNT_BOUND");foreach(ManagementObject row in rows)using(row){if((bool)row["Disabled"])continue;string sam=(string)row["Name"],full=Convert.ToString(row["FullName"]);string rendered=rule=="sam-name"||string.IsNullOrEmpty(full)?sam:full;
+    if(rendered==label){count++;if((string)row["SID"]==S(e["accountSid"])&&sam==S(e["user"]))selected=true;}
+   }
+  }Need(count==1&&selected,"PUBLIC_DISPLAY_SID_MAPPING_AMBIGUOUS");
+ }
+ static Process Logon(Dictionary<string,object> c){int session=(int)L(D(c["expected"])["console"]);var all=Process.GetProcessesByName("LogonUI");Process selected=null;
+  try{foreach(var p in all){if(p.SessionId!=session)continue;Need(selected==null,"LOGONUI_AMBIGUOUS");selected=p;}Need(selected!=null,"LOGONUI_ABSENT");Need(string.Equals(selected.MainModule.FileName,Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"LogonUI.exe"),StringComparison.OrdinalIgnoreCase),"LOGONUI_IMAGE");return selected;}catch{foreach(var p in all)p.Dispose();throw;}finally{foreach(var p in all)if(p!=selected)p.Dispose();}}
+ static Dictionary<string,object> Focus(Process p){
+  Need(ObjectName(GetProcessWindowStation())=="WinSta0"&&ObjectName(GetThreadDesktop(GetCurrentThreadId()))=="Winlogon","HELPER_DESKTOP_CHANGED");IntPtr input=OpenInputDesktop(0,false,1);try{Need(ObjectName(input)=="Winlogon","INPUT_DESKTOP_CHANGED");}finally{if(input!=IntPtr.Zero)Need(CloseDesktop(input),"INPUT_DESKTOP_CLOSE_UNKNOWN");}
+  IntPtr focus=IntPtr.Zero;uint thread=0;foreach(ProcessThread t in p.Threads){Gui g=new Gui();g.size=(uint)Marshal.SizeOf(typeof(Gui));if(!GetGUIThreadInfo((uint)t.Id,ref g)||g.focus==IntPtr.Zero)continue;uint pid;uint actual=GetWindowThreadProcessId(g.focus,out pid);Need(pid==(uint)p.Id&&actual==(uint)t.Id,"FOCUS_OWNER");Need(focus==IntPtr.Zero||(focus==g.focus&&thread==actual),"FOCUS_AMBIGUOUS");focus=g.focus;thread=actual;}
+  Need(focus!=IntPtr.Zero,"FOCUS_ABSENT");IntPtr root=GetAncestor(focus,2);Need(root!=IntPtr.Zero&&(root==focus||IsChild(root,focus)),"FOCUS_ROOT_ANCESTRY");uint rootPid;uint rootThread=GetWindowThreadProcessId(root,out rootPid);Need(rootPid==(uint)p.Id&&ObjectName(GetThreadDesktop(rootThread))=="Winlogon"&&GetAncestor(GetForegroundWindow(),2)==root,"FOREGROUND_ROOT_CHANGED");
+  string hkl=GetKeyboardLayout(thread).ToInt64().ToString("X16");Need(hkl=="0000000004090409","CURRENT_LAYOUT_UNSUPPORTED");return O("window",focus.ToInt64(),"thread",(int)thread,"rootWindow",root.ToInt64(),"rootThread",(int)rootThread,"hkl",hkl,"windowStation","WinSta0","desktop","Winlogon");
+ }
+ sealed class Node {public AutomationElement E;public int[] Id,Parent;public int Control;}
+ static void Walk(AutomationElement e,int[] parent,int depth,int pid,List<Node> result,HashSet<string> seen){Need(depth<=8&&result.Count<64,"PUBLIC_TREE_BOUND");var v=e.Current;int[] id=e.GetRuntimeId();Need(v.ProcessId==pid&&id!=null&&id.Length>0&&id.Length<=32&&seen.Add(string.Join(",",id)),"PUBLIC_TREE_OWNER_OR_ALIAS");result.Add(new Node{E=e,Id=id,Parent=parent,Control=v.ControlType.Id});var child=TreeWalker.RawViewWalker.GetFirstChild(e);while(child!=null){Walk(child,id,depth+1,pid,result,seen);child=TreeWalker.RawViewWalker.GetNextSibling(child);}}
+ static Node One(List<Node> nodes,int[] id){var all=nodes.Where(n=>Same(n.Id,id)).ToArray();Need(all.Length==1,"PUBLIC_NODE_UNAVAILABLE");return all[0];}
+ static Node PathNode(List<Node> nodes,Node root,object raw){Node current=root;object[] steps=A(raw);Need(steps.Length>0&&steps.Length<=8,"PUBLIC_POLICY_PATH_BOUND");foreach(object value in steps){var step=D(value);int index=(int)L(step["index"]),kind=(int)L(step["controlType"]);Need(index>=0&&index<64,"PUBLIC_POLICY_INDEX");var children=nodes.Where(n=>Same(n.Parent,current.Id)).ToArray();Need(index<children.Length&&children[index].Control==kind,"PUBLIC_POLICY_PATH_CHANGED");current=children[index];}return current;}
+ static bool Under(List<Node> nodes,Node node,Node ancestor){for(int n=0;n<=8;n++){if(Same(node.Id,ancestor.Id))return true;if(node.Parent==null)return false;node=One(nodes,node.Parent);}return false;}
+ static Dictionary<string,object> Capture(Dictionary<string,object> c){
+  var facts=Identity(c);PublicAccount(c);var policy=D(c["publicPolicy"]);using(var p=Logon(c))using(var self=Process.GetCurrentProcess()){
+   string beforeBirth=Birth(p);var f=Focus(p);var rootElement=AutomationElement.FromHandle(new IntPtr(L(f["rootWindow"])));Need(rootElement.Current.ProcessId==p.Id&&rootElement.Current.ControlType==ControlType.Window&&rootElement.Current.NativeWindowHandle==L(f["rootWindow"]),"UIA_ROOT_OWNER");
+   var nodes=new List<Node>();Walk(rootElement,null,0,p.Id,nodes,new HashSet<string>());Node root=nodes[0],field=One(nodes,AutomationElement.FocusedElement.GetRuntimeId()),pane=PathNode(nodes,root,policy["panePath"]),account=PathNode(nodes,root,policy["accountPath"]);
+   Need((pane.Control==50026||pane.Control==50033)&&Under(nodes,field,pane)&&Under(nodes,account,pane)&&!Under(nodes,account,field)&&!Under(nodes,field,account),"PUBLIC_SELECTED_PANE_CHANGED");
+   var fp=field.E.Current;Need(fp.ProcessId==p.Id&&fp.ControlType==ControlType.Edit&&fp.IsPassword&&fp.HasKeyboardFocus&&fp.IsEnabled&&!fp.IsOffscreen,"PASSWORD_RECIPIENT_CHANGED");
+   var ap=account.E.Current;Need(ap.ProcessId==p.Id&&ap.ControlType==ControlType.Text&&!ap.IsPassword&&!ap.HasKeyboardFocus&&ap.IsEnabled&&!ap.IsOffscreen,"PUBLIC_ACCOUNT_ROLE_CHANGED");
+   // The ONLY UI text read: exact source-qualified public account path/role.
+   Need((string)account.E.GetCurrentPropertyValue(AutomationElement.NameProperty)==S(policy["expectedDisplayName"]),"PUBLIC_SELECTED_NAME_CHANGED");
+   Need(J.Serialize(f)==J.Serialize(Focus(p))&&beforeBirth==Birth(p)&&!p.HasExited,"FOCUS_OR_LOGONUI_DRIFT");
+   var helper=O("pid",self.Id,"birth",Birth(self),"session",self.SessionId,"system",true);var anchor=O("helper",helper,"logonUi",O("pid",p.Id,"birth",beforeBirth),"focus",f,"rootRuntimeId",root.Id,"fieldRuntimeId",field.Id,"accountRuntimeId",account.Id,"paneRuntimeId",pane.Id,"paneControlTypeId",pane.Control,"publicPolicySha256",c["publicPolicySha256"]);
+   facts.Add("helper",helper);facts.Add("anchor",anchor);facts.Add("selectedAccount",true);facts.Add("publicDisplayMatchesSid",true);facts.Add("isPassword",true);facts.Add("hasKeyboardFocus",true);facts.Add("isEnabled",true);facts.Add("isOffscreen",false);return facts;
+  }
+ }
+ public static string Fresh(string raw,string enrolled){var c=D(J.DeserializeObject(raw));var before=Capture(c);var after=Capture(c);Need(J.Serialize(before)==J.Serialize(after),"RECIPIENT_NATIVE_DRIFT");if(enrolled!=null)Need(J.Serialize(after["anchor"])==enrolled,"RECIPIENT_ANCHOR_EPOCH_CHANGED");return J.Serialize(after);}
+}
+// Finite readonly observer owner. No general command/program or GUI input API.
+public static class SecureObserverOwnerV2 {
+ static readonly JavaScriptSerializer J=new JavaScriptSerializer{MaxJsonLength=524288,RecursionLimit=48};
+ const string Family="VPNControlSecureObserverJobs-v2";
+ [StructLayout(LayoutKind.Sequential)]struct FI{public uint Attributes;public System.Runtime.InteropServices.ComTypes.FILETIME Created,Accessed,Written;public uint Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
+ [StructLayout(LayoutKind.Sequential)]struct Luid{public uint low;public int high;}
+ [StructLayout(LayoutKind.Sequential)]struct TP{public uint count;public Luid id;public uint flags;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct SI{public int size;public string reserved,desktop,title;public uint x,y,width,height,cx,cy,fill,flags;public ushort show,bytes;public IntPtr pointer,input,output,error;}
+ [StructLayout(LayoutKind.Sequential)]struct PI{public IntPtr process,thread;public uint pid,tid;}
+ [StructLayout(LayoutKind.Sequential)]struct SA{public int size;public IntPtr descriptor;[MarshalAs(UnmanagedType.Bool)]public bool inherit;}
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CreateFileW(string path,uint access,uint share,IntPtr security,uint creation,uint flags,IntPtr template);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(IntPtr h,out FI info);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string text,uint revision,out IntPtr descriptor,out uint bytes);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectoryW(string path,ref SA security);
+ [DllImport("kernel32.dll")]static extern IntPtr LocalFree(IntPtr p);
+ [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool LookupPrivilegeValue(string system,string name,out Luid id);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool AdjustTokenPrivileges(IntPtr token,bool disable,ref TP state,int bytes,IntPtr previous,IntPtr returned);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool DuplicateTokenEx(IntPtr original,uint access,IntPtr security,int level,int type,out IntPtr token);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool SetTokenInformation(IntPtr token,int kind,ref uint session,uint bytes);
+ [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessAsUser(IntPtr token,string app,StringBuilder command,IntPtr ps,IntPtr ts,bool inherit,uint flags,IntPtr environment,string directory,ref SI startup,out PI p);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessW(string app,StringBuilder command,IntPtr ps,IntPtr ts,bool inherit,uint flags,IntPtr environment,string directory,ref SI startup,out PI p);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern uint ResumeThread(IntPtr thread);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern uint WaitForSingleObject(IntPtr process,uint milliseconds);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetExitCodeProcess(IntPtr process,out uint code);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool TerminateProcess(IntPtr process,uint code);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool ProcessIdToSessionId(uint pid,out uint session);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetNamedPipeClientProcessId(IntPtr pipe,out uint pid);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetNamedPipeServerProcessId(IntPtr pipe,out uint pid);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetProcessTimes(IntPtr process,out System.Runtime.InteropServices.ComTypes.FILETIME created,out System.Runtime.InteropServices.ComTypes.FILETIME exited,out System.Runtime.InteropServices.ComTypes.FILETIME kernel,out System.Runtime.InteropServices.ComTypes.FILETIME user);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool QueryFullProcessImageName(IntPtr p,uint flags,StringBuilder text,ref uint count);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
+ static string HeldBirth(IntPtr p){System.Runtime.InteropServices.ComTypes.FILETIME c,e,k,u;Need(GetProcessTimes(p,out c,out e,out k,out u),"OWNER_PROCESS_BIRTH");return (((ulong)(uint)c.dwHighDateTime<<32)|(uint)c.dwLowDateTime).ToString();}
+ static string Image(IntPtr p){var b=new StringBuilder(32768);uint size=32768;Need(QueryFullProcessImageName(p,0,b,ref size),"OWNER_PROCESS_IMAGE");return b.ToString();}
+ static void Need(bool yes,string reason){if(!yes)throw new InvalidOperationException(reason);}
+ static Dictionary<string,object>D(object x){return (Dictionary<string,object>)x;}
+ static string S(object x){Need(x is string,"OWNER_STRING");return (string)x;}
+ static long L(object x){Need(x is int||x is long,"OWNER_INTEGER");return Convert.ToInt64(x);}
+ static Dictionary<string,object>O(params object[] v){var d=new Dictionary<string,object>();for(int n=0;n<v.Length;n+=2)d.Add((string)v[n],v[n+1]);return d;}
+ static string H(byte[] bytes){using(var h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(bytes)).Replace("-","").ToLowerInvariant();}
+ static string Born(Process p){return p.StartTime.ToUniversalTime().ToFileTimeUtc().ToString();}
+ static string Ps(){return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),@"System32\WindowsPowerShell\v1.0\powershell.exe");}
+ static string Uuid(object raw){string value=S(raw);Need(new Guid(value).ToString("D")==value,"OWNER_UUID");return value;}
+ static string Root(Dictionary<string,object> c){return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),Family,Uuid(D(c["expected"])["machine"]));}
+ static string Job(Dictionary<string,object>c){return Path.Combine(Root(c),"operations",Uuid(c["operationId"]));}
+ static string Index(Dictionary<string,object>c){return Path.Combine(Root(c),"admissions",Uuid(c["operationId"])+".json");}
+ static bool Exists(string path){try{File.GetAttributes(path);return true;}catch(FileNotFoundException){return false;}catch(DirectoryNotFoundException){return false;}}
+ static void Acl(string path,bool directory){
+  Need((File.GetAttributes(path)&FileAttributes.ReparsePoint)==0,"OWNER_REPARSE");FileSystemSecurity a=directory?(FileSystemSecurity)Directory.GetAccessControl(path):File.GetAccessControl(path);
+  Need(a.AreAccessRulesProtected&&a.GetOwner(typeof(SecurityIdentifier)).Value=="S-1-5-18"&&a.GetGroup(typeof(SecurityIdentifier)).Value=="S-1-5-18","OWNER_ACL");var rules=a.GetAccessRules(true,true,typeof(SecurityIdentifier));Need(rules.Count==1,"OWNER_ACL");var r=(FileSystemAccessRule)rules[0];Need(!r.IsInherited&&r.IdentityReference.Value=="S-1-5-18"&&r.AccessControlType==AccessControlType.Allow&&r.FileSystemRights==FileSystemRights.FullControl&&r.InheritanceFlags==(directory?InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit:InheritanceFlags.None)&&r.PropagationFlags==PropagationFlags.None,"OWNER_ACL");
+ }
+ static void PrivateDirectory(string path){IntPtr sd;uint size;Need(ConvertStringSecurityDescriptorToSecurityDescriptorW("O:SYG:SYD:P(A;OICI;FA;;;SY)",1,out sd,out size),"OWNER_DIRECTORY_SECURITY");try{var a=new SA{size=Marshal.SizeOf(typeof(SA)),descriptor=sd,inherit=false};Need(CreateDirectoryW(path,ref a),"OWNER_DIRECTORY_ALREADY_PRESENT");}finally{LocalFree(sd);}Acl(path,true);}
+ sealed class Pin:IDisposable{
+  public readonly string Path,Identity;public readonly bool Directory;readonly SafeFileHandle Handle;readonly FI Original;readonly List<Pin> Parents;FileStream Reader;
+  static FI Info(IntPtr h){FI i;Need(GetFileInformationByHandle(h,out i),"OWNER_FILE_ID");return i;}
+  static string Tag(FI i,bool directory){string id=i.Volume.ToString("x8")+":"+i.IndexHigh.ToString("x8")+i.IndexLow.ToString("x8")+":"+((uint)i.Created.dwHighDateTime).ToString("x8")+((uint)i.Created.dwLowDateTime).ToString("x8")+":"+i.Attributes.ToString("x8");return directory?id:id+":"+i.SizeHigh+":"+i.SizeLow+":"+(uint)i.Written.dwHighDateTime+":"+(uint)i.Written.dwLowDateTime+":"+i.Links;}
+  public Pin(string path,bool directory,bool ancestry=true){Path=path;Directory=directory;Need(System.IO.Path.GetFullPath(path)==path,"OWNER_CANONICAL_PATH");if(ancestry){Parents=new List<Pin>();string current=System.IO.Path.GetPathRoot(path);Parents.Add(new Pin(current,true,false));foreach(string piece in path.Substring(current.Length).Split('\\').Take(path.Substring(current.Length).Split('\\').Length-1)){current=System.IO.Path.Combine(current,piece);Parents.Add(new Pin(current,true,false));}}
+   IntPtr h=CreateFileW(path,directory?0x80u:0x80000080u,directory?3u:1u,IntPtr.Zero,3,0x00200000u|(directory?0x02000000u:0u),IntPtr.Zero);Need(h!=new IntPtr(-1),"OWNER_HELD_PATH");Handle=new SafeFileHandle(h,true);Original=Info(h);Need((Original.Attributes&0x400)==0&&((Original.Attributes&0x10)!=0)==directory&&(directory||Original.Links==1),"OWNER_FILE_KIND");Identity=Tag(Original,directory);if(!directory)Reader=new FileStream(Handle,FileAccess.Read,4096,false);Guard();
+  }
+  public void Guard(){if(Parents!=null)foreach(var p in Parents)p.Guard();Need(Tag(Info(Handle.DangerousGetHandle()),Directory)==Identity,"OWNER_HELD_ID_CHANGED");IntPtr named=CreateFileW(Path,0x80,7,IntPtr.Zero,3,0x00200000u|(Directory?0x02000000u:0u),IntPtr.Zero);Need(named!=new IntPtr(-1),"OWNER_NAMED_PATH_MISSING");try{Need(Tag(Info(named),Directory)==Identity,"OWNER_NAMED_ID_CHANGED");}finally{CloseHandle(named);}}
+  public byte[] Bytes(int limit){Guard();Need(!Directory&&Reader.Length<=limit,"OWNER_FILE_BOUND");Reader.Position=0;var b=new byte[(int)Reader.Length];int n=0;while(n<b.Length){int k=Reader.Read(b,n,b.Length-n);Need(k>0,"OWNER_FILE_SHORT");n+=k;}Guard();return b;}
+  public void Dispose(){if(Reader!=null)Reader.Dispose();Handle.Dispose();if(Parents!=null)foreach(var p in Parents)p.Dispose();}
+ }
+ static void Save(string path,object value){byte[] raw=Encoding.UTF8.GetBytes(J.Serialize(value));Need(raw.Length<=524288,"OWNER_RECORD_BOUND");string temp=path+".pending-"+Guid.NewGuid().ToString("N");using(var f=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){var acl=new FileSecurity();acl.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");f.SetAccessControl(acl);f.Write(raw,0,raw.Length);f.Flush(true);}File.Move(temp,path);Acl(path,false);}
+ static Dictionary<string,object>Read(string path){Acl(path,false);using(var p=new Pin(path,false)){string raw=Encoding.UTF8.GetString(p.Bytes(524288));var v=D(J.DeserializeObject(raw));Need(J.Serialize(v)==raw,"OWNER_RECORD_NONCANONICAL");return v;}}
+ static void Guest(Dictionary<string,object>c){Need(WindowsIdentity.GetCurrent().User.Value=="S-1-5-18","OWNER_SYSTEM_REQUIRED");var e=D(c["expected"]);string machine=null,boot=null;using(var q=new ManagementObjectSearcher("SELECT UUID FROM Win32_ComputerSystemProduct"))foreach(ManagementObject row in q.Get())using(row)machine=new Guid((string)row["UUID"]).ToString("D");using(var q=new ManagementObjectSearcher("SELECT LastBootUpTime FROM Win32_OperatingSystem"))foreach(ManagementObject row in q.Get())using(row)boot=ManagementDateTimeConverter.ToDateTime((string)row["LastBootUpTime"]).ToUniversalTime().ToString("o");Need(machine==S(e["machine"])&&boot==S(e["boot"]),"OWNER_GUEST_EPOCH_CHANGED");}
+ static string NamespaceGuard(Dictionary<string,object>c){Guest(c);string root=Root(c);foreach(string p in new[]{Path.GetDirectoryName(root),root,Path.Combine(root,"admissions"),Path.Combine(root,"operations")})Acl(p,true);using(var p=new Pin(root,true))using(var a=new Pin(Path.Combine(root,"admissions"),true)){Need(p.Identity==S(D(c["namespace"])["rootGeneration"])&&a.Identity==S(D(c["namespace"])["admissionGeneration"]),"OWNER_NAMESPACE_GENERATION_CHANGED");}return root;}
+ static string BinaryHash(){using(var p=new Pin(Ps(),false))return H(p.Bytes(33554432));}
+ static Dictionary<string,object>Actor(uint pid,IntPtr handle,int session,string sourceSha){uint actual;Need(WaitForSingleObject(handle,0)==258&&ProcessIdToSessionId(pid,out actual)&&actual==session&&string.Equals(Image(handle),Ps(),StringComparison.OrdinalIgnoreCase),"OWNER_ACTOR_IDENTITY");IntPtr token;Need(OpenProcessToken(handle,8,out token),"OWNER_ACTOR_TOKEN");try{using(var i=new WindowsIdentity(token))Need(i.User.Value=="S-1-5-18","OWNER_ACTOR_SID");}finally{CloseHandle(token);}return O("pid",(int)pid,"birth",HeldBirth(handle),"session",session,"sid","S-1-5-18","imageSha256",BinaryHash(),"sourceSha256",sourceSha);}
+ static bool Alive(Dictionary<string,object>a){IntPtr handle=OpenProcess(0x00101000,false,(uint)L(a["pid"]));if(handle==IntPtr.Zero){Need(Marshal.GetLastWin32Error()==87,"OWNER_PROCESS_VISIBILITY");return false;}try{if(HeldBirth(handle)!=S(a["birth"])||WaitForSingleObject(handle,0)==0)return false;uint actual;Need(ProcessIdToSessionId((uint)L(a["pid"]),out actual)&&actual==L(a["session"])&&string.Equals(Image(handle),Ps(),StringComparison.OrdinalIgnoreCase)&&BinaryHash()==S(a["imageSha256"]),"OWNER_ACTOR_CHANGED");IntPtr token;Need(OpenProcessToken(handle,8,out token),"OWNER_ACTOR_TOKEN");try{using(var id=new WindowsIdentity(token))Need(id.User.Value=="S-1-5-18","OWNER_ACTOR_SID");}finally{CloseHandle(token);}return true;}finally{CloseHandle(handle);}}
+ static Dictionary<string,object>Claim(Dictionary<string,object>c){NamespaceGuard(c);var a=Read(Index(c));Need(J.Serialize(a["config"])==J.Serialize(c),"OWNER_ORIGINAL_CONFIG_CHANGED");return a;}
+ static void Correlate(Dictionary<string,object>a,Dictionary<string,object>b){Need(J.Serialize(a)==J.Serialize(b),"OWNER_ORIGINAL_RECORD_CHANGED");}
+ static void Enable(IntPtr token,string privilege){Luid id;Need(LookupPrivilegeValue(null,privilege,out id),"OWNER_PRIVILEGE");var s=new TP{count=1,id=id,flags=2};Need(AdjustTokenPrivileges(token,false,ref s,0,IntPtr.Zero,IntPtr.Zero)&&Marshal.GetLastWin32Error()==0,"OWNER_PRIVILEGE");}
+ static PI Suspended(string script,string arguments,int session,bool crossSession){SI start=new SI{size=Marshal.SizeOf(typeof(SI)),desktop=crossSession?@"WinSta0\Winlogon":null};PI p;var command=new StringBuilder("\""+Ps()+"\" -NoLogo -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File \""+script+"\" "+arguments);Need(command.Length<30000,"OWNER_COMMAND_BOUND");
+  if(!crossSession){Need(CreateProcessW(Ps(),command,IntPtr.Zero,IntPtr.Zero,false,0x08000004,IntPtr.Zero,Path.GetDirectoryName(script),ref start,out p),"OWNER_MONITOR_CREATE");return p;}
+  IntPtr own=IntPtr.Zero,copy=IntPtr.Zero;try{Need(OpenProcessToken(GetCurrentProcess(),0x2b,out own),"OWNER_SYSTEM_TOKEN");Enable(own,"SeTcbPrivilege");Enable(own,"SeIncreaseQuotaPrivilege");Enable(own,"SeAssignPrimaryTokenPrivilege");Need(DuplicateTokenEx(own,0x02000000,IntPtr.Zero,2,1,out copy),"OWNER_DUPLICATE_SYSTEM_TOKEN");using(var identity=new WindowsIdentity(copy))Need(identity.User.Value=="S-1-5-18","OWNER_DUPLICATE_NOT_SYSTEM");uint target=(uint)session;Need(SetTokenInformation(copy,12,ref target,4),"OWNER_SYSTEM_TOKEN_SESSION");Need(CreateProcessAsUser(copy,Ps(),command,IntPtr.Zero,IntPtr.Zero,false,0x08000004,IntPtr.Zero,Path.GetDirectoryName(script),ref start,out p),"OWNER_HELPER_CREATE");return p;}finally{if(copy!=IntPtr.Zero)CloseHandle(copy);if(own!=IntPtr.Zero)CloseHandle(own);}}
+ static void ResumeOnce(string job,string role,PI p,object actor){Save(Path.Combine(job,role+".resume.intent.json"),O("actor",actor,"readonlyObserver",true,"replayAllowed",false));Need(ResumeThread(p.thread)==1,"OWNER_RESUME_ACK_UNKNOWN");}
+ sealed class Capture:IDisposable{
+  readonly NamedPipeServerStream Pipe;readonly Task Worker;readonly string PathName,Receipt;readonly Dictionary<string,object>ExpectedActor;readonly IntPtr ProcessHandle;public bool Closed=false;public string Digest;public int Bytes;Exception Failure;
+  public Capture(string job,string op,string stream,Dictionary<string,object>actor,IntPtr processHandle){ExpectedActor=actor;ProcessHandle=processHandle;PathName=Path.Combine(job,stream+".bin");Receipt=Path.Combine(job,stream+".eof.json");var security=new PipeSecurity();security.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");Pipe=new NamedPipeServerStream("vpn-secure-v2-"+op+"-"+stream,PipeDirection.In,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,4096,4096,security);Worker=Task.Run((Action)Run);}
+  void Run(){try{Pipe.WaitForConnection();uint pid;Need(GetNamedPipeClientProcessId(Pipe.SafePipeHandle.DangerousGetHandle(),out pid)&&pid==L(ExpectedActor["pid"])&&HeldBirth(ProcessHandle)==S(ExpectedActor["birth"]),"OWNER_STREAM_PEER");bool system=false;Pipe.RunAsClient(delegate{system=WindowsIdentity.GetCurrent().User.Value=="S-1-5-18";});Need(system,"OWNER_STREAM_SID");using(var output=new FileStream(PathName,FileMode.CreateNew,FileAccess.Write,FileShare.Read)){var acl=new FileSecurity();acl.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");output.SetAccessControl(acl);byte[] b=new byte[1024];while(true){int n=Pipe.Read(b,0,b.Length);if(n==0)break;Need(output.Length+n<=4096,"OWNER_LIFECYCLE_STREAM_BOUND");output.Write(b,0,n);output.Flush(true);}Bytes=(int)output.Length;}
+   using(var pin=new Pin(PathName,false)){Digest=H(pin.Bytes(4096));Save(Receipt,O("actor",ExpectedActor,"fileGeneration",pin.Identity,"bytes",Bytes,"sha256",Digest,"eof",true));}Closed=true;
+  }catch(Exception e){Failure=e;}finally{Pipe.Dispose();}}
+  public void Join(int milliseconds){Need(Worker.Wait(milliseconds)&&Failure==null&&Closed,"OWNER_STREAM_CLOSURE_UNKNOWN");}
+  public void Dispose(){Pipe.Dispose();}
+ }
+ static NamedPipeClientStream StreamClient(Dictionary<string,object>c,string stream,Dictionary<string,object>monitor){var p=new NamedPipeClientStream(".","vpn-secure-v2-"+Uuid(c["operationId"])+"-"+stream,PipeDirection.Out,PipeOptions.None,TokenImpersonationLevel.Impersonation);p.Connect(2000);uint pid;Need(GetNamedPipeServerProcessId(p.SafePipeHandle.DangerousGetHandle(),out pid)&&pid==L(monitor["pid"])&&Alive(monitor),"OWNER_MONITOR_STREAM_PEER");return p;}
+ public static string Enroll(string raw){var c=D(J.DeserializeObject(raw));Guest(c);string family=Path.GetDirectoryName(Root(c));if(!Exists(family))PrivateDirectory(family);else Acl(family,true);string root=Root(c);PrivateDirectory(root);PrivateDirectory(Path.Combine(root,"admissions"));PrivateDirectory(Path.Combine(root,"operations"));using(var f=new FileStream(Path.Combine(root,"admission.lock"),FileMode.CreateNew,FileAccess.Write,FileShare.Read)){var acl=new FileSecurity();acl.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");f.SetAccessControl(acl);f.Flush(true);}using(var r=new Pin(root,true))using(var a=new Pin(Path.Combine(root,"admissions"),true)){var value=O("schemaVersion",2,"machine",D(c["expected"])["machine"],"boot",D(c["expected"])["boot"],"enrollmentOperationId",c["enrollmentOperationId"],"enrollmentNonce",c["enrollmentNonce"],"rootGeneration",r.Identity,"admissionGeneration",a.Identity);Save(Path.Combine(root,"namespace.json"),value);return J.Serialize(value);}}
+ public static string Start(string raw,string monitorBase64,string childBase64,string nativeBase64){var c=D(J.DeserializeObject(raw));string root=NamespaceGuard(c),job=Job(c);using(var gate=new FileStream(Path.Combine(root,"admission.lock"),FileMode.Open,FileAccess.Read,FileShare.None)){
+  if(Exists(Index(c)))return Status(raw);Need(!Exists(job),"OWNER_ORPHAN_OPERATION");var inventory=D(J.DeserializeObject(InventoryCore(c)));Need((bool)inventory["visibilityComplete"]&&((object[])inventory["jobs"]).All(row=>S(D(row)["state"])=="terminal"),"OWNER_PRIOR_WORK_UNRESOLVED");byte[] monitor=Convert.FromBase64String(monitorBase64),child=Convert.FromBase64String(childBase64),native=Convert.FromBase64String(nativeBase64);Need(monitor.Length<=32768&&child.Length<=32768&&native.Length<=131072&&H(native)==S(c["nativeSourceSha256"]),"OWNER_PROGRAM_BOUND");
+  var index=O("schemaVersion",2,"config",c,"admissionNonce",Guid.NewGuid().ToString("D"),"monitorSha256",H(monitor),"childSha256",H(child),"nativeSha256",H(native),"purpose","readonly-secure-observer-v2","replayAllowed",false);Save(Index(c),index);PrivateDirectory(job);Save(Path.Combine(job,"intent.json"),index);
+  foreach(var pair in new[]{new KeyValuePair<string,byte[]>("monitor.ps1",monitor),new KeyValuePair<string,byte[]>("observer.ps1",child),new KeyValuePair<string,byte[]>("native.cs",native)}){using(var f=new FileStream(Path.Combine(job,pair.Key),FileMode.CreateNew,FileAccess.Write,FileShare.Read)){var acl=new FileSecurity();acl.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");f.SetAccessControl(acl);f.Write(pair.Value,0,pair.Value.Length);f.Flush(true);}}
+  using(var ownSource=new Pin(Path.Combine(job,"monitor.ps1"),false))using(var helperSource=new Pin(Path.Combine(job,"observer.ps1"),false))using(var nativeSource=new Pin(Path.Combine(job,"native.cs"),false))using(var binarySource=new Pin(Ps(),false)){Need(H(ownSource.Bytes(196608))==S(index["monitorSha256"])&&H(helperSource.Bytes(196608))==S(index["childSha256"]),"OWNER_SOURCE_INTEGRITY");Save(Path.Combine(job,"source-generations.json"),O("monitor",ownSource.Identity,"child",helperSource.Identity,"native",nativeSource.Identity));PI p=Suspended(Path.Combine(job,"monitor.ps1"),S(index["monitorSha256"])+" "+S(index["childSha256"]),0,false);try{var actor=Actor(p.pid,p.process,0,S(index["monitorSha256"]));Save(Path.Combine(job,"monitor.launch.json"),actor);ResumeOnce(job,"monitor",p,actor);}finally{CloseHandle(p.thread);CloseHandle(p.process);}}
+  return Status(raw);
+ }}
+ public static void Monitor(string raw,string monitorSha,string childSha){var c=D(J.DeserializeObject(raw));var claim=Claim(c);string job=Job(c);Need(S(claim["monitorSha256"])==monitorSha&&S(claim["childSha256"])==childSha,"OWNER_MONITOR_SOURCE");using(var monitorSource=new Pin(Path.Combine(job,"monitor.ps1"),false))using(var childSource=new Pin(Path.Combine(job,"observer.ps1"),false))using(var nativeSource=new Pin(Path.Combine(job,"native.cs"),false))using(var binarySource=new Pin(Ps(),false)){
+  Need(H(monitorSource.Bytes(196608))==monitorSha&&H(childSource.Bytes(196608))==childSha&&H(nativeSource.Bytes(131072))==S(claim["nativeSha256"]),"OWNER_MONITOR_SOURCE");using(var self=Process.GetCurrentProcess()){Need(self.SessionId==0,"OWNER_MONITOR_SESSION");var launch=Read(Path.Combine(job,"monitor.launch.json"));Need(L(launch["pid"])==self.Id&&S(launch["birth"])==Born(self),"OWNER_MONITOR_ORIGINAL");Save(Path.Combine(job,"monitor.owner.json"),launch);}
+  PI helper=Suspended(Path.Combine(job,"observer.ps1"),childSha,(int)L(D(c["expected"])["console"]),true);int stopConsumed=0;Dictionary<string,object> heldActor=Actor(helper.pid,helper.process,(int)L(D(c["expected"])["console"]),childSha);
+  Action<string> stop=delegate(string why){if(Interlocked.CompareExchange(ref stopConsumed,1,0)==0){monitorSource.Guard();childSource.Guard();nativeSource.Guard();Save(Path.Combine(job,"helper.stop.intent.json"),O("actor",heldActor,"reason",why,"readonlyObserver",true,"replayAllowed",false));Need(TerminateProcess(helper.process,124),"OWNER_STOP_ACK_UNKNOWN");}Need(WaitForSingleObject(helper.process,3000)==0,"OWNER_STOP_OUTCOME_UNKNOWN");};
+  using(var watchdog=new Timer(delegate{try{stop("expired");}catch{try{Save(Path.Combine(job,"watchdog.unknown.json"),O("originalOnly",true,"replayAllowed",false));}catch{}}},null,(int)L(c["ttlSeconds"])*1000,Timeout.Infinite)){
+  try{var actor=heldActor;Save(Path.Combine(job,"helper.launch.json"),actor);
+   using(var stdout=new Capture(job,Uuid(c["operationId"]),"stdout",actor,helper.process))using(var stderr=new Capture(job,Uuid(c["operationId"]),"stderr",actor,helper.process)){
+    ResumeOnce(job,"helper",helper,actor);var watch=Stopwatch.StartNew();string reason="ended";
+    while(WaitForSingleObject(helper.process,20)==258){monitorSource.Guard();childSource.Guard();NamespaceGuard(c);if(Cancelled(c,claim)||watch.ElapsedMilliseconds>=L(c["ttlSeconds"])*1000){reason=Cancelled(c,claim)?"cancelled":"expired";stop(reason);break;}}
+    uint exit;Need(WaitForSingleObject(helper.process,0)==0&&GetExitCodeProcess(helper.process,out exit),"OWNER_HELPER_EXIT_UNKNOWN");Save(Path.Combine(job,"helper.exit.json"),O("actor",actor,"exitCode",exit,"waitSignaled",true,"stopIntentConsumed",stopConsumed==1));stdout.Join(5000);stderr.Join(5000);
+    Save(Path.Combine(job,"closed.json"),O("index",claim,"actor",actor,"exit",Read(Path.Combine(job,"helper.exit.json")),"stdout",Read(Path.Combine(job,"stdout.eof.json")),"stderr",Read(Path.Combine(job,"stderr.eof.json")),"reason",reason,"checkOutcomeAuthority",false,"inputAuthority",false,"replayAllowed",false));
+   }
+  }finally{CloseHandle(helper.thread);CloseHandle(helper.process);}
+ }}}
+ public static int Child(string raw,string sourceSha){var c=D(J.DeserializeObject(raw));var claim=Claim(c);string job=Job(c);Need(S(claim["childSha256"])==sourceSha,"OWNER_CHILD_SOURCE");using(var source=new Pin(Path.Combine(job,"observer.ps1"),false))using(var nativeSource=new Pin(Path.Combine(job,"native.cs"),false))using(var binarySource=new Pin(Ps(),false)){Need(H(source.Bytes(196608))==sourceSha&&H(nativeSource.Bytes(131072))==S(claim["nativeSha256"]),"OWNER_CHILD_SOURCE");var actor=Read(Path.Combine(job,"helper.launch.json"));using(var self=Process.GetCurrentProcess())Need(L(actor["pid"])==self.Id&&S(actor["birth"])==Born(self)&&self.SessionId==L(D(c["expected"])["console"]),"OWNER_CHILD_ORIGINAL");var monitor=Read(Path.Combine(job,"monitor.owner.json"));Need(Alive(monitor),"OWNER_MONITOR_GONE");
+  using(var life=new Timer(delegate{Environment.Exit(124);},null,(int)L(c["ttlSeconds"])*1000,Timeout.Infinite))using(var output=StreamClient(c,"stdout",monitor))using(var error=StreamClient(c,"stderr",monitor))using(var writer=new StreamWriter(output,new UTF8Encoding(false),1024,true))using(var errors=new StreamWriter(error,new UTF8Encoding(false),1024,true)){
+   writer.NewLine=errors.NewLine="\n";writer.AutoFlush=errors.AutoFlush=true;Console.SetOut(writer);Console.SetError(errors);Console.WriteLine("readonly-observer-started");Save(Path.Combine(job,"helper.owner.json"),actor);
+   int exitCode=0;try{Serve(c,claim,source,monitor);Console.WriteLine("readonly-observer-ended");}catch{Console.Error.WriteLine("READONLY_OBSERVER_UNRESOLVED");exitCode=1;}finally{Console.SetOut(TextWriter.Null);Console.SetError(TextWriter.Null);}return exitCode;
+  }
+ }}
+ static string Line(Stream p){var b=new List<byte>();while(b.Count<=192){int n=p.ReadByte();Need(n>=0,"OWNER_CHECK_CLIENT_GONE");if(n==10)return Encoding.ASCII.GetString(b.ToArray());Need(n>=32&&n<=126,"OWNER_CHECK_REQUEST_BYTES");b.Add((byte)n);}throw new InvalidOperationException("OWNER_CHECK_REQUEST_BOUND");}
+ static void Serve(Dictionary<string,object>c,Dictionary<string,object>claim,Pin source,Dictionary<string,object>monitor){
+  int sequence=0;string anchor=null;var nonces=new HashSet<string>();string op=Uuid(c["operationId"]);
+  while(sequence<1024){source.Guard();NamespaceGuard(c);Need(Alive(monitor),"OWNER_MONITOR_GONE");var acl=new PipeSecurity();acl.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");
+   using(var pipe=new NamedPipeServerStream("vpn-secure-v2-"+op+"-check",PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,32768,1024,acl)){
+    pipe.WaitForConnection();uint client;Need(GetNamedPipeClientProcessId(pipe.SafePipeHandle.DangerousGetHandle(),out client),"OWNER_CHECK_PEER");bool system=false;pipe.RunAsClient(delegate{system=WindowsIdentity.GetCurrent().User.Value=="S-1-5-18";});Need(system,"OWNER_CHECK_PEER_SID");
+    var f=Line(pipe).Split('|');Need(f.Length==4&&f[0]=="2"&&f[1]==(sequence+1).ToString()&&System.Text.RegularExpressions.Regex.IsMatch(f[2],"^[0-9a-f]{32}$")&&nonces.Add(f[2])&&(f[3]=="enroll"&&sequence==0||f[3]=="check"&&anchor!=null),"OWNER_CHECK_CORRELATION");sequence++;
+    source.Guard();NamespaceGuard(c);Need(Alive(monitor),"OWNER_MONITOR_GONE");string native=SecureRecipientV2.Fresh(J.Serialize(c),anchor);source.Guard();NamespaceGuard(c);Need(Alive(monitor),"OWNER_MONITOR_GONE");var facts=D(J.DeserializeObject(native));
+    if(f[3]=="enroll"){anchor=J.Serialize(facts["anchor"]);Save(Path.Combine(Job(c),"public-anchor.json"),O("index",claim,"actor",Read(Path.Combine(Job(c),"helper.owner.json")),"facts",facts,"inputAuthority",false,"replayAllowed",false));}
+    var response=O("schemaVersion",2,"operationId",op,"admissionNonce",claim["admissionNonce"],"sourceSha256",claim["childSha256"],"namespace",c["namespace"],"counter",sequence,"nonce",f[2],"action",f[3],"state","observed","snapshot",facts,"inputAuthority",false,"replayAllowed",false);byte[] raw=Encoding.UTF8.GetBytes(J.Serialize(response)+"\n");Need(raw.Length<=32768,"OWNER_CHECK_REPLY_BOUND");source.Guard();pipe.Write(raw,0,raw.Length);pipe.Flush();source.Guard();
+   }
+  }
+ }
+ static object StreamClosed(string job,string role,Dictionary<string,object>actor){var receipt=Read(Path.Combine(job,role+".eof.json"));Correlate(D(receipt["actor"]),actor);Need(receipt["eof"] is bool&&(bool)receipt["eof"],"OWNER_STREAM_EOF_MISSING");using(var p=new Pin(Path.Combine(job,role+".bin"),false)){byte[] raw=p.Bytes(4096);Need(p.Identity==S(receipt["fileGeneration"])&&raw.Length==L(receipt["bytes"])&&H(raw)==S(receipt["sha256"]),"OWNER_STREAM_CHANGED");string text=Encoding.UTF8.GetString(raw);Need(role=="stdout"?(text=="readonly-observer-started\n"||text=="readonly-observer-started\nreadonly-observer-ended\n"):(text==""||text=="READONLY_OBSERVER_UNRESOLVED\n"),"OWNER_STREAM_PUBLIC_SCHEMA");return receipt;}}
+ static object CollectedStream(string job,string role){using(var p=new Pin(Path.Combine(job,role+".bin"),false)){byte[] raw=p.Bytes(4096);return O("generation",p.Identity,"bytes",raw.Length,"sha256",H(raw),"base64",Convert.ToBase64String(raw));}}
+ static object ValidateClosure(Dictionary<string,object>c,Dictionary<string,object>claim){string job=Job(c);var helper=Read(Path.Combine(job,"helper.launch.json"));var monitor=Read(Path.Combine(job,"monitor.launch.json"));Need(!Alive(helper)&&!Alive(monitor),"OWNER_ORIGINAL_PROCESS_STILL_LIVE");Correlate(Read(Path.Combine(job,"helper.owner.json")),helper);Correlate(Read(Path.Combine(job,"monitor.owner.json")),monitor);var exit=Read(Path.Combine(job,"helper.exit.json"));Correlate(D(exit["actor"]),helper);Need(exit["waitSignaled"] is bool&&(bool)exit["waitSignaled"]&&L(exit["exitCode"])>=0&&L(exit["exitCode"])<=uint.MaxValue,"OWNER_EXIT_RECEIPT");var generations=Read(Path.Combine(job,"source-generations.json"));using(var m=new Pin(Path.Combine(job,"monitor.ps1"),false))using(var h=new Pin(Path.Combine(job,"observer.ps1"),false))using(var n=new Pin(Path.Combine(job,"native.cs"),false)){Need(m.Identity==S(generations["monitor"])&&h.Identity==S(generations["child"])&&H(m.Bytes(196608))==S(claim["monitorSha256"])&&H(h.Bytes(196608))==S(claim["childSha256"])&&n.Identity==S(generations["native"])&&H(n.Bytes(131072))==S(claim["nativeSha256"]),"OWNER_ORIGINAL_SOURCE_CHANGED");}
+  return O("index",claim,"actor",helper,"exit",exit,"stdout",StreamClosed(job,"stdout",helper),"stderr",StreamClosed(job,"stderr",helper),"streams",O("stdout",CollectedStream(job,"stdout"),"stderr",CollectedStream(job,"stderr")),"checkOutcomeAuthority",false,"inputAuthority",false,"replayAllowed",false);
+ }
+ public static string Status(string raw){var c=D(J.DeserializeObject(raw));string job=Job(c);NamespaceGuard(c);if(!Exists(Index(c))){Need(!Exists(job),"OWNER_ORPHAN_OPERATION");return J.Serialize(O("schemaVersion",2,"operationId",c["operationId"],"state","unsubmitted","inputAuthority",false,"replayAllowed",false));}var claim=Claim(c);Correlate(Read(Path.Combine(job,"intent.json")),claim);string state="unknown";object closure=null;
+  try{closure=ValidateClosure(c,claim);if(Exists(Path.Combine(job,"collected-closure.json")))Correlate(Read(Path.Combine(job,"collected-closure.json")),D(closure));state="terminal";}
+  catch(FileNotFoundException){if(Exists(Path.Combine(job,"helper.owner.json"))&&Alive(Read(Path.Combine(job,"helper.owner.json"))))state="running";}
+  catch(InvalidOperationException){state="unknown";closure=null;}
+  return J.Serialize(O("schemaVersion",2,"operationId",c["operationId"],"admissionNonce",claim["admissionNonce"],"config",c,"sourceSha256",claim["childSha256"],"state",state,"closure",closure,"inputAuthority",false,"replayAllowed",false));
+ }
+ public static string Reconcile(string raw){var c=D(J.DeserializeObject(raw));var claim=Claim(c);var closure=ValidateClosure(c,claim);string path=Path.Combine(Job(c),"collected-closure.json");if(!Exists(path))Save(path,closure);else Correlate(Read(path),D(closure));return Status(raw);}
+ static object CancelValue(Dictionary<string,object> claim){return O("index",claim,"originalOnly",true,"checkCounterAuthority",false,"inputAuthority",false,"replayAllowed",false);}
+ static bool Cancelled(Dictionary<string,object> c,Dictionary<string,object> claim){string path=Path.Combine(Job(c),"cancel.intent.json");if(!Exists(path))return false;Correlate(Read(path),D(CancelValue(claim)));return true;}
+ public static string Cancel(string raw){var c=D(J.DeserializeObject(raw));var claim=Claim(c);string path=Path.Combine(Job(c),"cancel.intent.json");var value=CancelValue(claim);if(!Exists(path))Save(path,value);else Correlate(Read(path),value);return Status(raw);}
+ static string InventoryCore(Dictionary<string,object> c){NamespaceGuard(c);string root=Root(c);var rows=new List<object>();var seen=new HashSet<string>();bool complete=true;try{string[] entries=Directory.GetFileSystemEntries(Path.Combine(root,"admissions"));Need(entries.Length<=1024,"OWNER_INVENTORY_BOUND");foreach(string path in entries){string id=Path.GetFileNameWithoutExtension(path);Need(Path.GetExtension(path)==".json"&&new Guid(id).ToString("D")==id&&seen.Add(id),"OWNER_INVENTORY_ENTRY");var claim=Read(path);var original=D(claim["config"]);Need(Uuid(original["operationId"])==id&&S(D(original["expected"])["machine"])==S(D(c["expected"])["machine"])&&S(D(original["expected"])["boot"])==S(D(c["expected"])["boot"]),"OWNER_INVENTORY_EPOCH");rows.Add(J.DeserializeObject(Status(J.Serialize(original))));}foreach(string path in Directory.GetFileSystemEntries(Path.Combine(root,"operations")))Need(Directory.Exists(path)&&seen.Contains(Path.GetFileName(path)),"OWNER_INVENTORY_ORPHAN");}catch{complete=false;}
+  return J.Serialize(O("schemaVersion",2,"machine",D(c["expected"])["machine"],"boot",D(c["expected"])["boot"],"namespace",c["namespace"],"visibilityComplete",complete,"jobs",rows,"inputAuthority",false,"replayAllowed",false));
+ }
+ public static string Inventory(string raw){var c=D(J.DeserializeObject(raw));string root=NamespaceGuard(c);using(var gate=new FileStream(Path.Combine(root,"admission.lock"),FileMode.Open,FileAccess.Read,FileShare.None))return InventoryCore(c);}
+ public static string Check(string raw,string request){var c=D(J.DeserializeObject(raw));var claim=Claim(c);Need(System.Text.RegularExpressions.Regex.IsMatch(request,@"\A2\|[1-9][0-9]{0,3}\|[0-9a-f]{32}\|(check|enroll)\n\z"),"OWNER_CHECK_REQUEST");var actor=Read(Path.Combine(Job(c),"helper.owner.json"));Need(Alive(actor),"OWNER_CHECK_ORIGINAL_GONE");using(var p=new NamedPipeClientStream(".","vpn-secure-v2-"+Uuid(c["operationId"])+"-check",PipeDirection.InOut,PipeOptions.Asynchronous,TokenImpersonationLevel.Impersonation)){
+  p.Connect(2000);uint pid;Need(GetNamedPipeServerProcessId(p.SafePipeHandle.DangerousGetHandle(),out pid)&&pid==L(actor["pid"])&&Alive(actor),"OWNER_CHECK_SERVER_IDENTITY");byte[] bytes=Encoding.ASCII.GetBytes(request);p.Write(bytes,0,bytes.Length);p.Flush();var rawReply=new List<byte>();var timer=Stopwatch.StartNew();while(rawReply.Count<=32768){Need(timer.ElapsedMilliseconds<3000,"OWNER_CHECK_LATENCY_UNQUALIFIED");var b=new byte[1];var read=p.ReadAsync(b,0,1);Need(read.Wait(Math.Max(1,3000-(int)timer.ElapsedMilliseconds))&&read.Result==1,"OWNER_CHECK_REPLY_EOF");if(b[0]==10){Need(Alive(actor),"OWNER_CHECK_SERVER_CHANGED");return Encoding.UTF8.GetString(rawReply.ToArray());}rawReply.Add(b[0]);}throw new InvalidOperationException("OWNER_CHECK_REPLY_BOUND");
+ }}
+}
+// OFFGRAPH. No input code. Compile/launch/peer/census/UIA qualification pending.
+// Retained streams contain lifecycle constants ONLY. Requests/replies never Save.
+
+public static class SecureCheckClientV3 {
+ const string Family="VPNControlSecureObserverClients-v3";
+ static readonly JavaScriptSerializer J=new JavaScriptSerializer{MaxJsonLength=262144,RecursionLimit=48};
+ [StructLayout(LayoutKind.Sequential)]struct FI{public uint Attr;public System.Runtime.InteropServices.ComTypes.FILETIME Created,Accessed,Written;public uint Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CreateFileW(string p,uint a,uint s,IntPtr sec,uint create,uint flags,IntPtr t);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(IntPtr h,out FI i);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetProcessTimes(IntPtr h,out System.Runtime.InteropServices.ComTypes.FILETIME c,out System.Runtime.InteropServices.ComTypes.FILETIME e,out System.Runtime.InteropServices.ComTypes.FILETIME k,out System.Runtime.InteropServices.ComTypes.FILETIME u);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool ProcessIdToSessionId(uint pid,out uint session);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool QueryFullProcessImageName(IntPtr h,uint f,StringBuilder p,ref uint n);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr OpenProcess(uint a,bool inherit,uint pid);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool OpenProcessToken(IntPtr h,uint access,out IntPtr token);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetNamedPipeClientProcessId(IntPtr h,out uint pid);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool TerminateProcess(IntPtr h,uint code);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern uint WaitForSingleObject(IntPtr h,uint timeout);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetExitCodeProcess(IntPtr h,out uint code);
+ [StructLayout(LayoutKind.Sequential)]struct SA{public int size;public IntPtr security;[MarshalAs(UnmanagedType.Bool)]public bool inherit;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct SI{public int size;public string reserved,desktop,title;public uint x,y,width,height,cx,cy,fill,flags;public ushort show,bytes;public IntPtr pointer,input,output,error;}
+ [StructLayout(LayoutKind.Sequential)]struct SX{public SI startup;public IntPtr attributes;}
+ [StructLayout(LayoutKind.Sequential)]struct PI{public IntPtr process,thread;public uint pid,tid;}
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool CreatePipe(out IntPtr read,out IntPtr write,ref SA security,uint size);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool SetHandleInformation(IntPtr h,uint mask,uint flags);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool InitializeProcThreadAttributeList(IntPtr list,int count,uint flags,ref IntPtr size);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool UpdateProcThreadAttribute(IntPtr list,uint flags,IntPtr attribute,IntPtr value,IntPtr size,IntPtr previous,IntPtr returned);
+ [DllImport("kernel32.dll")]static extern void DeleteProcThreadAttributeList(IntPtr list);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessW(string app,StringBuilder command,IntPtr ps,IntPtr ts,bool inherit,uint flags,IntPtr env,string cwd,ref SX start,out PI pi);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern uint ResumeThread(IntPtr h);
+ static void Need(bool ok,string reason){if(!ok)throw new InvalidOperationException(reason);}
+ static Dictionary<string,object>D(object x){return (Dictionary<string,object>)x;}
+ static string S(object x){Need(x is string,"CLIENT_STRING");return (string)x;}
+ static long L(object x){Need(x is int||x is long,"CLIENT_INTEGER");return Convert.ToInt64(x);}
+ static Dictionary<string,object>O(params object[] v){var d=new Dictionary<string,object>();for(int n=0;n<v.Length;n+=2)d.Add((string)v[n],v[n+1]);return d;}
+ static string H(byte[] b){using(var h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(b)).Replace("-","").ToLowerInvariant();}
+ static string U(object x){string s=S(x);Need(new Guid(s).ToString("D")==s,"CLIENT_UUID");return s;}
+ static string Ps(){return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),@"System32\WindowsPowerShell\v1.0\powershell.exe");}
+ static string Root(Dictionary<string,object>c){return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),Family,U(D(D(c["observerConfig"])["expected"])["machine"]));}
+ static string Job(Dictionary<string,object>c){return Path.Combine(Root(c),U(c["operationId"]));}
+ static string Index(Dictionary<string,object>c){return Path.Combine(Root(c),"admissions",U(c["operationId"])+".json");}
+ static string Pipe(Dictionary<string,object>c){return "vpn-secure-client-v3-"+U(c["operationId"]);}
+ static bool Exists(string p){try{File.GetAttributes(p);return true;}catch(FileNotFoundException){return false;}catch(DirectoryNotFoundException){return false;}}
+ static void System0(){Need(WindowsIdentity.GetCurrent().User.Value=="S-1-5-18"&&Process.GetCurrentProcess().SessionId==0,"CLIENT_SYSTEM_SESSION0_REQUIRED");}
+ static void Private(string p,bool directory){FileSystemSecurity acl=directory?(FileSystemSecurity)Directory.GetAccessControl(p):File.GetAccessControl(p);Need(acl.AreAccessRulesProtected&&acl.GetOwner(typeof(SecurityIdentifier)).Value=="S-1-5-18","CLIENT_PRIVATE_OWNER");foreach(FileSystemAccessRule r in acl.GetAccessRules(true,true,typeof(SecurityIdentifier)))Need(r.IdentityReference.Value=="S-1-5-18"&&r.AccessControlType==AccessControlType.Allow,"CLIENT_PRIVATE_ACL");Need((File.GetAttributes(p)&FileAttributes.ReparsePoint)==0,"CLIENT_REPARSE");}
+ static void Mk(string p){Need(!Exists(p),"CLIENT_DIRECTORY_ALREADY_EXISTS");var a=new DirectorySecurity();a.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;OICI;FA;;;SY)");Directory.CreateDirectory(p,a);Private(p,true);}
+ static void Save(string p,byte[] raw){Need(raw.Length<=262144,"CLIENT_RECORD_BOUND");using(var f=new FileStream(p,FileMode.CreateNew,FileAccess.Write,FileShare.Read)){var a=new FileSecurity();a.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");f.SetAccessControl(a);f.Write(raw,0,raw.Length);f.Flush(true);}Private(p,false);}
+ static void Save(string p,object value){Save(p,Encoding.UTF8.GetBytes(J.Serialize(value)));}
+ sealed class Pin:IDisposable{
+  readonly string PathName,Id;readonly bool Directory;readonly SafeFileHandle Held;readonly List<Pin>Parents=new List<Pin>();FileStream Reader;
+  static FI Info(IntPtr h){FI i;Need(GetFileInformationByHandle(h,out i),"CLIENT_FILE_ID");return i;}
+  static string Tag(FI i){string s=i.Volume+":"+i.IndexHigh+":"+i.IndexLow+":"+i.Created.dwHighDateTime+":"+i.Created.dwLowDateTime+":"+i.Attr;return (i.Attr&0x10)!=0?s:s+":"+i.SizeHigh+":"+i.SizeLow+":"+i.Written.dwHighDateTime+":"+i.Written.dwLowDateTime+":"+i.Links;}
+  public string Identity{get{Guard();return Id;}}
+  public Pin(string p,bool directory,bool parents=true){PathName=p;Directory=directory;Need(Path.GetFullPath(p)==p,"CLIENT_CANONICAL_PATH");if(parents){string x=Path.GetPathRoot(p);Parents.Add(new Pin(x,true,false));foreach(string part in p.Substring(x.Length).Split('\\').Take(p.Substring(x.Length).Split('\\').Length-1)){x=Path.Combine(x,part);Parents.Add(new Pin(x,true,false));}}IntPtr h=CreateFileW(p,directory?0x80u:0x80000000u,1,IntPtr.Zero,3,0x00200000u|(directory?0x02000000u:0),IntPtr.Zero);Need(h!=new IntPtr(-1),"CLIENT_SOURCE_OPEN");Held=new SafeFileHandle(h,true);FI i=Info(h);Need((i.Attr&0x400)==0&&((i.Attr&0x10)!=0)==directory&&(directory||i.Links==1),"CLIENT_SOURCE_REPARSE");Id=Tag(i);if(!directory)Reader=new FileStream(Held,FileAccess.Read);}
+  public void Guard(){foreach(var p in Parents)p.Guard();Need(Tag(Info(Held.DangerousGetHandle()))==Id,"CLIENT_HELD_SOURCE_CHANGED");IntPtr h=CreateFileW(PathName,0x80,7,IntPtr.Zero,3,0x00200000u|(Directory?0x02000000u:0),IntPtr.Zero);Need(h!=new IntPtr(-1),"CLIENT_NAMED_SOURCE_MISSING");try{Need(Tag(Info(h))==Id,"CLIENT_NAMED_SOURCE_CHANGED");}finally{CloseHandle(h);}}
+  public byte[] Bytes(int limit){Guard();Need(!Directory&&Reader.Length>0&&Reader.Length<=limit,"CLIENT_SOURCE_SIZE");Reader.Position=0;byte[] b=new byte[(int)Reader.Length];int n=0;while(n<b.Length){int k=Reader.Read(b,n,b.Length-n);Need(k>0,"CLIENT_SOURCE_SHORT");n+=k;}Guard();return b;}
+  public void Dispose(){if(Reader!=null)Reader.Dispose();Held.Dispose();foreach(var p in Parents)p.Dispose();}
+ }
+ static Dictionary<string,object>Read(string p){Private(p,false);using(var f=new Pin(p,false)){string text=Encoding.UTF8.GetString(f.Bytes(262144));var v=D(J.DeserializeObject(text));Need(J.Serialize(v)==text,"CLIENT_RECORD_CANONICAL");return v;}}
+ static string Born(IntPtr h){System.Runtime.InteropServices.ComTypes.FILETIME c,e,k,u;Need(GetProcessTimes(h,out c,out e,out k,out u),"CLIENT_BIRTH");return (((ulong)(uint)c.dwHighDateTime<<32)|(uint)c.dwLowDateTime).ToString();}
+ static string Image(IntPtr h){var s=new StringBuilder(32768);uint n=32768;Need(QueryFullProcessImageName(h,0,s,ref n),"CLIENT_IMAGE");return s.ToString();}
+ static Dictionary<string,object>Actor(uint pid,IntPtr h,string source){uint session;Need(ProcessIdToSessionId(pid,out session)&&session==0,"CLIENT_SESSION");IntPtr token;Need(OpenProcessToken(h,8,out token),"CLIENT_TOKEN");try{using(var id=new WindowsIdentity(token))Need(id.User.Value=="S-1-5-18","CLIENT_TOKEN_SID");}finally{CloseHandle(token);}string image=Image(h);using(var pin=new Pin(image,false)){var a=O("pid",(int)pid,"birth",Born(h),"session",0,"sid","S-1-5-18","imageSha256",H(pin.Bytes(33554432)));if(source!=null)a.Add("sourceSha256",source);return a;}}
+ static void Peer(NamedPipeServerStream p,Dictionary<string,object>expected){uint pid;Need(GetNamedPipeClientProcessId(p.SafePipeHandle.DangerousGetHandle(),out pid)&&pid==L(expected["pid"]),"CLIENT_QGA_PEER");IntPtr h=OpenProcess(0x00101000,false,pid);Need(h!=IntPtr.Zero,"CLIENT_QGA_HANDLE");try{Need(WaitForSingleObject(h,0)==258&&J.Serialize(Actor(pid,h,null))==J.Serialize(expected),"CLIENT_QGA_GENERATION");}finally{CloseHandle(h);}}
+ static void Original(Dictionary<string,object>c){System0();var x=D(J.DeserializeObject(SecureObserverOwnerV2.Status(J.Serialize(c["observerConfig"]))));Need(S(x["state"])=="running","CLIENT_OBSERVER_NOT_RUNNING");var claim=Read(Index(c));Need(J.Serialize(claim["config"])==J.Serialize(c),"CLIENT_ORIGINAL_CHANGED");}
+ static object Namespace(Dictionary<string,object>c){using(var r=new Pin(Root(c),true))using(var a=new Pin(Path.Combine(Root(c),"admissions"),true))return O("schemaVersion",3,"machine",D(D(c["observerConfig"])["expected"])["machine"],"boot",D(D(c["observerConfig"])["expected"])["boot"],"rootGeneration",r.Identity,"admissionGeneration",a.Identity);}
+ static void NamespaceGuard(Dictionary<string,object>c){System0();SecureObserverOwnerV2.Status(J.Serialize(c["observerConfig"]));Need(J.Serialize(Read(Path.Combine(Root(c),"namespace.json")))==J.Serialize(Namespace(c)),"CLIENT_NAMESPACE_CHANGED");}
+ static Dictionary<string,object>Claim(Dictionary<string,object>c){NamespaceGuard(c);var claim=Read(Index(c));Need(J.Serialize(claim["config"])==J.Serialize(c)&&J.Serialize(claim["namespace"])==J.Serialize(Namespace(c))&&J.Serialize(Read(Path.Combine(Job(c),"intent.json")))==J.Serialize(claim),"CLIENT_CLAIM_CHANGED");return claim;}
+ static bool Alive(Dictionary<string,object>a){IntPtr h=OpenProcess(0x00101000,false,(uint)L(a["pid"]));if(h==IntPtr.Zero){Need(Marshal.GetLastWin32Error()==87,"CLIENT_PROCESS_VISIBILITY_UNKNOWN");return false;}try{if(Born(h)!=S(a["birth"])||WaitForSingleObject(h,0)==0)return false;Need(J.Serialize(Actor((uint)L(a["pid"]),h,S(a["sourceSha256"])))==J.Serialize(a),"CLIENT_PROCESS_IDENTITY_CHANGED");return true;}finally{CloseHandle(h);}}
+ static object Closed(Dictionary<string,object>c,Dictionary<string,object>claim){string job=Job(c);var closure=Read(Path.Combine(job,"closure.json"));Need(S(closure["state"])=="terminal"&&S(closure["operationId"])==S(c["operationId"])&&S(closure["admissionNonce"])==S(c["admissionNonce"]),"CLIENT_CLOSURE_ORIGINAL");var a=Read(Path.Combine(job,"client.actor.json"));Need(J.Serialize(closure["client"])==J.Serialize(a)&&S(a["sourceSha256"])==S(claim["childSha256"])&&!Alive(a),"CLIENT_CLOSURE_ACTOR");var e=D(closure["exit"]);Need(e["waitSignaled"] is bool&&(bool)e["waitSignaled"]&&L(e["exitCode"])>=0&&L(e["exitCode"])<=uint.MaxValue,"CLIENT_CLOSURE_EXIT");var generations=Read(Path.Combine(job,"source-generations.json"));using(var s=new Pin(Path.Combine(job,"client.ps1"),false))using(var n=new Pin(Path.Combine(job,"native.cs"),false))using(var b=new Pin(Ps(),false)){Need(s.Identity==S(generations["child"])&&n.Identity==S(generations["native"])&&b.Identity==S(generations["binary"])&&H(s.Bytes(262144))==S(claim["childSha256"])&&H(n.Bytes(262144))==S(c["nativeSourceSha256"])&&H(b.Bytes(33554432))==S(a["imageSha256"]),"CLIENT_CLOSURE_SOURCE");}
+  foreach(string role in new[]{"stdout","stderr"}){var stream=D(closure[role]);Need(stream["eof"] is bool&&(bool)stream["eof"],"CLIENT_CLOSURE_EOF");byte[] bytes=Convert.FromBase64String(S(stream["base64"]));Need(bytes.Length==L(stream["bytes"])&&H(bytes)==S(stream["sha256"]),"CLIENT_CLOSURE_STREAM_SHA");string text=Encoding.UTF8.GetString(bytes);Need(role=="stdout"?(text=="readonly-client-started\n"||text=="readonly-client-started\nreadonly-client-ended\n"):(text==""||text=="READONLY_CLIENT_UNRESOLVED\n"),"CLIENT_CLOSURE_STREAM_SCHEMA");}return closure;
+ }
+ public static string Status(string raw){var c=D(J.DeserializeObject(raw));var claim=Claim(c);string job=Job(c),state="unknown";object closure=null;if(Exists(Path.Combine(job,"closure.json"))){closure=Closed(c,claim);state="terminal";}else if(Exists(Path.Combine(job,"client.actor.json"))&&Alive(Read(Path.Combine(job,"client.actor.json"))))state="running";return J.Serialize(O("operationId",c["operationId"],"state",state,"closureValidated",state=="terminal","closure",closure,"inputAuthority",false,"replayAllowed",false));}
+ public static string Inventory(string raw){var c=D(J.DeserializeObject(raw));NamespaceGuard(c);var jobs=new List<object>();bool complete=true;var ids=new HashSet<string>();try{string[] entries=Directory.GetFileSystemEntries(Path.Combine(Root(c),"admissions"));Need(entries.Length<=1024,"CLIENT_INVENTORY_BOUND");foreach(string path in entries){string id=Path.GetFileNameWithoutExtension(path);Need(Path.GetExtension(path)==".json"&&new Guid(id).ToString("D")==id&&ids.Add(id),"CLIENT_INVENTORY_INDEX");var claim=Read(path);var original=D(claim["config"]);Need(S(original["operationId"])==id&&J.Serialize(D(original["observerConfig"])["expected"])==J.Serialize(D(c["observerConfig"])["expected"]),"CLIENT_INVENTORY_EPOCH");var status=D(J.DeserializeObject(Status(J.Serialize(original))));jobs.Add(O("operationId",id,"state",status["state"],"closureValidated",status["closureValidated"]));}foreach(string path in Directory.GetFileSystemEntries(Root(c))){string name=Path.GetFileName(path);if(name=="admissions"||name=="namespace.json"||name=="admission.lock")continue;Need(Directory.Exists(path)&&ids.Contains(name),"CLIENT_INVENTORY_ORPHAN");}}catch{complete=false;}return J.Serialize(O("visibilityComplete",complete,"jobs",jobs));}
+ static void Emit(Stream p,object v){byte[] b=Encoding.UTF8.GetBytes(J.Serialize(v)+"\n");Need(b.Length<=65536,"CLIENT_FRAME_BOUND");p.Write(b,0,b.Length);p.Flush();}
+ static object Frame(Dictionary<string,object>c,object actor,string state,string reply){var r=O("schemaVersion",3,"operationId",c["operationId"],"admissionNonce",c["admissionNonce"],"state",state,"client",actor,"inputAuthority",false,"replayAllowed",false);if(reply!=null)r.Add("replyBase64",Convert.ToBase64String(Encoding.UTF8.GetBytes(reply)));return r;}
+ static string Request(Stream pipe,Stopwatch clock,int limit){var bytes=new List<byte>();while(bytes.Count<=192){Need(clock.ElapsedMilliseconds<limit,"CLIENT_DEADLINE");var b=new byte[1];Task<int> read=pipe.ReadAsync(b,0,1);Need(read.Wait(Math.Max(1,limit-(int)clock.ElapsedMilliseconds))&&read.Result==1,"CLIENT_REQUEST_UNKNOWN");if(b[0]==10){string raw=Encoding.ASCII.GetString(bytes.ToArray())+"\n";Need(System.Text.RegularExpressions.Regex.IsMatch(raw,@"\A2\|[1-9][0-9]{0,3}\|[0-9a-f]{32}\|(check|enroll)\n\z"),"CLIENT_REQUEST_SCHEMA");return raw;}Need(b[0]>=32&&b[0]<=126,"CLIENT_REQUEST_BYTES");bytes.Add(b[0]);}throw new InvalidOperationException("CLIENT_REQUEST_BOUND");}
+ // Called exactly once in the child already owned by Supervise. No output of
+ // check data, hashes of check data, check count, timing or exception text.
+ public static int Client(string raw,string sourceSha){var c=D(J.DeserializeObject(raw));System0();string job=Job(c);Original(c);var claim=Read(Index(c));Need(S(claim["childSha256"])==sourceSha,"CLIENT_CHILD_SOURCE");using(var source=new Pin(Path.Combine(job,"client.ps1"),false))using(var native=new Pin(Path.Combine(job,"native.cs"),false))using(var binary=new Pin(Ps(),false))using(var self=Process.GetCurrentProcess()){
+  Need(H(source.Bytes(262144))==sourceSha&&H(native.Bytes(262144))==S(c["nativeSourceSha256"]),"CLIENT_SOURCE_SHA");var a=Actor((uint)self.Id,self.Handle,sourceSha);Need(J.Serialize(a)==J.Serialize(Read(Path.Combine(job,"client.actor.json"))),"CLIENT_ORIGINAL_ACTOR");
+  var security=new PipeSecurity();security.SetSecurityDescriptorSddlForm("O:SYG:SYD:P(A;;FA;;;SY)");using(var pipe=new NamedPipeServerStream(Pipe(c),PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,65536,4096,security)){
+   Console.Out.Write("readonly-client-started\n");Console.Out.Flush();var clock=Stopwatch.StartNew();int limit=checked((int)L(c["ttlSeconds"])*1000);var connected=pipe.BeginWaitForConnection(null,null);Need(connected.AsyncWaitHandle.WaitOne(limit),"CLIENT_CONNECT_DEADLINE");pipe.EndWaitForConnection(connected);Peer(pipe,D(c["qgaActor"]));source.Guard();native.Guard();binary.Guard();Emit(pipe,Frame(c,a,"ready",null));
+   while(true){string request=Request(pipe,clock,limit);source.Guard();native.Guard();binary.Guard();Peer(pipe,D(c["qgaActor"]));Original(c);string reply=SecureObserverOwnerV2.Check(J.Serialize(c["observerConfig"]),request);source.Guard();native.Guard();binary.Guard();Peer(pipe,D(c["qgaActor"]));Original(c);Need(clock.ElapsedMilliseconds<limit,"CLIENT_REPLY_DEADLINE");Emit(pipe,Frame(c,a,"observed",reply));}
+  }
+ }}
+ sealed class Capture {public readonly Task Worker;public byte[] Bytes;public bool Eof;public Exception Failure;public Capture(Stream stream){Worker=Task.Run(()=>{try{using(var mem=new MemoryStream()){byte[] b=new byte[256];while(true){int n=stream.Read(b,0,b.Length);if(n==0){Eof=true;break;}Need(mem.Length+n<=4096,"CLIENT_LIFECYCLE_OVERFLOW");mem.Write(b,0,n);}Bytes=mem.ToArray();}}catch(Exception e){Failure=e;}});}public object Closed(bool stdout){Need(Worker.IsCompleted&&Failure==null&&Eof&&Bytes!=null,"CLIENT_LIFECYCLE_EOF_UNKNOWN");string s=Encoding.UTF8.GetString(Bytes);Need(stdout?(s=="readonly-client-started\n"||s=="readonly-client-started\nreadonly-client-ended\n"):(s==""||s=="READONLY_CLIENT_UNRESOLVED\n"),"CLIENT_LIFECYCLE_SCHEMA");return O("eof",true,"base64",Convert.ToBase64String(Bytes),"sha256",H(Bytes),"bytes",Bytes.Length);}}
+ // Caller is itself an existing durable source-qualified owner. This method
+ // cannot make that bootstrap, inventory integration or admission trustworthy.
+ public static string Supervise(string raw,string childBase64,string nativeBase64){var c=D(J.DeserializeObject(raw));System0();string root=Root(c),job=Job(c),family=Path.GetDirectoryName(root);if(!Exists(family))Mk(family);else Private(family,true);if(!Exists(root))Mk(root);else Private(root,true);string admissions=Path.Combine(root,"admissions");if(!Exists(admissions))Mk(admissions);else Private(admissions,true);
+  string namespacePath=Path.Combine(root,"namespace.json");if(!Exists(namespacePath))Save(namespacePath,Namespace(c));NamespaceGuard(c);
+  string lockPath=Path.Combine(root,"admission.lock");var lockValue=O("purpose","readonly-persistent-client-admission","namespace",Namespace(c));if(!Exists(lockPath))Save(lockPath,lockValue);Private(lockPath,false);using(var gate=new FileStream(lockPath,FileMode.Open,FileAccess.Read,FileShare.None)){Need(gate.Length>0&&gate.Length<4096,"CLIENT_ADMISSION_LOCK_BODY");var lockBytes=new byte[(int)gate.Length];Need(gate.Read(lockBytes,0,lockBytes.Length)==lockBytes.Length&&Encoding.UTF8.GetString(lockBytes)==J.Serialize(lockValue),"CLIENT_ADMISSION_LOCK_IDENTITY");
+  // Every old original must have complete authenticated exit/source/EOF closure.
+  var history=D(J.DeserializeObject(Inventory(raw)));Need(history["visibilityComplete"] is bool&&(bool)history["visibilityComplete"],"CLIENT_PRIOR_VISIBILITY_UNKNOWN");foreach(object value in (object[])history["jobs"]){var old=D(value);Need(S(old["state"])=="terminal"&&old["closureValidated"] is bool&&(bool)old["closureValidated"],"CLIENT_PRIOR_UNKNOWN");}
+  byte[] child=Convert.FromBase64String(childBase64),native=Convert.FromBase64String(nativeBase64);Need(child.Length>0&&child.Length<=262144&&native.Length>0&&native.Length<=262144&&H(native)==S(c["nativeSourceSha256"]),"CLIENT_SOURCE_BOUND");var claim=O("schemaVersion",3,"config",c,"namespace",Namespace(c),"childSha256",H(child),"purpose","readonly-persistent-check-client-v3","inputAuthority",false,"replayAllowed",false);
+  // Independent admission exists BEFORE source staging or Process.Start.
+  Save(Index(c),claim);Mk(job);Save(Path.Combine(job,"intent.json"),claim);Save(Path.Combine(job,"client.ps1"),child);Save(Path.Combine(job,"native.cs"),native);
+  using(var source=new Pin(Path.Combine(job,"client.ps1"),false))using(var n=new Pin(Path.Combine(job,"native.cs"),false))using(var binary=new Pin(Ps(),false)){
+   Need(H(source.Bytes(262144))==H(child)&&H(n.Bytes(262144))==H(native),"CLIENT_STAGED_SOURCE");Save(Path.Combine(job,"source-generations.json"),O("child",source.Identity,"native",n.Identity,"binary",binary.Identity));Original(c);var clock=Stopwatch.StartNew();int limit=checked((int)L(c["ttlSeconds"])*1000);
+   // Same-session0 child only. Inherited handles are restricted to this exact
+   // anonymous lifecycle handle list; never cross-session observer handles.
+   IntPtr outRead=IntPtr.Zero,outWrite=IntPtr.Zero,errRead=IntPtr.Zero,errWrite=IntPtr.Zero,inRead=IntPtr.Zero,inWrite=IntPtr.Zero,list=IntPtr.Zero,values=IntPtr.Zero;PI process=new PI();var security=new SA{size=Marshal.SizeOf(typeof(SA)),inherit=true,security=IntPtr.Zero};
+   try{
+   Need(CreatePipe(out outRead,out outWrite,ref security,0)&&CreatePipe(out errRead,out errWrite,ref security,0)&&CreatePipe(out inRead,out inWrite,ref security,0),"CLIENT_STREAM_HANDLES");Need(SetHandleInformation(outRead,1,0)&&SetHandleInformation(errRead,1,0)&&SetHandleInformation(inWrite,1,0),"CLIENT_HANDLE_INHERITANCE");IntPtr bytes=IntPtr.Zero;InitializeProcThreadAttributeList(IntPtr.Zero,1,0,ref bytes);Need(bytes!=IntPtr.Zero,"CLIENT_ATTRIBUTE_SIZE");list=Marshal.AllocHGlobal(bytes);Need(InitializeProcThreadAttributeList(list,1,0,ref bytes),"CLIENT_ATTRIBUTE_LIST");values=Marshal.AllocHGlobal(IntPtr.Size*3);Marshal.WriteIntPtr(values,0,inRead);Marshal.WriteIntPtr(values,IntPtr.Size,outWrite);Marshal.WriteIntPtr(values,IntPtr.Size*2,errWrite);Need(UpdateProcThreadAttribute(list,0,new IntPtr(0x00020002),values,new IntPtr(IntPtr.Size*3),IntPtr.Zero,IntPtr.Zero),"CLIENT_EXACT_HANDLE_LIST");var start=new SX{startup=new SI{size=Marshal.SizeOf(typeof(SX)),flags=0x100,input=inRead,output=outWrite,error=errWrite},attributes=list};var command=new StringBuilder("\""+Ps()+"\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+Path.Combine(job,"client.ps1")+"\" "+H(child));Need(command.Length<30000,"CLIENT_COMMAND_BOUND");
+   Save(Path.Combine(job,"launch.intent.json"),O("index",claim,"readonlyClient",true,"replayAllowed",false));Need(CreateProcessW(Ps(),command,IntPtr.Zero,IntPtr.Zero,true,0x00080004u|0x08000000u,IntPtr.Zero,null,ref start,out process),"CLIENT_LAUNCH_UNKNOWN");
+   // Actor and once resume fence are durable while child is still suspended.
+   IntPtr original=process.process;var a=Actor(process.pid,original,H(child));Save(Path.Combine(job,"client.actor.json"),a);CloseHandle(outWrite);outWrite=IntPtr.Zero;CloseHandle(errWrite);errWrite=IntPtr.Zero;CloseHandle(inRead);inRead=IntPtr.Zero;CloseHandle(inWrite);inWrite=IntPtr.Zero;
+   using(var outputStream=new FileStream(new SafeFileHandle(outRead,true),FileAccess.Read))using(var errorStream=new FileStream(new SafeFileHandle(errRead,true),FileAccess.Read)){outRead=errRead=IntPtr.Zero;var output=new Capture(outputStream);var error=new Capture(errorStream);source.Guard();n.Guard();binary.Guard();Need(clock.ElapsedMilliseconds<limit,"CLIENT_PRE_RESUME_DEADLINE");Save(Path.Combine(job,"resume.intent.json"),O("index",claim,"client",a,"replayAllowed",false));Need(ResumeThread(process.thread)==1,"CLIENT_RESUME_ACK_UNKNOWN");
+   while(WaitForSingleObject(original,25)==258){source.Guard();n.Guard();binary.Guard();bool cancel=Exists(Path.Combine(job,"cancel.intent.json"));if(cancel){var q=Read(Path.Combine(job,"cancel.intent.json"));Need(J.Serialize(q["index"])==J.Serialize(claim),"CLIENT_CANCEL_ORIGINAL");}if(clock.ElapsedMilliseconds>=limit||cancel){Save(Path.Combine(job,"stop.intent.json"),O("index",claim,"client",a,"originalOnly",true,"replayAllowed",false));Need(TerminateProcess(original,124),"CLIENT_STOP_ACK_UNKNOWN");break;}}
+   Need(WaitForSingleObject(original,5000)==0,"CLIENT_ORIGINAL_EXIT_UNKNOWN");uint code;Need(GetExitCodeProcess(original,out code),"CLIENT_ORIGINAL_EXIT_CODE");Need(output.Worker.Wait(5000)&&error.Worker.Wait(5000),"CLIENT_DESCENDANT_STREAM_UNKNOWN");source.Guard();n.Guard();binary.Guard();var closure=O("schemaVersion",3,"operationId",c["operationId"],"admissionNonce",c["admissionNonce"],"state","terminal","client",a,"exit",O("waitSignaled",true,"exitCode",code),"stdout",output.Closed(true),"stderr",error.Closed(false),"inputAuthority",false,"replayAllowed",false);Save(Path.Combine(job,"closure.json"),closure);return J.Serialize(closure);}
+   }finally{foreach(IntPtr h in new[]{outRead,outWrite,errRead,errWrite,inRead,inWrite,process.thread,process.process})if(h!=IntPtr.Zero)CloseHandle(h);if(list!=IntPtr.Zero){DeleteProcThreadAttributeList(list);Marshal.FreeHGlobal(list);}if(values!=IntPtr.Zero)Marshal.FreeHGlobal(values);}
+  }
+ }}
+ // A once effect. Called BEFORE guest-file-open. No acknowledged handle is
+ // guessed/enumerated/reopened here. Missing open ACK => UNKNOWN at host.
+ public static string OpenIntent(string raw){var c=D(J.DeserializeObject(raw));Original(c);var claim=Read(Index(c));Save(Path.Combine(Job(c),"pipe-open.intent.json"),O("index",claim,"originalOnly",true,"inputAuthority",false,"replayAllowed",false));return J.Serialize(O("operationId",c["operationId"],"admissionNonce",c["admissionNonce"],"pipe",@"\\.\pipe\"+Pipe(c),"mode","r+","inputAuthority",false));}
+ public static string Cancel(string raw){var c=D(J.DeserializeObject(raw));System0();var claim=Read(Index(c));Need(J.Serialize(claim["config"])==J.Serialize(c),"CLIENT_CANCEL_CONFIG");string path=Path.Combine(Job(c),"cancel.intent.json");var value=O("index",claim,"originalOnly",true,"checkOutcomeAuthority",false,"inputAuthority",false,"replayAllowed",false);if(!Exists(path))Save(path,value);else Need(J.Serialize(Read(path))==J.Serialize(value),"CLIENT_CANCEL_CHANGED");return "{\"state\":\"unknown\",\"inputAuthority\":false,\"replayAllowed\":false}";}
+}

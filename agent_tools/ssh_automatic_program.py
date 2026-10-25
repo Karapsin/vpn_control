@@ -6,9 +6,10 @@ This module neither invents a route nor retries a submitted/unknown operation.
 """
 from __future__ import annotations
 
+import errno
 import base64
-from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from contextlib import contextmanager,nullcontext
+from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 import os
@@ -22,6 +23,8 @@ import types
 import uuid
 import zlib
 
+from . import readiness as _readiness
+
 COMMAND_BYTES = 60000
 CHUNK_BYTES = 65536
 MAX_PROGRAM_BYTES = 8 * 1024 * 1024
@@ -29,6 +32,10 @@ _EXECUTING_CODE = sys._getframe().f_code
 _SOURCE_SHA = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _CLOSURE_PATH = Path(__file__).with_name('native_review_source_closure.py')
 _CLOSURE_SHA = hashlib.sha256(_CLOSURE_PATH.read_bytes()).hexdigest()
+_PRIVATE_CONFIG_PATH = Path(__file__).with_name('private_config_custody.py')
+_PRIVATE_CONFIG_SHA = 'efc4b40e1f455444bd80ad3bbb5cb8753cad1d4cf737853010f1bccea32ea040'
+_PRIVILEGED_PATH = Path(__file__).with_name('ssh_privileged_program.py')
+_PRIVILEGED_SHA = 'd52e7e725ff4f4c5d6fa94a0e8fb33d0accb247949eec9daf721c5d21c160f04'
 
 
 class AutomaticProgramError(ValueError):
@@ -62,11 +69,34 @@ class PlannedArgv:
     config_sha: str
     source_pins: tuple[tuple[str, str], ...]
     route_sha: str
+    dispatch_admission: object = None
+    config_custody: object = field(default=None, repr=False, compare=False)
+    fresh_direct: bool = False
+    route_binding: object = field(default=None, repr=False, compare=False)
+    key_custody: object = field(default=None, repr=False, compare=False)
+
+    def check_source_custody(self):
+        # SourceSession instruments this method independently of readiness.
+        # Historical result collection must not claim a fresh connection.
+        try:
+            if self.config_custody is not None:
+                self.config_custody.check()
+            if self.key_custody is not None:
+                self.key_custody.check()
+        except ValueError:
+            raise AutomaticProgramError('automatic_private_custody_unavailable') from None
+
+    def close(self):
+        # Explicit disposal is local only and never signals submitted work.
+        for owner in (self.config_custody,self.key_custody):
+            if owner is not None:owner.close()
 
     def check_source_lifetime(self):
         # SourceSession instruments this pure method when a plan crosses its
         # adapter boundary. A closed source request cannot be reacquired later.
-        return None
+        self.check_source_custody()
+        if self.dispatch_admission is not None:
+            self.dispatch_admission.revalidate()
 
     def __len__(self):
         return len(self.original_argv)
@@ -84,17 +114,54 @@ class PlannedArgv:
         raise AutomaticProgramError('oversized_argv_mutation_requires_reconstruction')
 
 
+def _bound_helper(path, digest, name):
+    # Never import a helper before authenticating its executable bytes. A
+    # timestamp-valid pyc or an old sys.modules entry is not source authority.
+    held = _new_custody()
+    try:
+        raw = held.read(str(path), digest, max_bytes=MAX_PROGRAM_BYTES)
+        held.finish(); held.final_identity_pass()
+        module = types.ModuleType((__package__ or 'agent_tools') + '._automatic_' + name)
+        module.__file__ = str(path)
+        module.__package__ = __package__
+        exec(compile(raw, str(path), 'exec', dont_inherit=True), module.__dict__)
+        held.finish(); held.final_identity_pass()
+        return module
+    finally:
+        held.close()
+
+
+def _private_config():
+    return _bound_helper(_PRIVATE_CONFIG_PATH, _PRIVATE_CONFIG_SHA, 'private_config')
+
+
+def _privileged():
+    return _bound_helper(_PRIVILEGED_PATH, _PRIVILEGED_SHA, 'privileged_program')
+
+
 def _transport():
     from . import ssh_transport
     return ssh_transport
 
 
 def _config_sha(config):
-    return _sha(repr(asdict(config)).encode())
+    # Only public route selectors are fingerprinted. Credential equality is
+    # checked by the retained private file owner, never a password derivative.
+    value = asdict(config)
+    for host in value['hosts'].values():
+        host['password'] = '<protected>' if host['password'] is not None else None
+    return _sha(repr(value).encode())
 
 
-def _route_sha(config, host):
+def _route_sha(config, host, fresh_direct=False):
     transport = _transport()
+    if fresh_direct:
+        return _sha(_json(['configured-existing-nested-with-fresh-outer', host]))
+    for entry in transport._route_hosts(config.hosts,host):
+        if os.path.lexists(config.root/'.rag_index/readiness-nested-channel'/entry.alias/'current.json'):
+            binding=transport._qualified_binding(config,entry.alias)
+            if binding is not None:
+                return _sha(_json(['qualified-original-route',host,binding.fingerprint]))
     rows = []
     for entry in transport._route_hosts(config.hosts, host):
         if os.path.lexists(config.root / ".rag_index" / "ssh-channel-selection"):
@@ -179,7 +246,7 @@ def _new_custody():
             os.close(descriptor)
 
 
-def _pins(config, host):
+def _pins(config, host, *, privileged=False):
     transport = _transport()
     source = Path(transport.__file__)
     expected = getattr(transport, "_LOADED_SOURCE_SHA", None)
@@ -190,16 +257,24 @@ def _pins(config, host):
             _EXECUTING_CODE != compile(Path(__file__).read_bytes(), __file__, 'exec', dont_inherit=True) or
             _sha(_CLOSURE_PATH.read_bytes()) != _CLOSURE_SHA):
         raise AutomaticProgramError("automatic_transport_source_changed")
-    paths = [(str(source), expected), (str(Path(__file__)), _SOURCE_SHA), (str(_CLOSURE_PATH), _CLOSURE_SHA)]
-    config_path = transport._private_config_path(config.root)
-    paths.append((str(config_path), _sha(config_path.read_bytes())))
+    _private_config()
+    paths = [(str(source), expected), (str(Path(__file__)), _SOURCE_SHA), (str(_CLOSURE_PATH), _CLOSURE_SHA),
+             (str(_PRIVATE_CONFIG_PATH), _PRIVATE_CONFIG_SHA)]
+    if privileged:
+        _privileged()
+        paths.append((str(_PRIVILEGED_PATH), _PRIVILEGED_SHA))
+    if transport._qualified_binding(config,host)is not None:
+        for name in ('readiness_nested_channel.py','readiness_transport.py','ssh_dispatch_admission.py','readiness.py'):
+            path=source.with_name(name);paths.append((str(path),_sha(path.read_bytes())))
     outer = transport.connection_host(config, host)
     if outer.password is not None:
         raise AutomaticProgramError("automatic_program_requires_key_route")
     for path in (outer.identity_file, outer.known_hosts_file):
         if not isinstance(path, Path):
             raise AutomaticProgramError("automatic_program_local_route_files")
-        paths.append((str(path), _sha(path.read_bytes())))
+    # The private key is held and compared through exact original bytes and
+    # file generations. Only public known-hosts content forms a source digest.
+    paths.append((str(outer.known_hosts_file), _sha(outer.known_hosts_file.read_bytes())))
     return tuple(paths)
 
 
@@ -208,25 +283,64 @@ def coordinator_capable():
             ('getuid','geteuid','O_NOFOLLOW','O_DIRECTORY','O_NONBLOCK','pread')))
 
 
-def bind(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, argv):
+def bind(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, argv, *, force_file=False, fresh_direct=False):
     """Pure local binding; ordinary argv remains a plain list."""
-    if command_bytes(argv) <= COMMAND_BYTES:
+    if type(fresh_direct) is not bool:
+        raise AutomaticProgramError('automatic_fresh_direct_mode')
+    if type(force_file) is not bool:
+        raise AutomaticProgramError('automatic_force_file_mode')
+    if not force_file and command_bytes(argv) <= COMMAND_BYTES:
         return argv
     if not coordinator_capable():
         raise AutomaticProgramError('automatic_unsupported_coordinator')
-    current = _transport().load_config(config.root)
-    if _config_sha(current) != _config_sha(config):
-        raise AutomaticProgramError("automatic_configuration_changed")
-    prefix, raw, arguments = _program(tuple(command))
-    correlation = uuid.uuid4().hex
-    _preflight(config, host, timeout_seconds, prefix, arguments, len(raw), _sha(raw),
-               correlation, ssh_binary, nested_ssh_binary)
-    return PlannedArgv(tuple(argv), tuple(command), str(config.root), host, timeout_seconds,
+    helper=_private_config();custody=None;key_custody=None
+    try:
+        custody=helper.PrivateConfigCustody(_transport()._private_config_path(config.root))
+        current = _transport().load_config(config.root)
+        if (_config_sha(current) != _config_sha(config) or
+                any(current.hosts[key].password != config.hosts[key].password for key in current.hosts) or
+                not custody.matches_text(_transport()._read_private_config(_transport()._private_config_path(config.root)))):
+            raise AutomaticProgramError("automatic_configuration_changed")
+        outer=_transport().connection_host(current,host)
+        if not isinstance(outer.identity_file,Path):
+            raise AutomaticProgramError('automatic_program_local_route_files')
+        key_custody=helper.PrivateConfigCustody(outer.identity_file)
+        prefix, raw, arguments = _program(tuple(command))
+        correlation = uuid.uuid4().hex
+        _preflight(config, host, timeout_seconds, prefix, arguments, len(raw), _sha(raw),
+                   correlation, ssh_binary, nested_ssh_binary, fresh_direct=fresh_direct)
+        result=PlannedArgv(tuple(argv), tuple(command), str(config.root), host, timeout_seconds,
                        ssh_binary, nested_ssh_binary, correlation,
-                       _config_sha(config), _pins(config, host), _route_sha(config, host))
+                       _config_sha(config), _pins(config, host, privileged=prefix[0] in ('sudo', '/usr/bin/sudo')), _route_sha(config, host, fresh_direct),
+                       _transport()._dispatch_binding(config, host), custody, fresh_direct,
+                       None if fresh_direct else _transport()._qualified_binding(config,host),key_custody)
+        custody.check();key_custody.check()
+        return result
+    except BaseException:
+        for owner in (custody,key_custody):
+            if owner is not None:owner.close()
+        raise
+
+
+def password_carrier(command):
+    """Pure recognition used to refuse unsupported password sudo shapes."""
+    command = tuple(command)
+    if not command or command[0] not in ('sudo', '/usr/bin/sudo'):
+        return False
+    prefix = command[:command.index('-c')] if '-c' in command else command
+    return '-S' in prefix
 
 
 def _program(command):
+    if command and command[0] in ('sudo', '/usr/bin/sudo'):
+        privileged = _privileged()
+        try:
+            prefix, raw, arguments = privileged.program(command)
+        except privileged.PrivilegedProgramError:
+            raise AutomaticProgramError("oversized_command_form_unsupported") from None
+        if not 0 < len(raw) <= MAX_PROGRAM_BYTES:
+            raise AutomaticProgramError("automatic_program_size")
+        return prefix, raw, arguments
     if not command or command[0] not in ("python3", "/usr/bin/python3"):
         raise AutomaticProgramError("oversized_command_form_unsupported")
     index = 1
@@ -361,7 +475,7 @@ def _carrier(program):
     return "import base64,zlib;exec(compile(zlib.decompress(base64.b64decode(" + repr(encoded) + ")), '<automatic-file-transport>', 'exec'))"
 
 
-def _preflight(config, host, timeout, prefix, arguments, size, digest, correlation, ssh_binary, nested_ssh_binary):
+def _preflight(config, host, timeout, prefix, arguments, size, digest, correlation, ssh_binary, nested_ssh_binary, *, fresh_direct=False):
     # These are byte-budget placeholders, never identity or execution authority.
     # Bound maximum admitted guest path/home and numeric receipt metadata before
     # any local intent, upload or original program submission can occur.
@@ -370,9 +484,19 @@ def _preflight(config, host, timeout, prefix, arguments, size, digest, correlati
         'directory':'/'+'x'*4095,'identity':{'uid':2**32-1,'principal':'u'*64,
             'home':'/'+'h'*4095,'boot':'f'*36},'programSha256':digest,'programBytes':size,
         'generation':[maximum]*9,'directoryIdentity':[maximum]*5}
-    for command in ((*prefix,'-c',_carrier(_RECEIVER),correlation,str(size),digest),
-                    (*prefix,'-c',_carrier(_LOADER),_json(receipt).decode(),*arguments)):
-        argv = _transport()._build_ssh_argv(config, host, timeout, command, ssh_binary, nested_ssh_binary)
+    is_privileged = prefix[0] in ('sudo', '/usr/bin/sudo')
+    ordinary_prefix = _privileged().receiver_prefix(prefix) if is_privileged else prefix
+    receiver = (*ordinary_prefix, '-c', _carrier(_RECEIVER), correlation, str(size), digest)
+    if not is_privileged:
+        execution = (*prefix, '-c', _carrier(_LOADER), _json(receipt).decode(), *arguments)
+    else:
+        privileged = _privileged()
+        password = privileged.split_prefix(prefix)[2]
+        execution = privileged.execution_command(prefix, privileged.loader(_COMMON, password=password),
+            _json(receipt).decode(), arguments, correlation, timeout)
+    for command in (receiver, execution):
+        argv = _transport()._build_ssh_argv(config, host, timeout, command, ssh_binary, nested_ssh_binary,
+            **({'fresh_direct':True} if fresh_direct else {}))
         if command_bytes(argv) > COMMAND_BYTES:
             raise AutomaticProgramError('oversized_residual_arguments_unsupported')
 
@@ -483,33 +607,60 @@ def _raw(argv):
 
 
 @contextmanager
-def automatic_submission(argv):
+def automatic_submission(argv, *, prelaunch_refusal=None):
     """Stage a bound long carrier before its existing owner's one submission."""
     if not isinstance(argv, PlannedArgv):
         yield _raw(argv)
         return
-    argv.check_source_lifetime()
-    if not coordinator_capable():
-        raise AutomaticProgramError('automatic_unsupported_coordinator')
-    transport = _transport()
-    config = transport.load_config(Path(argv.root))
-    prefix, raw, arguments = _program(argv.command)
-    held = _new_custody()
+    try:
+        try:
+            argv.check_source_lifetime()
+        except _readiness.ReadinessBlocked as error:
+            _transport()._raise_prelaunch_readiness(error,argv)
+        if not coordinator_capable():
+            raise AutomaticProgramError('automatic_unsupported_coordinator')
+        transport = _transport()
+        config = transport.load_config(Path(argv.root))
+        prefix, raw, arguments = _program(argv.command)
+        held = _new_custody()
+    except BaseException:
+        argv.close()
+        raise
     try:
         for path, digest in argv.source_pins:
             held.read(path, digest, max_bytes=MAX_PROGRAM_BYTES)
-        def guard():
+        def physical_guard(*, historical=False):
+            argv.check_source_custody()
+            if argv.config_custody is None:
+                raise AutomaticProgramError('automatic_private_config_custody_missing')
+            if argv.key_custody is None:
+                raise AutomaticProgramError('automatic_private_key_custody_missing')
+            argv.config_custody.check()
+            argv.key_custody.check()
             held.finish(); held.final_identity_pass()
             current = transport.load_config(Path(argv.root))
-            if _config_sha(current) != argv.config_sha or _route_sha(current, argv.host) != argv.route_sha:
-                raise AutomaticProgramError("automatic_configuration_changed")
-            rebuilt = transport.build_ssh_argv(current, argv.host, argv.timeout_seconds, argv.command,
-                                               argv.ssh_binary, argv.nested_ssh_binary)
-            actual = rebuilt.original_argv if isinstance(rebuilt, PlannedArgv) else tuple(rebuilt)
-            if actual != argv.original_argv:
-                raise AutomaticProgramError("automatic_route_changed")
+            if _config_sha(current) != argv.config_sha:
+                raise AutomaticProgramError('automatic_configuration_changed')
+            if historical and argv.dispatch_admission is not None:
+                if argv.route_binding is not None:
+                    transport._readiness_nested_module().original_source_options(argv.route_binding,argv.root,argv.host,current)
+            else:
+                with transport._qualified_route_scope(argv.route_binding)if argv.route_binding is not None else nullcontext():
+                    if _route_sha(current,argv.host,argv.fresh_direct)!=argv.route_sha:
+                        raise AutomaticProgramError('automatic_configuration_changed')
+                    rebuilt = transport._build_ssh_argv(current, argv.host, argv.timeout_seconds, argv.command,
+                        argv.ssh_binary, argv.nested_ssh_binary, **({'fresh_direct':True} if argv.fresh_direct else {}))
+                    actual=rebuilt.original_argv if isinstance(rebuilt,PlannedArgv)else tuple(rebuilt)
+                    if actual!=argv.original_argv:raise AutomaticProgramError('automatic_route_changed')
             held.finish(); held.final_identity_pass()
-        guard()
+            argv.config_custody.check()
+            argv.key_custody.check()
+            argv.check_source_custody()
+        def guard():
+            physical_guard()
+            argv.check_source_lifetime()
+            physical_guard()
+        physical_guard()
         root = Path(argv.root)
         parent_fd = held.directory(str(root))
         for path in (root / '.rag_index', root / '.rag_index' / 'ssh-automatic-program'):
@@ -526,23 +677,39 @@ def automatic_submission(argv):
         held.finish(); held.final_identity_pass()
         def write(name, contents):
             _write(directory, name, contents, directory_fd=directory_fd)
+        if prelaunch_refusal is not None:
+            proof = prelaunch_refusal
+            if (not isinstance(proof, transport.PrelaunchE2Big) or proof.errno != errno.E2BIG or
+                    proof.child_handle_returned is not False or proof.executable_started is not False or
+                    proof.argv_sha256 != transport.argv_sha256(argv)):
+                raise AutomaticProgramError('automatic_prelaunch_refusal_invalid')
+            evidence = {'errno':proof.errno,'childCreated':False,'programStarted':False,
+                'originalArgvSha256':proof.argv_sha256,'replayAllowed':False}
+            write('prelaunch-refusal.json', _json(evidence))
+            write('file-fallback-intent.json', _json({'correlationId':argv.correlation,
+                'refusalSha256':_sha(_json(evidence)),'programSha256':_sha(raw),'programBytes':len(raw),
+                'originalArgvBytes':command_bytes(argv.original_argv),
+                'originalArgumentBytes':transport.argv_byte_sizes(argv),'replayAllowed':False}))
         write('program.source', raw)
         held.read(str(directory / 'program.source'), _sha(raw), max_bytes=MAX_PROGRAM_BYTES)
         write('intent.json', _json({'schemaVersion':1,'correlationId':argv.correlation,
                  'host':argv.host,'programSha256':_sha(raw),'programBytes':len(raw),
                  'originalArgvSha256':_sha(_json(argv.original_argv)), 'replayAllowed':False}))
-        stage_command = (*prefix, '-c', _carrier(_RECEIVER), argv.correlation, str(len(raw)), _sha(raw))
+        is_privileged = prefix[0] in ('sudo', '/usr/bin/sudo')
+        ordinary_prefix = _privileged().receiver_prefix(prefix) if is_privileged else prefix
+        stage_command = (*ordinary_prefix, '-c', _carrier(_RECEIVER), argv.correlation, str(len(raw)), _sha(raw))
         stage_argv = _raw(transport.build_ssh_argv(config, argv.host, argv.timeout_seconds, stage_command,
-                                                  argv.ssh_binary, argv.nested_ssh_binary))
+                                                  argv.ssh_binary, argv.nested_ssh_binary, **({'fresh_direct':True} if argv.fresh_direct else {})))
         guard()
+        validated_stage = False
+        execution_intent_started = False
         try:
-            receipt_raw = _stage(stage_argv, raw, max(30, argv.timeout_seconds))
+            receipt_raw = _stage(stage_argv, raw, transport._remaining_timeout(max(30,argv.timeout_seconds),config=config,host=argv.host))
             write('stage.stdout', receipt_raw)
             write('stage.stderr', b'')
             write('stage.observation.json', _json({'returnCode':0,'sentBytes':len(raw),
                 'inputBytes':len(raw),'counts':{'stdout':len(receipt_raw),'stderr':0},
                 'eof':{'stdout':True,'stderr':True},'complete':True,'replayAllowed':False}))
-            guard()
             receipt = json.loads(receipt_raw)
             expected = {'schemaVersion','correlationId','directory','identity','programSha256','programBytes','generation','directoryIdentity'}
             identity = receipt.get('identity') if isinstance(receipt, dict) else None
@@ -560,14 +727,32 @@ def automatic_submission(argv):
                     or not receipt['directory'].endswith('/vpn-control-auto-'+argv.correlation)):
                 raise AutomaticProgramError('automatic_stage_unknown_receipt')
             write('staged.json', _json(receipt))
+            validated_stage = True
+            physical_guard()
+            if not is_privileged:
+                execution = (*prefix, '-c', _carrier(_LOADER), _json(receipt).decode(), *arguments)
+            else:
+                privileged = _privileged()
+                password = privileged.split_prefix(prefix)[2]
+                execution = privileged.execution_command(prefix, privileged.loader(_COMMON, password=password),
+                    _json(receipt).decode(), arguments, argv.correlation, argv.timeout_seconds)
             submitted = _raw(transport.build_ssh_argv(config, argv.host, argv.timeout_seconds,
-                (*prefix, '-c', _carrier(_LOADER), _json(receipt).decode(), *arguments),
-                argv.ssh_binary, argv.nested_ssh_binary))
+                execution, argv.ssh_binary, argv.nested_ssh_binary, **({'fresh_direct':True} if argv.fresh_direct else {})))
             guard()
+            execution_intent_started = True
             write('execution-intent.json', _json({'replayAllowed':False,'receiptSha256':_sha(_json(receipt))}))
-            guard()
+            physical_guard()
+            transport._remaining_timeout(config=config,host=argv.host)
             yield submitted
-            guard()
+            # The owner returned a complete body. A changed connection never
+            # authorizes replay or discards that body before its owner validates.
+            physical_guard(historical=True)
+            try:argv.check_source_lifetime()
+            except _readiness.ReadinessBlocked as changed:
+                physical_guard(historical=True)
+                write('returned-readiness-changed.json',_json({'reason':changed.reason,'replayAllowed':False}))
+                raise transport._ReturnedReadinessChanged(changed.reason,changed.operation_identity)from None
+            physical_guard(historical=True)
             write('submission-returned.json', _json({'replayAllowed':False}))
         except BaseException as error:
             evidence = getattr(error, 'stage_evidence', None)
@@ -576,15 +761,32 @@ def automatic_submission(argv):
                 write('stage.stderr', evidence[1])
                 write('stage.observation.json', _json(evidence[2]))
             write('unknown.json', _json({'state':'unknown','replayAllowed':False}))
+            if (validated_stage and not execution_intent_started and
+                    type(error) is _readiness.ReadinessBlocked):
+                # Runtime control flow, not missing remote acknowledgement or
+                # file absence, proves the target argv was never yielded.
+                # Recheck all source/private inventory/route custody without
+                # attempting the stale readiness observer again.
+                physical_guard()
+                proof = {'operationId':error.operation_identity,
+                    'originalArgvSha256':transport.argv_sha256(argv),
+                    'stageReceiptSha256':_sha(_json(receipt)),
+                    'transferSubmitted':True,'targetExecutableStarted':False,
+                    'targetChildHandleReturned':False,'replayAllowed':False}
+                write('target-execution-unsubmitted.json',_json(proof))
+                raise transport.StagedExecutionUnsubmitted(error,
+                    proof['originalArgvSha256'],argv.correlation,
+                    proof['stageReceiptSha256']) from error
             raise
     finally:
-        held.close()
+        try:held.close()
+        finally:argv.close()
 
 
 class SubmittedProcess:
     """One child; the collector explicitly closes custody after its own drain."""
-    def __init__(self, argv, **kwargs):
-        self._context = automatic_submission(argv)
+    def __init__(self, argv, *, prelaunch_refusal=None, **kwargs):
+        self._context = automatic_submission(argv, prelaunch_refusal=prelaunch_refusal)
         self._closed = False
         self._unknown = False
         self._pipe_names = tuple(name for name in ('stdin','stdout','stderr') if kwargs.get(name) == subprocess.PIPE)

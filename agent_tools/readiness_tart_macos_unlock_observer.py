@@ -1,0 +1,502 @@
+"""Fixed durable original-unlock observer, deliberately not routed yet.
+
+Local receipts are hints. Only collecting the deterministic original guest
+owner through actual selected custody can mint a live NativeObservation. The
+new namespace must be explicitly enrolled and joined to idle visibility before
+integration; this module never silently adopts or creates a namespace.
+"""
+from __future__ import annotations
+
+import base64
+from contextlib import ExitStack
+from dataclasses import asdict
+import hashlib
+import inspect
+import json
+from pathlib import Path
+import re
+import sys
+import time
+from uuid import UUID, uuid5
+
+from . import durable_remote_job as jobs
+from . import readiness_qemu_jobs as protocol
+from . import readiness_tart_macos as backend_module
+from . import readiness_tart_macos_registry as registry
+from . import readiness_tart_macos_unlock as unlock
+from . import readiness_tart_macos_unlock_qualification as qualification
+
+ROOT = '/private/var/tmp/vc-recovery-macos-unlock-observations'
+_EXECUTING_CODE = sys._getframe().f_code
+_TOKEN = object()
+_IDLE_TOKEN = object()
+
+
+def _need(value, reason='macos_unlock_original_observer_invalid'):
+    if not value:
+        raise qualification.QualificationBlocked(reason)
+
+
+def observer_id(original):
+    return str(uuid5(UUID(unlock._uuid(original)), 'independent-resolution'))
+
+
+def _packet(value, binding):
+    fields = {'schemaVersion', 'root', 'target', 'machine', 'account', 'ownerSha256',
+              'enrollmentId', 'hostIntentSha256',
+              'rootGeneration', 'jobGeneration', 'admissionGeneration'}
+    _need(type(value) is dict and set(value) == fields and type(value['schemaVersion']) is int
+          and value['schemaVersion'] == 1 and value['root'] == ROOT
+          and (value['target'], value['machine'], value['account']) ==
+          (binding.target, binding.machine, str(binding.ordinary_uid))
+          and value['ownerSha256'] == hashlib.sha256(jobs.owner_source()).hexdigest())
+    unlock._uuid(value['enrollmentId'])
+    _need(type(value['hostIntentSha256']) is str and re.fullmatch('[0-9a-f]{64}', value['hostIntentSha256']))
+    for name in ('rootGeneration', 'jobGeneration', 'admissionGeneration'):
+        _need(type(value[name]) is list and len(value[name]) == 2
+              and all(type(number) is int and number >= 0 for number in value[name]))
+    return value
+
+
+def _program(parameters):
+    """No caller source/command: only the fixed zero-argument root helper."""
+    return ('P=' + repr(parameters) + '\n' + inspect.getsource(registry._console_login_done) + '\n' + _PROBE).encode()
+
+
+_PROBE = r'''import ctypes as C,hashlib,json,os,pathlib,pwd,stat,subprocess,sys,types,zlib
+def need(value):
+ if not value:raise SystemExit(73)
+need(sys.platform=='darwin')
+a=pwd.getpwuid(os.geteuid())
+need((a.pw_uid,a.pw_name,a.pw_dir)==(P['uid'],P['principal'],P['home'])and 80 not in os.getgrouplist(a.pw_name,a.pw_gid))
+prefix=pathlib.Path(P['prefix']);root=pathlib.Path(P['root']);job=root/P['observerId']
+def public(relative):
+ path=pathlib.Path('/Library/LaunchDaemons/com.vpn-control.tool-recovery.agent.plist')if relative=='launchDaemon'else prefix/relative
+ for parent in(path,*path.parents):
+  info=parent.lstat();need(info.st_uid==0 and not info.st_mode&0o022 and not stat.S_ISLNK(info.st_mode))
+ need(path.is_file()and path.stat().st_nlink==1 and hashlib.sha256(path.read_bytes()).hexdigest()==P['files'][relative])
+ return path
+for relative in P['files']:public(relative)
+probe=public('guest-probe.py');raw=probe.read_bytes();need(hashlib.sha256(raw).hexdigest()==P['files']['guest-probe.py'])
+module=types.ModuleType('_fixed_independent_unlock_probe');module.__file__=str(probe);sys.modules[module.__name__]=module
+exec(compile(raw,str(probe),'exec',dont_inherit=True),module.__dict__)
+native=module.Native()
+need(native.machine()==P['recipient']['machine']and native.boot()[0]==P['recipient']['boot'])
+owner=json.loads((job/'owner.json').read_bytes())['owner']
+need(owner['pid']==os.getppid())
+descriptor=os.open(job/'probe-executed.txt',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(descriptor,'wb')as output:output.write(b'execution\n');output.flush();os.fsync(output.fileno())
+def collect():
+ for relative in P['files']:public(relative)
+ need(native.machine()==P['recipient']['machine']and native.boot()[0]==P['recipient']['boot'])
+ response=subprocess.run(['/usr/bin/sudo','-n',str(prefix/'readonly-probe')],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15)
+ need(response.returncode==0 and not response.stderr and 0<len(response.stdout)<=262144)
+ value=json.loads(response.stdout);need(type(value)is dict and set(value)=={'facts','qualification'})
+ facts,q=value['facts'],value['qualification'];recipient=P['recipient']
+ need(type(q['rootObserverUid'])is int and q['rootObserverUid']==0 and q['rawBoot']==recipient['rawBoot'])
+ agent=recipient['agent'];expected={'pid':agent['pid'],'uid':P['uid'],'birth':[int(x)for x in agent['birth'].split(':')[1:]],'principal':P['principal'],'home':P['home'],'executable':str(prefix/'tart-guest-agent')}
+ need(q['agentActors']==[expected])
+ ancestry=q['probeAncestry'];need(type(ancestry)is list and 2<=len(ancestry)<=16 and ancestry[0]['uid']==0)
+ need(any(row['pid']==os.getpid()and row['uid']==P['uid']for row in ancestry))
+ need(any(row['pid']==owner['pid']and row['uid']==P['uid']and row['birth']==[int(x)for x in owner['birth'].split(':')[1:]]for row in ancestry))
+ need(all(one['ppid']==two['pid']for one,two in zip(ancestry,ancestry[1:])))
+ need((facts['machine'],facts['boot'],facts['uid'],facts['account'],facts['home'])==(recipient['machine'],recipient['boot'],P['uid'],P['principal'],P['home']))
+ console=facts['console'];done=_console_login_done(console,q['consoleRows'],P['uid'],P['principal'])
+ need(console['uid']==P['uid']and console['name']==P['principal']and console['session']==recipient['console']['session']and console['onConsole']is True and done is True and console['locked']is False)
+ for relative in P['files']:public(relative)
+ need(native.boot()[0]==recipient['boot'])
+ return response.stdout
+before=collect();after=collect()
+import base64
+print(json.dumps({'schemaVersion':1,'originalOperationId':P['originalOperationId'],'observerOperationId':P['observerId'],'originalPins':P['originalPins'],
+ 'executions':1,'rootBefore':base64.b64encode(zlib.compress(before)).decode(),'rootAfter':base64.b64encode(zlib.compress(after)).decode()},sort_keys=True))
+'''
+
+
+def _caller(parameters):
+    return ('PARAMETERS=' + repr(parameters) + '\nOWNER=' + repr(jobs.owner_source()) + '\n' + _CALLER).encode()
+
+
+_MACHINE = r'''def actual_machine(p):
+ prefix=pathlib.Path(p['prefix']);path=prefix/'guest-probe.py'
+ for entry in(path,*path.parents):
+  info=entry.lstat();need(info.st_uid==0 and not info.st_mode&0o022 and not stat.S_ISLNK(info.st_mode))
+ raw=path.read_bytes();need(path.stat().st_nlink==1 and hashlib.sha256(raw).hexdigest()==p['files']['guest-probe.py'])
+ m=types.ModuleType('_fixed_unlock_namespace_probe');m.__file__=str(path);sys.modules[m.__name__]=m
+ exec(compile(raw,str(path),'exec',dont_inherit=True),m.__dict__)
+ return m.Native().machine()
+'''
+
+
+_CALLER = r'''import base64,hashlib,json,os,pathlib,pwd,stat,sys,types
+def need(value):
+ if not value:raise SystemExit(73)
+need(sys.platform=='darwin')
+D=types.ModuleType('_fixed_original_unlock_owner');sys.modules[D.__name__]=D;exec(compile(OWNER,'<fixed-owner>','exec'),D.__dict__);D.owner_source=lambda:OWNER
+p=PARAMETERS;root=pathlib.Path('/private/var/tmp/vc-recovery-macos-unlock-observations');packet=p['namespace']
+user=pwd.getpwuid(os.geteuid());need((user.pw_uid,user.pw_name,user.pw_dir)==(p['uid'],p['principal'],p['home'])and 80 not in os.getgrouplist(user.pw_name,user.pw_gid))
+''' + _MACHINE + r'''
+need(actual_machine(p)==p['binding']['machine'])
+D._root(root,tuple(packet['rootGeneration']));work=D._root(root/'jobs',tuple(packet['jobGeneration']));admissions=D._root(root/'admissions',tuple(packet['admissionGeneration']))
+need(set(path.name for path in root.iterdir())=={'namespace.json','jobs','admissions'})
+need(D._record(root/'namespace.json')=={key:value for key,value in packet.items()if key not in{'rootGeneration','jobGeneration','admissionGeneration'}})
+binding=D.MachineBinding.from_dict(p['binding']);need(binding.account==str(os.geteuid()))
+operation=p['observerOperationId'];D._uuid(operation)
+program=D.Program('original-macos-unlock-observer-v1',base64.b64decode(p['program'],validate=True),1048576)
+expected={'schemaVersion':1,'originalOperationId':p['originalOperationId'],'observerOperationId':operation,'binding':p['binding'],'programSha256':program.digest,'originalPins':p['originalPins']}
+path=admissions/(operation+'.json');job=work/operation
+admitted=path.exists()or path.is_symlink();present=job.exists()or job.is_symlink()
+if p['action']=='start':
+ D._binding_live(binding)
+ if not admitted:
+  need(not present)
+  try:D._publish(path,expected)
+  except FileExistsError:need(D._record(path)==expected)
+ else:need(D._record(path)==expected)
+ D.submit(work,operation,binding,program,generation=tuple(packet['jobGeneration']))
+elif not admitted:
+ need(not present);D._binding_live(binding)
+ print(json.dumps({'state':'unsubmitted','observerOperationId':operation,'namespace':packet,'binding':p['binding'],'originalOperationId':p['originalOperationId'],'originalPins':p['originalPins']}));raise SystemExit(0)
+need(D._record(path)==expected)
+status=D.observe(work,operation,binding,generation=tuple(packet['jobGeneration']))
+reply={'status':status,'namespace':packet,'binding':p['binding'],'originalOperationId':p['originalOperationId'],'observerOperationId':operation,'originalPins':p['originalPins']}
+if status['state']=='terminal':
+ _,stdout,stderr=D.collect(work,operation,binding,generation=tuple(packet['jobGeneration']))
+ reply.update(stdout=base64.b64encode(stdout).decode(),stderr=base64.b64encode(stderr).decode(),counter=base64.b64encode(D._read(job/'probe-executed.txt',64)).decode())
+print(json.dumps(reply,sort_keys=True))
+'''
+
+
+def enrollment_spec(custody, enrollment_id):
+    """Pure commitment; the host must publish it BEFORE any guest admission.
+
+    A digest supplies correlation, never dispatch authority. The source-owned
+    custody dispatcher must separately retain this intent, capture the producer
+    and join an unresolved enrollment to idle visibility before its first send.
+    """
+    _need(type(custody) is registry.MacCustody, 'macos_unlock_observer_custody_unqualified')
+    enrollment_id = unlock._uuid(enrollment_id)
+    bound = custody.binding
+    source = Path(__file__).read_bytes()
+    _need(_EXECUTING_CODE == compile(source, __file__, 'exec', dont_inherit=True,
+          optimize=sys.flags.optimize), 'macos_unlock_observer_source_changed')
+    commitment = {'schemaVersion': 1, 'enrollmentId': enrollment_id,
+        'purpose': 'original_macos_unlock_observers', 'root': ROOT,
+        'originalRun': unlock._uuid(custody.run_intent['operationId']),
+        'rawBoot': custody.guest_proof['initialPacket']['agent']['rawBoot'],
+        'target': bound.target, 'machine': bound.machine, 'account': str(bound.ordinary_uid),
+        'ownerSha256': hashlib.sha256(jobs.owner_source()).hexdigest(),
+        'observerProducerSha256': hashlib.sha256(source).hexdigest(),
+        'guestPublicFiles': dict(custody.guest_proof['publicFiles'])}
+    encoded = json.dumps(commitment, sort_keys=True, separators=(',', ':')).encode()
+    return {'commitment': commitment, 'hostIntentSha256': hashlib.sha256(encoded).hexdigest()}
+
+
+def namespace_source(custody, action, *, enrollment):
+    """Pure builder; no untracked namespace adoption or replay of enrollment."""
+    _need(type(custody) is registry.MacCustody and type(action) is str and action in {'enroll', 'namespace-status'},
+          'macos_unlock_observer_namespace_action')
+    _need(type(enrollment) is dict and set(enrollment) == {'commitment', 'hostIntentSha256'}
+          and type(enrollment['commitment']) is dict, 'macos_unlock_observer_enrollment_invalid')
+    expected = enrollment_spec(custody, enrollment['commitment'].get('enrollmentId'))
+    if action == 'enroll':
+        _need(enrollment == expected, 'macos_unlock_observer_enrollment_changed')
+    else:
+        # Current fixed READ-ONLY code observes the old marker. Historical
+        # producer/boot fields are data; no old module or arbitrary source runs.
+        old = enrollment['commitment']
+        _need(set(old) == set(expected['commitment']) and all(old[key] == value for key, value in
+              expected['commitment'].items() if key not in {'observerProducerSha256', 'rawBoot'}),
+              'macos_unlock_observer_enrollment_changed')
+        _need(type(old['observerProducerSha256']) is str and re.fullmatch('[0-9a-f]{64}', old['observerProducerSha256']),
+              'macos_unlock_observer_enrollment_changed')
+        _need(type(old['rawBoot']) is str and str(UUID(old['rawBoot'])).lower() == old['rawBoot'].lower(),
+              'macos_unlock_observer_enrollment_changed')
+        _need(hashlib.sha256(json.dumps(old, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+              == enrollment['hostIntentSha256'], 'macos_unlock_observer_enrollment_changed')
+    bound = custody.binding
+    parameters = {'action': action, 'target': bound.target, 'machine': bound.machine,
+        'uid': bound.ordinary_uid, 'principal': bound.ordinary_account, 'home': bound.ordinary_home,
+        'prefix': custody.guest_proof['prefix'], 'files': custody.guest_proof['publicFiles'],
+        'rawBoot': enrollment['commitment']['rawBoot'],
+        'enrollmentId': enrollment['commitment']['enrollmentId'],
+        'hostIntentSha256': enrollment['hostIntentSha256']}
+    return ('PARAMETERS=' + repr(parameters) + '\nOWNER=' + repr(jobs.owner_source()) + '\n' + _NAMESPACE).encode()
+
+
+def inventory_source(custody, namespace, admissions):
+    """Fixed observer only; host custody supplies original admitted programs."""
+    _need(type(custody) is registry.MacCustody, 'macos_unlock_observer_custody_unqualified')
+    _need(_EXECUTING_CODE == compile(Path(__file__).read_bytes(), __file__, 'exec', dont_inherit=True,
+          optimize=sys.flags.optimize), 'macos_unlock_observer_source_changed')
+    packet = _packet(namespace, custody.binding)
+    _need(type(admissions) is dict and len(admissions) <= 1024)
+    for operation, admission in admissions.items():
+        unlock._uuid(operation)
+        _need(type(admission) is dict and set(admission) == {'schemaVersion', 'originalOperationId',
+              'observerOperationId', 'namespace', 'binding', 'programSha256', 'originalPins'}
+              and type(admission['schemaVersion']) is int and admission['schemaVersion'] == 1
+              and admission['observerOperationId'] == operation
+              and admission['namespace'] == packet and observer_id(admission['originalOperationId']) == operation)
+    parameters = {'namespace': packet, 'prefix': custody.guest_proof['prefix'],
+        'files': custody.guest_proof['publicFiles'], 'admissions': admissions,
+        'uid': custody.binding.ordinary_uid, 'principal': custody.binding.ordinary_account,
+        'home': custody.binding.ordinary_home}
+    return ('PARAMETERS=' + repr(parameters) + '\nOWNER=' + repr(jobs.owner_source()) + '\n' + _INVENTORY).encode()
+
+
+_INVENTORY = r'''import hashlib,json,os,pathlib,pwd,stat,sys,types
+def need(value):
+ if not value:raise SystemExit(73)
+need(sys.platform=='darwin')
+p=PARAMETERS;user=pwd.getpwuid(os.geteuid());packet=p['namespace']
+need((user.pw_uid,user.pw_name,user.pw_dir)==(p['uid'],p['principal'],p['home'])and 80 not in os.getgrouplist(user.pw_name,user.pw_gid))
+''' + _MACHINE + r'''
+need(actual_machine(p)==packet['machine'])
+D=types.ModuleType('_fixed_unlock_inventory_owner');sys.modules[D.__name__]=D;exec(compile(OWNER,'<fixed-owner>','exec'),D.__dict__);D.owner_source=lambda:OWNER
+root=pathlib.Path('/private/var/tmp/vc-recovery-macos-unlock-observations')
+D._root(root,tuple(packet['rootGeneration']));work=D._root(root/'jobs',tuple(packet['jobGeneration']));admissions=D._root(root/'admissions',tuple(packet['admissionGeneration']))
+need(set(x.name for x in root.iterdir())=={'namespace.json','jobs','admissions'})
+need(D._record(root/'namespace.json')=={key:value for key,value in packet.items()if key not in{'rootGeneration','jobGeneration','admissionGeneration'}})
+expected=p['admissions'];need(set(x.name for x in work.iterdir())==set(expected))
+need(set(x.name for x in admissions.iterdir())=={op+'.json'for op in expected})
+rows=[]
+for op,record in sorted(expected.items()):
+ D._uuid(op)
+ wanted={key:value for key,value in record.items()if key not in{'namespace'}}
+ need(D._record(admissions/(op+'.json'))==wanted)
+ binding=D.MachineBinding.from_dict(record['binding'])
+ need((binding.target,binding.machine,binding.account)==(packet['target'],packet['machine'],packet['account']))
+ original=D._intent(work/op,op,binding)
+ need(original['programSha256']==record['programSha256']and original['purpose']=='original-macos-unlock-observer-v1')
+ status=D.observe(work,op,binding,generation=tuple(packet['jobGeneration']))
+ if status['state']=='terminal':
+  D.collect(work,op,binding,generation=tuple(packet['jobGeneration']))
+  need(D._birth(status['owner']['pid'])!=status['owner']['birth'])
+ rows.append(status)
+need(actual_machine(p)==packet['machine'])
+print(json.dumps({'generation':packet['jobGeneration'],'admissionGeneration':packet['admissionGeneration'],'visibilityComplete':True,'jobs':rows,'idle':all(row['state']=='terminal'for row in rows)},sort_keys=True))
+'''
+
+
+class ObserverIdleEnrollment:
+    """Held optional namespace role, minted from actual selected custody only."""
+    def __init__(self, *args, **kwargs):
+        raise qualification.QualificationBlocked('macos_unlock_observer_enrollment_factory_required')
+
+    def guard(self, binding=None, generations=None):
+        _need(getattr(self, '_token', None) is _IDLE_TOKEN and not self._closed,
+              'macos_unlock_observer_enrollment_closed')
+        self._custody._operator.guard()
+        _need((self._custody.binding.target, self._custody.binding.machine, self._custody.binding.ordinary_uid,
+              self._custody.run_intent['operationId']) == self._identity,
+              'macos_unlock_observer_enrollment_changed')
+        for held in self._held: held.guard()
+        if binding is not None:
+            _need((binding.target, binding.machine, binding.boot, binding.ordinary_uid) ==
+                  (*self._identity[:2], self._boot.lower(), self._identity[2]),
+                  'macos_unlock_observer_enrollment_changed')
+        if generations is not None:
+            _need(generations == self.generations, 'macos_unlock_observer_enrollment_changed')
+
+    @property
+    def generations(self):
+        self.guard(); return self._generations
+
+    def close(self):
+        if not getattr(self, '_closed', True): self._closed = True; self._stack.close()
+
+    def __enter__(self): return self
+    def __exit__(self, *_): self.close()
+
+
+def idle_enrollment(custody):
+    """Current source observer and original private marker, never a DTO flag."""
+    _need(type(custody) is registry.MacCustody, 'macos_unlock_observer_custody_unqualified')
+    custody._operator.guard(); stack = ExitStack()
+    try:
+        original = custody._unlock_observer_original()
+        namespace = custody.load_unlock_observer_namespace()
+        _need(namespace is not None, 'macos_unlock_observer_namespace_not_admitted')
+        directory = stack.enter_context(registry.private.Directory(custody.lifecycle_root))
+        intent = stack.enter_context(registry.private.Snapshot(directory, 'unlock-observer-namespace.intent.json'))
+        packet = stack.enter_context(registry.private.Snapshot(directory, 'unlock-observer-namespace.json'))
+        _need(qualification._json(intent.body) == original and qualification._json(packet.body) == namespace,
+              'macos_unlock_observer_enrollment_changed')
+        result = object.__new__(ObserverIdleEnrollment)
+        result._token, result._closed, result._stack, result._custody = _IDLE_TOKEN, False, stack, custody
+        result._held = [directory, intent, packet]
+        result._identity = (custody.binding.target, custody.binding.machine, custody.binding.ordinary_uid,
+                            custody.run_intent['operationId'])
+        result._boot = original['enrollment']['commitment']['rawBoot']
+        result._generations = (tuple(namespace['jobGeneration']), tuple(namespace['admissionGeneration']))
+        result.guard(); return result
+    except BaseException:
+        stack.close(); raise
+
+
+_NAMESPACE = r'''import hashlib,json,os,pathlib,pwd,stat,sys,types
+def need(value):
+ if not value:raise SystemExit(73)
+need(sys.platform=='darwin')
+p=PARAMETERS;user=pwd.getpwuid(os.geteuid())
+need((user.pw_uid,user.pw_name,user.pw_dir)==(p['uid'],p['principal'],p['home'])and 80 not in os.getgrouplist(user.pw_name,user.pw_gid))
+''' + _MACHINE + r'''
+need(actual_machine(p)==p['machine'])
+D=types.ModuleType('_fixed_unlock_namespace_owner');sys.modules[D.__name__]=D;exec(compile(OWNER,'<fixed-owner>','exec'),D.__dict__);D.owner_source=lambda:OWNER
+root=pathlib.Path('/private/var/tmp/vc-recovery-macos-unlock-observations')
+if p['action']=='namespace-status'and not root.exists()and not root.is_symlink():
+ print(json.dumps({'state':'unsubmitted','namespace':None}));raise SystemExit(0)
+created=False
+if p['action']=='enroll':
+ # Lost acknowledgement observes namespace-status; it never resubmits enroll
+ # or adopts a matching root created without this original host admission.
+ D._binding_live(D.MachineBinding(p['target'],p['machine'],p['rawBoot'],str(p['uid'])))
+ need(not root.exists()and not root.is_symlink())
+ root.mkdir(mode=0o700);created=True
+D._root(root)
+marker={'schemaVersion':1,'root':str(root),'target':p['target'],'machine':p['machine'],'account':str(p['uid']),'ownerSha256':hashlib.sha256(OWNER).hexdigest(),'enrollmentId':p['enrollmentId'],'hostIntentSha256':p['hostIntentSha256']}
+if created:
+ need(not list(root.iterdir()));(root/'jobs').mkdir(mode=0o700);(root/'admissions').mkdir(mode=0o700);D._publish(root/'namespace.json',marker)
+need(set(path.name for path in root.iterdir())=={'namespace.json','jobs','admissions'}and D._record(root/'namespace.json')==marker)
+packet={**marker,'rootGeneration':list(D.root_generation(root)),'jobGeneration':list(D.root_generation(root/'jobs')),'admissionGeneration':list(D.root_generation(root/'admissions'))}
+print(json.dumps({'namespace':packet},sort_keys=True))
+'''
+
+
+class NativeObservation:
+    """Live source-bound result of collecting an actual original remote owner."""
+    __slots__ = ('_token', '_stack', '_custody', '_source', '_holders', 'operation', '_observation', '_terminal', 'observer', '_closed', 'raw_reply')
+
+    def __init__(self, *args, **kwargs):
+        raise qualification.QualificationBlocked('macos_unlock_original_observer_required')
+
+    def guard(self):
+        _need(self._token is _TOKEN and not self._closed)
+        self._custody._operator.guard()
+        for held in self._holders:
+            held.guard()
+
+    @property
+    def observation(self):
+        self.guard(); return qualification._json(self._observation)
+
+    @property
+    def terminal(self):
+        self.guard(); return qualification._json(self._terminal)
+
+    def close(self):
+        if not self._closed:
+            self._closed = True; self._stack.close()
+
+
+def _terminal(reply, parameters, program):
+    _need(type(reply) is dict and set(reply) == {'status', 'namespace', 'binding', 'originalOperationId',
+          'observerOperationId', 'originalPins', 'stdout', 'stderr', 'counter'})
+    _need(all(reply[key] == parameters[key] for key in ('namespace', 'binding', 'originalOperationId', 'observerOperationId', 'originalPins')))
+    status = reply['status']; _need(type(status) is dict)
+    terminal = status.get('terminal', {}); _need(type(terminal) is dict)
+    _need(status.get('state') == 'terminal' and status.get('operationId') == parameters['observerOperationId']
+          and status.get('binding') == parameters['binding'] and terminal.get('binding') == parameters['binding']
+          and terminal.get('operationId') == parameters['observerOperationId']
+          and terminal.get('owner') == status.get('owner') and terminal.get('programSha256') == program.digest
+          and type(terminal.get('exitCode')) is int and terminal['exitCode'] == 0 and terminal.get('streamsClosed') is True)
+    backend_module._actor(status['owner'])
+    decoded = {name: base64.b64decode(reply[name], validate=True) for name in ('stdout', 'stderr', 'counter')}
+    _need(not decoded['stderr'] and decoded['counter'] == b'execution\n')
+    for name in ('stdout', 'stderr'):
+        stream = terminal.get(name, {})
+        _need(stream == {'overflow': False, 'retainedBytes': len(decoded[name]), 'totalBytes': len(decoded[name]),
+                         'sha256': hashlib.sha256(decoded[name]).hexdigest()})
+    value = qualification._json(decoded['stdout'])
+    _need(set(value) == {'schemaVersion', 'originalOperationId', 'observerOperationId', 'originalPins', 'executions', 'rootBefore', 'rootAfter'}
+          and type(value['schemaVersion']) is int and value['schemaVersion'] == 1
+          and value['executions'] == 1 and type(value['executions']) is int
+          and all(value[key] == parameters[key] for key in ('originalOperationId', 'observerOperationId', 'originalPins')))
+    return value, terminal
+
+
+def admission_spec(custody, operation_id, records, namespace):
+    """Pure fixed preparation, never a namespace/job admission or ownership flag.
+
+    The source-owned caller must retain this exact public program and publish
+    the returned admission before submitting start. A fresh agent may render
+    status for that original; it may not change the original program or UUID.
+    """
+    operation = unlock._uuid(operation_id)
+    _need(type(custody) is registry.MacCustody, 'macos_unlock_observer_custody_unqualified')
+    namespace = _packet(namespace, custody.binding)
+    original, pins, _, _ = records
+    _need(original['operationId'] == operation)
+    recipient = unlock._identity(original['recipient'], custody.binding)
+    parameters = {'root': ROOT + '/jobs', 'prefix': custody.guest_proof['prefix'], 'files': custody.guest_proof['publicFiles'],
+        'uid': custody.binding.ordinary_uid, 'principal': custody.binding.ordinary_account, 'home': custody.binding.ordinary_home,
+        'recipient': recipient, 'originalOperationId': operation, 'observerId': observer_id(operation), 'originalPins': pins}
+    program = jobs.Program('original-macos-unlock-observer-v1', _program(parameters), 1048576)
+    binding = jobs.MachineBinding(custody.binding.target, custody.binding.machine, recipient['rawBoot'], str(custody.binding.ordinary_uid))
+    caller = {key: parameters[key] for key in ('uid', 'principal', 'home', 'prefix', 'files', 'originalOperationId', 'originalPins')}
+    caller.update(namespace=namespace, observerOperationId=observer_id(operation), binding=asdict(binding),
+                  program=base64.b64encode(program.source).decode())
+    admission = {'schemaVersion': 1, 'originalOperationId': operation, 'observerOperationId': observer_id(operation),
+        'namespace': namespace, 'binding': asdict(binding), 'programSha256': program.digest, 'originalPins': pins}
+    return program, admission, caller
+
+
+def reconcile(backend, operation_id, records, *, deadline):
+    """Query only the deterministic admitted guest owner; never starts a job."""
+    operation = unlock._uuid(operation_id); unlock._deadline(deadline)
+    custody = backend.custody
+    _need(type(backend) is backend_module.MacTartBackend and type(custody) is registry.MacCustody
+          and backend.binding is custody.binding, 'macos_unlock_observer_custody_unqualified')
+    custody._operator.guard(); custody.guard(deadline=deadline)
+    stack = ExitStack()
+    try:
+        path = Path(__file__); raw = path.read_bytes()
+        _need(_EXECUTING_CODE == compile(raw, __file__, 'exec', dont_inherit=True, optimize=sys.flags.optimize))
+        held_source = stack.enter_context(registry.PublicProof(path, {'generation': list(registry.private._generation(path.lstat())),
+            'sha256': hashlib.sha256(raw).hexdigest()}, private_file=False))
+        folder = stack.enter_context(registry.private.Directory(custody.lifecycle_root))
+        namespace_held = stack.enter_context(registry.private.Snapshot(folder, 'unlock-observer-namespace.json'))
+        namespace = _packet(qualification._json(namespace_held.body), backend.binding)
+        program, expected, caller_parameters = admission_spec(custody, operation, records, namespace)
+        recipient = unlock._identity(records[0]['recipient'], backend.binding)
+        caller_parameters['action'] = 'status'
+        admissions = stack.enter_context(registry.private.Directory(custody.lifecycle_root / 'unlock-observer-admissions'))
+        admission = stack.enter_context(registry.private.Snapshot(admissions, operation + '.json'))
+        _need(qualification._json(admission.body) == expected, 'macos_unlock_original_observer_admission_changed')
+        caller = _caller(caller_parameters); argv, payload = protocol.stdin_command(caller.decode())
+        response = custody.ordinary_guest_call(backend.binding, argv, payload, deadline)
+        for item in (held_source, namespace_held, admission): item.guard()
+        _need(response.returncode == 0 and not response.stderr, 'macos_unlock_original_observer_unavailable')
+        value, terminal = _terminal(qualification._json(response.stdout), caller_parameters, program)
+        after = None
+        for role in ('rootBefore', 'rootAfter'):
+            import zlib
+            compressed = base64.b64decode(value[role], validate=True)
+            decoder = zlib.decompressobj(); raw_packet = decoder.decompress(compressed, 262145)
+            _need(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail and 0 < len(raw_packet) <= 262144)
+            packet = qualification._json(raw_packet)
+            # The actual fixed root producer output remains retained verbatim.
+            facts, q = packet['facts'], packet['qualification']
+            projected = {'facts': facts, 'agent': {'actor': {key: recipient['agent'][key] for key in ('pid', 'birth')},
+                'uid': recipient['uid'], 'principal': recipient['principal'], 'home': recipient['home'],
+                'python': backend.binding.guest_python, 'rawBoot': q['rawBoot']}}
+            projected['facts'] = dict(facts, console=dict(facts['console'], loginDone=registry._console_login_done(
+                facts['console'], q['consoleRows'], recipient['uid'], recipient['principal'])))
+            after = qualification._projection(projected, backend.binding)
+            unlock._identity(after, backend.binding, recipient, allow_sleeping=True)
+            _need(after['console']['locked'] is False)
+        custody.guard(deadline=deadline)
+        result = object.__new__(NativeObservation)
+        result._token, result._stack, result._custody = _TOKEN, stack, custody
+        result._source, result._holders = held_source, [held_source, namespace_held, admission]
+        result.operation = operation
+        result._observation, result._terminal = (json.dumps(item, sort_keys=True).encode() for item in (after, terminal))
+        result.raw_reply = response.stdout
+        result.observer, result._closed = observer_id(operation), False
+        result.guard(); return result
+    except (FileNotFoundError, OSError, ValueError, KeyError, TypeError):
+        stack.close()
+        raise qualification.QualificationBlocked('macos_unlock_original_observer_unqualified') from None
+    except BaseException:
+        stack.close(); raise

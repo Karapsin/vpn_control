@@ -2,8 +2,14 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-runtime_dir="$repo_root/.runtime/visual-vms/windows"
-disk_path="$runtime_dir/vpn-control-win11.qcow2"
+[[ "${1:-}" == "--target" && -n "${2:-}" ]] || {
+  echo "Explicit --target qemu:<absolute configured disk> is required." >&2; exit 2;
+}
+target="$2"
+shift 2
+[[ $# -eq 0 ]] || { echo "Unknown bootstrap arguments." >&2; exit 2; }
+disk_path="$(python3 "$repo_root/scripts/visual_target.py" --platform windows --target "$target")" || exit 2
+runtime_dir="$(dirname "$disk_path")"
 iso_path="${VPN_CONTROL_WINDOWS_ISO:-}"
 
 command -v qemu-img >/dev/null || {
@@ -29,7 +35,7 @@ mkdir -p "$runtime_dir"
 qemu-img create -f qcow2 "$disk_path" 96G
 cat <<EOF
 [vpn-control] Created $disk_path.
-[vpn-control] Start the installer with scripts/start_windows_visual_vm.sh --install "$iso_path".
+[vpn-control] Start the installer with scripts/start_windows_visual_vm.sh --target "$target" --install "$iso_path".
 [vpn-control] Set VPN_CONTROL_WINDOWS_DRIVER_ISO to the UTM Windows guest-tools ISO for ARM64 VirtIO drivers and unattended setup support.
 [vpn-control] The coding agent must complete Windows setup in the isolated VM, install and verify the capture prerequisites, then run:
 [vpn-control] scripts/mark_windows_visual_vm_ready.sh --agent-confirmed

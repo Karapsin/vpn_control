@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "6c0dfb6f142ab77f4085f7c8e07db2eacb50c8424d9eaa671ec22297a7189d9c",
+  "origin": "source-review prototype before native-lock ordering correction",
+  "failure": "provider stopped observation under own config lock self-reports running",
+  "nativeClaim": false
+}

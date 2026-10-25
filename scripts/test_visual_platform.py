@@ -80,6 +80,51 @@ def _shell_failure(completed: subprocess.CompletedProcess[str]) -> str:
 
 
 class VisualPlatformTest(unittest.TestCase):
+    def setUp(self) -> None:
+        storage_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(storage_directory.cleanup)
+        plans = mock.patch.object(visual_platform, "STORAGE_PLANS_ROOT", Path(storage_directory.name).resolve(), create=True)
+        plans.start()
+        self.addCleanup(plans.stop)
+        # Resource tests must not depend on the developer machine's current disk.
+        disk = mock.patch.object(visual_platform.shutil, "disk_usage",
+                                 return_value=shutil._ntuple_diskusage(512 * 1024**3, 0, 512 * 1024**3))
+        disk.start()
+        self.addCleanup(disk.stop)
+
+    @unittest.skipUnless(os.name == "posix", "shared storage plans require POSIX locks")
+    def test_other_owned_provider_growth_blocks_bootstrap_and_start(self) -> None:
+        from native_fixture_storage import StoragePlans, GIB
+        root = visual_platform.STORAGE_PLANS_ROOT
+        StoragePlans(root).reserve("retained-linux", "linux", "start", root,
+                                   [{"path": str(root / "linux.img"), "capacityBytes": 16 * GIB}])
+        with mock.patch.object(visual_platform.shutil, "disk_usage",
+                               return_value=shutil._ntuple_diskusage(1024**4, 0, 24 * GIB)):
+            for phase in ("start", "bootstrap"):
+                with self.subTest(phase=phase), self.assertRaisesRegex(
+                        visual_platform.VisualPlatformError, "fixture_disk_capacity_insufficient"):
+                    visual_platform._admit_fixture_storage("macos", phase)
+
+    def test_low_disk_blocks_android_bootstrap_before_any_sdk_or_avd_command(self) -> None:
+        with mock.patch.object(visual_platform, "local_probe", return_value={"ready": False, "infrastructureAvailable": False, "detail": "missing AVD"}), \
+                mock.patch.object(visual_platform, "bootstrap_commands", return_value=[["sdkmanager"], ["avdmanager"]]), \
+                mock.patch.object(visual_platform.shutil, "disk_usage", return_value=shutil._ntuple_diskusage(1024**4, 0, 400 * 1024**2)), \
+                mock.patch.object(visual_platform, "_run") as run:
+            with self.assertRaisesRegex(visual_platform.VisualPlatformError, "disk"):
+                visual_platform.bootstrap("android", target="android:vpn-control-visual-api35", dry_run=False)
+            run.assert_not_called()
+
+    def test_low_disk_blocks_emulator_before_reservation_or_process(self) -> None:
+        with mock.patch.object(visual_platform.shutil, "disk_usage", return_value=shutil._ntuple_diskusage(1024**4, 0, 400 * 1024**2)), \
+                mock.patch.object(visual_platform, "_resource_lock", side_effect=contextlib.nullcontext), \
+                mock.patch.object(visual_platform, "_read_reservations", return_value={}), \
+                mock.patch.object(visual_platform, "_write_reservations") as write, \
+                mock.patch.object(visual_platform, "_tart_running_allocations", return_value=[]), \
+                mock.patch.object(visual_platform, "_host_memory_snapshot", return_value={"physical_mib": 24576, "available_mib": 18000, "swap_used_mib": 0, "pressure_critical": False}):
+            with self.assertRaisesRegex(visual_platform.VisualPlatformError, "disk"):
+                visual_platform._admit_visual_start("android", 2048)
+            write.assert_not_called()
+
     def test_json_provenance_hash_is_independent_of_checkout_line_endings(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             crlf = Path(temporary) / "crlf.json"
@@ -400,12 +445,12 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("main-disconnected", plan["routes"]["hosted"])
         self.assertFalse(plan["release_capable"])
 
-    def test_ready_local_windows_vm_routes_every_scene_locally(self) -> None:
+    def test_qualified_probe_projection_routes_windows_scenes_locally(self) -> None:
         with mock.patch.object(
             visual_platform,
             "local_probe",
             return_value={
-                "ready": True,
+                "ready": True, "infrastructureAvailable": True, "qualificationState": "qualified",
                 "backend": "qemu-windows",
                 "capabilities": ["app", "native", "secure_desktop"],
                 "detail": "",
@@ -417,7 +462,7 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertTrue(plan["release_capable"])
 
     def test_android_bootstrap_dry_run_is_non_mutating(self) -> None:
-        missing = {"ready": False, "backend": "", "capabilities": [], "detail": "missing"}
+        missing = {"ready": False, "infrastructureAvailable": False, "backend": "", "capabilities": [], "detail": "missing"}
         with (
             mock.patch.object(visual_platform, "local_probe", return_value=missing),
             mock.patch.object(
@@ -427,7 +472,7 @@ class VisualPlatformTest(unittest.TestCase):
             ),
             mock.patch.object(visual_platform, "_run") as run,
         ):
-            result = visual_platform.bootstrap("android", dry_run=True)
+            result = visual_platform.bootstrap("android", target="android:vpn-control-visual-api35", dry_run=True)
         run.assert_not_called()
         self.assertIn("sdkmanager", result["commands"][0])
 
@@ -495,13 +540,15 @@ class VisualPlatformTest(unittest.TestCase):
             ),
         ):
             probe = visual_platform.local_probe("android")
-            commands = visual_platform.bootstrap_commands("android")
-        self.assertTrue(probe["ready"])
+            commands = visual_platform.bootstrap_commands("android", target="android:vpn-control-visual-task-cancelled")
+        self.assertTrue(probe["infrastructureAvailable"])
+        self.assertFalse(probe["ready"])
+        self.assertEqual("unqualified", probe["qualificationState"])
         self.assertIn("vpn-control-visual-task-cancelled", commands[1])
 
     def test_android_start_does_not_adopt_a_foreign_avd_on_the_task_port(self) -> None:
         probe = {
-            "ready": True,
+            "ready": False, "infrastructureAvailable": True,
             "backend": "android-emulator",
             "capabilities": ["app", "native"],
             "detail": "",
@@ -520,28 +567,25 @@ class VisualPlatformTest(unittest.TestCase):
                 return_value={"personal-avd": "emulator-5600"},
             ),
         ):
-            result = visual_platform.start_platform("android", dry_run=True)
-        self.assertTrue(result["started_by_agent"])
-        self.assertIn("-avd vpn-control-visual-task-cancelled", result["command"])
-        self.assertIn("-port 5600", result["command"])
-        self.assertNotIn("personal-avd", result["command"])
+            with self.assertRaisesRegex(visual_platform.VisualPlatformError, "port belongs to another AVD"):
+                visual_platform.start_platform("android", target="android:" + visual_platform.android_local_config()["avd_name"], dry_run=True)
 
     def test_android_capture_resolves_isolation_before_selecting_adb(self) -> None:
         script = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
             encoding="utf-8",
         )
-        self.assertIn("android-local-config", script)
-        self.assertLess(script.index("android-local-config"), script.index("command -v adb"))
+        self.assertNotIn("android-local-config", script)
+        self.assertLess(script.index("requires an explicit --target"), script.index("command -v adb"))
         self.assertIn('adb emu avd name', script)
         self.assertIn('"$expected_avd_name"', script)
-        self.assertIn('"$adb_bin" -s "$emulator_serial"', script)
+        self.assertIn('"$adb_bin" "${adb_server_args[@]}" -s "$emulator_serial"', script)
 
     def test_android_capture_binds_gradle_and_cleanup_to_verified_task_device(self) -> None:
         script = (visual_platform.ROOT / "scripts/capture_visual_android.sh").read_text(
             encoding="utf-8",
         )
         guard = script.index('[[ "$avd_name" == "$expected_avd_name" ]]')
-        trap = script.index("trap restore_system_ui EXIT")
+        trap = script.index("trap cleanup_capture EXIT")
         gradle = script.index("./gradlew :app:connectedDebugAndroidTest")
         self.assertLess(guard, trap)
         self.assertIn('ANDROID_SERIAL="$emulator_serial" ./gradlew', script)
@@ -565,6 +609,7 @@ class VisualPlatformTest(unittest.TestCase):
             fake_adb = temporary_path / "adb"
             fake_adb.write_text(
                 "#!/bin/sh\n"
+                'if [ "$1" = \'-H127.0.0.1\' ]; then shift; fi\n'
                 "printf '%s\\n' \"$*\" >> \"$ADB_LOG\"\n"
                 "if [ \"$3 $4 $5\" = 'emu avd name' ]; then\n"
                 "  printf 'vpn-control-visual-task-cancelled\\nOK\\n'\n"
@@ -584,13 +629,15 @@ class VisualPlatformTest(unittest.TestCase):
             output = temporary_path / "output"
             environment = dict(os.environ)
             environment.update({
+                "VPN_CONTROL_VISUAL_VM_TARGET": "android:vpn-control-visual-task-cancelled",
                 "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
                 "ADB_LOG": str(log),
                 "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
                 "VPN_CONTROL_VISUAL_ANDROID_PORT": "5600",
                 "VPN_CONTROL_VISUAL_PROVIDER": "local",
             })
-            completed = subprocess.run(
+            from agent_tools.tests.test_readiness_entrypoints import run_qualified_android_capture
+            completed = run_qualified_android_capture(
                 [_posix_bash(), "scripts/capture_visual_android.sh", str(output), "update-install-session-cancelled"],
                 cwd=visual_platform.ROOT,
                 env=environment,
@@ -646,6 +693,7 @@ class VisualPlatformTest(unittest.TestCase):
             fake_adb = root / "adb"
             fake_adb.write_text(
                 "#!/bin/sh\n"
+                'if [ "$1" = \'-H127.0.0.1\' ]; then shift; fi\n'
                 "if [ \"$3 $4 $5\" = 'emu avd name' ]; then printf 'vpn-control-visual-task-cancelled\\nOK\\n'; fi\n"
                 "if [ \"$3 $4 $5 $6\" = 'shell dumpsys window displays' ]; then cat <<'DUMP'\n"
                 "displayId=0\n  mDisplayFrame=Rect(0, 0 - 1080, 2400)\n"
@@ -660,6 +708,7 @@ class VisualPlatformTest(unittest.TestCase):
             fake_python = root / "python3"
             fake_python.write_text(
                 "#!/bin/sh\n"
+                'if [ "$1" = \'-H127.0.0.1\' ]; then shift; fi\n'
                 "\"$REAL_PYTHON\" \"$@\" | \"$REAL_PYTHON\" -c "
                 "'import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b\"\\r\\n\", b\"\\n\").replace(b\"\\n\", b\"\\r\\n\"))'\n",
                 encoding="utf-8",
@@ -673,14 +722,17 @@ class VisualPlatformTest(unittest.TestCase):
             stale_scene_geometry.write_bytes(b"stale")
             environment = dict(os.environ)
             environment.update({
+                "VPN_CONTROL_VISUAL_VM_TARGET": "android:vpn-control-visual-task-cancelled",
                 "PATH": f"{root}{os.pathsep}{environment['PATH']}",
                 "REAL_PYTHON": Path(sys.executable).as_posix(),
+                "ENTRY_CAPTURE_LEASE_TTL": "20",
                 "GRADLE_LOG": str(gradle_log),
                 "STAMP_LOG": str(stamp_log),
                 "VPN_CONTROL_VISUAL_TARGET_SHA": "a" * 40,
                 "VPN_CONTROL_VISUAL_PROVIDER": "local",
             })
-            completed = subprocess.run(
+            from agent_tools.tests.test_readiness_entrypoints import run_qualified_android_capture
+            completed = run_qualified_android_capture(
                 [_posix_bash(), "scripts/capture_visual_android.sh", str(output)], cwd=root, env=environment,
                 text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
             )
@@ -704,6 +756,7 @@ class VisualPlatformTest(unittest.TestCase):
             fake_adb = temporary_path / "adb"
             fake_adb.write_text(
                 "#!/bin/sh\n"
+                'if [ "$1" = \'-H127.0.0.1\' ]; then shift; fi\n'
                 "printf '%s\\n' \"$*\" >> \"$ADB_LOG\"\n"
                 "if [ \"$3 $4 $5\" = 'emu avd name' ]; then\n"
                 "  printf 'foreign-avd\\nOK\\n'\n"
@@ -715,6 +768,7 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertNotIn(b"\r\n", fake_adb.read_bytes())
             environment = dict(os.environ)
             environment.update({
+                "VPN_CONTROL_VISUAL_VM_TARGET": "android:vpn-control-visual-task-cancelled",
                 "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
                 "ADB_LOG": str(log),
                 "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME": "vpn-control-visual-task-cancelled",
@@ -731,7 +785,8 @@ class VisualPlatformTest(unittest.TestCase):
                 )
                 fake_python.chmod(0o755)
                 environment["REAL_PYTHON"] = Path(sys.executable).as_posix()
-            completed = subprocess.run(
+            from agent_tools.tests.test_readiness_entrypoints import run_qualified_android_capture
+            completed = run_qualified_android_capture(
                 [_posix_bash(), "scripts/capture_visual_android.sh", str(temporary_path / "output"), "update-install-session-cancelled"],
                 cwd=visual_platform.ROOT,
                 env=environment,
@@ -764,6 +819,7 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertNotIn(b"\r\n", fake_adb.read_bytes())
             environment = dict(os.environ)
             environment.update({
+                "VPN_CONTROL_VISUAL_VM_TARGET": "android:vpn-control-visual-task-cancelled",
                 "PATH": f"{temporary}{os.pathsep}{environment['PATH']}",
                 "ADB_LOG": str(log),
                 "VPN_CONTROL_VISUAL_PROVIDER": "hosted",
@@ -787,7 +843,7 @@ class VisualPlatformTest(unittest.TestCase):
 
     def test_android_start_never_reuses_unrelated_emulator(self) -> None:
         probe = {
-            "ready": True,
+            "ready": False, "infrastructureAvailable": True,
             "backend": "android-emulator",
             "capabilities": ["app", "native"],
             "detail": "",
@@ -801,7 +857,7 @@ class VisualPlatformTest(unittest.TestCase):
                 return_value={"personal-avd": "emulator-5554"},
             ),
         ):
-            result = visual_platform.start_platform("android", dry_run=True)
+            result = visual_platform.start_platform("android", target="android:" + visual_platform.android_local_config()["avd_name"], dry_run=True)
         self.assertTrue(result["started_by_agent"])
         self.assertIn("-avd vpn-control-visual-api35", result["command"])
         self.assertIn("-port 5580", result["command"])
@@ -826,7 +882,7 @@ class VisualPlatformTest(unittest.TestCase):
 
     def test_macos_start_dry_run_does_not_change_vm_configuration(self) -> None:
         probe = {
-            "ready": True,
+            "ready": False, "infrastructureAvailable": True,
             "backend": "tart-macos",
             "capabilities": ["app", "native", "secure_desktop"],
             "detail": "",
@@ -836,7 +892,7 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(visual_platform, "local_probe", return_value=probe),
             mock.patch.object(visual_platform, "_run", return_value=stopped) as run,
         ):
-            result = visual_platform.start_platform("macos", dry_run=True)
+            result = visual_platform.start_platform("macos", target="tart:vpn-control-visual-macos", dry_run=True)
         run.assert_called_once_with(["tart", "list"], timeout=30)
         self.assertTrue(result["started_by_agent"])
         self.assertIn("tart run --no-graphics", result["command"])
@@ -846,7 +902,7 @@ class VisualPlatformTest(unittest.TestCase):
 
     def test_resource_denial_happens_before_tart_configuration_or_process_start(self) -> None:
         probe = {
-            "ready": True,
+            "ready": False, "infrastructureAvailable": True,
             "backend": "tart-macos",
             "capabilities": ["app", "native", "secure_desktop"],
             "detail": "",
@@ -864,7 +920,7 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(visual_platform.subprocess, "Popen") as popen,
         ):
             with self.assertRaisesRegex(visual_platform.VisualPlatformError, "slot limit"):
-                visual_platform.start_platform("macos")
+                visual_platform.start_platform("macos", target="tart:vpn-control-visual-macos")
         popen.assert_not_called()
         self.assertFalse(any(call.args and call.args[0][:2] == ["tart", "set"] for call in run.call_args_list))
 
@@ -927,7 +983,7 @@ class VisualPlatformTest(unittest.TestCase):
                         visual_platform._read_reservations()
 
     def test_low_available_memory_denies_before_visual_start(self) -> None:
-        probe = {"ready": True, "backend": "tart-macos", "capabilities": ["app"], "detail": ""}
+        probe = {"ready": False, "infrastructureAvailable": True, "backend": "tart-macos", "capabilities": ["app"], "detail": ""}
         stopped = mock.Mock(returncode=0, stdout="vpn-control-visual-macos stopped\n", stderr="")
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -948,7 +1004,7 @@ class VisualPlatformTest(unittest.TestCase):
                 mock.patch.object(visual_platform.subprocess, "Popen") as popen,
             ):
                 with self.assertRaisesRegex(visual_platform.VisualPlatformError, "available host memory"):
-                    visual_platform.start_platform("macos")
+                    visual_platform.start_platform("macos", target="tart:vpn-control-visual-macos")
             popen.assert_not_called()
             self.assertFalse(any(call.args and call.args[0][:2] == ["tart", "set"] for call in run.call_args_list))
 
@@ -994,7 +1050,7 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertTrue(visual_platform._host_memory_snapshot()["pressure_critical"])
 
     def test_record_failure_after_popen_retains_provisional_reservation(self) -> None:
-        probe = {"ready": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
+        probe = {"ready": False, "infrastructureAvailable": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
         process = mock.Mock(pid=1234)
         with (
             mock.patch.object(visual_platform, "local_probe", return_value=probe),
@@ -1005,7 +1061,7 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(visual_platform.subprocess, "Popen", return_value=process),
         ):
             with self.assertRaisesRegex(OSError, "record failed"):
-                visual_platform.start_platform("windows")
+                visual_platform.start_platform("windows", target="qemu:" + str((visual_platform.ROOT / ".runtime/visual-vms/windows/vpn-control-win11.qcow2").resolve()))
         release.assert_not_called()
 
     def test_windows_qemu_disk_is_not_ready_without_agent_marker(self) -> None:
@@ -1111,46 +1167,20 @@ class VisualPlatformTest(unittest.TestCase):
             self.assertEqual(0.0, capture_visual_macos_tart.visible_pixel_ratio(black_png))
             self.assertEqual(1.0, capture_visual_macos_tart.visible_pixel_ratio(visible_png))
 
-    def test_macos_secure_driver_refreshes_guest_ip_after_vnc_route_failure(self) -> None:
-        completed = subprocess.CompletedProcess(["vncdo"], 0, stdout="", stderr="")
-        commands: list[list[str]] = []
-        relay_addresses: list[str] = []
-
-        @contextlib.contextmanager
-        def relay(ip_address: str):
-            relay_addresses.append(ip_address)
-            yield f"{ip_address}-relay"
-
-        def run(command: list[str], *, timeout: int = 120) -> subprocess.CompletedProcess[str]:
-            del timeout
-            commands.append(command)
-            if command[0] == "vncdo" and "stale-ip-relay" in command:
-                raise capture_visual_macos_tart.CaptureError("No route to host")
-            if command[:2] == ["tart", "ip"]:
-                return subprocess.CompletedProcess(command, 0, stdout="fresh-ip\n", stderr="")
-            return completed
-
+    def test_macos_secure_driver_submits_private_vnc_action_once_without_replaying_input(self) -> None:
+        admission = mock.Mock()
+        admission.vnc_action.side_effect = capture_visual_macos_tart.readiness_entrypoints.EntrypointBlocked(
+            "direct_input_outcome_unknown", "00000000-0000-4000-8000-000000000001")
         with (
-            mock.patch.object(capture_visual_macos_tart, "run_checked", side_effect=run),
-            mock.patch.object(
-                capture_visual_macos_tart,
-                "vnc_command",
-                side_effect=lambda server, *args: ["vncdo", server, *args],
-            ),
-            mock.patch.object(capture_visual_macos_tart, "local_vnc_relay", side_effect=relay),
-            mock.patch.object(capture_visual_macos_tart.time, "sleep"),
+            mock.patch.object(capture_visual_macos_tart, "_ADMISSION", admission),
+            mock.patch.object(capture_visual_macos_tart, "run_checked") as run,
+            mock.patch.object(capture_visual_macos_tart, "local_vnc_relay") as relay,
         ):
-            self.assertIs(
-                completed,
-                capture_visual_macos_tart.run_vnc_checked(
-                    "stale-ip", "key", "esc", timeout=30
-                ),
-            )
-
-        self.assertEqual("stale-ip-relay", commands[0][1])
-        self.assertEqual(["tart", "ip", capture_visual_macos_tart.VM_NAME], commands[1])
-        self.assertEqual("fresh-ip-relay", commands[2][1])
-        self.assertEqual(["stale-ip", "fresh-ip"], relay_addresses)
+            with self.assertRaisesRegex(ValueError, "direct_input_outcome_unknown"):
+                capture_visual_macos_tart.run_vnc_checked("ignored-address", "key", "esc", timeout=30)
+        admission.vnc_action.assert_called_once_with(("key", "esc"), timeout=30)
+        run.assert_not_called()
+        relay.assert_not_called()
 
     def test_macos_secure_driver_waits_for_vnc_route_after_reboot(self) -> None:
         probes = [
@@ -1290,8 +1320,8 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn("macOS secure scene failed after three launch attempts", script)
         self.assertIn("for launch_attempt in range(3)", script)
         self.assertIn("def reboot_guest", script)
-        self.assertIn('"sudo", "/sbin/shutdown", "-r", "now"', script)
-        self.assertIn("kern.boottime", script)
+        self.assertIn("_ADMISSION = _ADMISSION.reboot_guest()", script)
+        self.assertNotIn('"sudo", "/sbin/shutdown", "-r", "now"', script)
         self.assertIn("right_edge_overlay_ratio", script)
         self.assertIn("def capture_secure_frame", script)
         self.assertIn("same inactive-button state as the canonical fixture", script)
@@ -1337,22 +1367,23 @@ class VisualPlatformTest(unittest.TestCase):
         self.assertIn('lsof -t -- "$disk_path"', script)
 
     def test_qemu_start_reuses_a_ready_managed_vm_without_launching_another(self) -> None:
-        probe = {"ready": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
+        probe = {"ready": False, "infrastructureAvailable": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
         with (
             mock.patch.object(visual_platform, "local_probe", return_value=probe),
             mock.patch.object(visual_platform, "_disk_user_pids", return_value=[1234]),
             mock.patch.object(visual_platform, "_qmp_ready", return_value=True),
+            mock.patch.object(visual_platform, "_qmp_execute", return_value={"pid":1234,"birth":"controlled"}),
             mock.patch.object(visual_platform, "_read_state", return_value={}),
             mock.patch.object(visual_platform.subprocess, "Popen") as popen,
             mock.patch.object(visual_platform, "_write_state"),
         ):
-            result = visual_platform.start_platform("windows")
+            result = visual_platform.start_platform("windows", target="qemu:" + str((visual_platform.ROOT / ".runtime/visual-vms/windows/vpn-control-win11.qcow2").resolve()))
         popen.assert_not_called()
         self.assertFalse(result["started_by_agent"])
         self.assertEqual(1234, result["pid"])
 
     def test_android_repeat_start_preserves_live_agent_ownership(self) -> None:
-        probe = {"ready": True, "backend": "android-emulator", "capabilities": ["app", "native"], "detail": ""}
+        probe = {"ready": False, "infrastructureAvailable": True, "backend": "android-emulator", "capabilities": ["app", "native"], "detail": ""}
         prior = {
             "schema_version": 1, "platform": "android", "backend": "android-emulator",
             "identifier": "emulator-5580", "started_by_agent": True, "pid": 7848,
@@ -1363,18 +1394,18 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(visual_platform, "_running_android_avds", return_value={"vpn-control-visual-api35": "emulator-5580"}),
             mock.patch.object(visual_platform, "_read_state", return_value=prior),
             mock.patch.object(visual_platform, "_pid_running", return_value=True),
-            mock.patch.object(visual_platform, "_run", return_value=mock.Mock(returncode=0, stdout="1\n", stderr="")),
+            mock.patch.object(visual_platform, "_run", side_effect=lambda args,**kwargs: mock.Mock(returncode=0, stdout="vpn-control-visual-api35\nOK\n" if args[-3:]==["emu","avd","name"] else "1\n", stderr="")),
             mock.patch.object(visual_platform, "_write_state") as write_state,
             mock.patch.object(visual_platform.subprocess, "Popen") as popen,
         ):
-            result = visual_platform.start_platform("android")
+            result = visual_platform.start_platform("android", target="android:" + visual_platform.android_local_config()["avd_name"])
         popen.assert_not_called()
         self.assertTrue(result["started_by_agent"])
         self.assertEqual(7848, result["pid"])
         self.assertTrue(write_state.call_args.args[1]["started_by_agent"])
 
     def test_qemu_start_refuses_an_in_use_disk_without_qmp(self) -> None:
-        probe = {"ready": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
+        probe = {"ready": False, "infrastructureAvailable": True, "backend": "qemu-windows", "capabilities": ["secure_desktop"], "detail": ""}
         with (
             mock.patch.object(visual_platform, "local_probe", return_value=probe),
             mock.patch.object(visual_platform, "_disk_user_pids", return_value=[1234]),
@@ -1382,12 +1413,14 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(visual_platform.subprocess, "Popen") as popen,
         ):
             with self.assertRaisesRegex(visual_platform.VisualPlatformError, "already in use"):
-                visual_platform.start_platform("windows")
+                visual_platform.start_platform("windows", target="qemu:" + str((visual_platform.ROOT / ".runtime/visual-vms/windows/vpn-control-win11.qcow2").resolve()))
         popen.assert_not_called()
 
     def test_qemu_stop_uses_python_qmp_without_socat(self) -> None:
         state = {
-            "platform": "windows", "backend": "qemu-windows", "identifier": "disk",
+            "platform": "windows", "backend": "qemu-windows", "identifier": str((visual_platform.ROOT / ".runtime/visual-vms/windows/vpn-control-win11.qcow2").resolve()),
+            "target": "qemu:" + str((visual_platform.ROOT / ".runtime/visual-vms/windows/vpn-control-win11.qcow2").resolve()),
+            "actor": {"pid":1234,"birth":"controlled"},
             "started_by_agent": True, "pid": 1234,
         }
         with (
@@ -1398,8 +1431,8 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(Path, "unlink"),
             mock.patch.object(visual_platform, "_release_visual_reservation"),
         ):
-            result = visual_platform.stop_platform("windows")
-        execute.assert_called_once_with(visual_platform.RUNTIME_ROOT / "windows" / "qmp.sock", "system_powerdown")
+            result = visual_platform.stop_platform("windows", target=("qemu:" + str((visual_platform.ROOT / ".runtime/visual-vms/windows/vpn-control-win11.qcow2").resolve())) if state.get("backend")=="qemu-windows" else "libvirt:vpn-control-win11")
+        execute.assert_called_once_with(visual_platform.RUNTIME_ROOT / "windows" / "qmp.sock", "system_powerdown", disk=Path(state["identifier"]), expected_actor=state["actor"])
         self.assertTrue(result["stopped"])
 
     def test_hosted_native_capture_freezes_platform_clocks(self) -> None:
@@ -1512,7 +1545,7 @@ class VisualPlatformTest(unittest.TestCase):
                 ),
             ):
                 with self.assertRaises(visual_platform.VisualPlatformError):
-                    visual_platform.run_local_driver("linux", "/opt/capture", output, ["one"])
+                    visual_platform.run_local_driver("linux", "/opt/capture", output, ["one"], target="native:linux")
 
     def test_capture_stamp_binds_files_and_exact_sha(self) -> None:
         sha = "a" * 40
@@ -1559,12 +1592,13 @@ class VisualPlatformTest(unittest.TestCase):
                     "platform": "windows",
                     "backend": "libvirt-windows",
                     "identifier": "vpn-control-win11",
+                    "target": "libvirt:vpn-control-win11",
                     "started_by_agent": False,
                 },
             ),
             mock.patch.object(visual_platform, "_run") as run,
         ):
-            result = visual_platform.stop_platform("windows")
+            result = visual_platform.stop_platform("windows", target="libvirt:vpn-control-win11")
         run.assert_not_called()
         self.assertFalse(result["stopped"])
 
@@ -1573,6 +1607,7 @@ class VisualPlatformTest(unittest.TestCase):
             "platform": "windows",
             "backend": "libvirt-windows",
             "identifier": "vpn-control-win11",
+            "target": "libvirt:vpn-control-win11",
             "started_by_agent": True,
         }
         with (
@@ -1581,7 +1616,7 @@ class VisualPlatformTest(unittest.TestCase):
             mock.patch.object(Path, "unlink"),
             mock.patch.object(visual_platform, "_release_visual_reservation"),
         ):
-            result = visual_platform.stop_platform("windows")
+            result = visual_platform.stop_platform("windows", target=("qemu:" + str((visual_platform.ROOT / ".runtime/visual-vms/windows/vpn-control-win11.qcow2").resolve())) if state.get("backend")=="qemu-windows" else "libvirt:vpn-control-win11")
         run.assert_called_once_with(["virsh", "shutdown", "vpn-control-win11"], timeout=120, input_text=None)
         self.assertTrue(result["stopped"])
 
@@ -1631,6 +1666,142 @@ class VisualPlatformTest(unittest.TestCase):
         scenes = next(value for value in flattened if value.startswith("scenes="))
         self.assertNotIn("windows-uac", scenes)
         self.assertEqual(2, result["scene_count"])
+
+
+
+class VisualAvailabilityQualificationTest(unittest.TestCase):
+    """Full inventory callers; every provider/process boundary is controlled."""
+
+    @staticmethod
+    def preserved_subject():
+        import hashlib
+        import types
+        path = Path(__file__).parent / "tests/fixtures/visual_availability_qualification/visual_platform.before.source"
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != "1dcdc7cc160bcdd6ce6298ccca42f74318ea468705e9b27e197139eb919a0e00":
+            raise AssertionError("availability beforeimage changed")
+        module = types.ModuleType("visual_availability_before")
+        module.__file__ = str(path)
+        exec(compile(raw, str(path), "exec"), module.__dict__)
+        module.ROOT = visual_platform.ROOT
+        module.MANIFEST_PATH = visual_platform.MANIFEST_PATH
+        module.ENVIRONMENTS_PATH = visual_platform.ENVIRONMENTS_PATH
+        return module
+
+    def subject(self):
+        value = os.environ.get("VPN_CONTROL_VISUAL_AVAILABILITY_BEFORE")
+        if value is not None:
+            self.assertEqual(value, "1")
+            return self.preserved_subject()
+        return visual_platform
+
+    @contextlib.contextmanager
+    def inventory(self, module, provider, *, state="stopped"):
+        environments = module._read_json(module.ENVIRONMENTS_PATH)
+        platform = "macos" if provider == "tart" else "windows"
+        config = environments["platforms"][platform]["local"]
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if provider == "tart" and command == ["tart", "list", "--format", "json"]:
+                body = json.dumps([{"Name": config["vm_name"], "State": state}])
+            elif provider == "tart" and command == ["tart", "list"]:
+                body = "Source Name State\nlocal " + config["vm_name"] + " " + state + "\n"
+            elif provider == "libvirt" and command == ["virsh", "dominfo", config["libvirt_name"]]:
+                body = "State: shut off\n"
+            else:
+                raise AssertionError("unexpected provider or mutation command: " + repr(command))
+            return subprocess.CompletedProcess(command, 0, body, "")
+
+        real_is_file = Path.is_file
+        candidate_files = {
+            module.ROOT / config[key] for key in ("qemu_disk", "qemu_ready_marker") if key in config
+        }
+
+        def is_file(path):
+            if path in candidate_files:
+                return provider == "qemu"
+            return real_is_file(path)
+
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch.object(module.host_platform, "system", return_value="Darwin"),
+            mock.patch.object(module.host_platform, "machine", return_value="arm64"),
+            mock.patch.object(module.shutil, "which", side_effect=lambda name: "/controlled/" + name if name == {"tart": "tart", "libvirt": "virsh"}.get(provider) else None),
+            mock.patch.object(module, "_which_any", return_value="/controlled/qemu" if provider == "qemu" else None),
+            mock.patch.object(module, "_run", side_effect=run),
+            mock.patch.object(module.subprocess, "Popen", side_effect=AssertionError("no process admission")),
+            mock.patch.object(Path, "is_file", is_file),
+        ):
+            yield platform, config, calls
+
+    def assert_unqualified(self, module, provider, *, state="stopped"):
+        with self.inventory(module, provider, state=state) as (platform, config, calls):
+            probe = module.local_probe(platform)
+            plan = module.capture_plan(platform)
+        # This is the actual before/current safety oracle; inventory presence
+        # used to make ready=True and route secure scenes as release-capable.
+        self.assertFalse(probe["ready"], "inventory presence is not desktop qualification")
+        self.assertEqual([], probe["capabilities"])
+        self.assertTrue(probe["infrastructureAvailable"])
+        self.assertEqual("unqualified", probe["qualificationState"])
+        self.assertIn("secure_desktop", probe["candidateKinds"])
+        self.assertEqual([], plan["routes"]["local"])
+        self.assertFalse(plan["release_capable"])
+        self.assertTrue(plan["routes"]["blocked"])
+
+    def test_stopped_configured_tart_inventory_stays_unqualified(self):
+        self.assert_unqualified(self.subject(), "tart")
+
+    def test_running_tart_name_without_qualification_stays_unqualified(self):
+        self.assert_unqualified(self.subject(), "tart", state="running")
+
+    def test_defined_libvirt_domain_stays_unqualified(self):
+        self.assert_unqualified(self.subject(), "libvirt")
+
+    def test_qemu_disk_and_marker_stay_unqualified(self):
+        self.assert_unqualified(self.subject(), "qemu")
+
+    def test_whole_preserved_inventory_false_positive_is_causal(self):
+        before = self.preserved_subject()
+        for provider in ("tart", "libvirt", "qemu"):
+            with self.subTest(provider=provider):
+                with self.assertRaisesRegex(AssertionError, "inventory presence is not desktop qualification"):
+                    self.assert_unqualified(before, provider)
+                self.assert_unqualified(visual_platform, provider)
+
+    def test_existing_stopped_tart_is_not_cloned_and_explicit_start_is_preserved(self):
+        module = self.subject()
+        with self.inventory(module, "tart") as (platform, config, calls):
+            target = "tart:" + config["vm_name"]
+            with mock.patch.object(module, "bootstrap_commands", side_effect=AssertionError("existing VM must not be rebuilt")):
+                result = module.bootstrap(platform, target=target, dry_run=False)
+            self.assertFalse(result["changed"])
+            self.assertEqual([], result["commands"])
+            result = module.start_platform(platform, target=target, dry_run=True)
+            self.assertEqual("tart-macos", result["backend"])
+            self.assertEqual(
+                ["tart", "run", "--no-graphics", "--dir", "vpn-control:" + str(module.ROOT), config["vm_name"]],
+                __import__("shlex").split(result["command"]),
+            )
+            self.assertFalse(any(command[:2] in (["tart", "clone"], ["tart", "run"]) for command in calls))
+            before_calls = len(calls)
+            for target in (None, "tart:another-vm"):
+                with self.assertRaises(module.VisualPlatformError):
+                    module.start_platform(platform, target=target, dry_run=True)
+            self.assertEqual(before_calls, len(calls))
+
+    def test_legacy_ready_capability_projection_cannot_grant_release(self):
+        module = self.subject()
+        with mock.patch.object(module, "local_probe", return_value={
+            "ready": True, "backend": "qemu-windows", "capabilities": ["app", "native", "secure_desktop"],
+            "detail": "legacy inventory",
+        }):
+            plan = module.capture_plan("windows")
+        self.assertFalse(plan["release_capable"])
+        self.assertIn("windows-uac", plan["routes"]["blocked"])
+
 
 
 if __name__ == "__main__":

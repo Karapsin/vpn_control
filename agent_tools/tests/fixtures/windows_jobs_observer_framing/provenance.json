@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "cause": "Indented early Console output plus exit skipped final-line controller nonce/owner frame on root-absent path; native QGA exit0 output unframed. Corrected observer assigns out in if/else and uses only one final Console.",
+  "scope": "No mutation: original diagnostic observation fixed machine/boot/SYSTEM/namespace/owner census only. Full retained observer beforeimage and exact normalized actual native RED/GREEN.",
+  "sourceSha256": {
+    "status.before.source": "2cb14cc4df9a5cd19665f14a4fe1573ba142e67759adb215fa6b270f49e52ce0",
+    "status.fixed.source": "785a96e54780d7e5dfd7509a31f9eb55e1bc8e4cb3e3ea4a85e002eb40c002f7",
+    "native-failure.json": "7a83c27274889e8f8da7e37706adab3d4734e4f3452b5856b23f4c337f356a2e",
+    "native-green.json": "5fb9c6af23448d68a5934be2d20aa02e9dda1ac39cb366b431b08e710b393643"
+  }
+}

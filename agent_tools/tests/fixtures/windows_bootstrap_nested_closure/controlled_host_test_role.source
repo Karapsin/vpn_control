@@ -1,0 +1,4 @@
+def run_source(self,source):
+    from agent_tools.tests.test_windows_bootstrap_durable import run_owned
+    result=run_owned([sys.executable,'-I','-B','-c','import sys;exec(compile(sys.stdin.buffer.read(),"controlled-outer-host-caller","exec"))'],input=source,capture_output=True,timeout=5)
+    self.assertEqual(result.returncode,0,result.stderr.decode());return json.loads(result.stdout)

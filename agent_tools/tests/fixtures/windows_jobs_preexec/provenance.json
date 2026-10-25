@@ -1,0 +1,39 @@
+{
+  "evidenceFiles": {
+    ".runtime/readiness-windows-jobs-controllers/d82c6b3b-882b-4667-be84-f8808b99db0e/28456b75-e4fa-481f-a044-818c9c4731ab/job-start.py": "feecc21d4691b2afa47cbf7a02d428ae472cf4c7e44519ef6a5e9e22ae8d1823.source",
+    ".runtime/readiness-windows-jobs-controllers/d82c6b3b-882b-4667-be84-f8808b99db0e/28456b75-e4fa-481f-a044-818c9c4731ab/prepared.json": "bba20016d5c4161c00ef44f99a60ea90eb16a0ebba7084cb43f0e727dc9ed80c.source",
+    ".runtime/readiness-windows-jobs-controllers/d82c6b3b-882b-4667-be84-f8808b99db0e/28456b75-e4fa-481f-a044-818c9c4731ab/result.json": "d24ff00ea27af89a9f18bcec605671ecfe5606ac48981805f84b29f05482c0ed.source",
+    ".runtime/readiness-windows-jobs-controllers/d82c6b3b-882b-4667-be84-f8808b99db0e/28456b75-e4fa-481f-a044-818c9c4731ab/returned.json": "cd5cc6055518c2f1455f116a17df7efdb3064499f14ae4bc67ca5f3e6dcea7f9.source",
+    ".runtime/readiness-windows-jobs-controllers/d82c6b3b-882b-4667-be84-f8808b99db0e/28456b75-e4fa-481f-a044-818c9c4731ab/stderr.private": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.source",
+    ".runtime/readiness-windows-jobs-controllers/d82c6b3b-882b-4667-be84-f8808b99db0e/28456b75-e4fa-481f-a044-818c9c4731ab/stdout.private": "f57a177c146db7cf9fac9f3499133d27e82cf00d7b46901250dd4b7511fc2151.source",
+    ".runtime/tool-recovery-windows/counter-libvirt/executor-snapshot.json": "c6d667111918179761b2e95975d147e15bdba0189dbc753d95108f5a1c1586e1.source",
+    ".runtime/tool-recovery-windows/counter-libvirt/initial-observation.json": "149ac1ef9d25ba29d3275f997e2df36bf1f0a9d3c25ddb544e3f322bd7da369b.source",
+    ".runtime/tool-recovery-windows/counter-libvirt/original-plan.json": "57fd8635c6d49a4a73d328efa6c20b392ebfe3f73667d85955d3db9c3ccfa6c9.source",
+    ".runtime/tool-recovery-windows/counter-libvirt/readiness_windows_jobs.caf3.before.source": "caf379b37636f1adcd6cea365b0a8840cbabf8810cdb28a65e50c0a53cf672b8.source",
+    ".runtime/tool-recovery-windows/direct/admitted-812b25d7-3d84-4fbd-8854-50df79bc076f/callback.json": "22255d9ec2261e929a8d6c4df1f46f148bdce742762c4e79bfff661675164120.source",
+    ".runtime/tool-recovery-windows/direct/admitted-812b25d7-3d84-4fbd-8854-50df79bc076f/caller.py": "7209afe5b175c169edfb2b52d141e089ceecb01598f0ad259143e50299b54d2f.source",
+    ".runtime/tool-recovery-windows/direct/admitted-812b25d7-3d84-4fbd-8854-50df79bc076f/result.json": "634c683a244191d0e43ccb225a8955ca5eb5b4248a709c4ccd87b3d2810d62a9.source",
+    ".runtime/tool-recovery-windows/direct/admitted-812b25d7-3d84-4fbd-8854-50df79bc076f/stderr.private": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.source",
+    ".runtime/tool-recovery-windows/direct/admitted-812b25d7-3d84-4fbd-8854-50df79bc076f/stdout.private": "3292818c1b963d63747d542b96e2eb0c4eefbade7b2bc6407d728d07d5c7affc.source"
+  },
+  "kind": "authenticated-native-default-owner-preexec-evidence",
+  "nativeScenario": "Original d82 retains UNKNOWN; exact framed ROOT_OWNER before launch plus native 812b read-only source and positive custody/census. No replay or synthetic terminal.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "149ac1ef9d25ba29d3275f997e2df36bf1f0a9d3c25ddb544e3f322bd7da369b.source": "149ac1ef9d25ba29d3275f997e2df36bf1f0a9d3c25ddb544e3f322bd7da369b",
+    "22255d9ec2261e929a8d6c4df1f46f148bdce742762c4e79bfff661675164120.source": "22255d9ec2261e929a8d6c4df1f46f148bdce742762c4e79bfff661675164120",
+    "3292818c1b963d63747d542b96e2eb0c4eefbade7b2bc6407d728d07d5c7affc.source": "3292818c1b963d63747d542b96e2eb0c4eefbade7b2bc6407d728d07d5c7affc",
+    "57fd8635c6d49a4a73d328efa6c20b392ebfe3f73667d85955d3db9c3ccfa6c9.source": "57fd8635c6d49a4a73d328efa6c20b392ebfe3f73667d85955d3db9c3ccfa6c9",
+    "634c683a244191d0e43ccb225a8955ca5eb5b4248a709c4ccd87b3d2810d62a9.source": "634c683a244191d0e43ccb225a8955ca5eb5b4248a709c4ccd87b3d2810d62a9",
+    "7209afe5b175c169edfb2b52d141e089ceecb01598f0ad259143e50299b54d2f.source": "7209afe5b175c169edfb2b52d141e089ceecb01598f0ad259143e50299b54d2f",
+    "bba20016d5c4161c00ef44f99a60ea90eb16a0ebba7084cb43f0e727dc9ed80c.source": "bba20016d5c4161c00ef44f99a60ea90eb16a0ebba7084cb43f0e727dc9ed80c",
+    "c6d667111918179761b2e95975d147e15bdba0189dbc753d95108f5a1c1586e1.source": "c6d667111918179761b2e95975d147e15bdba0189dbc753d95108f5a1c1586e1",
+    "caf379b37636f1adcd6cea365b0a8840cbabf8810cdb28a65e50c0a53cf672b8.source": "caf379b37636f1adcd6cea365b0a8840cbabf8810cdb28a65e50c0a53cf672b8",
+    "cd5cc6055518c2f1455f116a17df7efdb3064499f14ae4bc67ca5f3e6dcea7f9.source": "cd5cc6055518c2f1455f116a17df7efdb3064499f14ae4bc67ca5f3e6dcea7f9",
+    "d24ff00ea27af89a9f18bcec605671ecfe5606ac48981805f84b29f05482c0ed.source": "d24ff00ea27af89a9f18bcec605671ecfe5606ac48981805f84b29f05482c0ed",
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.source": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "f57a177c146db7cf9fac9f3499133d27e82cf00d7b46901250dd4b7511fc2151.source": "f57a177c146db7cf9fac9f3499133d27e82cf00d7b46901250dd4b7511fc2151",
+    "feecc21d4691b2afa47cbf7a02d428ae472cf4c7e44519ef6a5e9e22ae8d1823.source": "feecc21d4691b2afa47cbf7a02d428ae472cf4c7e44519ef6a5e9e22ae8d1823",
+    "proof.json": "10d879812d9059335c686cfedef8a63905c7e7812d2e7103abd865974d9d59e3"
+  }
+}

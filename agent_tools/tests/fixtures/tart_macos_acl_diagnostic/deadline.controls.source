@@ -1,0 +1,31 @@
+from pathlib import Path
+from contextlib import ExitStack
+import ast,json,os,sys,tempfile,time,types,unittest
+ROOT=Path.cwd();BASE=ROOT/'.runtime/tool-recovery/macos-component-acl-diagnostic'
+from agent_tools.source_module_loader import SourceSession
+class Deadline(unittest.TestCase):
+ def test_exact_spent_group_old_launches_new_zero(self):
+  plan=json.loads((BASE/'controller-plan.prepared.json').read_bytes());old=(BASE/('before-total-deadline-'+Path(plan['driver']).name)).read_text();new=Path(plan['driver']).read_text()
+  with ExitStack()as stack:
+   session=SourceSession(ROOT/'agent_tools','private_inventory_lock');stack.callback(session.close);P=session.module;J=session.load('durable_remote_job');R=session.load('readiness_tart_macos_registry')
+   C=types.ModuleType('_actual_acl_capture');raw=(BASE/'rpc_capture.py').read_bytes();exec(compile(raw,str(BASE/'rpc_capture.py'),'exec'),C.__dict__)
+   with tempfile.TemporaryDirectory(prefix='acl-spent-')as temporary:
+    root=Path(temporary).resolve();root.chmod(0o700);shim=root/'public-only-shim'
+    shim.write_text('#!'+sys.executable+'\nimport sys,time\nsys.stdin.buffer.read();time.sleep(.1);sys.stdout.write("{\\"public\\":true}")\n');shim.chmod(0o700)
+    canonical=(sys.executable,'-I','-B','-c','public_only')
+    for label,source in [('old',old),('new',new)]:
+     outpath=root/label;outpath.mkdir(mode=0o700)
+     with P.Directory(outpath)as out:
+      selected={n.name:n for n in ast.walk(ast.parse(source))if isinstance(n,ast.FunctionDef)and n.name in {'need','guard','output_record','captured_native'}}
+      self.assertEqual(set(selected),{'need','guard','output_record','captured_native'})
+      no=types.SimpleNamespace(guard=lambda:None)
+      ns={'os':os,'sys':sys,'time':time,'json':json,'hashlib':__import__('hashlib'),'stat':__import__('stat'),'out':out,'session':no,'self_source':no,'component_source':no,'capture_source':no,'prior_source':no,'run_dir':no,'GROUP_DEADLINE':time.monotonic()-.1,'phase':{'value':'catalog'},'native_calls':[],'VM':'vm-public','MACHINE':'machine-public','OP':'public-operation','protocol':types.SimpleNamespace(stdin_command=lambda _: (canonical,None)),'capture':C,'jobs':J,'mac_registry':R}
+      nodes=[selected[name]for name in ('need','output_record','guard','captured_native')];exec(compile(ast.Module(body=nodes,type_ignores=[]),'<whole-authentic-driver-methods>','exec'),ns)
+      binding=types.SimpleNamespace(vm_name='vm-public',machine='machine-public',tart_binary=str(shim),guest_python=sys.executable);custody=types.SimpleNamespace(binding=binding,run_intent={'operationId':'2d933a39-0fb6-46a4-9fd9-02221d81c4b9'})
+      argv=(str(shim),'exec','-i','vm-public',sys.executable,*canonical[1:])
+      if label=='old':
+       result=ns['captured_native'](custody,argv,b'public source',time.monotonic()+2);self.assertEqual(result.returncode,0);self.assertEqual(len(ns['native_calls']),1);self.assertTrue(ns['native_calls'][0]['actorAbsent'])
+      else:
+       with self.assertRaisesRegex(RuntimeError,'acl_group_deadline'):ns['captured_native'](custody,argv,b'public source',time.monotonic()+2)
+       self.assertEqual(ns['native_calls'],[]);self.assertEqual(list(outpath.iterdir()),[])
+if __name__=='__main__':unittest.main(verbosity=2)

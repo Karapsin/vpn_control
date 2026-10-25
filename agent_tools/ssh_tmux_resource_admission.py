@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -20,7 +21,7 @@ from . import native_host_observation as host
 from . import vm_workflow
 need=old.need
 MEMORY=8*1024**3
-HOST_SHA='600d5ec9d44d8dc83bec2f0dbe891383166b0a5ea128206074b87e272010a6d2'
+HOST_SHA='f913eac3e10c7beaf4316d8e27424a5314ba889991b4ccb53dfe7574819b9c74'
 VM_SHA='d0db49f7c4fc67348dd6f7ba9ebb35cfad01f055ffde374858fa36ac02f6711c'
 
 _REMOTE=r'''
@@ -129,7 +130,7 @@ def fixed_resource_query(root,program,payload,guard):
    def launch():
     close();return ssh_transport.popen_ssh(argv,cwd=root,stdin=adapter.subprocess.PIPE,stdout=adapter.subprocess.PIPE,stderr=adapter.subprocess.PIPE,bufsize=0)
    binding={'phase':'status','snapshot':None,'sources':source_pins,'transport':{'hostAlias':'archlinux','privilegedResourceRead':True},'local':{},'argvSha256':ssh_transport.argv_sha256(argv)}
-   outcome,capsule=adapter._capture(root,authority=binding,launch=launch,payload=private,guard=close,timeout_seconds=30);private=None
+   outcome,capsule=adapter._capture(root,authority=binding,launch=launch,payload=private,guard=close,timeout_seconds=30,private_payload=True,public_reply=_public_resource_reply);private=None
    close();need(outcome['state']=='captured','resource_capture_unknown')
    raw,pin=closure.pipe._read(capsule/'receipt.json');need(pin==outcome['receiptPin'],'resource_capture_changed');record=json.loads(raw)
    raw,pin=closure.pipe._read(capsule/'stdout',adapter.MAX_STDOUT);stderr,stderr_pin=closure.pipe._read(capsule/'stderr',adapter.MAX_STDERR)
@@ -172,14 +173,29 @@ def inventory(root,request,identity):
  need(target is not None,'resource_reservation_missing');return pin,pending
 
 
-def budget(value,pending):
+def _public_resource_reply(value):
+ """Recognize only the fixed observer's public facts before pipe retention."""
  need(type(value)is dict and set(value)=={'state','hostBootId','vms','physicalMemoryBytes','swapUsedBytes','samples','diskAvailableBytes','diskDevice','inventoryComplete'} and value['state']=='observed' and value['inventoryComplete']is True and type(value['vms'])is list,'resource_measurement_invalid')
- need(type(value['diskAvailableBytes'])is int and value['diskAvailableBytes']>=16*1024**3,'resource_disk_insufficient')
+ need(all(type(value[k])is int and value[k]>=0 for k in ('physicalMemoryBytes','swapUsedBytes','diskAvailableBytes','diskDevice')) and value['physicalMemoryBytes']>0 and len(value['vms'])<=8192,'resource_measurement_invalid')
  from uuid import UUID
  need(type(value['hostBootId'])is str and str(UUID(value['hostBootId']))==value['hostBootId'],'resource_boot_invalid')
  ids=set()
  for row in value['vms']:
   need(type(row)is dict and set(row)=={'pid','startTicks','sessionId','uid','commandSha256','executableGeneration','configuredMemoryBytes'} and all(type(row[k])is int and row[k]>0 for k in ('pid','startTicks','sessionId','configuredMemoryBytes')) and type(row['uid'])is int and row['uid']>=0 and type(row['commandSha256'])is str and re.fullmatch('[0-9a-f]{64}',row['commandSha256']) is not None and type(row['executableGeneration'])is list and len(row['executableGeneration'])==9 and all(type(x)is int for x in row['executableGeneration']) and row['pid'] not in ids,'resource_principal_invalid');ids.add(row['pid'])
+ need(type(value['samples'])is list and len(value['samples'])==2,'resource_measurement_invalid')
+ for sample in value['samples']:
+  fields={'observedAtUnixMs','availableMemoryBytes','psi','vmstat'}
+  need(type(sample)is dict and set(sample) in (fields,fields|{'psiSomeAvg10','psiFullAvg10'}) and all(type(sample[k])is int and sample[k]>=0 for k in ('observedAtUnixMs','availableMemoryBytes')) and sample['observedAtUnixMs']>0 and sample['psi'] in ('normal','warning'),'resource_measurement_invalid')
+  counters=sample['vmstat']
+  need(type(counters)is dict and set(counters)=={'pswpin','pswpout','oomKill'} and all(type(x)is int and x>=0 for x in counters.values()),'resource_measurement_invalid')
+  for key in ('psiSomeAvg10','psiFullAvg10'):
+   if key in sample:need(type(sample[key]) in (int,float) and math.isfinite(sample[key]) and sample[key]>=0,'resource_measurement_invalid')
+ return value
+
+
+def budget(value,pending):
+ value=_public_resource_reply(value)
+ need(value['diskAvailableBytes']>=16*1024**3,'resource_disk_insufficient')
  measurement={'platform':'linux','physicalMemoryBytes':value['physicalMemoryBytes'],'runningConfiguredMemoryBytes':sum(x['configuredMemoryBytes'] for x in value['vms']),'availableMemoryBytes':value['samples'][-1]['availableMemoryBytes'],'swapUsedBytes':value['swapUsedBytes'],'pressure':'normal','samples':value['samples']}
  return vm_workflow.admit_plan(measurement,requested_memory_bytes=MEMORY,headroom_bytes=2*1024**3,reservations=pending)
 

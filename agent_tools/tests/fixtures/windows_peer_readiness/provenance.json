@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "failure": "peer census calls _execute with actual trusted alias but bypasses front-door target admission before generating/publishing a producer",
+  "source": "agent_tools/windows_vm_deploy.py",
+  "sources": {
+    "execute.before.source": "49c1769da6ce0e7add441bb0fed775e50485ea63db1d48f3a85374c06f6640b2"
+  },
+  "evidence": "actual full _execute causal boundary fixture records caller.py before transport refusal"
+}

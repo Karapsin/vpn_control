@@ -21,9 +21,9 @@ from . import private_inventory_lock as inventory
 from . import ssh_connection_session as session
 from .private_inventory_lock import Directory, PresentedPath, _generation
 
-_ORIGINAL_SOURCE = 'dba4466d09aff57787cb008edcd044bc1cb4c3a22f4325c6a41efebe230a0720'
-_TRANSPORT_SOURCE = '16cbcfc396ba33e660d2550f4bb70b30a39367f1b823fd57eeee2281f844a367'
-_INVENTORY_SOURCE = 'd6ce7b228059470b4792c47e4562017235cad26ae6666c2a899dd459887358b8'
+_ORIGINAL_SOURCE = 'dd0273609c7537237c159f82cf318745e27e4952ec784c63d251760b38adb887'
+_TRANSPORT_SOURCE = '257e53420212d6c7f4476e5caa5d9cc766b852c218cae19cdc32587b619a9ce8'
+_INVENTORY_SOURCE = '0ef6e2dda29a396a201368e1c3bce2ad52c441a3c9cc8647d8cadce198b73d42'
 _HASH = re.compile(r'[0-9a-f]{64}')
 _LIMIT = 4096
 _TIMEOUT = 3

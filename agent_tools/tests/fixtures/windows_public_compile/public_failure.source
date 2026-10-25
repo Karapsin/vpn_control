@@ -1,0 +1,80 @@
+"""PUBLIC-only fixed original failure reader; pure source builder, no dispatch.
+
+Input-bearing programs are excluded by a finite producer catalogue. No guest RPC
+or replacement route exists. Retained terminal bytes never confer input/idle or
+compiler authority. The future caller keeps its actual source/ROOT/SSH holders.
+"""
+from __future__ import annotations
+import ast,base64,hashlib,inspect,json,re
+from pathlib import Path
+_EXECUTING_CODE=inspect.currentframe().f_code
+HERE=Path(__file__).absolute().parent
+PRODUCERS=frozenset({'secure_compile_receipts_epoch2.py','secure_compile_stream_interpreter_epoch2.py'})
+def need(ok,reason):
+ if not ok:raise ValueError(reason)
+def strict(raw):
+ def pairs(rows):
+  out={}
+  for key,value in rows:need(key not in out,'public_failure_json_duplicate');out[key]=value
+  return out
+ def invalid(_):raise ValueError('public_failure_json_nonfinite')
+ return json.loads(raw,object_pairs_hook=pairs,parse_constant=invalid)
+def packet(owner,remote,binding,producer,program):
+ own=Path(__file__).absolute();raw=own.read_bytes();need(_EXECUTING_CODE==compile(raw,str(own),'exec',dont_inherit=True),'public_failure_loaded_changed')
+ path=Path(producer.__file__).absolute();need(path.parent==HERE and path.name in PRODUCERS,'public_failure_producer');body=path.read_bytes();need(producer._EXECUTING_CODE==compile(body,str(path),'exec',dont_inherit=True),'public_failure_producer_loaded_changed')
+ compiled=compile(body,str(path),'exec',dont_inherit=True);codes=[]
+ def walk(code):
+  codes.append(code)
+  for value in code.co_consts:
+   if inspect.iscode(value):walk(value)
+ walk(compiled);need(inspect.isfunction(producer.packet)and producer.packet.__code__.co_filename==str(path)and producer.packet.__code__ in codes,'public_failure_producer_function_changed')
+ # Rebuild from this exact source-owned producer; a caller's operation/hash DTO
+ # does not authorize a different original or input-bearing bootstrap.
+ actual=producer.packet(owner,binding)
+ need(json.dumps(actual['config'],sort_keys=True,separators=(',',':'))==json.dumps(program['config'],sort_keys=True,separators=(',',':'))and actual['source']==program['source']and actual['sourceSha256']==program['sourceSha256']and actual['controllerSha256']==program['controllerSha256']and actual['sourcePins']==program['sourcePins'],'public_failure_program_changed')
+ operation=producer.OP;digest=program['sourceSha256'];need(program['config']['operationId']==operation and program['inputAuthority']is False and program['nativeQualified']is False,'public_failure_scope')
+ source=remote.program(binding,'observe',operation).decode()
+ action=r'''require(state=='running','instance_public_failure_guest_state')
+prefix='readiness-__OP__-session'
+expected={'schemaVersion':1,'operationId':'__OP__','label':'session','sourceSha256':'__SOURCE__'}
+records={}
+for role,maximum in [('intent',65536),('ack',4096),('observed-terminal',262144)]:
+    path=root/(prefix+'.'+role+'.json')
+    named=private(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);original=os.fstat(fd)
+    require(generation(original)==generation(named)and original.st_nlink==1 and 0<original.st_size<=maximum,'instance_public_failure_metadata')
+    parts=[];size=0
+    while size<=maximum:
+        part=os.read(fd,min(65536,maximum+1-size))
+        if not part:break
+        parts.append(part);size+=len(part)
+    raw=b''.join(parts)
+    require(len(raw)==original.st_size and generation(os.fstat(fd))==generation(original)and generation(os.lstat(path))==generation(original),'instance_public_failure_changed')
+    pins.append((fd,str(path),generation(original)))
+    records[role]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'raw':base64.b64encode(raw).decode(),'generation':list(generation(original))}
+    if role=='intent':
+        def pairs(rows):
+            out={}
+            for key,value in rows:
+                require(key not in out,'instance_public_failure_duplicate');out[key]=value
+            return out
+        original_intent=json.loads(raw,object_pairs_hook=pairs)
+        require(type(original_intent)is dict and set(original_intent)=={'operationId','label','sourceSha256','hostBoot','actor','replayAllowed','controllerIdentity'}and original_intent['operationId']==expected['operationId']and original_intent['label']=='session'and original_intent['sourceSha256']==expected['sourceSha256']and original_intent['controllerIdentity']==expected and type(original_intent['controllerIdentity']['schemaVersion'])is int and original_intent['replayAllowed']is False and original_intent['hostBoot']==CONTEXT['hostBootId']and original_intent['actor']==current_actor,'instance_public_failure_intent')
+result['originalPublicFailure']={'operationId':'__OP__','sourceSha256':'__SOURCE__','records':records,'inputAuthority':False,'notIdleAuthority':True,'replayAllowed':False}'''.replace('__OP__',operation).replace('__SOURCE__',digest)
+ source=owner._only_observe(source,action)
+ tree=ast.parse(source);main=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='_main');outer=next(n for n in main.body if isinstance(n,ast.Try))
+ nodes=[n for n in outer.body if isinstance(n,ast.If)and any(isinstance(a,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='wire'for t in a.targets)for a in n.body)];need(len(nodes)==1,'public_failure_new_wire_boundary');n=nodes[0];lines=source.splitlines(keepends=True);lines[n.lineno-1:n.end_lineno]=[];source=''.join(lines)
+ needle='    def rpc(command,arguments):\n';need(source.count(needle)==1,'public_failure_rpc_boundary');source=source.replace(needle,needle+"        raise ValueError('instance_public_failure_rpc_forbidden')\n")
+ compile(source,'fixed-public-original-failure-reader','exec')
+ return {'source':source.encode(),'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'operationId':operation,'guestSourceSha256':digest,'machine':binding['spec']['deploymentId'],'sourcePins':{str(own):hashlib.sha256(raw).hexdigest()},'inputAuthority':False,'notIdleAuthority':True}
+
+def validate(packet,value):
+ need(type(value)is dict and value.get('state')=='observed'and value.get('operationId')==packet['operationId']and value.get('machine')==packet['machine']and value.get('provider')=='raw-qemu-windows','public_failure_vm_binding');data=value.get('originalPublicFailure')
+ need(type(data)is dict and set(data)=={'operationId','sourceSha256','records','inputAuthority','notIdleAuthority','replayAllowed'}and data['operationId']==packet['operationId']and data['sourceSha256']==packet['guestSourceSha256']and data['inputAuthority']is False and data['notIdleAuthority']is True and data['replayAllowed']is False,'public_failure_original_binding')
+ rows=data['records'];need(type(rows)is dict and set(rows)=={'intent','ack','observed-terminal'},'public_failure_record_names');raws={};parsed={}
+ for role,maximum in [('intent',65536),('ack',4096),('observed-terminal',262144)]:
+  row=rows[role];need(type(row)is dict and set(row)=={'bytes','sha256','raw','generation'},'public_failure_record_schema');raw=base64.b64decode(row['raw'],validate=True);need(type(row['bytes'])is int and 0<len(raw)==row['bytes']<=maximum and hashlib.sha256(raw).hexdigest()==row['sha256']and type(row['generation'])is list and len(row['generation'])==9 and all(type(n)is int for n in row['generation']),'public_failure_record_changed');raws[role]=raw;parsed[role]=strict(raw)
+ intent=parsed['intent'];expected={'schemaVersion':1,'operationId':packet['operationId'],'label':'session','sourceSha256':packet['guestSourceSha256']};need(type(intent)is dict and intent.get('controllerIdentity')==expected and type(intent['controllerIdentity'].get('schemaVersion'))is int and intent.get('sourceSha256')==packet['guestSourceSha256']and intent.get('operationId')==packet['operationId']and intent.get('label')=='session'and intent.get('replayAllowed')is False,'public_failure_intent')
+ ack=parsed['ack'];need(type(ack)is dict and set(ack)=={'operationId','label','ack','replayAllowed'}and ack['operationId']==packet['operationId']and ack['label']=='session'and ack['replayAllowed']is False and type(ack['ack'])is dict and set(ack['ack'])=={'pid'}and type(ack['ack']['pid'])is int and ack['ack']['pid']>0,'public_failure_ack')
+ terminal=parsed['observed-terminal'];need(type(terminal)is dict and terminal.get('exited')is True and type(terminal.get('exitcode'))is int and not terminal.get('out-truncated',False)and not terminal.get('err-truncated',False)and all(type(terminal[k])is bool for k in('out-truncated','err-truncated')if k in terminal),'public_failure_terminal_unverified')
+ out=base64.b64decode(terminal.get('out-data',''),validate=True);err=base64.b64decode(terminal.get('err-data',''),validate=True);need(len(out)<=262144 and len(err)<=262144,'public_failure_guest_stream_bound')
+ return {'state':'original-public-failure-retained','operationId':packet['operationId'],'unverifiedGuestPid':ack['ack']['pid'],'unverifiedGuestExitCode':terminal['exitcode'],'notTerminalAuthority':True,'notIdleAuthority':True,'inputAuthority':False,'replayAllowed':False},out,err,raws

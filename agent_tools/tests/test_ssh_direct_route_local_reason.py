@@ -4,7 +4,7 @@ TempFS provider seeding uses the existing inert remote-reply seam. Source
 reproduction proves the constructor defect; the original Android exception
 text was not retained and its masked cause remains unproved.
 """
-import json,subprocess,unittest,uuid
+import json,os,subprocess,unittest,uuid
 from unittest import mock
 from agent_tools import ssh_direct_nested_channel as direct
 from agent_tools.tests import test_ssh_direct_nested_channel as fixtures
@@ -61,30 +61,47 @@ class ActualDirectRouteLocalReasonTests(unittest.TestCase):
         self.assertEqual(['prepare','status'],[c[6]for c in f.calls]);f.assert_legacy_unchanged()
 
     def test_preserved_missing_terminal_beforeimage_and_fixed_refusal_keep_original_unknown(self):
-        import hashlib
+        import builtins,hashlib,types
+        from contextlib import ExitStack
         from pathlib import Path
+        from agent_tools import private_inventory_lock as private
         folder=Path(__file__).parent/'fixtures/channel_terminal_absence'
         raw=(folder/'before.source').read_bytes()
         provenance=json.loads((folder/'provenance.json').read_bytes())
         self.assertEqual(provenance['fragmentSha256'],hashlib.sha256(raw).hexdigest())
         namespace=dict(channel.__dict__)
+        # The retained function imports the original16-member v2 catalog.
+        # Bind that exact finite interface without applying it to a v3 intent.
+        original_import=builtins.__import__
+        def epoch_import(name,globals=None,locals=None,fromlist=(),level=0):
+            if level==1 and name=='' and fromlist==('ssh_direct_nested_channel',):
+                return types.SimpleNamespace(ssh_direct_nested_channel=types.SimpleNamespace(_SOURCE_NAMES=direct.source_catalog(2)))
+            return original_import(name,globals,locals,fromlist,level)
+        namespace['__builtins__']={**vars(builtins),'__import__':epoch_import}
         exec(compile(raw,str(folder/'before.source'),'exec'),namespace)
         before=namespace['_retained_v2_terminal']
-        for implementation,fixed in ((before,False),(channel._retained_v2_terminal,True)):
-            with self.subTest(fixed=fixed):
-                f=fixtures.DirectChannelTests('runTest');f.setUp()
-                try:
-                    with mock.patch.object(channel,'_retained_v2_terminal',implementation):
-                        self.assertEqual('ready',f.invoke()['state'])
-                        original=f.root/'.rag_index/ssh-direct-nested-channel/hosts/archlinux'/(f.corr+'.intent.json')
-                        retained=original.read_bytes();count=len(f.calls)
-                        f.f.f.config['hosts']['archlinux']['password']='inert changed credential';f.f.f.write_config()
-                        value=f.invoke('status')
-                    self.assertEqual('unknown',value['state'])
-                    self.assertEqual('intent_binding_changed' if fixed else None,value.get('reason'))
-                    self.assertEqual(count,len(f.calls));self.assertEqual(retained,original.read_bytes())
-                    self.assertFalse((original.parent/(f.corr+'.terminal.json')).exists())
-                finally:f.doCleanups()
+        f=self.f;self.assertEqual('ready',f.invoke()['state'])
+        original=channel._context_journal(f.root,'archlinux',f.corr,False,True)/(f.corr+'.intent.json')
+        retained=original.read_bytes();value=json.loads(retained)
+        # A separately named, explicitly constructed v2 protocol TempFS fixture:
+        # actual descriptors/bytes, no synthetic migration of original history.
+        protocol=f.root/'terminal-v2-protocol';protocol.mkdir(mode=0o700)
+        value['version']=2;value['directSourcePins']={name:value['directSourcePins'][name]for name in direct.source_catalog(2)}
+        with private.Directory(f.root)as parent,private.Snapshot(parent,f.config_path.name)as config:
+            value['inventory']=config.pin()
+        (protocol/(f.corr+'.intent.json')).write_bytes(channel.session._json(value))
+        os.chmod(protocol/(f.corr+'.intent.json'),0o600)
+        for name in ('remote',*value['directSourcePins']):
+            source=original.parent/(f.corr+'.'+name+'.source');target=protocol/source.name
+            target.write_bytes(source.read_bytes());os.chmod(target,0o600)
+        with private.Directory(protocol)as directory,private.Snapshot(directory,f.corr+'.intent.json')as held:
+            with ExitStack()as stack,self.assertRaises(FileNotFoundError):before(stack,directory,held,value,'archlinux')
+            with ExitStack()as stack:self.assertIsNone(channel._retained_v2_terminal(stack,directory,held,value,'archlinux'))
+        count=len(f.calls);f.f.f.config['hosts']['archlinux']['password']='inert changed credential';f.f.f.write_config()
+        result=f.invoke('status')
+        self.assertEqual('unknown',result['state']);self.assertEqual('intent_binding_changed',result['reason'])
+        self.assertEqual(count,len(f.calls));self.assertEqual(retained,original.read_bytes())
+        self.assertFalse((original.parent/(f.corr+'.terminal.json')).exists())
 
 @unittest.skipUnless(fixtures.COORDINATOR_CAPABLE,'POSIX direct route dependencies required')
 class ClosedReasonDtoControls(unittest.TestCase):

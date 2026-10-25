@@ -1,0 +1,41 @@
+{
+  "artifacts": {
+    "callback.json": {
+      "bytes": 52,
+      "sha256": "39cb0a8cfc9838563b8cfae488095786e831b39d39071a52c857b7e1c4ad5c4b"
+    },
+    "caller.py": {
+      "bytes": 853271,
+      "sha256": "5e7b2c90aa6613f976f15765a5f84959254a65411c211d34006d2c176bb58f79"
+    },
+    "closing.json": {
+      "bytes": 655,
+      "sha256": "923f5e0c31725238215ca93bcd665e9185809ebcb0388656facdcb004b6cba08"
+    },
+    "result.json": {
+      "bytes": 13491,
+      "sha256": "e7094317e64c51b8c0d28e3a3958204a3a0386abd406d59ce8bafb5cc5fe260f"
+    },
+    "stderr.private": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout.private": {
+      "bytes": 13491,
+      "sha256": "81732915154a1033d79b6a9fd169dfbcc305ed935de0b9fd6ee54ac3efef7597"
+    }
+  },
+  "cause": "source-owned controlled carrier passed exact full observer in one execve argument; Linux E2BIG",
+  "errors": 0,
+  "evidenceRoot": ".runtime/tool-recovery-windows/direct/admitted-092f4ffa-e8c1-4387-9ac5-eca65a196300",
+  "failures": 2,
+  "kind": "actual-linux-controlled-carrier-e2big",
+  "oldRoleSha256": "0d4369fc9fd843ad500993ff18c56ed63745c7914a331e20f6aae47824a63b1e",
+  "oldTestSha256": "481b4262d1d90278a3309ceddfd3eb9832a74b9be5630a65aa2bb32046c62fde",
+  "operationId": "092f4ffa-e8c1-4387-9ac5-eca65a196300",
+  "productionTransferFailureClaimed": false,
+  "schemaVersion": 1,
+  "sourceClosing": true,
+  "testsRun": 12,
+  "vmCalls": 0
+}

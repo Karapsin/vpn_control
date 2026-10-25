@@ -41,13 +41,13 @@ ROUTES = (
     ("android_proxy_recovery", "android-proxy-recovery-status", {
         "host": "owned", "device": "api29", "identity": {}}),
     ("windows_credential_recovery_ssh", "windows-credential-recover-start", {
-        "host": "owned", "correlationId": CORRELATION}),
+        "host": "owned", "environment": "owned-vm", "correlationId": CORRELATION}),
     ("windows_credential_recovery_ssh", "windows-credential-recover-status", {
         "host": "owned", "correlationId": CORRELATION}),
     ("windows_credential_recovery_ssh", "credential-status", {
         "host": "owned", "correlationId": CORRELATION, "handle": "owned-handle"}),
     ("windows_credential_probe_ssh", "windows-credential-probe-start", {
-        "host": "owned", "correlationId": CORRELATION}),
+        "host": "owned", "environment": "owned-vm", "correlationId": CORRELATION}),
     ("windows_credential_probe_ssh", "windows-credential-probe-status", {
         "host": "owned", "correlationId": CORRELATION}),
 )
@@ -74,6 +74,16 @@ def _source(*, historical=False):
     return raw
 
 
+def _request(request):
+    # The exact preserved unfixed owner predates explicit new-start
+    # environments and refuses that field; omit only it there, so the
+    # override still reaches the causal cached-policy effect.
+    provenance = json.loads((FIXTURE / "provenance.json").read_bytes())
+    if hashlib.sha256(_source()).hexdigest() == provenance["sourceSha256"]:
+        return {key: value for key, value in request.items() if key != "environment"}
+    return dict(request)
+
+
 @contextmanager
 def _physical_server(*, historical=False):
     with tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve()) as temporary:
@@ -93,10 +103,16 @@ def _physical_server(*, historical=False):
         needed = captured | {
             "affected_agent_tests.py", "affected_agent_test_dependencies.json",
             "agent_test_runner.py", "native_review_source_closure.py",
+            "tool_action_policy.py", "tool_action_policy.json",
         }
         for name in needed:
             shutil.copyfile(SOURCE_ROOT / name, directory / name)
         (directory / "mcp_server.py").write_bytes(raw)
+        # Every route keeps its real mandatory classification. Like these
+        # adapters, readiness admission is inert here: no SSH connection.
+        (directory / "readiness_vm_dispatch.py").write_text(
+            "from contextlib import nullcontext\n"
+            "def admitted_dispatch(*args,**kwargs):return nullcontext()\n")
         helper = directory / "inert_recovery_policy.py"
         helper.write_text("VALUE='OLDER'\n")
         py_compile.compile(str(helper), doraise=True,
@@ -113,6 +129,8 @@ def _physical_server(*, historical=False):
                 "  path=Path(policy.__file__)\n"
                 "  path.write_bytes(path.read_bytes()+b'\\n# changed during call\\n')\n"
                 " return {'state':'submitted','available':True,'observedPolicy':policy.VALUE}\n"
+                # Inert explicit-environment check that new starts run first.
+                "def _admit_environment(*args,**kwargs):return None\n"
             )
             body += "\n".join(f"{method}=observe" for method in methods) + "\n"
             (directory / (name + ".py")).write_text(body)
@@ -158,7 +176,7 @@ class RecoveryRouteSourceTests(unittest.TestCase):
             _replace_policy(helper)
             for module, action, request in ROUTES:
                 with self.subTest(module=module, action=action):
-                    result = public.vm_workflow(action, dict(request))
+                    result = public.vm_workflow(action, _request(request))
                     self.assertEqual("NEWER", result.get("observedPolicy"), result)
                     self.assertEqual("NEWER", (root / "effect").read_text())
 
@@ -176,7 +194,7 @@ class RecoveryRouteSourceTests(unittest.TestCase):
             route = next(row for row in ROUTES if row[0] == module)
             with self.subTest(module=module), _physical_server() as (public, root, helper):
                 (root / "drift").touch()
-                result = public.vm_workflow(route[1], dict(route[2]))
+                result = public.vm_workflow(route[1], _request(route[2]))
                 self.assertTrue((root / "effect").exists())
                 self.assertEqual("unknown", result.get("state"), result)
                 self.assertEqual("native_source_closure_unavailable", result.get("reason"))

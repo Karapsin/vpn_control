@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -396,6 +397,9 @@ def retain_cli_failure(args, receipt, name, record, guard):
 
 
 def invoke_retained(args, receipt, name, *words, **kwargs):
+    admission = getattr(args, "readiness_admission", None)
+    if admission is not None:
+        admission.revalidate()
     try:
         value = invoke(args.cli, args.serial, *words, **kwargs)
     except InvocationFailure as error:
@@ -575,7 +579,7 @@ def fixture_start_ticks(pid):
     return ticks
 
 
-def validate_intent(args):
+def validate_intent(args, *, local_only=False):
     """Reobserve the exact source, package, owner, backup and idle session."""
     if args.intent_file != args.output / "intent.json":
         raise ValueError("installer intent path is not the task-owned file")
@@ -599,6 +603,8 @@ def validate_intent(args):
             opening.get("version") != 7 or not isinstance(opening.get("rules"), dict)):
         raise ValueError("installer opening backup content changed")
     target_admission.verify_staged_pair(pair, args.base_apk, args.target_apk)
+    if local_only:
+        return intent
     adb = tls.Adb(args.adb, args.serial)
     if adb.shell_id() != "uid=2000":
         raise ValueError("installer public UID changed")
@@ -657,6 +663,35 @@ def main():
         raise SystemExit("Android installer lifecycle requires POSIX private file APIs")
     args.output.mkdir(mode=0o700, parents=True, exist_ok=True)
     args.cli_environment = tls.public_cli_environment(args.adb, args.cli)
+    if os.path.lexists(args.output / "run-started.json"):
+        raise FileExistsError("installer_original_run_already_admitted")
+    # Close local ownership and immutable intent before readiness can recover a
+    # guest. Remote baseline observation follows the admitted actual session.
+    args.intent = validate_intent(args, local_only=True)
+    port = os.environ.get("ANDROID_ADB_SERVER_PORT", "5037")
+    if not port.isdecimal() or not 1024 <= int(port) <= 65535:
+        raise SystemExit("fixture_entrypoint_mismatch")
+    adb_socket = os.environ.get("ADB_SERVER_SOCKET", "tcp:localhost:" + port)
+    if adb_socket not in {"tcp:localhost:" + port, "tcp:127.0.0.1:" + port}:
+        raise SystemExit("fixture_entrypoint_mismatch")
+    adb_path = shutil.which(args.adb)
+    if adb_path is None:
+        raise SystemExit("fixture_entrypoint_mismatch")
+    from agent_tools import readiness_entrypoints
+    args.readiness_admission = readiness_entrypoints.from_environment(
+        ROOT, "android_installer_lifecycle", "run",
+        expected_binding={"adb": str(Path(adb_path).resolve(strict=True)), "serial": args.serial,
+                          "avd": args.avd, "serverPort": int(port)})
+    try:
+        if args.cli.suffix.lower() != ".py":
+            from agent_tools import readiness_adb_dispatch
+            args.cli_environment = readiness_adb_dispatch.environment(args.readiness_admission, args.cli_environment)
+        _run_admitted(args)
+    finally:
+        args.readiness_admission.close()
+
+
+def _run_admitted(args):
     args.intent = validate_intent(args)
     target_admission._write_private(args.output / "run-started.json",
         {"correlationId": args.intent["correlationId"], "state": "may_have_started"})
@@ -699,6 +734,8 @@ def main():
             reconciliation_timeout_seconds=args.reconciliation_timeout_seconds,
             reconciliation_poll_seconds=args.reconciliation_poll_seconds,
             cli_environment=args.cli_environment)
+        lifecycle.dispatch_guard = args.readiness_admission.revalidate
+        lifecycle.readiness_admission = args.readiness_admission
         target = "/apex/com.android.conscrypt/cacerts" if args.api == "35" else "/system/etc/security/cacerts"
         tls.run_fixture_lifecycle(lifecycle, action, target_install=True, ca_store_target=target,
                                   expected_proxy="null")

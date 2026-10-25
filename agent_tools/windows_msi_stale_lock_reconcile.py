@@ -141,18 +141,27 @@ def close(root: Path|str,inputs: Mapping[str,Any]) -> dict[str,Any]:
         return {'state':'recovered','replayAllowed':False,'nativeActionAllowed':False}
     except (OSError,ValueError,TypeError,KeyError,WindowsMsiStaleLockReconcileError): return dict(_UNKNOWN)
 
+def _validate_target(root, inputs):
+    try:
+        return stale._validate_target(root, inputs)
+    except stale.WindowsMsiStaleLockRecoveryError as error:
+        raise WindowsMsiStaleLockReconcileError(str(error)) from None
+
+
 def reconcile(root: Path|str,inputs: Mapping[str,Any]) -> dict[str,Any]:
     """Run the new one-shot only after exact old intent and safe proof."""
-    if not isinstance(inputs,Mapping) or dict(inputs)!={'host':'archlinux'}: raise WindowsMsiStaleLockReconcileError('Exact CP117 host is required.')
+    selected = _validate_target(root, inputs)
     try:
         root=Path(root).resolve(strict=True); admitted=_admit(root)
         if admitted is None: return dict(_UNKNOWN)
         config,descriptor,cli_hash=admitted; prior=_read(root)
+        if descriptor != selected: return dict(_UNKNOWN)
         if prior is not None:
-            return close(root,inputs) if prior.get('state')=='recovered' else dict(_UNKNOWN)
+            return close(root,{'host':inputs['host']}) if prior.get('state')=='recovered' else dict(_UNKNOWN)
         if not _safe_proof(root): return dict(_UNKNOWN)
         _write(root,_record(descriptor,'intent'))
+        if _validate_target(root, inputs) != selected: return dict(_UNKNOWN)
         # Reuses the reviewed typed uint32, exclusive same-handle guest removal.
         if stale._run(config,descriptor,cli_hash,'remove')!='removed': return dict(_UNKNOWN)
-        return close(root,inputs)
+        return close(root,{'host':inputs['host']})
     except (OSError,ValueError,TypeError,KeyError,WindowsMsiStaleLockReconcileError): return dict(_UNKNOWN)

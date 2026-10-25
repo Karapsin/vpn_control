@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "finding": "readiness-status without its documented original identity returned generic readiness_admission_unavailable, recorded as an unclassified native failure requiring a regression",
+  "originalEvidence": "native-failure-2a20e761b626ad77daa95e15d746358f",
+  "files": {
+    "mcp_server.before.source": {
+      "path": "agent_tools/mcp_server.py",
+      "sha256": "d1620c0e27b48721bc20f099eac6e6d4c2ed3a0922788e7874df0411133b1c34"
+    },
+    "native_response_diagnostics.before.source": {
+      "path": "agent_tools/native_response_diagnostics.py",
+      "sha256": "08ef37f5d97ff69a26e5a7d187ef411f072d066aeaec90f20d90c5b2ad4d32d4"
+    }
+  }
+}

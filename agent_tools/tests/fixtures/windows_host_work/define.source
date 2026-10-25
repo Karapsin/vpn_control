@@ -1,0 +1,240 @@
+SPEC={'assets': {'drivers': {'bytes': 789645312, 'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/virtio-win.iso', 'sha256': 'e14cf2b94492c3e925f0070ba7fdfedeb2048c91eea9c5a5afb30232a3976331'}, 'firmwareCode': {'bytes': 3653632, 'path': '/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd', 'sha256': 'cc150d941d4f1d39e596dedc545384a66ccfb3c9ba5cf9bc3a54d8d427d4d88f'}, 'firmwareVars': {'bytes': 540672, 'path': '/usr/share/edk2/x64/OVMF_VARS.4m.fd', 'sha256': '5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e'}, 'installer': {'bytes': 7092807680, 'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/windows-x64.iso', 'sha256': 'a61adeab895ef5a4db436e0a7011c92a2ff17bb0357f58b13bbc4062e535e7b9'}}, 'cpus': 4, 'deploymentId': '6e848ad1-8078-4435-9abc-e3a24c6556cd', 'diskGiB': 64, 'headroomMiB': 16384, 'host': 'archlinux', 'memoryMiB': 6144, 'root': '/home/kardinal/vc-lw-6e848ad1', 'vncPort': 5932}
+SETUP={'administrator': 'recoveryadmin', 'imageName': 'Windows 11 Enterprise Evaluation', 'locale': 'en-US', 'user': 'recovery'}
+CONTEXT={'hostBootId': '25515f23-b966-4c3a-ae63-d38452375578', 'pending': []}
+OP='d88fb3ff-4748-4d76-b32f-650bfbd3f5d8'
+def _actor_absent(row,process,birth):
+    import os,select
+    def gone():
+        try:start=birth(row['pid'])
+        except FileNotFoundError:return True
+        except ValueError as error:
+            if str(error)=='instance_process_dead':return True
+            raise
+        return start!=row['startTicks']
+    if gone():return True
+    try:process(row)
+    except (FileNotFoundError,ValueError):
+        # /proc can become empty/disappear after the first live birth read.
+        # Only a second positive death/reuse observation closes that race.
+        if gone():return True
+        # An exiting Linux task can still report R with an empty cmdline and
+        # vanished exe before becoming Z. A pidfd wait proves actual death;
+        # a live mismatch still raises after this short bounded observation.
+        try:fd=os.pidfd_open(row['pid'],0)
+        except ProcessLookupError:
+            if gone():return True
+            raise
+        try:
+            if gone():return True
+            if select.select([fd],[],[],.25)[0] and gone():return True
+        finally:os.close(fd)
+        raise
+    return gone()
+
+def main():
+    import contextlib,hashlib,io,json,os,pathlib,pwd,re,shutil,socket,stat,struct,subprocess,sys,time
+    root=pathlib.Path(SPEC['root'])
+    held=[]
+    parents=[]
+    pins=[]
+    phase='resources'
+    def require(value,reason):
+            if not value:raise ValueError(reason)
+    def generation(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    def structure(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+    def chain():
+            fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd);parents.append((fd,None,None,structure(os.fstat(fd))))
+            for name in root.parent.parts[1:]:
+                parent=fd;fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);held.append(fd)
+                parents.append((fd,parent,name,structure(os.fstat(fd))))
+            info=os.fstat(fd)
+            require(info.st_uid==os.geteuid() and not info.st_mode&0o022 or info.st_uid==0 and info.st_mode&stat.S_ISVTX,'instance_parent')
+            return fd
+    def closing():
+            for fd,parent,name,identity in parents:
+                require(structure(os.fstat(fd))==identity,'instance_parent_changed')
+                require(structure(os.lstat('/') if parent is None else os.stat(name,dir_fd=parent,follow_symlinks=False))==identity,'instance_parent_changed')
+            for fd,path,identity in pins:
+                require(generation(os.fstat(fd))==identity and generation(os.stat(path,follow_symlinks=False))==identity,'instance_source_changed')
+    def pin(path,digest=None,size=None,executable=False):
+            require(os.path.realpath(path)==path,'instance_source')
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);info=os.fstat(fd)
+            require(stat.S_ISREG(info.st_mode) and not info.st_mode&0o022 and 0<info.st_size<=8*1024**3 and (size is None or info.st_size==size),'instance_source')
+            require(not executable or os.access(path,os.X_OK),'instance_binary')
+            h=hashlib.sha256();total=0
+            while True:
+                block=os.read(fd,1024**2)
+                if not block:break
+                total+=len(block);require(total<=info.st_size,'instance_source');h.update(block)
+            require(total==info.st_size and (digest is None or h.hexdigest()==digest),'instance_source')
+            pins.append((fd,path,generation(info)));return fd,h.hexdigest()
+    def private(path,directory=False):
+            s=os.lstat(path);require((stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode)) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==(0o700 if directory else 0o600) and (directory or s.st_nlink==1),'instance_private');return s
+    def save(name,value):
+            fd=os.open(root/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            try:
+                raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode();offset=0
+                while offset<len(raw):offset+=os.write(fd,raw[offset:])
+                os.fsync(fd)
+            finally:os.close(fd)
+    def read(name):
+            path=root/name;private(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                info=os.fstat(fd);require(info.st_size<=65536,'instance_receipt_bound');raw=os.read(fd,65537)
+                require(len(raw)==info.st_size and generation(os.fstat(fd))==generation(info) and generation(os.lstat(path))==generation(info),'instance_receipt_changed')
+                return json.loads(raw)
+            finally:os.close(fd)
+    def birth(pid):
+            with open('/proc/'+str(pid)+'/stat') as f:row=f.read(8193).rsplit(')',1)[1].split()
+            require(row[0] not in ('Z','X') and len(row)>19,'instance_process_dead');return int(row[19])
+    def record(child,argv,exe):
+            start=birth(child.pid);base='/proc/'+str(child.pid)
+            with open(base+'/cmdline','rb') as f:raw=f.read(32769)
+            expected=b'\0'.join(os.fsencode(x) for x in argv)+b'\0'
+            require(raw==expected and birth(child.pid)==start and generation(os.stat(base+'/exe'))==generation(os.fstat(exe)),'instance_process_identity')
+            return {'pid':child.pid,'startTicks':start,'argv':argv,'commandSha256':hashlib.sha256(raw).hexdigest(),'executableGeneration':list(generation(os.fstat(exe)))}
+    def process(row):
+            require(type(row)is dict and set(row)=={'pid','startTicks','argv','commandSha256','executableGeneration'} and type(row['pid'])is int and row['pid']>0 and type(row['startTicks'])is int and row['startTicks']>0,'instance_process_receipt')
+            pid=row['pid'];require(birth(pid)==row['startTicks'],'instance_process_changed');base='/proc/'+str(pid)
+            with open(base+'/cmdline','rb') as f:raw=f.read(32769)
+            require(raw==b'\0'.join(os.fsencode(x) for x in row['argv'])+b'\0' and hashlib.sha256(raw).hexdigest()==row['commandSha256'] and list(generation(os.stat(base+'/exe')))==row['executableGeneration'] and os.stat(base).st_uid==os.geteuid() and birth(pid)==row['startTicks'],'instance_process_changed')
+            return pid
+    def owns(pid,path,is_socket=False):
+            fdlist=os.listdir('/proc/'+str(pid)+'/fd');require(len(fdlist)<=8192,'instance_fd_capacity')
+            if is_socket:
+                with open('/proc/net/unix') as f:raw=f.read(1024**2+1)
+                require(len(raw)<=1024**2,'instance_socket_capacity')
+                # Accepted Unix streams retain the bound pathname too. Identify
+                # the listening stream, then prove its descriptor belongs to pid.
+                rows=[r.split() for r in raw.splitlines()[1:]]
+                matches=[r[6] for r in rows if len(r)>=8 and r[-1]==str(path) and
+                         r[3:6]==['00010000','0001','01']]
+                require(len(matches)==1,'instance_socket_identity');target='socket:['+matches[0]+']'
+                require(any(os.readlink('/proc/'+str(pid)+'/fd/'+n)==target for n in fdlist),'instance_socket_owner')
+            else:
+                identity=private(path);found=False
+                for n in fdlist:
+                    try:info=os.stat('/proc/'+str(pid)+'/fd/'+n)
+                    except FileNotFoundError:continue
+                    if (info.st_dev,info.st_ino)==(identity.st_dev,identity.st_ino):found=True
+                require(found,'instance_disk_owner')
+    def qmp(command,arguments=None):
+            client=socket.socket(socket.AF_UNIX);client.settimeout(3)
+            try:
+                row=read('qemu-started.json');pid=process(row);named=os.lstat(root/'qmp.sock')
+                client.connect(str(root/'qmp.sock'))
+                peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+                require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_peer')
+                stream=client.makefile('rwb',buffering=0)
+                def receive():
+                    line=stream.readline(65537);require(0<len(line)<=65536,'instance_qmp_bound');return json.loads(line)
+                require('QMP' in receive(),'instance_qmp_greeting')
+                for sequence,(name,args) in enumerate((('qmp_capabilities',None),(command,arguments))):
+                    request={'execute':name,'id':sequence}
+                    if args is not None:request['arguments']=args
+                    stream.write((json.dumps(request)+'\n').encode())
+                    for _ in range(32):
+                        value=receive()
+                        if value.get('id')==sequence:break
+                    else:raise ValueError('instance_qmp_response')
+                    require('return' in value,'instance_qmp_error')
+                process(row);require(os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_changed')
+                return value['return']
+            finally:client.close()
+    def guest_state(pid):
+            state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+            client=socket.socket(socket.AF_UNIX);client.settimeout(1)
+            try:
+                owns(pid,root/'qga.sock',True);named=os.lstat(root/'qga.sock');client.connect(str(root/'qga.sock'))
+                peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+                require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_peer')
+                stream=client.makefile('rwb',buffering=0)
+                nonce=int.from_bytes(os.urandom(8),'big')&((1<<63)-1)
+                stream.write(b'\xff'+(json.dumps({'execute':'guest-sync-delimited','arguments':{'id':nonce}})+'\n').encode())
+                def receive():
+                    line=stream.readline(65537);require(0<len(line)<=65536,'instance_qga_bound')
+                    return json.loads(line.lstrip(b'\xff'))
+                # The flush sentinel can itself produce an error; stale complete
+                # replies and partial JSON may also precede the real response.
+                # QGA requires ignoring all input until a delimited matching nonce.
+                deadline=time.monotonic()+3;consumed=0
+                for _ in range(32):
+                    remaining=deadline-time.monotonic();require(remaining>0,'instance_qga_sync')
+                    client.settimeout(min(1,remaining));line=stream.readline(65537)
+                    consumed+=len(line);require(0<len(line)<=65536 and consumed<=262144,'instance_qga_bound')
+                    marker=line.rfind(b'\xff')
+                    if marker<0:continue
+                    try:reply=json.loads(line[marker+1:])
+                    except (ValueError,UnicodeError):continue
+                    if type(reply)is dict and type(reply.get('return'))is int and reply['return']==nonce:break
+                else:raise ValueError('instance_qga_sync')
+                client.settimeout(1)
+                def query(command):
+                    stream.write((json.dumps({'execute':command})+'\n').encode());response=receive()
+                    require('return' in response,'instance_qga_query');return response['return']
+                query('guest-ping');state['guestAgentReady']=True
+                osinfo=query('guest-get-osinfo');name=osinfo.get('pretty-name') or osinfo.get('name')
+                if type(name)is str and 0<len(name)<=256 and not any(ord(c)<32 for c in name):state['osName']=name
+                try:
+                    users=query('guest-get-users')
+                    if type(users)is list and len(users)<=128:
+                        state['ordinarySessionObserved']=any(type(u)is dict and type(u.get('user'))is str and u['user'].rsplit('\\',1)[-1].casefold()==SETUP['user'].casefold() for u in users)
+                except (OSError,ValueError):pass
+                require(os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_changed')
+            except (OSError,ValueError,KeyError,TypeError):
+                state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+            finally:client.close()
+            return state
+    def instance_intent():
+            private(root,True);intent=read('intent.json')
+            require(type(intent)is dict and set(intent)=={'schemaVersion','spec','setup','hostBootId','rootIdentity','assetIdentities'} and type(intent['schemaVersion'])is int and intent['schemaVersion']==1,'instance_intent_fields')
+            require(intent['spec']==SPEC and intent['setup']==SETUP and intent['hostBootId']==CONTEXT['hostBootId'] and intent['rootIdentity']==list(structure(os.lstat(root))),'instance_intent')
+            require(type(intent['assetIdentities'])is dict and set(intent['assetIdentities'])=={'firmwareCode','installer','drivers'},'instance_asset_receipt')
+            return intent
+    def observed():
+            intent=instance_intent()
+            q=read('qemu-started.json');t=read('swtpm-started.json');pid=process(q);tpid=process(t)
+            mutable=read('mutable-artifacts.json')
+            require(type(mutable)is dict and set(mutable)=={'disk.qcow2','uefi-vars.fd'},'instance_mutable_receipt')
+            for name,identity in mutable.items():
+                require(type(identity)is list and len(identity)==5 and list(structure(private(root/name)))==identity,'instance_mutable_changed')
+                owns(pid,root/name)
+            owns(pid,root/'qmp.sock',True);owns(tpid,root/'swtpm.sock',True)
+            state=qmp('query-status');sets=qmp('query-fdsets')
+            require(type(sets)is list,'instance_asset_descriptors')
+            for name,expected in intent['assetIdentities'].items():
+                require(type(expected)is dict and set(expected)=={'set','generation'} and type(expected['set'])is int and
+                        expected['set']==('firmwareCode','installer','drivers').index(name)+1 and type(expected['generation'])is list and
+                        len(expected['generation'])==9 and all(type(x)is int and x>=0 for x in expected['generation']) and
+                        expected['generation'][6]==SPEC['assets'][name]['bytes'],'instance_asset_receipt')
+                selected=[s for s in sets if s.get('fdset-id')==expected['set']]
+                require(len(selected)==1 and len(selected[0].get('fds',[]))==1,'instance_asset_descriptors')
+                item=selected[0]['fds'][0];require(item.get('opaque')=='asset:'+name and type(item.get('fd'))is int and item['fd']>2,'instance_asset_descriptors')
+                require(list(generation(os.stat('/proc/'+str(pid)+'/fd/'+str(item['fd']))))==expected['generation'],'instance_asset_changed')
+            guest=guest_state(pid);process(q);process(t);closing()
+            return {'qemu':{'pid':q['pid'],'startTicks':q['startTicks']},'swtpm':{'pid':t['pid'],'startTicks':t['startTicks']},'qemuStatus':state.get('status'),**guest,'productReady':False}
+    from xml.etree import ElementTree as ET
+    require(pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()==CONTEXT['hostBootId'],'instance_host_epoch')
+    chain();instance_intent();stop=read('migration-graceful-stop.result.json')
+    require(stop['state']=='graceful_stopped' and stop['operationId']=='83098dfa-0f42-4ee9-863e-c3479636a3e2','instance_original_stop')
+    require(_actor_absent(stop['originalQemu'],process,birth) and _actor_absent(stop['originalTpm'],process,birth),'instance_original_stop_live')
+    path=root/'libvirt-proposed.xml';private(path);body=path.read_bytes();require(hashlib.sha256(body).hexdigest()=='b2edafe6410441a63462f912ae1bf7fb79973c23d2e6c8163037344d3d7639f8','instance_xml_changed')
+    domain='vc-recovery-libvirt-6e848ad1';uri='qemu:///session'
+    def run(tail):
+        result=subprocess.run(['/usr/bin/virsh','-c',uri,*tail],stdin=subprocess.DEVNULL,capture_output=True,timeout=20,env={'PATH':'/usr/bin:/bin','HOME':str(pathlib.Path.home()),'USER':pwd.getpwuid(os.geteuid()).pw_name,'LANG':'C','LC_ALL':'C'})
+        require(len(result.stdout)<=262144 and len(result.stderr)<=65536,'instance_libvirt_bound');return result
+    existing=run(['list','--all','--uuid']);require(existing.returncode==0 and SPEC['deploymentId']not in existing.stdout.decode().split(),'instance_libvirt_original_exists')
+    named=run(['domuuid',domain]);require(named.returncode!=0,'instance_libvirt_name_exists')
+    validator=subprocess.run(['/usr/bin/virt-xml-validate',str(path),'domain'],stdin=subprocess.DEVNULL,capture_output=True,timeout=20)
+    require(validator.returncode==0,'instance_libvirt_schema')
+    closing();save('libvirt-define.intent.json',{'operationId':OP,'domain':domain,'uri':uri,'uuid':SPEC['deploymentId'],'xmlSha256':hashlib.sha256(body).hexdigest(),'originalStop':stop['operationId'],'replayAllowed':False})
+    result=run(['define','--validate',str(path)]);save('libvirt-define.callback.json',{'operationId':OP,'code':result.returncode,'stdout':result.stdout.decode(),'stderr':result.stderr.decode(),'replayAllowed':False})
+    observed=run(['domuuid',domain]);require(observed.returncode==0 and observed.stdout.decode().strip()==SPEC['deploymentId'],'instance_libvirt_define_unknown')
+    xml=run(['dumpxml','--inactive',domain]);require(xml.returncode==0,'instance_libvirt_xml_unknown');tree=ET.fromstring(xml.stdout)
+    require(tree.findtext('uuid')==SPEC['deploymentId'] and tree.findtext('name')==domain and tree.findtext('os/nvram')==str(root/'uefi-vars.fd'),'instance_libvirt_identity')
+    disks=tree.findall("devices/disk[@device='disk']/source");require(len(disks)==1 and disks[0].get('file')==str(root/'disk.qcow2'),'instance_libvirt_disk')
+    require(tree.find('devices/tpm/backend/source').get('path')==str(root/'tpm'),'instance_libvirt_tpm')
+    private(root/'disk.qcow2');private(root/'uefi-vars.fd');closing()
+    value={'state':'libvirt_defined','operationId':OP,'domain':domain,'uri':uri,'uuid':SPEC['deploymentId'],'xmlSha256':hashlib.sha256(xml.stdout).hexdigest(),'xml':xml.stdout.decode(),'samePersistedArtifacts':True,'stagingActorsAbsent':True,'replayAllowed':False}
+    save('libvirt-defined.result.json',value);print(json.dumps(value))
+main()

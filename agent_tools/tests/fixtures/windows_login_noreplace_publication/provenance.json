@@ -1,0 +1,1 @@
+{"failure": "Create-only hardlink publication exposes st_nlink=2 before temporary unlink, causing a concurrent strict reader to refuse a complete local or remote receipt.", "reviewedBefore": "a0df13adad019aeb855bce2c615b2df1441ed7da615aaaa7c10c866068c60bc4", "sourceSha256": "a0df13adad019aeb855bce2c615b2df1441ed7da615aaaa7c10c866068c60bc4"}

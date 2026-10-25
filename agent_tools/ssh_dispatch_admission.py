@@ -1,0 +1,75 @@
+"""Explicit remote readiness admission and carried dispatch fences.
+
+Only entering admitted_transport may recover. Builders merely read the current
+context; dispatch and transfer only revalidate the originally admitted identity.
+"""
+from __future__ import annotations
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass,replace
+from pathlib import Path
+import time
+
+from . import readiness
+from . import readiness_transport
+
+_ACTIVE=ContextVar('ssh_dispatch_admission',default=())
+
+
+@dataclass
+class Admission:
+    root: Path
+    host: str
+    operation_identity: str
+    context: object
+    ready: object
+    closed: bool=False
+    extra_guards: tuple=()
+
+    def revalidate(self):
+        if self.closed:
+            raise readiness.ReadinessBlocked('admission_closed',self.operation_identity)
+        from . import ssh_transport
+        budget=ssh_transport._SUBMISSION_DEADLINE.get()
+        context=self.context
+        if budget is not None:
+            context=replace(context,deadline=min(budget,context.deadline)if context.deadline is not None else budget)
+        readiness.revalidate(context,self.ready)
+        for guard in self.extra_guards:
+            guard()
+
+
+
+def add_dispatch_guard(admission, callback):
+    """Attach an additional observer, without probing or recovering now."""
+    if not isinstance(admission,Admission) or admission.closed or not callable(callback):
+        raise ValueError('invalid_dispatch_guard')
+    admission.extra_guards=(*admission.extra_guards,callback)
+    return admission
+
+
+def current(root,host):
+    """Read-only lookup; an unmatched target never inherits another admission."""
+    wanted=Path(root).resolve()
+    for admission in reversed(_ACTIVE.get()):
+        if admission.root==wanted and admission.host==host:
+            if admission.closed:
+                raise readiness.ReadinessBlocked('admission_closed',admission.operation_identity)
+            return admission
+    return None
+
+
+@contextmanager
+def admitted_transport(root,host,operation_identity,*,deadline=None,requirements=None):
+    root=Path(root).resolve(strict=True)
+    requirements=(readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'}))
+                  if requirements is None else requirements)
+    context=readiness_transport.context(root,host,deadline=deadline)
+    ready=readiness.ensure_ready(context,requirements,operation_identity)
+    admission=Admission(root,host,operation_identity,context,ready)
+    token=_ACTIVE.set((*_ACTIVE.get(),admission))
+    try:
+        yield admission
+    finally:
+        admission.closed=True
+        _ACTIVE.reset(token)

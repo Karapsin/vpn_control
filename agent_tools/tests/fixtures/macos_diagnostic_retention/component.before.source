@@ -1,0 +1,138 @@
+"""Prepared fixed metadata GET; private target proof must never be printed."""
+import ctypes as C
+import hashlib,json,os,posixpath,pwd,stat,sys
+from pathlib import PurePosixPath
+_EXECUTING=sys._getframe().f_code
+PINS={
+ 'tart_macos_probe.py':'dc535e8943efc18051bf606200174dd0c103aca80bc39bcddc90946f757cc157',
+ 'tart_macos_service_census.py':'e103665a0d940e5a01f50b709256b957b4dd5480745e26d1b05170fca9687d29',
+ 'tart_macos_active_source_index.py':'245f091012f9ddc41c6c231c1a843d45905abd7a90ddc5011ea7e9ecb5491295'}
+MACHINE='ecdc399a-8f2b-5410-b85d-e4db56ddc6c1';BOOT='87ac272f-619b-4cc0-b9fc-3e32daee5b18'
+UID=502;PRINCIPAL='toolrecovery'
+REASONS=('target_walk_overflow','target_symlink_overflow','target_component_unqualified',
+ 'target_changed','target_nonregular','target_metadata_unavailable','target_filesystem_unavailable',
+ 'source_symlink_changed','source_volume_unqualified','source_inventory_unavailable')
+NAMESPACES=('system_library','library_apple','preboot_cryptex','system_cryptex','system_volumes_data',
+ 'usr','private','other')
+MOUNTS=('root','data','preboot_cryptex','system_cryptex','other')
+class Unavailable(ValueError):pass
+def need(value,reason='target_metadata_unavailable'):
+ if not value:raise Unavailable(reason)
+def namespace(path):
+ for root,kind in (('/System/Library','system_library'),('/Library/Apple','library_apple'),
+  ('/System/Volumes/Preboot/Cryptexes','preboot_cryptex'),('/System/Cryptexes','system_cryptex'),
+  ('/System/Volumes/Data','system_volumes_data'),('/usr','usr'),('/private','private')):
+  if path==root or path.startswith(root+'/'):return kind
+ return 'other'
+def mount_kind(path):
+ if path=='/':return 'root'
+ if path=='/System/Volumes/Data':return 'data'
+ if path.startswith('/System/Volumes/Preboot/Cryptexes'):return 'preboot_cryptex'
+ if path.startswith('/System/Cryptexes'):return 'system_cryptex'
+ return 'other'
+def absolute(path):
+ need(type(path)is str and path.startswith('/')and '\x00'not in path and len(path)<=4096)
+ path=posixpath.normpath(path);need(len(PurePosixPath(path).parts)<=128,'target_walk_overflow');return path
+def resolve_metadata(path,native,service):
+ """No target-content open. Unknown/unsafe component is a finite blocker."""
+ original=path=absolute(path);held=[];entries=[];private=[];links=steps=0
+ try:
+  while True:
+   fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);info=os.fstat(fd)
+   need(info.st_uid==0 and stat.S_ISDIR(info.st_mode)and not info.st_mode&0o022,'target_component_unqualified')
+   held.append((fd,service.generation(info)));parent=fd;parts=PurePosixPath(path).parts[1:];prefix=[];restart=False
+   for offset,name in enumerate(parts):
+    steps+=1;need(steps<=256,'target_walk_overflow')
+    info=os.stat(name,dir_fd=parent,follow_symlinks=False);identity=service.generation(info)
+    need(info.st_uid==0,'target_component_unqualified');prefix.append(name)
+    current='/'+'/'.join(prefix);entries.append((parent,name,identity));row={'path':current,'identity':identity}
+    if stat.S_ISLNK(info.st_mode):
+     links+=1;need(links<=16,'target_symlink_overflow');target=os.readlink(name,dir_fd=parent)
+     need(type(target)is str and target and '\x00'not in target and len(target)<=4096)
+     row.update(kind='symlink',target=target);private.append(row)
+     need(service.generation(os.stat(name,dir_fd=parent,follow_symlinks=False))==identity,'target_changed')
+     target=target if target.startswith('/')else posixpath.join('/'+'/'.join(prefix[:-1]),target)
+     path=absolute(posixpath.join(target,*parts[offset+1:]));restart=True;break
+    need(not info.st_mode&0o022,'target_component_unqualified')
+    if offset<len(parts)-1:
+     need(stat.S_ISDIR(info.st_mode),'target_component_unqualified');row['kind']='directory';private.append(row)
+     child=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+     held.append((child,service.generation(os.fstat(child))));need(held[-1][1]==identity,'target_changed');parent=child
+    else:
+     need(stat.S_ISREG(info.st_mode),'target_nonregular');row['kind']='regular_metadata_only';private.append(row)
+     target_info=info
+   if not restart:break
+  filesystem=service._Statfs()
+  need(native.statfs(os.fsencode(path),C.byref(filesystem))==0,'target_filesystem_unavailable')
+  for descriptor,identity in held:need(service.generation(os.fstat(descriptor))==identity,'target_changed')
+  for descriptor,name,identity in entries:
+   need(service.generation(os.stat(name,dir_fd=descriptor,follow_symlinks=False))==identity,'target_changed')
+  need(service.generation(os.stat(path,follow_symlinks=False))==service.generation(target_info),'target_changed')
+  mount=filesystem.mounted.decode('utf-8','strict');source=filesystem.source.decode('utf-8','strict')
+  root=native.volume();need(type(root)is service.Volume and root.source_eligible,'source_volume_unqualified')
+  public={'namespace':namespace(path),'mountClass':mount_kind(mount),'apfs':filesystem.typename==b'apfs',
+   'readonly':bool(filesystem.flags&1),'snapshot':bool(filesystem.flags&0x40000000),
+   'sameRootFilesystem':tuple(filesystem.fsid)==root.filesystem,'sameRootDevice':target_info.st_dev==root.device,
+   'targetAuthentication':'unqualified'}
+  return public,{'sourcePath':original,'canonicalTargetPath':path,'targetIdentity':service.generation(target_info),
+   'mountPoint':mount,'filesystemSource':source,'filesystemId':list(filesystem.fsid),
+   'filesystemFlags':int(filesystem.flags),'filesystemType':filesystem.typename.decode('utf-8','strict'),'chain':private}
+ except Unavailable:raise
+ except Exception:raise Unavailable('target_metadata_unavailable')from None
+ finally:
+  for fd,_ in reversed(held):os.close(fd)
+def _agent(value):
+ need(type(value)is tuple and len(value)==5 and all(type(v)is int for v in value)
+      and value[0]>0 and value[1]==UID and value[2]==1 and value[3]>0 and 0<=value[4]<1000000)
+def collect(probe,service,index,agent):
+ _agent(agent);base=probe.Native();native=service.NativeServices(base,None)
+ def target():
+  need(os.geteuid()==UID and pwd.getpwuid(UID).pw_name==PRINCIPAL and os.getppid()==agent[0]
+       and base.machine()==MACHINE and base.boot()[0]==BOOT)
+  row=probe._Bsd();need(base.proc.proc_pidinfo(agent[0],3,0,C.byref(row),C.sizeof(row))==C.sizeof(row)
+   and(row.pid,row.uid,row.ppid,row.start_seconds,row.start_microseconds)==agent)
+ target();before=native.volume();reader=index.NativeSSVReader(native);paths,directories=reader.paths()
+ failures={name:0 for name in REASONS};namespaces={name:0 for name in NAMESPACES};mounts={name:0 for name in MOUNTS}
+ relationships={'sameRootFilesystem':0,'sameRootDevice':0,'apfs':0,'readonly':0,'snapshot':0}
+ observed=verified=0;proof=[]
+ for path,_ in paths:
+  info=os.lstat(path)
+  if not stat.S_ISLNK(info.st_mode):continue
+  observed+=1;need(observed<=64,'target_walk_overflow')
+  try:
+   need(info.st_uid==0 and info.st_dev==before.device,'source_symlink_changed')
+   public,private=resolve_metadata(path,native,service)
+   need(service.generation(os.lstat(path))==service.generation(info),'source_symlink_changed')
+   verified+=1;namespaces[public['namespace']]+=1;mounts[public['mountClass']]+=1
+   for key in relationships:relationships[key]+=int(public[key])
+   proof.append(private)
+  except Exception as error:
+   key=error.args[0]if type(error)is Unavailable and len(error.args)==1 and error.args[0]in REASONS else'target_metadata_unavailable'
+   failures[key]+=1
+ need(reader.stable(directories));target();need(native.volume()==before,'source_volume_unqualified')
+ public={'schemaVersion':1,'state':'diagnostic','machine':MACHINE,'boot':BOOT,'uid':UID,
+  'nativeQualified':False,'idleAuthority':False,'targetContentRead':False,'volume':before.public(),
+  'sourceSymlinksObserved':observed,'targetMetadataVerified':verified,'namespaceCounts':namespaces,
+  'mountCounts':mounts,'filesystemRelationships':relationships,'failureCounts':failures,
+  'targetAuthentication':'unqualified'}
+ private={'schemaVersion':1,'kind':'private_source_target_metadata','items':proof}
+ need(len(json.dumps(private).encode())<=1048576,'target_walk_overflow')
+ return {'public':public,'privateTargetProof':private}
+def build(sources,agent,component_raw):
+ _agent(agent)
+ need(type(sources)is dict and set(sources)==set(PINS)and type(component_raw)is bytes
+  and _EXECUTING==compile(component_raw,__file__,'exec',dont_inherit=True,optimize=sys.flags.optimize))
+ for name,digest in PINS.items():need(type(sources[name])is bytes and hashlib.sha256(sources[name]).hexdigest()==digest)
+ source='import json,sys,types\n'
+ source+='if sys.platform!="darwin" or len(sys.argv)!=1:\n print(json.dumps({"public":{"state":"blocked","reason":"macos_symlink_target_diagnostic_unavailable"}}));raise SystemExit(3)\n'
+ source+='import signal;signal.signal(signal.SIGALRM,signal.SIG_DFL);signal.alarm(60)\n'
+ source+='_pkg=types.ModuleType("agent_tools");_pkg.__path__=[];sys.modules["agent_tools"]=_pkg\n_modules=[]\n'
+ for name in PINS:
+  key='agent_tools.'+name[:-3];source+='_m=types.ModuleType('+repr(key)+');sys.modules[_m.__name__]=_m;setattr(_pkg,'+repr(name[:-3])+',_m)\n'
+  source+='exec(compile('+repr(sources[name])+','+repr('<fixed-'+name+'>')+',"exec"),_m.__dict__);_modules.append(_m)\n'
+ source+='_m=types.ModuleType("_fixed_symlink_component");sys.modules[_m.__name__]=_m\n'
+ source+='exec(compile('+repr(component_raw)+',"<fixed-component>","exec"),_m.__dict__)\n'
+ source+='try:\n _result=_m.collect(*_modules,'+repr(agent)+')\n'
+ source+='except Exception:\n _result={"public":{"state":"blocked","reason":"macos_symlink_target_diagnostic_unavailable"}}\n'
+ source+='print(json.dumps(_result,sort_keys=True));raise SystemExit(0 if _result.get("public",{}).get("state")=="diagnostic" else 3)\n'
+ need(len(source.encode())<=524288);return source.encode()

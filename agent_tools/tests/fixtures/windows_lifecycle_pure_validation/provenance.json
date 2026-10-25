@@ -1,0 +1,5 @@
+{
+  "sourcePath": "agent_tools/readiness_windows_lifecycle.py",
+  "sourceSha256": "726b7c88bd0c4ed719870c5465e46fbabe6dca945c0ec090780a05bee44eff10",
+  "failure": "lineage shape validation renders an unused guest command before readiness"
+}

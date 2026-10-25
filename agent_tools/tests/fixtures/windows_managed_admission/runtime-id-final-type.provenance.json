@@ -1,0 +1,10 @@
+{
+  "beforeSha256": "e466c30aa5c3af1b42bdcbab703bd876c36554d1485fc8d4cbe534db404f828a",
+  "discovery": "actual controlled full _current_graph accepted initial domain.ID integer 1 followed by boolean True on its final identity check",
+  "nativeFailureClaimed": false,
+  "preservedReviewEvidence": ".runtime/tool-recovery-windows/direct/runtime-id-final-type-review/evidence.json",
+  "preservedReviewEvidenceSha256": "08745064af5ca76d2059e6817fb0fe54b1f4b4a306ab99a935aa2193139ef3dc",
+  "requiredBehavior": "selected domain runtime ID is exact positive bounded integer before and after; booleans and floats refuse",
+  "schemaVersion": 1,
+  "vmCalls": 0
+}

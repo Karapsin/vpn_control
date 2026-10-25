@@ -1,0 +1,173 @@
+"""Fixed exact-directory ACL/volume GET proposal; no native qualification.
+No content, child, setters, mount control, authentication or idle permission.
+Darwin ACL APIs use zero success (NOT Linux acl_get_entry semantics).
+"""
+import ctypes as C
+import hashlib,json,os,pwd,stat,sys
+from pathlib import PurePosixPath
+_EXECUTING=sys._getframe().f_code
+PINS={'tart_macos_probe.py':'dc535e8943efc18051bf606200174dd0c103aca80bc39bcddc90946f757cc157','tart_macos_service_census.py':'e103665a0d940e5a01f50b709256b957b4dd5480745e26d1b05170fca9687d29','tart_macos_active_source_index.py':'245f091012f9ddc41c6c231c1a843d45905abd7a90ddc5011ea7e9ecb5491295'}
+MACHINE='ecdc399a-8f2b-5410-b85d-e4db56ddc6c1';BOOT='87ac272f-619b-4cc0-b9fc-3e32daee5b18';UID=502;PRINCIPAL='toolrecovery'
+PROOF_SHA='9c9a56be5d654f1c0bbc1d90c64edb8a06acb074ff676f1c51f476d9c8a40d22'
+COMPONENTS=[{'path': '/System/Volumes/Preboot/Cryptexes', 'identity': [16777234, 83, 16895, 5, 0, 0, 160, 1792505406112923999, 1792505406112923999], 'failureIndexes': [0, 1, 2, 3, 4, 5, 6, 7, 8]}]
+import errno
+ACL_TYPE_EXTENDED=0x100
+ACL_MAX_ENTRIES=128
+SEALED=0x02000000
+ENTRY_FLAGS={'inherited':1<<4,'fileInherit':1<<5,'directoryInherit':1<<6,'limitInherit':1<<7,'onlyInherit':1<<8}
+ACL_FLAGS={'deferInherit':1,'noInherit':1<<17}
+REASONS=('component_changed','component_not_directory','component_path_unqualified','component_metadata_unavailable')
+class Unavailable(ValueError):pass
+class GetterUnavailable(ValueError):pass
+def need(value,reason='component_metadata_unavailable'):
+ if not value:raise Unavailable(reason)
+def abi_need(value,reason):
+ if not value:raise GetterUnavailable(reason)
+def _agent(value):
+ need(type(value)is tuple and len(value)==5 and all(type(v)is int for v in value)and value[0]>0 and value[1]==UID and value[2]==1 and value[3]>0 and 0<=value[4]<1000000)
+def generation(info):return tuple(getattr(info,k)for k in ('st_dev','st_ino','st_mode','st_nlink','st_uid','st_gid','st_size','st_mtime_ns','st_ctime_ns'))
+def kernel_flags(info):
+ value=getattr(info,'st_flags',None);need(type(value)is int and 0<=value<2**32);return value
+def error_class():
+ value=C.get_errno()
+ return {errno.EACCES:'permission_denied',errno.EPERM:'permission_denied',errno.EINVAL:'invalid_argument',errno.EBADF:'bad_descriptor',errno.ENOMEM:'allocation_failed',errno.ENOENT:'not_found',getattr(errno,'ENOATTR',93):'attribute_absent',errno.ENOTSUP:'unsupported',errno.EOPNOTSUPP:'unsupported'}.get(value,'other_error')
+class Attrlist(C.Structure):
+ _fields_=[('bitmapcount',C.c_uint16),('reserved',C.c_uint16),('commonattr',C.c_uint32),('volattr',C.c_uint32),('dirattr',C.c_uint32),('fileattr',C.c_uint32),('forkattr',C.c_uint32)]
+class Capabilities(C.Structure):
+ _fields_=[('length',C.c_uint32),('capabilities',C.c_uint32*4),('valid',C.c_uint32*4)]
+def parse_volume(raw):
+ abi_need(type(raw)is bytes and len(raw)==36,'volume_reply_size')
+ row=Capabilities.from_buffer_copy(raw);abi_need(row.length==36,'volume_reply_length')
+ caps=list(row.capabilities);valid=list(row.valid)
+ return {'capabilities':caps,'valid':valid,'formatSealedKnown':bool(valid[0]&SEALED),'formatSealed':bool(caps[0]&valid[0]&SEALED),'scope':'volume_integrity_only','publisherAuthentication':'unqualified','namespaceIntegrity':'unqualified'}
+class NativeMetadata:
+ def __init__(self,lib):
+  self.lib=lib
+  specs={
+   'acl_get_fd_np':(C.c_void_p,[C.c_int,C.c_int]),'acl_valid':(C.c_int,[C.c_void_p]),
+   'acl_get_entry':(C.c_int,[C.c_void_p,C.c_int,C.POINTER(C.c_void_p)]),
+   'acl_get_tag_type':(C.c_int,[C.c_void_p,C.POINTER(C.c_int)]),
+   'acl_get_qualifier':(C.c_void_p,[C.c_void_p]),'acl_free':(C.c_int,[C.c_void_p]),
+   'acl_get_permset_mask_np':(C.c_int,[C.c_void_p,C.POINTER(C.c_uint64)]),
+   'acl_get_flagset_np':(C.c_int,[C.c_void_p,C.POINTER(C.c_void_p)]),
+   'acl_get_flag_np':(C.c_int,[C.c_void_p,C.c_int]),
+   'fgetattrlist':(C.c_int,[C.c_int,C.POINTER(Attrlist),C.c_void_p,C.c_size_t,C.c_ulong]),
+   'mbr_uid_to_uuid':(C.c_int,[C.c_uint32,C.c_void_p]),'mbr_gid_to_uuid':(C.c_int,[C.c_uint32,C.c_void_p])}
+  for name,(result,args)in specs.items():
+   function=getattr(lib,name);function.restype=result;function.argtypes=args
+ def flags(self,pointer,known):
+  flagset=C.c_void_p();abi_need(self.lib.acl_get_flagset_np(pointer,C.byref(flagset))==0 and bool(flagset),'acl_flags_unavailable')
+  result={}
+  for name,bit in known.items():
+   value=self.lib.acl_get_flag_np(flagset,bit);abi_need(value in (0,1),'acl_flags_unavailable');result[name]=bool(value)
+  return result
+ def acl(self,fd):
+  # NULL is failure/absence/unsupported, not an empty successful ACL.
+  C.set_errno(0);acl=self.lib.acl_get_fd_np(fd,ACL_TYPE_EXTENDED)
+  if not acl:return {'state':'unavailable','reason':error_class()}
+  rows=[];result=None;cleanup_error=False
+  try:
+   abi_need(self.lib.acl_valid(acl)==0,'acl_invalid')
+   flags=self.flags(acl,ACL_FLAGS)
+   for index in range(ACL_MAX_ENTRIES+1):
+    entry=C.c_void_p();C.set_errno(0)
+    status=self.lib.acl_get_entry(acl,0 if index==0 else-1,C.byref(entry))
+    if status==-1 and C.get_errno()==errno.EINVAL:
+     # Darwin end convention; acl_valid verified the independent copy first.
+     result={'state':'available','entryCount':len(rows),'orderedEntries':rows,'flags':flags,'effectiveAccess':'not_evaluated'};break
+    abi_need(status==0 and bool(entry),'acl_entry_unavailable')
+    abi_need(index<ACL_MAX_ENTRIES,'acl_entry_overflow')
+    tag=C.c_int();mask=C.c_uint64()
+    abi_need(self.lib.acl_get_tag_type(entry,C.byref(tag))==0 and tag.value in (1,2),'acl_tag_unavailable')
+    abi_need(self.lib.acl_get_permset_mask_np(entry,C.byref(mask))==0,'acl_permissions_unavailable')
+    qualifier=self.lib.acl_get_qualifier(entry);abi_need(bool(qualifier),'acl_qualifier_unavailable')
+    try:guid=C.string_at(qualifier,16).hex()
+    finally:abi_need(self.lib.acl_free(qualifier)==0,'acl_qualifier_release_failed')
+    rows.append({'index':index,'type':'allow'if tag.value==1 else'deny','qualifierGuid':guid,'permissionMask':mask.value,'inheritance':self.flags(entry,ENTRY_FLAGS)})
+   abi_need(result is not None,'acl_entry_overflow')
+  except GetterUnavailable as error:result={'state':'unavailable','reason':error.args[0]}
+  finally:cleanup_error=self.lib.acl_free(acl)!=0
+  if cleanup_error:return {'state':'unavailable','reason':'acl_release_failed'}
+  return result
+ def volume(self,fd):
+  request=Attrlist(5,0,0,0x80020000,0,0,0);reply=Capabilities();C.set_errno(0)
+  if self.lib.fgetattrlist(fd,C.byref(request),C.byref(reply),C.sizeof(reply),0)!=0:return {'state':'unavailable','reason':error_class()}
+  try:return {'state':'available',**parse_volume(bytes(reply))}
+  except GetterUnavailable as error:return {'state':'unavailable','reason':error.args[0]}
+ def read(self,fd):return {'acl':self.acl(fd),'volume':self.volume(fd)}
+ def credentials(self):
+  groups=sorted(set(os.getgroups()+[os.getgid(),os.getegid()]));abi_need(len(groups)<=128,'credential_group_overflow')
+  values={'realUid':os.getuid(),'effectiveUid':os.geteuid(),'realGid':os.getgid(),'effectiveGid':os.getegid(),'groups':groups,'membership':[],'effectiveAccess':'not_evaluated'}
+  for kind,ident in [('uid',os.getuid()),('uid',os.geteuid())]+[('gid',v)for v in groups]:
+   abi_need(type(ident)is int and 0<=ident<2**32,'credential_identity_unavailable');guid=(C.c_ubyte*16)();function=self.lib.mbr_uid_to_uuid if kind=='uid'else self.lib.mbr_gid_to_uuid
+   code=function(ident,guid)
+   values['membership'].append({'kind':kind,'id':ident,'state':'available'if code==0 else'unavailable',**({'guid':bytes(guid).hex()}if code==0 else{})})
+  return values
+
+def directory_metadata(path,expected,native):
+ """Hold all exact ancestor FDs and named generations. Never list/read child."""
+ need(type(path)is str and path.startswith('/')and'\x00'not in path and len(path)<=4096,'component_path_unqualified')
+ parts=PurePosixPath(path).parts;need(len(parts)<=64 and'..'not in parts and'.'not in parts and str(PurePosixPath(path))==path,'component_path_unqualified')
+ opened=[];entries=[]
+ def guard():
+  for fd,identity,flags in opened:
+   now=os.fstat(fd);need(generation(now)==identity and kernel_flags(now)==flags,'component_changed')
+  for parent,name,identity,flags in entries:
+   now=os.stat(name,dir_fd=parent,follow_symlinks=False);need(generation(now)==identity and kernel_flags(now)==flags,'component_changed')
+ try:
+  fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);now=os.fstat(fd);opened.append((fd,generation(now),kernel_flags(now)));parent=fd
+  for name in parts[1:]:
+   now=os.stat(name,dir_fd=parent,follow_symlinks=False);need(stat.S_ISDIR(now.st_mode),'component_not_directory');identity=generation(now);flags=kernel_flags(now)
+   entries.append((parent,name,identity,flags));fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);now=os.fstat(fd);opened.append((fd,generation(now),kernel_flags(now)));need(generation(now)==identity and kernel_flags(now)==flags,'component_changed');parent=fd
+  need(generation(os.fstat(parent))==tuple(expected),'component_changed');guard()
+  first=native.read(parent);guard();second=native.read(parent);guard();need(first==second,'component_changed')
+  return {'componentPath':path,'identity':list(expected),'metadata':first,'namedFdGenerationStable':True,'directoryContentsRead':False,'componentAuthentication':'unqualified','namespaceIntegrity':'unqualified'}
+ except Unavailable:raise
+ except Exception:raise Unavailable('component_metadata_unavailable')from None
+ finally:
+  for fd,_,_ in reversed(opened):os.close(fd)
+
+def public_counts(items):
+ result={'aclAvailableCount':0,'aclEmptyCount':0,'volumeAvailableCount':0,'volumeSealedKnownCount':0,'volumeSealedCount':0,'aclUnavailableReasons':{},'volumeUnavailableReasons':{}}
+ reasons={'permission_denied','invalid_argument','bad_descriptor','allocation_failed','not_found','attribute_absent','unsupported','other_error','acl_invalid','acl_entry_unavailable','acl_entry_overflow','acl_tag_unavailable','acl_permissions_unavailable','acl_qualifier_unavailable','acl_qualifier_release_failed','acl_flags_unavailable','acl_release_failed','volume_reply_size','volume_reply_length'}
+ for item in items:
+  acl=item['metadata']['acl'];volume=item['metadata']['volume']
+  result['aclAvailableCount']+=int(acl['state']=='available');result['aclEmptyCount']+=int(acl.get('entryCount')==0 and acl['state']=='available')
+  result['volumeAvailableCount']+=int(volume['state']=='available');result['volumeSealedKnownCount']+=int(volume.get('formatSealedKnown')is True);result['volumeSealedCount']+=int(volume.get('formatSealed')is True)
+  for key,value in [('aclUnavailableReasons',acl),('volumeUnavailableReasons',volume)]:
+   if value['state']!='available':
+    reason=value.get('reason');reason=reason if type(reason)is str and reason in reasons else'other_error';result[key][reason]=result[key].get(reason,0)+1
+ return result
+
+def collect(probe,service,index,agent):
+ _agent(agent)
+ base=probe.Native();system=service.NativeServices(base,None);native=NativeMetadata(base.lib)
+ def target():
+  need(os.geteuid()==UID and pwd.getpwuid(UID).pw_name==PRINCIPAL and os.getppid()==agent[0]and base.machine()==MACHINE and base.boot()[0]==BOOT)
+  row=probe._Bsd();need(base.proc.proc_pidinfo(agent[0],3,0,C.byref(row),C.sizeof(row))==C.sizeof(row)and(row.pid,row.uid,row.ppid,row.start_seconds,row.start_microseconds)==agent)
+ target();root=system.volume();credentials=native.credentials();result=[];failures=dict.fromkeys(REASONS,0)
+ for component in COMPONENTS:
+  target()
+  try:value=directory_metadata(component['path'],component['identity'],native);value['originalFailureIndexes']=component['failureIndexes'];result.append(value)
+  except Exception as error:
+   reason=error.args[0]if type(error)is Unavailable and len(error.args)==1 and error.args[0]in REASONS else'component_metadata_unavailable';failures[reason]+=len(component['failureIndexes'])
+ target();need(system.volume()==root and native.credentials()==credentials)
+ private={'schemaVersion':1,'kind':'private_exact_component_acl_volume','originalFailureProofSha256':PROOF_SHA,'credentials':credentials,'items':result}
+ need(len(json.dumps(private).encode())<=1048576)
+ public={'schemaVersion':1,'state':'diagnostic','machine':MACHINE,'boot':BOOT,'uid':UID,'nativeQualified':False,'idleAuthority':False,'targetContentRead':False,'directoryContentsRead':False,'componentAuthentication':'unqualified','namespaceIntegrity':'unqualified','aclEffectiveAccess':'not_evaluated','rootVolume':root.public(),'uniqueComponentsObserved':len(COMPONENTS),'componentsVerified':len(result),'failureCounts':failures}
+ public.update(public_counts(result))
+ return {'public':public,'privateComponentProof':private}
+
+def build(sources,agent,component_raw):
+ _agent(agent);need(type(sources)is dict and set(sources)==set(PINS)and type(component_raw)is bytes and _EXECUTING==compile(component_raw,__file__,'exec',dont_inherit=True,optimize=sys.flags.optimize))
+ for name,digest in PINS.items():need(type(sources[name])is bytes and hashlib.sha256(sources[name]).hexdigest()==digest)
+ source='import json,sys,types\n'
+ source+='if sys.platform!="darwin" or len(sys.argv)!=1:\n print(json.dumps({"public":{"state":"blocked","reason":"macos_component_acl_diagnostic_unavailable"}}));raise SystemExit(3)\n'
+ source+='import signal;signal.signal(signal.SIGALRM,signal.SIG_DFL);signal.alarm(60)\n'
+ source+='_pkg=types.ModuleType("agent_tools");_pkg.__path__=[];sys.modules["agent_tools"]=_pkg\n_modules=[]\n'
+ for name in PINS:
+  key='agent_tools.'+name[:-3];source+='_m=types.ModuleType('+repr(key)+');sys.modules[_m.__name__]=_m;setattr(_pkg,'+repr(name[:-3])+',_m)\n';source+='exec(compile('+repr(sources[name])+','+repr('<fixed-'+name+'>')+',"exec"),_m.__dict__);_modules.append(_m)\n'
+ source+='_m=types.ModuleType("_fixed_component_acl");sys.modules[_m.__name__]=_m\nexec(compile('+repr(component_raw)+',"<fixed-component>","exec"),_m.__dict__)\n'
+ source+='try:\n _result=_m.collect(*_modules,'+repr(agent)+')\nexcept Exception:\n _result={"public":{"state":"blocked","reason":"macos_component_acl_diagnostic_unavailable"}}\n'
+ source+='print(json.dumps(_result,sort_keys=True));raise SystemExit(0 if _result.get("public",{}).get("state")=="diagnostic" else 3)\n'
+ need(len(source.encode())<=262144);return source.encode()

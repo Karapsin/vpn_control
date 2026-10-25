@@ -1,0 +1,21 @@
+IMMEDIATE FAILURE test_actual_loaded_frozen_resource_driver_preflight_submit_readonly_and_mutation_fences (agent_tools.tests.test_native_engineering_tmux_future.FutureFrozenTmuxTest.test_actual_loaded_frozen_resource_driver_preflight_submit_readonly_and_mutation_fences)
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_engineering_tmux_future.py", line 67, in test_actual_loaded_frozen_resource_driver_preflight_submit_readonly_and_mutation_fences
+    self.assertEqual(0,child.returncode,child.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 != 1 : Traceback (most recent call last):
+  File "<string>", line 13, in <module>
+    admitted=context.EngineeringExecutionContext.qualify(root,source,request,(artifact,))
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpjj_phmu0/native/agent_tools/native_execution_context.py", line 312, in qualify
+    'catalogue':_catalogue(source,request['sourceSha']),
+                ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpjj_phmu0/native/agent_tools/native_execution_context.py", line 244, in _catalogue
+    _need(name in _DYNAMIC.get(path,frozenset()) and 'agent_tools/'+name+'.py' in rows,'native_dependency_dynamic_unknown')
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmpjj_phmu0/native/agent_tools/native_execution_context.py", line 43, in _need
+    if not value:raise ExecutionContextError(reason)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+agent_tools.native_execution_context.ExecutionContextError: native_dependency_dynamic_unknown
+
+
+.............................E

@@ -1,0 +1,7 @@
+{
+  "sourceSha256": "c67ea2af402252058c3448a9d3ba40b5125f17ec1e0d95bdd5bb3b14f943a94d",
+  "failure": "Fixed job controller generated/saved source before entering readiness admission and clamped expired absolute budget to 0.1 seconds, permitting dispatch after preparation exhausted deadline.",
+  "nativeCompile": "c67e C# prefix compiled on new libvirt fixture op1ea78100-79aa-4ff3-b9ee-79e6aa5a8fb6; no NativeJob methods invoked.",
+  "red": "complete original _run ordered generation before admission and dispatched after source generation exhausted caller budget",
+  "green": "readiness enters before generation, source and argv preparation recheck absolute budget before any child dispatch"
+}

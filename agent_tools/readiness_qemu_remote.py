@@ -1,0 +1,594 @@
+"""Finite owned-QEMU Linux observer and persisted-instance lifecycle packets.
+
+Packets contain public selectors and source, never credentials. The ordinary SSH
+key remains a protected fixture file and is bound by metadata, without hashing it.
+"""
+import ast
+import inspect
+from pathlib import Path
+
+
+def _main():
+    import fcntl, hashlib, json, os, pathlib, shlex, shutil, socket, stat, struct, subprocess, time
+    from uuid import UUID, uuid5
+    root = pathlib.Path(BINDING['root'])
+    held = []; lock = -1; phase = 'identity'; submitted = False; idle_candidate = None; idle_legacy_candidate = None; operator_generation = None; observed = None; pending_shutdown = None
+    def need(value, reason):
+        if not value:
+            raise ValueError(reason)
+    def generation(value):
+        return [value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid,
+                value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns]
+    def identity(value):
+        return [value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid]
+    def file(name, *, secret=False):
+        path = root / name
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        held.append((descriptor, path, generation(os.fstat(descriptor))))
+        metadata = os.fstat(descriptor)
+        need(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid() and metadata.st_nlink == 1
+             and stat.S_IMODE(metadata.st_mode) in ({0o600} if secret else {0o400, 0o600}), 'file_ownership')
+        pin = {'generation': generation(metadata)}
+        if secret:
+            return None, pin
+        need(0 < metadata.st_size <= 262144, 'file_bound')
+        raw = os.read(descriptor, 262145)
+        need(len(raw) == metadata.st_size, 'file_read')
+        pin['sha256'] = hashlib.sha256(raw).hexdigest()
+        return raw, pin
+    def public_image(receipt):
+        need(type(receipt) is dict and set(receipt) == {'url', 'sha256', 'bytes'}
+             and receipt['url'] == 'https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img'
+             and type(receipt['sha256']) is str and len(receipt['sha256']) == 64
+             and all(c in '0123456789abcdef' for c in receipt['sha256'])
+             and type(receipt['bytes']) is int and 0 < receipt['bytes'] <= 2 * 1024**3, 'image_receipt')
+        path = root / 'ubuntu.img'
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        metadata = os.fstat(descriptor); held.append((descriptor, path, generation(metadata)))
+        need(stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid() and metadata.st_nlink == 1
+             and stat.S_IMODE(metadata.st_mode) == 0o400 and metadata.st_size == receipt['bytes'], 'image_owner')
+        if PINS is None or ACTION == 'start':
+            digest = hashlib.sha256(); total = 0
+            while True:
+                block = os.read(descriptor, 1048576)
+                if not block:
+                    break
+                total += len(block); need(total <= receipt['bytes'], 'image_bound'); digest.update(block)
+            need(total == receipt['bytes'] and digest.hexdigest() == receipt['sha256'], 'image_integrity')
+        return {'generation': generation(metadata), 'sha256': receipt['sha256']}
+    def record(name):
+        raw, pin = file(name)
+        return json.loads(raw), pin
+    def closing():
+        if lock >= 0:
+            need(generation(os.fstat(lock)) == operator_generation == generation(os.stat(root / 'operator.lock', follow_symlinks=False)), 'operator_changed')
+        for descriptor, path, expected in held:
+            need(generation(os.fstat(descriptor)) == expected == generation(os.stat(path, follow_symlinks=False)), 'file_changed')
+        need(identity(os.lstat(root)) == root_identity, 'root_changed')
+    def save(path, value):
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(value, stream, sort_keys=True); stream.flush(); os.fsync(stream.fileno())
+        parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    def birth(pid):
+        try:
+            fields = pathlib.Path('/proc', str(pid), 'stat').read_text().rsplit(')', 1)[1].split()
+        except FileNotFoundError:
+            return None
+        return None if fields[0] in {'Z', 'X'} else int(fields[19])
+    def actor(owner):
+        current = birth(owner['pid'])
+        if current != owner['startTicks']:
+            return False
+        process = pathlib.Path('/proc', str(owner['pid']))
+        need(process.stat().st_uid == os.geteuid(), 'process_owner')
+        need(hashlib.sha256((process / 'cmdline').read_bytes()).hexdigest() == owner['argvSha256'], 'process_command')
+        return birth(owner['pid']) == owner['startTicks']
+    def rpc(name, command, *, agent=False):
+        need(actor(owner), 'process_changed')
+        path = root / name; inode = os.lstat(path).st_ino
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(2); client.connect(str(path))
+            need(struct.unpack('3i', client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[:2] ==
+                 (owner['pid'], os.geteuid()), 'socket_peer')
+            stream = client.makefile('rwb', buffering=0)
+            def read():
+                line = stream.readline(65537)
+                need(0 < len(line) <= 65536, 'socket_bound')
+                return line
+            if agent:
+                nonce = int.from_bytes(os.urandom(8), 'big') & ((1 << 63) - 1)
+                stream.write(b'\xff' + (json.dumps({'execute': 'guest-sync-delimited', 'arguments': {'id': nonce}}) + '\n').encode())
+                for _ in range(32):
+                    raw = read(); marker = raw.rfind(b'\xff')
+                    if marker < 0:
+                        continue
+                    try:
+                        response = json.loads(raw[marker + 1:])
+                    except ValueError:
+                        continue
+                    if response.get('return') == nonce:
+                        break
+                else:
+                    raise ValueError('agent_sync')
+                commands = [command]
+            else:
+                need('QMP' in json.loads(read()), 'qmp_greeting')
+                commands = ['qmp_capabilities', command]
+            for sequence, item in enumerate(commands):
+                stream.write((json.dumps({'execute': item, 'id': sequence}) + '\n').encode())
+                for _ in range(32):
+                    response = json.loads(read())
+                    if response.get('id') == sequence:
+                        break
+                need('return' in response, 'socket_response')
+        need(actor(owner) and os.lstat(path).st_ino == inode, 'socket_generation')
+        return response['return']
+    def ssh(arguments, input_payload=None):
+        need(actor(owner), 'process_changed')
+        argv = ['/usr/bin/ssh', '-F', '/dev/null', '-p', str(prepared['sshPort']), '-i', str(root / 'client-key'),
+                '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes',
+                '-o', 'UserKnownHostsFile=' + str(root / 'known-hosts'), '-o', 'ConnectTimeout=3',
+                '-o', 'ConnectionAttempts=1', '-T', 'recovery@127.0.0.1', shlex.join(arguments)]
+        result = subprocess.run(argv, **({'stdin': subprocess.DEVNULL} if input_payload is None else {'input': input_payload}), capture_output=True, timeout=20)
+        need(len(result.stdout) <= 262144 and len(result.stderr) <= 65536, 'guest_output_bound')
+        closing(); need(actor(owner), 'process_changed')
+        return result
+    def clean_stop():
+        if not manager.exists():
+            return None
+        paths = list(manager.glob('*.intent.json'))
+        need(len(paths) <= 1024, 'lifecycle_visibility')
+        selected = None
+        for path in paths:
+            previous, _ = record('readiness-qemu/' + path.name)
+            need(type(previous) is dict and set(previous) == {'action', 'recoveryId', 'boot', 'owner', 'idleVisibility', 'idleBlockers'}
+                 and previous['action'] in {'pause', 'resume', 'reboot', 'poweroff', 'start'}
+                 and path.name == previous['recoveryId'] + '.intent.json', 'lifecycle_visibility')
+            if (previous['action'] == 'poweroff' and previous['owner'] == owner
+                    and previous['idleVisibility'] == ['reservations', 'running_jobs', 'unknown_jobs', 'installers', 'lifecycle_phases', 'operators', 'protected_processes']
+                    and previous['idleBlockers'] == [] and type(previous['boot']) is str):
+                need(selected is None, 'multiple_shutdown_intents')
+                selected = {'machineUuid': BINDING['machine'], 'hostBootId': host_boot,
+                    'actor': {key: owner[key] for key in ('pid', 'startTicks')},
+                    'cleanPoweroffOperationId': str(uuid5(UUID(BINDING['machine']), previous['recoveryId'])),
+                    'cleanPoweroff': True, 'guestJobsAbsent': True}
+        return selected
+    def completed_refusal(reason):
+        # This branch runs only in the terminal exception path while the
+        # original operator barrier is still held. No VM path follows it.
+        if reason != 'prepared_context_stale' or submitted or lock < 0 or ACTION not in {'resume', 'reboot', 'start'}:
+            return None
+        try:
+            need(type(DISPATCH_IDENTITY) is dict and set(DISPATCH_IDENTITY) == {'recoveryId', 'attempt', 'dispatchDigest'}
+                 and DISPATCH_IDENTITY['recoveryId'] == RECOVERY_ID
+                 and type(DISPATCH_IDENTITY['attempt']) is int and 1 <= DISPATCH_IDENTITY['attempt'] <= 3
+                 and all(type(value) is str and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
+                         for value in (RECOVERY_ID, DISPATCH_IDENTITY['dispatchDigest'])), 'refusal_dispatch_identity')
+            need(PINS is not None and pins == PINS and type(EXPECTED) is dict and set(EXPECTED) == {'owner', 'boot', 'guest'}
+                 and observed is not None and EXPECTED['owner'] == owner == observed['owner'], 'refusal_original_owner')
+            original_alive = actor(owner)
+            stopped = clean_stop()
+            need(original_alive or (ACTION == 'start' and observed['guest'] == 'stopped' and stopped is not None), 'refusal_original_actor')
+            if manager.exists():
+                manager_generation = generation(os.lstat(manager))
+                need(stat.S_ISDIR(manager_generation[2]) and manager_generation[3] == os.geteuid()
+                     and stat.S_IMODE(manager_generation[2]) == 0o700, 'refusal_manager_owner')
+            else:
+                manager_generation = None
+            need(not os.path.lexists(manager / (RECOVERY_ID + '.intent.json')), 'refusal_original_intent')
+            root_generation = generation(os.lstat(root)); controller_birth = birth(os.getpid())
+            need(controller_birth is not None, 'refusal_controller_identity')
+            closing()
+            need((generation(os.lstat(manager)) if manager_generation is not None else None) == manager_generation
+                 and (manager_generation is not None or not os.path.lexists(manager))
+                 and not os.path.lexists(manager / (RECOVERY_ID + '.intent.json'))
+                 and generation(os.lstat(root)) == root_generation and birth(os.getpid()) == controller_birth,
+                 'refusal_barrier_changed')
+            return {'schemaVersion': 1, 'provider': 'raw-qemu-linux', 'reason': reason, 'action': ACTION,
+                **DISPATCH_IDENTITY, 'controllerSourceSha256': CONTROLLER_SOURCE_SHA,
+                'controller': {'pid': os.getpid(), 'startTicks': controller_birth, 'uid': os.geteuid(), 'hostBootId': host_boot},
+                'fixture': BINDING, 'assets': PINS, 'expected': EXPECTED,
+                'actual': {key: observed[key] for key in ('owner', 'boot', 'guest')},
+                'rootGeneration': root_generation, 'operatorGeneration': operator_generation,
+                'managerGeneration': manager_generation, 'originalActor': 'alive' if original_alive else 'absent',
+                'cleanStop': stopped if not original_alive else None, 'powerIntentAbsent': True, 'noVmEffectAdmitted': True,
+                'resourceSnapshotSha256': None if ADMISSION is None else hashlib.sha256(json.dumps(ADMISSION, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest(),
+                'phase': phase}
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def pending_record(name):
+        raw, pin = file(name)
+        def pairs(items):
+            result = {}
+            for key, value in items:
+                need(key not in result, 'pending_shutdown_duplicate_field')
+                result[key] = value
+            return result
+        return json.loads(raw, object_pairs_hook=pairs), pin
+
+    def original_pending_shutdown(qmp_state):
+        if not manager.exists():
+            return None
+        before = generation(os.lstat(manager)); paths = list(manager.glob('*.intent.json'))
+        need(len(paths) <= 1024, 'lifecycle_visibility')
+        selected = None
+        for path in paths:
+            previous, _ = pending_record('readiness-qemu/' + path.name)
+            need(type(previous) is dict and set(previous) == {'action', 'recoveryId', 'boot', 'owner', 'idleVisibility', 'idleBlockers'}
+                 and previous['action'] in {'pause', 'resume', 'reboot', 'poweroff', 'start'}
+                 and path.name == previous['recoveryId'] + '.intent.json', 'lifecycle_visibility')
+            if previous['action'] != 'poweroff' or previous['owner'] != owner:
+                continue
+            need(selected is None and type(previous['recoveryId']) is str and len(previous['recoveryId']) == 64
+                 and all(c in '0123456789abcdef' for c in previous['recoveryId'])
+                 and type(previous['boot']) is str and str(UUID(previous['boot'])) == previous['boot']
+                 and type(previous['idleVisibility']) is list and len(previous['idleVisibility']) == 7
+                 and all(type(value) is str for value in previous['idleVisibility'])
+                 and set(previous['idleVisibility']) == {'reservations', 'running_jobs', 'unknown_jobs', 'installers', 'lifecycle_phases', 'operators', 'protected_processes'}
+                 and previous['idleBlockers'] == [], 'pending_shutdown_identity')
+            ack_path = manager / (previous['recoveryId'] + '.ack.json')
+            ack = {'present': False, 'acknowledged': None, 'returnCode': None}
+            if os.path.lexists(ack_path):
+                reply, _ = pending_record('readiness-qemu/' + ack_path.name)
+                need(type(reply) is dict and set(reply) == {'acknowledged', 'returnCode'}
+                     and type(reply['acknowledged']) is bool and type(reply['returnCode']) is int
+                     and reply['acknowledged'] == (reply['returnCode'] == 0), 'pending_shutdown_ack')
+                ack = {'present': True, **reply}
+            selected = {'schemaVersion': 1, 'state': 'unknown', 'reason': 'original_shutdown_pending',
+                'recoveryId': previous['recoveryId'], 'originalBoot': previous['boot'],
+                'actor': {key: owner[key] for key in ('pid', 'startTicks')}, 'qmpState': qmp_state, 'ack': ack,
+                'completionProven': False, 'replayAllowed': False, 'reservationReleaseAllowed': False}
+        need(generation(os.lstat(manager)) == before and actor(owner), 'lifecycle_visibility')
+        return selected
+
+    def facts():
+        nonlocal phase, idle_candidate, idle_legacy_candidate, pending_shutdown
+        result = {'guest': 'stopped', 'boot': None, 'account': None, 'session': None, 'guestAgent': False,
+                  'idleVisibility': [], 'idleBlockers': [], 'owner': owner, 'qmpInode': None, 'guestMachineId': None}
+        if not actor(owner):
+            return result
+        phase = 'qmp'
+        state = rpc('qmp.sock', 'query-status')['status']
+        need(rpc('qmp.sock', 'query-uuid')['UUID'].lower() == BINDING['machine'], 'machine_identity')
+        result['qmpInode'] = os.lstat(root / 'qmp.sock').st_ino
+        pending_shutdown = original_pending_shutdown(state)
+        if pending_shutdown is not None:
+            # A queued request and even a successful ACK do not establish
+            # shutdown or a new boot. Close all guest/effect admission while
+            # preserving the original identity and its unknown outcome.
+            result['guest'] = 'unknown'
+            result['idleBlockers'] = ['original_shutdown_pending']
+            return result
+        if state in {'paused', 'suspended'}:
+            result['guest'] = state
+            return result
+        result['guest'] = 'booting'
+        if state not in {'running', 'guest-panicked', 'internal-error'}:
+            return result
+        phase = 'guest_ssh'
+        query = ssh(['sudo', '-n', *GUEST_COMMAND], GUEST_PAYLOAD)
+        if query.returncode:
+            return result
+        guest = json.loads(query.stdout)
+        idle_candidate = guest.get('idleBaselineCandidate'); idle_legacy_candidate = guest.get('idleLegacyCandidate')
+        need(guest['account'] == 'recovery' and guest['originalUid'] == '1000', 'guest_account')
+        need(type(guest['machineId']) is str and len(guest['machineId']) == 32
+             and all(c in '0123456789abcdef' for c in guest['machineId']), 'guest_machine_identity')
+        result.update(guest='running', boot=guest['bootId'], account='uid:1000:recovery', guestMachineId=guest['machineId'])
+        result['idleVisibility'] = ['reservations', 'installers', 'lifecycle_phases', 'operators', 'protected_processes']
+        if guest['jobVisibilityComplete']:
+            result['idleVisibility'] = ['reservations', 'running_jobs', 'unknown_jobs', 'installers',
+                                        'lifecycle_phases', 'operators', 'protected_processes']
+        if guest['protectedOrInstallerProcesses']:
+            result['idleBlockers'].extend(['installers', 'protected_processes'])
+        if guest['systemdJobs'] or guest['cloudInit'] != 'status: done':
+            result['idleBlockers'].append('lifecycle_phases')
+        if guest['foreignSessions']:
+            result['idleBlockers'].append('operators')
+        if guest['unknownOrRunningJobs']:
+            result['idleBlockers'].extend(['running_jobs', 'unknown_jobs'])
+        phase = 'guest_agent'
+        try:
+            result['guestAgent'] = rpc('qga.sock', 'guest-ping', agent=True) == {}
+        except (OSError, ValueError, KeyError):
+            result['guestAgent'] = False
+        if state in {'guest-panicked', 'internal-error'}:
+            result['guest'] = 'unhealthy'
+        # An admitted reboot stays in progress until a new actual kernel boot.
+        if manager.exists():
+            for path in manager.glob('*.intent.json'):
+                pending = json.loads(path.read_text())
+                if pending['action'] == 'reboot' and pending['boot'] == result['boot']:
+                    result['guest'] = 'booting'
+        return result
+    try:
+        need(root.is_absolute() and root == root.resolve(strict=True), 'root_path')
+        root_identity = identity(os.lstat(root))
+        need(stat.S_ISDIR(root_identity[2]) and root_identity[3] == os.geteuid() and stat.S_IMODE(root_identity[2]) == 0o700, 'root_owner')
+        host_boot = pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        prepared, prepared_pin = record('prepared.json')
+        initial_owner, owner_pin = record('qemu-owner.json')
+        reservation, reservation_pin = record('reservation.json')
+        need(prepared['operationId'] == initial_owner['preparationId'] == reservation['operationId'] == BINDING['machine'], 'original_identity')
+        need(prepared['guestAccount'] == 'recovery' and prepared['interactiveDesktop'] is False and
+             reservation['operator'] == 'tool-recovery-qemu' and initial_owner['hostBootId'] == host_boot, 'original_authority')
+        _, key_pin = file('client-key', secret=True)
+        _, known_pin = file('known-hosts')
+        # Seed media contains the fixture host private key: pin metadata only.
+        _, seed_pin = file('seed.iso', secret=True)
+        image_receipt, image_receipt_pin = record('image.json')
+        base_pin = public_image(image_receipt)
+        disk_identity = identity(os.lstat(root / 'disk.qcow2'))
+        need(stat.S_ISREG(disk_identity[2]) and disk_identity[3] == os.geteuid() and stat.S_IMODE(disk_identity[2]) == 0o600, 'disk_owner')
+        pins = {'root': root_identity, 'prepared': prepared_pin, 'initialOwner': owner_pin, 'reservation': reservation_pin,
+                'key': key_pin, 'knownHosts': known_pin, 'seed': seed_pin, 'base': base_pin, 'imageReceipt': image_receipt_pin, 'disk': disk_identity, 'hostBoot': host_boot}
+        if PINS is not None:
+            need(pins == PINS, 'fixture_changed')
+        manager = root / 'readiness-qemu'
+        if manager.exists():
+            need(not manager.is_symlink() and manager.is_dir() and manager.stat().st_uid == os.geteuid()
+                 and stat.S_IMODE(manager.stat().st_mode) == 0o700, 'manager_owner')
+        current = manager / 'current.json'
+        owner = record('readiness-qemu/current.json')[0] if current.exists() else initial_owner
+        owner_fields = {'operationId', 'preparationId', 'hostBootId', 'pid', 'startTicks', 'argvSha256', 'qmpSocketInode', 'state', 'guestSubmitted'}
+        need(type(owner) is dict and set(owner) == owner_fields and owner['preparationId'] == BINDING['machine']
+             and owner['hostBootId'] == host_boot and owner['guestSubmitted'] is True and owner['state'] == 'running'
+             and all(type(owner[key]) is int and owner[key] > 0 for key in ('pid', 'startTicks', 'qmpSocketInode'))
+             and type(owner['argvSha256']) is str and len(owner['argvSha256']) == 64
+             and all(c in '0123456789abcdef' for c in owner['argvSha256'])
+             and type(owner['operationId']) is str and 0 < len(owner['operationId']) <= 64
+             and all(c in '0123456789abcdef-' for c in owner['operationId']), 'owner_record')
+        phase = 'operator'
+        lock = os.open(root / 'operator.lock', os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
+        operator_generation = generation(os.fstat(lock))
+        need(stat.S_ISREG(operator_generation[2]) and operator_generation[3] == os.geteuid()
+             and stat.S_IMODE(operator_generation[2]) == 0o600 and operator_generation[5] == 1, 'operator_owner')
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('competing_operator') from None
+        host_namespace = None
+        if (root / 'guest-jobs.json').exists():
+            host_namespace, _ = record('guest-jobs.json')
+        if NAMESPACE is not None:
+            need(host_namespace == NAMESPACE, 'guest_namespace_custody_changed')
+        elif host_namespace is not None and ACTION != 'guest_jobs':
+            raise ValueError('guest_namespace_custody_missing')
+        host_idle = record('idle-baseline.json')[0] if (root / 'idle-baseline.json').exists() else None
+        if host_idle is not None and ACTION != 'idle_enroll':
+            need(host_idle == IDLE_CONTEXT, 'idle_baseline_custody_changed')
+        elif host_idle is None and IDLE_CONTEXT is not None:
+            need(ACTION == 'idle_enroll' and IDLE_CONTEXT['baseline'] is None, 'idle_baseline_custody_missing')
+        observed = facts()
+        if ACTION == 'idle_enroll':
+            need(PINS is not None and observed['guest'] == 'running' and observed['account'] == 'uid:1000:recovery'
+                 and type(IDLE_CONTEXT) is dict and set(IDLE_CONTEXT) == {'schemaVersion', 'operationId', 'target', 'machine', 'actualMachineId', 'baseline', 'legacyJobs'}
+                 and type(IDLE_CONTEXT['schemaVersion']) is int and IDLE_CONTEXT['schemaVersion'] == 1
+                 and IDLE_CONTEXT['target'] == BINDING['target'] and IDLE_CONTEXT['machine'] == BINDING['machine']
+                 and str(UUID(IDLE_CONTEXT['operationId'])) == IDLE_CONTEXT['operationId']
+                 and type(IDLE_OPERATION) is str and str(UUID(IDLE_OPERATION)) == IDLE_OPERATION
+                 and type(idle_candidate) is dict and idle_candidate['machineId'] == observed['guestMachineId'] == IDLE_CONTEXT['actualMachineId'], 'idle_baseline_admission')
+            need(type(idle_legacy_candidate) is list and len(idle_legacy_candidate) == len(IDLE_CONTEXT['legacyJobs'])
+                 and all(type(item) is dict for item in idle_legacy_candidate), 'legacy_terminal_collection_required')
+            context = {**IDLE_CONTEXT, 'baseline': idle_candidate, 'legacyJobs': idle_legacy_candidate}
+            history_path = root / ('idle-refresh-' + IDLE_OPERATION + '.json')
+            transition = {'operationId': IDLE_OPERATION, 'before': IDLE_CONTEXT, 'after': context}
+            if host_idle is not None and host_idle != IDLE_CONTEXT:
+                need(host_idle == context and ((IDLE_CONTEXT['baseline'] is None and IDLE_OPERATION == IDLE_CONTEXT['operationId'])
+                     or (history_path.exists() and record(history_path.name)[0] == transition)),
+                     'idle_baseline_custody_changed')
+            closing()
+            if host_idle is None:
+                save(root / 'idle-baseline.json', context)
+            elif host_idle != context:
+                if history_path.exists():
+                    need(record(history_path.name)[0] == transition, 'idle_refresh_history_changed')
+                else:
+                    save(history_path, transition)
+                temporary = root / ('idle-candidate-' + IDLE_OPERATION + '.json')
+                if temporary.exists():
+                    need(record(temporary.name)[0] == context, 'idle_refresh_candidate_changed')
+                else:
+                    save(temporary, context)
+                os.replace(temporary, root / 'idle-baseline.json')
+                directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                try: os.fsync(directory)
+                finally: os.close(directory)
+            print(json.dumps({'state': 'observed', 'pins': pins, 'facts': observed, 'idleContext': context}, sort_keys=True)); return
+        if ACTION == 'guest_jobs':
+            need(PINS is not None and observed['guest'] == 'running' and observed['boot'] is not None
+                 and EXPECTED == {key: observed[key] for key in ('owner', 'boot', 'guest')}, 'prepared_context_stale')
+            need(JOBS_TASK_MODE == 'enroll' or NAMESPACE is not None, 'guest_namespace_unbound')
+            closing()
+            response = ssh(list(JOBS_TASK_COMMAND), JOBS_TASK_PAYLOAD)
+            text = response.stdout.decode('utf-8', 'strict')
+            if response.returncode == 0 and JOBS_TASK_MODE == 'enroll':
+                namespace = json.loads(text)['namespace']
+                need(type(namespace) is dict and namespace.get('root') == '/var/tmp/vc-recovery-jobs'
+                     and namespace.get('target') == BINDING['target'] and namespace.get('machine') == BINDING['machine']
+                     and namespace.get('account') == '1000' and namespace.get('ownerSourceSha256') == JOBS_OWNER_SHA
+                     and namespace.get('actualMachineId') == observed['guestMachineId']
+                     and type(namespace.get('generation')) is list and len(namespace['generation']) == 2
+                     and all(type(n) is int and n > 0 for n in namespace['generation']), 'guest_namespace_binding')
+                if host_namespace is None:
+                    save(root / 'guest-jobs.json', namespace)
+                else:
+                    need(namespace == host_namespace, 'guest_namespace_custody_changed')
+            print(json.dumps({'state': 'guest-completed', 'returnCode': response.returncode,
+                              'stdout': text, 'stderrBytes': len(response.stderr)}, sort_keys=True))
+            return
+        if ACTION in {'observe', 'enroll', 'recovery-observe'}:
+            stopped_proof = clean_stop() if observed['guest'] == 'stopped' else None
+            result = {'state': 'observed', 'pins': pins, 'facts': observed, 'cleanStop': stopped_proof}
+            if pending_shutdown is not None:
+                result['pendingShutdown'] = pending_shutdown
+            if ACTION == 'recovery-observe':
+                need(PINS is not None and type(RECOVERY_ID) is str and len(RECOVERY_ID) == 64
+                     and all(c in '0123456789abcdef' for c in RECOVERY_ID), 'recovery_identity')
+                need(manager.exists(), 'lifecycle_visibility')
+                manager_before = generation(os.lstat(manager))
+                intent = manager / (RECOVERY_ID + '.intent.json')
+                intent_absent = not os.path.lexists(intent)
+                need(generation(os.lstat(manager)) == manager_before, 'lifecycle_visibility')
+                result['recoveryObservation'] = {'recoveryId': RECOVERY_ID, 'intentAbsent': intent_absent,
+                    'managerGeneration': manager_before}
+            closing(); print(json.dumps(result, sort_keys=True)); return
+        need(PINS is not None and len(RECOVERY_ID) == 64 and all(c in '0123456789abcdef' for c in RECOVERY_ID), 'recovery_identity')
+        need(EXPECTED == {key: observed[key] for key in ('owner', 'boot', 'guest')}, 'prepared_context_stale')
+        if ACTION == 'start':
+            need(observed['guest'] == 'stopped', 'start_requires_stopped')
+            need(clean_stop() is not None, 'stopped_work_visibility_unknown')
+        elif ACTION == 'resume':
+            need(observed['guest'] in {'paused', 'suspended'}, 'resume_requires_paused')
+            if observed['guest'] == 'suspended':
+                machine_info = rpc('qmp.sock', 'query-current-machine')
+                need(type(machine_info) is dict and machine_info.get('wakeup-suspend-support') is True,
+                     'suspend_wakeup_unsupported')
+        elif ACTION in {'reboot', 'poweroff'}:
+            need(observed['guest'] == 'running' and observed['boot'] is not None and not observed['idleBlockers']
+                 and len(observed['idleVisibility']) == 7, 'positive_idle_proof')
+        elif ACTION == 'pause':
+            need(observed['guest'] == 'running', 'pause_requires_running')
+        else:
+            raise ValueError('action_invalid')
+        if ACTION == 'start':
+            phase = 'resource_admission'
+            need(type(ADMISSION) is dict and ADMISSION['hostBootId'] == host_boot, 'start_requires_full_admission')
+            census = ADMISSION['census']
+            need(type(census) is dict and census.get('hostBootId') == host_boot
+                 and census.get('deploymentId') == str(uuid5(UUID(BINDING['machine']), RECOVERY_ID))
+                 and census.get('state') == 'resources-observed' and census.get('mode') == 'host-resources'
+                 and census.get('nativeActionAllowed') is False and census.get('replayAllowed') is False,
+                 'start_resource_operation')
+            measurement = resource_measurement(census)
+            requested = ADMISSION['requestedMemoryBytes']; headroom = ADMISSION['headroomBytes']
+            need(type(requested) is int and requested == 2 * 1024**3 and type(headroom) is int
+                 and headroom >= 16 * 1024**3, 'start_resource_binding')
+            pending = ADMISSION['pending']; ids = set(); reserved = 0
+            need(type(pending) is list and len(pending) <= 4096, 'start_reservations')
+            for row in pending:
+                need(type(row) is dict and set(row) == {'id', 'memoryBytes'} and type(row['id']) is str
+                     and row['id'] not in ids and type(row['memoryBytes']) is int and row['memoryBytes'] > 0, 'start_reservations')
+                ids.add(row['id']); reserved += row['memoryBytes']
+            samples = measurement['samples']; now = time.time_ns() // 1_000_000
+            need(samples[0]['observedAtUnixMs'] < samples[1]['observedAtUnixMs'] <= now
+                 and samples[1]['observedAtUnixMs'] - samples[0]['observedAtUnixMs'] <= 30000
+                 and now - samples[1]['observedAtUnixMs'] <= 60000, 'start_resource_freshness')
+            need(all(row['psi'] == 'normal' and row['availableMemoryBytes'] >= requested + headroom for row in samples)
+                 and all(samples[0]['vmstat'][key] == samples[1]['vmstat'][key] for key in ('pswpout', 'oomKill'))
+                 and measurement['physicalMemoryBytes'] >= measurement['runningConfiguredMemoryBytes'] + reserved + requested + headroom,
+                 'start_capacity')
+            need(shutil.disk_usage(root).free >= 16 * 1024**3, 'start_disk_headroom')
+            inspection = subprocess.run(['/usr/bin/qemu-img', 'info', '--output=json', str(root / 'disk.qcow2')], capture_output=True, timeout=5)
+            need(inspection.returncode == 0, 'disk_in_use_or_changed')
+            disk_info = json.loads(inspection.stdout)
+            need(disk_info['format'] == 'qcow2' and disk_info['full-backing-filename'] == str(root / 'ubuntu.img')
+                 and disk_info['backing-filename-format'] == 'qcow2', 'disk_backing_changed')
+            argv = prepared['qemuArgv']
+            need(argv[argv.index('-uuid') + 1] == BINDING['machine'], 'start_machine_identity')
+        if not manager.exists():
+            manager.mkdir(mode=0o700)
+        need(manager.is_dir() and not manager.is_symlink() and stat.S_IMODE(manager.stat().st_mode) == 0o700
+             and manager.stat().st_uid == os.geteuid(), 'manager_owner')
+        intent = manager / (RECOVERY_ID + '.intent.json')
+        submitted = True  # Existing or partially published intents never grant replay.
+        save(intent, {'action': ACTION, 'recoveryId': RECOVERY_ID, 'boot': observed['boot'], 'owner': observed['owner'],
+                      'idleVisibility': observed['idleVisibility'], 'idleBlockers': observed['idleBlockers']})
+        closing()
+        if ACTION in {'pause', 'resume'}:
+            command = 'stop' if ACTION == 'pause' else ('system_wakeup' if observed['guest'] == 'suspended' else 'cont')
+            rpc('qmp.sock', command)
+        elif ACTION in {'reboot', 'poweroff'}:
+            result = ssh(['sudo', '-n', 'systemctl', 'reboot' if ACTION == 'reboot' else 'poweroff'])
+            save(manager / (RECOVERY_ID + '.ack.json'), {'returnCode': result.returncode, 'acknowledged': result.returncode == 0})
+        else:
+            # The exact owned disk is retained; no rebuild, restore or replacement.
+            for name in ('qmp.sock', 'qga.sock'):
+                path = root / name
+                if path.exists():
+                    # No signal or ambiguous actor cleanup; QEMU owns unlink on
+                    # restart and its original actor is positively absent here.
+                    need(stat.S_ISSOCK(path.lstat().st_mode) and path.lstat().st_uid == os.geteuid(), 'stale_socket_owner')
+            output = os.open(manager / (RECOVERY_ID + '.qemu.log'), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            try:
+                child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=output, start_new_session=True, close_fds=True)
+            finally:
+                os.close(output)
+            expected_command = b'\0'.join(os.fsencode(value) for value in argv) + b'\0'
+            for _ in range(30):
+                start = birth(child.pid)
+                if start is not None:
+                    command = pathlib.Path('/proc', str(child.pid), 'cmdline').read_bytes()
+                    if command == expected_command and (root / 'qmp.sock').exists():
+                        # A leftover pathname is not the new socket owner.
+                        try:
+                            with socket.socket(socket.AF_UNIX) as probe:
+                                probe.settimeout(.1); probe.connect(str(root / 'qmp.sock'))
+                                peer = struct.unpack('3i', probe.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                            if peer[:2] == (child.pid, os.geteuid()):
+                                break
+                        except OSError:
+                            pass
+                need(child.poll() is None, 'start_process_ended'); time.sleep(.1)
+            else:
+                raise ValueError('start_process_unknown')
+            new_owner = {**initial_owner, 'operationId': RECOVERY_ID, 'pid': child.pid, 'startTicks': start,
+                         'argvSha256': hashlib.sha256(expected_command).hexdigest(), 'qmpSocketInode': os.lstat(root / 'qmp.sock').st_ino}
+            save(manager / (RECOVERY_ID + '.actor.json'), new_owner)
+            temporary = manager / (RECOVERY_ID + '.current.json'); save(temporary, new_owner)
+            os.replace(temporary, current)
+            parent = os.open(manager, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(parent)
+            finally:
+                os.close(parent)
+        print(json.dumps({'state': 'submitted', 'recoveryId': RECOVERY_ID, 'action': ACTION}, sort_keys=True))
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        reason = str(error) if type(error) is ValueError and str(error).replace('_', '').isalnum() else 'provider_operation_unknown'
+        refusal = completed_refusal(reason)
+        result = {'state': 'blocked', 'reason': reason, 'phase': phase, 'errorClass': type(error).__name__, 'vmSubmitted': submitted}
+        if refusal is not None:
+            result['completedRefusal'] = refusal
+        print(json.dumps(result, sort_keys=True))
+    finally:
+        if lock >= 0:
+            os.close(lock)
+        for descriptor, _, _ in held:
+            os.close(descriptor)
+
+
+def _measurement_source():
+    # Retain the exact reviewed finite decoder without importing unrelated
+    # transport code into generated or independently staged protocol tests.
+    path = Path(__file__).with_name('windows_vm_resources.py')
+    raw = path.read_text()
+    nodes = [node for node in ast.parse(raw).body if isinstance(node, ast.FunctionDef) and node.name == 'measurement']
+    if len(nodes) != 1:
+        raise ValueError('qemu_resource_decoder_missing')
+    return ast.get_source_segment(raw, nodes[0])
+
+
+def program(binding, pins, action='observe', recovery_id=None, expected=None, admission=None, namespace=None, guest_job_source=None, guest_job_mode=None, idle_context=None, idle_operation=None, dispatch_identity=None):
+    """Pure finite packet builder; registration grants the actual fixture binding."""
+    from . import readiness_qemu_guest, readiness_qemu_jobs
+    from . import durable_remote_job
+    import hashlib
+    if action not in {'observe', 'enroll', 'recovery-observe', 'pause', 'resume', 'reboot', 'poweroff', 'start', 'guest_jobs', 'idle_enroll'}:
+        raise ValueError('qemu_action_invalid')
+    guest_command, guest_payload = readiness_qemu_jobs.stdin_command(readiness_qemu_guest.program(namespace, idle_context, enroll_idle=action == 'idle_enroll'))
+    task_command, task_payload = (None, None) if guest_job_source is None else readiness_qemu_jobs.stdin_command(guest_job_source)
+    source = ('DISPATCH_IDENTITY=' + repr(dispatch_identity) + '\nCONTROLLER_SOURCE_SHA=' + repr(hashlib.sha256(inspect.getsource(_main).encode()).hexdigest()) + '\nIDLE_OPERATION=' + repr(idle_operation) + '\nIDLE_CONTEXT=' + repr(idle_context) + '\nNAMESPACE=' + repr(namespace) + '\nGUEST_COMMAND=' + repr(guest_command) + '\nGUEST_PAYLOAD=' + repr(guest_payload)
+              + '\nJOBS_TASK_COMMAND=' + repr(task_command) + '\nJOBS_TASK_PAYLOAD=' + repr(task_payload)
+              + '\nJOBS_TASK_MODE=' + repr(guest_job_mode) + '\nJOBS_OWNER_SHA=' + repr(hashlib.sha256(durable_remote_job.owner_source()).hexdigest()) + '\nBINDING=' + repr(binding) + '\nPINS=' + repr(pins) + '\nACTION=' + repr(action)
+              + '\nRECOVERY_ID=' + repr(recovery_id) + '\nEXPECTED=' + repr(expected) + '\nADMISSION=' + repr(admission)
+              + '\n'
+              + _measurement_source() + '\nresource_measurement=measurement\n'
+              + inspect.getsource(_main) + '\n_main()\n')
+    compile(source, 'owned QEMU readiness packet', 'exec')
+    return source

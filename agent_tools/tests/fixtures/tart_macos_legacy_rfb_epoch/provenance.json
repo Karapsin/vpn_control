@@ -1,0 +1,13 @@
+{
+  "before": {
+    "readiness_tart_macos_legacy_phases.before.source": "dfbd80e8060b54dcce522cd2fbe1fd5320d39714cfed6431b293e0e05065a67f",
+    "readiness_tart_macos_legacy_public_resolution.before.source": "a5586f07d6af00712e22c98ffeaa80f57595dc55780a1feecfac53041cbca66f"
+  },
+  "controlledScope": "Whole original modules, actual source-held files, complete source_contract and original public TCP transport; no runtime evidence or private input read by tests.",
+  "failure": "Historical legacy method source guard used the a5 whole-file digest for live protected-FD-only successor2938, blocking before observer startup.",
+  "historicalCaches": "Current proof permits only exact freshly revalidated report or exact historical resolver-source substitution; never rewrites original cache or semantic outcome.",
+  "historicalMethodSha256": "a5b5196c62cdfb2270d3f54faf3f8c318022d16a174447722a94f9d18d2b0a1d",
+  "historicalMethodSource": "../tart_vnc_protected_fd_high/vnc.before.source",
+  "nativeScope": "Retained original failed before observer startup; native acceptance of new caller remains separate.",
+  "schemaVersion": 1
+}

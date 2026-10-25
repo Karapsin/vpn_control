@@ -1,0 +1,14 @@
+{
+  "authority": "Only exact returned=retained_public_observation(...) AST statement runs. Reuses raw-authenticated existing public full retention2c5 and exact normalized retained_public_observation FunctionDef from309 controller, identical to consumed40ee. Real TempFS FD capture records a harmless completed public callback result; no real transport/cleanup/admission/native source executes.",
+  "beforeCleanupLocalAdmissionRetained": "18a0b5f5-fe5c-4a29-bdf7-c7fdcc27b30a",
+  "failure": "private terminal-cleanup caller passed label nested-exit to the exact OutputCapture counter-NNNNNN contract; refused before preparation/invoke",
+  "fixedSeparateCleanupId": "d16c325b-e187-49f5-8fb0-b9221a780842",
+  "fixtureCorrection": "Original controlled invoke wrote its marker under held output root; exact callback preserved and causally reproduces namedCustodyFalse with actual raw retained. Corrected callback uses separate owned parent scope; guard unchanged.",
+  "originalRemoteJobId": "f99584f3-8c1a-426d-badd-5b290ff4856f",
+  "pins": {
+    "callback-output-root.before.source": "70c06643098f452fcea8b67d5dae3d5536de7d71ad7287951d6a39f080a76520",
+    "cleanup.before.source": "90adfe71785afd994bce864ccc89075127da222c35dd16e69a17b5bf1788c27d",
+    "cleanup.fixed.source": "cb26ca656f267cdb041a295530657cf5939fb2112d97b9836e3a754e91038a3c"
+  },
+  "schemaVersion": 1
+}

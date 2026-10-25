@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "d06fc76c1c1a08f46afc96cd856d8142203219658772a9bfd235ff82484855ae",
+  "failure": "Known root/source/identity failures were folded into generic original_evidence_unavailable; public guidance recommended automatic reconciliation for that ambiguous blocker.",
+  "red": "original complete public projection recommends reconcile_original for original_evidence_unavailable",
+  "green": "generic or known integrity result resolves blocker; only finite observation-safe original states continue"
+}

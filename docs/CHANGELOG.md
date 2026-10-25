@@ -3,6 +3,14 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Establish agent tool readiness before dispatch and recover transport, guests and durable jobs without replaying uncertain work.
+- Report every managed check failure in one pass, rerun failures first and bound agent checks by CI shard.
+- Report a durable SSH program as finished when its owner exits during a status check.
+- Keep agent tool tests stable on directory-bound hosts and while worker errors are still being written.
+- Finish agent test cleanup on macOS when a process group holds only zombies.
+
 ## 2.2.14 - 2026-10-23
 
 - Make MCP PowerShell checks reproducible across native module layouts.

@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-final-acceptance-epoch-55820185-1f64-4f5a-9a36-ee195a9be92f/controller.py", line 421, in <module>
+    main(args)
+    ~~~~^^^^^^
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-final-acceptance-epoch-55820185-1f64-4f5a-9a36-ee195a9be92f/controller.py", line 339, in main
+    before=until(lambda:active_after(0),min(deadline,time.monotonic()+30),'counter_not_started');original_owner=before['owner']
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-final-acceptance-epoch-55820185-1f64-4f5a-9a36-ee195a9be92f/controller.py", line 20, in until
+    value=predicate()
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-final-acceptance-epoch-55820185-1f64-4f5a-9a36-ee195a9be92f/controller.py", line 339, in <lambda>
+    before=until(lambda:active_after(0),min(deadline,time.monotonic()+30),'counter_not_started');original_owner=before['owner']
+                        ~~~~~~~~~~~~^^^
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-final-acceptance-epoch-55820185-1f64-4f5a-9a36-ee195a9be92f/controller.py", line 329, in active_after
+    value=snapshot()
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-final-acceptance-epoch-55820185-1f64-4f5a-9a36-ee195a9be92f/controller.py", line 327, in snapshot
+    return remote("import json,os,pathlib\np=pathlib.Path("+repr(counter)+");job=pathlib.Path("+repr(remote_root+'/'+operation)+")\nowner=json.loads((job/'owner.json').read_bytes());intent=json.loads((job/'intent.json').read_bytes());pid=owner['owner']['pid'];s=(pathlib.Path('/proc')/str(pid)/'stat').read_text();tail=s.rsplit(')',1)[1].split();lines=p.read_text().splitlines()\nprint(json.dumps({'owner':owner['owner'],'binding':intent['binding'],'generation':intent['generation'],'programSha256':intent['programSha256'],'lines':len(lines)-1,'executions':lines.count('execution'),'terminal':(job/'terminal.json').exists(),'ownerProcess':{'pid':pid,'ppid':int(tail[1]),'session':int(tail[3]),'uid':(pathlib.Path('/proc')/str(pid)).stat().st_uid,'state':tail[0]},'stdio':{str(n):os.readlink('/proc/'+str(pid)+'/fd/'+str(n))for n in range(3)}}))")
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-final-acceptance-epoch-55820185-1f64-4f5a-9a36-ee195a9be92f/controller.py", line 307, in remote
+    if r.returncode or r.stderr:raise ValueError('owned_readonly_observation_failed')
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: owned_readonly_observation_failed

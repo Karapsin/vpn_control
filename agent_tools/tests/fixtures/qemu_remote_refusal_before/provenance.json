@@ -1,0 +1,8 @@
+{
+  "failure": "A completed prepared_context_stale refusal before VM admission was retained as UNKNOWN instead of source-proven unsubmitted; controller receipt lacked held-barrier proof.",
+  "sourceSha256": {
+    "readiness_qemu.py": "e14ea7f6a29e2425f0aee93694df442518b8a9651c6d13f6a8bd29b37413f084",
+    "readiness_qemu_remote.py": "cd01c1ce552e65cf07a26142e295846ea75b46abab10da3e88c6d1db6dd4bcaf",
+    "windows_vm_resources.py": "2659a18cd8683c8d3b1b5ff749803c052fcf7e17dc1e669d2d57fb67c67396a0"
+  }
+}

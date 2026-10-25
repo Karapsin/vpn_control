@@ -67,6 +67,7 @@ def source_names(entry):
     return captured | {
         "affected_agent_tests.py", "affected_agent_test_dependencies.json", "agent_test_runner.py",
         "native_review_source_closure.py", "source_module_loader.py", "windows_source_custody.py",
+        "tool_action_policy.py", "tool_action_policy.json",
     }
 
 

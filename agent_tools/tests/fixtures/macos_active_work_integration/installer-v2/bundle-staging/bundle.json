@@ -1,0 +1,14 @@
+{
+  "callerSha256": "950d371680c7d8f42fda76b89ee9af480e046689c51268917b2074de2f2b3eea",
+  "helperPrefix": "/usr/local/libexec/vpn-tool-recovery-idle-4a9f62cc-6a93-4cd7-86c3-4b4ab81a4dc7",
+  "idleAuthority": false,
+  "inputAuthority": false,
+  "lifecycleAuthority": false,
+  "mainSha256": "b94198b6c5457a5a6ab438577a9fed8e955a0c32dd3e214d5c7e08bd03af2bbb",
+  "nativeQualified": false,
+  "operationId": "ca6919f5-137e-4a1e-a68b-bef546c230da",
+  "originalRun": "2d933a39-0fb6-46a4-9fd9-02221d81c4b9",
+  "probeSha256": "dc535e8943efc18051bf606200174dd0c103aca80bc39bcddc90946f757cc157",
+  "purpose": "fixed_active_work_diagnostic_install",
+  "schemaVersion": 1
+}

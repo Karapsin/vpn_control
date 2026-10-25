@@ -31,6 +31,8 @@ class WindowsObservationRoutesTest(unittest.TestCase):
         )
         source_guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         source_guard.start(); self.addCleanup(source_guard.stop)
+        target = patch.object(stage_recovery, '_validate_target', return_value=('windows-cp117','/owned/qga',589342,520739,'S-1-5-21-1-2-3-1002'))
+        target.start(); self.addCleanup(target.stop)
 
     def test_owner_census_exact_host_and_bounded_identity(self):
         observed = {"state": "observed", "sourceSha": "a" * 40,
@@ -192,8 +194,8 @@ class WindowsObservationRoutesTest(unittest.TestCase):
                     "cleanupReceiptSha256": "b" * 64, "replayAllowed": False}
         with patch.object(stage_recovery, "recover", return_value=observed) as recover:
             result = mcp_server._vm_workflow_impl("windows-fixture-stage-recover-7f27",
-                                                  {"host": "archlinux"})
-        recover.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux"})
+                                                  {"host": "archlinux", "vmIdentity": "589342:520739"})
+        recover.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux", "vmIdentity": "589342:520739"})
         self.assertTrue(result["ok"])
         self.assertFalse(result["nativeActionAllowed"])
         for poisoned in ({**observed, "path": "secret"},
@@ -201,7 +203,7 @@ class WindowsObservationRoutesTest(unittest.TestCase):
                          {**observed, "cleanupReceiptSha256": "bad"}):
             with patch.object(stage_recovery, "recover", return_value=poisoned):
                 rejected = mcp_server._vm_workflow_impl("windows-fixture-stage-recover-7f27",
-                                                        {"host": "archlinux"})
+                                                        {"host": "archlinux", "vmIdentity": "589342:520739"})
             self.assertFalse(rejected["ok"])
             self.assertNotIn("secret", str(rejected))
         with patch.object(stage_recovery, "recover", side_effect=AssertionError("unsafe dispatch")):

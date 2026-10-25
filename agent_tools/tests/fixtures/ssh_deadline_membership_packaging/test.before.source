@@ -1,0 +1,213 @@
+"""Complete preserved callers, delayed Unix sockets and returned-body custody."""
+import hashlib,json,os,shutil,subprocess,sys,tempfile,time,unittest,uuid
+from contextlib import contextmanager
+from pathlib import Path
+from unittest import mock
+from agent_tools import source_module_loader as loader
+from agent_tools.tests import test_readiness_transport as readiness_fixture
+from agent_tools import ssh_channel_keeper_entry as keeper
+
+FIXTURE=Path(__file__).parent/'fixtures/ssh_absolute_deadline'
+SOURCES=tuple(sorted(set(keeper.NAMES)|set((
+    'ssh_automatic_program.py','ssh_privileged_program.py','private_config_custody.py',
+    'readiness.py','readiness_transport.py','readiness_ssh_master.py','readiness_nested_channel.py',
+    'ssh_dispatch_admission.py','ssh_direct_nested_channel.py','ssh_direct_inventory.py'))))
+
+@unittest.skipUnless(os.name=='posix','owned Unix SSH fixture')
+class AbsoluteDeadlineTests(unittest.TestCase):
+    @contextmanager
+    def caller(self,original=False,delay='probe'):
+        f=readiness_fixture.ReadinessTransportTests('runTest');f.setUp()
+        proxy=None
+        try:
+            tools=Path(__file__).resolve().parents[1];folder=f.root/'captured-tools';folder.mkdir(mode=0o700)
+            manifest=json.loads((FIXTURE/'provenance.json').read_bytes())['beforeSha256']
+            for name in SOURCES:
+                before=FIXTURE/(name+'.before.source')
+                raw=before.read_bytes()if original and before.exists()else(tools/name).read_bytes()
+                if original and before.exists():self.assertEqual(manifest[before.name],hashlib.sha256(raw).hexdigest())
+                (folder/name).write_bytes(raw)
+            proxy=loader.Adapter(folder,'ssh_transport');session=proxy._session;t=proxy._module
+            master=session.load('readiness_ssh_master')
+            delayed=f.root/'delay';counter=f.root/'target-count'
+            source=f.binary.read_text().replace(
+                'result=subprocess.run(command,stdin=subprocess.DEVNULL,capture_output=True,',
+                "if Path("+repr(str(delayed))+").exists() and "+("'SSH_CONNECTION' in request['command']"if delay=='probe'else"len(command)>=7 and len(command[-3])==32 and command[-2].isdigit() and len(command[-1])==64")+(":time.sleep(.6)"if delay=='probe'else":time.sleep(2)")+"\n    result=subprocess.run(command,input=base64.b64decode(request.get('stdin','')),capture_output=True,").replace(
+                "client.sendall(json.dumps(request).encode()+b'\\n');reply=receive(client)",
+                "if '-O' not in args:request['stdin']=base64.b64encode(sys.stdin.buffer.read()).decode()\n client.sendall(json.dumps(request).encode()+b'\\n');reply=receive(client)").replace(
+                "   connection.sendall(json.dumps(reply).encode()+b'\\n')",
+                "   try:connection.sendall(json.dumps(reply).encode()+b'\\n')\n   except BrokenPipeError:pass")
+            source=source.replace("modefile=Path(os.environ['VC_READINESS_FIXTURE_MODE'])","modefile=Path(os.environ['VC_READINESS_FIXTURE_MODE'])\nos.environ.update(TMPDIR="+repr(str(f.peer.peer))+",TMP="+repr(str(f.peer.peer))+",TEMP="+repr(str(f.peer.peer))+")")
+            f.binary.write_text(source)
+            prefix=t.fresh_direct_prefix;build=t._build_ssh_argv;spawn=master.session._spawn
+            def fixture_prefix(config,host):
+                argv,endpoint=prefix(config,host);return [str(f.binary),*argv[1:]],endpoint
+            def fixture_build(*args,**kwargs):
+                value=build(*args,**kwargs);value[0]=str(f.binary);return value
+            def fixture_spawn(*args,**kwargs):
+                child=spawn(*args,**kwargs);f.children.append(child);return child
+            with mock.patch.object(t,'fresh_direct_prefix',side_effect=fixture_prefix),mock.patch.object(t,'_build_ssh_argv',side_effect=fixture_build),mock.patch.object(master.session,'_spawn',side_effect=fixture_spawn):
+                op=str(uuid.uuid4())
+                with t.admitted_transport(f.root,'explicit-peer',op,deadline=time.monotonic()+30)as admission:
+                    code='from pathlib import Path;import sys;p=Path('+repr(str(counter))+');p.open("a").write("once\\n");sys.stdout.buffer.write(sys.stdin.buffer.read()or b"returned")'
+                    plan=t.build_saved_program_argv(t.load_config(f.root),'explicit-peer',command=('python3','-I','-B','-c',code))
+                    session.hold_result(plan)
+                    yield t,plan,admission,delayed,counter,f
+                    session.guard()
+        finally:
+            if proxy is not None:proxy.close()
+            f.doCleanups()
+
+    def test_complete_before_total_timeout_red_current_never_dispatches_target_after_budget(self):
+        for original in (True,False):
+            with self.caller(original)as(t,plan,admission,delay,counter,f):
+                delay.touch();started=time.monotonic()
+                if original:
+                    result=t.run_ssh(plan,capture_output=True,timeout=.5)
+                    self.assertEqual(0,result.returncode);self.assertEqual('once\n',counter.read_text());self.assertGreater(time.monotonic()-started,.5)
+                else:
+                    with self.assertRaises(t.PrelaunchReadinessRefusal)as refusal:t.run_ssh(plan,capture_output=True,timeout=.5)
+                    self.assertEqual('readiness_deadline',refusal.exception.reason)
+                    self.assertFalse(counter.exists());self.assertIs(False,refusal.exception.executable_started)
+                    self.assertLess(time.monotonic()-started,2)
+
+    def test_stage_has_same_total_budget_and_never_starts_original_target(self):
+        for original in (True,False):
+            with self.caller(original,delay='stage')as(t,plan,admission,delay,counter,f):
+                delay.touch();started=time.monotonic()
+                if original:
+                    self.assertEqual(0,t.run_ssh(plan,capture_output=True,timeout=1.5).returncode)
+                    self.assertTrue(counter.exists())
+                else:
+                    with self.assertRaises(ValueError):t.run_ssh(plan,capture_output=True,timeout=1.5)
+                    self.assertFalse(counter.exists());self.assertLess(time.monotonic()-started,3)
+                    journal=f.root/'.rag_index/ssh-automatic-program'/plan.correlation
+                    self.assertTrue((journal/'unknown.json').exists());self.assertFalse((journal/'execution-intent.json').exists())
+
+    def test_returned_private_body_survives_only_readiness_change_without_replay(self):
+        private=b'private-input-never-an-exception-or-receipt'
+        for original in (True,False):
+            with self.caller(original)as(t,plan,admission,delay,counter,f):
+                def runner(argv,**kwargs):
+                    result=subprocess.run(argv,**kwargs)
+                    from_module=sys.modules[type(admission).__module__]
+                    readiness=sys.modules[from_module.__package__+'.readiness']
+                    from_module.add_dispatch_guard(admission,lambda:(_ for _ in ()).throw(readiness.ReadinessBlocked('connection_generation_changed',admission.operation_identity)))
+                    return result
+                if original:
+                    with self.assertRaises(ValueError)as red:t.run_ssh(plan,runner=runner,input=private,capture_output=True,timeout=5)
+                    self.assertFalse(hasattr(red.exception,'take_submitted_result'))
+                else:
+                    with self.assertRaises(t.SubmittedResultReadinessChanged)as changed:t.run_ssh(plan,runner=runner,input=private,capture_output=True,timeout=5)
+                    error=changed.exception
+                    self.assertNotIn(private.decode(),repr(error));self.assertNotIn(private.decode(),str(vars(error)))
+                    self.assertIs(False,error.replay_allowed);self.assertIs(True,error.target_executable_started)
+                    result=error.take_submitted_result();self.assertEqual(private,result.stdout)
+                    with self.assertRaises(ValueError):error.take_submitted_result()
+                self.assertEqual('once\n',counter.read_text())
+                directory=f.root/'.rag_index/ssh-automatic-program'/plan.correlation
+                self.assertTrue(all(private not in p.read_bytes()for p in directory.iterdir()))
+
+    def test_source_custody_change_cannot_expose_original_private_body(self):
+        with self.caller()as(t,plan,admission,delay,counter,f):
+            def runner(argv,**kwargs):
+                result=subprocess.run(argv,**kwargs)
+                config=f.root/t.CONFIG_FILENAME;config.write_bytes(config.read_bytes()+b' ')
+                return result
+            with self.assertRaises(ValueError)as blocked:t.run_ssh(plan,runner=runner,input=b'PRIVATE',capture_output=True,timeout=5)
+            self.assertNotIsInstance(blocked.exception,t.SubmittedResultReadinessChanged)
+            self.assertFalse(hasattr(blocked.exception,'take_submitted_result'));self.assertTrue(counter.exists())
+
+
+
+class QualifiedRouteTests(unittest.TestCase):
+    def setUp(self):
+        import socket,threading
+        from agent_tools.tests import test_readiness_nested_channel as fixture
+        self.f=fixture.ReadinessNestedChannelTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups);self.f.admit()
+        self.socket=socket.socket(socket.AF_UNIX);self.path=self.f.root/'qualified-route-peer';self.socket.bind(str(self.path));self.socket.listen();self.socket.settimeout(.1)
+        self.stopped=threading.Event();self.requests=[]
+        def serve():
+            while not self.stopped.is_set():
+                try:client,_=self.socket.accept()
+                except socket.timeout:continue
+                with client:
+                    data=b''
+                    while not data.endswith(b'\n'):
+                        block=client.recv(4096)
+                        if not block:break
+                        data+=block
+                    if not data:continue
+                    request=json.loads(data);self.requests.append(request);time.sleep(.05)
+                    client.sendall(json.dumps(self.f.fixture.result).encode())
+        thread=threading.Thread(target=serve);thread.start()
+        def close():self.stopped.set();thread.join(timeout=2);self.socket.close()
+        self.addCleanup(close)
+        self.real_popen=subprocess.Popen
+        def peer(argv,**kwargs):
+            import ast,shlex
+            remote=shlex.split(argv[-1]);self.assertEqual('status',remote[6]);self.assertEqual(self.f.corr,remote[5])
+            expression=ast.parse(remote[4],mode='eval').body
+            self.assertEqual(self.f.fixture.expected_remote,ast.literal_eval(expression.args[0]))
+            code='import json,socket,sys;body=json.loads(sys.stdin.buffer.read());assert body=={};s=socket.socket(socket.AF_UNIX);s.connect(sys.argv[1]);s.sendall(json.dumps({"action":"status","correlation":sys.argv[2]}).encode()+b"\\n");out=b""\nwhile True:\n b=s.recv(4096)\n if not b:break\n out+=b\nsys.stdout.buffer.write(out)'
+            return self.real_popen([sys.executable,'-I','-B','-c',code,str(self.path),self.f.corr],**kwargs)
+        patched=mock.patch.object(subprocess,'Popen',side_effect=peer);patched.start();self.addCleanup(patched.stop)
+        from agent_tools import readiness_nested_channel as n,ssh_transport as t
+        self.n=n;self.t=t;self.config=t.load_config(self.f.root)
+        self.binding=n.qualified_route(self.f.root,'archlinux',self.config,deadline=time.monotonic()+5)
+
+    def test_complete_original_builder_duplicate_probe_red_current_held_route_green(self):
+        import types
+        path=FIXTURE/'ssh_transport.py.before.source';raw=path.read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),json.loads((FIXTURE/'provenance.json').read_bytes())['beforeSha256'][path.name])
+        # This pure original builder grants no submission authority. Preserve
+        # its complete source, using the same trusted dependency directory.
+        before=types.ModuleType('agent_tools._original_route_builder_'+uuid.uuid4().hex);before.__package__='agent_tools';before.__file__=self.t.__file__
+        with mock.patch.dict(sys.modules,{before.__name__:before}):exec(compile(raw,before.__file__,'exec'),before.__dict__)
+        with self.t._qualified_route_scope(self.binding):
+            count=len(self.requests)
+            for _ in range(3):before._build_ssh_argv(self.config,'archlinux',command=('true',))
+            self.assertEqual(3,len(self.requests)-count)
+            count=len(self.requests)
+            for _ in range(3):self.t._build_ssh_argv(self.config,'archlinux',command=('true',))
+            self.assertEqual(count,len(self.requests))
+        self.assertEqual(1,sum(call[6]=='prepare'for call in self.f.fixture.calls))
+
+    def test_changed_current_pointer_rejects_new_dispatch_but_preserves_original_history(self):
+        path=self.n.directory(self.f.root,'archlinux')/'current.json'
+        path.write_bytes(path.read_bytes()+b' ')
+        with self.assertRaises(self.n.NestedUnknown):self.n.source_options(self.binding,self.f.root,'archlinux',self.config)
+        self.assertEqual(self.f.corr,self.n.original_source_options(self.binding,self.f.root,'archlinux',self.config)['correlationId'])
+
+    def test_changed_original_capsule_or_private_inventory_refuses_static_binding(self):
+        from agent_tools import ssh_fresh_nested_channel as channel
+        directory=channel._context_journal(self.f.root,'archlinux',self.f.corr,False,True)
+        path=directory/(self.f.corr+'.remote.source');path.write_bytes(path.read_bytes()+b' ')
+        count=len(self.requests)
+        with self.assertRaises(self.n.NestedUnknown):self.n.source_options(self.binding,self.f.root,'archlinux',self.config)
+        self.assertEqual(count,len(self.requests))
+
+    def test_inventory_generation_replacement_is_not_hidden_by_equal_bytes(self):
+        path=self.f.root/self.t.CONFIG_FILENAME;path.write_bytes(path.read_bytes())
+        count=len(self.requests)
+        with self.assertRaises(self.n.NestedUnknown):self.n.source_options(self.binding,self.f.root,'archlinux',self.config)
+        self.assertEqual(count,len(self.requests))
+
+    def test_wrong_ready_connection_foreign_target_and_concurrent_context_never_borrow(self):
+        from types import SimpleNamespace
+        from concurrent.futures import ThreadPoolExecutor
+        from agent_tools import ssh_dispatch_admission as admitted
+        owner=admitted.Admission(self.f.root,'archlinux',str(uuid.uuid4()),SimpleNamespace(_unused=True,adapter=SimpleNamespace(_qualified_route=(self.binding,'actual')),deadline=None),SimpleNamespace(connection='foreign'))
+        token=admitted._ACTIVE.set((owner,))
+        try:self.assertIsNone(self.t._qualified_binding(self.config,'archlinux'))
+        finally:admitted._ACTIVE.reset(token)
+        other=self.f.root/'foreign-root';other.mkdir()
+        with self.assertRaises(self.n.NestedUnknown):self.n.source_options(self.binding,other,'archlinux',self.config)
+        with self.assertRaises(self.n.NestedUnknown):self.n.source_options(self.binding,self.f.root,'foreign',self.config)
+        count=len(self.requests)
+        with self.t._qualified_route_scope(self.binding):
+            with ThreadPoolExecutor(max_workers=1)as pool:pool.submit(self.t._build_ssh_argv,self.config,'archlinux',command=('true',)).result()
+            self.t._build_ssh_argv(self.config,'archlinux',command=('true',))
+        self.assertEqual(1,len(self.requests)-count)
+
+if __name__=='__main__':unittest.main()

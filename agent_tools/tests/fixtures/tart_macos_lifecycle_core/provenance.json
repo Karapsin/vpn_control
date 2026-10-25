@@ -1,0 +1,1 @@
+{"bodySha256": "b4e1aea7eeab7cbc89e531cb5f9ffcbe7b395db0e8ae406d84dc4ba40c9408d1", "reason": "existing-instance private VNC owner must disable own/inherited core dumps before any child output", "source": "agent_tools/readiness_tart_macos_lifecycle.py", "wholeSourceSha256": "669cb6ebc915f8d2d98328b154fc1800f47703a541dce00dece83f6b87ac4743"}

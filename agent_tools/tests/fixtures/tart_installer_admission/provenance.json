@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "8c09dbb9350d8f6384c1768cb5eec49110f26c7fccbb96c7fb7b137c7439b175",
+  "failure": "A bound Tart installer runs an unlisted temporary VZ guest; treating its claim as an observed Tart guest drops four GiB and its VM slot.",
+  "scope": "Finite private installer lane remains counted until positive original terminal/release; no native installer is submitted by this test."
+}

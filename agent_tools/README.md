@@ -45,7 +45,7 @@ For implementation, testing, release, or commit work:
 1. Call `prepare_start(task, area)` before normal repository inspection, edits, or tests. It fetches `origin/dev` and `origin/main`, selects and safely fast-forwards the `dev` development branch only when the worktree is clean, and rebuilds the local docs index.
 2. Read the returned instruction files. Use `docs` and `change_impact` instead of broad exploratory searches when repository documentation can answer the question.
 3. Use `workflow_status` while working to re-check routing, dirty paths, index freshness, and validation requirements.
-4. Run `version_bump` once after the final non-documentation content change, then run `run_checks(level="prepush")`. A successful check writes a content fingerprint to `.rag_index/prepush_receipt.json`.
+4. Run `version_bump` once after the final non-documentation content change, then run `run_checks(level="prepush")`. A successful check writes a content fingerprint to `.rag_index/prepush_receipt.json`. Every pass runs all independent checks and records any failures beside that receipt; after fixing them, `run_checks(level="failed")` reruns exactly those failures, and the pre-push tier refuses until they pass (`TEST-006`).
 5. Use `git_workflow` to push `dev` or to resume checks for a full commit SHA. `action="checkpoint"` is an explicit intermediate option for this parity continuation: it requires the same fresh pre-push receipt, safe explicit commit paths and clean post-commit worktree, then pushes to `origin/dev` and returns the exact SHA with `requiredWorkflowsVerified: false`. Run `action="checks"` for the final pushed SHA; it queries only runs attached to that SHA and requires every development workflow in `.github/required-workflows.json` to succeed.
    Failed-log excerpts select error context and the final summary from the complete
    command output, then enforce an 8,000-character response bound. If more context
@@ -63,6 +63,18 @@ starting another build; the lease cannot establish an orphan's terminal outcome.
 Pre-push captures source content before and after checks and refuses to publish
 a new receipt when content changes during validation. Freeze edits, wait for the
 current run to exit, then run a fresh pre-push tier.
+
+The managed agent stage runs the SSH-close gate alone first, then the two hosted
+CI shards without it, each as its own command with the 50-minute bound; a failed
+gate stops what follows. A timed-out command receives SIGTERM, so the agent test
+runner stops its worker sessions before the next command starts; SIGKILL follows
+only after a 30-second grace, and only the original timeout is reported.
+`run_checks(level="failed")` reruns a timed-out, unparsed or import-failed agent
+command once without removed modules: the gate alone if recorded, then the rest
+by index parity in the sorted union of the current selection and those modules.
+For an unchanged selection a recorded shard therefore reruns as itself; a
+changed selection regroups it, and regrouping runs the selector once per pass.
+Recorded failed modules still narrow their rerun.
 
 Managed checks also compare the loaded runner, build-environment, checkout-lease
 and output-retention source digests with current files before inspection or a
@@ -98,7 +110,7 @@ lifecycle tools before entering a platform recipe.
 | `docs(query, mode="search", top_k=3)` | Grounded local search with source and line citations. |
 | `change_impact(task, area=None, paths=None)` | Focused owners, changed paths, safety and mapped checks. |
 | `workflow_status(task=None, area=None, instructions_read=False)` | Worktree, required reading, index freshness and check receipt. |
-| `run_checks(area="auto", level="focused", dry_run=False)` | Focused checks or the complete managed pre-push tier. |
+| `run_checks(area="auto", level="focused", dry_run=False)` | Focused checks, the recorded failed checks (`level="failed"`), or the complete managed pre-push tier. |
 | `version_bump(summary=None, change_type="code", dry_run=False, force_release=False, target_version=None)` | Required non-documentation note; unified base-20 metadata roll. |
 | `git_workflow(action, message=None, paths=None, sha=None)` | Explicit safe paths, dev push and exact-SHA CI; checkpoint defers CI. |
 | `release_workflow(action="status")` | Explicit-release-only main merge, readiness and publisher gate. |
@@ -112,6 +124,68 @@ include all action-specific fields, timeout bounds and refusal rules.
 Commit paths reject absolute paths, traversal, pathspec magic, globs, generated
 output, agent/runtime state and native binaries. Explicit paths must cover every
 current change; preserve unrelated work and resolve ownership before delivery.
+
+### Readiness and retained remote work
+
+`ssh_workflow` exposes `readiness-status` and `readiness-ensure` with a configured
+`host` and `identity={"operationId": "<canonical UUID>"}`. Status only observes;
+ensure admits bounded recovery to that same trusted target. Status includes a
+bounded local `recoveryStatus` view of original recovery IDs, operation IDs,
+actions, consumed attempts and retained outcomes. An unavailable or uncertain
+journal remains explicit and grants no replay authority. Ordinary remote
+actions use the shared admission before generating commands and carry its
+connection/boot/account identity through dispatch. Local metadata and local
+status/collection do not recover a connection. SSH idle persistence is five
+hours in production; expiry regressions use short intervals.
+
+`vm_workflow` exposes `readiness-providers` with empty `inputs`, and
+`readiness-status`/`readiness-ensure` with
+`inputs={"fixtureId": "<registered fixture>", "operationId": "<canonical UUID>"}`.
+Clients select a privately registered, directly qualified existing instance;
+public inputs cannot assert ownership or supply an executable, VM path or
+credential. VM readiness status includes the same local recovery view.
+Headless fixtures require their guest agent. Desktop fixtures also
+require the intended ordinary session and usable display. Capability inspection
+distinguishes a provider's potential from available qualified recovery.
+
+`readiness-reboot` takes the same two inputs and requests one graceful reboot
+of an already running, positively idle fixture. It checks reservations, running
+and UNKNOWN jobs, installers, lifecycle phases, other operators and protected
+processes. Repeating the operation observes its original reboot. This action
+does not start or resume a stopped or paused fixture.
+
+The same registered identities admit `readiness-lease-acquire` (also
+`ttlSeconds`), `readiness-lease-status` and `readiness-lease-cancel`. Expiry,
+cancellation and fresh-client reconciliation observe the original lease owner
+and restore its original settings. Restoration and the owner's terminal receipt
+are separate facts; continue status until both are proved. Credentials are never
+included in these public payloads.
+
+New long-running Python jobs use `ssh_workflow`'s `program-start` with
+`transfer={"operationId": "<canonical UUID>", "program": <validated program>}`.
+`program-status`, `program-collect` and `program-reconcile` take only that
+operation ID in `identity` and the original host. Status and collect are local;
+reconcile may restore transport to observe the original remote owner. Legacy
+foreground jobs cannot acquire durable ownership retroactively. UNKNOWN never
+authorizes a replacement job.
+
+Registered POSIX guest fixtures expose the finite harmless counter through
+`guest-program-start`, with `inputs` containing `fixtureId`, `operationId`,
+`count` and `intervalSeconds`. `guest-program-status`, `guest-program-reconcile`
+and `guest-program-collect` take just the first two fields. Android has the same
+four `android-program-*` actions with a fixed counter and those two fields for
+every action. These routes accept no source, executable or guest path. Status
+and collect use retained local observations; reconcile observes the original
+owner and may restore transport without powering or unlocking its VM.
+
+The fresh client `agent_tools/ssh_program_mcp_client.py` follows a start through
+same-operation status/reconciliation/collection automatically. Use `--host` for
+SSH jobs or `--fixture` for registered guest/Android jobs, with a bounded
+`--follow-seconds` budget (default 180; `--no-follow` disables it). Retained RPC
+and stream records distinguish a lost response from a proven unsubmitted
+operation. Typed `nextAction` responses contain only fixed public routes and
+the original identity. See the [infrastructure ledger](../agent_docs/tool-recovery-ledger.md)
+for source-bound provider acceptance and remaining blockers.
 
 ## Command-Line Fallback
 
@@ -173,8 +247,9 @@ Its optional `--ci-evidence-dir` records bounded public progress and requires
 `--run`, an explicit shard and a new output directory. Pooled worker evidence
 requires POSIX; the final coverage job verifies both successful current-attempt
 receipts and their exact disjoint union. Private worker output stays local.
-The default managed checks and Windows `--include` retain their existing paths;
-managed prepush writes its own content-bound receipt.
+Managed checks run the SSH-close gate alone, then the same two shards' modules
+without it; Windows `--include` retains its existing path, and managed prepush
+writes its own content-bound receipt.
 
 ## Recipe Index
 

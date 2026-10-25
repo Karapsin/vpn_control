@@ -1,0 +1,54 @@
+"""SOURCE ONLY fixed clang -### plan query: no compiler/linker stage dispatch."""
+from pathlib import Path
+import hashlib,json,os,selectors,stat,subprocess,sys,time,types
+W=Path('/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart-suspend-preparation-134a68b4-4521-467c-a8fc-3d66d69d647c/linker-driver-plan-395a1e0c-8963-4eb7-a6a9-5f64e5cdb76d');OP='395a1e0c-8963-4eb7-a6a9-5f64e5cdb76d'
+I=_PLAN_INPUTS;H=_PLAN_HOLDS
+def need(v,r):
+ if not v:raise ValueError(r)
+def gen(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def guard():
+ for p,fd,g,sha in H:need(gen(os.fstat(fd))==g==gen(p.lstat()),'driver_plan_source_changed')
+ for row in I['directories']:need(gen(Path(row['path']).lstat())[:5]==row['identity']and stat.S_ISDIR(Path(row['path']).lstat().st_mode),'driver_plan_directory_changed')
+ for row in I['aliases']:need(gen(Path(row['path']).lstat())==row['generation']and str(Path(row['path']).resolve())==row['resolved'],'driver_plan_alias_changed')
+def save(name,value):
+ raw=value if isinstance(value,bytes)else(json.dumps(value,indent=2,sort_keys=True)+'\n').encode()
+ fd=os.open(W/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+ return hashlib.sha256(raw).hexdigest()
+p=Path(I['jobsPath']);row=next(x for x in H if x[0]==p);jobs=types.ModuleType('_driver_plan_jobs');jobs.__file__=str(p);sys.modules[jobs.__name__]=jobs;exec(compile(os.pread(row[1],os.fstat(row[1]).st_size+1,0),str(p),'exec'),jobs.__dict__)
+def work_inventory():
+ result=[]
+ for path in sorted((W/'work').rglob('*')):
+  s=path.lstat();need(not stat.S_ISLNK(s.st_mode),'driver_plan_work_symlink')
+  result.append({'relative':str(path.relative_to(W/'work')),'identity':gen(s)[:5],'fileGeneration':gen(s)if stat.S_ISREG(s.st_mode)else None})
+ return result
+need(os.geteuid()==I['uid']and jobs._boot()==I['boot'],'driver_plan_host_changed')
+need(I['argv'][3]==I['clangPath']and I['argv'][4]=='-###'and not any(x in I['env']for x in ['HOME','home','CODEX_HOME']),'driver_plan_fixed_arguments')
+initial=work_inventory();need(initial==I['workInventory'],'driver_plan_work_changed');guard()
+save('driver-plan.intent.json',{'operationId':OP,'argv':I['argv'],'env':I['env'],'profileSha256':I['profileSha256'],'diagnosticOnly':True,'noCommandsFromOutputExecuted':True})
+start=time.monotonic();child=subprocess.Popen(I['argv'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True,start_new_session=True,cwd=W/'work',env=I['env'])
+birth=jobs._birth(child.pid);save('driver-plan.started.json',{'operationId':OP,'pid':child.pid,'observedBirth':birth,'argv':I['argv'],'deadlineSeconds':10})
+deadline=start+10;sel=selectors.DefaultSelector();buffers={'stdout':bytearray(),'stderr':bytearray()};counts={k:0 for k in buffers};retained=0
+for key,pipe in [('stdout',child.stdout),('stderr',child.stderr)]:sel.register(pipe,selectors.EVENT_READ,key)
+while sel.get_map():
+ if time.monotonic()>deadline:
+  for pipe in (child.stdout,child.stderr):pipe.close()
+  sel.close()
+  for key,raw in buffers.items():save('driver-plan.'+key+'.partial',bytes(raw))
+  save('driver-plan.unknown.json',{'operationId':OP,'pid':child.pid,'observedBirth':birth,'counts':counts,'streamsEOF':False,'noSignalOrRetry':True})
+  raise ValueError('driver_plan_child_or_stream_unknown')
+ for key,_ in sel.select(.05):
+  raw=os.read(key.fileobj.fileno(),65536)
+  if not raw:sel.unregister(key.fileobj);key.fileobj.close();continue
+  counts[key.data]+=len(raw);piece=raw[:max(0,65536-retained)];buffers[key.data].extend(piece);retained+=len(piece)
+sel.close()
+try:code=child.wait(timeout=max(.01,deadline-time.monotonic()))
+except subprocess.TimeoutExpired:raise ValueError('driver_plan_waitpid_unknown')
+terminal={'operationId':OP,'pid':child.pid,'observedBirth':birth,'exitCode':code,'streamsEOF':True,'closure':'source-owned direct waitpid','elapsedSeconds':round(time.monotonic()-start,4),'streams':{}}
+for key,raw in buffers.items():terminal['streams'][key]={'sha256':save('driver-plan.'+key,bytes(raw)),'totalBytes':counts[key],'retainedBytes':len(raw)}
+save('driver-plan.terminal.json',terminal)
+need(sum(counts.values())<=65536 and all(counts[k]==len(v)for k,v in buffers.items()),'driver_plan_stream_overflow')
+need(code==0,'driver_plan_refused');guard();need(jobs._birth(child.pid)is None,'driver_plan_child_not_absent')
+need(work_inventory()==initial and not os.path.lexists(W/'work/bin/probe-not-created'),'driver_plan_unexpected_work_output')
+result={'schemaVersion':1,'operationId':OP,'state':'driver-plan-only-complete','results':[terminal],'writer':{'pid':os.getpid(),'birth':jobs._birth(os.getpid())},'workUnchanged':True,'outputExecutableAbsent':True,'noCompileLinkOrImageVmActions':True,'noCommandsFromOutputExecuted':True,'limits':'Documented -### driver nonexecution; this is planned-command evidence only, not link/confinement qualification or independent all-descendant census.'}
+sha=save('driver-plan-result.json',result);print(json.dumps({'operationId':OP,'state':result['state'],'resultSha256':sha}),flush=True)

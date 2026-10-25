@@ -5,8 +5,8 @@ from . import windows_cp117_secure_input_geometry_observe as geometry
 from .windows_diagnostic_authority_capture import AuthorityCapture
 login=geometry.login
 CORRELATION='a847019a-8191-4c24-b8b2-69c6db9672f9'
-GEOMETRY_SHA='9f9efa88a58588d67afbf52f68ca201b11575aa1edf744941f1c42894f1cddcf'
-LOGIN_SHA='8cf4087a82f542f9c30ce8453cd3802b7daf0ef63ee06320edeeb97bb005b779'
+GEOMETRY_SHA='832746a0a990dc42b6e82f799d52dbab42b8424c1be4fab54da171af522f32c7'
+LOGIN_SHA='2d920cdbc73bb22bbd9ecb03692e2c75b187c4cb782fd22f7d6d6710d55b0375'
 SLOTS={
  'before1':('8fd845a1-cd39-45f7-b749-259f703845ae','2c07e6f7-7c14-4b6b-95a5-c109647f5131'),
  'before2':('064319b6-52f8-46e8-a2c6-e3592b67acaa','ebd4536c-6f4e-4f35-bd92-b6e246a537bf'),
@@ -136,7 +136,7 @@ def start(root):
    verify();source=wake_program(record,second);capture.create('wake.remote.py',source.encode());os.fsync(capture.fd)
    argv=r.authority.closure.base.ssh_transport.build_ssh_argv(config,r.HOST,60,command=r.authority.closure.base.windows_credential_probe_ssh._remote_command(source));verify()
    capture.create('wake-attempt.json',json.dumps({'state':'consumed','correlationId':CORRELATION,'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'before2':second['receipt']},sort_keys=True).encode());os.fsync(capture.fd);verify()
-   try:completed=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
+   try:completed=r.authority.closure.base.ssh_transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
    except subprocess.TimeoutExpired as e:
     capture.create('wake.stdout.partial',(e.stdout or b'')[:1000000]);capture.create('wake.stderr.partial',(e.stderr or b'')[:131072]);os.fsync(capture.fd);raise
    capture.create('wake.stdout.private',completed.stdout[:1000000]);capture.create('wake.stderr.private',completed.stderr[:131072]);os.fsync(capture.fd);verify()

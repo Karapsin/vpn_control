@@ -176,32 +176,40 @@ jobs:
         run: ./scripts/check_release_hygiene.sh
 
       - name: Set up JDK 17
+        if: ${{ !cancelled() }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Verify native JDK launcher before packaging
+        if: ${{ !cancelled() }}
         run: |
           python3 scripts/test_jpackage_launcher.py --jdk "$JAVA_HOME"
           python3 -m unittest -v agent_tools.tests.test_temurin_artifact_continuity.CleanupOwnershipTests
 
       - name: Verify Linux cleanup enrollment guards
+        if: ${{ !cancelled() }}
         run: python3 -m unittest -v agent_tools.tests.test_linux_native_cleanup_enrollment
 
       - name: Set up Gradle
+        if: ${{ !cancelled() }}
         uses: gradle/actions/setup-gradle@v4
 
       - name: Install Linux packaging tools
+        if: ${{ !cancelled() }}
         run: |
           sudo apt-get update
           sudo apt-get install -y fakeroot rpm cpio
 
       - name: Build Linux packages
+        id: build-linux-packages
+        if: ${{ !cancelled() }}
         # Package validation invokes the disconnected public-launcher CLI smoke.
         run: ./scripts/package_linux_desktop.sh
 
       - name: Upload Linux packages
+        if: ${{ !cancelled() && steps.build-linux-packages.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: vpn-control-linux-packages

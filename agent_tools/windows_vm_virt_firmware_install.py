@@ -259,7 +259,7 @@ def _remote(root: str | Path, correlation_id: str, mode: str, timeout_seconds: i
     argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout_seconds, 60),
         command=("/usr/bin/python3", "-c", "exec(" + repr(program) + ")"),
         ssh_binary="/usr/bin/ssh", nested_ssh_binary="/usr/bin/ssh")
-    completed = subprocess.run(argv, input=credential, stdin=subprocess.DEVNULL if credential is None else None,
+    completed = ssh_transport.run_ssh(argv, input=credential, stdin=subprocess.DEVNULL if credential is None else None,
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                timeout=timeout_seconds, check=False)
     if completed.returncode != 0 or not 0 < len(completed.stdout) <= 1024:
@@ -276,7 +276,7 @@ def _signature_policy_state(root: str | Path, timeout_seconds: int) -> str:
         command=("/usr/bin/python3", "-c", "exec(" + repr(_SIGNATURE_POLICY_REMOTE) + ")"),
         ssh_binary="/usr/bin/ssh", nested_ssh_binary="/usr/bin/ssh")
     try:
-        completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        completed = ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
         if completed.returncode != 0 or not 0 < len(completed.stdout) <= 256:
             return "unavailable"
@@ -302,19 +302,19 @@ def _transport_diagnostic(root: str | Path, timeout_seconds: int) -> str:
         fixed = {"ssh_binary": "/usr/bin/ssh", "nested_ssh_binary": "/usr/bin/ssh"}
         gateway_argv = ssh_transport.build_ssh_argv(config, gateway.alias, min(timeout_seconds, 60),
                                                      command=("/usr/bin/test", "-x", "/usr/bin/ssh"), **fixed)
-        gateway_run = subprocess.run(gateway_argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        gateway_run = ssh_transport.run_ssh(gateway_argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
         if gateway_run.returncode != 0:
             return "gateway-ssh-unavailable"
         target_argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout_seconds, 60),
                                                     command=("/usr/bin/true",), **fixed)
-        target_run = subprocess.run(target_argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        target_run = ssh_transport.run_ssh(target_argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
         if target_run.returncode != 0:
             return "nested-ssh-unavailable"
         runtime_argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout_seconds, 60),
             command=("/usr/bin/python3", "-c", "exec(" + repr(_RUNTIME_REMOTE) + ")"), **fixed)
-        runtime = subprocess.run(runtime_argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        runtime = ssh_transport.run_ssh(runtime_argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                  stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
         if runtime.returncode != 0 or not 0 < len(runtime.stdout) <= 256:
             return "remote-runtime-unavailable"

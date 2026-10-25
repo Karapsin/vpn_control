@@ -46,7 +46,7 @@ class ChannelUnknown(ValueError):
 HOST='archlinux'
 EXPECTED_UID=1000
 EXPECTED_BOOT='25515f23-b966-4c3a-ae63-d38452375578'
-IDLE_SECONDS=60
+IDLE_SECONDS=18000
 _REVIEWED_ENDED_PREDECESSOR='9cc06c7e5e8d5f61815d8f28a955ff63e2452ef10534cbc013c3111db8d3384e'
 _REVIEWED_ENDED_PREDECESSOR_9A='9a7abc8ab6a5c4595d3f0dc0bb8bda33d5a6b1928bf373651a57cfe4e904bfe7'
 _REVIEWED_ENDED_PREDECESSOR_9527='9527a0163d0b532055a12e34c00dbf68c6435b03843b3caa5d334c90f15be33f'
@@ -105,13 +105,10 @@ def pin(path):
  finally:os.close(fd)
  return body,gen(before)
 def launch_capture(value):
+ # Credential-bearing SSH launch streams are deliberately not serialized or
+ # hashed, including malformed/overflow/echo paths. Retain finite facts only.
  if value is None:return None
- result={key:value.get(key) for key in ('pid','returnCode','complete','counts','eof','timeout','overflow','readError')}
- result['streams']={}
- for name in ('stdout','stderr'):
-  raw=value[name];prefix=raw[:512]
-  result['streams'][name]={'prefixBase64':base64.b64encode(prefix).decode(),'prefixBytes':len(prefix),'prefixSha256':hashlib.sha256(prefix).hexdigest(),'prefixComplete':len(prefix)==value['counts'][name],'retainedBytes':len(raw),'retainedSha256':hashlib.sha256(raw).hexdigest(),'retainedComplete':len(raw)==value['counts'][name]}
- return result
+ return {key:value.get(key) for key in ('pid','returnCode','complete','counts','eof','timeout','overflow','readError')}
 def save(name,value):
  fd=os.open(stage+'/'+name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
  with os.fdopen(fd,'w') as f:json.dump(value,f,sort_keys=True);f.flush();os.fsync(f.fileno())
@@ -185,7 +182,7 @@ def snapshot():
  if len(names)>256:raise ValueError('fd_cap')
  for name in names:
   try:link=os.readlink('/proc/%d/fd/%s'%(identity['pid'],name))
-  except FileNotFoundError:raise ValueError('fd_changed')
+  except FileNotFoundError:continue
   match=re.fullmatch(r'socket:\[([0-9]+)\]',link)
   if match:inodes.add(match[1].encode())
  table,_=pin('/proc/net/unix');rows=[]
@@ -220,7 +217,7 @@ try:
    with os.fdopen(fd,'w') as f:f.write('#!/bin/sh\ncat "$VPN_CONTROL_SSH_PASSWORD_FILE"\n')
    env=os.environ.copy();env.update(SSH_ASKPASS=helper,SSH_ASKPASS_REQUIRE='force',DISPLAY='vpn-channel',VPN_CONTROL_SSH_PASSWORD_FILE=password)
    phase='launch'
-   launch=subprocess.run(ssh+['-M','-N','-f','-S',control,'-o','ControlMaster=yes','-o','ControlPersist=60','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','ConnectTimeout=10',profile],stdin=subprocess.DEVNULL,capture_output=True,timeout=20,env=env)
+   launch=subprocess.run(ssh+['-M','-N','-f','-S',control,'-o','ControlMaster=yes','-o','ControlPersist=18000','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','ConnectTimeout=10',profile],stdin=subprocess.DEVNULL,capture_output=True,timeout=20,env=env)
    if launch.returncode!=0:raise ValueError('launch_unknown')
  elif request!={}:raise ValueError('status_input')
  phase='remote_intent'
@@ -288,6 +285,22 @@ _guard_names={'generation','parent_guard','file_pin','ssh_options','effective_ro
 _guard_nodes=[n for n in ast.parse(_trusted_guard_source).body if isinstance(n,ast.FunctionDef) and n.name in _guard_names]
 if {n.name for n in _guard_nodes}!=_guard_names:raise ValueError('guard_factory_changed')
 _guard_program=''.join(''.join(_guard_lines[n.lineno-1:n.end_lineno])+'\n' for n in _guard_nodes)
+# New connections bind directory identity rather than unrelated directory
+# membership timestamps. Leaf files retain their complete generation and bytes.
+# The authentic guard extraction above remains pinned and archived originals
+# keep their original source; only future emitted programs use these changes.
+_directory_guard_substitutions=(
+    ("'homePin':generation(info)","'homePin':directory_generation(info)"),
+    ("if generation(os.fstat(fd))!=pin or generation(named)!=pin or not stat.S_ISDIR(named.st_mode):",
+     "if directory_generation(os.fstat(fd))!=pin or directory_generation(named)!=pin or not stat.S_ISDIR(named.st_mode):"),
+    ("chain.append((fd,None,generation(os.fstat(fd))))","chain.append((fd,None,directory_generation(os.fstat(fd))))"),
+    ("chain.append((fd,name,generation(os.fstat(fd))))","chain.append((fd,name,directory_generation(os.fstat(fd))))"),
+    ("if generation(os.lstat(home))!=pin:raise ValueError('effective_home_changed')",
+     "if directory_generation(os.lstat(home))!=pin:raise ValueError('effective_home_changed')"))
+for _before,_after in _directory_guard_substitutions:
+    if _guard_program.count(_before)!=1:raise ValueError('directory_guard_source_changed')
+    _guard_program=_guard_program.replace(_before,_after)
+_guard_program="def directory_generation(info):\n    return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid]\n"+_guard_program
 _REMOTE='import selectors,time,pwd\nfrom pathlib import Path\n_SOCKET_CAPTURE_BYTES=4096\n'+_guard_program+_inner_source+'\n'+_REMOTE
 _REMOTE=_REMOTE.replace("result=subprocess.run(ssh+['-S',control,'-O','check',profile],capture_output=True,timeout=5)","result=inner(ssh+['-S',control,'-O','check',profile],5)")
 _REMOTE=_REMOTE.replace("result.stderr)","result['stderr'])").replace("result.returncode!=0 or result.stdout or not match","not result['complete'] or result['returnCode']!=0 or result['stdout'] or not match")
@@ -359,6 +372,7 @@ def _context_journal(root,host,correlation_id,create,direct=False):
     return _journal(Path(root),create,direct,host=host)
 
 def _collect(argv,payload,timeout):
+    timeout=transport._remaining_timeout(timeout)
     if not isinstance(payload,bytes) or not 0<len(payload)<=4096:raise ValueError('input_bound')
     real_popen=subprocess.Popen
     def popen(command,**kwargs):
@@ -610,7 +624,7 @@ def _retained_v2_terminal(stack,directory,held,value,host):
     keys={'version','host','correlationId','sourceSha256','remoteSourceSha256','inventory','outerReceiptSha256','expectedUid','expectedBoot'}
     direct=value.get('transportMode')=='direct'
     if direct:keys=(keys-{'outerReceiptSha256'})|{'outerAuthoritySha256','transportMode','directSourcePins'}
-    if (set(value)!=keys or type(value['version'])is not int or value['version']!=2 or value['host']!=host
+    if (set(value)!=keys or type(value['version'])is not int or value['version']not in (2,3) or value['host']!=host
             or value['expectedUid'] is not None or value['expectedBoot'] is not None):return None
     corr=value['correlationId'];_corr(corr)
     if held.name!=corr+'.intent.json':return None
@@ -618,15 +632,19 @@ def _retained_v2_terminal(stack,directory,held,value,host):
     source_pins=value.get('directSourcePins',{})
     if direct:
         from . import ssh_direct_nested_channel as direct_channel
-        if type(source_pins)is not dict or set(source_pins)!=set(direct_channel._SOURCE_NAMES):return None
+        if type(source_pins)is not dict or set(source_pins)!=set(direct_channel.source_catalog(value['version'])):return None
         if source_pins['ssh_fresh_nested_channel.py']!=value['sourceSha256']:return None
     inventory=value['inventory'];outer=value['outerAuthoritySha256' if direct else 'outerReceiptSha256']
-    if (type(inventory)is not dict or set(inventory)!={'generation','size','sha256'}
+    private_generation=direct and value['version']==3
+    fields={'generation','size','custody'}if private_generation else {'generation','size','sha256'}
+    if (type(inventory)is not dict or set(inventory)!=fields
             or type(inventory['generation'])is not list or len(inventory['generation'])!=9
             or any(type(x)is not int for x in inventory['generation'])
-            or type(inventory['size'])is not int or not 0<inventory['size']<=1048576):return None
+            or type(inventory['size'])is not int or not 0<inventory['size']<=1048576
+            or private_generation and inventory['custody']!='private-generation-v1'):return None
     hashes={'remote':value['remoteSourceSha256'],'ssh_fresh_nested_channel.py':value['sourceSha256'],**source_pins}
-    if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in [outer,inventory['sha256'],*hashes.values()]):return None
+    bound_hashes=[outer,*hashes.values()]+([]if private_generation else [inventory['sha256']])
+    if any(type(x)is not str or re.fullmatch('[0-9a-f]{64}',x)is None for x in bound_hashes):return None
     snapshots=[]
     for name,digest in hashes.items():
         part=stack.enter_context(private.Snapshot(directory,corr+'.'+name+'.source'))
@@ -657,7 +675,7 @@ def _retained_v2_terminal(stack,directory,held,value,host):
     guard();return guard
 
 
-def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None,*,direct=False):
+def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inventory_diagnostic=None,*,direct=False,_membership_predecessor=None):
     phase='input'
     try:
         _host(host)
@@ -666,9 +684,21 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
         if _private_inventory_diagnostic is not None and not callable(_private_inventory_diagnostic):raise ValueError('private_inventory_diagnostic')
         phase='inventory'
         with private.ownership(root) as (presented,directory,ownership), ExitStack() as stack:
-            config_source=stack.enter_context(private.Snapshot(directory,transport.CONFIG_FILENAME))
+            intent_version=3 if direct else 2
+            if direct:
+                from . import ssh_direct_nested_channel as direct_channel
+                try:
+                    previous_journal=_context_journal(root,host,correlation_id,False,True)
+                    with private.Directory(previous_journal)as previous_dir,private.Snapshot(previous_dir,correlation_id+'.intent.json')as previous:
+                        previous_value=json.loads(previous.body,object_pairs_hook=transport._reject_duplicate_keys)
+                        intent_version=previous_value.get('version')
+                        if intent_version not in (1,2,3):raise ValueError('intent_schema')
+                except FileNotFoundError:pass
+            config_source=stack.enter_context(direct_channel.private_inventory(root) if direct and intent_version==3
+                                             else private.Snapshot(directory,transport.CONFIG_FILENAME))
             phase='route'
-            config=transport.load_config(root);target=config.hosts[host]
+            config=config_source.load_config(root)if direct and intent_version==3 else transport.load_config(root)
+            target=config.hosts[host]
             if target.transport!='nested' or not target.gateway or len(transport._route_hosts(config.hosts,host))!=2:return _public()
             gateway=transport.connection_host(config,target.gateway)
             if gateway.password is not None:return _public(reason='outer_prompt_unavailable')
@@ -682,7 +712,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             path=journal/(correlation_id+'.intent.json')
             if direct:
                 from . import ssh_direct_nested_channel as direct_channel
-                direct_guard=stack.enter_context(direct_channel.Guard(root,host=host))
+                direct_guard=stack.enter_context(direct_channel.Guard(root,host=host,legacy=intent_version!=3))
                 outer_receipt=direct_guard.authority_sha
                 prefix,endpoint=direct_channel.outer_prefix(config,gateway)
                 options=['-S','none','-o','ControlMaster=no','-o','ControlPersist=no']
@@ -695,7 +725,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                 prefix,endpoint=session._outer_prefix(config,gateway)
                 if prefix[1:3]!=['-F','/dev/null'] or options[2:]!=['-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false']:return _public()
             phase='intent'
-            intent={'version':2,'host':host,'correlationId':correlation_id,'sourceSha256':source_sha,
+            intent={'version':intent_version,'host':host,'correlationId':correlation_id,'sourceSha256':source_sha,
                     'remoteSourceSha256':hashlib.sha256(_REMOTE.encode()).hexdigest(),'inventory':config_source.pin(),
                     'outerReceiptSha256':outer_receipt,'expectedUid':None,'expectedBoot':None}
             if direct:
@@ -711,12 +741,20 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                 for name in os.listdir(channel_dir.fd):
                     if not name.endswith('.intent.json'):continue
                     prior_id=name[:-len('.intent.json')];_corr(prior_id)
+                    if _membership_predecessor is not None:
+                        from . import readiness_nested_channel as nested_membership
+                        if not direct:raise ValueError('membership_requires_direct')
+                        if nested_membership.validate_membership_successor(_membership_predecessor,root,host,
+                                previous=prior_id,new_correlation=correlation_id):
+                            # The exact held original remains UNKNOWN/live.
+                            # No terminal is invented and no old socket is used.
+                            continue
                     terminal=stack.enter_context(private.Snapshot(channel_dir,prior_id+'.terminal.json'))
                     ended=json.loads(terminal.body,object_pairs_hook=transport._reject_duplicate_keys)
                     if set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'} or ended['state']!='ended' or ended['correlationId']!=prior_id:return _public()
                     old_intent=stack.enter_context(private.Snapshot(channel_dir,name))
                     old_value=json.loads(old_intent.body,object_pairs_hook=transport._reject_duplicate_keys)
-                    if old_value.get('version')==2:
+                    if old_value.get('version')in (2,3):
                         retained=_retained_v2_terminal(stack,channel_dir,old_intent,old_value,host)
                         if retained is None:return _public()
                         retained();retired_guards.append(retained);continue
@@ -757,7 +795,7 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             expected={**intent,binding_key:original_outer}
             original_observation=None
             if actual!=expected or (direct and original_outer!=outer_receipt):
-                if not prepare and actual.get('version')==2:
+                if not prepare and actual.get('version')in (2,3):
                     retained=_retained_v2_terminal(stack,channel_dir,held,actual,host)
                     if retained is not None:
                         presented.guard();ownership.guard();config_source.guard();channel_dir.guard();retained()
@@ -776,6 +814,9 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                     original_observation=_original6b_status_admission(root,stack,channel_dir,config_source,held,actual,intent,direct_guard)
                 if original_observation is None:return _public(reason='intent_binding_changed')
             def guard():
+                if _membership_predecessor is not None:
+                    from . import readiness_nested_channel as nested_membership
+                    nested_membership.validate_membership_successor(_membership_predecessor,root,host,new_correlation=correlation_id)
                 for retired_guard in retired_guards:retired_guard()
                 if _context_journal(root,host,correlation_id,False,direct)!=journal:raise ValueError('channel_context_changed')
                 presented.guard();ownership.guard();config_source.guard();held.guard();channel_dir.guard()
@@ -793,7 +834,13 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
             capture=_collect(argv,payload,35)
             # Raw retention is inside all held custody, followed by a final guard.
             phase='capture_retention'
-            if _private_capture is not None:_private_capture(capture)
+            if _private_capture is not None:
+                if direct and intent_version==3 and action=='prepare':
+                    # Never publish/hash arbitrary echoed credential input.
+                    # The validated public ready/terminal receipt is retained
+                    # separately below; malformed replies retain finite facts.
+                    _private_capture({**capture,'stdout':b'','stderr':b'','credentialStreamsSuppressed':True})
+                else:_private_capture(capture)
             phase='closing'
             guard()
             if not capture['complete'] or capture['stderr']:return _public(correlationId=correlation_id)
@@ -862,7 +909,7 @@ def status(root:Path|str,host:str,correlation_id:str,*,_private_capture=None,_pr
     try:return _operate(root,host,correlation_id,False,_private_capture,_private_inventory_diagnostic)
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):return _public()
 
-def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str)->dict[str,Any]:
+def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str,*,_private_capture=None)->dict[str,Any]:
     """Read-only current admission. Does not create or renew a connection.
 
     Consumers must call this at actual transport use, rather than cache argv.
@@ -871,7 +918,7 @@ def route_options(root:Path|str,host:str,correlation_id:str,receipt_sha256:str)-
     _corr(correlation_id)
     _host(host)
     if not isinstance(receipt_sha256,str) or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise ValueError('receipt')
-    result=status(root,host,correlation_id)
+    result=status(root,host,correlation_id,**({"_private_capture":_private_capture}if _private_capture is not None else{}))
     if result.get('state')!='ready':
         refusal={**result,'correlationId':correlation_id} if result.get('state')=='unknown' else _public(correlationId=correlation_id)
         raise ChannelUnknown(refusal)

@@ -30,6 +30,9 @@ from agent_tools import ssh_recovery_adoption as adoption, ssh_connection_recove
 from agent_tools.private_inventory_lock import Directory, Snapshot
 from agent_tools.tests import test_ssh_recovery_adoption as original_tests
 inventory=original_tests.inventory
+# Short AF_UNIX roots outside the checkout. Guards pin every ancestor's generation()
+# (mtime included), so other processes' churn in shared /tmp fails them; /var/tmp is quiet.
+FIXTURE_PARENT=Path('/var/tmp').resolve()
 
 
 class ObserverTests(unittest.TestCase):
@@ -56,7 +59,7 @@ class ObserverTests(unittest.TestCase):
                 mock.patch.object(tool,'net_namespace',return_value={'link':'net:[123]','generation':[1]*9}))
 
     def test_full_orphan_observation_preserves_directory_and_socket(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp,ExitStack() as stack:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp,ExitStack() as stack:
             spec=self.fixture(Path(tmp).resolve())
             for p in self.controlled():stack.enter_context(p)
             before=tool.socket_snapshot(spec['controlPath'])
@@ -65,7 +68,7 @@ class ObserverTests(unittest.TestCase):
             self.assertEqual(before,tool.socket_snapshot(spec['controlPath']));self.assertFalse(value['credentialRead'])
 
     def test_live_endpoint_rejects_complete_flow_before_control_check(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp,ExitStack() as stack:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp,ExitStack() as stack:
             spec=self.fixture(Path(tmp).resolve());table=HEADER+('0000: 00000002 00000000 00010000 0001 01 12 '+spec['controlPath']+'\n').encode()
             patches=self.controlled()
             for p in patches:stack.enter_context(p)
@@ -75,7 +78,7 @@ class ObserverTests(unittest.TestCase):
 
     def test_socket_directory_same_bytes_metadata_and_namespace_races_reject(self):
         for attack in ('extra','directory-swap','same-inode-ctime','namespace','key','config'):
-            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp,ExitStack() as stack:
+            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp,ExitStack() as stack:
                 spec=self.fixture(Path(tmp).resolve());patches=self.controlled()
                 for p in patches:stack.enter_context(p)
                 def change(_):
@@ -92,7 +95,7 @@ class ObserverTests(unittest.TestCase):
 
     def test_foreign_socket_type_mode_directory_contents_reject(self):
         for attack in ('file','mode','extra','symlink'):
-            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp:
                 spec=self.fixture(Path(tmp).resolve());path=Path(spec['controlPath'])
                 if attack=='file':path.unlink();path.write_text('not socket');path.chmod(0o600)
                 elif attack=='mode':path.chmod(0o666)
@@ -138,13 +141,13 @@ class OwnedBindingTests(unittest.TestCase):
             return binding
 
     def test_only_matching_completed_recovery_and_adoption_admit(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp:
             root=Path(tmp).resolve();self.fixture(root)
             self.assertEqual('a'*32,self.read(root)['correlationId'])
 
     def test_crossed_route_incomplete_duplicate_and_same_byte_history_reject(self):
         for attack in ('route','incomplete','duplicate','ctime','pending'):
-            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp:
                 root=Path(tmp).resolve();self.fixture(root)
                 terminal=next((root/'.rag_index/ssh-recovery-adoption').glob('*.adopted.json'))
                 value=json.loads(terminal.read_bytes())
@@ -163,7 +166,7 @@ class OwnedBindingTests(unittest.TestCase):
 class FileParentTests(unittest.TestCase):
     def test_inert_parent_exchange_cannot_retain_identical_leaf_authority(self):
         for body in (False,True):
-            with self.subTest(body=body),tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            with self.subTest(body=body),tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp:
                 root=Path(tmp).resolve();parent=root/'keys';parent.mkdir(mode=0o700)
                 key=parent/'key';key.write_bytes(b'inert private fixture');key.chmod(0o600)
                 initial=tool.file_pin(key,body=body,private=True)
@@ -173,7 +176,7 @@ class FileParentTests(unittest.TestCase):
                     tool.file_pin(key,body=body,private=True)
 
     def test_parent_same_byte_metadata_change_is_pinned(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp:
             parent=Path(tmp).resolve()/'keys';parent.mkdir(mode=0o700)
             key=parent/'key';key.write_bytes(b'x');key.chmod(0o600)
             initial=tool.file_pin(key,private=True)
@@ -182,7 +185,7 @@ class FileParentTests(unittest.TestCase):
 
     def test_parent_exchange_during_leaf_admission_rejects(self):
         for body in (False,True):
-            with self.subTest(body=body),tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            with self.subTest(body=body),tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp:
                 root=Path(tmp).resolve();parent=root/'keys';parent.mkdir(mode=0o700)
                 key=parent/'key';key.write_bytes(b'inert fixture');key.chmod(0o600)
                 real=tool.parent_guard;exchanged=False
@@ -196,7 +199,7 @@ class FileParentTests(unittest.TestCase):
 
     def test_closing_observer_rejects_inert_config_or_metadata_key_parent_exchange(self):
         for target in ('config','key'):
-            with self.subTest(target=target),tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp,ExitStack() as stack:
+            with self.subTest(target=target),tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp,ExitStack() as stack:
                 root=Path(tmp).resolve();fixture=ObserverTests();spec=fixture.fixture(root)
                 route_dir=root/'route';route_dir.mkdir(mode=0o700)
                 cfg=route_dir/'config';cfg.write_text('Host target\n Hostname target.example\n');cfg.chmod(0o600);spec['configFile']=str(cfg)
@@ -216,7 +219,7 @@ class FileParentTests(unittest.TestCase):
                     tool.observe_remote(spec)
 
     def test_metadata_key_pin_never_opens_or_reads_key_body(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+        with tempfile.TemporaryDirectory(dir=FIXTURE_PARENT) as tmp:
             key=Path(tmp).resolve()/'key';key.write_bytes(b'inert fixture');key.chmod(0o600)
             real_open=os.open
             def opening(path,*args,**kwargs):

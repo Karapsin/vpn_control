@@ -1,0 +1,77 @@
+"""Read-only original close audit: no SSH, VM, signals, admission or replay."""
+from pathlib import Path
+from contextlib import ExitStack
+from types import ModuleType
+import ast,hashlib,json,os,stat,subprocess,sys
+HERE=Path(__file__).resolve().parent;REPO=HERE.parents[3];MODE='direct';OP='e8cd093d-a9ec-4945-ab1d-5cddb09f91e2';LOCAL='8a468b28-ab23-49f8-a30d-1660e81be0b0'
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def read(p):return json.loads(p.read_bytes())
+def load(name,p,digest):
+ raw=p.read_bytes();assert sha(raw)==digest;m=ModuleType(name);m.__file__=str(p);m.__package__=None;sys.modules[name]=m;exec(compile(raw,str(p),'exec'),m.__dict__);return m
+sys.path.insert(0,str(REPO))
+local=load('_direct_closed_owner',HERE/'local-owner-source/local_owner_v2.py','0aaf58a4b01ef34d10d21db97ecfd6a067ae7c6b806342ef5cbd0baadf009841')
+builder=load('_direct_closed_builder',HERE/'build_controller_program_final.py','042febd2a539933cff1030adb25f20ee3ff7dce66790c9d47008c5efe266dcfa')
+entry=load('_direct_closed_metadata',HERE/'invoke_direct_once_after_root_go.py',read(HERE/'fixed-invocation-review.json')['modes'][MODE]['invokeSha256'])
+root=HERE/MODE;result=read(root/'result.json');closure=read(root/'final-closure.json')
+assert result['passed']is True and result['operationId']==OP and result['executions']==1 and result['stdoutLines']==1600 and result['exactRetainedStreams']is True and result['freshSdkAndCliEquivalent']is True
+assert result['rpcActions'].count('program-start')==1 and result['originalConnection']['recoveryId']!=result['renewedConnection']['recoveryId']
+assert closure['sourceClosing']is True and closure['allParentDescriptorsClosed']is True and closure['targetReplayAllowed']is False and closure['remoteOwnerSignalled']is False and closure['sharedMasterSignalled']is False
+assert not closure.get('observationIncomplete',False)
+proxy=closure['proxy'];assert all(proxy[k]is True for k in('listenerClosed','acceptThreadClosed','forwardThreadsClosed'))
+assert all(v['clientSocketClosed']and v['upstreamSocketClosed']for v in proxy['pairs'])
+assert all(v['parentStreamsClosed']and all(s['closed']for s in v['streams'].values())for v in closure['clientStreams'])
+assert closure['ownGatewayMaster']['state']=='dead'
+manifest=read(HERE/'public-source-manifest.json')['sources'];checkpoint=read(HERE/'source-checkpoint.json');program=(HERE/'direct-program.source').read_bytes();assert sha(program)=='12998f8b5c6b71f1f5b3af7c2fc392830ec2be4420506701f900a9f778bc5352'
+tree=ast.parse(program);artifacts=ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='ARTIFACTS'for t in n.targets)))
+with ExitStack()as stack:
+ scope=stack.enter_context(builder.SharedSourceScope(local.Held))
+ for item in artifacts:
+  value=scope.hold(Path(item['path']));assert value.pin==tuple(item['generation'])
+  if'sha256'in item:assert sha(value.raw)==item['sha256']
+  else:assert value.path.name=='route-template.private.json'
+ for name,digest in {**checkpoint['metadataPins'],'.gitattributes':checkpoint['attributesSha256']}.items():assert sha(scope.hold(REPO/name).raw)==digest
+ route=read(HERE/'route-preparation.json');trusted=read(root/'route-template.private.json')['hosts']['gateway']
+ private=[stack.enter_context(entry.MetadataOnly(REPO/'.vm-hosts.local.json',route['originalPrivateConfigGeneration']))]
+ expected=[tuple(v['generation'])for v in route['keyAndTrustMetadata']]
+ for p in sorted({trusted['identityFile'],trusted['knownHostsFile']}):
+  pin=entry.generation(os.lstat(p));assert pin in expected;private.append(stack.enter_context(entry.MetadataOnly(p,pin)))
+ for value in scope.files:value.guard()
+ for value in private:value.guard()
+# Full exact sentinel bytes retained by original result collector.
+journal=root/'.rag_index/ssh-program-execution'/OP
+streams=next(d for d in reversed([journal,*sorted(journal.glob('reconciliation-*'))])if(d/'stdout.private').exists()and(d/'stderr.private').exists())
+out=(streams/'stdout.private').read_bytes();err=(streams/'stderr.private').read_bytes();assert out==''.join(str(n)+'\n'for n in range(1600)).encode()and err==b'fixed public acceptance direct retained stderr\n'
+cli=read(root/'cli.stdout');assert cli['operationId']==OP and cli['state']=='terminal'and cli['remoteOwner']==result['remoteOwner']
+collected_status=read(HERE/'local-owner-direct/collections/counter-612554/terminal.json');assert collected_status['state']=='terminal'and collected_status['operationId']==LOCAL and collected_status['replayAllowed']is False
+terminal=collected_status['terminal'];assert terminal['operationId']==LOCAL and terminal['binding']==collected_status['binding']and terminal['owner']==collected_status['owner']and terminal['exitCode']==0 and terminal['streamsClosed']is True
+pids=set()
+def add(v):
+ if type(v)is dict:
+  if type(v.get('pid'))is int and('birthSha256'in v or'birth'in v):pids.add(v['pid'])
+  for x in v.values():add(x)
+ elif type(v)is list:
+  for x in v:add(x)
+add(closure);add(terminal)
+for c in closure['clients']:pids.add(c['pid'])
+for p in root.glob('*/server-intent.json'):add(read(p))
+for p in (root/'.rag_index/readiness-ssh-master/gateway').glob('*.json'):
+ if any(p.name.endswith(s)for s in('.child.json','.daemon-reconciled.json','.ready.json')):add(read(p))
+# Original local controller session is source-correlated by SDK client actor.
+for p in root.glob('*/client-intent.json'):
+ value=read(p)
+ if type(value.get('clientActor'))is dict:pids.add(value['clientActor']['sessionId'])
+# The first client's source-owned actual birth receipt binds the controller SID.
+pids.add(read(root/'client-loss-once.json')['actor']['sessionId'])
+actors=[]
+for pid in sorted(pids):
+ observed=subprocess.run(['/bin/ps','-p',str(pid),'-o','pid=','-o','lstart='],stdin=subprocess.DEVNULL,capture_output=True,timeout=3)
+ absent=observed.returncode==1 and observed.stdout==observed.stderr==b''
+ actors.append({'pid':pid,'state':'absent-positive'if absent else'visibility-or-generation-blocker','returnCode':observed.returncode})
+assert all(v['state']=='absent-positive'for v in actors),actors
+# Local durable closure retains its own raw streams; no source guard can discard them.
+collected=HERE/'local-owner-direct/collections/counter-612554'
+assert len((collected/'stdout.bin').read_bytes())==terminal['stdout']['retainedBytes']and(collected/'stderr.bin').read_bytes()==b''
+proof={'schemaVersion':1,'qualified':True,'scope':'direct-normal-tools-complete-four-fault-campaign','localOperationId':LOCAL,'remoteOperationId':OP,'remoteOwner':result['remoteOwner'],'localTerminal':{'exitCode':0,'stdoutBytes':terminal['stdout']['retainedBytes'],'stderrBytes':0,'streamsClosed':True,'source':str(collected)},'sentinel':{'executions':1,'stdoutLines':1600,'stdoutBytes':len(out),'stdoutSha256':sha(out),'stderrBytes':len(err),'stderrSha256':sha(err),'originalStreamDirectory':str(streams)},'counterFileExactOnceVerifiedByHeldController':True,'freshSdkAndCliEquivalent':True,'faults':['one-owned-connection-loss','one-SDK-client-loss','one-MCP-server-and-local-observer-loss','one-original-terminal-SSH-acknowledgement-loss'],'source':{'publicFiles':len(manifest),'artifacts':len(artifacts),'allFullGenerationAndBytesRevalidated':True,'privateMetadataInputs':3,'privateInputBodiesReadOrHashed':False,'metadataPins':checkpoint['metadataPins'],'attributesSha256':checkpoint['attributesSha256']},'closure':{'sourceClosing':True,'allParentDescriptorsClosed':True,'clientPairsClosed':len(closure['clientStreams']),'proxyPairsClosed':len(proxy['pairs']),'proxyThreadsAndListenerClosed':True,'ownGatewayMasterDead':True,'localActors':actors,'noSignalsUsedByThisAudit':True},'evidence':{str(p.relative_to(HERE)):sha(p.read_bytes())for p in(root/'result.json',root/'final-closure.json',root/'ack-loss-once.json',root/'cli.stdout',root/'cli-terminal.json',collected/'terminal.json')},'elapsedSeconds':result['elapsedSeconds'],'allContextsClosed':True,'nestedStarted':False,'oldOriginalsPreserved':True,'remoteOwnerOrSharedMasterSignalled':False,'noVMOrLifecycleActions':True}
+p=HERE/'native-direct-qualified-source-closed.json';fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(fd,'w')as f:json.dump(proof,f,sort_keys=True,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
+print(json.dumps({'qualified':True,'receipt':str(p),'sha256':sha(p.read_bytes()),'actorsAbsent':len(actors),'fullSources':len(artifacts),'stdoutBytes':len(out),'stderrBytes':len(err),'elapsedSeconds':result['elapsedSeconds'],'allContextsClosed':True}))

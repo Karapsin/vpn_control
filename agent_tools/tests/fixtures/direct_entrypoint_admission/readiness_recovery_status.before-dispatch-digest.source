@@ -1,0 +1,204 @@
+"""Bounded, local-only recovery journal observations; never dispatch authority.
+
+This projection does not construct a context, create a directory, acquire a lock,
+reconcile a receipt or contact a provider. Missing and uncertain records retain
+uncertainty. Private record bytes, paths and identity/proof material stay local.
+"""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import re
+import stat
+from uuid import UUID
+
+from . import private_inventory_lock as private
+
+MAX_FILES = 2048
+MAX_RECOVERIES = 64
+MAX_RECORD_BYTES = 16384
+MAX_TOTAL_BYTES = 1048576
+_HEX = re.compile(r'[0-9a-f]{64}\Z')
+_ACTIONS = frozenset({'reconnect','start','resume','reboot','login','wake_display'})
+_BASE = {'version','action','recoveryId','target','machine','boot','account','session'}
+
+
+def _need(value):
+    if not value:
+        raise ValueError('recovery_status_invalid')
+
+
+def _uuid(value):
+    _need(type(value) is str and str(UUID(value)) == value)
+
+
+def _hex(value):
+    _need(type(value) is str and _HEX.fullmatch(value) is not None)
+
+
+def _pairs(rows):
+    result = {}
+    for key,value in rows:
+        _need(key not in result)
+        result[key] = value
+    return result
+
+
+class _Reader:
+    def __init__(self,directory):
+        self.directory = directory
+        self.records = {}
+        self.generations = {}
+        self.total = 0
+
+    def names(self):
+        names = []
+        with os.scandir(self.directory.fd) as entries:
+            for entry in entries:
+                names.append(entry.name)
+                _need(len(names) <= MAX_FILES)
+        return sorted(names)
+
+    def read(self,name):
+        if name in self.records:
+            return self.records[name]
+        self.directory.guard()
+        try:
+            fd = os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=self.directory.fd)
+        except FileNotFoundError:
+            self.records[name] = None
+            self.generations[name] = None
+            return None
+        try:
+            info = os.fstat(fd)
+            _need(stat.S_ISREG(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o600
+                  and info.st_nlink==1 and 0<info.st_size<=MAX_RECORD_BYTES)
+            generation = private._generation(info)
+            body = os.read(fd,MAX_RECORD_BYTES+1)
+            self.total += len(body)
+            _need(len(body)==info.st_size and self.total<=MAX_TOTAL_BYTES)
+            _need(private._generation(os.fstat(fd))==generation)
+            _need(private._generation(os.stat(name,dir_fd=self.directory.fd,follow_symlinks=False))==generation)
+            value = json.loads(body,object_pairs_hook=_pairs)
+            _need(type(value) is dict)
+            self.generations[name] = generation
+            self.records[name] = value
+            return value
+        finally:
+            os.close(fd)
+
+    def finish(self,names):
+        _need(self.names()==names)
+        for name,generation in self.generations.items():
+            try:
+                current = private._generation(os.stat(name,dir_fd=self.directory.fd,follow_symlinks=False))
+            except FileNotFoundError:
+                current = None
+            _need(current==generation)
+        self.directory.guard()
+
+
+def _intent(value,recovery_id):
+    version = value.get('version')
+    _need(type(version) is int and version in {1,2})
+    _need(set(value)==_BASE|({'originalOperationId'} if version==2 else set()))
+    _need(value['action'] in _ACTIONS and value['recoveryId']==recovery_id)
+    _hex(recovery_id)
+    for key in ('boot','account','session'):
+        item = value[key]
+        _need(item is None or type(item) is str and 0<len(item)<=512)
+    if version==2:
+        _uuid(value['originalOperationId'])
+
+
+def _project(reader,intent):
+    recovery = intent['recoveryId']
+    result = {'recoveryId':recovery,'originalOperationId':intent.get('originalOperationId'),
+              'action':intent['action'],'journalVersion':intent['version'],'consumedAttempts':0,'provenUnsubmittedAttempts':0,
+              'completionObserved':False,'terminalFailureObserved':False}
+    completed = reader.read('completed-'+recovery+'.json')
+    ended = reader.read('ended-'+recovery+'.json')
+    if completed is not None:
+        _need(type(completed.get('version')) is int and completed=={'version':1,'recoveryId':recovery,'state':'observed'})
+        result['completionObserved'] = True
+    if intent['version']==1:
+        _need(ended is None)
+        return {**result,'consumedAttempts':None,'provenUnsubmittedAttempts':None,
+                'state':'observed_complete' if completed is not None else 'legacy_unknown'}
+    previous = None
+    dispatches = []
+    unsubmitted = []
+    for attempt in range(1,4):
+        dispatch = reader.read('dispatch-'+recovery+'-'+str(attempt)+'.json')
+        proof = reader.read('unsubmitted-'+recovery+'-'+str(attempt)+'.json')
+        if dispatch is None:
+            _need(proof is None)
+            _need(not any(reader.read('dispatch-'+recovery+'-'+str(later)+'.json') is not None or
+                          reader.read('unsubmitted-'+recovery+'-'+str(later)+'.json') is not None for later in range(attempt+1,4)))
+            break
+        _need(set(dispatch)==_BASE|{'originalOperationId','attempt','previousProofSha256','dispatchDigest'})
+        _need(all(dispatch[key]==intent[key] for key in _BASE|{'originalOperationId'}))
+        _need(type(dispatch['attempt']) is int and dispatch['attempt']==attempt and dispatch['previousProofSha256']==previous)
+        _hex(dispatch['dispatchDigest'])
+        dispatches.append(dispatch)
+        if proof is None:
+            _need(not any(reader.read('dispatch-'+recovery+'-'+str(later)+'.json') is not None or
+                          reader.read('unsubmitted-'+recovery+'-'+str(later)+'.json') is not None for later in range(attempt+1,4)))
+            break
+        _need(set(proof)=={'version','recoveryId','attempt','dispatchDigest','proofSha256'}
+              and type(proof['version']) is int and proof['version']==2 and proof['recoveryId']==recovery
+              and type(proof['attempt']) is int and proof['attempt']==attempt and proof['dispatchDigest']==dispatch['dispatchDigest'])
+        _hex(proof['proofSha256']); _need(proof['proofSha256'] not in unsubmitted)
+        previous = proof['proofSha256']; unsubmitted.append(previous)
+    result.update(consumedAttempts=len(dispatches),provenUnsubmittedAttempts=len(unsubmitted))
+    if ended is not None:
+        _need(set(ended)=={'version','recoveryId','attempt','dispatchDigest','proofSha256','state'}
+              and type(ended['version']) is int and ended['version']==2 and ended['state']=='failed'
+              and ended['recoveryId']==recovery and intent['action']=='reconnect' and dispatches
+              and type(ended['attempt']) is int and ended['attempt']==len(dispatches)
+              and ended['dispatchDigest']==dispatches[-1]['dispatchDigest'] and len(unsubmitted)<len(dispatches))
+        _hex(ended['proofSha256'])
+        return {**result,'state':'ended','terminalFailureObserved':True}
+    if completed is not None:
+        return {**result,'state':'observed_complete'}
+    state = ('prepared' if not dispatches else 'outcome_unknown' if len(unsubmitted)<len(dispatches) else
+             'attempts_exhausted' if len(dispatches)==3 else 'proven_unsubmitted')
+    return {**result,'state':state}
+
+
+def inspect(directory,*,target,machine):
+    """Read a privately resolved journal; this function grants no replay rights."""
+    unavailable = {'state':'unavailable','complete':False,'recoveries':[],'replayAllowed':False}
+    try:
+        presented = private.PresentedPath(Path(directory))
+        with private.Directory(presented.canonical) as held:
+            _need(stat.S_IMODE(os.fstat(held.fd).st_mode)==0o700)
+            reader = _Reader(held); names = reader.names(); rows = []; intents = set()
+            for name in names:
+                if re.fullmatch(r'[0-9a-f]{64}\.json',name) is None:
+                    continue
+                value = reader.read(name)
+                if 'action' not in value:
+                    _need(set(value) in ({'version','operationId','target','machine','recoveryId'},
+                                         {'version','operationId','target','machine','recoveryId','boot'}))
+                    _need(type(value['version']) is int and value['version']==(1 if 'boot' in value else 2))
+                    _uuid(value['operationId']); _hex(value['recoveryId'])
+                    continue
+                _intent(value,name[:-5]); intents.add(name[:-5])
+                if value.get('target')!=target or value.get('machine')!=machine:
+                    continue
+                rows.append(value)
+                _need(len(rows)<=MAX_RECOVERIES)
+            for name in names:
+                marker = re.fullmatch(r'(?:completed-|ended-|dispatch-|unsubmitted-)([0-9a-f]{64})(?:-[1-3])?\.json',name)
+                if marker:
+                    _need(marker[1] in intents)
+            result = [_project(reader,value) for value in rows]
+            reader.finish(names); presented.guard()
+            pending = sum(item['state'] in {'prepared','outcome_unknown','legacy_unknown'} for item in result)
+            return {'state':'observed','complete':True,'recoveries':result,'pendingCount':pending,'replayAllowed':False}
+    except FileNotFoundError:
+        return {**unavailable,'state':'absent','reason':'recovery_journal_absent'}
+    except Exception:
+        return {**unavailable,'reason':'recovery_journal_unavailable'}

@@ -1,7 +1,9 @@
 """Hermetic epoch composition, with explicitly synthetic upstream protocol facts.
 
 No native histories, inventories, credentials or reservations are read. Actual
-old/epoch/c466 factories and source guards run unchanged. Only the upstream
+old/epoch/c466 factories and source guards run unchanged. Their exact historical
+private helper is source-bound here as well; it never supplies current execution
+authority or an inventory-lock admission. Only the upstream
 permission-observer provider, its host/device DTOs and fixture-root relocation
 are seams; synthetic hashes are never called the historical 0806/325/936 proofs.
 """
@@ -18,6 +20,7 @@ from agent_tools.tests.fixtures import historical_source
 
 SOURCE_SHA = 'c466a58180280fc0606481b423f19e51f9900b82ea09718df4f3b8b504ad7782'
 PROVENANCE_SHA = '1a2ffe6efc1b45a194871a242d9fc8f8ba26b5611517f02355ec33f901fe657e'
+PRIVATE_SOURCE_SHA = 'd6ce7b228059470b4792c47e4562017235cad26ae6666c2a899dd459887358b8'
 BASE = Path(__file__).resolve().parent
 
 
@@ -74,6 +77,12 @@ class Context:
             raise ValueError('fixture_provenance_changed')
         self.epoch = clone(production)
         self.old = clone(production.old)
+        # Frozen constructors must retain their original dependency, rather
+        # than relabel a changed live helper with the historical source hash.
+        # Directory/Snapshot/_generation are exercised; historical InventoryLock
+        # is never an authority for current execution and its fcntl is inert.
+        self.private = historical_source.load(BASE/'private_inventory_lock.source', PRIVATE_SOURCE_SHA)
+        self.old.private = self.epoch.private = self.private
         self.proven = clone(self.component.proven)
         self.component.proven = self.proven
         self.epoch.old = self.old

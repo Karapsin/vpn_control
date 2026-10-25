@@ -1,0 +1,76 @@
+"""Finite PUBLIC inquiry snapshot validation. Evidence never grants admission."""
+import base64,re
+
+def need(ok,reason):
+ if not ok:raise ValueError(reason)
+def integer(value,lo=0,hi=0xffffffff):return type(value)is int and lo<=value<=hi
+def sid(value):return type(value)is str and re.fullmatch(r'S-1-[0-9]{1,10}(?:-[0-9]{1,10}){1,15}',value)is not None and len(value)<=184
+def digest(value):return type(value)is str and re.fullmatch('[0-9a-f]{64}',value)is not None
+def generation(value):return type(value)is str and re.fullmatch(r'-?[0-9]{1,11}(?::-?[0-9]{1,11}){10}',value)is not None
+
+def failure(value):
+ need(type(value)is dict and set(value)=={'state','stage','reason','nativeError','admission'}and value['state']=='blocked'and value['admission']is False,'inquiry_failure_schema')
+ need(type(value['stage'])is str and value['stage']in {'system-source','image','hardlinks','acl','signature','wts-token','console','ordinary-token','closing-console'}and type(value['reason'])is str and re.fullmatch(r'(?:INQUIRY|READONLY|CLIENT)_[A-Z0-9_]{1,96}',value['reason'])is not None and(value['nativeError']is None or integer(value['nativeError'],0,2147483647)),'inquiry_failure_reason')
+def token(value):
+ need(type(value)is dict and set(value)=={'sid','session','groups'}and sid(value['sid'])and integer(value['session'],0,65535)and type(value['groups'])is list and len(value['groups'])<=2,'inquiry_token_schema');seen=set()
+ for group in value['groups']:
+  need(type(group)is dict and set(group)=={'sid','attributes'}and group['sid']in {'S-1-5-32-544','S-1-5-32-545'}and group['sid']not in seen and integer(group['attributes']),'inquiry_token_group');seen.add(group['sid'])
+def physical(value):
+ names={'volume','indexHigh','indexLow','links','attributes','sizeHigh','sizeLow','generation'}
+ need(type(value)is dict and set(value)==names and all(integer(value[k])for k in names-{'generation'})and 1<=value['links']<=8 and value['attributes']&0x410==0 and generation(value['generation']),'inquiry_image_physical')
+ # Join emitted FileID/size/attributes/link facts back to the full physical tag.
+ parts=list(map(int,value['generation'].split(':')))
+ for index,key in ((0,'volume'),(1,'indexHigh'),(2,'indexLow'),(5,'attributes'),(6,'sizeHigh'),(7,'sizeLow'),(10,'links')):need(parts[index]==value[key],'inquiry_physical_generation_join')
+
+def image(value):
+ need(type(value)is dict,'inquiry_image_schema')
+ if value.get('state')=='blocked':failure(value);return
+ need(set(value)=={'state','physical','generation','sha256','imageAdmission','policy','hardlinks','acl','signature'}and value['state']=='observed'and value['imageAdmission']is False and value['policy']=='evidence-only-no-system-image-admission'and digest(value['sha256']),'inquiry_image_evidence_only')
+ physical(value['physical']);need(value['generation']==value['physical']['generation'],'inquiry_image_generation')
+ for name in ('hardlinks','acl','signature'):
+  row=value[name]
+  if type(row)is dict and row.get('state')=='blocked':failure(row);continue
+  need(type(row)is dict and row.get('state')=='observed'and row.get('admission')is False,'inquiry_gate_admission')
+  if name=='hardlinks':
+   need(set(row)=={'state','links','admission'}and type(row['links'])is list and len(row['links'])==value['physical']['links'],'inquiry_link_count');seen=set()
+   for link in row['links']:
+    need(type(link)is dict and set(link)=={'volumeRelativeName','sameFileIdAndGeneration','physical'}and link['sameFileIdAndGeneration']is True,'inquiry_link_schema');path=link['volumeRelativeName']
+    need(type(path)is str and 1<len(path)<=512 and path.startswith('\\')and not path.startswith('\\\\')and all(part not in {'','.','..'}for part in path[1:].split('\\'))and not any(ord(c)<32 or c in ':/*?\0'for c in path)and path.casefold()not in seen,'inquiry_link_name');seen.add(path.casefold());physical(link['physical']);need(link['physical']==value['physical'],'inquiry_link_file_join')
+  elif name=='acl':
+   need(set(row)=={'state','ownerSid','groupSid','control','nullDacl','entries','saclRequested','admission'}and sid(row['ownerSid'])and sid(row['groupSid'])and integer(row['control'],0,65535)and type(row['nullDacl'])is bool and row['saclRequested']is False and type(row['entries'])is list and len(row['entries'])<=32,'inquiry_acl_schema')
+   need(not row['nullDacl']or not row['entries'],'inquiry_null_acl_entries')
+   for ace in row['entries']:need(type(ace)is dict and set(ace)=={'sid','accessMask','qualifier','flags'}and sid(ace['sid'])and integer(ace['accessMask'],-2147483648,2147483647)and integer(ace['qualifier'],0,1)and integer(ace['flags'],0,255),'inquiry_ace_schema')
+  else:
+   need(set(row)=={'state','verifyStatus','closeStatus','cacheOnly','uiNone','revocationChecked','subject','imageAdmission','admission'}and integer(row['verifyStatus'],-2147483648,2147483647)and type(row['closeStatus'])is int and row['closeStatus']==0 and row['cacheOnly']is True and row['uiNone']is True and row['revocationChecked']is False and row['subject']=='fixed-held-powershell-image'and row['imageAdmission']is False,'inquiry_offline_signature')
+
+def session(value,expected_sid):
+ need(type(value)is dict and set(value)<={'state','admission','stableRecipientAdmission','console','ordinaryToken','failure'}and {'state','admission','stableRecipientAdmission'}<=set(value)and value['state']in {'observed','blocked'}and value['admission']is False and value['stableRecipientAdmission']is False,'inquiry_session_schema')
+ console=value.get('console')
+ if console is not None:need(type(console)is dict and set(console)=={'session','state','flags','logon','intendedUserNameMatches','localDomainMatches','enumeratedCount'}and integer(console['session'],0,65535)and integer(console['state'],0,9)and integer(console['flags'],0,0xffffffff)and type(console['logon'])is str and re.fullmatch('[0-9]{1,20}',console['logon'])is not None and all(type(console[k])is bool for k in ('intendedUserNameMatches','localDomainMatches'))and integer(console['enumeratedCount'],1,128),'inquiry_console_schema')
+ ordinary=value.get('ordinaryToken')
+ if ordinary is not None:token(ordinary)
+ if value['state']=='observed':
+  need(set(value)=={'state','admission','stableRecipientAdmission','console','ordinaryToken'}and console['state']==0 and console['intendedUserNameMatches']is True and console['localDomainMatches']is True and ordinary['sid']==expected_sid and ordinary['session']==console['session'],'inquiry_observed_ordinary_join')
+  groups={row['sid']:row['attributes']for row in ordinary['groups']};need('S-1-5-32-544'not in groups and groups.get('S-1-5-32-545',0)&4!=0 and groups.get('S-1-5-32-545',0)&16==0,'inquiry_observed_ordinary_groups')
+ else:need('failure'in value,'inquiry_session_failure');failure(value['failure'])
+
+def validate_complete(packet,value,*,owner,operation,machine):
+ need(type(value)is dict and set(value)=={'status','stdout','stderr'},'inquiry_collect_schema');out=base64.b64decode(value['stdout'],validate=True);err=base64.b64decode(value['stderr'],validate=True);status=value['status'];t=status.get('terminal')
+ need(status.get('state')=='terminal'and type(t)is dict and t.get('programSha256')==packet['controllerSha256']and type(t.get('exitCode'))is int and t['exitCode']==0 and t.get('streamsClosed')is True and not err,'inquiry_owner_terminal')
+ reply=owner._load(out);c=packet['config'];need(type(reply)is dict and reply.get('state')=='observed'and reply.get('operationId')==operation and reply.get('machine')==machine and reply.get('provider')=='raw-qemu-windows'and reply.get('guestAgent')is True,'inquiry_vm_frame');g=reply.get('sessionFacts')
+ need(type(g)is dict and g.get('operationId')==operation and g.get('state')=='terminal'and g.get('nativeSha256')==c['nativeSha256']and g.get('waitSignaled')is True and g.get('stdoutEOF')is True and g.get('stderrEOF')is True and g.get('overflow')is False,'inquiry_parent_terminal')
+ for role in ('parent','child'):
+  a=g.get(role);need(type(a)is dict and integer(a.get('pid'),1,2147483647)and type(a.get('birth'))is str and re.fullmatch('[1-9][0-9]{0,19}',a['birth'])is not None and a.get('sid')=='S-1-5-18'and type(a.get('session'))is int and a['session']==0 and digest(a.get('sourceSha256'))and type(a.get('image'))is str and a['image'].lower().endswith('\\system32\\windowspowershell\\v1.0\\powershell.exe'),'inquiry_parent_child_actor')
+ need(g['parent']['sourceSha256']==packet['sourceSha256']and type(g.get('exitCode'))is int and g.get('inputAuthority')is False and g.get('nativeQualified')is False and g.get('replayAllowed')is False,'inquiry_parent_source')
+ if g['exitCode']!=0:return {'state':'public-inquiry-program-failed','operationId':operation,'child':g['child'],'inputAuthority':False,'imageAdmission':False,'idleAuthority':False,'compiledMethodAuthority':False}
+ rows=g['publicStreams'];need(all(rows[role]['complete']is True for role in ('stdout','stderr'))and g['stderrBytes']==0,'inquiry_public_streams');raw=base64.b64decode(rows['stdout']['raw'],validate=True);need(len(raw)<=16384,'inquiry_facts_bound');facts=owner._load(raw)
+ need(type(facts)is dict and set(facts)<={'schemaVersion','operationId','machine','boot','state','stage','inputAuthority','pipeAuthority','uiAuthority','imageAdmission','idleAuthority','replayAllowed','selfBase','selfToken','source','image','session','failure','actualAccount'}and type(facts.get('schemaVersion'))is int and facts['schemaVersion']==1 and all(facts.get(k)==c[k]for k in ('operationId','machine','boot'))and all(facts.get(k)is False for k in ('inputAuthority','pipeAuthority','uiAuthority','imageAdmission','idleAuthority','replayAllowed')),'inquiry_facts_binding')
+ a=facts.get('selfBase');need(type(a)is dict and set(a)=={'pid','birth','session'}and integer(a['pid'],1,2147483647)and type(a['birth'])is str and type(a['session'])is int and a['session']==0 and all(a[k]==g['child'][k]for k in a),'inquiry_native_self_join')
+ expected={'name':c['accountName'],'sid':c['accountSid'],'enabled':True,'isAdministrator':False,'isUsersMember':True};account=facts.get('actualAccount');need(type(account)is dict and set(account)==set(expected)and all(type(account[k])is bool for k in ('enabled','isAdministrator','isUsersMember'))and account==expected,'inquiry_current_account')
+ if 'selfToken'in facts:token(facts['selfToken']);need(facts['selfToken']['sid']=='S-1-5-18'and facts['selfToken']['session']==0,'inquiry_self_token')
+ need(facts.get('state')in {'blocked','evidence-collected'},'inquiry_state')
+ if facts['state']=='evidence-collected':
+  need('selfToken'in facts and facts.get('stage')=='closed-evidence-only'and type(facts.get('source'))is dict and set(facts['source'])=={'nativeGeneration','nativeSha256'}and type(facts['source']['nativeGeneration'])is str and facts['source']['nativeSha256']==c['nativeSha256']and 'failure'not in facts,'inquiry_source_closing')
+  image(facts.get('image'));session(facts.get('session'),c['accountSid'])
+ else:failure(facts.get('failure'))
+ return {'state':'public-inquiry-evidence-collected'if facts['state']=='evidence-collected'else'public-inquiry-blocked','operationId':operation,'facts':facts,'inputAuthority':False,'imageAdmission':False,'idleAuthority':False,'compiledMethodAuthority':False,'remaining':['system_image_role_policy_unqualified','namedpipe_and_peer_token_security_unqualified','crosssession_system_launcher_unqualified','securedesktop_focus_HKL_UIA_anchor_unqualified','original_UNKNOWN_jobs_and_unclassified_marker_block_reboot']}

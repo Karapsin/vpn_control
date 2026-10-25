@@ -161,7 +161,17 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
         tail = original[start + 1:]
         jobs = self.workflow()['jobs']
         current = jobs['fast-checks']['steps']
-        self.assertEqual(tail, [step for step in current if any(step.get('name') == old.get('name') for old in tail)])
+        def without_failure_discovery(step):
+            # TEST-006 continues each retained step after an earlier failed
+            # check and lets Gradle finish its other tasks; commands stay exact.
+            step = dict(step)
+            if step.get('if') == '${{ !cancelled() }}':
+                del step['if']
+            if 'run' in step:
+                step['run'] = step['run'].replace('./gradlew --continue ', './gradlew ', 1)
+            return step
+        self.assertEqual(tail, [without_failure_discovery(step) for step in current
+                                if any(step.get('name') == old.get('name') for old in tail)])
         for old in tail:
             owners = [name for name, job in jobs.items() for step in job['steps'] if step.get('name') == old.get('name')]
             self.assertEqual(['fast-checks'], owners)

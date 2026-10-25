@@ -1,4 +1,5 @@
-from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import HistoricalFactoryTestCase as HistoryCase, provider as historical_provider
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import provider as historical_provider
+from agent_tools.tests.fixtures.windows_cp117_migration_head.context import HistoricalFactoryTestCase as HistoryCase
 """Complete fixed Windows server preflight/action/failure boundaries; no live acceptance."""
 import unittest,ast,base64,gzip,json,hashlib,os,tempfile,subprocess,sys
 from pathlib import Path

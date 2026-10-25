@@ -1,0 +1,88 @@
+"""Actual framed subprocesses for the separate correlated unlock observer."""
+from dataclasses import replace
+import json
+import os
+from pathlib import Path
+import selectors
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from agent_tools import readiness_tart_macos_unlock_stream as stream
+from agent_tools.tests.test_readiness_tart_macos import binding
+from agent_tools.tests.test_tart_macos_session_stream import SessionStreamTests
+
+
+@unittest.skipUnless(os.name=='posix','controlled guest runtime requires POSIX')
+class UnlockStreamTests(unittest.TestCase):
+    def source(self,root,*,drift=False):
+        # Keep the entire emitted protocol/generation runtime. Only the native
+        # getter and private root become explicit public controlled fixtures.
+        from agent_tools import readiness_tart_macos_session_stream as old
+        raw=SessionStreamTests().fixture(root).decode().replace(old._STREAM,stream._STREAM)
+        if drift:
+            raw=raw.replace(' counter+=1\n',
+                " counter+=1\n if counter==2:\n  replacement=prefix/'replacement';replacement.write_bytes(probe.read_bytes());os.replace(replacement,probe)\n")
+        return raw.encode()
+
+    def line(self,process):
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout,selectors.EVENT_READ)
+            self.assertTrue(selector.select(3),'bounded reply deadline')
+        return json.loads(process.stdout.readline())
+
+    def run_case(self,requests,*,drift=False):
+        with tempfile.TemporaryDirectory() as temporary:
+            selected=replace(binding(),guest_python='/usr/local/libexec/vpn-tool-recovery-control/python/bin/python3.12')
+            with patch.object(stream,'guest_session_stream_source',return_value=self.source(Path(temporary),drift=drift)):
+                argv,payload=stream.session_stream_command(selected)
+            process=subprocess.Popen([sys.executable,*argv[1:]],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            replies=[]
+            try:
+                process.stdin.write(payload);process.stdin.flush();initial=self.line(process)
+                self.assertEqual({'protocol','state','observation'},set(initial))
+                self.assertEqual((stream.PROTOCOL,'observer_ready',1),
+                    (initial['protocol'],initial['state'],initial['observation']['freshCounter']))
+                for raw,expected in requests:
+                    process.stdin.write(raw);process.stdin.flush()
+                    if expected:
+                        value=self.line(process);replies.append(value)
+                        counter,nonce=expected
+                        self.assertEqual({'protocol','state','counter','nonce','observation'},set(value))
+                        self.assertEqual((stream.PROTOCOL,'observed',counter,nonce,counter+1),
+                            (value['protocol'],value['state'],value['counter'],value['nonce'],value['observation']['freshCounter']))
+                process.stdin.close();process.wait(timeout=3)
+                self.assertEqual(b'',process.stdout.read());self.assertEqual(b'',process.stderr.read())
+                return process.returncode,replies
+            finally:
+                if process.poll() is None:process.kill();process.wait()
+                for pipe in (process.stdin,process.stdout,process.stderr):
+                    if not pipe.closed:pipe.close()
+
+    def test_emitted_gate_real_process_unique_roundtrips_after_fresh_native_getter(self):
+        requests=[(('check '+str(i)+' '+format(i,'032x')+'\n').encode(),(i,format(i,'032x'))) for i in range(1,5)]
+        code,replies=self.run_case(requests)
+        self.assertEqual((0,4),(code,len(replies)))
+
+    def test_duplicate_nonce_noncanonical_counter_old_protocol_and_private_malformed_no_echo(self):
+        for raw in (b'check\n',b'check 01 '+b'0'*32+b'\n',b'check 2 '+b'0'*32+b'\n',
+                    b'check 1 '+b'A'*32+b'\n',b'PRIVATE'+b'x'*140+b'\n'):
+            with self.subTest(length=len(raw)):
+                self.assertEqual((73,[]),self.run_case([(raw,None)]))
+        self.assertEqual(73,self.run_case([(b'check 1 '+b'a'*32+b'\n',(1,'a'*32)),
+                                           (b'check 2 '+b'a'*32+b'\n',None)])[0])
+
+    def test_actual_postobservation_inode_replacement_never_echoes_pending_nonce(self):
+        self.assertEqual((73,[]),self.run_case([(b'check 1 '+b'1'*32+b'\n',None)],drift=True))
+
+    def test_production_command_rejects_wrong_account_before_any_observation(self):
+        selected=replace(binding(),guest_python='/usr/local/libexec/vpn-tool-recovery-control/python/bin/python3.12',
+                         ordinary_uid=max(501,os.geteuid()+1))
+        argv,payload=stream.session_stream_command(selected)
+        result=subprocess.run([sys.executable,*argv[1:]],input=payload,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=5)
+        self.assertEqual((73,b'',b''),(result.returncode,result.stdout,result.stderr))
+
+
+if __name__=='__main__':unittest.main()

@@ -84,6 +84,17 @@ class NativeHostObservationTest(unittest.TestCase):
         exec(observation._REMOTE_PROGRAM.split('if not sys.platform', 1)[0], namespace)
         self.assertEqual(6144 * 1024 ** 2, namespace["parse_memory"]([b"qemu-system-x86_64", b"-m", b"6144", b"-machine", b"q35"]))
 
+    def test_memory_parser_accepts_only_unambiguous_explicit_qemu_size_scalar(self):
+        namespace={"__name__":"not_main"}
+        exec(observation._REMOTE_PROGRAM.split('if not sys.platform',1)[0],namespace)
+        parse=namespace['parse_memory']
+        for text in (b'size=6291456k',b'size=6144',b'size=6G'):
+            with self.subTest(value=text):self.assertEqual(6*1024**3,parse([b'qemu-system-x86_64',b'-m',text]))
+        for text in (b'size=',b'size=0',b'size=-1G',b'size=size=6G',b'size=6G,size=7G',
+                     b'size=6G,slots=2',b'{"size":6442450944}',b'other=6G'):
+            with self.subTest(value=text):self.assertIsNone(parse([b'qemu-system-x86_64',b'-m',text]))
+        self.assertIsNone(parse([b'qemu-system-x86_64-headless',b'-memory',b'size=6144']))
+
     def test_memory_parser_accepts_android_emulator_memory_mebibytes(self):
         namespace: dict[str, object] = {"__name__": "not_main"}
         exec(observation._REMOTE_PROGRAM.split('if not sys.platform', 1)[0], namespace)

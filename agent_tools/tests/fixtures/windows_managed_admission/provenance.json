@@ -1,0 +1,10 @@
+{
+  "beforeSha256": {
+    "factory.before.source": "358559486855476800436ed3055dd97a457201d414540374174e0813a353bcb2",
+    "private-pin.before.source": "fec9b60f0edf7512db6502df304db05ddc4e9352d8d83466ff943dc5e59ce371"
+  },
+  "discovery": "managed-first factory requires independent original/current admission; content-reading SecretFile cannot implement pure schema2 pin check",
+  "nativeFailureClaimed": false,
+  "privatePinFailure": "source-reviewed and tested only with a neutral temporary fixture file",
+  "schemaVersion": 1
+}

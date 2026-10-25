@@ -1,0 +1,13 @@
+{
+  "sourcePath": "agent_tools/native_execution_context.py",
+  "sourceSha256": "0c73c67f2c79a332498d721284e9ec9f7eea7d2bc1741d76d5a97d83f8f955e3",
+  "sourceSize": 25238,
+  "failure": "native_dependency_dynamic_unknown",
+  "originalTest": "test_native_catalogue_automatic.NativeCatalogueAutomaticTest.test_actual_committed_automatic_helper_is_in_held_native_source_closure",
+  "evidence": ".runtime/tool-recovery/root-target-catalog-focused.log",
+  "historicalTest": {
+    "path": "agent_tools/tests/test_native_execution_context.py",
+    "sourceSize": 20028,
+    "sourceSha256": "f32e968037014ae99583649158f5cc87a94d48fecaa7962b010b160d06100fae"
+  }
+}

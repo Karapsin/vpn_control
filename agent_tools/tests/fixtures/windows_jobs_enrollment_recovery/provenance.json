@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "42c86d7490c6b9a4653ed3e9d77a9461941a5fa3cc2f5952fb98e2833c50d6cb",
+  "cause": "Review: first enrollment lost-ACK propagated until manual factory reentry; discarded program generation occurred before dispatch readiness. Full frozen42c helper preserved before two Python-only corrections; fixed read-only original enrollment observation never repeats Enroll.",
+  "scope": "Execute complete authenticated helper at controlled remote boundary with actual private local journal/artifact validation, no host/guest calls."
+}

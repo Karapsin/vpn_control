@@ -1,0 +1,270 @@
+"""Readiness adapter for trusted SSH routes; no VM or job lifecycle effects.
+
+Observers and transport builders stay effect free. Reconnect owns separate
+connection identities and never replaces a job, edits inventory, or removes a
+canonical socket. Existing uncertain connection intents remain observation only.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import shlex
+import subprocess
+import time
+
+from . import private_inventory_lock as private
+from . import readiness
+from . import readiness_ssh_master as master
+from . import ssh_channel_selection as selection
+from . import ssh_connection_session as session
+from . import ssh_direct_nested_channel as direct
+from . import ssh_fresh_nested_channel as channel
+from . import readiness_nested_channel as nested_ready
+from . import ssh_transport as transport
+
+PROBE = r'''import json,os,pwd,subprocess,sys
+from pathlib import Path
+entry=pwd.getpwuid(os.geteuid())
+if sys.platform.startswith('linux'):boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+elif sys.platform=='darwin':boot=subprocess.check_output(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],text=True,timeout=3).strip().lower()
+else:raise SystemExit(3)
+print(json.dumps({'boot':boot,'uid':os.geteuid(),'principal':entry.pw_name,'home':entry.pw_dir,'connection':os.environ.get('SSH_CONNECTION')},sort_keys=True))
+'''
+PROBE_COMMAND = ('python3', '-I', '-B', '-c', 'exec(' + repr(PROBE) + ')')
+
+
+def _bounded(argv, deadline):
+    """Read-only child with complete bounded streams; overflow is never ready."""
+    process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, env={k:v for k,v in os.environ.items() if not k.startswith('DYLD_')})
+    streams = {'stdout': bytearray(), 'stderr': bytearray()}
+    overflow = False
+    with selectors.DefaultSelector() as selector:
+        for name in streams:
+            pipe = getattr(process, name); os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ, name)
+        while selector.get_map() and time.monotonic() < deadline:
+            for key, _ in selector.select(min(.05, max(0, deadline-time.monotonic()))):
+                block = os.read(key.fileobj.fileno(), 4096)
+                if not block:
+                    selector.unregister(key.fileobj); continue
+                if len(streams[key.data])+len(block) > 8192:
+                    overflow = True
+                streams[key.data].extend(block[:max(0,8192-len(streams[key.data]))])
+        complete = not selector.get_map()
+    if not complete:
+        # This fixed probe has no remote mutation. Stop only its owned local SSH
+        # observer, never a master, VM, runtime or original application job.
+        process.terminate()
+    try:
+        code = process.wait(timeout=max(.1, min(1, deadline-time.monotonic())))
+    except subprocess.TimeoutExpired:
+        return {'complete': False, 'overflow': overflow, 'returnCode': None, **{k:bytes(v)for k,v in streams.items()}}
+    finally:
+        process.stdout.close(); process.stderr.close()
+    return {'complete': complete, 'overflow': overflow, 'returnCode': code, **{k:bytes(v)for k,v in streams.items()}}
+
+
+def _failure(result):
+    if result['overflow'] or not result['complete']:
+        return 'unavailable'
+    output = (result['stdout']+result['stderr']).lower()
+    if b'host key verification failed' in output or b'remote host identification has changed' in output:
+        raise readiness.AdapterBlocked('trust_mismatch')
+    if b'permission denied' in output or b'authentication failed' in output:
+        raise readiness.AdapterBlocked('authentication_rejected')
+    if any(word in output for word in (b'connection refused', b'no route to host', b'connection timed out',
+                                      b'network is unreachable', b'could not resolve hostname', b'connection closed')):
+        return 'unavailable'
+    raise readiness.AdapterBlocked('connection_outcome_unknown')
+
+
+def _private_directory(path):
+    path.mkdir(mode=0o700, exist_ok=True)
+    with private.Directory(path):
+        if path.stat().st_mode & 0o077:
+            raise readiness.AdapterBlocked('ownership_mismatch')
+    return path
+
+
+class TransportAdapter:
+    capabilities = frozenset({'reconnect'})
+
+    def __init__(self, root, host):
+        self.root = Path(root).resolve(strict=True)
+        self.host = host
+        try:
+            config = transport.load_config(self.root)
+            if host not in config.hosts:
+                raise ValueError('unknown_host')
+            self.machine = master.identity(config, host)
+        except (OSError, ValueError, KeyError, TypeError):
+            raise readiness.AdapterBlocked('integrity_mismatch') from None
+
+    def _config(self):
+        try:
+            config = transport.load_config(self.root)
+            if master.identity(config, self.host) != self.machine:
+                raise readiness.AdapterBlocked('machine_identity_mismatch')
+            return config
+        except readiness.AdapterBlocked:
+            raise
+        except (OSError, ValueError, KeyError, TypeError):
+            raise readiness.AdapterBlocked('integrity_mismatch') from None
+
+    def _base(self, **values):
+        return readiness.Observation(target=self.host, machine=self.machine,
+            trusted=True, integrity=True, **values)
+
+    def _anchor(self, config):
+        candidates = [entry for entry in transport._route_hosts(config.hosts,self.host)
+                      if entry.remote_control_path is not None]
+        return candidates[-1] if candidates else None
+
+    def _nested_state(self, config, anchor, deadline):
+        # The configured legacy socket is observed; it is never repaired,
+        # removed, adopted, or used as the new channel's socket pathname.
+        command = ['ssh']
+        if anchor.remote_config_file is not None:
+            command += ['-F', str(anchor.remote_config_file)]
+        command += ['-S', str(anchor.remote_control_path), '-O', 'check', anchor.remote_host_alias]
+        result = _bounded(transport.build_ssh_argv(config, anchor.gateway, 10, tuple(command)), deadline)
+        if result['complete'] and not result['overflow'] and result['returnCode'] == 0 and not result['stdout'] and re.fullmatch(rb'Master running \(pid=[1-9][0-9]*\)\r?\n',result['stderr']):
+            return 'ready'
+        expected = ('Control socket connect('+str(anchor.remote_control_path)+'): ').encode()
+        if result['complete'] and not result['overflow'] and result['returnCode'] == 255 and not result['stdout'] and result['stderr'] in (expected+b'No such file or directory\n', expected+b'Connection refused\n'):
+            return 'dead'
+        return _failure(result)
+
+    def observe(self, requirements, deadline):
+        config = self._config()
+        target = config.hosts[self.host]
+        if not requirements.required or 'disconnected' in requirements.intentional_states:
+            return self._base(transport='unknown')
+        if time.monotonic() >= deadline:
+            return self._base(transport='unavailable')
+        connection_owner = None
+        try:
+            if target.transport == 'direct':
+                if target.password is not None:
+                    raise readiness.AdapterBlocked('provider_unavailable')
+                owner = master.status(self.root, self.host, config)
+                if owner['state'] == 'absent':
+                    return self._base(transport='unavailable')
+                if owner['state'] == 'dead':
+                    return self._base(transport='dead')
+                if owner['state']=='starting':
+                    return self._base(transport='unavailable')
+                if owner['state'] != 'ready':
+                    raise readiness.AdapterBlocked('connection_outcome_unknown')
+                connection_owner = owner['recoveryId']
+            else:
+                anchor = self._anchor(config)
+                if anchor is None:
+                    raise readiness.AdapterBlocked('provider_unavailable')
+                if nested_ready.present(self.root,anchor.alias):
+                    metadata=nested_ready.route_options(self.root,anchor.alias,config,deadline)
+                    connection_owner=metadata['correlationId']
+                elif not selection.selection_present(self.root, anchor.alias):
+                    state = self._nested_state(config, anchor, deadline)
+                    if state != 'ready':
+                        return self._base(transport=state)
+                else:
+                    metadata = selection.selected_route_options(self.root, anchor.alias, config)
+                    connection_owner = metadata['correlationId']
+            argv = transport.build_ssh_argv(config,self.host,min(10,max(1,int(deadline-time.monotonic()))),PROBE_COMMAND)
+        except readiness.AdapterBlocked:
+            raise
+        except nested_ready.NestedEnded:
+            return self._base(transport='expired')
+        except (master.MasterUnknown, nested_ready.NestedUnknown, selection.SelectionUnknown, transport.SshConfigError):
+            raise readiness.AdapterBlocked('connection_generation_changed') from None
+        result = _bounded(argv, deadline)
+        if result['returnCode'] != 0 or result['overflow'] or not result['complete']:
+            return self._base(transport=_failure(result))
+        try:
+            if result['stderr']:
+                raise ValueError('probe_stderr')
+            value = json.loads(result['stdout'], object_pairs_hook=transport._reject_duplicate_keys)
+            if set(value) != {'boot','uid','principal','home','connection'}:
+                raise ValueError('probe_schema')
+            if type(value['boot']) is not str or re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',value['boot']) is None:
+                raise readiness.AdapterBlocked('boot_identity_unavailable')
+            if type(value['uid']) is not int or value['uid'] < 0 or value['principal'] != target.user:
+                raise readiness.AdapterBlocked('wrong_account')
+            if type(value['connection']) is not str or len(value['connection'].split()) != 4:
+                raise ValueError('probe_connection')
+            connection = hashlib.sha256(json.dumps([connection_owner,value['connection']],separators=(',',':')).encode()).hexdigest()
+            self._config()  # Exact target/trust generation again after capture.
+            return self._base(connection=connection,boot=value['boot'],account=str(value['uid'])+':'+value['principal'],
+                              transport='ready',guest='running')
+        except readiness.AdapterBlocked:
+            raise
+        except (ValueError, KeyError, TypeError):
+            raise readiness.AdapterBlocked('connection_outcome_unknown') from None
+
+    def _campaign(self, anchor):
+        for path in (self.root/'.rag_index',self.root/'.rag_index/readiness-transport'):
+            _private_directory(path)
+        return _private_directory(self.root/'.rag_index/readiness-transport'/anchor)
+
+    def recover(self, action, recovery_identity, observed, deadline):
+        if (action != 'reconnect' or observed.target != self.host or observed.machine != self.machine
+                or type(recovery_identity) is not str or master.HASH.fullmatch(recovery_identity) is None):
+            raise readiness.AdapterBlocked('machine_identity_mismatch')
+        config = self._config()
+        if config.hosts[self.host].transport == 'direct':
+            master.start(self.root,self.host,recovery_identity,deadline=deadline)
+            return
+        anchor = self._anchor(config)
+        if anchor is None or len(transport._route_hosts(config.hosts,anchor.alias)) != 2:
+            raise readiness.AdapterBlocked('provider_unavailable')
+        if nested_ready.present(self.root,anchor.alias):
+            try:
+                nested_ready.route_options(self.root,anchor.alias,config,deadline)
+            except nested_ready.NestedEnded:
+                with private.Directory(nested_ready.directory(self.root,anchor.alias))as selected:
+                    value=master._read(selected,'current.json')
+                terminal=direct.reconcile_original(self.root,anchor.alias,value['correlationId'])
+                if terminal.get('state')!='ended':raise readiness.AdapterBlocked('connection_outcome_unknown')
+            else:
+                return
+        path = self._campaign(anchor.alias)
+        with private.Directory(path) as directory, master.Lock(directory):
+            try:
+                candidate = master._read(directory,'current.json')
+                correlation = candidate['correlationId']
+                result = direct.status(self.root,anchor.alias,correlation)
+                if result.get('state') == 'ended':
+                    candidate = None
+            except FileNotFoundError:
+                candidate = None
+            if candidate is None:
+                correlation = hashlib.sha256((recovery_identity+anchor.alias).encode()).hexdigest()[:32]
+                candidate = {'recoveryId':recovery_identity,'correlationId':correlation,'host':anchor.alias}
+                master._save(directory,recovery_identity+'.intent.json',candidate)
+                # Durable original correlation precedes even provider admission.
+                name=recovery_identity+'.pointer.json'
+                master._save(directory,name,candidate)
+                os.replace(name,'current.json',src_dir_fd=directory.fd,dst_dir_fd=directory.fd);os.fsync(directory.fd)
+                result = direct.prepare(self.root,anchor.alias,correlation)
+            if result.get('state') != 'ready':
+                if result.get('failureReason') == 'arch_identity':
+                    raise readiness.AdapterBlocked('machine_identity_mismatch')
+                raise readiness.AdapterBlocked('connection_outcome_unknown')
+            selected = nested_ready.admit(self.root,anchor.alias,correlation,result['receiptSha256'])
+            if selected.get('state') != 'selected':
+                raise readiness.AdapterBlocked('connection_generation_changed')
+
+
+def context(root, host, *, deadline=None, **kwargs):
+    """Explicit readiness initialization creates only its private local journal."""
+    adapter = TransportAdapter(root, host)
+    for path in (adapter.root/'.rag_index',adapter.root/'.rag_index/readiness'):
+        _private_directory(path)
+    path = _private_directory(adapter.root/'.rag_index/readiness'/hashlib.sha256(host.encode()).hexdigest())
+    return readiness.Context(host,adapter.machine,adapter,readiness.RecoveryJournal(path),deadline=deadline,**kwargs)

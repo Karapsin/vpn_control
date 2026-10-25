@@ -230,41 +230,42 @@ def observe(root):
     from agent_tools import ssh_gateway_tmux_master as owner
     try:
         with adapter.LocalAuthority(root) as authority:
+            _need(not os.path.lexists(authority.root / '.rag_index' / 'ssh-gateway-tmux-master' / CORRELATION), 'legacy_receipt_blocker')
             job = authority.group() / CORRELATION
             directory = authority.directory(job, True)
-            intent = authority.capture(job / 'intent.json'); record = owner.value(intent.body)
+            record, intent = adapter.read_public_intent(authority, job, CORRELATION, 'status')
             raw = adapter.original_authority(authority, job, CORRELATION, 'status', record)
             anchor = authority.capture(job / 'anchor.json'); observed = owner.value(anchor.body)
             adapter.reply(observed, 'prepare', CORRELATION, raw)
             _need(observed['state'] == 'prepared', 'original_anchor')
             origin = authority.files[Path(owner.__file__).absolute()]
-            _need(origin.pin['sha256'] == ORIGINAL_SOURCE_SHA256 == raw['workerSha256'], 'original_source_changed')
+            _need(origin.pin['sha256'] == ORIGINAL_SOURCE_SHA256 == raw['workerSha256'], 'legacy_source_blocker')
             caller = authority.capture(Path(__file__).absolute(), private=False)
             encoded_origin = base64.b64encode(origin.body).decode(); encoded_caller = base64.b64encode(caller.body).decode()
             program = "import base64,json,sys;_ORIGIN_SOURCE=base64.b64decode(" + repr(encoded_origin) + ");__file__='fixed-d606-diagnostic';__name__='fixed_d606_readonly';exec(compile(base64.b64decode(" + repr(encoded_caller) + "),__file__,'exec'));r=json.loads(sys.stdin.buffer.read(262145));assert set(r)=={'packet','anchorPin'};sys.stdout.buffer.write(_canonical(_remote(r['packet'],r['anchorPin'])))"
             argv = adapter.transport.build_ssh_argv(authority.config, authority.outer.alias, 10,
-                         command=('/usr/bin/python3', '-I', '-B', '-c', program), ssh_binary='/usr/bin/ssh')
-            argv[1:1] = ['-F', '/dev/null', '-o', 'ControlMaster=no', '-o', 'ControlPath=none',
-                         '-o', 'ClearAllForwardings=yes', '-o', 'PermitLocalCommand=no', '-o', 'UpdateHostKeys=no']
+                         command=('/usr/bin/python3', '-I', '-B', '-c', program), ssh_binary='/usr/bin/ssh', fresh_direct=True)
             name = 'query-diagnostic-' + uuid4().hex
             os.mkdir(name, 0o700, dir_fd=directory.fd); os.fsync(directory.fd)
             capsule = job / name; destination = authority.directory(capsule, True)
             out_fd = os.open('stdout.private', os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=destination.fd)
             err_fd = os.open('stderr.private', os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=destination.fd)
             outcome, code = 'start_error', None
+            child = None
             try:
                 with tempfile.TemporaryDirectory(prefix='vpn-d606-diagnostic-askpass-') as temporary:
                     env = None
                     if authority.outer.password is not None:
                         _, env = adapter.transport._askpass_environment(authority.outer.password, Path(temporary))
                     authority.guard(); authority.generations()
-                    child = subprocess.Popen([sys.executable, '-I', '-B', '-c', adapter.EXEC, json.dumps(argv)],
-                                             stdin=subprocess.PIPE, stdout=out_fd, stderr=err_fd, env=env)
+                    child = adapter.transport.popen_ssh(argv, stdin=subprocess.PIPE, stdout=out_fd,
+                                                       stderr=err_fd, env=env, preexec_fn=adapter._client_limit)
                     try:
                         child.communicate(_canonical({'packet': raw, 'anchorPin': observed['anchorPin']}), timeout=30)
                         code, outcome = child.returncode, 'completed'
                     except subprocess.TimeoutExpired: outcome = 'timeout'; code = child.poll()
             finally:
+                if outcome != 'completed': adapter.transport.finish_ssh(child, failed=True)
                 os.fsync(out_fd); os.fsync(err_fd); os.fsync(destination.fd)
                 os.close(out_fd); os.close(err_fd)
             out = authority.capture(capsule / 'stdout.private', maximum=LIMIT)
@@ -272,7 +273,8 @@ def observe(root):
             owner.create(destination, 'receipt.json', _canonical({'version': 1, 'correlationId': CORRELATION,
                          'outcome': outcome, 'exitCode': code, 'stdout': out.pin, 'stderr': err.pin,
                          'callerSource': caller.pin, 'originalSource': origin.pin, 'intentPin': intent.pin,
-                         'anchorPin': anchor.pin, 'argvSha256': _sha(_canonical(argv)), 'replayAllowed': False}))
+                         'anchorPin': anchor.pin, 'argvSha256': adapter.transport.argv_sha256(argv), 'replayAllowed': False}))
+            adapter.transport.finish_ssh(child, failed=outcome != 'completed')
             authority.guard()
             _need(outcome == 'completed' and code == 0 and len(out.body) < LIMIT and len(err.body) < LIMIT, 'transport_unknown')
             response = owner.value(out.body)
@@ -281,6 +283,7 @@ def observe(root):
             pin = owner.create(destination, 'proof.private.json', _canonical(response))
             authority.capture(capsule / 'proof.private.json'); authority.guard(); authority.generations()
             return {**public, 'privateProofPin': pin, 'capsule': name}
-    except (OSError, ValueError, TypeError, KeyError, IndexError, subprocess.SubprocessError):
-        return {'state': 'unknown', 'phase': 'local_original_authority', 'reason': 'diagnostic_unknown',
+    except (OSError, ValueError, TypeError, KeyError, IndexError, subprocess.SubprocessError) as error:
+        reason = str(error) if type(error) is ValueError and str(error) in ('legacy_receipt_blocker', 'legacy_source_blocker') else 'diagnostic_unknown'
+        return {'state': 'unknown', 'phase': 'local_original_authority', 'reason': reason,
                 'replayAllowed': False, 'readyPublicationAllowed': False, 'adoptionAllowed': False}

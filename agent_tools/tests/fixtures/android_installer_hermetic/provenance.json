@@ -17,6 +17,11 @@
       "originalPath": "agent_tools/tests/test_android_api35_large_routing_observation.py",
       "scope": "Authentic public test source copied from source-only historical routing archive; no native ledger copied",
       "sha256": "c058f6b34132d2a4411552b201a3cf2cff72b5e3717e80ed602a3c198ed62264"
+    },
+    "ssh_transport.closure-compatible.source": {
+      "originalPath": "agent_tools/ssh_transport.py",
+      "scope": "Last public transport (d24c1904) inside the frozen 40-file component closure; the current transport imports readiness, outside that closure",
+      "sha256": "16cbcfc396ba33e660d2550f4bb70b30a39367f1b823fd57eeee2281f844a367"
     }
   }
 }

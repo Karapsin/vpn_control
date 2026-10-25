@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "testSourceSha256": "d2e142e5f7bf1dc3cf251f7bf1718aba2b0d232d06618b9f1bb13bf87d7f4494",
+  "remoteSourceSha256": "79d8a8483b56bf5b81dd6d7aa75d4524414ec8326353355eaa04929ff8b26949",
+  "failureTypes": [
+    "Controlled guest SSH endpoint confused a command literal inside fixed diagnostic source with an actual power command.",
+    "An emitted packet retained its operator lock file descriptor across in-process calls."
+  ],
+  "nativeEvidence": ".runtime/tool-recovery-qemu/linux-host-protocol-tests.json"
+}

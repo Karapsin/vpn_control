@@ -170,17 +170,17 @@ class InventoryLock:
         self.snapshot = None
         if fcntl is None:
             raise ValueError("cooperative lock unavailable")
+        if (not isinstance(self.name, str) or Path(self.name).name != self.name
+                or self.name in {"", ".", ".."}):
+            raise ValueError("unsafe private filename")
+        if type(self.body) is not bytes or not 0 < len(self.body) <= _LIMIT:
+            raise ValueError("unsupported ownership lock")
         directory.guard()
         try:
             try:
-                fd = os.open(self.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                             0o600, dir_fd=directory.fd)
-            except FileExistsError:
-                pass
-            else:
-                with os.fdopen(fd, "wb") as stream:
-                    stream.write(self.body); stream.flush(); os.fsync(stream.fileno())
-                directory.guard(); os.fsync(directory.fd)
+                os.stat(self.name, dir_fd=directory.fd, follow_symlinks=False)
+            except FileNotFoundError:
+                self._initialize(directory)
             self.snapshot = Snapshot(directory, self.name)
             if self.snapshot.body != self.body:
                 raise ValueError("unsupported ownership lock")
@@ -189,6 +189,54 @@ class InventoryLock:
         except BaseException:
             self.close()
             raise
+
+    def _initialize(self, directory):
+        # Publishing an empty final name lets a concurrent Snapshot mistake
+        # ordinary initialization for an unsafe existing file. A hard link is
+        # also unsuitable: it temporarily exposes st_nlink == 2. Rename a
+        # fully initialized private inode without replacing any existing name.
+        temporary = "." + self.name + "." + os.urandom(16).hex() + ".tmp"
+        fd = os.open(temporary, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600, dir_fd=directory.fd)
+        try:
+            offset = 0
+            while offset < len(self.body):
+                count = os.write(fd, self.body[offset:])
+                if count <= 0:
+                    raise ValueError("incomplete ownership lock write")
+                offset += count
+            os.fsync(fd); directory.guard()
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1
+                    or info.st_size != len(self.body)
+                    or _generation(os.stat(temporary, dir_fd=directory.fd, follow_symlinks=False)) != _generation(info)
+                    or os.pread(fd, _LIMIT + 1, 0) != self.body):
+                raise ValueError("private temporary generation changed")
+            try:
+                _rename_create_only(directory.fd, temporary, self.name)
+            except FileExistsError:
+                # Another complete publisher won. The unchanged Snapshot and
+                # flock checks below decide whether its named file is usable.
+                pass
+            else:
+                directory.guard()
+                if _generation(os.stat(self.name, dir_fd=directory.fd, follow_symlinks=False)) != _generation(os.fstat(fd)):
+                    raise ValueError("private published generation changed")
+                os.fsync(directory.fd)
+        finally:
+            try:
+                try:
+                    named = os.stat(temporary, dir_fd=directory.fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    directory.guard()
+                    if _generation(named) != _generation(os.fstat(fd)) or named.st_nlink != 1:
+                        raise ValueError("private temporary generation changed")
+                    os.unlink(temporary, dir_fd=directory.fd)
+            finally:
+                os.close(fd)
 
     def guard(self):
         self.snapshot.guard()
@@ -207,6 +255,34 @@ class InventoryLock:
 
     def __exit__(self, *_):
         self.close()
+
+
+def _rename_create_only(directory_fd, source, destination):
+    """Same-directory atomic publication, with no overwrite/link fallback.
+
+    Linux renameat2(2) RENAME_NOREPLACE and Darwin sys/stdio.h RENAME_EXCL
+    both reject an existing destination, including unsafe files and symlinks.
+    Unsupported coordinators/filesystems refuse instead of weakening this.
+    """
+    import ctypes
+    import errno
+    import sys
+    library = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        function = getattr(library, "renameatx_np", None); flag = 4
+    elif sys.platform.startswith("linux"):
+        function = getattr(library, "renameat2", None); flag = 1
+    else:
+        function = None; flag = 0
+    if function is None:
+        raise ValueError("atomic ownership lock publication unavailable")
+    function.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+    function.restype = ctypes.c_int
+    if function(directory_fd, os.fsencode(source), directory_fd, os.fsencode(destination), flag):
+        code = ctypes.get_errno()
+        if code == errno.EEXIST:
+            raise FileExistsError(code, "ownership lock already exists")
+        raise OSError(code, "atomic ownership lock publication failed")
 
 
 def lock_directory(root: Directory) -> Directory:

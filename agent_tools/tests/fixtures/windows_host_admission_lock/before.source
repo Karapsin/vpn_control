@@ -1,0 +1,509 @@
+"""Fixed ordinary-HOST durable owners for already admitted Windows lifecycle.
+
+No public action or capacity/stop authority is created here. The private adapter
+supplies its reviewed lifecycle Program after its own admission. HOST UID/boot
+identify the POSIX execution owner; Windows SID/session admission is separate.
+Original local packets retain their exact owner and program sources so later
+observation never reinterprets current source as an earlier execution authority.
+"""
+import base64
+import hashlib
+import inspect
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+from uuid import UUID, uuid5
+import weakref
+
+from . import durable_remote_job as jobs
+from . import readiness_windows_lifecycle as lifecycle
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+_PURPOSES=frozenset({'windows-existing-graceful-powerdown','windows-persisted-raw-start','windows-persisted-managed-start'})
+_ORIGINALS=weakref.WeakKeyDictionary()
+
+
+def _need(value):
+    if not value:raise ValueError('windows_host_original_unresolved')
+
+
+def _json(raw):
+    def pairs(rows):
+        value={}
+        for key,item in rows:_need(key not in value);value[key]=item
+        return value
+    return json.loads(raw,object_pairs_hook=pairs)
+
+
+def _scope(binding,lineage):
+    _need(type(lineage)is lifecycle.ExistingLineage)
+    body=lifecycle.validate_lineage(binding,lineage.as_dict()).as_dict()
+    uid=body['rootIdentity'][3];_need(type(uid)is int and uid>0)
+    bound=jobs.MachineBinding('windows-host:'+binding['spec']['host']+':'+body['machine'],body['machine'],body['hostBoot'],str(uid))
+    return {'schemaVersion':1,'kind':'windows-lifecycle-host-namespace-v1','vmRoot':binding['spec']['root'],
+            'vmRootIdentity':body['rootIdentity'],'root':binding['spec']['root']+'/lifecycle-jobs',
+            'binding':jobs.asdict(bound),'ownerSourceSha256':hashlib.sha256(jobs.owner_source()).hexdigest()}
+
+
+def _namespace(value):
+    _need(type(value)is dict and set(value)=={'schemaVersion','kind','vmRoot','vmRootIdentity','root','binding','ownerSourceSha256','generation','admissionGeneration'})
+    _need(type(value['schemaVersion'])is int and value['schemaVersion']==1 and value['kind']=='windows-lifecycle-host-namespace-v1'
+        and lifecycle._canonical(value['vmRoot'])and value['root']==value['vmRoot']+'/lifecycle-jobs'
+        and lifecycle._pin(value['vmRootIdentity'],5)and value['vmRootIdentity'][2]==stat.S_IFDIR|0o700
+        and lifecycle._pin(value['generation'],2)and all(value['generation'])
+        and lifecycle._pin(value['admissionGeneration'],2)and all(value['admissionGeneration'])and lifecycle._digest(value['ownerSourceSha256']))
+    binding=jobs.MachineBinding.from_dict(value['binding'])
+    _need(binding.account.isdecimal()and int(binding.account)>0 and str(int(binding.account))==binding.account
+        and value['vmRootIdentity'][3]==int(binding.account)and lifecycle._uuid(binding.machine)and type(binding.boot)is str and str(UUID(binding.boot))==binding.boot.lower()
+        and binding.target.startswith('windows-host:')and binding.target.endswith(':'+binding.machine))
+    return _json(json.dumps(value,allow_nan=False))
+
+
+def namespace_from_observation(binding,lineage,reply):
+    """Finite DTO check; remote enrollment independently checks live HOST facts."""
+    _need(type(reply)is dict and set(reply)=={'namespace'})
+    value=_namespace(reply['namespace']);expected=_scope(binding,lineage)
+    actual={key:item for key,item in value.items()if key not in {'generation','admissionGeneration'}}
+    _need(UUID(actual['binding']['boot'])==UUID(expected['binding']['boot']))
+    expected['binding']['boot']=actual['binding']['boot'];_need(actual==expected)
+    return value
+
+
+def _main():
+    import base64,hashlib,json,os,pathlib,stat,sys,types
+    module=types.ModuleType('fixed_windows_host_owner');sys.modules[module.__name__]=module
+    exec(compile(OWNER,'<original-windows-host-owner>','exec'),module.__dict__);module.owner_source=lambda:OWNER
+    def need(value):
+        if not value:raise ValueError('windows_host_original_unresolved')
+    marker=PARAMETERS['namespace'];root=pathlib.Path(marker['root']);vm=pathlib.Path(marker['vmRoot'])
+    need(hashlib.sha256(OWNER).hexdigest()==marker['ownerSourceSha256'])
+    binding=module.MachineBinding.from_dict(marker['binding'])
+    need(os.geteuid()>0 and str(os.geteuid())==binding.account)
+    fd=os.open(vm,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        def check():
+            actual=os.fstat(fd);named=os.lstat(vm)
+            pin=lambda info:[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid]
+            need(vm.resolve()==vm and pin(actual)==pin(named)==marker['vmRootIdentity']and stat.S_IMODE(actual.st_mode)==0o700)
+        check();mode=PARAMETERS['mode'];plain={key:value for key,value in marker.items()if key!='generation'}
+        if mode=='enroll':
+            import uuid
+            actual_boot=module._boot();need(uuid.UUID(actual_boot)==uuid.UUID(binding.boot))
+            binding=module.MachineBinding(binding.target,binding.machine,actual_boot,binding.account)
+            plain={**plain,'binding':module.asdict(binding)}
+            module._binding_live(binding);created=False
+            try:root.mkdir(mode=0o700);created=True
+            except FileExistsError:pass
+            module._root(root);path=root/'namespace.json'
+            if not path.exists()and not path.is_symlink():
+                need(created and not list(root.iterdir()));(root/'admissions').mkdir(mode=0o700)
+                module._publish(path,{**plain,'admissionGeneration':list(module.root_generation(root/'admissions'))})
+            plain={**plain,'admissionGeneration':list(module.root_generation(root/'admissions'))}
+            need(module._record(path)==plain);check()
+            print(json.dumps({'namespace':{**plain,'generation':list(module.root_generation(root))}}));return
+        module._root(root,tuple(marker['generation']));need(module._record(root/'namespace.json')==plain);check()
+        admissions=module._root(root/'admissions',tuple(marker['admissionGeneration']))
+        if mode=='inventory':
+            names=sorted(path.name for path in root.iterdir());indices=sorted(path.name for path in admissions.iterdir())
+            need(len(names)<=4096 and len(indices)<=4096);known=set();rows=[]
+            for name in indices:
+                need(name.endswith('.json'));operation=module._uuid(name[:-5]);known.add(operation)
+                admitted=module._record(admissions/name)
+                need(set(admitted)=={'operationId','binding','purpose','programSha256','streamLimit'}and admitted['operationId']==operation
+                    and admitted['binding']==marker['binding']and admitted['purpose']in PARAMETERS['purposes'])
+                path=root/operation
+                if not path.exists()and not path.is_symlink():
+                    status=module._base(operation,'unknown','original_host_admission_consumed')
+                else:
+                    actual=module._intent(path,operation,binding)
+                    need(all(actual[key]==admitted[key]for key in admitted))
+                    need(hashlib.sha256(module._read(path/'program.py',module.MAX_PROGRAM_BYTES)).hexdigest()==admitted['programSha256']
+                        and module._read(path/'owner.py',module.MAX_PROGRAM_BYTES)==OWNER)
+                    status=module.observe(root,operation,binding,generation=tuple(marker['generation']))
+                    if status['state']=='terminal':status,_,_=module.collect(root,operation,binding,generation=tuple(marker['generation']))
+                rows.append({'operationId':operation,'purpose':admitted['purpose'],'status':status})
+            need({'namespace.json','admissions'}<=set(names)and set(names)-{'namespace.json','admissions'}<=known);check()
+            need(module._record(root/'namespace.json')==plain)
+            print(json.dumps({'schemaVersion':1,'kind':'windows-lifecycle-host-inventory-v1','namespace':marker,
+                'visibilityComplete':True,'jobs':rows,'idle':all(row['status']['state']=='terminal'and row['status']['terminal']['exitCode']==0 for row in rows)}));return
+        operation=PARAMETERS['operationId'];program=module.Program(PARAMETERS['purpose'],PROGRAM,PARAMETERS['streamLimit'])
+        need(program.digest==PARAMETERS['programSha256']);job=root/operation
+        exists=job.exists()or job.is_symlink()
+        if exists:
+            original=module._intent(job,operation,binding)
+            need(original['purpose']==program.purpose and original['programSha256']==program.digest and original['streamLimit']==program.stream_limit)
+            need(module._read(job/'program.py',module.MAX_PROGRAM_BYTES)==PROGRAM and module._read(job/'owner.py',module.MAX_PROGRAM_BYTES)==OWNER)
+        # Only an explicitly admitted initial submission can consume an absent
+        # job. Observe never changes the namespace or submits a replacement.
+        index=admissions/(operation+'.json')
+        expected={'operationId':operation,'binding':module.asdict(binding),'purpose':program.purpose,
+                  'programSha256':program.digest,'streamLimit':program.stream_limit}
+        indexed=index.exists()or index.is_symlink();first=False
+        if mode=='submit'and not indexed:
+            try:module._publish(index,expected);first=True
+            except FileExistsError:pass
+            indexed=True
+        if indexed:need(module._record(index)==expected)
+        if exists:need(indexed)
+        if first:status=module.submit(root,operation,binding,program,generation=tuple(marker['generation']))
+        elif indexed and not exists:status=module._base(operation,'unknown','original_host_admission_consumed')
+        else:status=module.observe(root,operation,binding,generation=tuple(marker['generation']))
+        stdout=stderr=None
+        if status['state']=='terminal':
+            status,out,err=module.collect(root,operation,binding,generation=tuple(marker['generation']))
+            stdout=base64.b64encode(out).decode();stderr=base64.b64encode(err).decode()
+        check();need(module._record(root/'namespace.json')==plain)
+        print(json.dumps({'status':status,'stdoutBase64':stdout,'stderrBase64':stderr}))
+    finally:os.close(fd)
+
+
+def _render(namespace,mode,*,record=None,program=b'',owner=None):
+    owner=jobs.owner_source()if owner is None else owner
+    parameters={'namespace':namespace,'mode':mode}
+    if mode=='inventory':parameters['purposes']=sorted(_PURPOSES)
+    if record is not None:parameters.update({key:record[key]for key in ('operationId','purpose','streamLimit','programSha256')})
+    raw=('PARAMETERS='+repr(parameters)+'\nOWNER='+repr(owner)+'\nPROGRAM='+repr(program)+'\n'+inspect.getsource(_main)+'\n_main()\n').encode()
+    _need(0<len(raw)<=jobs.MAX_PROGRAM_BYTES);compile(raw,'fixed Windows host lifecycle caller','exec');return raw
+
+
+def enroll_program(binding,lineage):return _render(_scope(binding,lineage),'enroll')
+
+
+class OriginalHostJob:
+    __slots__=('__weakref__',)
+    def __new__(cls,*args,**kwargs):raise TypeError('windows_host_original_opaque')
+    def __reduce__(self):raise TypeError('windows_host_original_opaque')
+    def as_dict(self):return _load(self)[0]
+
+
+def _local_parent(root,target,machine,*,create=True):
+    root=Path(root).resolve(strict=True);info=root.lstat()
+    _need(stat.S_ISDIR(info.st_mode)and info.st_uid==os.geteuid()and not stat.S_IMODE(info.st_mode)&0o022)
+    token=hashlib.sha256(json.dumps([target,machine],separators=(',',':')).encode()).hexdigest()
+    path=root/'.rag_index'/'windows-host-lifecycle'/token
+    for directory in (root/'.rag_index',path.parent,path):
+        if create:
+            try:directory.mkdir(mode=0o700)
+            except FileExistsError:pass
+        jobs._private(directory,directory=True);_need(directory.resolve()==directory)
+    return path
+
+
+def _file_pin(path):
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        row=os.fstat(fd);_need(stat.S_ISREG(row.st_mode)and row.st_uid==os.geteuid()and stat.S_IMODE(row.st_mode)==0o600 and row.st_nlink==1)
+        return [row.st_dev,row.st_ino,row.st_mode,row.st_uid,row.st_gid,row.st_nlink,row.st_size,row.st_mtime_ns,row.st_ctime_ns]
+    finally:os.close(fd)
+
+
+def _create_custody(directory,name,artifacts):
+    value={'schemaVersion':1,'directoryGeneration':list(jobs.root_generation(directory)),
+           'artifacts':{item:_file_pin(directory/item)for item in artifacts}}
+    jobs._publish(directory/name,value)
+
+
+def _custody(directory,name,artifacts):
+    pin=_file_pin(directory/name);value=_json(jobs._read(directory/name,16384))
+    _need(type(value)is dict and set(value)=={'schemaVersion','directoryGeneration','artifacts'}
+        and type(value['schemaVersion'])is int and value['schemaVersion']==1
+        and value['directoryGeneration']==list(jobs.root_generation(directory))and type(value['artifacts'])is dict
+        and set(value['artifacts'])==set(artifacts)
+        and all(lifecycle._pin(p,9)for p in value['artifacts'].values()))
+    _need(value['artifacts']=={item:_file_pin(directory/item)for item in artifacts}and _file_pin(directory/name)==pin)
+    return value,pin
+
+
+def _mint(directory,record):
+    custody,pin=_custody(directory,'custody.json',('original.json','program.source','owner.source'))
+    obj=object.__new__(OriginalHostJob);_ORIGINALS[obj]=(directory,_json(json.dumps(record)),custody,pin);return obj
+
+
+def _load(original):
+    _need(type(original)is OriginalHostJob and original in _ORIGINALS)
+    directory,expected,custody,pin=_ORIGINALS[original];jobs._private(directory,directory=True)
+    _need(_custody(directory,'custody.json',('original.json','program.source','owner.source'))==(custody,pin))
+    record=_json(jobs._read(directory/'original.json',16384));_need(record==expected)
+    program=jobs._read(directory/'program.source',jobs.MAX_PROGRAM_BYTES);owner=jobs._read(directory/'owner.source',jobs.MAX_PROGRAM_BYTES)
+    _need(hashlib.sha256(program).hexdigest()==record['programSha256']and hashlib.sha256(owner).hexdigest()==record['namespace']['ownerSourceSha256'])
+    _need(_custody(directory,'custody.json',('original.json','program.source','owner.source'))==(custody,pin))
+    return record,program,owner
+
+
+def retain(root,namespace,operation,recovery_id,program):
+    """Create-only original source packet BEFORE its first remote submission."""
+    namespace=namespace.as_dict()if type(namespace)is NamespaceHandle else _namespace(namespace);binding=jobs.MachineBinding.from_dict(namespace['binding'])
+    _need(type(program)is jobs.Program and program.purpose in _PURPOSES and lifecycle._digest(recovery_id)
+        and lifecycle._uuid(operation)and operation==str(uuid5(UUID(binding.machine),recovery_id))
+        and namespace['ownerSourceSha256']==hashlib.sha256(jobs.owner_source()).hexdigest())
+    record={'schemaVersion':1,'kind':'windows-lifecycle-original-host-job-v1','namespace':namespace,
+        'operationId':operation,'recoveryId':recovery_id,'purpose':program.purpose,'streamLimit':program.stream_limit,
+        'programSha256':program.digest,'replayAllowed':False}
+    directory=_local_parent(root,binding.target,binding.machine)/operation
+    try:
+        directory.mkdir(mode=0o700);jobs._sync_directory(directory.parent)
+        jobs._create(directory/'program.source',program.source);jobs._create(directory/'owner.source',jobs.owner_source());jobs._publish(directory/'original.json',record)
+        _create_custody(directory,'custody.json',('original.json','program.source','owner.source'))
+    except FileExistsError:
+        # An incomplete admitted local packet is UNKNOWN. Never fill or replace
+        # it on a retry, even when no remote job can currently be observed.
+        pass
+    result=_mint(directory,record);_load(result);return result
+
+
+def reopen(root,target,machine,operation):
+    """Local-only original selection; no current registry, connection or VM."""
+    jobs.MachineBinding(target,machine,'original','original');jobs._uuid(operation)
+    directory=_local_parent(root,target,machine,create=False)/operation
+    record=_json(jobs._read(directory/'original.json',16384))
+    _need(type(record)is dict and set(record)=={'schemaVersion','kind','namespace','operationId','recoveryId','purpose','streamLimit','programSha256','replayAllowed'}
+        and record['schemaVersion']==1 and type(record['schemaVersion'])is int and record['kind']=='windows-lifecycle-original-host-job-v1'
+        and record['operationId']==operation and record['replayAllowed']is False and lifecycle._digest(record['recoveryId'])
+        and record['purpose']in _PURPOSES and type(record['streamLimit'])is int and 1<=record['streamLimit']<=jobs.MAX_STREAM_BYTES
+        and lifecycle._digest(record['programSha256']))
+    namespace=_namespace(record['namespace']);bound=namespace['binding']
+    _need((bound['target'],bound['machine'])==(target,machine)and operation==str(uuid5(UUID(machine),record['recoveryId'])))
+    result=_mint(directory,record);_load(result);return result
+
+
+def operation_program(original,*,submit=False):
+    _need(type(submit)is bool);record,program,owner=_load(original)
+    return _render(record['namespace'],'submit'if submit else'observe',record=record,program=program,owner=owner)
+
+
+def validate_result(original,reply):
+    """Validate retained terminal streams; running/UNKNOWN stay original-only."""
+    record,_,_=_load(original);_need(type(reply)is dict and set(reply)=={'status','stdoutBase64','stderrBase64'})
+    status=reply['status'];_need(type(status)is dict and status.get('schemaVersion')==1 and status.get('operationId')==record['operationId']
+        and type(status.get('schemaVersion'))is int and status.get('replayAllowed')is False and status.get('state')in {'unsubmitted','running','unknown','terminal'})
+    if status['state']!='terminal':
+        _need(reply['stdoutBase64']is None and reply['stderrBase64']is None);return _json(json.dumps(reply))
+    terminal=status.get('terminal');_need(type(terminal)is dict and terminal.get('binding')==record['namespace']['binding']
+        and terminal.get('operationId')==record['operationId']and terminal.get('programSha256')==record['programSha256']
+        and terminal.get('streamsClosed')is True and type(terminal.get('exitCode'))is int
+        and status.get('binding')==terminal['binding']and status.get('owner')==terminal.get('owner')
+        and type(terminal.get('owner'))is dict and set(terminal['owner'])=={'pid','birth'}
+        and type(terminal['owner']['pid'])is int and terminal['owner']['pid']>0 and type(terminal['owner']['birth'])is str
+        and lifecycle._uuid(terminal.get('generation')))
+    for name in ('stdout','stderr'):
+        encoded=reply[name+'Base64'];_need(type(encoded)is str and len(encoded)<=jobs.MAX_STREAM_BYTES*2)
+        raw=base64.b64decode(encoded,validate=True);stream=terminal.get(name)
+        _need(type(stream)is dict and stream.get('overflow')is False and stream.get('retainedBytes')==stream.get('totalBytes')==len(raw)
+            and hashlib.sha256(raw).hexdigest()==stream.get('sha256'))
+    return _json(json.dumps(reply))
+
+
+def inventory_program(original):
+    """Pure all-original HOST namespace projection; no stream contents leave it."""
+    record,_,owner=_load(original)
+    return _render(record['namespace'],'inventory',owner=owner)
+
+
+def validate_inventory(original,reply):
+    record,_,_=_load(original)
+    _need(type(reply)is dict and set(reply)=={'schemaVersion','kind','namespace','visibilityComplete','jobs','idle'}
+        and type(reply['schemaVersion'])is int and reply['schemaVersion']==1 and reply['kind']=='windows-lifecycle-host-inventory-v1'
+        and reply['namespace']==record['namespace']and reply['visibilityComplete']is True and type(reply['jobs'])is list
+        and len(reply['jobs'])<=4096 and type(reply['idle'])is bool)
+    seen=set()
+    for row in reply['jobs']:
+        _need(type(row)is dict and set(row)=={'operationId','purpose','status'}and lifecycle._uuid(row['operationId'])
+            and row['operationId']not in seen and row['purpose']in _PURPOSES)
+        seen.add(row['operationId']);status=row['status']
+        _need(type(status)is dict and status.get('operationId')==row['operationId']and status.get('schemaVersion')==1
+            and status.get('replayAllowed')is False and status.get('state')in {'running','unknown','terminal'})
+        if status['state']=='terminal':
+            terminal=status.get('terminal')
+            _need(type(terminal)is dict and terminal.get('operationId')==row['operationId']and terminal.get('streamsClosed')is True
+                and terminal.get('binding')==record['namespace']['binding']and type(terminal.get('exitCode'))is int)
+            for name in ('stdout','stderr'):
+                stream=terminal.get(name)
+                _need(type(stream)is dict and stream.get('overflow')is False
+                    and type(stream.get('retainedBytes'))is int and stream.get('retainedBytes')==stream.get('totalBytes')
+                    and lifecycle._digest(stream.get('sha256')))
+    _need(reply['idle']==all(row['status']['state']=='terminal'and row['status']['terminal']['exitCode']==0 for row in reply['jobs']))
+    return _json(json.dumps(reply))
+
+
+def _vm_owner(namespace,owner,inventory,actor):
+    import ast,hashlib,os,pathlib,sys,types,uuid
+    def need(value):
+        if not value:raise ValueError('instance_lifecycle_host_job_visibility_missing')
+    need(type(actor)is dict and set(actor)=={'pid','startTicks','argv','commandSha256','executableGeneration'})
+    module=types.ModuleType('actual_vm_host_owner');sys.modules[module.__name__]=module
+    exec(compile(owner,'original VM HOST owner','exec'),module.__dict__);module.owner_source=lambda:owner
+    need(hashlib.sha256(owner).hexdigest()==namespace['ownerSourceSha256'])
+    root=module._root(namespace['root'],tuple(namespace['generation']));binding=module.MachineBinding.from_dict(namespace['binding']);module._binding_live(binding)
+    pid=actor['pid'];need(type(pid)is int and pid>0 and type(actor['startTicks'])is int and actor['startTicks']>0)
+    base=pathlib.Path('/proc')/str(pid);need(base.stat().st_uid==int(binding.account))
+    raw=(base/'stat').read_text();words=raw[raw.rfind(')')+2:].split();need(len(words)>19 and words[0]!='Z'and int(words[19])==actor['startTicks'])
+    parent=int(words[1]);command=(base/'cmdline').read_bytes();exe=os.stat(base/'exe')
+    generation=lambda row:[row.st_dev,row.st_ino,row.st_mode,row.st_uid,row.st_gid,row.st_nlink,row.st_size,row.st_mtime_ns,row.st_ctime_ns]
+    need(hashlib.sha256(command).hexdigest()==actor['commandSha256']and [os.fsdecode(word)for word in command.split(b'\0')if word]==actor['argv']
+        and generation(exe)==actor['executableGeneration'])
+    candidates=[]
+    for row in inventory['jobs']:
+        if row['purpose']!='windows-persisted-raw-start'or row['status']['state']!='running':continue
+        if row['status'].get('owner',{}).get('pid')!=parent:continue
+        operation=row['operationId'];path=root/operation;intent=module._intent(path,operation,binding)
+        source=module._read(path/'program.py',module.MAX_PROGRAM_BYTES);need(hashlib.sha256(source).hexdigest()==intent['programSha256'])
+        values={}
+        for node in ast.parse(source).body:
+            if isinstance(node,ast.Assign)and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)and node.targets[0].id in {'SPEC','OPERATION','LIFECYCLE_RID','LIFECYCLE_LINEAGE','LIFECYCLE_CLEAN'}:
+                key=node.targets[0].id;need(key not in values);values[key]=ast.literal_eval(node.value)
+        need(set(values)=={'SPEC','OPERATION','LIFECYCLE_RID','LIFECYCLE_LINEAGE','LIFECYCLE_CLEAN'}and values['OPERATION']==operation
+            and values['SPEC']['root']==namespace['vmRoot']and values['SPEC']['deploymentId']==binding.machine
+            and values['SPEC']['host']==binding.target.removeprefix('windows-host:').removesuffix(':'+binding.machine)
+            and operation==str(uuid.uuid5(uuid.UUID(binding.machine),values['LIFECYCLE_RID'])))
+        native=module._record(pathlib.Path(namespace['vmRoot'])/('existing-start-'+operation+'.intent.json'))
+        need(native=={'schemaVersion':1,'kind':'windows-existing-start-v1','operationId':operation,'recoveryId':values['LIFECYCLE_RID'],
+            'machine':binding.machine,'hostBoot':values['LIFECYCLE_LINEAGE']['hostBoot'],
+            'lineageSha256':hashlib.sha256(json_canonical(values['LIFECYCLE_LINEAGE'])).hexdigest(),
+            'cleanPoweroffOperationId':values['LIFECYCLE_CLEAN']['operationId'],'replayAllowed':False})
+        native_actor=module._record(pathlib.Path(namespace['vmRoot'])/('existing-start-'+operation+'.qemu-intent.json'))
+        need(native_actor=={'operationId':operation,'actor':actor,'replayAllowed':False}
+            and module._birth(parent)==row['status']['owner']['birth'])
+        candidates.append(operation)
+    need(len(candidates)<=1);return candidates[0]if candidates else None
+
+
+def json_canonical(value):
+    import json
+    return json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+
+
+def sealed_program(program):
+    """Mark the COMPLETE trusted worker code, before original admission/hash."""
+    _need(type(program)is jobs.Program and program.purpose in _PURPOSES)
+    prefix=b"_LIFECYCLE_EXECUTING_CODE=__import__('inspect').currentframe().f_code\n"
+    _need(not program.source.startswith(prefix))
+    return jobs.Program(program.purpose,prefix+program.source,program.stream_limit)
+
+
+def _worker_inventory(namespace,owner,inventory_source,operation,executing_code,vm_actor=None):
+    import contextlib,hashlib,io,json,os,pathlib,sys,types
+    def need(value):
+        if not value:raise ValueError('instance_lifecycle_host_job_visibility_missing')
+    module=types.ModuleType('current_lifecycle_host_owner');sys.modules[module.__name__]=module
+    exec(compile(owner,'current fixed HOST owner','exec'),module.__dict__);module.owner_source=lambda:owner
+    need(hashlib.sha256(owner).hexdigest()==namespace['ownerSourceSha256'])
+    root=module._root(namespace['root'],tuple(namespace['generation']));binding=module.MachineBinding.from_dict(namespace['binding'])
+    module._binding_live(binding);path=root/module._uuid(operation);intent=module._intent(path,operation,binding)
+    program=module._read(path/'program.py',module.MAX_PROGRAM_BYTES)
+    need(hashlib.sha256(program).hexdigest()==intent['programSha256']and module._read(path/'owner.py',module.MAX_PROGRAM_BYTES)==owner
+        and executing_code==compile(program,'fixed-purpose-program','exec'))
+    original=module._record(path/'owner.json');module._correlate(original,intent);actor=module._owner_identity(original)
+    need(os.getppid()==actor['pid']and module._birth(actor['pid'])==actor['birth'])
+    output=io.StringIO()
+    with contextlib.redirect_stdout(output):exec(compile(inventory_source,'fixed HOST complete inventory','exec'),{'__name__':'fixed_host_complete_inventory'})
+    value=json.loads(output.getvalue());need(value['namespace']==namespace and value['visibilityComplete']is True)
+    matches=[row for row in value['jobs']if row['operationId']==operation]
+    need(len(matches)==1 and matches[0]['status']['state']=='running'and matches[0]['status'].get('owner')==actor
+        and matches[0]['purpose']==intent['purpose'])
+    value['ownOperationId']=operation
+    vm_operation=_vm_owner(namespace,owner,value,vm_actor)if vm_actor is not None else None
+    value['vmOwnerOperationId']=vm_operation
+    value['idle']=all(row['operationId']in {operation,vm_operation} or row['status']['state']=='terminal'and row['status']['terminal']['exitCode']==0 for row in value['jobs'])
+    return value
+
+
+def worker_inventory_definitions(namespace):
+    """Source-only current-worker proof; the actual parent/code is checked live.
+
+    Main may exclude only ownOperationId after this source-owned callback
+    succeeds. It never accepts a caller-provided skip list or running flag.
+    """
+    namespace=namespace.as_dict()if type(namespace)is NamespaceHandle else _namespace(namespace);owner=jobs.owner_source()
+    _need(namespace['ownerSourceSha256']==hashlib.sha256(owner).hexdigest())
+    source='_LIFECYCLE_HOST_NAMESPACE='+repr(namespace)+'\n_LIFECYCLE_HOST_OWNER='+repr(owner)+'\n'
+    source+='_LIFECYCLE_HOST_INVENTORY_SOURCE='+repr(_render(namespace,'inventory',owner=owner))+'\n'
+    source+=inspect.getsource(json_canonical)+'\n'+inspect.getsource(_vm_owner)+'\n'+inspect.getsource(_worker_inventory)+'\n'
+    source+='def _lifecycle_host_work(vm_actor=None):\n return _worker_inventory(_LIFECYCLE_HOST_NAMESPACE,_LIFECYCLE_HOST_OWNER,_LIFECYCLE_HOST_INVENTORY_SOURCE,OPERATION,_LIFECYCLE_EXECUTING_CODE,vm_actor)\n'
+    return source
+
+
+def _observer_inventory(namespace,owner,source,vm_actor=None):
+    import contextlib,io,json
+    output=io.StringIO()
+    with contextlib.redirect_stdout(output):exec(compile(source,'fixed original HOST inventory','exec'),{'__name__':'fixed_original_host_inventory'})
+    value=json.loads(output.getvalue())
+    if value.get('namespace')!=namespace or value.get('visibilityComplete')is not True:raise ValueError('instance_lifecycle_host_job_visibility_missing')
+    vm_operation=_vm_owner(namespace,owner,value,vm_actor)if vm_actor is not None else None
+    value['vmOwnerOperationId']=vm_operation
+    value['idle']=all(row['operationId']==vm_operation or row['status']['state']=='terminal'and row['status']['terminal']['exitCode']==0 for row in value['jobs'])
+    return value
+
+
+def observer_inventory_definitions(namespace):
+    if type(namespace)is NamespaceHandle:
+        record,owner=_load_namespace(namespace);namespace=record['namespace']
+    else:namespace=_namespace(namespace);owner=jobs.owner_source()
+    _need(namespace['ownerSourceSha256']==hashlib.sha256(owner).hexdigest())
+    source='_LIFECYCLE_HOST_NAMESPACE='+repr(namespace)+'\n_LIFECYCLE_HOST_OWNER='+repr(owner)+'\n'
+    source+='_LIFECYCLE_HOST_INVENTORY_SOURCE='+repr(_render(namespace,'inventory',owner=owner))+'\n'
+    source+=inspect.getsource(json_canonical)+'\n'+inspect.getsource(_vm_owner)+'\n'+inspect.getsource(_observer_inventory)+'\n'
+    source+='def _lifecycle_host_work(vm_actor=None):\n return _observer_inventory(_LIFECYCLE_HOST_NAMESPACE,_LIFECYCLE_HOST_OWNER,_LIFECYCLE_HOST_INVENTORY_SOURCE,vm_actor)\n'
+    return source
+
+
+_NAMESPACES=weakref.WeakKeyDictionary()
+
+
+class NamespaceHandle:
+    __slots__=('__weakref__',)
+    def __new__(cls,*args,**kwargs):raise TypeError('windows_host_namespace_opaque')
+    def as_dict(self):return _load_namespace(self)[0]['namespace']
+
+
+def _namespace_scope(binding):
+    lifecycle.packets.validate_binding(binding)
+    return {key:binding[key]for key in ('provider','spec','setup','uri','domain','xmlSha256')}
+
+
+def _load_namespace(handle):
+    _need(type(handle)is NamespaceHandle and handle in _NAMESPACES)
+    directory,expected,custody,pin=_NAMESPACES[handle];jobs._private(directory,directory=True)
+    _need(_custody(directory,'namespace-custody.json',('namespace-original.json','namespace-owner.source','namespace-enroll.source'))==(custody,pin))
+    record=_json(jobs._read(directory/'namespace-original.json',16384));_need(record==expected)
+    value=_namespace(record['namespace']);owner=jobs._read(directory/'namespace-owner.source',jobs.MAX_PROGRAM_BYTES)
+    source=jobs._read(directory/'namespace-enroll.source',jobs.MAX_PROGRAM_BYTES)
+    _need(hashlib.sha256(owner).hexdigest()==value['ownerSourceSha256']and hashlib.sha256(source).hexdigest()==record['enrollProgramSha256'])
+    _need(_custody(directory,'namespace-custody.json',('namespace-original.json','namespace-owner.source','namespace-enroll.source'))==(custody,pin))
+    return _json(json.dumps(record)),owner
+
+
+def retain_namespace(root,binding,lineage,reply):
+    """Internal source-owned factory retains its admitted enrollment observation.
+
+    This metadata-only handle grants no running/idle/power authority. Every
+    native inventory revalidates the actual root/marker/UID/boot/generations.
+    """
+    value=namespace_from_observation(binding,lineage,reply);bound=value['binding']
+    directory=_local_parent(root,bound['target'],bound['machine'])
+    owner=jobs.owner_source();source=enroll_program(binding,lineage)
+    record={'schemaVersion':1,'kind':'windows-lifecycle-original-namespace-v1','scope':_namespace_scope(binding),
+        'namespace':value,'enrollProgramSha256':hashlib.sha256(source).hexdigest()}
+    path=directory/'namespace-original.json'
+    if not path.exists()and not path.is_symlink():
+        # A partial preparation is UNKNOWN and never repaired/adopted by retry.
+        jobs._create(directory/'namespace-owner.source',owner);jobs._create(directory/'namespace-enroll.source',source);jobs._publish(path,record)
+        _create_custody(directory,'namespace-custody.json',('namespace-original.json','namespace-owner.source','namespace-enroll.source'))
+    custody,pin=_custody(directory,'namespace-custody.json',('namespace-original.json','namespace-owner.source','namespace-enroll.source'))
+    result=object.__new__(NamespaceHandle);_NAMESPACES[result]=(directory,_json(json.dumps(record)),custody,pin);_load_namespace(result);return result
+
+
+def load_namespace(root,binding):
+    """Pure local private original lookup; never creates a directory or probes."""
+    scope=_namespace_scope(binding);machine=binding['spec']['deploymentId'];target='windows-host:'+binding['spec']['host']+':'+machine
+    directory=_local_parent(root,target,machine,create=False)
+    record=_json(jobs._read(directory/'namespace-original.json',16384))
+    _need(type(record)is dict and set(record)=={'schemaVersion','kind','scope','namespace','enrollProgramSha256'}
+        and type(record['schemaVersion'])is int and record['schemaVersion']==1 and record['kind']=='windows-lifecycle-original-namespace-v1'
+        and record['scope']==scope and lifecycle._digest(record['enrollProgramSha256']))
+    ns=_namespace(record['namespace']);bound=ns['binding']
+    _need((bound['target'],bound['machine'])==(target,machine)and ns['vmRoot']==binding['spec']['root']
+        and UUID(bound['boot'])==UUID(binding['context']['hostBootId']))
+    custody,pin=_custody(directory,'namespace-custody.json',('namespace-original.json','namespace-owner.source','namespace-enroll.source'))
+    result=object.__new__(NamespaceHandle);_NAMESPACES[result]=(directory,_json(json.dumps(record)),custody,pin);_load_namespace(result);return result

@@ -1,0 +1,232 @@
+"""Actual standalone v2 gateway owner, private custody and once-only credentials."""
+from contextlib import contextmanager
+import base64
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import unittest
+from unittest import mock
+
+from agent_tools import ssh_gateway_tmux_master_ssh as adapter
+from agent_tools import ssh_gateway_tmux_owner_v2 as owner
+from agent_tools import ssh_gateway_tmux_d606_diagnostic as diagnostic
+from agent_tools.tests import test_ssh_gateway_bound_carrier as helpers
+from agent_tools.tests.ssh_gateway_historical_fixture import load
+
+
+@unittest.skipUnless(os.name=='posix','POSIX private source/child/socket protocol')
+class GatewayOwnerV2Tests(unittest.TestCase):
+    @contextmanager
+    def fixture(self):
+        helper=helpers.GatewayBoundCarrierTests('test_actual_local_writer_keeps_kernel_file_limit')
+        with helper.fixture() as case:yield case
+
+    def local_job(self,case):
+        return case.controller/'.rag_index'/adapter.GROUP/case.request_inputs['correlationId']
+
+    def remote_job(self,case):
+        return case.home/'.vct2'/case.request_inputs['correlationId'].replace('-','')[:16]
+
+    def test_actual_old_private_config_persistence_hash_red_new_schema2_green(self):
+        original_hash=hashlib.sha256
+        for implementation,old in ((load('master.private-config.before.source'),True),(adapter,False)):
+            with self.subTest(old=old),self.fixture() as case:
+                private_hashes=[]
+                def observed(raw=b'',*args,**kw):
+                    if b'inert-secret' in bytes(raw):private_hashes.append(True)
+                    return original_hash(raw,*args,**kw)
+                with mock.patch.object(hashlib,'sha256',side_effect=observed):
+                    result=implementation.operate(case.controller,'prepare',case.request_inputs)
+                self.assertEqual('prepared',result['state'],result)
+                group='ssh-gateway-tmux-master' if old else adapter.GROUP
+                path=case.controller/'.rag_index'/group/case.request_inputs['correlationId']/'intent.json'
+                record=json.loads(path.read_bytes())
+                if old:
+                    self.assertTrue(private_hashes)
+                    self.assertIn(b'inert-secret',base64.b64decode(record['configBytes']))
+                else:
+                    self.assertEqual([],private_hashes);self.assertEqual(2,record['version'])
+                    self.assertNotIn('configBytes',record);self.assertNotIn('password',json.dumps(record))
+                    self.assertNotIn(original_hash(case.config.read_bytes()).hexdigest(),json.dumps(record))
+
+    def test_original_standalone_v1_credential_digest_receipt_red(self):
+        with self.fixture() as case:
+            old=load('master.private-config.before.source')
+            self.assertEqual('prepared',old.operate(case.controller,'prepare',case.request_inputs)['state'])
+            self.assertEqual('released',old.operate(case.controller,'release',case.request_inputs)['state'])
+            remote=case.home/'.vct'/case.request_inputs['correlationId'].replace('-','')[:16]
+            gate=json.loads((remote/'release.json').read_bytes())
+            self.assertEqual(hashlib.sha256(b'inert-secret').hexdigest(),gate['credentialPin']['sha256'])
+            self.assertEqual(b'inert-secret',(remote/'credential.private').read_bytes())
+            deadline=time.monotonic()+4
+            while time.monotonic()<deadline:
+                result=old.operate(case.controller,'status',case.request_inputs)
+                if result['state']=='ready':break
+                time.sleep(.02)
+            self.assertEqual('ready',result['state'],result)
+
+    def test_complete_new_owner_held_private_bytes_nohash_once_and_lost_reply(self):
+        with self.fixture() as case:
+            # This actual generated worker fails if any private credential enters
+            # its digest function, including through another serialized object.
+            audit="\n_fixture_sha=sha\ndef sha(raw):\n secret=(Path.home()/'expected.private').read_bytes()\n import base64\n if secret in raw or base64.b64encode(secret) in raw:raise ValueError('private_digest_forbidden')\n return _fixture_sha(raw)\n\n"
+            raw=case.new_raw.replace(b"if __name__ == '__main__':",audit.encode()+b"if __name__ == '__main__':")
+            case.new_source.write_bytes(raw)
+            marker=case.home/'master-starts'
+            text=case.ssh.read_text().replace("assert '-M' in args", "pathlib.Path("+repr(str(marker))+").open('a').write('once\\n')\nassert '-M' in args")
+            # Real SSH child deliberately echoes its protected askpass answer;
+            # the new worker drains it without any retained raw output/hash.
+            text=text.replace("assert answer.rstrip(b'\\n')", "os.write(1,answer);os.write(2,answer)\nassert answer.rstrip(b'\\n')")
+            case.ssh.write_text(text)
+            case.prepare_adapter();actual=adapter.query
+            def lost(*args,**kw):actual(*args,**kw);raise subprocess.TimeoutExpired('fixed-observer',30)
+            with mock.patch.object(adapter,'query',side_effect=lost):
+                self.assertEqual('unknown',adapter.operate(case.controller,'release',case.request_inputs)['state'])
+            import importlib
+            importlib.reload(adapter)
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline:
+                result=adapter.operate(case.controller,'status',case.request_inputs)
+                if result['state']=='ready':break
+                time.sleep(.02)
+            self.assertEqual('ready',result['state'],result)
+            self.assertEqual('once\n',marker.read_text())
+            before=len(case.calls)
+            self.assertEqual('unknown',adapter.operate(case.controller,'release',case.request_inputs)['state'])
+            self.assertEqual(before,len(case.calls))
+            remote=self.remote_job(case);gate=json.loads((remote/'release.json').read_bytes())
+            self.assertEqual({'anchorPin','fencePin','credentialIdentity'},set(gate))
+            self.assertEqual(8,len(gate['credentialIdentity']['file']))
+            claim=json.loads((remote/'credential.use.intent.json').read_bytes())
+            self.assertEqual(gate['credentialIdentity'],claim['credentialIdentity'])
+            self.assertIs(False,claim['replayAllowed'])
+            digest=hashlib.sha256(b'inert-secret').hexdigest().encode()
+            for root in (self.local_job(case),remote):
+                for path in root.rglob('*'):
+                    if path.is_file() and path.name!='credential.private':
+                        body=path.read_bytes();self.assertNotIn(b'inert-secret',body,str(path))
+                        self.assertNotIn(digest,body,str(path))
+            self.assertEqual(b'',(remote/'stdout.private').read_bytes());self.assertEqual(b'',(remote/'stderr.private').read_bytes())
+            self.assertEqual(b'inert-secret',(remote/'credential.private').read_bytes())
+            # End only this fixture's inert master through its own sentinel.
+            Path(result['controlPath']).with_name('inert-stop').touch()
+            deadline=time.monotonic()+5
+            while time.monotonic()<deadline:
+                result=adapter.operate(case.controller,'status',case.request_inputs)
+                if result['state']=='ended':break
+                time.sleep(.02)
+            self.assertEqual('ended',result['state'],result)
+            terminal=json.loads((remote/'terminal.json').read_bytes())
+            self.assertEqual('discarded-private',terminal['outputPolicy'])
+
+    def test_actual_whole_before_crlf_refusal_current_strict_pid_ready(self):
+        import hashlib
+        fixture=Path(__file__).parent/'fixtures/ssh_gateway_bound_carrier/owner.v2-before-crlf.source'
+        original=fixture.read_bytes()
+        self.assertEqual('b5fb14f8368ae5bc2baa0b20ad4e77337e9c7ef2f9553e1c6689a684808dcb73',hashlib.sha256(original).hexdigest())
+        from agent_tools.tests.test_ssh_gateway_tmux_master import PROC, fixture_worker_source
+        for old,ending,foreign,extra,accepted in ((True,'\\r\\n',False,False,False),
+             (False,'\\r\\n',False,False,True),(False,'\\n',False,False,True),
+             (False,'\\r\\n',True,False,False),(False,'\\r\\n',False,True,False),
+             (False,'\\r\\r\\n',False,False,False)):
+            with self.subTest(old=old,ending=ending,foreign=foreign,extra=extra),self.fixture() as case:
+                if old:
+                    text=original.decode().replace("SSH = '/usr/bin/ssh'",'SSH = '+repr(str(case.ssh))).replace("TMUX = '/usr/bin/tmux'",'TMUX = '+repr(str(case.tmux)))
+                    start=text.index('def proc(pid):');end=text.index('def packet(raw):',start)
+                    case.new_source.write_bytes(fixture_worker_source(text[:start]+PROC+text[end:],case.fixture_nonce).encode())
+                script=case.ssh.read_text()
+                script=script.replace("str(os.getpid())+')\\n'",("str(os.getpid()+1)"if foreign else "str(os.getpid())")+"+')"+ending+("EXTRA"if extra else "")+"'")
+                marker=case.home/'checks'
+                script=script.replace("if '-O' in args:","if '-O' in args:\n pathlib.Path("+repr(str(marker))+").open('a').write('check\\n')")
+                case.ssh.write_text(script)
+                case.prepare_adapter()
+                self.assertEqual('released',adapter.operate(case.controller,'release',case.request_inputs)['state'])
+                remote=self.remote_job(case);deadline=time.monotonic()+4
+                while time.monotonic()<deadline and not marker.exists():time.sleep(.02)
+                self.assertTrue(marker.exists());time.sleep(.12)
+                result=adapter.operate(case.controller,'status',case.request_inputs)
+                self.assertEqual('ready'if accepted else'unknown',result['state'],result)
+                self.assertEqual(accepted,(remote/'ready.json').exists())
+                # Complete this original inert socket owner naturally, never
+                # replaying preparation or changing its retained source.
+                Path(case.request['masterControlPath']).with_name('inert-stop').touch()
+                deadline=time.monotonic()+4
+                while time.monotonic()<deadline:
+                    result=adapter.operate(case.controller,'status',case.request_inputs)
+                    if result['state']=='ended':break
+                    time.sleep(.02)
+                self.assertEqual('ended',result['state'],result)
+
+    def test_credential_fd_exact_bytes_generation_and_no_generic_hash_path(self):
+        with self.fixture() as case:
+            root=case.controller/'secret-owner';root.mkdir(mode=0o700)
+            with owner.Authority() as authority:
+                directory=authority.directory(root,True)
+                secret=owner.create_private_credential(authority,directory,'a'*32,b'only-in-memory')
+                self.assertNotIn('only-in-memory',repr(secret));self.assertNotIn('sha256',secret.identity)
+                with self.assertRaisesRegex(ValueError,'credential_hash_forbidden'):owner.create(directory,'credential.private',b'no')
+                with self.assertRaisesRegex(ValueError,'credential_hash_forbidden'):owner.Capture(directory,'credential.private')
+                path=root/'credential.private';path.write_bytes(path.read_bytes())
+                with self.assertRaisesRegex(ValueError,'credential_changed'):secret.guard()
+            with owner.Authority() as authority:
+                directory=authority.directory(root,True)
+                secret=owner.private_credential(authority,directory,'b'*32)
+                replacement=root/'replacement';replacement.write_bytes(b'only-in-memory');replacement.chmod(0o600);replacement.replace(root/'credential.private')
+                with self.assertRaisesRegex(ValueError,'credential_changed'):secret.guard()
+
+    def test_askpass_requires_original_nonce_and_once_journal_before_emit(self):
+        with self.fixture() as case:
+            root=case.controller/'askpass-owner';root.mkdir(mode=0o700)
+            with owner.Authority() as authority:
+                directory=authority.directory(root,True)
+                secret=owner.create_private_credential(authority,directory,'c'*32,b'only-in-memory')
+                anchor={'public':'anchor'}
+                owner.create(directory,'release.intent.json',owner.canonical({'anchorPin':anchor,'packetSha256':'d'*64,'credentialNonce':'c'*32}))
+                owner.create(directory,'release.json',owner.canonical({'anchorPin':anchor,'fencePin':{'public':'fence'},'credentialIdentity':secret.identity}))
+                env={**os.environ,'VPN_CONTROL_TMUX_SECRET':str(root/'credential.private'),'VPN_CONTROL_TMUX_IDENTITY':json.dumps({**secret.identity,'nonce':'e'*32})}
+                rejected=case.original_popen([sys.executable,'-I','-B','-c',owner.ASKPASS],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                out,err=rejected.communicate(timeout=3);self.assertNotEqual(0,rejected.returncode);self.assertEqual((b'',b''),(out,err))
+                self.assertFalse((root/'credential.use.intent.json').exists())
+                env['VPN_CONTROL_TMUX_IDENTITY']=json.dumps(secret.identity)
+                first=case.original_popen([sys.executable,'-I','-B','-c',owner.ASKPASS],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                out,err=first.communicate(timeout=3);self.assertEqual((0,b'only-in-memory\n',b''),(first.returncode,out,err))
+                receipt=(root/'credential.use.intent.json').read_bytes();self.assertNotIn(b'only-in-memory',receipt)
+                second=case.original_popen([sys.executable,'-I','-B','-c',owner.ASKPASS],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                out,err=second.communicate(timeout=3);self.assertNotEqual(0,second.returncode);self.assertEqual((b'',b''),(out,err))
+                self.assertEqual(receipt,(root/'credential.use.intent.json').read_bytes())
+
+    def test_new_private_and_public_config_drift_block_before_observation_child(self):
+        for field,value,reason in (('password','changed-private-value','private_config_changed'),('host','changed.invalid','public_route_changed')):
+            with self.subTest(field=field),self.fixture() as case:
+                case.prepare_adapter();before=len(case.calls);record=json.loads(case.config.read_bytes())
+                record['hosts']['archlinux'][field]=value;case.config.write_text(json.dumps(record))
+                result=adapter.operate(case.controller,'status',case.request_inputs)
+                self.assertEqual(('unknown',reason),(result['state'],result['reason']))
+                self.assertEqual(before,len(case.calls))
+
+    def test_legacy_private_receipt_blocked_without_hash_read_replay_or_new_root(self):
+        with self.fixture() as case:
+            old=load('master.private-config.before.source')
+            result=old.operate(case.controller,'prepare',case.request_inputs);self.assertEqual('prepared',result['state'])
+            calls=len(case.calls);oldpath=case.controller/'.rag_index/ssh-gateway-tmux-master'/case.request_inputs['correlationId']/'intent.json'
+            original=oldpath.read_bytes();real_hash=hashlib.sha256;seen=[]
+            def observed(raw=b'',*args,**kw):
+                if b'inert-secret' in bytes(raw)or raw==original:seen.append(True)
+                return real_hash(raw,*args,**kw)
+            with mock.patch.object(hashlib,'sha256',side_effect=observed):
+                result=adapter.operate(case.controller,'status',case.request_inputs)
+            self.assertEqual(('unknown','legacy_receipt_blocker'),(result['state'],result['reason']))
+            self.assertEqual([],seen);self.assertEqual(calls,len(case.calls));self.assertEqual(original,oldpath.read_bytes())
+            self.assertFalse((case.controller/'.rag_index'/adapter.GROUP).exists())
+
+    def test_missing_status_creates_no_job_or_remote_submission(self):
+        with self.fixture() as case:
+            self.assertEqual('unknown',adapter.operate(case.controller,'status',case.request_inputs)['state'])
+            self.assertEqual([],case.calls);self.assertFalse((case.controller/'.rag_index').exists())
+
+
+if __name__=='__main__':unittest.main()

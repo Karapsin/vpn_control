@@ -118,7 +118,7 @@ class NativeEnvironmentObservationTest(unittest.TestCase):
 
     def test_standalone_import_uses_the_same_fallback_imports(self):
         source = Path(observation.__file__).parent
-        result = subprocess.run([sys.executable, "-c", "import native_environment_observation"],
+        result = subprocess.run([sys.executable, "-B", "-c", "import native_environment_observation"],
                                 cwd=source.parent, env={"PYTHONPATH": str(source)},
                                 capture_output=True, text=True, check=False)
         self.assertEqual(0, result.returncode, result.stderr)

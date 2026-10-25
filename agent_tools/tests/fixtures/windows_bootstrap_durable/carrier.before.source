@@ -1,0 +1,484 @@
+"""Unexposed durable bootstrap completion, separate from current VM readiness.
+
+The initial Program retains the existing live ROOT, SYSTEM, same boot and zero
+interactive-user gates. A fresh observer only collects that original owner and
+its immutable receipt. Local DTOs never mint historical completion. This module
+does not enable a provider capability or interpret current desktop/reader state.
+"""
+import ast
+import base64
+import hashlib
+import inspect
+import json
+import math
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import types
+import weakref
+from uuid import UUID, uuid4, uuid5
+
+from . import durable_remote_job as jobs
+from . import readiness_windows_bootstrap_closure as initial
+from . import readiness_windows_host_jobs as host
+from . import readiness_windows_seed_detach as seed
+from . import ssh_transport as transport
+from . import windows_vm_deploy as deploy
+from .source_module_loader import _bootstrap_source
+
+_EXECUTING_CODE = inspect.currentframe().f_code
+PURPOSE = 'windows-bootstrap-finalize'
+QUALIFIED_RECOVERIES = frozenset()
+_ORIGINALS = weakref.WeakKeyDictionary()
+_HISTORY = weakref.WeakKeyDictionary()
+_ARTIFACTS = ('original.json', 'program.source', 'owner.source', 'plan.json')
+_DATA_ASSIGNMENTS = frozenset({'_LIFECYCLE_HOST_NAMESPACE', 'SEED_ORIGINAL', 'SEED_ACTOR', 'SEED_NONCES',
+    'SEED_SYSTEM_SOURCES', 'SPEC', 'SETUP', 'CONTEXT', 'ORIGINAL_HOST_PHASES', 'SEED_HOST_ORIGINAL',
+    'CLOSE_REQUEST', 'CLOSE_READERS'})
+
+
+def _need(value):
+    if not value:
+        raise ValueError('windows_bootstrap_durable_unresolved')
+
+
+def _plain(value):
+    return json.loads(json.dumps(value, allow_nan=False), object_pairs_hook=transport._reject_duplicate_keys)
+
+
+def _digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def _stable_source(source):
+    """Normalize only the finite top-level packet-data assignments listed above.
+
+    JSON custody sorts object keys. Repr of those reloaded *data* dictionaries
+    must not change an original packet. Function bodies and other assignments
+    retain their AST and mapping order; ast.unparse changes formatting only.
+    """
+    def ordered(value):
+        if type(value) is dict:
+            return {k: ordered(value[k]) for k in sorted(value, key=lambda k: (type(k).__name__, repr(k)))}
+        if type(value) is list:return [ordered(v) for v in value]
+        if type(value) is tuple:return tuple(ordered(v) for v in value)
+        return value
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in _DATA_ASSIGNMENTS:
+            value = ast.literal_eval(node.value)
+            node.value = ast.copy_location(ast.parse(repr(ordered(value)), mode='eval').body, node.value)
+    tree = ast.fix_missing_locations(tree)
+    result = (ast.unparse(tree)+'\n').encode()
+    compile(result, 'canonical fixed bootstrap finalizer', 'exec')
+    return result
+
+
+def _worker_source(namespace, operation):
+    """Finite owned-controller role; no shared purpose policy is changed."""
+    inventory = host._render(namespace, 'inventory')
+    tree = ast.parse(inventory)
+    assignment = tree.body[0]
+    _need(isinstance(assignment, ast.Assign) and len(assignment.targets) == 1
+          and isinstance(assignment.targets[0], ast.Name) and assignment.targets[0].id == 'PARAMETERS')
+    parameters = ast.literal_eval(assignment.value)
+    _need(parameters == {'namespace': namespace, 'mode': 'inventory', 'purposes': sorted(host._PURPOSES)})
+    parameters['purposes'] = sorted(set(parameters['purposes']) | {PURPOSE})
+    assignment.value = ast.parse(repr(parameters), mode='eval').body
+    inventory = (ast.unparse(ast.fix_missing_locations(tree))+'\n').encode()
+    source = host.worker_inventory_definitions(namespace)
+    tree = ast.parse(source)
+    matches = [n for n in tree.body if isinstance(n, ast.Assign) and len(n.targets) == 1
+               and isinstance(n.targets[0], ast.Name) and n.targets[0].id == '_LIFECYCLE_HOST_INVENTORY_SOURCE']
+    _need(len(matches) == 1)
+    matches[0].value = ast.Constant(inventory)
+    # Preserve the existing private parent/code/operator-FD verifier, changing
+    # only its operation identity. Seed journals keep their original OPERATION.
+    source = ast.unparse(ast.fix_missing_locations(tree))+'\n'
+    needle = '_LIFECYCLE_HOST_INVENTORY_SOURCE, OPERATION, _LIFECYCLE_EXECUTING_CODE'
+    _need(source.count(needle) == 1)
+    return 'BOOTSTRAP_OWNER_OPERATION='+repr(operation)+'\n'+source.replace(needle, '_LIFECYCLE_HOST_INVENTORY_SOURCE, BOOTSTRAP_OWNER_OPERATION, _LIFECYCLE_EXECUTING_CODE')
+
+
+def _canonical(original, config, *, initial_only=False):
+    """Reconstruct bytes only; this never reconstructs a live ROOT capability."""
+    body, _, _ = seed._body(original)
+    _need(set(config) == {'admissionId', 'request', 'readers'})
+    request = seed.validate_read_request(config['request'])
+    readers = seed.validate_reader_result(config['readers'])
+    _need(not readers['holders'] and seed._uuid(config['admissionId']))
+    _need(request['detachment']['operationId'] == body['operationId'])
+    # Reuse the exact reviewed initial finalizer branch, without executing it.
+    # A changed producer yields different bytes and blocks old-packet loading;
+    # it never substitutes a new program for an admitted original.
+    tree = ast.parse(inspect.getsource(initial.program))
+    branches = [ast.literal_eval(n.value) for n in ast.walk(tree)
+                if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'branch' for t in n.targets)]
+    _need(len(branches) == 1 and type(branches[0]) is str)
+    source = seed.request_program(original).decode()
+    marker = '        seed_guard();print(json.dumps(request));return\n'
+    _need(source.count(marker) == 1 and source.endswith('\n_main()\n'))
+    source = source.replace(marker, branches[0])[:-len('\n_main()\n')]
+    nonce = str(uuid5(UUID(body['operationId']), str(readers['observedNs'])))
+    constants = {'CLOSE_ADMISSION_ID': config['admissionId'], 'CLOSE_REQUEST': request, 'CLOSE_READERS': readers,
+                 'SEED_FINAL_NONCE': nonce, 'SEED_FINAL_TEMPLATE': seed.system_source(body['binding']['setup'], body['binding']['spec']['deploymentId'], nonce)}
+    source += '\n' + inspect.getsource(seed._reader_clock_guard) + '\n'
+    source += '\n'.join(k + '=' + repr(v) for k, v in constants.items()) + '\n_main()\n'
+    compile(source, 'original bootstrap finalizer', 'exec')
+    initial_source = _stable_source(source)
+    if initial_only:return initial_source
+    record, _, _ = host._load(seed.original_ejection(original))
+    rid = _digest(json.dumps([body['operationId'], config], sort_keys=True, separators=(',', ':')).encode())
+    operation = str(uuid5(UUID(record['namespace']['binding']['machine']), rid))
+    tree = ast.parse(initial_source)
+    _need(isinstance(tree.body[-1], ast.Expr) and isinstance(tree.body[-1].value, ast.Call)
+          and isinstance(tree.body[-1].value.func, ast.Name) and tree.body[-1].value.func.id == '_main')
+    additions = ast.parse(_worker_source(record['namespace'], operation)).body
+    tree.body[-1:-1] = additions
+    prefix = "_LIFECYCLE_EXECUTING_CODE=__import__('inspect').currentframe().f_code\n"
+    return _stable_source(prefix+ast.unparse(ast.fix_missing_locations(tree))+'\n')
+
+
+class OriginalFinalization:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('windows_bootstrap_original_opaque')
+    def __reduce__(self):
+        raise TypeError('windows_bootstrap_original_opaque')
+    def as_dict(self):
+        return _load(self)[0]
+
+
+def _mint(directory, original, expected):
+    custody = host._custody(directory, 'custody.json', _ARTIFACTS)
+    value = object.__new__(OriginalFinalization)
+    _ORIGINALS[value] = (directory, original, _plain(expected), custody)
+    _load(value)
+    return value
+
+
+def _load(value):
+    _guard_sources()
+    _need(type(value) is OriginalFinalization and value in _ORIGINALS)
+    directory, original, expected, custody = _ORIGINALS[value]
+    _need(host._custody(directory, 'custody.json', _ARTIFACTS) == custody)
+    record = host._json(jobs._read(directory / 'original.json', jobs.MAX_RECORD_BYTES))
+    plan = host._json(jobs._read(directory / 'plan.json', jobs.MAX_PROGRAM_BYTES))
+    body, _, _ = seed._body(original)
+    _need(record == expected and type(plan) is dict and set(plan) == {'schemaVersion', 'kind', 'seedOriginal', 'initial'})
+    _need(type(plan['schemaVersion']) is int and plan['schemaVersion'] == 1 and plan['kind'] == 'windows-bootstrap-finalization-plan-v1'
+          and plan['seedOriginal'] == body)
+    ns = host._namespace(record['namespace'])
+    seed_record, _, _ = host._load(seed.original_ejection(original))
+    _need(ns == seed_record['namespace'] and record['purpose'] == PURPOSE and record['replayAllowed'] is False)
+    rid = _digest(json.dumps([body['operationId'], plan['initial']], sort_keys=True, separators=(',', ':')).encode())
+    _need(record['recoveryId'] == rid and record['operationId'] == str(uuid5(UUID(ns['binding']['machine']), rid)))
+    program = jobs._read(directory / 'program.source', jobs.MAX_PROGRAM_BYTES)
+    owner = jobs._read(directory / 'owner.source', jobs.MAX_PROGRAM_BYTES)
+    _need(program == _canonical(original, plan['initial']) and _digest(program) == record['programSha256']
+          and _digest(owner) == ns['ownerSourceSha256'])
+    _need(host._custody(directory, 'custody.json', _ARTIFACTS) == custody)
+    return _plain(record), program, owner, _plain(plan)
+
+
+def retain(root, original, witness):
+    """Retain the complete original before submit. No transport or VM effects."""
+    _guard_sources();_need(type(witness) is seed.ReaderWitness)
+    body, _, _ = seed._body(original)
+    clear = witness.require_clear(original)
+    seed._reader_original_request(original, witness.request)
+    if witness._state()['consumedBy'] is None:
+        witness.consume(original, body['operationId'])
+    _need(witness._state()['consumedBy'] == body['operationId'])
+    admitted = initial.admission(root, original)
+    config = {'admissionId': admitted.as_dict()['admissionId'], 'request': witness.request, 'readers': clear}
+    source = _canonical(original, config)
+    _need(_canonical(original, config, initial_only=True) == _stable_source(initial.program(original, witness, admitted)))
+    seed_record, _, _ = host._load(seed.original_ejection(original))
+    ns = seed_record['namespace']
+    _need(ns['ownerSourceSha256'] == _digest(jobs.owner_source()))
+    rid = _digest(json.dumps([body['operationId'], config], sort_keys=True, separators=(',', ':')).encode())
+    operation = str(uuid5(UUID(ns['binding']['machine']), rid))
+    program = jobs.Program(PURPOSE, source)
+    record = {'schemaVersion': 1, 'kind': 'windows-lifecycle-original-host-job-v1', 'namespace': ns,
+              'operationId': operation, 'recoveryId': rid, 'purpose': PURPOSE, 'streamLimit': program.stream_limit,
+              'programSha256': program.digest, 'replayAllowed': False}
+    plan = {'schemaVersion': 1, 'kind': 'windows-bootstrap-finalization-plan-v1', 'seedOriginal': body, 'initial': config}
+    # Exactly one initial packet per seed original. A different later ROOT
+    # observation cannot regenerate a new owner while this one is unresolved.
+    directory = host._local_parent(root, 'bootstrap-durable:' + ns['binding']['target'], ns['binding']['machine']) / body['operationId']
+    try:
+        directory.mkdir(mode=0o700)
+        jobs._sync_directory(directory.parent)
+        jobs._create(directory / 'program.source', source)
+        jobs._create(directory / 'owner.source', jobs.owner_source())
+        jobs._publish(directory / 'original.json', record)
+        jobs._publish(directory / 'plan.json', plan)
+        host._create_custody(directory, 'custody.json', _ARTIFACTS)
+    except FileExistsError:
+        pass  # Missing/partial original packets remain blocked, never repaired.
+    return _mint(directory, original, record)
+
+
+def reopen(root, original, operation):
+    """Load an original execution packet; this does not mint closure history."""
+    _guard_sources();jobs._uuid(operation)
+    body, _, _ = seed._body(original)
+    seed_record, _, _ = host._load(seed.original_ejection(original))
+    bound = seed_record['namespace']['binding']
+    directory = host._local_parent(root, 'bootstrap-durable:' + bound['target'], bound['machine'], create=False) / body['operationId']
+    record = host._json(jobs._read(directory / 'original.json', jobs.MAX_RECORD_BYTES))
+    _need(type(record) is dict and set(record) == {'schemaVersion', 'kind', 'namespace', 'operationId', 'recoveryId', 'purpose', 'streamLimit', 'programSha256', 'replayAllowed'}
+          and type(record['schemaVersion']) is int and record['schemaVersion'] == 1 and record['kind'] == 'windows-lifecycle-original-host-job-v1'
+          and record['operationId'] == operation and type(record['streamLimit']) is int and 1 <= record['streamLimit'] <= jobs.MAX_STREAM_BYTES)
+    return _mint(directory, original, record)
+
+
+def operation_program(original, *, submit=False):
+    """Fixed original-only owner protocol; consumed admission never resubmits."""
+    _need(type(submit) is bool)
+    record, program, owner, _ = _load(original)
+    return host._render(record['namespace'], 'submit' if submit else 'observe', record=record, program=program, owner=owner)
+
+
+def _terminal(record, reply):
+    _need(type(reply) is dict and set(reply) == {'status', 'stdoutBase64', 'stderrBase64'})
+    status = reply['status']
+    _need(type(status) is dict and type(status.get('schemaVersion')) is int and status['schemaVersion'] == 1
+          and status.get('state') == 'terminal' and status.get('operationId') == record['operationId'] and status.get('replayAllowed') is False)
+    terminal = status.get('terminal')
+    _need(type(terminal) is dict and type(terminal.get('exitCode')) is int and terminal['exitCode'] == 0
+          and terminal.get('streamsClosed') is True and terminal.get('binding') == record['namespace']['binding']
+          and terminal.get('operationId') == record['operationId'] and terminal.get('programSha256') == record['programSha256']
+          and status.get('binding') == terminal['binding'] and status.get('owner') == terminal.get('owner')
+          and type(terminal.get('owner')) is dict and set(terminal['owner']) == {'pid', 'birth'}
+          and type(terminal['owner']['pid']) is int and terminal['owner']['pid'] > 0
+          and type(terminal['owner']['birth']) is str and bool(terminal['owner']['birth']) and seed._uuid(terminal.get('generation')))
+    output = {}
+    for name in ('stdout', 'stderr'):
+        encoded = reply[name + 'Base64']
+        _need(type(encoded) is str and len(encoded) <= jobs.MAX_STREAM_BYTES * 2)
+        raw = base64.b64decode(encoded, validate=True)
+        stream = terminal.get(name)
+        _need(type(stream) is dict and stream.get('overflow') is False
+              and type(stream.get('totalBytes')) is int and type(stream.get('retainedBytes')) is int
+              and stream['retainedBytes'] == stream['totalBytes'] == len(raw) and stream.get('sha256') == _digest(raw))
+        output[name] = raw
+    _need(output['stderr'] == b'')
+    return output['stdout']
+
+
+def _initial_reply(plan, raw):
+    reply = host._json(raw)
+    _need(type(reply) is dict and set(reply) == {'kind', 'closure', 'closureGeneration', 'currentSystem', 'currentReaders', 'currentRequest'}
+          and reply['kind'] == 'windows-managed-bootstrap-closure-observed-v1')
+    config = plan['initial']; body = plan['seedOriginal']; c = reply['closure']
+    nonce = str(uuid5(UUID(body['operationId']), str(config['readers']['observedNs'])))
+    expected_system = seed.validate_system(reply['currentSystem'], body['binding']['spec']['deploymentId'], nonce)
+    _need(expected_system['boot'] == config['request']['detachment']['boot'] and expected_system['account'] == config['request']['detachment']['account'])
+    expected = {'schemaVersion': 1, 'kind': 'windows-managed-bootstrap-closed-v1', 'admissionId': config['admissionId'],
+                'machine': body['binding']['spec']['deploymentId'], 'hostBoot': body['binding']['context']['hostBootId'],
+                'creatorOperationId': body['creatorOperationId'], 'seedOperationId': body['operationId'],
+                'boot': expected_system['boot'], 'account': expected_system['account'], 'seedGeneration': config['request']['seedGeneration'],
+                'rootRequest': config['request'], 'rootReaders': config['readers'], 'system': expected_system,
+                'ordinarySigninAllowed': True, 'replayAllowed': False}
+    _need(c == expected and reply['currentReaders'] == config['readers'] and reply['currentRequest'] == config['request']
+          and seed._pin(reply['closureGeneration'], 9) and reply['closureGeneration'][2] == 0o100600
+          and reply['closureGeneration'][3] == config['request']['uid'] and reply['closureGeneration'][5] == 1)
+    return reply
+
+
+def _observe():
+    import contextlib, fcntl, hashlib, io, json, os, pathlib, stat
+    def need(value):
+        if not value:raise ValueError('windows_bootstrap_durable_original_unresolved')
+    def pin(i):return [i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns]
+    ns=RECORD['namespace'];root=pathlib.Path(ns['vmRoot']);rootfd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);lock=None
+    try:
+        def guard():
+            held=os.fstat(rootfd);named=os.lstat(root)
+            need([held.st_dev,held.st_ino,held.st_mode,held.st_uid,held.st_gid]==[named.st_dev,named.st_ino,named.st_mode,named.st_uid,named.st_gid]==ns['vmRootIdentity'])
+            need(root.resolve()==root)
+        guard();lock=os.open('intent.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=rootfd)
+        # Observers may not race first-admission publication or any VM operation.
+        import time
+        end=time.monotonic()+5
+        while True:
+            try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+            except BlockingIOError:need(time.monotonic()<end);time.sleep(.01)
+        def lock_guard():need(pin(os.fstat(lock))==pin(os.stat('intent.json',dir_fd=rootfd,follow_symlinks=False))==ns['intentGeneration'])
+        lock_guard();stream=io.StringIO()
+        with contextlib.redirect_stdout(stream):exec(compile(OWNER_OBSERVATION,'exact original bootstrap owner observation','exec'),{'__name__':'original_bootstrap_owner_observation'})
+        reply=json.loads(stream.getvalue(),object_pairs_hook=PAIRS)
+        raw=TERMINAL(RECORD,reply);initial=json.loads(raw,object_pairs_hook=PAIRS)
+        rowfd=os.open('managed-bootstrap-closed.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=rootfd)
+        try:
+            before=pin(os.fstat(rowfd));need(before==initial['closureGeneration']and stat.S_ISREG(before[2])and before[3]==os.geteuid()and before[5]==1 and before[6]<=1048576)
+            content=os.read(rowfd,1048577);need(len(content)<=1048576)
+            need(json.loads(content,object_pairs_hook=PAIRS)==initial['closure'])
+            need(pin(os.fstat(rowfd))==pin(os.stat('managed-bootstrap-closed.json',dir_fd=rootfd,follow_symlinks=False))==before)
+        finally:os.close(rowfd)
+        guard();lock_guard()
+        print(json.dumps({'kind':'windows-bootstrap-durable-observation-v1','original':reply,'receiptGeneration':before}))
+    finally:
+        if lock is not None:os.close(lock)
+        os.close(rootfd)
+
+
+def observation_program(original):
+    record, _, _, _ = _load(original)
+    # Only fixed helpers are embedded. No fresh guest call or initial program is
+    # executed: OWNER_OBSERVATION selects observe, never submit.
+    source = inspect.getsource(_need) + '\n' + inspect.getsource(_digest) + '\n' + inspect.getsource(_terminal) + '\n'
+    source += 'import base64,hashlib\nfrom uuid import UUID\n'
+    source += "def _uuid(v):\n try:return type(v)is str and str(UUID(v))==v\n except (ValueError,TypeError,AttributeError):return False\n"
+    source = source.replace("seed._uuid(terminal.get('generation'))", "_uuid(terminal.get('generation'))")
+    source = source.replace('jobs.MAX_STREAM_BYTES', str(jobs.MAX_STREAM_BYTES))
+    source += "def PAIRS(rows):\n result={}\n for key,value in rows:_need(key not in result);result[key]=value\n return result\n"
+    source += 'TERMINAL=_terminal\nRECORD=' + repr(record) + '\nOWNER_OBSERVATION=' + repr(operation_program(original)) + '\n'
+    source += inspect.getsource(_observe) + '\n_observe()\n'
+    compile(source, 'fixed original bootstrap receipt observer', 'exec')
+    return source.encode()
+
+
+class HistoricalBootstrapClosure:
+    __slots__ = ('__weakref__',)
+    def __new__(cls, *args, **kwargs):
+        raise TypeError('windows_bootstrap_original_observer_required')
+    def __reduce__(self):
+        raise TypeError('windows_bootstrap_original_observer_required')
+    def as_dict(self):
+        _need(type(self) is HistoricalBootstrapClosure and self in _HISTORY)
+        original, expected, directory, custody = _HISTORY[self]
+        _load(original)
+        _need(host._custody(directory, 'custody.json', ('observer.source', 'reply.json', 'callback.json', 'closing.json')) == custody)
+        _need(host._json(jobs._read(directory / 'reply.json', 4*1024**2))['receiptGeneration'] == expected['closureGeneration'])
+        return _plain(expected)
+
+
+def _observation_directory(original, source):
+    parent = _ORIGINALS[original][0] / 'observations'
+    try:parent.mkdir(mode=0o700)
+    except FileExistsError:jobs._private(parent, directory=True)
+    directory = parent / str(uuid4())
+    directory.mkdir(mode=0o700)
+    jobs._create(directory / 'observer.source', source)
+    return directory
+
+
+def _capture_callback(directory, record, result):
+    """Capture public failure evidence before validating/projecting the reply."""
+    callback = {'schemaVersion': 1, 'operationId': record['operationId'], 'returnCode': result.returncode}
+    for name, limit in (('stdout', 4*1024**2), ('stderr', 1024**2)):
+        raw = getattr(result, name)
+        _need(type(raw) is bytes)
+        jobs._create(directory / (name+'.public'), raw[:limit])
+        callback.update({name+'Bytes': len(raw), name+'RetainedBytes': min(len(raw), limit), name+'Complete': len(raw) <= limit})
+    jobs._publish(directory / 'callback.json', callback)
+
+
+def observe_original(root, original, *, guard, deadline):
+    """Mint history only from a newly authenticated actual original observer.
+
+    This needs no guest controller, current WTS or live ROOT reader capability.
+    Current provider/storage/no-seed lineage remains a separate factory gate.
+    """
+    _guard_sources();_need(callable(guard) and type(deadline) in (int, float) and math.isfinite(deadline) and deadline > time.monotonic())
+    record, _, _, plan = _load(original)
+    target = plan['seedOriginal']['binding']['spec']['host']
+    source = observation_program(original)
+    directory = _observation_directory(original, source)
+    with transport.admitted_transport(root, target, record['operationId'], deadline=deadline) as admitted:
+        with deploy.direct.Guard(root, host=target) as authority:
+            guard();_load(original)
+            argv = transport.build_ssh_argv(authority.config, target, 60, command=('python3', '-I', '-B', '-c', 'exec(' + repr(source.decode()) + ')'))
+            admitted.revalidate();authority.guard();guard()
+            remaining = deadline-time.monotonic();_need(remaining>0)
+            try:
+                result = transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=min(60, remaining), cwd=root)
+            except Exception:
+                jobs._publish(directory / 'unavailable.json', {'schemaVersion': 1, 'operationId': record['operationId'], 'reason': 'original_observation_unavailable', 'replayAllowed': False})
+                raise
+            _capture_callback(directory, record, result)
+            _need(result.returncode == 0 and result.stderr == b'' and type(result.stdout) is bytes and 0 < len(result.stdout) <= 4*1024**2)
+            value = host._json(result.stdout)
+            _need(type(value) is dict and set(value) == {'kind', 'original', 'receiptGeneration'} and value['kind'] == 'windows-bootstrap-durable-observation-v1')
+            closed = _initial_reply(plan, _terminal(record, value['original']))
+            _need(value['receiptGeneration'] == closed['closureGeneration'])
+            admitted.revalidate();authority.guard();guard();_load(original)
+            history = {'schemaVersion': 1, 'kind': 'windows-bootstrap-historical-closure-v1',
+                       'operationId': record['operationId'], 'creatorOperationId': plan['seedOriginal']['creatorOperationId'],
+                       'seedOperationId': plan['seedOriginal']['operationId'], 'machine': closed['closure']['machine'],
+                       'originalGuestBoot': closed['closure']['boot'], 'account': closed['closure']['account'],
+                       'closureGeneration': value['receiptGeneration'], 'programSha256': record['programSha256'],
+                       'historicalBootstrapComplete': True, 'currentDesktopVerified': False,
+                       'currentReadersVerified': False, 'currentLineageVerified': False, 'replayAllowed': False}
+            # Preserve complete public original-owner streams, the exact fixed
+            # observer and its actual carrier callback before minting history.
+            jobs._create(directory / 'reply.json', result.stdout)
+            admitted.revalidate();authority.guard();guard();_load(original)
+            jobs._publish(directory / 'closing.json', {'schemaVersion': 1, 'operationId': record['operationId'],
+                'observerSha256': _digest(source), 'stdoutSha256': _digest(result.stdout),
+                'originalProgramSha256': record['programSha256'], 'sourceGuardValidated': True})
+            host._create_custody(directory, 'custody.json', ('observer.source', 'reply.json', 'callback.json', 'closing.json'))
+            custody = host._custody(directory, 'custody.json', ('observer.source', 'reply.json', 'callback.json', 'closing.json'))
+            proof = object.__new__(HistoricalBootstrapClosure)
+            _HISTORY[proof] = (original, history, directory, custody)
+            return proof
+
+
+def _source_pin(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _capture_sources():
+    captured = []
+    for module in (sys.modules[__name__], initial, seed, host, jobs):
+        path = Path(module.__file__).absolute()
+        with _bootstrap_source(path) as (raw, check):
+            pin = _source_pin(path.lstat());check()
+            captured.append((module, path, raw, pin))
+    return tuple(captured)
+
+
+def _guard_sources():
+    """Direct imports receive source and compiled-function custody too."""
+    import contextlib
+    wrappers = contextlib.contextmanager(lambda: None).__code__
+    with contextlib.ExitStack() as stack:
+        for module, path, expected, pin in _CAPTURED_SOURCES:
+            raw, check = stack.enter_context(_bootstrap_source(path))
+            _need(raw == expected and _source_pin(path.lstat()) == pin)
+            compiled = compile(raw, str(path), 'exec', dont_inherit=True)
+            if hasattr(module, '_EXECUTING_CODE'):
+                _need(module._EXECUTING_CODE == compiled)
+            codes = {code.co_name: code for code in compiled.co_consts if type(code) is types.CodeType}
+            for node in ast.parse(raw).body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    actual = getattr(module, node.name, None)
+                    _need(type(actual) is types.FunctionType)
+                    if node.decorator_list:
+                        _need(len(node.decorator_list) == 1 and isinstance(node.decorator_list[0], ast.Name)
+                              and node.decorator_list[0].id == 'contextmanager'
+                              and actual.__code__ == wrappers and len(actual.__closure__ or ()) == 1
+                              and actual.__closure__[0].cell_contents is actual.__wrapped__)
+                        actual = actual.__wrapped__
+                    _need(type(actual) is types.FunctionType and actual.__code__ == codes[node.name])
+                elif isinstance(node, ast.ClassDef):
+                    cls = getattr(module, node.name, None)
+                    _need(type(cls) is type)
+                    methods = {code.co_name: code for code in codes[node.name].co_consts if type(code) is types.CodeType}
+                    for declared in node.body:
+                        if not isinstance(declared, (ast.FunctionDef, ast.AsyncFunctionDef)):continue
+                        actual = cls.__dict__.get(declared.name)
+                        if type(actual) in (staticmethod, classmethod):actual = actual.__func__
+                        elif type(actual) is property:actual = actual.fget
+                        _need(type(actual) is types.FunctionType and actual.__code__ == methods[declared.name])
+            check()
+
+
+_CAPTURED_SOURCES = _capture_sources()
+_guard_sources()

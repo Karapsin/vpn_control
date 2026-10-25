@@ -1,0 +1,193 @@
+"""Fresh retained MCP client; follows original job observations, never replays start."""
+from __future__ import annotations
+
+import argparse
+import asyncio
+from datetime import timedelta
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import uuid
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+ROOT = Path(__file__).resolve().parents[1]
+ACTIONS = ("program-start", "program-status", "program-collect", "program-reconcile")
+
+
+def save(directory, name, value):
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    descriptor = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        offset = 0
+        while offset < len(raw):
+            count = os.write(descriptor, raw[offset:])
+            if count <= 0:
+                raise OSError("client_record_short_write")
+            offset += count
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def request(action, host, body):
+    if action not in ACTIONS or type(host) is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", host) is None:
+        raise ValueError("program_mcp_action_host")
+    fields = {"operationId", "program"} if action == "program-start" else {"operationId"}
+    if type(body) is not dict or set(body) != fields or str(uuid.UUID(body["operationId"])) != body["operationId"]:
+        raise ValueError("program_mcp_request")
+    return {"action": action, "host": host, "timeout_seconds": 15,
+            "transfer" if action == "program-start" else "identity": body}
+
+
+def follow_request(action, host, operation, value):
+    """Only this original operation can drive follow-up RPCs. Ignore supplied argv."""
+    if type(value) is not dict or value.get("operationId") != operation:
+        return None
+    if value.get("host", host) != host:
+        raise ValueError("program_mcp_follow_binding")
+    guidance = value.get("nextAction")
+    kind = guidance.get("kind") if type(guidance) is dict else guidance
+    next_action = {"observe_original": "program-status", "reconcile_original": "program-reconcile",
+                   "collect_original": "program-collect"}.get(kind)
+    if next_action is None or action == "program-collect" and next_action == "program-collect":
+        return None
+    return request(next_action, host, {"operationId": operation})
+
+
+async def main(arguments):
+    expected = arguments.server_sha256
+    server = ROOT / "agent_tools/mcp_server.py"
+    if re.fullmatch("[0-9a-f]{64}", expected) is None or hashlib.sha256(server.read_bytes()).hexdigest() != expected:
+        raise ValueError("program_mcp_server_source")
+    body = json.loads(Path(arguments.request_file).read_bytes()) if arguments.request_file else None
+    payload = request(arguments.action, arguments.host, body) if arguments.action else None
+    if payload is None and (arguments.host or arguments.request_file):
+        raise ValueError("program_mcp_unexpected_request")
+    parent = Path(arguments.output_root)
+    if not parent.is_absolute() or parent.resolve(strict=True) != parent or re.fullmatch("[A-Za-z0-9-]{1,80}", arguments.session) is None:
+        raise ValueError("program_mcp_output")
+    directory = parent / arguments.session
+    directory.mkdir(mode=0o700)
+    save(directory, "client-intent.json", {"request": payload, "serverSha256": expected,
+                                           "automaticReplay": False, "clientPid": os.getpid()})
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("DYLD_")}
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    # The retained relay is an absolute script. Its package imports must resolve
+    # from this explicit source checkout even when Codex supplied no PYTHONPATH.
+    environment["PYTHONPATH"] = str(ROOT)
+    parameters = StdioServerParameters(command=str(ROOT / ".agent_venv/bin/python"),
+        args=["-B", str(ROOT / "agent_tools/ssh_keeper_mcp_relay.py"), str(directory), expected],
+        cwd=ROOT, env=environment)
+    attempted = False
+    attempted_calls = 0
+    returned_calls = 0
+    follow = getattr(arguments, "follow", None)
+    follow = arguments.action == "program-start" if follow is None else follow
+    follow_seconds = getattr(arguments, "follow_seconds", 180)
+    if type(follow_seconds) is not int or not 1 <= follow_seconds <= 600:
+        raise ValueError("program_mcp_follow_deadline")
+    result = {"state": "unknown", "automaticReplay": False, "serverExecutionProven": False}
+    try:
+        with (directory / "sdk.stderr").open("x", encoding="utf-8") as errors:
+            os.chmod(directory / "sdk.stderr", 0o600)
+            async with stdio_client(parameters, errlog=errors) as streams:
+                async with ClientSession(*streams, read_timeout_seconds=timedelta(seconds=30)) as session:
+                    initialized = await session.initialize()
+                    save(directory, "initialize.json", initialized.model_dump(mode="json"))
+                    inventory = await session.list_tools()
+                    save(directory, "tools.json", inventory.model_dump(mode="json"))
+                    if "ssh_workflow" not in {tool.name for tool in inventory.tools}:
+                        raise ValueError("program_mcp_tool_absent")
+                    result = {"state": "protocol_ready", "automaticReplay": False, "serverExecutionProven": False}
+                    if payload is not None:
+                        original_operation = body["operationId"]
+                        active_payload = payload
+                        deadline = asyncio.get_running_loop().time() + follow_seconds
+                        while active_payload is not None:
+                            remaining = deadline - asyncio.get_running_loop().time()
+                            if remaining <= 0:
+                                result["followDeadlineReached"] = True
+                                break
+                            ordinal = attempted_calls
+                            save(directory, "call-intent-%08d.json" % ordinal, {"request": active_payload,
+                                 "operationId": original_operation, "automaticReplay": False})
+                            attempted = True
+                            attempted_calls += 1
+                            response = await session.call_tool("ssh_workflow", active_payload,
+                                read_timeout_seconds=timedelta(seconds=min(90, remaining)))
+                            returned_calls += 1
+                            wire = response.model_dump(mode="json")
+                            save(directory, "call-result-%08d.json" % ordinal, wire)
+                            if ordinal == 0:
+                                save(directory, "call-result.json", wire)
+                            value = wire.get("structuredContent")
+                            result.update(state="rpc_returned", toolError=response.isError,
+                                          operationId=original_operation)
+                            if type(value) is dict:
+                                result.update(programState=value.get("state"), nextAction=value.get("nextAction"))
+                            if response.isError or not follow:
+                                break
+                            active_payload = follow_request(active_payload["action"], arguments.host, original_operation, value)
+                            if active_payload is not None:
+                                # Cooperative bounded polling; every RPC retains
+                                # its own intent/result under the same identity.
+                                await asyncio.sleep(min(.5, max(0, deadline-asyncio.get_running_loop().time())))
+        terminal = json.loads((directory / "server-terminal.json").read_bytes())
+        if (terminal.get("complete") is not True or terminal.get("returnCode") != 0
+                or terminal.get("eof") != {"stdout": True, "stderr": True}
+                or terminal.get("overflow") is not False or terminal.get("readError") is not False):
+            raise ValueError("program_mcp_original_server_unclosed")
+        for name in ("stdin", "stdout", "stderr"):
+            pin = terminal["raw"][name]
+            descriptor = os.open(directory / ("server." + name), os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                info = os.fstat(descriptor)
+                generation = lambda value: [value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid,
+                                             value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns]
+                raw = os.read(descriptor, 16 * 1024 * 1024 + 1)
+                if (len(raw) != pin["bytes"] or hashlib.sha256(raw).hexdigest() != pin["sha256"]
+                        or generation(info) != pin["generation"] or generation(os.fstat(descriptor)) != pin["generation"]
+                        or generation(os.lstat(directory / ("server." + name))) != pin["generation"]):
+                    raise ValueError("program_mcp_raw_closing")
+            finally:
+                os.close(descriptor)
+        delivery = terminal["delivery"]
+        expected_frames = attempted_calls
+        if (delivery["toolCallFrameCount"] != expected_frames
+                or delivery["fullyForwardedToolCallFrameCount"] != expected_frames
+                or delivery["pendingFrameBytes"] != 0
+                or delivery["stdinBytesWritten"] != terminal["raw"]["stdin"]["bytes"]):
+            raise ValueError("program_mcp_delivery_unproved")
+        if hashlib.sha256(server.read_bytes()).hexdigest() != expected:
+            raise ValueError("program_mcp_server_source_changed")
+        result.update(originalServerTerminalClosed=True, forwardedToolCalls=expected_frames)
+    except Exception as error:
+        result = {"state": "unknown", "exceptionClass": type(error).__name__, "automaticReplay": False,
+                  "serverExecutionProven": False}
+    result["sdkCallAttempted"] = attempted
+    result["attemptedToolCalls"] = attempted_calls
+    result["returnedToolCalls"] = returned_calls
+    save(directory, "client-result.json", result)
+    print(json.dumps(result, sort_keys=True))
+    return int(result["state"] == "unknown")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--session", required=True)
+    parser.add_argument("--server-sha256", required=True)
+    parser.add_argument("--output-root", required=True)
+    parser.add_argument("--action", choices=ACTIONS)
+    parser.add_argument("--host")
+    parser.add_argument("--request-file")
+    follow_group = parser.add_mutually_exclusive_group()
+    follow_group.add_argument("--follow", dest="follow", action="store_true")
+    follow_group.add_argument("--no-follow", dest="follow", action="store_false")
+    parser.set_defaults(follow=None)
+    parser.add_argument("--follow-seconds", type=int, default=180)
+    raise SystemExit(asyncio.run(main(parser.parse_args())))

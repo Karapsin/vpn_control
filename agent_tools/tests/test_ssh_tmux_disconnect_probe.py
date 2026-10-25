@@ -16,6 +16,7 @@ from agent_tools.tests import test_ssh_gateway_tmux_master as fixtures
 
 class DisconnectProbeTests(fixtures.GatewayOwnerTests):
     def setUp(self):
+        import pwd
         super().setUp()
         self.tmux.write_text(self.tmux.read_text().replace('start<12','start<35'))
         self.owner_source=self.home/'reviewed-owner.py';self.owner_source.write_bytes(self.raw);self.owner_source.chmod(0o600)
@@ -24,13 +25,13 @@ class DisconnectProbeTests(fixtures.GatewayOwnerTests):
         worker=probe.WORKER.replace('range(600)','range(40)')
         if self._testMethodName!='test_real_twenty_seconds_complete_after_exact_owned_client_disconnect':worker=worker.replace('time.sleep(1)','time.sleep(.01)')
         patch=mock.patch.object(probe,'WORKER',worker);patch.start();self.addCleanup(patch.stop)
-        outer={'host':'gateway.invalid','port':22,'user':'owned','identityFile':str(self.home/'.ssh/key'),'knownHostsFile':str(self.home/'.ssh/known')}
+        outer={'host':'gateway.invalid','port':22,'user':pwd.getpwuid(os.getuid()).pw_name,'identityFile':str(self.home/'.ssh/key'),'knownHostsFile':str(self.home/'.ssh/known')}
         target={**outer,'host':'arch.invalid','transport':'nested','gateway':'gateway','remoteHostAlias':'arch','remoteControlPath':'/inert/existing-master'}
         self.config=self.home/probe.transport.CONFIG_FILENAME;self.config.write_bytes(pins.canonical({'schemaVersion':1,'hosts':{'gateway':outer,'archlinux':target}}));self.config.chmod(0o600)
         self.real_popen=subprocess.Popen;self.calls=[]
         def launch(argv,**kwargs):
-            if not (len(argv)>=6 and argv[2:5]==['-B','-c',probe.EXEC]):return self.real_popen(argv,**kwargs)
-            ssh=json.loads(argv[-1]);self.calls.append(ssh)
+            if not argv or argv[0]!='/usr/bin/ssh':return self.real_popen(argv,**kwargs)
+            ssh=list(argv);self.calls.append(ssh)
             self.assertEqual('/usr/bin/ssh',ssh[0]);self.assertIn('ControlPath=none',ssh);self.assertIn('ControlMaster=no',ssh)
             self.assertNotIn('inert-secret',' '.join(ssh));self.assertEqual('gateway.invalid',ssh[-2])
             command=shlex.split(ssh[-1])
@@ -42,10 +43,13 @@ class DisconnectProbeTests(fixtures.GatewayOwnerTests):
             # This same-process inert gateway must keep its source-file writes
             # unrestricted; a separate test exercises the real local cap.
             code=command[4]
-            child=self.real_popen([os.sys.executable,'-I','-B','-c',code],**kwargs)
+            kwargs.pop('preexec_fn',None)
+            child=self.real_popen([os.sys.executable,*command[1:]],**kwargs)
             child.args=argv  # Popen retains the submitted wrapper argv after exec.
             return child
         patch=mock.patch.object(probe.subprocess,'Popen',side_effect=launch);patch.start();self.addCleanup(patch.stop)
+        stage=self.home/'automatic-stage';stage.mkdir(mode=0o700)
+        environment=mock.patch.dict(os.environ,{'TMPDIR':str(stage),'TMP':str(stage),'TEMP':str(stage)});environment.start();self.addCleanup(environment.stop)
         self.instances=[];self.addCleanup(self.finish_probes)
 
     def make(self,hop='gateway'):

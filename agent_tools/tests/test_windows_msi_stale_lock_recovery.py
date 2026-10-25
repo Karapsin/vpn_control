@@ -9,20 +9,27 @@ from agent_tools import windows_msi_stale_lock_recovery as recovery
 DESCRIPTOR = ('windows-cp117','/private/qga.sock',589342,520739,'S-1-5-21-1-2-3-1002')
 
 class StaleLockRecoveryTests(TestCase):
+ def setUp(self):
+     target = recovery
+     request = {'host':'archlinux','correlationId':target._CORRELATION,'sourceSha':target._SOURCE,**target._ARTIFACTS,'expectedCurrentVersion':'2.1.17'}
+     intent = {'request':request,'environment':DESCRIPTOR[0],'socketPath':DESCRIPTOR[1],'pid':DESCRIPTOR[2],'startTicks':DESCRIPTOR[3],'expectedSid':DESCRIPTOR[4]}
+     for patcher in (mock.patch.object(target.base,'_private_intent',return_value=intent),mock.patch.object(target.base,'_descriptor',return_value=(object(),object(),DESCRIPTOR))):
+         patcher.start();self.addCleanup(patcher.stop)
+
  def _armed(self, root):
   generation,evidence=recovery._evidence(DESCRIPTOR)
   recovery._write_intent(root,{'version':1,'correlationId':recovery._CORRELATION,'sourceSha':recovery._SOURCE,'guestGeneration':generation,'evidenceSha256':evidence,'state':'intent'})
 
  def test_durable_intent_precedes_guest_remove_and_unknown_is_never_replayed(self):
   with tempfile.TemporaryDirectory() as temporary, mock.patch.object(recovery, '_admit', return_value=(object(),DESCRIPTOR,'a'*64)), mock.patch.object(recovery, '_run', side_effect=['stale-proven',None]) as run:
-   value=recovery.recover(temporary, {'host':'archlinux'})
+   value=recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
    self.assertEqual(value, recovery._UNKNOWN); self.assertEqual([call.args[-1] for call in run.call_args_list], ['observe','remove'])
    intent=recovery._read_intent(Path(temporary)); self.assertEqual(intent['state'],'intent')
-   self.assertEqual(recovery.recover(temporary, {'host':'archlinux'}), recovery._UNKNOWN); self.assertEqual(run.call_count,2)
+   self.assertEqual(recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'}), recovery._UNKNOWN); self.assertEqual(run.call_count,2)
 
  def test_removal_requires_fresh_guest_proof_and_exact_admission(self):
   with tempfile.TemporaryDirectory() as temporary, mock.patch.object(recovery, '_admit', return_value=(object(),DESCRIPTOR,'a'*64)), mock.patch.object(recovery, '_run', side_effect=['stale-proven','removed']):
-   self.assertEqual(recovery.recover(temporary, {'host':'archlinux'})['state'],'recovered')
+   self.assertEqual(recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})['state'],'recovered')
    self.assertEqual(recovery._read_intent(Path(temporary))['state'],'recovered')
   self.assertIn('Probe $true', recovery._PS)
   self.assertIn('CreateFile($lock,[uint32]2147549184,[uint32]0', recovery._PS)
@@ -40,7 +47,7 @@ class StaleLockRecoveryTests(TestCase):
 
  def test_bad_or_changed_base_binding_cannot_create_intent(self):
   with tempfile.TemporaryDirectory() as temporary, mock.patch.object(recovery, '_admit', return_value=None), mock.patch.object(recovery, '_run') as run:
-   self.assertEqual(recovery.recover(temporary, {'host':'archlinux'}), recovery._UNKNOWN); run.assert_not_called()
+   self.assertEqual(recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'}), recovery._UNKNOWN); run.assert_not_called()
 
  def test_admission_pins_c32_source_artifacts_and_current_qemu_sid(self):
   request={'host':'archlinux','correlationId':recovery._CORRELATION,'sourceSha':recovery._SOURCE,**recovery._ARTIFACTS,'expectedCurrentVersion':'2.1.17'}
@@ -57,7 +64,7 @@ class StaleLockRecoveryTests(TestCase):
    recovery._write_intent(root,{'version':1,'correlationId':recovery._CORRELATION,'sourceSha':recovery._SOURCE,'guestGeneration':generation,'evidenceSha256':evidence,'state':'recovered'})
    changed=(DESCRIPTOR[0],DESCRIPTOR[1],DESCRIPTOR[2],DESCRIPTOR[3]+1,DESCRIPTOR[4])
    with mock.patch.object(recovery,'_admit',return_value=(object(),changed,'a'*64)), mock.patch.object(recovery,'_run') as run:
-    self.assertEqual(recovery.recover(root,{'host':'archlinux'}),recovery._UNKNOWN);run.assert_not_called()
+    self.assertEqual(recovery.recover(root,{'host':'archlinux','vmIdentity':'589342:520739'}),recovery._UNKNOWN);run.assert_not_called()
 
  def test_replacement_regression_uses_the_exclusive_handle_instead_of_a_path_delete(self):
   """A replacement cannot become the deletion target after the stale proof."""

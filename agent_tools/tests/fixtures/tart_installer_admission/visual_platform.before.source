@@ -1,0 +1,1375 @@
+#!/usr/bin/env python3
+"""Plan, bootstrap, and run agent-owned visual capture environments."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import hashlib
+import json
+import locale
+import os
+import platform as host_platform
+import re
+import shlex
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+if __package__:
+    from .fixture_environment import vm_admission_reason
+    from .native_fixture_storage import FixtureStorageError, StoragePlans, require_fixture_storage
+else:
+    from fixture_environment import vm_admission_reason
+    from native_fixture_storage import FixtureStorageError, StoragePlans, require_fixture_storage
+
+try:
+    import fcntl
+except ImportError:  # Windows uses the equivalent byte-range lock below.
+    fcntl = None
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MANIFEST_PATH = ROOT / "visual-tests" / "scenes.json"
+ENVIRONMENTS_PATH = ROOT / "visual-tests" / "environments.json"
+RUNTIME_ROOT = ROOT / ".runtime" / "visual-vms"
+STORAGE_PLANS_ROOT = RUNTIME_ROOT
+RESOURCE_POLICY_PATH = RUNTIME_ROOT / "resource-policy.json"
+RESOURCE_RESERVATIONS_PATH = RUNTIME_ROOT / "resource-reservations.json"
+RESOURCE_LOCK_PATH = RUNTIME_ROOT / "resource-reservations.lock"
+DEFAULT_RESOURCE_POLICY = {
+    "max_local_vms": 1,
+    "build_headroom_mib": 8192,
+    "minimum_available_mib": 2048,
+}
+PLATFORMS = ("android", "linux", "windows", "macos")
+ANDROID_TASK_AVD_NAME_ENV = "VPN_CONTROL_VISUAL_ANDROID_AVD_NAME"
+ANDROID_TASK_AVD_PORT_ENV = "VPN_CONTROL_VISUAL_ANDROID_PORT"
+ANDROID_TASK_AVD_PREFIX = "vpn-control-visual-task-"
+ANDROID_TASK_AVD_PORT_MIN = 5600
+ANDROID_TASK_AVD_PORT_MAX = 5698
+
+
+class VisualPlatformError(ValueError):
+    pass
+
+
+def android_local_config() -> dict[str, Any]:
+    """Return the Android environment, optionally redirected to an owned task AVD."""
+    local = dict(_read_json(ENVIRONMENTS_PATH)["platforms"]["android"]["local"])
+    avd_name = os.environ.get(ANDROID_TASK_AVD_NAME_ENV, "").strip()
+    raw_port = os.environ.get(ANDROID_TASK_AVD_PORT_ENV, "").strip()
+    if bool(avd_name) != bool(raw_port):
+        raise VisualPlatformError(
+            "Android visual task override requires both "
+            f"{ANDROID_TASK_AVD_NAME_ENV} and {ANDROID_TASK_AVD_PORT_ENV}",
+        )
+    if not avd_name:
+        return local
+    if (
+        not avd_name.startswith(ANDROID_TASK_AVD_PREFIX)
+        or len(avd_name) == len(ANDROID_TASK_AVD_PREFIX)
+        or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in avd_name)
+    ):
+        raise VisualPlatformError(
+            "Android visual task override requires an owned AVD name beginning "
+            f"{ANDROID_TASK_AVD_PREFIX}",
+        )
+    try:
+        port = int(raw_port)
+    except ValueError as exc:
+        raise VisualPlatformError(
+            "Android visual task override requires an even emulator port from "
+            f"{ANDROID_TASK_AVD_PORT_MIN} through {ANDROID_TASK_AVD_PORT_MAX}",
+        ) from exc
+    if (
+        str(port) != raw_port
+        or port < ANDROID_TASK_AVD_PORT_MIN
+        or port > ANDROID_TASK_AVD_PORT_MAX
+        or port % 2
+    ):
+        raise VisualPlatformError(
+            "Android visual task override requires an even emulator port from "
+            f"{ANDROID_TASK_AVD_PORT_MIN} through {ANDROID_TASK_AVD_PORT_MAX}",
+        )
+    local["avd_name"] = avd_name
+    local["emulator_port"] = port
+    return local
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise VisualPlatformError(f"expected JSON object: {path}")
+    return value
+
+
+def _file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _canonical_hash(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _json_hash(path: Path) -> str:
+    return _canonical_hash(_read_json(path))
+
+
+def _head_sha() -> str:
+    completed = _run(["git", "rev-parse", "HEAD"], timeout=30)
+    value = completed.stdout.strip()
+    if completed.returncode != 0 or len(value) != 40:
+        raise VisualPlatformError(completed.stderr.strip() or "could not resolve capture HEAD")
+    return value
+
+
+def _run(command: list[str], *, timeout: int = 120, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=ROOT,
+        text=True,
+        input=input_text,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _state_path(platform: str) -> Path:
+    return RUNTIME_ROOT / "state" / f"{platform}.json"
+
+
+def _write_state(platform: str, value: dict[str, Any]) -> None:
+    path = _state_path(platform)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _read_state(platform: str) -> dict[str, Any]:
+    path = _state_path(platform)
+    if not path.is_file():
+        return {}
+    value = _read_json(path)
+    return value if value.get("platform") == platform else {}
+
+
+def _resource_policy() -> tuple[dict[str, int], str]:
+    configured = os.environ.get("VPN_CONTROL_VM_RESOURCE_POLICY", "").strip()
+    path = Path(configured).expanduser() if configured else RESOURCE_POLICY_PATH
+    if not path.exists():
+        if configured:
+            raise VisualPlatformError("configured local VM resource policy does not exist")
+        return dict(DEFAULT_RESOURCE_POLICY), "built-in conservative policy"
+    if not path.is_file() or path.is_symlink():
+        raise VisualPlatformError("local VM resource policy must be a regular JSON file")
+    try:
+        raw = _read_json(path)
+    except VisualPlatformError as error:
+        raise VisualPlatformError("local VM resource policy must be a JSON object") from error
+    except (OSError, json.JSONDecodeError) as error:
+        raise VisualPlatformError("could not read local VM resource policy") from error
+    if not isinstance(raw, dict):
+        raise VisualPlatformError("local VM resource policy must be a JSON object")
+    policy = dict(DEFAULT_RESOURCE_POLICY)
+    for key in DEFAULT_RESOURCE_POLICY:
+        if key in raw:
+            policy[key] = raw[key]
+        if type(policy[key]) is not int or policy[key] < (1 if key == "max_local_vms" else 0):
+            raise VisualPlatformError(f"local VM resource policy has invalid {key}")
+    return policy, str(path)
+
+
+def _memory_mib(value: str) -> int | None:
+    match = __import__("re").fullmatch(r"\s*(\d+)\s*(?:Mi?B|Ki?B|kB)?\s*", value)
+    if not match:
+        return None
+    amount = int(match.group(1))
+    suffix = value.strip().lower()
+    return amount // 1024 if suffix.endswith(("kb", "kib")) else amount
+
+
+def _host_memory_snapshot() -> dict[str, int | bool]:
+    system = host_platform.system()
+    if system == "Linux":
+        try:
+            values = {}
+            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+                key, raw = line.split(":", 1)
+                values[key] = _memory_mib(raw)
+            physical = values["MemTotal"]
+            available = values["MemAvailable"]
+            swap_total = values["SwapTotal"]
+            swap_free = values["SwapFree"]
+            if None in (physical, available, swap_total, swap_free):
+                raise ValueError("unparseable meminfo")
+            return {"physical_mib": physical, "available_mib": available,
+                    "swap_used_mib": swap_total - swap_free, "pressure_critical": False}
+        except (OSError, KeyError, ValueError):
+            raise VisualPlatformError("resource admission cannot read Linux host memory measurements")
+    if system == "Darwin":
+        physical_result = _run(["sysctl", "-n", "hw.memsize"], timeout=30)
+        stats_result = _run(["vm_stat"], timeout=30)
+        swap_result = _run(["sysctl", "-n", "vm.swapusage"], timeout=30)
+        pressure_result = _run(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"], timeout=30)
+        if physical_result.returncode or stats_result.returncode or swap_result.returncode or pressure_result.returncode:
+            raise VisualPlatformError("resource admission cannot read macOS host memory measurements")
+        page_size_match = __import__("re").search(r"page size of (\d+)", stats_result.stdout)
+        pages = {
+            match.group(1).lower(): int(match.group(2))
+            for match in __import__("re").finditer(r"Pages ([^:]+):\s+(\d+)", stats_result.stdout)
+        }
+        swap_match = __import__("re").search(r"used = ([0-9.]+)([MG])", swap_result.stdout)
+        try:
+            pressure_level = int(pressure_result.stdout.strip())
+        except ValueError:
+            pressure_level = -1
+        # The exported sysctl is a userspace notification bit, not XNU's
+        # internal 0..3 enum: NORMAL=1, WARN=2, CRITICAL=4.
+        if not page_size_match or not swap_match or pressure_level not in {1, 2, 4}:
+            raise VisualPlatformError("resource admission cannot parse macOS host memory measurements")
+        page_size = int(page_size_match.group(1))
+        # This is an availability *estimate*, not a guarantee: established
+        # macOS accounting treats inactive pages as reclaimable cache. Avoid
+        # adding speculative too, because it overlaps that accounting. The
+        # kernel pressure level remains a separate safety gate.
+        available_pages = pages.get("free", 0) + pages.get("inactive", 0)
+        if not available_pages:
+            raise VisualPlatformError("resource admission cannot determine macOS available memory")
+        swap_value = float(swap_match.group(1))
+        swap_mib = int(swap_value * (1024 if swap_match.group(2) == "G" else 1))
+        return {
+            "physical_mib": int(physical_result.stdout.strip()) // (1024 * 1024),
+            "available_mib": available_pages * page_size // (1024 * 1024),
+            "swap_used_mib": swap_mib,
+            "pressure_critical": pressure_level == 4 or pages.get("throttled", 0) > 0,
+        }
+    raise VisualPlatformError("resource admission supports only macOS and Linux hosts")
+
+
+def _tart_running_allocations() -> list[int]:
+    listing = _run(["tart", "list", "--format", "json"], timeout=30)
+    if listing.returncode:
+        raise VisualPlatformError("resource admission cannot inspect Tart guests")
+    try:
+        guests = json.loads(listing.stdout)
+    except json.JSONDecodeError as error:
+        raise VisualPlatformError("resource admission cannot parse Tart guest list") from error
+    allocations = []
+    for guest in guests:
+        if not isinstance(guest, dict) or str(guest.get("State", "")).lower() != "running":
+            continue
+        name = str(guest.get("Name", ""))
+        detail = _run(["tart", "get", name, "--format", "json"], timeout=30)
+        try:
+            memory = json.loads(detail.stdout).get("Memory") if detail.returncode == 0 else None
+        except json.JSONDecodeError:
+            memory = None
+        if type(memory) is not int or memory <= 0:
+            raise VisualPlatformError("resource admission needs configured memory for every running Tart guest")
+        allocations.append(memory)
+    return allocations
+
+
+def _tart_memory_mib(vm_name: str) -> int:
+    detail = _run(["tart", "get", vm_name, "--format", "json"], timeout=30)
+    try:
+        memory = json.loads(detail.stdout).get("Memory") if detail.returncode == 0 else None
+    except json.JSONDecodeError:
+        memory = None
+    if type(memory) is not int or memory <= 0:
+        raise VisualPlatformError("resource admission needs configured memory for the Tart guest")
+    return memory
+
+
+def _libvirt_memory_mib(vm_name: str) -> int:
+    detail = _run(["virsh", "dominfo", vm_name], timeout=30)
+    if detail.returncode:
+        raise VisualPlatformError("resource admission cannot inspect configured libvirt memory")
+    for line in detail.stdout.splitlines():
+        if line.strip().lower().startswith("max memory:"):
+            memory = _memory_mib(line.split(":", 1)[1])
+            if memory and memory > 0:
+                return memory
+    raise VisualPlatformError("resource admission needs configured libvirt memory")
+
+
+def _qemu_windows_memory_mib() -> int:
+    return 3072 if host_platform.machine().lower() in {"arm64", "aarch64"} else 8192
+
+
+def _android_memory_mib(avd_name: str) -> int:
+    avd_root = Path(os.environ.get("ANDROID_AVD_HOME", Path.home() / ".android" / "avd"))
+    config = avd_root / f"{avd_name}.avd" / "config.ini"
+    try:
+        values = dict(
+            line.split("=", 1) for line in config.read_text(encoding="utf-8").splitlines() if "=" in line
+        )
+        configured = values["hw.ramSize"].strip()
+        match = re.fullmatch(r"([0-9]+)([MmGg]?)", configured)
+        if match is None:
+            raise ValueError("invalid Android AVD memory")
+        memory = int(match.group(1)) * (1024 if match.group(2).lower() == "g" else 1)
+    except (OSError, KeyError, ValueError):
+        raise VisualPlatformError("resource admission needs the owned Android AVD hw.ramSize")
+    if memory <= 0:
+        raise VisualPlatformError("resource admission needs a positive Android AVD hw.ramSize")
+    return memory
+
+
+@contextlib.contextmanager
+def _resource_lock():
+    RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+    with RESOURCE_LOCK_PATH.open("a+", encoding="utf-8") as lock:
+        if fcntl is None:
+            raise VisualPlatformError("resource admission locking is supported only on macOS and Linux hosts")
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _read_reservations() -> dict[str, dict[str, int]]:
+    if not RESOURCE_RESERVATIONS_PATH.exists():
+        return {}
+    try:
+        raw = _read_json(RESOURCE_RESERVATIONS_PATH)
+        if not isinstance(raw, dict):
+            raise VisualPlatformError("resource admission found malformed VM reservations")
+        reservations = raw.get("reservations", {})
+    except FileNotFoundError:
+        return {}
+    except VisualPlatformError as error:
+        raise VisualPlatformError("resource admission found malformed VM reservations") from error
+    except (OSError, json.JSONDecodeError):
+        raise VisualPlatformError("resource admission cannot read prior VM reservations")
+    if not isinstance(reservations, dict):
+        raise VisualPlatformError("resource admission found malformed VM reservations")
+    result = {}
+    for platform, value in reservations.items():
+        if not isinstance(platform, str) or not isinstance(value, dict):
+            raise VisualPlatformError("resource admission found malformed VM reservations")
+        memory, pid = value.get("memory_mib"), value.get("pid", 0)
+        if type(memory) is not int or memory <= 0 or type(pid) is not int or pid < 0:
+            raise VisualPlatformError("resource admission found malformed VM reservations")
+        result[platform] = {"memory_mib": memory, "pid": pid}
+    return result
+
+
+def _write_reservations(reservations: dict[str, dict[str, int]]) -> None:
+    RESOURCE_RESERVATIONS_PATH.write_text(
+        json.dumps({"schema_version": 1, "reservations": reservations}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+_RECOVERY_LANES = {"android-emulator": "android", "raw-qemu-linux": "linux",
+                   "raw-qemu-windows": "windows", "libvirt-windows": "windows",
+                   "tart-linux": "linux", "tart-macos": "macos"}
+
+
+def _qualified_reservation_key(lane: str, fixture_digest: str) -> str:
+    if lane not in _RECOVERY_LANES or not isinstance(fixture_digest, str) or re.fullmatch(r"[0-9a-f]{64}", fixture_digest) is None:
+        raise VisualPlatformError("qualified recovery fixture reservation identity is invalid")
+    return "recovery-test:" + lane + ":" + fixture_digest
+
+
+def _reservation_is_tart(name: str) -> bool:
+    return name in {"linux", "macos"} or name.startswith(("recovery-test:tart-linux:", "recovery-test:tart-macos:"))
+
+
+def _reservation_allocations(reservations: dict) -> list[int]:
+    # Actual running Tart allocations are observed separately. Pending claims
+    # and every other provider's legacy/qualified/unknown claim still count.
+    return [item["memory_mib"] for name,item in reservations.items() if not _reservation_is_tart(name) or not item["pid"]]
+
+
+def _admit_recovery_fixture_start(lane: str, fixture_digest: str, requested_mib: int, *, storage_fixture_id: str) -> dict[str, Any]:
+    """Private infrastructure qualification profile; product admission stays max1.
+
+    The caller derives the digest from its registered physical fixture. No CLI
+    or MCP input accepts this profile, a reservation key, or an ownership flag.
+    Existing unknown/pending claims are retained and counted, never overwritten.
+    """
+    key=_qualified_reservation_key(lane,fixture_digest)
+    policy,policy_source=_resource_policy()
+    qualification_policy={**policy,"max_local_vms":2}
+    with _resource_lock():
+        _admit_fixture_storage(_RECOVERY_LANES[lane],"start",fixture_id=storage_fixture_id)
+        reservations=_read_reservations()
+        if key in reservations:
+            raise VisualPlatformError("qualified recovery fixture already has a live or pending reservation")
+        allocations=_reservation_allocations(reservations)
+        if host_platform.system()=="Darwin":
+            allocations.extend(_tart_running_allocations())
+        reason=vm_admission_reason(**_host_memory_snapshot(),running_allocations_mib=allocations,
+                                   requested_mib=requested_mib,**qualification_policy)
+        if reason:
+            raise VisualPlatformError("qualified recovery fixture deferred: "+reason)
+        reservations[key]={"memory_mib":requested_mib,"pid":0}
+        _write_reservations(reservations)
+    return {"profile":"infrastructure-recovery-tests","reservationKey":key,"policySource":policy_source,
+            "policy":qualification_policy,"memory_mib":requested_mib}
+
+
+def _admit_visual_start(platform: str, requested_mib: int, *, storage_fixture_id: str | None = None) -> dict[str, Any]:
+    policy, policy_source = _resource_policy()
+    with _resource_lock():
+        _admit_fixture_storage(platform, "start", fixture_id=storage_fixture_id)
+        reservations = _read_reservations()
+        reservations = {name: item for name, item in reservations.items()
+                        if name.startswith("recovery-test:") or not item["pid"] or _pid_running(item["pid"])}
+        if platform in reservations:
+            raise VisualPlatformError("visual VM start deferred: this platform already has a live or pending reservation")
+        allocations = _reservation_allocations(reservations)
+        if host_platform.system() == "Darwin":
+            allocations.extend(_tart_running_allocations())
+        snapshot = _host_memory_snapshot()
+        reason = vm_admission_reason(
+            **snapshot,
+            running_allocations_mib=allocations,
+            requested_mib=requested_mib,
+            **policy,
+        )
+        if reason:
+            raise VisualPlatformError("visual VM start deferred: " + reason)
+        reservations[platform] = {"memory_mib": requested_mib, "pid": 0}
+        _write_reservations(reservations)
+    return {"policy_source": policy_source, "policy": policy, "memory_mib": requested_mib}
+
+
+def _admit_fixture_storage(platform: str, phase: str, *, fixture_id: str | None = None) -> dict[str, Any]:
+    raw_disks: list[Path] = []
+    if platform in {"linux", "macos"}:
+        config = _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["local"]
+        disk = Path.home() / ".tart" / "vms" / str(config["vm_name"]) / "disk.img"
+        if disk.is_file():
+            raw_disks.append(disk)
+    try:
+        current = require_fixture_storage(platform, phase, RUNTIME_ROOT, sparse_raw_disks=raw_disks)
+        # All retained fixtures and unacknowledged writers share this lock/ledger.
+        # A producer holding an explicit original plan excludes only that same
+        # plan from the other-provider sum; aliases never release claims.
+        return StoragePlans(STORAGE_PLANS_ROOT).check(
+            platform, phase, RUNTIME_ROOT, current_fixture_id=fixture_id,
+            minimum_growth_bytes=current["requiredBytes"] - current["headroomBytes"],
+        )
+    except FixtureStorageError as error:
+        raise VisualPlatformError(str(error)) from None
+
+
+def _bind_visual_reservation(platform: str, pid: int) -> None:
+    with _resource_lock():
+        reservations = _read_reservations()
+        if platform not in reservations:
+            raise VisualPlatformError("resource admission reservation disappeared before VM launch")
+        reservations[platform]["pid"] = pid
+        _write_reservations(reservations)
+
+
+def _release_visual_reservation(platform: str) -> None:
+    with _resource_lock():
+        reservations = _read_reservations()
+        if platform in reservations:
+            del reservations[platform]
+            _write_reservations(reservations)
+
+
+def _which_any(*names: str) -> str | None:
+    return next((value for name in names if (value := shutil.which(name))), None)
+
+
+def _qmp_execute(path: Path, command: str, *, timeout: float = 15.0) -> object:
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(timeout)
+            connection.connect(str(path))
+            stream = connection.makefile("rwb", buffering=0)
+
+            def receive() -> dict[str, object]:
+                while True:
+                    line = stream.readline()
+                    if not line:
+                        raise VisualPlatformError("QMP connection closed unexpectedly")
+                    message = json.loads(line)
+                    if "event" not in message:
+                        return message
+
+            greeting = receive()
+            if "QMP" not in greeting:
+                raise VisualPlatformError("QEMU did not return a QMP greeting")
+            for name in ("qmp_capabilities", command):
+                stream.write(json.dumps({"execute": name}).encode("utf-8") + b"\n")
+                response = receive()
+                if "error" in response:
+                    raise VisualPlatformError(f"QMP {name} failed: {response['error']}")
+            return response.get("return")
+    except (OSError, json.JSONDecodeError) as error:
+        raise VisualPlatformError(f"could not communicate with QEMU through {path}: {error}") from error
+
+
+def _qmp_ready(path: Path) -> bool:
+    try:
+        _qmp_execute(path, "query-status", timeout=2.0)
+        return True
+    except VisualPlatformError:
+        return False
+
+
+def _disk_user_pids(path: Path) -> list[int]:
+    if not shutil.which("lsof") or not path.is_file():
+        return []
+    completed = _run(["lsof", "-t", "--", str(path)], timeout=30)
+    if completed.returncode not in (0, 1):
+        raise VisualPlatformError(completed.stderr.strip() or f"could not inspect managed VM disk: {path}")
+    return sorted({int(value) for value in completed.stdout.split() if value.isdigit()})
+
+
+def _pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _android_tool(name: str) -> str | None:
+    direct = shutil.which(name)
+    if direct:
+        return direct
+    candidates: list[Path] = []
+    for raw in (os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT")):
+        if raw:
+            sdk = Path(raw)
+            candidates.extend((sdk / "platform-tools" / name, sdk / "emulator" / name))
+            candidates.extend(sorted((sdk / "cmdline-tools").glob(f"*/bin/{name}")))
+    candidates.extend(
+        [
+            Path("/opt/homebrew/share/android-commandlinetools/platform-tools") / name,
+            Path("/opt/homebrew/share/android-commandlinetools/emulator") / name,
+            Path("/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin") / name,
+        ],
+    )
+    return next((str(path) for path in candidates if path.is_file()), None)
+
+
+def _android_avds() -> set[str]:
+    emulator = _android_tool("emulator")
+    if not emulator:
+        return set()
+    completed = _run([emulator, "-list-avds"], timeout=30)
+    if completed.returncode != 0:
+        return set()
+    return {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+
+
+def _running_android_avds(adb: str) -> dict[str, str]:
+    completed = _run([adb, "devices"], timeout=30)
+    if completed.returncode != 0:
+        return {}
+    result: dict[str, str] = {}
+    for line in completed.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 2 or parts[1] != "device" or not parts[0].startswith("emulator-"):
+            continue
+        serial = parts[0]
+        queried = _run([adb, "-s", serial, "emu", "avd", "name"], timeout=30)
+        if queried.returncode != 0:
+            continue
+        name = next(
+            (value.strip() for value in queried.stdout.splitlines() if value.strip() and value.strip() != "OK"),
+            "",
+        )
+        if name:
+            result[name] = serial
+    return result
+
+
+def scenes_for(platform: str) -> list[dict[str, Any]]:
+    manifest = _read_json(MANIFEST_PATH)
+    if manifest.get("schema_version") != 1:
+        raise VisualPlatformError("visual manifest schema must be 1")
+    scenes = [
+        scene for scene in manifest.get("scenes", [])
+        if isinstance(scene, dict) and platform in scene.get("platforms", [])
+    ]
+    if not scenes:
+        raise VisualPlatformError(f"no visual scenes are defined for {platform}")
+    secure = set(manifest.get("capture_contract", {}).get("secure_scene_ids", []))
+    for scene in scenes:
+        scene["required_capability"] = "secure_desktop" if scene.get("id") in secure else (
+            "app" if scene.get("geometry_required", True) else "native"
+        )
+    return scenes
+
+
+def _tart_names() -> set[str]:
+    if not shutil.which("tart"):
+        return set()
+    completed = _run(["tart", "list", "--format", "json"], timeout=30)
+    if completed.returncode == 0:
+        try:
+            payload = json.loads(completed.stdout or "[]")
+            if isinstance(payload, list):
+                return {str(item.get("Name", item.get("name", ""))) for item in payload if isinstance(item, dict)}
+        except json.JSONDecodeError:
+            pass
+    completed = _run(["tart", "list"], timeout=30)
+    return {
+        token
+        for line in completed.stdout.splitlines()[1:]
+        if len((parts := line.split())) >= 2
+        for token in [parts[1]]
+    } if completed.returncode == 0 else set()
+
+
+def local_probe(platform: str) -> dict[str, Any]:
+    environments = _read_json(ENVIRONMENTS_PATH)
+    config = environments["platforms"][platform]
+    system = host_platform.system().lower()
+    capabilities: set[str] = set()
+    backend = ""
+    detail = ""
+    if platform == "android":
+        required = (_android_tool("adb"), _android_tool("emulator"), _android_tool("avdmanager"))
+        avd_name = str(android_local_config()["avd_name"])
+        if all(required) and avd_name in _android_avds():
+            backend = "android-emulator"
+            capabilities.update(("app", "native"))
+        elif all(required):
+            detail = f"Android visual AVD {avd_name} is not installed"
+        else:
+            detail = "Android adb, emulator, and avdmanager are required"
+    elif platform == "linux":
+        canonical_arch = str(config.get("canonical_architecture", "x86_64"))
+        host_arch = host_platform.machine().lower()
+        if host_arch not in {canonical_arch.lower(), "amd64" if canonical_arch == "x86_64" else canonical_arch.lower()}:
+            detail = f"local Linux visual architecture {host_arch} does not match canonical {canonical_arch}; use hosted capture"
+        elif system == "linux" and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            backend = "native-linux"
+            capabilities.update(("app", "native"))
+        else:
+            vm_name = str(config["local"]["vm_name"])
+            if vm_name in _tart_names():
+                backend = "tart-linux"
+                capabilities.update(("app", "native"))
+            else:
+                detail = f"local Linux GUI or Tart VM {vm_name} is not ready"
+    elif platform == "windows":
+        if system == "windows" and os.environ.get("VPN_CONTROL_VISUAL_ISOLATED") == "1":
+            backend = "native-windows"
+            capabilities.update(("app", "native", "secure_desktop"))
+        else:
+            name = str(config["local"]["libvirt_name"])
+            completed = _run(["virsh", "dominfo", name], timeout=30) if shutil.which("virsh") else None
+            if completed is not None and completed.returncode == 0:
+                backend = "libvirt-windows"
+                capabilities.update(("app", "native", "secure_desktop"))
+            else:
+                disk = ROOT / str(config["local"]["qemu_disk"])
+                ready_marker = ROOT / str(config["local"]["qemu_ready_marker"])
+                if (
+                    disk.is_file()
+                    and ready_marker.is_file()
+                    and _which_any("qemu-system-aarch64", "qemu-system-x86_64")
+                ):
+                    backend = "qemu-windows"
+                    capabilities.update(("app", "native", "secure_desktop"))
+                elif disk.is_file():
+                    detail = "the managed Windows disk exists but has not passed agent provisioning checks"
+                else:
+                    detail = "a Windows 11 client VM is required for secure-desktop capture"
+    elif platform == "macos":
+        if system == "darwin" and os.environ.get("VPN_CONTROL_VISUAL_ISOLATED") == "1":
+            backend = "native-macos"
+            capabilities.update(("app", "native", "secure_desktop"))
+        else:
+            vm_name = str(config["local"]["vm_name"])
+            if vm_name in _tart_names():
+                backend = "tart-macos"
+                capabilities.update(("app", "native", "secure_desktop"))
+            else:
+                detail = f"isolated native session or Tart VM {vm_name} is not ready"
+    return {
+        "ready": bool(backend),
+        "backend": backend,
+        "capabilities": sorted(capabilities),
+        "detail": detail,
+    }
+
+
+def capture_plan(platform: str) -> dict[str, Any]:
+    environments = _read_json(ENVIRONMENTS_PATH)
+    config = environments["platforms"][platform]
+    local = local_probe(platform)
+    hosted_capabilities = set(config["hosted"]["capabilities"])
+    # Hosted Apple Silicon workers do not expose the Hypervisor framework
+    # required by an Android API 35 emulator. Android visual evidence is
+    # therefore always captured by an agent-started isolated emulator.
+    if platform == "android":
+        hosted_capabilities.clear()
+    local_capabilities = set(local["capabilities"])
+    routes: dict[str, list[str]] = {"local": [], "hosted": [], "blocked": []}
+    for scene in scenes_for(platform):
+        scene_id = str(scene["id"])
+        capability = str(scene["required_capability"])
+        if capability in local_capabilities:
+            routes["local"].append(scene_id)
+        elif capability in hosted_capabilities:
+            routes["hosted"].append(scene_id)
+        else:
+            routes["blocked"].append(scene_id)
+    return {
+        "platform": platform,
+        "canonical_environment": config["canonical_environment"],
+        "local": local,
+        "hosted_runner": config["hosted"]["runner"],
+        "routes": routes,
+        "release_capable": not routes["blocked"],
+    }
+
+
+def bootstrap_commands(platform: str) -> list[list[str]]:
+    config = _read_json(ENVIRONMENTS_PATH)["platforms"][platform]
+    system = host_platform.system().lower()
+    if platform == "android":
+        sdkmanager = _android_tool("sdkmanager") or "sdkmanager"
+        avdmanager = _android_tool("avdmanager") or "avdmanager"
+        local = android_local_config()
+        system_image = str(
+            local["system_image_arm64"]
+            if host_platform.machine().lower() in {"arm64", "aarch64"}
+            else local["system_image"]
+        )
+        return [
+            [sdkmanager, "platform-tools", "emulator", system_image],
+            [
+                avdmanager, "create", "avd", "--force", "--name", str(local["avd_name"]),
+                "--package", system_image, "--device", str(local["device"]),
+            ],
+        ]
+    if platform in {"linux", "macos"} and system == "darwin":
+        local = config["local"]
+        return [["tart", "clone", str(local["image"]), str(local["vm_name"])]]
+    if platform == "windows" and system == "darwin":
+        return [[str(ROOT / "scripts" / "bootstrap_windows_visual_vm.sh")]]
+    return []
+
+
+def bootstrap(platform: str, *, dry_run: bool) -> dict[str, Any]:
+    before = local_probe(platform)
+    if before["ready"]:
+        return {"platform": platform, "changed": False, "probe": before, "commands": []}
+    commands = bootstrap_commands(platform)
+    if not commands:
+        raise VisualPlatformError(f"no local bootstrap adapter is available: {before['detail']}")
+    if dry_run:
+        return {
+            "platform": platform,
+            "changed": False,
+            "probe": before,
+            "commands": [shlex.join(command) for command in commands],
+        }
+    _admit_fixture_storage(platform, "bootstrap")
+    RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+    results: list[dict[str, Any]] = []
+    for index, command in enumerate(commands):
+        # SDK downloads can consume space before avdmanager; recheck each writer.
+        _admit_fixture_storage(platform, "bootstrap")
+        input_text = "no\n" if platform == "android" and index == 1 else None
+        completed = _run(command, timeout=2 * 60 * 60, input_text=input_text)
+        results.append({
+            "command": shlex.join(command),
+            "returncode": completed.returncode,
+            "stdout": completed.stdout[-2000:],
+            "stderr": completed.stderr[-2000:],
+        })
+        if completed.returncode != 0:
+            raise VisualPlatformError(f"visual bootstrap failed: {shlex.join(command)}\n{completed.stderr[-1000:]}")
+    return {"platform": platform, "changed": True, "probe": local_probe(platform), "results": results}
+
+
+def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
+    probe = local_probe(platform)
+    if not probe["ready"]:
+        raise VisualPlatformError(f"local visual environment is not ready: {probe['detail']}")
+    backend = str(probe["backend"])
+    config = (
+        android_local_config()
+        if platform == "android"
+        else _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["local"]
+    )
+    command: list[str] | None = None
+    started_by_agent = False
+    identifier = backend
+    process_id = 0
+    process: subprocess.Popen[bytes] | None = None
+    requested_mib = 0
+    tart_display = ""
+    if backend == "android-emulator":
+        adb = _android_tool("adb") or "adb"
+        avd_name = str(config["avd_name"])
+        running = _running_android_avds(adb)
+        if avd_name in running:
+            identifier = running[avd_name]
+            prior_state = _read_state(platform)
+            prior_pid = int(prior_state.get("pid", 0))
+            if (
+                prior_state.get("started_by_agent") is True
+                and prior_state.get("backend") == backend
+                and prior_state.get("identifier") == identifier
+                and prior_pid > 0
+                and _pid_running(prior_pid)
+            ):
+                started_by_agent = True
+                process_id = prior_pid
+        else:
+            emulator = _android_tool("emulator") or "emulator"
+            port = int(config["emulator_port"])
+            identifier = f"emulator-{port}"
+            command = [
+                emulator, "-avd", avd_name, "-port", str(port), "-no-snapshot-save", "-no-boot-anim",
+                "-gpu", "swiftshader_indirect", "-no-audio",
+            ]
+            started_by_agent = True
+    elif backend.startswith("tart-"):
+        vm_name = str(config["vm_name"])
+        identifier = vm_name
+        running = _run(["tart", "list"], timeout=30)
+        if vm_name not in "\n".join(line for line in running.stdout.splitlines() if "running" in line.lower()):
+            display = str(config.get("display", "")).strip()
+            tart_display = display
+            command = [
+                "tart", "run", "--no-graphics", "--dir", f"vpn-control:{ROOT}", vm_name,
+            ]
+            started_by_agent = True
+    elif backend == "libvirt-windows":
+        vm_name = str(config["libvirt_name"])
+        identifier = vm_name
+        state = _run(["virsh", "domstate", vm_name], timeout=30)
+        if "running" not in state.stdout.lower():
+            command = ["virsh", "start", vm_name]
+            started_by_agent = True
+    elif backend == "qemu-windows":
+        disk = ROOT / str(config["qemu_disk"])
+        identifier = str(config["qemu_disk"])
+        users = _disk_user_pids(disk)
+        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        if users:
+            if not _qmp_ready(qmp):
+                raise VisualPlatformError(
+                    f"managed Windows disk is already in use by PID(s) {users}, but its QMP socket is unavailable"
+                )
+            process_id = users[0]
+            prior_state = _read_state(platform)
+            started_by_agent = (
+                prior_state.get("started_by_agent") is True and
+                int(prior_state.get("pid", 0)) in users
+            )
+        else:
+            command = [str(ROOT / "scripts" / "start_windows_visual_vm.sh")]
+            started_by_agent = True
+    if dry_run:
+        return {
+            "platform": platform,
+            "backend": backend,
+            "started_by_agent": started_by_agent,
+            "command": shlex.join(command) if command else "",
+        }
+    admission: dict[str, Any] | None = None
+    if command:
+        if backend == "android-emulator":
+            requested_mib = _android_memory_mib(str(config["avd_name"]))
+        elif backend.startswith("tart-"):
+            requested_mib = _tart_memory_mib(identifier)
+        elif backend == "libvirt-windows":
+            requested_mib = _libvirt_memory_mib(identifier)
+        elif backend == "qemu-windows":
+            requested_mib = _qemu_windows_memory_mib()
+        admission = _admit_visual_start(platform, requested_mib)
+        if tart_display:
+            configured = _run(
+                ["tart", "set", identifier, "--display", tart_display, "--no-display-refit"], timeout=30,
+            )
+            if configured.returncode != 0:
+                _release_visual_reservation(platform)
+                raise VisualPlatformError(configured.stderr.strip() or f"could not configure {identifier} at {tart_display}")
+        if backend in {"android-emulator", "qemu-windows"} or backend.startswith("tart-"):
+            log_dir = RUNTIME_ROOT / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log = (log_dir / f"{platform}.log").open("ab")
+            try:
+                process = subprocess.Popen(
+                    command,
+                    cwd=ROOT,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+                process_id = process.pid
+            except Exception:
+                _release_visual_reservation(platform)
+                raise
+            finally:
+                log.close()
+            # Popen already created a guest.  If updating the record fails, keep
+            # its provisional reservation rather than admit another guest into an
+            # uncertain live start.
+            _bind_visual_reservation(platform, process_id)
+        else:
+            completed = _run(command, timeout=120)
+            if completed.returncode != 0:
+                _release_visual_reservation(platform)
+                raise VisualPlatformError(completed.stderr.strip() or f"could not start {backend}")
+    if backend == "qemu-windows":
+        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not _qmp_ready(qmp):
+            if process is not None and process.poll() is not None:
+                raise VisualPlatformError(f"managed Windows VM exited during startup; see {log_dir / f'{platform}.log'}")
+            time.sleep(0.5)
+        if not _qmp_ready(qmp):
+            if process is not None and process.poll() is None:
+                process.terminate()
+                process.wait(timeout=15)
+            _release_visual_reservation(platform)
+            raise VisualPlatformError("managed Windows VM did not expose a ready QMP socket within 60 seconds")
+    if backend == "android-emulator":
+        adb = _android_tool("adb") or "adb"
+        deadline = time.monotonic() + 5 * 60
+        booted = False
+        while time.monotonic() < deadline:
+            completed = _run([adb, "-s", identifier, "shell", "getprop", "sys.boot_completed"], timeout=30)
+            if completed.returncode == 0 and completed.stdout.strip() == "1":
+                booted = True
+                break
+            time.sleep(2)
+        if not booted:
+            if started_by_agent:
+                _run([adb, "-s", identifier, "emu", "kill"], timeout=30)
+                _release_visual_reservation(platform)
+            raise VisualPlatformError(f"Android visual emulator did not boot: {identifier}")
+        for setting in (
+            ("global", "window_animation_scale", "0"),
+            ("global", "transition_animation_scale", "0"),
+            ("global", "animator_duration_scale", "0"),
+            ("system", "font_scale", "1.0"),
+        ):
+            completed = _run([adb, "-s", identifier, "shell", "settings", "put", *setting], timeout=30)
+            if completed.returncode != 0:
+                raise VisualPlatformError(f"could not freeze Android visual setting: {' '.join(setting)}")
+    state = {
+        "schema_version": 1,
+        "platform": platform,
+        "backend": backend,
+        "identifier": identifier,
+        "started_by_agent": started_by_agent,
+        "pid": process_id,
+        "started_at_epoch": int(time.time()),
+    }
+    _write_state(platform, state)
+    if admission is not None:
+        state["resource_admission"] = admission
+        _write_state(platform, state)
+    return state
+
+
+def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
+    state = _read_state(platform)
+    if not state:
+        return {"platform": platform, "stopped": False, "reason": "no agent-owned lifecycle state"}
+    if state.get("started_by_agent") is not True:
+        return {"platform": platform, "stopped": False, "reason": "environment predated this agent run"}
+    backend = str(state.get("backend", ""))
+    identifier = str(state.get("identifier", ""))
+    command: list[str] | None = None
+    if backend == "android-emulator":
+        command = [_android_tool("adb") or "adb", "-s", identifier, "emu", "kill"]
+    elif backend.startswith("tart-"):
+        command = ["tart", "stop", identifier]
+    elif backend == "libvirt-windows":
+        command = ["virsh", "shutdown", identifier]
+    elif backend == "qemu-windows":
+        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        if not qmp.exists():
+            raise VisualPlatformError("QEMU VM can be stopped only through its QMP socket; refusing a broad process kill")
+    if dry_run:
+        return {
+            "platform": platform,
+            "stopped": False,
+            "command": shlex.join(command) if command else "",
+        }
+    if backend == "qemu-windows":
+        _qmp_execute(qmp, "system_powerdown")
+        pid = int(state.get("pid", 0))
+        deadline = time.monotonic() + 60
+        while _pid_running(pid) and time.monotonic() < deadline:
+            time.sleep(0.5)
+        if _pid_running(pid):
+            raise VisualPlatformError("managed Windows VM did not stop after QMP system_powerdown")
+    elif command:
+        completed = _run(
+            command,
+            timeout=120,
+            input_text=None,
+        )
+        if completed.returncode != 0:
+            raise VisualPlatformError(completed.stderr.strip() or f"could not stop {backend}")
+    _state_path(platform).unlink(missing_ok=True)
+    _release_visual_reservation(platform)
+    return {"platform": platform, "stopped": True, "backend": backend}
+
+
+def dispatch_hosted(
+    platform: str, target_sha: str, ref: str | None = None, *, resource_fallback: bool = False,
+) -> dict[str, Any]:
+    if len(target_sha) != 40 or any(char not in "0123456789abcdef" for char in target_sha):
+        raise VisualPlatformError("target SHA must be 40 lowercase hexadecimal characters")
+    if not ref:
+        branch = _run(["git", "branch", "--show-current"], timeout=30)
+        ref = branch.stdout.strip() if branch.returncode == 0 else ""
+    if not ref:
+        raise VisualPlatformError("hosted capture requires an explicit branch ref")
+    hosted_scenes = capture_plan(platform)["routes"]["hosted"]
+    if resource_fallback:
+        if platform != "macos":
+            raise VisualPlatformError("resource fallback is supported only for macOS visual capture")
+        hosted_capabilities = set(_read_json(ENVIRONMENTS_PATH)["platforms"][platform]["hosted"]["capabilities"])
+        hosted_scenes = [
+            str(scene["id"]) for scene in scenes_for(platform)
+            if scene["required_capability"] in hosted_capabilities
+        ]
+    if not hosted_scenes:
+        raise VisualPlatformError(f"no {platform} scenes require a hosted fallback")
+    command = [
+        "gh", "workflow", "run", "visual-regression.yml", "--ref", ref,
+        "-f", f"target_sha={target_sha}", "-f", f"platform={platform}",
+        "-f", f"scenes={','.join(hosted_scenes)}",
+    ]
+    completed = _run(command, timeout=180)
+    if completed.returncode != 0:
+        raise VisualPlatformError(completed.stderr.strip() or "could not dispatch hosted visual capture")
+    return {
+        "platform": platform,
+        "provider": "hosted",
+        "ref": ref,
+        "scene_count": len(hosted_scenes),
+        "command": shlex.join(command),
+    }
+
+
+def download_hosted(platform: str, target_sha: str, output: Path, *, timeout_seconds: int = 60 * 60) -> dict[str, Any]:
+    title = f"Visual Capture / {platform} / {target_sha}"
+    deadline = time.monotonic() + timeout_seconds
+    selected: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        listed = _run(
+            [
+                "gh", "run", "list", "--workflow", "visual-regression.yml", "--event", "workflow_dispatch",
+                "--limit", "100", "--json", "databaseId,displayTitle,status,conclusion,headSha,url",
+            ],
+            timeout=120,
+        )
+        if listed.returncode != 0:
+            raise VisualPlatformError(listed.stderr.strip() or "could not query hosted visual capture")
+        try:
+            runs = json.loads(listed.stdout or "[]")
+        except json.JSONDecodeError as exc:
+            raise VisualPlatformError(f"invalid GitHub run list: {exc}") from exc
+        matches = [
+            run for run in runs
+            if isinstance(run, dict)
+            and run.get("displayTitle") == title
+            and run.get("headSha") == target_sha
+        ]
+        if matches:
+            selected = max(matches, key=lambda run: int(run.get("databaseId") or 0))
+            if selected.get("status") == "completed":
+                break
+        time.sleep(15)
+    if not selected or selected.get("status") != "completed":
+        raise VisualPlatformError(f"hosted visual capture did not complete before timeout: {title}")
+    if selected.get("conclusion") != "success":
+        run_id = str(selected.get("databaseId"))
+        failed = _run(["gh", "run", "view", run_id, "--log-failed"], timeout=180)
+        excerpt = (failed.stdout or failed.stderr)[-4000:]
+        raise VisualPlatformError(f"hosted visual capture failed: {selected.get('url')}\n{excerpt}")
+    output.mkdir(parents=True, exist_ok=True)
+    artifact = f"visual-capture-{platform}-{target_sha}"
+    downloaded = _run(
+        ["gh", "run", "download", str(selected["databaseId"]), "--name", artifact, "--dir", str(output)],
+        timeout=15 * 60,
+    )
+    if downloaded.returncode != 0:
+        raise VisualPlatformError(downloaded.stderr.strip() or "could not download hosted visual evidence")
+    return {
+        "platform": platform,
+        "provider": "hosted",
+        "run_id": selected["databaseId"],
+        "url": selected.get("url", ""),
+        "output": str(output),
+    }
+
+
+def stamp_capture(
+    platform: str,
+    target_sha: str,
+    provider: str,
+    output: Path,
+    scene_ids: list[str],
+) -> dict[str, Any]:
+    if provider not in {"local", "hosted"}:
+        raise VisualPlatformError("capture provider must be local or hosted")
+    if len(target_sha) != 40 or any(char not in "0123456789abcdef" for char in target_sha):
+        raise VisualPlatformError("capture target SHA must be 40 lowercase hexadecimal characters")
+    known = {str(scene["id"]): scene for scene in scenes_for(platform)}
+    unknown = sorted(set(scene_ids) - set(known))
+    if unknown:
+        raise VisualPlatformError("capture requested unknown scenes: " + ", ".join(unknown))
+    files: dict[str, dict[str, str]] = {}
+    missing: list[str] = []
+    for scene_id in scene_ids:
+        scene = known[scene_id]
+        paths = {"actual": output / f"{scene_id}.png"}
+        if scene.get("geometry_required", True):
+            paths["geometry"] = output / f"{scene_id}.geometry.json"
+        entry: dict[str, str] = {}
+        for kind, path in paths.items():
+            if not path.is_file():
+                missing.append(path.name)
+                continue
+            entry[kind] = path.name
+            entry[f"{kind}_sha256"] = _file_hash(path)
+        files[scene_id] = entry
+    if missing:
+        raise VisualPlatformError("capture returned an incomplete set: " + ", ".join(missing))
+    environment = {
+        "canonical_environment": _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["canonical_environment"],
+        "host_system": host_platform.system(),
+        "host_release": host_platform.release(),
+        "host_machine": host_platform.machine(),
+        "locale": locale.getlocale(),
+        "display": os.environ.get("DISPLAY", ""),
+        "wayland_display": os.environ.get("WAYLAND_DISPLAY", ""),
+    }
+    metadata = {
+        "schema_version": 1,
+        "platform": platform,
+        "provider": provider,
+        "target_sha": target_sha,
+        "manifest_sha256": _json_hash(MANIFEST_PATH),
+        "environment": environment,
+        "environment_sha256": hashlib.sha256(
+            json.dumps(environment, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        ).hexdigest(),
+        "scenes": files,
+    }
+    metadata_path = output / f"capture-{provider}.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {"metadata": str(metadata_path), "scene_count": len(scene_ids)}
+
+
+def run_local_driver(platform: str, driver: str, output: Path, scene_ids: list[str]) -> dict[str, Any]:
+    command = shlex.split(driver)
+    if not command:
+        raise VisualPlatformError("a local capture driver command is required")
+    output.mkdir(parents=True, exist_ok=True)
+    scene_file = output / "requested-scenes.json"
+    scene_file.write_text(json.dumps(scene_ids, indent=2) + "\n", encoding="utf-8")
+    command.extend(
+        [
+            "--platform", platform,
+            "--manifest", str(MANIFEST_PATH),
+            "--scenes", str(scene_file),
+            "--output", str(output.resolve()),
+        ],
+    )
+    completed = subprocess.run(command, cwd=ROOT, check=False)
+    if completed.returncode != 0:
+        raise VisualPlatformError(f"local capture driver failed with exit code {completed.returncode}")
+    provider = os.environ.get("VPN_CONTROL_VISUAL_PROVIDER", "local").strip() or "local"
+    configured_sha = os.environ.get("VPN_CONTROL_VISUAL_TARGET_SHA", "").strip()
+    target_sha = configured_sha or _head_sha()
+    if target_sha != _head_sha():
+        raise VisualPlatformError("capture target SHA does not equal the checked-out HEAD")
+    evidence = stamp_capture(platform, target_sha, provider, output, scene_ids)
+    return {
+        "platform": platform,
+        "provider": provider,
+        "scene_count": len(scene_ids),
+        "output": str(output),
+        **evidence,
+    }
+
+
+def verify_capture_provenance(platform: str, target_sha: str, actual_dir: Path) -> list[Path]:
+    expected = {str(scene["id"]) for scene in scenes_for(platform)}
+    covered: set[str] = set()
+    metadata_paths = sorted(actual_dir.glob("capture-*.json"))
+    if not metadata_paths:
+        raise VisualPlatformError("visual capture provenance is missing")
+    for metadata_path in metadata_paths:
+        metadata = _read_json(metadata_path)
+        if (
+            metadata.get("schema_version") != 1
+            or metadata.get("platform") != platform
+            or metadata.get("target_sha") != target_sha
+            or metadata.get("manifest_sha256") != _json_hash(MANIFEST_PATH)
+        ):
+            raise VisualPlatformError(f"capture provenance does not match target: {metadata_path}")
+        environment = metadata.get("environment")
+        if not isinstance(environment, dict) or metadata.get("environment_sha256") != hashlib.sha256(
+            json.dumps(environment, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        ).hexdigest():
+            raise VisualPlatformError(f"capture environment fingerprint is invalid: {metadata_path}")
+        files = metadata.get("scenes")
+        if not isinstance(files, dict):
+            raise VisualPlatformError(f"capture provenance has no scenes: {metadata_path}")
+        for scene_id, values in files.items():
+            if scene_id not in expected or not isinstance(values, dict):
+                raise VisualPlatformError(f"capture provenance has an unexpected scene: {scene_id}")
+            for kind in ("actual", "geometry"):
+                raw_path = str(values.get(kind, ""))
+                expected_hash = str(values.get(f"{kind}_sha256", ""))
+                if not raw_path:
+                    continue
+                if Path(raw_path).name != raw_path:
+                    raise VisualPlatformError(f"capture provenance path is not a file name: {raw_path}")
+                path = actual_dir / raw_path
+                if not path.is_file() or not expected_hash or _file_hash(path) != expected_hash:
+                    raise VisualPlatformError(f"captured {kind} changed after stamping: {platform}/{scene_id}")
+            covered.add(scene_id)
+    missing = sorted(expected - covered)
+    if missing:
+        raise VisualPlatformError("capture provenance does not cover every scene: " + ", ".join(missing))
+    return metadata_paths
+
+
+def verify_and_ingest(platform: str, target_sha: str, actual_dir: Path) -> dict[str, Any]:
+    provenance = verify_capture_provenance(platform, target_sha, actual_dir)
+    report_dir = ROOT / "build" / "visual-reports"
+    verify = _run(
+        [
+            sys.executable, "scripts/visual_regression.py", "verify", "--platform", platform,
+            "--actual-dir", str(actual_dir), "--report-dir", str(report_dir),
+        ],
+        timeout=30 * 60,
+    )
+    report = report_dir / platform / "report.json"
+    if not report.is_file():
+        raise VisualPlatformError("visual comparator did not produce a report")
+    ingest = _run(
+        [
+            sys.executable, "scripts/visual_review.py", "ingest", "--target-sha", target_sha,
+            "--platform", platform, "--report", str(report), "--actual-dir", str(actual_dir),
+        ],
+        timeout=120,
+    )
+    if ingest.returncode != 0:
+        raise VisualPlatformError(ingest.stdout.strip() or ingest.stderr.strip())
+    return {
+        "platform": platform,
+        "automation_passed": verify.returncode == 0,
+        "report": str(report),
+        "capture_provenance": [str(path) for path in provenance],
+        "comparator_stdout": verify.stdout[-4000:],
+        "review": json.loads(ingest.stdout),
+    }
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    for action in ("probe", "plan"):
+        command = subparsers.add_parser(action)
+        command.add_argument("--platform", required=True, choices=PLATFORMS)
+    subparsers.add_parser("android-local-config")
+    command = subparsers.add_parser("bootstrap")
+    command.add_argument("--platform", required=True, choices=PLATFORMS)
+    command.add_argument("--dry-run", action="store_true")
+    for action in ("start", "stop"):
+        command = subparsers.add_parser(action)
+        command.add_argument("--platform", required=True, choices=PLATFORMS)
+        command.add_argument("--dry-run", action="store_true")
+    command = subparsers.add_parser("dispatch-hosted")
+    command.add_argument("--platform", required=True, choices=PLATFORMS)
+    command.add_argument("--target-sha", required=True)
+    command.add_argument("--ref")
+    command.add_argument("--resource-fallback", action="store_true")
+    command = subparsers.add_parser("download-hosted")
+    command.add_argument("--platform", required=True, choices=PLATFORMS)
+    command.add_argument("--target-sha", required=True)
+    command.add_argument("--output", required=True, type=Path)
+    command.add_argument("--timeout-seconds", type=int, default=60 * 60)
+    command = subparsers.add_parser("capture-local")
+    command.add_argument("--platform", required=True, choices=PLATFORMS)
+    command.add_argument("--driver", required=True)
+    command.add_argument("--output", required=True, type=Path)
+    command.add_argument("--scene", action="append")
+    command = subparsers.add_parser("stamp")
+    command.add_argument("--platform", required=True, choices=PLATFORMS)
+    command.add_argument("--target-sha", required=True)
+    command.add_argument("--provider", required=True, choices=("local", "hosted"))
+    command.add_argument("--output", required=True, type=Path)
+    command.add_argument("--scene", action="append", required=True)
+    command = subparsers.add_parser("verify")
+    command.add_argument("--platform", required=True, choices=PLATFORMS)
+    command.add_argument("--target-sha", required=True)
+    command.add_argument("--actual-dir", required=True, type=Path)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    try:
+        if args.action == "probe":
+            result = local_probe(args.platform)
+        elif args.action == "plan":
+            result = capture_plan(args.platform)
+        elif args.action == "android-local-config":
+            result = android_local_config()
+        elif args.action == "bootstrap":
+            result = bootstrap(args.platform, dry_run=args.dry_run)
+        elif args.action == "start":
+            result = start_platform(args.platform, dry_run=args.dry_run)
+        elif args.action == "stop":
+            result = stop_platform(args.platform, dry_run=args.dry_run)
+        elif args.action == "dispatch-hosted":
+            result = dispatch_hosted(
+                args.platform, args.target_sha, args.ref, resource_fallback=args.resource_fallback,
+            )
+        elif args.action == "download-hosted":
+            result = download_hosted(
+                args.platform, args.target_sha, args.output, timeout_seconds=args.timeout_seconds,
+            )
+        elif args.action == "capture-local":
+            selected = args.scene or [str(scene["id"]) for scene in scenes_for(args.platform)]
+            result = run_local_driver(args.platform, args.driver, args.output, selected)
+        elif args.action == "stamp":
+            result = stamp_capture(args.platform, args.target_sha, args.provider, args.output, args.scene)
+        else:
+            result = verify_and_ingest(args.platform, args.target_sha, args.actual_dir)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, VisualPlatformError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
+        return 1
+    print(json.dumps({"ok": True, "result": result}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-beforeimages",
+  "nativeFailureClaimed": false,
+  "files": {
+    "agent_test_runner.py.before.source": {
+      "path": "agent_tools/agent_test_runner.py",
+      "baseline": "2dfa2f2e recovery worktree plus its reviewed uncommitted task work (agent-base7), unchanged by this fix before the copy",
+      "bytes": 42274,
+      "sha256": "452dee95e8777f3888afef251afae84f8feff6e29ae653b68cd4dc80d72554bd"
+    },
+    "test_agent_test_session_observer.py.before.source": {
+      "path": "agent_tools/tests/test_agent_test_session_observer.py",
+      "baseline": "2dfa2f2e recovery worktree plus its reviewed uncommitted task work (agent-base7), unchanged by this fix before the copy",
+      "bytes": 9711,
+      "sha256": "951b29ba471db5b4e7df7da9d95ba9c991d6b03d2da92b63833b853a55458223"
+    }
+  },
+  "fixedSourceSha256": {
+    "agent_tools/agent_test_runner.py": "a3b772780fd871bb884df3d68db3cc985d71d7dc8736ee3e5f5c5a40259aaf19",
+    "agent_tools/tests/test_agent_test_session_observer.py": "bb48b1ae567f16bf13cefc0d780689527e59bc405bd5a28838586d8b1f583bd5"
+  },
+  "originalFailures": [
+    {
+      "testId": "agent_tools.tests.test_agent_test_session_observer.SessionObserverTests.test_complete_original_runner_cannot_attribute_current_retains_orphan_before_after",
+      "subTest": "(before=True)",
+      "run": "sweep-a: two-worker agent sweep of the recovery checkout copy under load; FAIL after 0.28 s. The same failure recurred in 1 of 40 loop reruns of that case (obs-loop-7).",
+      "trace": [
+        "FAIL agent_tools.tests.test_agent_test_session_observer.SessionObserverTests.test_complete_original_runner_cannot_attribute_current_retains_orphan_before_after (before=True) timing: [('failure', 0.28034424991346896)]",
+        "Traceback (most recent call last):",
+        "  File \"/private/tmp/claude-503/-Users-karapsin-de-projects-vpn-control/ac9aaf17-f92b-4643-b93c-1b3a738c5a67/scratchpad/wf7-sweep-a/agent_tools/tests/test_agent_test_session_observer.py\", line 126, in test_complete_original_runner_cannot_attribute_current_retains_orphan_before_after",
+        "    self.assertEqual(1, child.returncode, child.stderr)",
+        "    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "AssertionError: 1 != 2 : Agent unittest runner refused: PermissionError"
+      ],
+      "traceSha256": "4e57091ca96ccac74e7b6e2e1b5fa6dbc0d032a647aa111043b006afbcd09e48",
+      "logSha256": "30579b2b865f9e721bd52c0c7868ae41b868cfd2816c2351ffd4c0c679c1fc97",
+      "loopLogSha256": "4defd56489449652ef0dd2f5b497a5861c4c65713afdef94ea75c0e3e2b9ccf9"
+    },
+    {
+      "testId": "agent_tools.tests.test_agent_test_session_observer.SessionObserverTests.test_actual_whole_before_cleans_orphan_without_identity_current_observes_generations",
+      "run": "Idle module reruns of test_agent_test_session_observer: ERROR in 2 of 61 module runs (idle and idle-rep obs-16).",
+      "trace": [
+        "ERROR: test_actual_whole_before_cleans_orphan_without_identity_current_observes_generations (agent_tools.tests.test_agent_test_session_observer.SessionObserverTests.test_actual_whole_before_cleans_orphan_without_identity_current_observes_generations)",
+        "----------------------------------------------------------------------",
+        "Traceback (most recent call last):",
+        "  File \"/private/tmp/claude-503/-Users-karapsin-de-projects-vpn-control/ac9aaf17-f92b-4643-b93c-1b3a738c5a67/scratchpad/wf7-classify/agent_tools/tests/test_agent_test_session_observer.py\", line 62, in test_actual_whole_before_cleans_orphan_without_identity_current_observes_generations",
+        "    terminal = before.close_session(process)",
+        "  File \"/private/tmp/claude-503/-Users-karapsin-de-projects-vpn-control/ac9aaf17-f92b-4643-b93c-1b3a738c5a67/scratchpad/wf7-classify/agent_tools/tests/fixtures/agent_test_session_observer/before.source\", line 526, in close_session",
+        "    os.killpg(process.pid, 0)",
+        "    ~~~~~~~~~^^^^^^^^^^^^^^^^",
+        "PermissionError: [Errno 1] Operation not permitted"
+      ],
+      "traceSha256": "9ea9ae686d614835bdc2a8651dc0e77113e0fd331b3c368961a1bd7e70f203d0",
+      "logSha256": "41e8280319a9fd6870542628acc27f2ceef8a5ef9882248ece6192b5a6778882"
+    }
+  ],
+  "latentFailures": [
+    "agent_tools.tests.test_agent_test_session_observer.SessionObserverTests.test_foreign_leader_generation_and_missing_member_visibility_never_signal",
+    "agent_tools.tests.test_agent_test_session_observer.SessionObserverTests.test_missing_observer_visibility_has_finite_reason_without_private_exception_value"
+  ],
+  "kernelEvidence": "Darwin 25.5.0 (XNU): killpg(L, 0) and killpg(L, SIGTERM) both raise PermissionError errno 1 while group L still exists with only an unreaped zombie member, and ProcessLookupError once that zombie is reaped. killpg1 skips SZOMB members and returns EPERM for a POSIX caller when it found none (nfound == 0). Linux still signals zombie members, so this state never reports EPERM there.",
+  "confirmedCause": "agent_test_runner.close_session polls os.killpg(pgid, 0) right after SIGTERM and then every 20 ms, and catches only ProcessLookupError. The SIGTERMed orphan was reparented to launchd when the worker exited; when a probe lands between the orphan's exit and launchd reaping it, the group holds only a zombie and PermissionError escapes. In process it is raised from close_session line 526 of the original runner; the runner CLI turns it into 'Agent unittest runner refused: PermissionError' with exit code 2 and writes no report. _stop_workers has the same pattern for SIGTERM and SIGKILL. Load widens the window (measured about 1.5 ms at load 9); the actual close_session raised in 10 of 300 orphaned-group calls at load about 9 and 5 of 300 at load about 2.5. The session observer tests feed that original refusal straight into their assertions (in process and through the original CLI) and use the original close_session as orphan cleanup.",
+  "fix": "Product: _group_present treats EPERM as 'group present, nothing live to signal' and only ESRCH as absent. close_session uses it for the initial probe, SIGTERM, the 1 s probe loop, SIGKILL and a new bounded 2 s probe loop after SIGKILL, returning (False, leaked) instead of raising when the group never reaches ESRCH. _stop_workers catches PermissionError beside ProcessLookupError. Harness: the orphan cleanup uses the current runner's close_session; the in-process original close_session observation and the original CLI run alone get a whole-scenario retry with a fresh orphan, at most three attempts, on exactly EPERM or on exit code 2 with exactly that refusal, removing the refused run's retained fixture root by its recorded generation. Current runner paths never retry.",
+  "controlledRegression": "agent_tools.tests.test_agent_test_runner_zombie_group (Darwin only). A holder N started inside an owned new-session group L forks member M, moves itself to its own group in the same session and never reaps M until a release file appears (30 s backstops). Runner: the whole beforeimage and the fixed close_session meet M alive (killed by their SIGTERM), M already a zombie, and M a zombie through the whole SIGTERM bound; a pass-through killpg recorder releases N only at the second EPERM probe after SIGTERM or SIGKILL. _stop_workers meets a worker observed live that exits unreaped before its SIGTERM, and a SIGTERM-ignoring worker that exits right after a really expired, shortened grace and before its SIGKILL. Both runner CLIs run a selected test that leaves N and M behind. Harness: the old and new observer cases run with a held member injected into their first orphan session and first original CLI worker only; later orphans have their natural zombie window removed (after SIGTERM the recorder waits for ESRCH; the later CLI child leaves the worker group before it exits), so the RED and GREEN are deterministic.",
+  "routineSuite": "agent_tools.tests.test_agent_test_runner_zombie_group runs in the affected agent-test stage of the managed pre-push tier on the macOS development host whenever the selector reaches it, including changes to agent_test_runner.py, test_agent_test_session_observer.py, these beforeimages or this provenance. On the Linux Fast Checks shards it is selected but skipped: Linux never reports EPERM for a zombie-only group.",
+  "nativeEvidenceLimit": "Local owned processes only: no VM, SSH host, guest or product native behavior is involved or claimed. The kernel's zombie-only EPERM is reproduced on the Darwin development host; the launchd reaping latency itself remains host state.",
+  "failingEvidence": "Unfixed (an isolated clone holding both beforeimages as the live files), in the unsandboxed and the sandbox-exec runner: close_session raises PermissionError errno 1 at line 526 when its own SIGTERM leaves the held member a zombie, and at line 514 for a group that is zombie-only at entry or through the whole SIGTERM bound; _stop_workers raises at line 495 for a worker observed live that exits unreaped before its SIGTERM, and at line 505 for a SIGTERM-ignoring worker that exits after the really expired grace, before its SIGKILL; the runner CLI exits 2 with exactly 'Agent unittest runner refused: PermissionError' and no report.json. The unfixed observer cases fail in the original shapes: ERROR at line 62 from the original close_session line 526, ERROR from that line in the orphan cleanup of the two cleanup-only cases, and FAIL at line 126 with '1 != 2 : Agent unittest runner refused: PermissionError'. Under an owned 12-process CPU burner with two concurrent copies, the unfixed observer module also failed naturally in 1 of 60 runs with the original line 62 / line 526 PermissionError.",
+  "passingEvidence": "Fixed: close_session returns (True, True) only after the kernel reports ESRCH; the pass-through recorder shows EPERM never taken as absence and, in the SIGKILL case, a group that stayed zombie-only for the whole 1 s SIGTERM bound. _stop_workers reaps the worker with return code 0. The fixed CLI exits 1 with an incomplete report (sessionAbsent false, descendantLeak true, fixture root kept, then removed by its generation). The fixed observer cases pass: one fresh orphan after the original's refusal, a current-runner cleanup that observes the same EPERM and waits for ESRCH, and a refused original CLI run whose fixture root is removed by its generation before one fresh run passes. 22 mutants are killed: each close_session EPERM site made uncaught or taken as absence, a single post-SIGKILL check, the two helper variants, each _stop_workers site, and each harness change reverted separately; an explicit equivalent of the fix passes.",
+  "loadEvidence": "Fixed tree: the runner's 13 direct consumer modules plus this regression (227 tests) pass in both runners; the observer module plus this regression pass 10 of 10 idle rounds; with an owned 12-process CPU burner (load about 20 to 25) two concurrent copies pass 10 of 10 rounds unsandboxed (with test_agent_test_runner and test_ssh_fresh_fixture_custody), 12 of 12 sandboxed (with test_ssh_fresh_fixture_custody), and the observer module alone 60 of 60. Two sandboxed stress rounds that also ran test_agent_test_runner failed only its unrelated worker-order assertion in test_child_has_unique_temporary_runtime_and_lock_roots, which fails identically on the unfixed tree under the same load."
+}

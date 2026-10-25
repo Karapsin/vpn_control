@@ -1,0 +1,5 @@
+{
+  "source": "agent_tools/readiness.py",
+  "sha256": "02f5ff3375c930f903a069c8b96201a86c606fbbf782265e6b7acee7abac80a2",
+  "reason": "Actual Tart operator visibility requires the same provider operator lock during observation and power dispatch."
+}

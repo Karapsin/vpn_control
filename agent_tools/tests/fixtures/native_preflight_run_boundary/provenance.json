@@ -1,0 +1,10 @@
+{
+  "cause": "Old unit fixture patches subprocess.run after actual helper migrated to central run_ssh/Popen. Native first failure unexpectedly None retained; production fail-closed behavior is correct.",
+  "replay": "Execute complete authenticated before test module and selected original method, guard actual Popen boundary from any SSH child, compare current test. No product/transport source edits.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "before.source": "e12f48f09b7947c371b661de692770ef1a91c9f1834e7835cd604292be4be485",
+    "native-failure.txt": "fad3f7676158685824c2be4fba8e863927e7088fdc3ad6e87c3d6d9ddcb9f12e",
+    "scenario.before.source": "ebeff5bd44e5cd61accff05f7872cc2b04fa9605b9e55126f795a854ddf6a58b"
+  }
+}

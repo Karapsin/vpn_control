@@ -1,0 +1,44 @@
+"""Actual fixed producer preparation and whole retained parent snapshot loop."""
+import ast,hashlib,os,sys,tempfile,unittest
+from pathlib import Path
+from contextlib import ExitStack
+PROJECT=ROOT
+from agent_tools import private_inventory_lock as P
+SOURCE_NAMES={'macos-v12-durable-controller.inert.py':'controller.source','macos-v12-public-rpc-capture.inert.py':'capture.source','macos-known-session-wake-review.inert.py':'wake.source'}
+BASE=FIXTURE;PREP={'__name__':'held_offline_preparer'}
+exec(compile((BASE/'sources/permission-preparer.source').read_bytes(),str(BASE/'sources/permission-preparer.source'),'exec'),PREP)
+RAW=(BASE/'sources/parent.permission.before.source').read_bytes()
+LOOP=next(n for n in ast.walk(ast.parse(RAW))if isinstance(n,ast.For)and isinstance(n.target,ast.Tuple)and[n.id for n in n.target.elts]==['name','sha'])
+class Checks(unittest.TestCase):
+ def fixture(self,folder):
+  folder.chmod(0o755);records={}
+  for name in PREP['NAMES']:
+   p=folder/name;p.write_bytes((BASE/'sources'/SOURCE_NAMES[name]).read_bytes());p.chmod(0o644);records[name]={'generation':PREP['generation'](p.lstat()),'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+  return records
+ def snapshot_loop(self,folder):
+  with ExitStack()as held:
+   directory=held.enter_context(P.Directory(folder));scope={'held':held,'P':P,'directory':directory,'producers':{},'hashlib':hashlib,'need':lambda condition,reason:self.assertTrue(condition,reason)}
+   for prefix,name in zip(('CHILD','CAPTURE','WAKE'),PREP['NAMES']):scope[prefix+'_FILE']=name;scope[prefix+'_SHA']=hashlib.sha256((folder/name).read_bytes()).hexdigest()
+   exec(compile(ast.Module(body=[LOOP],type_ignores=[]),'actual-whole-retained-parent-snapshot-loop','exec'),scope);self.assertEqual(set(scope['producers']),set(PREP['NAMES']))
+ def test_actual_whole_parent_producer_preflight(self):
+  with tempfile.TemporaryDirectory()as tmp:
+   folder=Path(tmp).resolve();records=self.fixture(folder)
+   with self.assertRaisesRegex(ValueError,'unsafe private file'):self.snapshot_loop(folder)
+   PREP['prepare'](folder,records)
+   self.snapshot_loop(folder)
+ def test_one_changed_generation_blocks_before_any_chmod(self):
+  with tempfile.TemporaryDirectory()as tmp:
+   folder=Path(tmp).resolve();records=self.fixture(folder);p=folder/PREP['NAMES'][1];raw=p.read_bytes();p.unlink();p.write_bytes(raw);p.chmod(0o644)
+   with self.assertRaisesRegex(ValueError,'generation_changed'):PREP['prepare'](folder,records)
+   self.assertTrue(all((folder/n).stat().st_mode&0o777==0o644 for n in PREP['NAMES']))
+ def test_exact_hash_mismatch_blocks_before_any_chmod(self):
+  with tempfile.TemporaryDirectory()as tmp:
+   folder=Path(tmp).resolve();records=self.fixture(folder);records[PREP['NAMES'][1]]['sha256']='0'*64
+   with self.assertRaisesRegex(ValueError,'source_changed'):PREP['prepare'](folder,records)
+   self.assertTrue(all((folder/n).stat().st_mode&0o777==0o644 for n in PREP['NAMES']))
+ def test_symlink_replacement_cannot_be_adopted(self):
+  with tempfile.TemporaryDirectory()as tmp:
+   folder=Path(tmp).resolve();records=self.fixture(folder);p=folder/PREP['NAMES'][1];p.unlink();p.symlink_to(folder/PREP['NAMES'][0])
+   with self.assertRaises(OSError):PREP['prepare'](folder,records)
+   self.assertEqual((folder/PREP['NAMES'][0]).stat().st_mode&0o777,0o644)
+if __name__=='__main__':unittest.main(verbosity=2)

@@ -1,0 +1,4 @@
+Actual native qualification catalogue refused native_dependency_dynamic_unknown.
+First real copied closure: agent_tools/ssh_transport.py:38 importlib.import_module('agent_tools.readiness').
+Next exact new closure edge: agent_tools/readiness_nested_channel.py:273 __import__('__future__').
+Original immediate failure log retained in .runtime/tool-recovery/ssh-native-diagnostic-current/result.log.

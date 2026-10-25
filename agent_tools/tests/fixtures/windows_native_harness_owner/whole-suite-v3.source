@@ -1,0 +1,727 @@
+"""Disposable LOCAL processes only; never import SSH/provider adapters in subject.
+
+NATIVE_FOREGROUND_BEFORE=1 runs the same recovery assertion against the authentic
+6210 foreground source. Those two RED cases are intentional preserved evidence.
+"""
+from pathlib import Path
+import base64, contextlib, hashlib, importlib.util, json, os, shutil, subprocess, sys, tempfile, time, unittest, uuid
+
+HERE = Path(__file__).absolute().parent
+ROOT = HERE.parents[3]
+SUBJECT = HERE / ('review-7ced/native_test_owner.py' if os.environ.get('NATIVE_REVIEW_BEFORE') == '1' else 'v2-canonical-data-failure/native_test_owner_v2.py' if os.environ.get('NATIVE_ORDER_BEFORE') == '1' else 'v2-owner-read-before/native_test_owner_v2.py' if os.environ.get('NATIVE_OWNER_READ_BEFORE') == '1' else 'native_test_owner_v3.py')
+BEFORE = HERE.parent / 'run_windows_bootstrap_prepared.py'
+EXPECTED_BEFORE = '6210bb28ec3d28c9e5d259e922e62cb89c70031522b21d5af767ba7b5e34b431'
+OWNER = ROOT / 'agent_tools/durable_remote_job.py'
+
+
+def load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+subject = load(SUBJECT, 'controlled_native_test_owner')
+jobs = load(OWNER, 'controlled_native_generic_owner')
+ACTORS = []
+CLOSURES = []
+
+
+def launch(source):
+    tiny = "import sys;exec(compile(sys.stdin.buffer.read(),'controlled-exact-packet','exec'),{'__name__':'__main__'})"
+    process = subprocess.Popen([sys.executable, '-I', '-B', '-c', tiny], stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    birth = jobs._birth(process.pid)
+    ACTORS.append({'kind': 'controller', 'pid': process.pid, 'birth': birth, 'process': process})
+    process.stdin.write(source)
+    process.stdin.close()
+    process.stdin = None
+    return process
+
+
+def execute(source):
+    process = launch(source)
+    out, err = process.communicate(timeout=15)
+    if process.returncode:
+        raise AssertionError((process.returncode, out.decode(errors='replace'), err.decode(errors='replace')))
+    return json.loads(out)
+
+
+def wait_for(predicate, timeout=10):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        result = predicate()
+        if result:
+            return result
+        time.sleep(.02)
+    raise AssertionError('bounded controlled observation timed out')
+
+
+def stop_client(process):
+    # Only the direct Popen handle retained by this test; never the durable owner.
+    if process.poll() is None:
+        process.kill()
+    process.communicate(timeout=10)
+
+
+class DurableNativeTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve())
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.ns = subject.initialize(self.root / 'namespace', 'local-controlled', OWNER, subject.sha(OWNER.read_bytes()))
+        self.op = str(uuid.uuid4())
+        self.marker = self.root / 'effects.jsonl'
+        self.done = self.root / 'done.json'
+        self.caller = self.root / 'reviewed-caller.py'
+        self.caller.write_bytes(("import os,time,json,sys\n"
+            "from pathlib import Path\n"
+            f"marker=Path({str(self.marker)!r}); done=Path({str(self.done)!r})\n"
+            "with marker.open('a') as stream:\n stream.write(json.dumps({'pid':os.getpid()})+'\\n');stream.flush();os.fsync(stream.fileno())\n"
+            "time.sleep(.65)\n"
+            "body={'state':'passed','testsRun':1,'failures':0,'errors':0,'skips':0}\n"
+            "done.write_text(json.dumps(body))\n"
+            "try:\n print(json.dumps(body),flush=True);print('complete-public-stderr',file=sys.stderr,flush=True)\n"
+            "except BrokenPipeError:\n os._exit(0)\n").encode())
+        self.original = subject.retain(self.root / 'local-original', self.ns, self.op, self.caller,
+            subject.sha(self.caller.read_bytes()), [(SUBJECT, subject.read(SUBJECT, private=False)[1])])
+        self.packet = subject.controller_source(self.original, 'submit')
+        self.owner_actors = []
+
+    def tearDown(self):
+        # Positive observed actor generations, no retrospective PID assertions.
+        for pid, birth in self.owner_actors:
+            wait_for(lambda: jobs._birth(pid) != birth)
+            CLOSURES.append({'role': 'actual-observed-owner-or-child', 'pid': pid, 'birth': birth, 'sameBirthAbsent': True})
+        for actor in ACTORS:
+            process = actor['process']
+            if process.poll() is None:
+                stop_client(process)
+            self.assertIsNotNone(process.poll())
+            CLOSURES.append({'role': 'local-controller', 'pid': actor['pid'], 'birth': actor['birth'],
+                             'reaped': True, 'returnCode': process.returncode, 'pipeFDsClosed': True})
+        ACTORS.clear()
+
+    def submitted(self, source=None, original=None):
+        original = original or self.original
+        source = source or subject.controller_source(original, 'submit')
+        with subject.SourceHold(original):
+            process = launch(source)
+            out, err = process.communicate(timeout=15)
+            self.assertEqual(process.returncode, 0, err.decode(errors='replace'))
+            value = json.loads(out)
+            if value.get('adapterSubmitted') and hasattr(subject, 'accept_admission'):
+                subject.accept_admission(original, source, out, err, process.returncode)
+            return value
+
+    def observed(self):
+        return execute(subject.controller_source(self.original, 'observe'))
+
+    def terminal(self):
+        status = wait_for(lambda: (v if (v := self.observed())['state'] == 'terminal' else None))
+        self.assertTrue(status['terminal']['streamsClosed'])
+        self.owner_actors.append((status['owner']['pid'], status['owner']['birth']))
+        return status
+
+    def collected(self):
+        self.terminal()
+        result = {}
+        for name in ('stdout', 'stderr'):
+            chunks = []
+            offset = 0
+            pin = None
+            terminal = None
+            while True:
+                reply = execute(subject.controller_source(self.original, 'collect', name, offset))
+                self.assertEqual(reply['offset'], offset)
+                if pin is not None:
+                    self.assertEqual(pin, reply['streamPin'])
+                    self.assertEqual(terminal, reply['terminal'])
+                pin, terminal = reply['streamPin'], reply['terminal']
+                chunks.append(base64.b64decode(reply['chunkBase64'], validate=True))
+                offset = reply['nextOffset']
+                if reply['complete']:
+                    break
+            result[name] = b''.join(chunks)
+            self.assertEqual(len(result[name]), terminal[name]['totalBytes'])
+            self.assertEqual(subject.sha(result[name]), terminal[name]['sha256'])
+        return result
+
+    def before_foreground(self, fault):
+        """Execute WHOLE unchanged6210 including actual source/packet guards."""
+        raw = BEFORE.read_bytes()
+        self.assertEqual(subject.sha(raw), EXPECTED_BEFORE)
+        sandbox = self.root / 'foreground'
+        package = sandbox / 'agent_tools'
+        package.mkdir(parents=True)
+        (package / '__init__.py').write_text('__path__.append(' + repr(str(ROOT / 'agent_tools')) + ')\n')
+        stub = """import contextlib,subprocess,sys,os,json
+@contextlib.contextmanager
+def admitted_transport(*args,**kwargs): yield None
+def load_config(root): return None
+def build_ssh_argv(config,host,command): return command
+class SubmittedResultReadinessChanged(Exception): pass
+def run_ssh(argv,**kwargs):
+ p=subprocess.Popen([sys.executable,*argv[1:]],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ with open(CHILD,'w') as stream: json.dump({'pid':p.pid},stream)
+ out,err=p.communicate(timeout=8)
+ if FAULT=='lost-ack': os._exit(77)
+ return subprocess.CompletedProcess(argv,p.returncode,out,err)
+"""
+        (package / 'ssh_transport.py').write_text('CHILD=' + repr(str(self.root / 'foreground-child.json')) + '\nFAULT=' + repr(fault) + '\n' + stub)
+        copied = sandbox / 'foreground6210.py'
+        copied.write_bytes(raw)
+        packet = sandbox / '.runtime/tool-recovery-windows/direct' / ('bootstrap-linux-packet-' + self.op)
+        packet.mkdir(parents=True)
+        (packet / 'caller.py').write_bytes(self.caller.read_bytes())
+        source = sandbox / 'public.py'
+        source.write_text('public_fixture=True\n')
+        (packet / 'sources').mkdir()
+        (packet / 'sources/public.py').write_bytes(source.read_bytes())
+        manifest = {'schemaVersion': 1, 'group': 'bootstrap', 'nativeSubmitted': False,
+            'vmCalls': 0, 'operationId': self.op, 'callerSha256': subject.sha(self.caller.read_bytes()),
+            'callerBytes': len(self.caller.read_bytes()), 'sources': [{'path': str(source),
+            'sha256': subject.sha(source.read_bytes()), 'generation': subject.gen(source.stat()),
+            'bytes': len(source.read_bytes()), 'copy': 'sources/public.py'}]}
+        (packet / 'manifest.json').write_bytes(subject.encoded(manifest))
+        driver = f"import sys;sys.path.insert(0,{str(sandbox)!r});import foreground6210 as m;from pathlib import Path\nm.seal(Path({str(sandbox)!r}),Path({str(packet)!r}),{subject.sha((packet / 'manifest.json').read_bytes())!r})\nm.dispatch(Path({str(sandbox)!r}),Path({str(packet)!r}),m.hashlib.sha256(Path({str(packet / 'dispatch-manifest.json')!r}).read_bytes()).hexdigest())\n"
+        process = launch(driver.encode())
+        pid = wait_for(lambda: (json.loads(self.marker.read_text().splitlines()[0])['pid'] if self.marker.exists() else None))
+        birth = jobs._birth(pid)
+        if birth is not None:
+            self.owner_actors.append((pid, birth))
+        if fault == 'client-death':
+            stop_client(process)
+        else:
+            process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 77)
+        wait_for(self.done.exists)
+        admitted = sandbox / '.runtime/tool-recovery-windows/direct' / ('admitted-' + self.op)
+        # No result/terminal spool exists despite actual caller finishing once.
+        return (admitted / 'result.json').read_bytes() if (admitted / 'result.json').exists() else None
+
+    def recover(self, fault):
+        if os.environ.get('NATIVE_FOREGROUND_BEFORE') == '1':
+            body = self.before_foreground(fault)
+            self.assertIsNotNone(body, 'authentic foreground lost original result after ' + fault)
+            return
+        if fault == 'client-death':
+            # Source-owned transport client stays alive after the exact packet
+            # while withholding its reply. Kill ONLY this actual live client.
+            self.submitted()
+            observer = subject.controller_source(self.original, 'observe')
+            wrapper = b'exec(compile(' + repr(observer).encode() + b',"exact-controller","exec"))\nimport time;time.sleep(5)\n'
+            process = launch(wrapper)
+            wait_for(lambda: (Path(self.ns['root']) / 'jobs' / self.op / 'owner.json').exists())
+            # Admission controller may have already exited: lost terminal reply still
+            # discards its stdout. The durable original is independently retained.
+            self.assertIsNone(process.poll())
+            stop_client(process)
+            self.assertLess(process.returncode, 0)
+        else:
+            self.submitted()
+            self.terminal()
+            terminal_packet = subject.controller_source(self.original, 'collect', 'stdout', 0)
+            # Exact complete terminal collector executed, then its client loses
+            # the delivered terminal reply before caller-side publication.
+            wrapper = b'exec(compile(' + repr(terminal_packet).encode() + b',"exact-terminal-controller","exec"))\nimport os;os._exit(77)\n'
+            process = launch(wrapper)
+            process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 77)
+        body = self.collected()
+        self.assertEqual(json.loads(body['stdout'])['state'], 'passed')
+        self.assertEqual(body['stderr'], b'complete-public-stderr\n')
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+        # Fresh interpreter reopens exact immutable original custody.
+        authority = subject.read(self.original.directory / 'original-admission.json')[1]
+        code = f"import sys;sys.path.insert(0,{str(HERE)!r});import native_test_owner_v3 as m\no=m.reopen({str(self.original.directory)!r},{self.original.custody!r});m.restore_admission(o,{authority!r});sys.stdout.buffer.write(m.controller_source(o,'observe'))\n"
+        packet = subprocess.run([sys.executable, '-I', '-B', '-c', code], capture_output=True, check=True).stdout
+        self.assertEqual(execute(packet)['state'], 'terminal')
+
+    def test_client_death_recovery_actual_whole_caller(self):
+        self.recover('client-death')
+
+    def test_lost_terminal_ack_recovery_actual_whole_caller(self):
+        self.recover('lost-ack')
+
+    def test_consumed_missing_job_never_recreates(self):
+        self.submitted()
+        self.terminal()
+        job = Path(self.ns['root']) / 'jobs' / self.op
+        job.rename(job.with_name(self.op + '.retained-original'))
+        reply = self.submitted()
+        self.assertEqual(reply['reason'], 'consumed_original_job_missing')
+        self.assertFalse(job.exists())
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_duplicate_submit_observes_one_original(self):
+        self.submitted()
+        self.terminal()
+        self.assertEqual(self.submitted()['state'], 'terminal')
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_original_samebytes_inode_replacement_refused(self):
+        path = self.original.directory / 'caller.py'
+        raw = path.read_bytes()
+        path.rename(path.with_suffix('.preserved'))
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        with self.assertRaises(ValueError):
+            subject.controller_source(self.original, 'submit')
+        self.assertFalse(self.marker.exists())
+
+    def test_foreign_host_and_owner_source_refused_before_effect(self):
+        ns = json.loads(json.dumps(self.ns))
+        ns['binding']['machine'] = 'foreign-machine'
+        with self.assertRaises(ValueError):
+            subject.namespace(ns)
+        owner = Path(self.ns['root']) / 'protocol.py'
+        with owner.open('ab') as stream:
+            stream.write(b'\n# changed\n')
+        with self.assertRaises(ValueError):
+            subject.namespace(self.ns)
+        self.assertFalse(self.marker.exists())
+
+    def test_terminal_is_not_test_pass(self):
+        self.caller.write_text("import json;print(json.dumps({'state':'failed','testsRun':1,'failures':1}))\n")
+        another = subject.retain(self.root / 'failed-original', self.ns, str(uuid.uuid4()), self.caller,
+            subject.sha(self.caller.read_bytes()), [])
+        self.submitted(original=another)
+        status = wait_for(lambda: (v if (v := execute(subject.controller_source(another, 'observe')))['state'] == 'terminal' else None))
+        reply = execute(subject.controller_source(another, 'collect', 'stdout', 0))
+        self.owner_actors.append((status['owner']['pid'], status['owner']['birth']))
+        self.assertEqual(status['terminal']['exitCode'], 0)
+        self.assertEqual(json.loads(base64.b64decode(reply['chunkBase64']))['state'], 'failed')
+
+    def test_returned_raw_retained_before_closing_failure(self):
+        output = self.root / 'wire'
+        output.mkdir(mode=0o700)
+        def refuse():
+            raise ValueError('controlled_source_closing_refused')
+        with self.assertRaisesRegex(ValueError, 'controlled_source_closing_refused'):
+            subject.retain_returned(output, 'original', b'full public result', b'public stderr', 0, refuse)
+        self.assertEqual((output / 'original.stdout').read_bytes(), b'full public result')
+        self.assertEqual(json.loads((output / 'original.callback.json').read_bytes())['returnCode'], 0)
+
+    def test_concurrent_submit_one_original(self):
+        held = subject.SourceHold(self.original).__enter__()
+        self.addCleanup(held.close)
+        first, second = launch(self.packet), launch(self.packet)
+        results = []
+        for process in (first, second):
+            out, err = process.communicate(timeout=10)
+            results.append(process.returncode)
+            if process.returncode == 0 and hasattr(subject, 'accept_admission') and json.loads(out).get('adapterSubmitted'):
+                subject.accept_admission(self.original, self.packet, out, err, process.returncode)
+        self.assertIn(0, results)
+        self.terminal()
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_generic_original_samebytes_replacement_unknown_no_replay(self):
+        self.submitted()
+        self.terminal()
+        path = Path(self.ns['root']) / 'jobs' / self.op / 'owner.py'
+        raw = path.read_bytes()
+        path.rename(path.with_suffix('.preserved'))
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        self.assertEqual(self.submitted()['reason'], 'original_job_custody_changed')
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_invalid_terminal_eof_never_qualifies(self):
+        self.submitted()
+        self.terminal()
+        path = Path(self.ns['root']) / 'jobs' / self.op / 'terminal.json'
+        value = json.loads(path.read_bytes())
+        value['streamsClosed'] = False
+        path.write_bytes(subject.encoded(value))
+        self.assertEqual(self.observed()['state'], 'unknown')
+
+    def test_source_callable_replacement_refuses(self):
+        original = subject.namespace
+        try:
+            subject.namespace = None
+            with self.assertRaises(ValueError):
+                subject.controller_source(self.original, 'submit')
+        finally:
+            subject.namespace = original
+        self.assertFalse(self.marker.exists())
+
+    def test_multiple_chunks_full_streams(self):
+        self.caller.write_text("import sys;print('x'*150000);print('public-error',file=sys.stderr)\n")
+        self.original = subject.retain(self.root / 'chunk-original', self.ns, str(uuid.uuid4()), self.caller,
+            subject.sha(self.caller.read_bytes()), [])
+        self.submitted()
+        streams = self.collected()
+        self.assertEqual(streams['stdout'], b'x' * 150000 + b'\n')
+        self.assertEqual(streams['stderr'], b'public-error\n')
+
+    def test_timeout_partial_retained_without_eof_claim(self):
+        output = self.root / 'partial-wire'
+        output.mkdir(mode=0o700)
+        subject.retain_returned(output, 'partial', b'partial-public', b'', None, lambda: None)
+        value = json.loads((output / 'partial.callback.json').read_bytes())
+        self.assertFalse(value['complete'])
+        self.assertIsNone(value['returnCode'])
+        self.assertEqual((output / 'partial.stdout').read_bytes(), b'partial-public')
+
+    def test_full_source_hold_refuses_replacement_closes_descriptors(self):
+        held = subject.SourceHold(self.original).__enter__()
+        self.assertTrue(held.descriptors)
+        path = self.original.directory / 'caller.py'
+        raw = path.read_bytes()
+        path.rename(path.with_suffix('.held-original'))
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        try:
+            with self.assertRaises(ValueError):
+                held.finish()
+        finally:
+            held.close()
+        self.assertTrue(held.closed)
+        self.assertFalse(held.descriptors)
+
+    def test_index_samebytes_replacement_unknown_no_replay(self):
+        self.submitted()
+        self.terminal()
+        path = Path(self.ns['root']) / 'admissions' / (self.op + '.json')
+        raw = path.read_bytes()
+        path.rename(path.with_suffix('.preserved'))
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        self.assertEqual(self.submitted()['reason'], 'original_job_custody_changed')
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_local_once_transport_fence_original_only_after_lost_ack(self):
+        mode, packet = subject.admit_submit(self.original)
+        self.assertEqual(mode, 'submit')
+        self.submitted(packet)
+        self.terminal()
+        mode, packet = subject.admit_submit(self.original)
+        self.assertEqual(mode, 'observe')
+        self.assertEqual(execute(packet)['state'], 'terminal')
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_review_remote_descriptor_coordinator_never_opens_provider_path(self):
+        before = os.environ.get('NATIVE_REVIEW_BEFORE') == '1'
+        if before:
+            # WHOLE old generated loader invokes actual retained namespace() on
+            # its endpoint process. No fake local machine/namespace validator.
+            source = self.packet.split(b'value=m.run(', 1)[0]
+            source += ("root,fd2,owner,binding=m.namespace(" + repr(self.ns) + ")\n"
+                       "os.close(fd2);print(json.dumps(" + repr(self.ns) + "));os.close(fd)\n").encode()
+        else:
+            source = subject.remote_observer_source(self.ns)
+        process = launch(source)
+        out, err = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, err)
+        destination = self.root / 'coordinator-original'
+        packet_path = self.root / 'coordinator-emitted.source'
+        # The coordinator audit fence refuses any provider-root component or
+        # machine getter process. It is an owned fixture boundary, no monkeypatch
+        # of guarded functions. Only separately launched emitted source may open
+        # actual endpoint namespace paths.
+        coordinator = f"""import sys,importlib.util,json,os
+from pathlib import Path
+spec=importlib.util.spec_from_file_location('coordinator_fixed_owner',{str(SUBJECT)!r})
+m=importlib.util.module_from_spec(spec);sys.modules[spec.name]=m;spec.loader.exec_module(m)
+def boundary(event,args):
+ if event=='subprocess.Popen':raise PermissionError('coordinator_must_not_probe_provider_machine')
+ if event=='open' and isinstance(args[0],(str,bytes)):
+  value=os.fsdecode(args[0])
+  if value in {{{Path(self.ns['root']).name!r},'adapter.py','protocol.py','operator.lock','marker.json'}} or value.startswith({str(Path(self.ns['root']))!r}+'/'):
+   raise PermissionError('coordinator_must_not_open_provider_namespace')
+sys.addaudithook(boundary)
+ns={self.ns!r}
+if {before!r}:
+ original=m.retain(Path({str(destination)!r}),ns,{self.op!r},Path({str(self.caller)!r}),{subject.sha(self.caller.read_bytes())!r},[])
+else:
+ remote=m.remote_namespace_from_returned(ns,{self.ns['binding']!r},{source!r},{out!r},{err!r},0)
+ original=m.retain_remote(Path({str(destination)!r}),remote,{self.op!r},Path({str(self.caller)!r}),{subject.sha(self.caller.read_bytes())!r},[])
+with m.SourceHold(original):
+ packet=m.controller_source(original,'submit')
+ Path({str(packet_path)!r}).write_bytes(packet)
+print(json.dumps({{'custody':original.custody,'providerPathsOpened':0,'machineProbes':0}}))
+"""
+        client = launch(coordinator.encode())
+        answer, errors = client.communicate(timeout=10)
+        self.assertEqual(client.returncode, 0, errors.decode(errors='replace'))
+        value = json.loads(answer)
+        self.assertEqual(value['providerPathsOpened'], 0)
+        if before:
+            return
+        # Exact emitted controller executes in the endpoint process. This is a
+        # LOCAL POSIX simulation of the remote route, never native SSH acceptance.
+        endpoint = launch(packet_path.read_bytes())
+        callback, callback_err = endpoint.communicate(timeout=10)
+        self.assertEqual(endpoint.returncode, 0, callback_err)
+        original = subject.reopen(destination, value['custody'])
+        with subject.SourceHold(original):
+            subject.accept_admission(original, packet_path.read_bytes(), callback, callback_err, 0)
+        self.original = original
+        streams = self.collected()
+        self.assertEqual(json.loads(streams['stdout'])['state'], 'passed')
+        self.assertEqual(streams['stderr'], b'complete-public-stderr\n')
+
+    def test_remote_capsule_foreign_source_or_binding_refused(self):
+        source = subject.remote_observer_source(self.ns)
+        process = launch(source)
+        out, err = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, err)
+        wrong = dict(self.ns['binding'], machine='foreign-machine')
+        with self.assertRaises(ValueError):
+            subject.remote_namespace_from_returned(self.ns, wrong, source, out, err, 0)
+        with self.assertRaises(ValueError):
+            subject.remote_namespace_from_returned(self.ns, self.ns['binding'], source + b'\n', out, err, 0)
+        value = json.loads(out)
+        value['binding']['boot'] = 'foreign-boot'
+        with self.assertRaises(ValueError):
+            subject.remote_namespace_from_returned(self.ns, self.ns['binding'], source, subject.encoded(value), err, 0)
+        self.assertFalse(self.marker.exists())
+
+    def test_external_admission_replacement_cannot_repin(self):
+        self.submitted()
+        self.terminal()
+        path = self.original.directory / 'original-admission.json'
+        expected = subject.read(path)[1]
+        raw = path.read_bytes()
+        path.rename(path.with_suffix('.original-preserved'))
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        with self.assertRaises(ValueError):
+            subject.controller_source(self.original, 'observe')
+        other = subject.reopen(self.original.directory, self.original.custody)
+        with self.assertRaises(ValueError):
+            subject.restore_admission(other, expected)
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_admission_capture_requires_actual_held_scope(self):
+        source = subject.controller_source(self.original, 'submit')
+        process = launch(source)
+        out, err = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0)
+        with self.assertRaisesRegex(ValueError, 'actual_initial_carrier_scope_required'):
+            subject.accept_admission(self.original, source, out, err, 0)
+        self.assertIsNone(subject.admission(self.original))
+        record = Path(self.ns['root']) / 'jobs' / self.op / 'owner.json'
+        identity = wait_for(lambda: json.loads(record.read_bytes())['owner'] if record.exists() else None)
+        self.owner_actors.append((identity['pid'], identity['birth']))
+        wait_for(self.done.exists)
+
+    def publication_role(self, location):
+        before = os.environ.get('NATIVE_PUBLICATION_BEFORE') == '1'
+        path = HERE / 'review-cafb/native_test_owner_v2.py' if before else SUBJECT
+        source = path.read_text()
+        helper = """
+def _controlled_publication_attack(root, op, external=None):
+    # Source-owned disposable LOCAL fixture role, never a runtime monkeypatch.
+    need(root.name in {'publication-remote', 'publication-local'})
+    marker = json.loads(read(root / 'marker.json')[0], object_pairs_hook=pairs)
+    need(marker['binding']['target'] == 'local-controlled')
+    owner = root / 'jobs' / op / 'owner.py'
+    original, original_pin = read(owner)
+    owner.rename(owner.with_suffix('.source-before-attack'))
+    owner.write_bytes(original)
+    owner.chmod(0o600)
+    receipt = root / 'admissions' / (op + '.custody.json')
+    receipt_before = read(receipt)[0]
+    body = json.loads(receipt_before, object_pairs_hook=pairs)
+    body['files']['owner.py'] = read(owner)[1]
+    receipt.write_bytes(encoded(body))
+    proof = {'ownerGenerationChanged': original_pin['generation'] != read(owner)[1]['generation'],
+             'receiptBodyChanged': sha(receipt_before) != sha(encoded(body))}
+    (root / 'publication-attack-executed.json').write_bytes(encoded(proof))
+    if external is not None:
+        claim = json.loads(read(external)[0], object_pairs_hook=pairs)
+        claim['originalCustodyPin'] = read(receipt)[1]
+        if 'originalCustodyBodyBase64' in claim:
+            claim['originalCustodyBodyBase64'] = base64.b64encode(read(receipt)[0]).decode()
+        external.write_bytes(encoded(claim))
+"""
+        if location == 'remote':
+            if before:
+                anchor = "                    result['adapterSubmitted'] = True\n"
+                replacement = "                    _controlled_publication_attack(root, op)\n" + anchor
+            else:
+                anchor = "                        custody = job_custody(root, ns, operation, caller, publish=True)\n"
+                replacement = anchor + "                        _controlled_publication_attack(root, op)\n"
+        else:
+            if before:
+                anchor = "        atomic(fd, 'original-admission.json', encoded(expected))\n"
+            else:
+                anchor = "        publication = atomic(fd, 'original-admission.json', encoded(expected), retained=True)\n"
+            replacement = anchor + "        _controlled_publication_attack(Path(ns['root']), operation['operationId'], original.directory / 'original-admission.json')\n"
+        self.assertEqual(source.count(anchor), 1)
+        role_source = source.replace(anchor, replacement) + helper
+        role_path = self.root / ('publication-' + location + '-adapter.py')
+        role_path.write_text(role_source)
+        role = load(role_path, 'controlled_publication_' + location + '_' + uuid.uuid4().hex)
+        ns = role.initialize(self.root / ('publication-' + location), 'local-controlled', OWNER, role.sha(OWNER.read_bytes()))
+        operation = str(uuid.uuid4())
+        original = role.retain(self.root / ('publication-' + location + '-original'), ns, operation,
+            self.caller, role.sha(self.caller.read_bytes()), [(OWNER, role.read(OWNER, private=False)[1])])
+        evidence = HERE / 'publication-race-evidence' / ((location + '-before-' if before else location + '-after-') + operation)
+        evidence.mkdir(parents=True)
+        (evidence / 'role.source').write_text(role_source)
+        return role, ns, original, evidence
+
+    def publication_actors(self, ns, original):
+        op = json.loads((original.directory / 'operation.json').read_bytes())['operationId']
+        owner_path = Path(ns['root']) / 'jobs' / op / 'owner.json'
+        identity = wait_for(lambda: json.loads(owner_path.read_bytes())['owner'] if owner_path.exists() else None)
+        self.owner_actors.append((identity['pid'], identity['birth']))
+        wait_for(self.done.exists)
+        return op
+
+    def test_remote_publication_return_cannot_select_rewritten_receipt(self):
+        role, ns, original, evidence = self.publication_role('remote')
+        packet = role.controller_source(original, 'submit')
+        (evidence / 'controller.source').write_bytes(packet)
+        process = launch(packet)
+        out, err = process.communicate(timeout=10)
+        (evidence / 'callback.stdout.public').write_bytes(out)
+        (evidence / 'callback.stderr.public').write_bytes(err)
+        (evidence / 'callback.json').write_text(json.dumps({'returnCode': process.returncode,
+            'stdoutBytes': len(out), 'stderrBytes': len(err), 'actualLocalOnly': True}) + '\n')
+        self.assertEqual(process.returncode, 0, err)
+        reply = json.loads(out)
+        self.publication_actors(ns, original)
+        proof = (Path(ns['root']) / 'publication-attack-executed.json').read_bytes()
+        (evidence / 'attack-proof.json').write_bytes(proof)
+        self.assertEqual(json.loads(proof), {'ownerGenerationChanged': True, 'receiptBodyChanged': True})
+        # Old whole adapter selects attacker's rewritten receipt as original.
+        # Successor must refuse before providing ANY external initial pin.
+        self.assertNotIn('originalCustodyPin', reply, 'publication return selected attacker current receipt')
+        self.assertFalse(reply.get('adapterSubmitted', False))
+        self.assertEqual(reply['state'], 'unknown')
+        self.assertIsNone(role.admission(original))
+
+    def test_local_publication_return_cannot_select_rewritten_admission(self):
+        role, ns, original, evidence = self.publication_role('local')
+        packet = role.controller_source(original, 'submit')
+        (evidence / 'controller.source').write_bytes(packet)
+        process = launch(packet)
+        out, err = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, err)
+        (evidence / 'callback.stdout.public').write_bytes(out)
+        (evidence / 'callback.stderr.public').write_bytes(err)
+        minted = False
+        with role.SourceHold(original):
+            try:
+                role.accept_admission(original, packet, out, err, process.returncode)
+                minted = True
+            except ValueError:
+                pass
+        self.publication_actors(ns, original)
+        proof = (Path(ns['root']) / 'publication-attack-executed.json').read_bytes()
+        (evidence / 'attack-proof.json').write_bytes(proof)
+        self.assertEqual(json.loads(proof), {'ownerGenerationChanged': True, 'receiptBodyChanged': True})
+        (evidence / 'authority.json').write_text(json.dumps({'externalAuthorityMinted': minted,
+            'actualLocalOnly': True, 'callbackReturnCode': process.returncode}) + '\n')
+        # Do not accept a new pin/body merely because a path was rewritten in
+        # the small publication -> pin transfer interval.
+        self.assertFalse(minted, 'external authority reselected rewritten local admission')
+        self.assertIsNone(role.admission(original))
+
+    def test_constructor_owner_source_change_never_launches(self):
+        # Source-owned controlled helper role, not a runtime function patch.
+        canonical = OWNER.read_bytes()
+        self.assertEqual(canonical, (HERE / 'v2-owner-read-before/canonical-owner.source').read_bytes())
+        unsafe = self.root / 'unsafe-owner-execution.json'
+        birth_source = __import__('inspect').getsource(jobs._birth)
+        payload = ("import os,sys,json\nfrom pathlib import Path\n" + birth_source +
+                   f"Path({str(unsafe)!r}).write_text(json.dumps({{'pid':os.getpid(),'birth':_birth(os.getpid())}}))\n").encode()
+        anchor = b'    @property\n    def digest(self) -> str:'
+        self.assertEqual(canonical.count(anchor), 1)
+        role = canonical.replace(anchor, b'        Path(__file__).write_bytes(' + repr(payload).encode() + b')\n\n' + anchor)
+        role_path = self.root / 'controlled-owner-role.source'
+        role_path.write_bytes(role)
+        ns = subject.initialize(self.root / 'constructor-namespace', 'local-controlled', role_path, subject.sha(role))
+        original = subject.retain(self.root / 'constructor-original', ns, str(uuid.uuid4()), self.caller,
+            subject.sha(self.caller.read_bytes()), [(OWNER, subject.read(OWNER, private=False)[1]),
+                                                    (role_path, subject.read(role_path, private=False)[1])])
+        process = launch(subject.controller_source(original, 'submit'))
+        out, err = process.communicate(timeout=10)
+        if os.environ.get('NATIVE_OWNER_READ_BEFORE') == '1':
+            wait_for(unsafe.exists)
+            identity = json.loads(unsafe.read_bytes())
+            self.owner_actors.append((identity['pid'], identity['birth']))
+        self.assertFalse(unsafe.exists(), 'constructor changed producer was executed before source closure')
+        self.assertFalse(self.marker.exists())
+        self.assertNotEqual(process.returncode, 0)
+        # First index is consumed but post-constructor source guard refuses
+        # BEFORE generic job admission. Unknown is not replacement authority.
+        job = Path(ns['root']) / 'jobs' / json.loads((original.directory / 'operation.json').read_bytes())['operationId']
+        self.assertFalse(job.exists())
+
+    def test_review_owner_and_receipt_repin_attack_rejected(self):
+        self.submitted()
+        self.terminal()
+        root = Path(self.ns['root'])
+        path = root / 'jobs' / self.op / 'owner.py'
+        raw = path.read_bytes()
+        path.rename(path.with_suffix('.original-preserved'))
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        receipt = root / 'admissions' / (self.op + '.custody.json')
+        value = json.loads(receipt.read_bytes())
+        value['files']['owner.py'] = subject.read(path)[1]
+        receipt.write_bytes(subject.encoded(value))
+        self.assertEqual(self.observed()['state'], 'unknown', 'must not re-adopt attacker re-pinned receipt')
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+    def test_review_truncated_raw_never_complete(self):
+        output = self.root / 'oversize-wire'
+        output.mkdir(mode=0o700)
+        raw = b'x' * (subject.LIMIT + 1)
+        kwargs = {} if os.environ.get('NATIVE_REVIEW_BEFORE') == '1' else {'stdout_eof': True, 'stderr_eof': True}
+        subject.retain_returned(output, 'oversize', raw, b'', 0, lambda: None, **kwargs)
+        value = json.loads((output / 'oversize.callback.json').read_bytes())
+        self.assertFalse(value['complete'], 'bounded prefix must never claim full retained completion')
+        if not os.environ.get('NATIVE_REVIEW_BEFORE'):
+            self.assertTrue(value['stdoutTruncated'])
+            self.assertEqual(value['stdoutSha256'], subject.sha(raw))
+            self.assertEqual(value['stdoutRetainedSha256'], subject.sha(raw[:subject.LIMIT]))
+
+    def test_missing_eof_even_returncode_never_complete(self):
+        output = self.root / 'missing-eof-wire'
+        output.mkdir(mode=0o700)
+        subject.retain_returned(output, 'missing', b'actual-prefix', None, 0, lambda: None)
+        value = json.loads((output / 'missing.callback.json').read_bytes())
+        self.assertFalse(value['complete'])
+        self.assertFalse(value['stdoutEOF'])
+        self.assertFalse(value['stderrAvailable'])
+
+    def test_lost_initial_authority_stays_unknown_no_repin(self):
+        # ACTUAL submit completes but original callback/custody pin is lost.
+        execute(self.packet)
+        time.sleep(.8)
+        reply = self.observed()
+        self.assertEqual(reply['state'], 'unknown')
+        self.assertIsNone(subject.admission(self.original))
+        # Readonly status does not mint new generation authority from current disk.
+        self.assertEqual(execute(subject.controller_source(self.original, 'collect', 'stdout', 0))['state'], 'unknown')
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+        identity = json.loads((Path(self.ns['root']) / 'jobs' / self.op / 'owner.json').read_bytes())['owner']
+        self.owner_actors.append((identity['pid'], identity['birth']))
+
+    def test_terminal_stream_tamper_refused(self):
+        self.submitted()
+        self.terminal()
+        output = Path(self.ns['root']) / 'jobs' / self.op / 'stdout.bin'
+        with output.open('ab') as stream:
+            stream.write(b'changed')
+        process = launch(subject.controller_source(self.original, 'collect', 'stdout', 0))
+        out, err = process.communicate(timeout=10)
+        self.assertNotEqual(process.returncode, 0)
+        self.assertIn(b'stream_integrity_mismatch', err)
+
+
+if __name__ == '__main__':
+    try:
+        unittest.main(verbosity=2)
+    finally:
+        name = 'review-before-actors.json' if os.environ.get('NATIVE_REVIEW_BEFORE') == '1' else 'v3-controlled-actors.json'
+        (HERE / name).write_text(json.dumps({'scope': 'LOCAL disposable processes only', 'observations': CLOSURES,
+            'retrospectiveBirthClaims': False, 'activeTestPopenHandles': sum(a['process'].poll() is None for a in ACTORS)}, sort_keys=True) + '\n')

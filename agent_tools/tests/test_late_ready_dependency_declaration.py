@@ -14,11 +14,20 @@ _CONSUMER = 'agent_tools/tests/test_ssh_gateway_tmux_ready_reconciliation.py'
 _STATUS = 'agent_tools/tests/test_ssh_gateway_tmux_reconciliation_status.py'
 _BEFORE = 'agent_tools/tests/fixtures/ssh_late_ready_handshake/ready.before.source'
 _PROVENANCE = 'agent_tools/tests/fixtures/ssh_late_ready_handshake/provenance.json'
-_CURRENT_SHA = '9cce26e6a8fe224cd3fde7428c467838df96ef46b534471f2ade07a3cb207b67'
+# The consumer's af653 generation, its SSH-argv launcher generation, then its
+# registry-delegating cleanup generation.
+_PREVIOUS_SHA = '9cce26e6a8fe224cd3fde7428c467838df96ef46b534471f2ade07a3cb207b67'
+_LAUNCHER_SHA = '4efc7873a699fcb4449b1f972d24e61f63b1f39d73b3b7107017cf98a6a54238'
+_CURRENT_SHA = 'b804be6d65ed91b4ed93e2c7b71864937228c1c14d57b11ba04194810bccdb6f'
 _BASELINE_SHA = '7adb04b07af9bfc18d72a685f48da8bd0c2a5104cd4ef35217a39cab0377ba77'
 _BASELINE = 'e14f6b04726885df28c0d49313f43dbf22752b01'
 # Exact data row preserved from af653; no old module or fixture is executed.
 _UNFIXED = {'reason': 'The owned late-ready handshake regression holds and hashes the complete authentic before source and parsed provenance, then imports only that exact copied before module through its real filename. Its literal repository imports are identical to suppliers already imported by this current test and remain ordinary static transitive edges; temporary control/entry/diagnostic files are owned fixture data, not repository authority. This finite declaration admits only the preserved before module and its provenance and does not qualify native SSH, VM work, or a successful audit receipt.', 'scopes': ['agent_tools/tests/fixtures/ssh_late_ready_handshake/ready.before.source', 'agent_tools/tests/fixtures/ssh_late_ready_handshake/provenance.json'], 'sourceSha256': ['9cce26e6a8fe224cd3fde7428c467838df96ef46b534471f2ade07a3cb207b67']}
+# Fixed v1 helper context entered by the current controlled historical methods.
+_HELPER_SCOPES = ('agent_tools/tests/ssh_gateway_historical_fixture.py',
+                  'agent_tools/tests/fixtures/ssh_gateway_bound_carrier/master.private-config.before.source',
+                  'agent_tools/tests/fixtures/ssh_gateway_bound_carrier/diagnostic.carrier-only.before.source',
+                  'agent_tools/tests/fixtures/ssh_gateway_bound_carrier/provenance.json')
 _SUPPLIERS = ('agent_tools/ssh_connection_recovery.py', 'agent_tools/ssh_expired_recovery_retirement.py', 'agent_tools/ssh_gateway_tmux_d606_diagnostic.py', 'agent_tools/ssh_gateway_tmux_master.py', 'agent_tools/ssh_gateway_tmux_master_ssh.py', 'agent_tools/ssh_gateway_tmux_ready_reconciliation.py', 'agent_tools/ssh_recovery_adoption.py', 'agent_tools/tests/test_ssh_expired_recovery_retirement.py', 'agent_tools/tests/test_ssh_gateway_tmux_d606_diagnostic.py')
 
 
@@ -34,7 +43,7 @@ class DeclarationOriginTests(unittest.TestCase):
 
     def selection(self, *, current=None, baseline=None):
         # This is the real selector's old/current tuple at one authentic origin.
-        sources = {name: None for name in _SUPPLIERS}
+        sources = {name: None for name in _SUPPLIERS + _HELPER_SCOPES}
         sources.update({
             _CONSUMER: (self.current if current is None else current,
                         self.before if baseline is None else baseline),
@@ -53,17 +62,17 @@ class DeclarationOriginTests(unittest.TestCase):
                          result.modules)
 
     def test_preserved_single_generation_declaration_refuses_same_positive(self):
-        self.assertEqual([_CURRENT_SHA], _UNFIXED['sourceSha256'])
+        self.assertEqual([_PREVIOUS_SHA], _UNFIXED['sourceSha256'])
         self.assertEqual([_BEFORE, _PROVENANCE], _UNFIXED['scopes'])
         with mock.patch.dict(selector.REVIEWED_DYNAMIC_DEPENDENCIES, {_CONSUMER: copy.deepcopy(_UNFIXED)}):
             with self.assertRaisesRegex(selector.SelectionError,
                                         'Reviewed source dependency declaration changed: ' + _CONSUMER):
                 self.selection()
 
-    def test_corrected_declaration_keeps_only_exact_generations_and_two_resources(self):
+    def test_corrected_declaration_keeps_only_exact_generations_and_reviewed_scopes(self):
         row = self.manifest['loaders'][_CONSUMER]
-        self.assertEqual([_CURRENT_SHA, _BASELINE_SHA], row['sourceSha256'])
-        self.assertEqual([_BEFORE, _PROVENANCE], row['scopes'])
+        self.assertEqual([_PREVIOUS_SHA, _BASELINE_SHA, _LAUNCHER_SHA, _CURRENT_SHA], row['sourceSha256'])
+        self.assertEqual(sorted([*_SUPPLIERS, _BEFORE, _PROVENANCE, *_HELPER_SCOPES]), sorted(row['scopes']))
         self.assertEqual(row, selector.REVIEWED_DYNAMIC_DEPENDENCIES[_CONSUMER])
 
     def test_unknown_current_and_baseline_generations_still_refuse(self):

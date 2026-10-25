@@ -1,0 +1,29 @@
+
+ERROR: test_async_ok_is_not_accepted_and_input_is_not_reached (__main__.InstallerLifecycleTest.test_async_ok_is_not_accepted_and_input_is_not_reached)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/scripts/test_android_installer_lifecycle.py", line 132, in setUp
+    self.readiness_patch = patch.object(driver.readiness_entrypoints, "from_environment",
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'android_installer_lifecycle' has no attribute 'readiness_entrypoints'
+
+
+ERROR: test_async_ok_is_not_accepted_and_input_is_not_reached (test_android_installer_lifecycle.InstallerLifecycleTest.test_async_ok_is_not_accepted_and_input_is_not_reached)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/scripts/test_android_installer_lifecycle.py", line 132, in setUp
+    self.readiness_patch = patch.object(driver.readiness_entrypoints, "from_environment",
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'android_installer_lifecycle' has no attribute 'readiness_entrypoints'
+
+
+ERROR: setUpClass (__main__.NativeJvmPreflightTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/scripts/test_native_jvm_tests.py", line 86, in setUpClass
+    raise RuntimeError(result.stderr)
+RuntimeError: The operation couldn’t be completed. Unable to locate a Java Runtime.
+Please visit http://www.java.com for information on installing Java.
+
+
+

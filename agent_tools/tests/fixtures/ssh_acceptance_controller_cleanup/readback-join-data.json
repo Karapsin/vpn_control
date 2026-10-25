@@ -1,0 +1,62 @@
+{
+  "intent": {
+    "operationId": "df797590-6f43-4b6b-8a79-54fc8460067d",
+    "request": {
+      "host": "gateway",
+      "operationId": "df797590-6f43-4b6b-8a79-54fc8460067d",
+      "program": {
+        "args": [
+          "owned-acceptance-direct"
+        ],
+        "cwd": "/tmp",
+        "language": "python3",
+        "source": "from pathlib import Path\nimport sys,time\np=Path('/tmp/vpn-control-program-1000-df797590-6f43-4b6b-8a79-54fc8460067d/acceptance-counter')\nwith p.open('x')as f:\n f.write('execution\\n');f.flush()\n for n in range(1600):\n  f.write(str(n)+'\\n');f.flush();print(n,flush=True);time.sleep(0.15)\nsys.stderr.write('fixed public acceptance direct retained stderr\\n')\n",
+        "targetContext": {
+          "bootId": "f0efe38b-5ce1-40f1-a7d6-a2a1e816d1fe",
+          "home": "/home/kardinal",
+          "kind": "ssh",
+          "principal": "kardinal",
+          "uid": 1000
+        }
+      }
+    },
+    "requestSha256": "e5e3b30b7d7b34f39e1069403e0526f6965a0d838e8b68f267c62cb4adbb329f"
+  },
+  "manifest": {
+    "agent_tools/durable_remote_job.py": "f3b4707528c16f176b80781dd86208c324c1e10d6eb2c14451dcf4be08d0e734"
+  },
+  "packet": {
+    "binding": {
+      "account": "1000",
+      "boot": "f0efe38b-5ce1-40f1-a7d6-a2a1e816d1fe",
+      "machine": "a4bbd4f5951247a7ab71d837061ef312",
+      "target": "program-target"
+    },
+    "generation": [
+      35,
+      513511
+    ],
+    "operationId": "df797590-6f43-4b6b-8a79-54fc8460067d",
+    "ownerSourceSha256": "f3b4707528c16f176b80781dd86208c324c1e10d6eb2c14451dcf4be08d0e734",
+    "remoteRoot": "/tmp/vpn-control-program-1000-df797590-6f43-4b6b-8a79-54fc8460067d",
+    "requestSha256": "cafb8797fc12816aa432a979935dd5a542d0d3822f9bf8edc1c452342a160d40"
+  },
+  "request": {
+    "operationId": "df797590-6f43-4b6b-8a79-54fc8460067d",
+    "program": {
+      "args": [
+        "owned-acceptance-direct"
+      ],
+      "cwd": "/tmp",
+      "language": "python3",
+      "source": "from pathlib import Path\nimport sys,time\np=Path('/tmp/vpn-control-program-1000-df797590-6f43-4b6b-8a79-54fc8460067d/acceptance-counter')\nwith p.open('x')as f:\n f.write('execution\\n');f.flush()\n for n in range(1600):\n  f.write(str(n)+'\\n');f.flush();print(n,flush=True);time.sleep(0.15)\nsys.stderr.write('fixed public acceptance direct retained stderr\\n')\n",
+      "targetContext": {
+        "bootId": "f0efe38b-5ce1-40f1-a7d6-a2a1e816d1fe",
+        "home": "/home/kardinal",
+        "kind": "ssh",
+        "principal": "kardinal",
+        "uid": 1000
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "sourceSha256": "1c36e1ea1273faef1e13350be2c8f1da0484e7c5bdfde4a16f154090f905af2b",
+  "publicMeasurementSha256": "9898f88e5e38610b7f41df40070708186fb2f9dadcfd2f53852341d9fa8b23c1",
+  "nativeEvidence": ".runtime/tool-recovery-qemu/cold-bookkeeping-measurement/{actual-sample,result}.json",
+  "projection": "Only public capacity arithmetic and exact original PID/birth/configured memory; opaque reservation identities are excluded.",
+  "failure": "Already running own2GiB was charged again:26GiB census+18GiB otherclaims+16GiB headroom+2GiB ownagain exceeded61820MiB; counting exact observed own actor once fits."
+}

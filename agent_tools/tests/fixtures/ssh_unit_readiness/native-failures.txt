@@ -1,0 +1,25 @@
+
+ERROR: test_package_dispatch_keeps_identity_and_device (agent_tools.tests.test_ssh_acceptance_route_integration.AcceptanceRouteIntegration.test_package_dispatch_keeps_identity_and_device) (action='android-availability')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_acceptance_route_integration.py", line 33, in test_package_dispatch_keeps_identity_and_device
+    result = server._ssh_workflow_impl(action, 'archlinux', 10, identity, None, device)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/mcp_server.py", line 2317, in call
+    with _agent_module("ssh_transport").admitted_transport(
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+            REPO_ROOT, host, operation, deadline=time.monotonic() + timeout):
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'function' object does not support the context manager protocol (missed __exit__ method)
+
+
+ERROR: test_real_transport_accepts_encoded_remote_recovery_command (agent_tools.tests.test_ssh_connection_recovery.SshConnectionRecoveryTest.test_real_transport_accepts_encoded_remote_recovery_command)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_connection_recovery.py", line 290, in test_real_transport_accepts_encoded_remote_recovery_command
+    argv = transport.build_ssh_argv(self.config(), "gateway", 30, command=command)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/ssh_transport.py", line 1053, in build_ssh_argv
+    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, **options)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/ssh_transport.py", line 1012, in _build_ssh_argv
+    raise SshConfigError('Admitted readiness SSH master is unavailable.') from None
+ssh_transport.SshConfigError: Admitted readiness SSH master is unavailable.
+

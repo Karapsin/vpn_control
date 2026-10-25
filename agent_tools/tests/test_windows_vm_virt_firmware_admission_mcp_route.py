@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from agent_tools import mcp_server
+from agent_tools.tests import route_adapter
 
 
 REQUEST = {"host": "archlinux", "timeoutSeconds": 20}
@@ -12,18 +13,21 @@ REQUEST = {"host": "archlinux", "timeoutSeconds": 20}
 
 class WindowsVmVirtFirmwareAdmissionRouteTest(unittest.TestCase):
     def test_exact_read_only_route(self):
-        with mock.patch.object(mcp_server, "_agent_module") as module:
-            module.return_value.observe.return_value = {
-                "state": "sudo-nopasswd-pacman", "host": "archlinux",
-                "noninteractivePacmanEligible": True,
-                "nativeActionAllowed": False,
-            }
+        adapter = mock.Mock()
+        adapter.observe.return_value = {
+            "state": "sudo-nopasswd-pacman", "host": "archlinux",
+            "noninteractivePacmanEligible": True,
+            "nativeActionAllowed": False,
+        }
+        with mock.patch.object(mcp_server, "_agent_module",
+                               side_effect=route_adapter.admitted_adapter(adapter)) as module:
             result = mcp_server._vm_workflow_impl("windows-vm-virt-firmware-admission", REQUEST)
             self.assertTrue(result["ok"])
             self.assertFalse(result["nativeActionAllowed"])
             self.assertFalse(result["productAction"])
-            module.assert_called_once_with("windows_vm_virt_firmware_admission")
-            module.return_value.observe.assert_called_once_with(mcp_server.REPO_ROOT, REQUEST)
+            self.assertEqual([mock.call("windows_vm_virt_firmware_admission")],
+                             route_adapter.adapter_calls(module))
+            adapter.observe.assert_called_once_with(mcp_server.REPO_ROOT, REQUEST)
 
     def test_invalid_host_timeout_or_extra_key_cannot_dispatch(self):
         with mock.patch.object(mcp_server, "_agent_module") as module:

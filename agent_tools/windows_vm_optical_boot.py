@@ -567,7 +567,7 @@ def _remote(root: str | Path, host: str, correlation_id: str, mode: str,
         raise ValueError("Configured Arch transport is unavailable")
     argv = ssh_transport.build_ssh_argv(config, host, min(timeout_seconds, 30),
                                         command=("python3", "-c", "exec(" + repr(program) + ")"))
-    result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    result = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             timeout=timeout_seconds, check=False)
     if result.returncode != 0 or len(result.stdout) > 4096:
         raise ValueError("Windows optical boot transport is unknown")

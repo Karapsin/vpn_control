@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "kind": "controlled-whole-helper-forged-carrier-failure",
+  "beforeSha256": "b40ec6208f56662e02e1b46255ec91ed2bfc810a2b3aa09d1fae07d175ea70c7",
+  "testBeforeSha256": "ce2d3b05fe8e475df5cdaaf9ffeafb2627dc6028a0f0472e81cbccb8d42175ee",
+  "originalLogSha256": "00506f7bb14abc7bf462d13e12a1b90e90464131c9bf21d63a149f2bd4670dd1",
+  "originalLogPath": ".runtime/tool-recovery-windows/direct/bootstrap-carrier-before-test.log",
+  "testFailureCount": 1,
+  "cases": [
+    {
+      "module": "before",
+      "historyMinted": true,
+      "carrierCalls": 1
+    },
+    {
+      "module": "current-unfixed",
+      "historyMinted": true,
+      "carrierCalls": 1
+    }
+  ],
+  "actualSocketMarker": true,
+  "originalHostJobSubmitted": false,
+  "nativeVmCalls": 0,
+  "nativeFailureClaimed": false
+}

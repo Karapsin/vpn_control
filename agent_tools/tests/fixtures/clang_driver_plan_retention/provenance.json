@@ -1,0 +1,9 @@
+{
+  "cause": "Source review: full child output in memory was discarded on waitpid/birth/bookkeeping exceptions. Controlled actual child reproduces authentic whole-before loss.",
+  "nativeFailureClaimed": false,
+  "schemaVersion": 1,
+  "sources": {
+    "owner.before.source": "9b9715123936d2de2e2ea5b07911fce3e39071cc817d57d4db33daaa720dcaca",
+    "owner.current.source": "05a35fc19c2cc97ee65c65baac2e77b2745249afe22685a97f10fdd1a930331c"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "managed check/test children inherited the launching process stdin: mcp_server._run (MCP transport=stdio JSON-RPC stream), the agent_test_runner worker Popen and the affected_agent_tests run loop; a selected test whose fixture peer reads stdin to EOF consumed a piped sentinel and, with an open terminal-like pipe, blocked until its run_ssh timeout",
+  "controlledFailure": "test_ssh_absolute_deadline and test_ssh_dispatch_retry stage peers consumed the caller sentinel through each launch point while reporting OK; an open stdin pipe made them raise TimeoutExpired",
+  "causalAssertion": "agent_tools.tests.test_runner_stdin_isolation.RunnerStdinIsolationTests",
+  "additionalFinding": {
+    "consumer": "agent_tools/tests/test_mcp_failed_first_reruns.py",
+    "finding": "the managed pre-push ran the whole 808-module agent selection as one command, which outgrew its 50-minute per-command bound with no per-module results; failed-first reran an agent command without failed modules unchanged, removed modules included, and the check launcher SIGKILLed a timed-out child at once, so a runner's own-session workers outlived it and could overlap the next command",
+    "controlledFailure": "mcp_server.before.source plans the gate and one whole bulk command, reruns an unparsed command (a bulk command or a narrowed one-module rerun) unchanged so a removed module, reported as unittest.loader._FailedTest, keeps the failure set failed, and its _run sends a timed-out SIGTERM-trapping child SIGKILL without SIGTERM, leaving the child's own-session worker running",
+    "sourceSelection": "AST-selects run_checks, _run_check_commands, _commands_for, _record_check_outcome, _failed_modules, _failed_commands, _failure_set_path and _run with controlled globals over an inert owned root",
+    "sourceNote": "this beforeimage predates the stdin fix of the tree whose managed pre-push timed out; its planner, runner and failure-set functions equal that tree's and its _run differs only by stdin isolation, which the timeout regression does not use",
+    "causalAssertion": "agent_tools.tests.test_mcp_failed_first_reruns"
+  },
+  "files": {
+    "mcp_server.before.source": {
+      "path": "agent_tools/mcp_server.py",
+      "baseline": "d24c1904 recovery worktree",
+      "sha256": "075d8726fdc823caeb3293811d512b065d57557cc63d7a1623919e9de7516465"
+    },
+    "agent_test_runner.before.source": {
+      "path": "agent_tools/agent_test_runner.py",
+      "baseline": "d24c1904 recovery worktree",
+      "sha256": "5cb3ad7066980985b12000b5d373a7299e23ce75b3d18ef966d0f6c3464d9e1b"
+    },
+    "affected_agent_tests.before.source": {
+      "path": "agent_tools/affected_agent_tests.py",
+      "baseline": "d24c1904",
+      "sha256": "5e09740df63d87e9f2c8dfbc322e302353cb4026a122878d701f8ee912158237"
+    }
+  }
+}

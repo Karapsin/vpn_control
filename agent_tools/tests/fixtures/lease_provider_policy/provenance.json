@@ -1,0 +1,8 @@
+{
+  "files": {
+    "actual-mismatch.json": "bdd8613991a67bb27a0db50bb8d633fc7c14a2d4a33da4ec8dc9133fb6b60b81",
+    "policy.before.json": "1973cf412c9221379c1f4c78d6fe94f931eca1f6aa3167a827ac07c6e25df1db",
+    "policy.before.source": "62ae25d5851e60072d3a5cef8036c9e1ecccef8bf51a3780baa7a602467ae121"
+  },
+  "schemaVersion": 1
+}

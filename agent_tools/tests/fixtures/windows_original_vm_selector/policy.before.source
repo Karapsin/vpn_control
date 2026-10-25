@@ -1,0 +1,1564 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {
+      "surface": "android_installer_lifecycle",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "guest_agent",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "capture_visual_macos_tart",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "capture_visual_windows_qemu",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "macos_vm_resource_monitor",
+      "classification": "existing_lifecycle",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "background_submission",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "apk-publish": "ssh_workflow:apk-status",
+        "fixture-publish": "ssh_workflow:fixture-status",
+        "program-start": "ssh_workflow:program-reconcile",
+        "windows-caller-file-stage": "ssh_workflow:windows-caller-file-receipt"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "intentional_phase",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "disconnected",
+      "actions": {
+        "forward-close": "ssh_workflow:forward-close",
+        "tmux-disconnect-probe": "ssh_workflow:tmux-disconnect-probe"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "connection-channel-keeper-source": "ssh_workflow:connection-channel-keeper-source",
+        "inventory": "ssh_workflow:inventory"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "connection-nested-orphan-archive-status": "ssh_workflow:connection-nested-orphan-archive-status",
+        "forward-status": "ssh_workflow:forward-status",
+        "program-collect": "ssh_workflow:program-collect",
+        "program-status": "ssh_workflow:program-status",
+        "windows-caller-file-receipt": "ssh_workflow:windows-caller-file-receipt"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "recovery_primitive",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "connection-adopt": "ssh_workflow:connection-adopt",
+        "connection-channel-ensure": "ssh_workflow:connection-channel-ensure",
+        "connection-channel-keep": "ssh_workflow:connection-channel-keep",
+        "connection-channel-keep-status": "ssh_workflow:connection-channel-keep-status",
+        "connection-channel-prepare": "ssh_workflow:connection-channel-prepare",
+        "connection-channel-status": "ssh_workflow:connection-channel-status",
+        "connection-direct-channel-prepare": "ssh_workflow:connection-direct-channel-prepare",
+        "connection-direct-channel-select": "ssh_workflow:connection-direct-channel-select",
+        "connection-direct-channel-status": "ssh_workflow:connection-direct-channel-status",
+        "connection-master-status": "ssh_workflow:connection-master-status",
+        "connection-nested-orphan-archive": "ssh_workflow:connection-nested-orphan-archive",
+        "connection-recover": "ssh_workflow:connection-recover",
+        "connection-session-close": "ssh_workflow:connection-session-close",
+        "connection-session-close-status": "ssh_workflow:connection-session-close-status",
+        "connection-session-prepare": "ssh_workflow:connection-session-prepare",
+        "connection-session-retire": "ssh_workflow:connection-session-retire",
+        "connection-session-retirement-status": "ssh_workflow:connection-session-retirement-status",
+        "connection-session-status": "ssh_workflow:connection-session-status",
+        "gateway-tmux-prepare": "ssh_workflow:gateway-tmux-prepare",
+        "gateway-tmux-reconciliation-status": "ssh_workflow:gateway-tmux-reconciliation-status",
+        "gateway-tmux-release": "ssh_workflow:gateway-tmux-release",
+        "gateway-tmux-status": "ssh_workflow:gateway-tmux-status",
+        "gateway-tmux-status-diagnostic": "ssh_workflow:gateway-tmux-status-diagnostic"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "remote_observation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-availability": "ssh_workflow:android-availability",
+        "android-observe": "ssh_workflow:android-observe",
+        "apk-status": "ssh_workflow:apk-status",
+        "fixture-status": "ssh_workflow:fixture-status",
+        "gateway-tmux-availability": "ssh_workflow:gateway-tmux-availability",
+        "job-status": "ssh_workflow:job-status",
+        "probe": "ssh_workflow:probe",
+        "program-reconcile": "ssh_workflow:program-reconcile"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "retired",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "forward-open": "ssh_workflow:forward-open"
+      }
+    },
+    {
+      "surface": "visual_platform",
+      "classification": "existing_lifecycle",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "bootstrap": "visual_platform:probe",
+        "start": "visual_platform:probe"
+      }
+    },
+    {
+      "surface": "visual_platform",
+      "classification": "hosted_lifecycle",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "dispatch-hosted": "visual_platform:download-hosted",
+        "download-hosted": "visual_platform:download-hosted"
+      }
+    },
+    {
+      "surface": "visual_platform",
+      "classification": "intentional_phase",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "stopped",
+      "actions": {
+        "stop": "visual_platform:probe"
+      }
+    },
+    {
+      "surface": "visual_platform",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "capture-local": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "visual_platform",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "android-local-config": "visual_platform:android-local-config",
+        "plan": "visual_platform:plan",
+        "stamp": "visual_platform:stamp",
+        "verify": "visual_platform:verify"
+      }
+    },
+    {
+      "surface": "visual_platform",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "probe": "visual_platform:probe"
+      }
+    },
+    {
+      "surface": "visual_review",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "complete": "visual_review:complete",
+        "ingest": "visual_review:ingest",
+        "record": "visual_review:record",
+        "start": "visual_review:start",
+        "status": "visual_review:status"
+      }
+    },
+    {
+      "surface": "visual_workflow",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "complete": "visual_workflow:complete",
+        "start": "visual_workflow:status",
+        "status": "visual_workflow:status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "background_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "guest_agent"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-package-install-start": "vm_workflow:android-package-install-status",
+        "android-readback-start": "vm_workflow:android-readback-status",
+        "android-vpn-permission-reset-start": "vm_workflow:android-vpn-permission-reset-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "existing_lifecycle",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "windows-vm-deploy-start": "vm_workflow:windows-vm-deploy-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "intentional_phase",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "acceptance-status": "vm_workflow:acceptance-status",
+        "batch-start": "vm_workflow:batch-status",
+        "fixture-preflight": "vm_workflow:fixture-preflight",
+        "scenario-start": "vm_workflow:scenario-status",
+        "vm-preflight-batch": "vm_workflow:vm-preflight-batch",
+        "windows-msi-http-transfer": "vm_workflow:windows-msi-http-transfer",
+        "windows-update-fixture-http-transfer": "vm_workflow:windows-update-fixture-http-transfer"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "intentional_phase",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "stopped",
+      "actions": {
+        "baseline-capture": "vm_workflow:baseline-capture",
+        "baseline-restore": "vm_workflow:baseline-restore",
+        "linux-guest-park-start": "vm_workflow:linux-guest-park-status",
+        "windows-vm-deploy-stop": "vm_workflow:windows-vm-deploy-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "guest_agent",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-action-acceptance-start": "vm_workflow:android-action-acceptance-status",
+        "android-consent-acceptance-start": "vm_workflow:android-consent-acceptance-status",
+        "android-consent-grant-acceptance-start": "vm_workflow:android-consent-grant-acceptance-status",
+        "android-document-acceptance-start": "vm_workflow:android-document-acceptance-status",
+        "android-document-recovery-start": "vm_workflow:android-document-recovery-status",
+        "android-document-retry-recovery-start": "vm_workflow:android-document-retry-recovery-status",
+        "android-document-retry-start": "vm_workflow:android-document-retry-status",
+        "android-installer-dispatch-start": "vm_workflow:android-installer-dispatch-status",
+        "android-native-fixture-start": "vm_workflow:android-native-fixture-status",
+        "android-runtime-acceptance-start": "vm_workflow:android-runtime-acceptance-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "admit-plan": "vm_workflow:admit-plan",
+        "android-fixture-tls-mint": "vm_workflow:android-fixture-tls-mint",
+        "artifact-cache-check": "vm_workflow:artifact-cache-check",
+        "artifact-find": "vm_workflow:artifact-find",
+        "artifact-register": "vm_workflow:artifact-register",
+        "artifact-reuse-check": "vm_workflow:artifact-reuse-check",
+        "artifact-set-freeze": "vm_workflow:artifact-set-freeze",
+        "artifact-set-verify": "vm_workflow:artifact-set-verify",
+        "artifact-verify": "vm_workflow:artifact-verify",
+        "baseline-source-inventory": "vm_workflow:baseline-source-inventory",
+        "batch-plan": "vm_workflow:batch-plan",
+        "build-timing-report": "vm_workflow:build-timing-report",
+        "bundle-prepare": "vm_workflow:bundle-prepare",
+        "bundle-verify": "vm_workflow:bundle-verify",
+        "credential-status": "vm_workflow:credential-status",
+        "environment-release": "vm_workflow:environment-release",
+        "environment-reserve": "vm_workflow:environment-reserve",
+        "environment-status": "vm_workflow:environment-status",
+        "inspect-input": "vm_workflow:inspect-input",
+        "matrix-equivalence-record": "vm_workflow:matrix-equivalence-record",
+        "matrix-record": "vm_workflow:matrix-record",
+        "matrix-retract": "vm_workflow:matrix-retract",
+        "matrix-status": "vm_workflow:matrix-status",
+        "readiness-providers": "vm_workflow:readiness-providers",
+        "source-review-close": "vm_workflow:source-review-close"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "linux-package-fixture-build-pre-effect-close": "vm_workflow:linux-package-fixture-build-pre-effect-close",
+        "linux-package-fixture-build-pre-effect-status": "vm_workflow:linux-package-fixture-build-pre-effect-status",
+        "linux-package-fixture-build-terminal-ready-close": "vm_workflow:linux-package-fixture-build-terminal-ready-close",
+        "linux-package-fixture-build-terminal-ready-status": "vm_workflow:linux-package-fixture-build-terminal-ready-status",
+        "macos-fixture-guest-stage-collect": "vm_workflow:macos-fixture-guest-stage-collect",
+        "macos-fixture-stage-collect": "vm_workflow:macos-fixture-stage-collect",
+        "macos-installer-recovery-status": "vm_workflow:macos-installer-recovery-status",
+        "macos-machine-server-stop-collect": "vm_workflow:macos-machine-server-stop-collect",
+        "readiness-lease-cancel": "vm_workflow:readiness-lease-status",
+        "readiness-lease-status": "vm_workflow:readiness-lease-status",
+        "windows-cp117-c32-host-archive-self-test": "vm_workflow:windows-cp117-c32-host-archive-self-test",
+        "windows-cp117-c32-retained-parser": "vm_workflow:windows-cp117-c32-retained-parser",
+        "windows-cp117-guest-agent-recovery-parser": "vm_workflow:windows-cp117-guest-agent-recovery-parser",
+        "windows-cp117-guest-agent-recovery-successor-parser": "vm_workflow:windows-cp117-guest-agent-recovery-successor-parser",
+        "windows-cp117-retirement-recovery-parser": "vm_workflow:windows-cp117-retirement-recovery-parser",
+        "windows-cp117-source-campaign-parser": "vm_workflow:windows-cp117-source-campaign-parser",
+        "windows-cp117-staged-fixture-retire-parser": "vm_workflow:windows-cp117-staged-fixture-retire-parser"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "original_operation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-document-recovery-finalize": "vm_workflow:android-document-recovery-status",
+        "android-document-retry-recovery-finalize": "vm_workflow:android-document-retry-recovery-status",
+        "android-document-retry-unknown-close": "vm_workflow:android-document-retry-status",
+        "android-endpoint-admission-cleanup": "vm_workflow:android-endpoint-admission-status",
+        "android-endpoint-admission-start": "vm_workflow:android-endpoint-admission-status",
+        "android-endpoint-cleanup-readmission": "vm_workflow:android-endpoint-cleanup-readmission-status",
+        "android-endpoint-cleanup-readmitted": "vm_workflow:android-endpoint-cleanup-readmitted-status",
+        "android-installer-abort-prelaunch": "vm_workflow:android-installer-dispatch-status",
+        "android-installer-callback-continue": "vm_workflow:android-installer-callback-status-continue",
+        "android-installer-callback-handoff-ready": "vm_workflow:android-installer-callback-status-handoff-ready",
+        "android-native-fixture-stop": "vm_workflow:android-native-fixture-status",
+        "android-package-install-unknown-release": "vm_workflow:android-package-install-status",
+        "android-proxy-recover": "vm_workflow:android-proxy-recovery-status",
+        "arch-tmux-install-start": "vm_workflow:arch-tmux-install-status",
+        "linux-deb-arch-acceptance-start": "vm_workflow:linux-deb-arch-acceptance-status",
+        "linux-deb-arch-guest-prepare-start": "vm_workflow:linux-deb-arch-guest-prepare-status",
+        "linux-owner-public-quit-start": "vm_workflow:linux-owner-public-quit-status",
+        "linux-package-fixture-build-start": "vm_workflow:linux-package-fixture-build-status",
+        "linux-package-tmux-resource-prepare": "none:legacy-foreground-outcome-unknown",
+        "linux-package-tmux-start": "vm_workflow:linux-package-tmux-status",
+        "linux-rpm-base-prepare-start": "vm_workflow:linux-rpm-base-prepare-status",
+        "linux-rpm-fixture-dispatch": "vm_workflow:linux-rpm-fixture-status",
+        "linux-rpm-fixture-server-start": "vm_workflow:linux-rpm-fixture-server-status",
+        "linux-rpm-fixture-server-stop": "vm_workflow:linux-rpm-fixture-server-status",
+        "linux-rpm-workspace-cleanup-start": "vm_workflow:linux-rpm-workspace-cleanup-status",
+        "macos-fixture-stage-start": "vm_workflow:macos-fixture-stage-status",
+        "macos-machine-server-stop-start": "vm_workflow:macos-machine-server-stop-status",
+        "rpm-public-install-start": "vm_workflow:rpm-public-install-status",
+        "windows-cp117-cp95-task-retire-finish": "vm_workflow:windows-cp117-cp95-task-retire-status",
+        "windows-cp117-cp95-task-retire-tail-close-pre-effect": "vm_workflow:windows-cp117-cp95-task-retire-tail-status",
+        "windows-cp117-download-abort-current-successor-resume-begin": "vm_workflow:windows-cp117-download-abort-current-successor-status",
+        "windows-cp117-download-abort-current-successor-resume-close": "vm_workflow:windows-cp117-download-abort-current-successor-status",
+        "windows-cp117-download-abort-successor-resume-begin": "vm_workflow:windows-cp117-download-abort-successor-status",
+        "windows-cp117-download-abort-successor-resume-close": "vm_workflow:windows-cp117-download-abort-successor-status",
+        "windows-cp117-e66-successor-resume-begin": "vm_workflow:windows-cp117-e66-successor-status",
+        "windows-cp117-guest-abort-successor-resume-begin": "vm_workflow:windows-cp117-guest-abort-successor-status",
+        "windows-cp117-retirement-recovery-finish": "vm_workflow:windows-cp117-retirement-recovery-status",
+        "windows-cp117-source-campaign-finish": "vm_workflow:windows-cp117-source-campaign-status",
+        "windows-cp117-source-pre-effect-close": "vm_workflow:windows-cp117-source-pre-effect-status",
+        "windows-credential-probe-start": "vm_workflow:windows-credential-probe-status",
+        "windows-credential-recover-start": "vm_workflow:windows-credential-recover-status",
+        "windows-fixture-stage-recover-7f27": "vm_workflow:windows-fixture-stage-recover-7f27-diagnostic",
+        "windows-input-decision": "vm_workflow:windows-input-observe",
+        "windows-input-finish": "vm_workflow:windows-input-observe",
+        "windows-input-join": "vm_workflow:windows-input-observe",
+        "windows-input-observe": "vm_workflow:windows-input-observe",
+        "windows-input-start": "vm_workflow:windows-input-observe",
+        "windows-msi-base-finish-observed": "vm_workflow:windows-msi-base-status",
+        "windows-msi-base-pre-effect-close": "vm_workflow:windows-msi-base-pre-effect-status",
+        "windows-msi-base-transfer-endpoint-probe": "vm_workflow:windows-msi-base-transfer-endpoint-status",
+        "windows-msi-base-transfer-network-admission": "vm_workflow:windows-msi-base-transfer-preflight",
+        "windows-msi-base-unknown-close": "vm_workflow:windows-msi-base-unknown-close-status",
+        "windows-msi-fixture-dispatch": "vm_workflow:windows-msi-fixture-status",
+        "windows-msi-owner-relaunch-launch": "vm_workflow:windows-msi-owner-relaunch-status",
+        "windows-msi-stale-lock-reconcile-close": "vm_workflow:windows-msi-stale-lock-reconcile-status",
+        "windows-msi-stale-lock-recover": "vm_workflow:windows-msi-stale-lock-reconciliation-status",
+        "windows-update-fixture-download-abort": "vm_workflow:windows-update-fixture-download-abort-status",
+        "windows-update-fixture-download-abort-current": "vm_workflow:windows-update-fixture-download-abort-current-status",
+        "windows-update-fixture-download-abort-current-task-cleanup": "vm_workflow:windows-update-fixture-download-abort-current-task-cleanup-status",
+        "windows-update-fixture-download-task-cleanup": "vm_workflow:windows-update-fixture-download-task-cleanup-status",
+        "windows-update-fixture-guest-create-abort": "vm_workflow:windows-update-fixture-guest-create-abort-status",
+        "windows-vm-deploy-frame": "vm_workflow:windows-vm-deploy-frame-collect",
+        "windows-vm-deploy-qualify": "vm_workflow:windows-vm-deploy-qualify-status",
+        "windows-vm-deploy-secure": "vm_workflow:windows-vm-deploy-secure-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "remote_observation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-action-acceptance-collect": "vm_workflow:android-action-acceptance-collect",
+        "android-action-acceptance-status": "vm_workflow:android-action-acceptance-status",
+        "android-admission-preflight": "vm_workflow:android-admission-status",
+        "android-admission-readback": "vm_workflow:android-admission-readback",
+        "android-admission-status": "vm_workflow:android-admission-status",
+        "android-api35-large-routing-observe": "vm_workflow:android-api35-large-routing-observe",
+        "android-api35-remaining-proxy-status": "vm_workflow:android-api35-remaining-proxy-status",
+        "android-cli-stage-collect": "vm_workflow:android-cli-stage-collect",
+        "android-cli-stage-status": "vm_workflow:android-cli-stage-status",
+        "android-coldboot-product-api29-observe": "vm_workflow:android-coldboot-product-api29-observe",
+        "android-consent-acceptance-collect": "vm_workflow:android-consent-acceptance-collect",
+        "android-consent-acceptance-preflight": "vm_workflow:android-consent-acceptance-status",
+        "android-consent-acceptance-status": "vm_workflow:android-consent-acceptance-status",
+        "android-consent-grant-acceptance-collect": "vm_workflow:android-consent-grant-acceptance-collect",
+        "android-consent-grant-acceptance-diagnose": "vm_workflow:android-consent-grant-acceptance-diagnose",
+        "android-consent-grant-acceptance-reconcile": "vm_workflow:android-consent-grant-acceptance-reconcile",
+        "android-consent-grant-acceptance-reconcile-diagnose": "vm_workflow:android-consent-grant-acceptance-reconcile-diagnose",
+        "android-consent-grant-acceptance-reconcile-status": "vm_workflow:android-consent-grant-acceptance-reconcile-status",
+        "android-consent-grant-acceptance-status": "vm_workflow:android-consent-grant-acceptance-status",
+        "android-consent-grant-prompt-collect": "vm_workflow:android-consent-grant-prompt-collect",
+        "android-document-acceptance-collect": "vm_workflow:android-document-acceptance-collect",
+        "android-document-acceptance-status": "vm_workflow:android-document-acceptance-status",
+        "android-document-recovery-collect": "vm_workflow:android-document-recovery-collect",
+        "android-document-recovery-status": "vm_workflow:android-document-recovery-status",
+        "android-document-retry-collect": "vm_workflow:android-document-retry-collect",
+        "android-document-retry-recovery-collect": "vm_workflow:android-document-retry-recovery-collect",
+        "android-document-retry-recovery-status": "vm_workflow:android-document-retry-recovery-status",
+        "android-document-retry-status": "vm_workflow:android-document-retry-status",
+        "android-document-retry-unknown-diagnose": "vm_workflow:android-document-retry-unknown-diagnose",
+        "android-endpoint-admission-status": "vm_workflow:android-endpoint-admission-status",
+        "android-endpoint-cleanup-mount-diagnostic": "vm_workflow:android-endpoint-cleanup-mount-diagnostic",
+        "android-endpoint-cleanup-readmission-status": "vm_workflow:android-endpoint-cleanup-readmission-status",
+        "android-endpoint-cleanup-readmitted-status": "vm_workflow:android-endpoint-cleanup-readmitted-status",
+        "android-endpoint-mount-diagnostic-collect": "vm_workflow:android-endpoint-mount-diagnostic-collect",
+        "android-installer-callback-status-continue": "vm_workflow:android-installer-callback-status-continue",
+        "android-installer-callback-status-handoff-ready": "vm_workflow:android-installer-callback-status-handoff-ready",
+        "android-installer-dispatch-collect": "vm_workflow:android-installer-dispatch-collect",
+        "android-installer-dispatch-status": "vm_workflow:android-installer-dispatch-status",
+        "android-installer-reconcile": "vm_workflow:android-installer-reconcile",
+        "android-native-fixture-collect": "vm_workflow:android-native-fixture-collect",
+        "android-native-fixture-status": "vm_workflow:android-native-fixture-status",
+        "android-observe": "vm_workflow:android-observe",
+        "android-obsolete-consent-denial-collect": "vm_workflow:android-obsolete-consent-denial-collect",
+        "android-package-install-collect": "vm_workflow:android-package-install-collect",
+        "android-package-install-reconcile": "vm_workflow:android-package-install-reconcile",
+        "android-package-install-status": "vm_workflow:android-package-install-status",
+        "android-package-install-unknown-proof": "vm_workflow:android-package-install-unknown-proof",
+        "android-proxy-recovery-status": "vm_workflow:android-proxy-recovery-status",
+        "android-public-inspect": "vm_workflow:android-public-inspect",
+        "android-readback-collect": "vm_workflow:android-readback-collect",
+        "android-readback-status": "vm_workflow:android-readback-status",
+        "android-recovered-endpoint-stage-collect": "vm_workflow:android-recovered-endpoint-stage-collect",
+        "android-runtime-acceptance-collect": "vm_workflow:android-runtime-acceptance-collect",
+        "android-runtime-acceptance-status": "vm_workflow:android-runtime-acceptance-status",
+        "android-vpn-permission-reset-collect": "vm_workflow:android-vpn-permission-reset-collect",
+        "android-vpn-permission-reset-status": "vm_workflow:android-vpn-permission-reset-status",
+        "arch-ai-loop-observe": "vm_workflow:arch-ai-loop-observe",
+        "arch-qemu-holder-census": "vm_workflow:arch-qemu-holder-census",
+        "arch-tmux-install-preflight": "vm_workflow:arch-tmux-install-status",
+        "arch-tmux-install-status": "vm_workflow:arch-tmux-install-status",
+        "baseline-preflight": "vm_workflow:baseline-preflight",
+        "baseline-verify": "vm_workflow:baseline-verify",
+        "batch-collect": "vm_workflow:batch-collect",
+        "batch-resume": "vm_workflow:batch-resume",
+        "batch-status": "vm_workflow:batch-status",
+        "linux-deb-arch-acceptance-preflight": "vm_workflow:linux-deb-arch-acceptance-status",
+        "linux-deb-arch-acceptance-status": "vm_workflow:linux-deb-arch-acceptance-status",
+        "linux-deb-arch-guest-prepare-preflight": "vm_workflow:linux-deb-arch-guest-prepare-status",
+        "linux-deb-arch-guest-prepare-status": "vm_workflow:linux-deb-arch-guest-prepare-status",
+        "linux-guest-park-preflight": "vm_workflow:linux-guest-park-status",
+        "linux-guest-park-status": "vm_workflow:linux-guest-park-status",
+        "linux-owner-public-quit-collect": "vm_workflow:linux-owner-public-quit-collect",
+        "linux-owner-public-quit-status": "vm_workflow:linux-owner-public-quit-status",
+        "linux-package-fixture-build-collect": "vm_workflow:linux-package-fixture-build-collect",
+        "linux-package-fixture-build-preflight": "vm_workflow:linux-package-fixture-build-status",
+        "linux-package-fixture-build-status": "vm_workflow:linux-package-fixture-build-status",
+        "linux-package-tmux-availability": "vm_workflow:linux-package-tmux-availability",
+        "linux-package-tmux-collect": "vm_workflow:linux-package-tmux-collect",
+        "linux-package-tmux-preflight": "vm_workflow:linux-package-tmux-status",
+        "linux-package-tmux-status": "vm_workflow:linux-package-tmux-status",
+        "linux-rpm-base-prepare-preflight": "vm_workflow:linux-rpm-base-prepare-status",
+        "linux-rpm-base-prepare-status": "vm_workflow:linux-rpm-base-prepare-status",
+        "linux-rpm-fixture-server-collect": "vm_workflow:linux-rpm-fixture-server-collect",
+        "linux-rpm-fixture-server-status": "vm_workflow:linux-rpm-fixture-server-status",
+        "linux-rpm-fixture-status": "vm_workflow:linux-rpm-fixture-status",
+        "linux-rpm-owner-observe": "vm_workflow:linux-rpm-owner-observe",
+        "linux-rpm-protected-job-observe": "vm_workflow:linux-rpm-protected-job-observe",
+        "linux-rpm-workspace-cleanup-status": "vm_workflow:linux-rpm-workspace-cleanup-status",
+        "linux-rpm-workspace-recovery-status": "vm_workflow:linux-rpm-workspace-recovery-status",
+        "linux-vm-readonly-inventory": "vm_workflow:linux-vm-readonly-inventory",
+        "macos-fixture-guest-stage-status": "vm_workflow:macos-fixture-guest-stage-status",
+        "macos-fixture-stage-status": "vm_workflow:macos-fixture-stage-status",
+        "macos-machine-server-stop-status": "vm_workflow:macos-machine-server-stop-status",
+        "rpm-proc-observe": "vm_workflow:rpm-proc-observe",
+        "rpm-proc-observe-privileged": "vm_workflow:rpm-proc-observe-privileged",
+        "rpm-public-install-collect": "vm_workflow:rpm-public-install-collect",
+        "rpm-public-install-status": "vm_workflow:rpm-public-install-status",
+        "scenario-collect": "vm_workflow:scenario-collect",
+        "scenario-resume": "vm_workflow:scenario-resume",
+        "scenario-status": "vm_workflow:scenario-status",
+        "windows-cp117-c32-archive-diagnose": "vm_workflow:windows-cp117-c32-archive-diagnose",
+        "windows-cp117-c32-archive-preflight": "vm_workflow:windows-cp117-c32-archive-preflight",
+        "windows-cp117-c32-host-archive-status": "vm_workflow:windows-cp117-c32-host-archive-status",
+        "windows-cp117-c32-retained-task-retire-preflight": "vm_workflow:windows-cp117-c32-retained-task-retire-status",
+        "windows-cp117-c32-retained-task-retire-status": "vm_workflow:windows-cp117-c32-retained-task-retire-status",
+        "windows-cp117-campaign-diagnostic": "vm_workflow:windows-cp117-campaign-diagnostic",
+        "windows-cp117-campaign-status": "vm_workflow:windows-cp117-campaign-status",
+        "windows-cp117-cp95-retained-tasks": "vm_workflow:windows-cp117-cp95-retained-tasks",
+        "windows-cp117-cp95-task-retire-diagnose": "vm_workflow:windows-cp117-cp95-task-retire-diagnose",
+        "windows-cp117-cp95-task-retire-finish-diagnose": "vm_workflow:windows-cp117-cp95-task-retire-finish-diagnose",
+        "windows-cp117-cp95-task-retire-preflight": "vm_workflow:windows-cp117-cp95-task-retire-status",
+        "windows-cp117-cp95-task-retire-status": "vm_workflow:windows-cp117-cp95-task-retire-status",
+        "windows-cp117-cp95-task-retire-successor-admission-diagnose": "vm_workflow:windows-cp117-cp95-task-retire-successor-admission-diagnose",
+        "windows-cp117-cp95-task-retire-successor-status": "vm_workflow:windows-cp117-cp95-task-retire-successor-status",
+        "windows-cp117-cp95-task-retire-tail-diagnose": "vm_workflow:windows-cp117-cp95-task-retire-tail-diagnose",
+        "windows-cp117-cp95-task-retire-tail-status": "vm_workflow:windows-cp117-cp95-task-retire-tail-status",
+        "windows-cp117-download-abort-current-successor-reconcile": "vm_workflow:windows-cp117-download-abort-current-successor-reconcile",
+        "windows-cp117-download-abort-current-successor-status": "vm_workflow:windows-cp117-download-abort-current-successor-status",
+        "windows-cp117-download-abort-successor-reconcile": "vm_workflow:windows-cp117-download-abort-successor-reconcile",
+        "windows-cp117-download-abort-successor-status": "vm_workflow:windows-cp117-download-abort-successor-status",
+        "windows-cp117-e66-successor-reconcile": "vm_workflow:windows-cp117-e66-successor-reconcile",
+        "windows-cp117-e66-successor-status": "vm_workflow:windows-cp117-e66-successor-status",
+        "windows-cp117-e848-http-task": "vm_workflow:windows-cp117-e848-http-task",
+        "windows-cp117-e848-http-task-retire-preflight": "vm_workflow:windows-cp117-e848-http-task-retire-status",
+        "windows-cp117-e848-http-task-retire-status": "vm_workflow:windows-cp117-e848-http-task-retire-status",
+        "windows-cp117-guest-abort-successor-reconcile": "vm_workflow:windows-cp117-guest-abort-successor-reconcile",
+        "windows-cp117-guest-abort-successor-status": "vm_workflow:windows-cp117-guest-abort-successor-status",
+        "windows-cp117-guest-agent-recovery-diagnose": "vm_workflow:windows-cp117-guest-agent-recovery-diagnose",
+        "windows-cp117-guest-agent-recovery-journal": "vm_workflow:windows-cp117-guest-agent-recovery-journal",
+        "windows-cp117-guest-agent-recovery-preflight": "vm_workflow:windows-cp117-guest-agent-recovery-status",
+        "windows-cp117-guest-agent-recovery-status": "vm_workflow:windows-cp117-guest-agent-recovery-status",
+        "windows-cp117-guest-agent-recovery-successor-preflight": "vm_workflow:windows-cp117-guest-agent-recovery-successor-status",
+        "windows-cp117-guest-agent-recovery-successor-status": "vm_workflow:windows-cp117-guest-agent-recovery-successor-status",
+        "windows-cp117-historical-base-archives": "vm_workflow:windows-cp117-historical-base-archives",
+        "windows-cp117-retirement-recovery-preflight": "vm_workflow:windows-cp117-retirement-recovery-status",
+        "windows-cp117-retirement-recovery-status": "vm_workflow:windows-cp117-retirement-recovery-status",
+        "windows-cp117-source-campaign-diagnose": "vm_workflow:windows-cp117-source-campaign-diagnose",
+        "windows-cp117-source-campaign-preflight": "vm_workflow:windows-cp117-source-campaign-status",
+        "windows-cp117-source-campaign-reservation-diagnose": "vm_workflow:windows-cp117-source-campaign-reservation-diagnose",
+        "windows-cp117-source-campaign-status": "vm_workflow:windows-cp117-source-campaign-status",
+        "windows-cp117-source-campaign-terminal-reconcile": "vm_workflow:windows-cp117-source-campaign-terminal-reconcile",
+        "windows-cp117-source-pre-effect-diagnose": "vm_workflow:windows-cp117-source-pre-effect-diagnose",
+        "windows-cp117-source-pre-effect-status": "vm_workflow:windows-cp117-source-pre-effect-status",
+        "windows-cp117-staged-fixture-retire-boundary": "vm_workflow:windows-cp117-staged-fixture-retire-boundary",
+        "windows-cp117-staged-fixture-retire-diagnose": "vm_workflow:windows-cp117-staged-fixture-retire-diagnose",
+        "windows-cp117-staged-fixture-retire-guard-diagnostic": "vm_workflow:windows-cp117-staged-fixture-retire-guard-diagnostic",
+        "windows-cp117-staged-fixture-retire-locks": "vm_workflow:windows-cp117-staged-fixture-retire-locks",
+        "windows-cp117-staged-fixture-retire-preflight": "vm_workflow:windows-cp117-staged-fixture-retire-status",
+        "windows-cp117-staged-fixture-retire-status": "vm_workflow:windows-cp117-staged-fixture-retire-status",
+        "windows-cp117-staged-fixture-retire-tree": "vm_workflow:windows-cp117-staged-fixture-retire-tree",
+        "windows-credential-probe-status": "vm_workflow:windows-credential-probe-status",
+        "windows-credential-recover-status": "vm_workflow:windows-credential-recover-status",
+        "windows-fixture-acl-preflight": "vm_workflow:windows-fixture-acl-preflight",
+        "windows-fixture-acl-preflight-status": "vm_workflow:windows-fixture-acl-preflight-status",
+        "windows-fixture-credentials-abort-collect": "vm_workflow:windows-fixture-credentials-abort-collect",
+        "windows-fixture-credentials-abort-status": "vm_workflow:windows-fixture-credentials-abort-status",
+        "windows-fixture-credentials-cleanup-collect": "vm_workflow:windows-fixture-credentials-cleanup-collect",
+        "windows-fixture-credentials-cleanup-status": "vm_workflow:windows-fixture-credentials-cleanup-status",
+        "windows-fixture-credentials-collect": "vm_workflow:windows-fixture-credentials-collect",
+        "windows-fixture-credentials-diagnostic": "vm_workflow:windows-fixture-credentials-diagnostic",
+        "windows-fixture-credentials-failure-detail": "vm_workflow:windows-fixture-credentials-failure-detail",
+        "windows-fixture-credentials-pre-effect-guard-probe": "vm_workflow:windows-fixture-credentials-pre-effect-guard-probe",
+        "windows-fixture-credentials-provenance-acl-shape": "vm_workflow:windows-fixture-credentials-provenance-acl-shape",
+        "windows-fixture-credentials-status": "vm_workflow:windows-fixture-credentials-status",
+        "windows-fixture-network-probe-collect": "vm_workflow:windows-fixture-network-probe-collect",
+        "windows-fixture-network-probe-status": "vm_workflow:windows-fixture-network-probe-status",
+        "windows-fixture-owner-network-collect": "vm_workflow:windows-fixture-owner-network-collect",
+        "windows-fixture-owner-network-status": "vm_workflow:windows-fixture-owner-network-status",
+        "windows-fixture-package-mode-repair-collect": "vm_workflow:windows-fixture-package-mode-repair-collect",
+        "windows-fixture-package-mode-repair-diagnostic": "vm_workflow:windows-fixture-package-mode-repair-diagnostic",
+        "windows-fixture-package-mode-repair-status": "vm_workflow:windows-fixture-package-mode-repair-status",
+        "windows-fixture-python-acquire-collect": "vm_workflow:windows-fixture-python-acquire-collect",
+        "windows-fixture-python-acquire-failure-detail": "vm_workflow:windows-fixture-python-acquire-failure-detail",
+        "windows-fixture-python-acquire-reconcile": "vm_workflow:windows-fixture-python-acquire-reconcile",
+        "windows-fixture-python-acquire-status": "vm_workflow:windows-fixture-python-acquire-status",
+        "windows-fixture-python-download-preflight": "vm_workflow:windows-fixture-python-download-preflight",
+        "windows-fixture-python-host-source-observe": "vm_workflow:windows-fixture-python-host-source-observe",
+        "windows-fixture-python-install-collect": "vm_workflow:windows-fixture-python-install-collect",
+        "windows-fixture-python-install-diagnostic": "vm_workflow:windows-fixture-python-install-diagnostic",
+        "windows-fixture-python-install-status": "vm_workflow:windows-fixture-python-install-status",
+        "windows-fixture-python-inventory-diagnostic": "vm_workflow:windows-fixture-python-inventory-diagnostic",
+        "windows-fixture-python-preflight": "vm_workflow:windows-fixture-python-preflight",
+        "windows-fixture-server-abort-collect": "vm_workflow:windows-fixture-server-abort-collect",
+        "windows-fixture-server-abort-diagnostic": "vm_workflow:windows-fixture-server-abort-diagnostic",
+        "windows-fixture-server-abort-status": "vm_workflow:windows-fixture-server-abort-status",
+        "windows-fixture-server-abort-successor-diagnostic": "vm_workflow:windows-fixture-server-abort-successor-diagnostic",
+        "windows-fixture-server-abort-successor-status": "vm_workflow:windows-fixture-server-abort-successor-status",
+        "windows-fixture-server-acl-preflight": "vm_workflow:windows-fixture-server-acl-preflight",
+        "windows-fixture-server-collect": "vm_workflow:windows-fixture-server-collect",
+        "windows-fixture-server-diagnostic": "vm_workflow:windows-fixture-server-diagnostic",
+        "windows-fixture-server-post-resource-diagnostic": "vm_workflow:windows-fixture-server-post-resource-diagnostic",
+        "windows-fixture-server-probe-events-acl-diagnostic": "vm_workflow:windows-fixture-server-probe-events-acl-diagnostic",
+        "windows-fixture-server-second-abort-recovery-diagnose": "vm_workflow:windows-fixture-server-second-abort-recovery-diagnose",
+        "windows-fixture-server-second-abort-recovery-status": "vm_workflow:windows-fixture-server-second-abort-recovery-status",
+        "windows-fixture-server-second-abort-successor-diagnostic": "vm_workflow:windows-fixture-server-second-abort-successor-diagnostic",
+        "windows-fixture-server-second-abort-successor-status": "vm_workflow:windows-fixture-server-second-abort-successor-status",
+        "windows-fixture-server-static-diagnostic": "vm_workflow:windows-fixture-server-static-diagnostic",
+        "windows-fixture-server-status": "vm_workflow:windows-fixture-server-status",
+        "windows-fixture-server-stop-collect": "vm_workflow:windows-fixture-server-stop-collect",
+        "windows-fixture-server-stop-status": "vm_workflow:windows-fixture-server-stop-status",
+        "windows-fixture-stage-collect": "vm_workflow:windows-fixture-stage-collect",
+        "windows-fixture-stage-diagnostic": "vm_workflow:windows-fixture-stage-diagnostic",
+        "windows-fixture-stage-recover-7f27-diagnostic": "vm_workflow:windows-fixture-stage-recover-7f27-diagnostic",
+        "windows-fixture-stage-status": "vm_workflow:windows-fixture-stage-status",
+        "windows-msi-base-diagnostic": "vm_workflow:windows-msi-base-diagnostic",
+        "windows-msi-base-pre-effect-status": "vm_workflow:windows-msi-base-pre-effect-status",
+        "windows-msi-base-preflight": "vm_workflow:windows-msi-base-status",
+        "windows-msi-base-readiness": "vm_workflow:windows-msi-base-readiness",
+        "windows-msi-base-reconcile": "vm_workflow:windows-msi-base-reconcile",
+        "windows-msi-base-stage-diagnostic": "vm_workflow:windows-msi-base-stage-diagnostic",
+        "windows-msi-base-status": "vm_workflow:windows-msi-base-status",
+        "windows-msi-base-terminal-reconcile": "vm_workflow:windows-msi-base-terminal-reconcile",
+        "windows-msi-base-transfer-endpoint-reconcile": "vm_workflow:windows-msi-base-transfer-endpoint-reconcile",
+        "windows-msi-base-transfer-endpoint-status": "vm_workflow:windows-msi-base-transfer-endpoint-status",
+        "windows-msi-base-transfer-preflight": "vm_workflow:windows-msi-base-transfer-preflight",
+        "windows-msi-base-unknown-close-status": "vm_workflow:windows-msi-base-unknown-close-status",
+        "windows-msi-fixture-collect": "vm_workflow:windows-msi-fixture-collect",
+        "windows-msi-fixture-failed-log": "vm_workflow:windows-msi-fixture-failed-log",
+        "windows-msi-fixture-status": "vm_workflow:windows-msi-fixture-status",
+        "windows-msi-owner-census": "vm_workflow:windows-msi-owner-census",
+        "windows-msi-owner-census-preflight": "vm_workflow:windows-msi-owner-census-preflight",
+        "windows-msi-owner-diagnostic": "vm_workflow:windows-msi-owner-diagnostic",
+        "windows-msi-owner-liveness": "vm_workflow:windows-msi-owner-liveness",
+        "windows-msi-owner-observe-collect": "vm_workflow:windows-msi-owner-observe-collect",
+        "windows-msi-owner-observe-preflight": "vm_workflow:windows-msi-owner-observe-status",
+        "windows-msi-owner-observe-status": "vm_workflow:windows-msi-owner-observe-status",
+        "windows-msi-owner-public-status-collect": "vm_workflow:windows-msi-owner-public-status-collect",
+        "windows-msi-owner-public-status-diagnose": "vm_workflow:windows-msi-owner-public-status-diagnose",
+        "windows-msi-owner-public-status-retry-collect": "vm_workflow:windows-msi-owner-public-status-retry-collect",
+        "windows-msi-owner-public-status-retry-diagnose": "vm_workflow:windows-msi-owner-public-status-retry-diagnose",
+        "windows-msi-owner-public-status-retry-observe": "vm_workflow:windows-msi-owner-public-status-retry-observe",
+        "windows-msi-owner-public-status-retry-preflight": "vm_workflow:windows-msi-owner-public-status-retry-status",
+        "windows-msi-owner-public-status-retry-status": "vm_workflow:windows-msi-owner-public-status-retry-status",
+        "windows-msi-owner-public-status-status": "vm_workflow:windows-msi-owner-public-status-status",
+        "windows-msi-owner-public-status-third-collect": "vm_workflow:windows-msi-owner-public-status-third-collect",
+        "windows-msi-owner-public-status-third-observe": "vm_workflow:windows-msi-owner-public-status-third-observe",
+        "windows-msi-owner-public-status-third-status": "vm_workflow:windows-msi-owner-public-status-third-status",
+        "windows-msi-owner-quit-collect": "vm_workflow:windows-msi-owner-quit-collect",
+        "windows-msi-owner-quit-phase-collect": "vm_workflow:windows-msi-owner-quit-phase-collect",
+        "windows-msi-owner-quit-phase-status": "vm_workflow:windows-msi-owner-quit-phase-status",
+        "windows-msi-owner-quit-preflight": "vm_workflow:windows-msi-owner-quit-status",
+        "windows-msi-owner-quit-status": "vm_workflow:windows-msi-owner-quit-status",
+        "windows-msi-owner-relaunch-collect": "vm_workflow:windows-msi-owner-relaunch-collect",
+        "windows-msi-owner-relaunch-detail": "vm_workflow:windows-msi-owner-relaunch-detail",
+        "windows-msi-owner-relaunch-diagnose": "vm_workflow:windows-msi-owner-relaunch-diagnose",
+        "windows-msi-owner-relaunch-endpoint-access": "vm_workflow:windows-msi-owner-relaunch-endpoint-access",
+        "windows-msi-owner-relaunch-quit-collect": "vm_workflow:windows-msi-owner-relaunch-quit-collect",
+        "windows-msi-owner-relaunch-quit-diagnose": "vm_workflow:windows-msi-owner-relaunch-quit-diagnose",
+        "windows-msi-owner-relaunch-quit-status": "vm_workflow:windows-msi-owner-relaunch-quit-status",
+        "windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic": "vm_workflow:windows-msi-owner-relaunch-quit-v2-bootstrap-diagnostic",
+        "windows-msi-owner-relaunch-quit-v2-collect": "vm_workflow:windows-msi-owner-relaunch-quit-v2-collect",
+        "windows-msi-owner-relaunch-quit-v2-diagnose": "vm_workflow:windows-msi-owner-relaunch-quit-v2-diagnose",
+        "windows-msi-owner-relaunch-quit-v2-status": "vm_workflow:windows-msi-owner-relaunch-quit-v2-status",
+        "windows-msi-owner-relaunch-quit-v3-bootstrap-diagnostic": "vm_workflow:windows-msi-owner-relaunch-quit-v3-bootstrap-diagnostic",
+        "windows-msi-owner-relaunch-quit-v3-collect": "vm_workflow:windows-msi-owner-relaunch-quit-v3-collect",
+        "windows-msi-owner-relaunch-quit-v3-diagnose": "vm_workflow:windows-msi-owner-relaunch-quit-v3-diagnose",
+        "windows-msi-owner-relaunch-quit-v3-status": "vm_workflow:windows-msi-owner-relaunch-quit-v3-status",
+        "windows-msi-owner-relaunch-quit-v3-task-result": "vm_workflow:windows-msi-owner-relaunch-quit-v3-task-result",
+        "windows-msi-owner-relaunch-quit-v4-collect": "vm_workflow:windows-msi-owner-relaunch-quit-v4-collect",
+        "windows-msi-owner-relaunch-quit-v4-diagnose": "vm_workflow:windows-msi-owner-relaunch-quit-v4-diagnose",
+        "windows-msi-owner-relaunch-quit-v4-status": "vm_workflow:windows-msi-owner-relaunch-quit-v4-status",
+        "windows-msi-owner-relaunch-status": "vm_workflow:windows-msi-owner-relaunch-status",
+        "windows-msi-powershell-preflight": "vm_workflow:windows-msi-powershell-preflight",
+        "windows-msi-preinstall-status": "vm_workflow:windows-msi-preinstall-status",
+        "windows-msi-public-collect": "vm_workflow:windows-msi-public-collect",
+        "windows-msi-public-status": "vm_workflow:windows-msi-public-status",
+        "windows-msi-stale-lock-diagnose": "vm_workflow:windows-msi-stale-lock-diagnose",
+        "windows-msi-stale-lock-reconcile": "vm_workflow:windows-msi-stale-lock-reconcile",
+        "windows-msi-stale-lock-reconcile-status": "vm_workflow:windows-msi-stale-lock-reconcile-status",
+        "windows-msi-stale-lock-reconciliation-status": "vm_workflow:windows-msi-stale-lock-reconciliation-status",
+        "windows-msi-target-preflight": "vm_workflow:windows-msi-target-status",
+        "windows-msi-target-readiness": "vm_workflow:windows-msi-target-readiness",
+        "windows-msi-target-status": "vm_workflow:windows-msi-target-status",
+        "windows-msiexec-service-diagnostic": "vm_workflow:windows-msiexec-service-diagnostic",
+        "windows-parallel-vm-copy-status": "vm_workflow:windows-parallel-vm-copy-status",
+        "windows-parallel-vm-source-inventory": "vm_workflow:windows-parallel-vm-source-inventory",
+        "windows-update-fixture-download-abort-current-status": "vm_workflow:windows-update-fixture-download-abort-current-status",
+        "windows-update-fixture-download-abort-current-task-cleanup-status": "vm_workflow:windows-update-fixture-download-abort-current-task-cleanup-status",
+        "windows-update-fixture-download-abort-status": "vm_workflow:windows-update-fixture-download-abort-status",
+        "windows-update-fixture-download-task-cleanup-status": "vm_workflow:windows-update-fixture-download-task-cleanup-status",
+        "windows-update-fixture-guest-create-abort-status": "vm_workflow:windows-update-fixture-guest-create-abort-status",
+        "windows-update-fixture-http-stage-extract-diagnostic": "vm_workflow:windows-update-fixture-http-stage-extract-diagnostic",
+        "windows-update-fixture-phase-status": "vm_workflow:windows-update-fixture-phase-status",
+        "windows-vm-deploy-frame-collect": "vm_workflow:windows-vm-deploy-frame-collect",
+        "windows-vm-deploy-media": "vm_workflow:windows-vm-deploy-media",
+        "windows-vm-deploy-preflight": "vm_workflow:windows-vm-deploy-status",
+        "windows-vm-deploy-qualify-status": "vm_workflow:windows-vm-deploy-qualify-status",
+        "windows-vm-deploy-resources": "vm_workflow:windows-vm-deploy-resources",
+        "windows-vm-deploy-secure-status": "vm_workflow:windows-vm-deploy-secure-status",
+        "windows-vm-deploy-status": "vm_workflow:windows-vm-deploy-status",
+        "windows-vm-disk-probe-status": "vm_workflow:windows-vm-disk-probe-status",
+        "windows-vm-driver-fetch-status": "vm_workflow:windows-vm-driver-fetch-status",
+        "windows-vm-fresh-screen-status": "vm_workflow:windows-vm-fresh-screen-status",
+        "windows-vm-fresh-status": "vm_workflow:windows-vm-fresh-status",
+        "windows-vm-optical-attempt2-close-status": "vm_workflow:windows-vm-optical-attempt2-close-status",
+        "windows-vm-optical-attempt2-phase-probe": "vm_workflow:windows-vm-optical-attempt2-phase-probe",
+        "windows-vm-optical-attempt2-status": "vm_workflow:windows-vm-optical-attempt2-status",
+        "windows-vm-optical-attempt3-frame-collect": "vm_workflow:windows-vm-optical-attempt3-frame-collect",
+        "windows-vm-optical-attempt3-status": "vm_workflow:windows-vm-optical-attempt3-status",
+        "windows-vm-optical-boot-status": "vm_workflow:windows-vm-optical-boot-status",
+        "windows-vm-optical-close-status": "vm_workflow:windows-vm-optical-close-status",
+        "windows-vm-optical-current-screen-collect": "vm_workflow:windows-vm-optical-current-screen-collect",
+        "windows-vm-optical-current-screen-status": "vm_workflow:windows-vm-optical-current-screen-status",
+        "windows-vm-secureboot-fresh-status": "vm_workflow:windows-vm-secureboot-fresh-status",
+        "windows-vm-secureboot-inventory": "vm_workflow:windows-vm-secureboot-inventory",
+        "windows-vm-setup-install-ack-collect": "vm_workflow:windows-vm-setup-install-ack-collect",
+        "windows-vm-setup-install-ack-status": "vm_workflow:windows-vm-setup-install-ack-status",
+        "windows-vm-setup-install-disk-proof": "vm_workflow:windows-vm-setup-install-disk-proof",
+        "windows-vm-setup-install-focus-collect": "vm_workflow:windows-vm-setup-install-focus-collect",
+        "windows-vm-setup-install-focus-status": "vm_workflow:windows-vm-setup-install-focus-status",
+        "windows-vm-setup-install-next-collect": "vm_workflow:windows-vm-setup-install-next-collect",
+        "windows-vm-setup-install-next-status": "vm_workflow:windows-vm-setup-install-next-status",
+        "windows-vm-setup-keyboard-next-collect": "vm_workflow:windows-vm-setup-keyboard-next-collect",
+        "windows-vm-setup-keyboard-next-status": "vm_workflow:windows-vm-setup-keyboard-next-status",
+        "windows-vm-setup-language-next-collect": "vm_workflow:windows-vm-setup-language-next-collect",
+        "windows-vm-setup-language-next-status": "vm_workflow:windows-vm-setup-language-next-status",
+        "windows-vm-swtpm-owner-observe": "vm_workflow:windows-vm-swtpm-owner-observe",
+        "windows-vm-swtpm-repair-status": "vm_workflow:windows-vm-swtpm-repair-status",
+        "windows-vm-virt-firmware-install-status": "vm_workflow:windows-vm-virt-firmware-install-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "retired",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "macos-fixture-guest-stage-start": "vm_workflow:macos-fixture-guest-stage-status",
+        "windows-cp117-c32-host-archive-start": "vm_workflow:windows-cp117-c32-host-archive-status",
+        "windows-cp117-c32-retained-task-retire-start": "vm_workflow:windows-cp117-c32-retained-task-retire-status",
+        "windows-cp117-campaign-rebase": "vm_workflow:windows-cp117-campaign-rebase",
+        "windows-cp117-cp95-task-retire-start": "vm_workflow:windows-cp117-cp95-task-retire-status",
+        "windows-cp117-cp95-task-retire-successor-start": "vm_workflow:windows-cp117-cp95-task-retire-successor-status",
+        "windows-cp117-cp95-task-retire-tail-start": "vm_workflow:windows-cp117-cp95-task-retire-tail-status",
+        "windows-cp117-download-abort-current-successor-start": "vm_workflow:windows-cp117-download-abort-current-successor-status",
+        "windows-cp117-download-abort-successor-start": "vm_workflow:windows-cp117-download-abort-successor-status",
+        "windows-cp117-e66-successor-start": "vm_workflow:windows-cp117-e66-successor-status",
+        "windows-cp117-e848-http-task-retire-start": "vm_workflow:windows-cp117-e848-http-task-retire-status",
+        "windows-cp117-guest-abort-successor-start": "vm_workflow:windows-cp117-guest-abort-successor-status",
+        "windows-cp117-guest-agent-recovery-start": "vm_workflow:windows-cp117-guest-agent-recovery-status",
+        "windows-cp117-guest-agent-recovery-successor-start": "vm_workflow:windows-cp117-guest-agent-recovery-successor-status",
+        "windows-cp117-retirement-recovery-start": "vm_workflow:windows-cp117-retirement-recovery-status",
+        "windows-cp117-source-campaign-start": "vm_workflow:windows-cp117-source-campaign-status",
+        "windows-cp117-staged-fixture-retire-start": "vm_workflow:windows-cp117-staged-fixture-retire-status",
+        "windows-fixture-credentials-abort-start": "vm_workflow:windows-fixture-credentials-abort-status",
+        "windows-fixture-credentials-cleanup-start": "vm_workflow:windows-fixture-credentials-cleanup-status",
+        "windows-fixture-credentials-start": "vm_workflow:windows-fixture-credentials-status",
+        "windows-fixture-network-probe-start": "vm_workflow:windows-fixture-network-probe-status",
+        "windows-fixture-owner-network-start": "vm_workflow:windows-fixture-owner-network-status",
+        "windows-fixture-package-mode-repair-start": "vm_workflow:windows-fixture-package-mode-repair-status",
+        "windows-fixture-python-acquire-start": "vm_workflow:windows-fixture-python-acquire-status",
+        "windows-fixture-python-install-start": "vm_workflow:windows-fixture-python-install-status",
+        "windows-fixture-server-abort-start": "vm_workflow:windows-fixture-server-abort-status",
+        "windows-fixture-server-abort-successor-start": "vm_workflow:windows-fixture-server-abort-successor-status",
+        "windows-fixture-server-resume-no-dispatch-start": "vm_workflow:windows-fixture-server-resume-no-dispatch-start",
+        "windows-fixture-server-second-abort-recovery-start": "vm_workflow:windows-fixture-server-second-abort-recovery-status",
+        "windows-fixture-server-second-abort-successor-start": "vm_workflow:windows-fixture-server-second-abort-successor-status",
+        "windows-fixture-server-start": "vm_workflow:windows-fixture-server-status",
+        "windows-fixture-server-stop-start": "vm_workflow:windows-fixture-server-stop-status",
+        "windows-fixture-stage-start": "vm_workflow:windows-fixture-stage-status",
+        "windows-msi-base-start": "vm_workflow:windows-msi-base-status",
+        "windows-msi-base-start-from-transfer": "vm_workflow:windows-msi-base-start-from-transfer",
+        "windows-msi-owner-observe-start": "vm_workflow:windows-msi-owner-observe-status",
+        "windows-msi-owner-public-status-retry-start": "vm_workflow:windows-msi-owner-public-status-retry-status",
+        "windows-msi-owner-public-status-start": "vm_workflow:windows-msi-owner-public-status-status",
+        "windows-msi-owner-public-status-third-start": "vm_workflow:windows-msi-owner-public-status-third-status",
+        "windows-msi-owner-quit-phase-start": "vm_workflow:windows-msi-owner-quit-phase-status",
+        "windows-msi-owner-quit-start": "vm_workflow:windows-msi-owner-quit-status",
+        "windows-msi-owner-relaunch-quit-start": "vm_workflow:windows-msi-owner-relaunch-quit-status",
+        "windows-msi-owner-relaunch-quit-v2-start": "vm_workflow:windows-msi-owner-relaunch-quit-v2-status",
+        "windows-msi-owner-relaunch-quit-v3-start": "vm_workflow:windows-msi-owner-relaunch-quit-v3-status",
+        "windows-msi-owner-relaunch-quit-v4-start": "vm_workflow:windows-msi-owner-relaunch-quit-v4-status",
+        "windows-msi-public-start": "vm_workflow:windows-msi-public-status",
+        "windows-msi-target-start": "vm_workflow:windows-msi-target-status",
+        "windows-parallel-vm-copy-start": "vm_workflow:windows-parallel-vm-copy-status",
+        "windows-vm-baseline-inventory": "vm_workflow:windows-vm-baseline-inventory",
+        "windows-vm-disk-probe-start": "vm_workflow:windows-vm-disk-probe-status",
+        "windows-vm-driver-fetch-start": "vm_workflow:windows-vm-driver-fetch-status",
+        "windows-vm-fresh-preflight": "vm_workflow:windows-vm-fresh-status",
+        "windows-vm-fresh-screen-start": "vm_workflow:windows-vm-fresh-screen-status",
+        "windows-vm-fresh-start": "vm_workflow:windows-vm-fresh-status",
+        "windows-vm-media-fingerprint": "vm_workflow:windows-vm-media-fingerprint",
+        "windows-vm-optical-attempt2-close-preflight": "vm_workflow:windows-vm-optical-attempt2-close-status",
+        "windows-vm-optical-attempt2-close-start": "vm_workflow:windows-vm-optical-attempt2-close-status",
+        "windows-vm-optical-attempt2-preflight": "vm_workflow:windows-vm-optical-attempt2-status",
+        "windows-vm-optical-attempt2-start": "vm_workflow:windows-vm-optical-attempt2-status",
+        "windows-vm-optical-attempt3-preflight": "vm_workflow:windows-vm-optical-attempt3-status",
+        "windows-vm-optical-attempt3-start": "vm_workflow:windows-vm-optical-attempt3-status",
+        "windows-vm-optical-boot-preflight": "vm_workflow:windows-vm-optical-boot-status",
+        "windows-vm-optical-boot-start": "vm_workflow:windows-vm-optical-boot-status",
+        "windows-vm-optical-close-preflight": "vm_workflow:windows-vm-optical-close-status",
+        "windows-vm-optical-close-start": "vm_workflow:windows-vm-optical-close-status",
+        "windows-vm-optical-current-screen-preflight": "vm_workflow:windows-vm-optical-current-screen-status",
+        "windows-vm-optical-current-screen-start": "vm_workflow:windows-vm-optical-current-screen-status",
+        "windows-vm-secureboot-clone-preflight": "vm_workflow:windows-vm-secureboot-clone-preflight",
+        "windows-vm-secureboot-fresh-preflight": "vm_workflow:windows-vm-secureboot-fresh-status",
+        "windows-vm-secureboot-fresh-start": "vm_workflow:windows-vm-secureboot-fresh-status",
+        "windows-vm-setup-install-ack-preflight": "vm_workflow:windows-vm-setup-install-ack-status",
+        "windows-vm-setup-install-ack-start": "vm_workflow:windows-vm-setup-install-ack-status",
+        "windows-vm-setup-install-focus-preflight": "vm_workflow:windows-vm-setup-install-focus-status",
+        "windows-vm-setup-install-focus-start": "vm_workflow:windows-vm-setup-install-focus-status",
+        "windows-vm-setup-install-next-preflight": "vm_workflow:windows-vm-setup-install-next-status",
+        "windows-vm-setup-install-next-start": "vm_workflow:windows-vm-setup-install-next-status",
+        "windows-vm-setup-keyboard-next-preflight": "vm_workflow:windows-vm-setup-keyboard-next-status",
+        "windows-vm-setup-keyboard-next-start": "vm_workflow:windows-vm-setup-keyboard-next-status",
+        "windows-vm-setup-language-next-preflight": "vm_workflow:windows-vm-setup-language-next-status",
+        "windows-vm-setup-language-next-start": "vm_workflow:windows-vm-setup-language-next-status",
+        "windows-vm-swtpm-repair-preflight": "vm_workflow:windows-vm-swtpm-repair-status",
+        "windows-vm-swtpm-repair-start": "vm_workflow:windows-vm-swtpm-repair-status",
+        "windows-vm-virt-firmware-admission": "vm_workflow:windows-vm-virt-firmware-admission",
+        "windows-vm-virt-firmware-install-preflight": "vm_workflow:windows-vm-virt-firmware-install-status",
+        "windows-vm-virt-firmware-install-start": "vm_workflow:windows-vm-virt-firmware-install-status"
+      }
+    },
+    {
+      "surface": "capture_visual_windows_qemu",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "probe": "capture_visual_windows_qemu:probe"
+      }
+    },
+    {
+      "surface": "capture_visual_windows_qemu",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "input": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "capture_visual_android",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "guest_agent",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "capture_visual_desktop",
+      "classification": "native_host_boundary",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "capture_visual_desktop_windows",
+      "classification": "native_host_boundary",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "bootstrap_windows_visual_vm",
+      "classification": "existing_lifecycle",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "start_windows_visual_vm",
+      "classification": "existing_lifecycle",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "prepare_linux_install_vm",
+      "classification": "existing_lifecycle",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "none:legacy-foreground-outcome-unknown"
+      }
+    },
+    {
+      "surface": "mark_windows_visual_vm_ready",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "mark_windows_visual_vm_ready:run"
+      }
+    },
+    {
+      "surface": "prepare_start",
+      "classification": "external_service_boundary",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "call": "workflow_status:call"
+      }
+    },
+    {
+      "surface": "docs",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "call": "docs:call"
+      }
+    },
+    {
+      "surface": "change_impact",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "call": "change_impact:call"
+      }
+    },
+    {
+      "surface": "workflow_status",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "call": "workflow_status:call"
+      }
+    },
+    {
+      "surface": "run_checks",
+      "classification": "intentional_phase",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "call": "workflow_status:call"
+      }
+    },
+    {
+      "surface": "version_bump",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "call": "workflow_status:call"
+      }
+    },
+    {
+      "surface": "visual_review",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "call": "visual_review:status"
+      }
+    },
+    {
+      "surface": "release_workflow",
+      "classification": "external_service_boundary",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "status": "release_workflow:status",
+        "merge-dev": "release_workflow:status",
+        "publish": "release_workflow:status"
+      }
+    },
+    {
+      "surface": "git_workflow",
+      "classification": "external_service_boundary",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "commit": "workflow_status:call",
+        "checkpoint": "workflow_status:call",
+        "push": "git_workflow:checks",
+        "checks": "git_workflow:checks"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "remote_observation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-status": "ssh_workflow:readiness-status"
+      }
+    },
+    {
+      "surface": "ssh_workflow",
+      "classification": "readiness_recovery",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-ensure": "ssh_workflow:readiness-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "readiness_observation",
+      "requirements": [
+        "transport",
+        "guest",
+        "guest_agent",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-status": "vm_workflow:readiness-status"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "readiness_recovery",
+      "requirements": [
+        "transport",
+        "guest",
+        "guest_agent",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-ensure": "vm_workflow:readiness-status"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "background_submission",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "program-start": "ssh_workflow:program-reconcile"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "remote_observation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "program-reconcile": "ssh_workflow:program-reconcile"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "program-collect": "ssh_workflow:program-collect",
+        "program-status": "ssh_workflow:program-status",
+        "run": "ssh_program_mcp_client:run"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "interactive_submission",
+      "requirements": [
+        "transport",
+        "guest",
+        "guest_agent",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "wake_display"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-lease-acquire": "vm_workflow:readiness-lease-status"
+      }
+    },
+    {
+      "surface": "readiness_entrypoints",
+      "classification": "readiness_admission",
+      "requirements": [
+        "transport",
+        "guest",
+        "ordinary_session",
+        "interactive_desktop"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "wake_display",
+        "login",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "admit": "readiness_entrypoints:check"
+      }
+    },
+    {
+      "surface": "readiness_entrypoints",
+      "classification": "readiness_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "check": "readiness_entrypoints:check"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "background_submission",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-cli-stage-start": "vm_workflow:android-cli-stage-status"
+      }
+    },
+    {
+      "surface": "readiness_entrypoints",
+      "classification": "original_operation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "finish": "readiness_entrypoints:finish"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "readiness_recovery",
+      "requirements": [
+        "guest_agent"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-reboot": "vm_workflow:readiness-status"
+      }
+    },
+    {
+      "surface": "readiness_adb_dispatch",
+      "classification": "original_operation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "readiness_entrypoints:check"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "background_submission",
+      "requirements": [
+        "guest_agent"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "guest-program-start": "vm_workflow:guest-program-reconcile"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "original_operation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "guest-program-reconcile": "vm_workflow:guest-program-reconcile"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "guest-program-status": "vm_workflow:guest-program-status",
+        "guest-program-collect": "vm_workflow:guest-program-collect"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "background_submission",
+      "requirements": [
+        "guest_agent"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-program-start": "vm_workflow:android-program-reconcile"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "original_operation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-program-reconcile": "vm_workflow:android-program-reconcile"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "android-program-status": "vm_workflow:android-program-status",
+        "android-program-collect": "vm_workflow:android-program-collect"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "background_submission",
+      "requirements": [
+        "guest_agent"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume",
+        "reboot"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "guest-program-start": "vm_workflow:guest-program-reconcile"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "original_operation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "guest-program-reconcile": "vm_workflow:guest-program-reconcile"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "guest-program-status": "vm_workflow:guest-program-status",
+        "guest-program-collect": "vm_workflow:guest-program-collect"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "background_submission",
+      "requirements": [
+        "guest_agent"
+      ],
+      "permittedRecoveries": [
+        "reconnect",
+        "start",
+        "resume"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-program-start": "vm_workflow:android-program-reconcile"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "original_operation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "android-program-reconcile": "vm_workflow:android-program-reconcile"
+      }
+    },
+    {
+      "surface": "ssh_program_mcp_client",
+      "classification": "local_observation",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "android-program-status": "vm_workflow:android-program-status",
+        "android-program-collect": "vm_workflow:android-program-collect"
+      }
+    },
+    {
+      "surface": "vm_workflow",
+      "classification": "original_operation",
+      "requirements": [
+        "transport"
+      ],
+      "permittedRecoveries": [
+        "reconnect"
+      ],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-lease-reconcile": "vm_workflow:readiness-lease-status"
+      }
+    },
+    {
+      "surface": "visual_target",
+      "classification": "local_metadata",
+      "requirements": [],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "run": "visual_target:run"
+      }
+    }
+  ]
+}

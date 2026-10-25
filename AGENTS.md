@@ -70,10 +70,10 @@ Before reporting a state-changing task complete:
 
 1. Call `workflow_status` and verify the changed paths remain in the requested scope.
 2. For non-documentation changes, call `version_bump` after the final content edit. Treat its changelog/version metadata edit as part of the task.
-3. Run focused checks while iterating, then `run_checks(level="prepush")` after the final content change. Do not reuse its receipt after repository contents change.
+3. Run focused checks while iterating, then `run_checks(level="prepush")` after the final content change. Every pass runs to completion; after a failed pass, fix all reported failures and run `run_checks(level="failed")` before the complete tier (`TEST-006`). Do not reuse its receipt after repository contents change.
 4. Keep commits coherent and stage only explicit reviewed paths. The managed `git_workflow` rejects generated/runtime paths and uncovered dirty changes.
 5. Push completed commits to `origin/dev` and use `git_workflow` to watch the exact pushed SHA until every required development workflow in `.github/required-workflows.json` succeeds.
-6. If a required workflow fails, inspect its bounded failed log, add or update a fast regression when it exposed a product defect, fix the cause, rerun the pre-push tier, commit and push again, then restart verification for the new exact SHA.
+6. If a required workflow fails, inspect the bounded failed logs of every failed step, add or update a fast regression when they exposed a product defect, fix every cause, rerun the failed checks first and then the pre-push tier, commit and push again, then restart verification for the new exact SHA.
 
 Do not report success while any expected workflow for the pushed SHA is missing, pending, cancelled, or failed. See `agent_tools/README.md` for tool inputs, safety boundaries, CLI fallback, and RAG behavior.
 
@@ -89,7 +89,7 @@ After every push to `origin/dev`:
    - Linux Desktop Package
    - Windows Desktop Package
    - macOS Desktop Package
-4. If any expected workflow fails, inspect the failure logs, fix the cause, rerun the relevant local checks, commit the fix, push again, and repeat this verification loop for the new `headSha`.
+4. If any expected workflow fails, inspect the failure logs of every failed step, fix every cause, rerun the failed checks locally first and then the complete pre-push tier, commit the fix, push again, and repeat this verification loop for the new `headSha`.
 5. Do not report the push as complete while any expected workflow for the pushed SHA is pending, missing, or failed.
 
 The canonical expected-workflow list is `.github/required-workflows.json`; keep that manifest aligned with the names of the push workflows above.

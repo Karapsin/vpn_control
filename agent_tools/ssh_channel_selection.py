@@ -141,11 +141,13 @@ def select_channel(root,host,correlation_id,receipt_sha256,*,direct=False):
         except (ValueError,TypeError,KeyError,AttributeError):return {'state':'unknown','nativeActionAllowed':False,'replayAllowed':False}
     except (OSError,ValueError,KeyError,TypeError):return {'state':'unknown','nativeActionAllowed':False,'replayAllowed':False}
 
-def selected_route_options(root,host,config=None):
+def selected_route_options(root,host,config=None,*,_private_capture=None):
     """Read-only selected admission, or None when nothing was selected.
 
     Existing but malformed/expired selection always raises SelectionUnknown.
     """
+    if _private_capture is None and transport._PRIVATE_ADMISSION_CAPTURE.get() is not None:
+        _private_capture=transport._retain_private_admission
     presented=private.PresentedPath(Path(root).absolute());root=presented.canonical
     group_path=_selected_directory(root,host)
     if group_path is None:return None
@@ -167,7 +169,7 @@ def selected_route_options(root,host,config=None):
                 direct=value['version']==2
                 if direct!=(value['metadata'].get('transportMode')=='direct'):raise SelectionUnknown()
                 provider=direct_channel if direct else channel
-                metadata=_metadata(provider.route_options(root,host,corr,receipt),corr,receipt)
+                metadata=_metadata(provider.route_options(root,host,corr,receipt,**({"_private_capture":_private_capture}if _private_capture is not None else{})),corr,receipt)
                 if metadata!=value['metadata']:raise SelectionUnknown()
                 presented.guard();inventory.guard();lock.guard();current.guard();history.guard()
                 if value['sources']!=_sources():raise SelectionUnknown()

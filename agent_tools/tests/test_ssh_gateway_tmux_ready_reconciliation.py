@@ -19,6 +19,7 @@ from agent_tools import ssh_gateway_tmux_master as owner, ssh_gateway_tmux_maste
 from agent_tools import ssh_connection_recovery as recovery, ssh_recovery_adoption as adoption
 from agent_tools import ssh_expired_recovery_retirement as retirement
 from agent_tools.tests import test_ssh_gateway_tmux_d606_diagnostic as fixtures
+from agent_tools.tests import test_ssh_gateway_tmux_master as master_fixtures
 from agent_tools.tests.test_ssh_expired_recovery_retirement import absence
 
 try: reconciliation = importlib.import_module('agent_tools.ssh_gateway_tmux_ready_reconciliation')
@@ -155,15 +156,21 @@ class ReadyReconciliationTests(fixtures.DiagnosticCallerTests):
             self.assertFalse((job / 't').exists(), _late_ready_diagnostic(self, 'finite-cleanup') if (job / 't').exists() else None)
         except (OSError, ValueError):
             raise AssertionError('late-ready fixture cleanup could not establish its owned endpoint closure')
+        finally:
+            # The fake-tmux manager publishes its done record after unlinking t.
+            # Always await the inherited registry closure before temp removal; a
+            # registry failure retains the home and chains any assertion above.
+            super().finish()
 
     def setUp(self):
         super().setUp()
         self.launcher.stop()
         def launch(argv, **kwargs):
-            ssh=json.loads(argv[-1]);command=shlex.split(ssh[-1])
+            ssh=argv;command=shlex.split(ssh[-1])
             self.assertIn(command[0], ('python3','/usr/bin/python3'))
             self.assertEqual('gateway.invalid',ssh[-2]);self.assertNotIn('inert-secret',' '.join(ssh))
-            return self.original_popen([os.sys.executable,'-I','-B','-c',command[4]],**kwargs)
+            kwargs.pop('preexec_fn',None)
+            return self.original_popen([os.sys.executable,'-I','-B','-c',command[4],*command[5:]],**kwargs)
         patch=mock.patch.object(diagnostic.subprocess,'Popen',side_effect=launch);patch.start();self.addCleanup(patch.stop)
         config=adapter.transport.load_config(self.controller);self.target=config.hosts['archlinux']
         (self.controller/'.rag_index').mkdir(mode=0o700)
@@ -333,9 +340,19 @@ class LateReadyHandshakeRegressionTests(unittest.TestCase):
             with self.assertRaises(ValueError): _fixture_read(target)
 
     def _controlled(self, case, *, before):
+        from agent_tools.tests.ssh_gateway_historical_fixture import archived
+        with archived():
+            return self._controlled_archived(case,before=before)
+
+    def _controlled_archived(self, case, *, before):
         """The same real three-second pre-entry phase precedes the real6.1s delay."""
         actual_write, actual_operate = Path.write_text, adapter.operate
-        changed, server_changed = [], []
+        actual_registry_finish = master_fixtures.FixtureChildren.finish
+        changed, server_changed, registry_finished = [], [], []
+
+        def registry_finish(registry, *args, **kwargs):
+            registry_finished.append(registry)
+            return actual_registry_finish(registry, *args, **kwargs)
 
         def write(path, text, *args, **kwargs):
             if path == getattr(case, 'tmux', None) and 'time.monotonic()-start<12' in text:
@@ -363,10 +380,15 @@ class LateReadyHandshakeRegressionTests(unittest.TestCase):
             return result
 
         case._late_ready_pre_entry_delay_seconds = 3
-        with mock.patch.object(Path, 'write_text', write), mock.patch.object(adapter, 'operate', operate):
+        with mock.patch.object(Path, 'write_text', write), mock.patch.object(adapter, 'operate', operate), \
+             mock.patch.dict(case.setUp.__globals__, {'adapter':adapter,'diagnostic':diagnostic}), \
+             mock.patch.object(master_fixtures.FixtureChildren, 'finish', registry_finish):
             result = unittest.TestResult(); case.run(result)
         self.assertEqual([True] if before else [], changed)
         self.assertEqual([True], server_changed)
+        # Archived (inherited) and current (delegating) cleanup each await only
+        # their own original registry once before the owned temp home is removed.
+        self.assertEqual([case.fixture_registry], registry_finished)
         return result
 
     def test_actual_preserved_setup_socket_assertion_red_then_handshake_green(self):
@@ -397,6 +419,16 @@ class LateReadyHandshakeRegressionTests(unittest.TestCase):
                 spec = importlib.util.spec_from_file_location('_actual_late_ready_before', path)
                 self.assertIsNotNone(spec); self.assertIsNotNone(spec.loader)
                 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+                # Only the archived external fake-SSH representation changed:
+                # its old launcher decoded a JSON wrapper, while the immutable
+                # carrier now passes the already-guarded SSH argv directly.
+                # Target command bytes and real child/socket behavior stay exact.
+                from types import SimpleNamespace
+                def legacy_fake_json(raw,*args,**kwargs):
+                    if type(raw)is str and raw.startswith(('python3 -I -B -c ','/usr/bin/python3 -I -B -c ')):
+                        return ['/usr/bin/ssh','gateway.invalid',raw]
+                    return json.loads(raw,*args,**kwargs)
+                module.json=SimpleNamespace(loads=legacy_fake_json,dumps=json.dumps)
                 name = 'test_real_late_ready_reconciles_into_exact_existing_adoption_flow'
                 old = self._controlled(module.ReadyReconciliationTests(name), before=True)
                 self.assertEqual((1, 1, 0, 0), (old.testsRun, len(old.failures), len(old.errors), len(old.skipped)),

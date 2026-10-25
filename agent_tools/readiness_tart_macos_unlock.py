@@ -1,0 +1,681 @@
+"""Internal, once-only ordinary-console unlock; deliberately not registered.
+
+Only the selected, source-qualified Mac custody may mint live material. Public
+DTOs never supply screen profiles, paths, credentials or input. A transported
+password/Return is UNKNOWN until an independent session observation succeeds.
+Signed-out login has no qualification here. No filled framebuffer is retained.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager
+from copy import deepcopy
+import hashlib
+import io
+import json
+import math
+import os
+from pathlib import Path
+import re
+import selectors
+import secrets
+import stat
+import subprocess
+import sys
+import time
+import traceback
+from types import MappingProxyType
+from uuid import UUID, uuid5
+
+from . import durable_remote_job as _startup_jobs
+from . import private_inventory_lock as private
+from . import readiness_tart_macos as mac
+from . import readiness_tart_macos_registry as registry
+from . import readiness_tart_macos_unlock_stream as stream
+from . import readiness_tart_vnc as rfb
+
+NATIVE_QUALIFIED = False
+_EXECUTING_CODE = sys._getframe().f_code
+_MATERIAL_TOKEN = object()
+_FIELDS = frozenset({'target', 'machine', 'boot', 'rawBoot', 'uid', 'principal', 'home', 'agent', 'console', 'display'})
+
+
+class UnlockBlocked(ValueError):
+    """Finite, non-private result identifiers only."""
+
+
+def _need(value, reason):
+    if not value:
+        raise UnlockBlocked(reason)
+
+
+def _uuid(value):
+    try:
+        _need(type(value) is str and str(UUID(value)) == value, 'macos_unlock_operation_invalid')
+    except (ValueError, TypeError, AttributeError):
+        raise UnlockBlocked('macos_unlock_operation_invalid') from None
+    return value
+
+
+def _deadline(value):
+    _need(type(value) in {int, float} and math.isfinite(value)
+          and 0 < value - time.monotonic() <= 180, 'macos_unlock_deadline')
+    return value
+
+
+def _json(raw):
+    def pairs(rows):
+        result = {}
+        for key, value in rows:
+            _need(key not in result, 'macos_unlock_reply_invalid')
+            result[key] = value
+        return result
+    try:
+        return json.loads(raw, object_pairs_hook=pairs,
+                          parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+    except Exception:
+        raise UnlockBlocked('macos_unlock_reply_invalid') from None
+
+
+def _identity(value, binding, expected=None, *, allow_sleeping=False):
+    _need(type(value) is dict and set(value) == _FIELDS, 'macos_unlock_reply_invalid')
+    _need(type(value['uid']) is int and (value['target'], value['machine'], value['uid'],
+          value['principal'], value['home']) == (binding.target, binding.machine, binding.ordinary_uid,
+          binding.ordinary_account, binding.ordinary_home), 'macos_unlock_wrong_account')
+    _uuid(value['boot'])
+    _need(type(value['rawBoot']) is str and value['rawBoot'].lower() == value['boot'],
+          'macos_unlock_boot_changed')
+    agent = value['agent']
+    _need(type(agent) is dict and set(agent) == {'pid', 'birth', 'uid'}
+          and type(agent['pid']) is int and agent['pid'] > 0
+          and type(agent['uid']) is int and agent['uid'] == binding.ordinary_uid
+          and type(agent['birth']) is str and re.fullmatch(r'darwin:[1-9][0-9]*:[0-9]{1,6}', agent['birth']),
+          'macos_unlock_agent_invalid')
+    console = value['console']
+    _need(type(console) is dict and set(console) == {'uid', 'name', 'session', 'onConsole', 'loginDone', 'locked'},
+          'macos_unlock_console_unrecognized')
+    if console.get('uid') is None or console.get('name') in {'loginwindow', '_mbsetupuser', 'root'}:
+        raise UnlockBlocked('macos_unlock_signed_out_unsupported')
+    _need(type(console['uid']) is int and (console['uid'], console['name']) ==
+          (binding.ordinary_uid, binding.ordinary_account), 'macos_unlock_wrong_account')
+    _need(type(console['session']) is str and re.fullmatch(r'[0-9]{1,20}', console['session'])
+          and console['onConsole'] is True and console['loginDone'] is True
+          and type(console['locked']) is bool and value['display'] in
+          ({'ready', 'sleeping'} if allow_sleeping else {'ready'}),
+          'macos_unlock_console_unrecognized')
+    if expected is not None:
+        _need(all(value[key] == expected[key] for key in ('target', 'machine', 'boot', 'rawBoot',
+              'uid', 'principal', 'home', 'agent')) and console['session'] == expected['console']['session'],
+              'macos_unlock_identity_changed')
+    return value
+
+
+def _snapshot(backend, deadline, *, allow_sleeping=False):
+    packet = backend.custody.guest_probe(backend.binding, deadline)
+    _need(type(packet) is dict and set(packet) == {'facts', 'agent'}, 'macos_unlock_reply_invalid')
+    facts, agent = packet['facts'], packet['agent']
+    _need(type(facts) is dict and type(agent) is dict
+          and set(agent) == {'actor', 'uid', 'principal', 'home', 'python', 'rawBoot'}
+          and type(agent.get('actor')) is dict and set(agent['actor']) == {'pid', 'birth'}
+          and type(agent['uid']) is int and (agent['uid'], agent['principal'], agent['home'], agent['python']) ==
+          (backend.binding.ordinary_uid, backend.binding.ordinary_account, backend.binding.ordinary_home, backend.binding.guest_python),
+          'macos_unlock_reply_invalid')
+    return _identity({'target': backend.binding.target, 'machine': facts.get('machine'),
+                      'boot': facts.get('boot'), 'rawBoot': agent.get('rawBoot'),
+                      'uid': facts.get('uid'), 'principal': facts.get('account'), 'home': facts.get('home'),
+                      'agent': {**agent['actor'], 'uid': agent['uid']},
+                      'console': facts.get('console'), 'display': facts.get('display')}, backend.binding,
+                     allow_sleeping=allow_sleeping)
+
+
+def _profile(value):
+    _need(type(value) is dict and set(value) == {'dimensions', 'accountBox', 'fieldBox', 'caretBox'},
+          'macos_unlock_profile_invalid')
+    dimensions = value['dimensions']
+    _need(type(dimensions) is tuple and len(dimensions) == 2
+          and all(type(x) is int and 1 <= x <= 4096 for x in dimensions)
+          and dimensions[0] * dimensions[1] <= 4194304, 'macos_unlock_profile_invalid')
+    for key in ('accountBox', 'fieldBox'):
+        box = value[key]
+        _need(type(box) is tuple and len(box) == 4 and all(type(x) is int for x in box)
+              and 0 <= box[0] < box[2] <= dimensions[0] and 0 <= box[1] < box[3] <= dimensions[1],
+              'macos_unlock_profile_invalid')
+    a, b = value['accountBox'], value['fieldBox']
+    _need(a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1],
+          'macos_unlock_profile_invalid')
+    caret = value['caretBox']; width, height = b[2] - b[0], b[3] - b[1]
+    _need(type(caret) is tuple and len(caret) == 4 and all(type(x) is int for x in caret)
+          and 0 <= caret[0] < caret[2] <= width and 0 <= caret[1] < caret[3] <= height
+          and caret[2] - caret[0] == 1 and caret[3] - caret[1] <= 64
+          and (caret[2] - caret[0]) * (caret[3] - caret[1]) < width * height,
+          'macos_unlock_profile_invalid')
+    return dict(value)
+
+
+class _Material:
+    def __init__(self, token, backend, operation, baseline, profile, expected, guard, label_epoch=None):
+        _need(token is _MATERIAL_TOKEN, 'macos_unlock_material_unqualified')
+        self.backend, self.custody, self.operation = backend, backend.custody, operation
+        self.binding = backend.binding
+        self.credentials = {role: self.custody._credentials[role] for role in ('vnc', 'ordinary')}
+        self.baseline, self.profile = baseline, MappingProxyType(profile)
+        self.label_epoch = label_epoch
+        self.expected = deepcopy(_identity(expected, backend.binding))
+        self._guard, self.live = guard, True
+
+    def guard(self):
+        _need(self.live and self.backend.custody is self.custody and self.backend.binding is self.binding
+              and self.custody.binding is self.binding
+              and all(self.custody._credentials.get(role) is holder for role, holder in self.credentials.items()),
+              'macos_unlock_material_changed')
+        self.baseline.guard()
+        for holder in self.credentials.values(): holder.guard()
+        self._guard()
+        for holder in self.credentials.values(): holder.guard()
+        self.baseline.guard()
+
+
+@contextmanager
+def _held_material(backend, operation_id, *, baseline_snapshot, profile, expected, guard, label_epoch=None):
+    """INTERNAL custody seam, not an enrollment or public authority constructor.
+
+    The registered custody owns the native-qualified public-empty profile and
+    complete held source/host/artifact/listener/credential metadata guards. Its
+    unlock_material method must keep all of those live across this context.
+    """
+    operation = _uuid(operation_id)
+    _need(type(backend) is mac.MacTartBackend and type(backend.custody) is registry.MacCustody
+          and backend.custody.binding is backend.binding and type(baseline_snapshot) is private.Snapshot
+          and callable(guard), 'macos_unlock_material_unqualified')
+    credentials = backend.custody._credentials
+    _need(type(credentials) is dict and all(type(credentials.get(role)) is registry.HeldArtifact
+          for role in ('vnc', 'ordinary')) and credentials['vnc'].path != credentials['ordinary'].path,
+          'macos_unlock_credentials_unavailable')
+    material = _Material(_MATERIAL_TOKEN, backend, operation, baseline_snapshot, _profile(profile), expected, guard, label_epoch)
+    try:
+        material.guard()
+        yield material
+        material.guard()
+    finally:
+        material.live = False
+
+
+@contextmanager
+def _held_source():
+    path = Path(__file__)
+    presented = private.PresentedPath(path.parent)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+              and not info.st_mode & 0o022 and 0 < info.st_size <= 131072, 'macos_unlock_source_unsafe')
+        generation = private._generation(info)
+        raw = os.read(fd, info.st_size + 1)
+        _need(len(raw) == info.st_size and _EXECUTING_CODE == compile(raw, __file__, 'exec', dont_inherit=True,
+                                        optimize=sys.flags.optimize), 'macos_unlock_source_changed')
+        def guard():
+            presented.guard()
+            _need(private._generation(os.fstat(fd)) == private._generation(path.lstat()) == generation,
+                  'macos_unlock_source_changed')
+        guard()
+        yield guard, hashlib.sha256(raw).hexdigest()
+    finally:
+        os.close(fd)
+
+
+def _record(directory, name, value):
+    directory.guard()
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory.fd)
+    with os.fdopen(fd, 'wb') as output:
+        output.write(json.dumps(value, sort_keys=True, separators=(',', ':')).encode())
+        output.flush(); os.fsync(output.fileno())
+    os.fsync(directory.fd); directory.guard()
+
+
+def _original(directory, operation):
+    try:
+        with private.Snapshot(directory, 'macos-unlock-' + operation + '.json') as original:
+            value = _json(original.body)
+            _need(type(value) is dict and set(value) == {'schemaVersion', 'operationId', 'recipient', 'state', 'sourceSha256'}
+                  and type(value['schemaVersion']) is int and value['schemaVersion'] == 1
+                  and value['operationId'] == operation and value['state'] == 'unknown_no_replay'
+                  and type(value['sourceSha256']) is str and re.fullmatch(r'[a-f0-9]{64}', value['sourceSha256']),
+                  'macos_unlock_original_invalid')
+            return value
+    except FileNotFoundError:
+        return None
+
+
+def _poll(stream, event, timeout):
+    # Kernel selectors support the high descriptor numbers held by proof
+    # custody. This retains the original timeout and never retries a command.
+    with selectors.DefaultSelector() as waiter:
+        waiter.register(stream, event)
+        return bool(waiter.select(timeout))
+
+
+class _StartupEvidence:
+    LIMITS = {'stdout': 16384, 'stderr': 65536}
+    PHASES = frozenset({'guard_before_builder','fixed_builder','guard_before_popen','popen',
+                       'write_fixed_payload','guard_after_payload','read_ready','validate_ready','ready'})
+    def __init__(self, directory, operation_id):
+        _need(type(directory) is private.Directory, 'macos_unlock_startup_evidence_invalid')
+        self.operation = _uuid(operation_id); directory.guard()
+        self.directory = directory; self.fds = {}; self.count = {key:0 for key in self.LIMITS}
+        self.eof = {key:False for key in self.LIMITS}; self.overflow = {key:False for key in self.LIMITS}
+        self.actor_value = None; self.failure_value = None
+        try:
+            for role in ('stdout','stderr','events'):
+                self.fds[role] = os.open('startup-'+self.operation+'.'+role,
+                    os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600, dir_fd=directory.fd)
+            os.fsync(directory.fd)
+        except BaseException:
+            self.close(); raise
+    def _write(self, fd, raw):
+        view=memoryview(raw)
+        while view:
+            count=os.write(fd,view)
+            if count<=0:raise OSError('startup_short_write')
+            view=view[count:]
+        os.fsync(fd)
+    def record(self, value):
+        # Retention uses the ORIGINAL preopened descriptor before route guards.
+        value={'operationId':self.operation,'replayAllowed':False,**value}
+        self._write(self.fds['events'],(json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode())
+    def phase(self, value):
+        _need(value in self.PHASES,'macos_unlock_startup_phase_invalid')
+        self.record({'stage':'phase','phase':value})
+    def actor(self, process):
+        self.actor_value={'pid':process.pid,'birth':_startup_jobs._birth(process.pid),'parent':os.getpid()}
+        self.record({'stage':'host_actor_started','actor':self.actor_value})
+    def bytes(self, role, raw):
+        if not raw:self.eof[role]=True;return
+        room=self.LIMITS[role]-self.count[role];keep=raw[:max(0,room)]
+        if keep:self._write(self.fds[role],keep);self.count[role]+=len(keep)
+        if len(raw)>room:self.overflow[role]=True
+    def drain(self, process):
+        # Bounded nonblocking queued bytes ONLY; no second handshake or wait.
+        for role in self.LIMITS:
+            pipe=getattr(process,role)
+            if pipe.closed:continue
+            os.set_blocking(pipe.fileno(),False)
+            for _ in range(32):
+                try:raw=os.read(pipe.fileno(),4096)
+                except (BlockingIOError,InterruptedError):break
+                self.bytes(role,raw)
+                if not raw:break
+    def failure(self, error, phase):
+        self.failure_value={'class':type(error).__name__,'frames':[
+            {'function':row.name,'line':row.lineno,'source':Path(row.filename).name}
+            for row in traceback.extract_tb(error.__traceback__)[-16:]]}
+        self.record({'stage':'startup_failed','phase':phase,'failure':self.failure_value})
+    def finish(self, state, process, phase):
+        self.record({'stage':'startup_retained','phase':phase,'state':state,'actor':self.actor_value,
+            'failure':self.failure_value,'stdoutBytes':self.count['stdout'],'stderrBytes':self.count['stderr'],
+            'stdoutEof':self.eof['stdout'],'stderrEof':self.eof['stderr'],
+            'stdoutOverflow':self.overflow['stdout'],'stderrOverflow':self.overflow['stderr'],
+            'returncode':None if process is None else process.poll(),'hostActorAbsent':process is not None and self.actor_value is not None and self.actor_value['birth']is not None
+               and _startup_jobs._birth(process.pid)!=self.actor_value['birth'],
+            'guestActorAbsenceProven':False})
+        self.close()
+    def close(self):
+        fds,self.fds=self.fds,{}
+        first=None
+        for fd in fds.values():
+            try:os.close(fd)
+            except BaseException as error:first=first or error
+        if first is not None:raise first
+
+class SessionObserver:
+    """One original fixed read-only guest observer; never starts a replacement."""
+    _startup = None
+    def __init__(self, backend, expected, deadline, *, guard, _startup=None):
+        _need(_startup is None or type(_startup) is _StartupEvidence,
+              'macos_unlock_startup_evidence_invalid')
+        self.process = None; self._startup = _startup
+        self.startup_phase = 'guard_before_builder'; self.startup_evidence_failure = None
+        try:
+            self._initialize(backend, expected, deadline, guard=guard, _startup=_startup)
+        except BaseException as error:
+            try:
+                if self._startup is not None:
+                    try: self._startup.failure(error, self.startup_phase)
+                    except BaseException as journal_error: self._evidence_error(journal_error)
+                    if self.process is not None:
+                        try: self._startup.drain(self.process)
+                        except BaseException as journal_error: self._evidence_error(journal_error)
+            finally:
+                # A failed diagnostic sink NEVER skips original process cleanup.
+                if self.process is not None: self.close()
+                else: self._finish_evidence(None)
+            raise
+
+    def _evidence_error(self, error):
+        self.startup_evidence_failure = {'state':'unknown', 'class':type(error).__name__,
+                                       'replayAllowed':False}
+
+    def _finish_evidence(self, process):
+        journal = self._startup
+        if journal is None: return
+        try:
+            if process is not None:
+                try: journal.drain(process)
+                except BaseException as error: self._evidence_error(error)
+            try: journal.finish('failed', process, self.startup_phase)
+            except BaseException as error: self._evidence_error(error)
+        finally:
+            try: journal.close()
+            except BaseException as error: self._evidence_error(error)
+            self._startup = None
+
+    def _initialize(self, backend, expected, deadline, *, guard, _startup=None):
+        self.binding, self.expected, self.deadline = backend.binding, expected, deadline
+        self.buffer = bytearray()
+        self.counter, self.used_nonces = 0, set()
+        guard()
+        self._phase('fixed_builder')
+        argv, payload = stream.session_stream_command(backend.binding)
+        self._phase('guard_before_popen')
+        guard()
+        self._phase('popen')
+        self.process = subprocess.Popen([backend.binding.tart_binary, 'exec', '-i', backend.binding.vm_name, *argv],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
+            env={key: value for key, value in os.environ.items() if not key.startswith('DYLD_')})
+        if self._startup is not None: self._startup.actor(self.process)
+        try:
+            self._phase('write_fixed_payload')
+            os.set_blocking(self.process.stdin.fileno(), False)
+            remaining = memoryview(payload)
+            until = min(deadline, time.monotonic() + 10)
+            while remaining:
+                left = until - time.monotonic()
+                _need(left > 0 and _poll(self.process.stdin, selectors.EVENT_WRITE, left), 'macos_unlock_observer_deadline')
+                try:
+                    count = os.write(self.process.stdin.fileno(), remaining[:4096])
+                    _need(count > 0, 'macos_unlock_observer_unavailable')
+                    remaining = remaining[count:]
+                except BlockingIOError:
+                    continue
+            os.set_blocking(self.process.stdin.fileno(), True)
+            self._phase('guard_after_payload')
+            guard()
+            self._phase('read_ready')
+            reply = self.read()
+            _need(set(reply) == {'protocol', 'state', 'observation'} and reply['state'] == 'observer_ready',
+                  'macos_unlock_observer_unavailable')
+            self._phase('validate_ready')
+            self.validate(reply['observation'])
+            self._phase('ready')
+            if self._startup is not None:
+                self._startup.finish('ready', self.process, self.startup_phase)
+                self._startup = None
+        except BaseException:
+            raise
+
+    def _phase(self, value):
+        self.startup_phase = value
+        if self._startup is not None: self._startup.phase(value)
+
+    def read(self):
+        _need(time.monotonic() < self.deadline, 'macos_unlock_observer_deadline')
+        until = min(self.deadline, time.monotonic() + 3)
+        while b'\n' not in self.buffer:
+            left = until - time.monotonic()
+            _need(left > 0 and _poll(self.process.stdout, selectors.EVENT_READ, left), 'macos_unlock_observer_deadline')
+            block = os.read(self.process.stdout.fileno(), 4096)
+            if self._startup is not None: self._startup.bytes('stdout', block)
+            _need(block and len(self.buffer) + len(block) <= 16384, 'macos_unlock_observer_unavailable')
+            self.buffer.extend(block)
+        line, _, rest = self.buffer.partition(b'\n'); self.buffer[:] = rest
+        _need(not rest, 'macos_unlock_observer_unsolicited')
+        value = _json(line)
+        _need(type(value) is dict and value.get('protocol') == stream.PROTOCOL and set(value) in
+              ({'protocol', 'state', 'observation'}, {'protocol', 'state', 'counter', 'nonce', 'observation'}),
+              'macos_unlock_reply_invalid')
+        return value
+
+    def validate(self, value):
+        return _identity(value, self.binding, self.expected)
+
+    def check(self):
+        _need(self.process.poll() is None, 'macos_unlock_original_observer_ended')
+        # This protocol is strictly one request/one reply. No legitimate
+        # response may be cached or queued before its check was requested.
+        _need(not self.buffer and not _poll(self.process.stdout, selectors.EVENT_READ, 0),
+              'macos_unlock_observer_unsolicited')
+        counter = self.counter + 1
+        _need(counter <= 1024, 'macos_unlock_observer_request_limit')
+        nonce = secrets.token_hex(16)
+        _need(type(nonce) is str and re.fullmatch(r'[0-9a-f]{32}', nonce) and nonce not in self.used_nonces,
+              'macos_unlock_observer_nonce_invalid')
+        self.used_nonces.add(nonce)
+        # Establish the exact pending public request before writing any bytes.
+        # A delayed old response, including one arriving after the queue check,
+        # cannot authorize the next event.
+        self.process.stdin.write(('check ' + str(counter) + ' ' + nonce + '\n').encode('ascii'))
+        self.process.stdin.flush()
+        value = self.read()
+        _need(set(value) == {'protocol', 'state', 'counter', 'nonce', 'observation'}
+              and value['state'] == 'observed' and type(value['counter']) is int and value['counter'] == counter
+              and type(value['nonce']) is str and value['nonce'] == nonce, 'macos_unlock_observer_uncorrelated')
+        actual = self.validate(value['observation'])
+        self.counter = counter
+        return actual
+
+    def close(self):
+        cleanup_error = None
+        try:
+            try:
+                if not self.process.stdin.closed: self.process.stdin.close()
+            except BaseException as error: cleanup_error = error
+            try:
+                self.process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                try:
+                    self.process.terminate(); self.process.wait(timeout=3)
+                except BaseException as error: cleanup_error = cleanup_error or error
+            except BaseException as error: cleanup_error = cleanup_error or error
+        finally:
+            try:
+                self._finish_evidence(self.process)
+            finally:
+                # Always attempt BOTH original output closes even if diagnostic
+                # drainage/finalization or a preceding pipe close failed.
+                for pipe in (self.process.stdout, self.process.stderr):
+                    try: pipe.close()
+                    except BaseException as error: cleanup_error = cleanup_error or error
+        if cleanup_error is not None: raise cleanup_error
+
+
+def _image(raw, dimensions):
+    from PIL import Image
+    try:
+        image = Image.open(io.BytesIO(raw))
+        _need(image.size == dimensions and image.format == 'PNG', 'macos_unlock_screen_unrecognized')
+        return image.convert('RGB')
+    except UnlockBlocked:
+        raise
+    except Exception:
+        raise UnlockBlocked('macos_unlock_screen_unrecognized') from None
+
+
+def _white_label_mask(image, profile):
+    # Exact pure-white foreground only; no RGB threshold, OCR or fitted tolerance.
+    _need(image.mode == 'RGB' and image.size == profile['dimensions'], 'macos_unlock_screen_unrecognized')
+    crop = image.crop(profile['accountBox'])
+    try:
+        data = crop.tobytes()
+        return bytes(data[i:i+3] == b'\xff\xff\xff' for i in range(0, len(data), 3))
+    finally:
+        crop.close()
+
+
+def _foreground_label_matches(image, baseline, profile):
+    expected = _white_label_mask(baseline, profile)
+    actual = _white_label_mask(image, profile)
+    # Exact source-qualified baseline shape; no fixture text/pixel count.
+    _need(0 < sum(expected) < len(expected), 'macos_unlock_profile_invalid')
+    return actual == expected
+
+
+def _account_matches(image, baseline, profile, *, epoch=None, custody=None):
+    if epoch is None:
+        return image.crop(profile['accountBox']).tobytes() == baseline.crop(profile['accountBox']).tobytes()
+    # No caller DTO/mode string can enable the new comparison. Only a source-
+    # qualified, same selected-custody opaque profile epoch may select it.
+    from . import readiness_tart_macos_unlock_qualification as qualification
+    qualification._label_epoch_guard(epoch, custody, profile)
+    expected = _white_label_mask(baseline, profile)
+    actual = _white_label_mask(image, profile)
+    _need(0 < sum(expected) < len(expected), 'macos_unlock_profile_invalid')
+    qualification._label_epoch_mask(epoch, expected)
+    qualification._label_epoch_guard(epoch, custody, profile)
+    return actual == expected
+
+
+def _empty(image, baseline, profile):
+    from PIL import ImageDraw
+    a, b = image.crop(profile['fieldBox']), baseline.crop(profile['fieldBox'])
+    # Only this source-qualified empty-field insertion caret may blink.
+    x0, y0, x1, y1 = profile['caretBox']
+    for crop in (a, b):
+        ImageDraw.Draw(crop).rectangle((x0, y0, x1 - 1, y1 - 1), fill=(0, 0, 0))
+    return a.tobytes() == b.tobytes()
+
+
+def _credential(custody, role):
+    try:
+        holder = custody._credentials[role]
+        _need(type(holder) is registry.HeldArtifact, 'macos_unlock_credentials_unavailable')
+        return holder.credential_fd()
+    except Exception:
+        raise UnlockBlocked('macos_unlock_credentials_unavailable') from None
+
+
+class _OrdinaryVncSession(rfb.ProtectedVncSession):
+    @staticmethod
+    def _text(value):
+        # This producer only qualifies the native-tested US printable-ASCII
+        # path and its 32-character/136-guard bound. Do not silently expand
+        # input to Unicode or another keyboard mapping.
+        value = rfb.ProtectedVncSession._text(value)
+        if len(value) > 32 or any(not 32 <= ord(char) <= 126 for char in value):
+            raise rfb.VncBlocked('macos_unlock_credential_layout_unsupported')
+        return value
+
+
+def _recipient_image(view, baseline, profile, *, guard, epoch, custody):
+    """Shared exact recipient callback; captures remain memory-only."""
+    guard()
+    image = _image(view.capture_png(), profile['dimensions'])
+    _need(_account_matches(image, baseline, profile, epoch=epoch, custody=custody),
+          'macos_unlock_recipient_changed')
+    return image
+
+
+def status(backend, operation_id, *, deadline):
+    """Read original journal/session only: no material, credential FD or input."""
+    operation = _uuid(operation_id); _deadline(deadline)
+    _need(type(backend) is mac.MacTartBackend and type(backend.custody) is registry.MacCustody,
+          'macos_unlock_backend_unqualified')
+    _need(os.name == 'posix', 'macos_unlock_coordinator_unsupported')
+    with backend.operation_scope(deadline=deadline):
+        with private.Directory(backend.custody.lifecycle_root) as directory:
+            original = _original(directory, operation)
+            if original is None:
+                return {'operationId': operation, 'state': 'unsubmitted', 'replacementForbidden': True}
+            current = _identity(_snapshot(backend, deadline, allow_sleeping=True), backend.binding,
+                                original['recipient'], allow_sleeping=True)
+            return {'operationId': operation, 'state': 'observed_ready' if not current['console']['locked'] else 'unknown',
+                    'display': current['display'], 'replacementForbidden': True}
+
+
+def unlock_once(backend, operation_id, *, deadline):
+    """One password and one Return, preserving UNKNOWN on every uncertain path."""
+    try:
+        return _unlock_once(backend, operation_id, deadline=deadline)
+    except (UnlockBlocked, rfb.VncBlocked):
+        raise
+    except Exception:
+        raise UnlockBlocked('macos_unlock_original_outcome_unknown') from None
+
+
+def _unlock_once(backend, operation_id, *, deadline):
+    operation = _uuid(operation_id); _deadline(deadline)
+    _need(type(backend) is mac.MacTartBackend and type(backend.custody) is registry.MacCustody,
+          'macos_unlock_backend_unqualified')
+    _need(os.name == 'posix', 'macos_unlock_coordinator_unsupported')
+    import resource
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    with _held_source() as (source_guard, source_sha), backend.operation_scope(deadline=deadline):
+        factory = getattr(backend.custody, 'unlock_material', None)
+        _need(callable(factory), 'macos_unlock_material_unavailable')
+        with private.Directory(backend.custody.lifecycle_root) as directory:
+            _need(_original(directory, operation) is None, 'macos_unlock_original_pending')
+            with factory(backend, operation, deadline=deadline) as material:
+                _need(type(material) is _Material and material.backend is backend and material.custody is backend.custody
+                      and material.operation == operation and material.live, 'macos_unlock_material_unqualified')
+                material.guard(); source_guard()
+                expected = _snapshot(backend, deadline)
+                _need(expected == material.expected, 'macos_unlock_admitted_snapshot_changed')
+                _need(expected['console']['locked'], 'macos_unlock_session_not_locked')
+                baseline = _image(material.baseline.body, material.profile['dimensions'])
+                def preparation_guard():
+                    source_guard(); material.guard()
+                    _need(time.monotonic() < deadline, 'macos_unlock_deadline')
+                startup = _StartupEvidence(directory, operation)
+                try:
+                    observer = SessionObserver(backend, expected, deadline, guard=preparation_guard,
+                                               _startup=startup)
+                finally:
+                    # Capture is startup-only and disarmed before VNC or input.
+                    # Also close its held FDs if construction never completed.
+                    startup.close()
+                submitting = False
+                try:
+                    def guard():
+                        _need(time.monotonic() < deadline, 'macos_unlock_deadline')
+                        source_guard(); material.guard(); directory.guard()
+                        actual = observer.check()
+                        _need(submitting or actual['console']['locked'], 'macos_unlock_phase_changed')
+                        material.guard(); source_guard()
+                        _need(time.monotonic() < deadline, 'macos_unlock_deadline')
+                    guard()
+                    fd = _credential(backend.custody, 'vnc')
+                    try:
+                        with _OrdinaryVncSession(port=backend.custody.endpoint['port'], credential_fd=fd,
+                                guard=guard, timeout=min(30, deadline - time.monotonic())) as view:
+                            def recipient():
+                                return _recipient_image(view, baseline, material.profile, guard=guard,
+                                      epoch=material.label_epoch, custody=material.custody)
+                            image = recipient()
+                            _need(_empty(image, baseline, material.profile), 'macos_unlock_field_not_known_empty')
+                            image = None
+                            guard()
+                            _record(directory, 'macos-unlock-' + operation + '.json',
+                                    {'schemaVersion': 1, 'operationId': operation, 'recipient': expected,
+                                     'state': 'unknown_no_replay', 'sourceSha256': source_sha})
+                            # Lifecycle directory is already held private. SecretInputJournal
+                            # uses distinct deterministic IDs and never records private input.
+                            secret_op, submit_op = (str(uuid5(UUID(operation), phase)) for phase in ('secret', 'return'))
+                            journal = rfb.SecretInputJournal(backend.custody.lifecycle_root, operation)
+                            credential = _credential(backend.custody, 'ordinary')
+                            try:
+                                view.type_secret_from_fd(credential, operation_id=secret_op, journal=journal,
+                                                         guard=lambda: recipient())
+                            finally:
+                                os.close(credential)
+                            _record(directory, 'macos-unlock-password-' + secret_op + '.json',
+                                    {'operationId': secret_op, 'state': 'transport_complete_not_unlock_receipt'})
+                            # The account crop is checked in memory after typing; field
+                            # pixels are neither saved nor hashed. No post-input artifact.
+                            recipient()
+                            guard(); _record(directory, 'macos-unlock-return-' + submit_op + '.json',
+                                             {'operationId': submit_op, 'state': 'unknown_no_replay'})
+                            submitting = True
+                            view.key('Return')
+                    finally:
+                        os.close(fd)
+                finally:
+                    observer.close()
+        # Independent fresh native facts, outside the original input connection.
+        return status(backend, operation, deadline=deadline)

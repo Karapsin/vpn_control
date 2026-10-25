@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "status() decided between its terminal and observation paths with one terminal.json existence check and only later observed the original owner. The owner publishes terminal.json, then owner-closed.json, then exits; when that happened between the two observations a verified complete job was reported UNKNOWN original_owner_terminal_unproved with nextAction reconcile_original. reconcile() had the same check-then-observe order and started a redundant network reconciliation for the completed job.",
+  "originalFailure": {
+    "run": "managed prepush, 2-worker agent runner, about 4,300 tests per shard; the module passes alone on an idle machine",
+    "module": "agent_tools.tests.test_ssh_program_durable",
+    "tests": [
+      "test_durable_large_generated_source_uses_saved_transfer_and_original_semantics",
+      "test_preserved_foreground_beforeimage_causally_fails_same_disconnect"
+    ],
+    "assertion": "terminal(): Original owner closed without verified terminal: state unknown, nextAction reconcile_original, reason original_owner_terminal_unproved"
+  },
+  "controlledFailure": "The unchanged owner publisher (whole worker and worker-command receipt with an inert local argv) is released only during status()'s owner observation; the observation waits for its actual exit and the real keeper.actor then reports it gone. Both owner-gone observation branches are exercised for status() and for reconcile(), each with a terminal published during that single owner observation: the exited pid (for status() that released publisher; for reconcile() a spawned and reaped child pid, so the real keeper.actor fails and os.kill reports ProcessLookupError) and the reused pid (keeper.actor reports another process birth for the owner pid). The beforeimage status() returns UNKNOWN original_owner_terminal_unproved on both branches, and its reconcile() enters network reconciliation on both branches for a terminal published during its owner observation, on the reused-pid branch even one without or with a foreign closing receipt. The fix returns the published terminal through the unchanged validation path on both branches; reconcile() hands a published terminal to status() on both branches, on the reused-pid branch also to its exact closing receipt binding, and still reconciles a published unknown terminal.",
+  "localReproduction": "Real completed durable job through the test_ssh_program_durable inert peer, replicated before its terminal.json/owner-closed.json publication: the beforeimage reported UNKNOWN original_owner_terminal_unproved and its reconcile() made 4 fixture peer calls and one new reconciliation collector; the fix returned the identical terminal with no network call or record.",
+  "causalAssertion": "agent_tools.tests.test_ssh_program_status_terminal_race",
+  "files": {
+    "ssh_program_execution.py.before.source": {
+      "path": "agent_tools/ssh_program_execution.py",
+      "baseline": "2dfa2f2e recovery worktree",
+      "sha256": "653d0494477a9dcfb086d45ba450710da6062868adc9998a802e97c0e44ac07d"
+    }
+  }
+}

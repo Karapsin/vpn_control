@@ -74,7 +74,7 @@ with mock.patch.object(close,'status',return_value=output) as call:
 """
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "identity.json"; path.write_text(json.dumps(self.identity)); path.chmod(0o600)
-            child = subprocess.run([sys.executable, "-I", "-c", program, str(Path(server.__file__).resolve()), str(path)],
+            child = subprocess.run([sys.executable, "-I", "-B", "-c", program, str(Path(server.__file__).resolve()), str(path)],
                                    cwd=directory, capture_output=True, text=True, timeout=30)
         self.assertEqual(0, child.returncode, child.stderr)
         self.assertTrue(json.loads(child.stdout)["ok"])

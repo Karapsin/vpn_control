@@ -1,0 +1,1 @@
+{"evidence": ".runtime/tool-recovery/windows-lifecycle/capacity-bridge-before/result.json", "failure": "Staged ordinary lifecycle owner invoked euid0-only producer; actual ordinary producer returned blocked before any VM effect.", "sourceSha256": "35d4b94c5755d19017e49f03da1dcde638fdaa6e4766ed08f6db9e7db4916924"}

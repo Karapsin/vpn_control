@@ -1,5 +1,6 @@
 """Disposable completed-master history; no SSH process or guest command."""
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -7,6 +8,7 @@ import shutil
 import socket
 from types import SimpleNamespace
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -55,6 +57,38 @@ class CompletedSessionRetirementTests(unittest.TestCase):
 
     def retire(self):
         return retirement.retire(self.root, 'arch', self.receipt)
+
+    def test_complete_before_source_refuses_current_session_fixed_source_archives_once(self):
+        folder = Path(__file__).parent / 'fixtures/ssh_session_guard_pins'
+        name = 'ssh_connection_session_retirement.py'
+        raw = (folder / (name + '.before.source')).read_bytes()
+        metadata = json.loads((folder / 'provenance.json').read_bytes())
+        self.assertEqual(metadata['sourceSha256'][name], hashlib.sha256(raw).hexdigest())
+        before = types.ModuleType('agent_tools._retirement_pin_before')
+        before.__package__ = 'agent_tools'
+        before.__file__ = str(folder / (name + '.before.source'))
+        exec(compile(raw, before.__file__, 'exec'), before.__dict__)
+        with mock.patch.object(before, '_rename_no_replace', side_effect=AssertionError('no archive')):
+            self.assertEqual('unknown', before.retire(self.root, 'arch', self.receipt)['state'])
+        self.observer.assert_not_called()
+        self.assertEqual(self.before, {p.name: p.read_bytes() for p in self.journal.iterdir()})
+        self.assertFalse(retirement._paths(self.root, 'arch', self.receipt)[4].exists())
+        self.assertEqual('retired', self.retire()['state'])
+        archive = retirement._paths(self.root, 'arch', self.receipt)[3]
+        self.assertEqual(self.before, {p.name: p.read_bytes() for p in archive.iterdir()})
+        with mock.patch.object(retirement, '_rename_no_replace', side_effect=AssertionError('no replay')):
+            self.assertEqual('retired', self.retire()['state'])
+
+    def test_changed_session_source_refuses_before_absence_or_archive(self):
+        dependency = self.root / 'changed-session.py'
+        dependency.write_bytes(Path(session.__file__).read_bytes() + b'\n')
+        dependency.chmod(0o600)
+        with mock.patch.object(session, '__file__', str(dependency)), \
+                mock.patch.object(retirement, '_rename_no_replace', side_effect=AssertionError('no archive')):
+            self.assertEqual('unknown', self.retire()['state'])
+        self.observer.assert_not_called()
+        self.assertEqual(self.before, {p.name: p.read_bytes() for p in self.journal.iterdir()})
+        self.assertFalse(retirement._paths(self.root, 'arch', self.receipt)[4].exists())
 
     def test_positive_dead_completed_master_is_archived_and_original_prepare_stays_fenced_until_retired(self):
         with mock.patch.object(session, '_master', side_effect=AssertionError('no master command')):

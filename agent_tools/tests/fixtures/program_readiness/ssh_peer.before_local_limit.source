@@ -1,0 +1,47 @@
+"""Complete inert SSH caller with concurrent real Unix control connections."""
+import base64,json,os,shlex,socket,subprocess,sys,threading,time
+from pathlib import Path
+args=sys.argv[1:]
+control=args[max(i for i,part in enumerate(args)if part=='-S')+1]
+def receive(connection):
+ body=b''
+ while not body.endswith(b'\n'):
+  part=connection.recv(65536)
+  if not part:raise ValueError('fixture_eof')
+  body+=part
+  if len(body)>16*1024*1024:raise ValueError('fixture_bound')
+ return json.loads(body)
+def handle(connection):
+ try:
+  with connection:
+   request=receive(connection)
+   if request['kind']=='check':reply={'pid':os.getpid()}
+   else:
+    command=shlex.split(request['command'])
+    if command[0]=='python3':command[0]=sys.executable
+    result=subprocess.run(command,input=base64.b64decode(request['stdin']),capture_output=True,
+        env={**os.environ,'SSH_CONNECTION':'192.0.2.1 12345 192.0.2.2 22'})
+    reply={'stdout':base64.b64encode(result.stdout).decode(),'stderr':base64.b64encode(result.stderr).decode(),'code':result.returncode}
+   connection.sendall(json.dumps(reply).encode()+b'\n')
+ except (OSError,ValueError):pass
+if '-N' in args:
+ server=socket.socket(socket.AF_UNIX);server.bind(control);os.chmod(control,0o600);server.listen()
+ while True:
+  connection,_=server.accept()
+  threading.Thread(target=handle,args=(connection,),daemon=True).start()
+else:
+ if '-O' not in args:
+  log=os.environ.get('VC_PROGRAM_READINESS_LOG')
+  if log:
+   record={'commandBytes':len(args[-1].encode()),'maxArgumentBytes':max(len(part.encode()) for part in args),'endpoint':args[-2]}
+   fd=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_APPEND,0o600)
+   try:os.write(fd,(json.dumps(record)+'\n').encode())
+   finally:os.close(fd)
+ client=socket.socket(socket.AF_UNIX)
+ try:client.connect(control)
+ except OSError:sys.stderr.write('Connection refused\n');raise SystemExit(255)
+ request={'kind':'check'} if '-O' in args else {'kind':'command','command':args[-1],'stdin':base64.b64encode(sys.stdin.buffer.read()).decode()}
+ client.sendall(json.dumps(request).encode()+b'\n');reply=receive(client)
+ if '-O' in args:sys.stderr.write('Master running (pid=%d)\n'%reply['pid'])
+ else:
+  sys.stdout.buffer.write(base64.b64decode(reply['stdout']));sys.stderr.buffer.write(base64.b64decode(reply['stderr']));sys.exit(reply['code'])

@@ -51,7 +51,7 @@ def pair(root):
     if value!=PAIR_EXPECTED:raise ValueError('installed-artifact-catalog')
     return value
 
-CURRENT_PRECISE_SHA='87ef2d5decff79166b7417cedb9320c4e646beaeb536b55ecfc766d900242a98'
+CURRENT_PRECISE_SHA='af0cdb2b55cd6eb6ff28ee226ff71378830e10003baf487a374e6f1093dea896'
 
 def body(admitted):
     return _body(admitted,PRECISE_SHA)

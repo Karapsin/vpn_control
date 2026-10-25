@@ -1,0 +1,9 @@
+{
+  "sourceSha256": {
+    "guidance.before.source": "3aceb1605c21d7071d3bd188707b1b1abb2bcae83436d00009555e80c5d2c236",
+    "receipt.json": "baead9cafbacb261489f6366d9d4365587391ae9f2405b3324781f5d6ec5cbec"
+  },
+  "nativeReceiptSha256": "92e41d635a3b7bad5f82c7aaa339dc4e7283d7ab1f7ff276580f441297472bbc",
+  "projection": "Actual fresh MCP result contract; fixture alias and operation UUID replaced with public test identities; private identity/failure evidence omitted.",
+  "failure": "Normal protected original Windows owner acknowledgement pending was overwritten with resolve_blocker instead of observing the same durable operation."
+}

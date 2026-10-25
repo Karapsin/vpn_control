@@ -1,0 +1,130 @@
+"""Complete packets over real owned Unix QMP/QGA sockets, with guest SSH IO seams."""
+import contextlib
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+from agent_tools import readiness_qemu_remote as subject
+
+SERVER=r'''
+import json,os,pathlib,socket,sys,threading,time
+root=pathlib.Path(sys.argv[1]);machine=sys.argv[2]
+def handle(client,agent):
+ with client:
+  stream=client.makefile('rwb',buffering=0)
+  if not agent:stream.write(b'{"QMP":{}}\n')
+  while True:
+   line=stream.readline(65537)
+   if not line:return
+   request=json.loads(line.lstrip(b'\xff'));name=request['execute']
+   state=json.loads((root/'endpoint-state.json').read_text())
+   if name=='guest-sync-delimited':stream.write(b'\xff'+(json.dumps({'return':request['arguments']['id']})+'\n').encode());continue
+   if name=='query-status':value={'status':state['status'],'running':state['status']=='running'}
+   elif name=='query-uuid':value={'UUID':machine}
+   elif name in ['stop','cont']:
+    state['status']='paused' if name=='stop' else 'running';state['changes']+=1
+    (root/'endpoint-state.json').write_text(json.dumps(state));value={}
+   else:value={}
+   stream.write((json.dumps({'return':value,'id':request.get('id')})+'\n').encode())
+def serve(name,agent):
+ server=socket.socket(socket.AF_UNIX);server.bind(str(root/name));server.listen()
+ while True:
+  client,_=server.accept();threading.Thread(target=handle,args=(client,agent),daemon=True).start()
+threading.Thread(target=serve,args=('qmp.sock',False),daemon=True).start()
+threading.Thread(target=serve,args=('qga.sock',True),daemon=True).start()
+while True:time.sleep(1)
+'''
+
+
+@unittest.skipUnless(os.name=='posix' and hasattr(__import__('socket'),'SO_PEERCRED'),'Linux SO_PEERCRED boundary')
+class QemuRemotePacketTests(unittest.TestCase):
+    def setUp(self):
+        temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
+        self.root=Path(temporary.name);self.root.chmod(0o700)
+        self.machine='0f559886-4ff5-4075-ad25-beb805173364';self.boot='25515f23-b966-4c3a-ae63-d38452375578'
+        self.binding={'root':str(self.root),'machine':self.machine,'host':'fixture','target':'qemu-linux:'+self.machine}
+        self.proc=self.root/'proc';self.proc.mkdir();boot=self.proc/'sys/kernel/random';boot.mkdir(parents=True);(boot/'boot_id').write_text(self.boot)
+        (self.root/'endpoint-state.json').write_text(json.dumps({'status':'running','changes':0}))
+        self.child=subprocess.Popen([sys.executable,'-c',SERVER,str(self.root),self.machine],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        self.addCleanup(self.stop_child)
+        for _ in range(100):
+            if (self.root/'qmp.sock').exists() and (self.root/'qga.sock').exists():break
+            time.sleep(.01)
+        self.assertTrue((self.root/'qmp.sock').exists())
+        actor=self.proc/str(self.child.pid);actor.mkdir();fields=['S']+['1']*19;fields[19]='777'
+        (actor/'stat').write_text(str(self.child.pid)+' (controlled endpoint) '+' '.join(fields))
+        (actor/'cmdline').write_bytes(b'PUBLIC_CONTROLLED_ENDPOINT\0')
+        self.owner={'operationId':'a7117920-2ee8-4194-b035-a5adb1e1467d','preparationId':self.machine,'hostBootId':self.boot,
+                    'pid':self.child.pid,'startTicks':777,'argvSha256':hashlib.sha256(b'PUBLIC_CONTROLLED_ENDPOINT\0').hexdigest(),
+                    'qmpSocketInode':(self.root/'qmp.sock').stat().st_ino,'state':'running','guestSubmitted':True}
+        for name,value in {'prepared.json':{'operationId':self.machine,'guestAccount':'recovery','interactiveDesktop':False,'sshPort':23861,'qemuArgv':[]},
+                           'qemu-owner.json':self.owner,'reservation.json':{'operationId':self.machine,'operator':'tool-recovery-qemu'}}.items():
+            self.write(name,json.dumps(value).encode())
+        for name,value in {'client-key':b'INERT_PRIVATE_TEST_KEY','known-hosts':b'PUBLIC_KNOWN_HOST','disk.qcow2':b'OWNED_DISK','operator.lock':b'LOCK'}.items():self.write(name,value)
+        self.guest_boot='766684cb-a628-4c05-98f7-6fd364d351cc';self.guest_blockers=[];self.ssh=[]
+    def stop_child(self):
+        self.child.terminate();self.child.wait(timeout=5)
+    def write(self,name,raw):
+        path=self.root/name;path.write_bytes(raw);path.chmod(0o600)
+    def run_packet(self,action='observe',pins=None,rid=None,expected=None):
+        concrete=type(self.root)
+        def path(*parts):
+            result=concrete(*parts)
+            if str(result)=='/proc' or str(result).startswith('/proc/'):
+                return self.proc/str(result).removeprefix('/proc').lstrip('/')
+            return result
+        def run(argv,**kwargs):
+            self.ssh.append(argv)
+            self.assertEqual('/usr/bin/ssh',argv[0])
+            self.assertIn('StrictHostKeyChecking=yes',argv)
+            self.assertIn('BatchMode=yes',argv)
+            self.assertNotIn('INERT_PRIVATE_TEST_KEY',' '.join(argv))
+            if 'systemctl' in argv[-1]:return subprocess.CompletedProcess(argv,0,b'',b'')
+            value={'bootId':self.guest_boot,'account':'recovery','originalUid':'1000','protectedOrInstallerProcesses':self.guest_blockers,
+                   'systemdJobs':[],'cloudInit':'status: done','foreignSessions':[],'unknownOrRunningJobs':[]}
+            return subprocess.CompletedProcess(argv,0,json.dumps(value).encode(),b'')
+        stream=io.StringIO()
+        with mock.patch('pathlib.Path',side_effect=path),mock.patch.object(subprocess,'run',side_effect=run),contextlib.redirect_stdout(stream):
+            exec(compile(subject.program(self.binding,pins,action,rid,expected),'complete QEMU readiness packet','exec'),{'__name__':'__main__'})
+        return json.loads(stream.getvalue())
+    def test_healthy_packet_uses_bound_real_qmp_qga_and_never_hashes_key(self):
+        value=self.run_packet('enroll')
+        self.assertEqual('observed',value['state']);self.assertEqual('running',value['facts']['guest'])
+        self.assertTrue(value['facts']['guestAgent']);self.assertEqual(self.guest_boot,value['facts']['boot'])
+        self.assertEqual({'generation'},set(value['pins']['key']))
+        self.assertEqual(0,json.loads((self.root/'endpoint-state.json').read_text())['changes'])
+    def test_paused_packet_requires_no_guest_ssh_then_resumes_once(self):
+        value=self.run_packet('enroll');pins=value['pins']
+        (self.root/'endpoint-state.json').write_text(json.dumps({'status':'paused','changes':0}));self.ssh.clear()
+        paused=self.run_packet(pins=pins);self.assertEqual('paused',paused['facts']['guest']);self.assertEqual([],self.ssh)
+        expected={k:paused['facts'][k] for k in ['owner','boot','guest']};rid='ab'*32
+        self.assertEqual('submitted',self.run_packet('resume',pins,rid,expected)['state'])
+        self.assertEqual('running',self.run_packet(pins=pins)['facts']['guest'])
+        self.assertEqual('blocked',self.run_packet('resume',pins,rid,expected)['state'])
+        self.assertEqual(1,json.loads((self.root/'endpoint-state.json').read_text())['changes'])
+    def test_reboot_admission_waits_for_renewed_boot_and_never_repeats(self):
+        value=self.run_packet('enroll');expected={k:value['facts'][k] for k in ['owner','boot','guest']};rid='cd'*32
+        self.assertEqual('submitted',self.run_packet('reboot',value['pins'],rid,expected)['state'])
+        self.assertEqual('booting',self.run_packet(pins=value['pins'])['facts']['guest'])
+        self.guest_boot='a830e08f-986b-48c1-897b-7ea7229e171e'
+        self.assertEqual('running',self.run_packet(pins=value['pins'])['facts']['guest'])
+        self.assertEqual('blocked',self.run_packet('reboot',value['pins'],rid,expected)['state'])
+    def test_active_or_unknown_work_blocks_power_before_intent(self):
+        value=self.run_packet('enroll');self.guest_blockers=['protected_runtime']
+        current=self.run_packet(pins=value['pins']);expected={k:current['facts'][k] for k in ['owner','boot','guest']}
+        blocked=self.run_packet('reboot',value['pins'],'ef'*32,expected)
+        self.assertEqual('positive_idle_proof',blocked['reason']);self.assertFalse((self.root/'readiness-qemu').exists())
+    def test_changed_private_key_generation_or_public_authority_refuses(self):
+        value=self.run_packet('enroll');self.write('client-key',b'ANOTHER_INERT_KEY')
+        self.assertEqual('fixture_changed',self.run_packet(pins=value['pins'])['reason'])
+
+
+if __name__=='__main__':unittest.main()

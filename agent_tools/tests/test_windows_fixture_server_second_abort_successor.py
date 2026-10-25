@@ -8,6 +8,7 @@ from unittest import mock
 
 from agent_tools import windows_fixture_server_second_abort_successor as successor
 from agent_tools import mcp_server
+from agent_tools.tests import route_adapter
 
 NEXT = "a1a2a3a4-1111-4222-8333-123456789abc"
 REQUEST = {"successorCorrelationId": NEXT}
@@ -230,7 +231,7 @@ class SecondAbortSuccessorTests(unittest.TestCase):
                                          "additionalActions": "none", "logonType": "expected",
                                          "runLevel": "expected",
                                          "process": "absent", "listener": "absent", "runtime": "off"}
-        with mock.patch.object(mcp_server, "_agent_module", return_value=adapter):
+        with mock.patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)):
             result = mcp_server._vm_workflow_impl(
                 "windows-fixture-server-second-abort-successor-diagnostic", REQUEST)
         self.assertTrue(result["ok"])
@@ -250,7 +251,7 @@ class SecondAbortSuccessorTests(unittest.TestCase):
                                                 "recoveryCorrelationId": successor._RECOVERY,
                                                 "replayAllowed": False, "nativeActionAllowed": False,
                                                 "productAction": False}
-        with mock.patch.object(mcp_server, "_agent_module", return_value=adapter):
+        with mock.patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)):
             for action, method in (("windows-fixture-server-second-abort-recovery-start", "resume_start"),
                                    ("windows-fixture-server-second-abort-recovery-status", "resume_status"),
                                    ("windows-fixture-server-second-abort-recovery-diagnose", "resume_diagnose")):

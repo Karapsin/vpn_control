@@ -1,9 +1,10 @@
 """Public MCP routing for the fixed CP117 fixture lifecycle."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from agent_tools import mcp_server
+from agent_tools.tests import route_adapter
 
 
 class WindowsFixtureRoutesTest(unittest.TestCase):
@@ -87,9 +88,9 @@ class WindowsFixtureRoutesTest(unittest.TestCase):
                 request = self._request(action)
                 adapter = Mock()
                 getattr(adapter, method_name).return_value = {"state": state, "replayAllowed": False}
-                with patch.object(mcp_server, "_agent_module", return_value=adapter) as module:
+                with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as module:
                     result = mcp_server._vm_workflow_impl(action, request)
-                module.assert_called_once_with(module_name)
+                self.assertEqual([call(module_name)], route_adapter.adapter_calls(module))
                 getattr(adapter, method_name).assert_called_once_with(mcp_server.REPO_ROOT, request)
                 self.assertTrue(result["ok"])
                 self.assertEqual(product_action, result["productAction"])
@@ -101,7 +102,7 @@ class WindowsFixtureRoutesTest(unittest.TestCase):
             with self.subTest(action=action):
                 adapter = Mock()
                 adapter.start.return_value = {"state": "unknown", "replayAllowed": False}
-                with patch.object(mcp_server, "_agent_module", return_value=adapter):
+                with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)):
                     result = mcp_server._vm_workflow_impl(action, {"host": "archlinux"})
                     invalid = mcp_server._vm_workflow_impl(action, {"host": "archlinux", "command": "id"})
                 self.assertFalse(result["ok"])
@@ -112,7 +113,7 @@ class WindowsFixtureRoutesTest(unittest.TestCase):
         action = "windows-fixture-server-status"
         adapter = Mock()
         adapter.status.return_value = {"state": "live", "replayAllowed": True}
-        with patch.object(mcp_server, "_agent_module", return_value=adapter):
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)):
             result = mcp_server._vm_workflow_impl(action, self._request(action))
         self.assertFalse(result["ok"])
         self.assertFalse(result["productAction"])

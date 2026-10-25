@@ -1,0 +1,56 @@
+{
+  "afterSourceSha256": "1f822df5d32fc005c8618142c558631a33b4fbcf77d9ead0063baca321b0adda",
+  "allPixelsPrecredential": true,
+  "beforeSourceSha256": "564f922b9c7b627d3e9cbca0717b21141a52b62b540c09e17005220914d9ef59",
+  "cachedNativePpmBytes": 3072016,
+  "cachedNativePpmSha256": "6ce31f163aabdd4a39435ad2aea7245bdc7fd6d61812e04b1e7e478c00f16f0e",
+  "compressedFixtureSha256": "e130eb383f96674a3292c64ce81b792bec2e103e2dcc0b08b128529b3cc6ae4b",
+  "exactStableRectangles": [
+    [
+      30,
+      250,
+      250,
+      500
+    ],
+    [
+      1000,
+      250,
+      1200,
+      500
+    ],
+    [
+      1230,
+      744,
+      1265,
+      780
+    ]
+  ],
+  "failure": "Spotlight asynchronously populated photo-description overlays and widgets inside original reviewed wallpaper crops; exact gate refused before Return or secret.",
+  "hostCollectorTransportOperationId": "5dfabf3c-b0d6-4ab2-ab32-2396700d78e8",
+  "originalCacheGenerationWasNotPublishedByProducer": true,
+  "originalGateOutput": "instance_login_screen_unrecognized",
+  "originalNativeFailureTransportOperationId": "df2b9888-eeaa-4b51-844a-31aa9141053b",
+  "originalPhaseDisposition": "wake acknowledged; owner dead; same retained root flock; dismiss intent absent; terminal UNKNOWN retained",
+  "originalProfileOperationId": "bb09af55-f8ea-45ce-a89e-a9482422b2e1",
+  "passwordOpenedOrSubmitted": false,
+  "phaseSpecificClosureAuthorized": true,
+  "privacyRedaction": {
+    "committedPpmSha256": "f1c3a019560504a02e687d4c3b73d7f04b451f87e56c0801597599edc70c2107",
+    "fill": [
+      44,
+      44,
+      44
+    ],
+    "originalCompressedFixtureSha256": "831afc6b591a0070c71c4a30b8a9855bff5f91c3016eb70bb838f5fc62aaadfa",
+    "reason": "The Spotlight weather card showed a location derived from the guest network egress. Only that card is filled with its own background colour; it lies outside every before and after gate crop, so both gate decisions equal those on the original native pixels (cachedNativePpmSha256), which are retained only in private local evidence.",
+    "rect": [
+      176,
+      620,
+      481,
+      770
+    ]
+  },
+  "schemaVersion": 1,
+  "tolerance": 0,
+  "wholeAttemptUnsubmittedAuthorized": false
+}

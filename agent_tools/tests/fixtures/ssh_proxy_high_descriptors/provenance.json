@@ -1,0 +1,12 @@
+{
+  "files": {
+    "controlled-high-fd.actual.json": "f8938698fa4e93d5d1b3a5af152f89a33b73b3120f2e03fb9ffc26b9640daefd",
+    "controller.5011.before.source": "5011866be6fb1b384f3af0ed0e0c8d053ddc0ea0aeae3478fb76436ab80b7d0f",
+    "controller.a088.before.source": "a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51",
+    "controller.selector_candidate.source": "902f9713f7ea728b490a143729fbd4f9a768bcbaef7806b2d7b9a4b1e6c52767",
+    "native-select-phase.json": "791c85947eec3550fc3651989f93287cf765c70b453d59349962dfce9544e8b2",
+    "test_proxy_high_descriptors.py": "1304732776a8d11c655fd4a1090a84b97eead1dd19356c443e1a74391f05084e"
+  },
+  "schemaVersion": 1,
+  "scope": "Whole source Proxy AST, controlled loopback and isolated high-FD child only; native evidence is normalized diagnostic metadata, no effect/replay authority."
+}

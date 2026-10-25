@@ -1,0 +1,169 @@
+"""Stored public harmless bootstrap packet only. Never rebuild or retry it."""
+from pathlib import Path
+import base64,hashlib,inspect,json,os,re,stat,subprocess,sys,time
+from uuid import UUID
+from agent_tools import ssh_transport as transport,readiness
+from agent_tools.native_review_source_closure import _Held,generation,_pairs
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+OUT_LIMIT=1048576
+ERR_LIMIT=65536
+
+
+def _need(value):
+    if not value:raise ValueError('bootstrap_prepared_source_or_reply_refused')
+
+
+def _guard(held):held.finish();held.final_identity_pass()
+
+
+def _self(held):
+    path=Path(__file__).absolute();raw=path.read_bytes()
+    _need(compile(raw,str(path),'exec',dont_inherit=True)==_EXECUTING_CODE)
+    held.read(str(path),hashlib.sha256(raw).hexdigest(),max_bytes=1048576)
+    return path
+
+
+def _under(root,path):
+    path=Path(path);_need(path.is_absolute()and '..'not in path.parts and path.is_relative_to(root))
+    return path
+
+
+def _write_at(fd,name,raw):
+    _need(type(name)is str and '/'not in name and name not in {'.','..'})
+    raw=raw if type(raw)is bytes else(json.dumps(raw,sort_keys=True)+'\n').encode()
+    out=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=fd)
+    try:
+        view=memoryview(raw)
+        while view:
+            count=os.write(out,view);_need(count>0);view=view[count:]
+        os.fsync(out)
+    finally:os.close(out)
+    os.fsync(fd)
+
+
+def _packet(root,directory):
+    directory=_under(root,Path(directory).absolute())
+    _need(directory.parent==root/'.runtime/tool-recovery-windows/direct'
+        and re.fullmatch(r'bootstrap-linux-packet-[0-9a-f-]{36}',directory.name)is not None)
+    return directory
+
+
+def seal(root,directory,manifest_sha):
+    """Local source-only preparation: pin exact stored bytes and all generations."""
+    root=Path(root).absolute();directory=_packet(root,directory);held=_Held()
+    try:
+        self_path=_self(held)
+        manifest=json.loads(held.read(str(directory/'manifest.json'),manifest_sha,max_bytes=4194304),object_pairs_hook=_pairs)
+        _need(type(manifest)is dict and manifest['schemaVersion']==1 and manifest['group']=='bootstrap'
+            and manifest['nativeSubmitted']is False and manifest['vmCalls']==0)
+        operation=str(UUID(manifest['operationId']));_need(directory.name=='bootstrap-linux-packet-'+operation)
+        caller=held.read(str(directory/'caller.py'),manifest['callerSha256'],max_bytes=1048576)
+        _need(0<len(caller)==manifest['callerBytes']and 0<len(manifest['sources'])<=512)
+        seen=set()
+        for row in manifest['sources']:
+            path=_under(root,row['path']);_need(str(path)not in seen);seen.add(str(path))
+            raw=held.read(str(path),row['sha256'],tuple(row['generation']),max_bytes=max(1,row['bytes']))
+            _need(len(raw)==row['bytes'])
+            copied=_under(directory,directory/row['copy'])
+            _need(held.read(str(copied),row['sha256'],max_bytes=max(1,row['bytes']))==raw)
+        _guard(held)
+        value={'schemaVersion':2,'kind':'stored-windows-bootstrap-dispatch-v1','operationId':operation,
+            'callerPath':str(directory/'caller.py'),'callerSha256':manifest['callerSha256'],
+            'originalManifestSha256':manifest_sha,'dispatcherPath':str(self_path),'nativeSubmitted':False,
+            'sources':[{'path':path,'generation':list(row[1]),'sha256':row[2],'bytes':len(row[3])}
+                for path,row in sorted(held.files.items())]}
+        fd=held.directory(str(directory))
+        _write_at(fd,'dispatch-manifest.json',value);_guard(held)
+        return value
+    finally:held.close()
+
+
+def _capture(fd,result,*,timeout=False,sealed=False):
+    value={'returnCode':None if timeout else result.returncode,'timeout':timeout,
+        'submittedReadinessChanged':sealed,'replayAllowed':False}
+    if not timeout:_need(type(result.returncode)is int)
+    for name,limit in (('stdout',OUT_LIMIT),('stderr',ERR_LIMIT)):
+        raw=getattr(result,name,None);available=type(raw)is bytes
+        if not timeout:_need(available)
+        raw=raw if available else b''
+        _write_at(fd,name+'.public',raw[:limit])
+        value.update({name+'Available':available,name+'Bytes':len(raw)if available else None,
+            name+'RetainedBytes':min(len(raw),limit),name+'Truncated':len(raw)>limit,
+            name+'Complete':not timeout})
+    _write_at(fd,'callback.json',value);return value
+
+
+def dispatch(root,directory,dispatch_sha):
+    """Read stored packet+manifest, validate full9, then one original carrier call."""
+    root=Path(root).absolute();directory=_packet(root,directory);held=_Held();out_fd=None;capture=None;phase='source-admission'
+    try:
+        self_path=_self(held)
+        manifest=json.loads(held.read(str(directory/'dispatch-manifest.json'),dispatch_sha,max_bytes=4194304),object_pairs_hook=_pairs)
+        _need(type(manifest)is dict and set(manifest)=={'schemaVersion','kind','operationId','callerPath',
+            'callerSha256','originalManifestSha256','dispatcherPath','nativeSubmitted','sources'}
+            and type(manifest['schemaVersion'])is int and manifest['schemaVersion']==2
+            and manifest['kind']=='stored-windows-bootstrap-dispatch-v1'and manifest['nativeSubmitted']is False
+            and manifest['dispatcherPath']==str(self_path)and 0<len(manifest['sources'])<=1024)
+        operation=str(UUID(manifest['operationId']));_need(directory.name=='bootstrap-linux-packet-'+operation)
+        expected={}
+        for row in manifest['sources']:
+            _need(type(row)is dict and set(row)=={'path','generation','sha256','bytes'}and type(row['bytes'])is int and 0<=row['bytes']<=4194304)
+            path=_under(root,row['path']);_need(str(path)not in expected);expected[str(path)]=row
+            held.read(str(path),row['sha256'],tuple(row['generation']),max_bytes=max(1,row['bytes']))
+        _need(str(self_path)in expected and str(directory/'manifest.json')in expected
+            and expected[str(directory/'manifest.json')]['sha256']==manifest['originalManifestSha256']
+            and manifest['callerPath']==str(directory/'caller.py')and manifest['callerPath']in expected)
+        caller=held.read(manifest['callerPath'],manifest['callerSha256'],max_bytes=1048576);_guard(held)
+        admitted=root/'.runtime/tool-recovery-windows/direct'/('admitted-'+operation)
+        parent=held.directory(str(admitted.parent));os.mkdir(admitted.name,0o700,dir_fd=parent)
+        out_fd=os.open(admitted.name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+        identity=generation(os.fstat(out_fd))[:5]
+        _write_at(out_fd,'caller.py',caller);_write_at(out_fd,'dispatcher.source',held.files[str(self_path)][3])
+        _write_at(out_fd,'operation.json',{'operationId':operation,'purpose':'harmless-linux-bootstrap-source-tests',
+            'dispatchManifestSha256':dispatch_sha,'secretsSubmitted':False,'vmCalls':0,'replayAllowed':False})
+        _write_at(out_fd,'source-closure.before.json',manifest)
+        phase='transport-admission'
+        with transport.admitted_transport(root,'archlinux',operation,deadline=time.monotonic()+180,
+                requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})))as admission:
+            command=['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(caller).decode())+'))']
+            argv=transport.build_ssh_argv(transport.load_config(root),'archlinux',command=command)
+            _guard(held);phase='original-carrier'
+            try:result=transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=50,check=False)
+            except transport.SubmittedResultReadinessChanged as error:
+                if type(error)is not transport.SubmittedResultReadinessChanged:raise
+                result=error.take_submitted_result();capture=_capture(out_fd,result,sealed=True)
+                raise ValueError('bootstrap_original_submitted_reply_retained_no_replay')from None
+            except subprocess.TimeoutExpired as error:
+                capture=_capture(out_fd,error,timeout=True)
+                raise ValueError('bootstrap_original_partial_timeout_retained_no_replay')from None
+            capture=_capture(out_fd,result);phase='source-closing';_guard(held)
+            _need(capture['returnCode']==0 and not capture['stdoutTruncated']and not capture['stderrTruncated'])
+            value=json.loads(result.stdout,object_pairs_hook=_pairs)
+            _need(type(value)is dict and value.get('state')in {'passed','failed'})
+            _write_at(out_fd,'result.json',value);_need(value['state']=='passed')
+        _guard(held)
+        _need(generation(os.fstat(out_fd))[:5]==generation(os.stat(admitted.name,dir_fd=parent,follow_symlinks=False))[:5]==identity)
+        _write_at(out_fd,'closing.json',{'operationId':operation,'sourceClosed':True,'callbackRetained':True,
+            'stdoutComplete':True,'stderrComplete':True,'callerSha256':manifest['callerSha256'],
+            'dispatchManifestSha256':dispatch_sha,'replayAllowed':False})
+        return {'state':value['state'],'operationId':operation,'evidence':str(admitted)}
+    except BaseException as error:
+        if out_fd is not None:
+            source_closed=False
+            try:_guard(held);source_closed=True
+            except BaseException:pass
+            _write_at(out_fd,'closing.failed.json',{'sourceClosed':source_closed,'phase':phase,
+                'exceptionClass':type(error).__name__,'callbackRetained':capture is not None,
+                'outcome':'unknown','qualificationAllowed':False,'replayAllowed':False})
+        raise
+    finally:
+        if out_fd is not None:os.close(out_fd)
+        held.close()
+
+
+if __name__=='__main__':
+    mode,directory,digest=sys.argv[1:]
+    if mode=='seal':value=seal(Path.cwd(),directory,digest);print(json.dumps({'state':'sealed-only','operationId':value['operationId']}))
+    elif mode=='dispatch':print(json.dumps(dispatch(Path.cwd(),directory,digest)))
+    else:raise ValueError('bootstrap_dispatch_mode')

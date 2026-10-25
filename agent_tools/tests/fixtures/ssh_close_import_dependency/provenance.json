@@ -1,0 +1,8 @@
+{
+  "cause": "Current approved readiness import identity fix changed transport source; original close fixed dependency pin refuses before control child.",
+  "files": {
+    "actual-failure.txt": "e6a3e461d84d2d9d5f70230d8da2b1b423a1953f6c70cd8f2eb5cf36dd02a3a8",
+    "before.source": "48242a3e0ad8172de2d9207aa246cc4d48e303b6906acbd30818d73e17f98231"
+  },
+  "schemaVersion": 1
+}

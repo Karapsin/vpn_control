@@ -1,4 +1,5 @@
-from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import HistoricalFactoryTestCase as HistoryCase, provider as historical_provider, historical_update_fixture_source, register_inert_public_source
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import provider as historical_provider, historical_update_fixture_source, register_inert_public_source
+from agent_tools.tests.fixtures.windows_cp117_migration_head.context import HistoricalFactoryTestCase as HistoryCase
 """Complete source-authenticated CP117 read-only server ingress regression."""
 import ast,base64,gzip,hashlib,json,os,types,unittest
 from pathlib import Path

@@ -1,0 +1,9 @@
+{
+  "credentialOrFramebufferData": false,
+  "files": {
+    "unlock.before.source": "03bf7bc2271576300fb5e0091e284edad1292d54db3eac6df1bfe60dbeba6340"
+  },
+  "nativeAuthority": false,
+  "schemaVersion": 1,
+  "scope": "Whole original PUBLICd044 producer retained before changing only polling primitive. Native failure retained ValueError in write_fixed_payload at source line382 and guest gate assertion; actual native FD number was not retained. Routine controls demonstrate a separate real held-FD causal reproduction, not a retrospective native FD claim."
+}

@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 from agent_tools import mcp_server
+from agent_tools.tests import route_adapter
 from agent_tools import windows_vm_swtpm_repair as repair
 
 CORR = "123e4567-e89b-12d3-a456-426614174000"
@@ -180,7 +181,7 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
         with mock.patch.object(repair.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(repair.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
                 mock.patch.object(repair.ssh_transport, "build_ssh_argv", return_value=["/usr/bin/ssh", "archlinux"]) as argv, \
-                mock.patch.object(repair.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload).encode())) as run:
+                mock.patch.object(repair.ssh_transport, "run_ssh", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload).encode())) as run:
             repair._remote(".", CORR, "start", 60, credential=SECRET)
         self.assertEqual(run.call_args.kwargs["input"], SECRET)
         self.assertIs(run.call_args.kwargs["stderr"], repair.subprocess.DEVNULL)
@@ -207,7 +208,7 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
         self.assertFalse(result["pacmanSignatureVerified"])
 
     def test_mcp_exception_fallbacks_preserve_complete_typed_schemas(self) -> None:
-        with mock.patch.object(mcp_server, "_agent_module", side_effect=ValueError):
+        with mock.patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_failure(ValueError)):
             preflight = mcp_server._vm_workflow_impl("windows-vm-swtpm-repair-preflight", REQUEST)
             start = mcp_server._vm_workflow_impl("windows-vm-swtpm-repair-start", REQUEST)
         self.assertTrue({"packageIntegrityFailed", "activeSwtpmProcesses", "safeStartAllowed", "newCorrelationRequired", "nativeActionAllowed"} <= set(preflight))
@@ -221,7 +222,7 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
         with mock.patch.object(repair.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(repair.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
                 mock.patch.object(repair.ssh_transport, "build_ssh_argv", return_value=["/usr/bin/ssh", "archlinux"]) as argv, \
-                mock.patch.object(repair.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(raw).encode())):
+                mock.patch.object(repair.ssh_transport, "run_ssh", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(raw).encode())):
             result = repair.owner_observe(".", host="archlinux", timeout_seconds=30)
         self.assertEqual(result, {"host": "archlinux", "state": "observed", "censusReason": None, "censusComplete": True,
                                   "activeSwtpmProcesses": True, "processes": raw["processes"],
@@ -240,19 +241,20 @@ class WindowsVmSwtpmRepairTest(unittest.TestCase):
         with mock.patch.object(repair.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(repair.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
                 mock.patch.object(repair.ssh_transport, "build_ssh_argv", return_value=["/usr/bin/ssh", "archlinux"]), \
-                mock.patch.object(repair.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(raw).encode())):
+                mock.patch.object(repair.ssh_transport, "run_ssh", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(raw).encode())):
             self.assertEqual(repair.owner_observe(".", host="archlinux")["state"], "unknown")
         observed = {"host": "archlinux", "state": "observed", "censusReason": None, "censusComplete": True,
                     "activeSwtpmProcesses": True, "processes": [{"pid": 417, "startTicks": 9917,
                     "uid": 1000, "relationship": "unattributed-vm-or-socket-path"}], "nativeActionAllowed": False}
-        with mock.patch.object(mcp_server, "_agent_module") as module:
-            module.return_value.owner_observe.return_value = observed
+        adapter = mock.Mock()
+        adapter.owner_observe.return_value = observed
+        with mock.patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)):
             result = mcp_server._vm_workflow_impl("windows-vm-swtpm-owner-observe", {"host": "archlinux", "timeoutSeconds": 30})
         self.assertEqual(result["state"], "observed")
         self.assertEqual(result["processes"][0]["relationship"], "unattributed-vm-or-socket-path")
         self.assertFalse(result["nativeActionAllowed"])
         self.assertIsNone(result["censusReason"])
-        with mock.patch.object(mcp_server, "_agent_module", side_effect=ValueError):
+        with mock.patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_failure(ValueError)):
             failed = mcp_server._vm_workflow_impl("windows-vm-swtpm-owner-observe", {"host": "archlinux", "timeoutSeconds": 30})
         self.assertEqual(failed["state"], "unknown")
         self.assertEqual(failed["processes"], [])

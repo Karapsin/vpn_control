@@ -1,0 +1,12 @@
+{
+ "files": {
+  "stage1-writer.before.source": {
+   "bytes": 69509,
+   "function": "_actor_references",
+   "sha256": "9c93f603099209d53f7e2ef6d00bb89230c47c8753c01522a999964eaf7f7c9a"
+  }
+ },
+ "origin": "agent_tools/readiness_windows_creator_prevm_recovery.py as created by prevm-stage1.patch (the stage-1 closure writer, never landed); byte-identical to the stage-1 reviewer beforeimage clone.",
+ "purpose": "Whole-before RED of the generated root census (root ruling R5, census review C1): the stage-1 ordinary holder scan _actor_references, run as an unprivileged account on the real Linux procfs, refuses a non-dumpable same-account non-holder.",
+ "schemaVersion": 1
+}

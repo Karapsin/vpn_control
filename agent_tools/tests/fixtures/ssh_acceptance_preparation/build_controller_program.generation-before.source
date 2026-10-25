@@ -1,0 +1,80 @@
+"""Fixed SOURCE-ONLY generator; no initialization, dispatch, readiness or network.
+
+Only these two reviewed ordinary counter campaigns can be rendered. Actual local
+namespace admission and any native execution require the coordinator's later GO.
+"""
+from pathlib import Path
+from contextlib import ExitStack
+import ast,hashlib,importlib.util,json,os,sys,uuid
+HERE=Path(__file__).resolve().parent
+CONTROLLER_SHA='a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51'
+WRAPPER_SHA='667be765e108e62534d9ca30f4e4d9f7885087f0cbbe73d52e4c2dbb4ae67e08'
+CHECKPOINT_SHA='c26a0992933efe2d5d2e128052994a044f588448340d11910c5136f39e0de7ab'
+HELPER_SHA='2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f'
+LOCAL_OPERATIONS={'direct':'35a9c613-0985-4b0c-a1d5-3a128676c470','nested':'71d9c7af-5c7a-4cd5-9093-4b1ea32920a3'}
+PURPOSE='ordinary-ssh-acceptance-controller'
+
+def build(mode):
+ if mode not in LOCAL_OPERATIONS:raise ValueError('fixed_controller_mode')
+ # Bootstrap the fixed wrapper using held actual bytes; no timestamp-pyc import.
+ path=HERE/'local-owner-source/local_owner.py';fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);i=os.fstat(fd);raw=os.read(fd,i.st_size+1)
+ try:
+  if hashlib.sha256(raw).hexdigest()!=WRAPPER_SHA:raise ValueError('fixed_wrapper_changed')
+  module=type(sys)('_fixed_source_builder_'+uuid.uuid4().hex);module.__file__=str(path);module.__package__=None;sys.modules[module.__name__]=module
+  exec(compile(raw,str(path),'exec'),module.__dict__)
+  if module.generation(os.fstat(fd))!=module.generation(os.lstat(path))!=module.generation(i):raise ValueError('fixed_wrapper_generation_changed')
+  with ExitStack()as stack:
+   wrapper=stack.enter_context(module.Held(path));checkpoint=stack.enter_context(module.Held(HERE/'source-checkpoint.json'));controller=stack.enter_context(module.Held(HERE/'controller.py'));helper=stack.enter_context(module.Held(HERE/'ordinary_retention.py'));manifest=stack.enter_context(module.Held(HERE/'public-source-manifest.json'))
+   if(hashlib.sha256(wrapper.raw).hexdigest()!=WRAPPER_SHA or hashlib.sha256(checkpoint.raw).hexdigest()!=CHECKPOINT_SHA or hashlib.sha256(controller.raw).hexdigest()!=CONTROLLER_SHA or hashlib.sha256(helper.raw).hexdigest()!=HELPER_SHA):raise ValueError('fixed_campaign_source_changed')
+   config=json.loads(checkpoint.raw);pins=json.loads(manifest.raw)['sources'];repo=HERE.parents[3]
+   if config['controllerSha256']!=CONTROLLER_SHA or config['ordinaryLocalOwnerSourceSha256']!=WRAPPER_SHA:raise ValueError('fixed_campaign_checkpoint_changed')
+   artifacts=[wrapper,checkpoint,controller,helper,manifest]
+   for rel,digest in pins.items():
+    for source in(repo/rel,HERE/mode/rel):
+     held=stack.enter_context(module.Held(source));artifacts.append(held)
+     if hashlib.sha256(held.raw).hexdigest()!=digest:raise ValueError('fixed_source_epoch_changed')
+   for rel in('planned-operation.json','capsule-origin.json','route-template.private.json'):
+    artifacts.append(stack.enter_context(module.Held(HERE/mode/rel)))
+   plan=json.loads(next(v.raw for v in artifacts if v.path==HERE/mode/'planned-operation.json'))
+   if plan!={'operationId':{'direct':'fc338593-9f5d-45ec-9c70-2dee4685cd60','nested':'d3f264c6-641d-421d-8c26-87fb27e6ffa0'}[mode],'mode':mode,'count':1600,'intervalSeconds':.15,'budgetSeconds':600,'stage':'unsubmitted-source-only'}:raise ValueError('fixed_original_plan_changed')
+   # Whitelisted private route body is never embedded or hashed. The complete
+   # original named generation is sufficient to detect writes/replacement.
+   bindings=[{'path':str(v.path),'generation':v.pin,**({}if v.path.name=='route-template.private.json'else{'sha256':hashlib.sha256(v.raw).hexdigest()})}for v in artifacts]
+   shared=ast.parse(wrapper.raw);names={'LocalOwnerBlocked','need','generation','Held'}
+   bootstrap='\n'.join(ast.unparse(n)for n in shared.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))and n.name in names)
+   expected_campaign={'kind':'ordinary-ssh-acceptance','mode':mode,'remoteOperationId':plan['operationId']}
+   payload='''from pathlib import Path
+from contextlib import ExitStack
+from types import ModuleType,SimpleNamespace
+import hashlib,json,os,stat,sys,time
+'''+bootstrap+'\nARTIFACTS='+repr(bindings)+'\nWRAPPER='+repr(str(path))+'\nROOT='+repr(str(HERE))+'\nMODE='+repr(mode)+'\nLOCAL_OPERATION='+repr(LOCAL_OPERATIONS[mode])+'\nCAMPAIGN='+repr(expected_campaign)+'''\nwith ExitStack()as stack:
+ held={}
+ for item in ARTIFACTS:
+  source=stack.enter_context(Held(Path(item['path'])))
+  need(source.pin==tuple(item['generation']),'fixed_campaign_generation_changed')
+  if 'sha256'in item:need(hashlib.sha256(source.raw).hexdigest()==item['sha256'],'fixed_campaign_bytes_changed')
+  held[item['path']]=source
+ wrapper=ModuleType('_fixed_local_owner_runtime');wrapper.__file__=WRAPPER;wrapper.__package__=None;sys.modules[wrapper.__name__]=wrapper
+ exec(compile(held[WRAPPER].raw,WRAPPER,'exec'),wrapper.__dict__)
+ with wrapper.Namespace(Path(ROOT)/('local-owner-'+MODE))as namespace:
+  admission=namespace.original_admission(LOCAL_OPERATION)
+  own=stack.enter_context(Held(Path(__file__)))
+  need(admission['campaign']==CAMPAIGN and admission['purpose']=='ordinary-ssh-acceptance-controller'and admission['streamLimit']==4194304 and admission['budgetSeconds']==600,'fixed_local_admission_changed')
+  need(admission['programSha256']==hashlib.sha256(own.raw).hexdigest(),'fixed_local_program_changed')
+  need(time.monotonic()<admission['absoluteDeadline'],'fixed_local_deadline_exhausted')
+  current=namespace.observe(LOCAL_OPERATION)
+  need(current['state']=='running'and current['binding']==admission['binding'],'fixed_local_owner_unresolved')
+  control=held[str(Path(ROOT)/'controller.py')]
+  value=ModuleType('_fixed_ordinary_counter_controller');value.__file__=str(control.path);value.__package__=None;sys.modules[value.__name__]=value
+  exec(compile(control.raw,str(control.path),'exec'),value.__dict__)
+  try:value.main(SimpleNamespace(mode=MODE,budget=600,count=1600,interval=.15,native_go=True),absolute_deadline=admission['absoluteDeadline'])
+  finally:
+   for source in held.values():source.guard()
+   own.guard();namespace.guard()
+'''
+   owner,owner_hold=module.owner_api()
+   try:program=owner.Program(PURPOSE,payload.encode(),4194304);owner_hold.guard()
+   finally:owner_hold.close()
+   for held in artifacts:held.guard()
+   return program,{'localOperationId':LOCAL_OPERATIONS[mode],'namespace':str(HERE/('local-owner-'+mode)),'campaign':expected_campaign,'admissionBudgetSeconds':600,'programSha256':program.digest,'programBytes':len(program.source),'streamLimit':program.stream_limit,'sourceArtifacts':len(bindings),'privateRouteContentHashed':False,'nativeGo':False}
+ finally:os.close(fd)

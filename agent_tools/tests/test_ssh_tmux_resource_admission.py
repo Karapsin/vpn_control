@@ -159,7 +159,7 @@ class ResourceTests(unittest.TestCase):
   with mock.patch.object(direct,'Guard',return_value=authority),mock.patch.object(ssh_transport,'build_ssh_argv',return_value=['ssh','fixed']) as argv,mock.patch.object(r.adapter.subprocess,'Popen',side_effect=launch) as launched,mock.patch.object(r.adapter,'_capture',wraps=r.adapter._capture) as collect:
    value,receipt=r.fixed_resource_query(self.root,r.host_program(),{},lambda:calls.append('guard'))
    self.assertEqual('observed',value['state']);self.assertTrue((self.root/receipt['directory']/'stdout').is_file())
-   self.assertGreaterEqual(len(calls),4);self.assertEqual(1,collect.call_count);self.assertEqual(1,launched.call_count);self.assertEqual(b'inert-fixture-secret\n{}',collect.call_args.kwargs['payload']);self.assertEqual('sudo',argv.call_args.kwargs['command'][0]);self.assertNotIn('inert-fixture-secret',str(argv.call_args.kwargs['command']));self.assertEqual(30,collect.call_args.kwargs['timeout_seconds'])
+   self.assertGreaterEqual(len(calls),4);self.assertEqual(1,collect.call_count);self.assertEqual(1,launched.call_count);self.assertEqual(b'inert-fixture-secret\n{}',collect.call_args.kwargs['payload']);self.assertEqual('sudo',argv.call_args.kwargs['command'][0]);self.assertNotIn('inert-fixture-secret',str(argv.call_args.kwargs['command']));self.assertEqual(30,collect.call_args.kwargs['timeout_seconds']);self.assertIs(True,collect.call_args.kwargs['private_payload'])
   with mock.patch.object(direct,'Guard') as before:
    with self.assertRaisesRegex(ValueError,'resource_fixed_query_required'):r.fixed_resource_query(self.root,r.host_program(),{'arbitrary':'payload'},lambda:None)
    before.assert_not_called()
@@ -170,7 +170,7 @@ class ResourceTests(unittest.TestCase):
   authority=mock.MagicMock();authority.__enter__.return_value=authority;authority.config=types.SimpleNamespace(hosts={'archlinux':types.SimpleNamespace(transport='nested',user='kardinal',password='inert-fixture-secret')})
   real_popen=r.adapter.subprocess.Popen
   with mock.patch.object(direct,'Guard',return_value=authority),mock.patch.object(ssh_transport,'build_ssh_argv',return_value=['ssh','fixed']):
-   for body,reason in (("import sys;sys.stdin.buffer.read();sys.exit(1)",'resource_capture_unknown'),("import sys;sys.stdin.buffer.read();print('{}');sys.stderr.write('failure')",'resource_capture_changed')):
+   for body,reason in (("import sys;sys.stdin.buffer.read();sys.exit(1)",'resource_capture_unknown'),("import sys;sys.stdin.buffer.read();print('{}');sys.stderr.write('failure')",'resource_capture_unknown')):
     def launch(unused,*args,**kwargs):return real_popen([sys.executable,'-I','-B','-c',body],*args,**kwargs)
     with mock.patch.object(r.adapter.subprocess,'Popen',side_effect=launch):
      with self.assertRaisesRegex(ValueError,reason):r.fixed_resource_query(self.root,r.host_program(),{},lambda:None)

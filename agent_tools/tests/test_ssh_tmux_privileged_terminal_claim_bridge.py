@@ -133,7 +133,7 @@ class BridgeFenceTests(unittest.TestCase):
   """The bridge calls the inherited descriptor-relative archive primitive."""
   import os,tempfile
   from pathlib import Path
-  with tempfile.TemporaryDirectory(dir='.') as temporary:
+  with tempfile.TemporaryDirectory(dir=Path('/tmp').resolve()) as temporary:
    root=Path(temporary).absolute();source=root/'source';target=root/'target'
    source.mkdir(mode=0o700);target.mkdir(mode=0o700)
    (source/'archlinux.claim').write_bytes(b'claim');(source/'archlinux.claim').chmod(0o600)
@@ -173,7 +173,7 @@ class BridgeActualDurableFlowTests(unittest.TestCase):
  def _fixture(self):
   import tempfile,os
   from pathlib import Path
-  temporary=tempfile.TemporaryDirectory(dir='.');self.addCleanup(temporary.cleanup)
+  temporary=tempfile.TemporaryDirectory(dir=Path('/tmp').resolve());self.addCleanup(temporary.cleanup)
   root=Path(temporary.name).absolute();index=root/'.rag_index';index.mkdir(mode=0o700)
   journal=index/'linux-package-fixture-build';journal.mkdir(mode=0o700)
   claim=journal/'archlinux.claim';claim.write_bytes(b'claim');claim.chmod(0o600)
@@ -235,21 +235,23 @@ class BridgeActualDurableFlowTests(unittest.TestCase):
   self.assertTrue(claim.exists());self.assertEqual(bridge.status(root,identity)['state'],'observed')
 
  def test_real_bridge_source_pin_drift_refuses_before_fence(self):
-  root,claim,base,fresh=self._fixture();own=__import__('pathlib').Path(bridge.__file__).absolute()
-  with mock.patch.object(bridge.closure,'local_proof',return_value=base['local']),\
-       mock.patch.object(bridge.closure,'_sources',return_value={'closure':'fixed'}),\
-       mock.patch.object(bridge,'_fresh',return_value=fresh):
-   ready=bridge.observe(root)
-  original=bridge.pipe._read
-  def changed_source(path,*args,**kwargs):
-   raw,pin=original(path,*args,**kwargs)
-   if __import__('pathlib').Path(path).absolute()==own:
-    return raw,dict(pin,sha256='0'*64)
-   return raw,pin
-  identity={'proofId':ready['proofId'],'proofPin':ready['proofPin']}
-  with mock.patch.object(bridge.closure,'local_proof',return_value=base['local']),\
-       mock.patch.object(bridge.closure,'_sources',return_value={'closure':'fixed'}),\
-       mock.patch.object(bridge,'_fresh',return_value=fresh),\
-       mock.patch.object(bridge.pipe,'_read',side_effect=changed_source):
-   with self.assertRaises(ValueError):bridge.close(root,identity)
-  self.assertTrue(claim.exists());self.assertEqual(bridge.status(root,identity)['state'],'observed')
+  from agent_tools.tests.ssh_tmux_terminal_historical_fixture import archived_family
+  with archived_family()as(_root,modules),mock.patch.dict(globals(),{'bridge':modules['ssh_tmux_privileged_terminal_claim_bridge']}):
+   root,claim,base,fresh=self._fixture();own=__import__('pathlib').Path(bridge.__file__).absolute()
+   with mock.patch.object(bridge.closure,'local_proof',return_value=base['local']),\
+        mock.patch.object(bridge.closure,'_sources',return_value={'closure':'fixed'}),\
+        mock.patch.object(bridge,'_fresh',return_value=fresh):
+    ready=bridge.observe(root)
+   original=bridge.pipe._read
+   def changed_source(path,*args,**kwargs):
+    raw,pin=original(path,*args,**kwargs)
+    if __import__('pathlib').Path(path).absolute()==own:
+     return raw,dict(pin,sha256='0'*64)
+    return raw,pin
+   identity={'proofId':ready['proofId'],'proofPin':ready['proofPin']}
+   with mock.patch.object(bridge.closure,'local_proof',return_value=base['local']),\
+        mock.patch.object(bridge.closure,'_sources',return_value={'closure':'fixed'}),\
+        mock.patch.object(bridge,'_fresh',return_value=fresh),\
+        mock.patch.object(bridge.pipe,'_read',side_effect=changed_source):
+    with self.assertRaises(ValueError):bridge.close(root,identity)
+   self.assertTrue(claim.exists());self.assertEqual(bridge.status(root,identity)['state'],'observed')

@@ -1,0 +1,64 @@
+# ORIGINAL8e6 only: fixed existing records/streams, no creation/compile/process census.
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$config=__RECEIPT_CONFIG__
+$self=[Diagnostics.Process]::GetCurrentProcess();$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if($sid -cne 'S-1-5-18' -or $self.SessionId -ne 0){throw 'COMPILE_RECEIPTS_SYSTEM_SESSION'}
+function Hash([byte[]]$b){$h=[Security.Cryptography.SHA256]::Create();try{return ([BitConverter]::ToString($h.ComputeHash($b))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}}
+function Existing([string]$path,[bool]$directory){
+ $item=Get-Item -Force -LiteralPath $path
+ if($item.PSIsContainer -ne $directory -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'COMPILE_RECEIPTS_PATH'}
+ $acl=Get-Acl -LiteralPath $path
+ if(-not $acl.AreAccessRulesProtected -or -not $acl.AreAccessRulesCanonical -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -cne 'S-1-5-18'){throw 'COMPILE_RECEIPTS_OWNER'}
+ $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+ if($rules.Count -ne 1 -or $rules[0].IdentityReference.Value -cne 'S-1-5-18' -or $rules[0].AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or $rules[0].FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl){throw 'COMPILE_RECEIPTS_ACL'}
+}
+$machine=Get-CimInstance Win32_ComputerSystemProduct -Property UUID -OperationTimeoutSec 3
+$os=Get-CimInstance Win32_OperatingSystem -Property LastBootUpTime -OperationTimeoutSec 3
+if(([guid]$machine.UUID).ToString('D') -cne $config.machine -or $os.LastBootUpTime.ToUniversalTime().ToString('o') -cne $config.boot){throw 'COMPILE_RECEIPTS_GUEST_EPOCH'}
+$family=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'VPNControlCompileOnly-v1'
+$root=Join-Path $family $config.machine;$admissions=Join-Path $root 'admissions';$job=Join-Path $root $config.originalOperationId
+foreach($path in @($family,$root,$admissions,$job)){Existing $path $true}
+# Fixed list, no recursive discovery or user-selected path. Every body is retained
+# as raw public bytes; host duplicate/type/source correlation gates run later.
+$wanted=@(
+ @{name='admission';path=(Join-Path $admissions ($config.originalOperationId+'.json'));maximum=16384;required=$true},
+ @{name='parent.json';path=(Join-Path $job 'parent.json');maximum=16384;required=$true},
+ @{name='child-launch.intent.json';path=(Join-Path $job 'child-launch.intent.json');maximum=16384;required=$true},
+ @{name='child.actor.json';path=(Join-Path $job 'child.actor.json');maximum=16384;required=$true},
+ @{name='child.ready.json';path=(Join-Path $job 'child.ready.json');maximum=16384;required=$false},
+ @{name='child.verified.json';path=(Join-Path $job 'child.verified.json');maximum=16384;required=$false},
+ @{name='release.json';path=(Join-Path $job 'release.json');maximum=16384;required=$false},
+ @{name='terminal.json';path=(Join-Path $job 'terminal.json');maximum=16384;required=$false},
+ @{name='unknown.json';path=(Join-Path $job 'unknown.json');maximum=16384;required=$false},
+ @{name='stop.intent.json';path=(Join-Path $job 'stop.intent.json');maximum=16384;required=$false},
+ @{name='native.cs';path=(Join-Path $job 'native.cs');maximum=131072;required=$true},
+ @{name='stdout.bin';path=(Join-Path $job 'stdout.bin');maximum=32768;required=$false},
+ @{name='stderr.bin';path=(Join-Path $job 'stderr.bin');maximum=32768;required=$false},
+ @{name='stdout.failure.bin';path=(Join-Path $job 'stdout.failure.bin');maximum=32768;required=$false},
+ @{name='stderr.failure.bin';path=(Join-Path $job 'stderr.failure.bin');maximum=32768;required=$false})
+$held=@();$records=[ordered]@{};$retainedBytes=0
+try{
+ foreach($entry in $wanted){
+  if(-not (Test-Path -LiteralPath $entry.path)){if($entry.required){throw 'COMPILE_RECEIPTS_REQUIRED_MISSING'};$records[$entry.name]=[ordered]@{present=$false;notTerminalProof=$true};continue}
+  Existing $entry.path $false
+  $file=[IO.FileStream]::new($entry.path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);$held+=,$file
+  $acl=$file.GetAccessControl()
+  if(-not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -cne 'S-1-5-18'){throw 'COMPILE_RECEIPTS_HELD_OWNER'}
+  if($file.Length -lt 0 -or $file.Length -gt $entry.maximum){throw 'COMPILE_RECEIPTS_BOUND'}
+  $length=$file.Length;[byte[]]$bytes=[byte[]]::new([int]$length);$offset=0
+  while($offset -lt $bytes.Length){$n=$file.Read($bytes,$offset,$bytes.Length-$offset);if($n -le 0){throw 'COMPILE_RECEIPTS_SHORT'};$offset+=$n}
+  if($file.Length -ne $length){throw 'COMPILE_RECEIPTS_CHANGED'}
+  if($entry.name -ceq 'native.cs'){
+   if((Hash $bytes) -cne $config.nativeSha256){throw 'COMPILE_RECEIPTS_NATIVE_SOURCE'}
+   $records[$entry.name]=[ordered]@{present=$true;bytes=$bytes.Length;sha256=(Hash $bytes);rawOmittedFixedPublicSource=$true;notTerminalProof=$true}
+  }else{
+   $retainedBytes+=$bytes.Length;if($retainedBytes -gt 131072){throw 'COMPILE_RECEIPTS_TOTAL_BOUND'}
+   $records[$entry.name]=[ordered]@{present=$true;bytes=$bytes.Length;sha256=(Hash $bytes);raw=[Convert]::ToBase64String($bytes);notTerminalProof=$true}
+  }
+ }
+ foreach($path in @($family,$root,$admissions,$job)){Existing $path $true}
+ foreach($entry in $wanted){if($records[$entry.name].present){Existing $entry.path $false}}
+ $result=[ordered]@{schemaVersion=1;originalOperationId=$config.originalOperationId;machine=$config.machine;boot=$config.boot;nativeSha256=$config.nativeSha256;parentSourceSha256=$config.parentSourceSha256;collector=[ordered]@{pid=$self.Id;birth=$self.StartTime.ToUniversalTime().ToFileTimeUtc().ToString();sid=$sid;session=$self.SessionId;sourceSha256=$VcEarlySourceSha};records=$records;notIdleAuthority=$true;inputAuthority=$false;nativeQualified=$false;replayAllowed=$false}
+ [Console]::WriteLine(($result|ConvertTo-Json -Depth 16 -Compress))
+}finally{foreach($file in $held){$file.Dispose()}}

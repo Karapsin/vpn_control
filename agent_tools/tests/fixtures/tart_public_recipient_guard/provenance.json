@@ -1,0 +1,183 @@
+{
+  "wholeProgramSha256": {
+    "strict": "45e3ef74f6dcf23fef8675170b5d1c2aa16d281989556db926cdcd02d978a77c",
+    "rgb": "161a53ea40646a5627fe466c40442a01b3ed65c9f8a8a5d0f1a09b244eee8feb",
+    "luminance": "630d3e7264ba39d9d58c8dd923bb4bc9d63092de949ed4076f943e5e04b2a924"
+  },
+  "publicSourceSha256": {
+    "strict.public.py": "3a73b99b9cc6510c253a97fd870f0dd3c3a5239aefd7935d83bbaf1f6a432406",
+    "rgb.public.py": "c2ac6d3057e227b6ac6034aac89db2c29340f59f55d3dd05f4e6c7f60220ab41",
+    "luminance.public.py": "ee0d0c83f7c9eb04a0e08690554ca10d52ac614599b2ceb6035f1e9258974bb6"
+  },
+  "extraction": {
+    "strict": [
+      24,
+      28
+    ],
+    "rgb": {
+      "header": [
+        12,
+        20
+      ],
+      "callerStatements": [
+        [
+          45,
+          45
+        ],
+        [
+          52,
+          52
+        ],
+        [
+          53,
+          54
+        ],
+        [
+          57,
+          57
+        ],
+        [
+          58,
+          59
+        ],
+        [
+          60,
+          60
+        ],
+        [
+          61,
+          61
+        ],
+        [
+          62,
+          62
+        ],
+        [
+          62,
+          62
+        ],
+        [
+          63,
+          63
+        ]
+      ]
+    },
+    "luminance": {
+      "header": [
+        12,
+        20
+      ],
+      "callerStatements": [
+        [
+          45,
+          45
+        ],
+        [
+          52,
+          52
+        ],
+        [
+          53,
+          54
+        ],
+        [
+          57,
+          57
+        ],
+        [
+          58,
+          59
+        ],
+        [
+          60,
+          60
+        ],
+        [
+          61,
+          61
+        ],
+        [
+          62,
+          62
+        ],
+        [
+          62,
+          62
+        ],
+        [
+          63,
+          63
+        ]
+      ]
+    }
+  },
+  "scope": "Only authentic public pixel/once-submit guard statements are committed. No credential/VNC open/read/typing body or credential-field pixels. Native source/opaque handle/original receipts remain an explicit external boundary in routine tests.",
+  "publicCropSha256": "fb0e2f150b5797a4306685192f327765bdb7cc74bcb6a285d94a09268bca9eb6",
+  "cropLayout": {
+    "headerBefore": [
+      0,
+      0,
+      200,
+      75
+    ],
+    "headerObserved": [
+      220,
+      0,
+      420,
+      75
+    ],
+    "accountBefore": [
+      0,
+      100,
+      215,
+      120
+    ],
+    "accountObserved": [
+      220,
+      100,
+      435,
+      120
+    ]
+  },
+  "nativeCropRectangles": [
+    [
+      420,
+      220,
+      620,
+      295
+    ],
+    [
+      405,
+      302,
+      620,
+      322
+    ]
+  ],
+  "sourceBounds": {
+    "x": [
+      187,
+      198
+    ],
+    "y": [
+      29,
+      38
+    ],
+    "maxRgbDelta": 1,
+    "minLuminanceScaled": 200000,
+    "weights": [
+      299,
+      587,
+      114
+    ]
+  },
+  "nativeSubmitEvidence": {
+    "finalProgramSha256": "630d3e7264ba39d9d58c8dd923bb4bc9d63092de949ed4076f943e5e04b2a924",
+    "onceJournalPresent": true,
+    "transportCompletePresent": true,
+    "newCredentialReadOrRetype": false,
+    "fullBootstrapAcceptanceClaimed": false,
+    "onceJournalSha256": "afd26e6af6b1c12fe5c7f6c58ffa9b7e6e440872d6e192bb87ef54457324f0fb",
+    "transportCompleteSha256": "6e68e97fedb92d453a8bfe6627479be61376b83b396f9dc0297127a74a20af49"
+  },
+  "publicMaskSha256": "f8c2130bd1266c3d517b7981f02b7c71274b4fb15f5f6fa9b839f51b89e1db18"
+}

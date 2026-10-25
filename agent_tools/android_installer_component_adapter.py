@@ -15,8 +15,8 @@ from pathlib import Path
 import types
 from . import android_component_command_transport as transport
 
-LIFECYCLE_SHA='5a3e3e69d6b300d5f61bf2420907a59ad58ae8209a36bf0ace671e0930085d2b'
-TLS_SHA='da95ff0d27aa6178c20455e9440e5adabb376b7628df5fd7ff93a2cb27864a5f'
+LIFECYCLE_SHA='1108c6d8532c6667403ab404681e80dfb71314f197f32027696b7060b0fb19d9'
+TLS_SHA='626ccabb78fcb5e365d1a006b2141571e22c0d2da1d1eceedcb79760406302e3'
 _PRODUCTION_IMPORTS='import hashlib,json,os,pathlib,re,stat,errno,ctypes,fcntl,signal,subprocess,time,select,shutil\nfrom pathlib import Path\n'
 
 def production_imports(device):
@@ -130,14 +130,14 @@ def install(lifecycle, tls, backend:dict, args, current_guard):
     all lifecycle fences, UI callbacks, terminal validation and cleanup authority.
     """
     if not callable(current_guard):raise ValueError('installer_adapter_current_guard_required')
-    pins=dict([_module(lifecycle,LIFECYCLE_SHA,('invoke','main','action','handoff_identity','reconciled_terminal','verify_governed_callback','write_cli_evidence','reply_binding')),
+    pins=dict([_module(lifecycle,LIFECYCLE_SHA,('invoke','main','_run_admitted','action','handoff_identity','reconciled_terminal','verify_governed_callback','write_cli_evidence','reply_binding')),
                _module(tls,TLS_SHA,('verify_public_baseline','public_no_update_probe','public_cli_argv','public_cli_environment','run_fixture_lifecycle','guard_proxy_evidence','fixture_proxy_snapshot','fixture_proxy_presence','proxy_source_authority'))])
     own=Path(__file__).absolute();pins[own]=transport.readonly.availability._snapshot(own)
     source=Path(transport.__file__).absolute();pins[source]=transport.readonly.availability._snapshot(source)
     if backend.get('COMMAND_SOURCE_SHA')!=hashlib.sha256(pins[source][1]).hexdigest():raise ValueError('installer_adapter_backend_changed')
     phase_runner=_phase_protocol(current_guard,pins)
     semantic_pins={(module,name):(getattr(module,name),getattr(module,name).__code__) for module,names in
-        ((lifecycle,('action','handoff_identity','reconciled_terminal','verify_governed_callback')),
+        ((lifecycle,('_run_admitted','action','handoff_identity','reconciled_terminal','verify_governed_callback')),
          (tls,('public_cli_environment','guard_proxy_evidence','fixture_proxy_snapshot','fixture_proxy_presence','proxy_source_authority'))) for name in names}
     intent=lifecycle.target_admission.load_intent(args.intent_file)
     device=backend.get('LAUNCH',{}).get('device')

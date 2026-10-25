@@ -1,0 +1,744 @@
+"""Finite durable SYSTEM/session-zero counter jobs for owned Windows fixtures.
+
+There is no arbitrary source, credential, desktop or lifecycle API. A separate
+create-only admission index survives loss of an operation directory. Consumed
+UUIDs are observed, never launched again after an acknowledgement is lost.
+"""
+from dataclasses import dataclass, asdict
+import base64
+import hashlib
+import inspect
+import json
+import math
+import re
+from uuid import UUID
+
+_EXECUTING_CODE = inspect.currentframe().f_code
+_BOOT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z\Z")
+_ROOT = re.compile(r"[0-9a-f]{8}:[0-9a-f]{16}:[0-9a-f]{16}\Z")
+
+
+def _need(yes, reason):
+    if not yes:
+        raise ValueError(reason)
+
+
+def _uuid(value):
+    try:
+        _need(type(value) is str and str(UUID(value)) == value, "windows_job_identity_invalid")
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("windows_job_identity_invalid") from None
+    return value
+
+
+def _identity(machine, boot):
+    _uuid(machine)
+    _need(type(boot) is str and _BOOT.fullmatch(boot), "windows_job_boot_invalid")
+
+
+@dataclass(frozen=True)
+class WindowsJobBinding:
+    machine: str
+    boot: str
+    root_generation: str
+    admission_generation: str
+
+    def __post_init__(self):
+        _identity(self.machine, self.boot)
+        for value in (self.root_generation, self.admission_generation):
+            _need(type(value) is str and _ROOT.fullmatch(value), "windows_job_root_invalid")
+
+
+def _literal(value):
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return "([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + base64.b64encode(raw).decode() + "')))"
+
+
+def _prefix():
+    source = ("using System;using System.IO;using System.Diagnostics;using System.Collections.Generic;"
+              "using System.Text;using System.Threading;using System.Management;using System.Runtime.InteropServices;"
+              "using System.Security.AccessControl;using System.Security.Principal;using System.Security.Cryptography;"
+              "using System.Web.Script.Serialization;\n" + _NATIVE)
+    return ("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'\n"
+            "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"
+            "Add-Type -TypeDefinition @'\n" + source + "\n'@ -ReferencedAssemblies @('System','System.Core','System.Management','System.Web.Extensions')\n")
+
+
+def enrollment_source(machine, boot, operation, nonce, *, observe=False):
+    _identity(machine, boot)
+    config = {"machine": machine, "boot": boot, "enrollmentOperation": _uuid(operation), "enrollmentNonce": _uuid(nonce)}
+    method = "NamespaceStatus" if observe else "Enroll"
+    return (_prefix() + "[Console]::WriteLine([NativeJob]::" + method + "(" + _literal(config) + "))\n").encode()
+
+
+def validate_enrollment(value, machine, boot, operation, nonce):
+    _identity(machine, boot)
+    _need(type(value) is dict and set(value) == {"schemaVersion", "machine", "boot", "rootGeneration", "admissionGeneration", "enrollmentOperation", "enrollmentNonce"}
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["machine"] == machine and value["boot"] == boot and value["enrollmentOperation"] == _uuid(operation)
+          and value["enrollmentNonce"] == _uuid(nonce), "windows_job_enrollment_invalid")
+    return WindowsJobBinding(machine, boot, value["rootGeneration"], value["admissionGeneration"])
+
+
+def _config(binding, operation, count=80, interval_seconds=.25):
+    _need(type(binding) is WindowsJobBinding, "windows_job_binding_invalid")
+    _need(type(count) is int and 1 <= count <= 1000 and type(interval_seconds) in (int, float)
+          and math.isfinite(interval_seconds) and .01 <= interval_seconds <= 1, "windows_job_spec_invalid")
+    return {"schemaVersion": 1, "machine": binding.machine, "boot": binding.boot,
+            "rootGeneration": binding.root_generation, "admissionGeneration": binding.admission_generation,
+            "operationId": _uuid(operation), "count": count, "intervalMilliseconds": round(interval_seconds * 1000)}
+
+
+def program(action, binding, operation, *, count=80, interval_seconds=.25):
+    _need(action in {"start", "status"}, "windows_job_action_invalid")
+    config = _config(binding, operation, count, interval_seconds)
+    prefix = _prefix()
+    owner = (prefix + "[NativeJob]::Own(" + _literal(config) + ")\n").encode()
+    return (prefix + "[Console]::WriteLine([NativeJob]::Control('" + action + "'," + _literal(config) +
+            (",'" + base64.b64encode(owner).decode() + "','" + hashlib.sha256(owner).hexdigest() + "'" if action == "start" else ",$null,$null") + "))\n").encode()
+
+
+def inventory_source(machine, boot, root_generation=None, admission_generation=None):
+    _identity(machine, boot)
+    _need((root_generation is None) == (admission_generation is None), "windows_job_root_invalid")
+    if root_generation is not None:
+        WindowsJobBinding(machine, boot, root_generation, admission_generation)
+    return (_prefix() + "[Console]::WriteLine([NativeJob]::Inventory(" + _literal({"machine": machine, "boot": boot,
+            "rootGeneration": root_generation, "admissionGeneration": admission_generation}) + "))\n").encode()
+
+
+_NATIVE = r'''
+public static class NativeJob {
+ static JavaScriptSerializer Json=new JavaScriptSerializer(){MaxJsonLength=262144};
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectoryW(string path,IntPtr security);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CreateFileW(string path,UInt32 access,UInt32 share,IntPtr security,UInt32 disposition,UInt32 flags,IntPtr template);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(IntPtr handle,out FileInfoNative info);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr handle);
+ [StructLayout(LayoutKind.Sequential)]struct FileInfoNative {public UInt32 Attributes;public System.Runtime.InteropServices.ComTypes.FILETIME Created,Accessed,Written;public UInt32 Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
+ static void Need(bool yes,string reason){if(!yes)throw new Exception(reason);}
+ static Dictionary<string,object> Read(string path){Need(new FileInfo(path).Length<=262144,"RECORD_BOUND");NoLink(path);FileTag(path);return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(path,Encoding.UTF8));}
+ static string S(Dictionary<string,object> v,string key){return Convert.ToString(v[key],System.Globalization.CultureInfo.InvariantCulture);}
+ static string Hash(byte[] value){using(var h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(value)).Replace("-","").ToLowerInvariant();}
+ static void Write(string path,Dictionary<string,object> value){byte[] raw=Encoding.UTF8.GetBytes(Json.Serialize(value));using(var f=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(raw,0,raw.Length);f.Flush(true);}}
+ static void NoLink(string path){Need((File.GetAttributes(path)&FileAttributes.ReparsePoint)==0,"REPARSE_POINT");}
+ static void Private(string path,bool create=false){
+  if(!Directory.Exists(path)){
+   Need(create,"ROOT_GENERATION_CHANGED");
+   var acl=new DirectorySecurity();var system=new SecurityIdentifier("S-1-5-18");acl.SetOwner(system);acl.SetAccessRuleProtection(true,false);
+   foreach(string sid in new[]{"S-1-5-18","S-1-5-32-544"})acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid),FileSystemRights.FullControl,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
+   Directory.CreateDirectory(path,acl);
+  }
+  NoLink(path);var actual=Directory.GetAccessControl(path);Need(actual.GetOwner(typeof(SecurityIdentifier)).Value=="S-1-5-18","ROOT_OWNER");
+  foreach(FileSystemAccessRule row in actual.GetAccessRules(true,true,typeof(SecurityIdentifier)))Need(row.AccessControlType==AccessControlType.Allow&&(row.IdentityReference.Value=="S-1-5-18"||row.IdentityReference.Value=="S-1-5-32-544"),"ROOT_ACL");
+ }
+ static string Root(Dictionary<string,object> c){return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"VPNControlRecoveryJobs-v1",S(c,"machine"));}
+ static string Tag(string path){
+  NoLink(path);IntPtr h=CreateFileW(path,0,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero);Need(h!=new IntPtr(-1),"ROOT_HANDLE");
+  try{FileInfoNative i;Need(GetFileInformationByHandle(h,out i),"ROOT_IDENTITY");UInt64 birth=((UInt64)(UInt32)i.Created.dwHighDateTime<<32)|(UInt32)i.Created.dwLowDateTime;
+   return i.Volume.ToString("x8")+":"+i.IndexHigh.ToString("x8")+i.IndexLow.ToString("x8")+":"+birth.ToString("x16");}finally{CloseHandle(h);}
+ }
+ static bool Machine(Dictionary<string,object> c,bool terminalHistory=false){
+  Need(WindowsIdentity.GetCurrent().User.Value=="S-1-5-18","SYSTEM_REQUIRED");
+  string machine=null,boot=null;
+  using(var q=new ManagementObjectSearcher("SELECT UUID FROM Win32_ComputerSystemProduct"))foreach(ManagementObject row in q.Get())machine=new Guid(Convert.ToString(row["UUID"])).ToString("D");
+  using(var q=new ManagementObjectSearcher("SELECT LastBootUpTime FROM Win32_OperatingSystem"))foreach(ManagementObject row in q.Get())boot=ManagementDateTimeConverter.ToDateTime(Convert.ToString(row["LastBootUpTime"])).ToUniversalTime().ToString("o");
+  bool sameBoot=boot==S(c,"boot");Need(machine==S(c,"machine")&&(terminalHistory||sameBoot),"GUEST_IDENTITY_CHANGED");return sameBoot;
+ }
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessW(string app,StringBuilder command,IntPtr processSecurity,IntPtr threadSecurity,bool inherit,UInt32 flags,IntPtr environment,string directory,ref Startup startup,out ProcessInfo result);
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct Startup {public int Size;public string Reserved,Desktop,Title;public UInt32 X,Y,Width,Height,CharsX,CharsY,Fill,Flags;public UInt16 Show,ReservedBytes;public IntPtr ReservedPtr,Input,Output,Error;}
+ [StructLayout(LayoutKind.Sequential)]struct ProcessInfo {public IntPtr Process,Thread;public UInt32 Pid,Tid;}
+ static void FileTag(string path){NoLink(path);IntPtr h=CreateFileW(path,0,7,IntPtr.Zero,3,0,IntPtr.Zero);Need(h!=new IntPtr(-1),"FILE_HANDLE");try{FileInfoNative i;Need(GetFileInformationByHandle(h,out i)&&i.Links==1&&(i.Attributes&0x10)==0,"FILE_IDENTITY");}finally{CloseHandle(h);}}
+ static bool Exists(string path){try{File.GetAttributes(path);return true;}catch(FileNotFoundException){return false;}catch(DirectoryNotFoundException){return false;}}
+ static string Index(string root){return Path.Combine(root,"admissions");}
+ static string RootGuard(Dictionary<string,object> c){
+  NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c);Private(Path.GetDirectoryName(root));Private(root);Private(Index(root));Private(Path.Combine(root,"operations"));
+  Need(Tag(root)==S(c,"rootGeneration")&&Tag(Index(root))==S(c,"admissionGeneration"),"ROOT_GENERATION_CHANGED");return root;
+ }
+ static string Birth(int pid){try{using(var p=Process.GetProcessById(pid)){return p.HasExited?null:p.StartTime.ToUniversalTime().ToFileTimeUtc().ToString();}}catch(ArgumentException){return null;}}
+ static Dictionary<string,object> Base(Dictionary<string,object> c,string state,string reason){return new Dictionary<string,object>{{"schemaVersion",1},{"operationId",c["operationId"]},{"machine",c["machine"]},{"boot",c["boot"]},{"rootGeneration",c["rootGeneration"]},{"admissionGeneration",c["admissionGeneration"]},{"state",state},{"reason",reason},{"replayAllowed",false}};}
+ static Dictionary<string,object> Correlation(Dictionary<string,object> intent){var result=new Dictionary<string,object>();foreach(string k in new[]{"schemaVersion","operationId","machine","boot","rootGeneration","admissionGeneration","nonce","programSha256","count","intervalMilliseconds"})result[k]=intent[k];return result;}
+ static void Correlate(Dictionary<string,object> actual,Dictionary<string,object> expected){foreach(var pair in expected)Need(actual.ContainsKey(pair.Key)&&Json.Serialize(actual[pair.Key])==Json.Serialize(pair.Value),"ORIGINAL_IDENTITY_CHANGED");}
+ static Dictionary<string,object> Intent(Dictionary<string,object> c,string root){string op=S(c,"operationId");var index=Read(Path.Combine(Index(root),op+".json"));foreach(string k in new[]{"operationId","machine","boot","rootGeneration","admissionGeneration","count","intervalMilliseconds"})Need(S(index,k)==S(c,k),"ORIGINAL_IDENTITY_CHANGED");return index;}
+ public static string NamespaceStatus(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);Machine(c,true);NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c);Private(Path.GetDirectoryName(root));Private(root);Private(Index(root));Private(Path.Combine(root,"operations"));
+  var value=Read(Path.Combine(root,"namespace.json"));foreach(string k in new[]{"machine","boot","enrollmentOperation","enrollmentNonce"})Need(S(value,k)==S(c,k),"ENROLLMENT_IDENTITY_CHANGED");
+  Need(Tag(root)==S(value,"rootGeneration")&&Tag(Index(root))==S(value,"admissionGeneration"),"ROOT_GENERATION_CHANGED");return Json.Serialize(value);
+ }
+ public static string Enroll(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);Machine(c);NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c);Private(Path.GetDirectoryName(root),true);
+  Need(!Exists(root),"ENROLLMENT_ALREADY_CONSUMED");Private(root,true);Private(Index(root),true);Private(Path.Combine(root,"operations"),true);
+  var value=new Dictionary<string,object>{{"schemaVersion",1},{"machine",c["machine"]},{"boot",c["boot"]},{"enrollmentOperation",c["enrollmentOperation"]},{"enrollmentNonce",c["enrollmentNonce"]},{"rootGeneration",Tag(root)},{"admissionGeneration",Tag(Index(root))}};
+  Write(Path.Combine(root,"namespace.json"),value);return Json.Serialize(value);
+ }
+ static byte[] Bytes(string path,int limit){FileTag(path);using(var f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.None)){Need(f.Length<=limit,"STREAM_BOUND");byte[] raw=new byte[(int)f.Length];int n=0;while(n<raw.Length){int k=f.Read(raw,n,raw.Length-n);Need(k>0,"STREAM_INCOMPLETE");n+=k;}return raw;}}
+ static Dictionary<string,object> Stream(byte[] raw){return new Dictionary<string,object>{{"bytes",raw.Length},{"sha256",Hash(raw)},{"base64",Convert.ToBase64String(raw)}};}
+ static Dictionary<string,object> Observe(Dictionary<string,object> c){
+  bool sameBoot=Machine(c,true);string root=RootGuard(c),op=S(c,"operationId"),job=Path.Combine(root,"operations",op),claim=Path.Combine(Index(root),op+".json");
+  if(!Exists(claim)){
+   Need(sameBoot,"GUEST_IDENTITY_CHANGED");Need(!Exists(job),"ADMISSION_INDEX_MISSING");return Base(c,"unsubmitted","original_admission_absent");
+  }
+  var intent=Intent(c,root);var result=Base(c,"unknown","original_owner_unresolved");result["admissionNonce"]=intent["nonce"];result["programSha256"]=intent["programSha256"];
+  if(!Exists(job))return result;
+  Need(Directory.Exists(job),"JOB_GENERATION_CHANGED");
+  Private(job);var full=Read(Path.Combine(job,"intent.json"));Correlate(full,Correlation(intent));Need(Tag(job)==S(full,"jobGeneration"),"JOB_GENERATION_CHANGED");
+  string script=Path.Combine(job,"owner.ps1");Need(Hash(Bytes(script,131072))==S(intent,"programSha256"),"SOURCE_INTEGRITY");
+  string ownerPath=Path.Combine(job,"owner.json");if(!File.Exists(ownerPath)){result["reason"]="original_owner_ack_pending";return result;}
+  var owner=Read(ownerPath);Correlate(owner,Correlation(intent));Need(S(owner,"accountSid")=="S-1-5-18"&&Convert.ToInt32(owner["sessionId"])==0,"OWNER_ACCOUNT_CHANGED");
+  int pid=Convert.ToInt32(owner["pid"]);string birth=S(owner,"birth");bool alive=sameBoot&&Birth(pid)==birth;
+  result["owner"]=new Dictionary<string,object>{{"pid",pid},{"birth",birth},{"sessionId",0},{"accountSid","S-1-5-18"}};
+  string terminalPath=Path.Combine(job,"terminal.json");
+  if(File.Exists(terminalPath)&&!alive){
+   var terminal=Read(terminalPath);Correlate(terminal,owner);Need(Convert.ToInt32(terminal["exitCode"])==0,"TERMINAL_EXIT_CHANGED");
+   var streams=new Dictionary<string,object>();foreach(string name in new[]{"stdout","stderr","counter"}){byte[] data=Bytes(Path.Combine(job,name+".bin"),32768);Need(Hash(data)==S(terminal,name+"Sha256")&&data.Length==Convert.ToInt32(terminal[name+"Bytes"]),"STREAM_INTEGRITY");streams[name]=Stream(data);}
+   result["state"]="terminal";result["reason"]="original_terminal_retained";result["exitCode"]=0;result["streams"]=streams;if(!sameBoot)result["historicalTerminal"]=true;
+  }else if(alive){result["state"]="running";result["reason"]="original_owner_running";}
+  return result;
+ }
+ public static string Control(string action,string raw,string ownerBase64,string programSha){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);FileStream admission=null;
+  try{
+   if(action=="status")return Json.Serialize(Observe(c));Need(action=="start","ACTION_INVALID");Machine(c);string root=RootGuard(c);
+   string lockPath=Path.Combine(root,"admission.lock");if(File.Exists(lockPath))FileTag(lockPath);admission=new FileStream(lockPath,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
+   string op=S(c,"operationId"),claim=Path.Combine(Index(root),op+".json"),job=Path.Combine(root,"operations",op);
+   if(Exists(claim))return Json.Serialize(Observe(c));Need(!Exists(job),"ADMISSION_INDEX_MISSING");
+   byte[] owner=Convert.FromBase64String(ownerBase64);Need(owner.Length<=131072&&Hash(owner)==programSha,"SOURCE_INTEGRITY");
+   // Publish consumption BEFORE per-job state; a crash here remains UNKNOWN.
+   var intent=new Dictionary<string,object>(c);intent["nonce"]=Guid.NewGuid().ToString("D");intent["programSha256"]=programSha;
+   Write(claim,intent);
+   Need(CreateDirectoryW(job,IntPtr.Zero),"ADMISSION_CREATE");Private(job);intent["jobGeneration"]=Tag(job);
+   string script=Path.Combine(job,"owner.ps1");using(var f=new FileStream(script,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(owner,0,owner.Length);f.Flush(true);}
+   Write(Path.Combine(job,"intent.json"),intent);
+   Machine(c);RootGuard(c);
+   string ps=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),@"System32\WindowsPowerShell\v1.0\powershell.exe");
+   var start=new Startup{Size=Marshal.SizeOf(typeof(Startup))};ProcessInfo process;
+   Need(CreateProcessW(ps,new StringBuilder("\""+ps+"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\""),IntPtr.Zero,IntPtr.Zero,false,0x08000000,IntPtr.Zero,job,ref start,out process),"OWNER_LAUNCH_UNVERIFIED");
+   try{var launch=Correlation(intent);launch["pid"]=(int)process.Pid;launch["birth"]=Birth((int)process.Pid);Write(Path.Combine(job,"launcher.json"),launch);}finally{CloseHandle(process.Thread);CloseHandle(process.Process);}
+   return Json.Serialize(Observe(c));
+  }catch(Exception){return Json.Serialize(Base(c,"unknown","original_evidence_unavailable"));}finally{if(admission!=null)admission.Dispose();}
+ }
+ public static void Own(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);Machine(c);Need(Process.GetCurrentProcess().SessionId==0,"OWNER_SESSION_CHANGED");string root=RootGuard(c),job=Path.Combine(root,"operations",S(c,"operationId"));Private(job);
+  var index=Intent(c,root);var intent=Read(Path.Combine(job,"intent.json"));Correlate(intent,Correlation(index));Need(Tag(job)==S(intent,"jobGeneration"),"JOB_GENERATION_CHANGED");
+  Need(Hash(Bytes(Path.Combine(job,"owner.ps1"),131072))==S(intent,"programSha256"),"SOURCE_INTEGRITY");
+  using(var fence=new FileStream(Path.Combine(job,"owner-fence"),FileMode.CreateNew,FileAccess.Write,FileShare.None)){fence.WriteByte(1);fence.Flush(true);}
+  var identity=Correlation(intent);identity["pid"]=Process.GetCurrentProcess().Id;identity["birth"]=Birth(Process.GetCurrentProcess().Id);identity["accountSid"]=WindowsIdentity.GetCurrent().User.Value;identity["sessionId"]=0;Write(Path.Combine(job,"owner.json"),identity);
+  string stdout=Path.Combine(job,"stdout.bin"),stderr=Path.Combine(job,"stderr.bin"),counter=Path.Combine(job,"counter.bin");
+  using(var output=new FileStream(stdout,FileMode.CreateNew,FileAccess.Write,FileShare.Read))using(var error=new FileStream(stderr,FileMode.CreateNew,FileAccess.Write,FileShare.Read))using(var effect=new FileStream(counter,FileMode.CreateNew,FileAccess.Write,FileShare.Read)){
+   byte[] once=Encoding.ASCII.GetBytes("execution\n");effect.Write(once,0,once.Length);effect.Flush(true);
+   byte[] message=Encoding.ASCII.GetBytes("guest sentinel retained stderr\n");error.Write(message,0,message.Length);error.Flush(true);
+   for(int n=0;n<Convert.ToInt32(c["count"]);n++){
+    RootGuard(c);byte[] line=Encoding.ASCII.GetBytes(n.ToString(System.Globalization.CultureInfo.InvariantCulture)+"\n");Need(output.Length+line.Length<=32768&&effect.Length+line.Length<=32768,"STREAM_BOUND");output.Write(line,0,line.Length);effect.Write(line,0,line.Length);output.Flush(true);effect.Flush(true);Thread.Sleep(Convert.ToInt32(c["intervalMilliseconds"]));
+   }
+  }
+  var terminal=new Dictionary<string,object>(identity);terminal["exitCode"]=0;foreach(string name in new[]{"stdout","stderr","counter"}){byte[] data=Bytes(Path.Combine(job,name+".bin"),32768);terminal[name+"Bytes"]=data.Length;terminal[name+"Sha256"]=Hash(data);}
+  Machine(c);RootGuard(c);Write(Path.Combine(job,"terminal.json"),terminal);
+ }
+ public static string Inventory(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);var blockers=new List<Dictionary<string,object>>();var result=new Dictionary<string,object>{{"schemaVersion",1},{"machine",c["machine"]},{"boot",c["boot"]},{"rootGeneration",c["rootGeneration"]},{"admissionGeneration",c["admissionGeneration"]},{"visibilityComplete",false},{"terminalCount",0},{"blockers",blockers}};
+  FileStream admission=null;
+  try{
+   Machine(c);NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c),parent=Path.GetDirectoryName(root);if(Directory.Exists(parent))Private(parent);
+   if(!Exists(root)){Need(c["rootGeneration"]==null&&c["admissionGeneration"]==null,"ROOT_GENERATION_CHANGED");result["visibilityComplete"]=true;return Json.Serialize(result);}
+   Need(c["rootGeneration"]!=null&&c["admissionGeneration"]!=null,"ROOT_UNENROLLED");RootGuard(c);
+   string lockPath=Path.Combine(root,"admission.lock");if(File.Exists(lockPath)){FileTag(lockPath);admission=new FileStream(lockPath,FileMode.Open,FileAccess.ReadWrite,FileShare.None);}
+   string[] claims=Directory.GetFileSystemEntries(Index(root));Need(claims.Length<=1024,"INVENTORY_BOUND");var seen=new HashSet<string>();int terminal=0;
+   foreach(string path in claims){Guid op;string name=Path.GetFileNameWithoutExtension(path);Need(Path.GetExtension(path)==".json"&&Guid.TryParse(name,out op)&&op.ToString("D")==name,"INVENTORY_ENTRY_CHANGED");var intent=Read(path);Need(S(intent,"operationId")==name,"INVENTORY_IDENTITY_CHANGED");var observed=Observe(intent);seen.Add(name);if(S(observed,"state")=="terminal")terminal++;else blockers.Add(new Dictionary<string,object>{{"operationId",name},{"reason","job_original_work_not_terminal"}});}
+   foreach(string path in Directory.GetFileSystemEntries(Path.Combine(root,"operations")))Need(Directory.Exists(path)&&seen.Contains(Path.GetFileName(path)),"ADMISSION_INDEX_MISSING");
+   Machine(c);RootGuard(c);result["terminalCount"]=terminal;result["visibilityComplete"]=true;
+  }catch(Exception){blockers.Add(new Dictionary<string,object>{{"operationId",null},{"reason","job_inventory_unavailable"}});}finally{if(admission!=null)admission.Dispose();}return Json.Serialize(result);
+ }
+}
+'''
+
+
+def validate_inventory(value, machine, boot, root_generation=None, admission_generation=None):
+    inventory_source(machine, boot, root_generation, admission_generation)
+    fields = {"schemaVersion", "machine", "boot", "rootGeneration", "admissionGeneration",
+              "visibilityComplete", "terminalCount", "blockers"}
+    _need(type(value) is dict and set(value) == fields and type(value["schemaVersion"]) is int
+          and value["schemaVersion"] == 1 and value["machine"] == machine and value["boot"] == boot
+          and value["rootGeneration"] == root_generation and value["admissionGeneration"] == admission_generation
+          and type(value["visibilityComplete"]) is bool and type(value["terminalCount"]) is int
+          and 0 <= value["terminalCount"] <= 1024 and type(value["blockers"]) is list
+          and len(value["blockers"]) <= 1025, "windows_job_inventory_invalid")
+    for row in value["blockers"]:
+        _need(type(row) is dict and set(row) == {"operationId", "reason"}
+              and row["reason"] in {"job_original_work_not_terminal", "job_inventory_unavailable"},
+              "windows_job_inventory_invalid")
+        if row["operationId"] is not None:
+            _uuid(row["operationId"])
+    _need(value["visibilityComplete"] or value["blockers"], "windows_job_inventory_incomplete")
+    _need(root_generation is not None or value["terminalCount"] == 0, "windows_job_inventory_invalid")
+    return json.loads(json.dumps(value))
+
+
+def validate_observation(value, binding, operation, *, count=80, interval_seconds=.25, original_identity=None):
+    config = _config(binding, operation, count, interval_seconds)
+    required = {"schemaVersion", "operationId", "machine", "boot", "rootGeneration", "admissionGeneration",
+                "state", "reason", "replayAllowed"}
+    optional = {"admissionNonce", "programSha256", "owner", "exitCode", "streams", "historicalTerminal"}
+    _need(type(value) is dict and required <= set(value) <= required | optional,
+          "windows_job_observation_invalid")
+    for key in ("operationId", "machine", "boot", "rootGeneration", "admissionGeneration"):
+        _need(value[key] == config[key], "windows_job_observation_identity_changed")
+    _need(type(value["schemaVersion"]) is int and value["schemaVersion"] == 1 and value["replayAllowed"] is False
+          and type(value["state"]) is str and value["state"] in {"running", "terminal", "unknown", "unsubmitted"}
+          and type(value["reason"]) is str and value["reason"] in {"original_admission_absent",
+              "original_owner_unresolved", "original_owner_ack_pending", "original_owner_running",
+              "original_terminal_retained", "original_evidence_unavailable"}, "windows_job_observation_invalid")
+    identity = {}
+    if "admissionNonce" in value or "programSha256" in value:
+        _uuid(value.get("admissionNonce"))
+        expected_owner = (_prefix() + "[NativeJob]::Own(" + _literal(config) + ")\n").encode()
+        _need(value.get("programSha256") == hashlib.sha256(expected_owner).hexdigest(), "windows_job_source_changed")
+        identity.update(admissionNonce=value["admissionNonce"], programSha256=value["programSha256"])
+    if "owner" in value:
+        owner = value["owner"]
+        _need(identity and type(owner) is dict and set(owner) == {"pid", "birth", "accountSid", "sessionId"}
+              and type(owner["pid"]) is int and 0 < owner["pid"] < 2**31
+              and type(owner["birth"]) is str and re.fullmatch(r"[1-9][0-9]{0,18}", owner["birth"])
+              and type(owner["sessionId"]) is int and owner["sessionId"] == 0
+              and owner["accountSid"] == "S-1-5-18", "windows_job_owner_invalid")
+        identity["owner"] = dict(owner)
+    if original_identity is not None:
+        _need(type(original_identity) is dict and all(identity.get(k) == v for k, v in original_identity.items()),
+              "windows_job_original_owner_changed")
+    state = value["state"]
+    _need(state not in {"running", "terminal"} or "owner" in identity, "windows_job_owner_missing")
+    _need(state != "unsubmitted" or (value["reason"] == "original_admission_absent" and not identity),
+          "windows_job_absence_unproven")
+    result = {key: value[key] for key in required}
+    result["identity"] = identity
+    if state == "terminal":
+        _need(type(value.get("exitCode")) is int and value["exitCode"] == 0
+              and type(value.get("streams")) is dict and set(value["streams"]) == {"stdout", "stderr", "counter"},
+              "windows_job_terminal_incomplete")
+        data = {}
+        for name, item in value["streams"].items():
+            _need(type(item) is dict and set(item) == {"bytes", "sha256", "base64"}
+                  and type(item["bytes"]) is int and 0 <= item["bytes"] <= 32768
+                  and type(item["base64"]) is str and len(item["base64"]) <= 43692,
+                  "windows_job_stream_invalid")
+            try:
+                raw = base64.b64decode(item["base64"], validate=True)
+            except (ValueError, TypeError):
+                raise ValueError("windows_job_stream_invalid") from None
+            _need(len(raw) == item["bytes"] and hashlib.sha256(raw).hexdigest() == item["sha256"],
+                  "windows_job_stream_invalid")
+            data[name] = raw
+        lines = b"".join(str(n).encode() + b"\n" for n in range(count))
+        _need(data == {"stdout": lines, "stderr": b"guest sentinel retained stderr\n", "counter": b"execution\n" + lines},
+              "windows_job_sentinel_invalid")
+        result.update(stdout=data["stdout"].decode("ascii"), stderr=data["stderr"].decode("ascii"),
+                      counterValues=count, executions=1, exitCode=0,
+                      streams={k: {"bytes": len(v), "sha256": hashlib.sha256(v).hexdigest()} for k, v in data.items()})
+    else:
+        _need(not ({"exitCode", "streams", "historicalTerminal"} & set(value)), "windows_job_terminal_unproven")
+    if "historicalTerminal" in value:
+        _need(value["historicalTerminal"] is True and state == "terminal", "windows_job_history_unproven")
+        result["historicalTerminal"] = True
+    return result
+
+
+def remote_program(binding, mode, operation, *, expected, job_binding=None, job_operation=None,
+                   count=80, interval_seconds=.25, machine=None, boot=None, enrollment_operation=None, enrollment_nonce=None):
+    """Finite host controller extension; never accepts a caller script."""
+    from . import readiness_windows_remote as packets
+    _uuid(operation)
+    _need(mode in {"job-enroll", "job-namespace-status", "job-start", "job-status", "job-inventory"}, "windows_job_action_invalid")
+    _need(type(expected) is dict and set(expected) == {"actor", "hostBoot", "controlConnection"},
+          "windows_job_host_binding")
+    _need(expected["hostBoot"] == binding["context"]["hostBootId"], "windows_job_host_binding")
+    if mode in {"job-enroll", "job-namespace-status"}:
+        _need(machine == binding["spec"]["deploymentId"], "windows_job_machine_changed")
+        script = enrollment_source(machine, boot, enrollment_operation, enrollment_nonce, observe=mode == "job-namespace-status")
+    else:
+        _need(type(job_binding) is WindowsJobBinding and job_binding.machine == binding["spec"]["deploymentId"],
+              "windows_job_machine_changed")
+        script = (inventory_source(job_binding.machine, job_binding.boot, job_binding.root_generation,
+                                  job_binding.admission_generation) if mode == "job-inventory" else
+                  program(mode.removeprefix("job-"), job_binding, job_operation or operation,
+                          count=count, interval_seconds=interval_seconds))
+    source = packets.program(binding, "observe", operation).decode()
+    marker = "        elif MODE in {'observe','idle-inventory','reboot'}:\n"
+    extension = ("        elif MODE in {'job-enroll','job-namespace-status','job-start','job-status','job-inventory'}:\n"
+                 "            require(state=='running','instance_guest_not_ready');rpc('guest-ping',{})\n"
+                 "            require(JOB_EXPECTED.get('actor')==current_actor and JOB_EXPECTED.get('hostBoot')==CONTEXT['hostBootId'] and JOB_EXPECTED.get('controlConnection')==result['controlConnection'],'instance_original_job_host_changed')\n"
+                 "            result['job']=script(MODE+'-'+os.urandom(8).hex(),JOB_SCRIPT)\n")
+    _need(source.count(marker) == 1 and source.count("MODE='observe'") == 1, "windows_job_producer_changed")
+    source = source.replace("MODE='observe'", "MODE=" + repr(mode), 1).replace(marker, extension + marker, 1)
+    source = "JOB_EXPECTED=" + repr(expected) + "\nJOB_SCRIPT=" + repr(script.decode()) + "\n" + source
+    compile(source, "fixed Windows durable job", "exec")
+    return source.encode()
+
+
+def _source_pins(backend):
+    from pathlib import Path
+    from . import readiness_fixture_registry as registry
+    from . import readiness_windows as windows
+    raw, pin = registry._body(Path(__file__), private_file=False)
+    _need(_EXECUTING_CODE == compile(raw, str(Path(__file__)), "exec", dont_inherit=True), "windows_job_source_changed")
+    result = windows._source_pins()
+    result[str(Path(__file__))] = pin
+    backend._guard()
+    return result
+
+
+def _run(backend, mode, original, deadline, *, expected, binding=None, count=80, interval_seconds=.25,
+         machine=None, boot=None, enrollment_operation=None, enrollment_nonce=None):
+    """Run one fixed short controller; job UUID never depends on transport."""
+    import subprocess
+    import time
+    from uuid import uuid4
+    from . import readiness, ssh_transport as transport
+    from . import readiness_windows as windows
+    from .native_review_source_closure import _Held
+    _need(deadline > time.monotonic(), "windows_job_deadline")
+    backend._guard()
+    host_operation = str(uuid4())
+    source = remote_program(backend.binding, mode, host_operation, expected=expected, job_binding=binding,
+                            job_operation=original, count=count, interval_seconds=interval_seconds,
+                            machine=machine, boot=boot, enrollment_operation=enrollment_operation, enrollment_nonce=enrollment_nonce)
+    directory = windows._directory(backend.root / ".runtime/readiness-windows-jobs-controllers" / host_operation)
+    path = directory / (mode + ".py")
+    windows._save(path, source)
+    held = _Held()
+    try:
+        held.read(str(path), hashlib.sha256(source).hexdigest(), max_bytes=1048576)
+        with transport.admitted_transport(backend.root, backend.binding["spec"]["host"], host_operation,
+                deadline=deadline, requirements=readiness.Requirements(frozenset({"transport"}), frozenset({"reconnect"}))):
+            command = ["python3", "-I", "-B", "-c", "import base64;exec(base64.b64decode(" + repr(base64.b64encode(source).decode()) + "))"]
+            argv = transport.build_ssh_argv(transport.load_config(backend.root), backend.binding["spec"]["host"], command=command)
+            backend._guard(); held.finish(); held.final_identity_pass()
+            result = transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       timeout=max(.1, min(50, deadline-time.monotonic())), check=False)
+            windows._save(directory / "stdout.private", result.stdout)
+            windows._save(directory / "stderr.private", result.stderr)
+            backend._guard(); held.finish(); held.final_identity_pass()
+            _need(result.returncode == 0 and len(result.stdout) <= 262144 and not result.stderr,
+                  "windows_job_control_unknown")
+            value = json.loads(result.stdout)
+            _need(type(value) is dict and value.get("state") == "observed" and type(value.get("job")) is dict,
+                  "windows_job_control_unknown")
+            windows._save(directory / "result.json", value)
+            return value["job"]
+    finally:
+        held.close()
+
+
+class WindowsJobExecutor:
+    """Fixed original counter protocol, reconstructed without desktop recovery."""
+    def __init__(self, backend, snapshot):
+        self.backend = backend
+        _need(type(snapshot) is dict and set(snapshot) == {"schemaVersion", "provider", "binding", "expectedSid", "host", "guest", "sources"}
+              and type(snapshot["schemaVersion"]) is int and snapshot["schemaVersion"] == 1
+              and snapshot["provider"] == backend.provider and snapshot["binding"] == backend.binding
+              and snapshot["expectedSid"] == backend.expected_sid, "windows_job_snapshot_invalid")
+        self._snapshot = json.loads(json.dumps(snapshot))
+        _need(type(snapshot["guest"]) is dict and set(snapshot["guest"]) == set(WindowsJobBinding.__dataclass_fields__),
+              "windows_job_snapshot_invalid")
+        self.binding = WindowsJobBinding(**snapshot["guest"])
+        _need(self.binding.machine == backend.machine and type(snapshot["host"]) is dict
+              and set(snapshot["host"]) == {"actor", "hostBoot", "controlConnection"}
+              and snapshot["host"]["hostBoot"] == backend.binding["context"]["hostBootId"], "windows_job_snapshot_invalid")
+        self.target, self.machine, self.boot = backend.target, backend.machine, self.binding.boot
+        self._guard()
+
+    def _guard(self):
+        _need(self._snapshot["sources"] == _source_pins(self.backend), "windows_job_original_source_changed")
+
+    def snapshot(self):
+        self._guard()
+        return json.loads(json.dumps(self._snapshot))
+
+    def _state(self, operation):
+        from . import readiness_windows as windows
+        return windows._directory(self.backend.root / ".runtime/readiness-windows-job-owners" / _uuid(operation))
+
+    def _dispatch(self, action, operation, *, count, interval_seconds, deadline):
+        from . import readiness_fixture_registry as registry
+        from . import readiness_windows as windows
+        program(action, self.binding, operation, count=count, interval_seconds=interval_seconds)
+        self._guard()
+        state = self._state(operation)
+        if action == "start":
+            admission = {"operationId": operation, "count": count, "intervalSeconds": interval_seconds, "executor": self._snapshot}
+            path = state / "admission.json"
+            try:
+                windows._save(path, admission)
+            except FileExistsError:
+                _need(registry._json(path)[0] == admission, "windows_job_original_inputs_changed")
+            # A local durable dispatch tombstone survives deleted controller ACK.
+            try:
+                windows._save(state / "dispatch.json", {"operationId": operation, "replayAllowed": False})
+            except FileExistsError:
+                action = "status"
+        value = _run(self.backend, "job-" + action, operation, deadline, expected=self._snapshot["host"],
+                     binding=self.binding, count=count, interval_seconds=interval_seconds)
+        self._guard()
+        owner = state / "owner-identity.json"
+        admission_identity = state / "admission-identity.json"
+        original = registry._json(owner)[0] if owner.exists() or owner.is_symlink() else (registry._json(admission_identity)[0] if admission_identity.exists() or admission_identity.is_symlink() else None)
+        validated = validate_observation(value, self.binding, operation, count=count, interval_seconds=interval_seconds,
+                                         original_identity=original)
+        if validated["identity"]:
+            identity_path = owner if "owner" in validated["identity"] else admission_identity
+            try:
+                windows._save(identity_path, validated["identity"])
+            except FileExistsError:
+                prior = registry._json(identity_path)[0]
+                # Initial nonce/source can become the same original full owner.
+                _need(all(validated["identity"].get(k) == v for k, v in prior.items()), "windows_job_original_owner_changed")
+        return validated
+
+    def submit(self, operation_id, *, count=80, interval_seconds=.25, deadline=None):
+        import time
+        return self._dispatch("start", operation_id, count=count, interval_seconds=interval_seconds,
+                              deadline=time.monotonic()+180 if deadline is None else deadline)
+
+    def observe(self, operation_id, *, count=80, interval_seconds=.25, deadline=None):
+        import time
+        return self._dispatch("status", operation_id, count=count, interval_seconds=interval_seconds,
+                              deadline=time.monotonic()+180 if deadline is None else deadline)
+
+
+def executor_from_snapshot(root, snapshot, *, guard=None):
+    from . import readiness_windows as windows
+    backend = windows.WindowsBackend(root, snapshot["binding"], snapshot["expectedSid"], guard=guard)
+    return WindowsJobExecutor(backend, snapshot)
+
+
+def _local(root, fixture_id, operation, *, create=False):
+    from pathlib import Path
+    from . import durable_remote_job as jobs
+    _need(type(fixture_id) is str and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", fixture_id),
+          "windows_job_fixture_invalid")
+    root = Path(root).resolve(strict=True)
+    path = root / ".runtime/readiness-windows-guest-jobs" / fixture_id / _uuid(operation)
+    if create:
+        from . import readiness_windows as windows
+        windows._directory(path)
+    elif not path.exists() and not path.is_symlink():
+        return None
+    jobs._private(path, directory=True)
+    _need(path.resolve() == path, "windows_job_local_redirected")
+    return path
+
+
+def has_original(root, fixture_id, operation):
+    """Pure finite local discriminator for the shared guest-program facade."""
+    path = _local(root, fixture_id, operation)
+    if path is None:
+        return False
+    from . import readiness_fixture_registry as registry
+    intent = registry._json(path / "intent.json")[0]
+    _need(intent.get("kind") == "windows-fixed-counter-v1" and intent.get("fixtureId") == fixture_id
+          and intent.get("operationId") == operation, "windows_job_local_identity_changed")
+    return True
+
+
+def _public(fixture, operation, observed, provider):
+    state = observed["state"]
+    if state == "unsubmitted":
+        state = "unknown"
+    result = {"schemaVersion": 1, "fixtureId": fixture, "operationId": operation, "state": state,
+              "reason": observed["reason"], "replayAllowed": False, "durableProtocol": 1,
+              "qualificationScope": "fixed-counter", "provider": provider}
+    for field in ("identity", "stdout", "stderr", "counterValues", "executions", "streams", "historicalTerminal", "exitCode"):
+        if field in observed:
+            result[field] = observed[field]
+    next_kind = "collect_original" if state == "terminal" else "reconcile_original"
+    result["nextAction"] = {"kind": next_kind, "replayAllowed": False,
+                            "action": {"tool": "vm_workflow", "action": "guest-program-collect" if state == "terminal" else "guest-program-reconcile",
+                                       "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}}
+    return result
+
+
+def _save_observation(path, intent, observed):
+    import time
+    from uuid import uuid4
+    from . import readiness_windows as windows
+    from . import readiness_fixture_registry as registry
+    result = _public(intent["fixtureId"], intent["operationId"], observed, intent["executor"]["provider"])
+    windows._save(path / ("observation-%020d-%s.json" % (time.time_ns(), uuid4().hex)), result)
+    if result["state"] == "terminal":
+        try:
+            windows._save(path / "terminal.json", result)
+        except FileExistsError:
+            _need(registry._json(path / "terminal.json")[0] == result, "windows_job_terminal_changed")
+    return result
+
+
+def _status(root, fixture, operation):
+    from . import readiness_fixture_registry as registry
+    path = _local(root, fixture, operation)
+    _need(path is not None and has_original(root, fixture, operation), "windows_job_original_missing")
+    intent = registry._json(path / "intent.json")[0]
+    terminal = path / "terminal.json"
+    if terminal.exists() or terminal.is_symlink():
+        return registry._json(terminal)[0]
+    observations = sorted(path.glob("observation-*.json"))
+    _need(len(observations) <= 10000, "windows_job_observation_bound")
+    if observations:
+        return registry._json(observations[-1])[0]
+    return _public(fixture, operation, {"state": "unknown", "reason": "windows_job_submission_unknown"}, intent["executor"]["provider"])
+
+
+def workflow(root, action, inputs, *, deadline=None):
+    """Finite normal tool facade; status/collect never resolve any fixture."""
+    import time
+    from . import readiness, readiness_fixture_registry as registry
+    from . import readiness_windows as windows
+    _need(action in {"start", "status", "reconcile", "collect"} and type(inputs) is dict, "windows_job_action_invalid")
+    fields = {"fixtureId", "operationId", "count", "intervalSeconds"} if action == "start" else {"fixtureId", "operationId"}
+    _need(set(inputs) == fields, "windows_job_inputs_invalid")
+    fixture, operation = inputs["fixtureId"], _uuid(inputs["operationId"])
+    if action in {"status", "collect"}:
+        result = _status(root, fixture, operation)
+        _need(action != "collect" or result["state"] == "terminal", "windows_job_collection_not_terminal")
+        return result
+    deadline = time.monotonic() + 180 if deadline is None else deadline
+    if has_original(root, fixture, operation):
+        path = _local(root, fixture, operation)
+        intent = registry._json(path / "intent.json")[0]
+        if action == "start":
+            _need(intent["spec"] == {"count": inputs["count"], "intervalSeconds": inputs["intervalSeconds"]},
+                  "windows_job_original_inputs_changed")
+        cached = _status(root, fixture, operation)
+        if cached["state"] == "terminal":
+            return cached
+        executor = executor_from_snapshot(root, intent["executor"])
+        observed = executor.observe(operation, count=intent["spec"]["count"],
+                                    interval_seconds=intent["spec"]["intervalSeconds"], deadline=deadline)
+        return _save_observation(path, intent, observed)
+    _need(action == "start", "windows_job_original_missing")
+    spec = {"count": inputs["count"], "intervalSeconds": inputs["intervalSeconds"]}
+    # Validate caller data before readiness, namespace enrollment, or local writes.
+    _need(type(spec["count"]) is int and 1 <= spec["count"] <= 1000 and type(spec["intervalSeconds"]) in (int, float)
+          and math.isfinite(spec["intervalSeconds"]) and .01 <= spec["intervalSeconds"] <= 1, "windows_job_spec_invalid")
+    registered = registry.registered_fixture(root, fixture)
+    backend = registered.adapter.backend
+    _need(getattr(backend, "provider", None) in {"raw-qemu-windows", "libvirt-windows"}, "windows_job_provider_invalid")
+    context = registered.context(deadline=deadline)
+    ready = readiness.ensure_ready(context, readiness.Requirements(frozenset({"guest_agent"}), frozenset({"reconnect", "resume", "start"})), operation)
+    factory = getattr(backend, "windows_job_executor", None)
+    _need(callable(factory), "windows_job_provider_unavailable")
+    executor = factory(deadline=deadline)
+    _need(type(executor) is WindowsJobExecutor and executor.target == registered.target and executor.machine == registered.machine,
+          "windows_job_executor_binding")
+    readiness.revalidate(context, ready)
+    path = _local(root, fixture, operation, create=True)
+    intent = {"kind": "windows-fixed-counter-v1", "schemaVersion": 1, "fixtureId": fixture,
+              "operationId": operation, "executor": executor.snapshot(), "spec": spec}
+    try:
+        windows._save(path / "intent.json", intent)
+    except FileExistsError:
+        _need(registry._json(path / "intent.json")[0] == intent, "windows_job_local_identity_changed")
+    observed = executor.submit(operation, count=spec["count"], interval_seconds=spec["intervalSeconds"], deadline=deadline)
+    return _save_observation(path, intent, observed)
+
+
+def _namespace_paths(root, target, machine, *, create=False):
+    from pathlib import Path
+    from . import readiness_windows as windows
+    from . import durable_remote_job as jobs
+    _uuid(machine)
+    _need(type(target) is str and 1 <= len(target) <= 512, "windows_job_target_invalid")
+    root = Path(root).resolve(strict=True)
+    directory = root / ".runtime/readiness-windows-namespaces"
+    if create:
+        windows._directory(directory)
+    elif not directory.exists() and not directory.is_symlink():
+        return None
+    jobs._private(directory, directory=True)
+    _need(directory.resolve() == directory, "windows_job_local_redirected")
+    label = hashlib.sha256(json.dumps([target, machine], separators=(",", ":")).encode()).hexdigest()
+    return directory / (label + ".json"), directory / (label + ".intent.json"), directory / (label + ".lock")
+
+
+def namespace_binding(root, target, machine, binding=None):
+    """Pure namespace metadata accessor; unresolved original admission blocks."""
+    from . import readiness_fixture_registry as registry
+    paths = _namespace_paths(root, target, machine)
+    if paths is None:
+        return None
+    path, intent_path, _ = paths
+    if not path.exists() and not path.is_symlink():
+        _need(not intent_path.exists() and not intent_path.is_symlink(), "windows_job_namespace_admission_unknown")
+        return None
+    value = registry._json(path)[0]
+    _need(type(value) is dict and set(value) == {"schemaVersion", "target", "machine", "binding", "enrollment", "receipt"}
+          and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["target"] == target and value["machine"] == machine
+          and (binding is None or value["binding"] == binding), "windows_job_namespace_changed")
+    original = registry._json(intent_path)[0]
+    _need(value["enrollment"] == original, "windows_job_namespace_changed")
+    return validate_enrollment(value["receipt"], machine, original["boot"], original["operationId"], original["nonce"])
+
+
+def ensure_namespace(backend, *, deadline):
+    """Serialize once-only enrollment; lost ACK observes its fixed receipt."""
+    import fcntl
+    import os
+    import time
+    from uuid import uuid4
+    from . import readiness_fixture_registry as registry
+    from . import readiness_windows as windows
+    from . import durable_remote_job as jobs
+    paths = _namespace_paths(backend.root, backend.target, backend.machine, create=True)
+    path, intent_path, lock_path = paths
+    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        jobs._private(lock_path, directory=False)
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                _need(time.monotonic() < deadline, "windows_job_namespace_deadline")
+                time.sleep(min(.1, max(0, deadline-time.monotonic())))
+        facts = backend.last_facts
+        _need(type(facts) is dict and type(facts.get("sessionFacts")) is dict, "windows_job_guest_unobserved")
+        boot = facts["sessionFacts"]["boot"]
+        expected = {k: facts[k] for k in ("actor", "hostBoot", "controlConnection")}
+        sources = _source_pins(backend)
+        if path.exists() or path.is_symlink():
+            original_binding = namespace_binding(backend.root, backend.target, backend.machine, backend.binding)
+            # Namespace can admit a fresh boot only after exact original-root observation.
+            value = registry._json(path)[0]
+            original = value["enrollment"]
+            receipt = _run(backend, "job-namespace-status", str(uuid4()), deadline, expected=expected,
+                           machine=backend.machine, boot=original["boot"],
+                           enrollment_operation=original["operationId"], enrollment_nonce=original["nonce"])
+            _need(receipt == value["receipt"], "windows_job_namespace_changed")
+            _need(original["sources"] == sources, "windows_job_namespace_source_changed")
+            binding = WindowsJobBinding(backend.machine, boot, original_binding.root_generation, original_binding.admission_generation)
+        else:
+            first = not intent_path.exists() and not intent_path.is_symlink()
+            if first:
+                operation, nonce = str(uuid4()), str(uuid4())
+                script = enrollment_source(backend.machine, boot, operation, nonce)
+                original = {"schemaVersion": 1, "target": backend.target, "machine": backend.machine, "boot": boot,
+                            "operationId": operation, "nonce": nonce, "sourceSha256": hashlib.sha256(script).hexdigest(),
+                            "sources": sources}
+                windows._save(intent_path, original)
+            else:
+                original = registry._json(intent_path)[0]
+                _need(original["target"] == backend.target and original["machine"] == backend.machine
+                      and original["sources"] == sources
+                      and hashlib.sha256(enrollment_source(backend.machine, original["boot"], original["operationId"], original["nonce"])).hexdigest() == original["sourceSha256"],
+                      "windows_job_namespace_changed")
+            receipt = _run(backend, "job-enroll" if first else "job-namespace-status", str(uuid4()), deadline,
+                           expected=expected, machine=backend.machine, boot=original["boot"],
+                           enrollment_operation=original["operationId"], enrollment_nonce=original["nonce"])
+            original_binding = validate_enrollment(receipt, backend.machine, original["boot"], original["operationId"], original["nonce"])
+            value = {"schemaVersion": 1, "target": backend.target, "machine": backend.machine,
+                     "binding": backend.binding, "enrollment": original, "receipt": receipt}
+            windows._save(path, value)
+            binding = WindowsJobBinding(backend.machine, boot, original_binding.root_generation, original_binding.admission_generation)
+        _need(sources == _source_pins(backend), "windows_job_source_changed")
+        snapshot = {"schemaVersion": 1, "provider": backend.provider, "binding": backend.binding,
+                    "expectedSid": backend.expected_sid, "host": expected, "guest": asdict(binding), "sources": sources}
+        return WindowsJobExecutor(backend, snapshot)
+    finally:
+        os.close(descriptor)

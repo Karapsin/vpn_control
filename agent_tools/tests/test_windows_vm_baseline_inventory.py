@@ -89,7 +89,7 @@ class WindowsVmBaselineInventoryTest(unittest.TestCase):
         with (mock.patch.object(inventory.ssh_transport, "load_config", return_value=fake_config),
               mock.patch.object(inventory.ssh_transport, "connection_host", return_value=fake_transport),
               mock.patch.object(inventory.ssh_transport, "build_ssh_argv", return_value=("ssh",)),
-              mock.patch.object(inventory.subprocess, "run", return_value=run)):
+              mock.patch.object(inventory.ssh_transport, "run_ssh", return_value=run)):
             with self.assertRaisesRegex(ValueError, "unstable"):
                 inventory.media_fingerprint(".", "archlinux")
 

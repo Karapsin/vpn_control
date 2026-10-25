@@ -1,0 +1,51 @@
+import json, os, subprocess, sys, tempfile
+config_file = sys.argv[1]
+profile = sys.argv[2]
+timeout = int(sys.argv[3])
+directory = sys.argv[4]
+control_path = sys.argv[5]
+ssh = ["ssh"] + (["-F", config_file] if config_file else [])
+secret = json.loads(sys.stdin.read())
+passphrase = secret.get("passphrase")
+if not isinstance(passphrase, str) or not passphrase:
+    print(json.dumps({"state": "credential_unavailable"}))
+    raise SystemExit(2)
+try:
+    os.mkdir(directory, 0o700)
+except FileExistsError:
+    print(json.dumps({"state": "directory_exists", "control_path": control_path}))
+    raise SystemExit(4)
+password_path = os.path.join(directory, "askpass-password")
+helper_path = os.path.join(directory, "askpass")
+try:
+    descriptor = os.open(password_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(passphrase)
+    with open(helper_path, "w", encoding="utf-8") as handle:
+        handle.write("#!/bin/sh\ncat \"$VPN_CONTROL_SSH_PASSWORD_FILE\"\n")
+    os.chmod(helper_path, 0o700)
+    resolved = subprocess.run(ssh + ["-G", profile], capture_output=True, text=True, timeout=timeout, check=False)
+    known_hosts = next((line.split(" ", 1)[1] for line in resolved.stdout.splitlines()
+                        if line.startswith("userknownhostsfile ")), None)
+    if resolved.returncode != 0 or not known_hosts:
+        print(json.dumps({"state": "config_unavailable", "control_path": control_path}))
+        raise SystemExit(3)
+    environment = os.environ.copy()
+    environment.update({"SSH_ASKPASS": helper_path, "SSH_ASKPASS_REQUIRE": "force",
+                        "DISPLAY": environment.get("DISPLAY", "vpn-control-askpass"),
+                        "VPN_CONTROL_SSH_PASSWORD_FILE": password_path})
+    command = ssh + ["-M", "-N", "-f", "-S", control_path,
+               "-o", "ControlMaster=yes", "-o", "ControlPersist=3600",
+               "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + known_hosts,
+               "-o", "IdentitiesOnly=yes", "-o", "BatchMode=no",
+               "-o", "NumberOfPasswordPrompts=1", "-o", "ConnectTimeout=" + str(timeout), profile]
+    created = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False, env=environment)
+    checked = subprocess.run(ssh + ["-S", control_path, "-O", "check", profile], capture_output=True, text=True, timeout=timeout, check=False)
+    print(json.dumps({"state": "ready" if created.returncode == 0 and checked.returncode == 0 else "unknown",
+                      "control_path": control_path}))
+finally:
+    for path in (password_path, helper_path):
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass

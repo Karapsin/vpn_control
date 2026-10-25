@@ -1,0 +1,10 @@
+def _load(raw):
+ need(type(raw)is bytes and 0<len(raw)<=1048576,'compile_capture_bound')
+ def pairs(rows):
+  value={}
+  for k,v in rows:need(k not in value,'compile_duplicate');value[k]=v
+  return value
+ def bad(_):raise ValueError('compile_nonfinite')
+ try:return json.loads(raw,object_pairs_hook=pairs,parse_constant=bad)
+ except json.JSONDecodeError:raise ValueError('compile_reply_json')from None
+ except UnicodeError:raise ValueError('compile_reply_encoding')from None

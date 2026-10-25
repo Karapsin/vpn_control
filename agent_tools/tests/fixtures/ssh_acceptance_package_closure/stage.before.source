@@ -1,0 +1,88 @@
+"""Exact root-authorized source/route capture only: no network, owner or jobs."""
+from pathlib import Path
+from contextlib import ExitStack
+from types import ModuleType
+import ast,hashlib,json,os,stat,sys
+HERE=Path(__file__).resolve().parent;REPO=HERE.parents[3]
+OLD=HERE.parent/'d9498031-dee4-40df-bd3a-357dc7659d7d'
+READY=REPO/'.runtime/tool-recovery/ssh-readiness-only-successor/a172d36e-a86d-45f2-8eca-abfb0a7a2f54'
+METADATA={'agent_tools/affected_agent_test_dependencies.json':'545be1a3d543bc7013833212f429eecbaae34476965a9cb85ffe8884e7370196','agent_tools/readiness_vm_dispatch.json':'a3a75b75fd388ffae0a202b0babe54f3bee69b55b98282420b64b6cf1cf54cc0','agent_tools/tool_action_policy.json':'09d410597ba2bec4f5e8ae74a4a46e0f9dfebde41c806065a69bba38b25e8a1e','.github/required-workflows.json':'2d93a35f31f02e41fd7e311e10e37165bf54826a559314fde9183c6f0c50a534'}
+ATTRS='d5f1f85a33d2475c4cc94aba892563e334bff505bed8b54e7769f69b27099a02'
+WRAPPER='0aaf58a4b01ef34d10d21db97ecfd6a067ae7c6b806342ef5cbd0baadf009841';HELPER='2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f';CONTROLLER='1528b117c2dc742c8a89585ad16331a503e44b44d44bc45d9f7af98cc83fd860'
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def save(path,body):
+ path.parent.mkdir(parents=True,mode=0o700,exist_ok=True)
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(body);f.flush();os.fsync(f.fileno())
+def savej(path,value):save(path,(json.dumps(value,sort_keys=True,indent=2)+'\n').encode())
+def load(name,path,digest):
+ raw=path.read_bytes();assert sha(raw)==digest
+ m=ModuleType(name);m.__file__=str(path);m.__package__=None;sys.modules[name]=m;exec(compile(raw,str(path),'exec'),m.__dict__);return m
+local=load('_counter_capture_custody',READY/'local-owner-source/local_owner_v2.py',WRAPPER)
+builder=load('_counter_capture_shared',OLD/'build_controller_program_final.py','986407de12f0aad6614236042c633522a894985e971d1f81e8961dffc70450ab')
+plan=json.loads((HERE/'source-only-controller-plan.json').read_bytes());ops=plan['remoteOperations'];local_ops=plan['localOperations']
+assert stat.S_IMODE(os.lstat(HERE).st_mode)==0o700
+for mode in ('direct','nested'):
+ for name in (mode,'local-owner-'+mode,'local-owner-'+mode+'.namespace.json'):
+  assert not(HERE/name).exists()and not(HERE/name).is_symlink()
+with ExitStack()as stack:
+ scope=stack.enter_context(builder.SharedSourceScope(local.Held));hold=scope.hold
+ controller=hold(HERE/'controller.py');assert sha(controller.raw)==CONTROLLER
+ original=hold(OLD/'controller.py');assert sha(original.raw)=='a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51'
+ tree=ast.parse(controller.raw);critical=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='CRITICAL'for t in n.targets))
+ for rel,digest in {**critical,**METADATA,'.gitattributes':ATTRS}.items():assert sha(hold(REPO/rel).raw)==digest
+ wp=hold(READY/'local-owner-source/local_owner_v2.py');hp=hold(READY/'ordinary_retention.py');assert sha(wp.raw)==WRAPPER and sha(hp.raw)==HELPER
+ oldprep=json.loads(hold(OLD/'route-preparation.json').raw)
+ historical=json.loads(hold(OLD.parent/'ff515dd6-8430-42cc-8aa6-965f278ba3a7/prepared-source-independent-audit.json').raw)
+ assert local.generation(os.lstat(REPO/'.vm-hosts.local.json'))==tuple(historical['originalPrivateConfigGeneration'])
+ routes={};route_records={}
+ for mode in ('direct','nested'):
+  route=hold(OLD/mode/'route-template.private.json');assert route.pin==tuple(oldprep['records'][mode]['newGeneration'])
+  value=json.loads(route.raw);assert value['schemaVersion']==1 and set(value)=={'schemaVersion','hosts'}
+  assert set(value['hosts'])==({'gateway'}if mode=='direct'else{'gateway','archlinux'})
+  assert set(value['hosts']['gateway'])=={'host','port','user','identityFile','knownHostsFile','transport'}and value['hosts']['gateway']['transport']=='direct'
+  if mode=='nested':
+   arch=value['hosts']['archlinux'];assert arch['transport']=='nested'and arch['gateway']=='gateway'
+   arch['remoteControlPath']='/tmp/vc-ordinary-acceptance-'+ops['nested'].replace('-','')+'/m'
+  routes[mode]=(route,value)
+ private=[]
+ try:
+  gateway=routes['direct'][1]['hosts']['gateway']
+  for path in sorted({gateway['identityFile'],gateway['knownHostsFile']}):
+   path=Path(path)
+   for ancestor in path.parents:assert stat.S_ISDIR(os.lstat(ancestor).st_mode)
+   fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);pin=local.generation(os.fstat(fd));private.append((fd,path,pin));assert pin==local.generation(os.lstat(path))
+  assert sorted(pin for _,_,pin in private)==sorted(tuple(v['generation'])for v in historical['privateInputMetadata'])
+  proof={'schemaVersion':1,'stage':'before-capture','allNewLocalNamespacesAndRecordsAbsent':True,'connections':0,'jobs':0,'localOperations':local_ops,'remoteOperations':ops,'priorOriginalsNeverReplayed':True}
+  savej(HERE/'capture-unsubmitted-proof.json',proof)
+  for mode in('direct','nested'):
+   (HERE/mode).mkdir(mode=0o700);assert stat.S_IMODE(os.lstat(HERE/mode).st_mode)==0o700
+  paths=[]
+  for base in('agent_tools','scripts'):
+   for p in sorted((REPO/base).iterdir()):
+    if p.is_file()and not p.is_symlink()and p.suffix in('.py','.json','.sh','.ps1','.kt','.txt'):paths.append(p)
+  for rel in('gradle.properties','.github/required-workflows.json','agent_docs/tools/lifecycle-and-api.md','agent_tools/README.md'):
+   p=REPO/rel
+   if p not in paths:paths.append(p)
+  assert len(paths)==693 and not any('agent_tools/tests/'in str(p)for p in paths)
+  pins={}
+  for p in paths:
+   source=hold(p);rel=str(p.relative_to(REPO));pins[rel]=sha(source.raw)
+   for mode in('direct','nested'):save(HERE/mode/rel,source.raw)
+  for mode in('direct','nested'):
+   capsule=HERE/mode;(capsule/'.agent_venv').symlink_to(REPO/'.agent_venv',target_is_directory=True)
+   route,value=routes[mode];body=route.raw if mode=='direct'else(json.dumps(value,sort_keys=True,indent=2)+'\n').encode()
+   save(capsule/'route-template.private.json',body)
+   route_records[mode]={'originalGeneration':route.pin,'newGeneration':local.generation(os.lstat(capsule/'route-template.private.json')),'onlyChangedField':None if mode=='direct'else'archlinux.remoteControlPath'}
+   savej(capsule/'planned-operation.json',{'operationId':ops[mode],'mode':mode,'count':1600,'intervalSeconds':.15,'budgetSeconds':600,'stage':'unsubmitted-source-only'})
+   savej(capsule/'capsule-origin.json',{'schemaVersion':1,'sourceCheckout':str(REPO),'capsuleRoot':str(capsule),'serverRootExpected':str(capsule),'publicSources':pins,'privateInventoryCopied':False,'connections':0,'jobs':0})
+  save(HERE/'local-owner-source/local_owner_v2.py',wp.raw);save(HERE/'ordinary_retention.py',hp.raw)
+  savej(HERE/'public-source-manifest.json',{'schemaVersion':1,'sourceCheckout':str(REPO),'sources':pins})
+  checkpoint={'schemaVersion':1,'stage':'root-reviewed-source-and-metadata-closed','controllerSha256':CONTROLLER,'retentionSha256':HELPER,'ordinaryLocalOwnerSourceSha256':WRAPPER,'criticalSourcePins':critical,'metadataPins':METADATA,'attributesSha256':ATTRS,'previousUnsubmittedSourceCheckpoint':str(OLD/'source-checkpoint.json'),'priorReadinessQualifiedReceipt':str(READY/'native-ready-source-closed.json'),'count':1600,'intervalSeconds':.15,'budgetSeconds':600,'localOperations':local_ops,'remoteOperations':ops,'nativeGo':False}
+  savej(HERE/'source-checkpoint.json',checkpoint)
+  savej(HERE/'route-preparation.json',{'schemaVersion':1,'inventoryReread':False,'keyContentRead':False,'privateConfigHashed':False,'originalEpoch':str(OLD),'records':route_records,'originalPrivateConfigGeneration':historical['originalPrivateConfigGeneration'],'keyAndTrustMetadata':historical['privateInputMetadata'],'nativeGo':False})
+  for source in scope.files:source.guard()
+  for fd,p,pin in private:assert local.generation(os.fstat(fd))==local.generation(os.lstat(p))==pin
+ finally:
+  for fd,_,_ in reversed(private):os.close(fd)
+print(json.dumps({'sourceOnly':True,'count':len(pins),'allSourceGuardsClosed':True,'agentToolsTestsIncluded':False,'connections':0,'jobs':0,'localOwnerInitialized':False,'routeBodiesHashed':False},sort_keys=True))

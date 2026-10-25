@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-test-module-beforeimage",
+  "sourcePath": "agent_tools/tests/test_readiness_tart_macos_registry.py",
+  "sourceBaseline": "agent-base7: the recovery checkout content at 2dfa2f2e plus its uncommitted work (the module is untracked there)",
+  "sourceBytes": 35221,
+  "sourceSha256": "684982ae6c2ca217a1baa3d34c1fd0783eac3ed8a7f7e9be4056f49e8fe28aa4",
+  "originalFailureTestIds": [
+    "agent_tools.tests.test_readiness_tart_macos_registry.MacCustodyPrimitivesTests.test_actual_original_owner_collects_terminal_and_never_replaces_missing_receipt",
+    "agent_tools.tests.test_readiness_tart_macos_registry.MacCustodyPrimitivesTests.test_actual_owner_rejects_foreign_source_generation_and_incomplete_stream"
+  ],
+  "originalFailure": "Loaded complete agent-test sweeps of isolated agent-base7 clones on the macOS development host: 3 of 6 runs ERRORed in one of these two tests with agent_tools.readiness_tart_macos.MacBlocked: macos_original_owner_unknown, raised by OriginalOwner.observe() from terminal()'s owner.observe() (line 148). The module passes idle 20 of 20, and the two tests pass 60 of 60 alone in a loop under load.",
+  "originalFailureRuns": {
+    "sweep-a": {
+      "testId": "agent_tools.tests.test_readiness_tart_macos_registry.MacCustodyPrimitivesTests.test_actual_owner_rejects_foreign_source_generation_and_incomplete_stream",
+      "elapsedSeconds": 0.258,
+      "logSha256": "9d83cb3ce5396220ba2d082f93f20f814b122e3892263c1c5336f4c09f32e777",
+      "traceSha256": "be2c6845732e82c75af93a6cb5fdf614d8e154bc7c927abea74c5e35771c25d2"
+    },
+    "sweep-d": {
+      "testId": "agent_tools.tests.test_readiness_tart_macos_registry.MacCustodyPrimitivesTests.test_actual_original_owner_collects_terminal_and_never_replaces_missing_receipt",
+      "elapsedSeconds": 0.26,
+      "logSha256": "4051dd5bf8f0cba1bbb079d8be01b4857bff216f23e100091ec22dc97cba7066",
+      "traceSha256": "6ef7f02f6d2a789b87ebc8c2f8436efb1e7397832f4b17204bfa4ecfddecdfb0"
+    },
+    "sweep-e": {
+      "testId": "agent_tools.tests.test_readiness_tart_macos_registry.MacCustodyPrimitivesTests.test_actual_owner_rejects_foreign_source_generation_and_incomplete_stream",
+      "elapsedSeconds": 0.246,
+      "logSha256": "124af71a165834f7536c682cf8e87132ebc301c59ee3deb3207abc186a81411e",
+      "traceSha256": "7e408ea775faf4b4ef07c39728f0dcf15ca8ed00d2fbd6638b358cffdc65ee63"
+    }
+  },
+  "originalFailureTraceSha256": "be2c6845732e82c75af93a6cb5fdf614d8e154bc7c927abea74c5e35771c25d2",
+  "originalFailureTraceDigest": "sha256 of these sweep-a trace lines joined with LF plus a final LF; the sweep-d and sweep-e traces have the same frames (sweep-d from line 154 of its test method)",
+  "originalFailureTrace": [
+    "======================================================================",
+    "ERROR: test_actual_owner_rejects_foreign_source_generation_and_incomplete_stream (agent_tools.tests.test_readiness_tart_macos_registry.MacCustodyPrimitivesTests.test_actual_owner_rejects_foreign_source_generation_and_incomplete_stream)",
+    "----------------------------------------------------------------------",
+    "Traceback (most recent call last):",
+    "  File \"/private/tmp/claude-503/-Users-karapsin-de-projects-vpn-control/ac9aaf17-f92b-4643-b93c-1b3a738c5a67/scratchpad/wf7-sweep-a/agent_tools/tests/test_readiness_tart_macos_registry.py\", line 168, in test_actual_owner_rejects_foreign_source_generation_and_incomplete_stream",
+    "    owner=self.owner();self.terminal(owner)",
+    "                       ~~~~~~~~~~~~~^^^^^^^",
+    "  File \"/private/tmp/claude-503/-Users-karapsin-de-projects-vpn-control/ac9aaf17-f92b-4643-b93c-1b3a738c5a67/scratchpad/wf7-sweep-a/agent_tools/tests/test_readiness_tart_macos_registry.py\", line 148, in terminal",
+    "    result=owner.observe()",
+    "  File \"/private/tmp/claude-503/-Users-karapsin-de-projects-vpn-control/ac9aaf17-f92b-4643-b93c-1b3a738c5a67/scratchpad/wf7-sweep-a/agent_tools/readiness_tart_macos_registry.py\", line 165, in observe",
+    "    _need(result[\"state\"] in {\"running\", \"terminal\"}, \"macos_original_owner_unknown\")",
+    "    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "  File \"/private/tmp/claude-503/-Users-karapsin-de-projects-vpn-control/ac9aaf17-f92b-4643-b93c-1b3a738c5a67/scratchpad/wf7-sweep-a/agent_tools/readiness_tart_macos_registry.py\", line 43, in _need",
+    "    raise MacBlocked(reason)",
+    "agent_tools.readiness_tart_macos.MacBlocked: macos_original_owner_unknown"
+  ],
+  "unchangedInputsSha256": {
+    "agent_tools/durable_remote_job.py": "f3b4707528c16f176b80781dd86208c324c1e10d6eb2c14451dcf4be08d0e734",
+    "agent_tools/readiness_tart_macos_registry.py": "d156ac46e68b16e902ba09bf3bed0b6140b3bf0041608ff1e82b53364125a910"
+  },
+  "confirmedCause": "durable_remote_job.observe() checks terminal.json first and only afterwards reads owner.json and compares the owner's process birth. The detached owner publishes terminal.json and then exits, so when both happen between those two checks a completed, verified job is reported unknown/original_owner_missing. OriginalOwner.observe() turns every state other than running or terminal into MacBlocked('macos_original_owner_unknown'). This helper skipped only record_unavailable before calling owner.observe(), so the error escaped. It is the check-then-observe order already fixed for ssh_program_execution.status(); here durable_remote_job.py is frozen and the production callers fail closed.",
+  "fix": "MacCustodyPrimitivesTests.terminal() polls jobs.observe() observation-only until state terminal, keeps waiting only through unknown/record_unavailable, running/original_owner_running and unknown/original_owner_missing within the same 5 s bound (any other state fails at once), then calls owner.observe() once and requires terminal. terminal.json is final and precedes the owner's exit, so the window is never entered. The test methods and every assertion are unchanged; durable_remote_job.py and readiness_tart_macos_registry.py are unchanged.",
+  "fixedSourceSha256": "89a8f3a8b5a95fdf6c4397e469b4f40f92d8fa0fe87b292068015e7846175f9c",
+  "controlledRegression": "agent_tools.tests.test_tart_macos_registry_terminal_race compiles these bytes in a private module whose __file__ is the current module's and runs both unchanged original tests from it and from the current module. Only the case's owner() inputs are owned: the same root, binding, purpose and retained line, with the real detached owner launched through an owned /bin/sh launcher held until the helper first finds no owner record, and a program that prints the retained line only after an owned release marker. A wrapper of durable _record creates that marker during the second read of the live owner record (the first observation reported it running) and returns only after the actual owner has published terminal.json and exited, which is the original order. The regression records each helper's outside durable observations and its OriginalOwner.observe() calls. A second test requires the fixed helper to fail at once, without reading through the owner, on a real completed job whose stream overflowed.",
+  "failingEvidence": "Whole beforeimage, both runners: each original test ERRORs with agent_tools.readiness_tart_macos.MacBlocked: macos_original_owner_unknown through the original frames (the test's terminal() call at line 154 or 168, terminal() line 148 result=owner.observe(), OriginalOwner.observe's state check, _need). The forced finish happened inside OriginalOwner.observe after its receipt check, with terminal.json published and the owner exited when the read returned. Before the fix the in-place module failed the same way, and the overflow test failed with 'read through the original owner'.",
+  "passingEvidence": "Fixed, both runners: both original tests pass under the same forced finish, met by the helper's own observation (record_unavailable, then exactly original_owner_running, original_owner_missing and correlated_terminal), with exactly one OriginalOwner.observe() after the receipt existed whose result terminal() returned. The regression plus test_readiness_tart_macos_registry (30 tests) passed idle 5 of 5 unsandboxed, as two concurrent copies under a 12-worker CPU burner 10 of 10 unsandboxed and 6 of 6 with sandbox-exec, and the regression alone as four concurrent copies under the burner 32 of 32 (64 forced RED and 64 forced GREEN cases). No host tool stub was reached.",
+  "mutants": "Killed: the unfixed helper; reading through the owner once running; no wait on original_owner_missing, on record_unavailable or on running; never reading through the owner; returning the durable status instead of the owner's result; waiting through every state instead of failing at once (overflow test); a zero bound. Equivalent: dropping the post-receipt terminal assertion, since the receipt is final. Regression controls: releasing without waiting for the owner's exit, forcing at the first live read, or releasing the program at once each lose the RED.",
+  "routineSuite": "agent_tools.tests.test_tart_macos_registry_terminal_race runs in the affected agent-test stage of the managed pre-push tier and the Fast Checks agent shards whenever the selector reaches it, including changes to test_readiness_tart_macos_registry.py, readiness_tart_macos_registry.py, durable_remote_job.py, this beforeimage or this provenance.",
+  "nativeFailureClaimed": false,
+  "nativeEvidenceLimit": "Local test-harness observation race only; no Tart VM, guest or native product behavior is involved or claimed. The frozen durable observe order is unchanged, and production OriginalOwner.observe() callers keep failing closed on the same transient UNKNOWN."
+}

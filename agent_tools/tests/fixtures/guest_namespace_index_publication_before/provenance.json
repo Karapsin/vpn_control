@@ -1,0 +1,4 @@
+{
+  "sha256": "5d3a1245d95a1cf8dfd9c3b68c471d03f2c570144321c7399eda97be15456227",
+  "failure": "Actual concurrent generated admission publication leaves private temp after losing hardlink, so complete retained original job cannot prove canonical inventory idle."
+}

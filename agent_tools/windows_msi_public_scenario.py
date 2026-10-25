@@ -262,7 +262,7 @@ def preinstall_status(root: Path | str, host: str, job_id: str, timeout_seconds:
             raise WindowsMsiPreinstallStatusError("Windows MSI observer is bound to the owned CP117 guest.")
         command = windows_credential_probe_ssh._remote_command(_REMOTE_OBSERVE, socket, str(pid), str(ticks), job_id)
         argv = ssh_transport.build_ssh_argv(config, host, timeout_seconds, command=command)
-        completed = subprocess.run(argv, capture_output=True, timeout=timeout_seconds + 1, check=False)
+        completed = ssh_transport.run_ssh(argv, capture_output=True, timeout=timeout_seconds + 1, check=False)
         raw = completed.stdout if completed.returncode == 0 else None
     except (KeyError, OSError, ValueError, subprocess.TimeoutExpired) as error:
         raise WindowsMsiPreinstallStatusError("Configured Windows guest observation is unavailable.") from error

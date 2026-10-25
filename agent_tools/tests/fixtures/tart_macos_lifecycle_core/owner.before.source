@@ -1,0 +1,89 @@
+import errno,hashlib,json,os,pty,selectors,stat,subprocess,sys,time
+from pathlib import Path
+def require(value,reason):
+ if not value:raise RuntimeError(reason)
+def generation(s):
+ return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def publish(path,value):
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w') as f:json.dump(value,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+def read_record(path,*,private=True):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ with os.fdopen(fd,'rb') as f:
+  before=os.fstat(f.fileno());require(stat.S_ISREG(before.st_mode)and before.st_uid==os.geteuid()and (stat.S_IMODE(before.st_mode)==0o600 if private else not before.st_mode&0o022) and before.st_nlink==1 and before.st_size<=1048576,'run_private_record_unsafe')
+  raw=f.read(1048577);after=os.fstat(f.fileno())
+ require(generation(before)==generation(after)==generation(path.lstat()),'run_private_record_changed')
+ return json.loads(raw)
+def run(plan):
+ os.umask(0o077);root=Path(plan['root']);info=root.lstat();require(stat.S_ISDIR(info.st_mode)and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.geteuid()and[info.st_dev,info.st_ino]==plan['rootGeneration'],'run_owner_root_changed')
+ actor={'operationId':plan['operationId'],'pid':os.getpid(),'birth':_birth(os.getpid())};require(actor['birth']is not None,'run_owner_unavailable');publish(root/'actor.json',actor)
+ until=time.monotonic()+180
+ while not(root/'authority.json').exists():
+  require(time.monotonic()<until,'run_unsubmitted_authority_expired');time.sleep(.05)
+ expected={'operationId':plan['operationId'],'actor':actor,'storageFixtureId':plan['storageFixtureId'],'reservationKey':plan['reservationKey'],'hostBoot':plan['hostBoot']}
+ require(read_record(root/'authority.json')==expected and _birth(actor['pid'])==actor['birth'],'run_authority_changed')
+ binary=Path(plan['tart']);target=Path(plan['fixtureDirectory']);disk=target/'disk.img';config=target/'config.json'
+ require(generation(binary.lstat())==tuple(plan['binaryGeneration'])and hashlib.sha256(binary.read_bytes()).hexdigest()==plan['binarySha256'],'run_binary_changed')
+ require(generation(disk.lstat())==tuple(plan['diskGeneration'])and generation(config.lstat())==tuple(plan['configGeneration'])and hashlib.sha256(config.read_bytes()).hexdigest()==plan['configSha256'],'run_fixture_changed')
+ claim=read_record(Path(plan['storageLedger']))['plans'][plan['storageFixtureId']]
+ require(claim['state']=='pending'and claim['writerPid']==actor['pid']and claim['directory']==str(target)and claim['disks']==[{'path':str(disk),'capacityBytes':plan['diskCapacityBytes']}],'run_storage_writer_changed')
+ memory=read_record(Path(plan['memoryLedger']),private=False)
+ require(memory.get('schema_version')==1 and memory.get('reservations',{}).get(plan['reservationKey'])=={'memory_mib':plan['memoryMiB'],'pid':0},'run_pending_memory_claim_changed')
+ boot=subprocess.run(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],stdin=subprocess.DEVNULL,capture_output=True,timeout=3,check=True)
+ require(boot.stdout.decode('ascii').strip()==plan['hostBoot'],'run_host_boot_changed')
+ environment={k:v for k,v in os.environ.items()if k in{'HOME','USER','LOGNAME','PATH','LANG','LC_ALL','TMPDIR'}}
+ environment.update(TART_HOME=str(Path.home()/'.tart'),TART_NO_AUTO_PRUNE='1')
+ listing=subprocess.run([str(binary),'list','--format','json'],stdin=subprocess.DEVNULL,capture_output=True,timeout=5,check=True,env=environment)
+ rows=json.loads(listing.stdout);matches=[row for row in rows if row.get('Name')==plan['fixtureName']];require(len(matches)==1 and matches[0].get('State')==plan['expectedState'],'run_original_instance_not_stopped')
+ require(read_record(root/'authority.json')==expected and _birth(actor['pid'])==actor['birth'],'run_authority_changed')
+ share=Path(plan['bootstrapShare'])
+ actual_paths=sorted(str(p.relative_to(share))for p in share.rglob('*'))
+ require(actual_paths==sorted(row['path']for row in plan['publicSharePins']),'run_public_share_changed')
+ for row in plan['publicSharePins']:
+  item=share/row['path'];require(generation(item.lstat())==tuple(row['generation']),'run_public_share_changed')
+  if row['kind']=='file':require(hashlib.sha256(item.read_bytes()).hexdigest()==row['sha256'],'run_public_share_integrity_changed')
+  elif row['kind']=='symlink':require(os.readlink(item)==row['target']and item.resolve().is_relative_to(share),'run_public_share_link_changed')
+  else:require(item.is_dir(),'run_public_share_changed')
+ state_path=target/'state.vzvmsave'
+ if plan['expectedState']=='stopped':require(not state_path.exists()and not state_path.is_symlink(),'run_unexpected_saved_state')
+ else:
+  state=state_path.lstat();require(generation(state)==tuple(plan['savedStateGeneration'])and stat.S_ISREG(state.st_mode)and not state.st_mode&0o077 and state.st_nlink==1,'run_saved_state_changed')
+ root_guard.guard();fixture_guard.guard()
+ with _tart_output.ProtectedRunOutput(root) as protected:
+  master,slave=pty.openpty()
+  try:
+   command=[str(binary),'run',plan['fixtureName'],'--no-graphics','--vnc-experimental','--suspendable','--dir','bootstrap:'+plan['bootstrapShare']+':ro']
+   # The ONLY raw-output descriptors are this private PTY and private pipe.
+   # Neither is inherited by the durable owner's retained stdout/stderr.
+   child=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=slave,stderr=subprocess.PIPE,env=environment,close_fds=True)
+  finally:os.close(slave)
+  birth=_birth(child.pid);require(birth is not None,'run_original_child_generation_unavailable')
+  child_actor={'pid':child.pid,'birth':birth};publish(root/'child.json',{'operationId':plan['operationId'],'actor':actor,'child':child_actor,'fixtureName':plan['fixtureName']})
+  endpoint_published=False;privacy_blocked=False;started=time.monotonic();outcomes=DelegateOutcomes()
+  with selectors.DefaultSelector()as selector:
+   selector.register(master,selectors.EVENT_READ,'stdout');selector.register(child.stderr,selectors.EVENT_READ,'stderr')
+   while selector.get_map():
+    for key,_ in selector.select(.25):
+     try:data=os.read(key.fd,4096)
+     except OSError as error:
+      if key.data=='stdout'and error.errno==errno.EIO:data=b''
+      else:raise RuntimeError('run_private_stream_unavailable')from None
+     if not data:selector.unregister(key.fileobj);continue
+     outcomes.feed(key.data,data)
+     if privacy_blocked:continue
+     try:
+      protected.feed(key.data,data);endpoint=protected.endpoint()
+      if endpoint is not None and not endpoint_published:
+       require(_birth(child.pid)==birth,'run_original_child_changed')
+       publish(root/'endpoint.json',{'operationId':plan['operationId'],'actor':actor,'child':child_actor,'port':endpoint['port'],'credentialMetadata':protected.credential_metadata()})
+       endpoint_published=True
+     except _tart_output.OutputBlocked as error:
+      privacy_blocked=True
+      publish(root/'privacy-blocked.json',{'operationId':plan['operationId'],'reason':str(error),'originalChild':child_actor,'rawOutputRetained':False})
+    if not endpoint_published and time.monotonic()-started>180 and not(root/'endpoint-unresolved.json').exists():
+     publish(root/'endpoint-unresolved.json',{'operationId':plan['operationId'],'reason':'original_run_endpoint_not_ready','originalChild':child_actor,'replacementForbidden':True})
+  os.close(master);code=child.wait()
+  publish(root/'child-terminal.json',{'operationId':plan['operationId'],'child':child_actor,'exitCode':code,'endpointPublished':endpoint_published,'privacyBlocked':privacy_blocked,'delegateOutcome':outcomes.outcome,'rawOutputRetained':False})
+  # Only fixed public closure reaches the durable owner; never raw stream bytes.
+  print(json.dumps({'operationId':plan['operationId'],'originalChildExitCode':code,'rawOutputRetained':False}),flush=True)
+  raise SystemExit(code)

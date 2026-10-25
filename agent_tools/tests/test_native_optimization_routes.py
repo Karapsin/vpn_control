@@ -1124,7 +1124,7 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
     def test_mac_server_stop_routes_keep_live_and_historical_evidence_distinct(self):
         from agent_tools import macos_machine_server_stop
         correlation = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-        request = {"schemaVersion": 1, "sourceSha": "a" * 40, "correlationId": correlation,
+        request = {"vmName": "explicit-fixture", "schemaVersion": 1, "sourceSha": "a" * 40, "correlationId": correlation,
                    "scenario": "install", "jobId": "job", "operationId": correlation,
                    "bootSessionUuid": correlation, "reservationId": correlation,
                    "fixtureReceiptArtifactId": "sha256-" + "b" * 64,
@@ -1149,7 +1149,8 @@ class NativeOptimizationRoutesTest(unittest.TestCase):
             self.assertFalse(result["productAction"])
             self.assertFalse(result["nativeActionAllowed"])
         with patch.object(macos_machine_server_stop, "start", side_effect=AssertionError("unsafe dispatch")):
-            for bad in ({**request, "extra": True}, {**request, "schemaVersion": True},
+            for bad in ({key: value for key, value in request.items() if key != "vmName"},
+                        {**request, "vmName": None}, {**request, "extra": True}, {**request, "schemaVersion": True},
                         {**request, "serverPid": 0}, {**request, "sourceSha": "z" * 40}):
                 self.assertFalse(mcp_server._vm_workflow_impl("macos-machine-server-stop-start", bad)["ok"])
 

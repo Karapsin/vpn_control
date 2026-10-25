@@ -1,0 +1,8 @@
+{
+  "cause": "Obsolete test-only empty transport snapshot is refused by protected v2 adapter intent reader.",
+  "files": {
+    "actual-failure.txt": "c318a1ce31eca12ff0967aa8ef3915e6458e50860ff4656a7210d186904094ad",
+    "before.source": "ebf0bc6c5503ac3a010745ae6e7d2a3f81f913bbf6c0368b70d9f30d94998114"
+  },
+  "schemaVersion": 1
+}

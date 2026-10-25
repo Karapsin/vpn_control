@@ -1,0 +1,396 @@
+"""Finite VM-tool readiness routes derived from the actual native adapters.
+
+This boundary does not replace native request, artifact, original-operation or
+ownership validation. Call it after those pure gates and before generating the
+remote packet. It restores transport for original observers without starting,
+unlocking or rebooting their VM. Unknown target metadata never selects a default.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager, ExitStack
+from contextvars import ContextVar
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import re
+import sys
+from types import MappingProxyType
+from uuid import UUID, uuid4
+
+from . import private_inventory_lock as private
+from . import readiness
+from . import readiness_fixture_registry as fixtures
+from . import readiness_gui_lease as gui_leases
+from . import ssh_dispatch_admission
+from . import ssh_transport
+from . import tool_action_policy as policies
+from .native_vm_spec import FreshWindowsVmSpec
+
+
+_SOURCE = Path(__file__).absolute()
+_EXECUTING = sys._getframe().f_code
+_RAW, _GENERATION, _DIGEST = policies._capture(_SOURCE)
+if _EXECUTING != compile(_RAW, __file__, "exec", dont_inherit=True, optimize=sys.flags.optimize):
+    raise ValueError("vm_readiness_executing_source_mismatch")
+_SOURCE_PIN = (_GENERATION, _DIGEST)
+_MANIFEST = _SOURCE.with_suffix(".json")
+_MANIFEST_RAW, _MANIFEST_GENERATION, _MANIFEST_DIGEST = policies._capture(_MANIFEST)
+_MANIFEST_PIN = (_MANIFEST_GENERATION, _MANIFEST_DIGEST)
+_MODULE = re.compile(r"[a-z][a-z0-9_]{0,127}\Z")
+_ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
+_KINDS = frozenset({"fixed_host", "selected_host", "windows_deployment", "registered_tart",
+                    "hosted_boundary", "provider_boundary", "facade"})
+_ACTIVE = ContextVar("vm_dispatch_admission", default=())
+
+
+class DispatchBlocked(readiness.ReadinessBlocked):
+    pass
+
+
+def _need(condition, operation, reason="vm_readiness_target_unavailable"):
+    if not condition:
+        raise DispatchBlocked(reason, operation)
+
+
+def _unique(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("vm_readiness_duplicate_field")
+        value[key] = item
+    return value
+
+
+def _parse_manifest():
+    value = json.loads(_MANIFEST_RAW, object_pairs_hook=_unique)
+    if type(value) is not dict or set(value) != {"schemaVersion", "actions", "sourcePins"} or value["schemaVersion"] != 1:
+        raise ValueError("vm_readiness_manifest_invalid")
+    for module, digest in value["sourcePins"].items():
+        if type(module) is not str or not _MODULE.fullmatch(module) or type(digest) is not str or not re.fullmatch("[0-9a-f]{64}", digest):
+            raise ValueError("vm_readiness_manifest_invalid")
+    for action, row in value["actions"].items():
+        if type(action) is not str or type(row) is not dict or row.get("kind") not in _KINDS:
+            raise ValueError("vm_readiness_manifest_invalid")
+        fields = {"kind", "modules", "closure"} | ({"host", "proof"} if row["kind"] == "fixed_host" else set())
+        if set(row) != fields or type(row["modules"]) is not list or type(row["closure"]) is not list:
+            raise ValueError("vm_readiness_manifest_invalid")
+        if any(type(m) is not str or not _MODULE.fullmatch(m) for m in row["modules"]):
+            raise ValueError("vm_readiness_manifest_invalid")
+        if any(m not in value["sourcePins"] for m in row["closure"]):
+            raise ValueError("vm_readiness_manifest_invalid")
+        if row["kind"] == "fixed_host":
+            proof = row["proof"]
+            if (type(row["host"]) is not str or not _ALIAS.fullmatch(row["host"])
+                    or type(proof) is not dict or set(proof) != {"module", "line", "kind", "sha256"}
+                    or proof["module"] not in value["sourcePins"]
+                    or proof["sha256"] != value["sourcePins"][proof["module"]]):
+                raise ValueError("vm_readiness_manifest_invalid")
+    return value
+
+
+_DOCUMENT = _parse_manifest()
+_SOURCE_PINS = MappingProxyType(dict(_DOCUMENT["sourcePins"]))
+ROUTES = MappingProxyType({action: MappingProxyType({
+    **row, "modules": tuple(row["modules"]), "closure": tuple(row["closure"]),
+    **({"proof": MappingProxyType(dict(row["proof"]))} if "proof" in row else {})})
+    for action, row in _DOCUMENT["actions"].items()})
+del _DOCUMENT
+
+
+def _guard():
+    for path, pin in ((_SOURCE, _SOURCE_PIN), (_MANIFEST, _MANIFEST_PIN)):
+        _, generation, digest = policies._capture(path)
+        if (generation, digest) != pin:
+            raise ValueError("vm_readiness_loaded_source_changed")
+
+
+def audit_sources():
+    """CI rejects added requirements or stale reviewed target-source closure."""
+    _guard()
+    expected = {action for (surface, action), policy in policies.CATALOG.items()
+                if surface == "vm_workflow" and policy.requirements}
+    if expected != set(ROUTES):
+        raise ValueError("vm_readiness_action_unclassified")
+    changed = []
+    for module, digest in _SOURCE_PINS.items():
+        if policies._capture(_SOURCE.parent / (module + ".py"))[2] != digest:
+            changed.append(module)
+    if changed:
+        raise ValueError("vm_readiness_target_source_unreviewed:" + ",".join(changed))
+    return {"ok": True, "actions": len(ROUTES), "sourceNodes": len(_SOURCE_PINS)}
+
+
+def _operation(inputs):
+    for name in ("operationId", "correlationId", "deploymentId", "recoveryCorrelationId"):
+        value = inputs.get(name)
+        try:
+            if type(value) is str and str(UUID(value)) == value:
+                return value
+        except ValueError:
+            pass
+    # Recovery identity is separate from any opaque original job identifier.
+    return str(uuid4())
+
+
+def _host(value, operation):
+    _need(type(value) is str and bool(_ALIAS.fullmatch(value)), operation, "vm_readiness_host_invalid")
+    return value
+
+
+def _original(root, parts, operation):
+    """Read fixed private paths only, never an input-supplied evidence path."""
+    path = root.joinpath(*parts)
+    try:
+        presented = private.PresentedPath(path.parent)
+        with private.Directory(presented.canonical) as parent, private.Snapshot(parent, path.name) as held:
+            value = json.loads(held.body, object_pairs_hook=_unique)
+            _need(type(value) is dict, operation)
+            held.guard(); presented.guard()
+            return value
+    except (OSError, ValueError, TypeError):
+        raise DispatchBlocked("vm_readiness_original_metadata_unavailable", operation) from None
+
+
+_ORIGINAL_HOSTS = MappingProxyType({
+    "android_cli_stage": (".rag_index", "android-cli-stages", "{id}", "intent.json"),
+    "android_vpn_permission_reset": (".rag_index", "android-vpn-permission-reset", "{id}.json"),
+    "android_proxy_recovery": (".rag_index", "android-proxy-recovery", "{id}.json"),
+    "windows_credential_probe_ssh": (".rag_index", "windows-credential-probe-ssh", "{id}.json"),
+    "windows_credential_recovery_ssh": (".runtime", "native-credentials", "recovery", "{id}.json"),
+    "native_scenario_execution": (".rag_index", "native-scenario-executions", "{id}.json"),
+})
+
+
+def _selected_host(root, inputs, row, operation):
+    if "host" in inputs:
+        return _host(inputs["host"], operation)
+    identity = inputs.get("correlationId")
+    try:
+        _need(type(identity) is str and str(UUID(identity)) == identity, operation)
+    except ValueError:
+        raise DispatchBlocked("vm_readiness_target_unavailable", operation) from None
+    candidates = []
+    for module in row["modules"]:
+        template = _ORIGINAL_HOSTS.get(module)
+        if template is None:
+            continue
+        record = _original(root, tuple(part.format(id=identity) for part in template), operation)
+        if module == "native_scenario_execution":
+            record = record.get("plan")
+        _need(type(record) is dict and record.get("correlationId") == identity, operation)
+        candidates.append(_host(record.get("host"), operation))
+    _need(bool(candidates) and len(set(candidates)) == 1, operation)
+    return candidates[0]
+
+
+def _deployment_host(root, inputs, operation):
+    if "spec" in inputs:
+        try:
+            return FreshWindowsVmSpec.parse(inputs["spec"]).host
+        except (ValueError, TypeError, KeyError):
+            raise DispatchBlocked("vm_readiness_deployment_invalid", operation) from None
+    identity = inputs.get("deploymentId")
+    try:
+        _need(type(identity) is str and str(UUID(identity)) == identity, operation)
+    except ValueError:
+        raise DispatchBlocked("vm_readiness_deployment_invalid", operation) from None
+    record = _original(root, (".rag_index", "windows-vm-deploy-intents", identity + ".intent.json"), operation)
+    _need(set(record) == {"spec", "setup", "context", "correlationId", "mode", "callerSha256"}
+          and record["mode"] == "start", operation, "vm_readiness_deployment_invalid")
+    try:
+        spec = FreshWindowsVmSpec.parse(record["spec"])
+    except (ValueError, TypeError, KeyError):
+        raise DispatchBlocked("vm_readiness_deployment_invalid", operation) from None
+    _need(spec.deployment_id == identity, operation, "vm_readiness_deployment_invalid")
+    return spec.host
+
+
+def _fixture_candidates(root, operation):
+    """Only internally qualified registration IDs are discoverable here."""
+    directory = root / ".rag_index" / "readiness-fixtures"
+    try:
+        presented = private.PresentedPath(directory)
+        with private.Directory(presented.canonical) as held:
+            names = os.listdir(held.fd)
+            _need(len(names) <= 256, operation, "vm_readiness_fixture_inventory_unavailable")
+            result = []
+            for name in sorted(names):
+                if name.endswith(".json"):
+                    fixture_id = name[:-5]
+                    fixtures._id(fixture_id)
+                    try:
+                        result.append((fixture_id, fixtures.registered_fixture(root, fixture_id)))
+                    except (ValueError, OSError, TypeError, KeyError):
+                        # Historical registrations/source generations are not
+                        # current authority and cannot be repaired by lookup.
+                        continue
+            held.guard(); presented.guard()
+            return result
+    except (ValueError, OSError, TypeError):
+        raise DispatchBlocked("vm_readiness_fixture_unqualified", operation) from None
+
+
+def _guest_fixture(root, action, host, inputs, operation):
+    device = inputs.get("device")
+    _need(type(device) is str and bool(_ALIAS.fullmatch(device)), operation, "vm_readiness_device_invalid")
+    config = ssh_transport.load_config(root)
+    target = config.hosts.get(host)
+    profile = None if target is None else target.android_devices.get(device)
+    _need(profile is not None, operation, "vm_readiness_device_unconfigured")
+    # The matcher compares actual private host/ADB/serial/AVD custody. The
+    # current local fixture cannot impersonate an unconfigured SSH device.
+    matches = []
+    selector = {"host": host, "device": device, "profile": profile}
+    for fixture_id, fixture in _fixture_candidates(root, operation):
+        matcher = getattr(fixture.adapter.backend, "native_selector_matches", None)
+        if callable(matcher):
+            try:
+                if matcher(action, selector) is True:
+                    matches.append((fixture_id, fixture))
+            except (ValueError, TypeError, KeyError, AttributeError, OSError):
+                continue
+    _need(len(matches) == 1, operation, "vm_readiness_device_unqualified")
+    return matches[0]
+
+
+def _tart_fixture(root, inputs, operation, *, action=None):
+    context = inputs.get("environmentContext")
+    contextual = context.get("vmName") if type(context) is dict else None
+    explicit = inputs.get("vmName")
+    if explicit is not None and contextual is not None:
+        _need(explicit == contextual, operation, "vm_readiness_target_mismatch")
+    name = explicit if explicit is not None else contextual
+    if action == "macos-machine-server-stop-start":
+        _need(type(explicit) is str and bool(explicit), operation, "vm_readiness_tart_context_unavailable")
+    elif action in {"macos-machine-server-stop-status", "macos-machine-server-stop-collect"}:
+        from . import macos_machine_server_stop
+        try:
+            original = macos_machine_server_stop.original_vm_name(root, inputs.get("correlationId"))
+        except (ValueError, OSError, TypeError, KeyError):
+            raise DispatchBlocked("vm_readiness_original_metadata_unavailable", operation) from None
+        _need(name is None or name == original, operation, "vm_readiness_target_mismatch")
+        name = original
+    _need(type(name) is str and name, operation, "vm_readiness_tart_context_unavailable")
+    matches = []
+    for fixture_id, fixture in _fixture_candidates(root, operation):
+        try:
+            if fixtures.dispatch_binding(fixture, "tart") == {"vmName": name}:
+                matches.append((fixture_id, fixture))
+        except (ValueError, TypeError, AttributeError, KeyError, OSError):
+            continue
+    _need(len(matches) == 1, operation, "vm_readiness_fixture_unqualified")
+    return matches[0]
+
+
+@dataclass(frozen=True)
+class DispatchPlan:
+    root: Path
+    action: str
+    operation_identity: str
+    host: str | None
+    fixture_id: str | None = None
+    fixture: object = None
+    boundary: str | None = None
+
+
+def resolve(root, action, inputs):
+    """Pure metadata/ownership selection; no connection, VM or input effects."""
+    _guard()
+    if type(inputs) is not dict:
+        raise ValueError("vm_readiness_inputs_invalid")
+    root = Path(root).resolve(strict=True)
+    operation = _operation(inputs)
+    policy = policies.action_policy("vm_workflow", action)
+    if not policy.requirements:
+        return DispatchPlan(root, action, operation, None, boundary="observation_only")
+    row = ROUTES.get(action)
+    _need(row is not None, operation, "vm_readiness_action_unclassified")
+    kind = row["kind"]
+    if kind in {"facade", "hosted_boundary", "provider_boundary"}:
+        return DispatchPlan(root, action, operation, None, boundary=kind)
+    for module in row["closure"]:
+        _need(policies._capture(_SOURCE.parent / (module + ".py"))[2] == _SOURCE_PINS[module],
+              operation, "vm_readiness_target_source_unreviewed")
+    if kind == "registered_tart":
+        fixture_id, fixture = _tart_fixture(root, inputs, operation, action=action)
+        return DispatchPlan(root, action, operation, None, fixture_id, fixture)
+    if kind == "windows_deployment":
+        host = _deployment_host(root, inputs, operation)
+    elif kind == "fixed_host":
+        host = _host(row["host"], operation)
+        if "host" in inputs:
+            _need(_host(inputs["host"], operation) == host, operation, "vm_readiness_target_mismatch")
+    else:
+        host = _selected_host(root, inputs, row, operation)
+    config = ssh_transport.load_config(root)
+    _need(host in config.hosts, operation, "vm_readiness_host_unconfigured")
+    if policy.requirements - {"transport"}:
+        fixture_id, fixture = _guest_fixture(root, action, host, inputs, operation)
+        return DispatchPlan(root, action, operation, host, fixture_id, fixture)
+    return DispatchPlan(root, action, operation, host)
+
+
+def revalidate_current(root, *, family, expected_binding):
+    """Pure final fence for non-SSH native carriers and GUI input."""
+    wanted = Path(root).resolve(strict=True)
+    for plan, guards in reversed(_ACTIVE.get()):
+        if plan.root != wanted or plan.fixture is None:
+            continue
+        _need(fixtures.dispatch_binding(plan.fixture, family) == expected_binding,
+              plan.operation_identity, "vm_readiness_target_mismatch")
+        for guard in guards:
+            guard()
+        _guard()
+        return
+    raise DispatchBlocked("vm_dispatch_admission_missing", str(uuid4()))
+
+
+class _AdmissionContext:
+    """Source-owned capability; the loader guards entry and final cleanup."""
+
+    def __init__(self, manager):
+        self._manager = manager
+
+    def __enter__(self):
+        return self._manager.__enter__()
+
+    def __exit__(self, *error):
+        return self._manager.__exit__(*error)
+
+
+def admitted_dispatch(root, action, inputs, *, deadline=None):
+    return _AdmissionContext(_admitted_dispatch(root, action, inputs, deadline=deadline))
+
+
+@contextmanager
+def _admitted_dispatch(root, action, inputs, *, deadline=None):
+    """Normal MCP/CLI native boundary, after existing pure admission gates."""
+    plan = resolve(root, action, inputs)
+    policy = policies.action_policy("vm_workflow", action)
+    with ExitStack() as stack:
+        guards = []
+        transport_admission = None
+        if plan.host is not None:
+            transport_admission = stack.enter_context(ssh_transport.admitted_transport(plan.root, plan.host, plan.operation_identity, deadline=deadline))
+        if plan.fixture is not None:
+            context = plan.fixture.context(deadline=deadline)
+            intentional = frozenset() if policy.expected_test_state == "default" else frozenset({policy.expected_test_state})
+            requirements = readiness.Requirements(policy.requirements, policy.permitted_recoveries, intentional)
+            ready = readiness.ensure_ready(context, requirements, plan.operation_identity)
+            readiness.revalidate(context, ready)
+            guards.append(lambda: readiness.revalidate(context, ready))
+            if "interactive_desktop" in policy.requirements and policy.expected_test_state == "default":
+                lease = gui_leases.acquire(plan.root, plan.fixture_id, plan.operation_identity, ready, deadline=deadline)
+                stack.callback(lease.cancel, deadline=deadline)
+                guards.append(lease.guard)
+            if transport_admission is not None:
+                for guard in guards:
+                    ssh_dispatch_admission.add_dispatch_guard(transport_admission, guard)
+        _guard()
+        token = _ACTIVE.set((*_ACTIVE.get(), (plan, tuple(guards))))
+        try:
+            yield plan
+            _guard()
+        finally:
+            _ACTIVE.reset(token)

@@ -1,0 +1,14 @@
+{
+  "beforeSha256": {
+    "readiness_ssh_master.py": "14407f17c0f78a50101a35f1e54e8a1a15639240cfef7b582f46207bc2380937",
+    "readiness_ssh_master.py.named": "9f741e5dc36271b7733680a9cbea685504e42e637eef81afd434b26a9c87869a",
+    "readiness_transport.py": "f4d1ebce158cfefc3b45ef2312ee357a1717f400a8fb9571c188be7ecab02ba6",
+    "readiness_transport.py.nested-ack": "6239b4a7b5e23ff9ff6a8b9a1ff0c8dd061bbe1757f11cd10eed9b43465bbd8e",
+    "ssh_automatic_program.py": "0f0218d5ede0a96fab085389067a78fd138476ffa5f3d4725f495037fe49828c",
+    "ssh_automatic_program.py.closed-source": "ff992b41ca90a3a75b8168fcec5466d027f6bb3ce742fd751c5fcaf6e80ffb12",
+    "ssh_dispatch_admission.py": "6fc1aeb455934f3fa5fc6bcc98de386b3384eaedaafdf0ca45b28222abe84d33",
+    "ssh_transport.py": "0a135fc557bb0c9d4d0e698d3af9655be715e3bc26792d1df28c9af0b796171f",
+    "ssh_transport.py.reused-stage": "3a2862b0284a02ae3add22a42ab4a3b707e3552f567e6f8d41a1e44f1d134544",
+    "test_ssh_automatic_program.py.vm-admission": "20e75a75853d6b9b23f69c977b651a466c86635efe8c64fd60f7be1b847de75a"
+  }
+}

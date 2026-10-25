@@ -132,7 +132,7 @@ class AndroidNativeFixtureTest(unittest.TestCase):
         self.assertEqual("https://localhost:18080/health", endpoint["healthUrl"])
         self.assertEqual("socks://127.0.0.1:18081#NativeFixture", endpoint["location"])
         self.assertFalse(endpoint["installerTargetAdmitted"])
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as raw:
             directory = Path(raw); directory.chmod(0o700)
             output = directory / "plan.json"
             fixture.write_private_plan(output, {"endpoint": endpoint, "deviceMutationAllowed": False})

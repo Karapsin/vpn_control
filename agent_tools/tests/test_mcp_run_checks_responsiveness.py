@@ -1,5 +1,6 @@
 """Actual registered FastMCP check dispatch with owned inert command runners."""
 import asyncio
+import hashlib
 import inspect
 import json
 from pathlib import Path
@@ -26,6 +27,16 @@ class RunChecksResponsivenessTests(unittest.IsolatedAsyncioTestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="inert-mcp-checks-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        # run_checks reads the TEST-006 failure set beside the import-bound
+        # RECEIPT_PATH and rewrites it after a pass; the checkout's own set is
+        # never an input or an output of these tests.
+        checkout = server._failure_set_path()
+        def checkout_state():
+            if not checkout.exists():
+                return False, None, None
+            return True, hashlib.sha256(checkout.read_bytes()).hexdigest(), checkout.stat().st_mtime_ns
+        before = checkout_state()
+        self.addCleanup(lambda: self.assertEqual(before, checkout_state(), f"checkout {checkout} changed"))
         self.started = threading.Event()
         self.terminal = threading.Event()
         self.events = []
@@ -47,8 +58,10 @@ class RunChecksResponsivenessTests(unittest.IsolatedAsyncioTestCase):
         # The actual run_checks function, registered callback, SDK conversion and
         # real managed lease stay intact. No command, repository query or native
         # tool executes; only the owned command boundary and path-list seam vary.
+        # Managed-check state (lease, receipt, failure set) lives under this root.
         self.patches = [
             mock.patch.object(server, "REPO_ROOT", self.root),
+            mock.patch.object(server, "RECEIPT_PATH", self.root / ".rag_index" / "prepush_receipt.json"),
             mock.patch.object(server, "_changed_paths", return_value=[]),
             mock.patch.object(server, "_commands_for", return_value=[["owned-inert-check"]]),
             mock.patch.object(server, "_snapshot_fingerprint", return_value="a" * 64),

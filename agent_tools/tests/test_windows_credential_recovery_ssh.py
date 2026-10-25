@@ -34,10 +34,10 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
 
     def test_lost_submit_is_durable_and_second_start_only_observes(self):
         with mock.patch.object(backend.transport,'_run_ssh',side_effect=[None,json.dumps({'state':'unknown'}).encode()]) as ssh:
-            first=backend.start(self.root,'arch',self.correlation)
+            first=backend.start(self.root,'arch',self.correlation, environment="windows-fixture")
             self.assertEqual(first['state'],'unknown')
             self.assertRegex(first['handle'],r'^nc-[0-9a-f]{32}$')
-            self.assertEqual(backend.start(self.root,'arch',self.correlation)['state'],'unknown')
+            self.assertEqual(backend.start(self.root,'arch',self.correlation, environment="windows-fixture")['state'],'unknown')
             self.assertEqual(ssh.call_count,2)
             self.assertIn('REMOTE_START', 'REMOTE_START')
             self.assertIsNotNone(ssh.call_args_list[0].args[3])
@@ -46,7 +46,7 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
 
     def test_recovery_secret_never_enters_public_result_or_ssh_argv(self):
         with mock.patch.object(backend.transport,'_run_ssh',return_value=b'{"state":"submitted","pid":24}') as ssh:
-            result=backend.start(self.root,'arch',self.correlation)
+            result=backend.start(self.root,'arch',self.correlation, environment="windows-fixture")
         binding=backend._binding(self.target,self.correlation)
         secret=backend.native_credentials.NativeCredentialStore(self.root).read(result['handle'],binding)
         self.assertNotIn(secret.decode(),json.dumps(result))
@@ -55,7 +55,7 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
 
     def test_wrong_host_or_vm_binding_blocks_existing_intent(self):
         with mock.patch.object(backend.transport,'_run_ssh',return_value=None):
-            backend.start(self.root,'arch',self.correlation)
+            backend.start(self.root,'arch',self.correlation, environment="windows-fixture")
         with self.assertRaises(backend.WindowsCredentialRecoveryError):
             backend.status(self.root,'other',self.correlation)
         self.probe.qemu_start_ticks=999
@@ -64,9 +64,9 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
 
     def test_different_correlation_cannot_race_inflight_reset(self):
         with mock.patch.object(backend.transport,'_run_ssh',return_value=None) as ssh:
-            backend.start(self.root,'arch',self.correlation)
+            backend.start(self.root,'arch',self.correlation, environment="windows-fixture")
             with self.assertRaisesRegex(backend.WindowsCredentialRecoveryError,'Another recovery owns'):
-                backend.start(self.root,'arch','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+                backend.start(self.root,'arch','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', environment="windows-fixture")
             self.assertEqual(ssh.call_count,1)
 
     def test_inventory_edit_during_publication_is_preserved_and_blocks_switch(self):
@@ -78,7 +78,7 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
             'credentialPath':str(self.probe.credential_path)}}}}
         path.write_text(json.dumps(config)); path.chmod(0o600)
         with mock.patch.object(backend.transport,'_run_ssh',return_value=None):
-            backend.start(self.root,'arch',self.correlation)
+            backend.start(self.root,'arch',self.correlation, environment="windows-fixture")
         record=backend._intent(self.root,self.correlation)
         original=backend.private_inventory_lock.Snapshot.guard
         seen=[0]
@@ -113,7 +113,7 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
         ssh_connection_recovery._create_intent(self.root, 'nested', target, 'a'*32, new)
         ssh_connection_recovery._update_intent(self.root, 'nested', target, 'a'*32, 'ready', new)
         with mock.patch.object(backend.transport, '_run_ssh', return_value=None):
-            backend.start(self.root, 'arch', self.correlation)
+            backend.start(self.root, 'arch', self.correlation, environment="windows-fixture")
         return path, old, new, backend._intent(self.root, self.correlation)
 
     def test_credential_publisher_after_adoption_final_guard_cannot_lose_update(self):
@@ -169,7 +169,7 @@ class WindowsCredentialRecoveryTests(unittest.TestCase):
              mock.patch.object(backend.transport,'start_with_private_secret',return_value={'state':'submitted'} ) as probe_start, \
              mock.patch.object(backend.transport,'status',return_value={'state':'terminal','success':True,'errorCategory':'none'}) as probe_status, \
              mock.patch.object(backend,'_publish_inventory') as publish:
-            backend.start(self.root,'arch',self.correlation)
+            backend.start(self.root,'arch',self.correlation, environment="windows-fixture")
             first=backend.status(self.root,'arch',self.correlation)
             self.assertEqual(first['state'],'verifying')
             self.assertEqual(probe_start.call_count,1)

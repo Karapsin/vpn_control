@@ -1,0 +1,5 @@
+{
+  "failure": "Native process projection conservatively left exact ssh.service main PID and its fixed probe ancestry unmanaged because the reviewed catalog omitted ssh.service.",
+  "nativeEvidence": ".runtime/tool-recovery-qemu/strict-idle-diagnostic-1222b48b.json",
+  "sourceSha256": "249f2369e2d9dd8a4880af61ced9a482bb0529c51c9bc9a6778601f7b05fdb8f"
+}

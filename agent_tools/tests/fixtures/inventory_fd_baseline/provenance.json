@@ -1,0 +1,8 @@
+{
+  "cause": "Global FD baseline counted unrelated deferred cyclic finalizers; actual owned FD count fell28to8. Deterministic actual TempFS descriptor-cycle replay verifies cause; strict equality leak gate retained.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "before.source": "a014e2d5c2ea86ce5ac5ee25f472802bdea5962724cf39fa8697fbcba5b26bb0",
+    "native-failure.txt": "80e78173c3cc28159a1e8606a0e6189c63a09fd69aa17e8c1be7f51445609255"
+  }
+}

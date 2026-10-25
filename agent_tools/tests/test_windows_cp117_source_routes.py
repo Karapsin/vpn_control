@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 from agent_tools import mcp_server as server
+from agent_tools.tests import route_adapter
 from agent_tools import windows_cp117_source_projection as projection
 
 LEASE = 'f18df6cb-2c43-4265-b1ba-4bbadf9b708a'
@@ -49,7 +50,8 @@ class SourceCampaignRouteTests(unittest.TestCase):
         module.workflow.return_value={'state':'active','leaseId':LEASE,'replayAllowed':False}
         adapters={'windows_cp117_source_campaign':module,
                   'windows_cp117_source_projection':projection}
-        with mock.patch.object(server,'_agent_module',side_effect=adapters.__getitem__):
+        admitted=route_adapter.admitted_adapter(None)
+        with mock.patch.object(server,'_agent_module',side_effect=lambda name:admitted(name)if name in route_adapter.ADMISSION_MODULES else adapters[name]):
             result=server._vm_workflow_impl('windows-cp117-source-campaign-finish', {'host':'archlinux','leaseId':LEASE})
         self.assertTrue(result['ok'])
         self.assertFalse(result['productAction'])
@@ -69,7 +71,7 @@ class RecoverySuccessorRouteTests(unittest.TestCase):
             module=mock.Mock();module._RECOVERY='c2c0e5c9-77aa-4bd2-91a1-fb7540aa9f58'
             module.workflow.return_value={'state':'submitted','recoveryCorrelationId':module._RECOVERY,
                 'replayAllowed':False,'nativeActionAllowed':False,'productAction':False,**private}
-            with mock.patch.object(server,'_agent_module',return_value=module):
+            with mock.patch.object(server,'_agent_module',side_effect=route_adapter.admitted_adapter(module)):
                 result=server._vm_workflow_impl('windows-cp117-guest-agent-recovery-successor-start',{})
             self.assertEqual(not bool(private),result['ok'])
             self.assertFalse(result['replayAllowed'])

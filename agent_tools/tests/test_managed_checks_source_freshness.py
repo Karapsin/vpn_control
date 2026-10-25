@@ -19,6 +19,11 @@ class ManagedCheckSourceFreshnessTest(unittest.TestCase):
         context = patch.object(server, "_CHECK_RUNNER_SOURCE_DIGESTS", self.pins, create=True)
         context.start()
         self.addCleanup(context.stop)
+        # run_checks reads the TEST-006 failure set beside RECEIPT_PATH; keep it
+        # in this temporary directory instead of the real checkout.
+        receipt = patch.object(server, "RECEIPT_PATH", Path(directory.name) / ".rag_index" / "prepush_receipt.json")
+        receipt.start()
+        self.addCleanup(receipt.stop)
 
     def assert_refused(self, result, state):
         self.assertIs(result["ok"], False)

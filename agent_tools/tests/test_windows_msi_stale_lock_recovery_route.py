@@ -17,14 +17,16 @@ class WindowsMsiStaleLockRecoveryRouteTest(unittest.TestCase):
         guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         guard.start()
         self.addCleanup(guard.stop)
+        target = patch.object(recovery, '_validate_target', return_value=('windows-cp117','/owned/qga',589342,520739,'S-1-5-21-1-2-3-1002'))
+        target.start(); self.addCleanup(target.stop)
 
     def test_exact_host_and_bounded_result(self):
         recovered = {"state": "recovered", "replayAllowed": False,
                      "nativeActionAllowed": False}
         with patch.object(recovery, "recover", return_value=recovered) as call:
             result = mcp_server._vm_workflow_impl("windows-msi-stale-lock-recover",
-                                                  {"host": "archlinux"})
-        call.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux"})
+                                                  {"host": "archlinux", "vmIdentity": "589342:520739"})
+        call.assert_called_once_with(mcp_server.REPO_ROOT, {"host": "archlinux", "vmIdentity": "589342:520739"})
         self.assertTrue(result["ok"])
         self.assertEqual(result["evidenceClass"], "native-recovery")
         self.assertFalse(result["nativeActionAllowed"])
@@ -38,7 +40,7 @@ class WindowsMsiStaleLockRecoveryRouteTest(unittest.TestCase):
                          {**recovered, "privatePath": "secret"}):
             with patch.object(recovery, "recover", return_value=poisoned):
                 rejected = mcp_server._vm_workflow_impl("windows-msi-stale-lock-recover",
-                                                        {"host": "archlinux"})
+                                                        {"host": "archlinux", "vmIdentity": "589342:520739"})
             self.assertFalse(rejected["ok"])
             self.assertNotIn("secret", str(rejected))
 

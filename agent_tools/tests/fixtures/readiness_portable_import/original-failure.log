@@ -1,0 +1,41 @@
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/ssh_transport.py", line 33, in <module>
+    from . import readiness as _readiness
+  File "<string>", line 12, in guarded
+    return original(name,*args,**kwargs)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/readiness.py", line 21, in <module>
+    from . import private_inventory_lock as private
+  File "<string>", line 12, in guarded
+    return original(name,*args,**kwargs)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/private_inventory_lock.py", line 18, in <module>
+    import fcntl
+  File "<string>", line 11, in guarded
+    blocked.append(name);raise ImportError('POSIX dependency forbidden by isolated control')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ImportError: POSIX dependency forbidden by isolated control
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 14, in <module>
+    from agent_tools import ssh_direct_nested_channel as direct
+  File "<string>", line 12, in guarded
+    return original(name,*args,**kwargs)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/ssh_direct_nested_channel.py", line 14, in <module>
+    from . import ssh_transport as transport
+  File "<string>", line 12, in guarded
+    return original(name,*args,**kwargs)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/ssh_transport.py", line 35, in <module>
+    from agent_tools import readiness as _readiness
+  File "<string>", line 12, in guarded
+    return original(name,*args,**kwargs)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/readiness.py", line 21, in <module>
+    from . import private_inventory_lock as private
+  File "<string>", line 12, in guarded
+    return original(name,*args,**kwargs)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/private_inventory_lock.py", line 18, in <module>
+    import fcntl
+  File "<string>", line 11, in guarded
+    blocked.append(name);raise ImportError('POSIX dependency forbidden by isolated control')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ImportError: POSIX dependency forbidden by isolated control

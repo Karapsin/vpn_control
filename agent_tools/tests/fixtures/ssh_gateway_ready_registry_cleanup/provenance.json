@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/tests/test_ssh_gateway_tmux_ready_reconciliation.py",
+  "sourceBytes": 27076,
+  "sourceSha256": "4efc7873a699fcb4449b1f972d24e61f63b1f39d73b3b7107017cf98a6a54238",
+  "unchangedInputsSha256": {
+    "agent_tools/tests/test_ssh_gateway_tmux_master.py": "5aad62caaa216cc52a268db9e0e4000a4170f87d0c8fbd6797b67b5657afcf45",
+    "agent_tools/tests/test_ssh_gateway_tmux_reconciliation_status.py": "305c40122735027196a9198a87e4b7927301f722983075bc0681cbde415e0aa0"
+  },
+  "originalFailureTestId": "agent_tools.tests.test_ssh_gateway_tmux_reconciliation_status.ReconciliationStatusTests.test_last_body_read_status_source_and_retirement_drift_rejects",
+  "originalFailure": "Managed prepush, two-worker agent runner, 4,327 tests: ERROR in TemporaryDirectory cleanup, OSError: [Errno 66] Directory not empty: '/tmp/vct-d2e1r4kj/.fixture-children'",
+  "originalFailureTraceSha256": "e77f28f45997f782b2605a79a2c88f3d0818654bdf0a431bf4626d47e3f14f9b",
+  "originalFailureLogSha256": "4fe0b438b0a6aa51fc4269ded8dd2d2108917a388fe5bc05b61eb5223615a0a2",
+  "originalEvidence": "Retained /tmp/vct-d2e1r4kj keeps .ssh, .vct and late-ready-fixture plus only the late .fixture-children/vct-d606e1115cb64436.done.json (sha256 b9c1d8fc7046bdb7d47f6ee5f1578ed59fb7a6b844e60fb8eb2fa383c01f6f56, workerExitCode 0, originalSocketRetired true) written at 15:02:05 during rmtree. The module passed 8/8 unsandboxed when idle.",
+  "confirmedCause": "ReadyReconciliationTests.finish overrode GatewayOwnerTests.finish without super().finish(). It waited only for the fake-tmux socket t to vanish, while the fake-tmux manager publishes its done record after unlinking t, so FixtureChildren.finish never awaited that record or the original actors before the temp-home rmtree. ReconciliationStatusTests inherits the override.",
+  "controlledRegression": "The unchanged status caller runs the original test against this whole beforeimage and the current module. Only the emitted fake-tmux manager holds its done publication until an owned release marker; registry finish or the rmdir of the owned registry during rmtree releases it. Unfixed: no registry wait and the exact ENOTEMPTY cleanup error with only the late done record. Fixed: one registry wait, no error, temp home removed.",
+  "fixedSourceSha256": "b804be6d65ed91b4ed93e2c7b71864937228c1c14d57b11ba04194810bccdb6f",
+  "passingEvidence": "With ReadyReconciliationTests.finish delegating through finally: super().finish(), the same controlled interleaving gives exactly one FixtureChildren.finish wait on the case's own registry, no error, the temp home removed and the original manager and pane exited. Every current GatewayOwnerTests finish override delegates exactly once, propagates a registry failure with the home retained, and raises its own AssertionError or chains it under that registry failure.",
+  "routineSuite": "agent_tools.tests.test_ssh_gateway_ready_registry_cleanup runs in the affected agent-test stage of the managed pre-push tier and the Fast Checks agent shards whenever the selector reaches it, including changes to the ready or status module, this beforeimage or provenance, the gateway owner fixture modules or ssh_gateway_historical_fixture.py.",
+  "nativeFailureClaimed": false,
+  "nativeEvidenceLimit": "Local inert fixture cleanup race only; no VM, SSH host, guest or product native behavior is involved or claimed."
+}

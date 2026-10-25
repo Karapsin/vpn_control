@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "originalPath": "agent_tools/readiness_lease_workflow.py",
+  "originalSha256": "45fef071d2bef12ed77d9db37b2956941706e783c120debb53d51cfaecdf2259",
+  "fixtureSha256": "8a1006117a2727879bad1297696f0f073c37e574f8b76c4a825ceacfe913b332",
+  "modifications": [
+    "Package-relative imports made absolute for independent routine loading."
+  ],
+  "failure": "native admitted lease initially UNKNOWN record_unavailable was classified as a blocker before original ACK"
+}

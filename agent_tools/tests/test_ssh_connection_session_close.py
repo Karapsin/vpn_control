@@ -23,6 +23,47 @@ from agent_tools.tests.test_ssh_connection_session import SessionTests
 
 @unittest.skipUnless(os.name == 'posix', 'POSIX only')
 class CloseTests(SessionTests):
+    def test_preserved_dependency_pins_each_refuse_before_current_source_close(self):
+        folder = Path(__file__).parent / 'fixtures/ssh_session_guard_pins'
+        name = 'ssh_connection_session_close.py'
+        raw = (folder / (name + '.before.source')).read_bytes()
+        metadata = json.loads((folder / 'provenance.json').read_bytes())
+        self.assertEqual(metadata['sourceSha256'][name], hashlib.sha256(raw).hexdigest())
+        before = types.ModuleType('agent_tools._close_dependency_pins_before')
+        before.__package__ = 'agent_tools'
+        before.__file__ = str(folder / (name + '.before.source'))
+        exec(compile(raw, before.__file__, 'exec'), before.__dict__)
+        ready = self.ready()
+        original = {p.name: p.read_bytes() for p in self.journal().iterdir()}
+        # Start with the authentic complete beforeimage. Refresh only an
+        # already demonstrated pin to expose the next independent refusal.
+        for attribute, module in (('_ORIGINAL_SOURCE', session),
+                                  ('_TRANSPORT_SOURCE', session.transport),
+                                  ('_INVENTORY_SOURCE', inventory)):
+            with self.subTest(pin=attribute):
+                captured = []
+                capture = before._Capture
+                def observe_capture(directory, path, **kwargs):
+                    result = capture(directory, path, **kwargs)
+                    captured.append(path)
+                    return result
+                with mock.patch.object(before, '_Capture', side_effect=observe_capture), \
+                        mock.patch.object(before.subprocess, 'Popen', side_effect=AssertionError('no child')):
+                    self.assertEqual('unknown', before.close(
+                        self.root, 'archlinux', ready['receiptSha256'])['state'])
+                self.assertEqual(Path(module.__file__).absolute(), captured[-1])
+                self.assertFalse(close._paths(self.root, 'archlinux', ready['receiptSha256'])[3].exists())
+                self.assertEqual(original, {p.name: p.read_bytes() for p in self.journal().iterdir()})
+                setattr(before, attribute, hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest())
+        with self.control(ready, ''):
+            self.assertEqual('exit_sent', close.close(
+                self.root, 'archlinux', ready['receiptSha256'])['state'])
+        self.assertEqual(1, len(self.controls))
+        with self.absence():
+            self.assertEqual('closed', close.status(
+                self.root, 'archlinux', ready['receiptSha256'])['state'])
+        self.assertEqual(original, {p.name: p.read_bytes() for p in self.journal().iterdir()})
+
     def test_preserved_transport_pin_blocks_current_source_fixed_pin_closes_original(self):
         folder=Path(__file__).parent/'fixtures/transport_close_pin'
         raw=(folder/'before.source').read_bytes();metadata=json.loads((folder/'provenance.json').read_bytes())
@@ -104,6 +145,21 @@ class CloseTests(SessionTests):
             self.assertEqual('unknown', close.close(self.root, 'archlinux',
                                                     ready['receiptSha256'])['state'])
         self.assertFalse(close._paths(self.root, 'archlinux', ready['receiptSha256'])[3].exists())
+
+    def test_each_dependency_source_drift_refuses_before_intent_or_child(self):
+        ready = self.ready()
+        original = {p.name: p.read_bytes() for p in self.journal().iterdir()}
+        for index, module in enumerate((session, session.transport, inventory)):
+            with self.subTest(module=module.__name__):
+                dependency = self.root / ('dependency-' + str(index) + '.py')
+                dependency.write_bytes(Path(module.__file__).read_bytes() + b'\n')
+                dependency.chmod(0o600)
+                with mock.patch.object(module, '__file__', str(dependency)), \
+                        mock.patch.object(close.subprocess, 'Popen', side_effect=AssertionError('no child')):
+                    self.assertEqual('unknown', close.close(
+                        self.root, 'archlinux', ready['receiptSha256'])['state'])
+                self.assertFalse(close._paths(self.root, 'archlinux', ready['receiptSha256'])[3].exists())
+                self.assertEqual(original, {p.name: p.read_bytes() for p in self.journal().iterdir()})
 
     def test_intent_precedes_single_exit_and_status_requires_positive_absence(self):
         ready, paths = self.successful_close('')

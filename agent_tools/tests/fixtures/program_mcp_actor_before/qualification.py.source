@@ -1,0 +1,70 @@
+"""Separate harmless gateway jobs survive actual owned client/server loss."""
+from pathlib import Path
+import hashlib,json,os,signal,subprocess,sys,time,uuid
+sys.path.insert(0,str(Path.cwd()))
+from agent_tools import ssh_transport as t,ssh_channel_keeper_entry as keeper
+root=Path.cwd();evidence=root/'.rag_index/tool-recovery/durable-jobs';config=t.load_config(root)
+def save(path,value):
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w') as stream:json.dump(value,stream,sort_keys=True,indent=2)
+def remote(code):
+ argv=t.build_ssh_argv(config,'gateway',15,command=('python3','-I','-B','-c','exec('+repr(code)+')'))
+ with t.automatic_submission(argv) as submitted:r=subprocess.run(submitted,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20)
+ if r.returncode:raise RuntimeError('direct_remote_observation_failed')
+ return json.loads(r.stdout)
+context=remote("import json,os,pwd,pathlib\nu=pwd.getpwuid(os.geteuid());print(json.dumps({'kind':'ssh','uid':os.geteuid(),'principal':u.pw_name,'home':u.pw_dir,'bootId':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))")
+server_sha=hashlib.sha256((root/'agent_tools/mcp_server.py').read_bytes()).hexdigest()
+client=[str(root/'.agent_venv/bin/python'),'-B',str(root/'agent_tools/ssh_program_mcp_client.py')]
+reports=[]
+for kind in ('sdk-client-loss','server-and-local-observer-loss'):
+ operation=str(uuid.uuid4());remote_root='/tmp/vpn-control-program-'+str(context['uid'])+'-'+operation;counter=remote_root+'/loss-counter'
+ source="from pathlib import Path\nimport sys,time\np=Path("+repr(counter)+")\nwith p.open('x') as out:\n out.write('execution\\n');out.flush()\n for n in range(55):\n  out.write(str(n)+'\\n');out.flush();print(n,flush=True);time.sleep(.08)\nsys.stderr.write('loss retained stderr\\n')\n"
+ request={'operationId':operation,'program':{'language':'python3','source':source,'args':[kind],'cwd':'/tmp','targetContext':context}}
+ requestpath=evidence/('loss-request-'+operation+'.private.json');save(requestpath,request)
+ session='mcp-loss-'+operation
+ argv=client+['--session',session,'--server-sha256',server_sha,'--output-root',str(evidence),'--action','program-start','--host','gateway','--request-file',str(requestpath),'--follow-seconds','30']
+ submit=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ clientdir=evidence/session;directory=root/'.rag_index/ssh-program-execution'/operation
+ deadline=time.monotonic()+20
+ while time.monotonic()<deadline:
+  if (clientdir/'server-intent.json').exists() and (directory/'remote-admission.json').exists():
+   snapshot=remote("import json,pathlib\np=pathlib.Path("+repr(counter)+");print(json.dumps({'lines':len(p.read_text().splitlines()) if p.exists() else 0}))")
+   if snapshot['lines']>=3:break
+  if submit.poll() is not None:raise RuntimeError('client_exited_before_failure_injection')
+  time.sleep(.05)
+ else:raise RuntimeError('new_loss_sentinel_not_ready')
+ packet=json.loads((directory/'remote-admission.json').read_bytes());before=snapshot['lines']
+ native_owner=remote("import json,pathlib\nprint((pathlib.Path("+repr(remote_root+'/'+operation+'/owner.json')+")).read_text())")['owner']
+ killed=[]
+ if kind=='sdk-client-loss':
+  intent=json.loads((clientdir/'client-intent.json').read_bytes());assert intent['clientPid']==submit.pid
+  actor=keeper.actor(submit.pid);submit.terminate();killed.append({'role':'sdk-client','actor':actor})
+ else:
+  server=json.loads((clientdir/'server-intent.json').read_bytes())['serverActor'];assert keeper.actor(server['pid'])==server
+  os.kill(server['pid'],signal.SIGTERM);killed.append({'role':'mcp-server','actor':server})
+  owner=json.loads((directory/'owner.json').read_bytes())['actor'];assert keeper.actor(owner['pid'])==owner
+  os.kill(owner['pid'],signal.SIGTERM);killed.append({'role':'local-program-observer','actor':owner})
+ original_out,original_err=submit.communicate(timeout=15)
+ (evidence/(session+'.stdout.private')).write_bytes(original_out);(evidence/(session+'.stderr.private')).write_bytes(original_err)
+ time.sleep(.15)
+ after=remote("import json,pathlib\nprint(json.dumps(len(pathlib.Path("+repr(counter)+").read_text().splitlines())))")
+ assert after>before
+ identity=evidence/('loss-identity-'+operation+'.private.json');save(identity,{'operationId':operation})
+ resumed='mcp-resumed-'+operation
+ resumed_args=client+['--session',resumed,'--server-sha256',server_sha,'--output-root',str(evidence),'--action','program-reconcile','--host','gateway','--request-file',str(identity),'--follow','--follow-seconds','30']
+ fresh=subprocess.run(resumed_args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=45)
+ (evidence/(resumed+'.stdout.private')).write_bytes(fresh.stdout);(evidence/(resumed+'.stderr.private')).write_bytes(fresh.stderr)
+ freshdir=evidence/resumed;result=json.loads((freshdir/'client-result.json').read_bytes())
+ assert fresh.returncode==0 and result.get('programState')=='terminal',result
+ calls=[json.loads(p.read_bytes()) for p in sorted(freshdir.glob('call-intent-*.json'))]
+ assert all(call['request']['action']!='program-start' for call in calls)
+ final=json.loads(sorted(freshdir.glob('call-result-*.json'))[-1].read_bytes())['structuredContent']
+ assert final['state']=='terminal' and final['remoteOwner']==native_owner and final['operationId']==operation
+ stream_dir=directory if (directory/'stdout.private').exists() else sorted(directory.glob('reconciliation-*'))[-1]
+ out=(stream_dir/'stdout.private').read_bytes();err=(stream_dir/'stderr.private').read_bytes()
+ assert out.splitlines()==[str(n).encode() for n in range(55)] and err==b'loss retained stderr\n'
+ counterlines=remote("import json,pathlib\nprint(json.dumps(pathlib.Path("+repr(counter)+").read_text().splitlines()))")
+ assert counterlines.count('execution')==1
+ report={'passed':True,'kind':kind,'operationId':operation,'serverSha256':server_sha,'remotePacket':packet,'remoteOwner':native_owner,'originalClientDirectory':str(clientdir),'freshClientDirectory':str(freshdir),'terminatedOwnedActors':killed,'beforeLines':before,'afterLines':after,'invocations':1,'stdoutLines':55,'retainedStderrBytes':len(err),'freshCalls':[call['request']['action'] for call in calls],'sourcePins':json.loads((directory/'intent.json').read_bytes())['sourcePins'],'scope':'task-owned inert gateway sentinel only; no VM/runtime actions'}
+ save(evidence/('mcp-loss-result-'+operation+'.json'),report);reports.append({key:report[key] for key in ('passed','kind','operationId','beforeLines','afterLines','invocations','stdoutLines','freshCalls')})
+print(json.dumps(reports))

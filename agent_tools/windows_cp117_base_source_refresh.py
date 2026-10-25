@@ -4,6 +4,7 @@ This module does not dispatch installers. Equal displayed versions are admitted
 only as explicit fixture setup after old/new byte provenance is established.
 The public updater's newer-version gate remains unchanged.
 """
+from . import ssh_transport
 import ast,base64,gzip,hashlib,json,os,re
 from pathlib import Path
 from . import windows_cp117_installed_base_observe as installed
@@ -211,7 +212,7 @@ def _held_msi(path):
 
 def _upload(argv,stream,capture,guard):
     """One fixed upload transport; retain bounded raw even on lost observation."""
-    guard();process=subprocess.Popen(argv,stdin=stream,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    guard();process=ssh_transport.popen_ssh(argv,stdin=stream,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     selector=selectors.DefaultSelector();chunks={'stdout':bytearray(),'stderr':bytearray()};deadline=time.monotonic()+60
     selector.register(process.stdout,selectors.EVENT_READ,'stdout');selector.register(process.stderr,selectors.EVENT_READ,'stderr')
     retention_attempted=False
@@ -239,6 +240,8 @@ def _upload(argv,stream,capture,guard):
         process.wait(timeout=3);raise
     finally:
         retain();selector.close();process.stdout.close();process.stderr.close()
+
+        ssh_transport.finish_ssh(process)
 
 def stage_host(root):
     root=Path(root).resolve(strict=True);r=installed.precise.owner.guest.recovery;leaf='windows-cp117-base-refresh-host-stage-'+HOST_STAGE_CORRELATION

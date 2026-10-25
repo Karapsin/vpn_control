@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "new historical CP117 mutation/associated-cleanup entries accepted provider host without input VM selector",
+  "files": {
+    "windows_msi_owner_relaunch.before.source": {
+      "path": "agent_tools/windows_msi_owner_relaunch.py",
+      "sha256": "8dbd81ab4d4f3644a674d7c4c21243387b1961e053ad59a2a5c7cbeb628256a8"
+    },
+    "windows_msi_stale_lock_recovery.before.source": {
+      "path": "agent_tools/windows_msi_stale_lock_recovery.py",
+      "sha256": "83ff37cd378b98771b02b52433fd13c3865f3204648510d9c4900360f17dc7d1"
+    },
+    "windows_msi_stale_lock_reconcile.before.source": {
+      "path": "agent_tools/windows_msi_stale_lock_reconcile.py",
+      "sha256": "5d056c68558730a9c3438af3ccbb602bec8b717b2fd918bce4cfbe3c48f8e888"
+    },
+    "windows_update_fixture_stage_recovery.before.source": {
+      "path": "agent_tools/windows_update_fixture_stage_recovery.py",
+      "sha256": "96e9d82d4b3540c7ca4dda780b63665b1e9b8c51cda8b0e0bebefb6d11b1c8bc"
+    },
+    "mcp_server.before.source": {
+      "path": "agent_tools/mcp_server.py",
+      "sha256": "224ad9339a86a4541a7da1f2463635853e99e9e85aba28f7f3bc34d38ee6d88b"
+    },
+    "policy.before.source": {
+      "path": "agent_tools/tool_action_policy.json",
+      "sha256": "0a757105e3e29c34f35ededb8a648228aac1537dfe0ad6570443b3c875466fbf"
+    }
+  }
+}

@@ -34,6 +34,8 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `contracts.md` | Single authoritative source for all product invariants. |
 | `development.md` | Workflow guide: source/generated boundaries, dirty worktree policy, and safe patch flow. |
 | `ssh-tmux-sessions.md` | Optional fixed Linux packaging persistence, reconnect authority, immutable result collection and integration gates. |
+| `tool-recovery-ledger.md` | Isolated automatic-readiness implementation, original job custody, provider acceptance matrix and fresh-agent resume procedure. |
+| `tool-recovery-resume.md` | Fresh-agent workspace boundaries, original UNKNOWN operations, verified checkpoints and remaining infrastructure acceptance and delivery gates. |
 | `architecture.md` | Import/subscription to parser, state, config, runtime, and diagnostics data flow. |
 | `state-ownership.md` | Shared, Android, and desktop state/action ownership boundaries. |
 | `test-matrix.md` | Which tests to run for each touched area. |

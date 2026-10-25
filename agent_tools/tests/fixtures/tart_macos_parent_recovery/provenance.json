@@ -1,0 +1,24 @@
+{
+  "files": {
+    "harnesses/ledger.source": "6836dbad8fd52ad9752706747a16fd9499220ab474ab732b3b5461a84ead6578",
+    "harnesses/lostack.source": "98eca3dc08f158a42818d668638f75aa895aad9d7fe1023f7ad4ffd38a9388f6",
+    "harnesses/parent.source": "eefd3caeea5a5a77204274bc301d2e7b2d82787d4a78830f7beb27b4928d9450",
+    "harnesses/permissions.source": "8cf0e94e0ec535961c5fe7c635684bf352749930e08c730942bde4a595ed2690",
+    "harnesses/raw.source": "5fbff10b3a84c0ae3f474e35b116cfd62ce4e3d9c0de0858b124cf16e0ac7d90",
+    "sources/capture.source": "387919a86e815bfb879be04c280db870a64ca09fd65931dace82b51d6d113b36",
+    "sources/controller.source": "0027c46ad6424fb01e9690fcf6bc50ff7e2cf2de9b8f5613dd5bd9e30059ad69",
+    "sources/parent.ambient.before.source": "cd7df144c0d953881122cf35e22b5c2f51bc85adbcd50e9d8e31cb0a28787c1d",
+    "sources/parent.before.source": "b51c0bb1f0e3df2203121cfe8a0bb07a0bc62bd2e993e8c3ddd56b6479b8f55e",
+    "sources/parent.current.source": "49e12ca272d9fdbfe95aff120cb0316581ec5d013071baa7b680faca12bc1f41",
+    "sources/parent.permission.before.source": "7eb58c5357fc2caf501df5336d8da061205c4bd359814b08a05231f29332c58d",
+    "sources/permission-preparer.source": "d0d5493ad949a87a03f03bc89ad75572e661a668b789ee234551cb8ccb620f00",
+    "sources/public.before.source": "33d0f165c5d8d7566cf90a30d7a80acc791a8e200a4482ece0c1d105b5d21bec",
+    "sources/public.current.source": "dc94e6c3e8746b0c9b410745c4096dd3cfdd141bece8c021d5bcfe3e473a3e74",
+    "sources/public.raw-loss.before.source": "ff32dce5a6e6fa044b8700f47383648f54405c052f2aa4bd111ca1dbc9748ba4",
+    "sources/registry.before.source": "95d683b31e22ca4d7efc037b394a9bbb44bd452e2d4880c3a4b3f235f0d6a3ab",
+    "sources/wake.source": "aa2d0429e2c83d7e46d33fbc85dc7a07b3f027209f785c92e26f4d4cf048dfac"
+  },
+  "nativeFailure": "ee3822 producer Snapshot refused mode0644 before factory/lease/wake/PUBLIC; original terminal retained privately.",
+  "schemaVersion": 1,
+  "scope": "Exact public retained source data and controlled harnesses only; fixtures never authorize native dispatch. Tests read no ignored runtime inventory."
+}

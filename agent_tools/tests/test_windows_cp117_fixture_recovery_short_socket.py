@@ -43,7 +43,7 @@ class SocketPathsTests(unittest.TestCase):
         self.assertEqual(original.DISK,current.DISK)
 
     def test_consumed_original_source_unchanged(self):
-        self.assertEqual(hashlib.sha256(Path(original.__file__).read_bytes()).hexdigest(),'4b9133adb7a4b1794dbe2f3348ad9ea4198cfb8d6a2b85e20efba3e8f84e6ac9')
+        self.assertEqual(hashlib.sha256(Path(original.__file__).read_bytes()).hexdigest(),'495a2961a5697ebaaca4851c028ee88a6d571138b19bce703629a62943ba931e')
 
     def test_generated_preflight_rejects_long_path_before_host_calls(self):
         program=current._OBSERVER.replace('__RECIPE__',repr(original.recipe())).replace('__RESERVED__',repr(current.MEMORY_BYTES))

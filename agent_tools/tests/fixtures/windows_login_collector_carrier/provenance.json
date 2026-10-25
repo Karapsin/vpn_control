@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "ffb0d301cc7c6cc725c3e8ffa450ac6f90360f97ccfd0feca5617f192addc6b8",
+  "originalOperation": "3be5067e-77bc-4b94-90cb-90d730a883b6",
+  "originalFailure": "Small original-terminal collector passed multiline fixedsource directly to build_ssh_argv; safe-string validation refused before any target dispatch. No credential or guest action.",
+  "correction": "Pure base64 inline carrier preserves byte-identical fixedsource and stays below60000byte limit."
+}

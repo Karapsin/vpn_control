@@ -1,0 +1,1229 @@
+"""Small, fail-closed OpenSSH transport helpers for private VM inventory files.
+
+The inventory intentionally stays outside version control at ``.vm-hosts.local.json``.
+This module never includes passwords in command arguments, exceptions, or probe results.
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
+import copy
+from enum import Enum
+import errno
+import json
+import hashlib
+import importlib
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
+import shlex
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+from typing import Any, Iterable, Mapping, Sequence
+import uuid
+
+
+try:
+    from . import readiness as _readiness
+except ImportError:
+    from agent_tools import readiness as _readiness
+
+
+_EXECUTING_CODE = sys._getframe().f_code
+_LOADED_SOURCE_SHA = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+CONFIG_FILENAME = ".vm-hosts.local.json"
+CONFIG_SCHEMA_VERSION = 1
+DEFAULT_TIMEOUT_SECONDS = 15
+MAX_TIMEOUT_SECONDS = 60
+MAX_ROUTE_HOSTS = 4
+MAX_OUTPUT_CHARS = 2_000
+_ALIAS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_USER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+class SshConfigError(ValueError):
+    """A private VM inventory is missing or cannot safely be used."""
+
+
+class PrelaunchE2Big(OSError):
+    """Actual inline exec refusal; the SSH executable did not start.
+
+    Only ``popen_ssh`` creates this at its plain-list Popen boundary. The
+    operation owner must retain it before deciding on one saved-file fallback;
+    this exception does not itself retry or authorize a different request.
+    """
+    def __init__(self, original_error, attempted_argv_sha256):
+        if not isinstance(original_error, OSError) or original_error.errno != errno.E2BIG:
+            raise ValueError('ssh_prelaunch_e2big_cause')
+        super().__init__(original_error.errno, original_error.strerror, original_error.filename)
+        self.original_error = original_error
+        self.argv_sha256 = attempted_argv_sha256
+        self.child_handle_returned = False
+        self.executable_started = False
+
+
+class PrelaunchReadinessRefusal(_readiness.ReadinessBlocked):
+    """Exact initial dispatch guard failed before any exec or transfer child."""
+    def __init__(self, original_error, attempted_argv_sha256):
+        if (not isinstance(original_error,_readiness.ReadinessBlocked) or
+                isinstance(original_error,PrelaunchReadinessRefusal)):
+            raise ValueError('invalid_prelaunch_readiness_cause')
+        super().__init__(original_error.reason,original_error.operation_identity)
+        self.original_error=original_error
+        self.argv_sha256=attempted_argv_sha256
+        self.child_handle_returned=False
+        self.executable_started=False
+
+
+class StagedExecutionUnsubmitted(_readiness.ReadinessBlocked):
+    """A completed source transfer precedes a refused, never yielded target exec.
+
+    This is deliberately distinct from initial no-child proof: a transfer child
+    DID run. Only the saved-program generator owns this runtime boundary.
+    """
+    def __init__(self, original_error, attempted_argv_sha256, correlation, receipt_sha256):
+        if type(original_error) is not _readiness.ReadinessBlocked:
+            raise ValueError('invalid_staged_readiness_cause')
+        super().__init__(original_error.reason,original_error.operation_identity)
+        self.original_error=original_error
+        self.argv_sha256=attempted_argv_sha256
+        self.correlation=correlation
+        self.stage_receipt_sha256=receipt_sha256
+        self.transfer_submitted=True
+        self.target_executable_started=False
+        self.target_child_handle_returned=False
+
+
+def _raise_prelaunch_readiness(error, argv):
+    # A reused saved correlation may already own a remote transfer or exec.
+    # Its original owner must reconcile that history; a fresh guard refusal
+    # cannot prove that the original operation was never submitted.
+    plan=argv.saved_plan if isinstance(argv,BoundInlineArgv) else argv
+    if plan is not None and os.path.lexists(Path(plan.root)/'.rag_index/ssh-automatic-program'/plan.correlation):
+        raise error
+    raise PrelaunchReadinessRefusal(error,argv_sha256(argv))from error
+
+
+def _validate_submission_start(argv):
+    """Only actual initial submission boundaries may mint non-launch proof."""
+    try:
+        if isinstance(argv,BoundInlineArgv):argv.validate_original()
+        else:argv.check_source_lifetime()
+    except _readiness.ReadinessBlocked as error:
+        _raise_prelaunch_readiness(error,argv)
+
+
+class BoundInlineArgv(list):
+    """List-compatible inline argv with one immutable, preadmitted fallback.
+
+    A pure builder captures the same command/route/source closure before the
+    original exec. Low-level owners still receive PrelaunchE2Big themselves.
+    """
+    __slots__ = ('_saved_plan', '_original_argv', '_dispatch_admission')
+
+    def __init__(self, plan, *, original_argv=None, dispatch_admission=None):
+        original = plan.original_argv if plan is not None else tuple(original_argv)
+        super().__init__(original)
+        object.__setattr__(self, '_saved_plan', plan)
+        object.__setattr__(self, '_original_argv', original)
+        object.__setattr__(self, '_dispatch_admission', dispatch_admission)
+
+    @property
+    def original_argv(self):
+        return self._original_argv
+
+    @property
+    def saved_plan(self):
+        return self._saved_plan
+
+    @property
+    def dispatch_admission(self):
+        return self._dispatch_admission
+
+    def __setattr__(self, name, value):
+        raise SshConfigError('Bound SSH command cannot be mutated.')
+
+    def _refuse(self, *args, **kwargs):
+        raise SshConfigError('Bound SSH command cannot be mutated.')
+
+    __setitem__ = __delitem__ = append = extend = insert = pop = remove = clear = reverse = sort = __iadd__ = __imul__ = _refuse
+
+    def validate_original(self):
+        if self._saved_plan is not None:
+            self._saved_plan.check_source_lifetime()
+        if self._dispatch_admission is not None:
+            self._dispatch_admission.revalidate()
+        if tuple(self) != self.original_argv:
+            raise SshConfigError('Bound SSH command changed before submission.')
+
+
+class ProbeStatus(str, Enum):
+    OK = "ok"
+    CONFIG_ERROR = "config_error"
+    TIMEOUT = "timeout"
+    AUTHENTICATION_FAILED = "authentication_failed"
+    NESTED_MASTER_ABSENT = "nested_master_absent"
+    HOST_KEY_FAILED = "host_key_failed"
+    CONNECTION_FAILED = "connection_failed"
+    SSH_FAILED = "ssh_failed"
+
+
+@dataclass(frozen=True)
+class WindowsCredentialRecoveryAdmission:
+    task_name: str
+    task_path: str
+    expected_last_result: int
+    expected_task_execute: str
+    expected_task_principal: str
+    expected_task_arguments_sha256: str
+    expected_task_state: str
+
+
+@dataclass(frozen=True)
+class WindowsCredentialProbe:
+    environment: str
+    qga_socket_path: PurePosixPath
+    qemu_pid: int
+    qemu_start_ticks: int
+    account_name: str
+    expected_sid: str
+    credential_path: Path
+    recovery_admission: WindowsCredentialRecoveryAdmission | None = None
+
+
+@dataclass(frozen=True)
+class WindowsInputTokenPolicy:
+    kind: str
+    elevation: int
+    elevation_type: int
+    admin_member: bool
+    admin_enabled: bool
+
+
+@dataclass(frozen=True)
+class WindowsInputProfile:
+    """Configured selectors; these values do not prove native guest admission."""
+
+    environment: str
+    qga_socket_path: PurePosixPath
+    qmp_socket_path: PurePosixPath
+    qemu_pid: int
+    qemu_start_ticks: int
+    qemu_parent_pid: int
+    qemu_uid: int
+    qemu_argv_sha256: str
+    host_boot_id: str
+    account_name: str
+    expected_sid: str
+    session_id: int
+    profile_root: PureWindowsPath
+    installed_root: PureWindowsPath
+    task_root_parent: PureWindowsPath
+    native_context_path: Path
+    native_context_sha256: str
+    token_policy: WindowsInputTokenPolicy
+
+
+@dataclass(frozen=True)
+class SshHost:
+    alias: str
+    host: str
+    port: int
+    user: str
+    identity_file: Path
+    known_hosts_file: Path | PurePosixPath
+    proxy_jump: str | None = None
+    transport: str = "direct"
+    gateway: str | None = None
+    remote_host_alias: str | None = None
+    remote_control_path: PurePosixPath | None = None
+    remote_config_file: PurePosixPath | None = None
+    fixture_transfer_root: PurePosixPath | None = None
+    android_devices: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    password: str | None = field(default=None, repr=False, compare=False)
+    windows_credential_probe: WindowsCredentialProbe | None = field(default=None, repr=False)
+    windows_input_profiles: Mapping[str, WindowsInputProfile] = field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class SshConfig:
+    root: Path
+    hosts: Mapping[str, SshHost]
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    host: str
+    status: ProbeStatus
+    output: str = ""
+    recovery_host: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status is ProbeStatus.OK
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a server-safe representation without connection credentials."""
+        result = {"host": self.host, "status": self.status.value, "ok": self.ok, "output": self.output}
+        if self.status is ProbeStatus.NESTED_MASTER_ABSENT and self.recovery_host:
+            result["recoveryHost"] = self.recovery_host
+        return result
+
+
+def _reject_duplicate_keys(pairs: Iterable[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise SshConfigError("Configuration contains a duplicate entry.")
+        result[key] = value
+    return result
+
+
+def _private_config_path(root: Path) -> Path:
+    return Path(root).resolve() / CONFIG_FILENAME
+
+
+def _validate_private_file(metadata: os.stat_result) -> None:
+    if not stat.S_ISREG(metadata.st_mode):
+        raise SshConfigError("Private VM inventory must be a regular file.")
+    if os.name == "posix":
+        if metadata.st_uid != os.getuid():
+            raise SshConfigError("Private VM inventory must be owned by the current user.")
+        if stat.S_IMODE(metadata.st_mode) != 0o600:
+            raise SshConfigError("Private VM inventory must have mode 0600.")
+
+
+def _read_private_config(path: Path) -> str:
+    """Read via one descriptor on POSIX; Windows native inventories fail closed."""
+    if os.name != "posix":
+        # Python does not provide an ACL-safe, no-reparse-point open primitive
+        # portable across supported Windows hosts. Do not claim private-secret
+        # protection until a native implementation exists.
+        raise SshConfigError("Private VM inventory is unsupported on Windows until ACL validation is implemented.")
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError as exc:
+        raise SshConfigError("Private VM inventory is not configured.") from exc
+    except OSError as exc:
+        raise SshConfigError("Private VM inventory must be a regular file.") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        _validate_private_file(metadata)
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            contents = handle.read(1_048_577)
+        descriptor = -1
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(contents) > 1_048_576:
+        raise SshConfigError("Private VM inventory is too large.")
+    try:
+        return contents.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise SshConfigError("Private VM inventory is not valid JSON.") from exc
+
+
+def _string(value: Any, field_name: str) -> str:
+    if not isinstance(value, str) or not value or _CONTROL_RE.search(value):
+        raise SshConfigError(f"Invalid {field_name} in private VM inventory.")
+    return value
+
+
+def _path(value: Any, field_name: str) -> Path:
+    candidate = Path(_string(value, field_name)).expanduser()
+    if not candidate.is_absolute():
+        raise SshConfigError(f"{field_name} must be an absolute path.")
+    return candidate
+
+
+def _remote_path(value: Any, field_name: str) -> PurePosixPath:
+    candidate = PurePosixPath(_string(value, field_name))
+    if not candidate.is_absolute():
+        raise SshConfigError(f"{field_name} must be an absolute POSIX path.")
+    return candidate
+
+
+def _ssh_host(value: Any) -> str:
+    host = _string(value, "host")
+    # OpenSSH accepts a hostname after its options. Reject option-looking or
+    # separator-bearing values so a private inventory cannot create extra hops.
+    if host.startswith("-") or any(char.isspace() for char in host) or "," in host:
+        raise SshConfigError("Invalid host in private VM inventory.")
+    return host
+
+
+def _ssh_user(value: Any) -> str:
+    user = _string(value, "user")
+    if not _USER_RE.fullmatch(user):
+        raise SshConfigError("Invalid user in private VM inventory.")
+    return user
+
+
+def _android_devices(value: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        raise SshConfigError("androidDevices must be an object.")
+    result = {}
+    for alias, profile in value.items():
+        if not isinstance(alias, str) or not _ALIAS_RE.fullmatch(alias):
+            raise SshConfigError("Invalid Android device alias.")
+        if not isinstance(profile, dict) or set(profile) != {"adb", "cli", "serial", "expectedAvd", "api"}:
+            raise SshConfigError("Android device requires explicit executable and device identity fields.")
+        for key in ("adb", "cli"):
+            path = _remote_path(profile[key], key)
+            if path == PurePosixPath("/") or ".." in path.parts:
+                raise SshConfigError("Invalid Android executable path.")
+        if not re.fullmatch(r"emulator-[0-9]+", _string(profile["serial"], "serial")):
+            raise SshConfigError("Invalid Android emulator serial.")
+        if not _ALIAS_RE.fullmatch(_string(profile["expectedAvd"], "expectedAvd")):
+            raise SshConfigError("Invalid Android AVD identity.")
+        if type(profile["api"]) is not int or profile["api"] not in {29, 35}:
+            raise SshConfigError("Unsupported Android fixture API.")
+        result[alias] = dict(profile)
+    return result
+
+
+def _windows_credential_probe(value: Any) -> WindowsCredentialProbe:
+    fields = {"environment", "qgaSocketPath", "qemuPid", "qemuStartTicks", "accountName", "expectedSid", "credentialPath"}
+    if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"recoveryAdmission"}:
+        raise SshConfigError("Windows probe requires explicit VM and account identity fields.")
+    environment = _string(value["environment"], "environment")
+    if not _ALIAS_RE.fullmatch(environment):
+        raise SshConfigError("Invalid Windows fixture identity.")
+    socket_path = _remote_path(value["qgaSocketPath"], "qgaSocketPath")
+    if socket_path == PurePosixPath("/") or ".." in socket_path.parts:
+        raise SshConfigError("Invalid Windows fixture socket path.")
+    if any(type(value[key]) is not int or value[key] <= 0 for key in ("qemuPid", "qemuStartTicks")):
+        raise SshConfigError("Windows fixture requires a live process generation.")
+    sid = _string(value["expectedSid"], "expectedSid")
+    if not re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", sid):
+        raise SshConfigError("Invalid Windows fixture account identity.")
+    admission = None
+    if "recoveryAdmission" in value:
+        recovery = value["recoveryAdmission"]
+        recovery_fields = {"taskName", "taskPath", "expectedLastResult", "expectedTaskExecute", "expectedTaskPrincipal", "expectedTaskArgumentsSha256", "expectedTaskState"}
+        if not isinstance(recovery, dict) or set(recovery) != recovery_fields:
+            raise SshConfigError("Credential recovery requires an exact task binding.")
+        if type(recovery["expectedLastResult"]) is not int or not 0 <= recovery["expectedLastResult"] <= 0xffffffff:
+            raise SshConfigError("Invalid credential recovery task result.")
+        digest = recovery["expectedTaskArgumentsSha256"]
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise SshConfigError("Invalid credential recovery action digest.")
+        if recovery["expectedTaskState"] not in ("Ready", "Disabled"):
+            raise SshConfigError("Credential recovery requires an inactive task state.")
+        admission = WindowsCredentialRecoveryAdmission(
+            _string(recovery["taskName"], "taskName"), _string(recovery["taskPath"], "taskPath"),
+            recovery["expectedLastResult"], _string(recovery["expectedTaskExecute"], "expectedTaskExecute"),
+            _string(recovery["expectedTaskPrincipal"], "expectedTaskPrincipal"), digest, recovery["expectedTaskState"])
+    return WindowsCredentialProbe(environment, socket_path, value["qemuPid"], value["qemuStartTicks"],
+                                  _ssh_user(value["accountName"]), sid, _path(value["credentialPath"], "credentialPath"), admission)
+
+
+def _windows_input_socket(value: Any, field_name: str) -> PurePosixPath:
+    if (type(value) is not str or not value.startswith("/") or value.startswith("//")
+            or value != value.strip() or _CONTROL_RE.search(value) or "\\" in value
+            or any(part in {"", ".", ".."} for part in value.split("/")[1:])):
+        raise SshConfigError(f"{field_name} requires a dedicated absolute POSIX path.")
+    return PurePosixPath(value)
+
+
+def _windows_input_path(value: Any, field_name: str) -> PureWindowsPath:
+    if (type(value) is not str or re.match(r"^[A-Za-z]:\\", value) is None or value != value.strip()
+            or _CONTROL_RE.search(value) or "/" in value):
+        raise SshConfigError(f"{field_name} requires an absolute Windows profile path.")
+    parts = value[3:].split("\\")
+    if any(not part or part in {".", ".."} or part.rstrip(" .") != part
+           or re.search(r'[<>:"|?*]', part)
+           or re.fullmatch(r"(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", part)
+           for part in parts):
+        raise SshConfigError(f"Invalid {field_name} in Windows input profile.")
+    return PureWindowsPath(value)
+
+
+def _windows_input_context_path(value: Any) -> Path:
+    if (type(value) is not str or value != value.strip() or _CONTROL_RE.search(value)
+            or not value.startswith("/") or value.startswith("//") or "\\" in value
+            or any(part in {"", ".", ".."} for part in value.split("/")[1:])):
+        raise SshConfigError("nativeContextPath requires a dedicated absolute local path.")
+    return Path(value)
+
+
+def _windows_input_profiles(value: Any) -> dict[str, WindowsInputProfile]:
+    """Parse named operator records without selecting a guest or performing I/O."""
+    if type(value) is not dict:
+        raise SshConfigError("windowsInputProfiles must be an object.")
+    fields = {"environment", "qgaSocketPath", "qmpSocketPath", "qemuPid", "qemuStartTicks",
+              "qemuParentPid", "qemuUid", "qemuArgvSha256", "hostBootId", "accountName",
+              "expectedSid", "sessionId", "profileRoot", "installedRoot", "taskRootParent",
+              "nativeContextPath", "nativeContextSha256", "tokenPolicy"}
+    policy_fields = {"kind", "elevation", "elevationType", "adminMember", "adminEnabled"}
+    result = {}
+    for alias, profile in value.items():
+        if type(alias) is not str or not _ALIAS_RE.fullmatch(alias):
+            raise SshConfigError("Invalid Windows input profile name.")
+        if type(profile) is not dict or set(profile) != fields:
+            raise SshConfigError("Windows input profile requires exact VM, account, path and token fields.")
+        environment = profile["environment"]
+        if type(environment) is not str or not _ALIAS_RE.fullmatch(environment):
+            raise SshConfigError("Invalid Windows input environment.")
+        qga = _windows_input_socket(profile["qgaSocketPath"], "qgaSocketPath")
+        qmp = _windows_input_socket(profile["qmpSocketPath"], "qmpSocketPath")
+        if qga == qmp:
+            raise SshConfigError("Windows input requires distinct QGA and QMP paths.")
+        if any(type(profile[key]) is not int or profile[key] <= 0
+               for key in ("qemuPid", "qemuStartTicks", "qemuParentPid")):
+            raise SshConfigError("Windows input requires explicit positive process generation fields.")
+        if type(profile["qemuUid"]) is not int or profile["qemuUid"] < 0:
+            raise SshConfigError("Invalid Windows input process owner.")
+        digest = profile["qemuArgvSha256"]
+        if type(digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise SshConfigError("Invalid Windows input process argument digest.")
+        boot_id = profile["hostBootId"]
+        try:
+            canonical_boot_id = str(uuid.UUID(boot_id)) if type(boot_id) is str else None
+        except ValueError:
+            canonical_boot_id = None
+        if canonical_boot_id != boot_id or canonical_boot_id is None:
+            raise SshConfigError("Invalid Windows input host boot identity.")
+        account = profile["accountName"]
+        if type(account) is not str or not _USER_RE.fullmatch(account):
+            raise SshConfigError("Invalid Windows input local account name.")
+        sid = profile["expectedSid"]
+        if type(sid) is not str or not re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", sid):
+            raise SshConfigError("Invalid Windows input account SID.")
+        if type(profile["sessionId"]) is not int or not 0 < profile["sessionId"] <= 16383:
+            raise SshConfigError("Windows input requires the configured ordinary session.")
+        profile_root = _windows_input_path(profile["profileRoot"], "profileRoot")
+        root_text = str(profile_root)
+        installed_root = _windows_input_path(profile["installedRoot"], "installedRoot")
+        task_parent = _windows_input_path(profile["taskRootParent"], "taskRootParent")
+        task_prefix = root_text + "\\AppData\\Local\\VpnControl\\"
+        if (profile["profileRoot"] != root_text
+                or profile["installedRoot"] != root_text + "\\AppData\\Local\\vpn-control"
+                or not profile["taskRootParent"].startswith(task_prefix)):
+            raise SshConfigError("Windows input paths must remain beneath the configured local account.")
+        context_path = _windows_input_context_path(profile["nativeContextPath"])
+        context_digest = profile["nativeContextSha256"]
+        if type(context_digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", context_digest):
+            raise SshConfigError("Invalid Windows input native context digest.")
+        policy = profile["tokenPolicy"]
+        if (type(policy) is not dict or set(policy) != policy_fields
+                or type(policy["kind"]) is not str or policy["kind"] not in {"ordinaryFilteredAdmin", "ordinaryStandardUser"}
+                or type(policy["elevation"]) is not int or policy["elevation"] != 0
+                or type(policy["elevationType"]) is not int or policy["elevationType"] != (3 if policy["kind"] == "ordinaryFilteredAdmin" else 1)
+                or type(policy["adminMember"]) is not bool or policy["adminMember"] is not (policy["kind"] == "ordinaryFilteredAdmin")
+                or type(policy["adminEnabled"]) is not bool or policy["adminEnabled"] is not False):
+            raise SshConfigError("Windows input requires an exact non-elevated standard-user or filtered-administrator token policy.")
+        result[alias] = WindowsInputProfile(
+            environment, qga, qmp, profile["qemuPid"], profile["qemuStartTicks"],
+            profile["qemuParentPid"], profile["qemuUid"], digest, boot_id, account, sid, profile["sessionId"],
+            profile_root, installed_root, task_parent, context_path, context_digest,
+            WindowsInputTokenPolicy(policy["kind"], 0, policy["elevationType"], policy["adminMember"], False),
+        )
+    return result
+
+
+def _host_from_entry(alias: str, entry: Any) -> SshHost:
+    if not _ALIAS_RE.fullmatch(alias):
+        raise SshConfigError("Private VM inventory contains an invalid host alias.")
+    if not isinstance(entry, dict):
+        raise SshConfigError("Each VM host entry must be an object.")
+    allowed = {"host", "port", "user", "identityFile", "knownHostsFile", "proxyJump", "password", "transport", "gateway", "remoteHostAlias", "remoteControlPath", "remoteConfigFile", "fixtureTransferRoot", "androidDevices", "windowsCredentialProbe", "windowsInputProfiles"}
+    required = {"host", "port", "user", "identityFile", "knownHostsFile"}
+    if set(entry) - allowed or required - set(entry):
+        raise SshConfigError("Private VM inventory contains unsupported or missing host fields.")
+    port = entry["port"]
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise SshConfigError("Invalid port in private VM inventory.")
+    proxy_jump = entry.get("proxyJump")
+    if proxy_jump is not None:
+        proxy_jump = _string(proxy_jump, "proxyJump")
+        if not _ALIAS_RE.fullmatch(proxy_jump):
+            raise SshConfigError("Invalid proxyJump in private VM inventory.")
+    password = entry.get("password")
+    if password is not None:
+        password = _string(password, "password")
+    transport = entry.get("transport", "direct")
+    if transport not in {"direct", "nested"}:
+        raise SshConfigError("Invalid transport in private VM inventory.")
+    gateway = entry.get("gateway")
+    remote_host_alias = entry.get("remoteHostAlias")
+    remote_control_path = entry.get("remoteControlPath")
+    remote_config_file = entry.get("remoteConfigFile")
+    if transport == "nested":
+        gateway = _string(gateway, "gateway")
+        remote_host_alias = _string(remote_host_alias, "remoteHostAlias")
+        if remote_control_path is not None:
+            remote_control_path = _remote_path(remote_control_path, "remoteControlPath")
+        if remote_config_file is not None:
+            remote_config_file = _remote_path(remote_config_file, "remoteConfigFile")
+        if remote_control_path is None and remote_config_file is None:
+            raise SshConfigError("Nested transport needs a remote control path or owned SSH config file.")
+        for name, path in (("remoteControlPath", remote_control_path), ("remoteConfigFile", remote_config_file)):
+            if path is not None and (path == PurePosixPath("/") or ".." in path.parts):
+                raise SshConfigError(f"{name} must name a dedicated absolute path.")
+        if not _ALIAS_RE.fullmatch(gateway) or not _ALIAS_RE.fullmatch(remote_host_alias):
+            raise SshConfigError("Invalid nested transport alias in private VM inventory.")
+    elif any(value is not None for value in (gateway, remote_host_alias, remote_control_path, remote_config_file)):
+        raise SshConfigError("Direct hosts cannot include nested transport fields.")
+    known_hosts_file: Path | PurePosixPath = (
+        _remote_path(entry["knownHostsFile"], "knownHostsFile") if transport == "nested"
+        else _path(entry["knownHostsFile"], "knownHostsFile")
+    )
+    fixture_root = None
+    if "fixtureTransferRoot" in entry:
+        fixture_root = _remote_path(entry["fixtureTransferRoot"], "fixtureTransferRoot")
+        if fixture_root == PurePosixPath("/") or ".." in fixture_root.parts:
+            raise SshConfigError("fixtureTransferRoot must name a dedicated absolute directory.")
+    return SshHost(
+        alias=alias,
+        host=_ssh_host(entry["host"]),
+        port=port,
+        user=_ssh_user(entry["user"]),
+        identity_file=_path(entry["identityFile"], "identityFile"),
+        known_hosts_file=known_hosts_file,
+        proxy_jump=proxy_jump,
+        transport=transport,
+        gateway=gateway,
+        remote_host_alias=remote_host_alias,
+        remote_control_path=remote_control_path,
+        remote_config_file=remote_config_file,
+        fixture_transfer_root=fixture_root,
+        android_devices=_android_devices(entry.get("androidDevices", {})),
+        password=password,
+        windows_credential_probe=_windows_credential_probe(entry["windowsCredentialProbe"]) if "windowsCredentialProbe" in entry else None,
+        windows_input_profiles=_windows_input_profiles(entry.get("windowsInputProfiles", {})),
+    )
+
+
+def _validate_proxy_graph(hosts: Mapping[str, SshHost]) -> None:
+    for host in hosts.values():
+        if host.proxy_jump:
+            raise SshConfigError("proxyJump is not supported; use an explicit nested transport.")
+    for alias in hosts:
+        _route_hosts(hosts, alias)
+
+
+def _route_hosts(hosts: Mapping[str, SshHost], alias: str) -> tuple[SshHost, ...]:
+    """Resolve the declared route from destination to local connection host."""
+    route: list[SshHost] = []
+    seen: set[str] = set()
+    while True:
+        if alias in seen:
+            raise SshConfigError("Private VM inventory has a nested route cycle.")
+        if alias not in hosts:
+            raise SshConfigError("Nested transport references an unknown gateway host.")
+        seen.add(alias)
+        current = hosts[alias]
+        route.append(current)
+        if len(route) > MAX_ROUTE_HOSTS:
+            raise SshConfigError("Nested transport exceeds the maximum route length.")
+        if current.transport == "direct":
+            return tuple(route)
+        if current.transport != "nested" or not current.gateway:
+            raise SshConfigError("Nested transport has an invalid gateway.")
+        alias = current.gateway
+
+
+def connection_host(config: SshConfig, host: str) -> SshHost:
+    """Return the only host connected to by local SSH (for local authentication)."""
+    if host not in config.hosts:
+        raise SshConfigError("Unknown VM host alias.")
+    return _route_hosts(config.hosts, host)[-1]
+
+
+def load_config(root: Path | str) -> SshConfig:
+    """Load the private version-one inventory, rejecting insecure or malformed input."""
+    path = _private_config_path(Path(root))
+    return _parse_config(root, _read_private_config(path))
+
+
+def _parse_config(root, text):
+    """Pure parser also used by an already held private inventory owner."""
+    try:
+        raw = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+    except json.JSONDecodeError as exc:
+        raise SshConfigError("Private VM inventory is not valid JSON.") from exc
+    if (not isinstance(raw, dict) or not {"schemaVersion", "hosts"} <= set(raw)
+            or set(raw) - {"schemaVersion", "hosts", "nativeBaselines"}
+            or ("nativeBaselines" in raw and not isinstance(raw["nativeBaselines"], dict))):
+        raise SshConfigError("Private VM inventory has unsupported fields.")
+    if isinstance(raw["schemaVersion"], bool) or raw["schemaVersion"] != CONFIG_SCHEMA_VERSION or not isinstance(raw["hosts"], dict):
+        raise SshConfigError("Private VM inventory has an unsupported schema.")
+    hosts = {alias: _host_from_entry(alias, entry) for alias, entry in raw["hosts"].items()}
+    _validate_proxy_graph(hosts)
+    return SshConfig(root=Path(root).resolve(), hosts=hosts)
+
+
+def inventory(root: Path | str) -> tuple[str, ...]:
+    """List configured aliases only; hosts, users, and credentials remain private."""
+    return tuple(sorted(load_config(root).hosts))
+
+
+def _session_module():
+    # The documented launcher imports this file as a top-level module.
+    # Resolve the session's relative imports from this trusted source tree,
+    # without depending on CWD or permanently changing Python's search path.
+    if __package__:
+        ssh_connection_session = importlib.import_module(f'{__package__}.ssh_connection_session')
+    else:
+        source_parent = str(Path(__file__).resolve().parent.parent)
+        sys.path.insert(0, source_parent)
+        try:
+            ssh_connection_session = importlib.import_module('agent_tools.ssh_connection_session')
+        finally:
+            sys.path.remove(source_parent)
+    session_source = getattr(ssh_connection_session, '__file__', None)
+    if not isinstance(session_source, str) or Path(session_source).resolve() != Path(__file__).resolve().with_name('ssh_connection_session.py'):
+        raise SshConfigError('Configured outer SSH session implementation is unavailable.')
+    return ssh_connection_session
+
+
+def _selection_module():
+    if __package__:
+        module=importlib.import_module(f'{__package__}.ssh_channel_selection')
+    else:
+        parent=str(Path(__file__).resolve().parent.parent)
+        sys.path.insert(0,parent)
+        try:module=importlib.import_module('agent_tools.ssh_channel_selection')
+        finally:sys.path.remove(parent)
+    source=getattr(module,'__file__',None)
+    if not isinstance(source,str) or Path(source).resolve()!=Path(__file__).resolve().with_name('ssh_channel_selection.py'):
+        raise SshConfigError('Selected SSH channel implementation is unavailable.')
+    return module
+
+
+def fresh_direct_prefix(config, host):
+    """Pure explicit recovery prefix; selected transport is not a fresh route."""
+    target = config.hosts[host]
+    if target.transport != 'direct' or target.password is not None:
+        raise SshConfigError('Fresh direct recovery requires a configured key-only target.')
+    return ['/usr/bin/ssh', '-F', '/dev/null', '-p', str(target.port), '-l', target.user,
+            '-i', str(target.identity_file), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=' + str(target.known_hosts_file),
+            '-o', 'PermitLocalCommand=no', '-o', 'ClearAllForwardings=yes',
+            '-o', 'UpdateHostKeys=no', '-o', 'ConnectTimeout=10'], target.host
+
+
+def _readiness_nested_module():
+    module=importlib.import_module(f'{__package__}.readiness_nested_channel' if __package__ else 'agent_tools.readiness_nested_channel')
+    source=getattr(module,'__file__',None)
+    if not isinstance(source,str) or Path(source).resolve()!=Path(__file__).resolve().with_name('readiness_nested_channel.py'):
+        raise SshConfigError('Readiness nested source is unavailable.')
+    return module
+
+
+def _build_readiness_nested_argv(config,route,command,ssh_binary,nested_ssh_binary,timeout_seconds):
+    try:
+        if len(route)!=2:raise ValueError('readiness_route')
+        nested=_readiness_nested_module()
+        metadata=nested.route_options(config.root,route[0].alias,config,deadline=time.monotonic()+timeout_seconds)
+        target=route[0]
+        inner=[nested_ssh_binary]
+        if target.remote_config_file is not None:inner+=['-F',str(target.remote_config_file)]
+        inner+=['-S',metadata['controlPath'],'-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false',
+                '-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no',
+                '-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-T',target.remote_host_alias,shlex.join(command)]
+        prefix,endpoint=fresh_direct_prefix(config,route[-1].alias)
+        return [ssh_binary,*prefix[1:],'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-T',endpoint,shlex.join(inner)]
+    except (OSError,ValueError,KeyError,TypeError):
+        raise SshConfigError('Admitted readiness nested channel is unavailable.') from None
+
+
+_PRIVATE_ADMISSION_CAPTURE = ContextVar("ssh_private_admission_capture", default=None)
+
+
+@contextmanager
+def _private_admission_capture():
+    # Request-local diagnostic data, never route or replay authority.
+    records = {"observations": [], "captureFailures": []}
+    token = _PRIVATE_ADMISSION_CAPTURE.set(records)
+    try:
+        yield records
+    finally:
+        _PRIVATE_ADMISSION_CAPTURE.reset(token)
+
+
+def _retain_private_admission(capture):
+    records = _PRIVATE_ADMISSION_CAPTURE.get()
+    if records is None:
+        return
+    try:
+        if type(capture) is not dict:
+            raise ValueError("private_admission_capture_shape")
+        records["observations"].append({"observation": len(records["observations"]) + 1,
+            "transportSourceSha256": _LOADED_SOURCE_SHA, "capture": copy.deepcopy(capture)})
+    except BaseException as error:
+        records["captureFailures"].append(type(error).__name__)
+
+
+def _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary):
+    selection=_selection_module()
+    session=_session_module()
+    captures=[]; capture_failures=[]
+    def retain_private_capture(capture):
+        # This is the same already-required read-only observation, not a query.
+        # Failure of diagnostic retention never changes its admission decision.
+        try:
+            frozen=copy.deepcopy(dict(capture))
+            captures.append({"observation":len(captures)+1,"transportSourceSha256":_LOADED_SOURCE_SHA,
+                             "capture":frozen})
+            _retain_private_admission(frozen)
+        except BaseException as error:
+            capture_failures.append(type(error).__name__)
+    try:
+        host=route[0].alias
+        capture_options={"_private_capture":retain_private_capture} if _PRIVATE_ADMISSION_CAPTURE.get() is not None else {}
+        metadata=selection.selected_route_options(config.root,host,config,**capture_options)
+        if metadata is None or len(route)!=2:raise SshConfigError('Selected SSH channel is unavailable.')
+        selected_config=session.transport.load_config(config.root)
+        if asdict(selected_config)!=asdict(config):raise SshConfigError('Selected SSH configuration changed.')
+        outer=connection_host(selected_config,host)
+        prefix,endpoint=session._outer_prefix(selected_config,outer)
+        # Fixed admitted route; no canonical socket/fresh handshake fallback.
+        nested=route[0]
+        inner=[nested_ssh_binary]
+        if nested.remote_config_file is not None:inner.extend(('-F',str(nested.remote_config_file)))
+        inner.extend(metadata['innerOptions'])
+        inner.extend(('-T','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no',nested.remote_host_alias,shlex.join(command)))
+        extra=['-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no'] if metadata.get('transportMode')=='direct' else []
+        return [ssh_binary,*prefix[1:],*metadata['outerOptions'],*extra,'-T',endpoint,shlex.join(inner)]
+    except (selection.SelectionUnknown,session.SessionUnknown,selection.transport.SshConfigError) as error:
+        refusal=SshConfigError('Explicitly selected SSH channel is unavailable; observe or renew it explicitly.')
+        try:
+            refusal._private_selected_admission={"stage":"selected-route-admission",
+                "host":route[0].alias,"rawCaptureAvailable":bool(captures),
+                "captureFailures":capture_failures,"observations":captures,
+                "transportSourceSha256":_LOADED_SOURCE_SHA}
+        except BaseException:
+            pass
+        raise refusal from None
+
+
+def _build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+                   command: Sequence[str] = ("true",), ssh_binary: str = "ssh",
+                   nested_ssh_binary: str = "ssh", *, fresh_direct: bool = False) -> list[str]:
+    """Build an argv-only OpenSSH invocation. No values are shell-interpolated."""
+    if host not in config.hosts:
+        raise SshConfigError("Unknown VM host alias.")
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= MAX_TIMEOUT_SECONDS:
+        raise SshConfigError("SSH timeout must be between 1 and 60 seconds.")
+    if not command or any(not isinstance(part, str) or _CONTROL_RE.search(part) for part in command):
+        raise SshConfigError("SSH command must be a non-empty sequence of safe strings.")
+    ssh_binary = _string(ssh_binary, "ssh executable")
+    nested_ssh_binary = _string(nested_ssh_binary, "nested ssh executable")
+    route = _route_hosts(config.hosts, host)
+    if type(fresh_direct) is not bool:
+        raise SshConfigError('Fresh SSH route mode must be boolean.')
+    if fresh_direct:
+        # Explicit intentional/lifecycle route: use the configured nested
+        # sockets exactly, with one fresh trusted outer handshake. No selected
+        # master is retired, replaced, or silently inherited by this command.
+        for nested in route[:-1]:
+            if not nested.remote_host_alias or nested.remote_control_path is None:
+                raise SshConfigError('Fresh nested SSH needs its configured existing master.')
+            inner=[nested_ssh_binary]
+            if nested.remote_config_file is not None:inner+=['-F',str(nested.remote_config_file)]
+            inner+=['-T','-S',str(nested.remote_control_path),'-o','ControlMaster=no',
+                '-o','ControlPersist=no','-o','ProxyCommand=false','-o','BatchMode=yes',
+                '-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(nested.known_hosts_file),
+                '-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes',nested.remote_host_alias,shlex.join(command)]
+            command=inner
+        prefix,endpoint=fresh_direct_prefix(config,route[-1].alias)
+        return [ssh_binary,*prefix[1:],'-T','-S','none','-o','ControlMaster=no',
+                '-o','ControlPath=none','-o','ControlPersist=no',endpoint,shlex.join(command)]
+    selected_aliases = set()
+    if os.path.lexists(config.root/'.rag_index'/'ssh-channel-selection'):
+        try:
+            selection = _selection_module()
+            selected_aliases = {candidate.alias for candidate in route
+                                if selection.selection_present(config.root,candidate.alias)}
+        except (OSError,ValueError,KeyError,TypeError):
+            raise SshConfigError('Explicitly selected SSH context is unavailable.') from None
+    # Presence at entry determines the route. A disappearing selected pointer
+    # still reaches its refusing reader; a later directory cannot switch routes.
+    def selected_present(alias):return alias in selected_aliases
+    def readiness_present(alias):
+        return os.path.lexists(config.root/'.rag_index/readiness-nested-channel'/alias/'current.json')
+    if readiness_present(host):
+        return _build_readiness_nested_argv(config,route,command,ssh_binary,nested_ssh_binary,timeout_seconds)
+    if selected_present(host):
+        return _build_selected_arch_argv(config,route,command,ssh_binary,nested_ssh_binary)
+    # Compose from the destination outward. Each layer quotes one complete argv
+    # for the shell used by that layer's OpenSSH remote command, retaining every
+    # configured intermediate hop instead of replacing the previous last token.
+    for index,nested in enumerate(route[:-1]):
+        if readiness_present(nested.alias):
+            return _build_readiness_nested_argv(config,route[index:],command,ssh_binary,nested_ssh_binary,timeout_seconds)
+        if selected_present(nested.alias):
+            # Compose every descendant first, then reuse only admitted Arch authority.
+            return _build_selected_arch_argv(config,route[index:],command,ssh_binary,nested_ssh_binary)
+        if not nested.remote_host_alias:
+            raise SshConfigError("Nested transport needs a remote host alias.")
+        remote_command = [nested_ssh_binary]
+        if nested.remote_config_file is not None:
+            remote_command.extend(("-F", str(nested.remote_config_file)))
+        if nested.remote_control_path is not None:
+            remote_command.extend(("-S", str(nested.remote_control_path)))
+        remote_command.extend(("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+                               "-o", f"UserKnownHostsFile={nested.known_hosts_file}",
+                               nested.remote_host_alias, shlex.join(command)))
+        command = remote_command
+    if selected_present(route[-1].alias):
+        return _build_selected_arch_argv(config,route[-1:],command,ssh_binary,nested_ssh_binary)
+    target = route[-1]
+    argv = [
+        ssh_binary, "-p", str(target.port), "-l", target.user,
+        "-i", str(target.identity_file), "-o", "IdentitiesOnly=yes",
+        "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={target.known_hosts_file}",
+        "-o", f"ConnectTimeout={timeout_seconds}", "-o", "NumberOfPasswordPrompts=1",
+        "-o", f"BatchMode={'no' if target.password is not None else 'yes'}",
+    ]
+    # A configured, fenced outer master replaces repeated gateway handshakes.
+    # Lazy import keeps direct routes and hosts without session inventory
+    # portable. Existing unknown sessions fail closed rather than reconnecting.
+    if len(route) > 1 and os.path.lexists(config.root / '.rag_index' / 'ssh-connection-session'):
+        ssh_connection_session = _session_module()
+        try:
+            selected_config = config
+            if not __package__:
+                # Dataclass types from top-level and package imports differ.
+                # Compare their complete field values before using the package
+                # instance; never discard a caller's changed configuration.
+                selected_config = ssh_connection_session.transport.load_config(config.root)
+                if asdict(config) != asdict(selected_config):
+                    raise SshConfigError('Configured outer SSH session configuration changed.')
+            argv.extend(ssh_connection_session.selected_options(selected_config, host))
+        except (ssh_connection_session.SessionUnknown, ssh_connection_session.transport.SshConfigError):
+            raise SshConfigError('Configured outer SSH session is unavailable; inspect its existing receipt.') from None
+    # A selected readiness master supplies only read-only reuse options here.
+    # Missing inventory leaves existing direct transport unchanged. A present
+    # but unknown/dead owner refuses instead of silently opening another TCP.
+    if len(route) == 1 and os.path.lexists(config.root / '.rag_index/readiness-ssh-master' / target.alias):
+        try:
+            if __package__:
+                master = importlib.import_module(f'{__package__}.readiness_ssh_master')
+            else:
+                master = importlib.import_module('agent_tools.readiness_ssh_master')
+            source = getattr(master, '__file__', None)
+            if not isinstance(source, str) or Path(source).resolve() != Path(__file__).resolve().with_name('readiness_ssh_master.py'):
+                raise SshConfigError('Readiness SSH master source is unavailable.')
+            options = master.options(config.root, target.alias, config)
+            if options is not None:
+                argv.extend(options)
+        except (OSError, ValueError, KeyError, TypeError):
+            raise SshConfigError('Admitted readiness SSH master is unavailable.') from None
+    argv.extend([target.host, shlex.join(command)])
+    return argv
+
+
+def _automatic_module():
+    # A timestamp-valid old pyc or cached canonical module is not source proof.
+    raw = Path(__file__).read_bytes()
+    if _EXECUTING_CODE != compile(raw, __file__, 'exec', dont_inherit=True):
+        raise SshConfigError('Automatic transport executing source changed.')
+    if __package__:
+        module = importlib.import_module(f'{__package__}.ssh_automatic_program')
+    else:
+        module = importlib.import_module('agent_tools.ssh_automatic_program')
+    path = Path(module.__file__)
+    if path.resolve() != Path(__file__).resolve().with_name('ssh_automatic_program.py'):
+        raise SshConfigError('Automatic transport source is unavailable.')
+    if getattr(module, '_EXECUTING_CODE', None) != compile(path.read_bytes(), str(path), 'exec', dont_inherit=True):
+        raise SshConfigError('Automatic program executing source changed.')
+    return module
+
+
+def admitted_transport(root, host, operation_identity, *, deadline=None, requirements=None):
+    """Explicit readiness boundary before generating any remote command."""
+    from . import ssh_dispatch_admission
+    return ssh_dispatch_admission.admitted_transport(root, host, operation_identity,
+        deadline=deadline, requirements=requirements)
+
+
+def _dispatch_binding(config, host):
+    # Pure context lookup. Absence never starts readiness or changes a route.
+    module = sys.modules.get((__package__ or 'agent_tools') + '.ssh_dispatch_admission')
+    return None if module is None else module.current(config.root, host)
+
+
+def build_ssh_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+                   command: Sequence[str] = ('true',), ssh_binary: str = 'ssh',
+                   nested_ssh_binary: str = 'ssh', *, fresh_direct: bool = False) -> list[str]:
+    """Build only; oversized Python carriers require an owned submission."""
+    options={'fresh_direct':True} if fresh_direct else {}
+    if type(fresh_direct) is not bool:raise SshConfigError('Fresh SSH route mode must be boolean.')
+    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, **options)
+    admission = _dispatch_binding(config, host)
+    if sum(len(part.encode('utf-8')) + 1 for part in argv) <= 60000:
+        # Binding is observation-only: no journal, upload or remote connection.
+        # Unsupported/raw commands retain their existing list boundary. Their
+        # eventual E2BIG has no safe reconstruction authority.
+        if (command and command[0] in ('python3', '/usr/bin/python3', 'sudo', '/usr/bin/sudo') and
+                _private_config_path(config.root).is_file()):
+            automatic = _automatic_module()
+            try:
+                plan = automatic.bind(config, host, timeout_seconds, tuple(command),
+                    ssh_binary, nested_ssh_binary, argv, force_file=True, **options)
+            except (automatic.AutomaticProgramError, OSError):
+                if automatic.password_carrier(command):
+                    raise SshConfigError('Unsupported or unavailable secure sudo password carrier.') from None
+                return (BoundInlineArgv(None, original_argv=argv, dispatch_admission=admission)
+                        if admission is not None else argv)
+            if automatic.password_carrier(command):
+                return plan
+            return BoundInlineArgv(plan, dispatch_admission=admission)
+        return (BoundInlineArgv(None, original_argv=argv, dispatch_admission=admission)
+                if admission is not None else argv)
+    automatic = _automatic_module()
+    return automatic.bind(config, host, timeout_seconds, tuple(command),
+                          ssh_binary, nested_ssh_binary, argv, **options)
+
+
+def build_saved_program_argv(config: SshConfig, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+                            command: Sequence[str] = ('true',), ssh_binary: str = 'ssh',
+                            nested_ssh_binary: str = 'ssh', *, fresh_direct: bool = False):
+    """Bind the normal saved-program transport even when inline argv fits.
+
+    This pure internal builder supplies no retry policy or no-start evidence.
+    Its caller owns that decision and retains the plan before submission.
+    Every existing residual-command, route and source guard remains in force.
+    """
+    if type(fresh_direct) is not bool:raise SshConfigError('Fresh SSH route mode must be boolean.')
+    options={'fresh_direct':True} if fresh_direct else {}
+    argv = _build_ssh_argv(config, host, timeout_seconds, command, ssh_binary, nested_ssh_binary, **options)
+    automatic = _automatic_module()
+    return automatic.bind(config, host, timeout_seconds, tuple(command),
+                          ssh_binary, nested_ssh_binary, argv, force_file=True, **options)
+
+
+def automatic_submission(argv, *, prelaunch_refusal=None):
+    """Internal actual-submission boundary; never infer a route from an argv."""
+    if isinstance(argv, list):
+        if isinstance(argv, BoundInlineArgv):
+            _validate_submission_start(argv)
+        if sum(len(part.encode('utf-8')) + 1 for part in argv) > 60000:
+            raise SshConfigError('Unbound oversized SSH command refuses submission.')
+        return nullcontext(argv)
+    automatic = _automatic_module()
+    return automatic.automatic_submission(argv, prelaunch_refusal=prelaunch_refusal)
+
+
+def popen_ssh(argv, *, prelaunch_fallback=True, **kwargs):
+    """Keep an existing pipe collector's one child and terminal ownership."""
+    if isinstance(argv, list):
+        if isinstance(argv, BoundInlineArgv):
+            _validate_submission_start(argv)
+        if sum(len(part.encode('utf-8')) + 1 for part in argv) > 60000:
+            raise SshConfigError('Unbound oversized SSH command refuses submission.')
+        try:
+            return subprocess.Popen(argv, **kwargs)
+        except OSError as error:
+            if error.errno == errno.E2BIG:
+                refusal = PrelaunchE2Big(error, argv_sha256(argv))
+                if (prelaunch_fallback is True and isinstance(argv, BoundInlineArgv) and
+                        argv.saved_plan is not None):
+                    argv.validate_original()
+                    return _automatic_module().SubmittedProcess(argv.saved_plan,
+                        prelaunch_refusal=refusal, **kwargs)
+                raise refusal from error
+            raise
+    automatic = _automatic_module()
+    return automatic.SubmittedProcess(argv, **kwargs)
+
+
+def finish_ssh(process, *, failed=False):
+    """Collector-owned terminal custody; ordinary Popen objects need no hook."""
+    if process is not None and type(process).__name__ == 'SubmittedProcess':
+        process.finish(failed=failed or sys.exc_info()[0] is not None)
+
+
+def argv_byte_sizes(argv):
+    raw = argv if isinstance(argv, list) else argv.original_argv
+    return [len(word.encode('utf-8')) for word in raw]
+
+
+def argv_sha256(argv):
+    """Hash original argv for evidence without dropping oversized custody."""
+    raw = argv if isinstance(argv, list) else argv.original_argv
+    return hashlib.sha256(json.dumps(raw, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def _run_inline(argv, *, input=None, capture_output=False, timeout=None, check=False, **kwargs):
+    """stdlib.run semantics with proof minted at our exact Popen boundary."""
+    if input is not None:
+        if kwargs.get('stdin') is not None:
+            raise ValueError('stdin and input arguments may not both be used.')
+        kwargs['stdin'] = subprocess.PIPE
+    if capture_output:
+        if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+            raise ValueError('stdout and stderr arguments may not be used with capture_output.')
+        kwargs['stdout'] = kwargs['stderr'] = subprocess.PIPE
+    with popen_ssh(argv, prelaunch_fallback=False, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(input, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            process.kill()
+            if os.name == 'nt':
+                error.stdout, error.stderr = process.communicate()
+            else:
+                process.wait()
+            raise
+        except BaseException:
+            process.kill()
+            raise
+        returncode = process.poll()
+        if check and returncode:
+            raise subprocess.CalledProcessError(returncode, argv, output=stdout, stderr=stderr)
+    return subprocess.CompletedProcess(argv, returncode, stdout, stderr)
+
+
+def run_ssh(argv, *, runner=None, **kwargs):
+    """One original submission; only proven prelaunch E2BIG permits transfer.
+
+    Custom runners must preserve the central typed Popen refusal. Raw OSError,
+    SSH failure, timeout and lost acknowledgement never authorize another run.
+    """
+    try:
+        with automatic_submission(argv) as submitted:
+            return (_run_inline if runner is None or runner is subprocess.run else runner)(submitted, **kwargs)
+    except PrelaunchE2Big as refusal:
+        if (not isinstance(argv, BoundInlineArgv) or argv.saved_plan is None or refusal.child_handle_returned is not False or
+                refusal.executable_started is not False or refusal.argv_sha256 != argv_sha256(argv)):
+            raise
+        argv.validate_original()
+        # The saved plan was captured before exec, not reconstructed after an
+        # uncertain outcome. Its existing custody guards revalidate everything.
+        with automatic_submission(argv.saved_plan, prelaunch_refusal=refusal) as submitted:
+            return (subprocess.run if runner is None else runner)(submitted, **kwargs)
+
+
+def _sanitized_output(value: str | bytes | None, passwords: Iterable[str]) -> str:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    value = value or ""
+    value = value.replace("\r", "").replace("\x00", "")
+    for password in passwords:
+        value = value.replace(password, "[redacted]")
+    return value[:MAX_OUTPUT_CHARS]
+
+
+def _status_for_output(output: str) -> ProbeStatus:
+    lowered = output.lower()
+    if "host key verification failed" in lowered or "remote host identification has changed" in lowered or "host key" in lowered and "verification" in lowered:
+        return ProbeStatus.HOST_KEY_FAILED
+    # A combined stale-route/network failure and auth marker does not locate
+    # an authenticated handshake. Preserve the measured transport stage first.
+    if any(token in lowered for token in ("connection refused", "no route to host", "could not resolve hostname", "connection timed out", "network is unreachable")):
+        return ProbeStatus.CONNECTION_FAILED
+    if "permission denied" in lowered or "authentication failed" in lowered:
+        return ProbeStatus.AUTHENTICATION_FAILED
+    return ProbeStatus.SSH_FAILED
+
+
+def _askpass_environment(password: str, directory: Path) -> tuple[Path, dict[str, str]]:
+    helper = directory / "askpass"
+    password_file = directory / "password"
+    descriptor = os.open(password_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8", closefd=True) as handle:
+        handle.write(password)
+    helper.write_text("#!/bin/sh\ncat \"$VPN_CONTROL_SSH_PASSWORD_FILE\"\n", encoding="utf-8")
+    helper.chmod(0o700)
+    environment = os.environ.copy()
+    environment.update({
+        "SSH_ASKPASS": str(helper),
+        "SSH_ASKPASS_REQUIRE": "force",
+        "DISPLAY": environment.get("DISPLAY", "vpn-control-askpass"),
+        "VPN_CONTROL_SSH_PASSWORD_FILE": str(password_file),
+    })
+    return helper, environment
+
+
+def _probe_cached_socket(config: SshConfig, target: SshHost, timeout_seconds: int) -> str:
+    """Probe-only strict binary evidence; never changes legacy recovery guards.
+
+    A password-prompting gateway has no admitted binary channel here. It stays
+    unknown; the explicit fresh read-only provider handles that separate route.
+    """
+    try:
+        try:
+            from . import ssh_connection_recovery as recovery
+        except ImportError:
+            from agent_tools import ssh_connection_recovery as recovery
+        if not target.gateway or not target.remote_control_path or not target.remote_host_alias:
+            return 'unknown'
+        gateway=connection_host(config,target.gateway)
+        if gateway.password is not None:return 'unknown'
+        command=['ssh']
+        if target.remote_config_file is not None:command+=['-F',str(target.remote_config_file)]
+        command+=['-S',str(target.remote_control_path),'-O','check',target.remote_host_alias]
+        argv=build_ssh_argv(config,target.gateway,timeout_seconds,command=tuple(command))
+        captured=recovery._bounded_socket_query(argv,timeout_seconds)
+        if not captured['complete'] or captured['stdout']:return 'unknown'
+        stderr=captured['stderr']
+        if captured['returnCode']==0 and re.fullmatch(rb'Master running \(pid=[1-9][0-9]*\)\r?\n',stderr):return 'ready'
+        if captured['returnCode']==255 and stderr in (
+                ('Control socket connect('+str(target.remote_control_path)+'): No such file or directory\n').encode(),
+                ('Control socket connect('+str(target.remote_control_path)+'): No such file or directory\r\n').encode()):return 'absent'
+    except (OSError,ValueError,TypeError,KeyError,SshConfigError):
+        pass
+    return 'unknown'
+
+
+def probe(root: Path | str, host: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, ssh_binary: str = "ssh") -> ProbeResult:
+    """Run a bounded read-only ``true`` command over SSH and classify its outcome."""
+    try:
+        config = load_config(root)
+        argv = build_ssh_argv(config, host, timeout_seconds, ssh_binary=ssh_binary)
+    except SshConfigError as exc:
+        return ProbeResult(host=host, status=ProbeStatus.CONFIG_ERROR, output=str(exc))
+    connection = connection_host(config, host)
+    passwords = tuple(candidate.password for candidate in config.hosts.values() if candidate.password)
+    environment: dict[str, str] | None = None
+    try:
+        if connection.password is not None:
+            with tempfile.TemporaryDirectory(prefix="vpn-control-askpass-") as directory:
+                _, environment = _askpass_environment(connection.password, Path(directory))
+                completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_seconds + 1, env=environment, check=False)
+        else:
+            completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_seconds + 1, check=False)
+    except subprocess.TimeoutExpired as exc:
+        _sanitized_output(exc.stdout, passwords)
+        _sanitized_output(exc.stderr, passwords)
+        return ProbeResult(host=host, status=ProbeStatus.TIMEOUT, output="SSH probe timed out.")
+    except OSError as exc:
+        _sanitized_output(str(exc), passwords)
+        return ProbeResult(host=host, status=ProbeStatus.SSH_FAILED, output="SSH executable could not be started.")
+    output = _sanitized_output(completed.stdout, passwords) + _sanitized_output(completed.stderr, passwords)
+    if completed.returncode == 0:
+        return ProbeResult(host=host, status=ProbeStatus.OK, output="SSH connectivity verified.")
+    status = _status_for_output(output)
+    if status is ProbeStatus.AUTHENTICATION_FAILED:
+        # An expired master makes BatchMode fall back to an encrypted key. Check
+        # exact configured sockets read-only before blaming the credentials.
+        # Stop at the first uncertain hop; no authentication retry or recovery.
+        try:
+            from . import ssh_connection_recovery as recovery
+        except ImportError:  # Standalone module loading used by transport tests.
+            from agent_tools import ssh_connection_recovery as recovery
+        for nested in reversed(_route_hosts(config.hosts, host)[:-1]):
+            if nested.remote_control_path is None:
+                continue
+            master = _probe_cached_socket(config, nested, min(timeout_seconds, 5))
+            if master == "absent":
+                return ProbeResult(host, ProbeStatus.NESTED_MASTER_ABSENT,
+                                   "Configured nested SSH master is absent; verify recovery before adopting a replacement.",
+                                   nested.alias)
+            if master != "ready":
+                return ProbeResult(host, ProbeStatus.SSH_FAILED,
+                                   "Configured nested SSH route is uncertain; verify a fresh read-only connection without replaying existing jobs.",
+                                   nested.alias)
+    return ProbeResult(host=host, status=status, output=f"SSH probe failed: {status.value}.")

@@ -1,0 +1,5 @@
+{
+  "source": "agent_tools/readiness.py",
+  "sha256": "85c4a881c6d9e4d774b45ffa5f2179c7d9a68e0ba7790ad28b3120322d214d4d",
+  "reason": "Consumed prelaunch intent after coordinator loss requires pure exact-original non-submission observation before reprepare."
+}

@@ -1,0 +1,285 @@
+"""NEW ignored finite system-image evidence inquiry owner, SOURCE ONLY until review.
+
+No arbitrary dispatch, credentials, GUI, input, pipe client or lifecycle action.
+The generic POSIX durable owner is the sole launch authority for the complete
+canonical guarded controller. The public Windows counter API is unchanged.
+"""
+from __future__ import annotations
+import ast,base64,hashlib,inspect,json,re,types
+from pathlib import Path
+from uuid import UUID
+_EXECUTING_CODE=inspect.currentframe().f_code
+NATIVE_QUALIFIED=False
+NATIVE_SHA='d761bc4c8e4c581af05559d27855562e9324d86b8839e5b63eac7eb9927cda5b'
+FROZEN_ACL={'secure_system_image_inquiry_parent.ps1':'5f8bd74d90973362305ce8800493b423e0c1ff8191f4e3eaee9d31b19caf5feb','secure_system_image_inquiry_child.ps1':'33399ec35b9a4fd8c5b9c5c3902830396d0b860bba77cda4c69b02b906a752b6','secure_compile_acl_creation.ps1':'c9dad79f0f3abbeebb3cf7e02b36cf93ed2a5aed78b60aedad5c7a862cf1c026'}
+FROZEN_V3_CS='3516178ead6e16d19ce48487ab5de8058e7498bad98dffdfde748f3ce0de759d'
+FROZEN_V2={'secure_recipient_v2.py':'11b49006d0763a17b7ded6247fc740c77fc0fa5f5946b4831d08cd5f4406eb72','secure_recipient_v2.cs':'8b3d4478c2651dda7ad47d651670d7f89074d8a0690678d2c8c11b7430b380f0','secure_observer_owner_v2.cs':'deec24b7b73ce06f91e2e1a8c96332ea801d441a64d577c409a8ba28ec1851b2'}
+
+def need(ok,reason):
+ if not ok:raise ValueError(reason)
+
+def canonical_uuid(value):
+ need(type(value)is str and str(UUID(value))==value,'compile_operation_identity');return value
+
+def _code_guard(module,raw):
+ """Old imported functions/.pyc cannot certify a new source snapshot."""
+ path=str(Path(module.__file__).absolute());expected=[]
+ def walk(code):
+  expected.append(code)
+  for value in code.co_consts:
+   if isinstance(value,types.CodeType):walk(value)
+ walk(compile(raw,path,'exec',dont_inherit=True))
+ def inspect_value(value):
+  if isinstance(value,(staticmethod,classmethod)):value=value.__func__
+  if isinstance(value,types.FunctionType)and value.__code__.co_filename==path:need(any(value.__code__==code for code in expected),'compile_canonical_loaded_source')
+  elif isinstance(value,type)and value.__module__==module.__name__:
+   for item in vars(value).values():inspect_value(item)
+ for value in vars(module).values():inspect_value(value)
+ if hasattr(module,'_EXECUTING_CODE'):need(module._EXECUTING_CODE==expected[0],'compile_canonical_loaded_source')
+
+def _sources():
+ here=Path(__file__).absolute();raw=here.read_bytes();need(_EXECUTING_CODE==compile(raw,str(here),'exec',dont_inherit=True),'compile_owner_loaded_source')
+ paths=[here,here.with_name('secure_system_image_inquiry_parent.ps1'),here.with_name('secure_system_image_inquiry_child.ps1'),here.with_name('secure_compile_acl_creation.ps1'),here.with_name('secure_compile_guest_diagnostics.ps1'),here.with_name('secure_check_client_v3.cs'),here.with_name('secure_system_image_inquiry_native.cs')]
+ paths.extend(here.with_name(name)for name in FROZEN_V2)
+ values={};pins={}
+ for p in paths:
+  raw=p.read_bytes();need(0<len(raw)<=262144,'compile_source_bound');values[p.name]=raw;pins[str(p)]=hashlib.sha256(raw).hexdigest()
+ need(pins[str(here.with_name('secure_check_client_v3.cs'))]==FROZEN_V3_CS and hashlib.sha256(values['secure_system_image_inquiry_native.cs']).hexdigest()==NATIVE_SHA,'compile_frozen_source_changed')
+ need(all(pins[str(here.with_name(name))]==digest for name,digest in FROZEN_V2.items()),'compile_frozen_v2_changed')
+ need(all(pins[str(here.with_name(name))]==digest for name,digest in FROZEN_ACL.items()),'compile_native_qualified_acl_changed')
+ # Exact append-only extension of native f71; strict private Pin stays intact.
+ original=here.with_name('secure_public_readonly_native.cs');before=original.read_bytes();methods_path=here.with_name('secure_system_image_inquiry_methods.cs');methods=methods_path.read_bytes()
+ need(hashlib.sha256(before).hexdigest()=='21a0185c5bee3d0ec6045a64ba319ab396f4aceabd82f8b981cbd2aa503121b3','inquiry_f71_base_changed')
+ need(before.rstrip().endswith(b'}') and values['secure_system_image_inquiry_native.cs']==before.rstrip()[:-1]+methods+b'}\n','inquiry_exact_method_extension')
+ pins[str(original)]=hashlib.sha256(before).hexdigest();pins[str(methods_path)]=hashlib.sha256(methods).hexdigest()
+ helper=values['secure_compile_acl_creation.ps1']
+ need(all(values[name].count(helper)==1 for name in ('secure_system_image_inquiry_parent.ps1','secure_system_image_inquiry_child.ps1')),'compile_native_acl_component_binding')
+ return values,pins
+
+def guest_program(operation,machine,boot,*,budget_seconds=90):
+ """Fixed PS parent + waiting child, never an arbitrary source interface."""
+ canonical_uuid(operation);canonical_uuid(machine)
+ need(type(boot)is str and re.fullmatch(r'\d{4}-\d\d-\d\dT[0-9:.]+Z',boot)is not None,'compile_guest_boot')
+ need(type(budget_seconds)is int and 5<=budget_seconds<=120,'compile_guest_budget')
+ values,pins=_sources();config={'schemaVersion':1,'operationId':operation,'machine':machine,'boot':boot,'budgetSeconds':budget_seconds,'nativeSha256':NATIVE_SHA,'releaseNonce':str(__import__('uuid').uuid5(UUID(operation),'fixed-compile-child-release')),'accountName':'recovery','accountSid':'S-1-5-21-1078431196-3712787349-2981860611-1000'}
+ literal="([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+base64.b64encode(json.dumps(config,sort_keys=True,separators=(',',':')).encode()).decode()+"'))|ConvertFrom-Json)"
+ source=values['secure_system_image_inquiry_parent.ps1'].decode()
+ for marker,replacement in {'__FIXED_CONFIG__':literal,'__FIXED_NATIVE_BASE64__':base64.b64encode(values['secure_system_image_inquiry_native.cs']).decode(),'__FIXED_CHILD_BASE64__':base64.b64encode(values['secure_system_image_inquiry_child.ps1']).decode()}.items():
+  need(source.count(marker)==1,'compile_template_marker');source=source.replace(marker,replacement)
+ need(len(source.encode())<=180224,'compile_guest_packet_bound')
+ # Canonical frame builder requires one last public JSON output statement.
+ lines=source.rstrip().splitlines();need([i for i,line in enumerate(lines)if line.lstrip().startswith('[Console]::WriteLine(')]==[len(lines)-1],'compile_output_boundary')
+ return {'source':source.encode(),'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'config':config,'sourcePins':pins,'inputAuthority':False,'nativeQualified':False}
+
+def _only_observe(source,replacement=None):
+ """Keep the canonical guard/setup, remove every other action branch."""
+ main=next(n for n in ast.parse(source).body if isinstance(n,ast.FunctionDef)and n.name=='_main')
+ outer=next(n for n in main.body if isinstance(n,ast.Try));branches=[n for n in outer.body if isinstance(n,ast.If)and ast.unparse(n.test)=="MODE == 'resume'"]
+ need(len(branches)==1,'compile_canonical_action_boundary');whole=branch=branches[0];selected=None
+ while isinstance(branch,ast.If):
+  if isinstance(branch.test,ast.Compare)and ast.unparse(branch.test.left)=='MODE'and isinstance(branch.test.ops[0],ast.In)and ast.literal_eval(branch.test.comparators[0])=={'observe','idle-inventory','reboot'}:selected=branch.body[0]
+  branch=branch.orelse[0]if len(branch.orelse)==1 else None
+ need(isinstance(selected,ast.If)and ast.unparse(selected.test)=="state == 'running'",'compile_canonical_observe_boundary')
+ lines=source.splitlines(keepends=True)
+ if replacement is None:
+  delta=selected.col_offset-whole.col_offset;need(delta>=0,'compile_canonical_indent')
+  body=[line[delta:]if line.strip()else line for line in lines[selected.lineno-1:selected.end_lineno]]
+ else:body=[('        '+line+'\n')if line else'\n'for line in replacement.splitlines()]
+ lines[whole.lineno-1:whole.end_lineno]=body
+ return ''.join(lines)
+
+def enrollment_program(binding,operation,*,status_only=False):
+ """Fixed HOST metadata enrollment, no QGA calls or guest/controller launch.
+
+ Lost ACK may only inspect this same immutable marker/root generation. Missing
+ marker after root creation is UNKNOWN; an existing directory is never adopted.
+ Marker also makes the new purpose visible as unclassified HOST work until the
+ provider installs its exact inventory join; it cannot silently appear idle.
+ """
+ from agent_tools import readiness_windows_remote as remote
+ canonical_uuid(operation);need(type(status_only)is bool and binding.get('provider')=='raw-qemu-windows','compile_provider')
+ source=remote.program(binding,'observe',operation).decode()
+ body="""require(state=='running','instance_compile_enrollment_guest_state')
+name='compile-only-namespace-registration.intent.json'
+owner_root=root/'compile-controller-owners-v1'
+if os.path.lexists(root/name):
+    original=read(name)
+    info=private(owner_root,True)
+    require(original=={'schemaVersion':1,'operationId':OPERATION,'purpose':'windows-secure-recipient-compile-only','machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],'account':str(os.geteuid()),'root':str(owner_root),'generation':[info.st_dev,info.st_ino],'inputAuthority':False,'replayAllowed':False},'instance_compile_enrollment_changed')
+else:
+    require(not os.path.lexists(owner_root),'instance_compile_enrollment_unknown')
+    os.mkdir(owner_root,0o700)
+    info=private(owner_root,True)
+    original={'schemaVersion':1,'operationId':OPERATION,'purpose':'windows-secure-recipient-compile-only','machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],'account':str(os.geteuid()),'root':str(owner_root),'generation':[info.st_dev,info.st_ino],'inputAuthority':False,'replayAllowed':False}
+    fd=os.open(owner_root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:os.fsync(fd)
+    finally:os.close(fd)
+    save(name,original)
+result['compileOwnerEnrollment']=original"""
+ if status_only:
+  body="""require(state=='running','instance_compile_enrollment_guest_state')
+name='compile-only-namespace-registration.intent.json'
+owner_root=root/'compile-controller-owners-v1'
+if not os.path.lexists(root/name):
+    require(not os.path.lexists(owner_root),'instance_compile_enrollment_unknown')
+    original={'state':'unsubmitted','operationId':OPERATION,'inputAuthority':False,'replayAllowed':False}
+else:
+    original=read(name)
+    info=private(owner_root,True)
+    require(original=={'schemaVersion':1,'operationId':OPERATION,'purpose':'windows-secure-recipient-compile-only','machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],'account':str(os.geteuid()),'root':str(owner_root),'generation':[info.st_dev,info.st_ino],'inputAuthority':False,'replayAllowed':False},'instance_compile_enrollment_changed')
+result['compileOwnerEnrollment']=original"""
+ source=_only_observe(source,body)
+ # No QGA means no remote wire/log files for either metadata branch. Keeping
+ # the canonical ROOT guard/flock does not require creating observation files.
+ tree=ast.parse(source);main=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='_main');outer=next(n for n in main.body if isinstance(n,ast.Try));matches=[n for n in outer.body if isinstance(n,ast.If)and any(isinstance(x,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='wire'for t in x.targets)for x in n.body)]
+ need(len(matches)==1,'compile_metadata_wire_boundary');n=matches[0];lines=source.splitlines(keepends=True);lines[n.lineno-1:n.end_lineno]=[];source=''.join(lines)
+ compile(source,'fixed guarded compile owner enrollment','exec');return source.encode()
+
+def controller(binding,operation,boot,*,budget_seconds=90):
+ """Complete emitted canonical VM controller, to run ONLY in durable Program.
+
+ Source-owned edits are finite: fixed SESSION_SCRIPT, early source correlation,
+ and a whole-controller deadline replacing the legacy 20s status-poll window.
+ Every canonical actual ROOT/flock/VM/actor/artifact/socket check is retained.
+ """
+ canonical_uuid(operation);need(type(binding)is dict and binding.get('provider')=='raw-qemu-windows','compile_provider')
+ machine=binding['spec']['deploymentId'];p=guest_program(operation,machine,boot,budget_seconds=budget_seconds)
+ return _controller(binding,operation,p,budget_seconds,join_role='parent')
+
+def diagnostic_controller(binding,original,operation,boot,parent_source_sha256,*,offset=0):
+ canonical_uuid(original);canonical_uuid(operation);machine=canonical_uuid(binding['spec']['deploymentId'])
+ need(binding.get('provider')=='raw-qemu-windows'and type(parent_source_sha256)is str and re.fullmatch('[0-9a-f]{64}',parent_source_sha256)is not None,'compile_diagnostic_identity')
+ need(type(offset)is int and 0<=offset<=1048576,'compile_diagnostic_offset')
+ values,pins=_sources();config={'schemaVersion':1,'operationId':operation,'originalOperationId':original,'machine':machine,'boot':boot,'parentSourceSha256':parent_source_sha256,'nativeSha256':NATIVE_SHA,'offset':offset}
+ # Same boot grammar as the compiler; no caller-selected path/command/source.
+ need(type(boot)is str and re.fullmatch(r'\d{4}-\d\d-\d\dT[0-9:.]+Z',boot)is not None,'compile_guest_boot')
+ literal="([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+base64.b64encode(json.dumps(config,sort_keys=True,separators=(',',':')).encode()).decode()+"'))|ConvertFrom-Json)"
+ source=values['secure_compile_guest_diagnostics.ps1'].replace(b'__DIAGNOSTIC_CONFIG__',literal.encode());need(len(source)<32768,'compile_diagnostic_bound')
+ p={'source':source,'sourceSha256':hashlib.sha256(source).hexdigest(),'config':config,'sourcePins':pins,'inputAuthority':False,'nativeQualified':False}
+ return _controller(binding,operation,p,30,join_role='collector')
+
+def _controller(binding,operation,p,budget_seconds,*,join_role):
+ from agent_tools import readiness_windows_remote as remote,durable_remote_job as jobs
+ need(join_role in {'parent','collector'},'compile_controller_role')
+ source=remote.program(binding,'observe',operation).decode();tree=ast.parse(source);updates={}
+ for key,value in {'SESSION_SCRIPT':p['source'].decode(),'INTERACTIVE_SCRIPT':'','IDLE_SCRIPT':''}.items():
+  nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name)and t.id==key for t in n.targets)]
+  need(len(nodes)==1,'compile_canonical_assignment');n=nodes[0];updates[n.lineno-1]=(n.end_lineno,key+'='+repr(value)+'\n')
+ lines=source.splitlines(keepends=True)
+ for start,(end,replacement)in sorted(updates.items(),reverse=True):lines[start:end]=[replacement]
+ source=_only_observe(''.join(lines))
+ # Root/source definition guards still execute; this local budget starts before
+ # _main and every QGA call is clipped to its remaining original budget.
+ needle="framed='\\n'.join(lines)"
+ need(source.count(needle)==1,'compile_early_frame_marker')
+ source=source.replace(needle,"framed=\"$VcEarlySourceSha='\"+source_sha+\"'\\n\"+'\\n'.join(lines)")
+ need(source.count('deadline=time.monotonic()+20')==1,'compile_poll_deadline_marker')
+ source=source.replace('deadline=time.monotonic()+20','deadline=COMPILE_DEADLINE')
+ need(source.count('_deadline=time.monotonic()+8')==1,'compile_rpc_deadline_marker')
+ source=source.replace('_deadline=time.monotonic()+8','_deadline=min(COMPILE_DEADLINE,time.monotonic()+8)')
+ need(source.count("value=value['result']")==1,'compile_parent_frame_join')
+ source=source.replace("value=value['result']","require(type(value['result'].get("+repr(join_role)+"))is dict and all(value['owner'][k]==value['result']["+repr(join_role)+"].get(k)for k in ('pid','birth')) and value['result']["+repr(join_role)+"].get('sourceSha256')==source_sha,'instance_guest_compile_parent_identity')\n            value=value['result']")
+ need(source.count('\n_main()\n')==1,'compile_main_boundary')
+ source=source.replace('\n_main()\n','\nCOMPILE_DEADLINE=time.monotonic()+'+repr(budget_seconds+30)+'\n_main()\n')
+ compile(source,'fixed compile-only canonical controller','exec')
+ for module in (remote,remote.instance,remote.deployment,remote.guest,jobs):
+  path=Path(module.__file__).absolute();raw=path.read_bytes()
+  _code_guard(module,raw)
+  p['sourcePins'][str(path)]=hashlib.sha256(raw).hexdigest()
+ return {**p,'controller':source.encode(),'controllerSha256':hashlib.sha256(source.encode()).hexdigest(),'program':jobs.Program('windows-secure-recipient-compile-only',source.encode(),stream_limit=1048576),'inputAuthority':False,'nativeQualified':False,'blockers':['windows_compiler_and_managed_guest_owner_native_unqualified','provider_guest_compile_namespace_inventory_join_not_integrated','guest_native_fileId_token_attestation_not_qualified']}
+
+def outer_program(controller_packet,*,target,machine,host_boot,account,operation,owner_root,root_generation,action='observe'):
+ """Self-contained fixed owner API caller; original root must be admitted first.
+
+ Creating/enrolling an arbitrary root is intentionally not exposed here. The
+ selected provider must establish and pin its private root before dispatch.
+ Source/index/streams are durably consumed by jobs.submit BEFORE QGA executes.
+ """
+ from agent_tools import durable_remote_job as jobs
+ need(action in {'submit','observe','collect'},'compile_outer_action');canonical_uuid(operation)
+ need(type(owner_root)is str and Path(owner_root).is_absolute() and str(Path(owner_root))==owner_root and '..'not in Path(owner_root).parts,'compile_owner_root')
+ need(type(root_generation)is tuple and len(root_generation)==2 and all(type(n)is int and n>0 for n in root_generation),'compile_owner_root_generation')
+ binding=jobs.MachineBinding(target,machine,host_boot,account)
+ raw=Path(jobs.__file__).read_bytes();_code_guard(jobs,raw);source="import types,base64,json\nfrom pathlib import Path\nowner=types.ModuleType('fixed_compile_durable_owner')\nowner.__file__='captured-durable-owner.py'\n"
+ # dataclasses resolves sys.modules for class creation. The complete held owner
+ # source is compiled exactly; no ordinary import/.pyc substitution is possible.
+ source+="import sys\nsys.modules[owner.__name__]=owner\nexec(compile(base64.b64decode("+repr(base64.b64encode(raw).decode())+"),'captured-durable-owner.py','exec'),owner.__dict__)\n"
+ # submit needs owner_source(); return the SAME captured public source bytes.
+ # This fixed adapter assignment cannot accept executable caller input.
+ source+="owner.owner_source=lambda:base64.b64decode("+repr(base64.b64encode(raw).decode())+")\n"
+ source+="binding=owner.MachineBinding("+','.join(repr(getattr(binding,k))for k in ('target','machine','boot','account'))+")\n"
+ source+="root=Path("+repr(owner_root)+");operation="+repr(operation)+";generation="+repr(root_generation)+"\n"
+ if action=='submit':source+="program=owner.Program('windows-secure-recipient-compile-only',base64.b64decode("+repr(base64.b64encode(controller_packet['controller']).decode())+"),1048576)\nresult=owner.submit(root,operation,binding,program,generation=generation)\nprint(json.dumps(result))\n"
+ elif action=='observe':source+="print(json.dumps(owner.observe(root,operation,binding,generation=generation)))\n"
+ else:source+="status,out,err=owner.collect(root,operation,binding,generation=generation)\nprint(json.dumps({'status':status,'stdout':base64.b64encode(out).decode(),'stderr':base64.b64encode(err).decode()}))\n"
+ compile(source,'fixed compile-only outer owner caller','exec');return source.encode()
+
+def _load(raw):
+ need(type(raw)is bytes and 0<len(raw)<=1048576,'compile_capture_bound')
+ def pairs(rows):
+  value={}
+  for k,v in rows:need(k not in value,'compile_duplicate');value[k]=v
+  return value
+ def bad(_):raise ValueError('compile_nonfinite')
+ try:return json.loads(raw,object_pairs_hook=pairs,parse_constant=bad)
+ except json.JSONDecodeError:raise ValueError('compile_reply_json')from None
+ except UnicodeError:raise ValueError('compile_reply_encoding')from None
+
+def validate_result(packet,status,stdout,stderr):
+ """DATA validation after authoritative original jobs.collect verified streams.
+
+ Parsed booleans alone never grant native, input or idle authority. Compiler
+ failure remains a collected failure, never grounds for a replacement job.
+ """
+ need(type(status)is dict and status.get('state')=='terminal' and type(status.get('terminal'))is dict,'compile_owner_not_terminal')
+ receipt=status['terminal'];need(receipt.get('programSha256')==packet['controllerSha256'] and receipt.get('exitCode')==0 and type(receipt.get('exitCode'))is int and receipt.get('streamsClosed')is True,'compile_owner_terminal_binding')
+ need(type(stderr)is bytes and not stderr,'compile_controller_stderr');r=_load(stdout)
+ c=packet['config'];need(type(r)is dict and r.get('state')=='observed' and r.get('operationId')==c['operationId'] and r.get('machine')==c['machine'] and r.get('provider')=='raw-qemu-windows' and r.get('guest')=='running' and r.get('guestAgent')is True,'compile_vm_result')
+ g=r.get('sessionFacts');need(type(g)is dict and g.get('schemaVersion')==1 and type(g.get('schemaVersion'))is int and g.get('operationId')==c['operationId'] and g.get('state')=='terminal' and g.get('nativeSha256')==NATIVE_SHA and g.get('inputAuthority')is False and g.get('nativeQualified')is False and g.get('replayAllowed')is False,'compile_guest_result')
+ for key in ('waitSignaled','stdoutEOF','stderrEOF'):need(g.get(key)is True,'compile_guest_closure_unknown')
+ need(g.get('overflow')is False and type(g.get('compileSucceeded'))is bool and type(g.get('exitCode'))is int,'compile_guest_output_unknown')
+ parent=g.get('parent');child=g.get('child')
+ need(type(parent)is dict and type(child)is dict and parent.get('sourceSha256')==packet['sourceSha256'] and parent.get('sid')=='S-1-5-18' and parent.get('session')==0 and type(parent.get('session'))is int,'compile_parent_identity')
+ for actor in (parent,child):
+  need(type(actor.get('pid'))is int and actor['pid']>0 and type(actor.get('birth'))is str and re.fullmatch('[1-9][0-9]{0,19}',actor['birth'])is not None and type(actor.get('image'))is str and actor['image'].lower().endswith('\\system32\\windowspowershell\\v1.0\\powershell.exe'),'compile_actor_identity')
+ need(child.get('session')==0 and type(child.get('session'))is int and child.get('sid')=='S-1-5-18' and type(child.get('sourceSha256'))is str and re.fullmatch('[0-9a-f]{64}',child['sourceSha256'])is not None,'compile_child_source')
+ for role in ('stdout','stderr'):
+  need(type(g.get(role+'Bytes'))is int and 0<=g[role+'Bytes']<=1048576 and type(g.get(role+'Sha256'))is str and re.fullmatch('[0-9a-f]{64}',g[role+'Sha256'])is not None,'compile_stream_metadata')
+ return {'state':'compiled'if g['compileSucceeded']else'compile-failed','operationId':c['operationId'],'parent':parent,'child':child,'nativeSha256':NATIVE_SHA,'diagnosticsRetained':True,'inputAuthority':False,'nativeQualified':False,'replayAllowed':False}
+
+def validate_diagnostics(packet,status,stdout,stderr):
+ """Collected original DATA only; guest markers never grant idle/input."""
+ need(type(status)is dict and status.get('state')=='terminal'and type(status.get('terminal'))is dict,'compile_diagnostic_owner_pending')
+ receipt=status['terminal'];need(receipt.get('programSha256')==packet['controllerSha256']and receipt.get('exitCode')==0 and type(receipt.get('exitCode'))is int and receipt.get('streamsClosed')is True,'compile_diagnostic_owner_identity')
+ need(type(stderr)is bytes and not stderr,'compile_diagnostic_controller_stderr');r=_load(stdout);c=packet['config']
+ need(type(r)is dict and r.get('state')=='observed'and r.get('operationId')==c['operationId']and r.get('machine')==c['machine']and r.get('provider')=='raw-qemu-windows'and r.get('guest')=='running'and r.get('guestAgent')is True,'compile_diagnostic_vm_identity')
+ g=r.get('sessionFacts');need(type(g)is dict and type(g.get('schemaVersion'))is int and g['schemaVersion']==1 and g.get('originalOperationId')==c['originalOperationId']and all(g.get(k)==c[k]for k in ('machine','boot','nativeSha256','parentSourceSha256')),'compile_diagnostic_original_identity')
+ for key,value in {'inputAuthority':False,'nativeQualified':False,'replayAllowed':False,'notIdleAuthority':True}.items():need(g.get(key)is value,'compile_diagnostic_capability')
+ actor=g.get('collector');need(type(actor)is dict and type(actor.get('pid'))is int and actor['pid']>0 and type(actor.get('birth'))is str and re.fullmatch('[1-9][0-9]{0,19}',actor['birth'])is not None and actor.get('sourceSha256')==packet['sourceSha256'],'compile_diagnostic_collector_identity')
+ streams=g.get('streams');need(type(streams)is dict and set(streams)<= {'stdout','stderr'},'compile_diagnostic_stream_roles')
+ for role,row in streams.items():
+  need(type(row)is dict and type(row.get('bytes'))is int and 0<=row['bytes']<=1048576 and row.get('requestedOffset')==c['offset']and type(row.get('requestedOffset'))is int,'compile_diagnostic_stream_metadata')
+  need(type(row.get('offset'))is int and row['offset']==min(c['offset'],row['bytes'])and type(row.get('chunkBytes'))is int and row['chunkBytes']==min(8192,row['bytes']-row['offset'])and type(row.get('complete'))is bool and row['complete']==(row['offset']+row['chunkBytes']==row['bytes']),'compile_diagnostic_stream_bounds')
+  need(type(row.get('sha256'))is str and re.fullmatch('[0-9a-f]{64}',row['sha256'])is not None and type(row.get('prefixOnly'))is bool and(row.get('originalBytes')is None or type(row['originalBytes'])is int and row['originalBytes']>=row['bytes']),'compile_diagnostic_stream_hash')
+  need(row['prefixOnly']==(row['originalBytes']is None or row['originalBytes']>row['bytes']),'compile_diagnostic_prefix_truth')
+  try:chunk=base64.b64decode(row.get('chunk'),validate=True)
+  except Exception:raise ValueError('compile_diagnostic_chunk_encoding')from None
+  need(len(chunk)==row['chunkBytes'],'compile_diagnostic_chunk_length')
+  if row['offset']==0 and row['complete']:need(hashlib.sha256(chunk).hexdigest()==row['sha256'],'compile_diagnostic_chunk_hash')
+ return {'state':'diagnostics-collected','originalOperationId':c['originalOperationId'],'diagnosticOperationId':c['operationId'],'guest':g,'inputAuthority':False,'nativeQualified':False,'notIdleAuthority':True,'replayAllowed':False}
+
+def inventory_join(originals,observations):
+ """All pre-registered compile controllers must be authoritatively observed.
+
+ The provider must register the namespace before native use. Missing registration
+ visibility/collect/source closure blocks idle; this helper never probes/creates.
+ """
+ need(type(originals)is dict and type(observations)is dict,'compile_inventory_shape')
+ need(set(originals)==set(observations),'compile_inventory_missing_original')
+ rows=[]
+ for operation,packet in originals.items():
+  canonical_uuid(operation);observed=observations[operation];need(type(observed)is dict,'compile_inventory_observation')
+  state=observed.get('state');need(state in {'pending','running','unknown','terminal'},'compile_inventory_state')
+  closed=state=='terminal' and observed.get('collected')is True and observed.get('sourceClosed')is True and observed.get('programSha256')==packet['controllerSha256'] and observed.get('guestParentAndChildClosed')is True
+  rows.append({'operationId':operation,'state':'terminal'if closed else state if state!='terminal'else'unknown'})
+ return {'visibilityComplete':True,'jobs':rows,'idle':all(row['state']=='terminal'for row in rows),'inputAuthority':False,'nativeQualified':False}

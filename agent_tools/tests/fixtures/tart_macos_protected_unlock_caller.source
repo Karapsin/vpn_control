@@ -1,0 +1,150 @@
+"""One normal protected unlock of the admitted ordinary console session.
+
+No secret is accepted in source/argv/environment; only the custody's original
+metadata-pinned ordinary credential reader is used. No filled field is saved,
+hashed or included in exception text. Every derived input event has a fresh
+read-only native observation from one original bounded guest observer.
+"""
+from pathlib import Path
+from contextlib import ExitStack
+import hashlib,io,json,os,resource,select,subprocess,time,sys,math
+from PIL import Image,ImageDraw
+from agent_tools import source_module_loader as source_loader
+_EXECUTING_CODE=sys._getframe().f_code
+DIRECTORY=Path(__file__).resolve().parent
+ROOT=DIRECTORY.parent
+PROJECT=Path.cwd()
+
+def need(value,reason):
+ if not value:raise RuntimeError(reason)
+
+def known_empty_field_matches(image,baseline):
+ # The actual same lockscreen's 1x16 insertion caret is the only blink exclusion.
+ box=(432,458,592,489);a=image.crop(box);b=baseline.crop(box)
+ ImageDraw.Draw(a).rectangle((14,7,14,22),fill=(0,0,0))
+ ImageDraw.Draw(b).rectangle((14,7,14,22),fill=(0,0,0))
+ return a.tobytes()==b.tobytes()
+
+class SessionObserver:
+ def __init__(self,backend,expected,deadline):
+  self.backend,self.expected,self.deadline=backend,expected,deadline
+  argv,payload=stream.session_stream_command(backend.binding)
+  self.process=subprocess.Popen([backend.binding.tart_binary,'exec','-i',backend.binding.vm_name,*argv],
+   stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0,
+   env={k:v for k,v in os.environ.items()if not k.startswith('DYLD_')})
+  self.buffer=bytearray()
+  self.process.stdin.write(payload);self.process.stdin.flush()
+  try:
+   initial=self.read();need(initial['state']=='observer_ready','ordinary_observer_not_ready')
+   self.validate(initial['observation'])
+  except BaseException:
+   self.close();raise
+ def read(self):
+  until=min(self.deadline,time.monotonic()+3)
+  while b'\n'not in self.buffer:
+   left=until-time.monotonic();need(left>0 and select.select([self.process.stdout],[],[],left)[0],'ordinary_observer_deadline')
+   block=os.read(self.process.stdout.fileno(),4096);need(bool(block)and len(self.buffer)+len(block)<=16384,'ordinary_observer_unavailable');self.buffer.extend(block)
+  line,_,rest=self.buffer.partition(b'\n');self.buffer[:]=rest
+  try:
+   def pairs(rows):
+    value={}
+    for key,item in rows:
+     need(key not in value,'ordinary_observer_duplicate_key');value[key]=item
+    return value
+   value=json.loads(line,object_pairs_hook=pairs,parse_constant=lambda value: (_ for _ in ()).throw(ValueError()))
+  except Exception:raise RuntimeError('ordinary_observer_reply_invalid')from None
+  need(type(value)is dict and set(value)=={'state','observation'},'ordinary_observer_reply_invalid')
+  return value
+ def validate(self,value):
+  expected=self.expected;need(type(value)is dict and set(value)=={'target','machine','boot','rawBoot','uid','principal','home','agent','console','display'},'ordinary_observer_reply_invalid')
+  need(type(value['uid'])is int and type(value['agent'])is dict and set(value['agent'])=={'pid','birth','uid'}and type(value['agent']['pid'])is int and type(value['agent']['uid'])is int,'ordinary_observer_reply_invalid')
+  for key in ('target','machine','boot','rawBoot','uid','principal','home','agent'):
+   need(value.get(key)==expected[key],'ordinary_actual_identity_changed')
+  console=value.get('console');need(type(console)is dict and set(console)=={'uid','name','session','onConsole','loginDone','locked'}and type(console['uid'])is int and type(console['name'])is str and type(console['session'])is str,'ordinary_console_invalid')
+  need(console.get('uid')==502 and console.get('name')=='toolrecovery'and console.get('session')==expected['console']['session']
+   and console.get('onConsole')is True and console.get('loginDone')is True and type(console.get('locked'))is bool
+   and value.get('display')=='ready','ordinary_console_or_display_changed')
+  return value
+ def check(self):
+  need(self.process.poll()is None,'ordinary_original_observer_ended')
+  self.process.stdin.write(b'check\n');self.process.stdin.flush();value=self.read()
+  need(value['state']=='observed','ordinary_observer_reply_invalid')
+  return self.validate(value['observation'])
+ def close(self):
+  if not self.process.stdin.closed:self.process.stdin.close()
+  try:self.process.wait(timeout=3)
+  except subprocess.TimeoutExpired:self.process.terminate();self.process.wait(timeout=3)
+  for pipe in(self.process.stdout,self.process.stderr):pipe.close()
+
+def unlock_once(*,public_only=False):
+ need(type(public_only)is bool,'ordinary_preflight_mode_invalid')
+ resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+ with ExitStack()as held:
+  sources=source_loader.SourceSession(PROJECT/'agent_tools','readiness_tart_macos_registry');held.callback(sources.close)
+  modules={name:sources.load(name)for name in ('readiness','private_inventory_lock','readiness_fixture_registry','readiness_tart_macos_registry','readiness_tart_macos','readiness_tart_macos_session','readiness_tart_macos_session_stream','readiness_tart_vnc')}
+  globals().update(private=modules['private_inventory_lock'],registry=modules['readiness_fixture_registry'],mac_registry=modules['readiness_tart_macos_registry'],mac=modules['readiness_tart_macos'],tiny=modules['readiness_tart_macos_session'],stream=modules['readiness_tart_macos_session_stream'],ProtectedVncSession=modules['readiness_tart_vnc'].ProtectedVncSession,SecretInputJournal=modules['readiness_tart_vnc'].SecretInputJournal)
+  directory=held.enter_context(private.Directory(DIRECTORY));source=held.enter_context(private.Snapshot(directory,Path(__file__).name))
+  need(_EXECUTING_CODE==compile(source.body,__file__,'exec',dont_inherit=True,optimize=sys.flags.optimize),'ordinary_executed_source_changed')
+  plan_holder=held.enter_context(private.Snapshot(directory,'plan.json'));plan=json.loads(plan_holder.body)
+  need(plan['operationId']=='bff007a4-0f32-4e7d-a841-2b8b3482d8aa'and plan['fixtureId']=='tart-macos-independent-v6','ordinary_unlock_plan_changed')
+  need(not(DIRECTORY/'phase-unknown.json').exists(),'ordinary_original_unlock_pending')
+  need(hashlib.sha256(Path(stream.__file__).read_bytes()).hexdigest()==plan['streamProducerSha256'],'ordinary_stream_source_changed')
+  producers=[]
+  rootdir=held.enter_context(private.Directory(ROOT));baseline_holder=held.enter_context(private.Snapshot(rootdir,plan['baseline']))
+  baseline=Image.open(io.BytesIO(baseline_holder.body)).convert('RGB');need(baseline.size==(1024,768),'ordinary_baseline_invalid')
+  f=registry.registered_fixture(PROJECT,plan['fixtureId']);backend=f.adapter.backend;held.callback(backend.custody.close)
+  deadline=time.monotonic()+150
+  held.enter_context(backend.operation_scope(deadline=deadline))
+  packet=backend.custody.guest_probe(backend.binding,deadline);facts,agent=packet['facts'],packet['agent'];console=facts['console']
+  need(facts['display']=='ready'and console=={'uid':502,'name':'toolrecovery','session':'100237','onConsole':True,'loginDone':True,'locked':True},'ordinary_unlock_recipient_not_ready')
+  expected={'target':backend.binding.target,'machine':facts['machine'],'boot':facts['boot'],'rawBoot':agent['rawBoot'],'uid':502,
+   'principal':'toolrecovery','home':'/Users/toolrecovery','agent':{**agent['actor'],'uid':502},'console':console}
+  observer=SessionObserver(backend,expected,deadline);held.callback(observer.close)
+  state={'submitting':False}
+  def fast_guard():
+   sources.guard();source.guard();plan_holder.guard();baseline_holder.guard()
+   for item in producers:item.guard()
+   c=backend.custody
+   for item in(*c._records,*c._artifact_holders,*c._credentials.values()):item.guard()
+   c._public_share.guard();c._public_actor.guard(deadline=deadline)
+   need(mac_registry.jobs._birth(c.wrapper_actor['pid'])==c.wrapper_actor['birth'],'ordinary_host_owner_changed')
+   need(mac_registry._listener(c.actor['pid'],c.actor['birth'],c.endpoint['port'],deadline)==c.descriptor['listener'],'ordinary_endpoint_changed')
+   value=observer.check()
+   need(state['submitting']or value['console']['locked']is True,'ordinary_login_phase_changed')
+   sources.guard();source.guard();plan_holder.guard();c._public_actor.guard(deadline=deadline)
+   need(mac_registry.jobs._birth(c.wrapper_actor['pid'])==c.wrapper_actor['birth'],'ordinary_host_owner_changed')
+   need(mac_registry._listener(c.actor['pid'],c.actor['birth'],c.endpoint['port'],deadline)==c.descriptor['listener'],'ordinary_endpoint_changed')
+   for item in producers:item.guard()
+   for item in(*c._artifact_holders,*c._credentials.values()):item.guard()
+  def record(name,value):
+   directory.guard();fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory.fd)
+   with os.fdopen(fd,'wb')as output:output.write(json.dumps(value,sort_keys=True,separators=(',',':')).encode());output.flush();os.fsync(output.fileno())
+   os.fsync(directory.fd);directory.guard()
+  fast_guard()
+  fd=backend.custody._credentials['vnc'].credential_fd()
+  try:
+   with ProtectedVncSession(port=backend.custody.endpoint['port'],credential_fd=fd,guard=fast_guard,timeout=30)as view:
+    account=(425,410,605,451);expected_crop=baseline.crop(account).tobytes()
+    def recipient():
+     fast_guard();im=Image.open(io.BytesIO(view.capture_png())).convert('RGB')
+     need(im.size==(1024,768)and im.crop(account).tobytes()==expected_crop,'ordinary_public_recipient_changed');im=None
+    recipient();im=Image.open(io.BytesIO(view.capture_png())).convert('RGB')
+    need(known_empty_field_matches(im,baseline),'ordinary_field_not_known_empty');im=None
+    if public_only:
+     elapsed=[]
+     for _ in range(20):
+      start=time.monotonic();fast_guard();elapsed.append(time.monotonic()-start)
+     record('public-preflight.json',{'operationId':plan['operationId'],'state':'public_only_complete_secret_unsubmitted','recipient':expected,'fastGuardSeconds':elapsed,'sourceSha256':hashlib.sha256(source.body).hexdigest()})
+     return
+    fast_guard();record('phase-unknown.json',{'operationId':plan['operationId'],'originalRun':'2d933a39-0fb6-46a4-9fd9-02221d81c4b9','recipient':expected,'state':'unknown_no_replay'})
+    secrets=DIRECTORY/'secret-inputs';secrets.mkdir(mode=0o700)
+    journal=SecretInputJournal(secrets,plan['operationId'])
+    credential=backend.custody._credentials['ordinary'].credential_fd()
+    try:view.type_secret_from_fd(credential,operation_id=plan['secretOperation'],journal=journal,guard=recipient)
+    finally:os.close(credential)
+    record('password-transport-complete.json',{'operationId':plan['secretOperation'],'state':'transport_complete_not_unlock_receipt'})
+    recipient();record('submit-unknown.json',{'operationId':plan['submitOperation'],'action':'one_Return_existing_original_field','state':'unknown'})
+    state['submitting']=True;view.key('Return')
+    record('submit-transport-complete.json',{'operationId':plan['submitOperation'],'state':'submitted_awaiting_independent_session'})
+  finally:os.close(fd)
+ # Independent fresh native root/session observation is a separate source-held caller.

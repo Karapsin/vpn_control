@@ -1,0 +1,9 @@
+{
+  "actualFailure": "sanitized durable bootstrap resolved /usr/bin/env python3 to Command Line Tools Python3.9; effective_config rejected after init_fs_encoding failure and EOFError marshal data too short",
+  "narrowOperation": "75812be4-4501-4b5f-92dc-a108e512ff1c",
+  "narrowProgramSha256": "add6dc8ba23872348e8fc854aa4a215b8b2d023be6fc0521527f82a4a78e3fb2",
+  "originalDiagnostic": "170ee960-b929-410b-a8ed-aca58a54ae5c",
+  "scope": "complete original inert gateway fixture; no production owner changes",
+  "sha256": "d61b92e38f9343d7c0931a9481a4c6ba130046c200d492831f7ea9a037ae3f37",
+  "source": "agent_tools/tests/test_ssh_gateway_tmux_master.py"
+}

@@ -12,6 +12,7 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import time
 import zlib
 from collections.abc import Iterator
@@ -21,9 +22,11 @@ from visual_regression import read_png
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VM_NAME = os.environ.get("VPN_CONTROL_VISUAL_MACOS_VM", "vpn-control-visual-macos")
-VM_USER = os.environ.get("VPN_CONTROL_VISUAL_MACOS_USER", "admin")
-VM_PASSWORD = os.environ.get("VPN_CONTROL_VISUAL_MACOS_PASSWORD", "admin")
+sys.path.insert(0, str(ROOT))
+from agent_tools import readiness_entrypoints
+VM_NAME = ""
+VM_USER = ""
+_ADMISSION = None
 VM_JAVA_HOME = os.environ.get("VPN_CONTROL_VISUAL_MACOS_JAVA_HOME", "/opt/homebrew/opt/openjdk@17")
 CANONICAL_SIZE = (1280, 800)
 SECURE_SCENES = ("macos-gatekeeper", "macos-install-confirmation")
@@ -216,8 +219,9 @@ def right_edge_overlay_ratio(path: Path) -> float:
 
 
 def vnc_command(server: str, *commands: str) -> list[str]:
+    """Credential-free command description; authentication belongs to backend."""
     return [
-        vnc_client(), "-s", server, "-u", VM_USER, "-p", VM_PASSWORD,
+        vnc_client(), "-s", server,
         "--nocursor", *commands,
     ]
 
@@ -312,27 +316,12 @@ def run_vnc_checked(
     timeout: int = 120,
     attempts: int = 3,
 ) -> subprocess.CompletedProcess[str]:
-    """Retry a VNC action after refreshing Tart's guest address.
-
-    A verified guest reboot can briefly invalidate either the route or the DHCP address returned
-    immediately after boot. Keep the caller's preferred address for the fast path, then resolve it
-    again before every retry so a transient transport failure cannot strand release capture.
-    """
-    candidate = ip_address
-    failures: list[str] = []
-    for attempt in range(attempts):
-        try:
-            with local_vnc_relay(candidate) as server:
-                return run_checked(vnc_command(server, *commands), timeout=timeout)
-        except CaptureError as error:
-            failures.append(str(error))
-        if attempt + 1 < attempts:
-            time.sleep(2)
-            try:
-                candidate = guest_ip()
-            except CaptureError as error:
-                failures.append(f"guest IP refresh failed: {error}")
-    raise CaptureError("macOS VNC command failed after retries: " + "; ".join(failures[-3:]))
+    """Submit once through the authenticated, identity-bound guest executor."""
+    del ip_address, attempts
+    if _ADMISSION is None:
+        raise CaptureError("fixture_entrypoint_unqualified")
+    _ADMISSION.vnc_action(commands, timeout=timeout)
+    return subprocess.CompletedProcess(["qualified-vnc"], 0, stdout="", stderr="")
 
 
 def capture_frame(ip_address: str, output: Path) -> None:
@@ -372,30 +361,18 @@ def guest_uid() -> str:
 
 
 def guest_shell(script: str, *, timeout: int = 15 * 60) -> subprocess.CompletedProcess[str]:
+    if _ADMISSION is None:
+        raise CaptureError("fixture_entrypoint_unqualified")
+    _ADMISSION.revalidate()
     return run_checked(["tart", "exec", VM_NAME, "/bin/zsh", "-lc", script], timeout=timeout)
 
 
 def reboot_guest() -> None:
-    """Reboot the isolated guest and prove that a new boot completed."""
-    before = guest_shell("/usr/sbin/sysctl -n kern.boottime", timeout=30).stdout.strip()
-    try:
-        run_checked(["tart", "exec", VM_NAME, "sudo", "/sbin/shutdown", "-r", "now"], timeout=30)
-    except CaptureError:
-        # tart exec can lose its transport while the requested reboot is already in progress.
-        pass
-    time.sleep(5)
-    deadline = time.monotonic() + 180
-    failures: list[str] = []
-    while time.monotonic() < deadline:
-        try:
-            after = guest_shell("/usr/sbin/sysctl -n kern.boottime", timeout=30).stdout.strip()
-            if after and after != before:
-                return
-            failures.append("guest boot timestamp did not change")
-        except CaptureError as error:
-            failures.append(str(error))
-        time.sleep(2)
-    raise CaptureError("macOS guest did not complete its verified reboot: " + "; ".join(failures[-3:]))
+    """Delegate only to a qualified once-only, positively idle reboot owner."""
+    global _ADMISSION
+    if _ADMISSION is None:
+        raise CaptureError("fixture_entrypoint_unqualified")
+    _ADMISSION = _ADMISSION.reboot_guest()
 
 
 def ensure_guest_capture_permissions(uid: str) -> None:
@@ -430,6 +407,7 @@ def ensure_guest_capture_permissions(uid: str) -> None:
     if result.stdout.strip() == "1":
         # Restart only Tart's isolated guest helper so TCC reloads the repaired rows. The daemon
         # transporting tart exec remains alive and launchd immediately recreates the user agent.
+        _ADMISSION.revalidate()
         run_checked(
             [
                 "tart", "exec", VM_NAME, "sudo", "launchctl", "kickstart", "-k",
@@ -523,6 +501,9 @@ def prepare_gatekeeper_scene(package: str) -> None:
 
 
 def open_gatekeeper_scene(uid: str) -> subprocess.Popen[str]:
+    if _ADMISSION is None:
+        raise CaptureError("fixture_entrypoint_unqualified")
+    _ADMISSION.revalidate()
     return subprocess.Popen(
         [
             "tart", "exec", VM_NAME, "sudo", "launchctl", "asuser", uid,
@@ -536,6 +517,9 @@ def open_gatekeeper_scene(uid: str) -> subprocess.Popen[str]:
 
 
 def open_install_confirmation(uid: str) -> subprocess.Popen[str]:
+    if _ADMISSION is None:
+        raise CaptureError("fixture_entrypoint_unqualified")
+    _ADMISSION.revalidate()
     return subprocess.Popen(
         [
             "tart", "exec", VM_NAME, "sudo", "launchctl", "asuser", uid,
@@ -725,11 +709,25 @@ def capture_external_framebuffer_scenes(
         raise CaptureError(f"isolated macOS surface capture failed with exit {status}: {log_tail}")
 
 
-def capture_requested(scene_ids: list[str], output: Path) -> None:
+def capture_requested(scene_ids: list[str], output: Path, *, target: str | None = None) -> None:
+    global _ADMISSION, VM_NAME, VM_USER
     external_scenes = set(FILE_DIALOG_SCENES) | set(MENU_BAR_SCENES)
     unknown = sorted(set(scene_ids) - set(SECURE_SCENES) - external_scenes)
     if unknown:
         raise CaptureError("the Tart secure-surface driver cannot capture: " + ", ".join(unknown))
+    if type(target) is not str or not target.startswith("tart:") or not target[5:]:
+        raise CaptureError("macOS capture requires an explicit --target tart:<vm>")
+    _ADMISSION = readiness_entrypoints.from_environment(ROOT, "capture_visual_macos_tart", "run", expected_target=target)
+    VM_NAME = _ADMISSION.binding["vmName"]
+    try:
+        VM_USER = _ADMISSION.ordinary_account_name()
+        _capture_requested_admitted(scene_ids, output)
+    finally:
+        _ADMISSION.close()
+
+
+def _capture_requested_admitted(scene_ids: list[str], output: Path) -> None:
+    external_scenes = set(FILE_DIALOG_SCENES) | set(MENU_BAR_SCENES)
     ip_address = wait_for_guest_vnc()
     uid = guest_uid()
     ensure_guest_capture_permissions(uid)
@@ -818,6 +816,7 @@ def capture_requested(scene_ids: list[str], output: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform", choices=("macos",), required=True)
+    parser.add_argument("--target", required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--scenes", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -831,7 +830,7 @@ def main() -> int:
     known = {scene.get("id") for scene in manifest.get("scenes", [])}
     if not isinstance(requested, list) or any(scene not in known for scene in requested):
         raise CaptureError("requested macOS secure scenes are not in the visual manifest")
-    capture_requested([str(scene) for scene in requested], args.output)
+    capture_requested([str(scene) for scene in requested], args.output, target=args.target)
     return 0
 
 

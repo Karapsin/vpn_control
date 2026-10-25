@@ -1,0 +1,478 @@
+"""Registered-fixture leases; observation never repeats readiness or submission.
+
+Public inputs contain only fixture/operation IDs and an acquisition TTL. Immutable
+admissions retain the original host binding, guest identity, source snapshot and
+private-root generation before dispatch. Status and cancellation use that record,
+including after registration/source changes, without rebuilding a submission.
+"""
+from __future__ import annotations
+
+from dataclasses import asdict
+import hashlib
+import math
+from pathlib import Path
+import re
+import time
+from typing import Any
+
+from . import durable_remote_job as jobs
+from . import readiness
+from . import readiness_fixture_registry as fixtures
+from . import readiness_leases as leases
+from . import readiness_lease_reconciliation as reconciliation
+from . import readiness_providers as providers
+from . import tool_action_policy as policies
+
+_FILES = (Path(__file__), Path(jobs.__file__), Path(leases.__file__))
+_LOADED = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in _FILES}
+_HEX = re.compile(r"[0-9a-f]{64}\Z")
+_RESTORE_REQ = readiness.Requirements(frozenset({"transport"}), frozenset({"reconnect"}))
+_EXECUTOR_PROVIDERS = frozenset({"raw-qemu-windows", "libvirt-windows", "tart-macos"})
+
+
+def _external_requirements(provider):
+    # Callers supply the actual registered lane or validated original snapshot,
+    # never an input-selected provider. Unclassified lanes inherit no authority.
+    policy = policies.action_policy("vm_workflow", "readiness-lease-acquire", provider=provider)
+    return readiness.Requirements(policy.requirements, policy.permitted_recoveries)
+
+
+_REQ = _external_requirements("android-emulator")
+
+
+class LeaseWorkflowError(ValueError):
+    """Finite public reason only."""
+
+
+def _need(condition, reason):
+    if not condition:
+        raise LeaseWorkflowError(reason)
+
+
+def _inputs(action, inputs):
+    _need(type(action) is str and action in {"acquire", "status", "cancel", "reconcile"}, "lease_action_invalid")
+    fields = {"fixtureId", "operationId"} | ({"ttlSeconds"} if action == "acquire" else set())
+    _need(type(inputs) is dict and set(inputs) == fields, "lease_inputs_invalid")
+    fixtures._id(inputs["fixtureId"])
+    jobs._uuid(inputs["operationId"])
+    if action == "acquire":
+        ttl = inputs["ttlSeconds"]
+        _need(type(ttl) in (int, float) and math.isfinite(ttl) and 0.1 <= ttl <= leases.MAX_TTL_SECONDS,
+              "lease_ttl_invalid")
+
+
+def _directory(path, *, create):
+    if create:
+        try:
+            path.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+    return jobs._root(path)
+
+
+def _paths(root, fixture_id, *, create):
+    root = Path(root).resolve(strict=True)
+    rag = root / ".rag_index"
+    if create and not rag.exists():
+        rag.mkdir(mode=0o700)
+    # Repository root is internal configuration; descendants never follow a
+    # symlink or accept a caller-selected path, even for observation.
+    _need(rag.resolve() == rag and rag.is_dir(), "lease_state_unavailable")
+    base = _directory(rag / "readiness-leases", create=create)
+    target_roots = _directory(base / "jobs", create=create)
+    admissions = _directory(base / "admissions", create=create)
+    state = _directory(admissions / fixture_id, create=create)
+    return state, target_roots
+
+
+def _key(spec, machine):
+    return hashlib.sha256(jobs.json.dumps([machine, spec.adb_path, spec.adb_serial, spec.adb_port],
+                                         separators=(",", ":")).encode()).hexdigest()
+
+
+def _admission(state, target_roots, fixture_id, operation):
+    value = jobs._record(state / (operation + ".json"))
+    fields = {"schemaVersion", "fixtureId", "operationId", "provider", "ttlSeconds", "binding", "jobRootKey",
+              "jobRootGeneration", "leaseSpec", "readyIdentities", "sources", "programSha256"}
+    _need(set(value) == fields and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
+          and value["fixtureId"] == fixture_id and value["operationId"] == operation
+          and value["provider"] == "android-emulator", "lease_admission_invalid")
+    binding = jobs.MachineBinding.from_dict(value["binding"])
+    _need(type(value["leaseSpec"]) is dict and set(value["leaseSpec"]) == {
+        "provider", "ttl_seconds", "adb_path", "adb_serial", "adb_port", "guest_boot", "guest_avd"},
+        "lease_admission_invalid")
+    spec = leases.LeaseSpec(**value["leaseSpec"])
+    key = _key(spec, binding.machine)
+    _need(value["jobRootKey"] == key and binding.target == "android-lease-" + key
+          and spec.provider == value["provider"] and spec.ttl_seconds == value["ttlSeconds"]
+          and spec.guest_avd == binding.machine, "lease_admission_invalid")
+    generation = value["jobRootGeneration"]
+    _need(type(generation) is list and len(generation) == 2
+          and all(type(item) is int and item >= 0 for item in generation), "lease_admission_invalid")
+    identities = value["readyIdentities"]
+    _need(type(identities) is list and len(identities) == 6
+          and all(type(item) is str and item for item in identities)
+          and identities[1] == binding.machine and identities[3] == spec.guest_boot,
+          "lease_admission_invalid")
+    _need(type(value["sources"]) is dict and set(value["sources"]) == set(_LOADED)
+          and all(type(item) is str and _HEX.fullmatch(item) for item in value["sources"].values())
+          and type(value["programSha256"]) is str and _HEX.fullmatch(value["programSha256"]),
+          "lease_admission_invalid")
+    job_root = jobs._root(target_roots / key, tuple(generation))
+    return value, job_root, binding, tuple(generation), spec
+
+
+def _status(admission):
+    value, job_root, binding, generation, _ = admission
+    operation = value["operationId"]
+    job = job_root / operation
+    if job.exists() or job.is_symlink():
+        intent = jobs._intent(job, operation, binding)
+        _need(intent["programSha256"] == value["programSha256"] and intent["purpose"] == "temporary-keep-awake-v1",
+              "lease_original_program_mismatch")
+    result = leases.inspect(job_root, operation, binding, generation=generation)
+    result = _activation_status(value, job_root, binding, generation, result)
+    result.update(fixtureId=value["fixtureId"], provider="android-emulator",
+                  qualificationScope="registered_android_fixture", ok=(result.get("reason") == "original_admission_pending"
+                      or result["state"] not in {"unknown", "failed", "restore_blocked"}))
+    return result
+
+
+def _activation_status(value, root, binding, generation, result):
+    """Source-bound activation phases only authorize observing the original.
+
+    UNKNOWN is retained before the owner ACK. Neither this receipt nor starting
+    proves GUI readiness, safe replay, or that an admitted launch succeeded.
+    """
+    if result.get("state") != "unknown" or result.get("reason") not in {
+            "record_unavailable", "original_owner_running"}:
+        return result
+    operation=value["operationId"];job=root/operation
+    try:
+        jobs._root(root,generation);jobs._private(job,directory=True);jobs._binding_live(binding)
+        intent=jobs._intent(job,operation,binding)
+        _need(intent["purpose"]=="temporary-keep-awake-v1" and intent["programSha256"]==value["programSha256"],
+              "lease_original_activation_proof_unavailable")
+        _need(hashlib.sha256(jobs._read(job/"program.py",jobs.MAX_PROGRAM_BYTES)).hexdigest()==value["programSha256"]
+              and hashlib.sha256(jobs._read(job/"owner.py",jobs.MAX_PROGRAM_BYTES)).hexdigest()
+                  ==value["sources"]["durable_remote_job.py"], "lease_original_activation_proof_unavailable")
+        age=time.time()-jobs._private(job/"intent.json",directory=False).st_mtime
+        if not 0<=age<=readiness.NORMAL_BUDGET:
+            return {**result,"reason":"lease_original_activation_unresolved"}
+        owner_path=job/"owner.json"
+        if result["reason"]=="record_unavailable" and (owner_path.exists() or owner_path.is_symlink()):
+            # A single local re-observation closes the atomic publish race;
+            # malformed/present receipts never count as an absent owner ACK.
+            result=leases.inspect(root,operation,binding,generation=generation)
+        if result.get("state")!="unknown":
+            return result
+        if result.get("jobState")=="unknown" and result.get("reason")=="record_unavailable":
+            names={path.name for path in job.iterdir()}
+            _need(names=={"intent.json","program.py","owner.py"},"lease_original_activation_proof_unavailable")
+            return {**result,"reason":"original_admission_pending"}
+        if result.get("jobState")=="running" and result.get("reason")=="original_owner_running":
+            owner=jobs._record(owner_path);jobs._correlate(owner,intent)
+            identity=jobs._owner_identity(owner)
+            _need(jobs._birth(identity["pid"])==identity["birth"],"lease_original_activation_proof_unavailable")
+            for filename in ("lease-acquired.json","lease-terminal.json"):
+                path=job/filename
+                _need(not path.exists() and not path.is_symlink(),"lease_original_activation_proof_unavailable")
+            original=job/"lease-original.json"
+            if original.exists() or original.is_symlink():
+                receipt=leases._lease_record(root,operation,binding,"lease-original.json")
+                _need(set(receipt)=={"operationId","generation","binding","programSha256","schemaVersion",
+                         "backend","original","applied","leaseOwner"},"lease_original_activation_proof_unavailable")
+                child=receipt["leaseOwner"]
+                _need(type(child)is dict and set(child)=={"pid","birth"} and type(child["pid"])is int
+                      and type(child["birth"])is str and jobs._birth(child["pid"])==child["birth"],
+                      "lease_original_activation_proof_unavailable")
+            return {**result,"state":"starting","reason":"original_lease_activation_pending"}
+        return result
+    except (OSError,ValueError,TypeError,KeyError):
+        return {**result,"reason":"lease_original_activation_proof_unavailable"}
+
+
+def _android_backend(fixture):
+    """An owned lifecycle wrapper retains the same fixed ADB backend binding."""
+    backend = fixture.adapter.backend
+    if isinstance(backend, providers.AndroidAdbBackend):
+        return backend
+    nested = getattr(backend, "adb", None)
+    if (fixture.adapter.support.lane == "android-emulator"
+            and type(nested) is providers.AndroidAdbBackend and nested.binding == backend.binding):
+        return nested
+    return None
+
+
+def _reconcile(root, admission):
+    value, job_root, binding, generation, spec = admission
+    result = _status(admission)
+    if result.get("restorationState") != "unsubmitted":
+        return result
+    fixture = fixtures.registered_fixture(root, value["fixtureId"])
+    adb = _android_backend(fixture)
+    _need(adb is not None, "lease_provider_unqualified")
+    b = adb.binding
+    _need((fixture.machine, str(b.adb), b.serial, b.server_port, b.avd_name) ==
+          (binding.machine, spec.adb_path, spec.adb_serial, spec.adb_port, spec.guest_avd),
+          "lease_original_guest_identity_changed")
+    context = fixture.context()
+    # This requirement permits only restoration of the owned transport. A
+    # stopped, paused, locked or sleeping VM is never changed by reconciliation.
+    ready = readiness.ensure_ready(context, _RESTORE_REQ, value["operationId"])
+    _need(list(ready.identities())[:2] == value["readyIdentities"][:2], "lease_original_guest_identity_changed")
+    deadline = context.clock() + readiness.NORMAL_BUDGET
+    if context.deadline is not None:
+        deadline = min(deadline, context.deadline)
+    account = value["readyIdentities"][4]
+    _need(re.fullmatch(r"android-user:[0-9]{1,10}", account) is not None, "lease_original_guest_identity_changed")
+    expected = [(["emu", "avd", "name"], spec.guest_avd + "\nOK"),
+                (["shell", "cat", "/proc/sys/kernel/random/boot_id"], spec.guest_boot),
+                (["shell", "am", "get-current-user"], account.split(":", 1)[1])]
+    for argv, wanted in expected:
+        text, connection = adb._command(argv, deadline)
+        _need(text.strip() == wanted and connection == ready.connection, "lease_original_guest_identity_changed")
+    pin = reconciliation.capture_adb_pin(spec.adb_path, spec.adb_port, ready.connection)
+    config = {"adbPath": spec.adb_path, "adbSerial": spec.adb_serial, "adbPort": spec.adb_port,
+              "guestBoot": spec.guest_boot, "guestAvd": spec.guest_avd,
+              "guestAccount": account.split(":", 1)[1], "daemonPin": pin}
+    readiness.revalidate(context, ready)
+    reconciliation.admit(job_root, value["operationId"], binding, config, generation=generation)
+    return _status(admission)
+
+
+def _external_admission(value, fixture_id, operation):
+    """The executor snapshot comes only from a registered internal factory."""
+    fields = {"schemaVersion", "fixtureId", "operationId", "provider", "ttlSeconds",
+              "executor", "readyIdentities", "sources"}
+    _need(type(value) is dict and set(value) == fields and type(value["schemaVersion"]) is int
+          and value["schemaVersion"] == 2 and value["fixtureId"] == fixture_id
+          and value["operationId"] == operation and value["provider"] in _EXECUTOR_PROVIDERS,
+          "lease_admission_invalid")
+    _need(type(value["executor"]) is dict and value["executor"].get("provider") == value["provider"]
+          and type(value["readyIdentities"]) is list and len(value["readyIdentities"]) == 6
+          and all(type(item) is str and item for item in value["readyIdentities"]), "lease_admission_invalid")
+    _inputs("acquire", {"fixtureId": fixture_id, "operationId": operation, "ttlSeconds": value["ttlSeconds"]})
+    _need(type(value["sources"]) is dict and set(value["sources"]) == set(_LOADED)
+          and all(type(item) is str and _HEX.fullmatch(item) for item in value["sources"].values()),
+          "lease_admission_invalid")
+    return value
+
+
+def _external_result(value, result):
+    cleanup = (value["provider"] == "tart-macos" and type(result) is dict
+               and type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
+               and result.get("provider") == "tart-macos" and result.get("state") == "restore_blocked"
+               and result.get("jobState") == "terminal" and result.get("restored") is False
+               and result.get("reason") == "macos_assertion_release_unverified"
+               and result.get("nextAction") == "reconcile_original")
+    _need(type(result) is dict and result.get("operationId") == value["operationId"]
+          and result.get("replayAllowed") is False and type(result.get("state")) is str
+          and result["state"] in {"unsubmitted", "unknown", "starting", "active", "expired", "cancelled", "failed", "restore_blocked"}
+          and (result.get("nextAction") in {"none", "observe_original", "resolve_blocker"} or cleanup), "lease_executor_result_invalid")
+    return {**result, "fixtureId": value["fixtureId"], "provider": value["provider"],
+            "qualificationScope": "registered_guest_executor"}
+
+
+def _external_original(root, state, action, value, inputs):
+    # Reconstruct only the original fixed observer. No registration/source refresh
+    # and no desktop/VM readiness work is allowed during reconciliation.
+    executor = fixtures.lease_executor_from_snapshot(root, value["executor"])
+    _need(executor.provider == value["provider"], "lease_executor_provider_changed")
+    if action == "acquire":
+        _need(inputs["ttlSeconds"] == value["ttlSeconds"], "lease_original_inputs_conflict")
+    marker = state / (value["operationId"] + ".cancelled.json")
+    request = {"schemaVersion": 2, "fixtureId": value["fixtureId"], "operationId": value["operationId"],
+               "executorSha256": hashlib.sha256(jobs.json.dumps(value["executor"], sort_keys=True,
+                                              separators=(",", ":")).encode()).hexdigest()}
+    if action == "cancel":
+        try:
+            jobs._publish(marker, request)
+        except FileExistsError:
+            _need(jobs._record(marker) == request, "lease_cancel_record_invalid")
+    cancelled = marker.exists() or marker.is_symlink()
+    if cancelled:
+        _need(jobs._record(marker) == request, "lease_cancel_record_invalid")
+    result = executor.observe(value["operationId"])
+    _external_result(value, result)
+    if action == "reconcile":
+        if value["provider"] == "tart-macos":
+            result = executor.reconcile(value["operationId"])
+        return _external_result(value, result)
+    if cancelled and result["state"] == "unsubmitted":
+        result = {**result, "ok": True, "state": "cancelled", "reason": "lease_cancelled_before_dispatch",
+                  "restored": True, "jobState": "terminal", "nextAction": "none"}
+    elif action == "cancel":
+        result = executor.cancel(value["operationId"])
+    elif action == "acquire" and not cancelled and result["state"] == "unsubmitted":
+        # Exact original admission absence is the executor's affirmative no-start
+        # proof. The same saved snapshot/UUID is the only allowed preparation.
+        _need(result.get("reason") == "original_admission_absent", "lease_unsubmitted_proof_unavailable")
+        _sources_live()
+        _need(value["sources"] == _LOADED, "lease_original_source_changed")
+        fixture = fixtures.registered_fixture(root, value["fixtureId"])
+        context = fixture.context()
+        ready = readiness.ensure_ready(context, _external_requirements(value["provider"]), value["operationId"])
+        actual = list(ready.identities())
+        _need(actual[:2] + actual[3:] == value["readyIdentities"][:2] + value["readyIdentities"][3:],
+              "lease_original_guest_identity_changed")
+        current_executor = fixture.lease_executor()
+        _need(current_executor.snapshot() == value["executor"], "lease_original_executor_changed")
+        readiness.revalidate(context, ready)
+        _sources_live()
+        result = current_executor.submit(value["operationId"], value["ttlSeconds"])
+    return _external_result(value, result)
+
+
+def _external_acquire(root, fixture, state, path, fixture_id, operation, ttl):
+    context = fixture.context()
+    ready = readiness.ensure_ready(context, _external_requirements(fixture.adapter.support.lane), operation)
+    executor = fixture.lease_executor()
+    _need(executor.provider in _EXECUTOR_PROVIDERS, "lease_provider_unqualified")
+    snapshot = executor.snapshot()
+    value = {"schemaVersion": 2, "fixtureId": fixture_id, "operationId": operation,
+             "provider": executor.provider, "ttlSeconds": ttl, "executor": snapshot,
+             "readyIdentities": list(ready.identities()), "sources": dict(_LOADED)}
+    _external_admission(value, fixture_id, operation)
+    # Admission precedes the first guest effect. A fresh process can only observe
+    # or cancel the saved original, including a lost submission acknowledgement.
+    _sources_live()
+    jobs._publish(path, value)
+    readiness.revalidate(context, ready)
+    _sources_live()
+    return _external_result(value, executor.submit(operation, ttl))
+
+
+def _cancel_record(state, value):
+    path = state / (value["operationId"] + ".cancelled.json")
+    if not path.exists() and not path.is_symlink():
+        return False
+    expected = {"schemaVersion": 1, "fixtureId": value["fixtureId"], "operationId": value["operationId"],
+                "programSha256": value["programSha256"]}
+    _need(jobs._record(path) == expected, "lease_cancel_record_invalid")
+    return True
+
+
+def _blocked(fixture_id, operation, reason, *, state="blocked"):
+    return {"ok": False, "schemaVersion": 1, "fixtureId": fixture_id, "operationId": operation,
+            "state": state, "reason": reason, "replayAllowed": False, "nextAction": "resolve_blocker"}
+
+
+def _sources_live():
+    _need({path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in _FILES} == _LOADED,
+          "lease_loaded_source_changed")
+
+
+def workflow(root: Path | str, action: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    """Status/cancel are local; reconcile may restore only original transport."""
+    _inputs(action, inputs)
+    fixture_id, operation = inputs["fixtureId"], inputs["operationId"]
+    try:
+        state, targets = _paths(root, fixture_id, create=action == "acquire")
+        path = state / (operation + ".json")
+        if path.exists() or path.is_symlink():
+            saved = jobs._record(path)
+            if saved.get("schemaVersion") == 2:
+                value = _external_admission(saved, fixture_id, operation)
+                with readiness.RecoveryJournal(state).locked(deadline=time.monotonic() + readiness.NORMAL_BUDGET):
+                    return _external_original(root, state, action, value, inputs)
+        if action == "status":
+            if not path.exists() and not path.is_symlink():
+                return _blocked(fixture_id, operation, "lease_original_admission_absent", state="unknown")
+            admission = _admission(state, targets, fixture_id, operation)
+            result = _status(admission)
+            if _cancel_record(state, admission[0]) and result["state"] == "unsubmitted":
+                result.update(state="cancelled", reason="lease_cancelled_before_dispatch", nextAction="none")
+            return result
+        # Local cancellation shares only this private admission lock. It never
+        # constructs a provider, probes a guest or repairs a connection.
+        with readiness.RecoveryJournal(state).locked(deadline=time.monotonic() + readiness.NORMAL_BUDGET):
+            cancelled = state / (operation + ".cancelled.json")
+            if path.exists() or path.is_symlink():
+                admission = _admission(state, targets, fixture_id, operation)
+                value, job_root, binding, generation, spec = admission
+                if action == "reconcile":
+                    return _reconcile(root, admission)
+                if action == "acquire":
+                    _need(spec.ttl_seconds == inputs["ttlSeconds"], "lease_original_inputs_conflict")
+                    result = _status(admission)
+                    if _cancel_record(state, value):
+                        if result["state"] == "unsubmitted":
+                            result.update(state="cancelled", reason="lease_cancelled_before_dispatch", nextAction="none")
+                        return result
+                    if result["state"] == "unsubmitted":
+                        # Root-generation admission absence proves no child was
+                        # submitted. Reuse the original saved source, UUID and
+                        # spec; no command/expiry is regenerated from new input.
+                        _sources_live()
+                        _need(value["sources"] == _LOADED, "lease_original_source_changed")
+                        fixture = fixtures.registered_fixture(root, fixture_id)
+                        adb = _android_backend(fixture)
+                        _need(adb is not None, "lease_provider_unqualified")
+                        context = fixture.context()
+                        ready = readiness.ensure_ready(context, _REQ, operation)
+                        actual = list(ready.identities())
+                        _need(actual[:2] + actual[3:] == value["readyIdentities"][:2] + value["readyIdentities"][3:],
+                              "lease_original_guest_identity_changed")
+                        b = adb.binding
+                        _need((str(b.adb), b.serial, b.server_port, b.avd_name) ==
+                              (spec.adb_path, spec.adb_serial, spec.adb_port, spec.guest_avd), "lease_original_guest_identity_changed")
+                        raw = jobs._read(state / (operation + ".program.py"), jobs.MAX_PROGRAM_BYTES)
+                        program = jobs.Program("temporary-keep-awake-v1", raw, 4096)
+                        _need(program.digest == value["programSha256"], "lease_original_program_mismatch")
+                        readiness.revalidate(context, ready)
+                        _sources_live()
+                        jobs.submit(job_root, operation, binding, program, generation=generation)
+                        return _status(admission)
+                    return result
+                request = {"schemaVersion": 1, "fixtureId": fixture_id, "operationId": operation,
+                           "programSha256": value["programSha256"]}
+                try:
+                    jobs._publish(cancelled, request)
+                except FileExistsError:
+                    _need(jobs._record(cancelled) == request, "lease_cancel_record_invalid")
+                result = _status(admission)
+                if result["state"] == "unsubmitted":
+                    return {**result, "state": "cancelled", "reason": "lease_cancelled_before_dispatch",
+                            "nextAction": "none"}
+                leases.cancel(job_root, operation, binding, generation=generation)
+                return _status(admission)
+            _need(action == "acquire", "lease_original_admission_absent")
+            _need(not cancelled.exists() and not cancelled.is_symlink(), "lease_original_cancelled")
+            _sources_live()
+            fixture = fixtures.registered_fixture(root, fixture_id)
+            backend = _android_backend(fixture)
+            if backend is None:
+                return _external_acquire(root, fixture, state, path, fixture_id, operation, inputs["ttlSeconds"])
+            context = fixture.context()
+            ready = readiness.ensure_ready(context, _REQ, operation)
+            b = backend.binding
+            spec = leases.LeaseSpec("android-emulator", inputs["ttlSeconds"], adb_path=str(b.adb),
+                                    adb_serial=b.serial, adb_port=b.server_port, guest_boot=ready.boot,
+                                    guest_avd=b.avd_name)
+            key = _key(spec, fixture.machine)
+            job_root = _directory(targets / key, create=True)
+            generation = jobs.root_generation(job_root)
+            binding = jobs.current_binding("android-lease-" + key, fixture.machine)
+            program = leases._program(job_root, operation, binding, leases._config(spec))
+            _sources_live()
+            value = {"schemaVersion": 1, "fixtureId": fixture_id, "operationId": operation,
+                     "provider": "android-emulator", "ttlSeconds": spec.ttl_seconds, "binding": asdict(binding),
+                     "jobRootKey": key, "jobRootGeneration": list(generation), "leaseSpec": asdict(spec),
+                     "readyIdentities": list(ready.identities()), "sources": dict(_LOADED),
+                     "programSha256": program.digest}
+            jobs._create(state / (operation + ".program.py"), program.source)
+            jobs._publish(path, value)
+            readiness.revalidate(context, ready)
+            _sources_live()
+            jobs.submit(job_root, operation, binding, program, generation=generation)
+            return _status(_admission(state, targets, fixture_id, operation))
+    except readiness.ReadinessBlocked as error:
+        return {**error.as_dict(), "fixtureId": fixture_id}
+    except (OSError, TimeoutError):
+        return _blocked(fixture_id, operation, "lease_private_state_unavailable", state="unknown")
+    except (ValueError, TypeError, KeyError, AttributeError) as error:
+        reason = str(error) if isinstance(error, (LeaseWorkflowError, fixtures.FixtureRegistryError,
+                                                 providers.ProviderError, jobs.DurableJobError, leases.LeaseError,
+                                                 reconciliation.LeaseReconciliationError)) else "lease_original_identity_unavailable"
+        return _blocked(fixture_id, operation, reason, state="unknown")

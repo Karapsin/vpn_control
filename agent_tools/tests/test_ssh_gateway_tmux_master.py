@@ -1,11 +1,15 @@
 """Real inert gateway processes/sockets; no network, credentials or signals."""
 import hashlib
+import ast
+import stat
+import types
 import json
 import os
 from pathlib import Path
 import shlex
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -13,6 +17,8 @@ from unittest import mock
 from uuid import uuid4
 
 from agent_tools import ssh_gateway_tmux_master as owner
+from agent_tools import agent_test_session_observer as fixture_observer
+from agent_tools import private_inventory_lock as fixture_lock
 
 PROC = '''def proc(pid):
     need(type(pid) is int and pid > 0, 'pid')
@@ -38,7 +44,7 @@ if '-O' in args:
  c=socket.socket(socket.AF_UNIX);c.connect(str(path));c.sendall(b'check');print(c.recv(256).decode(),end='');raise SystemExit(0)
 assert '-M' in args and '-N' in args and 'ControlPersist=no' in args and '-f' not in args
 assert 'ForkAfterAuthentication=no' in args and 'ClearAllForwardings=yes' in args
-answer=subprocess.run([os.environ['SSH_ASKPASS']],capture_output=True,check=True).stdout
+answer=subprocess.run([sys.executable,'-I','-B',os.environ['SSH_ASKPASS']],capture_output=True,check=True).stdout
 assert answer.rstrip(b'\n')==(home/'expected.private').read_bytes()
 s=socket.socket(socket.AF_UNIX);s.bind(str(path));path.chmod(0o600);s.listen();s.settimeout(.05)
 start=time.monotonic()
@@ -51,12 +57,32 @@ s.close();path.unlink();raise SystemExit(0)
 
 FAKE_TMUX = r'''#!/usr/bin/env python3
 import json,os,pathlib,shlex,socket,subprocess,sys,time
+@FIXTURE_SUPPORT@
 args=sys.argv[1:]
 if args==['-V']:print('tmux 3.4');raise SystemExit(0)
 if args[0]=='_server':
  path=pathlib.Path(args[1]);name=args[2];command=shlex.split(args[3]);assert command.pop(0)=='exec'
- s=socket.socket(socket.AF_UNIX);s.bind(str(path));path.chmod(0o600);s.listen();s.settimeout(.05)
+ registry=pathlib.Path(_fixture_inputs['registry']);registry_fd=os.open(registry,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);registry_identity=_fixture_id(os.fstat(registry_fd))
+ assert registry_identity==_fixture_inputs['registryIdentity']==_fixture_id(registry.stat(follow_symlinks=False))
+ assert _fixture_id(pathlib.Path(_fixture_inputs['home']).stat(follow_symlinks=False))==_fixture_inputs['homeIdentity']
+ assert path.parent.parent.name in ('.vct','.vct2','.vtd') and path.parent.parent.parent==pathlib.Path(_fixture_inputs['home'])
+ job_fd=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);job_identity=_fixture_id(os.fstat(job_fd))
+ intent=json.loads((path.parent/'intent.json').read_bytes())
+ if path.parent.parent.name=='.vtd':
+  assert set(intent)=={'version','purpose','hop','correlationId','configSha','sourceSha','ownerSha','workerSha'} and intent['version']==1 and intent['purpose']=='inert-tmux-disconnect20' and intent['hop']in('gateway','archlinux')
+  assert hashlib.sha256((path.parent/'worker.py').read_bytes()).hexdigest()==intent['workerSha']
+  assert hashlib.sha256((path.parent/'owner.py').read_bytes()).hexdigest()==intent['ownerSha']
+  master=None;master_identity=None
+ else:
+  packet=intent['packet'];master=pathlib.Path(packet['masterControlPath']);master_identity=_fixture_id(master.parent.stat(follow_symlinks=False))
+ s=socket.socket(socket.AF_UNIX);s.bind(str(path));path.chmod(0o600);socket_identity=_fixture_id(path.stat(follow_symlinks=False));s.listen();s.settimeout(.05)
+ observer=_fixture_load('observer');manager=observer._identity(os.getpid());record_name=path.parent.parent.name[1:]+'-'+path.parent.name+'.json'
+ _fixture_publish(registry_fd,record_name[:-5]+'.intent.json',{'nonce':_fixture_inputs['nonce'],'job':str(path.parent),'jobIdentity':job_identity,'manager':manager})
  child=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ pane=observer._identity(child.pid)
+ assert manager is not None and pane is not None and pane['ppid']==manager['pid'] and pane['uid']==manager['uid']==os.getuid()
+ record={'nonce':_fixture_inputs['nonce'],'job':str(path.parent),'jobIdentity':job_identity,'master':str(master)if master is not None else None,'masterParentIdentity':master_identity,'socketIdentity':socket_identity,'manager':manager,'pane':pane}
+ record_name=path.parent.parent.name[1:]+'-'+path.parent.name+'.json';_fixture_publish(registry_fd,record_name,record)
  start=time.monotonic()
  while time.monotonic()-start<12:
   if child.poll() is not None:break
@@ -68,9 +94,15 @@ if args[0]=='_server':
   c.sendall(response.encode());c.close()
  if child.poll() is None:
   # No signals; inert SSH child stops at its own finite deadline, and the
-  # un-released worker test fixture has a finite short gate.
+  # unreleased worker observes only its owned fixture stop record.
   child.wait(timeout=3)
- s.close();path.unlink();raise SystemExit(0)
+ s.close()
+ try:
+  if _fixture_id(path.stat(follow_symlinks=False))==socket_identity:path.unlink()
+ except FileNotFoundError:pass
+ assert _fixture_id(os.fstat(registry_fd))==registry_identity==_fixture_id(registry.stat(follow_symlinks=False))
+ _fixture_publish(registry_fd,record_name[:-5]+'.done.json',{'nonce':_fixture_inputs['nonce'],'jobIdentity':job_identity,'manager':manager,'pane':pane,'workerExitCode':child.returncode,'originalSocketRetired':True})
+ os.close(job_fd);os.close(registry_fd);raise SystemExit(0)
 assert args[:2]==['-f','/dev/null'];path=pathlib.Path(args[3]);cmd=args[4:]
 if cmd[0]=='new-session':
  name=cmd[cmd.index('-s')+1];command=cmd[-1]
@@ -83,22 +115,169 @@ else:
 '''
 
 
+def inert_python(source):
+    """Use this test's interpreter, including under a sanitized owner PATH.
+
+    A fixed /bin/sh trampoline also handles interpreter paths containing spaces
+    without relying on platform-specific shebang argument or length rules.
+    """
+    first, separator, body = source.partition('\n')
+    if first != '#!/usr/bin/env python3' or not separator:
+        raise ValueError('unexpected_inert_python_source')
+    return ("#!/bin/sh\n'''exec' " + shlex.quote(sys.executable)
+            + ' -I -B "$0" "$@"\n\' \'\'\'\n' + body)
+
+
+_FIXTURE_GATE = """    for _ in range(3000):
+        if os.path.lexists(job / 'release.json'): break
+        time.sleep(.1)
+    else: return 72
+"""
+
+def fixture_worker_source(raw, nonce):
+    if len(nonce)!=32 or any(c not in '0123456789abcdef'for c in nonce) or raw.count(_FIXTURE_GATE)!=1:
+        raise ValueError('fixture_gate_source_shape')
+    gate="""    _fixture_directory = Directory(job, True)
+    _fixture_identity = identity(os.fstat(_fixture_directory.fd))
+    try:
+        for _ in range(3000):
+            _fixture_directory.guard()
+            if os.path.lexists(job / 'release.json'): break
+            if os.path.lexists(job / 'fixture-stop.json'):
+                try:
+                    with Capture(_fixture_directory, 'fixture-stop.json', maximum=4096) as _fixture_capture:
+                        _fixture_stop = value(_fixture_capture.body)
+                except (OSError, ValueError):
+                    _fixture_stop = None
+                if _fixture_stop == {'nonce': @NONCE@, 'jobIdentity': _fixture_identity}:
+                    _fixture_directory.guard()
+                    if not os.path.lexists(job / 'release.json'): return 72
+            time.sleep(.1)
+        else: return 72
+    finally:
+        _fixture_directory.close()
+""".replace('@NONCE@',repr(nonce))
+    return raw.replace(_FIXTURE_GATE,gate)
+
+def fixture_tmux_source(case):
+    sources={}
+    for role,module in(('observer',fixture_observer),('lock',fixture_lock)):
+        path=Path(module.__file__).absolute();info=path.stat(follow_symlinks=False);raw=path.read_bytes()
+        sources[role]={'path':str(path),'sha256':hashlib.sha256(raw).hexdigest(),'generation':owner.generation(info)}
+    return FAKE_TMUX.replace('@FIXTURE_SUPPORT@',_FIXTURE_TMUX_SUPPORT).replace('@FIXTURE_INPUTS@',repr({'sources':sources,'registry':str(case.fixture_registry.path),'nonce':case.fixture_nonce,'home':str(case.home),'homeIdentity':owner.identity(os.fstat(case.fixture_registry.home_directory.fd)),'registryIdentity':owner.identity(os.fstat(case.fixture_registry.directory.fd))}))
+
+_FIXTURE_TMUX_SUPPORT = r"""
+import hashlib,stat,types
+_fixture_inputs=@FIXTURE_INPUTS@
+def _fixture_id(info):return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid]
+def _fixture_generation(info):return _fixture_id(info)+[info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+def _fixture_load(role):
+ pin=_fixture_inputs['sources'][role];path=pathlib.Path(pin['path']);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  first=os.fstat(fd);raw=os.pread(fd,first.st_size+1,0)
+  assert _fixture_generation(first)==pin['generation']==_fixture_generation(path.stat(follow_symlinks=False))==_fixture_generation(os.fstat(fd))
+  assert len(raw)==first.st_size and hashlib.sha256(raw).hexdigest()==pin['sha256']
+  module=types.ModuleType('_inert_fixture_'+role);module.__file__=str(path);sys.modules[module.__name__]=module;exec(compile(raw,str(path),'exec'),module.__dict__)
+  return module
+ finally:os.close(fd)
+def _fixture_publish(directory,name,value):
+ raw=json.dumps(value,sort_keys=True,separators=(',',':')).encode();temporary='.'+name+'.'+os.urandom(16).hex()+'.tmp';fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+ try:
+  offset=0
+  while offset<len(raw):offset+=os.write(fd,raw[offset:])
+  os.fsync(fd);_fixture_load('lock')._rename_create_only(directory,temporary,name);os.fsync(directory)
+ finally:os.close(fd)
+"""
+
+class FixtureChildren:
+    """Only source-registered inert jobs; no signals or request-path discovery."""
+    def __init__(self,home,nonce):
+        self.home=Path(home);self.nonce=nonce
+        self.path=self.home/'.fixture-children';self.path.mkdir(mode=0o700)
+        self.directory=owner.Directory(self.path,True)
+        self.home_directory=owner.Directory(self.home,True)
+        self.closed=False;self.last_records=[]
+    def close(self):
+        if not self.closed:self.directory.close();self.home_directory.close();self.closed=True
+    def records(self):
+        self.directory.guard();self.home_directory.guard();records=[]
+        for name in sorted(os.listdir(self.directory.fd)):
+            if not name.endswith('.json') or name.endswith(('.done.json','.intent.json')):continue
+            with owner.Capture(self.directory,name,maximum=16384)as captured:value=json.loads(captured.body)
+            if set(value)!={'nonce','job','jobIdentity','master','masterParentIdentity','socketIdentity','manager','pane'}or value['nonce']!=self.nonce:raise ValueError('foreign_fixture_registry')
+            job=Path(value['job']);master=Path(value['master'])if value['master']is not None else None
+            if not job.is_absolute()or job.parent.name not in('.vct','.vct2','.vtd')or job.parent.parent!=self.home:raise ValueError('foreign_fixture_path')
+            if job.parent.name=='.vtd':
+                if master is not None or value['masterParentIdentity']is not None:raise ValueError('foreign_fixture_path')
+            elif master is None or not master.is_relative_to(self.home)or master.name!='m':raise ValueError('foreign_fixture_path')
+            for actor in(value['manager'],value['pane']):
+                if type(actor)is not dict or actor.get('uid')!=os.getuid()or type(actor.get('birth'))is not str:raise ValueError('fixture_actor_generation')
+            records.append((name,value))
+        registered=set(os.listdir(self.directory.fd))
+        for name,value in records:
+            if name[:-5]+'.intent.json'not in registered:raise ValueError('fixture_original_intent_unavailable')
+        for name in registered:
+            if not name.endswith('.intent.json'):continue
+            paired=next((value for leaf,value in records if leaf==name[:-12]+'.json'),None)
+            if paired is None:raise ValueError('fixture_owner_publication_unknown')
+            with owner.Capture(self.directory,name,maximum=16384)as captured:intent=json.loads(captured.body)
+            if intent!={key:paired[key]for key in('nonce','job','jobIdentity','manager')}:raise ValueError('fixture_original_intent_changed')
+        self.last_records=records;return records
+    def finish(self,deadline_seconds=5):
+        records=self.records()
+        for name,value in records:
+            job=Path(value['job']);master=Path(value['master'])if value['master']is not None else None
+            if master is None:continue  # The fixed inert probe has its own finite gate/client cleanup.
+            try:
+                with owner.Directory(job,True)as directory:
+                    if owner.identity(os.fstat(directory.fd))!=value['jobIdentity']:continue
+                    stop=owner.canonical({'nonce':self.nonce,'jobIdentity':value['jobIdentity']})
+                    try:owner.create(directory,'fixture-stop.json',stop)
+                    except FileExistsError:
+                        with owner.Capture(directory,'fixture-stop.json',maximum=4096)as captured:
+                            if captured.body!=stop:raise ValueError('foreign_fixture_stop')
+            except FileNotFoundError:pass
+            try:
+                with owner.Directory(master.parent,True)as directory:
+                    if owner.identity(os.fstat(directory.fd))!=value['masterParentIdentity']:continue
+                    try:fd=os.open('inert-stop',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory.fd)
+                    except FileExistsError:pass
+                    else:os.close(fd);os.fsync(directory.fd)
+            except FileNotFoundError:pass
+        deadline=time.monotonic()+deadline_seconds
+        while True:
+            complete=True;terminals=[]
+            for name,value in records:
+                for actor in(value['manager'],value['pane']):
+                    current=fixture_observer._identity(actor['pid'])
+                    if current is not None and current['birth']==actor['birth']:complete=False
+                try:
+                    with owner.Capture(self.directory,name[:-5]+'.done.json',maximum=16384)as captured:done=json.loads(captured.body)
+                    if done!={'nonce':self.nonce,'jobIdentity':value['jobIdentity'],'manager':value['manager'],'pane':value['pane'],'workerExitCode':done.get('workerExitCode'),'originalSocketRetired':True}or type(done['workerExitCode'])is not int:raise ValueError('foreign_fixture_terminal')
+                    terminals.append(done)
+                except FileNotFoundError:complete=False
+            if complete:self.last_closure=terminals;return
+            if time.monotonic()>=deadline:raise ValueError('fixture_original_cleanup_unknown')
+            time.sleep(.02)
+
+
 @unittest.skipUnless(os.name == 'posix', 'POSIX fixture')
 class GatewayOwnerTests(unittest.TestCase):
     def setUp(self):
-        temp = tempfile.TemporaryDirectory(prefix='vct-', dir='/tmp'); self.addCleanup(temp.cleanup)
+        temp = tempfile.TemporaryDirectory(prefix='vct-', dir='/tmp'); self.fixture_temp=temp; self.addCleanup(temp.cleanup)
         self.home = Path(temp.name).resolve(); self.home.chmod(0o700)
+        self.fixture_nonce=uuid4().hex; self.fixture_registry=FixtureChildren(self.home,self.fixture_nonce); self.addCleanup(self.fixture_registry.close)
         self.home_patch = mock.patch.dict(os.environ, {'HOME': str(self.home)}); self.home_patch.start(); self.addCleanup(self.home_patch.stop)
         sshdir = self.home / '.ssh'; sshdir.mkdir(mode=0o700)
         for name, raw in [('key', b'inert-private-key'), ('known', b'inert-host-key'), ('config', b'Host arch\n HostName inert.invalid\n')]:
             path = sshdir / name; path.write_bytes(raw); path.chmod(0o600)
         (self.home / 'expected.private').write_bytes(b'inert-secret'); (self.home / 'expected.private').chmod(0o600)
-        self.ssh = self.home / 'ssh'; self.ssh.write_text(FAKE_SSH); self.ssh.chmod(0o700)
-        self.tmux = self.home / 'tmux'; self.tmux.write_text(FAKE_TMUX); self.tmux.chmod(0o700)
+        self.ssh = self.home / 'ssh'; self.ssh.write_text(inert_python(FAKE_SSH)); self.ssh.chmod(0o700)
+        self.tmux = self.home / 'tmux'; self.tmux.write_text(inert_python(fixture_tmux_source(self))); self.tmux.chmod(0o700)
         raw = Path(owner.__file__).read_text().replace("SSH = '/usr/bin/ssh'", 'SSH = ' + repr(str(self.ssh))).replace("TMUX = '/usr/bin/tmux'", 'TMUX = ' + repr(str(self.tmux)))
         start = raw.index('def proc(pid):'); end = raw.index('def packet(raw):', start)
         raw = raw[:start] + PROC + raw[end:]
-        raw = raw.replace('range(3000)', 'range(30)')
+        raw = fixture_worker_source(raw,self.fixture_nonce)
         self.raw = raw.encode()
         ns = {'subprocess': subprocess, 'os': os, 'sha': owner.sha, 'need': owner.need}; exec(PROC, ns)
         self.patches = [mock.patch.object(owner, 'SSH', str(self.ssh)), mock.patch.object(owner, 'TMUX', str(self.tmux)),
@@ -114,14 +293,13 @@ class GatewayOwnerTests(unittest.TestCase):
         self.addCleanup(self.finish)
 
     def finish(self):
-        try:
-            job = owner.paths(self.request)[2]
-            master = job / 'm'
-            if hasattr(owner, 'master_path'): master = owner.master_path(self.request)
-            if master.parent.exists(): (master.parent / 'inert-stop').touch()
-            deadline = time.monotonic() + 4
-            while time.monotonic() < deadline and (job / 't').exists(): time.sleep(.02)
-        except (OSError, ValueError): pass
+        try:self.fixture_registry.finish()
+        except BaseException:
+            # Never erase unresolved original helpers/evidence. Other cleanup
+            # callbacks still run; only this owned temp directory is retained.
+            self._cleanups[:]=[item for item in self._cleanups if getattr(item[0],'__self__',None)is not self.fixture_temp]
+            self.fixture_temp._finalizer.detach()
+            raise
 
     def prepare(self):
         result = owner.operate('prepare', self.request)

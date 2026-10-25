@@ -1,0 +1,1 @@
+{"bodySha256": "c5b4e70513085a974203831cceebfc62d23a374c60035eee39e7ea890585846e", "reason": "same persisted NVRAM metadata must be revalidated at actual manager dispatch; memory/NVRAM bytes never read or hashed", "wholeSourceSha256": "44fbede47551b6a9c6833b2af6cbab98eb0c0c0c0d7f0dd06d05cac800b10561"}

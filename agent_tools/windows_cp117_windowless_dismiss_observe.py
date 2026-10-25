@@ -6,9 +6,9 @@ from . import windows_cp117_windowless_edit_observe as windowless
 from .windows_diagnostic_authority_capture import AuthorityCapture
 login=geometry.login
 CORRELATION='1bb9d67c-f3f0-4c79-8c34-99243c15c7d0'
-WINDOWLESS_SHA='584b2dab158f95ffee3c95def3d6e33b3c2d2d5701af95885d7f7e1b2914eed1'
-GEOMETRY_SHA='9f9efa88a58588d67afbf52f68ca201b11575aa1edf744941f1c42894f1cddcf'
-LOGIN_SHA='8cf4087a82f542f9c30ce8453cd3802b7daf0ef63ee06320edeeb97bb005b779'
+WINDOWLESS_SHA='73414896403937d5040a0132e5d407483287c922b1a0b96b387d058661d3e9f3'
+GEOMETRY_SHA='832746a0a990dc42b6e82f799d52dbab42b8424c1be4fab54da171af522f32c7'
+LOGIN_SHA='2d920cdbc73bb22bbd9ecb03692e2c75b187c4cb782fd22f7d6d6710d55b0375'
 SLOTS={
  'before1':('a718f90a-05a1-47ce-8d5b-8ebc2bc18280','c8d13751-bd22-407f-9e5b-c1d4c633ed65'),
  'before2':('bfdaf285-0392-4907-9b73-1c46c968d5fa','c0684399-44bf-41f9-8be1-64e72b8e2049'),
@@ -141,7 +141,7 @@ def start(root):
    verify();source=wake_program(record,second);capture.create('wake.remote.py',source.encode());os.fsync(capture.fd)
    argv=r.authority.closure.base.ssh_transport.build_ssh_argv(config,r.HOST,60,command=r.authority.closure.base.windows_credential_probe_ssh._remote_command(source));verify()
    capture.create('wake-attempt.json',json.dumps({'state':'consumed','correlationId':CORRELATION,'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'before2':second['receipt']},sort_keys=True).encode());os.fsync(capture.fd);verify()
-   try:completed=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
+   try:completed=r.authority.closure.base.ssh_transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
    except subprocess.TimeoutExpired as e:
     capture.create('wake.stdout.partial',(e.stdout or b'')[:1000000]);capture.create('wake.stderr.partial',(e.stderr or b'')[:131072]);os.fsync(capture.fd);raise
    capture.create('wake.stdout.private',completed.stdout[:1000000]);capture.create('wake.stderr.private',completed.stderr[:131072]);os.fsync(capture.fd);verify()

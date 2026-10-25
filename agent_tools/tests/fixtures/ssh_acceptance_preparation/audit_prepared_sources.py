@@ -1,0 +1,112 @@
+"""Source/metadata-only independent preparation audit; no sockets or child APIs."""
+from pathlib import Path
+import ast,hashlib,json,os,stat,types
+HERE=Path(__file__).resolve().parent;CHECKOUT=HERE.parents[3]
+def gen(i):return(i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns)
+held=[];directories={};public_records={}
+def chain(path):
+ for parent in reversed(path.parents):
+  if parent in directories:continue
+  info=os.lstat(parent)
+  if not stat.S_ISDIR(info.st_mode):raise ValueError('audit_non_directory_parent')
+  fd=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);opened=os.fstat(fd)
+  if gen(opened)!=gen(info):raise ValueError('audit_parent_changed')
+  directories[parent]=(fd,gen(info))
+def hold(path,*,read=True,private=False):
+ path=Path(path);chain(path)
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);i=os.fstat(fd)
+ if(not stat.S_ISREG(i.st_mode)or i.st_nlink!=1 or i.st_uid!=os.getuid()or i.st_mode&0o022
+    or gen(i)!=gen(os.lstat(path))or(private and stat.S_IMODE(i.st_mode)!=0o600)):
+  os.close(fd);raise ValueError('audit_file_shape')
+ raw=b''
+ if read:
+  while True:
+   part=os.read(fd,65536)
+   if not part:break
+   raw+=part
+  if len(raw)!=i.st_size:raise ValueError('audit_short_source')
+ held.append((fd,path,gen(i),raw if read else None))
+ return raw,gen(i)
+def public(path):
+ raw,generation=hold(path);public_records[str(path.relative_to(CHECKOUT))]={'generation':generation,'sha256':hashlib.sha256(raw).hexdigest()};return raw
+try:
+ checkpoint_raw=public(HERE/'source-checkpoint.json')
+ assert hashlib.sha256(checkpoint_raw).hexdigest()=='0823d6c915a881375023b57fe874c2d0d6b25d8387beaca9f635848393904ab2'
+ checkpoint=json.loads(checkpoint_raw)
+ controller=public(HERE/'controller.py');assert hashlib.sha256(controller).hexdigest()==checkpoint['controllerSha256']
+ constants={t.id:ast.literal_eval(n.value)for n in ast.parse(controller).body if isinstance(n,ast.Assign)for t in n.targets if isinstance(t,ast.Name)and t.id in('CRITICAL','NEW_OPERATIONS','RETENTION_SHA')}
+ assert constants['CRITICAL']==checkpoint['criticalSourcePins']
+ assert hashlib.sha256(public(HERE/'ordinary_retention.py')).hexdigest()==constants['RETENTION_SHA']==checkpoint['retentionSha256']
+ manifest=json.loads(public(HERE/'public-source-manifest.json'))
+ assert manifest['sourceCheckout']==str(CHECKOUT)
+ pins=manifest['sources'];assert len(pins)==693
+ for rel,digest in pins.items():
+  assert not Path(rel).is_absolute()and'..'not in Path(rel).parts
+  assert hashlib.sha256(public(CHECKOUT/rel)).hexdigest()==digest
+  for mode in ('direct','nested'):
+   assert hashlib.sha256(public(HERE/mode/rel)).hexdigest()==digest
+ for rel,digest in {**checkpoint['criticalSourcePins'],**checkpoint['metadataPins']}.items():assert pins[rel]==digest
+ origins={};plans={};route_records={}
+ for mode in ('direct','nested'):
+  root=HERE/mode;info=os.lstat(root);assert stat.S_ISDIR(info.st_mode)and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()
+  origin=json.loads(public(root/'capsule-origin.json'))
+  assert origin=={'schemaVersion':1,'sourceCheckout':str(CHECKOUT),'capsuleRoot':str(root),'serverRootExpected':str(root),'publicSources':pins,'privateInventoryCopied':False,'remoteEffects':0}
+  plan=json.loads(public(root/'planned-operation.json'))
+  assert plan=={'operationId':constants['NEW_OPERATIONS'][mode],'mode':mode,'count':1600,'intervalSeconds':.15,'budgetSeconds':600,'stage':'unsubmitted-source-only'}
+  assert(root/'.agent_venv').is_symlink()and(root/'.agent_venv').resolve()==(CHECKOUT/'.agent_venv').resolve()
+  assert not(root/'.vm-hosts.local.json').exists()and not(root/'.rag_index').exists()and not(root/'operation.json').exists()
+  route_raw,route_gen=hold(root/'route-template.private.json',private=True);route_records[mode]=(json.loads(route_raw),route_gen)
+  origins[mode]={'generation':gen(os.lstat(root/'capsule-origin.json')),'sha256':hashlib.sha256((root/'capsule-origin.json').read_bytes()).hexdigest()}
+  plans[mode]=plan
+ # Authenticate actual private-custody implementation from held current bytes.
+ source=public(CHECKOUT/'agent_tools/private_config_custody.py');assert hashlib.sha256(source).hexdigest()==pins['agent_tools/private_config_custody.py']
+ module=types.ModuleType('_source_only_route_audit_custody');module.__file__=str(CHECKOUT/'agent_tools/private_config_custody.py')
+ exec(compile(source,module.__file__,'exec'),module.__dict__)
+ custody=module.PrivateConfigCustody(CHECKOUT/'.vm-hosts.local.json')
+ try:
+  custody.check();config=json.loads(bytes(custody._raw));required=('host','port','user','identityFile','knownHostsFile')
+  gateway={k:config['hosts']['gateway'][k]for k in required};gateway['transport']='direct'
+  assert config['hosts']['gateway'].get('transport','direct')=='direct'and config['hosts']['gateway'].get('password')is None and config['hosts']['gateway'].get('proxyJump')is None
+  arch={k:config['hosts']['archlinux'][k]for k in(*required,'transport','gateway','remoteHostAlias','remoteConfigFile')if k in config['hosts']['archlinux']}
+  assert arch['transport']=='nested'and arch['gateway']=='gateway'
+  arch['remoteControlPath']='/tmp/vc-ordinary-acceptance-'+constants['NEW_OPERATIONS']['nested'].replace('-','')+'/m'
+  assert arch['remoteControlPath']!=config['hosts']['archlinux'].get('remoteControlPath')
+  assert route_records['direct'][0]=={'schemaVersion':1,'hosts':{'gateway':gateway}}
+  assert route_records['nested'][0]=={'schemaVersion':1,'hosts':{'gateway':gateway,'archlinux':arch}}
+  def no_secret_fields(value):
+   if type(value)is dict:
+    assert all(k not in('password','profiles','operations','history','inputProfiles')for k in value)
+    for item in value.values():no_secret_fields(item)
+   elif type(value)is list:
+    for item in value:no_secret_fields(item)
+  for value,_ in route_records.values():no_secret_fields(value)
+  # Key content is neither read nor hashed. Retain only held native metadata.
+  input_metadata=[]
+  for path in sorted({config['hosts']['gateway'][field]for field in('identityFile','knownHostsFile')}):
+   _,generation=hold(Path(path),read=False)
+   input_metadata.append({'generation':generation,'contentRead':False,'contentHashed':False})
+  for rel in('.rag_index/readiness-transport/archlinux/current.json','.rag_index/readiness-transport/archlinux/e385088e4d6554b33579efc3e8bde1f0a2efa31e190afd919cd469d1228234b9.intent.json','.rag_index/readiness-transport-v2/archlinux/current.json','.rag_index/readiness-nested-channel/archlinux/current.json'):
+   hold(CHECKOUT/rel,read=False)
+  custody.check()
+  private_config_generation=gen(os.lstat(CHECKOUT/'.vm-hosts.local.json'))
+ finally:custody.close()
+ # Closing named generation/body check covers every FD held across this audit.
+ for fd,path,expected,raw in held:
+  assert gen(os.fstat(fd))==gen(os.lstat(path))==expected
+  if raw is not None:assert os.pread(fd,len(raw)+1,0)==raw
+ for path,(fd,expected)in directories.items():assert gen(os.fstat(fd))==gen(os.lstat(path))==expected
+ audit={'schemaVersion':1,'passed':True,'scope':'independent source-only prepared-campaign audit; no native qualification',
+        'sourceCheckpointSha256':hashlib.sha256(checkpoint_raw).hexdigest(),'controllerSha256':hashlib.sha256(controller).hexdigest(),
+        'metadataPins':checkpoint['metadataPins'],'publicSourceCountPerCapsule':len(pins),'publicFilePins':public_records,
+        'origins':origins,'plans':plans,'privateRouteGenerations':{k:v[1]for k,v in route_records.items()},
+        'originalPrivateConfigGeneration':private_config_generation,'privateInputMetadata':input_metadata,
+        'privateConfigContentHashed':False,'privateKeyContentRead':False,'privateKeyContentHashed':False,
+        'sourceAndInputClosingChecksPassed':True,'allPrivateTemplatesWhitelisted':True,'capsulesUnsubmitted':True,
+        'onlyIntendedSymlink':'.agent_venv -> existing repository environment','connections':0,'jobs':0,'faults':0,'signals':0,'nativeGo':False,
+        'invocationMustUseExplicitPlannedCount':1600,'controllerParserDefaultCount':1200}
+finally:
+ for fd,*_ in reversed(held):os.close(fd)
+ for fd,_ in reversed(list(directories.values())):os.close(fd)
+fd=os.open(HERE/'prepared-source-independent-audit.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(fd,'w')as f:json.dump(audit,f,sort_keys=True,indent=2);f.flush();os.fsync(f.fileno())
+print(json.dumps({'passed':True,'publicSourcesPerCapsule':693,'heldPublicFiles':len(public_records),'heldFiles':len(held),'closingChecksPassed':True,'connections':0,'jobs':0,'nativeGo':False}))

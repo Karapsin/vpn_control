@@ -1,0 +1,26 @@
+{
+  "visual_platform.py": {
+    "sha256": "7bceb0d55c4788008b9b50351aaf67a7f8d4a877c9901398b73f6feb6a787047",
+    "fixture": "scripts/tests/fixtures/visual_target_before/visual_platform.py.source"
+  },
+  "bootstrap_windows_visual_vm.sh": {
+    "sha256": "855a6b625b00a5411cd8b9dd7832cf23a824fa5e52e7ef294d87447100a298ae",
+    "fixture": "scripts/tests/fixtures/visual_target_before/bootstrap_windows_visual_vm.sh.source"
+  },
+  "start_windows_visual_vm.sh": {
+    "sha256": "f24b872bd94c9b83a5cfbee7a67cc6d15f5f5b9b735faf5adfb4ebc7c4cb3234",
+    "fixture": "scripts/tests/fixtures/visual_target_before/start_windows_visual_vm.sh.source"
+  },
+  "mark_windows_visual_vm_ready.sh": {
+    "sha256": "4eeb3e2ee6d01e78503052a6ce2496195a02d55cb7fe120b723a136effea9a13",
+    "fixture": "scripts/tests/fixtures/visual_target_before/mark_windows_visual_vm_ready.sh.source"
+  },
+  "visual-regression.yml": {
+    "sha256": "c2f73be2d6b3e931dea5d3ba83b84f2af51ed6f369583c0086d121819c10200d",
+    "fixture": "scripts/tests/fixtures/visual_target_before/visual-regression.yml.source"
+  },
+  "visual_target.py": {
+    "sha256": "6477ca5ea3ca83c3f1ad32de2f8d6bf281161a54981fe02b3185e0473a6e7d71",
+    "fixture": "scripts/tests/fixtures/visual_target_before/visual_target.py.source"
+  }
+}

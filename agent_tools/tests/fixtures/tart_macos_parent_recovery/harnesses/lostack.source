@@ -1,0 +1,136 @@
+"""Whole retained parent pipeline/child with real detached public counter.
+
+Only normal-facade REPLY fixtures are injected. Public controllers and frontend
+loss use actual subprocesses, durable owners, streams and kernel generations.
+No VM, input, credential, lease assertion or host setting operation occurs.
+"""
+import ast,base64,hashlib,json,os,subprocess,sys,tempfile,time,types,unittest
+from pathlib import Path
+from unittest import mock
+PROJECT=ROOT
+from agent_tools import durable_remote_job as J,private_inventory_lock as P,readiness_tart_macos_registry as R
+BASE=FIXTURE;OLD=BASE/'sources/parent.before.source';NEW=BASE/'sources/parent.current.source'
+assert hashlib.sha256(OLD.read_bytes()).hexdigest()=='b51c0bb1f0e3df2203121cfe8a0bb07a0bc62bd2e993e8c3ddd56b6479b8f55e'
+def nodes(raw,names):return[n for n in ast.walk(ast.parse(raw))if isinstance(n,ast.FunctionDef)and n.name in names]
+def pipeline(raw):
+ top=next(n for n in ast.parse(raw).body if isinstance(n,ast.With))
+ index=next(i for i,n in enumerate(top.body)if isinstance(n,ast.Try)and any(isinstance(a,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='acquire_mono'for t in a.targets)for a in n.body))
+ return top.body[index:]
+class Checks(unittest.TestCase):
+ def exercise(self,current,mode):
+  with tempfile.TemporaryDirectory(prefix='parent-lostack-')as temporary:
+   folder=Path(temporary).resolve();folder.chmod(0o700);jobroot=folder/'jobs';jobroot.mkdir(mode=0o700)
+   source=(NEW if current else OLD).read_bytes();binding=J.current_binding('controlled-explicit-vm','controlled-host');generation=J.root_generation(jobroot)
+   operation='07110b57-2828-4f20-a0cc-b8caea05c334';lease='847bc27d-4436-4a16-8d81-e79e2808801a';wake='084e1c45-0468-58ca-9922-71a5fb523d73'
+   marker=folder/'executed-once';public_folder=folder/('native-v12-public136-'+operation)
+   complete={'operationId':operation,'checks':136,'ordinaryCredentialReaderOpened':False,'observerJobsStarted':False,'genericGuiCapabilityEnabled':False}
+   program_source=("import os,time,pathlib,json\n"+f"p=pathlib.Path({str(marker)!r});fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);os.write(fd,b'one');os.close(fd)\n"+"print('counter-start',flush=True)\nfor i in range(12):\n print(i,flush=True);time.sleep(.04)\n"+f"p=pathlib.Path({str(public_folder)!r});p.mkdir(mode=0o700);(p/'complete.json').write_text({json.dumps(complete)!r})\n"+"print('counter-end',flush=True)\n").encode()
+   program=J.Program('native_macos_public136_v12',program_source,262144)
+   cap=types.ModuleType('held_capture');exec(compile((BASE/'sources/capture.source').read_bytes(),str(BASE/'sources/capture.source'),'exec'),cap.__dict__)
+   original_capture=cap.PublicRpcCapture
+   class Accelerated(original_capture):
+    def run(self,argv,payload,*,deadline,**kw):
+     if(argv[-1]=='start'and mode=='lost_ack')or(argv[-1]=='status'and mode=='status_ack_lost'and helper_actions.count('status')==0)or(argv[-1]=='collect'and mode=='collect_ack_lost'and helper_actions.count('collect')==0):deadline=min(deadline,time.monotonic()+.2)
+     return super().run(argv,payload,deadline=deadline,**kw)
+   cap.PublicRpcCapture=Accelerated
+   facade_calls=[];helper_actions=[];children=[];first_frontend={'pid':None};cancelled={'value':False};cleanup_statuses={'count':0}
+   def value(state,**extra):
+    native='unknown'if state=='starting'else state
+    reason={'active':'original_lease_owner_running','starting':'original_owner_running','expired':'lease_deadline_reached','cancelled':'original_lease_cancelled','unknown':'original_lease_cancelled'}[state]
+    v={'schemaVersion':1,'fixtureId':'controlled-v12','operationId':lease,'provider':'tart-macos','qualificationScope':'registered_guest_executor','ok':True,'state':state,'nativeState':native,'jobState':'terminal'if state in{'expired','cancelled'}else'running','reason':reason,'replayAllowed':False,'nextAction':'none'if state in{'expired','cancelled'}else'observe_original'}
+    if state in{'expired','cancelled'}:v['restored']=True
+    v.update(extra);return v
+   def facade(action):
+    facade_calls.append(action)
+    if action=='acquire':
+     if mode=='ack_pending':return value('unknown',nativeState='unknown',jobState='unknown',reason='original_owner_ack_pending',nativeReason='record_unavailable')
+     return value('starting'if mode=='starting'else'active')
+    if action=='cancel':
+     cancelled['value']=True
+     if mode=='restore_pending':return value('unknown',nativeState='restore_pending',restored=True)
+     return value('cancelled')
+    if mode in{'starting','ack_pending'}and not scope['public_attempted']:return value('active')
+    if mode=='restore_pending'and cancelled['value']:
+     cleanup_statuses['count']+=1
+     if cleanup_statuses['count']<2:return value('unknown',nativeState='restore_pending',restored=True)
+     return value('cancelled')
+    if mode in{'missing_actor','unsubmitted'}:
+     cleanup_statuses['count']+=1
+     return value('expired'if cleanup_statuses['count']>=2 else'active')
+    # A lostACK before the fix exits phase without observing the controller;
+    # accelerated natural expiry is returned, never a new acquisition.
+    if not current and mode=='lost_ack':return value('expired')
+    return value('active')
+   def need(v,r):
+    if not v:raise RuntimeError(r)
+   def wake_call():
+    path=folder/('native-known-session-wake-'+wake);path.mkdir(mode=0o700)
+    (path/'complete.json').write_text(json.dumps({'operationId':wake,'after':{'display':'ready','console':{'uid':502,'locked':True}},'ordinaryCredentialReaderOpened':False}))
+   with P.Directory(folder)as out:
+    scope={'time':time,'json':json,'os':os,'sys':sys,'base64':base64,'hashlib':hashlib,'J':J,'R':R,'capture':cap,'out':out,'guard':lambda:None,'need':need,
+      'sources':types.SimpleNamespace(),'descriptor':{},'args':types.SimpleNamespace(target='tart:explicit-controlled'),'FIXTURE':'controlled-v12','LEASE':lease,'PUBLIC':operation,'PARENT':'controlled-parent','WAKE':wake,
+      'PROJECT':PROJECT,'directory':types.SimpleNamespace(path=BASE),'CHILD_FILE':'controlled-client.py','CHILD_SHA':'controlled','record':None,'deadline':time.monotonic()+30,'sequence':0,'native_callbacks':[],'helper_callbacks':[],'capture_attempts':[],
+      'cleanup':None,'public_collected':None,'acquired':False,'cancelled':False,'wake_attempted':False,'public_attempted':False,'phase_failure':None,'jobroot':jobroot,'binding':binding,'generation':generation,'lifecycle':folder,
+      'acquire_mono':None,'acquire_wall':None,'facade':facade,'wake_with_held_session':wake_call,'closure':lambda:{'controlled_source_closure':True},'original_evidence':lambda:{'controlled_original_terminal_restored':True}}
+    names={'record','label','join_capture','attempt_closed','capture_closure','active','terminal','observing','remaining','child','read_public','public_terminal_status','public_closed_for_cancel'}
+    exec(compile(ast.Module(body=nodes(source,names),type_ignores=[]),str(NEW if current else OLD),'exec'),scope)
+    real_popen=subprocess.Popen;real_birth=J._birth
+    def launch(argv,**kw):
+     if not(len(argv)>2 and argv[2].endswith('controlled-client.py')):return real_popen(argv,**kw)
+     action=argv[-1];helper_actions.append(action)
+     common="import sys,pathlib,json,base64,time;sys.path.insert(0,"+repr(str(PROJECT))+");from agent_tools import durable_remote_job as J;root=pathlib.Path("+repr(str(jobroot))+");binding=J.MachineBinding.from_dict("+repr(binding.__dict__)+");generation="+repr(generation)+";op="+repr(operation)+";"
+     if action=='start':
+      code=common
+      if mode!='unsubmitted':code+="p=J.Program("+repr(program.purpose)+",base64.b64decode("+repr(base64.b64encode(program.source).decode())+"),262144);result=J.submit(root,op,binding,p,generation=generation);"
+      else:code+="result=J.observe(root,op,binding,generation=generation);"
+      code+="print(json.dumps({'status':result,'replayAllowed':False}),flush=True);"
+      if mode=='lost_ack':code+='time.sleep(30);'
+     elif action=='status':code=common+"print(json.dumps({'status':J.observe(root,op,binding,generation=generation),'replayAllowed':False}),flush=True)"
+     else:code=common+"s,o,e=J.collect(root,op,binding,generation=generation);print(json.dumps({'status':s,'stdout':base64.b64encode(o).decode(),'stderr':base64.b64encode(e).decode(),'replayAllowed':False}),flush=True)"
+     if(action=='status'and mode=='status_ack_lost'and helper_actions.count('status')==1)or(action=='collect'and mode=='collect_ack_lost'and helper_actions.count('collect')==1):code+=';time.sleep(30)'
+     child=real_popen([sys.executable,'-B','-c',code],**kw);children.append(child)
+     if action=='start':first_frontend['pid']=child.pid
+     return child
+    def birth(pid):
+     if mode=='missing_actor'and pid==first_frontend['pid']:return None
+     return real_birth(pid)
+    failure=None
+    try:
+     with mock.patch.object(subprocess,'Popen',launch),mock.patch.object(J,'_birth',birth):
+      try:exec(compile(ast.Module(body=pipeline(source),type_ignores=[]),str(NEW if current else OLD),'exec'),scope)
+      except BaseException as error:failure=type(error).__name__
+    finally:
+     for child in children:
+      if child.poll()is None:child.kill();child.wait()
+     # No fixture/controller is left active on test failure.
+     stop=time.monotonic()+3
+     while (jobroot/operation).exists()and time.monotonic()<stop:
+      status=J.observe(jobroot,operation,binding,generation=generation)
+      if status['state']=='terminal'and J._birth(status['owner']['pid'])!=status['owner']['birth']:break
+      time.sleep(.02)
+    records={p.name:json.loads(p.read_bytes())for p in folder.glob('*.json')if p.name not in{'complete.json'}and p.stat().st_size and p.name.endswith(('.attempt.json','closure.json'))}
+    return {'failure':failure,'scope':scope,'facadeCalls':facade_calls,'helperActions':helper_actions,'records':records,'marker':marker.read_bytes()if marker.exists()else None}
+ def test_old_lost_start_ack_exits_fixed_observes_same_original_no_second_start(self):
+  old=self.exercise(False,'lost_ack');self.assertIsNotNone(old['failure']);self.assertIsNone(old['scope']['public_collected']);self.assertNotIn('status',old['helperActions'])
+  new=self.exercise(True,'lost_ack');self.assertIsNone(new['failure']);self.assertIsNotNone(new['scope']['public_collected']);self.assertEqual(new['helperActions'].count('start'),1);self.assertIn('status',new['helperActions']);self.assertIn('collect',new['helperActions']);self.assertEqual(new['marker'],b'one')
+ def test_whole_raw_starting_string_red_then_same_original_active_green(self):
+  old=self.exercise(False,'starting');self.assertIsNotNone(old['failure']);self.assertIn('AttributeError',old['scope']['phase_failure'])
+  new=self.exercise(True,'starting');self.assertIsNone(new['failure']);self.assertEqual(new['facadeCalls'].count('acquire'),1);self.assertEqual(new['facadeCalls'].count('cancel'),1)
+ def test_readonly_status_ack_loss_retries_status_only(self):
+  new=self.exercise(True,'status_ack_lost');self.assertIsNone(new['failure']);self.assertEqual(new['helperActions'].count('start'),1);self.assertGreater(new['helperActions'].count('status'),1);self.assertEqual(new['marker'],b'one')
+ def test_terminal_collect_ack_loss_retries_same_collect_only(self):
+  new=self.exercise(True,'collect_ack_lost');self.assertIsNone(new['failure']);self.assertEqual(new['helperActions'].count('start'),1);self.assertEqual(new['helperActions'].count('collect'),2);self.assertEqual(new['marker'],b'one')
+ def test_raw_ack_pending_observes_same_original_until_active_no_second_acquire(self):
+  new=self.exercise(True,'ack_pending');self.assertIsNone(new['failure']);self.assertEqual(new['facadeCalls'].count('acquire'),1);self.assertEqual(new['helperActions'].count('start'),1)
+ def test_whole_raw_restore_pending_string_red_then_terminal_green(self):
+  old=self.exercise(False,'restore_pending');self.assertIsNotNone(old['failure']);self.assertIsNone(old['scope']['cleanup'])
+  new=self.exercise(True,'restore_pending');self.assertIsNone(new['failure']);self.assertIsNotNone(new['scope']['cleanup']);self.assertEqual(new['facadeCalls'].count('cancel'),1)
+ def test_attempted_start_unsubmitted_never_cancels_lease(self):
+  old=self.exercise(False,'unsubmitted');self.assertIn('cancel',old['facadeCalls'])
+  new=self.exercise(True,'unsubmitted');self.assertNotIn('cancel',new['facadeCalls']);self.assertIsNotNone(new['failure'])
+ def test_missing_actor_callback_nextlabel_aggregate_unknown_no_false_closure(self):
+  old=self.exercise(False,'missing_actor');self.assertTrue(old['records']['native-rpc-closure.json']['allOriginalActorsAbsent']);self.assertTrue(old['records']['native-rpc-closure.json']['allRawEof']);self.assertNotIn('status',old['helperActions'])
+  new=self.exercise(True,'missing_actor');self.assertIsNotNone(new['failure']);self.assertNotIn('cancel',new['facadeCalls']);self.assertEqual(new['helperActions'].count('start'),1);self.assertIn('status',new['helperActions'])
+  attempts=new['scope']['capture_attempts'];labels=[r['label']for r in attempts];self.assertEqual(len(labels),len(set(labels)));self.assertIsNone(attempts[0]['actor']['birth'])
+  self.assertFalse(new['records']['native-rpc-closure.json']['allAttemptsClosed']);self.assertFalse(new['records']['native-rpc-closure.json']['allOriginalActorsAbsent'])
+if __name__=='__main__':unittest.main(verbosity=2)

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "purpose": "original pending shutdown epistemics; no original job/VM replay authority",
+  "files": {
+    "windows_vm_resources.py": "2659a18cd8683c8d3b1b5ff749803c052fcf7e17dc1e669d2d57fb67c67396a0",
+    "readiness_qemu_remote.py.before.source": "7353aedc72fe1873605897cc219d94aeb95793cb946e11156ca596238e8565a5",
+    "test_readiness_qemu_remote.py.before.source": "54b38fa4b8b3c29d7a41eafd73fc742be6690665987daa09d4f648a2c7c839e6",
+    "original8042-public-projection.json": "4a3051b3628c800173aa5dc1033fc4e2129bd74679494dc7a78ce7c0419800b5",
+    "readiness_qemu_remote.before-duplicate-guard.source": "628f40e7ea79e79e434283a3a79e5542ff65ebba1120fd1d16c25b5590e13552",
+    "readiness_qemu.py.before.source": "33d930197e4d03ca5bbc68afe980fae90b56aa515af366b2486b4a589a588303",
+    "fixtures/qemu_poweroff_pending_before/windows_vm_resources.py": "2659a18cd8683c8d3b1b5ff749803c052fcf7e17dc1e669d2d57fb67c67396a0",
+    "fixtures/qemu_poweroff_pending_before/readiness_qemu_remote.py.before.source": "71c41344ea318255d50914c3961954443d1c9b6307ad20befcd33d7818c0d103",
+    "fixtures/qemu_poweroff_pending_before/provenance.json": "92254990f683162bb4c4a3e047d1496ac3872482686d313f4e3e43ab51cf7a36"
+  },
+  "beforeSources": {
+    "readiness_qemu.py.before.source": "authentic unmodified public33d930 before observation-caching change",
+    "readiness_qemu_remote.py.before.source": "authentic unmodified public7353ae before pending-shutdown classification",
+    "readiness_qemu_remote.before-duplicate-guard.source": "preserved628f40 intermediate candidate; actual duplicate-key acceptance RED, never deployed",
+    "test_readiness_qemu_remote.py.before.source": "authentic whole public existing routine module before its one expectation correction"
+  },
+  "rawByteInputs": [
+    "readiness_qemu.py.before.source",
+    "readiness_qemu_remote.py.before.source",
+    "readiness_qemu_remote.before-duplicate-guard.source",
+    "test_readiness_qemu_remote.py.before.source"
+  ],
+  "parsedJsonInputs": [
+    "original8042-public-projection.json",
+    "provenance.json"
+  ],
+  "installedNativeEvidence": {
+    "originalOperation": "8042e683-8fb1-596c-82cd-495fae4ddffb",
+    "originalActor": {
+      "pid": 1918799,
+      "startTicks": 149328317
+    },
+    "latestReadonlyObservation": "05cfd643-476f-48bd-91f2-e25baf9830bf",
+    "installedQemuVersion": "11.1.1",
+    "shutdownCompletedProven": false
+  }
+}

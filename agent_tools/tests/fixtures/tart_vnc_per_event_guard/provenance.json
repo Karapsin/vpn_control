@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-review defect, not native encounter",
+  "roles": {
+    "before": {
+      "path": "before.source",
+      "sha256": "2938db527eae5879ff7a7fcfde1801e447727edd57d41868f95ac8ea45cbf4c0",
+      "bytes": 19501,
+      "execution": "complete Python module in isolated in-memory agent_tools child module"
+    },
+    "current": {
+      "path": "current.source",
+      "sha256": "e217651bf4a277133771c6a75c5d7ded2c3d60760092bc757058d20aa294ca68",
+      "bytes": 19648,
+      "execution": "complete Python module in isolated in-memory agent_tools child module"
+    }
+  },
+  "causal": {
+    "before": "recipient change after first TCP key event still permits six events",
+    "current": "same controlled endpoint stops after one Shift-down with once intent retained; no cleanup/replay"
+  },
+  "inputAuthority": false,
+  "nativeQualification": false,
+  "privateInputs": "only literal synthetic fixture bytes and local pipe FDs; no credential, provider or runtime inventory access",
+  "legacyCompatibility": {
+    "currentResolverSha256": "a496960c2180702849704aab0dc949b23e3dcc3fde95313d49118c429c29c2f5",
+    "historicalReceiptEpochsUnchanged": true,
+    "authenticPredecessorCacheBytesAndInodePreserved": true,
+    "secretTamperReason": "macos_legacy_method_epoch_unqualified from unchanged legacy_phases source path"
+  }
+}

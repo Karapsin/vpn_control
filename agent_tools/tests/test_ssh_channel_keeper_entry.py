@@ -25,7 +25,9 @@ class KeeperEntryTests(unittest.TestCase):
   self.assertEqual(ORIGINAL_PRODUCER_SHA,provenance['sourceSha256'])
   self.assertEqual(ORIGINAL_PRODUCER_SHA,hashlib.sha256(raw).hexdigest())
   for name in entry.NAMES:
-   (folder/name).write_bytes(raw if name=='ssh_fresh_nested_channel.py' else (REPO/'agent_tools'/name).read_bytes())
+   body=raw if name=='ssh_fresh_nested_channel.py' else (REPO/'agent_tools'/name).read_bytes()
+   if name=='ssh_channel_keeper_entry.py' and getattr(self,'before_entry',None) is not None:body=self.before_entry
+   (folder/name).write_bytes(body)
   replacements={}
   def load(stem):
    source=folder/(stem+'.py');name='agent_tools._keeper_fixture_'+uuid.uuid4().hex
@@ -268,4 +270,71 @@ class KeeperEntryTests(unittest.TestCase):
   finally:source.close()
   child=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=8,check=False,env={k:v for k,v in os.environ.items() if k!='DYLD_INSERT_LIBRARIES'})
   self.assertNotEqual(0,child.returncode);self.assertIn(b'receipt_binding',child.stderr);self.assertNotIn(b'keeper_started',child.stdout)
+ def test_whole_before_bundle_readiness_red_current_receipt_guard_green(self):
+  path=REPO/'agent_tools/tests/fixtures/ssh_generated_dependency_closure_before/keeper_entry.before.source'
+  raw=path.read_bytes();self.assertEqual('83c30a87daf6afeefe074d58b53ab380946d99d457469c077e75296e3ca5e48a',hashlib.sha256(raw).hexdigest())
+  name='test_actual_bootstrap_valid_guard_stops_bad_receipt_without_ssh'
+  original=KeeperEntryTests(name);original.before_entry=raw;result=unittest.TestResult();original.run(result)
+  self.assertEqual(1,len(result.failures));self.assertFalse(result.errors)
+  self.assertIn('undeclared_repository_module',result.failures[0][1])
+  self.assertIn('readiness',result.failures[0][1])
+  current=unittest.TestResult();KeeperEntryTests(name).run(current)
+  self.assertTrue(current.wasSuccessful(),current.failures+current.errors)
+ def test_added_readiness_role_replacement_refuses_before_keeper_or_ssh(self):
+  source=self.entry.SourceGuard(self.root,self.f.corr,self.source)
+  try:argv=self.entry.child_argv(sys.executable,self.root,self.f.corr,self.receipt,self.source,source)
+  finally:source.close()
+  path=self.root/'agent_tools/readiness.py';replacement=path.with_suffix('.replacement');replacement.write_bytes(path.read_bytes());replacement.replace(path)
+  child=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=8,check=False,env={k:v for k,v in os.environ.items() if k!='DYLD_INSERT_LIBRARIES'})
+  self.assertNotEqual(0,child.returncode);self.assertNotIn(b'keeper_started',child.stdout)
+  self.assertFalse(self.entry.output_path(self.root,self.f.corr).exists())
+  self.assertEqual(['prepare'],[v[6] for v in self.f.calls])
+ def authenticated_entry(self,entry=None):
+  entry=self.entry if entry is None else entry
+  original=self.server._agent_module
+  route=lambda name:entry if name=='ssh_channel_keeper_entry' else original(name)
+  return mock.patch.object(self.server,'_agent_module',side_effect=route)
+ def test_complete_original_reader_catalog_red_current_exact18_guard_green(self):
+  path=REPO/'agent_tools/tests/fixtures/ssh_generated_dependency_closure_before/keeper_reader.before.source'
+  raw=path.read_bytes();provenance=json.loads(path.with_name('provenance.json').read_bytes())
+  digest='caccd482155dc4e9dddd8cbc547cb906ea22c9007602071122f07758d16e1aec'
+  self.assertEqual(digest,provenance['cases'][path.name]['sha256']);self.assertEqual(digest,hashlib.sha256(raw).hexdigest())
+  with self.authenticated_entry():
+   namespace=dict(vars(self.server));exec(compile(raw,str(path),'exec'),namespace)
+   with self.assertRaisesRegex(ValueError,'source_roles'):
+    with namespace['_keeper_authenticated_entry'](self.f.corr,self.source):self.fail('old catalog accepted18 roles')
+   with mock.patch.object(self.entry,'SourceGuard',wraps=self.entry.SourceGuard) as guard:
+    with self.server._keeper_authenticated_entry(self.f.corr,self.source) as (actual,held):
+     self.assertIs(self.entry,actual);self.assertEqual(18,len(actual.NAMES));held.finish()
+    self.assertEqual(1,guard.call_count)
+ def test_reader_exact_legacy17_requires_original_entry_and_sourceguard(self):
+  path=REPO/'agent_tools/tests/fixtures/ssh_generated_dependency_closure_before/keeper_entry.before.source'
+  raw=path.read_bytes();self.assertEqual('83c30a87daf6afeefe074d58b53ab380946d99d457469c077e75296e3ca5e48a',hashlib.sha256(raw).hexdigest())
+  legacy=KeeperEntryTests('runTest');legacy.before_entry=raw
+  try:
+   legacy.setUp()
+   with legacy.authenticated_entry(),mock.patch.object(legacy.entry,'SourceGuard',wraps=legacy.entry.SourceGuard) as guard:
+    with legacy.server._keeper_authenticated_entry(legacy.f.corr,legacy.source) as (actual,held):
+     self.assertIs(legacy.entry,actual);self.assertEqual(17,len(actual.NAMES));held.finish()
+    self.assertEqual(1,guard.call_count)
+   # Its incomplete historical transport bundle keeps the original finite
+   # declared-import refusal; accepting17 roles never upgrades its executor.
+   source=legacy.entry.SourceGuard(legacy.root,legacy.f.corr,legacy.source)
+   try:argv=legacy.entry.child_argv(sys.executable,legacy.root,legacy.f.corr,'0'*64,legacy.source,source)
+   finally:source.close()
+   child=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=8,check=False)
+   self.assertNotEqual(0,child.returncode);self.assertIn(b'undeclared_repository_module',child.stderr)
+   self.assertNotIn(b'keeper_started',child.stdout)
+  finally:legacy.doCleanups()
+ def test_reader_rejects_foreign19_missing_required_and_legacy_current_mismatch(self):
+  path=self.entry.source_path(self.root,self.f.corr);original=json.loads(path.read_bytes())
+  for removed,added in [(None,'foreign.py'),('ssh_transport.py',None),('readiness.py',None)]:
+   changed=json.loads(json.dumps(original));inputs=changed['inputs']
+   if removed:inputs.pop(str(self.root/'agent_tools'/removed))
+   if added:inputs[str(self.root/'agent_tools'/added)]={'sha256':'0'*64,'generation':[]}
+   raw=json.dumps(changed,sort_keys=True,separators=(',',':')).encode();path.write_bytes(raw);path.chmod(0o600)
+   digest=hashlib.sha256(raw).hexdigest()
+   with self.subTest(removed=removed,added=added),self.authenticated_entry(),mock.patch.object(self.entry,'SourceGuard',side_effect=AssertionError('role mismatch must precede entry guard')):
+    with self.assertRaisesRegex(ValueError,'source_roles'):
+     with self.server._keeper_authenticated_entry(self.f.corr,digest):self.fail('invalidrole accepted')
 if __name__=='__main__':unittest.main()

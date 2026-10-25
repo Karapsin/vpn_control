@@ -6,8 +6,8 @@ sources stay held through calls and are checked before and after effects.
 """
 from __future__ import annotations
 import contextvars
-from contextlib import contextmanager
-import ast,builtins,functools,hashlib,importlib,importlib.abc,importlib.util,inspect,os,stat,sys,types,uuid
+from contextlib import contextmanager, _GeneratorContextManager
+import ast,builtins,functools,hashlib,importlib,importlib.abc,importlib.util,inspect,os,re,stat,sys,types,uuid
 from pathlib import Path
 
 _LOADED_BYTES=Path(__file__).read_bytes()
@@ -19,7 +19,7 @@ _BOOTSTRAP_MAX_BYTES=4*1024**2
 
 
 @contextmanager
-def _bootstrap_source(path):
+def _bootstrap_source(path, expected_sha=None):
     """Authenticate the custody primitive before any of its code can execute."""
     if os.name=='nt':
         from . import windows_source_custody as windows
@@ -30,7 +30,7 @@ def _bootstrap_source(path):
             # authority. Native held names/handles authenticate it before yield.
             with path.open('rb') as stream:raw=stream.read(_BOOTSTRAP_MAX_BYTES+1)
             if not 0<len(raw)<=_BOOTSTRAP_MAX_BYTES:raise ValueError('bootstrap_source_bound')
-            raw=held.read(str(path),hashlib.sha256(raw).hexdigest(),max_bytes=_BOOTSTRAP_MAX_BYTES)
+            raw=held.read(str(path),expected_sha or hashlib.sha256(raw).hexdigest(),max_bytes=_BOOTSTRAP_MAX_BYTES)
             held.finish();held.final_identity_pass()
             yield raw,held.finish
             held.finish();held.final_identity_pass()
@@ -64,6 +64,8 @@ def _bootstrap_source(path):
             raise ValueError('bootstrap_source_requires_regular_current_uid_single_link')
         if not 0<info.st_size<=_BOOTSTRAP_MAX_BYTES:raise ValueError('bootstrap_source_bound')
         raw=bounded_read(fd)
+        if expected_sha is not None and hashlib.sha256(raw).hexdigest()!=expected_sha:
+            raise ValueError('expected_source_bytes_changed')
         def guard():
             if bounded_read(fd)!=raw:raise ValueError('bootstrap_source_bytes_changed')
             for held,ancestor,name,identity in parents:
@@ -77,16 +79,56 @@ def _bootstrap_source(path):
         for fd in reversed(descriptors):os.close(fd)
 
 
+def _expected_sources(directory, value):
+    if value is None:return None
+    if os.name!='posix':raise ValueError('expected_source_manifest_platform')
+    if type(value)is not dict or not 0<len(value)<=4096:raise ValueError('expected_source_manifest')
+    roots=(directory,directory.parent/'scripts');result={}
+    for name,digest in value.items():
+        if (type(name)is not str or not name.startswith('/') or '\\'in name or '\0'in name
+                or any(part in ('','.','..')for part in name.split('/')[1:])
+                or not any(Path(name).is_relative_to(root)for root in roots)
+                or type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None):
+            raise ValueError('expected_source_manifest_entry')
+        result[name]=digest
+    if str(directory/'native_review_source_closure.py')not in result:
+        raise ValueError('expected_source_bootstrap_missing')
+    return result
+
+
+class _GuardedGeneratorContext:
+    """A source-owned suspended generator retains its original session guard."""
+    def __init__(self, session, context):
+        self.session,self.context,self.entered,self.closed=session,context,False,False
+    def __enter__(self):
+        self.session.guard()
+        if self.entered or self.closed:raise ValueError('adapter_context_already_consumed')
+        result=self.context.__enter__();self.entered=True
+        try:
+            self.session.guard();result=self.session.hold_result(result);self.session.guard()
+            return result
+        except BaseException:
+            self.__exit__(*sys.exc_info())
+            raise
+    def __exit__(self,*error):
+        if not self.entered or self.closed:raise ValueError('adapter_context_not_entered')
+        try:return self.context.__exit__(*error)
+        finally:
+            self.closed=True
+            self.session.guard()
+
+
 class SourceSession:
-    def __init__(self,directory,entry):
+    def __init__(self,directory,entry,*,expected_sources=None):
         if type(entry)is not str or not entry.isidentifier():raise ValueError('adapter_module_name')
-        self.directory=Path(directory).absolute();self.prefix='_vpn_source_'+uuid.uuid4().hex
+        self.directory=Path(directory).absolute();self.expected_sources=_expected_sources(self.directory,expected_sources);self.prefix='_vpn_source_'+uuid.uuid4().hex
         self.cache={};self.closed=False;self.finder=None;self.held=None;self.instrumented=set();self.original_sys_path=tuple(sys.path)
         package=types.ModuleType(self.prefix);package.__path__=[];sys.modules[self.prefix]=package
         scripts=types.ModuleType(self.prefix+'._scripts');scripts.__path__=[];sys.modules[scripts.__name__]=scripts
         try:
             path=self.directory/'native_review_source_closure.py'
-            with _bootstrap_source(path) as (raw,bootstrap_guard):
+            expected=self.expected_sources[str(path)] if self.expected_sources is not None else None
+            with _bootstrap_source(path,expected) as (raw,bootstrap_guard):
                 custody=types.ModuleType(self.prefix+'.native_review_source_closure');custody.__file__=str(path);custody.__package__=self.prefix
                 sys.modules[custody.__name__]=custody;code=compile(raw,str(path),'exec',dont_inherit=True)
                 bootstrap_guard();exec(code,custody.__dict__);bootstrap_guard()
@@ -160,8 +202,11 @@ class SourceSession:
                     if not all(part.isidentifier() for part in leaf.split('.')):raise ImportError('undeclared_adapter_module')
                     path=base.joinpath(*leaf.split('.'))
                     path=path/'__init__.py' if path.is_dir() else path.with_suffix('.py')
-                    raw=path.read_bytes()
-                    owner.held.read(str(path),hashlib.sha256(raw).hexdigest());owner.cache[module.__name__]=(str(path),raw)
+                    raw=path.read_bytes();digest=hashlib.sha256(raw).hexdigest()
+                    if owner.expected_sources is not None:
+                        if owner.expected_sources.get(str(path))!=digest:raise ValueError('expected_source_bytes_changed')
+                        digest=owner.expected_sources[str(path)]
+                    raw=owner.held.read(str(path),digest);owner.cache[module.__name__]=(str(path),raw)
                     module.__file__=str(path);module.__builtins__={**vars(builtins),'__import__':importing}
                     owner.guard();exec(compile(raw,str(path),'exec',dont_inherit=True),module.__dict__);owner.guard()
             class Finder(importlib.abc.MetaPathFinder):
@@ -182,6 +227,32 @@ class SourceSession:
         if type(entry)is not str or not entry.isidentifier():raise ValueError('adapter_module_name')
         self.guard();module=importlib.import_module(self.prefix+'.'+entry);self.guard();return module
     def hold_result(self,value,seen=None):
+        if type(value)is _GeneratorContextManager:
+            function=value.func;generator=value.gen
+            name=getattr(function,'__module__','');module=sys.modules.get(name)
+            source=self.cache.get(name)
+            if (not name.startswith(self.prefix+'.') or source is None or module is None
+                    or not inspect.isgeneratorfunction(function) or not inspect.isgenerator(generator)
+                    or generator.gi_frame is None or generator.gi_frame.f_globals is not vars(module)
+                    or function.__globals__ is not vars(module) or generator.gi_code is not function.__code__):
+                raise ValueError('foreign_adapter_context')
+            path,raw=source
+            def codes(code):
+                yield code
+                for child in code.co_consts:
+                    if isinstance(child,types.CodeType):yield from codes(child)
+            if function.__code__ not in codes(compile(raw,path,'exec',dont_inherit=True)):
+                raise ValueError('foreign_adapter_context')
+            self.guard()
+            return _GuardedGeneratorContext(self,value)
+        # A list-compatible inline carrier also holds a saved-plan capability.
+        # Ordinary container traversal cannot see that attribute. Keep both the
+        # carrier methods and its retained plan under this request's custody.
+        if (isinstance(value,list) and type(value).__name__=='BoundInlineArgv' and
+                type(value).__module__==self.prefix+'.ssh_transport'):
+            self.instrument(type(value))
+            self.hold_result(value.saved_plan)
+            self.hold_result(value.dispatch_admission)
         if isinstance(value,(dict,list,tuple,set,frozenset,types.MappingProxyType)):
             seen=set() if seen is None else seen
             if id(value) in seen:return value
@@ -246,9 +317,10 @@ class SourceSession:
 
 
 class Adapter:
-    def __init__(self,directory,entry,*,session=None):
+    def __init__(self,directory,entry,*,session=None,expected_sources=None):
+        if session is not None and expected_sources is not None:raise ValueError('expected_source_session_already_bound')
         self._owned=session is None
-        self._session=SourceSession(directory,entry) if self._owned else session
+        self._session=SourceSession(directory,entry,expected_sources=expected_sources) if self._owned else session
         self._module=self._session.module if self._owned else self._session.load(entry)
         self.__name__='agent_tools.'+entry
     def __getattr__(self,name):
@@ -281,10 +353,10 @@ _ACTIVE=contextvars.ContextVar('vpn_control_native_source_request',default=None)
 
 
 class RequestSources:
-    def __init__(self,directory):
-        self.directory=Path(directory).resolve();self.session=None
+    def __init__(self,directory,expected_sources=None):
+        self.directory=Path(directory).resolve();self.expected_sources=_expected_sources(self.directory,expected_sources);self.session=None
     def module(self,entry):
-        if self.session is None:self.session=SourceSession(self.directory,entry)
+        if self.session is None:self.session=SourceSession(self.directory,entry,expected_sources=self.expected_sources)
         return Adapter(self.directory,entry,session=self.session)
     def guard(self):
         if self.session is not None:self.session.guard()
@@ -293,21 +365,25 @@ class RequestSources:
 
 
 @contextmanager
-def request_scope(directory):
+def request_scope(directory,*,expected_sources=None):
     directory=Path(directory).resolve();active=_ACTIVE.get()
     if active is not None:
         if active.directory!=directory:raise ValueError('adapter_request_root_changed')
+        if expected_sources is not None and _expected_sources(directory,expected_sources)!=active.expected_sources:
+            raise ValueError('expected_source_request_changed')
         active.guard();yield;active.guard();return
-    session=RequestSources(directory);token=_ACTIVE.set(session)
+    session=RequestSources(directory,expected_sources);token=_ACTIVE.set(session)
     try:
         yield
     finally:
         try:session.guard()
         finally:_ACTIVE.reset(token);session.close()
 
-def adapter(directory,entry):
+def adapter(directory,entry,*,expected_sources=None):
     session=_ACTIVE.get()
     if session is not None:
         if session.directory!=Path(directory).resolve():raise ValueError('adapter_request_root_changed')
+        if expected_sources is not None and _expected_sources(session.directory,expected_sources)!=session.expected_sources:
+            raise ValueError('expected_source_request_changed')
         return session.module(entry)
-    return Adapter(directory,entry)
+    return Adapter(directory,entry,expected_sources=expected_sources)

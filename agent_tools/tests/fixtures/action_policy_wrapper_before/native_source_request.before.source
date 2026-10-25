@@ -1,0 +1,14 @@
+def _native_source_request(function):
+    """Keep shared captured imports alive until the complete native RPC closes."""
+    @functools.wraps(function)
+    def call(*args, **kwargs):
+        loader = _SOURCE_MODULE_LOADER
+        try:
+            with loader.request_scope(Path(__file__).resolve().parent):
+                return function(*args, **kwargs)
+        except (ValueError, OSError):
+            return {"tool": "ssh_workflow" if function.__name__.startswith("_ssh") else "vm_workflow",
+                    "ok": False, "state": "unknown", "reason": "native_source_closure_unavailable",
+                    "nativeActionAllowed": False, "replayAllowed": False, "productAction": False}
+    return call
+

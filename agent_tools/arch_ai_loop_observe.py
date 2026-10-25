@@ -174,14 +174,13 @@ print(json.dumps({
 
 
 def _run_probe(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
-    with ssh_transport.automatic_submission(argv) as submitted:
-        return _run_probe_submitted(submitted, timeout_seconds)
+    return _run_probe_submitted(argv, timeout_seconds)
 
 
 def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
     """Run a single fixed SSH observation and keep a bounded stdout envelope."""
     try:
-        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        process = ssh_transport.popen_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except OSError as exc:
         raise RuntimeError("transport_unavailable") from exc
     assert process.stdout is not None
@@ -209,6 +208,7 @@ def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, by
             process.kill()
         process.wait()
         process.stdout.close()
+        ssh_transport.finish_ssh(process)
 
 
 def _unknown(reason: str) -> dict[str, Any]:

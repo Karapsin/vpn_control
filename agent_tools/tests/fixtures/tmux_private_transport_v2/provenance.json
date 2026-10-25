@@ -1,0 +1,53 @@
+{
+  "beforeimages": {
+    "ssh_automatic_program.py.before.source": "91ab9f37a5fdd21a069e481fec65142adcbb4c53d0afbfd8d69584da206926f8",
+    "ssh_tmux_mcp_adapter.py.before-reread.source": "2bfb31a2f9fe871a006c18e8a45c73fc81048a63560e90a689ead595b4027fbd",
+    "ssh_tmux_mcp_adapter.py.before.source": "224141d15113544ded0c89cdbff990f4f9c9acf1bbcc43b2ce7b5fe1c85aed21",
+    "ssh_tmux_session_ssh.py.before.source": "b61177cf4e9c2fcfaec0fca4aa5974bbc98eec1ca1f96fd4889898dffc19428a",
+    "test_ssh_tmux_mcp_adapter.py.before.source": "9510e0182ca521118154552cb6d520ad7a322750709dcdeb5480e893fe4c10bd"
+  },
+  "checks": {
+    "combined": {
+      "log": ".runtime/tool-recovery/tmux-private-transport-v2/final-combined.log",
+      "seconds": 70.476,
+      "tests": 61
+    },
+    "finalCombined": {
+      "log": ".runtime/tool-recovery/tmux-private-transport-v2/final67.log",
+      "seconds": 69.4,
+      "tests": 67
+    },
+    "finalPrivacy": {
+      "log": ".runtime/tool-recovery/tmux-private-transport-v2/final-eight-causals.log",
+      "seconds": 6.362,
+      "tests": 8
+    },
+    "intentRace": {
+      "log": ".runtime/tool-recovery/tmux-private-transport-v2/public-intent-race-first.log",
+      "seconds": 18.173,
+      "semantics": "exact original submit/action ASTs with only four intent publication/read boundaries replaced; original b611 body authenticated",
+      "tests": 4
+    },
+    "savedKeyCustody": {
+      "log": ".runtime/tool-recovery/tmux-private-transport-v2/key-custody-initial.log",
+      "seconds": 0.766,
+      "tests": 4
+    }
+  },
+  "native": {
+    "originalHistory": "v1 byte-identical and normal3ec selected pointer unchanged",
+    "qualification": "3ba29293-2c6c-4e79-bab6-f341582078c1",
+    "receipt": ".runtime/tool-recovery/tmux-private-transport-v2/native-3ba29293-2c6c-4e79-bab6-f341582078c1/result.json",
+    "scope": "actual source-qualified current adapter availability and65KiB savedsourcecounter3 exactlyonce; noVM/input/master change",
+    "seconds": 12.943152665975504,
+    "state": "ready"
+  },
+  "originalFailures": [
+    "old complete adapter availability hashes whole private inventory and identity key and publishes key digest",
+    "old inherited saved reader rehashes legacy private-derived intent before guard",
+    "automatic _pins hashes private identity key in complete generated savedstage/target caller",
+    "macOS fixture lexical /tmp symlink fails strict nofollow owner; fixture now supplies physical existing paths",
+    "authentic2bfb v2 admission then inherited raw intent reread hashes changed private bytes before later block; exact complete submit post-fsync race also hashes before dispatch"
+  ],
+  "scope": "immutable whole originals for private transport/key hash and nohash legacy gates; no historical production adoption"
+}

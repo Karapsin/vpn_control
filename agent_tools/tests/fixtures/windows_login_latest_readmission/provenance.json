@@ -1,0 +1,19 @@
+{
+  "afterSourceSha256": "e130b5736149be8a7ba04e681d977c237cc2db2996529605731dcd004d8e308e",
+  "beforeInputWasControlledMarkerOnly": true,
+  "beforeSourceSha256": "fa6e2012dfd0e714c1832d87d3d2d7e86dbabec3b4af0383fe1688e9e7f6a95b",
+  "discovery": "Latest WTS admission omitted ordinary status, expected SID and active lock/session-state comparisons before credential intent/input. Initial/after WTS checks did not prevent input on a changed current admission.",
+  "nativeBeforeimagePngSha256": "5e52b144f70c788ea16ec46315178efc89ca44708e26f853cd1f0b710ee5957b",
+  "nativePositiveFactsOperationId": "3ba9840a-f6a2-474a-b98b-b98209117604",
+  "nativePositiveFactsTransportOperationId": "8751fa4a-8116-468f-9441-eeae1572e99d",
+  "nativeQualifiedProducerSha256": "5a9b0d5435f7e652bcf59dcaf5f26f143ec3b77276fb78819b8aa97e570571df",
+  "negativeCases": [
+    "ordinary_false",
+    "wrong_expected_sid",
+    "same_identity_unlocked",
+    "session_state_changed"
+  ],
+  "realCredentialOpenedOrSubmitted": false,
+  "schemaVersion": 1,
+  "subsequentLocalOnlyChanges": "Producer capsule before private-open; original status retains expected/profile; source-qualified linked ready history; whole-owner-launch unavailable retry requires full native account/session/root/flock absence barrier and complete producer receipts. Protected _login_flow unchanged."
+}

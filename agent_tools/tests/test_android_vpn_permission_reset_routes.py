@@ -7,6 +7,7 @@ from agent_tools import mcp_server as server
 
 
 REQUEST = {
+    "host": "archlinux", "device": "api29",
     "correlationId": "11111111-1111-4111-8111-111111111111",
     "artifactId": "sha256-" + "a" * 64,
     "cliStageCorrelationId": "21111111-1111-4111-8111-111111111111",
@@ -37,7 +38,8 @@ class AndroidPermissionResetRouteTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         call.assert_called_once_with(server.REPO_ROOT, REQUEST["correlationId"], REQUEST["artifactId"],
             REQUEST["cliStageCorrelationId"], REQUEST["openingReadbackCorrelationId"],
-            REQUEST["expectedBackupSha256"], REQUEST["expectedOwner"], REQUEST["expectedRevision"])
+            REQUEST["expectedBackupSha256"], REQUEST["expectedOwner"], REQUEST["expectedRevision"],
+            host=REQUEST["host"], device=REQUEST["device"])
 
     def test_malformed_submitted_reply_is_not_promoted(self):
         valid = {"ok": True, "state": "submitted", "correlationId": REQUEST["correlationId"],
@@ -60,7 +62,7 @@ class AndroidPermissionResetRouteTests(unittest.TestCase):
                     result = server._vm_workflow_impl("android-vpn-permission-reset-start", {**REQUEST, key: value})
                 self.assertFalse(result["ok"])
                 call.assert_not_called()
-        for payload in ({**REQUEST, "command": "allow"}, {**REQUEST, "host": "foreign"}, {}):
+        for payload in ({**REQUEST, "command": "allow"}, {key: value for key, value in REQUEST.items() if key != "host"}, {}):
             with mock.patch.object(reset, "start") as call:
                 self.assertFalse(server._vm_workflow_impl("android-vpn-permission-reset-start", payload)["ok"])
             call.assert_not_called()

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "8e13ede3ff2bfd334b219f0887647be3b43456203b96ff3d39b99f010a93bea9",
+  "nativeBeforeOperation": "ef9859eb-6a01-4aed-9cae-58c127d8a191",
+  "failure": "WMI ExecutablePath unavailable for critical/PPL processes and finite stock background components not yet authenticated; idle proof correctly blocked. No reboot occurred.",
+  "resolution": "Pending stronger native process image/owner evidence. No name-only waiver."
+}

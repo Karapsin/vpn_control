@@ -20,7 +20,7 @@ import tempfile
 from . import ssh_connection_session as session
 from .private_inventory_lock import Directory
 
-_ORIGINAL_SOURCE = 'dba4466d09aff57787cb008edcd044bc1cb4c3a22f4325c6a41efebe230a0720'
+_ORIGINAL_SOURCE = 'dd0273609c7537237c159f82cf318745e27e4952ec784c63d251760b38adb887'
 _FILES = {'intent.json','child.json','anchor.json','ready.json','launch.json','startup.json','launch.stderr.private','lock'}
 _HASH = re.compile(r'[0-9a-f]{64}')
 

@@ -1,0 +1,10 @@
+{
+  "sourceSha256": "4df380fea63c106517271c01e5ebaa95e90127be55b87cdada2e8569e94eb6f0",
+  "originalOperation": "3be5067e-77bc-4b94-90cb-90d730a883b6",
+  "correlations": [
+    "7f1b7efb1bbb49349ea34f7b5faf417c",
+    "3e5a73136d674b5c9901cd5dabe7a6c5"
+  ],
+  "failure": "Admission and saved-source guards consume caller budget; submit clamps negative remaining deadline to0.1 and still enters target dispatch. Original private and status outcomes UNKNOWN; no replay.",
+  "evidence": "Original submit stage27.34s/execintent81.01s/UNKNOWN133.60s plus earlier admission; status27.15/76.13/113.50; original status postreturn connection_generation_changed separately investigated."
+}

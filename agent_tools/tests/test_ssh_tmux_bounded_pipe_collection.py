@@ -63,8 +63,14 @@ class BoundedPipeCollectionTest(unittest.TestCase):
         with mock.patch.object(subprocess,'Popen',side_effect=AssertionError('No native dispatch')) as effect:
             pins=adapter._sources(root)
             self.assertEqual(6,len(pins))
-            self.assertEqual(8,len(closure._sources(root)))
+            # Historical closure authority never adopts changed live adapter
+            # bytes. Its exact original whole family is exercised separately.
+            with self.assertRaisesRegex(ValueError,'adapter_source_changed'):closure._sources(root)
             self.assertIn(str(root/'agent_tools/linux_package_fixture_build.py'),pins)
+            from agent_tools.tests.ssh_tmux_terminal_historical_fixture import archived_family
+            with archived_family()as(historical_root,modules):
+                self.assertEqual(6,len(modules['ssh_tmux_mcp_adapter']._sources(historical_root)))
+                self.assertEqual(8,len(modules['ssh_tmux_terminal_closure']._sources(historical_root)))
             effect.assert_not_called()
 
     def test_actual_current_tool_capture_accepts_current_and_rejects_historical_or_mutated(self):

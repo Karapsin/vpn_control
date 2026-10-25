@@ -1,0 +1,33 @@
+{
+  "purpose": "Actual immutable-bound argv refusal before gateway child; full before sources retained. Historical diagnostic and publication pins are not replaced.",
+  "sources": {
+    "agent_tools/tests/fixtures/ssh_gateway_bound_carrier/diagnostic.carrier-only.before.source": {
+      "original": "agent_tools/ssh_gateway_tmux_d606_diagnostic.py",
+      "purpose": "Exact source checkpoint2c382d from completed52/53 carrier cohort, retained for v1 historical fixture contexts.",
+      "sha256": "2c382dc79c508400d583cb1fa3d835c67821a22133a30b9714fd0d0d614acae1"
+    },
+    "agent_tools/tests/fixtures/ssh_gateway_bound_carrier/master.private-config.before.source": {
+      "original": "agent_tools/ssh_gateway_tmux_master_ssh.py",
+      "purpose": "Current carrier/capture fixed before versioned no-private-config intent; real config secret persistence/hash regression.",
+      "sha256": "10f4622b27aee11822e16c7a38c3b2dd196f05393698e34f4e07ee252835e4f1"
+    },
+    "agent_tools/tests/fixtures/ssh_gateway_bound_carrier/owner.v1.before.source": {
+      "original": "agent_tools/ssh_gateway_tmux_master.py",
+      "purpose": "Immutable v1 owner: actual credential content hash in release history before new standalone v2.",
+      "sha256": "0a78dcdeafa04e58dacaff5262851656e56b2fd6c7abbe62e821c553c3267c0e"
+    },
+    "agent_tools/tests/fixtures/ssh_gateway_bound_carrier/owner.v2-before-crlf.source": {
+      "original": "agent_tools/ssh_gateway_tmux_owner_v2.py",
+      "purpose": "Actual trusted native master never published ready because OpenSSH CRLF failed exact LF comparison; original master gracefully ended, complete before owner retained.",
+      "sha256": "b5fb14f8368ae5bc2baa0b20ad4e77337e9c7ef2f9553e1c6689a684808dcb73"
+    },
+    "agent_tools/tests/fixtures/ssh_gateway_bound_carrier/ssh_gateway_tmux_d606_diagnostic.py.before.source": {
+      "original": "agent_tools/ssh_gateway_tmux_d606_diagnostic.py",
+      "sha256": "205358c9bac9ffb41d7b0926f1f9ae6f39c100dc63a036ed2e9e45a63edc348b"
+    },
+    "agent_tools/tests/fixtures/ssh_gateway_bound_carrier/ssh_gateway_tmux_master_ssh.py.before.source": {
+      "original": "agent_tools/ssh_gateway_tmux_master_ssh.py",
+      "sha256": "dce231fa7efb85d6c9e9952a87731cbab5fdafe0a7aec020a71193c7e2d903d4"
+    }
+  }
+}

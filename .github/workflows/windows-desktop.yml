@@ -32,6 +32,18 @@ on:
       - "agent_tools/tests/test_windows_powershell_fixture_execution.py"
       - "agent_tools/tests/test_windows_powershell_environment.py"
       - "agent_tools/tests/test_windows_manifest_parser.py"
+      - "agent_tools/tests/test_windows_compile_acl_creation.py"
+      - "agent_tools/tests/fixtures/windows_compile_acl_creation/**"
+      - "agent_tools/tests/test_windows_public_compile_causals.py"
+      - "agent_tools/tests/fixtures/windows_public_compile/**"
+      - "agent_tools/tests/test_windows_compile_followup.py"
+      - "agent_tools/tests/fixtures/windows_compile_followup/**"
+      - "agent_tools/tests/test_windows_system_image_inquiry.py"
+      - "agent_tools/tests/fixtures/windows_system_image_inquiry/**"
+      - "agent_tools/readiness_windows*.py"
+      - "agent_tools/tests/test_readiness_windows*.py"
+      - "agent_tools/tests/fixtures/windows_wts_info_class/**"
+      - "agent_tools/tests/fixtures/windows_token_restore_probe.ps1"
       - "agent_tools/tests/fixtures/windows_powershell_environment.py"
       - "agent_tools/tests/fixtures/windows_powershell_environment/**"
       - "agent_tools/tests/fixtures/windows_manifest_parser/**"
@@ -224,17 +236,44 @@ jobs:
         run: ./scripts/check_release_hygiene.sh
 
       - name: Verify native managed-check locking and receipts
+        if: ${{ !cancelled() }}
         env:
           AGENT_TEST_BASELINE: ${{ github.event_name == 'workflow_dispatch' && (inputs.agent_test_baseline || github.sha) || '' }}
         run: python agent_tools/affected_agent_tests.py --audit --baseline HEAD --run --include agent_tools.tests.test_managed_check_lease agent_tools.tests.test_mcp_server.FingerprintTest agent_tools.tests.test_windows_source_custody agent_tools.tests.test_source_loader_bootstrap agent_tools.tests.test_historical_fixture_checkout_bytes agent_tools.tests.test_reviewed_source_checkout_bytes agent_tools.tests.test_native_wire_event_evidence agent_tools.tests.test_mcp_core_capture_windows agent_tools.tests.test_mcp_source_bootstrap agent_tools.tests.test_windows_cp117_historical_base_context
 
       - name: Require native Windows PowerShell for causal guards
+        if: ${{ !cancelled() }}
         run: python -c "import os, shutil; assert os.name == 'nt' and shutil.which('powershell.exe'), 'Native Windows PowerShell is required'"
 
       - name: Verify Windows PowerShell5.1 Hashtable sum and progress oracle
+        if: ${{ !cancelled() }}
         run: python scripts/test_windows_native_fixture.py WindowsHashtableSumTest
 
+      - name: Verify Windows readiness native causal guards
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: >-
+          python agent_tools/affected_agent_tests.py --audit --baseline HEAD --run --include
+          agent_tools.tests.test_readiness_windows_guest.NativeWindowsWtsTests
+          agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_actual_complete_census_before_RED_fixed_native_identity_GREEN
+          agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_actual_native_process_handle_birth_and_image
+          agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_complete_background_before_RED_verified_role_GREEN
+          agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_signature_account_session_and_path_mismatches_remain_blocked
+          agent_tools.tests.test_readiness_windows_leases.WindowsLeaseProtocolTests.test_actual_windows_native_program_compiles_without_any_execution_state_effect
+          agent_tools.tests.test_readiness_windows_leases.WindowsLeaseProtocolTests.test_native_restore_previous_output_buffer_reproduces_ack_failure_and_null_output_restores
+          agent_tools.tests.test_windows_detach_reflection
+          agent_tools.tests.test_windows_jobs_directory_security
+          agent_tools.tests.test_windows_compile_acl_creation
+          agent_tools.tests.test_windows_public_compile_causals.StreamRetention.test_actual_windows_powershell_old_RED_fixed_GREEN
+          agent_tools.tests.test_windows_compile_followup.NativeCompiler.test_actual_complete_before_sources_RED_fixed_GREEN_without_methods_invoked
+          agent_tools.tests.test_windows_system_image_inquiry.Evidence.test_windows_framework_compiles_exact_before_and_inquiry_without_invoking_methods
+          agent_tools.tests.test_windows_preexec_inventory_clr
+          agent_tools.tests.test_windows_defender_service_roles.NativeWindowsDefenderServiceTests
+          agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_complete_before_RED_fixed_desktop_roles_GREEN
+          agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_target_parent_package_account_and_configured_mismatches_block
+
       - name: Verify affected CP117 PowerShell causal guards
+        if: ${{ !cancelled() }}
         id: cp117-causal-guards
         shell: pwsh
         env:
@@ -326,16 +365,20 @@ jobs:
           compression-level: 0
 
       - name: Verify batch-logon fixture admission
+        if: ${{ !cancelled() }}
         run: python scripts/test_windows_task_admission.py
 
       - name: Verify Windows admission diagnostic behavior
+        if: ${{ !cancelled() }}
         run: python scripts/test_windows_install_admission_diagnostic.py
 
       - name: Install WiX Toolset
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: choco install wixtoolset --no-progress -y
 
       - name: Add WiX Toolset to PATH
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $WixRoot = Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset*" |
@@ -351,10 +394,13 @@ jobs:
           $WixBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Build Windows packages
+        id: build-windows-packages
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: .\scripts\package_windows_desktop.ps1
 
       - name: Upload Windows installers
+        if: ${{ !cancelled() && steps.build-windows-packages.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: vpn-control-windows-installers

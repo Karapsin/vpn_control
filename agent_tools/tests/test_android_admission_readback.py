@@ -88,8 +88,10 @@ subprocess.Popen=lambda *args,**kwargs: FakeProcess()
         correlation = "ad399bdd-25cb-4f71-857e-34ad18ae0399"
         malformed = {"state":"complete", "correlationId":correlation,
             "receipt":{"result":{"admitted":True,"guard":{},"backup":{}}}}
-        with mock.patch.object(admission,"async_status",return_value=malformed):
-            self.assertFalse(admission.async_collect(".",correlation)["ok"])
+        # A private root: the checkout's async journal is never consulted.
+        with tempfile.TemporaryDirectory() as temporary, \
+             mock.patch.object(admission,"async_status",return_value=malformed):
+            self.assertFalse(admission.async_collect(temporary,correlation)["ok"])
 
     def test_async_intent_precedes_submission_and_duplicate_start_never_replays(self):
         correlation = "ad399bdd-25cb-4f71-857e-34ad18ae0399"

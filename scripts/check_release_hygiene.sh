@@ -49,6 +49,8 @@ run_check python3 scripts/test_source_whitespace.py
 run_check python3 scripts/check_source_whitespace.py
 run_check python3 scripts/check_workflow_syntax.py
 run_check python3 scripts/test_check_workflow_syntax.py
+run_check python3 scripts/check_ci_failure_discovery.py
+run_check python3 scripts/test_ci_failure_discovery.py
 run_check python3 scripts/test_release_hygiene_runner.py
 run_check bash scripts/check_docs_hygiene.sh
 run_check bash scripts/test_arch_install_hygiene.sh
@@ -140,6 +142,12 @@ run_check python3 scripts/test_user_facing_terminology.py
 run_check python3 scripts/check_ui_theme.py
 run_check python3 scripts/test_visual_regression.py
 run_check python3 scripts/test_visual_platform.py
+run_check python3 scripts/test_visual_target.py
+run_check python3 scripts/test_native_fixture_storage.py
+run_check python3 -m scripts.test_native_restore_image
+run_check python3 -m scripts.test_qualified_fixture_reservations
+run_check python3 -m scripts.test_tart_installer_admission
+run_check python3 agent_tools/tool_action_policy.py
 run_check python3 scripts/test_android_visual_geometry.py
 run_check python3 scripts/test_visual_review.py
 run_check python3 -m py_compile scripts/visual_platform.py scripts/visual_regression.py scripts/visual_review.py

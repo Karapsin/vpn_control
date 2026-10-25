@@ -431,10 +431,17 @@ class SelectedRouteTests(unittest.TestCase):
         # Real producer ingress is the causal reason a multiline -c source
         # cannot be placed directly in SSH argv. The carrier sends it framed.
         with self.assertRaises(ssh_transport.SshConfigError):ssh_transport.build_ssh_argv(config,'archlinux',command=['python3','-c',source])
+        import hashlib,types
+        folder=Path(__file__).parent/'fixtures/ssh_stream_e2big';before=folder/'android_installer_direct_transport.py.before.source'
+        raw=before.read_bytes();self.assertEqual(json.loads((folder/'provenance.json').read_bytes())['beforeimages']['android_installer_direct_transport.py'],hashlib.sha256(raw).hexdigest())
+        previous=types.ModuleType('agent_tools._selected_stream_before');previous.__package__='agent_tools';previous.__file__=str(before)
+        exec(compile(raw,str(before),'exec'),previous.__dict__)
+        with self.assertRaises(ValueError):previous.fixed_ssh_argv(self.fixture.root,source)
         argv=direct.fixed_ssh_argv(self.fixture.root,source)
-        child=self.fixture.f.real_popen([sys.executable,'-I','-B','-c','import json,sys;print(json.dumps(sys.argv[1:]))',*argv],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        out,err=child.communicate(timeout=3);self.assertEqual(0,child.returncode);self.assertEqual(b'',err);self.assertEqual(argv,json.loads(out))
-        inner=shlex.split(argv[-1]);command=shlex.split(inner[-1])
+        raw=tuple(argv) if isinstance(argv,list) else argv.original_argv
+        child=self.fixture.f.real_popen([sys.executable,'-I','-B','-c','import json,sys;print(json.dumps(sys.argv[1:]))',*raw],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        out,err=child.communicate(timeout=3);self.assertEqual(0,child.returncode);self.assertEqual(b'',err);self.assertEqual(list(raw),json.loads(out))
+        inner=shlex.split(raw[-1]);command=shlex.split(inner[-1])
         self.assertEqual(['sudo','-S','-p','','--','python3','-I','-u','-B','-c'],command[:-1])
         tree=ast.parse(command[-1]);encoded=next(node.args[0].value for node in ast.walk(tree)if isinstance(node,ast.Call)and isinstance(node.func,ast.Attribute)and node.func.attr=='b64decode')
         self.assertEqual(source.encode(),base64.b64decode(encoded));self.assertNotIn('inert private sentinel',repr(argv))

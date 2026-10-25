@@ -138,14 +138,13 @@ class JobObservation:
 
 
 def _run_probe(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
-    with ssh_transport.automatic_submission(argv) as submitted:
-        return _run_probe_submitted(submitted, timeout_seconds)
+    return _run_probe_submitted(argv, timeout_seconds)
 
 
 def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, bytes]:
     """Run one SSH observer while retaining at most ``MAX_OUTPUT_BYTES``."""
     try:
-        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        process = ssh_transport.popen_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL)
     except OSError as exc:
         raise ProbeFailure("ssh_unavailable") from exc
@@ -183,6 +182,7 @@ def _run_probe_submitted(argv: list[str], timeout_seconds: int) -> tuple[int, by
         raise
     finally:
         process.stdout.close()
+        ssh_transport.finish_ssh(process)
 
 
 def _observation_from_output(host: str, identity: JobIdentity, returncode: int, output: bytes) -> JobObservation:

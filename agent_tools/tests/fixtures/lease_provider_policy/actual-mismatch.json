@@ -1,0 +1,24 @@
+{
+  "action": "vm_workflow:readiness-lease-acquire",
+  "actualRuntime": {
+    "permittedRecoveries": [],
+    "requirements": [
+      "guest_agent"
+    ]
+  },
+  "classification": "declared_policy_runtime_mismatch_only",
+  "declared": {
+    "permittedRecoveries": [
+      "wake_display"
+    ],
+    "requirements": [
+      "guest",
+      "guest_agent",
+      "interactive_desktop",
+      "ordinary_session",
+      "transport"
+    ]
+  },
+  "nativeWakeBugClaim": false,
+  "provider": "tart-macos"
+}

@@ -1,0 +1,328 @@
+"""Fail-closed guidance for the next safe public MCP workflow action.
+
+The classifier turns durable workflow observations into a small, displayable
+recommendation.  It never reconstructs a mutation: uncertain publishes,
+forwards, and jobs are observed with their existing identity, and every
+unrecognised response asks the caller to inspect evidence.
+"""
+from __future__ import annotations
+
+import re
+import uuid
+from typing import Any, Mapping
+
+
+_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_JOB_IDENTITY = frozenset(("jobId", "pid", "startTicks", "receiptPath"))
+_FIXTURE = re.compile(r"[a-z0-9][a-z0-9-]{0,95}\Z")
+
+
+def _guidance(kind: str, reason: str, *, action: dict[str, Any] | None = None,
+              replay_allowed: bool = False, fresh: bool | None = None) -> dict[str, Any]:
+    value: dict[str, Any] = {
+        "kind": kind,
+        "reason": reason,
+        "replayAllowed": replay_allowed,
+    }
+    if action is not None:
+        value["action"] = action
+    if fresh is not None:
+        value["requiresFreshEvidence"] = fresh
+    return value
+
+
+def _host(result: Mapping[str, Any]) -> str | None:
+    value = result.get("host")
+    return value if isinstance(value, str) and _TOKEN.fullmatch(value) else None
+
+
+def _operation(result: Mapping[str, Any]) -> str | None:
+    value = result.get("operationId")
+    try:
+        return value if type(value) is str and str(uuid.UUID(value)) == value else None
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _fixture(result: Mapping[str, Any]) -> str | None:
+    value = result.get("fixtureId")
+    return value if type(value) is str and _FIXTURE.fullmatch(value) else None
+
+
+def _readiness_guidance(tool, action, result):
+    operation = _operation(result)
+    selected = _host(result) if tool == "ssh_workflow" else _fixture(result)
+    if operation is None or selected is None or result.get("replayAllowed") is not False:
+        return _guidance("resolve_blocker", "original readiness identity is incomplete", fresh=True)
+    state = result.get("state")
+    if type(state) is not str or result.get("readinessBlocker") or state in {"blocked", "unknown", "failed"}:
+        return _guidance("resolve_blocker", "readiness has an unresolved evidence blocker", fresh=True)
+    if state == "ready" and result.get("ok") is True:
+        return _guidance("complete", "the same target is ready", fresh=False)
+    if action != "readiness-status" or state not in {"not_ready", "expired", "dead", "unavailable"}:
+        return _guidance("resolve_blocker", "readiness has no proven safe continuation", fresh=True)
+    args = ({"host": selected, "identity": {"operationId": operation}} if tool == "ssh_workflow" else
+            {"inputs": {"fixtureId": selected, "operationId": operation}})
+    return _guidance("ensure_ready", "establish readiness for the same original target and operation",
+                     action={"tool": tool, "action": "readiness-ensure", "args": args}, fresh=True)
+
+
+def _lease_guidance(result):
+    operation, fixture = _operation(result), _fixture(result)
+    if operation is None or fixture is None or result.get("replayAllowed") is not False:
+        return _guidance("resolve_blocker", "original lease identity is incomplete", fresh=True)
+    state, owner = result.get("state"), result.get("jobState")
+    if type(state) is not str or type(owner) is not str:
+        return _guidance("resolve_blocker", "original lease state is incomplete", fresh=True)
+    if (state in {"expired", "cancelled", "restored"} and owner == "terminal"
+            and result.get("restored") is True and result.get("ok") is True):
+        return _guidance("complete", "the original lease and retained owner result are terminal", fresh=False)
+    if (state == "restore_blocked" and owner == "terminal" and result.get("restored") is False
+            and result.get("provider") == "android-emulator"
+            and result.get("qualificationScope") == "registered_android_fixture"
+            and result.get("restorationState") == "unsubmitted"
+            and result.get("reason") == "lease_restore_not_admitted"
+            and type(result.get("restorationOperationId")) is str
+            and result["restorationOperationId"] == str(uuid.uuid5(uuid.UUID(operation), "temporary-keep-awake-restore-v1"))):
+        return _guidance("reconcile_original", "restore only the same original lease setting through its owned transport",
+                         action={"tool": "vm_workflow", "action": "readiness-lease-reconcile",
+                                 "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
+    pending = (state == "unknown" and owner in {"unknown", "pending"} and result.get("ok") is True
+               and type(result.get("reason")) is str
+               and result.get("reason") in {"original_owner_ack_pending", "original_admission_pending"})
+    if pending or owner in {"running", "pending"} and (
+            state == "active" and result.get("ok") is True
+            or state in {"restore_pending", "restoring"}
+            or state in {"expired", "cancelled"} and result.get("restored") is True):
+        return _guidance("observe_original", "observe the same original lease until its owner receipt is terminal",
+                         action={"tool": "vm_workflow", "action": "readiness-lease-status",
+                                 "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
+    return _guidance("resolve_blocker", "original lease evidence is blocked or incomplete", fresh=True)
+
+
+def _guest_program_guidance(prefix, action, result):
+    operation, fixture = _operation(result), _fixture(result)
+    qualified = (type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
+                 and type(result.get("durableProtocol")) is int and result["durableProtocol"] == 1
+                 and result.get("qualificationScope") == "fixed-counter"
+                 and (prefix != "android-program" or result.get("provider") == "android-emulator"))
+    if operation is None or fixture is None or result.get("replayAllowed") is not False or not qualified:
+        return _guidance("resolve_blocker", "original guest program admission is incomplete", fresh=True)
+    state, reason = result.get("state"), result.get("reason")
+    if type(state) is not str:
+        return _guidance("resolve_blocker", "original guest program state is unrecognized", fresh=True)
+    if state == "terminal":
+        if action == prefix + "-collect":
+            incomplete = (any(key in result and type(result[key]) is not bool for key in ("complete", "streamCapped"))
+                          or result.get("complete") is False or result.get("streamCapped") is True
+                          or prefix == "android-program" and (result.get("complete") is not True or result.get("streamCapped") is not False))
+            if incomplete:
+                return _guidance("resolve_blocker", "original retained guest streams are incomplete", fresh=True)
+            return _guidance("complete", "original retained guest program result is collected", fresh=False)
+        kind, verb = "collect_original", "collect"
+    else:
+        known_unknown = (
+            prefix == "guest-program" and type(reason) is str and reason in {
+                "record_unavailable", "guest_submission_unresolved", "guest_original_observation_unavailable"}
+            or prefix == "android-program" and (reason is None or type(reason) is str and reason in {
+                "android_job_admission_unknown", "android_job_transport_unknown", "android_job_transport_timeout",
+                "android_job_deadline", "android_job_original_owner_unresolved"}))
+        if state not in {"running", "pending"} and not (state == "unknown" and known_unknown):
+            return _guidance("resolve_blocker", "original guest program evidence is blocked or incomplete", fresh=True)
+        kind, verb = "reconcile_original", "reconcile"
+    return _guidance(kind, "observe the same admitted guest program without replacement",
+                     action={"tool": "vm_workflow", "action": prefix + "-" + verb,
+                             "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
+
+
+def _job_identity(result: Mapping[str, Any]) -> dict[str, Any] | None:
+    value = result.get("identity")
+    if not isinstance(value, Mapping) or set(value) - _JOB_IDENTITY or not {"jobId", "pid", "startTicks"} <= set(value):
+        return None
+    if not isinstance(value["jobId"], str) or not _TOKEN.fullmatch(value["jobId"]):
+        return None
+    if any(isinstance(value[key], bool) or not isinstance(value[key], int) or value[key] < 1 for key in ("pid", "startTicks")):
+        return None
+    if "receiptPath" in value and (not isinstance(value["receiptPath"], str) or not value["receiptPath"].startswith("/")):
+        return None
+    return dict(value)
+
+
+def _observe_job(result: Mapping[str, Any], reason: str) -> dict[str, Any]:
+    host, identity = _host(result), _job_identity(result)
+    if host is None or identity is None:
+        return _guidance("inspect-evidence", reason + "; the job correlation is incomplete", fresh=True)
+    return _guidance("observe-job", reason, action={"tool": "ssh_workflow", "action": "job-status",
+                     "args": {"host": host, "identity": identity}}, fresh=True)
+
+
+def _observe_transfer(action: str, result: Mapping[str, Any], reason: str) -> dict[str, Any]:
+    # Transfer status needs the original host alias.  It is not present in all
+    # historical transfer receipts, so never invent one from a path or message.
+    host = _host(result)
+    identity = result.get("identity")
+    status_action = "apk-status" if action.startswith("apk-") else "fixture-status"
+    if host is None or not isinstance(identity, Mapping):
+        return _guidance("inspect-evidence", reason + "; retain the existing transfer identity and host alias", fresh=True)
+    return _guidance("observe-transfer", reason, action={"tool": "ssh_workflow", "action": status_action,
+                     "args": {"host": host, "identity": dict(identity)}}, fresh=True)
+
+
+def _retry_probe(result: Mapping[str, Any], reason: str) -> dict[str, Any]:
+    host = _host(result)
+    if host is None:
+        return _guidance("inspect-evidence", reason + "; the host alias is absent", fresh=True)
+    return _guidance("retry-readonly", reason, action={"tool": "ssh_workflow", "action": "probe",
+                     "args": {"host": host}}, replay_allowed=True, fresh=True)
+
+
+def _scenario_status(result: Mapping[str, Any], reason: str) -> dict[str, Any]:
+    correlation_id = result.get("correlationId")
+    if not isinstance(correlation_id, str) or not _TOKEN.fullmatch(correlation_id):
+        return _guidance("inspect-evidence", reason + "; the scenario correlation is incomplete", fresh=True)
+    # vm_workflow takes its payload in ``inputs``.  Keeping correlationId there
+    # makes this a real public RPC shape instead of a convenient but invalid
+    # top-level argument.
+    return _guidance("observe-scenario", reason, action={"tool": "vm_workflow", "action": "scenario-status",
+                     "args": {"inputs": {"correlationId": correlation_id}}}, fresh=True)
+
+
+def next_action(tool: str, action: str, result: Mapping[str, Any] | Any) -> dict[str, Any]:
+    """Classify one public workflow response without making a state change.
+
+    ``action`` in the returned value always names an existing public MCP route;
+    its arguments contain only a result-derived host alias and durable identity.
+    """
+    if not isinstance(result, Mapping):
+        return _guidance("inspect-evidence", "workflow response is not an object", fresh=True)
+    if tool not in {"ssh_workflow", "vm_workflow"}:
+        return _guidance("inspect-evidence", "unknown workflow tool", fresh=True)
+    state = result.get("state")
+    status = result.get("status")
+    verification = result.get("verification")
+    summary = " ".join(str(result.get(key, "")) for key in ("summary", "message", "reason")).lower()
+
+    if action in {"readiness-status", "readiness-ensure", "readiness-reboot"}:
+        return _readiness_guidance(tool, action, result)
+    if tool == "vm_workflow" and action in {"readiness-lease-acquire", "readiness-lease-status", "readiness-lease-cancel", "readiness-lease-reconcile"}:
+        return _lease_guidance(result)
+    if tool == "vm_workflow" and action in {
+            "guest-program-start", "guest-program-status", "guest-program-reconcile", "guest-program-collect",
+            "android-program-start", "android-program-status", "android-program-reconcile", "android-program-collect"}:
+        return _guest_program_guidance("android-program" if action.startswith("android-program-") else "guest-program", action, result)
+
+    if tool == "ssh_workflow" and action in {"program-start", "program-status", "program-collect", "program-reconcile"}:
+        host, operation = _host(result), _operation(result)
+        if host is None or operation is None or result.get("replayAllowed") is not False:
+            return _guidance("resolve_blocker", "original program identity is incomplete", fresh=True)
+        kind = result.get("nextAction")
+        allowed = {"collect_original": "program-collect", "observe_original": "program-status",
+                   "reconcile_original": "program-reconcile"}
+        if state == "terminal":
+            if action == "program-collect":
+                return _guidance("complete", "original retained program result is collected", fresh=False)
+            kind = "collect_original"
+        elif state == "running":
+            kind = "observe_original"
+        elif state == "pending":
+            kind = "reconcile_original" if type(result.get("durableProtocol")) is int and result["durableProtocol"] == 1 else "observe_original"
+        elif kind == "reconcile_original" and (type(result.get("durableProtocol")) is not int or result["durableProtocol"] != 1):
+            kind = "resolve_blocker"
+        if type(kind) is not str or kind not in allowed:
+            return _guidance("resolve_blocker", "original program outcome requires evidence", fresh=True)
+        return _guidance(kind, "continue observing the same original program", action={
+            "tool": "ssh_workflow", "action": allowed[kind],
+            "args": {"host": host, "identity": {"operationId": operation}}}, fresh=True)
+
+    if tool == "ssh_workflow" and result.get("ok") is True:
+        host = _host(result)
+        if (action in {"connection-session-retire", "connection-session-retirement-status"}
+                and state == "retired" and result.get("replayAllowed") is False and host is not None
+                and isinstance(result.get("receiptSha256"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", result["receiptSha256"])):
+            return _guidance("prepare-ssh-session", "completed dead-session history is retained; check or prepare the current owner",
+                             action={"tool": "ssh_workflow", "action": "connection-session-prepare", "args": {"host": host}}, fresh=True)
+        if (action in {"connection-session-prepare", "connection-session-status"}
+                and state == "ready" and result.get("replayAllowed") is False and host is not None
+                and isinstance(result.get("receiptSha256"), str)
+                and re.fullmatch(r"[0-9a-f]{64}", result["receiptSha256"])):
+            if action == "connection-session-prepare":
+                return _guidance("observe-ssh-session", "revalidate the existing outer master receipt",
+                                 action={"tool": "ssh_workflow", "action": "connection-session-status",
+                                         "args": {"host": host, "identity": {"receiptSha256": result["receiptSha256"]}}}, fresh=True)
+            return _guidance("probe-ssh-session", "verify connectivity through the admitted outer master",
+                             action={"tool": "ssh_workflow", "action": "probe", "args": {"host": host}}, fresh=True)
+        if action == "connection-recover" and state == "recovery_master_ready" and host is not None:
+            return _guidance("adopt-recovered-ssh-master", "the recorded replacement master is ready for guarded inventory adoption",
+                             action={"tool": "ssh_workflow", "action": "connection-adopt", "args": {"host": host}}, fresh=True)
+        if action == "connection-adopt" and state == "ready" and result.get("replayAllowed") is False and host is not None:
+            return _guidance("probe-adopted-ssh-master", "verify connectivity through the adopted private route",
+                             action={"tool": "ssh_workflow", "action": "probe", "args": {"host": host}}, fresh=True)
+
+    if tool == "ssh_workflow" and action == "job-status":
+        if status == "running":
+            return _observe_job(result, "the correlated job is still running")
+        if status == "terminal":
+            return _guidance("inspect-evidence", "the correlated job is terminal; inspect its receipt before any new request", fresh=True)
+        return _observe_job(result, "job observation is unknown")
+
+    if tool == "ssh_workflow" and action in {"fixture-publish", "apk-publish", "fixture-status", "apk-status"}:
+        if state in {"published", "unknown", "submitted"}:
+            return _observe_transfer(action, result, "transfer outcome requires status evidence")
+
+    if tool == "ssh_workflow" and action in {"forward-open", "forward-status", "forward-close"}:
+        if state in {"pending", "remote_created", "remote_forward_pending", "local_pending", "local_forward_pending", "closing", "close_pending", "ready", "owner_unknown", "unavailable"}:
+            host = _host(result)
+            if host is not None:
+                return _guidance("observe-forward", "existing forward has a durable state", action={"tool": "ssh_workflow", "action": "forward-status", "args": {"host": host}}, fresh=True)
+            return _guidance("inspect-evidence", "existing forward must be observed with its original host alias", fresh=True)
+
+    if tool == "ssh_workflow" and action == "probe" and status in {"timeout", "connection_failed", "ssh_failed"}:
+        return _retry_probe(result, "the bounded read-only connectivity probe did not establish a result")
+
+    if tool == "ssh_workflow" and action == "probe" and status == "nested_master_absent" and result.get("ok") is False:
+        # Only the fixed probe produces this typed, configured-hop observation.
+        # Never copy an adapter's nextAction or derive a route from stderr.
+        hop = result.get("recoveryHost")
+        if not isinstance(hop, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", hop) is None:
+            return _guidance("inspect-evidence", "missing master has no valid configured hop", fresh=True)
+        return _guidance("recover-configured-ssh-master", "the exact configured nested master is confirmed absent",
+                         action={"tool": "ssh_workflow", "action": "connection-recover", "args": {"host": hop}}, fresh=True)
+
+    if tool == "vm_workflow" and action in {"scenario-start", "scenario-status", "scenario-resume", "scenario-collect"}:
+        if state in {"submitted", "submitting", "unknown"}:
+            return _scenario_status(result, "the durable scenario has not reached a correlated terminal receipt")
+        if state == "terminal":
+            exit_code = result.get("exitCode")
+            if isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code == 0:
+                return _guidance("complete", "the scenario completed with exit code 0", fresh=False)
+            return _guidance("inspect-evidence", "the scenario is terminal without a successful exit receipt", fresh=True)
+
+    if tool == "vm_workflow" and action == "environment-status":
+        observations = result.get("observations")
+        stale = result.get("freshness") == "stale" or (
+            isinstance(observations, list) and any(isinstance(item, Mapping) and item.get("stale") is True for item in observations)
+        )
+        if stale:
+            return _guidance("refresh-measurement", "supplied environment facts are stale", fresh=True)
+        if state == "UNKNOWN" and result.get("requestedProbesReady") is True:
+            return _guidance("missing-dependency", "requested probes are ready but required environment facts are absent", fresh=True)
+        if state == "UNKNOWN":
+            return _guidance("inspect-evidence", "environment evidence remains unknown; do not replay a reservation", fresh=True)
+
+    if verification == "verified":
+        return _guidance("complete", "artifact evidence is verified", fresh=False)
+    if verification == "unverified-remote":
+        return _guidance("verify-artifact", "remote artifact evidence still needs independent verification", fresh=True)
+    if verification in {"missing-or-unsafe", "mismatch"}:
+        return _guidance("missing-dependency", "artifact verification did not establish usable local evidence", fresh=True)
+
+    if result.get("freshness") == "stale" or "not recent" in summary:
+        return _guidance("refresh-measurement", "measurement evidence is stale", fresh=True)
+    if state in {"unsupported_host", "unsupported_platform"} or "unsupported" in summary:
+        return _guidance("unsupported", "the requested operation is explicitly unsupported", fresh=False)
+    if "installer" in summary and (result.get("ok") is False or state in {"failed", "terminal"}):
+        return _guidance("inspect-evidence", "installer failure is terminal; inspect evidence rather than rerunning it", fresh=True)
+    if state in {"unknown", "recovery_intent_pending", "configured_master_unknown", "remote_master_unknown"}:
+        return _guidance("inspect-evidence", "existing state is uncertain; do not replay the mutation", fresh=True)
+    return _guidance("inspect-evidence", "workflow response has no recognised safe continuation", fresh=True)

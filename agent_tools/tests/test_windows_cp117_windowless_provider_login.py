@@ -172,10 +172,13 @@ class WindowsOriginalPipeExecutionTests(HistoricalGzipTestCase):
 class ActualStreamNamespaceTests(HistoricalGzipTestCase):
  def test_actual_original_stream_time_nameerror_after_launch_before_private_write(self):
   from unittest.mock import MagicMock
-  process=MagicMock();selector=MagicMock()
-  self.assertNotIn('time',m.role._stream.__globals__)
+  from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import provider
+  from agent_tools.tests.fixtures.windows_cp117_migration_head.context import role
+  # The original role reader named by the sealed provider's ROLE_SHA, not the migrated current role.
+  original=role(provider());process=MagicMock();selector=MagicMock()
+  self.assertNotIn('time',original._stream.__globals__)
   with patch('subprocess.Popen',return_value=process)as launch,patch('selectors.DefaultSelector',return_value=selector):
-   with self.assertRaisesRegex(NameError,"time"):m.role._stream(['fixed-inert'],MagicMock(),m.INERT_CORRELATION,m.INERT_NONCE,'a'*64,{'pid':1},m.PUBLIC_SENTINEL)
+   with self.assertRaisesRegex(NameError,"time"):original._stream(['fixed-inert'],MagicMock(),m.INERT_CORRELATION,m.INERT_NONCE,'a'*64,{'pid':1},m.PUBLIC_SENTINEL)
   launch.assert_called_once();process.stdin.write.assert_not_called()
  def test_new_actual_stream_explicit_time_context_captures_exit_without_private_input_log(self):
   from unittest.mock import MagicMock

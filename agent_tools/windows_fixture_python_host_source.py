@@ -95,7 +95,7 @@ def observe(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
             return _result("unknown")
         command = ("python3", "-c", "exec(" + repr(_REMOTE) + ")")
         argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout, 30), command=command)
-        completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        completed = ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL, timeout=timeout, check=False)
     except (OSError, ValueError, TypeError, subprocess.TimeoutExpired, ssh_transport.SshConfigError):
         return _result("unknown")

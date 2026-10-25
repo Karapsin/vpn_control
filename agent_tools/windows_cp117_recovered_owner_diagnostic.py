@@ -7,7 +7,7 @@ from .windows_diagnostic_authority_capture import AuthorityCapture
 
 CORRELATION='8ca43fbe-7d90-4267-96fa-bc0113f30c43'
 NONCE='0580ab4b-677a-4b12-b88e-9c6ffbfad2cd'
-OWNER_SHA='9ff8275a77e71e8b1a7ae90ee4e7dd5a1910ad130720e4621ff85a6fe9b38342'
+OWNER_SHA='5efac98768379da2266974ac0d35f13f43d09e40f9bc5979e812c6239b358399'
 FLOW_SHA='f54029cf3259011d71df93c51f15b3c2b7a886470008427cf85c8e127c567a72'
 ORIGINAL_LOGIN_LEAF='windows-cp117-provider-login-9dbd4008-7f34-4e1d-85a6-f3f30ea7fdc0'
 ORIGINAL_UNKNOWN={'sha256':'69dbdba92e02ca98b054849ebf04fe65ed61a59d85d893ed1ffd7c45b03fbed8','generation':[16777234,112830854,33152,503,20,1,101431,1791145663307559327,1791145663307559327]}
@@ -81,18 +81,24 @@ def _program(record, expected_flow_sha):
         if r.authority._read_bound_file(Path(path))!=pin:raise ValueError('diagnostic-factory-drift')
     compile(source,'fixed-owner-diagnostic','exec');return source,sha
 
-CURRENT_FLOW_SHA='3447001b51cb4df248e4566135bba568c5e3e090a9a9744d4ba3eafc4e9a8c12'
+CURRENT_FLOW_SHA='c6415d2856248cc967ca4f1278143390f53b3b832e11b22c753ef417dc4372a3'
+# Exact current-to-d24c1904 provider deltas: its SSH transport migration and re-pinned current bindings.
+CURRENT_FLOW_DELTAS=((b'from . import ssh_transport\nimport ast,',b'import ast,'),(b'process=ssh_transport.popen_ssh(argv,',b'process=subprocess.Popen(argv,'),(b'process.stderr.close()\n\n        ssh_transport.finish_ssh(process)\n\n',b'process.stderr.close()\n\n'),(b'completed=r.authority.closure.base.ssh_transport.run_ssh(argv,',b'completed=subprocess.run(argv,'),(b"ROLE_SHA='afd3a4a99f82b861bc83e227f842486a84f0b7ed8a8d332e3bb248ecc67bb822'",b"ROLE_SHA='afaa1184bc10f9358d57238e2d6d736de2435c0f7b2553a7aaf7343efe9ae7a8'"),(b"SECURE_SHA='26bafc28d72bc08baa673012a1ea7649d7b531f6328623668198974589de84df'",b"SECURE_SHA='bbcb1de84c89b44d7e541a35a2634ba0cf644e89f5cef7d9061e3a33e6499782'"),(b"ROLE_STREAM_SHA='4e7ea6f9a08207384b991bf160a281db4d60a25ec50c13b172d68da6e05ae189'",b"ROLE_STREAM_SHA='f31d295b9b1692eb53d31672577bdd77af4dd5c20c0320b1b1f59e0f44ea6d1a'"),(b"GEOMETRY_SHA='832746a0a990dc42b6e82f799d52dbab42b8424c1be4fab54da171af522f32c7'",b"GEOMETRY_SHA='9f9efa88a58588d67afbf52f68ca201b11575aa1edf744941f1c42894f1cddcf'"),(b"OWNER_SHA='5efac98768379da2266974ac0d35f13f43d09e40f9bc5979e812c6239b358399'",b"OWNER_SHA='9ff8275a77e71e8b1a7ae90ee4e7dd5a1910ad130720e4621ff85a6fe9b38342'"))
 
 def program(record):
     """Historical fixed producer; current provider bytes are not historical authority."""
     return _program(record,FLOW_SHA)
 
 def program_current(record):
-    """Explicit source successor for the one declared formatting-only provider delta."""
+    """Explicit source successor: exact reverse deltas, then the one declared formatting-only provider delta."""
     r=owner.guest.recovery
     pin,raw=r.authority._read_bound_file(Path(flow.__file__),retain_bytes=True)
+    if pin['sha256']!=CURRENT_FLOW_SHA:raise ValueError('diagnostic-current-factory-source')
+    for current,previous in CURRENT_FLOW_DELTAS:
+        if raw.count(current)!=1:raise ValueError('diagnostic-current-recipe')
+        raw=raw.replace(current,previous)
     lines=raw.splitlines(keepends=True)
-    if pin['sha256']!=CURRENT_FLOW_SHA or len(lines)<146 or not lines[145].endswith(b'\n'):
+    if len(lines)<146 or not lines[145].endswith(b'\n'):
         raise ValueError('diagnostic-current-factory-source')
     lines[145]=lines[145][:-1]+b' \n'
     if hashlib.sha256(b''.join(lines)).hexdigest()!=FLOW_SHA:

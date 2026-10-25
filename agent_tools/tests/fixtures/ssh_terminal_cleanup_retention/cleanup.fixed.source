@@ -1,0 +1,78 @@
+"""Once-only cleanup of this completed counter's new transports; no job replay."""
+from pathlib import Path
+from contextlib import ExitStack
+from types import ModuleType
+import ast,hashlib,json,os,stat,subprocess,sys,time,uuid
+_EXECUTING_CODE=sys._getframe().f_code
+HERE=Path(__file__).resolve().parent;ROOT=HERE/'nested';REPO=HERE.parents[3];JOB='f99584f3-8c1a-426d-badd-5b290ff4856f';CLEANUP='d16c325b-e187-49f5-8fb0-b9221a780842';PROTECTED='3ec9cdaeb1314b44851e0304eb0b3908'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def read(p):return json.loads(p.read_bytes())
+def save(p,v):
+ fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w')as f:json.dump(v,f,sort_keys=True,indent=2);f.write('\n');f.flush();os.fsync(f.fileno())
+def load(name,p,digest):
+ b=p.read_bytes();assert sha(b)==digest;m=ModuleType(name);m.__file__=str(p);m.__package__=None;sys.modules[name]=m;exec(compile(b,str(p),'exec'),m.__dict__);return m
+local=load('_terminal_transport_local',HERE/'local-owner-source/local_owner_v2.py','0aaf58a4b01ef34d10d21db97ecfd6a067ae7c6b806342ef5cbd0baadf009841')
+builder=load('_terminal_transport_scope',HERE/'build_controller_program_final.py','436a3b8294ccbb21346c8edd928f602b0ab79e381d7d04959512dfcb280f7c49')
+sys.path.insert(0,str(ROOT))
+from agent_tools import ssh_transport as t
+from agent_tools import readiness_nested_channel as nested
+from agent_tools import ssh_fresh_nested_channel as channel
+from agent_tools import readiness_ssh_master as master
+from agent_tools import ssh_channel_keeper_entry as keeper
+retention=load('_terminal_transport_retention',HERE/'ordinary_retention.py','2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f')
+control=(HERE/'controller.py').read_bytes();assert sha(control)=='40ee8d3d03fe199a20f62318e51b7ba3931336911316ba86f37f53276ae701bc';tree=ast.parse(control)
+fragments=[n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='retained_public_observation'];env={'Path':Path,'json':json};exec(compile(ast.Module(body=fragments,type_ignores=[]),'<source-owned-retain>','exec'),env)
+close_source=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(v,ast.Name)and v.id=='NESTED_CLOSE'for v in n.targets))
+program=(HERE/'nested-program.source').read_bytes();assert sha(program)=='9461583e05bf06804227925780eb55b357ceff54c3ec7b4f0a6c6c0b6c49252d';p_tree=ast.parse(program);items=ast.literal_eval(next(n.value for n in p_tree.body if isinstance(n,ast.Assign)and any(isinstance(x,ast.Name)and x.id=='ARTIFACTS'for x in n.targets)))
+out=HERE/'terminal-transport-closure-label-fixed';out.mkdir(mode=0o700);deadline=time.monotonic()+120
+with ExitStack()as stack:
+ scope=stack.enter_context(builder.SharedSourceScope(local.Held));self_source=scope.hold(Path(__file__));assert compile(self_source.raw,str(self_source.path),'exec')==_EXECUTING_CODE
+ for item in items:
+  held=scope.hold(Path(item['path']));assert held.pin==tuple(item['generation'])
+  if'sha256'in item:assert sha(held.raw)==item['sha256']
+ # Original admission is completed and no other job exists in this exclusive capsule.
+ result=read(ROOT/'result.json');closure=read(ROOT/'final-closure.json');assert result['passed']is True and result['operationId']==JOB and result['executions']==1 and result['stdoutLines']==1600 and result['exactRetainedStreams']is True and result['freshSdkAndCliEquivalent']is True and closure['sourceClosing']is True
+ intents=list((ROOT/'.rag_index/ssh-program-execution').glob('*/intent.json'));assert len(intents)==1 and intents[0].parent.name==JOB
+ pointer=result['renewedConnection'];corr=pointer['correlationId'];assert corr!=PROTECTED and corr!=result['originalConnection']['correlationId']
+ journal=channel._context_journal(ROOT,'archlinux',corr,False,True);ready=read(journal/(corr+'.ready.json'))['result'];assert ready['correlationId']==corr
+ config=t.load_config(ROOT);anchor=config.hosts['archlinux'];assert config.hosts['gateway'].password is None and anchor.gateway=='gateway'
+ def guard():
+  for h in scope.files:h.guard()
+  assert time.monotonic()<deadline
+  assert read(ROOT/'result.json')==result and read(journal/(corr+'.ready.json'))['result']==ready
+ guard()
+ # Current original status verifies exact complete source/actor/socket/peer, no prepare.
+ observed=nested.route_options(ROOT,'archlinux',config,deadline=deadline);assert observed['correlationId']==corr and observed['receiptSha256']==pointer['receiptSha256']
+ gateway=master.status(ROOT,'gateway',config);assert gateway['state']=='ready'and gateway['recoveryId']==closure['ownGatewayMaster']['recoveryId']
+ v={'operationId':CLEANUP,'originalJobOperationId':JOB,'correlationId':corr,'controlPath':ready['controlPath'],'master':ready['master'],'ready':ready,'config':str(anchor.remote_config_file or''),'profile':anchor.remote_host_alias,'protectedSharedCorrelation':PROTECTED,'remoteOwner':result['remoteOwner']}
+ save(out/'before.json',{'cleanupOperationId':CLEANUP,'originalJobOperationId':JOB,'originalJobAuthenticatedTerminal':True,'allExclusiveCapsuleJobsClosed':True,'nested':observed,'ready':ready,'gateway':gateway,'sourceArtifacts':len(items),'closeSourceSha256':sha(close_source.encode()),'replayAllowed':False,'sharedControlExcluded':PROTECTED})
+ # Atomic local admission before the single remote OpenSSH -O exit; ACK loss is observation only.
+ save(out/'cleanup-admission.json',{'cleanupOperationId':CLEANUP,'originalJobOperationId':JOB,'correlationId':corr,'master':ready['master'],'sourceSha256':sha(close_source.encode()),'closeCallsPermitted':1,'remoteJobSignalAllowed':False})
+ code="import sys\nsys.argv=['-c',"+repr(json.dumps(v,sort_keys=True))+"]\n"+close_source
+ def prepare():return t.admitted_transport(ROOT,'gateway',CLEANUP,deadline=deadline)
+ def invoke():
+  argv=t.build_ssh_argv(t.load_config(ROOT),'gateway',20,('python3','-I','-B','-c','exec('+repr(code)+')'))
+  return t.run_ssh(argv,stdin=subprocess.DEVNULL,capture_output=True,timeout=min(40,deadline-time.monotonic()))
+ returned=env['retained_public_observation'](retention,CLEANUP,'gateway',prepare,invoke,guard,out,'counter-000001',t.SubmittedResultReadinessChanged)
+ save(out/'nested-exit-returned.json',returned);assert returned['returnCode']==0 and returned['correlationId']==corr and returned['closeCount']==1
+ # Same original read-only status must positively observe END; no new connection.
+ try:nested.route_options(ROOT,'archlinux',config,deadline=deadline)
+ except nested.NestedEnded:ended=True
+ else:raise ValueError('terminal_nested_channel_not_proven_ended')
+ save(out/'nested-ended.json',{'correlationId':corr,'state':'ended-original-status','gatewayBoot':ready['master']['gatewayBoot'],'prior':ready,'noReplay':True})
+ # Only the independently owned local gateway master's OpenSSH lifecycle API.
+ own=master.status(ROOT,'gateway',config);assert own['state']=='ready'and own['recoveryId']==gateway['recoveryId']and own['child']==gateway['child'];assert keeper.actor(own['child']['pid'])==own['child']['actor'];guard()
+ base,endpoint=master.prefix(config,'gateway');argv=[*base,'-S',own['socketPath'],'-o','ControlMaster=no','-o','ProxyCommand=false','-O','exit',endpoint]
+ with retention._OutputCapture(out,'counter-000002')as capture:
+  guard();assert master.status(ROOT,'gateway',config)['child']==own['child']
+  completed=t.run_ssh(argv,stdin=subprocess.DEVNULL,capture_output=True,timeout=min(10,deadline-time.monotonic()));receipt=retention._retain(capture,CLEANUP,completed)
+  guard();capture.guard_data();assert receipt['complete']and receipt['namedCustody']and capture.named_custody()and completed.returncode==0
+ until=time.monotonic()+5
+ while time.monotonic()<until:
+  after=master.status(ROOT,'gateway',config,recovery_id=gateway['recoveryId'])
+  if after['state']=='dead':break
+  time.sleep(.1)
+ assert after['state']=='dead';guard()
+ save(out/'after.json',{'cleanupOperationId':CLEANUP,'originalJobOperationId':JOB,'nestedCorrelationId':corr,'nestedState':'ended-original-status','gatewayState':'dead-original-master','gatewayRecoveryId':gateway['recoveryId'],'sourceClosing':True,'allContextsClosed':True,'remoteOwnerSignalled':False,'sharedControlTouched':False,'originalJobReplayAllowed':False,'noReplacement':True})
+print(json.dumps({'closed':True,'nestedCorrelationId':corr,'gatewayRecoveryId':gateway['recoveryId'],'sourceClosing':True,'path':str(out)},sort_keys=True))

@@ -15,18 +15,27 @@ class DiagnosticTests(unittest.TestCase):
     def test_current_diagnostic_pin_chain_and_changed_bytes_refuse(self):
         from agent_tools import ssh_tmux_privileged_terminal_closure as privileged
         from agent_tools import ssh_tmux_privileged_terminal_claim_bridge as bridge
-        cases = ((diagnostic.closure, diagnostic.remote_program, 'closure_source_changed'),
-                 (diagnostic, privileged.program, 'diagnostic_source_changed'),
-                 (privileged, lambda: bridge._sources(Path('/inert')), 'privileged_source_changed'))
-        with mock.patch.object(bridge.closure, '_sources', return_value={}):
-            for source, consumer, reason in cases:
-                with self.subTest(source=source.__name__):
-                    consumer()  # Exercise each actual current source checksum gate.
-                    with tempfile.TemporaryDirectory() as tmp:
-                        changed = Path(tmp) / 'changed.py'
-                        changed.write_bytes(Path(source.__file__).read_bytes() + b'\n# unreviewed\n')
-                        with mock.patch.object(source, '__file__', str(changed)):
-                            with self.assertRaisesRegex(ValueError, reason): consumer()
+        # Changed production private-capture code cannot be relabeled as a
+        # historical privileged terminal proof.
+        with mock.patch.object(bridge.closure,'_sources',return_value={}):
+            with self.assertRaisesRegex(ValueError,'privileged_source_changed'):bridge._sources(Path('/inert'))
+        from agent_tools.tests.ssh_tmux_terminal_historical_fixture import archived_family
+        with archived_family()as(_root,modules):
+            original_diagnostic=modules['ssh_tmux_closure_census_diagnostic']
+            original_privileged=modules['ssh_tmux_privileged_terminal_closure']
+            original_bridge=modules['ssh_tmux_privileged_terminal_claim_bridge']
+            cases=((original_diagnostic.closure,original_diagnostic.remote_program,'closure_source_changed'),
+                   (original_diagnostic,original_privileged.program,'diagnostic_source_changed'),
+                   (original_privileged,lambda:original_bridge._sources(Path('/inert')),'privileged_source_changed'))
+            with mock.patch.object(original_bridge.closure,'_sources',return_value={}):
+                for source,consumer,reason in cases:
+                    with self.subTest(source=source.__name__):
+                        consumer()  # Authentic unchanged original source gate.
+                        with tempfile.TemporaryDirectory()as tmp:
+                            changed=Path(tmp)/'changed.py'
+                            changed.write_bytes(Path(source.__file__).read_bytes()+b'\n# unreviewed\n')
+                            with mock.patch.object(source,'__file__',str(changed)):
+                                with self.assertRaisesRegex(ValueError,reason):consumer()
 
     def result(self, phase, pid, ticks, err):
         return {'state':'diagnostic','correlationId':diagnostic.CORRELATION,'phase':phase,'pid':pid,'startTicks':ticks,'errno':err,'nativeActionAllowed':False,'replayAllowed':False,'workspaceProof':False}

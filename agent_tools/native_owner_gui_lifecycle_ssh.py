@@ -282,7 +282,7 @@ class NativeOwnerGuiLifecycleSshDriver(native_scenario_ssh.NativeScenarioSshDriv
                 # Configuration/askpass/output/argv setup is complete before this
                 # joined closing immediately at the actual original dispatch.
                 held.finish();held.finish()
-                return subprocess.run(submitted,**submitted_options)
+                return ssh_transport._run_inline(submitted,**submitted_options)
             return ssh_transport.run_ssh(argv,runner=submit,**options)
         try:
             if connection.password is not None:

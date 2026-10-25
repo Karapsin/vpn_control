@@ -1,0 +1,104 @@
+"""Complete fixed master.status, real child/socket, separate TMPDIR observers."""
+from pathlib import Path
+from types import ModuleType
+from contextlib import ExitStack
+import gc,hashlib,json,os,socket,stat,subprocess,sys,tempfile,unittest,uuid
+HERE=Path(__file__).resolve().parent;REPO=HERE.parents[4];sys.path.insert(0,str(REPO))
+from agent_tools import ssh_transport as transport
+from agent_tools import private_inventory_lock as private
+PINS={'before':'478a1f2772bd7af9624d7a494f9c6e893641367143d245f79b130e4fc5c5d706','fixed':'770136aa4b7db3beba519fb78e2dfac0683050785cb8eb3c5eb9d1f1d846b96c'}
+def source(kind):
+    p=HERE/('readiness_ssh_master.'+kind+'.source');raw=p.read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=PINS[kind]:raise ValueError('master_fixture_changed')
+    return p,raw
+
+def load(kind):
+    p,raw=source(kind);m=ModuleType('agent_tools._controlled_master_'+uuid.uuid4().hex);m.__file__=str(p);m.__package__='agent_tools';sys.modules[m.__name__]=m;exec(compile(raw,str(p),'exec'),m.__dict__);return m
+
+WORKER='''from pathlib import Path
+from types import ModuleType
+import hashlib,json,sys
+v=json.loads(sys.stdin.buffer.read());sys.path.insert(0,v['repo'])
+from agent_tools import ssh_transport as transport
+p=Path(v['source']);raw=p.read_bytes();assert hashlib.sha256(raw).hexdigest()==v['sha']
+m=ModuleType('agent_tools._separate_master_observer');m.__file__=str(p);m.__package__='agent_tools';sys.modules[m.__name__]=m;exec(compile(raw,str(p),'exec'),m.__dict__)
+r=Path(v['root']);config=transport.SshConfig(r,{'controlled':transport.SshHost('controlled','127.0.0.1',1,'public-test',r/'dummy-key',r/'public-trust')})
+try:
+ out=m.status(r,'controlled',config);print(json.dumps({'state':out['state'],'recoveryId':out['recoveryId']}))
+except ValueError as e:
+ reason=str(e)
+ if reason not in ('master_socket_provenance','master_socket_parent_changed','master_socket_changed','master_actor_changed','private','socket'):reason='other-fixed-refusal'
+ print(json.dumps({'state':'blocked','reason':reason}))
+'''
+
+@unittest.skipUnless(os.name=='posix','requires POSIX private directory and actual process/UNIX socket metadata')
+class OriginalMasterRoot(unittest.TestCase):
+    def setUp(self):
+        self.stack=ExitStack();self.addCleanup(self.stack.close)
+        self.root=Path(self.stack.enter_context(tempfile.TemporaryDirectory())).resolve(strict=True);self.root.chmod(0o700)
+        for name,body in(('dummy-key',b'public-test-dummy-key-not-a-credential\n'),('public-trust',b'public-test-trust\n')):
+            p=self.root/name;p.write_bytes(body);p.chmod(0o600)
+        self.creator=load('before');self.fixed=load('fixed')
+        self.config=transport.SshConfig(self.root,{'controlled':transport.SshHost('controlled','127.0.0.1',1,'public-test',self.root/'dummy-key',self.root/'public-trust')})
+        self.parent=Path(self.stack.enter_context(tempfile.TemporaryDirectory(prefix='vcrd-',dir=Path('/tmp').resolve())));self.parent.chmod(0o700)
+        self.listener=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);self.listener.bind(str(self.parent/'m'));(self.parent/'m').chmod(0o600);self.listener.listen(8);self.addCleanup(self.listener.close)
+        self.child=subprocess.Popen([sys.executable,'-I','-B','-c','import sys;sys.stdin.buffer.read(1)'],stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);self.addCleanup(self.child_close)
+        self.actor=self.creator.keeper.actor(self.child.pid);self.rid='a'*64
+        self.journal=self.creator.initialize(self.root,'controlled')
+        self.intent={'version':1,'host':'controlled','recoveryId':self.rid,'machine':self.creator.identity(self.config,'controlled'),'socketPath':str(self.parent/'m'),'socketParent':self.creator.session._directory(self.parent),'idleSeconds':18000}
+        with private.Directory(self.journal)as d:
+            self.creator._save(d,self.rid+'.intent.json',self.intent)
+            self.creator._save(d,self.rid+'.child.json',{'recoveryId':self.rid,'pid':self.child.pid,'actor':self.actor})
+            self.creator._save(d,self.rid+'.ready.json',{'recoveryId':self.rid,'masterActor':self.actor,'socketFingerprint':self.creator.session._socket(self.parent/'m',self.intent['socketParent'])})
+            self.creator._publish(d,self.rid)
+    def child_close(self):
+        if not self.child.stdin.closed:self.child.stdin.close()
+        self.assertEqual(self.child.wait(timeout=5),0)
+    def observe(self,kind,tmpdir):
+        p,raw=source(kind);v={'repo':str(REPO),'source':str(p),'sha':hashlib.sha256(raw).hexdigest(),'root':str(self.root)}
+        r=subprocess.run([sys.executable,'-I','-B','-c',WORKER],input=json.dumps(v).encode(),capture_output=True,env={'PATH':os.defpath,'TMPDIR':str(tmpdir)},timeout=15)
+        self.assertEqual((r.returncode,r.stderr),(0,b''));return json.loads(r.stdout)
+    def test_whole_original_separate_process_changed_tmpdir_red_green(self):
+        different=Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
+        self.assertEqual(self.observe('before',different),{'state':'blocked','reason':'master_socket_provenance'})
+        self.assertEqual(self.observe('fixed',different),{'state':'ready','recoveryId':self.rid})
+    def test_system_root_status_same_owner_socket_unchanged(self):
+        out=self.fixed.status(self.root,'controlled',self.config);self.assertEqual(out['state'],'ready');self.assertEqual(out['child']['actor'],self.actor)
+    def test_foreign_private_tmpdir_is_not_adopted(self):
+        foreign=Path(self.stack.enter_context(tempfile.TemporaryDirectory(dir=Path('/tmp').resolve())));parent=foreign/'owned';parent.mkdir(mode=0o700)
+        intent={**self.intent,'socketPath':str(parent/'m'),'socketParent':self.creator.session._directory(parent)}
+        with self.assertRaisesRegex(self.fixed.MasterUnknown,'^master_socket_provenance$'):self.fixed._socket(intent)
+    def test_parent_inode_replacement_stops(self):
+        old=self.parent.with_name(self.parent.name+'-old');self.parent.rename(old);self.parent.mkdir(mode=0o700);self.addCleanup(lambda:old.rmdir())
+        self.addCleanup(lambda:(old/'m').unlink(missing_ok=True))
+        with self.assertRaisesRegex(self.fixed.MasterUnknown,'^master_socket_parent_changed$'):self.fixed.status(self.root,'controlled',self.config)
+    def test_parent_permissions_change_stops(self):
+        self.parent.chmod(0o755)
+        with self.assertRaisesRegex(self.fixed.MasterUnknown,'^master_socket_parent_changed$'):self.fixed.status(self.root,'controlled',self.config)
+    def test_socket_inode_replacement_stops(self):
+        (self.parent/'m').unlink();replacement=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);self.addCleanup(replacement.close);replacement.bind(str(self.parent/'m'));(self.parent/'m').chmod(0o600);replacement.listen(1)
+        with self.assertRaisesRegex(self.fixed.MasterUnknown,'^master_socket_changed$'):self.fixed.status(self.root,'controlled',self.config)
+    def test_socket_permissions_change_stops(self):
+        (self.parent/'m').chmod(0o666)
+        with self.assertRaises(ValueError):self.fixed.status(self.root,'controlled',self.config)
+    def test_symlink_parent_not_adopted(self):
+        link=self.parent.with_name(self.parent.name+'-link');link.symlink_to(self.parent,target_is_directory=True);self.addCleanup(link.unlink)
+        with self.assertRaisesRegex(self.fixed.MasterUnknown,'^master_socket_provenance$'):self.fixed._socket({**self.intent,'socketPath':str(link/'m')})
+    def test_parent_traversal_not_adopted(self):
+        path=self.parent/'..'/self.parent.name/'m'
+        with self.assertRaisesRegex(self.fixed.MasterUnknown,'^master_socket_provenance$'):self.fixed._socket({**self.intent,'socketPath':str(path)})
+    def test_owned_world_writable_root_not_system_authority(self):
+        if os.getuid()==0:self.skipTest('requires ordinary UID to distinguish root policy')
+        self.parent.chmod(0o1777)
+        self.assertFalse(self.fixed._socket_root_secure(self.parent.stat(),'system'))
+        self.assertFalse(self.fixed._socket_root_secure(self.parent.stat(),'private'))
+    def test_private_root_requires_private_mode(self):
+        self.assertTrue(self.fixed._socket_root_secure(self.parent.stat(),'private'));self.parent.chmod(0o755);self.assertFalse(self.fixed._socket_root_secure(self.parent.stat(),'private'))
+    def test_unknown_root_kind_has_no_authority(self):self.assertFalse(self.fixed._socket_root_secure(self.parent.stat(),'other'))
+    def test_root_descriptor_closes_after_positive_and_refusal(self):
+        gc.collect();before=len(os.listdir('/dev/fd'))
+        self.fixed._socket(self.intent);self.parent.chmod(0o755)
+        with self.assertRaises(ValueError):self.fixed._socket(self.intent)
+        self.assertEqual(len(os.listdir('/dev/fd')),before)
+
+if __name__=='__main__':unittest.main(verbosity=2)

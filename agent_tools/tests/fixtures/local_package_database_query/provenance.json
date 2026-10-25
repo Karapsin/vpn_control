@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "source": "agent_tools/windows_vm_deploy_remote.py",
+  "beforeSha256": "f057a59b70cb8e3a79d520bf435fc246725a8ee54a7cb97e5d754b9a328515f2",
+  "failure": "Installed package integrity query inherited an unrelated missing sync-repository database warning.",
+  "originalNativeEvidence": ".runtime/tool-recovery-qemu/windows-package-integrity-original.json",
+  "nativeDatabaseProof": ".runtime/tool-recovery-qemu/windows-package-dbpath-proof.json"
+}

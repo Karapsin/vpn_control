@@ -1,0 +1,407 @@
+"""Internal protected RFB transport draft; no public readiness route uses it.
+
+The provider must bind the endpoint to its owned VM actor and supply a pure
+source/session/display guard. This client does not recognize login screens,
+select accounts, unlock a VM, retry inputs, or establish VM ownership. Native
+Tart security negotiation and ordinary-account acceptance remain prerequisites
+before this draft can be admitted by a provider.
+"""
+from __future__ import annotations
+
+try:
+    import fcntl
+except ImportError:  # Windows discovers unrelated agent modules and tests too.
+    fcntl = None
+import io
+import json
+import math
+import os
+from pathlib import Path
+import select
+import socket
+import stat
+import struct
+import time
+from uuid import UUID
+
+_PIXELS = 4_194_304
+_DIMENSION = 4096
+_RECTANGLES = 64
+_PUBLIC_KEYS = {"Enter": 0xFF0D, "Return": 0xFF0D, "Space": 32, "Tab": 0xFF09, "Escape": 0xFF1B,
+                "Backspace": 0xFF08, "Delete": 0xFFFF, "Home": 0xFF50,
+                "End": 0xFF57, "Left": 0xFF51, "Up": 0xFF52,
+                "Right": 0xFF53, "Down": 0xFF54}
+_MODIFIERS = {"MacMeta": 0xFFE7, "Control": 0xFFE3, "Alt": 0xFFE9, "Shift": 0xFFE1}
+
+
+class VncBlocked(RuntimeError):
+    """Only fixed, non-private reason codes cross this module boundary."""
+
+
+def _platform():
+    if os.name != "posix" or fcntl is None or not hasattr(os, "O_NOFOLLOW"):
+        raise VncBlocked("vnc_platform_unsupported")
+
+
+def _cipher():
+    try:
+        from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
+        from cryptography.hazmat.primitives.ciphers import Cipher, modes
+        return TripleDES, Cipher, modes
+    except (ImportError, AttributeError):
+        raise VncBlocked("vnc_auth_dependency_unavailable") from None
+
+
+def _uuid(value):
+    try:
+        if type(value) is str and str(UUID(value)) == value:
+            return value
+    except Exception:
+        pass
+    raise VncBlocked("vnc_operation_identity_invalid")
+
+
+def _duration(value):
+    if type(value) not in {int, float} or not math.isfinite(value) or not 0 < value <= 30:
+        raise VncBlocked("vnc_deadline_invalid")
+    return float(value)
+
+
+def _remaining(deadline):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise VncBlocked("vnc_deadline")
+    return remaining
+
+
+def _protected_bytes(fd, limit, deadline):
+    """Read an exclusively handed-off FD; never a prompt, argv or env value."""
+    duplicate = -1
+    old_flags = None
+    try:
+        _platform()
+        if type(fd) is not int or fd < 3:
+            raise VncBlocked("vnc_credential_fd_invalid")
+        duplicate = os.dup(fd)
+        info = os.fstat(duplicate)
+        if info.st_uid != os.geteuid() or not (stat.S_ISREG(info.st_mode) or stat.S_ISFIFO(info.st_mode)):
+            raise VncBlocked("vnc_credential_fd_invalid")
+        if stat.S_ISREG(info.st_mode) and (stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+            raise VncBlocked("vnc_credential_fd_invalid")
+        old_flags = fcntl.fcntl(duplicate, fcntl.F_GETFL)
+        fcntl.fcntl(duplicate, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+        result = bytearray()
+        while True:
+            if not select.select([duplicate], [], [], _remaining(deadline))[0]:
+                raise VncBlocked("vnc_credential_deadline")
+            try:
+                block = os.read(duplicate, min(4096, limit + 1 - len(result)))
+            except BlockingIOError:
+                continue
+            if not block:
+                if not result:
+                    raise VncBlocked("vnc_credential_empty")
+                return result
+            result.extend(block)
+            if len(result) > limit:
+                raise VncBlocked("vnc_credential_overflow")
+    except VncBlocked:
+        raise
+    except Exception:
+        raise VncBlocked("vnc_credential_unavailable") from None
+    finally:
+        if duplicate >= 0:
+            try:
+                if old_flags is not None:
+                    fcntl.fcntl(duplicate, fcntl.F_SETFL, old_flags)
+            except OSError:
+                raise VncBlocked("vnc_credential_unavailable") from None
+            finally:
+                os.close(duplicate)
+
+
+class SecretInputJournal:
+    """Create-only uncertainty receipts for a provider's private actor binding.
+
+    The provider creates the private directory and binding UUID after custody
+    checks. A receipt proves only that input may have begun; it never authorizes
+    replay or claims that a screen accepted the input.
+    """
+    def __init__(self, directory, binding_identity):
+        self.directory = Path(directory)
+        self.binding_identity = _uuid(binding_identity)
+
+    def begin(self, operation_identity):
+        _platform()
+        from . import private_inventory_lock as private
+        operation = _uuid(operation_identity)
+        record = {"schemaVersion": 1, "operationId": operation,
+                  "bindingId": self.binding_identity, "action": "secret_input", "state": "unknown"}
+        try:
+            with private.Directory(self.directory) as directory:
+                if stat.S_IMODE(os.fstat(directory.fd).st_mode) != 0o700:
+                    raise VncBlocked("vnc_journal_invalid")
+                directory.guard()
+                descriptor = os.open(operation + ".json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                     0o600, dir_fd=directory.fd)
+                try:
+                    body = json.dumps(record, separators=(",", ":"), sort_keys=True).encode("ascii")
+                    with os.fdopen(descriptor, "wb", closefd=False) as stream:
+                        stream.write(body)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    directory.guard()
+                    os.fsync(directory.fd)
+                finally:
+                    os.close(descriptor)
+        except FileExistsError:
+            raise VncBlocked("vnc_secret_original_unknown") from None
+        except VncBlocked:
+            raise
+        except Exception:
+            raise VncBlocked("vnc_journal_unavailable") from None
+        return {"operationId": operation, "state": "unknown"}
+
+
+class ProtectedVncSession:
+    """One bounded authenticated connection, with no reconnect or input retry."""
+    def __init__(self, *, host="127.0.0.1", port, credential_fd, guard, timeout=5):
+        if host != "127.0.0.1" or type(port) is not int or not 1 <= port <= 65535 or not callable(guard):
+            raise VncBlocked("vnc_binding_invalid")
+        self.host, self.port = host, port
+        self._credential_fd, self._guard = credential_fd, guard
+        self.timeout = _duration(timeout)
+        self._socket = None
+        self.width = self.height = 0
+        self._entered = False
+
+    def _check(self, additional=None):
+        try:
+            self._guard()
+            if additional is not None:
+                additional()
+        except Exception:
+            self.close()
+            raise VncBlocked("vnc_binding_changed") from None
+
+    def _read(self, size, deadline):
+        result = bytearray()
+        while len(result) < size:
+            self._socket.settimeout(_remaining(deadline))
+            data = self._socket.recv(size - len(result))
+            if not data:
+                raise VncBlocked("vnc_peer_closed")
+            result.extend(data)
+        return bytes(result)
+
+    def _send(self, data, deadline, *, input_guard=None, mutation=False):
+        if mutation:
+            self._check(input_guard)
+        self._socket.settimeout(_remaining(deadline))
+        self._socket.sendall(data)
+
+    def __enter__(self):
+        if self._entered:
+            raise VncBlocked("vnc_session_already_used")
+        self._entered = True
+        password = None
+        try:
+            _platform()
+            TripleDES, Cipher, modes = _cipher()
+            self._check()
+            deadline = time.monotonic() + self.timeout
+            password = _protected_bytes(self._credential_fd, 256, deadline)
+            # VNC authentication is an eight-byte protocol password, independent
+            # of the guest's ordinary-account credential. No implicit encoding.
+            if any(value > 127 or value < 32 for value in password):
+                raise VncBlocked("vnc_auth_credential_invalid")
+            self._socket = socket.create_connection((self.host, self.port), _remaining(deadline))
+            self._check()
+            if self._read(12, deadline) != b"RFB 003.008\n":
+                raise VncBlocked("vnc_protocol_unsupported")
+            self._send(b"RFB 003.008\n", deadline)
+            count = self._read(1, deadline)[0]
+            if not 1 <= count <= 32:
+                raise VncBlocked("vnc_security_malformed")
+            methods = self._read(count, deadline)
+            if 2 not in methods:
+                raise VncBlocked("vnc_auth_unsupported")
+            self._send(b"\x02", deadline)
+            challenge = self._read(16, deadline)
+            key = bytes(int(f"{value:08b}"[::-1], 2) for value in bytes(password[:8]).ljust(8, b"\0"))
+            encryptor = Cipher(TripleDES(key * 3), modes.ECB()).encryptor()
+            response = encryptor.update(challenge) + encryptor.finalize()
+            self._check()
+            self._send(response, deadline)
+            if self._read(4, deadline) != b"\0\0\0\0":
+                raise VncBlocked("vnc_auth_rejected")
+            self._send(b"\x01", deadline)
+            header = self._read(24, deadline)
+            self.width, self.height = struct.unpack(">HH", header[:4])
+            name_length = struct.unpack(">I", header[20:])[0]
+            if not self.width or not self.height or max(self.width, self.height) > _DIMENSION or self.width * self.height > _PIXELS:
+                raise VncBlocked("vnc_framebuffer_overflow")
+            if name_length > 4096:
+                raise VncBlocked("vnc_server_name_overflow")
+            self._read(name_length, deadline)  # Untrusted/private title is discarded.
+            pixel_format = struct.pack(">BBBBHHHBBBxxx", 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
+            self._send(b"\0\0\0\0" + pixel_format, deadline)
+            self._send(struct.pack(">BBHi", 2, 0, 1, 0), deadline)  # Raw encoding only.
+            self._check()
+            return self
+        except VncBlocked:
+            self.close()
+            raise
+        except (TimeoutError, socket.timeout):
+            self.close()
+            raise VncBlocked("vnc_deadline") from None
+        except Exception:
+            self.close()
+            raise VncBlocked("vnc_transport_failed") from None
+        finally:
+            if password is not None:
+                password[:] = b"\0" * len(password)
+
+    def close(self):
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+
+    def __exit__(self, *_):
+        self.close()
+
+    def _active(self):
+        if self._socket is None:
+            raise VncBlocked("vnc_session_closed")
+        self._check()
+        return time.monotonic() + self.timeout
+
+    def capture_png(self):
+        """Return a bounded raw framebuffer capture, without GUI input."""
+        try:
+            deadline = self._active()
+            self._send(struct.pack(">BBHHHH", 3, 0, 0, 0, self.width, self.height), deadline)
+            header = self._read(4, deadline)
+            if header[:2] != b"\0\0":
+                raise VncBlocked("vnc_framebuffer_malformed")
+            count = struct.unpack(">H", header[2:])[0]
+            if not 1 <= count <= _RECTANGLES:
+                raise VncBlocked("vnc_framebuffer_overflow")
+            from PIL import Image
+            image = Image.new("RGB", (self.width, self.height))
+            rectangles = []
+            area = 0
+            for _ in range(count):
+                x, y, width, height, encoding = struct.unpack(">HHHHi", self._read(12, deadline))
+                if encoding != 0:
+                    raise VncBlocked("vnc_encoding_unsupported")
+                if not width or not height or x + width > self.width or y + height > self.height:
+                    raise VncBlocked("vnc_framebuffer_malformed")
+                if any(x < px + pw and px < x + width and y < py + ph and py < y + height
+                       for px, py, pw, ph in rectangles):
+                    raise VncBlocked("vnc_framebuffer_malformed")
+                rectangles.append((x, y, width, height))
+                area += width * height
+                pixels = self._read(width * height * 4, deadline)
+                image.paste(Image.frombytes("RGB", (width, height), pixels, "raw", "BGRX"), (x, y))
+            if area != self.width * self.height:
+                raise VncBlocked("vnc_framebuffer_incomplete")
+            self._check()
+            result = io.BytesIO()
+            image.save(result, format="PNG")
+            return result.getvalue()
+        except VncBlocked:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise VncBlocked("vnc_capture_failed") from None
+
+    def _key(self, code, deadline, guard=None):
+        for down in (1, 0):
+            self._send(struct.pack(">BBHI", 4, down, 0, code), deadline, input_guard=guard, mutation=True)
+
+    def key(self, public_key, *, modifiers=()):
+        if (type(public_key) is not str or not (public_key in _PUBLIC_KEYS or len(public_key) == 1 and 32 <= ord(public_key) <= 126)
+                or type(modifiers) is not tuple or len(modifiers) > 4
+                or any(type(value) is not str or value not in _MODIFIERS for value in modifiers)
+                or len(set(modifiers)) != len(modifiers)):
+            raise VncBlocked("vnc_public_key_invalid")
+        try:
+            deadline = self._active()
+            for modifier in modifiers:
+                self._send(struct.pack(">BBHI", 4, 1, 0, _MODIFIERS[modifier]), deadline, mutation=True)
+            self._key(_PUBLIC_KEYS.get(public_key, ord(public_key) if len(public_key) == 1 else 0), deadline)
+            for modifier in reversed(modifiers):
+                self._send(struct.pack(">BBHI", 4, 0, 0, _MODIFIERS[modifier]), deadline, mutation=True)
+        except VncBlocked:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise VncBlocked("vnc_input_unknown") from None
+
+    def mouse(self, x, y, *, buttons=0):
+        if any(type(value) is not int for value in (x, y, buttons)) or not (0 <= x < self.width and 0 <= y < self.height and 0 <= buttons <= 7):
+            raise VncBlocked("vnc_pointer_invalid")
+        try:
+            deadline = self._active()
+            self._send(struct.pack(">BBHH", 5, buttons, x, y), deadline, mutation=True)
+        except VncBlocked:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise VncBlocked("vnc_input_unknown") from None
+
+    @staticmethod
+    def _text(value):
+        if type(value) is not str or not 1 <= len(value) <= 256 or any(ord(char) < 32 or 127 <= ord(char) < 160 or 0xD800 <= ord(char) <= 0xDFFF for char in value):
+            raise VncBlocked("vnc_text_invalid")
+        return value
+
+    def type_public(self, text):
+        text = self._text(text)
+        try:
+            deadline = self._active()
+            for char in text:
+                code = ord(char)
+                self._key(code if code <= 255 else 0x01000000 | code, deadline)
+        except VncBlocked:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise VncBlocked("vnc_input_unknown") from None
+
+    def type_secret_from_fd(self, secret_fd, *, operation_id, journal, guard):
+        """Reserve original uncertainty before sending any secret-derived input.
+
+        The additional guard verifies the provider's recognized ordinary account
+        screen immediately before the group; the provider holds its operator.
+        Every event still checks the lightweight bound actor/session guard. A
+        successful TCP send is never a guest terminal receipt.
+        """
+        secret = None
+        try:
+            operation = _uuid(operation_id)
+            if type(journal) is not SecretInputJournal or not callable(guard):
+                raise VncBlocked("vnc_secret_admission_invalid")
+            deadline = self._active()
+            secret = _protected_bytes(secret_fd, 1024, deadline)
+            text = self._text(secret.decode("utf-8", errors="strict"))
+            self._check(guard)
+            receipt = journal.begin(operation)
+            for char in text:
+                code = ord(char)
+                self._key(code if code <= 255 else 0x01000000 | code, deadline)
+            return receipt
+        except VncBlocked:
+            self.close()
+            raise
+        except Exception:
+            self.close()
+            raise VncBlocked("vnc_secret_input_unknown") from None
+        finally:
+            if secret is not None:
+                secret[:] = b"\0" * len(secret)

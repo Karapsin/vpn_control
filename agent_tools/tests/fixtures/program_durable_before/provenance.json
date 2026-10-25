@@ -1,0 +1,13 @@
+{
+  "files": {
+    "ssh_program_execution.py": {
+      "bytes": 46180,
+      "sha256": "e2868e0ea3854168ca0bcc1bc5fff3963931effd9fcea9d3c52309f61386801d"
+    },
+    "ssh_program_execution_remote.py": {
+      "bytes": 4204,
+      "sha256": "bad40aa9f446b5c2c52d7b90c9ab50e033d88214de86dbfefa979893fce75036"
+    }
+  },
+  "scope": "Complete existing foreground execution port before durable remote owner integration"
+}

@@ -17,6 +17,7 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 /agent_tools/tests/fixtures/fast_workflow_budget/before.yml -text
 /agent_tools/tests/fixtures/fast_workflow_interpreter_order/*.yml -text
 /agent_tools/tests/fixtures/agent_ci_shards/*.yml -text
+/agent_tools/tests/fixtures/windows_readiness_workflow_before/*.yml -text
 /agent_tools/tests/fixtures/msi_qga_fixture_bounds/*.fragment -text
 /agent_tools/tests/fixtures/android_component_legacy/provenance.json text eol=lf
 
@@ -75,3 +76,137 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 /agent_tools/tests/fixtures/ssh_late_ready_handshake/ready.before.source -text
 /agent_tools/tests/fixtures/windows_powershell_environment/native_module_i.before.ps1 -text
 /agent_tools/tests/fixtures/windows_powershell_environment/native_provider_custody.ps1 -text
+
+# Recovery native receipts and ABI fixtures authenticate exact preserved bytes.
+/agent_tools/tests/fixtures/windows_jobs_reflection/** -text
+/agent_tools/tests/fixtures/android_adb_jobs/sdk*.json -text
+/agent_tools/tests/fixtures/windows_token_restore_probe.ps1 -text
+/agent_tools/tests/fixtures/recovery_fixture_checkout_bytes/attributes.before -text
+/agent_tools/tests/fixtures/explicit_android_reset_target/** -text
+/agent_tools/tests/fixtures/windows_jobs_observer_framing/** -text
+/agent_tools/tests/fixtures/windows_jobs_default_owner/** -text
+/agent_tools/tests/fixtures/windows_desktop_background_roles/** -text
+/scripts/tests/fixtures/visual_target_before/** -text
+/agent_tools/tests/fixtures/recovery_checkout_extended/attributes.before -text
+/agent_tools/tests/fixtures/windows_job_ack_guidance/** -text
+/agent_tools/tests/fixtures/resource_running_actor_before/public-measurement.json -text
+/agent_tools/tests/fixtures/windows_jobs_preexec/** -text
+/agent_tools/tests/fixtures/windows_defender_installed_service/native-before.json -text
+/agent_tools/tests/fixtures/tart_virtiofs_python_copy/** -text
+
+# Authenticated infrastructure evidence retains original Git payload bytes.
+/agent_tools/tests/fixtures/native_preflight_run_boundary/** -text
+/agent_tools/tests/fixtures/ssh_direct_inventory_epoch/** -text
+/agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/provenance.json -text
+/agent_tools/tests/fixtures/readiness_portable_import/** -text
+/agent_tools/tests/fixtures/inventory_fd_baseline/** -text
+/agent_tools/tests/fixtures/tmux_private_reply_projection/provenance.json -text
+/agent_tools/tests/fixtures/linux_tpm_native_enrollment/provenance.json -text
+/agent_tools/tests/fixtures/credential_capture_retention/provenance.json -text
+/agent_tools/tests/fixtures/ssh_adapter_context/** -text
+/agent_tools/tests/fixtures/ssh_unit_readiness/** -text
+/agent_tools/tests/fixtures/windows_host_work_acceptance/** -text
+/scripts/tests/fixtures/readiness_test_seams/** -text
+/agent_tools/tests/fixtures/windows_host_phase_integration/** -text
+/agent_tools/tests/fixtures/windows_host_work/** -text
+/agent_tools/tests/fixtures/tart_public_recipient_guard/public-crops.png -text
+/agent_tools/tests/fixtures/tart_public_recipient_guard/public-header-mask.json -text
+/agent_tools/tests/fixtures/windows_login_caret_profile/native-empty-field.ppm.zlib -text
+/agent_tools/tests/fixtures/windows_login_selected_tile/native-refused-field.ppm.zlib -text
+/agent_tools/tests/fixtures/windows_login_spotlight_profile/native-before-return.ppm.zlib -text
+/agent_tools/tests/fixtures/native_context_dynamic_catalogue/actual-failure.txt -text
+/agent_tools/tests/fixtures/ssh_close_import_dependency/actual-failure.txt -text
+/agent_tools/tests/fixtures/native_engineering_transport_seam/actual-failure.txt -text
+/agent_tools/tests/fixtures/native_context_helper_fixture/actual-failure.txt -text
+/agent_tools/tests/fixtures/lease_provider_policy/actual-mismatch.json -text
+/agent_tools/tests/fixtures/lease_provider_policy/policy.before.json -text
+/agent_tools/tests/fixtures/lease_provider_policy_runtime/actual-mismatch.json -text
+/agent_tools/tests/fixtures/vm_dispatch_context_test_seam/actual-failure.txt -text
+
+# These additional reviewed fixture readers authenticate raw payload bytes.
+/agent_tools/tests/fixtures/agent_test_session_observer/actual-failure.json -text
+/agent_tools/tests/fixtures/confinement_attach_selector/attach-2gib.plist -text
+/agent_tools/tests/fixtures/confinement_attach_selector/attach-64mib.plist -text
+/agent_tools/tests/fixtures/confinement_attach_selector/hdi-2gib-info.plist -text
+/agent_tools/tests/fixtures/native_mcp_environment_seam/actual-failure.txt -text
+/agent_tools/tests/fixtures/native_mcp_environment_seam/bypassed-admission-failure.txt -text
+/agent_tools/tests/fixtures/ssh_acceptance_owner_readiness/original61bd.failure-provenance.json -text
+/agent_tools/tests/fixtures/ssh_acceptance_owner_readiness/original61bd.failure.txt -text
+/agent_tools/tests/fixtures/tart_macos_parent_caller/dependencies/plan.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_dispatch/provenance.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_durable/carrier-argv-native-failure.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_durable/carrier-failure.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_durable/carrier.provenance.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_durable/provenance.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_integration/provenance.json -text
+/agent_tools/tests/fixtures/windows_credential_explicit_target/probe-test-failure.json -text
+/agent_tools/tests/fixtures/windows_managed_admission/graph-local-failure.json -text
+/agent_tools/tests/fixtures/windows_managed_admission/provenance.json -text
+/agent_tools/tests/fixtures/windows_managed_admission/runtime-id-final-type.provenance.json -text
+/agent_tools/tests/fixtures/windows_managed_admission/runtime-id.provenance.json -text
+
+# Newly frozen archive and bootstrap receipts have exact raw SHA consumers.
+/agent_tools/tests/fixtures/archive_directory_identity/native-failure.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_nested_closure/native-failure.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_nested_closure/provenance.json -text
+/agent_tools/tests/fixtures/windows_bootstrap_nested_closure/run-owned-input-failure.json -text
+
+# The capability regression executes this whole source at its exact raw SHA.
+/scripts/tests/fixtures/visual_availability_qualification/visual_platform.before.source -text
+
+# Exact raw-SHA inputs for the finite recovery caller regressions.
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/audit_prepared_sources.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/build_controller_program_v2.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/controller.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/local-owner-source/local_owner.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/local-owner-source/local_owner_v2.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/local-owner-source/test_local_owner_v2.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/ordinary_retention.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/prepare_absolute_epoch.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/prepare_sources.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/provenance.json -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/relocated-wrapper-key.failure.txt -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/test_controller.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/test_generic_bootstrap_program_path.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/test_preparation_causals.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/test_prepare_private_roots.py -text
+/agent_tools/tests/fixtures/ssh_acceptance_preparation/test_program_builder_v2.py -text
+/agent_tools/tests/fixtures/ssh_local_controller_owner/local-owner-source/local_owner.py -text
+/agent_tools/tests/fixtures/ssh_local_controller_owner/local-owner-source/local_owner_v2.py -text
+/agent_tools/tests/fixtures/ssh_local_controller_owner/local-owner-source/test_local_owner_v2.py -text
+/agent_tools/tests/fixtures/ssh_local_controller_owner/ordinary_retention.py -text
+/agent_tools/tests/fixtures/ssh_local_controller_owner/provenance.json -text
+/agent_tools/tests/fixtures/tart_macos_acl_diagnostic/fake_metadata.c -text
+/agent_tools/tests/fixtures/tart_macos_acl_diagnostic/native-cap-failure.txt -text
+/agent_tools/tests/fixtures/tart_macos_acl_diagnostic/native-result.json -text
+/agent_tools/tests/fixtures/tart_macos_acl_diagnostic/native-rpc-closure.json -text
+/agent_tools/tests/fixtures/tart_macos_acl_diagnostic/native-source-closing.json -text
+/agent_tools/tests/fixtures/tart_macos_acl_diagnostic/provenance.json -text
+
+# Exact PowerShell bytes for the native ACL constructor regression.
+/agent_tools/tests/fixtures/windows_compile_acl_creation/parent-665b.before.ps1 -text
+/agent_tools/tests/fixtures/windows_compile_acl_creation/create-c9dad.fixed.ps1 -text
+
+# Exact diagnostic bytes for the proxy descriptor-limit regression.
+/agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json -text
+/agent_tools/tests/fixtures/ssh_proxy_high_descriptors/native-select-phase.json -text
+/agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controlled-high-fd.actual.json -text
+agent_tools/tests/fixtures/ssh_acceptance_controller_cleanup/call-intent-00000000.json -text
+agent_tools/tests/fixtures/ssh_acceptance_controller_cleanup/call-result-00000000.json -text
+agent_tools/tests/fixtures/ssh_acceptance_controller_cleanup/client-intent.json -text
+agent_tools/tests/fixtures/ssh_acceptance_controller_cleanup/client-result.json -text
+agent_tools/tests/fixtures/ssh_acceptance_controller_cleanup/readback-join-data.json -text
+agent_tools/tests/fixtures/windows_system_image_inquiry/native-before-stdout.json -text
+agent_tools/tests/fixtures/windows_system_image_inquiry/native-closed-public.json -text
+agent_tools/tests/fixtures/windows_system_image_inquiry/native-evidence-stdout.json -text
+agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.json -text
+
+# Reviewed Mac active-work fixture data authenticate exact native-source bytes.
+/agent_tools/tests/fixtures/macos_active_work_integration/installer-v2/bundle-staging/authorization.applescript -text
+/agent_tools/tests/fixtures/macos_active_work_integration/installer-v2/bundle-staging/bundle.json -text
+/agent_tools/tests/fixtures/macos_active_work_integration/installer-v2/bundle-staging-pins.json -text
+/agent_tools/tests/fixtures/macos_active_work_integration/qualification-pins.json -text
+
+# Pending-shutdown causal data are also authenticated byte-for-byte.
+/agent_tools/tests/fixtures/qemu_original_shutdown_pending/original8042-public-projection.json -text
+/agent_tools/tests/fixtures/qemu_original_shutdown_pending/fixtures/qemu_poweroff_pending_before/provenance.json -text

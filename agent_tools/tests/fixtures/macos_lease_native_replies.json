@@ -1,0 +1,36 @@
+{
+  "identityPolicy": "operation UUID replaced; all native behavior fields retained",
+  "replies": {
+    "active": {
+      "jobState": "running",
+      "nextAction": "observe_original",
+      "operationId": "cd7ae194-d72a-4bd6-9d86-190f10a2931f",
+      "provider": "tart-macos",
+      "reason": "original_lease_owner_running",
+      "replayAllowed": false,
+      "schemaVersion": 1,
+      "state": "active"
+    },
+    "expired": {
+      "jobState": "terminal",
+      "nextAction": "none",
+      "operationId": "cd7ae194-d72a-4bd6-9d86-190f10a2931f",
+      "provider": "tart-macos",
+      "reason": "lease_deadline_reached",
+      "replayAllowed": false,
+      "restored": true,
+      "schemaVersion": 1,
+      "state": "expired"
+    },
+    "unknown": {
+      "jobState": "unknown",
+      "nextAction": "observe_original",
+      "operationId": "cd7ae194-d72a-4bd6-9d86-190f10a2931f",
+      "provider": "tart-macos",
+      "reason": "record_unavailable",
+      "replayAllowed": false,
+      "schemaVersion": 1,
+      "state": "unknown"
+    }
+  }
+}

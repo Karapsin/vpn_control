@@ -30,7 +30,7 @@ class OwnedHomeObserverTests(unittest.TestCase):
         self.assertIn('/owned/home/.ssh/fixture_key01',value['keyMetadata'])
 
     def test_exact_home_owned_by_uid_and_only_literal_home_form(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+        with tempfile.TemporaryDirectory(dir=old_tests.FIXTURE_PARENT) as tmp:
             home=Path(tmp).resolve()
             with mock.patch.object(new.pwd,'getpwuid',return_value=SimpleNamespace(pw_dir=str(home))):
                 expanded=new.owned_home_identity('~/.ssh/fixture_key01')
@@ -53,7 +53,7 @@ class OwnedHomeObserverTests(unittest.TestCase):
         return spec,home,key,stdout
 
     def test_full_generated_flow_with_home_options_preserves_all_orphan_guards(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp,ExitStack() as stack:
+        with tempfile.TemporaryDirectory(dir=old_tests.FIXTURE_PARENT) as tmp,ExitStack() as stack:
             root=Path(tmp).resolve();spec,home,key,stdout=self.full_fixture(root);ns=self.functions(new.remote_source())
             # Simulate the safe Linux ancestry of this Mac-hosted fixture only.
             stack.enter_context(old_tests.ObserverTests().controlled()[0])
@@ -78,7 +78,7 @@ class OwnedHomeObserverTests(unittest.TestCase):
 
     def test_generated_key_symlink_and_home_change_fail_closed(self):
         for attack in ('key-symlink','home-change','key-parent-symlink'):
-            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp,ExitStack() as stack:
+            with self.subTest(attack=attack),tempfile.TemporaryDirectory(dir=old_tests.FIXTURE_PARENT) as tmp,ExitStack() as stack:
                 root=Path(tmp).resolve();spec,home,key,stdout=self.full_fixture(root);ns=self.functions(new.remote_source())
                 stack.enter_context(mock.patch.object(new.pwd,'getpwuid',return_value=SimpleNamespace(pw_dir=str(home))))
                 if attack=='key-symlink':key.rename(key.with_name('saved'));key.symlink_to('saved')

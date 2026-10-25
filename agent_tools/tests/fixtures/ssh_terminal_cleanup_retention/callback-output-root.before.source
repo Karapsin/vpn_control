@@ -1,0 +1,55 @@
+"""Actual private cleanup-label caller against real retained-output FD contract."""
+from pathlib import Path
+from contextlib import contextmanager
+from types import ModuleType
+import ast,hashlib,json,os,subprocess,sys,tempfile,unittest
+ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT))
+HERE=Path(__file__).resolve().parent/'fixtures/ssh_terminal_cleanup_retention'
+if os.name=='posix':
+    from agent_tools import ssh_transport as transport
+PINS={'cleanup.before.source': '90adfe71785afd994bce864ccc89075127da222c35dd16e69a17b5bf1788c27d', 'cleanup.fixed.source': 'cb26ca656f267cdb041a295530657cf5939fb2112d97b9836e3a754e91038a3c'}
+
+def raw(name):
+    value=(HERE/name).read_bytes()
+    if hashlib.sha256(value).hexdigest()!=PINS[name]:raise ValueError('cleanup_label_fixture_changed')
+    return value
+
+def owned_helpers():
+    base=Path(__file__).resolve().parent/'fixtures'
+    p=base/'ssh_acceptance_owner_readiness/ordinary_controller.fixed.source';body=p.read_bytes()
+    if hashlib.sha256(body).hexdigest()!='2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f':raise ValueError('actual_retention_fixture_changed')
+    m=ModuleType('_actual_retention_for_cleanup');m.__file__=str(p);m.__package__=None;sys.modules[m.__name__]=m;exec(compile(body,str(p),'exec'),m.__dict__)
+    p=base/'ssh_acceptance_controller_cleanup/controller.fixed.source';body=p.read_bytes()
+    if hashlib.sha256(body).hexdigest()!='309dd35f968916ade2b3a255944d1c84f6bc3713b34800b3cb497ad76455f978':raise ValueError('actual_controller_fixture_changed')
+    node=next(n for n in ast.parse(body).body if isinstance(n,ast.FunctionDef)and n.name=='retained_public_observation')
+    if hashlib.sha256(ast.unparse(node).encode()).hexdigest()!='b94c74beea15d1f618d16bc71fb3f3268de19332eba6ad9ebb9f3e03a46efd92':raise ValueError('actual_retained_function_changed')
+    env={'json':json};exec(compile(ast.Module(body=[node],type_ignores=[]),str(p),'exec'),env)
+    return m,env
+
+@unittest.skipUnless(os.name=='posix','requires original POSIX private nofollow FD capture')
+class ActualCleanupLabelBoundary(unittest.TestCase):
+    def test_actual_before_label_refusal_and_fixed_raw_retention(self):
+        retention,functions=owned_helpers()
+        self.assertEqual(json.loads((HERE/'provenance.json').read_bytes())['pins'],PINS)
+        with tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve())as temporary:
+            root=Path(temporary);root.chmod(0o700)
+            for fixed,name in((False,'cleanup.before.source'),(True,'cleanup.fixed.source')):
+                tree=ast.parse(raw(name));call=next(n for n in tree.body if isinstance(n,ast.With))
+                assignment=next(n for n in ast.walk(call)if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='returned'for t in n.targets))
+                out=root/('fixed'if fixed else'before');out.mkdir(mode=0o700);effects=[]
+                @contextmanager
+                def prepare():effects.append('prepare');yield
+                def invoke():
+                    effects.append('invoke');(out/'harmless-completed-callback').write_bytes(b'once')
+                    return subprocess.CompletedProcess([],0,b'{}',b'')
+                env={'env':functions,'retention':retention,'CLEANUP':'d16c325b-e187-49f5-8fb0-b9221a780842','prepare':prepare,'invoke':invoke,'guard':lambda:None,'out':out,'t':transport}
+                code=compile(ast.Module(body=[assignment],type_ignores=[]),'exact-original-cleanup-caller','exec')
+                if not fixed:
+                    with self.assertRaisesRegex(retention.QualificationBlocked,'^qualification_retention_root_invalid$'):exec(code,env)
+                    self.assertEqual(effects,[]);self.assertFalse((out/'harmless-completed-callback').exists())
+                else:
+                    exec(code,env);self.assertEqual(effects,['prepare','invoke']);self.assertEqual(env['returned'],{})
+                    self.assertEqual((out/'counter-000001/stdout.bin').read_bytes(),b'{}');self.assertEqual((out/'counter-000001/stderr.bin').read_bytes(),b'')
+                    receipt=json.loads((out/'counter-000001/receipt.json').read_bytes());self.assertEqual(receipt['returnCode'],0);self.assertTrue(receipt['complete']);self.assertTrue(receipt['namedCustody'])
+
+if __name__=='__main__':unittest.main()

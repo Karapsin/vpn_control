@@ -1,0 +1,11 @@
+{
+  "nativeEffectClaim": false,
+  "permittedRecoveries": [
+    "wake_display"
+  ],
+  "provider": "tart-linux",
+  "reason": "unclassified_helper_provider_inherits_desktop_policy",
+  "requirements": [
+    "interactive_desktop"
+  ]
+}

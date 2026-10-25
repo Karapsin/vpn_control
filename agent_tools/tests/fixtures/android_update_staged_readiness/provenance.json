@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": false,
+  "finding": "the API35 complete-update worker compiled the current lifecycle main() whose direct readiness tail imports agent_tools.readiness_entrypoints; the staged component bundle cannot resolve it, so the worker ended ImportError and the actor reported update_original_worker_unknown",
+  "controlledFailure": "agent_tools.tests.test_android_installer_outer_transport and test_android_installer_direct_transport whole-entry workers",
+  "nativeScenarioPending": "api35-exact-update-installed rerun on the final source",
+  "files": {
+    "android_installer_outer_transport.before.source": {
+      "path": "agent_tools/android_installer_outer_transport.py",
+      "baseline": "d24c1904",
+      "sha256": "ba264b61b51cd848c802ca9c06af479d2c4c52b45c8b7c0e9a807aa1ab47cfc9"
+    }
+  }
+}

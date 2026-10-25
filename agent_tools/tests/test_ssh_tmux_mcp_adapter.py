@@ -24,9 +24,16 @@ class AdapterTests(unittest.TestCase):
     def setUp(self):
         self.fixture=original.DriverTests('test_coordinator_injected_driver_retains_authority_before_release');self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
         self.root=self.fixture.root.resolve();self.fixture.root=self.root
+        # The protected owner rejects lexical symlink ancestors; use the actual
+        # physical fixture paths on macOS (/tmp itself is a symlink).
+        inventory=self.root/'.vm-hosts.local.json'
+        config=json.loads(inventory.read_bytes())
+        for value in config['hosts'].values():
+            for key in ('identityFile','knownHostsFile'):value[key]=str(Path(value[key]).resolve())
+        inventory.write_text(json.dumps(config))
         for name in ('ssh_tmux_source_staging_recovery.py','ssh_tmux_session_ssh.py'):
             shutil.copyfile(ROOT/'agent_tools'/name,self.root/'agent_tools'/name)
-        self.driver=adapter.McpTmuxDriver(self.root)
+        self.driver=adapter.McpTmuxDriver(self.root);self.addCleanup(self.driver.close)
         self.archive=self.root/'inert-remote.tar';self.fixture.archive();self.archive.write_bytes(self.fixture.remote.archive)
         self.calls=[];self.client=subprocess.Popen
         self.patch=mock.patch.object(subprocess,'Popen',side_effect=self.launch);self.patch.start();self.addCleanup(self.patch.stop)

@@ -1,0 +1,12 @@
+{
+  "actualResultSha256": "11fa1b456f750c57b28d0ab705cc97574d8d42f3f7ebfc202d3dcef8f2b14ebb",
+  "beforeSha256": "e224c0b638351ee2e5c800ee13773ec2973910327d778eaf65e1d6c048911a08",
+  "carrierBeforeSha256": "034cb070bab7057796732f434e8d9da5b6d65273cb77e9465313e76cdab365f8",
+  "cause": "nested loaded-module snapshot omitted WindowsBackend._source_pins function-local dependency before UNKNOWN-owner barrier",
+  "missingModule": "agent_tools.readiness_reservation_observation",
+  "originalOperationId": "127c473b-ecda-4444-961e-cd01ce4872fa",
+  "originalReplayed": false,
+  "originalSourceClosed": true,
+  "schemaVersion": 1,
+  "vmCalls": 0
+}

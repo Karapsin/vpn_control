@@ -1,0 +1,533 @@
+"""Unexposed managed-first Windows creator for an explicit new owned fixture.
+
+Source-only qualification stage. This module grants no provider capability. Its
+credential channel is separate from retained Program source and all receipts;
+secret seed media is held by metadata and exact bytes, never by content hashes.
+A manager ACK is pending evidence, never guest readiness or signin authority.
+"""
+import ast
+import hashlib
+import inspect
+import json
+from pathlib import Path,PurePosixPath
+import re
+import weakref
+from uuid import UUID,uuid5
+from xml.etree import ElementTree as ET
+
+from . import durable_remote_job as jobs
+from . import native_vm_spec
+from . import readiness_resources as resources
+from . import readiness_windows_lifecycle as lifecycle
+from . import readiness_windows_remote as packets
+from . import windows_vm_instance as instance
+from . import windows_vm_media as media
+from . import windows_vm_resources as resource_facts
+from . import windows_vm_unattend as unattended
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+_CREATE_PROGRAMS=weakref.WeakKeyDictionary()
+_CREATE_NAMESPACES=weakref.WeakKeyDictionary()
+_CREATE_PLANS=weakref.WeakKeyDictionary()
+QUALIFIED_RECOVERIES=frozenset()
+
+
+def _need(value):
+    if not value:raise ValueError('windows_managed_create_unresolved')
+
+
+def credential_frame(raw):
+    """Private input validator; errors contain no input or derived material."""
+    import json,re
+    def pairs(rows):
+        result={}
+        for key,value in rows:
+            if key in result:raise ValueError()
+            result[key]=value
+        return result
+    try:
+        if type(raw)is not bytes or not 0<len(raw)<=4096:raise ValueError()
+        value=json.loads(raw.decode('ascii'),object_pairs_hook=pairs)
+        if type(value)is not dict or set(value)!={'user','administrator'}:raise ValueError()
+        if any(type(secret)is not str or re.fullmatch('[A-Za-z0-9!_-]{24,64}',secret)is None for secret in value.values()):raise ValueError()
+        return value
+    except BaseException:raise ValueError('windows_managed_private_input_invalid')from None
+
+
+def private_answer(setup,credentials):
+    """No automatic signin; return only to the private seed writer."""
+    from xml.etree import ElementTree as ET
+    raw=_legacy_answer(setup,credentials);root=ET.fromstring(raw)
+    ns={'u':'urn:schemas-microsoft-com:unattend'}
+    for component in root.findall('.//u:component',ns):
+        for node in list(component):
+            if node.tag=='{'+ns['u']+'}AutoLogon':component.remove(node)
+    if root.findall('.//u:AutoLogon',ns):raise ValueError('windows_managed_private_seed_invalid')
+    return ET.tostring(root,encoding='utf-8',xml_declaration=True)
+
+
+_legacy_answer=unattended.answer_file
+
+
+def initialization_source():
+    marker='Stop-Transcript\n';raw=unattended.INITIALIZE
+    _need(raw.count(marker)==1)
+    return raw.replace(marker,"Start-ScheduledTask -TaskName 'VpnControlFixtureInitialize'\n"+marker)
+
+
+def domain_xml(spec,domain):
+    """Only public path/VM metadata; no credential or graphics password."""
+    from xml.etree import ElementTree as E
+    def node(parent,tag,text=None,**attrs):
+        value=E.SubElement(parent,tag,{key:str(item)for key,item in attrs.items()})
+        if text is not None:value.text=str(text)
+        return value
+    root=E.Element('domain',type='kvm');node(root,'name',domain);node(root,'uuid',spec['deploymentId'])
+    node(root,'memory',spec['memoryMiB']*1024,unit='KiB');node(root,'currentMemory',spec['memoryMiB']*1024,unit='KiB');node(root,'vcpu',spec['cpus'])
+    osnode=node(root,'os',firmware='efi');node(osnode,'type','hvm',arch='x86_64',machine='q35')
+    node(osnode,'loader',spec['assets']['firmwareCode']['path'],readonly='yes',secure='yes',type='pflash')
+    node(osnode,'nvram',spec['root']+'/uefi-vars.fd');node(osnode,'boot',dev='cdrom');node(osnode,'boot',dev='hd')
+    features=node(root,'features');node(features,'acpi');node(features,'apic');node(features,'smm',state='on')
+    node(root,'cpu',mode='host-passthrough');node(root,'on_poweroff','destroy');node(root,'on_reboot','restart');node(root,'on_crash','preserve')
+    devices=node(root,'devices');node(devices,'emulator','/usr/bin/qemu-system-x86_64')
+    for target,path,kind,fmt in [('sda',spec['root']+'/disk.qcow2','disk','qcow2'),('sdb',spec['assets']['installer']['path'],'cdrom','raw'),('sdc',spec['assets']['drivers']['path'],'cdrom','raw'),('sdd',spec['root']+'/seed.iso','cdrom','raw')]:
+        disk=node(devices,'disk',type='file',device=kind);node(disk,'driver',name='qemu',type=fmt);node(disk,'source',file=path);node(disk,'target',dev=target,bus='sata')
+        if kind=='cdrom':node(disk,'readonly')
+        if target=='sdd':node(disk,'alias',name='ua-vpn-control-credential-seed')
+    controller=node(devices,'controller',type='virtio-serial',index='0')
+    channel=node(devices,'channel',type='unix');node(channel,'source',mode='bind',path=spec['root']+'/qga.sock');node(channel,'target',type='virtio',name='org.qemu.guest_agent.0')
+    tpm=node(devices,'tpm',model='tpm-crb');backend=node(tpm,'backend',type='emulator',version='2.0',persistent_state='yes');node(backend,'source',type='dir',path=spec['root']+'/tpm')
+    interface=node(devices,'interface',type='user');node(interface,'model',type='e1000e')
+    graphics=node(devices,'graphics',type='vnc',port=spec['vncPort'],autoport='no',listen='127.0.0.1');node(graphics,'listen',type='address',address='127.0.0.1')
+    node(devices,'input',type='tablet',bus='usb');video=node(devices,'video');node(video,'model',type='vga',vram='16384',heads='1',primary='yes')
+    return E.tostring(root,encoding='unicode')
+
+
+def plan(spec,setup,context,uri,domain,operation,recovery_id):
+    """Pure explicit target plan. It cannot authorize an existing VM mutation."""
+    spec=native_vm_spec.FreshWindowsVmSpec.parse(spec).as_dict();setup=unattended.parse_setup(setup)
+    binding={'provider':'libvirt-windows','spec':spec,'setup':setup,'context':context,'uri':uri,'domain':domain,'xmlSha256':'0'*64}
+    packets.validate_binding(binding)
+    _need(lifecycle._uuid(operation)and lifecycle._digest(recovery_id)and operation==str(uuid5(UUID(spec['deploymentId']),recovery_id)))
+    xml=domain_xml(spec,domain)
+    return json.loads(json.dumps({'schemaVersion':1,'kind':'windows-managed-first-create-v1','binding':{**binding,'xmlSha256':hashlib.sha256(xml.encode()).hexdigest()},
+        'operationId':operation,'recoveryId':recovery_id,'xml':xml,'ordinarySigninAllowed':False,'seedDetachRequired':True,'replayAllowed':False},allow_nan=False))
+
+
+def _plan(value):
+    _need(type(value)is dict and set(value)=={'schemaVersion','kind','binding','operationId','recoveryId','xml','ordinarySigninAllowed','seedDetachRequired','replayAllowed'})
+    _need(type(value['schemaVersion'])is int and value['schemaVersion']==1 and value['ordinarySigninAllowed']is False and value['seedDetachRequired']is True and value['replayAllowed']is False)
+    b=value['binding'];rebuilt=plan(b['spec'],b['setup'],b['context'],b['uri'],b['domain'],value['operationId'],value['recoveryId'])
+    _need(rebuilt==value);return rebuilt
+
+
+def creator_root(value):
+    body=_plan(value);return str(PurePosixPath(body['binding']['spec']['root']).parent/'.cache/vpn-control-fixture-creators'/body['binding']['spec']['deploymentId'])
+
+
+def _namespace_main():
+    import os,pathlib,stat,json,types
+    module=types.ModuleType('managed_creator_namespace_owner');__import__('sys').modules[module.__name__]=module
+    exec(compile(OWNER,'fixed creator namespace owner','exec'),module.__dict__);module.owner_source=lambda:OWNER
+    bound=module.MachineBinding.from_dict(BINDING);module._binding_live(bound)
+    root=pathlib.Path(ROOT);vm=pathlib.Path(PLAN['binding']['spec']['root'])
+    def need(value):
+        if not value:raise ValueError('windows_managed_creator_namespace_unknown')
+    need(not os.path.lexists(vm));parent=vm.parent
+    fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held=[fd]
+    try:
+        for name in parent.parts[1:]:fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd);held.append(fd)
+        row=os.fstat(fd);need(row.st_uid==os.geteuid()and not row.st_mode&0o022)
+        for name in ('.cache','vpn-control-fixture-creators'):
+            try:os.mkdir(name,0o700,dir_fd=fd)
+            except FileExistsError:pass
+            fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd);held.append(fd);row=os.fstat(fd)
+            need(row.st_uid==os.geteuid()and not row.st_mode&0o022)
+        created=False
+        try:os.mkdir(root.name,0o700,dir_fd=fd);created=True
+        except FileExistsError:pass
+        module._root(root);generation=module.root_generation(root)
+        marker={'schemaVersion':1,'kind':'windows-managed-creator-namespace-v1','vmRoot':str(vm),'machine':PLAN['binding']['spec']['deploymentId'],
+            'binding':BINDING,'ownerSourceSha256':__import__('hashlib').sha256(OWNER).hexdigest()}
+        path=root/'creator-namespace.json'
+        if not os.path.lexists(path):
+            need(created and not list(root.iterdir()));module._publish(path,marker)
+        need(module._record(path)==marker and not os.path.lexists(vm))
+        info=module._private(path,directory=False)
+        pin=[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+        print(json.dumps({'root':ROOT,'generation':list(generation),'marker':marker,'markerGeneration':pin}))
+    finally:
+        for descriptor in reversed(held):os.close(descriptor)
+
+
+def _namespace_expected(value,host_binding):
+    value=_plan(value);_need(type(host_binding)is jobs.MachineBinding and host_binding.account.isdecimal()and int(host_binding.account)>0
+        and UUID(host_binding.boot)==UUID(value['binding']['context']['hostBootId']))
+    return {'schemaVersion':1,'kind':'windows-managed-creator-namespace-v1','vmRoot':value['binding']['spec']['root'],'machine':value['binding']['spec']['deploymentId'],
+        'binding':jobs.asdict(host_binding),'ownerSourceSha256':hashlib.sha256(jobs.owner_source()).hexdigest()}
+
+
+def initialize_program(value,host_binding):
+    value=_plan(value);_namespace_expected(value,host_binding)
+    return ('PLAN='+repr(value)+'\nROOT='+repr(creator_root(value))+'\nBINDING='+repr(jobs.asdict(host_binding))+'\nOWNER='+repr(jobs.owner_source())+'\n'+inspect.getsource(_namespace_main)+'\n_namespace_main()\n').encode()
+
+
+def _namespace_reply(value,host_binding,reply):
+    _need(type(reply)is dict and set(reply)=={'root','generation','marker','markerGeneration'}and reply['root']==creator_root(value)
+        and lifecycle._pin(reply['generation'],2)and all(reply['generation'])and lifecycle._pin(reply['markerGeneration'],9)
+        and reply['markerGeneration'][2]==0o100600 and reply['markerGeneration'][3]==int(host_binding.account)and reply['markerGeneration'][5]==1 and reply['marker']==_namespace_expected(value,host_binding))
+    return json.loads(json.dumps(reply))
+
+
+def _creator_submit():
+    import fcntl,json,os,pathlib,time,types
+    module=types.ModuleType('fixed_creator_submission_owner');__import__('sys').modules[module.__name__]=module
+    exec(compile(OWNER,'fixed creator owner','exec'),module.__dict__);module.owner_source=lambda:OWNER
+    root=module._root(NAMESPACE['root'],tuple(NAMESPACE['generation']));bound=module.MachineBinding.from_dict(NAMESPACE['marker']['binding'])
+    module._binding_live(bound);path=root/'creator-namespace.json';expected=NAMESPACE['marker'];need=lambda value:None if value else(_ for _ in ()).throw(ValueError('windows_managed_creator_namespace_unknown'))
+    need(module._record(path)==expected);operation=PLAN['operationId'];job=root/operation
+    program=module.Program('windows-managed-first-create',SOURCE,262144)
+    if os.path.lexists(job):result=module.submit(root,operation,bound,program,generation=tuple(NAMESPACE['generation']))
+    else:
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            pin=lambda i:[i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns]
+            original=pin(os.fstat(fd));need(original==pin(os.lstat(path))==NAMESPACE['markerGeneration']);end=time.monotonic()+5
+            while True:
+                try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+                except BlockingIOError:need(time.monotonic()<end);time.sleep(.02)
+            need(pin(os.fstat(fd))==pin(os.lstat(path))==original and module._record(path)==expected)
+            need(not os.path.lexists(PLAN['binding']['spec']['root']))
+            result=module.submit(root,operation,bound,program,generation=tuple(NAMESPACE['generation']))
+        finally:os.close(fd)
+    print(json.dumps(result))
+
+
+def submission_program(program):
+    _need(type(program)is jobs.Program and program in _CREATE_PROGRAMS)
+    original,job,expected=_CREATE_PROGRAMS[program];_need(original()is program)
+    namespace=_CREATE_NAMESPACES[program];value=_CREATE_PLANS[program]
+    return ('PLAN='+repr(value)+'\nNAMESPACE='+repr(namespace)+'\nOWNER='+repr(jobs.owner_source())+'\nSOURCE='+repr(program.source)+'\n'+inspect.getsource(_creator_submit)+'\n_creator_submit()\n').encode()
+
+
+def _creator_inventory():
+    import ast,hashlib,json,os,pathlib,types
+    def need(value):
+        if not value:raise ValueError('windows_managed_creator_visibility_missing')
+    module=types.ModuleType('fixed_creator_inventory_owner');__import__('sys').modules[module.__name__]=module
+    exec(compile(OWNER,'fixed creator inventory owner','exec'),module.__dict__);module.owner_source=lambda:OWNER
+    root=module._root(NAMESPACE['root'],tuple(NAMESPACE['generation']))
+    def marker_guard():
+        info=module._private(root/'creator-namespace.json',directory=False)
+        pin=[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+        need(pin==NAMESPACE['markerGeneration']and module._record(root/'creator-namespace.json')==NAMESPACE['marker'])
+    marker_guard()
+    bound=module.MachineBinding.from_dict(NAMESPACE['marker']['binding']);names=list(root.iterdir());need(len(names)<=4096);rows=[]
+    for path in names:
+        if path.name=='creator-namespace.json':continue
+        operation=module._uuid(path.name)
+        try:
+            intent=module._intent(path,operation,bound);need(intent['purpose']=='windows-managed-first-create')
+            source=module._read(path/'program.py',module.MAX_PROGRAM_BYTES)
+            need(hashlib.sha256(source).hexdigest()==intent['programSha256']and module._read(path/'owner.py',module.MAX_PROGRAM_BYTES)==OWNER)
+            values=[ast.literal_eval(n.value)for n in ast.parse(source).body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)and n.targets[0].id=='PLAN']
+            need(len(values)==1);plan=values[0]
+            need(plan['binding']==PLAN['binding']and plan['operationId']==operation and plan['ordinarySigninAllowed']is False and plan['seedDetachRequired']is True and plan['replayAllowed']is False)
+            status=module.observe(root,operation,bound,generation=tuple(NAMESPACE['generation']))
+            if status['state']=='terminal':status,_,_=module.collect(root,operation,bound,generation=tuple(NAMESPACE['generation']))
+        except BaseException:status=module._base(operation,'unknown','original_creator_unresolved')
+        rows.append({'operationId':operation,'status':status})
+    marker_guard()
+    print(json.dumps({'kind':'windows-managed-creator-inventory-v1','machine':NAMESPACE['marker']['machine'],'visibilityComplete':True,'jobs':rows,
+        'idle':all(row['status']['state']=='terminal'and row['status']['terminal']['exitCode']==0 for row in rows)}))
+
+
+def inventory_program(value,host_binding,namespace):
+    value=_plan(value);namespace=_namespace_reply(value,host_binding,namespace)
+    return ('PLAN='+repr(value)+'\nNAMESPACE='+repr(namespace)+'\nOWNER='+repr(jobs.owner_source())+'\n'+inspect.getsource(_creator_inventory)+'\n_creator_inventory()\n').encode()
+
+
+def _project_creator_inventory(source,machine):
+    import contextlib,io,json
+    output=io.StringIO()
+    with contextlib.redirect_stdout(output):exec(compile(source,'fixed selected creator inventory','exec'),{})
+    reply=json.loads(output.getvalue())
+    if type(reply)is not dict or set(reply)!={'kind','machine','visibilityComplete','jobs','idle'}or reply['kind']!='windows-managed-creator-inventory-v1'or reply['machine']!=machine or reply['visibilityComplete']is not True or type(reply['jobs'])is not list or type(reply['idle'])is not bool:raise ValueError('windows_managed_creator_visibility_missing')
+    return reply
+
+
+def observer_inventory_definitions(value,host_binding,namespace):
+    """Internal source-owned main hook. No purpose-only running exemption."""
+    source=inventory_program(value,host_binding,namespace);machine=_plan(value)['binding']['spec']['deploymentId']
+    return ('_CREATOR_INVENTORY_SOURCE='+repr(source)+'\n_CREATOR_MACHINE='+repr(machine)+'\n'+inspect.getsource(_project_creator_inventory)+
+            '\ndef _creator_host_work():\n return _project_creator_inventory(_CREATOR_INVENTORY_SOURCE,_CREATOR_MACHINE)\n')
+
+
+def _channel_identity(job,expected,owner_source,*,live=True):
+    """Execute on provider HOST: original durable source and live child only."""
+    import hashlib,os,pathlib,types,sys
+    module=types.ModuleType('managed_create_original_owner');sys.modules[module.__name__]=module
+    exec(compile(owner_source,'original-creator-owner','exec'),module.__dict__);module.owner_source=lambda:owner_source
+    job=pathlib.Path(job);module._root(job.parent,tuple(expected['rootGeneration']));module._private(job,directory=True)
+    binding=module.MachineBinding.from_dict(expected['binding']);module._binding_live(binding)
+    intent=module._intent(job,expected['operationId'],binding)
+    if intent['purpose']!='windows-managed-first-create'or intent['programSha256']!=expected['programSha256']or module._read(job/'owner.py',module.MAX_PROGRAM_BYTES)!=owner_source:raise ValueError('windows_managed_original_owner_unknown')
+    source=module._read(job/'program.py',module.MAX_PROGRAM_BYTES)
+    if hashlib.sha256(source).hexdigest()!=intent['programSha256']:raise ValueError('windows_managed_original_owner_unknown')
+    original=module._record(job/'owner.json');module._correlate(original,intent);actor=module._owner_identity(original)
+    if live and module._birth(actor['pid'])!=actor['birth']:raise ValueError('windows_managed_original_owner_unknown')
+    return module,intent,actor,source
+
+
+def _handoff(job,expected,owner_source):
+    """Private stdin -> exact connected original socket, once, no retransmit."""
+    import json,os,pathlib,socket,stat,struct,time
+    frame=None;value=None;client=None
+    try:
+        frame=__import__('sys').stdin.buffer.read(4097);value=credential_frame(frame)
+        module,intent,owner,source=_channel_identity(job,expected,owner_source,live=False);job=pathlib.Path(job)
+        row=module._record(job/'creator-listener.json');sock=job/'credentials.sock'
+        if set(row)!={'operationId','actor','executableGeneration','socketIdentity'}or row['operationId']!=expected['operationId']:raise ValueError()
+        actor=row['actor'];pid=actor['pid']
+        # A consumed handoff never needs a live process or replacement socket.
+        # Reclose the exact original files, then preserve its unknown outcome.
+        if os.path.lexists(job/'credentials-handoff.intent.json'):
+            consumed=module._record(job/'credentials-handoff.intent.json')
+            if consumed!={'operationId':expected['operationId'],'actor':actor,'socketIdentity':row['socketIdentity'],'replayAllowed':False}:raise ValueError()
+            print(json.dumps({'state':'original-observation-required','operationId':expected['operationId'],'replayAllowed':False}));return
+        _channel_identity(job,expected,owner_source)
+        if module._birth(pid)!=actor['birth']:raise ValueError()
+        proc=pathlib.Path('/proc')/str(pid);raw=(proc/'stat').read_text();words=raw[raw.rfind(')')+2:].split()
+        pin=lambda i:[i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns]
+        structure=lambda i:[i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid]
+        if int(words[1])!=owner['pid']or pin(os.stat(proc/'exe'))!=row['executableGeneration']:raise ValueError()
+        named=os.lstat(sock)
+        if not stat.S_ISSOCK(named.st_mode)or stat.S_IMODE(named.st_mode)!=0o600 or named.st_uid!=os.geteuid()or structure(named)!=row['socketIdentity']:raise ValueError()
+        client=socket.socket(socket.AF_UNIX);client.settimeout(10);client.connect(str(sock))
+        peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+        if peer[:2]!=(pid,os.geteuid())or module._birth(pid)!=actor['birth']or structure(os.lstat(sock))!=row['socketIdentity']:raise ValueError()
+        _channel_identity(job,expected,owner_source)
+        module._publish(job/'credentials-handoff.intent.json',{'operationId':expected['operationId'],'actor':actor,'socketIdentity':row['socketIdentity'],'replayAllowed':False})
+        client.sendall(frame);client.shutdown(socket.SHUT_WR)
+        ack=client.recv(2)
+        if ack!=b'OK':raise ValueError()
+        print(json.dumps({'state':'credentials-accepted','operationId':expected['operationId'],'replayAllowed':False}))
+    except BaseException:
+        print(json.dumps({'state':'blocked','operationId':expected['operationId'],'reason':'windows_managed_credential_handoff_unknown','replayAllowed':False}))
+    finally:
+        if value is not None:value.clear()
+        frame=None
+        if client is not None:client.close()
+
+
+def _handoff_source(job,expected):
+    _need(lifecycle._canonical(job)and type(expected)is dict and set(expected)=={'operationId','binding','rootGeneration','programSha256'})
+    jobs.MachineBinding.from_dict(expected['binding']);_need(lifecycle._uuid(expected['operationId'])and lifecycle._pin(expected['rootGeneration'],2)and lifecycle._digest(expected['programSha256']))
+    text=inspect.getsource(credential_frame)+'\n'+inspect.getsource(_channel_identity)+'\n'+inspect.getsource(_handoff)+'\n_handoff('+repr(job)+','+repr(expected)+','+repr(jobs.owner_source())+')\n'
+    compile(text,'fixed private managed handoff','exec');return text.encode()
+
+
+def handoff_program(program):
+    """Only the exact locally minted creator may select a credential endpoint."""
+    _need(type(program)is jobs.Program and program in _CREATE_PROGRAMS)
+    original,job,expected=_CREATE_PROGRAMS[program];_need(original()is program)
+    return _handoff_source(job,expected)
+
+
+def _receive_credentials(job,module,operation):
+    import os,pathlib,socket,stat
+    def need(value):
+        if not value:raise ValueError('windows_managed_private_input_invalid')
+    def generation(i):return [i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns]
+    def structure(i):return [i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid]
+    listener=socket.socket(socket.AF_UNIX);listener.settimeout(60);client=None;raw=None
+    try:
+        endpoint=pathlib.Path(job)/'credentials.sock';listener.bind(str(endpoint));os.chmod(endpoint,0o600);listener.listen(1)
+        module._publish(pathlib.Path(job)/'creator-listener.json',{'operationId':operation,'actor':{'pid':os.getpid(),'birth':module._birth(os.getpid())},
+            'executableGeneration':generation(os.stat('/proc/self/exe')),'socketIdentity':structure(os.lstat(endpoint))})
+        client,_=listener.accept();client.settimeout(10);chunks=[];size=0
+        while True:
+            block=client.recv(min(4097-size,4097));size+=len(block)
+            if not block:break
+            need(size<=4096);chunks.append(block)
+        raw=b''.join(chunks);chunks.clear();value=credential_frame(raw);raw=None
+        module._publish(pathlib.Path(job)/'credentials-accepted.json',{'operationId':operation,'replayAllowed':False})
+        client.sendall(b'OK');return value
+    finally:
+        raw=None
+        if client is not None:client.close()
+        listener.close()
+
+
+def _creator_main():
+    """One retained ordinary HOST owner; never adopts an existing VM root."""
+    _CANONICAL_CREATE_DEFINITIONS()
+    import types
+    root=pathlib.Path(PLAN['binding']['spec']['root']);spec=PLAN['binding']['spec'];context=PLAN['binding']['context']
+    listener=None;connection=None;frame=None;credentials=None;answer=None;secret_media=[]
+    job=pathlib.Path(CREATOR_JOB_ROOT)/PLAN['operationId'];phase='original-owner'
+    try:
+        # The actual complete executing Program, not its imported module hash,
+        # authenticates the child before it can accept protected input.
+        module=types.ModuleType('creator_actual_owner');sys.modules[module.__name__]=module
+        exec(compile(CREATOR_OWNER_SOURCE,'original creator durable owner','exec'),module.__dict__);module.owner_source=lambda:CREATOR_OWNER_SOURCE
+        bound=module.MachineBinding.from_dict(CREATOR_HOST_BINDING);module._binding_live(bound)
+        module._root(job.parent,tuple(CREATOR_ROOT_GENERATION));intent=module._intent(job,PLAN['operationId'],bound)
+        source=module._read(job/'program.py',module.MAX_PROGRAM_BYTES)
+        require(intent['purpose']=='windows-managed-first-create'and hashlib.sha256(source).hexdigest()==intent['programSha256']
+                and compile(source,'fixed-purpose-program','exec')==_CREATOR_EXECUTING_CODE,'windows_managed_original_owner_unknown')
+        expected={'operationId':PLAN['operationId'],'binding':CREATOR_HOST_BINDING,'rootGeneration':CREATOR_ROOT_GENERATION,'programSha256':intent['programSha256']}
+        _,_,owner,_=_channel_identity(job,expected,CREATOR_OWNER_SOURCE)
+        require(os.getppid()==owner['pid'],'windows_managed_original_owner_unknown')
+        os.umask(0o077);parent=chain();closing()
+        import fcntl
+        namespace_path=job.parent/'creator-namespace.json';namespace_fd=os.open(namespace_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(namespace_fd)
+        namespace_pin=generation(os.fstat(namespace_fd));require(list(namespace_pin)==CREATOR_NAMESPACE['markerGeneration']and namespace_pin==generation(os.lstat(namespace_path))and module._record(namespace_path)==CREATOR_NAMESPACE['marker'],'windows_managed_creator_namespace_unknown')
+        end=time.monotonic()+5
+        while True:
+            try:fcntl.flock(namespace_fd,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+            except BlockingIOError:require(time.monotonic()<end,'windows_managed_creator_namespace_busy');time.sleep(.02)
+        require(namespace_pin==generation(os.fstat(namespace_fd))==generation(os.lstat(namespace_path)),'windows_managed_creator_namespace_unknown')
+        def epoch():
+            require(pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()==context['hostBootId'],'windows_managed_host_changed');closing()
+        epoch();require(not os.path.lexists(root),'windows_managed_blank_root_required')
+        phase='public-assets';assets={};binaries={}
+        for name,asset in spec['assets'].items():assets[name]=pin(asset['path'],asset['sha256'],asset['bytes'])[0]
+        select_image(installer_images(assets['installer']),PLAN['binding']['setup'])
+        for name in ('qemu-system-x86_64','qemu-img','swtpm','virt-fw-vars','xorriso','virtqemud'):
+            path=os.path.realpath('/usr/bin/'+name);require(path=='/usr/bin/'+name,'windows_managed_binary_changed')
+            binaries[name]=pin(path,executable=True)[0];require(os.fstat(binaries[name]).st_uid==0,'windows_managed_binary_changed')
+        phase='manager';socket_path=pathlib.Path(URI_SOCKET)
+        def manager():
+            named=os.lstat(socket_path);require(stat.S_ISSOCK(named.st_mode)and named.st_uid==os.geteuid()and not named.st_mode&0o077,'windows_managed_manager_unknown')
+            with socket.socket(socket.AF_UNIX)as client:
+                client.settimeout(5);client.connect(str(socket_path));peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+            require(peer[1]==os.geteuid(),'windows_managed_manager_unknown');pid=peer[0]
+            require(os.path.realpath('/proc/'+str(pid)+'/exe')=='/usr/bin/virtqemud'and generation(os.stat('/proc/'+str(pid)+'/exe'))==generation(os.fstat(binaries['virtqemud'])),'windows_managed_manager_changed')
+            row={'pid':pid,'birth':birth(pid),'executableGeneration':list(generation(os.fstat(binaries['virtqemud']))),'socketIdentity':list(structure(named))}
+            require(structure(os.lstat(socket_path))==structure(named),'windows_managed_manager_changed');return row
+        original_manager=manager();import libvirt
+        connection=libvirt.open(PLAN['binding']['uri']);require(connection is not None and connection.getURI()==PLAN['binding']['uri'],'windows_managed_manager_changed')
+        def manager_guard():
+            epoch();require(manager()==original_manager and connection.getURI()==PLAN['binding']['uri'],'windows_managed_manager_changed')
+        def absent():
+            manager_guard()
+            for lookup,arg in ((connection.lookupByUUIDString,spec['deploymentId']),(connection.lookupByName,PLAN['binding']['domain'])):
+                try:lookup(arg)
+                except libvirt.libvirtError as error:require(error.get_error_code()==libvirt.VIR_ERR_NO_DOMAIN,'windows_managed_domain_unknown')
+                else:require(False,'windows_managed_domain_exists')
+        absent()
+        phase='credential-listener'
+        credentials=_receive_credentials(job,module,PLAN['operationId'])
+        answer=private_answer(PLAN['binding']['setup'],credentials);credentials.clear();credentials=None
+        phase='capacity';fresh=CREATOR_ADMISSION['census'];_start_capacity(spec,context,CREATOR_ADMISSION,fresh,_lifecycle_measurement(fresh),PLAN['operationId'])
+        absent();require(not os.path.lexists(root),'windows_managed_blank_root_required')
+        ledger=root.parent/'.cache/vpn-control-fixture-storage';require(ledger.is_dir()and not ledger.is_symlink(),'windows_managed_storage_unenrolled')
+        storage=CREATOR_STORAGE.StoragePlans(ledger)
+        with storage._locked():_storage_vm_coverage(storage._read(),fresh,birth)
+        # Reserve full new mutable growth, including private seed and NVRAM,
+        # before mkdir or qemu-img. Other retained/UNKNOWN claims stay counted.
+        storage.reserve('windows-'+spec['deploymentId'],'windows','bootstrap',root,
+            [{'path':str(root/'disk.qcow2'),'capacityBytes':spec['diskGiB']*1024**3},
+             {'path':str(root/'uefi-vars.fd'),'capacityBytes':8*1024**2},
+             {'path':str(root/'seed.iso'),'capacityBytes':64*1024**2}],writer_pid=os.getpid(),staging_growth_bytes=64*1024**2)
+        manager_guard();_start_capacity(spec,context,CREATOR_ADMISSION,fresh,_lifecycle_measurement(fresh),PLAN['operationId'])
+        module._publish(job/'create.intent.json',{'plan':PLAN,'manager':original_manager,'replayAllowed':False})
+        phase='blank-root';os.mkdir(root.name,0o700,dir_fd=parent);private(root,True)
+        save('managed-create-host-original.json',{'namespace':CREATOR_NAMESPACE,'operationId':PLAN['operationId'],'programSha256':intent['programSha256'],'owner':owner,'replayAllowed':False})
+        source_names=('firmwareCode','installer','drivers')
+        save('intent.json',{'schemaVersion':1,'spec':spec,'setup':PLAN['binding']['setup'],'hostBootId':context['hostBootId'],
+            'rootIdentity':list(structure(os.lstat(root))),'assetIdentities':{name:{'set':index+1,'generation':list(generation(os.fstat(assets[name])))}for index,name in enumerate(source_names)}})
+        for name in ('tpm','seed'):os.mkdir(root/name,0o700)
+        save('seed/Autounattend.xml',answer);answer=None
+        save('seed/initialize.ps1',CREATOR_INITIALIZE.encode('utf-8-sig'));save('seed/install-agent.ps1',CREATOR_INSTALL_AGENT.encode('utf-8-sig'))
+        def run(name,args,timeout=30,limit=262144):
+            manager_guard();command=['/proc/self/fd/'+str(binaries[name]),*args]
+            result=subprocess.run(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,
+                pass_fds=tuple(assets.values())+tuple(binaries.values()),env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','HOME':str(root.parent)})
+            # Private tool replies are never persisted, hashed, or rethrown.
+            require(result.returncode==0 and len(result.stdout)<=limit and len(result.stderr)<=limit,'windows_managed_preparation_failed');manager_guard();return result.stdout
+        phase='firmware'
+        run('virt-fw-vars',['--input','/proc/self/fd/'+str(assets['firmwareVars']),'--output',str(root/'uefi-vars.fd'),'--enroll-microsoft','--microsoft-db','win11','--microsoft-kek','all','--secure-boot'])
+        enrolled=json.loads(run('virt-fw-vars',['--input',str(root/'uefi-vars.fd'),'--output-json','-']))
+        require(enrolled.get('version')==2 and type(enrolled.get('variables'))is list,'windows_managed_firmware_unknown')
+        variables={row['name']:row['data']for row in enrolled['variables']}
+        require(variables.get('SecureBootEnable')=='01'and variables.get('CustomMode')=='00'and all(variables.get(key)for key in ('PK','KEK','db')),'windows_managed_firmware_unknown')
+        phase='disk';run('qemu-img',['create','-f','qcow2',str(root/'disk.qcow2'),str(spec['diskGiB'])+'G'])
+        image=json.loads(run('qemu-img',['info','--output=json',str(root/'disk.qcow2')]))
+        require(image.get('format')=='qcow2'and image.get('virtual-size')==spec['diskGiB']*1024**3 and not image.get('backing-filename'),'windows_managed_blank_disk_unknown')
+        for name in ('disk.qcow2','uefi-vars.fd'):private(root/name)
+        save('mutable-artifacts.json',{name:list(structure(private(root/name)))for name in ('disk.qcow2','uefi-vars.fd')})
+        phase='private-seed';run('xorriso',['-as','mkisofs','-quiet','-J','-R','-V','VCSETUP','-o',str(root/'seed.iso'),str(root/'seed')],timeout=60)
+        for name in ('seed/Autounattend.xml','seed.iso'):
+            path=root/name;info=private(path);require(0<info.st_size<=64*1024**2,'windows_managed_private_seed_invalid')
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);raw=os.read(fd,64*1024**2+1)
+            require(len(raw)==info.st_size and generation(os.fstat(fd))==generation(info),'windows_managed_private_seed_invalid')
+            secret_media.append((fd,path,generation(info),raw))
+        save('credential-seed-custody.json',{'operationId':PLAN['operationId'],'ordinarySigninAllowed':False,'detachRequired':True,
+            'files':{str(path.relative_to(root)):list(identity)for fd,path,identity,raw in secret_media},'replayAllowed':False})
+        def seed_guard():
+            for fd,path,identity,raw in secret_media:
+                require(generation(os.fstat(fd))==generation(os.lstat(path))==identity,'windows_managed_private_seed_changed')
+                os.lseek(fd,0,0);require(os.read(fd,len(raw)+1)==raw,'windows_managed_private_seed_changed')
+        phase='define';absent();seed_guard();_start_capacity(spec,context,CREATOR_ADMISSION,fresh,_lifecycle_measurement(fresh),PLAN['operationId'])
+        # Each manager mutation has a durable original intent BEFORE dispatch.
+        save('libvirt-define.intent.json',{'operationId':PLAN['operationId'],'machine':spec['deploymentId'],'domain':PLAN['binding']['domain'],'uri':PLAN['binding']['uri'],'manager':original_manager,'xmlSha256':PLAN['binding']['xmlSha256'],'replayAllowed':False})
+        domain=connection.defineXML(PLAN['xml']);require(domain is not None,'windows_managed_define_unknown');manager_guard()
+        require(domain.UUIDString()==spec['deploymentId']and domain.name()==PLAN['binding']['domain']and not domain.isActive(),'windows_managed_define_unknown')
+        actual_xml=domain.XMLDesc(libvirt.VIR_DOMAIN_XML_INACTIVE)
+        save('libvirt-defined.result.json',{'operationId':PLAN['operationId'],'machine':spec['deploymentId'],'domain':PLAN['binding']['domain'],'uri':PLAN['binding']['uri'],'manager':original_manager,'xmlSha256':hashlib.sha256(actual_xml.encode()).hexdigest(),'replayAllowed':False})
+        phase='start';manager_guard();seed_guard()
+        # Explicit local endpoint admission, no autoport/fallback selector.
+        with socket.socket(socket.AF_INET)as probe:probe.bind(('127.0.0.1',spec['vncPort']))
+        save('libvirt-start.intent.json',{'operationId':PLAN['operationId'],'machine':spec['deploymentId'],'domain':PLAN['binding']['domain'],'uri':PLAN['binding']['uri'],'manager':original_manager,'replayAllowed':False})
+        domain.createWithFlags(0);manager_guard();seed_guard()
+        require(domain.isActive(),'windows_managed_start_unknown')
+        result={'schemaVersion':1,'kind':'windows-managed-first-create-pending-v1','state':'postlaunch-observation-required','operationId':PLAN['operationId'],
+            'machine':spec['deploymentId'],'hostBoot':context['hostBootId'],'domain':PLAN['binding']['domain'],'uri':PLAN['binding']['uri'],
+            'manager':original_manager,'domainId':domain.ID(),'ordinarySigninAllowed':False,'seedDetachRequired':True,'replayAllowed':False}
+        save('libvirt-start.result.json',result);print(json.dumps(result))
+    except BaseException:
+        # No traceback/exception text/raw private subprocess output escapes.
+        print(json.dumps({'state':'blocked','operationId':PLAN['operationId'],'reason':'windows_managed_create_original_unknown','phase':phase,'replayAllowed':False}))
+    finally:
+        if credentials is not None:credentials.clear()
+        frame=None;answer=None;secret_media.clear()
+        if listener is not None:listener.close()
+        if connection is not None:connection.close()
+        for fd in reversed(held):os.close(fd)
+
+
+def creator_program(value,resource_admission,namespace,host_binding):
+    """Internal fixed Program; resources must already be consumed for this op."""
+    value=_plan(value);namespace=_namespace_reply(value,host_binding,namespace);job_root=namespace['root'];root_generation=namespace['generation']
+    binding=value['binding'];spec=binding['spec'];operation=value['operationId']
+    _need(type(resource_admission)is resources.ResourceAdmission and resource_admission.operation_id==operation
+        and resource_admission.machine_uuid==spec['deploymentId']and resource_admission.target.deployment_id==operation
+        and resource_admission.target.host==spec['host']and resource_admission.target.root==spec['root'])
+    snapshot=resource_admission.submission_snapshot();_need(snapshot['hostBootId']==binding['context']['hostBootId'])
+    _need(lifecycle._canonical(job_root)and lifecycle._pin(root_generation,2)and type(host_binding)is jobs.MachineBinding
+        and UUID(host_binding.boot)==UUID(binding['context']['hostBootId'])and host_binding.account.isdecimal()and int(host_binding.account)>0
+        and not (job_root==spec['root']or job_root.startswith(spec['root']+'/')))
+    legacy=inspect.getsource(instance._vm_main);node=ast.parse(legacy).body[0]
+    names={'require','generation','structure','chain','closing','pin','private','save','birth'}
+    canonical='\n'.join(ast.get_source_segment(legacy,row)for row in node.body if isinstance(row,(ast.Import,ast.ImportFrom,ast.Assign))or isinstance(row,ast.FunctionDef)and row.name in names)
+    source=inspect.getsource(_creator_main);marker='    _CANONICAL_CREATE_DEFINITIONS()\n';_need(source.count(marker)==1)
+    source=source.replace(marker,''.join('    '+line+'\n'for line in canonical.splitlines()))
+    constants={'SPEC':spec,'SETUP':binding['setup'],'CONTEXT':binding['context'],'PLAN':value,'CREATOR_ADMISSION':snapshot,'CREATOR_JOB_ROOT':job_root,'CREATOR_ROOT_GENERATION':root_generation,
+        'CREATOR_NAMESPACE':namespace,'CREATOR_HOST_BINDING':jobs.asdict(host_binding),'CREATOR_OWNER_SOURCE':jobs.owner_source(),'URI_SOCKET':str(PurePosixPath(spec['root']).parent/'.cache/libvirt/virtqemud-sock'),
+        'CREATOR_INITIALIZE':initialization_source(),'CREATOR_INSTALL_AGENT':unattended.INSTALL_AGENT}
+    storage=Path(__file__).parent.parent/'scripts/native_fixture_storage.py'
+    prefix="_CREATOR_EXECUTING_CODE=__import__('inspect').currentframe().f_code\nimport types,sys\n"
+    prefix+='\n'.join(name+'='+repr(item)for name,item in constants.items())+'\n'
+    prefix+="CREATOR_STORAGE=types.ModuleType('fixed_creator_storage');sys.modules[CREATOR_STORAGE.__name__]=CREATOR_STORAGE\nexec(compile("+repr(storage.read_bytes())+",'fixed-creator-storage','exec'),CREATOR_STORAGE.__dict__)\n"
+    prefix+='MEDIA_READER='+repr(media.dependency_capsule(media.dependency_sources()))+'\n'+inspect.getsource(media.read_wim_images)+'\n'+inspect.getsource(media.installer_images)+'\n'+inspect.getsource(media.select_image)+'\n'
+    prefix+='FIELDS=set('+repr(sorted(unattended.FIELDS))+')\n'
+    prefix+='import re\nfrom xml.etree import ElementTree as ET\n'+inspect.getsource(unattended.parse_setup)+'\n'+inspect.getsource(unattended.answer_file).replace('def answer_file(','def _legacy_answer(')+'\n'
+    prefix+=inspect.getsource(private_answer)+'\n'+inspect.getsource(credential_frame)+'\n'+inspect.getsource(_channel_identity)+'\n'+inspect.getsource(_receive_credentials)+'\n'
+    prefix+=inspect.getsource(lifecycle._start_capacity)+'\n'+inspect.getsource(lifecycle._storage_vm_coverage)+'\n'+inspect.getsource(resource_facts.measurement).replace('def measurement(','def _lifecycle_measurement(')+'\n'
+    result=jobs.Program('windows-managed-first-create',(prefix+source+'\n_creator_main()\n').encode(),262144)
+    expected={'operationId':operation,'binding':jobs.asdict(host_binding),'rootGeneration':list(root_generation),'programSha256':result.digest}
+    _CREATE_PROGRAMS[result]=(weakref.ref(result),job_root+'/'+operation,expected)
+    _CREATE_NAMESPACES[result]=namespace;_CREATE_PLANS[result]=value
+    return result

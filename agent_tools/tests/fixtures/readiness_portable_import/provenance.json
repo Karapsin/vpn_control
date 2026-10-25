@@ -1,0 +1,8 @@
+{
+  "cause": "Eager shared readiness lock inheritance imports POSIX fcntl before portable SSH coordinator capability skip. Complete readiness before is replayed through exact full unsupported import/discovery caller.",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "original-failure.log": "f93ccac1c8e5b30fd516ca0da0de37ee19dc8edf8c3172462520a81e7e37f65b",
+    "readiness.before.source": "45f64b1699f646e029ad3e8949e5e33ee5a3fefe1e7ed2aaed93a491653c2227"
+  }
+}

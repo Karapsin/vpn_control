@@ -1,0 +1,31 @@
+{
+  "beforeSha256": {
+    "readiness_transport.py.before.source": "c04ed0aa0038e443a5c8e77fb0decb70367de148d2c49c3e541529b987051ce6",
+    "ssh_automatic_program.py.before.source": "e780b53d89aa8e925aff6ec375c4fc2fce343377eb925347ef837b483f62e6a3",
+    "ssh_dispatch_admission.py.before.source": "af395af5791970476c780fe42b44e6b17f28d4279303c062d1a6757a5725f766",
+    "ssh_transport.py.before.source": "b48dae5a0e9a2ae923d9cce740a677ad17917d478fec92947a58405624064638",
+    "ssh_dispatch_retry.py.before.source": "86737bbbbb77213be17b7352d2015561c5447646226dc0aacf611cec786afcca",
+    "readiness.py.before.source": "45f64b1699f646e029ad3e8949e5e33ee5a3fefe1e7ed2aaed93a491653c2227",
+    "readiness_nested_channel.py.before.source": "fd00d22579bd22cc5f0e664f56ca3e4aa5e51af8a8a0e3d0cfecba5a9c5221c8",
+    "ssh_fresh_nested_channel.py.before.source": "4cd0d410009356755e4c51ca12373419da8e2a67bd18e23bd8ab55cf3471899b",
+    "ssh_connection_session.py.before.source": "dba4466d09aff57787cb008edcd044bc1cb4c3a22f4325c6a41efebe230a0720"
+  },
+  "nativePhaseEvidence": "deadline-audit-1792498391048210000/audit.json",
+  "actualControlledRed": {
+    "state": "causal-red-reproduced",
+    "operationId": "8f7abf8f-a17a-4436-a4ef-258ec7efad94",
+    "requestedTotalTimeoutSeconds": 0.5,
+    "actualElapsedSeconds": 11.274762958986685,
+    "targetRanAfterBudget": true,
+    "targetExecutionCount": 1,
+    "returnCode": 0,
+    "scope": "actual own Unix-socket SSH peer+generated saved stage/target; delayed read-only identity observer; no native provider/VM/credentials",
+    "sourceSha256": {
+      "ssh_transport.py": "b48dae5a0e9a2ae923d9cce740a677ad17917d478fec92947a58405624064638",
+      "ssh_automatic_program.py": "e780b53d89aa8e925aff6ec375c4fc2fce343377eb925347ef837b483f62e6a3",
+      "ssh_dispatch_admission.py": "af395af5791970476c780fe42b44e6b17f28d4279303c062d1a6757a5725f766",
+      "readiness_transport.py": "c04ed0aa0038e443a5c8e77fb0decb70367de148d2c49c3e541529b987051ce6",
+      "readiness_nested_channel.py": "fd00d22579bd22cc5f0e664f56ca3e4aa5e51af8a8a0e3d0cfecba5a9c5221c8"
+    }
+  }
+}

@@ -33,6 +33,7 @@ CONTEXT_PATHS = (
  'agent_tools/native_artifact_registry.py',
  'agent_tools/native_review_source_closure.py',
  'agent_tools/private_inventory_lock.py',
+ 'agent_tools/readiness.py',
  'agent_tools/source_module_loader.py',
  'agent_tools/ssh_automatic_program.py',
  'agent_tools/ssh_channel_inventory_diagnostics.py',
@@ -52,6 +53,7 @@ CONTEXT_PATHS = (
  'agent_tools/tests/fixtures/cp117_gzip_runtime.py',
  'agent_tools/tests/fixtures/historical_source.py',
  'agent_tools/tests/fixtures/setup_process_capture/after.ps1',
+ 'agent_tools/tests/fixtures/ssh_stream_e2big/windows_cp117_recovered_guest_observe.py.before.source',
  'agent_tools/tests/fixtures/windows_cp117_historical_factory/base_5d06ef74.source',
  'agent_tools/tests/fixtures/windows_cp117_historical_factory/base_provenance.json',
  'agent_tools/tests/fixtures/windows_cp117_historical_factory/context.py',
@@ -61,6 +63,8 @@ CONTEXT_PATHS = (
  'agent_tools/tests/fixtures/windows_cp117_historical_factory/provider_f54029cf.source',
  'agent_tools/tests/fixtures/windows_cp117_historical_factory/public_msi_5e60d94f.source',
  'agent_tools/tests/fixtures/windows_cp117_historical_factory/update_fixture_a6445062.source',
+ 'agent_tools/tests/fixtures/windows_cp117_migration_head/context.py',
+ 'agent_tools/tests/fixtures/windows_cp117_migration_head/windows_cp117_recovered_owner_observe.py.source',
  'agent_tools/tests/fixtures/windows_cp117_public_cli_alias.json',
  'agent_tools/tests/fixtures/windows_cp117_public_cli_alias.ps1',
  'agent_tools/tests/fixtures/windows_cp117_public_context/current-context.source',
@@ -266,9 +270,12 @@ def _method(selector, root, variant, boundary, original=None):
  # Normal imports and genuine module globals already exist. Re-enter only the
  # repository's established exact public-source test context after unwrapping.
  from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import inert_repository_source_reads
+ from agent_tools.tests.fixtures.windows_cp117_migration_head.context import sealed_diagnostic
  with inert_repository_source_reads(), mock.patch.object(subprocess, 'run', boundary):
   try:
    case.setUp()
+   # Authentic B cases keep their case class; frozen 615e1b09 reads the owner its OWNER_SHA binds.
+   case.enterContext(sealed_diagnostic())
    actual(case)
   finally:
    case.doCleanups()
@@ -339,9 +346,11 @@ def _replacement_section(module,selector,root,variant):
  else:raise ValueError('replacement-fixture-phase-source')
  if type(phases)is not tuple or not phases or len(set(phases))!=len(phases)or any(type(p)is not str for p in phases):raise ValueError('replacement-fixture-phase-values')
  case=getattr(module,selector[1])(selector[2]);tasks=[]
+ from agent_tools.tests.fixtures.windows_cp117_migration_head.context import sealed_diagnostic
  with context.inert_repository_source_reads():
   try:
    case.setUp()
+   case.enterContext(sealed_diagnostic())
    for phase in phases:
     local={'phase':phase,'corr':'10101010-1010-4010-8010-101010101010','nonce':'20202020-2020-4020-8020-202020202020'}
     task=eval(compile(ast.Expression(call),str(source),'eval'),module.__dict__,local)

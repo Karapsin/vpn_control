@@ -1,0 +1,6 @@
+{
+  "source": ".github/workflows/fast-checks.yml",
+  "sha256": "3055235e99ca2224345b6b0a6d99f87c09f26f50c0439551fa99f7b8c472e7dd",
+  "bytes": 15519,
+  "failure": "ordinary affected suite skips the real Linux root creator pre-VM census causal; no required native enrollment"
+}

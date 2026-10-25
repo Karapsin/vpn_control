@@ -1,0 +1,72 @@
+
+ERROR: test_package_dispatch_keeps_identity_and_device (agent_tools.tests.test_ssh_acceptance_route_integration.AcceptanceRouteIntegration.test_package_dispatch_keeps_identity_and_device) (action='android-availability')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_acceptance_route_integration.py", line 33, in test_package_dispatch_keeps_identity_and_device
+    result = server._ssh_workflow_impl(action, 'archlinux', 10, identity, None, device)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/mcp_server.py", line 2317, in call
+    with _agent_module("ssh_transport").admitted_transport(
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+            REPO_ROOT, host, operation, deadline=time.monotonic() + timeout):
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'function' object does not support the context manager protocol (missed __exit__ method)
+
+
+FAIL: test_documented_top_level_cli_import_fails_closed_without_parent_pythonpath (agent_tools.tests.test_ssh_session_transport_routes.SessionTransportRoutes.test_documented_top_level_cli_import_fails_closed_without_parent_pythonpath)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_session_transport_routes.py", line 100, in test_documented_top_level_cli_import_fails_closed_without_parent_pythonpath
+    self.assertEqual(result.returncode, 0, result.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/ssh_transport.py", line 33, in <module>
+    from . import readiness as _readiness
+ImportError: attempted relative import with no known parent package
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 5, in <module>
+    import ssh_transport as t
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/ssh_transport.py", line 35, in <module>
+    from agent_tools import readiness as _readiness
+ModuleNotFoundError: No module named 'agent_tools'
+
+
+----------------------------------------------------------------------
+Ran 1574 tests in 654.198s
+
+FAILED (failures=52, errors=24, skipped=3)
+{"state":"submitted","identity":{"jobId":"preflight-embedded-evidence-0","pid":417,"startTicks":9917,"receiptPath":"/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmplv_n4_tw/remote/native-scenario-jobs/ownedguest/linux-public-update-preflight/embedded-evidence-0/receipt.json"}}
+{"state":"submitted","identity":{"jobId":"preflight-embedded-evidence-23","pid":417,"startTicks":9917,"receiptPath":"/var/folders/vq/zns5cfbd6zd64jw8hfgzzczr0000gq/T/tmplv_n4_tw/remote/native-scenario-jobs/ownedguest/linux-public-update-preflight/embedded-evidence-23/receipt.json"}}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+{
+  "ok": true
+}
+

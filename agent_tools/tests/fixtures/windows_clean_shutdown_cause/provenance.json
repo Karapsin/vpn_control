@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "3ef95aa20f6a10d564314347066110a76e9de2517f96c3c87f3bdadce06eb54b",
+  "sourcePath": "agent_tools/readiness_windows_lifecycle.py",
+  "evidence": "Reviewed absence-only shutdown cause gap before any native power qualification. Actual controlled process/socket causal only."
+}

@@ -1,0 +1,558 @@
+"""SOURCE-ONLY successor until separate reviewed native GO; NEW operation IDs only.
+
+No production monkeypatch. Fixed current tools render/dispatch every real caller.
+Faults affect only new task-owned transports and positively bound local clients;
+the detached remote durable owner is never signalled, retried, or replaced.
+"""
+from pathlib import Path
+from contextlib import ExitStack
+import argparse,hashlib,json,math,os,select,selectors,signal,socket,stat,subprocess,sys,threading,time,uuid
+HERE=Path(__file__).resolve().parent;CHECKOUT=HERE.parents[3]
+CRITICAL={'agent_tools/ssh_automatic_program.py': '6add7cba90f5e92be5ee128b5781c90270ec904e5549b93b3346318b1508e558', 'agent_tools/ssh_tmux_mcp_adapter.py': 'fe6c4345611f330868dbec06405765a14c101a144eeb8b006ad17e08b31c1b16', 'agent_tools/durable_remote_job.py': 'f3b4707528c16f176b80781dd86208c324c1e10d6eb2c14451dcf4be08d0e734', 'agent_tools/ssh_program_execution.py': '653d0494477a9dcfb086d45ba450710da6062868adc9998a802e97c0e44ac07d', 'agent_tools/ssh_program_execution_remote.py': 'b4bb3a52a0d4aa0c425bfe94043d704bfba428ad6f781e12bbdea8f1db9a38f1', 'agent_tools/ssh_program_mcp_client.py': 'f8a083e3f9b6462d9b4c4c4a89bf16c9ac4272658f7aa3a1c901d3518cefd469', 'agent_tools/ssh_transport.py': '257e53420212d6c7f4476e5caa5d9cc766b852c218cae19cdc32587b619a9ce8'}
+NEW_OPERATIONS={'direct': 'df797590-6f43-4b6b-8a79-54fc8460067d', 'nested': '0fbd6b1e-e5d0-42dc-acb6-314e8c845c67'}
+RETENTION_SHA='2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f'
+SDK_RPC_SECONDS=15
+SHARED_CORR='3ec9cdaeb1314b44851e0304eb0b3908';SHARED_CONNECTION='465c42139b7a97c2f6e6c9ee24940c858c0a98a81e628a9b188e51618dc3916e'
+def fingerprint(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def save(path,value):
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w')as f:json.dump(value,f,sort_keys=True,indent=2);f.flush();os.fsync(f.fileno())
+def read(path):return json.loads(Path(path).read_bytes())
+def until(predicate,deadline,reason):
+ while time.monotonic()<deadline:
+  value=predicate()
+  if value:return value
+  time.sleep(.15)
+ raise ValueError(reason)
+class SourceHold:
+ def __init__(self,path):
+  self.path=Path(path);self.fd=os.open(self.path,os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   self.info=os.fstat(self.fd);self.raw=os.read(self.fd,self.info.st_size+1)
+   if not stat.S_ISREG(self.info.st_mode)or self.info.st_uid!=os.getuid()or self.info.st_nlink!=1 or self.info.st_mode&0o022:raise ValueError('acceptance_public_source_shape')
+   self.guard()
+  except BaseException:os.close(self.fd);raise
+ def guard(self):
+  if len(self.raw)!=self.info.st_size or fingerprint(self.info)!=fingerprint(os.fstat(self.fd))or fingerprint(self.info)!=fingerprint(os.lstat(self.path))or os.pread(self.fd,len(self.raw)+1,0)!=self.raw:raise ValueError('acceptance_source_changed')
+ def close(self):os.close(self.fd)
+class Proxy:
+ # Diagnostic receipts contain only bounded phases/counts/numeric errno. Raw
+ # forwarded bytes and error strings are never retained by this observer.
+ DIAGNOSTIC_LIMIT=32
+ def __init__(self,host,port):
+  self.upstream=(host,port);self.server=socket.socket();self.server.bind(('127.0.0.1',0));self.server.listen();self.server.settimeout(.1);self.port=self.server.getsockname()[1];self.pairs=[];self.lock=threading.Lock();self.stopped=False
+  self.attempt_count=0;self.attempts=[];self.diagnostic_overflow=False
+  self.threads=[];self.thread=threading.Thread(target=self.accept,daemon=True);self.thread.start()
+ def _attempt(self):
+  with self.lock:
+   self.attempt_count+=1
+   row={'index':self.attempt_count,'connectPhase':'connecting','connectErrno':None,'forwardPhase':'not-started','forwardErrno':None,'direction':None,'eofDirection':None,'clientReads':0,'upstreamReads':0,'clientReadBytes':0,'upstreamReadBytes':0,'forwardErrorClass':None,'clientToUpstreamBytes':0,'upstreamToClientBytes':0,'closed':False}
+   if len(self.attempts)<self.DIAGNOSTIC_LIMIT:self.attempts.append(row)
+   else:self.diagnostic_overflow=True
+   return row
+ def _update(self,row,**values):
+  with self.lock:row.update(values)
+ @staticmethod
+ def _errno(error):
+  value=getattr(error,'errno',None)
+  return value if type(value)is int and 0<=value<=2147483647 else None
+ def diagnostic_snapshot(self):
+  with self.lock:
+   rows=[dict(row)for row in self.attempts]
+   return {'schemaVersion':1,'attemptCount':self.attempt_count,'attempts':rows,'capped':self.diagnostic_overflow,'stopped':self.stopped,'listenerClosed':self.server.fileno()==-1,'acceptThreadClosed':not self.thread.is_alive(),'forwardThreadCount':len(self.threads),'liveForwardThreadCount':sum(thread.is_alive()for thread in self.threads),'trafficRetained':False,'forwardedByteCountMeaning':'completed-sendall-only'}
+ def accept(self):
+  while not self.stopped:
+   try:client,_=self.server.accept()
+   except socket.timeout:continue
+   except OSError:return
+   diagnostic=self._attempt()
+   try:upstream=socket.create_connection(self.upstream,timeout=10);upstream.settimeout(None)
+   except OSError as error:
+    self._update(diagnostic,connectPhase='failed',connectErrno=self._errno(error),closed=True);client.close();continue
+   self._update(diagnostic,connectPhase='connected')
+   pair={'client':client,'upstream':upstream,'closed':False,'peer':list(client.getpeername()),'local':list(client.getsockname()),'diagnostic':diagnostic}
+   with self.lock:self.pairs.append(pair)
+   thread=threading.Thread(target=self.forward,args=(pair,),daemon=True);self.threads.append(thread);thread.start()
+ def forward(self,pair):
+  diagnostic=pair['diagnostic'];direction=None;phase='register';selector=None;self._update(diagnostic,forwardPhase=phase)
+  try:
+   selector=selectors.DefaultSelector()
+   selector.register(pair['client'],selectors.EVENT_READ)
+   selector.register(pair['upstream'],selectors.EVENT_READ)
+   while not self.stopped:
+    phase='select';direction=None;self._update(diagnostic,forwardPhase=phase,direction=direction)
+    ready=selector.select(.1)
+    for key,_ in ready:
+     s=key.fileobj
+     direction='client-to-upstream'if s is pair['client']else'upstream-to-client';phase='read';self._update(diagnostic,forwardPhase=phase,direction=direction)
+     raw=s.recv(65536)
+     with self.lock:
+      key='clientReads'if s is pair['client']else'upstreamReads';diagnostic[key]+=1
+      key='clientReadBytes'if s is pair['client']else'upstreamReadBytes';diagnostic[key]+=len(raw)
+     if not raw:self._update(diagnostic,forwardPhase='eof',eofDirection=direction);return
+     phase='write';self._update(diagnostic,forwardPhase=phase,direction=direction)
+     (pair['upstream']if s is pair['client']else pair['client']).sendall(raw)
+     with self.lock:
+      key='clientToUpstreamBytes'if s is pair['client']else'upstreamToClientBytes';diagnostic[key]+=len(raw)
+  except (OSError,ValueError)as error:self._update(diagnostic,forwardPhase=phase,direction=direction,forwardErrno=self._errno(error),forwardErrorClass='os-error'if isinstance(error,OSError)else'value-error')
+  finally:
+   if selector is not None:selector.close()
+   pair['closed']=True
+   for s in (pair['client'],pair['upstream']):
+    try:s.close()
+    except OSError:pass
+   self._update(diagnostic,closed=True)
+ def drop_once(self,path,master):
+  with self.lock:live=[p for p in self.pairs if not p['closed']]
+  if len(live)!=1:raise ValueError('private_proxy_original_pair_unresolved')
+  pair=live[0]
+  save(path,{'mode':'direct','masterRecoveryId':master['recoveryId'],'masterActor':master['child']['actor'],'socketPath':master['socketPath'],'proxyLocal':pair['local'],'proxyPeer':pair['peer'],'faultCount':1,'remoteJobSignalAllowed':False})
+  for s in (pair['client'],pair['upstream']):
+   try:s.shutdown(socket.SHUT_RDWR)
+   except OSError:pass
+   s.close()
+ def close_owned_route(self):
+  self.stopped=True;self.server.close()
+  for pair in self.pairs:
+   for s in (pair['client'],pair['upstream']):
+    try:s.close()
+    except OSError:pass
+  self.thread.join(timeout=1)
+  for thread in self.threads:thread.join(timeout=1)
+NESTED_CLOSE=r'''import json,os,re,stat,subprocess,sys,time
+from pathlib import Path
+v=json.loads(sys.argv[1]);corr=v['correlationId'];control=v['controlPath'];expected=v['master'];pid=expected['actor']['pid'];stage=Path('/tmp/vpn-channel-'+corr)
+assert re.fullmatch('[0-9a-f]{32}',corr)and corr!=v['protectedSharedCorrelation']and control==str(stage/'m')
+def gen(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def structure(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid]
+def actor():
+ p=Path('/proc')/str(pid);body=(p/'stat').read_bytes();tail=body[body.rindex(b')')+2:].split()
+ assert tail[0]not in(b'Z',b'X')
+ return{'pid':pid,'uid':p.stat().st_uid,'startTicks':int(tail[19])}
+assert os.getuid()==expected['actor']['uid']and Path('/proc/sys/kernel/random/boot_id').read_text().strip()==expected['gatewayBoot']
+assert actor()==expected['actor']and structure(os.lstat(stage))==expected['directory']and gen(os.lstat(control))==expected['socket']
+ready=stage/'ready.json';fd=os.open(ready,os.O_RDONLY|os.O_NOFOLLOW);info=os.fstat(fd);raw=os.read(fd,65537)
+assert stat.S_IMODE(info.st_mode)==0o600 and info.st_uid==os.getuid()and info.st_nlink==1 and json.loads(raw)==v['ready']
+ssh=['ssh']+(['-F',v['config']]if v['config']else[])+['-S',control,'-o','ControlMaster=no','-o','ProxyCommand=false']
+check=subprocess.run(ssh+['-O','check',v['profile']],capture_output=True,timeout=5);match=re.fullmatch(rb'Master running \(pid=([1-9][0-9]*)\)\r?\n?',check.stderr+check.stdout)
+assert check.returncode==0 and match and int(match[1])==pid
+assert actor()==expected['actor']and gen(os.lstat(control))==expected['socket']and os.pread(fd,len(raw)+1,0)==raw and gen(os.fstat(fd))==gen(info)and gen(os.lstat(ready))==gen(info)
+fault=Path('/tmp/vc-durable-fault-'+v['operationId']);fault.mkdir(mode=0o700)
+out=os.open(fault/'close-once.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(out,'w')as f:json.dump({'operationId':v['operationId'],'correlationId':corr,'masterActor':expected['actor'],'remoteOwner':v['remoteOwner'],'closeCount':1,'remoteJobReplayAllowed':False},f);f.flush();os.fsync(f.fileno())
+# This closes only the source-bound new multiplex transport. The durable owner
+# has independent session/closed SSH descriptors and is never signalled.
+r=subprocess.run(ssh+['-O','exit',v['profile']],capture_output=True,timeout=10)
+print(json.dumps({'operationId':v['operationId'],'state':'close-returned','correlationId':corr,'returnCode':r.returncode,'remoteOwner':v['remoteOwner'],'closeCount':1},sort_keys=True));os.close(fd)
+'''
+
+def bounded_cli(argv,root,deadline,keeper,operation,*,source_guard):
+ import selectors
+ environment={**os.environ,'PYTHONPATH':str(root)}
+ source_guard()
+ remaining=deadline-time.monotonic()
+ if remaining<SDK_RPC_SECONDS:raise ValueError('cli_rpc_budget_exhausted_before_child')
+ process=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=root,env=environment)
+ identity=keeper.actor(process.pid);save(root/'cli-intent.json',{'operationId':operation,'actor':identity,'action':'program-collect','targetReplayAllowed':False})
+ selector=selectors.DefaultSelector();buffers={'stdout':bytearray(),'stderr':bytearray()};eof={name:False for name in buffers};limits={'stdout':2097152,'stderr':65536};reason=None
+ for name in buffers:
+  stream=getattr(process,name);os.set_blocking(stream.fileno(),False);selector.register(stream,selectors.EVENT_READ,name)
+ end=min(deadline,time.monotonic()+60)
+ try:
+  while selector.get_map():
+   if time.monotonic()>=end:reason='timeout';break
+   for key,_ in selector.select(min(.1,end-time.monotonic())):
+    raw=os.read(key.fileobj.fileno(),65536);name=key.data
+    if not raw:selector.unregister(key.fileobj);eof[name]=True;continue
+    if len(buffers[name])+len(raw)>limits[name]:reason='overflow';break
+    buffers[name].extend(raw)
+   if reason:break
+  if reason:
+   # This exact own CLI is observation-only. No remote owner/master signal.
+   if process.poll()is None:
+    if keeper.actor(process.pid)!=identity:raise ValueError('cli_actor_changed')
+    process.terminate()
+   try:process.wait(timeout=3)
+   except subprocess.TimeoutExpired:
+    if keeper.actor(process.pid)!=identity:raise ValueError('cli_actor_changed')
+    process.kill();process.wait(timeout=3)
+  else:process.wait(timeout=max(.001,end-time.monotonic()))
+ finally:
+  selector.close()
+  for name in buffers:getattr(process,name).close()
+  # Fixed harmless program/collect protocol only: no protected input is sent.
+  for name,body in buffers.items():
+   fd=os.open(root/('cli.'+name),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+   with os.fdopen(fd,'wb')as f:f.write(body);f.flush();os.fsync(f.fileno())
+  terminal={'operationId':operation,'actor':identity,'returnCode':process.poll(),'eof':eof,'complete':all(eof.values())and reason is None,'reason':reason,'counts':{name:len(raw)for name,raw in buffers.items()},'parentDescriptorsClosed':True,'remoteJobSignalCount':0}
+  save(root/'cli-terminal.json',terminal)
+ if reason:raise ValueError('bounded_cli_'+reason)
+ return terminal
+
+def finish_local_scope(root,scope):
+ """Always seal facts about owned local actors/streams, never infer job death."""
+ report={'operationId':scope.get('operation'),'sourceClosing':False,'clients':[],'servers':[],'localObservers':[],'proxy':None,'remoteOwnerSignalled':False,'sharedMasterSignalled':False,'targetReplayAllowed':False}
+ keeper=scope.get('keeper');producer=scope.get('producer_actor')
+ def state(expected,producer_format=False):
+  try:
+   actual=(producer if producer_format else keeper.actor)(expected['pid'])
+   return 'present-original'if actual==expected else 'foreign-generation'
+  except (OSError,ValueError,subprocess.SubprocessError):
+   check=subprocess.run(['/bin/ps','-p',str(expected['pid']),'-o','pid='],stdin=subprocess.DEVNULL,capture_output=True,timeout=3)
+   return 'absent-positive'if check.returncode==1 and check.stdout==check.stderr==b''else'unknown'
+ try:
+  guard=scope.get('guard')
+  if guard is not None:guard();report['sourceClosing']=True
+  consumers=scope.get('current_consumers')
+  manifest=scope.get('manifest',{})
+  report['consumedSources']={}if consumers is None else{relative:manifest[relative]for relative in sorted(consumers())}
+  report['capsulePublicFilesHeld']=len(scope.get('capsule_holders',{}))
+ except BaseException:report['sourceClosing']=False;report['sourceClosingReason']='held-custody-refused'
+ # Parent closes only its own retained log descriptors. A live client/server is
+ # recorded UNKNOWN and preserved; this function never signals such actors.
+ for process,out,err,label in scope.get('clients',[]):
+  row={'label':label,'pid':process.pid,'returnCode':process.poll(),'state':'terminal-reaped'if process.poll()is not None else'live-original-unknown','parentStreamsClosed':False}
+  for stream in(out,err):
+   if not stream.closed:stream.flush();os.fsync(stream.fileno());stream.close()
+  row['parentStreamsClosed']=out.closed and err.closed;report['clients'].append(row)
+ for file in sorted(root.glob('*/server-intent.json'))+sorted(root.glob('*/relay-recovery-*/server-intent.json')):
+  try:
+   value=read(file)
+   for role in('serverActor','relayActor'):
+    expected=value[role];report['servers'].append({'record':str(file),'role':role,'actor':expected,'state':state(expected,True)})
+  except BaseException:report['servers'].append({'record':str(file),'state':'unknown'})
+ operation=scope.get('operation');directory=scope.get('directory')
+ if directory is not None and(directory/'owner.json').exists():
+  try:
+   value=read(directory/'owner.json')
+   if value['operationId']!=operation:raise ValueError('owner_binding')
+   expected=value['actor'];report['localObservers'].append({'record':str(directory/'owner.json'),'actor':expected,'state':state(expected)})
+  except BaseException:report['localObservers'].append({'state':'unknown'})
+ proxy=scope.get('proxy')
+ if proxy is not None:
+  # Closing this owned route after success or a failed controller assertion is
+  # itself recorded; a failed sentinel remains UNKNOWN, never re-submitted.
+  proxy.close_owned_route();report['proxy']={'listenerAddress':['127.0.0.1',proxy.port],'listenerClosed':proxy.server.fileno()==-1,'acceptThreadClosed':not proxy.thread.is_alive(),'forwardThreadsClosed':all(not t.is_alive()for t in proxy.threads),'pairs':[{'local':pair['local'],'peer':pair['peer'],'clientSocketClosed':pair['client'].fileno()==-1,'upstreamSocketClosed':pair['upstream'].fileno()==-1}for pair in proxy.pairs],'originalJobState':'terminal-verified'if(root/'result.json').exists()else'unknown-preserved','routeEndedDoesNotProveJobEnded':True,'diagnostics':proxy.diagnostics()}
+ if(root/'cli-terminal.json').exists():
+  try:report['cli']=read(root/'cli-terminal.json')
+  except BaseException:report['cli']={'state':'unknown'}
+ elif(root/'cli-intent.json').exists():report['cli']={'state':'unknown-original-client','intentRetained':True}
+ try:
+  own_master=scope.get('master')
+  if own_master is not None and(root/'.vm-hosts.local.json').exists():
+   observed=own_master.status(root,'gateway');report['ownGatewayMaster']={k:observed.get(k)for k in('state','recoveryId','child','socketPath')}
+  if scope.get('mode')=='nested':
+   pointer=root/'.rag_index/readiness-nested-channel/archlinux/current.json'
+   if pointer.exists():report['ownNestedSelectedReceipt']={'state':'local-receipt-only','pointer':read(pointer),'remoteActorState':'not-probed-during-finally'}
+ except BaseException:report['ownMasterState']='unknown-preserved'
+ try:
+  if scope.get('guard')is not None:scope['guard']()
+ except BaseException:report['sourceClosing']=False;report['sourceClosingReason']='final-held-custody-refused'
+ for h in reversed(scope.get('secret_holders',[])):
+  try:h.close()
+  except BaseException:report['privateCustodyCloseFailed']=True
+ for h in reversed(scope.get('holders',[])):
+  try:h.close()
+  except BaseException:report['publicCustodyCloseFailed']=True
+ report['allParentDescriptorsClosed']=not report.get('privateCustodyCloseFailed',False)and not report.get('publicCustodyCloseFailed',False)
+ # This journal is append-only and finite even if every original outcome remains
+ # UNKNOWN. It has no raw exception, private bytes, private length or digest.
+ save(root/'final-closure.json',report)
+
+def retained_public_observation(retention,operation,host,prepare,invoke,guard,output_root,label,returned_error_type):
+ """Only this controller's fixed public probes; output custody is independent."""
+ retention._identity(operation,host)
+ with retention._OutputCapture(output_root,label)as capture:
+  guard()
+  with prepare():
+   try:result=invoke()
+   except Exception as error:
+    if type(error)is returned_error_type:
+     result=error.take_submitted_result()
+     retention._retain(capture,operation,result)
+     raise ValueError('completed_public_observation_readiness_refused')from None
+    raise
+   receipt=retention._retain(capture,operation,result)
+  # Both transport-context cleanup and source closing happen after retention.
+  if not receipt['namedCustody']or not capture.named_custody():raise ValueError('public_observation_output_route_changed')
+  guard();capture.guard_data()
+  if not capture.named_custody():raise ValueError('public_observation_output_route_changed')
+  if not receipt['complete']:raise ValueError('public_observation_capture_limit')
+  if result.returncode or result.stderr:raise ValueError('owned_readonly_observation_failed')
+  return json.loads(result.stdout)
+
+def exact_normal_sdk_status(records,operation,host,server_sha,client_pid):
+ """Join the newly spawned normal SDK's immutable request and returned result."""
+ expected={'action':'program-status','host':host,'timeout_seconds':15,'identity':{'operationId':operation}}
+ if(type(records)is not dict or set(records)!={'client-intent.json','call-intent-00000000.json','call-result-00000000.json','client-result.json'}
+    or any(type(value)is not dict for value in records.values())or type(client_pid)is not int or client_pid<=0):raise ValueError('fresh_status_record_scope')
+ client=records['client-intent.json'];call=records['call-intent-00000000.json'];wire=records['call-result-00000000.json'];terminal=records['client-result.json']
+ if(client.get('request')!=expected or client.get('serverSha256')!=server_sha or type(client.get('clientPid'))is not int or client['clientPid']!=client_pid or client.get('automaticReplay')is not False
+    or call.get('request')!=expected or call.get('operationId')!=operation or call.get('automaticReplay')is not False or type(call.get('relayAttempt'))is not int or call['relayAttempt']!=1):raise ValueError('fresh_status_original_request_changed')
+ if(terminal.get('state')!='rpc_returned'or terminal.get('operationId')!=operation or terminal.get('host')!=host or terminal.get('toolError')is not False
+    or any(type(terminal.get(key))is not int or terminal[key]!=1 for key in('attemptedToolCalls','returnedToolCalls','relayAttempts'))or terminal.get('allRelayAttemptsClosed')is not True):raise ValueError('fresh_status_sdk_terminal_unresolved')
+ value=wire.get('structuredContent');content=wire.get('content')
+ if(wire.get('isError')is not False or type(value)is not dict or value.get('operationId')!=operation or value.get('host')!=host or value.get('replayAllowed')is not False
+    or type(content)is not list or len(content)!=1 or type(content[0])is not dict or content[0].get('type')!='text'or type(content[0].get('text'))is not str or json.loads(content[0]['text'])!=value
+    or terminal.get('programState')!=value.get('state')):raise ValueError('fresh_status_returned_result_changed')
+ return value
+
+def main(args,*,absolute_deadline=None):
+ mode=args.mode;root=HERE/mode;host='gateway'if mode=='direct'else'archlinux';started=time.monotonic();deadline=started+args.budget
+ if absolute_deadline is not None:
+  if type(absolute_deadline)not in(int,float)or not math.isfinite(absolute_deadline)or absolute_deadline<=0:raise ValueError('local_owner_absolute_deadline_invalid')
+  deadline=min(deadline,absolute_deadline)
+ if deadline<=time.monotonic():raise ValueError('local_owner_absolute_deadline_exhausted')
+ if not args.native_go:raise ValueError('native_go_not_given')
+ sys.path.insert(0,str(root))
+ from agent_tools import ssh_transport as t,readiness_workflow as rw,readiness_ssh_master as master,readiness_nested_channel as nested,ssh_fresh_nested_channel as channel,private_config_custody as private,ssh_channel_keeper_entry as keeper
+ from agent_tools.ssh_keeper_sdk_custody import producer_actor
+ manifest=read(HERE/'public-source-manifest.json')['sources'];holders=[];secret_holders=[];clients=[];proxy=None;capsule_holders={};checkout_holders={};explicit_consumers=set(CRITICAL)|{'agent_tools/mcp_server.py','agent_tools/ssh_keeper_mcp_relay.py','agent_tools/ssh_keeper_mcp_delivery.py','agent_tools/tool_action_policy.py','agent_tools/tool_action_policy.json'}
+ try:
+  for p in (Path(__file__),HERE/'ordinary_retention.py',HERE/'bin/ssh',HERE/'public-source-manifest.json',root/'route-template.private.json',root/'planned-operation.json'):
+   holders.append(SourceHold(p))
+  helper_hold=next(h for h in holders if h.path==HERE/'ordinary_retention.py')
+  if hashlib.sha256(helper_hold.raw).hexdigest()!=RETENTION_SHA:raise ValueError('reviewed_retention_helper_changed')
+  import types
+  retention=types.ModuleType('_current_ordinary_retention');retention.__file__=str(helper_hold.path);sys.modules[retention.__name__]=retention
+  exec(compile(helper_hold.raw,retention.__file__,'exec'),retention.__dict__);helper_hold.guard()
+  def current_consumers():
+   values=set(explicit_consumers)
+   for module in tuple(sys.modules.values()):
+    name=getattr(module,'__file__',None)
+    if not isinstance(name,str):continue
+    try:relative=str(Path(name).resolve().relative_to(root))
+    except ValueError:continue
+    if relative in manifest:values.add(relative)
+   for intent_path in (root/'.rag_index/ssh-program-execution').glob('*/intent.json'):
+    try:value=read(intent_path)
+    except (FileNotFoundError,json.JSONDecodeError):continue
+    for relative in value.get('sourcePins',{}):
+     if relative not in manifest:raise ValueError('actual_consumer_outside_manifest')
+     values.add(relative)
+   return values
+  for relative,digest in manifest.items():
+   held=SourceHold(root/relative)
+   if hashlib.sha256(held.raw).hexdigest()!=digest:raise ValueError('capsule_source_manifest_changed')
+   capsule_holders[relative]=held;holders.append(held)
+  def guard():
+   for h in holders:h.guard()
+   for h in secret_holders:h.check()
+   for relative in current_consumers():
+    if relative not in checkout_holders:
+     counterpart=SourceHold(CHECKOUT/relative)
+     if hashlib.sha256(counterpart.raw).hexdigest()!=manifest[relative]or counterpart.raw!=capsule_holders[relative].raw:raise ValueError('consumed_source_counterpart_changed')
+     checkout_holders[relative]=counterpart;holders.append(counterpart)
+    checkout_holders[relative].guard()
+   for rel,digest in CRITICAL.items():
+    if manifest[rel]!=digest:raise ValueError('reviewed_production_source_changed')
+  def guarded():guard();return True
+  original=private.PrivateConfigCustody(CHECKOUT/'.vm-hosts.local.json');secret_holders.append(original)
+  original_config=json.loads(bytes(original._raw));template=read(root/'route-template.private.json');gateway=template['hosts']['gateway']
+  # Exact public transport identity must still join the originally configured
+  # trusted targets; only the independent control selector and proxy alias vary.
+  fields=('host','port','user','identityFile','knownHostsFile')
+  if any(gateway[k]!=original_config['hosts']['gateway'][k]for k in fields)or original_config['hosts']['gateway'].get('transport','direct')!='direct'or original_config['hosts']['gateway'].get('proxyJump')is not None or original_config['hosts']['gateway'].get('password')is not None:raise ValueError('configured_gateway_changed')
+  trust_holder=SourceHold(Path(gateway['knownHostsFile']));holders.append(trust_holder)
+  for path in {gateway['identityFile']}:
+   held=private.PrivateConfigCustody(Path(path));secret_holders.append(held)
+  for rel in ('.rag_index/readiness-transport/archlinux/current.json','.rag_index/readiness-transport/archlinux/e385088e4d6554b33579efc3e8bde1f0a2efa31e190afd919cd469d1228234b9.intent.json','.rag_index/readiness-transport-v2/archlinux/current.json','.rag_index/readiness-nested-channel/archlinux/current.json'):
+   secret_holders.append(private.PrivateConfigCustody(CHECKOUT/rel))
+  planned=read(root/'planned-operation.json');operation=planned['operationId']
+  if operation!=NEW_OPERATIONS[mode]or str(uuid.UUID(operation))!=operation or planned['mode']!=mode or planned['count']!=args.count or planned['intervalSeconds']!=args.interval or planned['budgetSeconds']!=args.budget:raise ValueError('planned_operation_changed')
+  save(root/'operation.json',{'operationId':operation,'mode':mode,'host':host,'count':args.count,'intervalSeconds':args.interval,'budgetSeconds':args.budget,'sourcePins':CRITICAL,'plannedFaults':['owned-connection-loss','SDK-client-loss','MCP-server-and-local-observer-loss','one-original-terminal-SSH-ACK-loss'],'protectedSharedCorrelation':SHARED_CORR,'protectedSharedConnection':SHARED_CONNECTION,'noVMOrLifecycleActions':True})
+  os.environ['VC_DURABLE_ACCEPTANCE_ROOT']=str(root);os.environ['PATH']=str(HERE/'bin')+os.pathsep+os.environ['PATH'];os.environ['PYTHONDONTWRITEBYTECODE']='1'
+  save(root/'ssh-boundary.json',{'schemaVersion':1,'realSsh':'/usr/bin/ssh','realSshGeneration':list(fingerprint(os.stat('/usr/bin/ssh'))),'boundarySha256':hashlib.sha256((HERE/'bin/ssh').read_bytes()).hexdigest()})
+  inventory=json.loads(json.dumps(template))
+  if mode=='direct':
+   proxy=Proxy(gateway['host'],gateway['port']);lookup=gateway['host']if gateway['port']==22 else '['+gateway['host']+']:'+str(gateway['port'])
+   trust_holder.guard()
+   trust=subprocess.run(['/usr/bin/ssh-keygen','-F',lookup,'-f',gateway['knownHostsFile']],stdin=subprocess.DEVNULL,capture_output=True,timeout=5)
+   trust_holder.guard()
+   if trust.returncode:raise ValueError('trusted_gateway_keys_unavailable')
+   lines=[]
+   for line in trust.stdout.decode().splitlines():
+    if not line or line.startswith('#'):continue
+    fields_=line.split()
+    if len(fields_)<3 or fields_[0].startswith('@'):raise ValueError('trusted_gateway_key_schema')
+    lines.append('[127.0.0.1]:'+str(proxy.port)+' '+' '.join(fields_[1:3]))
+   if not lines:raise ValueError('trusted_gateway_keys_empty')
+   fd=os.open(root/'known_hosts',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+   with os.fdopen(fd,'w')as f:f.write('\n'.join(lines)+'\n');f.flush();os.fsync(f.fileno())
+   created_trust=SourceHold(root/'known_hosts');holders.append(created_trust);trust_holder.guard();created_trust.guard()
+   inventory['hosts']['gateway'].update(host='127.0.0.1',port=proxy.port,knownHostsFile=str(root/'known_hosts'))
+  else:
+   arch=template['hosts']['archlinux'];original_arch=original_config['hosts']['archlinux']
+   if any(arch[k]!=original_arch[k]for k in (*fields,'transport','gateway','remoteHostAlias'))or arch.get('remoteConfigFile')!=original_arch.get('remoteConfigFile'):raise ValueError('configured_arch_changed')
+   if arch['remoteControlPath']==original_arch.get('remoteControlPath')or SHARED_CORR in arch['remoteControlPath']:raise ValueError('control_not_independent')
+   if not original_arch.get('password'):raise ValueError('configured_nested_credential_unavailable')
+   inventory['hosts']['archlinux']['password']=original_arch['password']
+  save(root/'.vm-hosts.local.json',inventory);secret_holders.append(private.PrivateConfigCustody(root/'.vm-hosts.local.json'))
+  config=t.load_config(root);guard();save(root/'source-admission.json',{'operationId':operation,'capsulePublicFilesHeld':len(capsule_holders),'consumedSources':{relative:manifest[relative]for relative in sorted(current_consumers())},'allPublicSourceDescriptorsHeld':True,'privateConfigAndKeyContentHashed':False})
+  public_observation_root=root/'public-observations';public_observation_root.mkdir(mode=0o700)
+  public_observation_serial=0
+  def remote(code,*,target=host):
+   nonlocal public_observation_serial
+   public_observation_serial+=1
+   def prepare():return t.admitted_transport(root,target,operation,deadline=min(deadline,time.monotonic()+90))
+   def invoke():
+    argv=t.build_ssh_argv(t.load_config(root),target,20,('python3','-I','-B','-c','exec('+repr(code)+')'))
+    return t.run_ssh(argv,stdin=subprocess.DEVNULL,capture_output=True,timeout=40)
+   return retained_public_observation(retention,operation,target,prepare,invoke,guard,public_observation_root,
+      'counter-%06d'%public_observation_serial,t.SubmittedResultReadinessChanged)
+  # Actual direct readiness procedure, before new MCP caller creation.
+  rw.ensure_ssh(root,host,operation,deadline=min(deadline,time.monotonic()+180))
+  actual=remote("import json,os,pwd,pathlib;u=pwd.getpwuid(os.geteuid());print(json.dumps({'kind':'ssh','uid':os.geteuid(),'principal':u.pw_name,'home':u.pw_dir,'bootId':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))")
+  save(root/'actual-context.json',actual)
+  remote_root='/tmp/vpn-control-program-'+str(actual['uid'])+'-'+operation;counter=remote_root+'/acceptance-counter';stderr='fixed public acceptance '+mode+' retained stderr\n'
+  source="from pathlib import Path\nimport sys,time\np=Path("+repr(counter)+")\nwith p.open('x')as f:\n f.write('execution\\n');f.flush()\n for n in range("+str(args.count)+"):\n  f.write(str(n)+'\\n');f.flush();print(n,flush=True);time.sleep("+repr(args.interval)+")\nsys.stderr.write("+repr(stderr)+")\n"
+  request={'operationId':operation,'program':{'language':'python3','source':source,'args':['owned-acceptance-'+mode],'cwd':'/tmp','targetContext':actual}}
+  save(root/'request.json',request);save(root/'identity.json',{'operationId':operation})
+  server_sha=hashlib.sha256((root/'agent_tools/mcp_server.py').read_bytes()).hexdigest();python=str(CHECKOUT/'.agent_venv/bin/python');directory=root/'.rag_index/ssh-program-execution'/operation
+  def start_client(label,action,file,*,follow=True,caller_deadline=None):
+   effective_deadline=min(deadline,caller_deadline)if caller_deadline is not None else deadline
+   guard()
+   if effective_deadline-time.monotonic()<SDK_RPC_SECONDS:raise ValueError('sdk_rpc_budget_exhausted_before_preparation')
+   out=root/label;out.mkdir(mode=0o700);stdout=error=None
+   try:
+    stdout=open(out/'driver.stdout','xb');error=open(out/'driver.stderr','xb')
+    # SDK itself owns label directory; driver logs use a sibling path.
+    stdout.close();error.close();out.rename(root/(label+'-driver'))
+    stdout=open(root/(label+'-driver')/'driver.stdout','ab');error=open(root/(label+'-driver')/'driver.stderr','ab')
+    environment={**os.environ,'PYTHONPATH':str(root)}
+    guard()
+    remaining=effective_deadline-time.monotonic()
+    if remaining<SDK_RPC_SECONDS:raise ValueError('sdk_rpc_budget_exhausted_before_child')
+    argv=[python,'-B',str(root/'agent_tools/ssh_program_mcp_client.py'),'--session',label,'--server-sha256',server_sha,'--output-root',str(root),'--action',action,'--host',host,'--request-file',str(root/file),('--follow'if follow else'--no-follow'),'--follow-seconds',str(min(600,int(remaining)))]
+    if effective_deadline-time.monotonic()<SDK_RPC_SECONDS:raise ValueError('sdk_rpc_budget_exhausted_before_child')
+    p=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=stdout,stderr=error,cwd=root,env=environment)
+   except BaseException:
+    for stream in(stdout,error):
+     if stream is not None and not stream.closed:stream.close()
+    raise
+   clients.append((p,stdout,error,label));save(root/(label+'-driver')/'actor.json',{'operationId':operation,'actor':keeper.actor(p.pid),'role':'SDK-client','label':label});return p,root/label
+  running_owner=None;status_client_dirs=[];status_serial=0;running_deadline=None
+  def fresh_running_status(action,inputs):
+   nonlocal status_serial
+   if action!='program-status'or inputs!={'host':host,'identity':{'operationId':operation}}:raise ValueError('fresh_status_request_changed')
+   guard()
+   if running_deadline is None or running_deadline-time.monotonic()<SDK_RPC_SECONDS:raise ValueError('fresh_status_rpc_budget_exhausted_before_child')
+   status_serial+=1
+   status_client,status_dir=start_client('running-status-%04d-'%status_serial+operation,'program-status','identity.json',follow=False,caller_deadline=running_deadline)
+   status_client_dirs.append(status_dir)
+   remaining=min(60,running_deadline-time.monotonic())
+   if remaining<=0:raise ValueError('fresh_status_deadline')
+   status_client.wait(timeout=remaining)
+   if status_client.returncode!=0:raise ValueError('fresh_status_client_failed')
+   records={}
+   for name in ('client-intent.json','call-intent-00000000.json','call-result-00000000.json','client-result.json'):
+    held=SourceHold(status_dir/name);holders.append(held)
+    if len(held.raw)>2097152:raise ValueError('fresh_status_public_record_bound')
+    records[name]=json.loads(held.raw);held.guard()
+   guard()
+   return exact_normal_sdk_status(records,operation,host,server_sha,status_client.pid)
+  def snapshot():
+   if running_owner is None:raise ValueError('counter_probe_before_normal_sdk_running')
+   value=remote("import json,os,pathlib\np=pathlib.Path("+repr(counter)+");job=pathlib.Path("+repr(remote_root+'/'+operation)+")\nowner=json.loads((job/'owner.json').read_bytes());intent=json.loads((job/'intent.json').read_bytes());pid=owner['owner']['pid'];s=(pathlib.Path('/proc')/str(pid)/'stat').read_text();tail=s.rsplit(')',1)[1].split();lines=p.read_text().splitlines()\nprint(json.dumps({'owner':owner['owner'],'binding':intent['binding'],'generation':intent['generation'],'programSha256':intent['programSha256'],'lines':len(lines)-1,'executions':lines.count('execution'),'terminal':(job/'terminal.json').exists(),'ownerProcess':{'pid':pid,'ppid':int(tail[1]),'session':int(tail[3]),'uid':(pathlib.Path('/proc')/str(pid)).stat().st_uid,'state':tail[0]},'stdio':{str(n):os.readlink('/proc/'+str(pid)+'/fd/'+str(n))for n in range(3)}}))")
+   if value.get('owner')!=running_owner:raise ValueError('snapshot_owner_not_normal_sdk_owner')
+   return value
+  def active_after(old_lines):
+   value=snapshot()
+   if value['terminal']or value['lines']>=args.count:raise ValueError('sentinel_finished_before_fault')
+   if value['executions']!=1:raise ValueError('sentinel_execution_count')
+   return value if value['lines']>=old_lines+3 else None
+  def connection():
+   if mode=='direct':return master.status(root,host)
+   path=nested.directory(root,host)/'current.json'
+   return read(path)if path.exists()else{'state':'absent'}
+  p,clientdir=start_client('first-'+operation,'program-start','request.json')
+  # Local admission only avoids querying an initialization that has no original
+  # record yet. It is never the running proof and never permits a counter probe.
+  until(lambda:(directory/'remote-admission.json').exists(),min(deadline,time.monotonic()+90),'program_remote_admission_missing')
+  running_deadline=min(deadline,time.monotonic()+90)
+  running_proof=retention.wait_running(operation,host,fresh_running_status,deadline=running_deadline)
+  running_owner=dict(running_proof.owner)
+  save(root/'normal-sdk-observed-running.json',{'operationId':operation,'host':host,'owner':running_owner,'statusClientDirectories':[str(d)for d in status_client_dirs],'schema':'pending/original_remote_owner_observed/remoteState_running/durableProtocol1','replayAllowed':False})
+  before=until(lambda:active_after(0),min(deadline,time.monotonic()+30),'counter_not_started');original_owner=before['owner']
+  # owner is a detached session; no original SSH descriptors survive.
+  if before['ownerProcess']['session']!=original_owner['pid']or before['ownerProcess']['uid']!=actual['uid']or set(before['stdio'].values())!={'/dev/null'}:raise ValueError('remote_owner_not_detached')
+  save(root/'original-owner.json',before);old_connection=connection();save(root/'original-connection.json',old_connection)
+  guard()
+  if mode=='direct':
+   if keeper.actor(old_connection['child']['pid'])!=old_connection['child']['actor']:raise ValueError('direct_master_generation_changed')
+   proxy.drop_once(root/'connection-loss-once.json',old_connection)
+  else:
+   corr=old_connection['correlationId']
+   if corr==SHARED_CORR:raise ValueError('shared_control_forbidden')
+   journal=channel._context_journal(root,host,corr,False,True);ready=read(journal/(corr+'.ready.json'))['result']
+   save(root/'connection-loss-once.json',{'operationId':operation,'correlationId':corr,'ready':ready,'effects':'one own multiplex exit; never remote durable owner signal'})
+   v={'operationId':operation,'correlationId':corr,'controlPath':ready['controlPath'],'master':ready['master'],'ready':ready,'config':str(config.hosts[host].remote_config_file or ''),'profile':config.hosts[host].remote_host_alias,'protectedSharedCorrelation':SHARED_CORR,'remoteOwner':original_owner}
+   closed=remote("import sys\nsys.argv=['-c',"+repr(json.dumps(v,sort_keys=True))+"]\n"+NESTED_CLOSE,target='gateway')
+   save(root/'connection-loss-returned.json',closed)
+   if closed['returnCode']!=0:raise ValueError('owned_mux_close_unresolved')
+  # Observation-only local journal reads: original worker must recover itself.
+  def renewed_original_connection():
+   current=connection()
+   if mode=='direct':return current if current.get('state')=='ready'and current.get('recoveryId')!=old_connection['recoveryId']else None
+   return current if current.get('correlationId')is not None and current['correlationId']!=old_connection['correlationId']else None
+  new_connection=until(renewed_original_connection,min(deadline,time.monotonic()+140),'original_worker_did_not_recover_connection')
+  after=until(lambda:active_after(before['lines']),min(deadline,time.monotonic()+30),'counter_stopped_after_connection_loss')
+  if after['owner']!=original_owner:raise ValueError('remote_owner_changed')
+  save(root/'connection-loss-proved.json',{'oldConnection':old_connection,'newConnection':new_connection,'before':before,'after':after,'sameOriginalOperation':operation,'automaticWorkerRecovery':True})
+  # First client loss: revalidate own Popen identity immediately before signal.
+  until(lambda:(clientdir/'client-intent.json').exists(),min(deadline,time.monotonic()+15),'sdk_intent_missing')
+  if read(clientdir/'client-intent.json')['clientPid']!=p.pid or p.poll()is not None:raise ValueError('sdk_original_actor_not_live')
+  sdk_actor=keeper.actor(p.pid);save(root/'client-loss-once.json',{'operationId':operation,'actor':sdk_actor,'target':str(clientdir),'signal':'SIGTERM'})
+  if keeper.actor(p.pid)!=sdk_actor:raise ValueError('sdk_actor_changed')
+  p.terminate();p.wait(timeout=30)
+  continued=until(lambda:active_after(after['lines']),min(deadline,time.monotonic()+30),'counter_stopped_after_client_loss')
+  q,freshdir=start_client('fresh-'+operation,'program-reconcile','identity.json')
+  until(lambda:(freshdir/'server-intent.json').exists(),min(deadline,time.monotonic()+30),'fresh_server_missing')
+  def fresh_original_observed():
+   for result_path in sorted(freshdir.glob('call-result-*.json')):
+    value=read(result_path).get('structuredContent',{})
+    if value.get('operationId')==operation and value.get('state')=='pending'and value.get('remoteOwner')==original_owner:return value
+   return None
+  fresh_observation=until(fresh_original_observed,min(deadline,time.monotonic()+45),'fresh_sdk_original_owner_not_observed')
+  save(root/'fresh-sdk-original-observation.json',fresh_observation)
+  continued=until(lambda:active_after(continued['lines']),min(deadline,time.monotonic()+30),'counter_stopped_before_server_loss')
+  server=read(freshdir/'server-intent.json')['serverActor'];observer=read(directory/'owner.json')['actor']
+  if producer_actor(server['pid'])!=server or keeper.actor(observer['pid'])!=observer:raise ValueError('server_or_observer_changed')
+  save(root/'server-observer-loss-once.json',{'operationId':operation,'server':server,'localObserver':observer,'remoteOwner':original_owner,'signal':'SIGTERM','remoteOwnerSignalAllowed':False})
+  if producer_actor(server['pid'])!=server or keeper.actor(observer['pid'])!=observer:raise ValueError('server_or_observer_changed')
+  os.kill(server['pid'],signal.SIGTERM);os.kill(observer['pid'],signal.SIGTERM)
+  progressed=until(lambda:active_after(continued['lines']),min(deadline,time.monotonic()+30),'counter_stopped_after_server_and_observer_loss')
+  if progressed['owner']!=original_owner:raise ValueError('owner_changed_after_client_loss')
+  # Arm only this original owner's exact public terminal, after active faults.
+  save(root/'ack-arm.json',{'operationId':operation,'owner':original_owner,'binding':progressed['binding'],'generation':progressed['generation'],'programSha256':progressed['programSha256'],'stdout':''.join(str(n)+'\n'for n in range(args.count)),'stderr':stderr})
+  until(lambda:(root/'ack-loss-once.json').exists(),deadline,'terminal_ack_fault_not_observed')
+  q.wait(timeout=max(.001,deadline-time.monotonic()))
+  if q.returncode!=0:raise ValueError('fresh_sdk_did_not_recover_original')
+  sdk_result=read(freshdir/'client-result.json')
+  if sdk_result.get('programState')!='terminal'or sdk_result.get('relayAttempts')!=2:raise ValueError('sdk_server_loss_not_reconciled')
+  # Completely fresh SDK and CLI collect the exact same original terminal.
+  z,collected=start_client('collect-'+operation,'program-collect','identity.json');z.wait(timeout=max(.001,deadline-time.monotonic()))
+  if z.returncode!=0:raise ValueError('fresh_sdk_collect_failed')
+  final=read(sorted(collected.glob('call-result-*.json'))[-1])['structuredContent']
+  if final.get('state')!='terminal'or final.get('operationId')!=operation or final.get('remoteOwner')!=original_owner:raise ValueError('final_original_identity')
+  cli_argv=[str(root/'agent_tools/mcp_tool.sh'),'ssh-workflow','program-collect','--host',host,'--identity-file',str(root/'identity.json')]
+  cli=bounded_cli(cli_argv,root,deadline,keeper,operation,source_guard=guard)
+  if cli['returnCode']!=0 or json.loads((root/'cli.stdout').read_bytes())!=final:raise ValueError('cli_schema_not_equivalent')
+  stream_dirs=[directory,*sorted(directory.glob('reconciliation-*'))];expected_out=''.join(str(n)+'\n'for n in range(args.count)).encode();stream_dir=next((d for d in reversed(stream_dirs)if(d/'stdout.private').exists()and(d/'stderr.private').exists()),None)
+  if stream_dir is None or(stream_dir/'stdout.private').read_bytes()!=expected_out or(stream_dir/'stderr.private').read_bytes()!=stderr.encode():raise ValueError('complete_retained_streams_missing')
+  all_calls=[read(f)['request']['action']for d in(clientdir,freshdir,collected,*status_client_dirs)for f in sorted(d.rglob('call-intent-*.json'))]
+  if all_calls.count('program-start')!=1:raise ValueError('new_job_submission_not_once')
+  # Read only the original counter after terminal; owner process may be absent.
+  counter_value=remote("import json,pathlib;print(json.dumps(pathlib.Path("+repr(counter)+").read_text().splitlines()))")
+  if counter_value!=['execution',*[str(n)for n in range(args.count)]]:raise ValueError('counter_not_continuous_once')
+  guard()
+  save(root/'result.json',{'passed':True,'mode':mode,'operationId':operation,'remoteOwner':original_owner,'originalConnection':old_connection,'renewedConnection':new_connection,'beforeConnectionLoss':before['lines'],'afterConnectionLoss':after['lines'],'afterClientLoss':continued['lines'],'afterServerAndObserverLoss':progressed['lines'],'executions':1,'stdoutLines':args.count,'exactRetainedStreams':True,'freshSdkAndCliEquivalent':True,'terminalSshAcknowledgementLostExactlyOnce':read(root/'ack-loss-once.json'),'rpcActions':all_calls,'currentProductionSourcePins':CRITICAL,'retentionHelperSha256':RETENTION_SHA,'normalSdkRunningGate':True,'allPublicRemoteObservationsRetained':True,'serverSha256':server_sha,'originalHistoriesUnchanged':True,'sharedControlUntouched':True,'noVMOrLifecycleActions':True,'elapsedSeconds':time.monotonic()-started})
+  # Every local actor/stream and owned proxy is finally journaled below.
+  # Shared/remote masters and remote durable owners are never signalled here.
+  print(json.dumps({'passed':True,'mode':mode,'operationId':operation,'receipt':str(root/'result.json'),'elapsedSeconds':time.monotonic()-started}))
+ finally:
+  finish_local_scope(root,locals())
+if __name__=='__main__':
+ parser=argparse.ArgumentParser();parser.add_argument('--mode',choices=('direct','nested'),required=True);parser.add_argument('--native-go',action='store_true');parser.add_argument('--budget',type=int,default=600);parser.add_argument('--count',type=int,default=1200);parser.add_argument('--interval',type=float,default=.15);args=parser.parse_args()
+ if not 1<=args.count<=2400 or not .1<=args.interval<=.25 or not 120<=args.count*args.interval<=360 or not 240<=args.budget<=900:raise ValueError('acceptance_resource_budget')
+ main(args)

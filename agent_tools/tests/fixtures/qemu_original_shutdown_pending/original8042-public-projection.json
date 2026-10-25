@@ -1,0 +1,34 @@
+{
+  "sourcePath": ".runtime/tool-recovery-qemu/retirement-qmp-original-status-7545d80b-4413-4786-8598-b0c4a671d7c3/result.json",
+  "sourceSha256": "609927840485c4516b92d1a96bad6b30984ed93834a107a15ac983aa730e54e7",
+  "intentPin": {
+    "generation": [
+      66307,
+      103546891,
+      33152,
+      1000,
+      1000,
+      1,
+      711,
+      1792575558493369790,
+      1792575558493369790
+    ],
+    "sha256": "d636f293e4a2f7ec8533c366df259d8fb638d7bbefe293e5457a049d31462c89"
+  },
+  "recoveryId": "5b0bb04ce9b49342537421c107dc24e7fa911274c88fb9b5a6a6a37876ba5886",
+  "originalBoot": "fe3c2822-021d-4032-bed4-cc42a880270f",
+  "idleVisibility": [
+    "reservations",
+    "running_jobs",
+    "unknown_jobs",
+    "installers",
+    "lifecycle_phases",
+    "operators",
+    "protected_processes"
+  ],
+  "idleBlockers": [],
+  "ack": {
+    "acknowledged": true,
+    "returnCode": 0
+  }
+}

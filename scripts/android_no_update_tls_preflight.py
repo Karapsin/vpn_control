@@ -75,11 +75,16 @@ def require_interactive_stdin(stream=None) -> None:
 
 
 class Adb:
-    def __init__(self, adb: str, serial: str):
-        self.command = [adb, "-s", serial]
+    def __init__(self, adb: str, serial: str, *, dispatch_guard=None):
+        if dispatch_guard is not None and not callable(dispatch_guard):
+            raise ValueError("ADB dispatch guard must be callable")
+        self.dispatch_guard = dispatch_guard
+        self.command = [adb, *(["-H127.0.0.1"] if dispatch_guard is not None else []), "-s", serial]
         self.records = []
 
     def run(self, *args: str) -> str:
+        if self.dispatch_guard is not None:
+            self.dispatch_guard()
         result = subprocess.run([*self.command, *args], check=False, text=True, capture_output=True)
         self.records.append({"args": list(args), "exit": result.returncode,
                              "stdout": bounded_text(result.stdout), "stderr": bounded_text(result.stderr),
@@ -93,6 +98,8 @@ class Adb:
         return self.run("shell", *args)
 
     def exec_out_bytes(self, *args: str) -> bytes:
+        if self.dispatch_guard is not None:
+            self.dispatch_guard()
         result = subprocess.run([*self.command, "exec-out", *args], check=False, capture_output=True)
         stderr = result.stderr.decode("utf-8", "replace")
         self.records.append({"args": ["exec-out", *args], "exit": result.returncode,
@@ -523,7 +530,7 @@ def run_fixture_lifecycle(args: argparse.Namespace, action, *, target_install: b
         cli_environment = public_cli_environment(args.adb, args.cli)
     args.cli_environment = cli_environment
     frozen_hash = require_artifact_hash(args.base_apk, args.base_sha256)
-    adb = Adb(args.adb, args.serial)
+    adb = Adb(args.adb, args.serial, dispatch_guard=getattr(args, "dispatch_guard", None))
     receipt = {"serial": args.serial, "target": args.target, "expectedProxy": expected_proxy,
                "targetInstall": target_install, "cleanupFailures": []}
     previous_proxy = adb.global_proxy()

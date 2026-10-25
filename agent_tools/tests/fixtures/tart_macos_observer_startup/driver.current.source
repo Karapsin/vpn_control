@@ -1,0 +1,115 @@
+"""Prepared fixed-target READONLY census. NO native execution before root GO.
+
+Original071 is never restarted or adopted. This separate observation can only
+prove an executable-class absence barrier; it grants no input/full-idle/power.
+"""
+import argparse,base64,hashlib,json,os,sys,time,types
+from pathlib import Path
+from contextlib import ExitStack
+CODE=sys._getframe().f_code
+ENTRY_DEADLINE=time.monotonic()+120
+PROJECT=Path(__file__).resolve().parents[4];sys.path.insert(0,str(PROJECT))
+from agent_tools.source_module_loader import SourceSession
+FIXTURE='tart-macos-independent-parent-recovery-v13'
+TARGET='tart:vpn-tool-recovery-tart-macos-7686d4aa'
+OPERATION='fbba7fe9-0dbb-4e04-86cc-3bec5c58c998'
+PURPOSE='native_macos_original_stream_class_census'
+PINS={'guest_builder.py': '585d31e1e9206f4463c8cd7f2f31824ec1a521ff101c623cb49b6203f53bb526', 'census_primitives.py': '8c577d8ab99f78436362e4d7665a985671d45d9bcf01e0157b114de599e51677', 'rpc_capture.py': '387919a86e815bfb879be04c280db870a64ca09fd65931dace82b51d6d113b36'}
+def need(value,reason):
+ if not value:raise RuntimeError(reason)
+p=argparse.ArgumentParser();p.add_argument('--target',required=True);p.add_argument('--fixture-id',required=True);p.add_argument('--operation-id',required=True);a=p.parse_args()
+need((a.target,a.fixture_id,a.operation_id)==(TARGET,FIXTURE,OPERATION),'census_selector_changed')
+sources=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_registry');R=sources.module
+F=sources.load('readiness_fixture_registry');J=sources.load('durable_remote_job');P=sources.load('private_inventory_lock');M=sources.load('readiness_tart_macos');S=sources.load('readiness_tart_macos_session');G=sources.load('readiness_qemu_jobs')
+stack=ExitStack();stack.callback(sources.close);attempts=[];c=None;phase='factory';out=None
+try:
+ own=Path(__file__).read_bytes();need(CODE==compile(own,__file__,'exec',dont_inherit=True),'census_loaded_source_changed')
+ own_held=stack.enter_context(R.PublicProof(Path(__file__),{'generation':list(P._generation(Path(__file__).lstat())),'sha256':hashlib.sha256(own).hexdigest()},private_file=False))
+ d,pin=F._json(PROJECT/'.rag_index/readiness-fixtures'/(FIXTURE+'.json'))
+ need(d['provider']=='tart-macos'and TARGET=='tart:'+d['binding']['vm_name'],'census_target_changed')
+ rp=Path(d['originalRun']['path']);runheld=stack.enter_context(R.PublicProof(rp,d['originalRun']['pin']));run=runheld.value();root=rp.parent;binding=J.MachineBinding.from_dict(run['hostBinding'])
+ index,ip=F._json(root/('native-unlock-controller-'+OPERATION+'.json'));indexheld=stack.enter_context(R.PublicProof(root/('native-unlock-controller-'+OPERATION+'.json'),ip))
+ intent=J._intent(root/'jobs'/OPERATION,OPERATION,binding);owner=J._record(root/'jobs'/OPERATION/'owner.json');J._correlate(owner,intent);actor=J._owner_identity(owner)
+ need(intent['purpose']==PURPOSE and index['operationId']==OPERATION and index['target']==TARGET and index['fixtureId']==FIXTURE and index['sourceSha256']==hashlib.sha256(own).hexdigest()and index['programSha256']==intent['programSha256'],'census_original_controller_changed')
+ need(os.getppid()==actor['pid']and J._birth(actor['pid'])==actor['birth'],'census_not_owned_original_child')
+ folder=root/('native-original-stream-class-census-'+OPERATION);folder.mkdir(mode=0o700);out=stack.enter_context(P.Directory(folder))
+ def record(name,value):
+  raw=value if type(value)is bytes else json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
+  fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd)
+  with os.fdopen(fd,'wb')as target:target.write(raw);target.flush();os.fsync(target.fileno())
+  os.fsync(out.fd)
+ held={};loaded={}
+ for name in('guest_builder.py','census_primitives.py','rpc_capture.py'):
+  path=Path(__file__).parent/name;proof=stack.enter_context(R.PublicProof(path,{'generation':list(P._generation(path.lstat())),'sha256':PINS[name]},private_file=False));held[name]=proof
+  record(name+'.source',proof.body)
+  if name!='census_primitives.py':
+   module=types.ModuleType('_fixed_census_'+name.split('.')[0]);exec(compile(proof.body,str(path),'exec',dont_inherit=True),module.__dict__);loaded[name]=module
+ capture=loaded['rpc_capture.py']
+ def guard():
+  sources.guard();own_held.guard();runheld.guard();indexheld.guard();out.guard()
+  for proof in held.values():proof.guard()
+  need(os.getppid()==actor['pid']and J._birth(actor['pid'])==actor['birth'],'census_original_controller_lost')
+ def closed(row):
+  try:
+   last=row['callback'];aa=row['actor']
+   return row['integrityClosed']is True and last['actor']==aa and last['stdoutEof']is True and last['stderrEof']is True and last['partial']is False and aa['birth']is not None and J._birth(aa['pid'])!=aa['birth']
+  except (KeyError,TypeError,ValueError):return False
+ original=R.MacCustody._native_call
+ def captured(selected,argv,payload,call_deadline):
+  guard();need(selected.binding.vm_name==d['binding']['vm_name']and selected.binding.machine==d['binding']['machine']and selected.run_intent['operationId']==run['operationId'],'census_native_target_changed')
+  canonical,_=G.stdin_command(payload.decode('utf-8'))
+  need(tuple(argv)==(selected.binding.tart_binary,'exec','-i',selected.binding.vm_name,selected.binding.guest_python,*canonical[1:]),'census_fixed_stdin_changed')
+  need(len(attempts)<32,'census_rpc_limit');label='call-'+str(len(attempts)+1)+'-'+phase
+  row={'label':label,'actor':None,'callback':None,'integrityClosed':False};attempts.append(row)
+  record(label+'.request.stdin',payload);record(label+'.request.json',{'operationId':OPERATION,'fixtureId':FIXTURE,'target':TARGET,'argv':list(argv),'sha256':hashlib.sha256(payload).hexdigest(),'scope':'fixed_readonly_public_source'})
+  retained=None;error=None
+  try:
+   with capture.PublicRpcCapture(out,label)as retained:
+    try:result,callback=retained.run(argv,payload,deadline=min(call_deadline,ENTRY_DEADLINE,time.monotonic()+45),birth=J._birth,parent=lambda pid:R._parent(pid,time.monotonic()+2))
+    except BaseException as caught:error=caught;raise
+    finally:
+     rows=[json.loads(line)for line in bytes(retained.callback).splitlines()]
+     first=next((v for v in rows if v.get('stage')=='started'),None);last=rows[-1]if rows and rows[-1].get('stage')=='retained'else None
+     row.update(actor=first.get('actor')if first else None,callback=last,integrityClosed=error is None or(type(error)is capture.CaptureUnknown and str(error)=='namespace_original_rpc_unknown_no_replay'),errorClass=type(error).__name__ if error else None)
+     record(label+'.attempt.json',row)
+  finally:
+   if retained is None:record(label+'.attempt.json',row)
+  need(closed(row),'census_original_rpc_unknown');guard();return result
+ R.MacCustody._native_call=captured;stack.callback(setattr,R.MacCustody,'_native_call',original)
+ R._limit(ENTRY_DEADLINE)
+ c=R.MacCustody(PROJECT,FIXTURE,d,pin);stack.callback(c.close)
+ R._limit(ENTRY_DEADLINE)
+ record('driver.source.py',own);before={path:hashlib.sha256(body).hexdigest()for path,body in sources.cache.values()};record('source-capsule-before.json',before)
+ record('intent.json',{'schemaVersion':1,'operationId':OPERATION,'fixtureId':FIXTURE,'target':TARGET,'originalUncertainPublicOperation':'07110b57-2828-4f20-a0cc-b8caea05c334','originalRunOperationId':run['operationId'],'registrationPin':pin,'sourcePins':before,'inputAuthority':False,'fullIdleAuthority':False,'replayAllowed':False})
+ deadline=ENTRY_DEADLINE
+ def call(label,source):
+  global phase
+  phase=label;guard();argv,payload=G.stdin_command(source.decode()if type(source)is bytes else source)
+  record(label+'.source.py',payload)
+  result=c.ordinary_guest_call(c.binding,argv,payload,deadline)
+  # Every raw is already retained at the actual native boundary before any
+  # ordinary_guest_call postguard; this second result is convenience only.
+  record(label+'.result.json',{'returncode':result.returncode,'stdout':base64.b64encode(result.stdout).decode(),'stderr':base64.b64encode(result.stderr).decode()})
+  need(result.returncode==0,'census_getter_nonzero');return json.loads(result.stdout)
+ def facts(packet):
+  need(type(packet)is dict and set(packet)=={'facts','agent'},'census_root_schema');M.guest_facts(packet['facts'],c.binding)
+  agent=packet['agent'];need(agent['uid']==502 and agent['principal']=='toolrecovery'and agent['home']=='/Users/toolrecovery'and agent['python']==c.binding.guest_python,'census_agent_identity')
+  need(agent['rawBoot']=='87AC272F-619B-4CC0-B9FC-3E32DAEE5B18'and agent['actor']=={'pid':2273,'birth':'darwin:1792515932:202170'},'census_original_epoch_changed')
+  return(packet['facts']['machine'],packet['facts']['boot'],agent)
+ with c.operator(deadline=deadline):
+  guard();c.guard(deadline=deadline)
+  root_source=R.guest_probe_source(c.binding,prefix=c.guest_proof['prefix'],public_files=c.guest_proof['publicFiles'])
+  pre=call('root-before',root_source);identity=facts(pre)
+  generated=loaded['guest_builder.py'].generate(S,c.binding,pre,held['census_primitives.py'].body)
+  census=call('observer',generated)
+  post=call('root-after',root_source);need(facts(post)==identity,'census_root_identity_changed')
+  guard();c.guard(deadline=deadline)
+  need(census.get('scope')=='original_transient_executable_class_only'and census.get('fullIdleAuthority')is False and census.get('inputAuthority')is False,'census_reply_schema')
+  record('census.json',census);record('source-capsule-closed.json',{path:hashlib.sha256(body).hexdigest()for path,body in sources.cache.values()})
+  need(all(closed(row)for row in attempts),'census_frontend_closure_unknown')
+  record('complete.json',{'operationId':OPERATION,'nativeCensusState':census.get('state'),'visibilityComplete':census.get('visibilityComplete')is True,'actualHostRpcAttempts':len(attempts),'allHostFrontendsClosed':True,'inputAuthority':False,'fullIdleAuthority':False,'original071ReplayAllowed':False})
+except BaseException as error:
+ if out is not None:
+  record('failure.json',{'operationId':OPERATION,'exceptionClass':type(error).__name__,'attempts':attempts,'originalOutcome':'unknown_no_replay','replayAllowed':False})
+ raise
+finally:stack.close()

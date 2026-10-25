@@ -1,0 +1,58 @@
+_KEEPER_ROLES=('ssh_channel_keeper_entry.py','ssh_channel_keeper.py','ssh_channel_inventory_diagnostics.py','ssh_fresh_nested_channel.py','private_inventory_lock.py','native_review_source_closure.py','check_output_retention.py','ssh_transport.py','ssh_connection_session.py','ssh_connection_recovery.py','ssh_nested_socket_owned_home_observation.py','ssh_channel_selection.py','mcp_server.py','ssh_nested_socket_noninteractive_observation.py','ssh_nested_socket_retirement.py','ssh_nested_socket_route_diagnostic.py','ssh_recovery_adoption.py')
+@contextmanager
+def _keeper_authenticated_entry(corr,digest=None):
+    custody=_agent_module("native_review_source_closure");held=custody._Held();prefix='_keeper_'+uuid.uuid4().hex
+    package=types.ModuleType(prefix);package.__path__=[];sys.modules[prefix]=package;finder=None
+    try:
+        paths={str(REPO_ROOT/'agent_tools'/name) for name in _KEEPER_ROLES}
+        if digest is None:
+            pins={}
+            for path in sorted(paths):
+                raw=Path(path).read_bytes();sha=hashlib.sha256(raw).hexdigest();held.read(path,sha);pins[path]={'sha256':sha,'generation':list(held.files[path][1])}
+        else:
+            if type(digest)is not str or re.fullmatch('[0-9a-f]{64}',digest)is None:raise ValueError('digest')
+            manifest=REPO_ROOT/'.runtime/ssh-channel-keeper-source'/(corr+'.json');obj=json.loads(held.read(str(manifest),digest),object_pairs_hook=custody._pairs)
+            if type(obj)is not dict or set(obj)!={'inputs'} or type(obj['inputs'])is not dict or set(obj['inputs'])!=paths:raise ValueError('source_roles')
+            pins=obj['inputs']
+        cached={}
+        for path,pin in pins.items():
+            gen,sha=custody._pin(pin);raw=held.read(path,sha,gen)
+            if Path(path).name!='mcp_server.py':cached[prefix+'.'+Path(path).stem]=(path,raw)
+        held.finish();by_path={path:raw for path,raw in cached.values()}
+        def extract(target):
+            if inspect.ismodule(target):return cached[target.__name__][1].decode(),1
+            if inspect.isclass(target):path=sys.modules[target.__module__].__file__;qualified=target.__qualname__
+            else:path=target.__code__.co_filename;qualified=target.__qualname__
+            node=ast.parse(by_path[path])
+            for component in qualified.split('.'):
+                matches=[v for v in node.body if isinstance(v,(ast.ClassDef,ast.FunctionDef,ast.AsyncFunctionDef)) and v.name==component]
+                if len(matches)!=1:raise ValueError('source_target')
+                node=matches[0]
+            start=min([node.lineno]+[d.lineno for d in node.decorator_list]);return ''.join(by_path[path].decode().splitlines(True)[start-1:node.end_lineno]),start
+        view=types.ModuleType('inspect');view.__dict__.update(vars(inspect))
+        def source(target):
+            if getattr(target,'__module__',getattr(target,'__name__','')).startswith(prefix):return extract(target)[0]
+            return inspect.getsource(target)
+        def lines(target):
+            if getattr(target,'__module__',getattr(target,'__name__','')).startswith(prefix):
+                raw,start=extract(target);return raw.splitlines(True),start
+            return inspect.getsourcelines(target)
+        view.getsource=source;view.getsourcelines=lines
+        def importing(name,globals=None,locals=None,fromlist=(),level=0):
+            if name=='inspect' and level==0:return view
+            return builtins.__import__(name,globals,locals,fromlist,level)
+        class Loader(importlib.abc.Loader):
+            def create_module(self,spec):return None
+            def exec_module(self,module):
+                path,raw=cached[module.__name__];module.__file__=path;module.__builtins__={**vars(builtins),'__import__':importing};held.finish();exec(compile(raw,path,'exec'),module.__dict__);held.finish()
+        class Finder(importlib.abc.MetaPathFinder):
+            def find_spec(self,name,path=None,target=None):
+                if name in cached:return importlib.util.spec_from_loader(name,Loader(),origin=cached[name][0])
+                if name.startswith(prefix+'.'):raise ImportError('undeclared_keeper_module')
+        finder=Finder();sys.meta_path.insert(0,finder);entry=_agent_module('ssh_channel_keeper_entry');held.finish()
+        yield entry,held
+    finally:
+        if finder is not None:sys.meta_path.remove(finder)
+        for name in list(sys.modules):
+            if name==prefix or name.startswith(prefix+'.'):sys.modules.pop(name,None)
+        held.close()

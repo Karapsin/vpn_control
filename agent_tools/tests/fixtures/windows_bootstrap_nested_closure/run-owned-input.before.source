@@ -1,0 +1,543 @@
+"""Offgraph original-only bootstrap history. No VM or credential operations."""
+import ast
+import base64
+import copy
+from contextlib import contextmanager
+import hashlib
+import importlib.util
+import inspect
+import json
+import os
+from pathlib import Path
+import socket
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from unittest import mock
+from uuid import UUID, uuid5
+from uuid import uuid4
+
+from agent_tools import durable_remote_job as jobs
+from agent_tools import readiness_windows_bootstrap_durable as subject
+from agent_tools import readiness_windows_bootstrap_closure as initial
+from agent_tools import readiness_windows_host_jobs as host
+from agent_tools import readiness_windows_seed_detach as seed
+from agent_tools.tests import test_windows_seed_detach as fixtures
+from agent_tools.tests.test_windows_seed_reader_scope import controlled_request
+
+FIXTURE = Path(__file__).with_name('fixtures') / 'windows_bootstrap_durable'
+_CONTROLLED_REQUEST_SOURCE = None
+OWNED_CLOSURES = []
+NESTED_CAPTURES = []
+
+
+def run_owned(command,**kwargs):
+    """Keep actual helper identity and bounded public streams even on failure."""
+    timeout=kwargs.pop('timeout',None);capture=kwargs.pop('capture_output',False)
+    if capture:kwargs.update(stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    with subprocess.Popen(command,**kwargs)as child:
+        before=jobs._birth(child.pid);complete=False;stdout=stderr=None
+        try:
+            try:stdout,stderr=child.communicate(timeout=timeout);complete=True
+            except BaseException:
+                child.kill();stdout,stderr=child.communicate();complete=True;raise
+            return subprocess.CompletedProcess(command,child.returncode,stdout,stderr)
+        finally:
+            after=jobs._birth(child.pid)
+            row={'pid':child.pid,'birth':before,'sameOriginalBirthPresent':before is not None and before==after,
+                'reaped':child.returncode is not None,'exitCode':child.returncode,'terminalStreamsClosed':complete}
+            OWNED_CLOSURES.append(row)
+            capture={'child':row}
+            for name,raw,limit in (('stdout',stdout,1048576),('stderr',stderr,65536)):
+                available=type(raw)is bytes;body=raw if available else b''
+                capture.update({name+'Available':available,name+'Bytes':len(body),name+'Complete':complete,
+                    name+'Truncated':len(body)>limit,name+'Base64':base64.b64encode(body[:limit]).decode()})
+            NESTED_CAPTURES.append(capture)
+            if row['sameOriginalBirthPresent']or not row['reaped']:raise AssertionError('controlled_helper_not_reaped')
+
+
+@contextmanager
+def carrier_closure():
+    start=len(getattr(subject.transport,'_BOOTSTRAP_CONTROLLED_CHILDREN',[]))
+    try:yield
+    finally:OWNED_CLOSURES.extend(getattr(subject.transport,'_BOOTSTRAP_CONTROLLED_CHILDREN',[])[start:])
+
+
+def before_module():
+    raw = (FIXTURE / 'before.source').read_bytes()
+    evidence = json.loads((FIXTURE / 'provenance.json').read_bytes())
+    if hashlib.sha256(raw).hexdigest() != evidence['beforeSha256']:
+        raise AssertionError('whole before source changed')
+    name = 'agent_tools._bootstrap_whole_before'
+    spec = importlib.util.spec_from_loader(name, loader=None, origin=str(FIXTURE / 'before.source'))
+    module = importlib.util.module_from_spec(spec)
+    module.__file__ = str(FIXTURE / 'before.source')
+    sys.modules[name] = module
+    exec(compile(raw, module.__file__, 'exec'), module.__dict__)
+    return module
+
+
+def carrier_before_module():
+    path = FIXTURE / 'carrier.before.source';raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != 'b40ec6208f56662e02e1b46255ec91ed2bfc810a2b3aa09d1fae07d175ea70c7':
+        raise AssertionError('carrier whole before source changed')
+    name = 'agent_tools._bootstrap_carrier_whole_before'
+    spec = importlib.util.spec_from_loader(name,loader=None,origin=str(path));module = importlib.util.module_from_spec(spec)
+    module.__file__ = str(path);sys.modules[name] = module;exec(compile(raw,str(path),'exec'),module.__dict__)
+    return module
+
+
+def fabricated_original_reply(module, value):
+    record, _, _, plan = module._load(value);body = plan['seedOriginal'];config = plan['initial'];request = config['request']
+    system = {'nonce':str(uuid5(UUID(body['operationId']),str(config['readers']['observedNs']))),
+              'machine':body['binding']['spec']['deploymentId'],'boot':request['detachment']['boot'],
+              'principal':'S-1-5-18','account':request['detachment']['account'],'ordinary':True,
+              'setupComplete':True,'agentReady':True,'interactiveUsers':0}
+    receipt = {'schemaVersion':1,'kind':'windows-managed-bootstrap-closed-v1','admissionId':config['admissionId'],
+        'machine':system['machine'],'hostBoot':body['binding']['context']['hostBootId'],'creatorOperationId':body['creatorOperationId'],
+        'seedOperationId':body['operationId'],'boot':system['boot'],'account':system['account'],'seedGeneration':request['seedGeneration'],
+        'rootRequest':request,'rootReaders':config['readers'],'system':system,'ordinarySigninAllowed':True,'replayAllowed':False}
+    generation = [1,2,0o100600,request['uid'],request['uid'],1,len(json.dumps(receipt)),1,1]
+    initial_reply = {'kind':'windows-managed-bootstrap-closure-observed-v1','closure':receipt,'closureGeneration':generation,
+                     'currentSystem':system,'currentReaders':config['readers'],'currentRequest':request}
+    output = json.dumps(initial_reply).encode();owner = {'pid':12345,'birth':'linux:123456'}
+    terminal = {'binding':record['namespace']['binding'],'operationId':record['operationId'],'programSha256':record['programSha256'],
+        'exitCode':0,'streamsClosed':True,'owner':owner,'generation':str(uuid4())}
+    for name,raw in (('stdout',output),('stderr',b'')):
+        terminal[name] = {'overflow':False,'retainedBytes':len(raw),'totalBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+    status = {'schemaVersion':1,'state':'terminal','operationId':record['operationId'],'replayAllowed':False,
+              'binding':record['namespace']['binding'],'owner':owner,'terminal':terminal}
+    reply = {'status':status,'stdoutBase64':base64.b64encode(output).decode(),'stderrBase64':''}
+    return json.dumps({'kind':'windows-bootstrap-durable-observation-v1','original':reply,'receiptGeneration':generation}).encode()
+
+
+class CarrierAuthorityTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux'),'actual Linux per-argument execve limit')
+    def test_whole_controlled_carrier_argv_e2big_before_exact_stdin_payload_after(self):
+        command=('python3','-I','-B','-c','exec('+repr("print('exact-public-program')\n#"+'x'*300000)+')')
+        for name,before in (('carrier-argv.before.source',True),('controlled_carrier_roles.source',False)):
+            scope={'contextmanager':contextmanager,'os':os,'subprocess':subprocess,'sys':sys}
+            exec(compile((FIXTURE/name).read_bytes(),str(FIXTURE/name),'exec'),scope)
+            if before:
+                with self.assertRaises(OSError)as caught:scope['run_ssh'](command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=5)
+                self.assertEqual(caught.exception.errno,7)
+            else:
+                actual=scope['run_ssh'](command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=5)
+                self.assertEqual((actual.returncode,actual.stdout,actual.stderr),(0,b'exact-public-program\n',b''))
+                self.assertTrue(scope['_BOOTSTRAP_CONTROLLED_CHILDREN'][0]['reaped'])
+                OWNED_CLOSURES.extend(scope['_BOOTSTRAP_CONTROLLED_CHILDREN'])
+
+    @unittest.skipIf(os.name!='posix' or os.geteuid()==0,'ordinary real retained packets required')
+    def test_actual_forged_carrier_cannot_mint_history_from_unsubmitted_packet(self):
+        old = carrier_before_module();accepted = []
+        def action(original,witness,packet,repo):
+            for module in (old,subject):
+                value = module.retain(repo,original,witness);record = value.as_dict()
+                self.assertFalse((Path(record['namespace']['root'])/record['operationId']).exists())
+                fabricated = fabricated_original_reply(module,value);calls = []
+                def forged(*args,**kwargs):
+                    calls.append(True);return subprocess.CompletedProcess([],0,fabricated,b'')
+                left,right = socket.socketpair();right.settimeout(.05)
+                try:
+                    with local_carrier(), mock.patch.object(module.transport,'run_ssh',side_effect=forged):
+                        try:
+                            proof = module.observe_original(repo,value,guard=lambda:None,deadline=time.monotonic()+5)
+                            if proof.as_dict()['historicalBootstrapComplete']:left.sendall(b'forged-history')
+                        except ValueError:pass
+                    try:marker = right.recv(64)
+                    except socket.timeout:marker = b''
+                    accepted.append({'module':'before'if module is old else'current','historyMinted':marker==b'forged-history','carrierCalls':len(calls)})
+                finally:left.close();right.close()
+            self.assertTrue(accepted[0]['historyMinted'],'whole b40 must reproduce original authority gap')
+            self.assertFalse(accepted[1]['historyMinted'],'forged carrier reached historical authority from an unsubmitted original')
+            self.assertEqual(accepted[1]['carrierCalls'],0)
+        try:with_original(self,action)
+        finally:
+            if os.environ.get('VPN_CONTROL_BOOTSTRAP_CARRIER_DIAGNOSTIC')=='1':print(json.dumps({'kind':'bootstrap-forged-carrier-causal','cases':accepted}))
+
+
+def with_original(test, action):
+    """Real private seed/HOST/creator packets; only ROOT facts are controlled."""
+    seen = [False]
+    attach = seed.attach_ejection
+    def capture(original, packet):
+        returned = attach(original, packet)
+        if not seen[0]:
+            seen[0] = True
+            vm = Path(original.as_dict()['binding']['spec']['root'])
+            selected = vm / 'seed.iso'
+            jobs._create(selected, b'controlled metadata-only file')
+            try:
+                request = controlled_request(seed, original, packet)
+                request['seedGeneration'] = host._file_pin(selected)
+                now = time.monotonic_ns()
+                witness = object.__new__(seed.ReaderWitness)
+                seed._READERS[witness] = {'original': original, 'request': json.dumps(request),
+                    'result': json.dumps({'complete': True, 'holders': [], 'observedNs': now, 'deadlineNs': now+30_000_000_000}),
+                    'guards': (), 'deadline': time.monotonic()+25, 'consumedBy': None}
+                try:
+                    # Restore actual guarded producer identity while executing
+                    # the adapter under test; this hook only obtains its fixture.
+                    with mock.patch.object(seed, 'attach_ejection', attach):
+                        action(original, witness, packet, vm.parent)
+                finally:seed._READERS.pop(witness, None)
+            finally:selected.unlink()
+        return returned
+    with mock.patch.object(seed, 'attach_ejection', side_effect=capture):
+        result = unittest.TestResult()
+        fixtures.SeedOwnerSourceTests('test_fixed_ejection_builder_uses_actual_opaque_host_namespace_and_original_packet').run(result)
+    test.assertTrue(result.wasSuccessful(), str(result.errors)+str(result.failures))
+    test.assertTrue(seen[0])
+
+
+class OpaqueTests(unittest.TestCase):
+    def test_complete_retained_evidence_and_controlled_roles_authenticated(self):
+        hashes = {
+            'before.source':'781596c5000048b1fb66f6ceeeee2299426e92713af5469f47acbc709f97de34',
+            'provenance.json':'2dad915313444eb7aeab4cd899e6355eb515e01719e545a9bd1de72ad829c789',
+            'carrier.before.source':'b40ec6208f56662e02e1b46255ec91ed2bfc810a2b3aa09d1fae07d175ea70c7',
+            'carrier-test.before.source':'ce2d3b05fe8e475df5cdaaf9ffeafb2627dc6028a0f0472e81cbccb8d42175ee',
+            'carrier-failure.json':'0955149a517e0c6ad77a8677c99a15b97f314b00d8dce64bbc52c8fef3a57e0e',
+            'carrier.provenance.json':'e38b8211b0433ae80154aad1cae982bc8b29011bc1a1564e661f6900d30dc52f',
+            'carrier-argv.before.source':'0d4369fc9fd843ad500993ff18c56ed63745c7914a331e20f6aae47824a63b1e',
+            'carrier-argv-test.before.source':'481b4262d1d90278a3309ceddfd3eb9832a74b9be5630a65aa2bb32046c62fde',
+            'carrier-argv-native-failure.json':'bdb241c6169c3c9b127489c85a6f565cc6a43bf64ef5edd8367dfdc21c88ef26',
+            'controlled_carrier_roles.source':'2df194c7e62065f75579986366e045fd41cddf3122321c67f0f0881f3a90253c',
+            'controlled_request_adapter.source':'b38041a060930679ed373eca9c2456a867ebcd96d32c79df77174206549ac6af',
+        }
+        self.assertEqual({path.name for path in FIXTURE.iterdir()},set(hashes))
+        for name,digest in hashes.items():
+            self.assertEqual(hashlib.sha256((FIXTURE/name).read_bytes()).hexdigest(),digest,name)
+        failure = json.loads((FIXTURE/'carrier-failure.json').read_bytes())
+        self.assertTrue(failure['actualSocketMarker'])
+        self.assertFalse(failure['originalHostJobSubmitted'])
+        self.assertFalse(failure['nativeFailureClaimed'])
+        self.assertEqual(failure['nativeVmCalls'],0)
+
+    def test_only_packet_assignments_normalize_executable_mapping_order_unchanged(self):
+        raw = "SPEC={'b':2,'a':1}\ndef run():\n return list({'b':2,'a':1})\nOTHER={'b':2,'a':1}\n"
+        converted = subject._stable_source(raw)
+        scope = {};exec(converted, scope)
+        self.assertEqual(list(scope['SPEC']), ['a','b'])
+        self.assertEqual(scope['run'](), ['b','a'])
+        self.assertEqual(list(scope['OTHER']), ['b','a'])
+        self.assertEqual(ast.dump(ast.parse(raw).body[1]), ast.dump(ast.parse(converted).body[1]))
+
+    def test_no_dto_or_missing_original_can_mint_history(self):
+        for cls in (subject.OriginalFinalization, subject.HistoricalBootstrapClosure):
+            with self.assertRaises(TypeError):cls()
+            with self.assertRaises(ValueError):object.__new__(cls).as_dict()
+        with mock.patch.object(subject.transport, 'admitted_transport', side_effect=AssertionError('no transport')):
+            with self.assertRaises(ValueError):subject.observe_original(Path('/unused'), {}, guard=lambda: None, deadline=time.monotonic()+1)
+        self.assertFalse(subject.QUALIFIED_RECOVERIES)
+
+    def test_whole_before_authentication_and_initial_gates_remain(self):
+        old = before_module()
+        self.assertIn('already minted by this live collector', old.reopen.__doc__)
+        raw = inspect.getsource(seed.validate_system)
+        self.assertIn("value['interactiveUsers']==0", raw)
+        self.assertIn("fresh['boot']==CLOSE_REQUEST['detachment']['boot']", inspect.getsource(old.program))
+
+    def test_spoofed_functions_and_samebytes_current_file_replacement_refuse(self):
+        for module, name in ((subject, '_canonical'), (subject, '_verify_callables'),
+                             (seed, 'request_program'), (host, '_render'),
+                             (subject.transport, 'admitted_transport'), (subject.transport, 'run_ssh'),
+                             (subject.deploy.direct, 'Guard'), (subject.source_loader, '_bootstrap_source'),
+                             (subject, '_bootstrap_source')):
+            with mock.patch.object(module, name, lambda *a, **k: b'foreign'):
+                with self.assertRaises(ValueError):subject.retain(Path('/unused'), {}, object())
+        with tempfile.TemporaryDirectory(dir=Path('/tmp').resolve()) as temporary:
+            path = Path(temporary) / 'durable.py';path.write_bytes(Path(subject.__file__).read_bytes());path.chmod(0o600)
+            name = 'agent_tools._bootstrap_guard_isolated'
+            spec = importlib.util.spec_from_file_location(name,path);module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module;spec.loader.exec_module(module)
+            module._guard_sources()
+            replacement = path.with_suffix('.samebytes');replacement.write_bytes(path.read_bytes());replacement.chmod(0o600);os.replace(replacement,path)
+            with self.assertRaises(ValueError):module.retain(Path('/unused'),{},object())
+
+
+@unittest.skipIf(os.name != 'posix' or os.geteuid() == 0, 'ordinary private original packet fixtures required')
+class RetainedPlanTests(unittest.TestCase):
+    def test_expired_reader_and_changed_preparation_never_replace_original(self):
+        def action(original,witness,packet,repo):
+            value = subject.retain(repo,original,witness);record = value.as_dict()
+            old = seed._READERS[witness]['result'];changed = json.loads(old);changed['observedNs'] += 1;changed['deadlineNs'] += 1
+            seed._READERS[witness]['result'] = json.dumps(changed)
+            with self.assertRaises(ValueError):subject.retain(repo,original,witness)
+            seed._READERS[witness]['result'] = old
+            self.assertEqual(subject.reopen(repo,original,record['operationId']).as_dict(),record)
+            seed._READERS[witness]['deadline'] = time.monotonic()-1
+            with self.assertRaises(ValueError):subject.retain(repo,original,witness)
+        with_original(self,action)
+
+    def test_failed_public_carrier_streams_preserved_before_reply_refusal(self):
+        if os.environ.get('VPN_CONTROL_BOOTSTRAP_CONTROLLED_GRAPH') != '1':
+            DurableEndpointTests._isolated_source_graph(self, seed_request=False);return
+        def action(original,witness,packet,repo):
+            value = subject.retain(repo,original,witness)
+            with mock.patch.dict(os.environ, {'VPN_CONTROL_BOOTSTRAP_CARRIER_FAULT':'malformed'}):
+                with self.assertRaises(ValueError):subject.observe_original(repo,value,guard=lambda:None,deadline=time.monotonic()+5)
+            observations = list((subject._ORIGINALS[value][0]/'observations').iterdir());self.assertEqual(len(observations),1)
+            directory = observations[0]
+            self.assertEqual((directory/'stdout.public').read_bytes(),b'malformed-public-reply\n')
+            self.assertEqual((directory/'stderr.public').read_bytes(),b'public-controller-failure\n')
+            self.assertEqual(json.loads((directory/'callback.json').read_bytes())['returnCode'],9)
+            self.assertFalse((directory/'closing.json').exists())
+        with_original(self,action)
+
+    def test_exact_initial_program_and_fresh_original_without_history(self):
+        def action(original, witness, packet, repo):
+            value = subject.retain(repo, original, witness)
+            record, source, _, plan = subject._load(value)
+            self.assertEqual(record['purpose'], subject.PURPOSE)
+            self.assertEqual(source, subject._canonical(original, plan['initial']))
+            self.assertTrue(b'_reader_clock_guard(CLOSE_REQUEST, CLOSE_READERS)' in source)
+            self.assertTrue(b'validate_system(fresh, SPEC' in source)
+            self.assertEqual(subject.reopen(repo, original, record['operationId']).as_dict(), record)
+            self.assertFalse(any(state[0] is value for state in subject._HISTORY.values()))
+            # Creating/reading an original packet never starts its owner.
+            remote = Path(record['namespace']['root']) / record['operationId']
+            self.assertFalse(remote.exists())
+        with_original(self, action)
+
+    def test_same_content_inode_source_and_partial_packet_refuse(self):
+        def action(original, witness, packet, repo):
+            value = subject.retain(repo, original, witness)
+            record = value.as_dict()
+            directory = subject._ORIGINALS[value][0]
+            target = directory / 'program.source'
+            saved = target.read_bytes()
+            changed = target.with_suffix('.replacement')
+            changed.write_bytes(saved);changed.chmod(0o600);os.replace(changed, target)
+            with self.assertRaises(ValueError):value.as_dict()
+            with self.assertRaises(ValueError):subject.reopen(repo, original, record['operationId'])
+            self.assertEqual(target.read_bytes(), saved)
+        with_original(self, action)
+
+
+@contextmanager
+def native_endpoint(vm, original):
+    """Controlled SYSTEM boundary with a real Unix socket and mutable facts."""
+    proof = {'machine': original.as_dict()['binding']['spec']['deploymentId'], 'boot': '2026-10-20T03:04:05.0000000Z',
+             'principal': 'S-1-5-18', 'account': 'S-1-5-21-1-2-3-1001', 'ordinary': True,
+             'setupComplete': True, 'agentReady': True, 'interactiveUsers': 0}
+    path = vm / 'system.sock';server = socket.socket(socket.AF_UNIX);server.bind(str(path));server.listen();server.settimeout(.1)
+    stop = threading.Event();calls = [];errors = []
+    def serve():
+        try:
+            while not stop.is_set():
+                try:client, _ = server.accept()
+                except socket.timeout:continue
+                with client:
+                    request = json.loads(client.recv(65536));calls.append(request)
+                    client.sendall((json.dumps({**proof, 'nonce': request['nonce']})+'\n').encode())
+        except Exception as error:errors.append(type(error).__name__)
+    thread = threading.Thread(target=serve);thread.start()
+    try:yield path, proof, calls
+    finally:
+        stop.set();thread.join(2);server.close();path.unlink()
+        OWNED_CLOSURES.append({'endpointSocketAbsent':not path.exists(),'endpointThreadJoined':not thread.is_alive(),
+            'endpointErrors':list(errors)})
+        if thread.is_alive() or errors:raise AssertionError('controlled endpoint did not close')
+
+
+def controlled_request_program(original, witness, endpoint):
+    """Only controller/target metadata boundaries replaced; full old branch runs."""
+    body = original.as_dict();request = witness.request
+    source = 'import json,os,pathlib,socket,re,types,sys\n'
+    source += 'OWNER='+repr(jobs.owner_source())+'\nmodule=types.ModuleType("controlled_atomic_metadata");sys.modules[module.__name__]=module\nexec(compile(OWNER,"controlled-owned-metadata","exec"),module.__dict__)\n'
+    for name, value in {'SPEC': body['binding']['spec'], 'CONTEXT': body['binding']['context'], 'OPERATION': body['operationId'],
+                        'SEED_ORIGINAL': body, 'REQUEST': request, 'ENDPOINT': str(endpoint)}.items():
+        source += name+'='+repr(value)+'\n'
+    source += 'root=pathlib.Path(SPEC["root"])\n'
+    source += '''def require(v,reason='controlled_native_refusal'):
+ if not v:raise ValueError(reason)
+_need=require
+def seed_guard():
+ row=os.lstat(root);require([row.st_dev,row.st_ino,row.st_mode,row.st_uid,row.st_gid]==REQUEST['rootIdentity'])
+def read(name):return json.loads(module._read(root/name,module.MAX_PROGRAM_BYTES))
+def save(name,value):module._publish(root/name,value)
+def private(path):return module._private(path,directory=False)
+def generation(i):return [i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns]
+def script(label,source=None,expected=None):
+ with socket.socket(socket.AF_UNIX)as client:
+  client.connect(ENDPOINT);client.sendall(json.dumps({'nonce':SEED_FINAL_NONCE}).encode());body=b''
+  while not body.endswith(b'\\n'):body+=client.recv(65536)
+ return json.loads(body)
+def _lifecycle_host_work(vm_actor=None,operator_fd=None):
+ return {'visibilityComplete':True,'idle':True}
+'''
+    source += inspect.getsource(seed.validate_system)+'\n'
+    source += "def _main():\n    import fcntl\n    lock=os.open(root/'intent.json',os.O_RDONLY|os.O_NOFOLLOW)\n    fcntl.flock(lock,fcntl.LOCK_EX)\n    require(_lifecycle_host_work(operator_fd=lock)['idle'])\n    request=REQUEST\n    if True:\n        seed_guard();print(json.dumps(request));return\n\n_main()\n"
+    return source.encode()
+
+
+@contextmanager
+def local_carrier():
+    class Admission:
+        def revalidate(self):pass
+    class Authority:
+        config = object()
+        def guard(self):pass
+    @contextmanager
+    def admitted(*args, **kwargs):yield Admission()
+    @contextmanager
+    def authority(*args, **kwargs):yield Authority()
+    def run(argv, **kwargs):
+        return subprocess.run([sys.executable, *argv[1:]], **kwargs)
+    with mock.patch.object(subject.transport, 'admitted_transport', admitted), mock.patch.object(subject.deploy.direct, 'Guard', authority), \
+            mock.patch.object(subject.transport, 'build_ssh_argv', side_effect=lambda config, target, timeout, command:command), \
+            mock.patch.object(subject.transport, 'run_ssh', side_effect=run):yield
+
+
+@unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() > 0, 'actual Linux initial host clock and durable owner')
+class DurableEndpointTests(unittest.TestCase):
+    def _isolated_source_graph(self, *, seed_request=True,preflight_only=False):
+        # Load the actual function-local producers before calculating the finite
+        # graph. Replacements are retained source-owned native request/carrier
+        # roles; every adapter/source/compiled-code guard stays active in child.
+        from agent_tools import readiness_windows as windows
+        windows._source_pins()
+        with_original(self,lambda original,witness,packet,repo:subject.retain(repo,original,witness))
+        repository = Path(__file__).resolve().parents[2]
+        sources = {}
+        for module in tuple(sys.modules.values()):
+            filename = getattr(module,'__file__',None)
+            if filename:
+                path = Path(filename).resolve()
+                if path.is_relative_to(repository) and path.suffix == '.py':sources[str(path.relative_to(repository))] = path.read_bytes()
+        for relative in ('agent_tools/tool_action_policy.json',):sources[relative] = (repository/relative).read_bytes()
+        from agent_tools import windows_vm_media as media
+        import importlib.metadata
+        for name,path,raw in media.dependency_sources():sources[name] = raw
+        distribution = importlib.metadata.distribution('pycdlib')
+        for entry in distribution.files:
+            if str(entry).endswith(('.dist-info/METADATA','.dist-info/RECORD')):
+                sources[str(entry)] = distribution.locate_file(entry).read_bytes()
+        for family in ('windows_bootstrap_durable','windows_seed_reader_scope','windows_bootstrap_nested_closure'):
+            for path in (repository/'agent_tools/tests/fixtures'/family).iterdir():
+                self.assertTrue(path.is_file() and not path.is_symlink());sources[str(path.relative_to(repository))] = path.read_bytes()
+        def replace_role(filename, name, replacement):
+            raw = sources[filename].decode();nodes = [n for n in ast.parse(raw).body if isinstance(n,(ast.FunctionDef,ast.ClassDef)) and n.name == name]
+            self.assertEqual(len(nodes),1);node = nodes[0];lines = raw.splitlines(True)
+            start = min([node.lineno]+[n.lineno for n in node.decorator_list])-1
+            sources[filename] = (''.join(lines[:start])+replacement+'\n'+''.join(lines[node.end_lineno:])).encode()
+        if seed_request:replace_role('agent_tools/readiness_windows_seed_detach.py','request_program',(FIXTURE/'controlled_request_adapter.source').read_text())
+        roles = (FIXTURE/'controlled_carrier_roles.source').read_text();role_tree = ast.parse(roles);role_lines = roles.splitlines(True)
+        for node in role_tree.body:
+            start = min([node.lineno]+[n.lineno for n in node.decorator_list])-1
+            segment = ''.join(role_lines[start:node.end_lineno])
+            filename = 'agent_tools/ssh_direct_nested_channel.py'if node.name=='Guard'else'agent_tools/ssh_transport.py'
+            replace_role(filename,node.name,segment)
+        # This source-owned unittest boundary emits each actual harmless outer
+        # caller's identity. Production owner/admission/source guards are intact.
+        filename='agent_tools/tests/test_windows_host_jobs.py';raw=sources[filename].decode();lines=raw.splitlines(True)
+        cls=next(node for node in ast.parse(raw).body if isinstance(node,ast.ClassDef)and node.name=='WindowsHostOwnerTests')
+        node=next(node for node in cls.body if isinstance(node,ast.FunctionDef)and node.name=='run_source')
+        role=(repository/'agent_tools/tests/fixtures/windows_bootstrap_nested_closure/controlled_host_test_role.source').read_text()
+        replacement=''.join('    '+line if line.strip()else line for line in role.splitlines(True))
+        sources[filename]=(''.join(lines[:node.lineno-1])+replacement+''.join(lines[node.end_lineno:])).encode()
+        with tempfile.TemporaryDirectory(dir=Path('/tmp').resolve()) as temporary:
+            root = Path(temporary)
+            for name,raw in sources.items():
+                path = root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);path.chmod(0o600)
+            guard='import sys;sys.path.insert(0,'+repr(str(root))+');from agent_tools import readiness_windows as windows;windows._source_pins();print("actual_nested_dependency_guard_green")'
+            preflight=run_owned([sys.executable,'-I','-B','-c',guard],capture_output=True,timeout=10)
+            self.assertEqual(preflight.returncode,0,(preflight.stdout+preflight.stderr).decode())
+            if preflight_only:return
+            command = 'import sys,unittest,json;sys.path.insert(0,'+repr(str(root))+');from agent_tools.tests import test_windows_bootstrap_durable as tests;result=unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromName('+repr('agent_tools.tests.test_windows_bootstrap_durable.'+type(self).__name__+'.'+self._testMethodName)+'));print(json.dumps(tests.OWNED_CLOSURES));raise SystemExit(not result.wasSuccessful())'
+            env = dict(os.environ,VPN_CONTROL_BOOTSTRAP_CONTROLLED_GRAPH='1')
+            result = run_owned([sys.executable,'-I','-B','-c',command],capture_output=True,timeout=30,env=env)
+            OWNED_CLOSURES.extend(json.loads(result.stdout))
+            self.assertTrue(result.returncode==0,(result.stdout+result.stderr).decode()[:65536])
+
+    def _scenario(self, changed):
+        if os.environ.get('VPN_CONTROL_BOOTSTRAP_CONTROLLED_GRAPH') != '1':
+            self._isolated_source_graph();return
+        def action(original, witness, packet, repo):
+            global _CONTROLLED_REQUEST_SOURCE
+            vm = Path(original.as_dict()['binding']['spec']['root'])
+            from agent_tools.tests.test_windows_host_jobs import WindowsHostOwnerTests
+            outer = WindowsHostOwnerTests('runTest')
+            with native_endpoint(vm, original) as (endpoint, facts, calls),carrier_closure():
+                fixed = controlled_request_program(original, witness, endpoint)
+                _CONTROLLED_REQUEST_SOURCE = fixed
+                if True:
+                    value = subject.retain(repo, original, witness);record = value.as_dict()
+                    first = outer.run_source(subject.operation_program(value, submit=True))
+                    self.assertIn(first['status']['state'], ('running', 'terminal', 'unknown'))
+                    end = time.monotonic()+8
+                    while True:
+                        result = outer.run_source(subject.operation_program(value))
+                        if result['status']['state'] == 'terminal':break
+                        self.assertLess(time.monotonic(), end);time.sleep(.02)
+                    self.assertEqual(result['status']['terminal']['exitCode'], 0)
+                    owner=result['status']['owner'];end=time.monotonic()+2
+                    while jobs._birth(owner['pid'])==owner['birth']and time.monotonic()<end:time.sleep(.02)
+                    self.assertNotEqual(jobs._birth(owner['pid']),owner['birth'])
+                    OWNED_CLOSURES.append({'pid':owner['pid'],'birth':owner['birth'],'sameOriginalBirthPresent':False,'terminalStreamsClosed':result['status']['terminal']['streamsClosed']})
+                    self.assertEqual(len(calls), 1)
+                    receipt = vm / 'managed-bootstrap-closed.json';before = host._file_pin(receipt)
+                    facts.update(changed)
+                    # Actual complete preserved old finalizer asks the endpoint
+                    # again and fails on the signed-in/new-boot scenario.
+                    old = before_module();admitted = old.admission(repo, original)
+                    old_source = old.program(original, witness, admitted)
+                    failure = run_owned([sys.executable, '-I', '-B', '-c', 'exec('+repr(old_source.decode())+')'], capture_output=True, timeout=5)
+                    self.assertNotEqual(failure.returncode, 0)
+                    self.assertEqual(len(calls), 2)
+                    # Lose the helper's live issuer, reopen exact retained packet,
+                    # and perform original observation in a real fresh carrier.
+                    subject._ORIGINALS.clear();subject._HISTORY.clear()
+                    fresh = subject.reopen(repo, original, record['operationId'])
+                    from agent_tools import readiness_windows_managed_admission as admission
+                    from agent_tools import readiness_windows as windows
+                    loaded=admission.load(repo,original.as_dict()['binding'],record['operationId'])
+                    backend=windows.WindowsBackend(repo,loaded.as_dict()['binding'],loaded.as_dict()['expectedSid'])
+                    remote=Path(record['namespace']['root'])/record['operationId'];hidden=remote.with_name(remote.name+'.controlled-hidden')
+                    remote.rename(hidden)
+                    try:
+                        with self.assertRaises(ValueError):admission.observe(backend,loaded,deadline=time.monotonic()+5)
+                        self.assertFalse((repo/'.runtime/readiness-windows-managed-admission').exists())
+                        self.assertEqual(len(calls),2,'UNKNOWN initial owner must not call current SYSTEM or create a new finalizer')
+                    finally:hidden.rename(remote)
+                    history = subject.observe_original(repo, fresh, guard=lambda:None, deadline=time.monotonic()+5)
+                    data = history.as_dict()
+                    self.assertTrue(data['historicalBootstrapComplete'])
+                    self.assertFalse(data['currentDesktopVerified']);self.assertFalse(data['currentReadersVerified']);self.assertFalse(data['currentLineageVerified'])
+                    from agent_tools import readiness_windows_creator_registry as creators
+                    handle=seed._ORIGINALS[original][1]
+                    historical=creators.historical_bootstrap(handle,history)
+                    admitted=historical.as_dict()
+                    self.assertEqual(admitted['expectedSid'],data['account'])
+                    self.assertTrue(admitted['historicalBootstrapComplete'])
+                    self.assertFalse(admitted['ordinarySigninAuthorized'])
+                    self.assertFalse(admitted['creatorIdleAuthorized'])
+                    with self.assertRaises(ValueError):creators.historical_bootstrap(handle,data)
+                    with self.assertRaises(ValueError):object.__new__(creators.HistoricalCreatorBootstrap).as_dict()
+                    compile(admission.program(loaded,history,str(uuid4()),request_only=True),'actual current admission controller','exec')
+                    self.assertEqual(host._file_pin(receipt), before)
+                    self.assertEqual(len(calls), 2, 'new observer must not call current SYSTEM or replay finalization')
+                    # EOF/UNKNOWN, changed receipt, source and generation cannot
+                    # become history even if the original local packet exists.
+                    malformed = copy.deepcopy(result);malformed['status']['terminal']['streamsClosed'] = False
+                    with self.assertRaises(ValueError):subject._terminal(record, malformed)
+                    malformed = copy.deepcopy(result);malformed['status']['state'] = 'unknown'
+                    with self.assertRaises(ValueError):subject._terminal(record, malformed)
+                    replaced = receipt.with_suffix('.samebytes');replaced.write_bytes(receipt.read_bytes());replaced.chmod(0o600);os.replace(replaced,receipt)
+                    with self.assertRaises(ValueError):
+                        subject.observe_original(repo, fresh, guard=lambda:None, deadline=time.monotonic()+5)
+        with_original(self, action)
+
+    def test_fresh_original_observation_after_signin_does_not_require_zero_interactive(self):
+        self._scenario({'interactiveUsers':1})
+
+    def test_fresh_original_observation_after_guest_reboot_keeps_original_boot_historical(self):
+        self._scenario({'boot':'2026-10-21T03:04:05.0000000Z'})
+
+
+if __name__ == '__main__':unittest.main()

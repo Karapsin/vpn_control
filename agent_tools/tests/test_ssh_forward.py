@@ -127,7 +127,7 @@ class SshForwardTest(unittest.TestCase):
                 mock.patch.object(forward, "_control_directory", return_value=(Path(directory) / "ctl", Path(directory) / "ctl" / "m")), \
                 mock.patch.object(forward, "_remote_result", side_effect=(True, True)) as remote, \
                 mock.patch.object(forward.subprocess, "Popen", side_effect=OSError("simulated launch failure")), \
-                mock.patch.object(forward.subprocess, "run") as run:
+                mock.patch.object(forward.ssh_transport, "run_ssh") as run:
             (Path(directory) / "ctl").mkdir()
             opened = forward.open_forward(directory)
             intent = forward._read_intent(Path(directory), config.hosts["archlinux"])
@@ -173,7 +173,7 @@ class SshForwardTest(unittest.TestCase):
                 mock.patch.object(forward, "_process_generation", return_value="42"), \
                 mock.patch.object(forward, "_process_command_matches", return_value=True), \
                 mock.patch.object(forward, "_remote_master_identity", return_value="a" * 64), \
-                mock.patch.object(forward.subprocess, "run") as run, \
+                mock.patch.object(forward.ssh_transport, "run_ssh") as run, \
                 mock.patch.object(forward, "_remote_result") as remote:
             intent = forward._identity(config.hosts["archlinux"], "/private/owned.sock", 123, "42", "correlation", "ready", "/private/owned", "a" * 64)
             forward._write_intent(Path(directory), intent)
@@ -194,7 +194,7 @@ class SshForwardTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.object(forward.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(forward, "_process_generation", return_value=None), \
-                mock.patch.object(forward.subprocess, "run") as run:
+                mock.patch.object(forward.ssh_transport, "run_ssh") as run:
             intent = forward._identity(config.hosts["archlinux"], "/private/owned.sock", 123, "42", "correlation", "ready", "/private/owned", "a" * 64)
             forward._write_intent(Path(directory), intent)
             result = forward.close(directory, {"correlationId": "correlation"})
@@ -206,7 +206,7 @@ class SshForwardTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.object(forward.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(forward, "_process_generation", return_value="42"), \
-                mock.patch.object(forward.subprocess, "run") as run, \
+                mock.patch.object(forward.ssh_transport, "run_ssh") as run, \
                 mock.patch.object(forward, "_remote_result") as remote:
             intent = forward._identity(config.hosts["archlinux"], "/private/owned.sock", 123, "42", "correlation", "pending", "/private/owned", "a" * 64)
             forward._write_intent(Path(directory), intent)
@@ -222,7 +222,7 @@ class SshForwardTest(unittest.TestCase):
                 mock.patch.object(forward, "_process_generation", return_value="42"), \
                 mock.patch.object(forward, "_process_command_matches", return_value=True), \
                 mock.patch.object(forward, "_remote_master_identity", return_value="b" * 64), \
-                mock.patch.object(forward.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run, \
+                mock.patch.object(forward.ssh_transport, "run_ssh", return_value=subprocess.CompletedProcess([], 0)) as run, \
                 mock.patch.object(forward, "_remote_result") as remote:
             intent = forward._identity(config.hosts["archlinux"], "/private/owned.sock", 123, "42", "correlation", "ready", "/private/owned", "a" * 64)
             forward._write_intent(Path(directory), intent)

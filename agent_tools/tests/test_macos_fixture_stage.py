@@ -708,8 +708,9 @@ class LocalMacosGuestProgramTests(unittest.TestCase):
         command = stage._command(inputs, mode)
         # The only transport seam replaces Tart/current Python. The fixed
         # bootstrap, stdin bytes, hash, length, intent and file execution remain.
+        # 60 s: on a directory-bound host the absent-account directory lookup alone took 10.03 s.
         return subprocess.run([sys.executable, *command[5:]], input=stage._GUEST_CODE.encode(),
-                              capture_output=True, timeout=10, check=False)
+                              capture_output=True, timeout=60, check=False)
 
     def assert_pair_writable(self):
         for path in self.paths.values():

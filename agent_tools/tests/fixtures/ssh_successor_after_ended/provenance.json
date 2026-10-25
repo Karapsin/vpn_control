@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "finding": "after a membership successor ended normally, automatic reconnect prepared a plain channel that the unresolved superseded original refused before any intent; the consumed dispatch then stayed UNKNOWN for the whole readiness budget and could never be proven unsubmitted",
+  "originalOperationId": "ba8f1ae6-f26b-4dc7-bf2c-8afba4a0d59c",
+  "originalRecoveryId": "a42feeb2e5054d55d9a83cd13b0d1691381fc932187c2cc5d6dc33838678f3f0",
+  "files": {
+    "readiness_transport.before.source": {
+      "path": "agent_tools/readiness_transport.py",
+      "sha256": "c85e37230be1e171010f13f4c385e860f3ba04b34362b40a3d7f8c4a8297be53"
+    },
+    "readiness_nested_channel.before.source": {
+      "path": "agent_tools/readiness_nested_channel.py",
+      "sha256": "9a3eca2af528a66b4e7f76ecfbbeaf72040a0310b0b372b43fb6b20395ae09ca"
+    }
+  }
+}

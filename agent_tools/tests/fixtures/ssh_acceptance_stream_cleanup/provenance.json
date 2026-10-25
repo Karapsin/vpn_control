@@ -1,0 +1,10 @@
+{
+  "actualFailure": "real buffered-file EBADF flush and real pipe fsync failure leave the second parent stream open on complete before finish while it claims allParentDescriptorsClosed true",
+  "authority": "Whole actually reviewed unsubmitted237 controller and fixedaabd; tests execute only exact SourceHold/Proxy/finish/save/read/fingerprint definitions with actual owned files, child processes and loopback sockets. No full controller/private input/SSH dispatch.",
+  "noNativeFailureClaim": true,
+  "pins": {
+    "controller.before.source": "237efd148d0d41055c28f1472250d3324bc5165b22568456c8fe52d7a2bd1757",
+    "controller.fixed.source": "aabda457980c81a2578adba9c29711d9c8644c7ed29b7af1d9a40bf1678940bb"
+  },
+  "schemaVersion": 1
+}

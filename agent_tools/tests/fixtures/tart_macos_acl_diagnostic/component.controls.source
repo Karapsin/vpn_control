@@ -1,0 +1,109 @@
+"""Controlled actual C ABI and owned-FD tests; never native Darwin metadata."""
+import ast,ctypes as C,hashlib,importlib.util,json,os,struct,subprocess,tempfile,unittest
+from pathlib import Path
+from unittest.mock import patch
+HERE=Path(__file__).resolve().parent
+spec=importlib.util.spec_from_file_location('fixed_acl_diagnostic',HERE/'component.py');M=importlib.util.module_from_spec(spec);spec.loader.exec_module(M)
+class Tests(unittest.TestCase):
+ @classmethod
+ def setUpClass(cls):
+  cls.temp=tempfile.TemporaryDirectory(prefix='controlled-metadata-abi-');cls.addClassCleanup(cls.temp.cleanup)
+  library=Path(cls.temp.name)/'fake.dylib'
+  subprocess.run(['cc','-shared','-fPIC',str(HERE/'fake_metadata.c'),'-o',str(library)],check=True,capture_output=True,timeout=20)
+  cls.lib=C.CDLL(str(library),use_errno=True);cls.lib.configure.argtypes=[C.c_int];cls.lib.counts.argtypes=[C.c_int];cls.lib.counts.restype=C.c_int
+ def setUp(self):self.lib.configure(0);self.native=M.NativeMetadata(self.lib)
+ def test_real_c_abi_ordered_types_uuid_mask_flags_and_cleanup(self):
+  value=self.native.acl(7);self.assertEqual(value['state'],'available');self.assertEqual(value['entryCount'],2)
+  self.assertEqual([v['type']for v in value['orderedEntries']],['allow','deny'])
+  self.assertEqual([v['index']for v in value['orderedEntries']],[0,1]);self.assertTrue(value['orderedEntries'][1]['inheritance']['inherited'])
+  self.assertEqual(value['orderedEntries'][0]['qualifierGuid'],'112233445566778899aabbccddeeff01')
+  self.assertEqual(value['orderedEntries'][0]['permissionMask'],(1<<60)|0x2022)
+  self.assertEqual((self.lib.counts(0),self.lib.counts(1)),(1,2));self.assertEqual(value['effectiveAccess'],'not_evaluated')
+ def test_null_acl_never_means_empty_and_darwin_end_semantics(self):
+  for mode,reason in [(1,'permission_denied'),(2,'not_found'),(3,'acl_invalid'),(5,'acl_entry_unavailable'),(6,'acl_entry_unavailable')]:
+   self.lib.configure(mode);self.assertEqual(self.native.acl(7),{'state':'unavailable','reason':reason})
+  self.lib.configure(4);value=self.native.acl(7);self.assertEqual((value['state'],value['entryCount']),('available',0));self.assertEqual(self.lib.counts(0),1)
+ def test_128_entry_bound_and_every_error_free_original_copy(self):
+  for mode,reason in [(7,'acl_tag_unavailable'),(8,'acl_entry_overflow'),(9,'acl_qualifier_unavailable'),(10,'acl_release_failed'),(11,'acl_permissions_unavailable'),(12,'acl_flags_unavailable'),(13,'acl_flags_unavailable')]:
+   self.lib.configure(mode);self.assertEqual(self.native.acl(7),{'state':'unavailable','reason':reason});self.assertEqual(self.lib.counts(0),1)
+  self.lib.configure(8);self.native.acl(7);self.assertEqual(self.lib.counts(1),128)
+ def test_volume_actual_struct_request_length_valid_and_capability_masks(self):
+  self.assertEqual((C.sizeof(M.Attrlist),C.sizeof(M.Capabilities)),(24,36))
+  self.assertEqual(M.Attrlist.volattr.offset,8);self.assertEqual(M.Capabilities.valid.offset,20)
+  value=self.native.volume(7);self.assertEqual(value['state'],'available');self.assertTrue(value['formatSealedKnown']);self.assertTrue(value['formatSealed']);self.assertEqual(value['namespaceIntegrity'],'unqualified')
+  self.lib.configure(16);value=self.native.volume(7);self.assertFalse(value['formatSealedKnown']);self.assertFalse(value['formatSealed'])
+  for mode,reason in [(14,'permission_denied'),(15,'volume_reply_length')]:
+   self.lib.configure(mode);self.assertEqual(self.native.volume(7),{'state':'unavailable','reason':reason})
+ def test_volume_parser_short_and_oversize_cannot_be_success(self):
+  for raw in [b'',bytes(35),bytes(37),struct.pack('=I8I',0,0,0,0,0,0,0,0,0),struct.pack('=I8I',1000000,0,0,0,0,0,0,0,0)]:
+   with self.assertRaises(M.GetterUnavailable):M.parse_volume(raw)
+ def test_credential_memberships_not_success_when_memberd_unavailable(self):
+  value=self.native.credentials();self.assertEqual(value['effectiveUid'],os.geteuid());self.assertEqual(value['effectiveAccess'],'not_evaluated')
+  self.assertTrue(all(v['state']=='available'and'guid'in v for v in value['membership']))
+  self.lib.configure(17);value=self.native.credentials();self.assertTrue(all(v['state']=='unavailable'and'guid'not in v for v in value['membership']))
+ def owned(self):
+  temp=tempfile.TemporaryDirectory(prefix='fixed-acl-owned-');self.addCleanup(temp.cleanup);root=Path(temp.name).resolve();path=root/'parent'/'component';path.mkdir(parents=True);return root,path
+ def test_real_fd_path_binding_both_getters_and_no_child_content(self):
+  root,path=self.owned();(path/'must-not-read').write_text('private-control-marker')
+  calls=[]
+  class Reader:
+   def read(_,fd):calls.append(M.generation(os.fstat(fd)));return {'metadata':'synthetic'}
+  with patch.object(os,'read',side_effect=AssertionError('content read')),patch.object(os,'listdir',side_effect=AssertionError('directory list')):
+   value=M.directory_metadata(str(path),M.generation(path.stat()),Reader())
+  self.assertEqual(len(calls),2);self.assertTrue(value['namedFdGenerationStable']);self.assertFalse(value['directoryContentsRead']);self.assertEqual(value['componentAuthentication'],'unqualified')
+ def test_real_parent_rename_in_second_getter_blocked_after_callback(self):
+  root,path=self.owned();calls=[]
+  class Reader:
+   def read(_,fd):
+    calls.append(fd)
+    if len(calls)==2:
+     path.parent.rename(root/'moved');path.parent.mkdir();path.mkdir()
+    return {'metadata':'same'}
+  with self.assertRaises(M.Unavailable):M.directory_metadata(str(path),M.generation(path.stat()),Reader())
+  self.assertEqual(len(calls),2)
+ def test_symlink_or_stale_generation_refuses_before_getter(self):
+  root,path=self.owned();alias=root/'alias';alias.symlink_to(path,target_is_directory=True)
+  class Reader:
+   def read(_,fd):raise AssertionError('unexpected getter')
+  for selected,identity in [(alias,M.generation(path.stat())),(path,(1,)*9)]:
+   with self.assertRaises(M.Unavailable):M.directory_metadata(str(selected),identity,Reader())
+ def test_public_projection_source_no_private_principals_or_acl_values(self):
+  tree=ast.parse((HERE/'component.py').read_bytes());collect=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='collect')
+  assignment=next(n for n in ast.walk(collect)if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='public'for t in n.targets));keys={k.value for k in assignment.value.keys}
+  self.assertFalse(keys&{'credentials','componentPath','qualifierGuid','permissionMask','orderedEntries','groups','membership'});self.assertTrue({'nativeQualified','idleAuthority','namespaceIntegrity'}<=keys)
+  calls={n.func.attr for n in ast.walk(tree)if isinstance(n,ast.Call)and isinstance(n.func,ast.Attribute)}
+  self.assertFalse(calls&{'listdir','scandir','ioctl','acl_set_fd','acl_set_fd_np','acl_add_perm','chmod','chflags','setgroups'})
+  # NativeMetadata.read is our fixed getter dispatcher, not os.read/content.
+  os_calls={n.func.attr for n in ast.walk(tree)if isinstance(n,ast.Call)and isinstance(n.func,ast.Attribute)and isinstance(n.func.value,ast.Name)and n.func.value.id=='os'}
+  self.assertFalse(os_calls&{'listdir','scandir','ioctl','chmod','chflags'})
+ def test_dynamic_public_counts_never_emit_private_guid_paths_groups_or_exception(self):
+  private={'componentPath':'/private-controlled-marker','credentials':{'groups':[999999]},'metadata':{'acl':{'state':'available','entryCount':2,'orderedEntries':[{'qualifierGuid':'private-guid-sentinel','permissionMask':123}]},'volume':{'state':'available','formatSealedKnown':True,'formatSealed':False}}}
+  counts=M.public_counts([private]);serialized=json.dumps(counts)
+  for forbidden in ['private-controlled-marker','private-guid-sentinel','999999','123','orderedEntries','credentials']:self.assertNotIn(forbidden,serialized)
+  private['metadata']['acl']={'state':'unavailable','reason':'private exception /private-controlled-marker'}
+  counts=M.public_counts([private]);self.assertEqual(counts['aclUnavailableReasons'],{'other_error':1});self.assertNotIn('private',json.dumps(counts))
+ def test_complete_builder_pins_deadline_and_rejects_changed_source_before_dispatch(self):
+  root=HERE.parents[2]
+  sources={name:(root/'agent_tools'/name).read_bytes()for name in M.PINS}
+  component=(HERE/'component.py').read_bytes();source=M.build(sources,(1,502,1,1,0),component)
+  self.assertLessEqual(len(source),262144);self.assertLess(source.index(b'signal.alarm(60)'),source.index(b'exec(compile('));compile(source,'<controlled-generated-getter>','exec')
+  changed=dict(sources);name=next(iter(changed));changed[name]+=b'\n'
+  with self.assertRaises(M.Unavailable):M.build(changed,(1,502,1,1,0),component)
+  with self.assertRaises(M.Unavailable):M.build(sources,(1,502,1,1,0),component+b'\n_EXECUTING = None\n')
+ def test_pinned_sdk_lp64_declaration_old_red_current_exact_green(self):
+  sdk=Path('/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk');header=sdk/'usr/include/unistd.h'
+  self.assertEqual(hashlib.sha256(header.read_bytes()).hexdigest(),'8d535079658f063bcef358ef4c1c1b52b8e88dacfc22cbf4db0f6bf8abe40637')
+  # The compiler resolves the ACTUAL SDK's __LP64__ branch; this is not a
+  # duplicated Python/fake signature claiming itself correct.
+  template='#include <unistd.h>\n#ifndef __LP64__\n#error LP64 required\n#endif\n_Static_assert(__builtin_types_compatible_p(__typeof__(&fgetattrlist),int(*)(int,void*,void*,size_t,%s)),"exact LP64 SDK declaration");\n'
+  for typename,success in [('unsigned long',False),('unsigned int',True)]:
+   reply=subprocess.run(['cc','-fsyntax-only','-isysroot',str(sdk),'-x','c','-'],input=(template%typename).encode(),capture_output=True,timeout=20)
+   self.assertEqual(reply.returncode==0,success)
+   if not success:self.assertIn(b'static assertion failed',reply.stderr)
+  old_path=HERE/'before-lp64-options/component.py';self.assertEqual(hashlib.sha256(old_path.read_bytes()).hexdigest(),'82c12afeb51b7f9b0dea7dcc2fed6731a7b21f007d15f0c8cc06d2ae45485343')
+  spec=importlib.util.spec_from_file_location('old_lp64_signature',old_path);old=importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
+  old.NativeMetadata(self.lib)
+  with self.assertRaises(AssertionError):self.assertIs(self.lib.fgetattrlist.argtypes[-1],C.c_uint)
+  M.NativeMetadata(self.lib);self.assertIs(self.lib.fgetattrlist.argtypes[-1],C.c_uint);self.assertEqual(C.sizeof(self.lib.fgetattrlist.argtypes[-1]),4)
+if __name__=='__main__':unittest.main()
+

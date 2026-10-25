@@ -1,0 +1,775 @@
+"""Bounded, identity-bound readiness admission; observers remain non-mutating.
+
+Only a provider adapter can perform an effect. A durable once journal precedes
+power and credential effects. An uncertain acknowledgement is observed, never
+resubmitted. This module does not grant authority over an unowned fixture.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager, nullcontext
+from dataclasses import dataclass, field
+import hashlib
+import json
+import math
+import os
+import re
+from pathlib import Path
+import time
+from typing import Callable, Protocol
+from uuid import UUID
+
+def _private_dependency():
+    # Import-only users need the shared exception/types on every platform.
+    # A qualified runtime dependency failure must propagate without fallback.
+    from . import private_inventory_lock
+    return private_inventory_lock
+
+
+def __getattr__(name):
+    if name == "private":
+        return _private_dependency()
+    raise AttributeError(name)
+
+REQUIREMENTS = frozenset({"transport", "guest", "guest_agent", "ordinary_session", "interactive_desktop"})
+RECOVERIES = frozenset({"reconnect", "start", "resume", "wake_display", "login", "reboot"})
+NORMAL_BUDGET = 180.0
+COLD_BUDGET = 600.0
+TRANSPORT_BACKOFF = (1.0, 2.0, 4.0)
+IDLE_VISIBILITY = frozenset({"reservations", "running_jobs", "unknown_jobs", "installers",
+                             "lifecycle_phases", "operators", "protected_processes"})
+_POWER = frozenset({"start", "resume", "reboot"})
+MAX_DISPATCH_ATTEMPTS = 3
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _same_record(actual, expected):
+    return json.dumps(actual, sort_keys=True, separators=(",", ":"), allow_nan=False) == json.dumps(
+        expected, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+class RecoveryUnsubmitted(Exception):
+    """Trusted adapter proof that this exact dispatch never reached execution.
+
+    The adapter retains the actual non-secret evidence privately. No error text,
+    credentials, packet source or argv belongs here. Lost acknowledgements and
+    missing sockets are not evidence of non-submission.
+    """
+    def __init__(self, recovery_id, attempt, dispatch_digest, proof_sha256):
+        if (type(attempt) is not int or not 1 <= attempt <= MAX_DISPATCH_ATTEMPTS or
+                any(type(value) is not str or _SHA256.fullmatch(value) is None
+                    for value in (recovery_id, dispatch_digest, proof_sha256))):
+            raise ValueError("invalid_recovery_unsubmitted_proof")
+        self.recovery_id, self.attempt = recovery_id, attempt
+        self.dispatch_digest, self.proof_sha256 = dispatch_digest, proof_sha256
+        super().__init__("recovery_proven_unsubmitted")
+
+    def matches(self, dispatch):
+        return (type(self.attempt) is int and self.attempt == dispatch["attempt"] and
+                self.recovery_id == dispatch["recoveryId"] and self.dispatch_digest == dispatch["dispatchDigest"] and
+                type(self.proof_sha256) is str and _SHA256.fullmatch(self.proof_sha256) is not None)
+
+
+class RecoveryEnded(RecoveryUnsubmitted):
+    """Positive terminal failure of an original connection recovery owner.
+
+    This does not assert non-submission or readiness. Only reconnect may move
+    to a new connection generation; it never authorizes another application job.
+    """
+    def __init__(self, recovery_id, attempt, dispatch_digest, proof_sha256):
+        super().__init__(recovery_id, attempt, dispatch_digest, proof_sha256)
+        Exception.__init__(self, "recovery_terminal_failed")
+
+
+class AdapterBlocked(ValueError):
+    """A provider may project only these reviewed, non-secret failure codes."""
+    REASONS = frozenset({"authentication_rejected", "credential_unavailable", "trust_mismatch",
+                         "ownership_mismatch", "integrity_mismatch", "machine_identity_mismatch",
+                         "boot_identity_unavailable", "guest_agent_unavailable", "session_unrecognized",
+                         "wrong_account", "screen_unrecognized", "provider_unavailable",
+                         "connection_outcome_unknown", "connection_generation_changed"})
+
+    def __init__(self, reason):
+        if reason not in self.REASONS:
+            raise ValueError("invalid_adapter_blocker")
+        self.reason = reason
+        super().__init__(reason)
+
+
+class ReadinessBlocked(ValueError):
+    """Finite public failure; adapter exception messages never reach the caller."""
+    def __init__(self, reason: str, operation_identity: str):
+        self.reason = reason
+        self.operation_identity = operation_identity
+        super().__init__(reason)
+
+    def as_dict(self):
+        return {"ok": False, "state": "blocked", "reason": self.reason,
+                "operationId": self.operation_identity, "replayAllowed": False,
+                "nextAction": "observe_original" if self.reason == "recovery_outcome_unknown" else "resolve_blocker"}
+
+
+@dataclass(frozen=True)
+class Requirements:
+    required: frozenset[str] = frozenset()
+    permitted_recoveries: frozenset[str] = frozenset()
+    intentional_states: frozenset[str] = frozenset()
+
+    def __post_init__(self):
+        for key in ("required", "permitted_recoveries", "intentional_states"):
+            value = getattr(self, key)
+            if type(value) not in (set, frozenset):
+                raise ValueError("invalid_readiness_policy")
+            object.__setattr__(self, key, frozenset(value))
+        if not self.required <= REQUIREMENTS or not self.permitted_recoveries <= RECOVERIES:
+            raise ValueError("invalid_readiness_policy")
+        if not self.intentional_states <= {"disconnected", "stopped", "paused", "suspended", "sleeping", "locked", "signed_out"}:
+            raise ValueError("invalid_intentional_state")
+
+
+@dataclass(frozen=True)
+class Observation:
+    target: str
+    machine: str
+    connection: str | None = None
+    boot: str | None = None
+    account: str | None = None
+    session: str | None = None
+    transport: str = "unknown"  # ready, unavailable, expired, dead, unknown
+    guest: str = "unknown"  # running, booting, stopped, paused, suspended, unhealthy
+    guest_agent: bool = False
+    ordinary_session: str = "unknown"  # ready, locked, signed_out, wrong_account
+    display: str = "unknown"  # ready, sleeping, unrecognized
+    trusted: bool = False
+    owned: bool = False
+    integrity: bool = False
+    credential_available: bool = False
+    idle_visibility: frozenset[str] = frozenset()
+    idle_blockers: frozenset[str] = frozenset()
+    coordinator_host: bool = False
+
+
+class Adapter(Protocol):
+    capabilities: frozenset[str]
+
+    def observe(self, requirements: Requirements, deadline: float) -> Observation: ...
+    def recover(self, action: str, recovery_identity: str, observed: Observation, deadline: float) -> None: ...
+
+
+@dataclass(frozen=True)
+class ReadyContext:
+    operation_identity: str
+    target: str
+    machine: str
+    connection: str | None
+    boot: str | None
+    account: str | None
+    session: str | None
+    requirements: Requirements
+
+    def identities(self):
+        return (self.target, self.machine, self.connection, self.boot, self.account, self.session)
+
+
+@dataclass
+class Context:
+    target: str
+    machine: str
+    adapter: Adapter
+    journal: "RecoveryJournal"
+    deadline: float | None = None  # monotonic, caller can only shorten budgets
+    clock: Callable[[], float] = time.monotonic
+    sleep: Callable[[float], None] = time.sleep
+    cancelled: Callable[[], bool] = lambda: False
+    progress: Callable[[str], None] = lambda _: None
+
+
+def _identity(operation_identity: str):
+    if type(operation_identity) is not str or str(UUID(operation_identity)) != operation_identity:
+        raise ValueError("invalid_operation_identity")
+
+
+class RecoveryJournal:
+    """Per-target cooperative lock and create-only recovery records, POSIX only.
+
+    The private directory is task-owned and already exists. No inventory writer
+    lock is reused. Completed and uncertain history is retained across restarts.
+    """
+    class Lock:
+        name = "readiness.lock"
+        body = b"tool-readiness-lock-v1\n"
+
+        def __new__(cls, directory):
+            private = _private_dependency()
+            class NativeLock(private.InventoryLock):
+                name = cls.name
+                body = cls.body
+            return NativeLock(directory)
+
+    def __init__(self, directory: Path):
+        self.path = Path(directory).absolute()
+
+    @contextmanager
+    def locked(self, *, deadline=float("inf"), clock=time.monotonic, sleep=time.sleep,
+               cancelled=lambda: False):
+        private = _private_dependency()
+        presented = private.PresentedPath(self.path)
+        with private.Directory(presented.canonical) as directory:
+            while True:
+                if cancelled() or clock() >= deadline:
+                    raise TimeoutError("readiness_lock_deadline")
+                try:
+                    lock = self.Lock(directory)
+                    break
+                except BlockingIOError:
+                    presented.guard(); directory.guard()
+                    sleep(min(0.1, max(0.0, deadline-clock())))
+            session = RecoveryJournal(self.path)
+            session.directory = directory
+            try:
+                presented.guard(); lock.guard()
+                yield session
+                presented.guard(); lock.guard()
+            finally:
+                lock.close()
+                del session.directory
+
+    def _read_named(self, name):
+        private = _private_dependency()
+        def pairs(rows):
+            result = {}
+            for key, value in rows:
+                if key in result:
+                    raise ValueError("recovery_record_invalid")
+                result[key] = value
+            return result
+        self.directory.guard()
+        try:
+            with private.Snapshot(self.directory, name) as snapshot:
+                value = json.loads(snapshot.body, object_pairs_hook=pairs)
+                if type(value) is not dict:
+                    raise ValueError("recovery_record_invalid")
+                return value
+        except FileNotFoundError:
+            return None
+
+    def lookup(self, key):
+        return self._read_named(hashlib.sha256(key.encode()).hexdigest() + ".json")
+
+    def _publish_named(self, name, value):
+        self.directory.guard()
+        existing = self._read_named(name)
+        if existing is not None:
+            if not _same_record(existing, value):
+                raise ValueError("recovery_identity_mismatch")
+            return False
+        raw = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+        descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=self.directory.fd)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+        os.fsync(self.directory.fd)
+        self.directory.guard()
+        return True
+
+    def record(self, key: str, value: dict) -> bool:
+        return self._publish_named(hashlib.sha256(key.encode()).hexdigest() + ".json", value)
+
+    def next_dispatch(self, intent):
+        """None is uncertain; False is exhausted. Neither permits a dispatch."""
+        previous = None
+        seen = set()
+        for attempt in range(1, MAX_DISPATCH_ATTEMPTS + 1):
+            body = {"version": 2, **{key: intent[key] for key in (
+                "action", "recoveryId", "target", "machine", "boot", "account", "session", "originalOperationId")},
+                "attempt": attempt, "previousProofSha256": previous}
+            dispatch = {**body, "dispatchDigest": hashlib.sha256(json.dumps(body, sort_keys=True,
+                        separators=(",", ":")).encode()).hexdigest()}
+            name = "dispatch-" + intent["recoveryId"] + "-" + str(attempt) + ".json"
+            consumed = self._read_named(name)
+            proof = self._read_named("unsubmitted-" + intent["recoveryId"] + "-" + str(attempt) + ".json")
+            if consumed is None:
+                if proof is not None:
+                    raise ValueError("recovery_proof_without_dispatch")
+                return dispatch
+            if not _same_record(consumed, dispatch):
+                raise ValueError("recovery_dispatch_identity_mismatch")
+            if proof is None:
+                return None
+            if (set(proof) != {"version", "recoveryId", "attempt", "dispatchDigest", "proofSha256"}
+                    or type(proof["version"]) is not int or proof["version"] != 2
+                    or type(proof["attempt"]) is not int or proof["attempt"] != attempt
+                    or proof["recoveryId"] != intent["recoveryId"] or proof["dispatchDigest"] != dispatch["dispatchDigest"]
+                    or type(proof["proofSha256"]) is not str or _SHA256.fullmatch(proof["proofSha256"]) is None
+                    or proof["proofSha256"] in seen):
+                raise ValueError("recovery_unsubmitted_proof_invalid")
+            previous = proof["proofSha256"]; seen.add(previous)
+        return False
+
+    def consume_dispatch(self, dispatch):
+        return self._publish_named("dispatch-" + dispatch["recoveryId"] + "-" + str(dispatch["attempt"]) + ".json", dispatch)
+
+    def record_terminal(self, dispatch, outcome):
+        if (dispatch["action"] != "reconnect" or type(outcome) is not RecoveryEnded or not outcome.matches(dispatch)):
+            return False
+        value = {"version": 2, "recoveryId": dispatch["recoveryId"], "attempt": dispatch["attempt"],
+                 "dispatchDigest": dispatch["dispatchDigest"], "proofSha256": outcome.proof_sha256, "state": "failed"}
+        self._publish_named("ended-" + dispatch["recoveryId"] + ".json", value)
+        return True
+
+    def _ended(self, recovery_id):
+        value = self._read_named("ended-" + recovery_id + ".json")
+        if value is None:
+            return False
+        if (set(value) != {"version", "recoveryId", "attempt", "dispatchDigest", "proofSha256", "state"}
+                or type(value["version"]) is not int or value["version"] != 2 or value["state"] != "failed"
+                or value["recoveryId"] != recovery_id or type(value["attempt"]) is not int
+                or not 1 <= value["attempt"] <= MAX_DISPATCH_ATTEMPTS
+                or any(type(value[key]) is not str or _SHA256.fullmatch(value[key]) is None
+                       for key in ("dispatchDigest", "proofSha256"))):
+            raise ValueError("recovery_terminal_invalid")
+        dispatch = self._read_named("dispatch-" + recovery_id + "-" + str(value["attempt"]) + ".json")
+        if (dispatch is None or dispatch.get("action") != "reconnect" or dispatch.get("recoveryId") != recovery_id
+                or dispatch.get("dispatchDigest") != value["dispatchDigest"]):
+            raise ValueError("recovery_terminal_invalid")
+        return True
+
+    def pending_dispatches(self, observed):
+        """Return only authenticated v2 consumed attempts lacking an outcome.
+
+        Merely finding an intent is never absence proof. The provider must
+        observe its original execution owner under the held operation scope.
+        """
+        names = os.listdir(self.directory.fd)
+        if len(names) > 30000:
+            raise ValueError("recovery_history_bound")
+        for name in names:
+            if re.fullmatch(r"[0-9a-f]{64}\.json", name) is None:
+                continue
+            value = self._read_named(name)
+            if (value.get("version") != 2 or value.get("target") != observed.target
+                    or value.get("machine") != observed.machine or value.get("action") not in RECOVERIES):
+                continue
+            if (set(value) != {"version", "action", "recoveryId", "target", "machine", "boot", "account", "session", "originalOperationId"}
+                    or type(value["version"]) is not int or value["recoveryId"] != name[:-5]):
+                raise ValueError("recovery_identity_mismatch")
+            _identity(value["originalOperationId"])
+            if self._completed(value["recoveryId"]) or self._ended(value["recoveryId"]) or self.next_dispatch(value) is not None:
+                continue
+            for attempt in range(1, MAX_DISPATCH_ATTEMPTS + 1):
+                dispatch = self._read_named("dispatch-" + value["recoveryId"] + "-" + str(attempt) + ".json")
+                proof = self._read_named("unsubmitted-" + value["recoveryId"] + "-" + str(attempt) + ".json")
+                if dispatch is not None and proof is None:
+                    yield dispatch
+                    break
+
+    def record_unsubmitted(self, dispatch, error):
+        if type(error) is not RecoveryUnsubmitted or not error.matches(dispatch):
+            return False
+        for attempt in range(1, dispatch["attempt"]):
+            prior = self._read_named("unsubmitted-" + dispatch["recoveryId"] + "-" + str(attempt) + ".json")
+            if prior is None or prior.get("proofSha256") == error.proof_sha256:
+                return False
+        value = {"version": 2, "recoveryId": dispatch["recoveryId"], "attempt": dispatch["attempt"],
+                 "dispatchDigest": dispatch["dispatchDigest"], "proofSha256": error.proof_sha256}
+        self._publish_named("unsubmitted-" + dispatch["recoveryId"] + "-" + str(dispatch["attempt"]) + ".json", value)
+        return True
+
+    def _completed(self, recovery_id):
+        private = _private_dependency()
+        try:
+            with private.Snapshot(self.directory, "completed-" + recovery_id + ".json") as snapshot:
+                return _same_record(json.loads(snapshot.body), {"version": 1, "recoveryId": recovery_id, "state": "observed"})
+        except FileNotFoundError:
+            return False
+
+    def recovery_key(self, key):
+        # Completed phases retain history and admit a later, distinct lock or
+        # sleep transition in the same boot/session. Pending phases never rearm.
+        for generation in range(10000):
+            candidate = key + ":" + str(generation)
+            digest = hashlib.sha256(candidate.encode()).hexdigest()
+            if not self._completed(digest) and not self._ended(digest):
+                return candidate
+        raise ValueError("recovery_history_bound")
+
+    def reconcile(self, observed):
+        """Close prior effects only from positive current desired-state proof."""
+        private = _private_dependency()
+        for name in os.listdir(self.directory.fd):
+            if len(name) != 69 or not name.endswith(".json"):
+                continue
+            with private.Snapshot(self.directory, name) as snapshot:
+                value = json.loads(snapshot.body)
+            if (type(value.get("version")) is not int or value["version"] not in {1, 2} or value.get("target") != observed.target
+                    or value.get("machine") != observed.machine or value.get("action") not in RECOVERIES):
+                continue
+            recovery_id = value.get("recoveryId")
+            if type(recovery_id) is not str or _SHA256.fullmatch(recovery_id) is None or name != recovery_id + ".json":
+                raise ValueError("recovery_identity_mismatch")
+            action = value["action"]
+            ready_guest = observed.guest == "running" and observed.boot is not None
+            closed = {"reconnect": observed.transport == "ready" and observed.connection is not None,
+                      "start": ready_guest,
+                      "resume": ready_guest,
+                      "reboot": ready_guest and observed.boot != value["boot"],
+                      "login": ready_guest and observed.ordinary_session == "ready"
+                               and observed.account is not None and observed.session is not None,
+                      "wake_display": ready_guest and observed.display == "ready"}[action]
+            if closed:
+                recovery_id = value["recoveryId"]
+                name = "completed-" + recovery_id + ".json"
+                if self._completed(recovery_id):
+                    continue
+                body = json.dumps({"version": 1, "recoveryId": recovery_id, "state": "observed"}, sort_keys=True).encode()
+                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=self.directory.fd)
+                with os.fdopen(fd, "wb") as stream:
+                    stream.write(body); stream.flush(); os.fsync(stream.fileno())
+                os.fsync(self.directory.fd)
+
+
+def _validate_observation(observed):
+    if type(observed) is not Observation:
+        return False
+    if any(type(getattr(observed, key)) is not str or not 0 < len(getattr(observed, key)) <= 512
+           or any(ord(c) < 32 for c in getattr(observed, key))
+           for key in ("target", "machine")):
+        return False
+    if any(getattr(observed, key) is not None and
+           (type(getattr(observed, key)) is not str or not 0 < len(getattr(observed, key)) <= 512
+            or any(ord(c) < 32 for c in getattr(observed, key)))
+           for key in ("connection", "boot", "account", "session")):
+        return False
+    if any(type(getattr(observed, key)) is not bool for key in
+           ("guest_agent", "trusted", "owned", "integrity", "credential_available", "coordinator_host")):
+        return False
+    return (observed.transport in {"ready", "unavailable", "expired", "dead", "unknown"}
+            and observed.guest in {"running", "booting", "stopped", "paused", "suspended", "unhealthy", "unknown"}
+            and observed.ordinary_session in {"ready", "locked", "signed_out", "wrong_account", "unknown"}
+            and observed.display in {"ready", "sleeping", "unrecognized", "unknown"}
+            and type(observed.idle_visibility) is frozenset and observed.idle_visibility <= IDLE_VISIBILITY
+            and type(observed.idle_blockers) is frozenset
+            and all(type(v) is str for v in observed.idle_blockers))
+
+
+def _observe(context: Context, requirements: Requirements, deadline: float, operation: str):
+    if context.cancelled():
+        raise ReadinessBlocked("readiness_cancelled", operation)
+    if context.clock() >= deadline:
+        raise ReadinessBlocked("readiness_deadline", operation)
+    try:
+        observed = context.adapter.observe(requirements, deadline)
+    except AdapterBlocked as error:
+        raise ReadinessBlocked(error.reason, operation) from None
+    except Exception:
+        raise ReadinessBlocked("readiness_observation_unavailable", operation) from None
+    if not _validate_observation(observed):
+        raise ReadinessBlocked("invalid_readiness_observation", operation)
+    if observed.target != context.target or observed.machine != context.machine:
+        raise ReadinessBlocked("machine_identity_mismatch", operation)
+    if not observed.trusted:
+        raise ReadinessBlocked("trust_mismatch", operation)
+    if not observed.integrity:
+        raise ReadinessBlocked("integrity_mismatch", operation)
+    if context.cancelled() or context.clock() >= deadline:
+        raise ReadinessBlocked("readiness_cancelled" if context.cancelled() else "readiness_deadline", operation)
+    return observed
+
+
+def _next(observed: Observation, requirements: Requirements, operation: str):
+    required = requirements.required
+    intentional = requirements.intentional_states
+    if required and "disconnected" not in intentional and observed.transport != "ready":
+        if observed.transport not in {"unavailable", "expired", "dead"}:
+            raise ReadinessBlocked("transport_state_unknown", operation)
+        return "reconnect"
+    if required and "disconnected" not in intentional and not observed.connection:
+        raise ReadinessBlocked("connection_identity_missing", operation)
+    if required & {"guest", "guest_agent", "ordinary_session", "interactive_desktop"}:
+        if observed.guest in intentional:
+            return None
+        if observed.guest == "stopped":
+            return "start"
+        if observed.guest in {"paused", "suspended"}:
+            return "resume"
+        if observed.guest == "unhealthy":
+            return "reboot"
+        if observed.guest == "booting":
+            return "wait"
+        if observed.guest != "running" or not observed.boot:
+            raise ReadinessBlocked("guest_state_unknown", operation)
+    if required & {"guest_agent", "ordinary_session", "interactive_desktop"} and not observed.guest_agent:
+        return "wait"
+    if required & {"ordinary_session", "interactive_desktop"}:
+        state = observed.ordinary_session
+        if state in intentional:
+            return None
+        if state == "wrong_account":
+            raise ReadinessBlocked("wrong_account", operation)
+        if state in {"locked", "signed_out"}:
+            if not observed.credential_available:
+                raise ReadinessBlocked("credential_unavailable", operation)
+            if "interactive_desktop" in required and observed.display == "sleeping":
+                return "wake_display"
+            return "login"
+        if state != "ready" or not observed.account or not observed.session:
+            raise ReadinessBlocked("session_unrecognized", operation)
+    if "interactive_desktop" in required:
+        if observed.display == "sleeping" and "sleeping" not in intentional:
+            return "wake_display"
+        if observed.display != "ready" and observed.display not in intentional:
+            raise ReadinessBlocked("screen_unrecognized", operation)
+    return None
+
+
+def ensure_ready(context: Context, requirements: Requirements, operation_identity: str) -> ReadyContext:
+    """Establish readiness before building a packet. Never submit original work."""
+    return _ensure_ready(context, requirements, operation_identity)
+
+
+def idle_reboot(context: Context, operation_identity: str) -> ReadyContext:
+    """One graceful reboot of an already running, positively idle owned guest.
+
+    Repeating the same operation observes its retained recovery. This finite
+    lifecycle action cannot start, resume, unlock or replace a fixture.
+    """
+    return _ensure_ready(context, Requirements(frozenset({"guest_agent"}),
+                         frozenset({"reconnect", "reboot"})), operation_identity, requested_reboot=True)
+
+
+def _requested_reboot_complete(journal, operation, context, observed):
+    request = journal.lookup("requested-reboot:" + operation)
+    if request is None:
+        return False
+    if (type(request) is not dict or set(request) != {"version", "operationId", "target", "machine", "recoveryId", "boot"}
+            or type(request["version"]) is not int or request["version"] != 1
+            or request["operationId"] != operation or request["target"] != context.target
+            or request["machine"] != context.machine or type(request["recoveryId"]) is not str
+            or _SHA256.fullmatch(request["recoveryId"]) is None):
+        raise ReadinessBlocked("reboot_request_identity_mismatch", operation)
+    intent = journal._read_named(request["recoveryId"] + ".json")
+    if (type(intent) is not dict or intent.get("action") != "reboot" or intent.get("version") != 2
+            or any(intent.get(key) != request[key] for key in ("target", "machine", "recoveryId", "boot"))):
+        raise ReadinessBlocked("reboot_request_identity_mismatch", operation)
+    return (observed.guest == "running" and bool(observed.boot) and observed.boot != request["boot"]
+            and journal._completed(request["recoveryId"]))
+
+
+def _ensure_ready(context: Context, requirements: Requirements, operation_identity: str,
+                  *, requested_reboot=False) -> ReadyContext:
+    _identity(operation_identity)
+    if (os.name != "posix" or not all(hasattr(os, name) for name in
+            ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK", "pread", "getuid", "geteuid"))):
+        raise ReadinessBlocked("unsupported_coordinator", operation_identity)
+    started = context.clock()
+    if context.deadline is not None and not math.isfinite(context.deadline):
+        raise ValueError("invalid_readiness_deadline")
+    deadline = min(started + NORMAL_BUDGET, context.deadline if context.deadline is not None else float("inf"))
+    if context.cancelled() or deadline <= started:
+        raise ReadinessBlocked("readiness_cancelled" if context.cancelled() else "readiness_deadline", operation_identity)
+    transport_attempts = 0
+    transport_key = None
+    pending_effect = False
+    inspected_outcomes = set()
+    reconciled_outcomes = set()
+    try:
+        scope = getattr(context.adapter, "operation_scope", None)
+        with (scope(deadline=deadline, cancelled=context.cancelled) if scope is not None else nullcontext()), context.journal.locked(
+                deadline=deadline, clock=context.clock, sleep=context.sleep,
+                cancelled=context.cancelled) as journal:
+            while True:
+                observed = _observe(context, requirements, deadline, operation_identity)
+                journal.reconcile(observed)
+                reconciler = getattr(context.adapter, "reconcile_recovery", None)
+                outcome_observer = getattr(context.adapter, "observe_recovery", None)
+                publication_changed = False
+                if callable(outcome_observer) or callable(reconciler):
+                    for dispatch in journal.pending_dispatches(observed):
+                        identity = (dispatch["dispatchDigest"], observed.connection, observed.boot)
+                        if callable(reconciler) and identity not in reconciled_outcomes:
+                            reconciled_outcomes.add(identity)
+                            try:
+                                # This route may publish retained observations
+                                # of the original owner. It must never submit
+                                # power, credentials, input or another owner.
+                                changed = reconciler(dispatch["action"], dispatch["recoveryId"], observed,
+                                                     deadline, dispatch["attempt"], dispatch["dispatchDigest"])
+                            except Exception:
+                                changed = False
+                            if type(changed) is RecoveryEnded:
+                                if not journal.record_terminal(dispatch, changed):
+                                    raise ReadinessBlocked("recovery_terminal_proof_invalid", operation_identity)
+                                transport_key = None
+                                publication_changed = True
+                                continue
+                            if changed is True:
+                                publication_changed = True
+                                continue
+                        if not callable(outcome_observer):
+                            continue
+                        if identity in inspected_outcomes:
+                            continue
+                        inspected_outcomes.add(identity)
+                        try:
+                            outcome = outcome_observer(dispatch["action"], dispatch["recoveryId"], observed,
+                                                       deadline, dispatch["attempt"], dispatch["dispatchDigest"])
+                        except Exception:
+                            outcome = None  # Unknown never grants another dispatch.
+                        if outcome is not None:
+                            if not journal.record_unsubmitted(dispatch, outcome):
+                                raise ReadinessBlocked("recovery_unsubmitted_proof_invalid", operation_identity)
+                            context.progress("recovery_proven_unsubmitted")
+                if publication_changed:
+                    # Re-observe identities before deciding on any effect. A
+                    # receipt alone is not readiness, even when source-bound.
+                    continue
+                action = _next(observed, requirements, operation_identity)
+                if action is None and requested_reboot and not _requested_reboot_complete(
+                        journal, operation_identity, context, observed):
+                    action = "reboot"
+                if action is None:
+                    ready = ReadyContext(operation_identity, observed.target, observed.machine, observed.connection,
+                                         observed.boot, observed.account, observed.session, requirements)
+                    reconcile = getattr(context.adapter, "reconcile_ready", None)
+                    if callable(reconcile):
+                        try:
+                            reconcile(ready, deadline=deadline)
+                        except Exception:
+                            raise ReadinessBlocked("recovery_bookkeeping_unresolved", operation_identity) from None
+                        revalidate(context, ready)
+                    return ready
+                if action in {"start", "reboot"} or (observed.transport == "ready" and observed.guest == "booting" and
+                        requirements.required & {"guest", "guest_agent", "ordinary_session", "interactive_desktop"}):
+                    deadline = min(started + COLD_BUDGET, context.deadline if context.deadline is not None else float("inf"))
+                if action == "wait":
+                    context.progress("waiting_for_guest")
+                    context.sleep(min(1.0, max(0.0, deadline - context.clock())))
+                    continue
+                if action not in requirements.permitted_recoveries:
+                    raise ReadinessBlocked("recovery_not_permitted", operation_identity)
+                if action not in context.adapter.capabilities:
+                    raise ReadinessBlocked("provider_recovery_unsupported", operation_identity)
+                if action != "reconnect" and (not observed.owned or observed.coordinator_host):
+                    raise ReadinessBlocked("fixture_ownership_unproven", operation_identity)
+                if action == "reboot" and (observed.idle_visibility != IDLE_VISIBILITY or observed.idle_blockers):
+                    raise ReadinessBlocked("positive_idle_proof_missing", operation_identity)
+                if action == "reconnect":
+                    if transport_key is None:
+                        if transport_attempts >= len(TRANSPORT_BACKOFF):
+                            raise ReadinessBlocked("transport_attempts_exhausted", operation_identity)
+                        context.sleep(min(TRANSPORT_BACKOFF[transport_attempts], max(0.0, deadline-context.clock())))
+                        transport_attempts += 1
+                        transport_key = journal.recovery_key(f"transport:{operation_identity}:{transport_attempts}")
+                    key = transport_key
+                else:
+                    # Same target, boot and session share one recovery, including
+                    # callers with different original operation identities.
+                    key = journal.recovery_key(json.dumps([context.target, context.machine, observed.boot, observed.account,
+                                                          observed.session, action], separators=(",", ":")))
+                recovery_id = hashlib.sha256(key.encode()).hexdigest()
+                base = {"action": action, "recoveryId": recovery_id,
+                         "target": context.target, "machine": context.machine,
+                         "boot": observed.boot, "account": observed.account, "session": observed.session}
+                value = journal.lookup(key)
+                if value is None:
+                    value = {"version": 2, **base, "originalOperationId": operation_identity}
+                    journal.record(key, value)
+                elif _same_record(value, {"version": 1, **base}):
+                    # Historical intents consumed the only known dispatch fence.
+                    # No newer marker/proof can retroactively authorize replay.
+                    pending_effect = True
+                    context.progress("observing_original_recovery")
+                    context.sleep(min(1.0, max(0.0, deadline-context.clock())))
+                    continue
+                else:
+                    _identity(value.get("originalOperationId"))
+                    if not _same_record(value, {"version": 2, **base, "originalOperationId": value["originalOperationId"]}):
+                        raise ValueError("recovery_identity_mismatch")
+                if action == "reboot":
+                    if requested_reboot:
+                        request = {"version": 1, "operationId": operation_identity, "target": context.target,
+                                   "machine": context.machine, "recoveryId": recovery_id, "boot": value["boot"]}
+                        existing_request = journal.lookup("requested-reboot:" + operation_identity)
+                        if existing_request is None:
+                            journal.record("requested-reboot:" + operation_identity, request)
+                        elif not _same_record(existing_request, request):
+                            raise ReadinessBlocked("reboot_limit_reached", operation_identity)
+                dispatch = journal.next_dispatch(value)
+                if dispatch is False:
+                    raise ReadinessBlocked("recovery_dispatch_attempts_exhausted", operation_identity)
+                if dispatch is None:
+                    pending_effect = True
+                    context.progress("observing_original_recovery")
+                    context.sleep(min(1.0, max(0.0, deadline-context.clock())))
+                    continue
+                if action == "reboot":
+                    original = value["originalOperationId"]
+                    budget_key = "reboot-budget:" + original
+                    budget = {"version": 2, "operationId": original, "target": context.target,
+                              "machine": context.machine, "recoveryId": recovery_id}
+                    existing = journal.lookup(budget_key)
+                    if existing is None:
+                        journal.record(budget_key, budget)
+                    elif not _same_record(existing, budget):
+                        raise ReadinessBlocked("reboot_limit_reached", operation_identity)
+                if context.cancelled() or context.clock() >= deadline:
+                    raise ReadinessBlocked("readiness_cancelled" if context.cancelled() else "readiness_deadline", operation_identity)
+                if not journal.consume_dispatch(dispatch):
+                    pending_effect = True
+                    continue
+                context.progress(action)
+                try:
+                    hook = getattr(context.adapter, "recover_attempt", None)
+                    if callable(hook):
+                        hook(action, recovery_id, observed, deadline, dispatch["attempt"], dispatch["dispatchDigest"])
+                    else:
+                        context.adapter.recover(action, recovery_id, observed, deadline)
+                    if action == "reconnect":
+                        transport_key = None
+                except RecoveryUnsubmitted as error:
+                    if not journal.record_unsubmitted(dispatch, error):
+                        raise ReadinessBlocked("recovery_unsubmitted_proof_invalid", operation_identity) from None
+                    pending_effect = False
+                    context.progress("recovery_proven_unsubmitted")
+                except Exception:
+                    # The once record survives lost acknowledgements and secret
+                    # bearing provider exceptions are never projected publicly.
+                    pending_effect = True
+    except ReadinessBlocked as error:
+        if pending_effect and error.reason == "readiness_deadline":
+            raise ReadinessBlocked("recovery_outcome_unknown", operation_identity) from None
+        raise
+    except TimeoutError:
+        if context.cancelled():
+            raise ReadinessBlocked("readiness_cancelled", operation_identity) from None
+        if context.clock() >= deadline:
+            raise ReadinessBlocked("recovery_outcome_unknown" if pending_effect else "readiness_deadline", operation_identity) from None
+        raise ReadinessBlocked("readiness_journal_unavailable", operation_identity) from None
+    except (OSError, ValueError, AttributeError, TypeError):
+        raise ReadinessBlocked("readiness_journal_unavailable", operation_identity) from None
+
+
+def revalidate(context: Context, ready: ReadyContext) -> None:
+    """Immediately before dispatch or GUI input; never regenerate submitted work."""
+    deadline = min(context.clock() + NORMAL_BUDGET, context.deadline if context.deadline is not None else float("inf"))
+    observed = _observe(context, ready.requirements, deadline, ready.operation_identity)
+    current = ReadyContext(ready.operation_identity, observed.target, observed.machine, observed.connection,
+                           observed.boot, observed.account, observed.session, ready.requirements)
+    if current.identities() != ready.identities() or _next(observed, ready.requirements, ready.operation_identity):
+        raise ReadinessBlocked("prepared_context_stale", ready.operation_identity)
+
+
+def reconcile_original(context: Context, operation_identity: str, observer: Callable[[ReadyContext], dict]) -> dict:
+    """Reconnect only, then inspect original owner; never wake or replace its VM."""
+    ready = ensure_ready(context, Requirements(frozenset({"transport"}), frozenset({"reconnect"})), operation_identity)
+    revalidate(context, ready)
+    try:
+        result = observer(ready)
+        if type(result) is not dict or result.get("state") not in {"running", "terminal", "proven_unsubmitted", "unknown"}:
+            raise ValueError("invalid_original_observation")
+        return {**result, "operationId": operation_identity, "replayAllowed": False,
+                "nextAction": {"running": "observe_original", "terminal": "collect_original",
+                               "proven_unsubmitted": "prepare_original", "unknown": "resolve_blocker"}[result["state"]]}
+    except Exception:
+        return {"state": "unknown", "reason": "original_owner_unresolved", "operationId": operation_identity,
+                "replayAllowed": False, "nextAction": "observe_original"}

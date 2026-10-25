@@ -4,6 +4,7 @@ Named/held guards exclude cooperating writers, not arbitrary external root write
 Uncertain daemon starts are never replayed. This tool never admits an MSI install.
 """
 from __future__ import annotations
+from . import ssh_transport
 import base64, contextlib, fcntl, hashlib, json, os, stat, subprocess, time
 from pathlib import Path
 from typing import Any
@@ -317,7 +318,7 @@ def _program(request: dict[str,Any]) -> str:
 def _stream(argv: list[str], secret: bytes, capture: AuthorityCapture, request: dict[str,Any]) -> tuple[dict[str,Any],list[dict[str,Any]]]:
     """Retain original child authority before waiting; no adopt-current-file path."""
     import selectors
-    process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    process=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     selector=selectors.DefaultSelector();selector.register(process.stdout,selectors.EVENT_READ,'stdout');selector.register(process.stderr,selectors.EVENT_READ,'stderr')
     chunks={'stdout':bytearray(),'stderr':bytearray()};pending=bytearray();frames=[];deadline=time.monotonic()+60
     try:
@@ -355,6 +356,8 @@ def _stream(argv: list[str], secret: bytes, capture: AuthorityCapture, request: 
         selector.close()
         for stream in(process.stdin,process.stdout,process.stderr):
             if stream is not None:stream.close()
+
+        ssh_transport.finish_ssh(process)
 
 
 def _validate_frame(frame: Any, request: dict[str,Any], prior: list[dict[str,Any]]) -> None:
@@ -500,7 +503,7 @@ def status(root: Path | str, original_receipt: dict[str,Any]) -> dict[str,Any]:
         _need(_local_read(capture,original_receipt['name'],original_receipt['pin'])==raw,'original-receipt-drift')
         current=authority._source_pins(root);current['recovery']=authority._read_bound_file(Path(__file__))
         _need(current==sources,'post-source-drift')
-        completed=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20,check=False)
+        completed=authority.closure.base.ssh_transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=20,check=False)
         _need(completed.returncode==0 and len(completed.stdout)<=65536,'status-transport')
         authority._verify_outer(root,{'outerAuthority':outer})
         _need(_local_read(capture,original_receipt['name'],original_receipt['pin'])==raw,'original-receipt-drift')
@@ -524,7 +527,7 @@ def preflight(root: Path | str) -> dict[str,Any]:
             capture.create('remote.py',source.encode())
             argv=authority.closure.base.ssh_transport.build_ssh_argv(config,HOST,50,command=authority.closure.base.windows_credential_probe_ssh._remote_command(wrapper))
             verify();authority._verify_outer(root,{'outerAuthority':outer});secret=credential._read_credential(root)
-            completed=subprocess.run(argv,input=secret,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=50,check=False);secret=None
+            completed=authority.closure.base.ssh_transport.run_ssh(argv,input=secret,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=50,check=False);secret=None
             capture.create('transport.stdout.private',completed.stdout[:65536])
             _need(completed.returncode==0 and len(completed.stdout)<=65536,'preflight-transport');value=json.loads(completed.stdout)
             verify();authority._verify_outer(root,{'outerAuthority':outer})

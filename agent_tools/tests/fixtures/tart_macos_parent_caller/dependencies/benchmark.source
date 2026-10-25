@@ -1,0 +1,133 @@
+"""PUBLIC ONLY: source-held nonce/TIS/physical guard timing; no input methods.
+
+The historical BFF profile is data, not generic input authority. Every fresh
+frame remains in memory: this driver neither saves nor hashes framebuffer data.
+No ordinary credential reader is opened. There is no private/once mode.
+"""
+import argparse,hashlib,json,os,sys,time,select
+from pathlib import Path
+from contextlib import ExitStack
+_EXECUTING_CODE=sys._getframe().f_code
+PROJECT=Path(__file__).resolve().parents[3];sys.path.insert(0,str(PROJECT))
+from agent_tools.source_module_loader import SourceSession
+parser=argparse.ArgumentParser();parser.add_argument('--target',required=True);parser.add_argument('--fixture-id',required=True);parser.add_argument('--operation-id',required=True);args=parser.parse_args()
+sources=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_unlock')
+U=sources.module;R=sources.load('readiness_tart_macos_registry');F=sources.load('readiness_fixture_registry')
+Q=sources.load('readiness_tart_macos_unlock_qualification');S=sources.load('readiness_tart_macos_unlock_stream')
+P=sources.load('private_inventory_lock');V=sources.load('readiness_tart_vnc');J=sources.load('durable_remote_job')
+protocol=sources.load('readiness_qemu_jobs');mac=sources.load('readiness_tart_macos')
+NINE=('readiness_tart_macos','readiness_tart_macos_registry','readiness_fixture_registry','readiness_lease_workflow','readiness_tart_macos_lease_executor','readiness_tart_macos_lease_qualification','readiness_tart_macos_lease_bridge','readiness_tart_macos_session','readiness_tart_macos_session_stream')
+for name in NINE:sources.load(name)
+def need(value,reason):
+ if not value:raise RuntimeError(reason)
+def save(path,value):
+ body=value if type(value)is bytes else json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb')as output:output.write(body);output.flush();os.fsync(output.fileno())
+U._uuid(args.operation_id);F._id(args.fixture_id)
+raw=Path(__file__).read_bytes();need(_EXECUTING_CODE==compile(raw,__file__,'exec',dont_inherit=True),'public_executing_source_changed')
+self_held=R.PublicProof(Path(__file__).resolve(),{'generation':list(P._generation(Path(__file__).stat())),'sha256':hashlib.sha256(raw).hexdigest()},private_file=False)
+custody=None
+try:
+ descriptor,registration_pin=F._json(PROJECT/'.rag_index/readiness-fixtures'/(args.fixture_id+'.json'))
+ need(descriptor['provider']=='tart-macos'and args.target=='tart:'+descriptor['binding']['vm_name'],'explicit_target_mismatch')
+ custody=R.MacCustody(PROJECT,args.fixture_id,descriptor,registration_pin)
+ need(args.target=='tart:'+custody.binding.vm_name,'explicit_target_mismatch')
+ root=custody.lifecycle_root
+ folder=root/('native-unlock-public-nonce-'+args.operation_id);folder.mkdir(mode=0o700)
+ save(folder/'driver.source.py',raw)
+ before_sources={path:hashlib.sha256(body).hexdigest()for path,body in sources.cache.values()}
+ save(folder/'intent.json',{'schemaVersion':1,'target':args.target,'fixtureId':args.fixture_id,'operationId':args.operation_id,'registration':{'path':str(PROJECT/'.rag_index/readiness-fixtures'/(args.fixture_id+'.json')),'pin':registration_pin},'producerSha256':hashlib.sha256(raw).hexdigest(),'sourcePins':before_sources,'purpose':'PUBLIC_only_nonce_TIS_136_guard_timing','ordinaryCredentialReaderForbidden':True})
+ with ExitStack()as stack:
+  stack.callback(self_held.close);stack.callback(sources.close);stack.callback(custody.close)
+  bff=root/'protected-state-bound-unlock-bff007a4-0f32-4e7d-a841-2b8b3482d8aa'
+  history={};holders=[]
+  roles={'source':'unlock-qualified.inert.py','plan':'plan.json','phase':'phase-unknown.json','password':'password-transport-complete.json','returnIntent':'submit-unknown.json','returnComplete':'submit-transport-complete.json','postProbe':'independent-session.json','publicPreflight':'public-preflight.json'}
+  for role,name in roles.items():
+   path=bff/name;pin={'generation':list(P._generation(path.lstat())),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+   held=stack.enter_context(R.PublicProof(path,pin));holders.append(held);history[role]=held.body
+  history_plan=Q._json(history['plan']);baseline_path=root/history_plan['baseline']
+  need(baseline_path.parent==root and baseline_path.name.startswith('public-')and baseline_path.suffix=='.png','historical_baseline_route_invalid')
+  baseline_held=stack.enter_context(R.PublicProof(baseline_path,{'generation':list(P._generation(baseline_path.lstat())),'sha256':hashlib.sha256(baseline_path.read_bytes()).hexdigest()}));holders.append(baseline_held);history['baseline']=baseline_held.body
+  original_intent,original_pin=F._json(Path(descriptor['originalRun']['path']))
+  need(original_pin==descriptor['originalRun']['pin'],'historical_original_run_changed')
+  profile=Q.historical_profile(history,sources.load('readiness_tart_macos').MacBinding(**descriptor['binding']),original_intent['operationId'])
+  c=custody;backend=sources.load('readiness_tart_macos').MacTartBackend(c.binding,c)
+  need(c.descriptor==descriptor and c.descriptor_pin==registration_pin and args.target=='tart:'+c.binding.vm_name,'explicit_registration_changed')
+  deadline=time.monotonic()+90
+  stack.enter_context(backend.operation_scope(deadline=deadline))
+  def physical():
+   need(time.monotonic()<deadline,'public_preflight_deadline');sources.guard();self_held.guard();c._operator.guard()
+   for held in holders:held.guard()
+   for held in(*c._records,*c._artifact_holders,*c._credentials.values()):held.guard()
+   c._public_share.guard();c._public_actor.guard(deadline=deadline)
+   need(J._birth(c.wrapper_actor['pid'])==c.wrapper_actor['birth']and R._parent(c.actor['pid'],deadline)==c.wrapper_actor['pid'],'public_original_actor_changed')
+   need(R._listener(c.actor['pid'],c.actor['birth'],c.endpoint['port'],deadline)==c.descriptor['listener'],'public_endpoint_changed')
+  physical()
+  executor=stack.enter_context(backend.guest_job_executor(deadline=deadline,operation_id=args.operation_id))
+  need((executor.target,executor.machine,int(executor.uid),executor.principal,executor.home)==(backend.binding.target,backend.binding.machine,backend.binding.ordinary_uid,backend.binding.ordinary_account,backend.binding.ordinary_home),'public_executor_binding_changed')
+  def source_closure():
+   physical();entries={Path(path).name:{'path':path,'sha256':hashlib.sha256(body).hexdigest()}for path,body in sources.cache.values()}
+   need(all(name+'.py'in entries for name in NINE),'public_nine_source_closure_incomplete')
+   return {'schemaVersion':1,'namedNine':{name:entries[name+'.py']for name in NINE},'capturedSources':sorted(entries.values(),key=lambda row:row['path'])}
+  save(folder/'source-capsule-before.json',source_closure())
+  def root_probe(label):
+   physical();source=R.guest_probe_source(backend.binding,prefix=c.guest_proof['prefix'],public_files=c.guest_proof['publicFiles'])
+   if type(source)is str:source=source.encode()
+   need(type(source)is bytes,'public_root_source_invalid');argv,payload=protocol.stdin_command(source.decode('utf-8'))
+   save(folder/(label+'.source.py'),source);save(folder/(label+'.request.stdin'),payload)
+   save(folder/(label+'.request.json'),{'schemaVersion':1,'purpose':'fixed_zero_argument_readonly_root_observer','target':args.target,'fixtureId':args.fixture_id,'operationId':args.operation_id,'argv':list(argv),'sourceSha256':hashlib.sha256(source).hexdigest(),'payloadSha256':hashlib.sha256(payload).hexdigest(),'executor':{'provider':executor.provider,'target':executor.target,'machine':executor.machine,'rawBoot':executor.boot,'uid':executor.uid,'principal':executor.principal,'home':executor.home}})
+   physical();result=executor.execute(argv,payload=payload)
+   # Preserve the complete actual callback before any reply or custody validation.
+   save(folder/(label+'.stdout.json'),result.stdout);save(folder/(label+'.stderr.txt'),result.stderr)
+   save(folder/(label+'.result.json'),{'schemaVersion':1,'returncode':result.returncode,'stdoutBytes':len(result.stdout),'stdoutSha256':hashlib.sha256(result.stdout).hexdigest(),'stderrBytes':len(result.stderr),'stderrSha256':hashlib.sha256(result.stderr).hexdigest()})
+   physical();need(result.returncode==0 and not result.stderr,'public_root_observer_failed')
+   packet=Q._json(result.stdout);need(type(packet)is dict and set(packet)=={'facts','agent'},'public_root_reply_invalid')
+   mac.guest_facts(packet['facts'],backend.binding)
+   need(packet['facts']['machine']==executor.machine and packet['agent']['rawBoot']==executor.boot,'public_root_identity_changed')
+   save(folder/(label+'.validated.json'),{'state':'fixed_readonly_root_observation_validated','actualRawBoot':executor.boot,'agent':packet['agent']['actor']})
+   return packet
+  root_before=root_probe('root-before');expected=Q._projection(root_before,backend.binding)
+  need(expected['console']['locked']is True and expected['display']=='ready','ordinary_locked_display_not_ready')
+  baseline=U._image(baseline_held.body,profile['profile']['dimensions'])
+  physical();argv,payload=S.session_stream_command(backend.binding)
+  save(folder/'guest-observer-source.py',payload);save(folder/'guest-observer-request.json',{'argv':list(argv),'sourceSha256':hashlib.sha256(payload).hexdigest()})
+  observer=U.SessionObserver(backend,expected,deadline,guard=physical)
+  observer_actor={'pid':observer.process.pid,'birth':J._birth(observer.process.pid)};save(folder/'observer-host-actor.json',observer_actor)
+  observations=[]
+  def live_guard():
+   physical();value=observer.check();need(value['console']['locked']is True,'public_phase_changed');physical();return value
+  try:
+   fd=c._credentials['vnc'].credential_fd()
+   try:
+    with V.ProtectedVncSession(port=c.endpoint['port'],credential_fd=fd,guard=live_guard,timeout=30)as view:
+     start=time.monotonic();image=U._image(view.capture_png(),profile['profile']['dimensions'])
+     need(image.crop(profile['profile']['accountBox']).tobytes()==baseline.crop(profile['profile']['accountBox']).tobytes(),'public_recipient_changed')
+     need(U._empty(image,baseline,profile['profile']),'public_field_not_historical_empty_match');image=None
+     prefix_seconds=time.monotonic()-start;checks_before=observer.counter
+     for _ in range(136):
+      begin=time.monotonic();used=set(observer.used_nonces);value=live_guard();elapsed=time.monotonic()-begin
+      nonce=observer.used_nonces-used;need(len(nonce)==1,'public_nonce_progress_invalid')
+      observations.append({'counter':observer.counter,'nonce':nonce.pop(),'seconds':elapsed,'observation':value})
+     total=time.monotonic()-start
+   finally:os.close(fd)
+   need(total<30 and len(observations)==136,'public_timing_budget_exceeded')
+   observer.process.stdin.close();observer.process.wait(timeout=3)
+   remaining=observer.process.stdout.read(16385);errors=observer.process.stderr.read(65537)
+   save(folder/'observer-tail.stdout',remaining);save(folder/'observer.stderr',errors)
+   need(observer.process.returncode==0 and not remaining and not errors,'public_observer_terminal_invalid')
+  finally:observer.close()
+  need(J._birth(observer_actor['pid'])!=observer_actor['birth'],'public_observer_actor_still_running')
+  physical();root_after=root_probe('root-after')
+  need(Q._projection(root_after,backend.binding)==expected,'public_final_identity_changed')
+  save(folder/'source-capsule-closed.json',source_closure());physical()
+  save(folder/'complete.json',{'schemaVersion':1,'target':args.target,'fixtureId':args.fixture_id,'operationId':args.operation_id,'originalRunOperationId':c.run_intent['operationId'],'profileAuthority':'historical_component_data_only','sourcePins':{path:hashlib.sha256(body).hexdigest()for path,body in sources.cache.values()},'recipient':expected,'observations':observations,'checksBeforeBenchmark':checks_before,'maximumGuardSeconds':max(row['seconds']for row in observations),'publicPrefixSeconds':prefix_seconds,'totalPublicGroupSeconds':total,'credentialGroupDeadlineSeconds':30,'ordinaryCredentialReaderOpened':False,'framebufferPersisted':False,'observerActorAbsent':True})
+  print(json.dumps({'operationId':args.operation_id,'state':'public_nonce_timing_complete','checks':136,'seconds':total}))
+except BaseException as error:
+ if 'folder'in globals()and folder.exists():
+  try:save(folder/'failure.json',{'operationId':args.operation_id,'failureClass':type(error).__name__,'ordinaryCredentialReaderOpened':False,'inputSubmitted':False})
+  except FileExistsError:pass
+ raise
+finally:
+ if custody is not None:custody.close()
+ self_held.close();sources.close()

@@ -1,0 +1,847 @@
+import os,re,hashlib
+def _rename_create_only(directory_fd, source, destination):
+    """Same-directory atomic publication, with no overwrite/link fallback.
+
+    Linux renameat2(2) RENAME_NOREPLACE and Darwin sys/stdio.h RENAME_EXCL
+    both reject an existing destination, including unsafe files and symlinks.
+    Unsupported coordinators/filesystems refuse instead of weakening this.
+    """
+    import ctypes
+    import errno
+    import sys
+    library = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        function = getattr(library, "renameatx_np", None); flag = 4
+    elif sys.platform.startswith("linux"):
+        function = getattr(library, "renameat2", None); flag = 1
+    else:
+        function = None; flag = 0
+    if function is None:
+        raise ValueError("atomic ownership lock publication unavailable")
+    function.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+    function.restype = ctypes.c_int
+    if function(directory_fd, os.fsencode(source), directory_fd, os.fsencode(destination), flag):
+        code = ctypes.get_errno()
+        if code == errno.EEXIST:
+            raise FileExistsError(code, "ownership lock already exists")
+        raise OSError(code, "atomic ownership lock publication failed")
+
+def validate_session(value, expected_sid, user, expected_machine):
+    """Refuse unrecognized WTS identity instead of interpreting zeroes as lock."""
+    def need(condition, reason):
+        if not condition:
+            raise ValueError(reason)
+    need(type(value) is dict and set(value) == {'machine','boot','console','infoLevel','session','tokenSid','expectedSid','ordinary','sessions','explorers'}, 'windows_session_fields')
+    need(type(expected_sid) is str and re.fullmatch('S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',expected_sid) is not None, 'windows_expected_sid')
+    need(value['expectedSid'] == expected_sid and value['ordinary'] is True, 'windows_account_mismatch')
+    need(type(value['boot']) is str and re.fullmatch('[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z',value['boot']) is not None, 'windows_boot_unrecognized')
+    need(type(value['machine']) is str and value['machine'].lower() == expected_machine, 'windows_machine_mismatch')
+    session = value['session']
+    need(type(value['console']) is int and 0 <= value['console'] < 2**32-1 and value['infoLevel'] == 1 and type(value['infoLevel']) is int, 'windows_session_unrecognized')
+    need(type(session) is dict and set(session) == {'SessionId','State','Flags','Station','User','Domain','Logon','Connect','Disconnect','LastInput','Current','InBytes','OutBytes','InFrames','OutFrames','InCompressed','OutCompressed'}, 'windows_session_unrecognized')
+    need(type(session['SessionId']) is int and session['SessionId'] == value['console'] and type(session['State']) is int and 0 <= session['State'] <= 9 and type(session['Flags']) is int and session['Flags'] in {0,1}, 'windows_session_unrecognized')
+    need(session['Station'] == 'Console' and type(session['User']) is str and type(session['Domain']) is str, 'windows_session_unrecognized')
+    need(type(session['Logon']) is int and session['Logon'] >= 0, 'windows_session_unrecognized')
+    need(type(value['sessions']) is list and 1 <= len(value['sessions']) <= 128 and type(value['explorers']) is list and len(value['explorers']) <= 128, 'windows_session_unrecognized')
+    for row in value['sessions']:
+        need(type(row) is dict and set(row)=={'Id','Name','State'} and type(row['Id']) is int and type(row['Name']) is str and type(row['State']) is int, 'windows_session_unrecognized')
+    for row in value['explorers']:
+        need(type(row) is dict and set(row)=={'Id','SessionId'} and type(row['Id']) is int and row['Id']>0 and type(row['SessionId']) is int, 'windows_session_unrecognized')
+    need(len(json.dumps(value)) <= 65536, 'windows_session_bound')
+    if not session['User']:
+        need(value['tokenSid'] is None, 'windows_session_unrecognized')
+        state = 'signed_out'
+    elif session['User'].casefold() != user.casefold() or value['tokenSid'] != expected_sid:
+        state = 'wrong_account'
+    elif session['State'] != 0:
+        state = 'unknown'
+    elif session['Flags'] == 0:
+        state = 'locked'
+    else:
+        need(sum(row['SessionId']==value['console'] for row in value['explorers']) == 1, 'windows_desktop_shell_unrecognized')
+        state = 'ready'
+    return {'ordinary_session':state,'boot':value['boot'],'account':expected_sid,'session':str(value['console'])+':'+str(session['Logon']),
+            'competingSessions':any(row['Id'] not in {0,value['console']} for row in value['sessions'])}
+
+def ppm(raw):
+    if type(raw)is not bytes or len(raw)>16*1024**2:raise ValueError('instance_login_screen_bound')
+    parts=raw.split(b'\n',3)
+    if len(parts)!=4 or parts[0]!=b'P6'or parts[2]!=b'255':raise ValueError('instance_login_screen_unrecognized')
+    fields=parts[1].split()
+    if len(fields)!=2 or any(not x.isdigit()for x in fields):raise ValueError('instance_login_screen_unrecognized')
+    w,h=map(int,fields)
+    if not 320<=w<=4096 or not 200<=h<=2160 or len(parts[3])!=w*h*3:raise ValueError('instance_login_screen_unrecognized')
+    return w,h,parts[3]
+
+def screen_gate(raw,profile):
+    w,h,pixels=ppm(raw)
+    if type(profile)is not dict or set(profile)!={'width','height','crops'}or (w,h)!=(profile['width'],profile['height'])or type(profile['crops'])is not list or not 1<=len(profile['crops'])<=8:raise ValueError('instance_login_screen_unrecognized')
+    for row in profile['crops']:
+        if type(row)is not dict or set(row)!={'rect','sha256'}or type(row['rect'])is not list or len(row['rect'])!=4 or any(type(v)is not int for v in row['rect'])or type(row['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',row['sha256'])is None:raise ValueError('instance_login_screen_profile')
+        x0,y0,x1,y1=row['rect']
+        if not 0<=x0<x1<=w or not 0<=y0<y1<=h:raise ValueError('instance_login_screen_profile')
+        crop=b''.join(pixels[(y*w+x0)*3:(y*w+x1)*3]for y in range(y0,y1))
+        if hashlib.sha256(crop).hexdigest()!=row['sha256']:raise ValueError('instance_login_screen_unrecognized')
+    return True
+
+def validate_display(value, machine, boot):
+    if (type(value) is not dict or set(value) != {'schemaVersion','machine','boot','displayState'}
+            or type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
+            or value['machine'] != machine or value['boot'] != boot
+            or type(value['displayState']) is not int or value['displayState'] not in {0,1,2}):
+        raise ValueError('windows_display_observation_invalid')
+    return {0: 'asleep', 1: 'awake', 2: 'dimmed'}[value['displayState']]
+
+def _profile_known_screen(root,prefix,monitor,fence,profile):
+ import os,stat,time
+ def pin(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+ path=root/(prefix+'-review-lockscreen.ppm');fence()
+ if os.path.lexists(path):raise ValueError('instance_fixture_frame_exists')
+ monitor('screendump',{'filename':str(path),'format':'ppm'});fence();fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  info=os.fstat(fd)
+  if not(stat.S_ISREG(info.st_mode)and info.st_uid==os.geteuid()and stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1 and 32<=info.st_size<=16*1024**2 and pin(info)==pin(os.lstat(path))):raise ValueError('instance_fixture_frame_identity')
+  raw=b''
+  while len(raw)<=16*1024**2:
+   chunk=os.read(fd,65536)
+   if not chunk:break
+   raw+=chunk
+  if len(raw)!=info.st_size or pin(os.fstat(fd))!=pin(info)or pin(os.lstat(path))!=pin(info):raise ValueError('instance_fixture_frame_identity')
+  fence();screen_gate(raw,profile);fence()
+ finally:os.close(fd)
+def _close_profile_predecessor(root,read,fence,lock,birth,publish,identity):
+ import os,stat
+ def need(value,reason):
+  if not value:raise ValueError(reason)
+ def pin(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+ fence();prefix='fixture-profile-'+PREDECESSOR_OPERATION;original=None
+ for row in PREDECESSOR_RECORDS:
+  name=row['name'];need(name.startswith(prefix+'.')and name in {prefix+s for s in ('.intent.json','.wake.intent.json','.wake.terminal.json','.dismiss.intent.json','.dismiss.terminal.json','.terminal.json')},'instance_fixture_predecessor_changed')
+  need(os.path.lexists(root/name)is row['present'],'instance_fixture_predecessor_changed')
+  if row['present']:
+   current=read(name);need(current==row['record']and pin(os.lstat(root/name))==row['generation'],'instance_fixture_predecessor_changed')
+   if name==prefix+'.intent.json':original=current
+ need(type(original)is dict and original['operationId']==PREDECESSOR_OPERATION and original['phaseSourceSha256']==PREDECESSOR_PHASE_SHA and original['expected']==FIXTURE_EXPECTED and original['account']==FIXTURE_SID and original['rootFlockGeneration']==pin(os.fstat(lock))==pin(os.lstat(root/'intent.json'))and original['lockOriginal']==LOCK_TERMINAL and original['replayAllowed']is False,'instance_fixture_predecessor_changed')
+ owner=original['owner'];need(type(owner)is dict and set(owner)=={'pid','startTicks'}and all(type(owner[k])is int and owner[k]>0 for k in owner),'instance_fixture_owner_changed')
+ process_path=__import__('pathlib').Path('/proc',str(owner['pid']));current_birth=birth(owner['pid'])if process_path.exists()else None
+ need(current_birth!=owner['startTicks'],'instance_fixture_original_active');fence()
+ terminal=read(prefix+'.terminal.json');wake=read(prefix+'.wake.terminal.json')
+ need(terminal=={'identity':original,'state':'unknown','submittedPhases':['wake'],'reason':'instance_login_screen_unrecognized','settingsChanged':False,'replayAllowed':False}and wake=={'identity':original,'phase':'wake','state':'pointer-acknowledged','replayAllowed':False}and read(prefix+'.wake.intent.json')=={'identity':original,'phase':'wake','replayAllowed':False}and not os.path.lexists(root/(prefix+'.dismiss.intent.json'))and not os.path.lexists(root/(prefix+'.dismiss.terminal.json')),'instance_fixture_predecessor_changed')
+ closure={'schemaVersion':1,'originalOperationId':PREDECESSOR_OPERATION,'originalIdentity':original,'originalTerminal':terminal,'observerSourceSha256':PREDECESSOR_COLLECTOR_SHA,'state':'wake-complete-dismiss-unsubmitted','wakeReplayed':False,'wholeAttemptUnsubmitted':False,'continuationOperationId':OPERATION,'continuationSourceSha256':FIXTURE_PHASE_SHA,'replayAllowed':False}
+ name=prefix+'.wake-complete-dismiss-unsubmitted.json'
+ if os.path.lexists(root/name):need(read(name)==closure,'instance_fixture_continuation_changed')
+ else:publish('',closure,name=name)
+ fence();return closure
+
+def _fixture_profile(root,read,monitor,guard,script,result,lock,birth):
+ import os,time,json,uuid,stat,hashlib,base64,struct
+ def need(value,reason):
+  if not value:raise ValueError(reason)
+ def gen(info):return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+ prefix='fixture-profile-'+OPERATION
+ lock_generation=gen(os.fstat(lock));owner={'pid':os.getpid(),'startTicks':birth(os.getpid())}
+ need(type(owner['pid'])is int and owner['pid']>0 and type(owner['startTicks'])is int and owner['startTicks']>0,'instance_fixture_owner_changed')
+ def fence():
+  guard();info=os.fstat(lock)
+  need(gen(info)==lock_generation==gen(os.lstat(root/'intent.json'))and stat.S_ISREG(info.st_mode)and info.st_uid==os.geteuid()and stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1,'instance_fixture_lock_changed')
+  need(owner=={'pid':os.getpid(),'startTicks':birth(os.getpid())},'instance_fixture_owner_changed')
+ def retain(suffix,value,name=None):
+  fence();directory=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);temporary='.'+prefix+uuid.uuid4().hex+'.tmp'
+  try:
+   fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+   with os.fdopen(fd,'wb')as stream:stream.write(json.dumps(value,sort_keys=True,separators=(',',':')).encode());stream.flush();os.fsync(stream.fileno())
+   fence();_rename_create_only(directory,temporary,prefix+suffix if name is None else name);os.fsync(directory);fence()
+  finally:
+   try:os.unlink(temporary,dir_fd=directory)
+   except FileNotFoundError:pass
+   os.close(directory)
+ def exists(suffix):return os.path.lexists(root/(prefix+suffix))
+ def session():
+  value=script('fixture-lock-session-'+os.urandom(6).hex(),SESSION_SCRIPT);valid=validate_session(value,FIXTURE_SID,SETUP['user'],SPEC['deploymentId'])
+  need(valid['boot']==FIXTURE_EXPECTED['boot']and not valid['competingSessions']and value['console']==FIXTURE_EXPECTED['console']and value['session']['Logon']==FIXTURE_EXPECTED['logon']and value['session']['User'].casefold()==FIXTURE_EXPECTED['user'].casefold(),'instance_fixture_session_changed')
+  return value,valid
+ identity={'schemaVersion':1,'operationId':OPERATION,'expected':FIXTURE_EXPECTED,'account':FIXTURE_SID,'phaseSourceSha256':FIXTURE_PHASE_SHA,'rootFlockGeneration':lock_generation,'owner':owner,'lockOriginal':LOCK_TERMINAL,'lockscreenProfile':LOCKSCREEN_PROFILE,'predecessorOperationId':PREDECESSOR_OPERATION,'replayAllowed':False}
+ need({k:result[k]for k in ('actor','hostBoot','controlConnection')}=={k:FIXTURE_EXPECTED[k]for k in ('actor','hostBoot','controlConnection')},'instance_fixture_host_changed');fence()
+ if exists('.intent.json'):
+  old=read(prefix+'.intent.json')
+  need(type(old)is dict and set(old)==set(identity)and all(old[k]==identity[k]for k in identity if k!='owner')and type(old['owner'])is dict and set(old['owner'])=={'pid','startTicks'}and all(type(old['owner'][k])is int and old['owner'][k]>0 for k in old['owner']),'instance_fixture_original_changed')
+  terminal=read(prefix+'.terminal.json')if exists('.terminal.json')else None
+  if terminal is not None:
+   fields={'identity','state','submittedPhases','settingsChanged','replayAllowed'}
+   need(type(terminal)is dict and set(terminal)in (fields|{'frame'},fields|{'reason'})and terminal['identity']==old and terminal['settingsChanged']is False and terminal['replayAllowed']is False,'instance_fixture_terminal_changed')
+   if terminal['state']=='profile-field-captured':
+    need(set(terminal)==fields|{'frame'}and terminal['submittedPhases']in [['dismiss'],['wake','dismiss']]and read(prefix+'.dismiss.intent.json')=={'identity':old,'phase':'dismiss','replayAllowed':False}and read(prefix+'.dismiss.terminal.json')==terminal,'instance_fixture_terminal_changed')
+    if terminal['submittedPhases']==['wake','dismiss']:need(read(prefix+'.wake.intent.json')=={'identity':old,'phase':'wake','freshDisplayState':'asleep','replayAllowed':False}and read(prefix+'.wake.terminal.json')=={'identity':old,'phase':'wake','state':'pointer-acknowledged','replayAllowed':False},'instance_fixture_terminal_changed')
+   else:need(terminal['state']in {'blocked-before-effect','unknown'}and set(terminal)==fields|{'reason'}and ((terminal['state']=='blocked-before-effect'and terminal['submittedPhases']==[])or(terminal['state']=='unknown'and terminal['submittedPhases']in [['wake'],['dismiss'],['wake','dismiss']]))and type(terminal['reason'])is str and __import__('re').fullmatch('instance_[a-z_]{1,64}',terminal['reason']),'instance_fixture_terminal_changed')
+  value,valid=session()
+  return {'state':'observed-original','originalOperationId':OPERATION,'historicalTerminal':terminal,'sessionFacts':value,'effectReplayed':False}
+ need(not any(x.name.startswith(('login-credential-','login-owner-'))and x.name.endswith('.intent.json')for x in root.iterdir()),'instance_fixture_credential_admitted')
+ need(read('fixture-lock-1dde6cf8-092c-4277-8159-2deb588a889e.intent.json')==LOCK_TERMINAL['identity']and read('fixture-lock-1dde6cf8-092c-4277-8159-2deb588a889e.terminal.json')==LOCK_TERMINAL and LOCK_TERMINAL['identity']['rootFlockGeneration']==lock_generation,'instance_fixture_original_changed')
+ retain('.intent.json',identity);submitted=[]
+ _close_profile_predecessor(root,read,fence,lock,birth,retain,identity)
+ try:
+  fresh,valid=session();need(valid['ordinary_session']=='locked','instance_fixture_session_changed')
+  account=script('fixture-lock-account-'+os.urandom(6).hex(),FIXTURE_ACCOUNT)
+  need(account['sid']==FIXTURE_SID and account['name'].casefold()==SETUP['user'].casefold()and account['enabled']is True and account['loginKeyboard']=='00000409','instance_fixture_account_changed')
+  display_state=validate_display(script('fixture-profile-display-'+os.urandom(6).hex(),FIXTURE_DISPLAY),SPEC['deploymentId'],FIXTURE_EXPECTED['boot'])
+  need(display_state in {'awake','dimmed','asleep'},'instance_fixture_display_unknown')
+  if display_state=='asleep':
+   mice=monitor('query-mice');selected=[x for x in mice if type(x)is dict and x.get('current')is True]
+   need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_fixture_pointer_unknown')
+   events=[{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}]
+   retain('.wake.intent.json',{'identity':identity,'phase':'wake','freshDisplayState':'asleep','replayAllowed':False});submitted.append('wake');fence();monitor('input-send-event',{'events':events});fence();time.sleep(1)
+   retain('.wake.terminal.json',{'identity':identity,'phase':'wake','state':'pointer-acknowledged','replayAllowed':False})
+  fresh,valid=session();need(valid['ordinary_session']=='locked','instance_fixture_session_changed')
+  _profile_known_screen(root,prefix,monitor,fence,LOCKSCREEN_PROFILE)
+  retain('.dismiss.intent.json',{'identity':identity,'phase':'dismiss','replayAllowed':False});submitted.append('dismiss');fence();monitor('send-key',{'keys':[{'type':'qcode','data':'ret'}],'hold-time':80});fence();time.sleep(2)
+  limit=time.monotonic()+20
+  while True:
+   after,valid=session()
+   if valid['ordinary_session']=='locked':break
+   need(time.monotonic()<limit,'instance_fixture_lock_unresolved');time.sleep(.25)
+  # This one public frame is captured only before ANY protected owner or
+  # credential admission on this isolated root. There is no post-input capture.
+  fence();need(not any(x.name.startswith(('login-credential-','login-owner-'))and x.name.endswith('.intent.json')for x in root.iterdir()),'instance_fixture_credential_admitted')
+  name=prefix+'-precredential.png';path=root/name;need(not os.path.lexists(path),'instance_fixture_frame_exists')
+  monitor('screendump',{'filename':str(path),'format':'png'});fence()
+  fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+  try:
+   info=os.fstat(fd);generation=gen(info)
+   need(stat.S_ISREG(info.st_mode)and info.st_uid==os.geteuid()and stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1 and 32<=info.st_size<=2*1024**2 and generation==gen(os.lstat(path)),'instance_fixture_frame_identity')
+   raw=b''
+   while len(raw)<=2*1024**2:
+    block=os.read(fd,65536)
+    if not block:break
+    raw+=block
+   need(len(raw)==info.st_size and raw.startswith(bytes((137,80,78,71,13,10,26,10)))and raw[12:16]==b'IHDR'and gen(os.fstat(fd))==generation==gen(os.lstat(path)),'instance_fixture_frame_identity')
+   width,height=struct.unpack('>II',raw[16:24]);need(320<=width<=4096 and 200<=height<=2160,'instance_fixture_frame_bound');fence()
+   frame={'name':name,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'generation':generation,'width':width,'height':height,'precredentialOnly':True}
+  finally:os.close(fd)
+  terminal={'identity':identity,'state':'profile-field-captured','submittedPhases':submitted,'settingsChanged':False,'replayAllowed':False,'frame':frame}
+  retain('.dismiss.terminal.json',terminal);retain('.terminal.json',terminal)
+  return {'state':'profile-field-captured','originalOperationId':OPERATION,'sessionFacts':after,'effectReplayed':False,'historicalTerminal':terminal,'precredentialFrame':{**frame,'pngBase64':base64.b64encode(raw).decode()}}
+ except BaseException as error:
+  reason=str(error)if type(error)is ValueError and __import__('re').fullmatch('instance_[a-z_]{1,64}',str(error))else'instance_fixture_original_unknown'
+  # Any journaled phase may have been submitted. A missing acknowledgement never permits replay.
+  terminal={'identity':identity,'state':'blocked-before-effect'if not submitted else'unknown','submittedPhases':submitted,'reason':reason,'settingsChanged':False,'replayAllowed':False}
+  if not exists('.terminal.json'):retain('.terminal.json',terminal)
+  raise
+FIXTURE_EXPECTED={'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'controlConnection': 'qmp:103814799', 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'logon': 134369779415354549, 'user': 'recovery'}
+FIXTURE_SID='S-1-5-21-1078431196-3712787349-2981860611-1000'
+FIXTURE_PHASE_SHA='f96cdfc1813bd311c8ab555e2038ab2dcc97beba24998c482f9bffe6819463a6'
+FIXTURE_ACCOUNT="$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n\n$ExpectedUser='recovery'\n$u=Get-LocalUser -Name $ExpectedUser\n$key=Get-ItemProperty -LiteralPath 'Registry::HKEY_USERS\\.DEFAULT\\Keyboard Layout\\Preload'\n[Console]::WriteLine(([ordered]@{name=$u.Name;fullName=$u.FullName;sid=$u.SID.Value;enabled=$u.Enabled;loginKeyboard=$key.'1'}|ConvertTo-Json -Compress))\n"
+FIXTURE_DISPLAY='$ErrorActionPreference=\'Stop\';$ProgressPreference=\'SilentlyContinue\'\n[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\nfunction Guard {\n if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne \'S-1-5-18\'){throw \'SYSTEM_REQUIRED\'}\n $m=([Guid](Get-CimInstance Win32_ComputerSystemProduct).UUID).ToString(\'D\')\n $b=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString(\'o\')\n if($m -ne \'942cca12-3296-4363-a5bb-e4df996883dd\' -or $b -ne \'2026-10-20T13:51:59.5000000Z\'){throw \'GUEST_IDENTITY_CHANGED\'}\n}\nGuard\nAdd-Type -TypeDefinition @\'\n\nusing System;\nusing System.Runtime.InteropServices;\nusing System.Threading;\npublic static class ConsoleDisplayFacts {\n static readonly Guid Setting=new Guid("6fe69556-704a-47a0-8f24-c28d936fda47");\n [UnmanagedFunctionPointer(CallingConvention.Winapi)]delegate UInt32 Callback(IntPtr context,UInt32 type,IntPtr value);\n [StructLayout(LayoutKind.Sequential)]struct Subscriber {public IntPtr Callback;public IntPtr Context;}\n [DllImport("powrprof.dll")]static extern UInt32 PowerSettingRegisterNotification(ref Guid setting,UInt32 flags,ref Subscriber subscriber,out IntPtr handle);\n [DllImport("powrprof.dll")]static extern UInt32 PowerSettingUnregisterNotification(IntPtr handle);\n sealed class State {public readonly object Gate=new object();public readonly ManualResetEvent Ready=new ManualResetEvent(false);public int Value=-1;public bool Invalid=false;}\n public static int Read(){\n  var state=new State();Callback callback=delegate(IntPtr context,UInt32 type,IntPtr value){\n   try{if(type!=0x8013||value==IntPtr.Zero)return 0;\n    Guid guid=(Guid)Marshal.PtrToStructure(value,typeof(Guid));if(guid!=Setting)return 0;\n    int length=Marshal.ReadInt32(value,16);int current=length==4?Marshal.ReadInt32(value,20):-1;\n    lock(state.Gate){if(current<0||current>2)state.Invalid=true;else state.Value=current;}state.Ready.Set();\n   }catch{lock(state.Gate){state.Invalid=true;}state.Ready.Set();}return 0;\n  };\n  var subscriber=new Subscriber{Callback=Marshal.GetFunctionPointerForDelegate(callback),Context=IntPtr.Zero};\n  Guid setting=Setting;IntPtr registration;UInt32 code=PowerSettingRegisterNotification(ref setting,2,ref subscriber,out registration);\n  if(code!=0)throw new Exception("DISPLAY_NOTIFICATION_UNAVAILABLE");\n  try{\n   if(!state.Ready.WaitOne(2000))throw new Exception("DISPLAY_INITIAL_VALUE_UNAVAILABLE");\n   Thread.Sleep(100);lock(state.Gate){if(state.Invalid||state.Value<0)throw new Exception("DISPLAY_VALUE_UNRECOGNIZED");return state.Value;}\n  }finally{UInt32 removed=PowerSettingUnregisterNotification(registration);GC.KeepAlive(callback);state.Ready.Dispose();if(removed!=0)throw new Exception("DISPLAY_NOTIFICATION_RELEASE_UNVERIFIED");}\n }\n}\n\n\'@\n$state=[ConsoleDisplayFacts]::Read();Guard\n[Console]::WriteLine((@{schemaVersion=1;machine=\'942cca12-3296-4363-a5bb-e4df996883dd\';boot=\'2026-10-20T13:51:59.5000000Z\';displayState=$state}|ConvertTo-Json -Compress))\n'
+LOCKSCREEN_PROFILE={'width': 1280, 'height': 800, 'crops': [{'rect': [30, 250, 250, 500], 'sha256': 'c565396521175726693561929dff4c810d86904773f5b55d08134dd67f28bbce'}, {'rect': [1000, 250, 1200, 500], 'sha256': '59dcedce5bd386ad027c564c723f75af31f58c122e05ee4af17a4b986ead91b4'}, {'rect': [1230, 744, 1265, 780], 'sha256': '3418c6330df518dcfd03ba773921c4be931fda2f75dca42fd43c2fe0ab9cfae6'}]}
+LOCK_TERMINAL={'frame': {'bytes': 1913905, 'generation': [66307, 103816950, 33152, 1000, 1000, 1, 1913905, 1792513739234205908, 1792513739234205908], 'height': 800, 'name': 'fixture-lock-1dde6cf8-092c-4277-8159-2deb588a889e-precredential.png', 'precredentialOnly': True, 'sha256': '65d56ced078d8b565d73790944776386d1f86cc9ef970c9a1e88552481feea4b', 'width': 1280}, 'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'operationId': '1dde6cf8-092c-4277-8159-2deb588a889e', 'owner': {'pid': 2031278, 'startTicks': 149536211}, 'phaseSourceSha256': '5d246d60caaf76abec260024adaca052e8b400c36d2b7ebff866276c211ab24a', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'replayAllowed': False, 'settingsChanged': False, 'state': 'locked', 'submittedPhases': ['wake', 'lock']}
+PREDECESSOR_RECORDS=[{'generation': [66307, 103816955, 33152, 1000, 1000, 1, 5688, 1792514251933237189, 1792514251936215319], 'name': 'fixture-profile-bb09af55-f8ea-45ce-a89e-a9482422b2e1.intent.json', 'present': True, 'record': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'lockOriginal': {'frame': {'bytes': 1913905, 'generation': [66307, 103816950, 33152, 1000, 1000, 1, 1913905, 1792513739234205908, 1792513739234205908], 'height': 800, 'name': 'fixture-lock-1dde6cf8-092c-4277-8159-2deb588a889e-precredential.png', 'precredentialOnly': True, 'sha256': '65d56ced078d8b565d73790944776386d1f86cc9ef970c9a1e88552481feea4b', 'width': 1280}, 'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'operationId': '1dde6cf8-092c-4277-8159-2deb588a889e', 'owner': {'pid': 2031278, 'startTicks': 149536211}, 'phaseSourceSha256': '5d246d60caaf76abec260024adaca052e8b400c36d2b7ebff866276c211ab24a', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'replayAllowed': False, 'settingsChanged': False, 'state': 'locked', 'submittedPhases': ['wake', 'lock']}, 'lockscreenProfile': {'crops': [{'rect': [30, 50, 250, 500], 'sha256': '6441db2aca2745d030caadfc71c69f50e941dbe08aa1d70d7005221f4a0658f6'}, {'rect': [1000, 100, 1200, 500], 'sha256': '78af561f489c93bbf5d459a02cbcf698b5228b988010f7c8770912264806994f'}, {'rect': [1230, 744, 1265, 780], 'sha256': '3418c6330df518dcfd03ba773921c4be931fda2f75dca42fd43c2fe0ab9cfae6'}], 'height': 800, 'width': 1280}, 'operationId': 'bb09af55-f8ea-45ce-a89e-a9482422b2e1', 'owner': {'pid': 2059295, 'startTicks': 149588548}, 'phaseSourceSha256': '02168b6ed17cc197c63c3ce50d547fd0a3b37c9846fbb954e0c8e930edc4e5bd', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}}, {'generation': [66307, 103816966, 33152, 1000, 1000, 1, 5738, 1792514255644750828, 1792514255646081731], 'name': 'fixture-profile-bb09af55-f8ea-45ce-a89e-a9482422b2e1.wake.intent.json', 'present': True, 'record': {'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'lockOriginal': {'frame': {'bytes': 1913905, 'generation': [66307, 103816950, 33152, 1000, 1000, 1, 1913905, 1792513739234205908, 1792513739234205908], 'height': 800, 'name': 'fixture-lock-1dde6cf8-092c-4277-8159-2deb588a889e-precredential.png', 'precredentialOnly': True, 'sha256': '65d56ced078d8b565d73790944776386d1f86cc9ef970c9a1e88552481feea4b', 'width': 1280}, 'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'operationId': '1dde6cf8-092c-4277-8159-2deb588a889e', 'owner': {'pid': 2031278, 'startTicks': 149536211}, 'phaseSourceSha256': '5d246d60caaf76abec260024adaca052e8b400c36d2b7ebff866276c211ab24a', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'replayAllowed': False, 'settingsChanged': False, 'state': 'locked', 'submittedPhases': ['wake', 'lock']}, 'lockscreenProfile': {'crops': [{'rect': [30, 50, 250, 500], 'sha256': '6441db2aca2745d030caadfc71c69f50e941dbe08aa1d70d7005221f4a0658f6'}, {'rect': [1000, 100, 1200, 500], 'sha256': '78af561f489c93bbf5d459a02cbcf698b5228b988010f7c8770912264806994f'}, {'rect': [1230, 744, 1265, 780], 'sha256': '3418c6330df518dcfd03ba773921c4be931fda2f75dca42fd43c2fe0ab9cfae6'}], 'height': 800, 'width': 1280}, 'operationId': 'bb09af55-f8ea-45ce-a89e-a9482422b2e1', 'owner': {'pid': 2059295, 'startTicks': 149588548}, 'phaseSourceSha256': '02168b6ed17cc197c63c3ce50d547fd0a3b37c9846fbb954e0c8e930edc4e5bd', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'phase': 'wake', 'replayAllowed': False}}, {'generation': [66307, 103816967, 33152, 1000, 1000, 1, 5769, 1792514255655230630, 1792514255657159663], 'name': 'fixture-profile-bb09af55-f8ea-45ce-a89e-a9482422b2e1.wake.terminal.json', 'present': True, 'record': {'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'lockOriginal': {'frame': {'bytes': 1913905, 'generation': [66307, 103816950, 33152, 1000, 1000, 1, 1913905, 1792513739234205908, 1792513739234205908], 'height': 800, 'name': 'fixture-lock-1dde6cf8-092c-4277-8159-2deb588a889e-precredential.png', 'precredentialOnly': True, 'sha256': '65d56ced078d8b565d73790944776386d1f86cc9ef970c9a1e88552481feea4b', 'width': 1280}, 'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'operationId': '1dde6cf8-092c-4277-8159-2deb588a889e', 'owner': {'pid': 2031278, 'startTicks': 149536211}, 'phaseSourceSha256': '5d246d60caaf76abec260024adaca052e8b400c36d2b7ebff866276c211ab24a', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'replayAllowed': False, 'settingsChanged': False, 'state': 'locked', 'submittedPhases': ['wake', 'lock']}, 'lockscreenProfile': {'crops': [{'rect': [30, 50, 250, 500], 'sha256': '6441db2aca2745d030caadfc71c69f50e941dbe08aa1d70d7005221f4a0658f6'}, {'rect': [1000, 100, 1200, 500], 'sha256': '78af561f489c93bbf5d459a02cbcf698b5228b988010f7c8770912264806994f'}, {'rect': [1230, 744, 1265, 780], 'sha256': '3418c6330df518dcfd03ba773921c4be931fda2f75dca42fd43c2fe0ab9cfae6'}], 'height': 800, 'width': 1280}, 'operationId': 'bb09af55-f8ea-45ce-a89e-a9482422b2e1', 'owner': {'pid': 2059295, 'startTicks': 149588548}, 'phaseSourceSha256': '02168b6ed17cc197c63c3ce50d547fd0a3b37c9846fbb954e0c8e930edc4e5bd', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'phase': 'wake', 'replayAllowed': False, 'state': 'pointer-acknowledged'}}, {'name': 'fixture-profile-bb09af55-f8ea-45ce-a89e-a9482422b2e1.dismiss.intent.json', 'present': False}, {'name': 'fixture-profile-bb09af55-f8ea-45ce-a89e-a9482422b2e1.dismiss.terminal.json', 'present': False}, {'generation': [66307, 103816975, 33152, 1000, 1000, 1, 5838, 1792514257653899091, 1792514257655009676], 'name': 'fixture-profile-bb09af55-f8ea-45ce-a89e-a9482422b2e1.terminal.json', 'present': True, 'record': {'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'lockOriginal': {'frame': {'bytes': 1913905, 'generation': [66307, 103816950, 33152, 1000, 1000, 1, 1913905, 1792513739234205908, 1792513739234205908], 'height': 800, 'name': 'fixture-lock-1dde6cf8-092c-4277-8159-2deb588a889e-precredential.png', 'precredentialOnly': True, 'sha256': '65d56ced078d8b565d73790944776386d1f86cc9ef970c9a1e88552481feea4b', 'width': 1280}, 'identity': {'account': 'S-1-5-21-1078431196-3712787349-2981860611-1000', 'expected': {'actor': {'argv': ['/proc/self/fd/11', '-name', 'vpn-control-942cca12-3296-4363-a5bb-e4df996883dd', '-uuid', '942cca12-3296-4363-a5bb-e4df996883dd', '-machine', 'q35,smm=on', '-accel', 'kvm', '-cpu', 'host', '-smp', '4', '-m', '6144', '-global', 'driver=cfi.pflash01,property=secure,value=on', '-drive', 'if=pflash,format=raw,readonly=on,file=/dev/fdset/1', '-drive', 'if=pflash,format=raw,file=/home/kardinal/vc-rw-942cca12/uefi-vars.fd', '-drive', 'file=/home/kardinal/vc-rw-942cca12/disk.qcow2,if=none,id=system,format=qcow2', '-device', 'ide-hd,drive=system,bus=ide.0', '-drive', 'file=/dev/fdset/2,media=cdrom,readonly=on,if=none,id=installer', '-device', 'ide-cd,drive=installer,bus=ide.1', '-drive', 'file=/dev/fdset/3,media=cdrom,readonly=on,if=none,id=drivers', '-device', 'ide-cd,drive=drivers,bus=ide.2', '-drive', 'file=/home/kardinal/vc-rw-942cca12/seed.iso,media=cdrom,readonly=on,format=raw,if=none,id=seed', '-device', 'ide-cd,drive=seed,bus=ide.3', '-chardev', 'socket,id=tpmchar,path=/home/kardinal/vc-rw-942cca12/swtpm.sock', '-tpmdev', 'emulator,id=tpm0,chardev=tpmchar', '-device', 'tpm-tis,tpmdev=tpm0', '-device', 'virtio-serial-pci', '-chardev', 'socket,path=/home/kardinal/vc-rw-942cca12/qga.sock,server=on,wait=off,id=qga', '-device', 'virtserialport,chardev=qga,name=org.qemu.guest_agent.0', '-netdev', 'user,id=net0', '-device', 'e1000e,netdev=net0', '-boot', 'order=c,once=d,menu=off', '-display', 'none', '-vnc', '127.0.0.1:42', '-monitor', 'none', '-qmp', 'unix:/home/kardinal/vc-rw-942cca12/qmp.sock,server=on,wait=off', '-add-fd', 'fd=9,set=1,opaque=asset:firmwareCode', '-add-fd', 'fd=7,set=2,opaque=asset:installer', '-add-fd', 'fd=8,set=3,opaque=asset:drivers'], 'commandSha256': '84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd', 'executableGeneration': [66306, 1234700, 33261, 0, 0, 1, 28940536, 1789559094000000000, 1790008459287925436], 'pid': 1484803, 'startTicks': 148537299}, 'boot': '2026-10-20T13:51:59.5000000Z', 'console': 2, 'controlConnection': 'qmp:103814799', 'hostBoot': '25515f23-b966-4c3a-ae63-d38452375578', 'logon': 134369779415354549, 'user': 'recovery'}, 'operationId': '1dde6cf8-092c-4277-8159-2deb588a889e', 'owner': {'pid': 2031278, 'startTicks': 149536211}, 'phaseSourceSha256': '5d246d60caaf76abec260024adaca052e8b400c36d2b7ebff866276c211ab24a', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'replayAllowed': False, 'settingsChanged': False, 'state': 'locked', 'submittedPhases': ['wake', 'lock']}, 'lockscreenProfile': {'crops': [{'rect': [30, 50, 250, 500], 'sha256': '6441db2aca2745d030caadfc71c69f50e941dbe08aa1d70d7005221f4a0658f6'}, {'rect': [1000, 100, 1200, 500], 'sha256': '78af561f489c93bbf5d459a02cbcf698b5228b988010f7c8770912264806994f'}, {'rect': [1230, 744, 1265, 780], 'sha256': '3418c6330df518dcfd03ba773921c4be931fda2f75dca42fd43c2fe0ab9cfae6'}], 'height': 800, 'width': 1280}, 'operationId': 'bb09af55-f8ea-45ce-a89e-a9482422b2e1', 'owner': {'pid': 2059295, 'startTicks': 149588548}, 'phaseSourceSha256': '02168b6ed17cc197c63c3ce50d547fd0a3b37c9846fbb954e0c8e930edc4e5bd', 'replayAllowed': False, 'rootFlockGeneration': [66307, 103813564, 33152, 1000, 1000, 1, 1691, 1792503738742855492, 1792503738742855492], 'schemaVersion': 1}, 'reason': 'instance_login_screen_unrecognized', 'replayAllowed': False, 'settingsChanged': False, 'state': 'unknown', 'submittedPhases': ['wake']}}]
+PREDECESSOR_OPERATION='bb09af55-f8ea-45ce-a89e-a9482422b2e1'
+PREDECESSOR_PHASE_SHA='02168b6ed17cc197c63c3ce50d547fd0a3b37c9846fbb954e0c8e930edc4e5bd'
+PREDECESSOR_COLLECTOR_SHA='5792eb8898e87ce44ecf81579b75e8f284bf24bbc264eb13afe5c14e072a2a42'
+SPEC={'deploymentId': '942cca12-3296-4363-a5bb-e4df996883dd', 'host': 'archlinux', 'root': '/home/kardinal/vc-rw-942cca12', 'memoryMiB': 6144, 'cpus': 4, 'diskGiB': 64, 'vncPort': 5942, 'headroomMiB': 16384, 'assets': {'installer': {'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/windows-x64.iso', 'bytes': 7092807680, 'sha256': 'a61adeab895ef5a4db436e0a7011c92a2ff17bb0357f58b13bbc4062e535e7b9'}, 'drivers': {'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/virtio-win.iso', 'bytes': 789645312, 'sha256': 'e14cf2b94492c3e925f0070ba7fdfedeb2048c91eea9c5a5afb30232a3976331'}, 'firmwareCode': {'path': '/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd', 'bytes': 3653632, 'sha256': 'cc150d941d4f1d39e596dedc545384a66ccfb3c9ba5cf9bc3a54d8d427d4d88f'}, 'firmwareVars': {'path': '/usr/share/edk2/x64/OVMF_VARS.4m.fd', 'bytes': 540672, 'sha256': '5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e'}}}
+SETUP={'administrator': 'recoveryadmin', 'imageName': 'Windows 11 Enterprise Evaluation', 'locale': 'en-US', 'user': 'recovery'}
+CONTEXT={'hostBootId': '25515f23-b966-4c3a-ae63-d38452375578', 'pending': []}
+PROVIDER='raw-qemu-windows'
+URI=None
+DOMAIN=None
+XML_SHA=None
+SOCKET_PATH=None
+OPERATION='3ba9840a-f6a2-474a-b98b-b98209117604'
+MODE='fixture-profile'
+EXPECTED=None
+RECOVERY_ID=None
+SESSION_SCRIPT='$ErrorActionPreference=\'Stop\';$ProgressPreference=\'SilentlyContinue\'\n[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\nif([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne \'S-1-5-18\'){throw \'SYSTEM_REQUIRED\'}\nAdd-Type -TypeDefinition @\'\nusing System;\nusing System.ComponentModel;\nusing System.Runtime.InteropServices;\nusing System.Security.Principal;\npublic static class SessionFacts {\n [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]public struct Level1 {\n public UInt32 SessionId;public Int32 State;public Int32 Flags;\n [MarshalAs(UnmanagedType.ByValTStr,SizeConst=33)]public string Station;\n [MarshalAs(UnmanagedType.ByValTStr,SizeConst=21)]public string User;\n [MarshalAs(UnmanagedType.ByValTStr,SizeConst=18)]public string Domain;\n public Int64 Logon;public Int64 Connect;public Int64 Disconnect;public Int64 LastInput;public Int64 Current;\n public UInt32 InBytes;public UInt32 OutBytes;public UInt32 InFrames;public UInt32 OutFrames;public UInt32 InCompressed;public UInt32 OutCompressed;\n }\n [StructLayout(LayoutKind.Sequential)]public struct Info {public UInt32 Level;public Level1 Data;}\n [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]public struct Session {public Int32 Id;public string Name;public Int32 State;}\n [DllImport("kernel32.dll")]public static extern UInt32 WTSGetActiveConsoleSessionId();\n [DllImport("wtsapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool WTSQuerySessionInformationW(IntPtr server,UInt32 session,int info,out IntPtr buffer,out int bytes);\n [DllImport("wtsapi32.dll")]static extern void WTSFreeMemory(IntPtr ptr);\n [DllImport("wtsapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool WTSEnumerateSessionsW(IntPtr server,int reserved,int version,out IntPtr buffer,out int count);\n [DllImport("wtsapi32.dll",SetLastError=true)]static extern bool WTSQueryUserToken(UInt32 session,out IntPtr token);\n [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr h);\n public static Info Read(UInt32 id){IntPtr p;int bytes;if(!WTSQuerySessionInformationW(IntPtr.Zero,id,25,out p,out bytes))throw new Win32Exception();try{if(bytes<Marshal.SizeOf(typeof(Info)))throw new Exception("WTS_SIZE");Info result=(Info)Marshal.PtrToStructure(p,typeof(Info));if(result.Level!=1||result.Data.SessionId!=id)throw new Exception("WTS_IDENTITY");return result;}finally{WTSFreeMemory(p);}}\n public static Session[] All(){IntPtr p;int count;if(!WTSEnumerateSessionsW(IntPtr.Zero,0,1,out p,out count))throw new Win32Exception();try{if(count<0||count>128)throw new Exception("WTS_COUNT");var result=new Session[count];int size=Marshal.SizeOf(typeof(Session));for(int i=0;i<count;i++)result[i]=(Session)Marshal.PtrToStructure(IntPtr.Add(p,i*size),typeof(Session));return result;}finally{WTSFreeMemory(p);}}\n public static string Sid(UInt32 id){IntPtr token;if(!WTSQueryUserToken(id,out token))throw new Win32Exception();try{using(var identity=new WindowsIdentity(token)){return identity.User.Value;}}finally{CloseHandle(token);}}\n}\n\'@\n$ExpectedUser=\'recovery\'\n\n$id=[SessionFacts]::WTSGetActiveConsoleSessionId()\nif($id -eq [UInt32]::MaxValue){throw \'CONSOLE_TRANSITION\'}\n$info=[SessionFacts]::Read($id);$user=Get-LocalUser -Name $ExpectedUser\n$admins=@(Get-LocalGroupMember -SID \'S-1-5-32-544\' | ForEach-Object {$_.SID.Value})\n$users=@(Get-LocalGroupMember -SID \'S-1-5-32-545\' | ForEach-Object {$_.SID.Value})\n$os=Get-CimInstance Win32_OperatingSystem\n$tokenSid=$null\nif(-not [String]::IsNullOrEmpty($info.Data.User)){$tokenSid=[SessionFacts]::Sid($id)}\n$result=[ordered]@{machine=(Get-CimInstance Win32_ComputerSystemProduct).UUID;boot=$os.LastBootUpTime.ToUniversalTime().ToString(\'o\');console=$id;infoLevel=$info.Level;session=$info.Data;tokenSid=$tokenSid;expectedSid=$user.SID.Value;ordinary=($admins -notcontains $user.SID.Value -and $users -contains $user.SID.Value -and $user.Enabled);sessions=@([SessionFacts]::All());explorers=@(Get-Process explorer -ErrorAction SilentlyContinue | Select-Object Id,SessionId)}\n[Console]::WriteLine(($result|ConvertTo-Json -Depth 6 -Compress))\n'
+INTERACTIVE_SCRIPT=''
+LEASE_SCRIPT=''
+ORIGINAL_SCRIPT=None
+IDLE_SCRIPT=''
+RESERVATION=None
+import base64,hashlib,json,os,re,secrets,socket,stat,sys,tempfile,gzip,time,select,struct
+from pathlib import PureWindowsPath
+import struct
+def call(sock, command, args, _deadline=None):
+    received = bytearray()
+    primary = None
+    deadline = min(time.monotonic() + 20, _deadline) if _deadline is not None else time.monotonic() + 20
+    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+    def budget():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('collection-deadline')
+        c.settimeout(min(20, remaining))
+
+    def receive():
+        budget()
+        return c.recv(1)
+
+    def send(data):
+        budget()
+        c.sendall(data)
+    try:
+        budget()
+        c.connect(sock)
+        peer = struct.unpack('3i', c.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        if peer[:2] != (QGA_PEER_PID, os.geteuid()):
+            raise ValueError('instance_qga_peer')
+        QGA_GUARD()
+        sid = secrets.randbits(63)
+        send(b'\xff' + json.dumps({'execute': 'guest-sync-delimited', 'arguments': {'id': sid}}, separators=(',', ':')).encode() + b'\n')
+        for i in range(8192):
+            x = receive()
+            received.extend(x)
+            if x == b'\xff':
+                break
+        else:
+            raise ValueError()
+
+        def line():
+            raw = bytearray()
+            for i in range(262144):
+                x = receive()
+                received.extend(x)
+                if x == b'\n':
+                    os.write(wire, bytes(raw) + b'\n')
+                    os.fsync(wire)
+                    return json.loads(raw)
+                if not x:
+                    raise ValueError()
+                raw.extend(x)
+            raise ValueError()
+        if line().get('return') != sid:
+            raise ValueError()
+        send(json.dumps({'execute': command, 'arguments': args}, separators=(',', ':')).encode() + b'\n')
+        result = line()
+        if 'return' not in result:
+            raise ValueError()
+        return result['return']
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        try:
+            os.write(partial_wire, bytes(received))
+            os.fsync(partial_wire)
+        except OSError as error:
+            if primary is None:
+                raise
+            primary.readonlyQgaCaptureFailure = {'stage': 'raw_capture', 'errorClass': type(error).__name__, 'errno': error.errno}
+        finally:
+            c.close()
+
+wire=partial_wire=-1
+def _main():
+    import contextlib,hashlib,io,json,os,pathlib,pwd,re,shutil,socket,stat,struct,subprocess,sys,time
+    root=pathlib.Path(SPEC['root'])
+    held=[]
+    parents=[]
+    pins=[]
+    phase='resources'
+    def require(value,reason):
+            if not value:raise ValueError(reason)
+    def generation(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    def structure(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+    def chain():
+            fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd);parents.append((fd,None,None,structure(os.fstat(fd))))
+            for name in root.parent.parts[1:]:
+                parent=fd;fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);held.append(fd)
+                parents.append((fd,parent,name,structure(os.fstat(fd))))
+            info=os.fstat(fd)
+            require(info.st_uid==os.geteuid() and not info.st_mode&0o022 or info.st_uid==0 and info.st_mode&stat.S_ISVTX,'instance_parent')
+            return fd
+    def closing():
+            for fd,parent,name,identity in parents:
+                require(structure(os.fstat(fd))==identity,'instance_parent_changed')
+                require(structure(os.lstat('/') if parent is None else os.stat(name,dir_fd=parent,follow_symlinks=False))==identity,'instance_parent_changed')
+            for fd,path,identity in pins:
+                require(generation(os.fstat(fd))==identity and generation(os.stat(path,follow_symlinks=False))==identity,'instance_source_changed')
+    def pin(path,digest=None,size=None,executable=False):
+            require(os.path.realpath(path)==path,'instance_source')
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);info=os.fstat(fd)
+            require(stat.S_ISREG(info.st_mode) and not info.st_mode&0o022 and 0<info.st_size<=8*1024**3 and (size is None or info.st_size==size),'instance_source')
+            require(not executable or os.access(path,os.X_OK),'instance_binary')
+            h=hashlib.sha256();total=0
+            while True:
+                block=os.read(fd,1024**2)
+                if not block:break
+                total+=len(block);require(total<=info.st_size,'instance_source');h.update(block)
+            require(total==info.st_size and (digest is None or h.hexdigest()==digest),'instance_source')
+            pins.append((fd,path,generation(info)));return fd,h.hexdigest()
+    def private(path,directory=False):
+            s=os.lstat(path);require((stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode)) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==(0o700 if directory else 0o600) and (directory or s.st_nlink==1),'instance_private');return s
+    def save(name,value):
+            fd=os.open(root/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            try:
+                raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode();offset=0
+                while offset<len(raw):offset+=os.write(fd,raw[offset:])
+                os.fsync(fd)
+            finally:os.close(fd)
+    def read(name):
+            path=root/name;private(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            try:
+                info=os.fstat(fd);require(info.st_size<=65536,'instance_receipt_bound');raw=os.read(fd,65537)
+                require(len(raw)==info.st_size and generation(os.fstat(fd))==generation(info) and generation(os.lstat(path))==generation(info),'instance_receipt_changed')
+                return json.loads(raw)
+            finally:os.close(fd)
+    def birth(pid):
+            with open('/proc/'+str(pid)+'/stat') as f:row=f.read(8193).rsplit(')',1)[1].split()
+            require(row[0] not in ('Z','X') and len(row)>19,'instance_process_dead');return int(row[19])
+    def record(child,argv,exe):
+            start=birth(child.pid);base='/proc/'+str(child.pid)
+            with open(base+'/cmdline','rb') as f:raw=f.read(32769)
+            expected=b'\0'.join(os.fsencode(x) for x in argv)+b'\0'
+            require(raw==expected and birth(child.pid)==start and generation(os.stat(base+'/exe'))==generation(os.fstat(exe)),'instance_process_identity')
+            return {'pid':child.pid,'startTicks':start,'argv':argv,'commandSha256':hashlib.sha256(raw).hexdigest(),'executableGeneration':list(generation(os.fstat(exe)))}
+    def process(row):
+            require(type(row)is dict and set(row)=={'pid','startTicks','argv','commandSha256','executableGeneration'} and type(row['pid'])is int and row['pid']>0 and type(row['startTicks'])is int and row['startTicks']>0,'instance_process_receipt')
+            pid=row['pid'];require(birth(pid)==row['startTicks'],'instance_process_changed');base='/proc/'+str(pid)
+            with open(base+'/cmdline','rb') as f:raw=f.read(32769)
+            require(raw==b'\0'.join(os.fsencode(x) for x in row['argv'])+b'\0' and hashlib.sha256(raw).hexdigest()==row['commandSha256'] and list(generation(os.stat(base+'/exe')))==row['executableGeneration'] and os.stat(base).st_uid==os.geteuid() and birth(pid)==row['startTicks'],'instance_process_changed')
+            return pid
+    def owns(pid,path,is_socket=False):
+            fdlist=os.listdir('/proc/'+str(pid)+'/fd');require(len(fdlist)<=8192,'instance_fd_capacity')
+            if is_socket:
+                with open('/proc/net/unix') as f:raw=f.read(1024**2+1)
+                require(len(raw)<=1024**2,'instance_socket_capacity')
+                # Accepted Unix streams retain the bound pathname too. Identify
+                # the listening stream, then prove its descriptor belongs to pid.
+                rows=[r.split() for r in raw.splitlines()[1:]]
+                matches=[r[6] for r in rows if len(r)>=8 and r[-1]==str(path) and
+                         r[3:6]==['00010000','0001','01']]
+                require(len(matches)==1,'instance_socket_identity');target='socket:['+matches[0]+']'
+                require(any(os.readlink('/proc/'+str(pid)+'/fd/'+n)==target for n in fdlist),'instance_socket_owner')
+            else:
+                identity=private(path);found=False
+                for n in fdlist:
+                    try:info=os.stat('/proc/'+str(pid)+'/fd/'+n)
+                    except FileNotFoundError:continue
+                    if (info.st_dev,info.st_ino)==(identity.st_dev,identity.st_ino):found=True
+                require(found,'instance_disk_owner')
+    def qmp(command,arguments=None):
+            client=socket.socket(socket.AF_UNIX);client.settimeout(3)
+            try:
+                row=read('qemu-started.json');pid=process(row);named=os.lstat(root/'qmp.sock')
+                client.connect(str(root/'qmp.sock'))
+                peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+                require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_peer')
+                stream=client.makefile('rwb',buffering=0)
+                def receive():
+                    line=stream.readline(65537);require(0<len(line)<=65536,'instance_qmp_bound');return json.loads(line)
+                require('QMP' in receive(),'instance_qmp_greeting')
+                for sequence,(name,args) in enumerate((('qmp_capabilities',None),(command,arguments))):
+                    request={'execute':name,'id':sequence}
+                    if args is not None:request['arguments']=args
+                    stream.write((json.dumps(request)+'\n').encode())
+                    for _ in range(32):
+                        value=receive()
+                        if value.get('id')==sequence:break
+                    else:raise ValueError('instance_qmp_response')
+                    require('return' in value,'instance_qmp_error')
+                process(row);require(os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_changed')
+                return value['return']
+            finally:client.close()
+    def guest_state(pid):
+            state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+            client=socket.socket(socket.AF_UNIX);client.settimeout(1)
+            try:
+                owns(pid,root/'qga.sock',True);named=os.lstat(root/'qga.sock');client.connect(str(root/'qga.sock'))
+                peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+                require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_peer')
+                stream=client.makefile('rwb',buffering=0)
+                nonce=int.from_bytes(os.urandom(8),'big')&((1<<63)-1)
+                stream.write(b'\xff'+(json.dumps({'execute':'guest-sync-delimited','arguments':{'id':nonce}})+'\n').encode())
+                def receive():
+                    line=stream.readline(65537);require(0<len(line)<=65536,'instance_qga_bound')
+                    return json.loads(line.lstrip(b'\xff'))
+                # The flush sentinel can itself produce an error; stale complete
+                # replies and partial JSON may also precede the real response.
+                # QGA requires ignoring all input until a delimited matching nonce.
+                deadline=time.monotonic()+3;consumed=0
+                for _ in range(32):
+                    remaining=deadline-time.monotonic();require(remaining>0,'instance_qga_sync')
+                    client.settimeout(min(1,remaining));line=stream.readline(65537)
+                    consumed+=len(line);require(0<len(line)<=65536 and consumed<=262144,'instance_qga_bound')
+                    marker=line.rfind(b'\xff')
+                    if marker<0:continue
+                    try:reply=json.loads(line[marker+1:])
+                    except (ValueError,UnicodeError):continue
+                    if type(reply)is dict and type(reply.get('return'))is int and reply['return']==nonce:break
+                else:raise ValueError('instance_qga_sync')
+                client.settimeout(1)
+                def query(command):
+                    stream.write((json.dumps({'execute':command})+'\n').encode());response=receive()
+                    require('return' in response,'instance_qga_query');return response['return']
+                query('guest-ping');state['guestAgentReady']=True
+                osinfo=query('guest-get-osinfo');name=osinfo.get('pretty-name') or osinfo.get('name')
+                if type(name)is str and 0<len(name)<=256 and not any(ord(c)<32 for c in name):state['osName']=name
+                try:
+                    users=query('guest-get-users')
+                    if type(users)is list and len(users)<=128:
+                        state['ordinarySessionObserved']=any(type(u)is dict and type(u.get('user'))is str and u['user'].rsplit('\\',1)[-1].casefold()==SETUP['user'].casefold() for u in users)
+                except (OSError,ValueError):pass
+                require(os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_changed')
+            except (OSError,ValueError,KeyError,TypeError):
+                state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+            finally:client.close()
+            return state
+    def instance_intent():
+            private(root,True);intent=read('intent.json')
+            require(type(intent)is dict and set(intent)=={'schemaVersion','spec','setup','hostBootId','rootIdentity','assetIdentities'} and type(intent['schemaVersion'])is int and intent['schemaVersion']==1,'instance_intent_fields')
+            require(intent['spec']==SPEC and intent['setup']==SETUP and intent['hostBootId']==CONTEXT['hostBootId'] and intent['rootIdentity']==list(structure(os.lstat(root))),'instance_intent')
+            require(type(intent['assetIdentities'])is dict and set(intent['assetIdentities'])=={'firmwareCode','installer','drivers'},'instance_asset_receipt')
+            return intent
+    def observed():
+            intent=instance_intent()
+            q=read('qemu-started.json');t=read('swtpm-started.json');pid=process(q);tpid=process(t)
+            mutable=read('mutable-artifacts.json')
+            require(type(mutable)is dict and set(mutable)=={'disk.qcow2','uefi-vars.fd'},'instance_mutable_receipt')
+            for name,identity in mutable.items():
+                require(type(identity)is list and len(identity)==5 and list(structure(private(root/name)))==identity,'instance_mutable_changed')
+                owns(pid,root/name)
+            owns(pid,root/'qmp.sock',True);owns(tpid,root/'swtpm.sock',True)
+            state=qmp('query-status');sets=qmp('query-fdsets')
+            require(type(sets)is list,'instance_asset_descriptors')
+            for name,expected in intent['assetIdentities'].items():
+                require(type(expected)is dict and set(expected)=={'set','generation'} and type(expected['set'])is int and
+                        expected['set']==('firmwareCode','installer','drivers').index(name)+1 and type(expected['generation'])is list and
+                        len(expected['generation'])==9 and all(type(x)is int and x>=0 for x in expected['generation']) and
+                        expected['generation'][6]==SPEC['assets'][name]['bytes'],'instance_asset_receipt')
+                selected=[s for s in sets if s.get('fdset-id')==expected['set']]
+                require(len(selected)==1 and len(selected[0].get('fds',[]))==1,'instance_asset_descriptors')
+                item=selected[0]['fds'][0];require(item.get('opaque')=='asset:'+name and type(item.get('fd'))is int and item['fd']>2,'instance_asset_descriptors')
+                require(list(generation(os.stat('/proc/'+str(pid)+'/fd/'+str(item['fd']))))==expected['generation'],'instance_asset_changed')
+            guest=guest_state(pid);process(q);process(t);closing()
+            return {'qemu':{'pid':q['pid'],'startTicks':q['startTicks']},'swtpm':{'pid':t['pid'],'startTicks':t['startTicks']},'qemuStatus':state.get('status'),**guest,'productReady':False}
+    import base64,fcntl
+    from xml.etree import ElementTree as ET
+    global wire,partial_wire,QGA_PEER_PID,QGA_GUARD
+    lock=None;connection=None;domain=None;manager=None;socket_pin=None
+    def epoch():
+        require(pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()==CONTEXT['hostBootId'],'instance_host_epoch')
+        instance_intent();closing()
+    def actor():
+        if PROVIDER=='raw-qemu-windows':
+            row=read('qemu-started.json')
+            try:process(row)
+            except FileNotFoundError:return None
+            except ValueError as error:
+                if str(error)=='instance_process_dead':return None
+                raise
+            process(read('swtpm-started.json'));return row
+        candidates=[]
+        for path in pathlib.Path('/proc').iterdir():
+            if not path.name.isdigit():continue
+            try:
+                if path.stat().st_uid!=os.geteuid():continue
+                raw=(path/'cmdline').read_bytes();words=raw.split(b'\0')
+                if b'-uuid' not in words:continue
+                index=words.index(b'-uuid')
+                if index+1>=len(words) or words[index+1].decode('ascii','ignore')!=SPEC['deploymentId']:continue
+                pid=int(path.name);start=birth(pid)
+                row={'pid':pid,'startTicks':start,'argv':[os.fsdecode(v) for v in words if v],
+                     'commandSha256':hashlib.sha256(raw).hexdigest(),'executableGeneration':list(generation(os.stat(path/'exe')))}
+                process(row);candidates.append(row)
+            except FileNotFoundError:continue
+        require(len(candidates)==1,'instance_libvirt_actor_unknown');row=candidates[0]
+        owns(row['pid'],root/'disk.qcow2');owns(row['pid'],root/'uefi-vars.fd');return row
+    def vm_guard():
+        epoch()
+        if PROVIDER=='libvirt-windows':
+            require(connection.getURI()==URI and domain.UUIDString()==SPEC['deploymentId'] and domain.name()==DOMAIN,'instance_libvirt_identity')
+            xml=domain.XMLDesc(libvirt.VIR_DOMAIN_XML_INACTIVE).encode()
+            require(hashlib.sha256(xml).hexdigest()==XML_SHA,'instance_libvirt_xml_changed')
+            tree=ET.fromstring(xml);sources=tree.findall("devices/disk[@device='disk']/source")
+            require(len(sources)==1 and sources[0].get('file')==str(root/'disk.qcow2') and tree.findtext('os/nvram')==str(root/'uefi-vars.fd'),'instance_libvirt_artifacts')
+            process(manager)
+            actual=os.lstat(SOCKET_PATH)
+            require(stat.S_ISSOCK(actual.st_mode) and actual.st_uid==os.geteuid() and not actual.st_mode&0o077 and structure(actual)==socket_pin,'instance_libvirt_socket_changed')
+        if current_actor is not None:
+            process(current_actor)
+            if PROVIDER=='raw-qemu-windows':
+                owns(current_actor['pid'],root/'qmp.sock',True)
+                mutable=read('mutable-artifacts.json')
+                require(set(mutable)=={'disk.qcow2','uefi-vars.fd'},'instance_mutable_receipt')
+                for name,pin in mutable.items():
+                    require(pin==list(structure(private(root/name))),'instance_mutable_changed')
+                    owns(current_actor['pid'],root/name)
+                tpm=read('swtpm-started.json');process(tpm);owns(tpm['pid'],root/'swtpm.sock',True)
+    def monitor(command,arguments=None):
+        vm_guard()
+        if PROVIDER=='raw-qemu-windows':return qmp(command,arguments)
+        request={'execute':command}
+        if arguments is not None:request['arguments']=arguments
+        raw=libvirt_qemu.qemuMonitorCommand(domain,json.dumps(request,separators=(',',':')),0)
+        require(type(raw)is str and 0<len(raw.encode())<=65536,'instance_monitor_reply')
+        value=json.loads(raw);require(type(value)is dict and 'return'in value and 'error'not in value,'instance_monitor_reply')
+        vm_guard();return value['return']
+    def machine_state():
+        vm_guard()
+        if PROVIDER=='raw-qemu-windows':
+            if current_actor is None:return 'stopped'
+            require(qmp('query-uuid')['UUID'].lower()==SPEC['deploymentId'],'instance_machine')
+            return qmp('query-status')['status']
+        value=domain.state()[0]
+        return {1:'running',2:'booting',3:'paused',4:'shutdown',5:'stopped',6:'unhealthy',7:'suspended'}.get(value,'unknown')
+    def rpc(command,arguments):
+        vm_guard()
+        if PROVIDER=='raw-qemu-windows':
+            global QGA_PEER_PID,QGA_GUARD
+            QGA_PEER_PID=current_actor['pid'];owns(QGA_PEER_PID,root/'qga.sock',True);named=os.lstat(root/'qga.sock')
+            def guarded():
+                vm_guard();require(os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_changed')
+            QGA_GUARD=guarded
+            value=call(str(root/'qga.sock'),command,arguments,_deadline=time.monotonic()+8)
+        else:
+            request=json.dumps({'execute':command,'arguments':arguments},separators=(',',':'))
+            require(len(request.encode())<=262144,'instance_guest_request_bound')
+            raw=libvirt_qemu.qemuAgentCommand(domain,request,8,0)
+            require(type(raw)is str and 0<len(raw.encode())<=262144,'instance_guest_reply_bound')
+            answer=json.loads(raw);require(type(answer)is dict and 'return'in answer and 'error'not in answer,'instance_guest_reply')
+            value=answer['return']
+        vm_guard();return value
+    def read_guest_terminal(name):
+        # QGA's bounded base64 envelope is larger than ordinary metadata.
+        # Hold the exact private file generation across the entire read.
+        path=root/name;named=private(path)
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            info=os.fstat(fd)
+            require(generation(info)==generation(named),'instance_receipt_changed')
+            require(0<info.st_size<=262144,'instance_guest_reply_bound')
+            raw=os.read(fd,262145)
+            require(len(raw)==info.st_size and generation(os.fstat(fd))==generation(info)
+                    and generation(os.lstat(path))==generation(info),'instance_receipt_changed')
+            return json.loads(raw)
+        finally:os.close(fd)
+    def script(label,source,original=None):
+        operation=OPERATION if original is None else original['operationId']
+        source_sha=hashlib.sha256(source.encode()).hexdigest()if original is None else original['sourceSha256']
+        require(re.fullmatch(r'[a-z][a-z0-9-]{0,79}',label)is not None,'instance_guest_label')
+        prefix='readiness-'+operation+'-'+label
+        intent_name=prefix+'.intent.json';ack_name=prefix+'.ack.json';terminal_name=prefix+'.terminal.json'
+        # These fixed public programs never receive protected stdin. Login and
+        # unknown extension modes cannot archive unvalidated controller output.
+        retain_public=MODE in {'observe','idle-inventory','reboot','resume','wake_display',
+                              'lease-acquire','lease-status','lease-cancel','lease-enroll','lease-enrollment-status',
+                              'job-enroll','job-namespace-status','job-start','job-status','job-inventory'}
+        observed_name=prefix+'.observed-terminal.json'
+        if not os.path.lexists(root/intent_name):
+            if original is not None:return {'state':'unsubmitted','reason':'original_admission_absent','replayAllowed':False}
+            # New controllers correlate the retained result to this exact request.
+            # A QGA PID alone is reusable after an agent/guest restart.
+            lines=source.rstrip().splitlines();output=[i for i,line in enumerate(lines)if line.lstrip().startswith('[Console]::WriteLine(')]
+            require(output==[len(lines)-1]and lines[-1].startswith('[Console]::WriteLine(')and lines[-1].endswith(')'),'instance_guest_output_program')
+            lines[-1]='$VcRaw='+lines[-1][len('[Console]::WriteLine('):-1]
+            frame={'schemaVersion':1,'operationId':operation,'label':label,'sourceSha256':source_sha}
+            framed='\n'.join(lines)+"\n$VcBody=($VcRaw|ConvertFrom-Json)\n$VcOwner=Get-Process -Id $PID\n"
+            framed+="$VcFrame=('"+json.dumps(frame,separators=(',',':'))+"'|ConvertFrom-Json)\n"
+            framed+="$VcFrame|Add-Member -NotePropertyName owner -NotePropertyValue (@{pid=$PID;birth=$VcOwner.StartTime.ToFileTimeUtc().ToString()})\n$VcFrame|Add-Member -NotePropertyName result -NotePropertyValue $VcBody\n[Console]::WriteLine(($VcFrame|ConvertTo-Json -Depth 24 -Compress))\n"
+            save(intent_name,{'operationId':operation,'label':label,'sourceSha256':source_sha,
+                              'hostBoot':CONTEXT['hostBootId'],'actor':current_actor,'replayAllowed':False,'controllerIdentity':frame})
+            vm_guard()
+            ack=rpc('guest-exec',{'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',"$s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($s))"],
+                                  'input-data':base64.b64encode(framed.encode()).decode(),'capture-output':True})
+            require(type(ack)is dict and set(ack)=={'pid'} and type(ack['pid'])is int and ack['pid']>0,'instance_guest_exec_ack')
+            save(ack_name,{'operationId':operation,'label':label,'ack':ack,'replayAllowed':False})
+        intent=read(intent_name)
+        retain_public=retain_public and type(intent.get('controllerIdentity'))is dict
+        require(intent['operationId']==operation and intent['label']==label and intent['sourceSha256']==source_sha
+                and intent['hostBoot']==CONTEXT['hostBootId'] and intent['actor']==current_actor,'instance_original_guest_request')
+        # Lost admission acknowledgement is never permission to guest-exec again.
+        require(os.path.lexists(root/ack_name),'instance_original_guest_ack_unknown')
+        ack=read(ack_name);require(ack['operationId']==operation and ack['label']==label and ack['replayAllowed']is False,'instance_guest_exec_ack')
+        if os.path.lexists(root/terminal_name):terminal=read_guest_terminal(terminal_name)
+        elif retain_public and os.path.lexists(root/observed_name):terminal=read_guest_terminal(observed_name)
+        else:
+            require(type(intent.get('controllerIdentity'))is dict,'instance_legacy_guest_job_unresolved')
+            deadline=time.monotonic()+20
+            while True:
+                terminal=rpc('guest-exec-status',ack['ack'])
+                if terminal.get('exited')is True:break
+                require(time.monotonic()<deadline,'instance_original_guest_pending');time.sleep(.2)
+            # Validate correlation before admitting the terminal receipt.
+        require(type(terminal)is dict and len((json.dumps(terminal,sort_keys=True)+'\n').encode())<=262144,'instance_guest_reply_bound')
+        if retain_public and not os.path.lexists(root/observed_name):save(observed_name,terminal)
+        require(terminal.get('exited')is True and type(terminal.get('exitcode'))is int and terminal['exitcode']==0 and not terminal.get('out-truncated',False)
+                and not terminal.get('err-truncated',False)
+                and all(type(terminal[key])is bool for key in ('out-truncated','err-truncated')if key in terminal),'instance_guest_program_failed')
+        out=base64.b64decode(terminal.get('out-data',''),validate=True);err=base64.b64decode(terminal.get('err-data',''),validate=True)
+        require(not err and 0<len(out)<=65536,'instance_guest_output_bound');value=json.loads(out.decode('utf-8-sig'))
+        require(type(value)is dict,'instance_guest_output')
+        frame=intent.get('controllerIdentity')
+        if frame is not None:
+            require(type(frame)is dict and type(frame.get('schemaVersion'))is int and set(frame)=={'schemaVersion','operationId','label','sourceSha256'}
+                    and frame=={'schemaVersion':1,'operationId':operation,'label':label,'sourceSha256':source_sha},'instance_guest_controller_identity')
+            require(set(value)==set(frame)|{'owner','result'}and type(value.get('schemaVersion'))is int and all(value.get(k)==v for k,v in frame.items())
+                    and type(value['owner'])is dict and set(value['owner'])=={'pid','birth'}
+                    and type(value['owner']['pid'])is int and value['owner']['pid']==ack['ack']['pid']
+                    and type(value['owner']['birth'])is str and re.fullmatch(r'[1-9][0-9]{0,19}',value['owner']['birth'])is not None
+                    and int(value['owner']['birth'])<2**64 and type(value['result'])is dict,'instance_guest_controller_identity')
+            value=value['result']
+        if not os.path.lexists(root/terminal_name):save(terminal_name,terminal)
+        vm_guard();return value
+    def host_work():
+        """Finite original guest/lifecycle receipts; absence never means idle."""
+        names=[path.name for path in root.iterdir()]
+        require(len(names)<=8192,'instance_work_inventory_bound')
+        unresolved=[];terminal_count=0
+        guest_prefix=r'(?:qualification-[0-9a-f-]{36}|direct-guest-[0-9a-f-]{36}|readiness-[0-9a-f-]{36}-(?:session|interactive|display|wake-admission|lease-acquire|lease-status|lease-cancel|lease-enroll|idle|(?:job-enroll|job-namespace-status|job-start|job-status|job-inventory)-[0-9a-f]{16}|(?:login-session|login-account|login-admission|login-after)-[0-9a-f]{12}))'
+        for name in names:
+            if not name.endswith('.intent.json'):continue
+            prefix=name.removesuffix('.intent.json')
+            if re.fullmatch(guest_prefix,prefix):
+                intent=read(name);operation=intent.get('operationId')
+                try:
+                    ack=read(prefix+'.ack.json');terminal=read_guest_terminal(prefix+'.terminal.json')
+                    require(ack.get('operationId')==operation and ack.get('replayAllowed')is False
+                            and type(ack.get('ack'))is dict and type(ack['ack'].get('pid'))is int
+                            and terminal.get('exited')is True and type(terminal.get('exitcode'))is int,'instance_original_work_pending')
+                    terminal_count+=1
+                except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_guest_work_unresolved'})
+            elif re.fullmatch(r'readiness-recovery-[0-9a-f]{64}',prefix):
+                try:
+                    intent=read(name);done=read(prefix+'.result.json')
+                    require(done.get('state')=='submitted'and done.get('operationId')==intent.get('operationId'),'instance_original_work_pending')
+                except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_lifecycle_unresolved'})
+            elif re.fullmatch(r'direct-(?:pause-resume|resume)-[0-9a-f-]{36}',prefix):
+                try:
+                    intent=read(name);done=read('direct-pause-resume-'+intent['operationId']+'.result.json')
+                    require(done.get('operationId')==intent['operationId']and done.get('sameQemuOwner')is True
+                            and done.get('agentRecovered')is True and done.get('after',{}).get('status')=='running','instance_original_work_pending')
+                except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_lifecycle_unresolved'})
+            elif name in {'libvirt-start.intent.json','libvirt-define.intent.json','migration-graceful-stop.intent.json','migration-tpm-stop.intent.json'}:
+                try:
+                    mapped={'libvirt-start.intent.json':'libvirt-start.result.json','libvirt-define.intent.json':'libvirt-defined.result.json',
+                            'migration-graceful-stop.intent.json':'migration-graceful-stop.result.json','migration-tpm-stop.intent.json':'migration-graceful-stop.result.json'}
+                    done=read(mapped[name])
+                    if name.startswith('migration-'):require(done.get('qemuPositiveAbsence')is True and done.get('tpmPositiveAbsence')is True,'instance_original_work_pending')
+                    elif name=='libvirt-start.intent.json':require(done.get('state')=='running'and done.get('samePersistedArtifacts')is True,'instance_original_work_pending')
+                    else:require(done.get('state')=='defined','instance_original_work_pending')
+                except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_lifecycle_unresolved'})
+            else:unresolved.append({'receipt':name,'reason':'unclassified_original_intent'})
+        if os.path.lexists(root/'secure-intent.json'):
+            try:
+                original=read('secure-intent.json');ack=read('secure-ack.json');terminal=read('secure-terminal.json')
+                require(original.get('operationId')==ack.get('operationId')and terminal.get('exited')is True
+                        and type(terminal.get('exitcode'))is int,'instance_original_work_pending')
+                terminal_count+=1
+            except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':'secure-intent.json','reason':'original_credential_phase_unresolved'})
+        return {'visibilityComplete':True,'terminalCount':terminal_count,'unresolved':unresolved}
+    try:
+        epoch();chain()
+        lock=os.open(root/'intent.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);limit=time.monotonic()+5
+        while True:
+            try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+            except BlockingIOError:require(time.monotonic()<limit,'instance_operator_busy');time.sleep(.05)
+        if PROVIDER=='libvirt-windows':
+            import libvirt,libvirt_qemu
+            libvirt.registerErrorHandler(lambda *_:None,None)
+            connection=libvirt.open(URI);require(connection is not None,'instance_libvirt_connection')
+            peer_rows=set()
+            for name in os.listdir('/proc/self/fd'):
+                try:
+                    if not os.readlink('/proc/self/fd/'+name).startswith('socket:'):continue
+                    with socket.fromfd(int(name),socket.AF_UNIX,socket.SOCK_STREAM) as channel:
+                        if channel.getpeername()!=SOCKET_PATH:continue
+                        peer_rows.add(struct.unpack('3i',channel.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12)))
+                except OSError:continue
+            require(len(peer_rows)==1,'instance_libvirt_peer')
+            peer=next(iter(peer_rows));require(peer[1]==os.geteuid(),'instance_libvirt_peer')
+            path=pathlib.Path('/proc',str(peer[0]));binary=os.stat(path/'exe')
+            require(os.path.realpath(path/'exe')=='/usr/bin/virtqemud' and binary.st_uid==0 and not binary.st_mode&0o022,'instance_libvirt_manager_binary')
+            raw=(path/'cmdline').read_bytes();manager={'pid':peer[0],'startTicks':birth(peer[0]),'argv':[os.fsdecode(v) for v in raw.split(b'\0')if v],
+                'commandSha256':hashlib.sha256(raw).hexdigest(),'executableGeneration':list(generation(binary))}
+            process(manager);actual=os.lstat(SOCKET_PATH)
+            require(os.path.realpath(SOCKET_PATH)==SOCKET_PATH and stat.S_ISSOCK(actual.st_mode) and actual.st_uid==os.geteuid() and not actual.st_mode&0o077,'instance_libvirt_socket_owner')
+            socket_pin=structure(actual)
+            domain=connection.lookupByUUIDString(SPEC['deploymentId']);current_actor=actor() if domain.isActive() else None
+        else:current_actor=actor()
+        if PROVIDER=='raw-qemu-windows':
+            suffix='readiness-'+OPERATION+'-'+MODE+'-'+os.urandom(8).hex()
+            wire=os.open(root/(suffix+'.wire'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            partial_wire=os.open(root/(suffix+'.partial-wire'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        state=machine_state()
+        result={'state':'observed','operationId':OPERATION,'provider':PROVIDER,'machine':SPEC['deploymentId'],
+                'hostBoot':CONTEXT['hostBootId'],'guest':state,'actor':current_actor,
+                'controlConnection':('libvirt:'+str(manager['pid'])+':'+str(manager['startTicks'])+':'+str(socket_pin[1]) if manager else 'qmp:'+str(os.lstat(root/'qmp.sock').st_ino)),'sessionFacts':None,'displayFacts':None,'guestAgent':False,'idleFacts':None,'hostWork':None}
+        if MODE=='resume':
+            require(state in {'paused','suspended'},'instance_recovery_state_changed')
+            require(EXPECTED.get('actor')==current_actor and EXPECTED.get('hostBoot')==CONTEXT['hostBootId'],'instance_recovery_identity_changed')
+            vm_guard();save('readiness-recovery-'+RECOVERY_ID+'.intent.json',{'action':'resume','recoveryId':RECOVERY_ID,'operationId':OPERATION,'before':result,'replayAllowed':False})
+            if PROVIDER=='raw-qemu-windows':qmp('system_wakeup'if state=='suspended'else'cont')
+            elif state=='suspended':domain.pMWakeup(0)
+            else:domain.resume()
+            vm_guard();result['guest']=machine_state();result['state']='submitted'
+            save('readiness-recovery-'+RECOVERY_ID+'.result.json',result)
+        elif MODE=='wake_display':
+            require(state=='running' and EXPECTED.get('actor')==current_actor and EXPECTED.get('controlConnection')==result['controlConnection'],'instance_recovery_identity_changed')
+            before=EXPECTED.get('sessionFacts');require(type(before)is dict,'instance_recovery_session_missing')
+            fresh=script('wake-admission',SESSION_SCRIPT)
+            require(fresh['machine'].lower()==SPEC['deploymentId'] and fresh['boot']==before['boot'] and fresh['console']==before['console']
+                    and fresh['expectedSid']==before['expectedSid'] and fresh['tokenSid']==before['expectedSid'] and fresh['ordinary']is True
+                    and fresh['session']['State']==0 and fresh['session']['Flags']in {0,1} and fresh['session']['Logon']==before['session']['Logon'],'instance_recovery_session_changed')
+            mice=monitor('query-mice');require(type(mice)is list and len(mice)<=16,'instance_mouse_unrecognized')
+            selected=[mouse for mouse in mice if type(mouse)is dict and mouse.get('current')is True]
+            require(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_mouse_unrecognized')
+            absolute=selected[0]['absolute'];events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if absolute else[{'type':'rel','data':{'axis':'x','value':1}}])
+            vm_guard();save('readiness-recovery-'+RECOVERY_ID+'.intent.json',{'action':'wake_display','recoveryId':RECOVERY_ID,'operationId':OPERATION,'boot':fresh['boot'],'account':fresh['expectedSid'],'session':str(fresh['console'])+':'+str(fresh['session']['Logon']),'before':result,'replayAllowed':False})
+            monitor('input-send-event',{'events':events})
+            result.update(state='submitted',wakeInputSubmitted=True,sessionFacts=fresh)
+            save('readiness-recovery-'+RECOVERY_ID+'.result.json',result)
+        elif MODE=='fixture-profile':
+            require(state=='running','instance_fixture_not_running')
+            result['fixture']=_fixture_profile(root,read,monitor,vm_guard,script,result,lock,birth)
+            result['sessionFacts']=result['fixture']['sessionFacts'];result['guestAgent']=True
+        elif MODE in {'observe','idle-inventory','reboot'}:
+            if state=='running':
+                try:rpc('guest-ping',{});result['guestAgent']=True
+                except Exception:result['guest']='booting'
+                if result['guestAgent']:
+                    if INTERACTIVE_SCRIPT:
+                        probe=script('interactive',INTERACTIVE_SCRIPT)
+                        require(set(probe)==({'sessionFacts','displayFacts','idleFacts'}if IDLE_SCRIPT else{'sessionFacts','displayFacts'}),'instance_interactive_reply')
+                        result.update(probe)
+                    elif IDLE_SCRIPT:
+                        result['idleFacts']=script('idle',IDLE_SCRIPT)
+                        result['sessionFacts']=result['idleFacts']['sessionFacts']
+                    else:result['sessionFacts']=script('session',SESSION_SCRIPT)
+                    if IDLE_SCRIPT:result['hostWork']=host_work()
+            if MODE=='reboot':
+                require(result['guestAgent']and EXPECTED.get('actor')==current_actor and EXPECTED.get('hostBoot')==CONTEXT['hostBootId'],'instance_reboot_identity_changed')
+                before=EXPECTED.get('sessionFacts');fresh=result['sessionFacts'];idle=result['idleFacts'];work=result['hostWork']
+                require(type(before)is dict and fresh['machine'].lower()==SPEC['deploymentId']and fresh['boot']==before['boot']
+                        and fresh['expectedSid']==before['expectedSid']and fresh['ordinary']is True
+                        and fresh['console']==before['console']and all(fresh['session'][k]==before['session'][k]for k in ('SessionId','State','Flags','Logon','LastInput')),
+                        'instance_reboot_session_changed')
+                require(idle.get('visibilityComplete')is True and idle.get('blockers')==[]and all(idle.get('lifecycle',{}).values())
+                        and idle.get('leaseFacts',{}).get('visibilityComplete')is True and idle['leaseFacts']['blockers']==[]
+                        and idle.get('jobFacts',{}).get('visibilityComplete')is True and idle['jobFacts']['blockers']==[]
+                        and all(row.get('self')is True or row.get('knownSystem')is True for row in idle['processes'])
+                        and work['visibilityComplete']is True and work['unresolved']==[],'instance_positive_idle_required')
+                require(type(RESERVATION)is dict and RESERVATION.get('visibilityComplete')is True and RESERVATION.get('blockers')==[]
+                        and RESERVATION.get('machine')==SPEC['deploymentId']and RESERVATION.get('hostBoot')==CONTEXT['hostBootId']
+                        and RESERVATION.get('actor')=={key:current_actor[key]for key in ('pid','startTicks')},'instance_reservation_visibility_missing')
+                vm_guard();save('readiness-recovery-'+RECOVERY_ID+'.intent.json',{'action':'reboot','recoveryId':RECOVERY_ID,'operationId':OPERATION,'before':result,'reservation':RESERVATION,'replayAllowed':False})
+                acknowledged=False
+                try:rpc('guest-shutdown',{'mode':'reboot'});acknowledged=True
+                except Exception:pass
+                save('readiness-recovery-'+RECOVERY_ID+'.ack.json',{'operationId':OPERATION,'responseObserved':acknowledged,'replayAllowed':False})
+                result.update(state='submitted',guest='booting',shutdownAcknowledged=acknowledged)
+                save('readiness-recovery-'+RECOVERY_ID+'.result.json',result)
+        elif MODE in {'lease-acquire','lease-status','lease-cancel','lease-enroll','lease-enrollment-status'}:
+            require(state=='running','instance_guest_not_ready');rpc('guest-ping',{})
+            require(EXPECTED.get('actor')==current_actor and EXPECTED.get('hostBoot')==CONTEXT['hostBootId']
+                    and EXPECTED.get('controlConnection')==result['controlConnection'],'instance_original_lease_host_changed')
+            result['lease']=script('lease-enroll',None,ORIGINAL_SCRIPT)if MODE=='lease-enrollment-status'else script(MODE,LEASE_SCRIPT)
+        else:raise ValueError('instance_packet_action')
+        vm_guard();print(json.dumps(result))
+    except BaseException as error:
+        reason=str(error) if type(error)is ValueError and re.fullmatch('instance_[a-z_]{1,64}',str(error)) else 'instance_observation_unknown'
+        print(json.dumps({'state':'blocked','operationId':OPERATION,'reason':reason,'errorClass':type(error).__name__,'replayAllowed':False}))
+    finally:
+        if connection is not None:connection.close()
+        if lock is not None:os.close(lock)
+        for descriptor in (globals().get('wire',-1),globals().get('partial_wire',-1)):
+            if descriptor!=-1:os.close(descriptor)
+        for descriptor in reversed(held):os.close(descriptor)
+
+_main()

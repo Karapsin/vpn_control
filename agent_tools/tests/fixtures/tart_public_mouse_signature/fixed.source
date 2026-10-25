@@ -1,0 +1,16 @@
+def public_transition(label,commands):
+ # Commands are reviewed public setup actions only. Never pass a password here.
+ i,e=guard();operation=str(uuid.uuid4());directory=ROOT/'public-transitions';directory.mkdir(mode=0o700,exist_ok=True)
+ record(directory/(operation+'.json'),{'operationId':operation,'originalRun':i['operationId'],'child':e['child'],'stage':label,'state':'unknown','commands':commands})
+ context,fd=session()
+ try:
+  with context as view:
+   for command in commands:
+    guard()
+    if command[0]=='mouse':view.mouse(command[1],command[2],buttons=command[3])
+    elif command[0]=='key':view.key(command[1],modifiers=tuple(command[2])if len(command)>2 else())
+    elif command[0]=='text':view.type_public(command[1])
+    else:raise ValueError('public_setup_action_unsupported')
+   record(directory/(operation+'-transport-closed.json'),{'operationId':operation,'state':'submitted_awaiting_independent_screen_observation','originalRun':i['operationId'],'child':e['child']})
+   return operation
+ finally:os.close(fd)

@@ -3,6 +3,7 @@ import unittest
 import sys
 from unittest import mock
 from agent_tools import mcp_server as server
+from agent_tools.tests import route_adapter
 
 class ArchiveRouteTests(unittest.TestCase):
     def test_source_closure_and_e848_retire_fixed_routes(self):
@@ -16,7 +17,7 @@ class ArchiveRouteTests(unittest.TestCase):
                 module = mock.Mock(); module.workflow.return_value = {**good, **extra}
                 module._GUEST_CENSUS_PHASES = {"guest-qga-status-rpc"}
                 module._PHASES = {"complete"}; module._DIAGNOSTIC_PHASES = set()
-                with mock.patch.object(server, "_agent_module", return_value=module):
+                with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                     result = server._vm_workflow_impl(action, {})
                 self.assertEqual(expected, result["ok"]); self.assertNotIn("privatePath", result)
             with mock.patch.object(server, "_agent_module") as loader:
@@ -30,7 +31,7 @@ class ArchiveRouteTests(unittest.TestCase):
             for extra, expected in (({}, True), ({"path": "private"}, False), ({"nativeActionAllowed": True}, False), ({"retirementCorrelationId": "foreign"}, False), ({"phase": "dispatch"}, False)):
                 module = mock.Mock(); module.workflow.return_value = {**good, **extra}
                 module._PHASES = {"complete", "proof", "dispatch"}; module._DIAGNOSTIC_PHASES = set()
-                with mock.patch.object(server, "_agent_module", return_value=module):
+                with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                     result = server._vm_workflow_impl("windows-cp117-cp95-task-retire-" + action, {})
                 self.assertEqual(expected, result["ok"])
                 self.assertNotIn("path", result)
@@ -49,7 +50,7 @@ class ArchiveRouteTests(unittest.TestCase):
         good={"state":"ready","profiles":profiles,"activeInstallerCount":0,"opaquePowerShellCount":0,**flags}
         for change,expected in (({},True),({"privatePath":"secret"},False),({"activeInstallerCount":1},False),({"profiles":profiles[:-1]},False)):
             module=mock.Mock();module.status.return_value={**good,**change}
-            with mock.patch.object(server,"_agent_module",return_value=module):
+            with mock.patch.object(server,"_agent_module",side_effect=route_adapter.admitted_adapter(module)):
                 result=server._vm_workflow_impl("windows-cp117-cp95-retained-tasks",{})
             self.assertEqual(expected,result["ok"])
             self.assertNotIn("privatePath",result)
@@ -57,12 +58,12 @@ class ArchiveRouteTests(unittest.TestCase):
     def test_e848_retained_http_task_route_is_fixed_and_nonmutating(self):
         flags={"replayAllowed":False,"nativeActionAllowed":False,"productAction":False}
         module=mock.Mock();module.observe.return_value={"state":"ready","phase":"verified","proof":"terminal-success",**flags}
-        with mock.patch.object(server,"_agent_module",return_value=module):
+        with mock.patch.object(server,"_agent_module",side_effect=route_adapter.admitted_adapter(module)):
             result=server._vm_workflow_impl("windows-cp117-e848-http-task",{})
         self.assertTrue(result["ok"])
         for extra in ({"privatePath":"secret"},{"proof":"unverified"},{"nativeActionAllowed":True}):
             module.observe.return_value={"state":"ready","phase":"verified","proof":"terminal-success",**flags,**extra}
-            with mock.patch.object(server,"_agent_module",return_value=module):
+            with mock.patch.object(server,"_agent_module",side_effect=route_adapter.admitted_adapter(module)):
                 result=server._vm_workflow_impl("windows-cp117-e848-http-task",{})
             self.assertFalse(result["ok"])
             self.assertNotIn("privatePath",result)
@@ -78,14 +79,14 @@ class ArchiveRouteTests(unittest.TestCase):
             ("ready",{"transfer-recovery":"archived","unknown-closure":"unknown"},{},False),
             ("ready",{"transfer-recovery":"archived","unknown-closure":"archived"},{"path":"private"},False)):
             module=mock.Mock();module.observe.return_value={"state":state,"phases":phases,**flags,**extra}
-            with mock.patch.object(server,"_agent_module",return_value=module):
+            with mock.patch.object(server,"_agent_module",side_effect=route_adapter.admitted_adapter(module)):
                 result=server._vm_workflow_impl("windows-cp117-historical-base-archives",{})
             self.assertEqual(expected,result["ok"])
             self.assertNotIn("path",result)
 
     def test_historical_archive_output_phase_remains_visible_without_authority(self):
         module=mock.Mock();module.observe.return_value={"state":"blocked","phases":{"transfer-recovery":"remote-output-stderr-progress","unknown-closure":"remote-parser"},"replayAllowed":False,"nativeActionAllowed":False,"productAction":False}
-        with mock.patch.object(server,"_agent_module",return_value=module):
+        with mock.patch.object(server,"_agent_module",side_effect=route_adapter.admitted_adapter(module)):
             result=server._vm_workflow_impl("windows-cp117-historical-base-archives",{})
         self.assertEqual(module.observe.return_value["phases"],result["phases"])
         self.assertFalse(result["ok"])
@@ -97,7 +98,7 @@ class ArchiveRouteTests(unittest.TestCase):
                 module = mock.Mock()
                 getattr(module, action).return_value = {"state": state, "replayAllowed": False,
                     "nativeActionAllowed": False, "productAction": False}
-                with mock.patch.object(server, "_agent_module", return_value=module):
+                with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                     result = server._vm_workflow_impl("windows-cp117-c32-host-archive-" + action, {})
                 self.assertEqual(state == "archived", result["ok"])
                 self.assertFalse(result["replayAllowed"])
@@ -113,7 +114,7 @@ class ArchiveRouteTests(unittest.TestCase):
                                       ({"exclusive-rename": "passed", "destination-race": "passed"}, {"path": "private"}, False)):
             module = mock.Mock()
             module.self_test.return_value = {"state": "passed", "cases": cases, **flags, **extra}
-            with mock.patch.object(server, "_agent_module", return_value=module):
+            with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                 result = server._vm_workflow_impl("windows-cp117-c32-host-archive-self-test", {})
             self.assertEqual(expected, result["ok"])
             self.assertNotIn("path", result)
@@ -124,7 +125,7 @@ class ArchiveRouteTests(unittest.TestCase):
             module.preflight.return_value = {"state": "blocked", "phase": "absence",
                 "retainedGuard": guard, "retainedPhase": "task",
                 "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
-            with mock.patch.object(server, "_agent_module", return_value=module):
+            with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                 result = server._vm_workflow_impl("windows-cp117-c32-archive-preflight",
                     {"leaseId": "67eeeedb-a618-42d5-8e31-821650d16302"})
             self.assertEqual("blocked", result["state"])
@@ -136,7 +137,7 @@ class ArchiveRouteTests(unittest.TestCase):
             module = mock.Mock()
             module.diagnose.return_value = {"state": "observed", "phase": "local-ready",
                 "replayAllowed": False, "nativeActionAllowed": False, "productAction": False, **extra}
-            with mock.patch.object(server, "_agent_module", return_value=module):
+            with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                 result = server._vm_workflow_impl("windows-cp117-c32-archive-diagnose",
                     {"leaseId": "67eeeedb-a618-42d5-8e31-821650d16302"})
             self.assertEqual(not bool(extra), result["ok"])
@@ -155,7 +156,7 @@ class ArchiveRouteTests(unittest.TestCase):
             module.preflight.return_value = {"state": "blocked", "phase": "absence",
                 "retainedGuard": guard, "retainedPhase": "result",
                 "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
-            with mock.patch.object(server, "_agent_module", return_value=module):
+            with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                 result = server._vm_workflow_impl("windows-cp117-c32-archive-preflight",
                     {"leaseId": "67eeeedb-a618-42d5-8e31-821650d16302"})
             self.assertEqual(guard, result["retainedGuard"])
@@ -178,7 +179,7 @@ class StrictRetirementIntegrationTests(unittest.TestCase):
                                     ({"retirementCorrelationId": "foreign"}, False),
                                     ({"nativeActionAllowed": True}, False)):
                 module = mock.Mock(); module.workflow.return_value = {**good, **extra}
-                with mock.patch.object(server, "_agent_module", return_value=module):
+                with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                     result = server._vm_workflow_impl("windows-cp117-c32-retained-task-retire-" + action, {})
                 self.assertEqual(expected, result["ok"])
                 self.assertNotIn("privatePath", result)
@@ -197,7 +198,7 @@ class StrictRetirementIntegrationTests(unittest.TestCase):
                                 ({"privatePayload": "secret"}, False), ({"nativeActionAllowed": True}, False)):
             module = mock.Mock(); module.workflow.return_value = {**good, **extra}
             module._GUEST_CENSUS_PHASES = {"guest-qga-status-rpc"}
-            with mock.patch.object(server, "_agent_module", return_value=module):
+            with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                 result = server._vm_workflow_impl("windows-cp117-source-pre-effect-diagnose", {})
             self.assertEqual(expected, result["ok"])
             self.assertNotIn("privatePayload", result)
@@ -218,7 +219,7 @@ class StrictRetirementIntegrationTests(unittest.TestCase):
                                 ({"snapshotDiagnostic": {"phase": "guest-output-size", "secret": "x"}}, False)):
             module = mock.Mock(); module.workflow.return_value = {**good, **extra}
             module._PHASES = {"snapshot-output-guest-output-size"}; module._DIAGNOSTIC_PHASES = {"guest-output-size"}
-            with mock.patch.object(server, "_agent_module", return_value=module):
+            with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                 result = server._vm_workflow_impl("windows-cp117-cp95-task-retire-preflight", {})
             if expected:
                 self.assertEqual("snapshot-output-guest-output-size", result["phase"])
@@ -273,7 +274,7 @@ class StrictRouteMalformedPhaseTests(unittest.TestCase):
                 module._GUEST_CENSUS_PHASES = {"guest-qga-status-rpc"}
                 module._PHASES = {"snapshot-output-guest-output-size"}
                 module._DIAGNOSTIC_PHASES = {"guest-output-size"}
-                with mock.patch.object(server, "_agent_module", return_value=module):
+                with mock.patch.object(server, "_agent_module", side_effect=route_adapter.admitted_adapter(module)):
                     result = server._vm_workflow_impl(action, {})
                 self.assertEqual({"tool": "vm_workflow", **fallback, "ok": False,
                                   "evidenceClass": "native-history"}, result)

@@ -162,7 +162,7 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
     def test_start_journals_before_one_remote_submission_and_second_campaign_is_blocked(self):
         configured = SimpleNamespace(android_devices={"api35": {}}, fixture_transfer_root=Path("/private/fixtures"))
         config = SimpleNamespace(hosts={"archlinux": configured})
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as raw:
             root = Path(raw); root.chmod(0o700)
             plan = {"sourceSha": SOURCE, "baseArtifactId": fixture.BASE_ARTIFACT_ID,
                     "deviceMutationAllowed": False}
@@ -207,7 +207,7 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
     def test_clean_linked_source_admits_dirty_coordinator_without_source_path_in_intent(self):
         configured = SimpleNamespace(android_devices={"api35": {}}, fixture_transfer_root=Path("/private/fixtures"))
         config = SimpleNamespace(hosts={"archlinux": configured})
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as raw:
             root = Path(raw); root.chmod(0o700)
             clean_source = root / "clean-source"; clean_source.mkdir()
             plan = {"sourceSha": SOURCE, "baseArtifactId": fixture.BASE_ARTIFACT_ID,
@@ -243,7 +243,7 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
     def test_invalid_source_root_rejects_before_fixture_lease_or_remote_dispatch(self):
         configured = SimpleNamespace(android_devices={"api35": {}}, fixture_transfer_root=Path("/private/fixtures"))
         config = SimpleNamespace(hosts={"archlinux": configured})
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as raw:
             root = Path(raw); root.chmod(0o700)
             plan = {"sourceSha": SOURCE, "baseArtifactId": fixture.BASE_ARTIFACT_ID,
                     "deviceMutationAllowed": False}
@@ -265,7 +265,7 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
     def test_changed_clean_source_sha_or_status_rejects_before_lease_write_or_dispatch(self):
         configured = SimpleNamespace(android_devices={"api35": {}}, fixture_transfer_root=Path("/private/fixtures"))
         config = SimpleNamespace(hosts={"archlinux": configured})
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as raw:
             root = Path(raw); root.chmod(0o700)
             clean_source = root / "clean-source"; clean_source.mkdir()
             plan = {"sourceSha": SOURCE, "baseArtifactId": fixture.BASE_ARTIFACT_ID,
@@ -290,7 +290,7 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
                                       (CAMPAIGN + ".json")).exists())
 
     def test_unknown_status_preserves_correlation_and_lease(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as raw:
             root = Path(raw); root.chmod(0o700)
             directory = lifecycle._directory(root)
             fixture.write_private_plan(directory / (CAMPAIGN + ".json"), {
@@ -305,7 +305,7 @@ class AndroidNativeFixtureLifecycleTest(unittest.TestCase):
             self.assertTrue((directory / "device-archlinux-api35.lease").exists())
 
     def test_collect_requires_terminal_remote_receipt_then_releases_exact_lease(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as raw:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as raw:
             root = Path(raw); root.chmod(0o700)
             directory = lifecycle._directory(root)
             fixture.write_private_plan(directory / (CAMPAIGN + ".json"), {

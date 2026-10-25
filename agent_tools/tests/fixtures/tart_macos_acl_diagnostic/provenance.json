@@ -1,0 +1,134 @@
+{
+  "execution": {
+    "compiledNotExecuted": [
+      "controller.current.source",
+      "launcher.current.source"
+    ],
+    "controlledCOnly": "fake_metadata.c",
+    "driverAstFunctions": [
+      "need",
+      "output_record",
+      "guard",
+      "captured_native",
+      "public_reply"
+    ],
+    "otherSources": "authenticated data; builder embeds three exact public source inputs and compiles without executing",
+    "wholeModules": [
+      "component.current.source",
+      "component.lp64.before.source",
+      "capture.before.source",
+      "capture.current.source"
+    ]
+  },
+  "files": {
+    "cap.controls.source": {
+      "bytes": 5463,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic-successor-9143d37e-1a30-4773-bb6d-fb6f706bb07b/check_rpc_cap.py",
+      "sha256": "21f6816c84d8e3b5f8bd64e24b130547c9c8ba51b756e3d0f9f367a5c3470b35"
+    },
+    "capture.before.source": {
+      "bytes": 11366,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/rpc-capture.before.source",
+      "sha256": "92701faf9ed45d72e20c980ceefae31c0ec0a340d074f7c862fe4491ca6d8d1a"
+    },
+    "capture.current.source": {
+      "bytes": 11374,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/rpc_capture.py",
+      "sha256": "bf304127b8a0826363ee8af1cbaef6a8cf35cb8bc4f8e9508d2f55f6a0fe57eb"
+    },
+    "component.controls.source": {
+      "bytes": 10410,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/test_component.py",
+      "sha256": "7b8ce20ad542e35f3781275ddcf6c7e0735c485f3c707a394dd859eced38440a"
+    },
+    "component.current.source": {
+      "bytes": 14320,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/component.py",
+      "sha256": "4cb68d4228d395fc272271965a88cdab7a490c372b5b250e7a37ec5f21f71590"
+    },
+    "component.lp64.before.source": {
+      "bytes": 14321,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/before-lp64-options/component.py",
+      "sha256": "82c12afeb51b7f9b0dea7dcc2fed6731a7b21f007d15f0c8cc06d2ae45485343"
+    },
+    "controller.current.source": {
+      "bytes": 70259,
+      "origin": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-acl-controller-d13b5824-3458-4c97-bcfb-189b7039e5e2/controller.program.py",
+      "sha256": "a12c6a451abe1f2c68ac9a2419eb33ade68969bd385eaf1b294c4d5f94c48769"
+    },
+    "deadline.controls.source": {
+      "bytes": 3259,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/check_total_deadline.py",
+      "sha256": "4440d61f82ee0e02fb3370728599b5c947e717e1870a6a1c07e0c46e647b801e"
+    },
+    "driver.cap.before.source": {
+      "bytes": 18228,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic-successor-9143d37e-1a30-4773-bb6d-fb6f706bb07b/driver.before.source",
+      "sha256": "3c34e8b4bb1d2f320a9896abdc8b602d7c895101ba7851864d22b5b210cffe54"
+    },
+    "driver.current.source": {
+      "bytes": 18228,
+      "origin": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-component-acl-diagnostic-9143d37e-1a30-4773-bb6d-fb6f706bb07b/driver.source.py",
+      "sha256": "2441a0ee19c0748a866aa16c79dfc143ef505fa689b954dfc0d6259c87eed12b"
+    },
+    "driver.deadline.before.source": {
+      "bytes": 18144,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/before-total-deadline-native-component-acl.prepared-46bdb255-92d0-40bb-8893-62e033685645.py",
+      "sha256": "155971136ae2496c272cd3737728f0ab0ff484b8c38cf3c13a44861957a56e67"
+    },
+    "fake_metadata.c": {
+      "bytes": 2667,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/fake_metadata.c",
+      "sha256": "d170cbea5d2452d1c0b80439fd8b75f3c55539b49602c493730fb0ddcf90a258"
+    },
+    "launcher.current.source": {
+      "bytes": 30628,
+      "origin": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-acl-controller-d13b5824-3458-4c97-bcfb-189b7039e5e2/launcher.source.py",
+      "sha256": "a1e64f9c610f6c71fa3e8f9b1e1145922a33727278c5dcee6828c221076824bf"
+    },
+    "native-cap-failure.txt": {
+      "bytes": 1790,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic-successor-9143d37e-1a30-4773-bb6d-fb6f706bb07b/original-failure.stderr",
+      "sha256": "2209dbaf983018d3a5d5bdb68dad664b425915ebed80e6ed8ffcb1a7b31bb089"
+    },
+    "native-result.json": {
+      "bytes": 1054,
+      "origin": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-component-acl-diagnostic-9143d37e-1a30-4773-bb6d-fb6f706bb07b/result.json",
+      "sha256": "17562d4e1ad04465b607c425e04b84867e8984221b3129c5b7f3cdc9c5ebe4a3"
+    },
+    "native-rpc-closure.json": {
+      "bytes": 910,
+      "origin": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-component-acl-diagnostic-9143d37e-1a30-4773-bb6d-fb6f706bb07b/native-rpc-closure.json",
+      "sha256": "84a42411597cb1a22586c5e627f6ff6198ad587644bfed292ee121434d44b79c"
+    },
+    "native-source-closing.json": {
+      "bytes": 4026,
+      "origin": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-component-acl-diagnostic-9143d37e-1a30-4773-bb6d-fb6f706bb07b/source-capsule-closed.json",
+      "sha256": "aeea8a5e5eadc21801294c6a88832f6f2794083de344d62d9d73e802d11e6699"
+    },
+    "packet.controls.source": {
+      "bytes": 3928,
+      "origin": ".runtime/tool-recovery/macos-component-acl-diagnostic/check_packet.py",
+      "sha256": "c3ae39ed6e45b3669e0b1e4894249bb5cecf521f2ac89084a71dd73999e827f6"
+    },
+    "tart_macos_active_source_index.py.source": {
+      "bytes": 14136,
+      "origin": "agent_tools/tart_macos_active_source_index.py",
+      "sha256": "245f091012f9ddc41c6c231c1a843d45905abd7a90ddc5011ea7e9ecb5491295"
+    },
+    "tart_macos_probe.py.source": {
+      "bytes": 15849,
+      "origin": "agent_tools/tart_macos_probe.py",
+      "sha256": "dc535e8943efc18051bf606200174dd0c103aca80bc39bcddc90946f757cc157"
+    },
+    "tart_macos_service_census.py.source": {
+      "bytes": 21196,
+      "origin": "agent_tools/tart_macos_service_census.py",
+      "sha256": "e103665a0d940e5a01f50b709256b957b4dd5480745e26d1b05170fca9687d29"
+    }
+  },
+  "kind": "acl_diagnostic_routine_promotion",
+  "limits": "No guest, Darwin metadata getter, root helper, network, namespace, input or power. Native9143 evidence establishes original acceptance only, no new native qualification.",
+  "operationId": "9143d37e-1a30-4773-bb6d-fb6f706bb07b",
+  "schemaVersion": 1
+}

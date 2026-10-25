@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "6575ba35ad0b8a8c5ccb8664ca5b0bb9fc4f7d1e5987e9974557f8e4e1c1fa57",
+  "nativeBeforeOperation": "9781c485-0697-4a29-b424-9647a49ddd13",
+  "failure": "Public observed terminal cache used ordinary 65536 metadata reader for bounded QGA base64 envelope; caching legacy terminal incorrectly masked missing original accepted terminal."
+}

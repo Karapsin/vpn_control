@@ -1,0 +1,11 @@
+{
+  "beforeActualFailure": "KeyError exitCode",
+  "classification": "Local readonly independent closure audit assumed flat collected receipt; actual collected receipt wraps terminal. Original controller passed unaffected.",
+  "pins": {
+    "actual-collected-terminal.json": "f419f646979b571525f7ad9f272b7bdaab8504602e995b3df85765bd8042b06d",
+    "audit.before.source": "2cfaa34050718cae07a7c781ac703a57c14e3ad7d8d1b95c73efb74404c8d8b1",
+    "audit.fixed.source": "dd71589ff5e81ec957de820e4a014001466f09957c081c3598d6d72c61b7c458"
+  },
+  "schemaVersion": 1,
+  "scope": "Exact original terminal-read assignment/assert sequence only; owned TempFS actual schema and real JSON reader, no full audit/history/network execution."
+}

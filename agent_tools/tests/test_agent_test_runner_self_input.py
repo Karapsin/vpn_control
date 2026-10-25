@@ -12,6 +12,7 @@ import sys
 import unittest
 import uuid
 from unittest import mock
+from agent_tools import agent_test_session_observer as session_observer
 from agent_tools.tests import test_agent_test_runner as fixtures
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -92,11 +93,13 @@ class RunnerSelfInputTests(unittest.TestCase):
         fd_directory = Path('/dev/fd') if Path('/dev/fd').is_dir() else Path('/proc/self/fd')
         self.assertTrue(fd_directory.is_dir(), 'declared POSIX descriptor census required')
         before_fds = len(os.listdir(fd_directory))
-        real_popen = subprocess.Popen
-        def launch(argv, **kwargs):
+        # The unpackaged coordinator imports its parent-only observer by script-mode
+        # name; record launches on the real Popen type that observer admission requires.
+        real_init = subprocess.Popen.__init__
+        def launch(process, argv, **kwargs):
             launches.append(list(argv))
-            return real_popen(argv, **kwargs)
-        with self.fixture.environment(), mock.patch.dict(runner.ISOLATED_SOURCES, runner.ISOLATED_SOURCES.copy(), clear=True), mock.patch.object(subprocess, 'Popen', side_effect=launch):
+            real_init(process, argv, **kwargs)
+        with self.fixture.environment(), mock.patch.dict(sys.modules, {'agent_test_session_observer': session_observer}), mock.patch.dict(runner.ISOLATED_SOURCES, runner.ISOLATED_SOURCES.copy(), clear=True), mock.patch.object(subprocess.Popen, '__init__', launch):
             report = runner.run_plan({'schemaVersion': 1, 'sourceFingerprint': 'a' * 64,
                                      'modules': modules, 'maxWorkers': 1}, source / 'run', stream=io.StringIO())
         self.assertEqual(before_fds, len(os.listdir(fd_directory)), 'parent source/worker descriptors leaked')

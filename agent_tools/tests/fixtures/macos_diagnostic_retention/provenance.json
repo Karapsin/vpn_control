@@ -1,0 +1,49 @@
+{
+  "controlledScope": "Real local FDs, links and callbacks; source/OS ownership and BSD getters use explicit controlled seams.",
+  "files": {
+    "component.before.source": "649fb4858cc243cfaa6523976a968cc8dff69e11c65a493d0e6f7648677c4562",
+    "component.current.source": "b45a807a1db8b0a682975aa5bc703edbfd6cffacfebd79bee7a0121fe5b4ae13",
+    "driver.before.source": "35b8639a19323755641bb6ffc8436015cc7b410fe35c02438c2a19ee00227676",
+    "driver.current.source": "9372333f42f877bd92bd1f138c1e04f420be0b2e9b35113f8c7b15e630952757"
+  },
+  "nativeFiniteObservation": {
+    "componentFailureCounts": {
+      "kind": {
+        "directory": 9,
+        "other": 0,
+        "regular": 0,
+        "symlink": 0
+      },
+      "rootOwner": {
+        "no": 0,
+        "yes": 9
+      },
+      "writableCategory": {
+        "group_or_other": 9,
+        "owner_only": 0
+      }
+    },
+    "failureCounts": {
+      "source_inventory_unavailable": 0,
+      "source_symlink_changed": 0,
+      "source_volume_unqualified": 0,
+      "target_changed": 0,
+      "target_component_unqualified": 9,
+      "target_filesystem_unavailable": 0,
+      "target_metadata_unavailable": 0,
+      "target_nonregular": 0,
+      "target_symlink_overflow": 0,
+      "target_walk_overflow": 0
+    },
+    "idleAuthority": false,
+    "nativeQualified": false,
+    "sourceSymlinksObserved": 9,
+    "targetAuthentication": "unqualified",
+    "targetContentRead": false,
+    "targetMetadataVerified": 0
+  },
+  "nativeSourceClosed": true,
+  "privatePayloadsIncluded": false,
+  "purpose": "Diagnostic failure evidence preservation; no native or idle authority granted by tests.",
+  "schemaVersion": 1
+}

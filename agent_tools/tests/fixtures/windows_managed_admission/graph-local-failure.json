@@ -1,0 +1,8 @@
+{
+  "actualFailure": "NameError _seed_graph at actual private intent/public XML unit boundary",
+  "beforeSha256": "c209896ca44211a0e7e2e4e567b53758614fd70917c12c71c3ef48301ee8fda1",
+  "discovery": "standalone source-owned current graph helper lacked local _seed_graph association; emitted controller already embedded its definition",
+  "nativeFailureClaimed": false,
+  "schemaVersion": 1,
+  "vmCalls": 0
+}

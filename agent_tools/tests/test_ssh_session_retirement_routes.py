@@ -46,7 +46,7 @@ with mock.patch.object(retirement,'status',return_value=receipt) as call:
 ''' % source
         with tempfile.TemporaryDirectory() as directory:
             for variant in ('old', 'fixed'):
-                result = subprocess.run([sys.executable, '-I', '-c', program, variant], cwd=directory, capture_output=True, text=True, timeout=15, check=True)
+                result = subprocess.run([sys.executable, '-I', '-B', '-c', program, variant], cwd=directory, capture_output=True, text=True, timeout=15, check=True)
                 self.assertEqual(json.loads(result.stdout)['ok'], variant == 'fixed', result.stderr)
 
     def test_fixed_operations_use_exact_receipt(self):

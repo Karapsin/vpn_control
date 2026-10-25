@@ -1,0 +1,125 @@
+name: macOS Desktop Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture_base_version:
+        description: Existing product version to package as the immutable update base
+        required: false
+        type: string
+  push:
+    branches:
+      - dev
+  pull_request:
+    paths:
+      - ".github/workflows/macos-desktop.yml"
+      - ".github/workflows/macos-update-fixture.yml"
+      - "desktopApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+      - "gradlew"
+      - "scripts/prepare_sing_box_macos_runtime.sh"
+      - "scripts/prepare_macos_install_worker.sh"
+      - "scripts/native/macos_install_worker.c"
+      - "scripts/test_macos_install_gate.py"
+      - "scripts/test_macos_install_enospc.py"
+      - "scripts/setup_macos_signing.sh"
+      - "scripts/test_setup_macos_signing.py"
+      - "scripts/check_release_hygiene.sh"
+      - "scripts/version_metadata.py"
+      - "scripts/check_release_metadata.py"
+      - "scripts/package_macos_desktop.sh"
+      - "scripts/test_macos_desktop_package.sh"
+      - "scripts/test_packaged_cli.py"
+      - "scripts/test_packaged_cli_harness.py"
+      - "scripts/record_macos_fixture_signing.py"
+      - "scripts/test_macos_update_fixture_workflow.py"
+      - "scripts/test_macos_artifact_upload_selection.py"
+      - "scripts/testdata/macos-artifact-upload-glob/**"
+      - "scripts/test_record_macos_fixture_signing.py"
+
+jobs:
+  validate-macos-update-fixture:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    name: Validate update fixture input
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      FIXTURE_BASE_VERSION: ${{ inputs.fixture_base_version }}
+    steps:
+      - name: Checkout selected development source
+        uses: actions/checkout@v4
+
+      - name: Validate fixture base version
+        shell: bash
+        run: |
+          python3 -c 'import os; from scripts.version_metadata import parse_version; parse_version(os.environ["FIXTURE_BASE_VERSION"])'
+
+  build-macos-update-fixture:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev' && inputs.fixture_base_version != ''
+    needs: validate-macos-update-fixture
+    name: Build immutable DMG pair
+    permissions:
+      contents: read
+    uses: ./.github/workflows/macos-update-fixture.yml
+    with:
+      base_version: ${{ inputs.fixture_base_version }}
+    secrets: inherit
+
+  package-macos-desktop:
+    if: github.event_name != 'workflow_dispatch' || inputs.fixture_base_version == ''
+    name: Build DMG
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
+
+      - name: Check native installer admission and persistence
+        run: |
+          gate_fixture_dir="$(mktemp -d /private/tmp/vpn-parity-gate-ci.XXXXXX)"
+          trap 'rmdir "$gate_fixture_dir"' EXIT
+          VPN_CONTROL_MAC_INSTALL_GATE_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_gate.py
+          VPN_CONTROL_MAC_INSTALL_ENOSPC_TEST_ROOT="$gate_fixture_dir" python3 scripts/test_macos_install_enospc.py
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build macOS package
+        run: ./scripts/package_macos_desktop.sh
+        env:
+          VPN_CONTROL_MACOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.MACOS_SIGNING_CERTIFICATE_BASE64 }}
+          VPN_CONTROL_MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+          VPN_CONTROL_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          VPN_CONTROL_MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+          VPN_CONTROL_MACOS_NOTARIZATION_APPLE_ID: ${{ secrets.MACOS_NOTARIZATION_APPLE_ID }}
+          VPN_CONTROL_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          VPN_CONTROL_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+
+      - name: Record macOS package architecture
+        run: uname -m > dist/macos/ARCHITECTURE.txt
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-control-macos-package
+          path: |
+            dist/macos/*.dmg
+            dist/macos/SHA256SUMS.txt
+            dist/macos/ARCHITECTURE.txt
+          if-no-files-found: error

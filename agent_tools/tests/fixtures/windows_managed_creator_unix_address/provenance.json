@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "finding": "the managed creator bound credentials.sock through its 141-byte canonical job pathname, beyond the Linux AF_UNIX 107-byte limit, so original operation 7e8b2dcd ended typed BLOCKED in phase credential-listener before any credential handoff",
+  "originalOperationId": "7e8b2dcd-63c1-58fc-b382-f64695bacf11",
+  "nativeQualificationOperationId": "0427b7c9-848d-446b-b5e6-999f0428a8c0",
+  "files": {
+    "managed_create.before.source": {
+      "path": "agent_tools/readiness_windows_managed_create.py",
+      "sha256": "8aeb4c0153ea840c595a5996295e62f6ef6b5504df2cb4845cbbab953955d218"
+    }
+  }
+}

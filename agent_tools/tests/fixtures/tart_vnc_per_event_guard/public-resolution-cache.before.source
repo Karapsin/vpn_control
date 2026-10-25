@@ -1,0 +1,288 @@
+"""Original-only closure of the finite historical public-input protocol.
+
+A completed group of key/pointer sends is terminal transport work even when its
+GUI result was never recorded. This does not assert historical GUI success,
+qualify a new unlock producer, or permit replay. Original records are immutable;
+append-only receipts are caches of freshly revalidated source/record evidence.
+"""
+from __future__ import annotations
+
+import ast
+from contextlib import ExitStack
+from copy import deepcopy
+import hashlib
+import inspect
+import json
+import os
+from pathlib import Path
+import sys
+from types import CodeType
+
+from . import private_inventory_lock as private
+from . import readiness_tart_macos_registry as registry
+from . import readiness_tart_macos_legacy_gui as legacy
+from . import readiness_tart_macos_unlock_qualification as qualification
+from . import readiness_tart_vnc as rfb
+
+_EXECUTING_CODE = sys._getframe().f_code
+_TOKEN = object()
+_FIXED_HELPER_SHA = 'd38c7b9a5354de3e512bd11483659651df5d8720897dbbcd8e0cf84d3eace584'
+_FIXED_FUNCTION_SHA = 'b7b445f102afe1927b6186387cedac680e7c32360ab3727089f253eff56d0d28'
+_RFB_SHA = 'a5b5196c62cdfb2270d3f54faf3f8c318022d16a174447722a94f9d18d2b0a1d'
+# Historical receipts retain _RFB_SHA. Only these reviewed live source epochs
+# implement the same public/secret release protocol; no historical relabel.
+_LIVE_RFB_SHAS = frozenset((_RFB_SHA,
+    '2938db527eae5879ff7a7fcfde1801e447727edd57d41868f95ac8ea45cbf4c0',
+    'e217651bf4a277133771c6a75c5d7ded2c3d60760092bc757058d20aa294ca68'))
+_TRANSPORT_AST_SHA = 'fc208373c45e6382fd223313e21dd487e60ba0bc84aee08e927db81f855b819f'
+# Exact live-source association; historical receipts keep their original epoch.
+_TRANSPORT_AST_BY_SOURCE_SHA = {
+    _RFB_SHA: _TRANSPORT_AST_SHA,
+    '2938db527eae5879ff7a7fcfde1801e447727edd57d41868f95ac8ea45cbf4c0': _TRANSPORT_AST_SHA,
+    'e217651bf4a277133771c6a75c5d7ded2c3d60760092bc757058d20aa294ca68': '9a691457d8bb3d8cc938968f153b97fb26aabe098042ac6d3aa5c82a5a6f8af1',
+}
+_HISTORICAL_RESOLVER_SHA = 'a5586f07d6af00712e22c98ffeaa80f57595dc55780a1feecfac53041cbca66f'
+_PREINPUT_OPERATION = '6f17aa5d-5e8a-45fb-9fae-2c979635282a'
+_PREINPUT_RUN = '2d933a39-0fb6-46a4-9fd9-02221d81c4b9'
+_PREINPUT_FOLDER = 'public-mouse-signature-failure-1792508267522742000'
+_PREINPUT_HELPER_SHA = 'c87fcf00ad5bc103b886a23b43a6a8fd334078948ef5fe92cc3c5da26eb2a39a'
+_PREINPUT_FUNCTION_SHA = '179fd2384dfffbba84aa98b7f7d02c50c017a079055e4de0db8982c7912bdedd'
+_PREINPUT_FAILURE_SHA = '0576d4f6cdba13b13eda55a325af8f2fb53ce0076c6ac17f14c6a4dc3f160c9e'
+
+
+def _need(value, reason):
+    if not value:
+        raise qualification.QualificationBlocked(reason)
+
+
+def _hold(path, digest, stack, *, private_file=True):
+    held = stack.enter_context(registry.PublicProof(path,
+        {'generation': list(private._generation(path.lstat())), 'sha256': digest}, private_file=private_file))
+    return held
+
+
+def _protocol(raw, selected_root, function_sha):
+    tree = ast.parse(raw)
+    function = next((node for node in tree.body if isinstance(node, ast.FunctionDef)
+                     and node.name == 'public_transition'), None)
+    _need(function is not None, 'macos_legacy_public_protocol_changed')
+    body = (ast.get_source_segment(raw.decode(), function) + '\n').encode()
+    _need(hashlib.sha256(body).hexdigest() == function_sha, 'macos_legacy_public_protocol_changed')
+    route = next((node.value for node in tree.body if isinstance(node, ast.Assign)
+                  and any(isinstance(target, ast.Name) and target.id == 'ROOT' for target in node.targets)), None)
+    _need(isinstance(route, ast.Call) and isinstance(route.func, ast.Name) and route.func.id == 'Path'
+          and len(route.args) == 1 and not route.keywords and isinstance(route.args[0], ast.Constant)
+          and type(route.args[0].value) is str and Path(route.args[0].value) == selected_root,
+          'macos_legacy_public_target_changed')
+
+
+def _commands(value):
+    commands = value['commands']; last_buttons = 0
+    _need(type(commands) is list and 1 <= len(commands) <= 256, 'macos_legacy_public_commands_unqualified')
+    for command in commands:
+        _need(type(command) is list and command, 'macos_legacy_public_commands_unqualified')
+        if command[0] == 'mouse':
+            _need(len(command) == 4 and all(type(x) is int for x in command[1:])
+                  and all(0 <= x <= 4095 for x in command[1:3]) and 0 <= command[3] <= 7,
+                  'macos_legacy_public_commands_unqualified')
+            last_buttons = command[3]
+        elif command[0] == 'key':
+            _need(len(command) in {2, 3} and type(command[1]) is str
+                  and (command[1] in rfb._PUBLIC_KEYS or len(command[1]) == 1 and 32 <= ord(command[1]) <= 126),
+                  'macos_legacy_public_commands_unqualified')
+            if len(command) == 3:
+                _need(type(command[2]) is list and len(command[2]) <= 4
+                      and all(type(x) is str and x in rfb._MODIFIERS for x in command[2])
+                      and len(set(command[2])) == len(command[2]), 'macos_legacy_public_commands_unqualified')
+        elif command[0] == 'text':
+            _need(len(command) == 2 and type(command[1]) is str and 1 <= len(command[1]) <= 256
+                  and all(32 <= ord(x) <= 126 for x in command[1]), 'macos_legacy_public_commands_unqualified')
+        else:
+            raise qualification.QualificationBlocked('macos_legacy_public_commands_unqualified')
+    _need(last_buttons == 0, 'macos_legacy_public_pointer_group_unclosed')
+
+
+def _method_contract(raw):
+    """Compare actual loaded method code to exact held qualified source bytes."""
+    def codes(code):
+        yield code
+        for child in code.co_consts:
+            if isinstance(child, CodeType): yield from codes(child)
+    compiled = compile(raw, rfb.__file__, 'exec', dont_inherit=True, optimize=sys.flags.optimize)
+    expected = {code.co_qualname: code for code in codes(compiled)}
+    for name in ('_send', '_key', 'key', 'mouse', '_character', 'type_public', 'type_secret_from_fd', 'close', '__exit__'):
+        function = inspect.unwrap(getattr(rfb.ProtectedVncSession, name))
+        _need(function.__globals__ is rfb.__dict__ and function.__module__ == rfb.__name__
+              and function.__code__ == expected['ProtectedVncSession.' + name],
+              'macos_legacy_public_method_source_changed')
+    tree = ast.parse(raw)
+    _need(hashlib.sha256(raw).hexdigest() in _LIVE_RFB_SHAS,
+          'macos_legacy_method_epoch_unqualified')
+    session = next(node for node in tree.body
+                   if isinstance(node, ast.ClassDef) and node.name == 'ProtectedVncSession')
+    methods = ('_send', '_key', 'key', 'mouse', '_character', 'type_public',
+               'type_secret_from_fd', 'close', '__exit__')
+    contract = [next(node for node in session.body
+                     if isinstance(node, ast.FunctionDef) and node.name == name)
+                for name in methods]
+    contract += [next(node for node in tree.body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == name
+                              for target in node.targets))
+                 for name in ('_PUBLIC_KEYS', '_MODIFIERS', '_SHIFTED_US')]
+    def syntax(node):
+        # ast.dump changed its empty-field formatting across Python versions.
+        # Iterate syntax fields explicitly; source locations are not fields.
+        if isinstance(node, ast.AST):
+            return [type(node).__name__, [[name, syntax(value)]
+                    for name, value in ast.iter_fields(node)
+                    if name != 'type_params' or value]]
+        if isinstance(node, list):
+            return [syntax(item) for item in node]
+        return [type(node).__name__, repr(node)]
+    fingerprint = hashlib.sha256(json.dumps(syntax(ast.Module(body=contract, type_ignores=[])),
+                                             separators=(',', ':')).encode()).hexdigest()
+    _need(fingerprint == _TRANSPORT_AST_BY_SOURCE_SHA.get(hashlib.sha256(raw).hexdigest()), 'macos_legacy_public_method_source_changed')
+    for name in ('_PUBLIC_KEYS', '_MODIFIERS'):
+        literal = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id == name for target in node.targets))
+        _need(getattr(rfb, name) == ast.literal_eval(literal), 'macos_legacy_public_method_source_changed')
+    _need(type(rfb._SHIFTED_US) is frozenset and rfb._SHIFTED_US == frozenset('~!@#$%^&*()_+{}|:"<>?'),
+          'macos_legacy_public_method_source_changed')
+
+
+def _hold_method_source(stack):
+    """Hold reviewed live code separately from the historical protocol receipt."""
+    path = Path(rfb.__file__)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    _need(digest in _LIVE_RFB_SHAS, 'macos_legacy_method_epoch_unqualified')
+    held = _hold(path, digest, stack, private_file=False)
+    _method_contract(held.body)
+    return held
+
+
+class ClosedPublicInput:
+    def __init__(self, *args, **kwargs):
+        raise qualification.QualificationBlocked('macos_legacy_public_factory_required')
+
+    def guard(self):
+        _need(getattr(self, '_token', None) is _TOKEN and not self._closed,
+              'macos_legacy_public_proof_closed')
+        self._custody._operator.guard()
+        _need(self._custody.lifecycle_root == self._root.path
+              and self._custody.run_intent['operationId'] == self._report['originalRun']
+              and self._custody.actor == self._report['child'], 'macos_legacy_public_target_changed')
+        for held in self._holders: held.guard()
+        _need(set(os.listdir(self._public.fd)) == self._names, 'macos_legacy_public_inventory_changed')
+
+    @property
+    def report(self):
+        self.guard(); return deepcopy(self._report)
+
+    def close(self):
+        if not getattr(self, '_closed', True):
+            self._closed = True; self._stack.close()
+
+    def __enter__(self): return self
+    def __exit__(self, *_): self.close()
+
+
+def observe(custody, operation_id):
+    """Read only an original protocol phase; no replay, guest call or GUI."""
+    _need(type(custody) is registry.MacCustody, 'macos_legacy_public_custody_required')
+    operation = legacy._uuid(operation_id); custody._operator.guard(); stack = ExitStack()
+    try:
+        path = Path(__file__); source = path.read_bytes()
+        _need(_EXECUTING_CODE == compile(source, __file__, 'exec', dont_inherit=True,
+              optimize=sys.flags.optimize), 'macos_legacy_public_resolver_source_changed')
+        own = _hold(path, hashlib.sha256(source).hexdigest(), stack, private_file=False)
+        root = stack.enter_context(private.Directory(custody.lifecycle_root))
+        public = stack.enter_context(private.Directory(custody.lifecycle_root / 'public-transitions'))
+        names = set(os.listdir(public.fd)); holders = [own, root, public]
+        _need(operation + '.json' in names, 'macos_legacy_public_original_absent')
+        original = stack.enter_context(private.Snapshot(public, operation + '.json')); holders.append(original)
+        value = qualification._json(original.body)
+        _need(set(value) == {'operationId', 'originalRun', 'child', 'stage', 'state', 'commands'}
+              and value['operationId'] == operation and value['originalRun'] == custody.run_intent['operationId']
+              and value['child'] == custody.actor and value['state'] == 'unknown',
+              'macos_legacy_public_original_changed')
+        # Current public/native-qualified release semantics and historical
+        # public_transition protocol are source data, never imported old code.
+        method_source = _hold_method_source(stack)
+        holders.append(method_source)
+        closed_name = operation + '-transport-closed.json'
+        pins = {'intent': original.pin()}; sources = {'resolver': hashlib.sha256(source).hexdigest(), 'methodReleaseProtocol': _RFB_SHA}
+        if closed_name in names:
+            helper_path = custody.root / '.runtime/tool-recovery/tart/macos-provision-ui-helper.py'
+            helper = _hold(helper_path, _FIXED_HELPER_SHA, stack); holders.append(helper)
+            _protocol(helper.body, custody.lifecycle_root, _FIXED_FUNCTION_SHA); _commands(value)
+            closed = stack.enter_context(private.Snapshot(public, closed_name)); holders.append(closed)
+            receipt = qualification._json(closed.body)
+            _need(receipt == {'operationId': operation, 'originalRun': value['originalRun'], 'child': value['child'],
+                              'state': 'submitted_awaiting_independent_screen_observation'},
+                  'macos_legacy_public_transport_changed')
+            pins['transport'] = closed.pin(); sources['publicProtocol'] = _FIXED_HELPER_SHA
+            outcome = {'workState': 'transport_finished', 'semanticOutcome': 'unknown',
+                       'reason': 'source_qualified_group_all_releases_sent', 'inputSubmitted': True}
+        else:
+            _need((operation, value['originalRun']) == (_PREINPUT_OPERATION, _PREINPUT_RUN),
+                  'macos_legacy_public_original_unresolved')
+            folder = custody.lifecycle_root / _PREINPUT_FOLDER
+            helper = _hold(folder / 'macos-provision-ui-helper.py', _PREINPUT_HELPER_SHA, stack)
+            failure = _hold(folder / 'original-failure.json', _PREINPUT_FAILURE_SHA, stack)
+            holders.extend((helper, failure)); _protocol(helper.body, custody.lifecycle_root, _PREINPUT_FUNCTION_SHA)
+            # This exact historical failure is a Python argument-binding error
+            # on the FIRST command. The body/guard/socket event cannot run.
+            _need(value['stage'] == 'select-English' and value['commands'] == [['mouse', 512, 351, 1], ['mouse', 512, 351, 0]],
+                  'macos_legacy_public_preinput_case_changed')
+            report = qualification._json(failure.body)
+            expected_reference = str(Path('.runtime/tool-recovery/tart') / custody.lifecycle_root.name /
+                                     'public-transitions' / (operation + '.json'))
+            _need(report.get('originalError') == 'TypeError: ProtectedVncSession.mouse() takes 3 positional arguments but 4 were given'
+                  and report.get('publicTransitionReceipts') == [expected_reference], 'macos_legacy_public_preinput_case_changed')
+            try:
+                inspect.signature(rfb.ProtectedVncSession.mouse).bind(None, 512, 351, 1)
+            except TypeError:
+                pass
+            else:
+                raise qualification.QualificationBlocked('macos_legacy_public_method_abi_changed')
+            pins['failure'] = {'generation': list(failure.generation), 'sha256': _PREINPUT_FAILURE_SHA}
+            sources['publicProtocol'] = _PREINPUT_HELPER_SHA
+            outcome = {'workState': 'proven_unsubmitted', 'semanticOutcome': 'not_attempted',
+                       'reason': 'authentic_first_method_argument_binding_failure', 'inputSubmitted': False}
+        result = object.__new__(ClosedPublicInput)
+        result._token, result._closed, result._stack, result._custody = _TOKEN, False, stack, custody
+        result._holders, result._root, result._public, result._names = holders, root, public, names
+        result._report = {'schemaVersion': 1, 'operationId': operation, 'originalRun': value['originalRun'],
+            'child': dict(value['child']), 'originalPins': pins, 'sourceProtocol': sources,
+            'replayForbidden': True, 'genericUnlockAuthority': False, **outcome}
+        result.guard(); return result
+    except BaseException:
+        stack.close(); raise
+
+
+def resolve(custody, operation_id):
+    """Append original-only closure. Existing JSON alone is never accepted."""
+    with observe(custody, operation_id) as proof:
+        value = proof.report; parent = custody.lifecycle_root / 'legacy-public-resolutions'
+        try: parent.mkdir(mode=0o700)
+        except FileExistsError: pass
+        with private.Directory(parent) as directory:
+            name = value['operationId'] + '.json'
+            try:
+                with private.Snapshot(directory, name) as previous:
+                    # Fresh original/source validation above supplies authority.
+                    # Preserve an exact historical cache; only its known resolver
+                    # source epoch may differ from this fresh report.
+                    historical = deepcopy(value)
+                    historical['sourceProtocol']['resolver'] = _HISTORICAL_RESOLVER_SHA
+                    _need(qualification._json(previous.body) in (value, historical),
+                          'macos_legacy_public_resolution_conflict')
+            except FileNotFoundError:
+                proof.guard(); fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                          0o600, dir_fd=directory.fd)
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(json.dumps(value, sort_keys=True, separators=(',', ':')).encode())
+                    stream.flush(); os.fsync(stream.fileno())
+                os.fsync(directory.fd)
+            proof.guard(); directory.guard()
+        return value

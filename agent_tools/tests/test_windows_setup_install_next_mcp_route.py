@@ -1,9 +1,10 @@
 """MCP admission for one fixed Windows Setup checked install option Next action."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from agent_tools import mcp_server
+from agent_tools.tests import route_adapter
 
 
 class SetupInstallNextRouteTest(unittest.TestCase):
@@ -16,9 +17,9 @@ class SetupInstallNextRouteTest(unittest.TestCase):
             with self.subTest(suffix=suffix):
                 adapter = Mock()
                 getattr(adapter, suffix).return_value = {"state": state, "replayAllowed": False}
-                with patch.object(mcp_server, "_agent_module", return_value=adapter) as module:
+                with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as module:
                     result = mcp_server._vm_workflow_impl("windows-vm-setup-install-next-" + suffix, request)
-                module.assert_called_once_with("windows_vm_setup_install_next")
+                self.assertEqual([call("windows_vm_setup_install_next")], route_adapter.adapter_calls(module))
                 getattr(adapter, suffix).assert_called_once_with(mcp_server.REPO_ROOT,
                     host="archlinux", next_correlation_id=request["nextCorrelationId"], timeout_seconds=60)
                 self.assertTrue(result["ok"])
@@ -26,7 +27,7 @@ class SetupInstallNextRouteTest(unittest.TestCase):
                 self.assertFalse(result["productAction"])
         adapter = Mock()
         adapter.start.return_value = {"state": "unknown", "replayAllowed": False}
-        with patch.object(mcp_server, "_agent_module", return_value=adapter):
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)):
             result = mcp_server._vm_workflow_impl("windows-vm-setup-install-next-start", request)
         self.assertFalse(result["ok"])
         self.assertFalse(result["replayAllowed"])

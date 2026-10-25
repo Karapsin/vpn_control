@@ -1,0 +1,2 @@
+libvirt: QEMU Driver error : Domain not found: no domain with matching uuid 'a3aec884-5e5c-47c6-b1c6-378d88045d72'
+libvirt: QEMU Driver error : Domain not found: no domain with matching name 'vc-recovery-libvirt-a3aec884'

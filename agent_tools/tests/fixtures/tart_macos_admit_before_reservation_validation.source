@@ -1,0 +1,17 @@
+def admit_unlock_observer(self, operation, admission, program, *, deadline):
+        from . import readiness_tart_macos_unlock_material as material, readiness_tart_macos_unlock_observer as observer
+        operation = _uuid(operation)
+        with self.operator(deadline=deadline):
+            self.guard(deadline=deadline)
+            namespace = self.observe_unlock_observer_namespace(deadline=deadline)
+            _, _, directory = self._unlock_observer_paths()
+            reservation = jobs._record(directory / (operation + '.intent.json'))
+            with private.Directory(self.lifecycle_root) as root:
+                records = material._original_records(root, operation)
+            wanted, expected, _ = observer.admission_spec(self, operation, records, namespace)
+            _need(type(program) is jobs.Program and program == wanted and admission == expected
+                  and reservation['recipient'] == records[0]['recipient'], 'macos_unlock_observer_admission_changed')
+            jobs._publish(directory / (operation + '.program.json'),
+                          {'sha256': program.digest, 'source': base64.b64encode(program.source).decode()})
+            jobs._publish(directory / (operation + '.json'), expected)
+            return expected

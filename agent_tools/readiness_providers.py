@@ -1,0 +1,377 @@
+"""Finite provider admission and an owned Android observer.
+
+Provider support is distinct from an available, natively qualified recovery.
+Unconfigured lanes never acquire capabilities from optimistic provider defaults.
+Backends for QEMU/libvirt/Tart must retain their existing socket, lifecycle and
+credential custody; this adapter does not substitute caller booleans for it.
+"""
+from dataclasses import dataclass
+from contextlib import nullcontext
+import math
+from pathlib import Path
+import re
+import subprocess
+import time
+from typing import Callable, Protocol
+from uuid import UUID
+
+from . import readiness
+from scripts.native_fixture_storage import require_fixture_storage
+
+POWER_PROJECTION = ("set -o pipefail || exit; dumpsys power | "
+                    "grep -E '^  mWakefulness=(Awake|Asleep|Dozing|Dreaming)$'")
+
+
+@dataclass(frozen=True)
+class ProviderSupport:
+    lane: str
+    interactive: bool
+    potential_recoveries: frozenset[str]
+    prerequisite: str
+
+
+PROVIDERS = {
+    "android-emulator": ProviderSupport("android-emulator", True, frozenset({"reconnect", "start", "resume", "wake_display", "login", "reboot"}), "owned_avd_and_adb"),
+    "raw-qemu-windows": ProviderSupport("raw-qemu-windows", True, readiness.RECOVERIES, "owned_qmp_qga_and_ordinary_account"),
+    "raw-qemu-linux": ProviderSupport("raw-qemu-linux", False, frozenset({"reconnect", "start", "resume", "reboot"}), "owned_qmp_and_guest_transport"),
+    "libvirt-windows": ProviderSupport("libvirt-windows", True, readiness.RECOVERIES, "owned_domain_and_guest_agent"),
+    "tart-macos": ProviderSupport("tart-macos", True, readiness.RECOVERIES, "owned_tart_guest_and_ordinary_account"),
+    "tart-linux": ProviderSupport("tart-linux", False, frozenset({"reconnect", "start", "reboot"}), "owned_tart_guest_and_guest_transport"),
+}
+
+
+class ProviderError(ValueError):
+    """Only fixed reason identifiers cross the provider boundary."""
+
+
+def android_guest_idle_facts(process_names: str, installer_state: str):
+    """Prove only guest installer/process categories, never the entire idle gate."""
+    if type(process_names) is not str or type(installer_state) is not str:
+        raise ProviderError("android_idle_observation_invalid")
+    blockers = set()
+    # The system package-installer process can remain resident with no active
+    # installation. Its authoritative session state is checked separately.
+    if re.search(r"(sing-box|vpncontrol|msiexec)", process_names, re.IGNORECASE):
+        blockers.add("protected_processes")
+    headings = ("Active install sessions:", "Finalized install sessions:", "Historical install sessions:",
+                "Legacy install sessions:", "Gentle update with constraints info:")
+    if any(installer_state.count(heading) != 1 for heading in headings):
+        raise ProviderError("android_installer_visibility_incomplete")
+    active = installer_state.split(headings[0], 1)[1].split(headings[1], 1)[0]
+    if active.strip() or "hasPendingIdleJob=false" not in installer_state:
+        blockers.add("installers")
+    return frozenset({"protected_processes", "installers"}), frozenset(blockers)
+
+
+_PUBLIC_REASONS = {
+    "android_machine_mismatch": "machine_identity_mismatch",
+    "android_boot_unrecognized": "boot_identity_unavailable",
+    "android_owner_unavailable": "ownership_mismatch",
+    "android_connection_changed": "connection_generation_changed",
+    "android_account_unrecognized": "session_unrecognized",
+    "android_transport_unavailable": "guest_agent_unavailable",
+    "android_lifecycle_outcome_unknown": "connection_outcome_unknown",
+    "android_lifecycle_spec_changed": "integrity_mismatch",
+    "android_adb_lineage_unknown": "connection_outcome_unknown",
+    "android_adb_listener_unrecognized": "ownership_mismatch",
+    "tart_machine_identity_changed": "machine_identity_mismatch",
+    "tart_wrong_account": "wrong_account",
+    "tart_actor_generation_changed": "ownership_mismatch",
+    "tart_actor_command_changed": "ownership_mismatch",
+    "tart_original_launch_unknown": "connection_outcome_unknown",
+    "tart_original_launch_pending": "connection_outcome_unknown",
+    "tart_connection_generation_changed": "connection_generation_changed",
+    "tart_power_identity_changed": "connection_generation_changed",
+    "tart_observation_timeout": "guest_agent_unavailable",
+    "tart_observation_overflow": "integrity_mismatch",
+}
+
+
+class Backend(Protocol):
+    capabilities: frozenset[str]
+
+    def observe(self, requirements: readiness.Requirements, deadline: float) -> readiness.Observation: ...
+    def recover(self, action: str, recovery_identity: str, observed: readiness.Observation, deadline: float) -> None: ...
+
+
+def _valid_observation(value):
+    if not isinstance(value, readiness.Observation):
+        return False
+    enumerations = {
+        "transport": {"ready", "unavailable", "expired", "dead", "unknown"},
+        "guest": {"running", "booting", "stopped", "paused", "suspended", "unhealthy", "unknown"},
+        "ordinary_session": {"ready", "locked", "signed_out", "wrong_account", "unknown"},
+        "display": {"ready", "sleeping", "unrecognized", "unknown"},
+    }
+    if any(getattr(value, key) not in options for key, options in enumerations.items()):
+        return False
+    if any(type(getattr(value, key)) is not bool for key in
+           ("guest_agent", "trusted", "owned", "integrity", "credential_available", "coordinator_host")):
+        return False
+    for key in ("target", "machine", "connection", "boot", "account", "session"):
+        text = getattr(value, key)
+        if text is None and key not in {"target", "machine"}:
+            continue
+        if type(text) is not str or not 0 < len(text) <= 512 or any(ord(c) < 32 for c in text):
+            return False
+    return (isinstance(value.idle_visibility, frozenset) and
+            value.idle_visibility <= readiness.IDLE_VISIBILITY and
+            isinstance(value.idle_blockers, frozenset) and
+            all(type(item) is str for item in value.idle_blockers))
+
+
+class ProviderAdapter:
+    """Bind a qualified backend to one explicit lane and actual fixture identity.
+
+    An absent backend is inspectable and blocked. No subprocess, connection or
+    power action runs merely to construct or inspect an adapter.
+    """
+    def __init__(self, lane: str, target: str, machine: str, backend: Backend | None = None):
+        if lane not in PROVIDERS or not target or not machine:
+            raise ProviderError("provider_binding_invalid")
+        self.support = PROVIDERS[lane]
+        self.target, self.machine, self.backend = target, machine, backend
+        capabilities = getattr(backend, "capabilities", frozenset())
+        if not isinstance(capabilities, frozenset) or not capabilities <= self.support.potential_recoveries:
+            raise ProviderError("provider_capability_invalid")
+        self.capabilities = capabilities
+
+    def operation_scope(self, *, deadline=None, cancelled=lambda: False):
+        """A provider's cooperative operator lease, entered only by ensure."""
+        method = getattr(self.backend, "operation_scope", None)
+        return method(deadline=deadline, cancelled=cancelled) if callable(method) else nullcontext()
+
+    def reconcile_ready(self, ready, *, deadline):
+        """Publish only retained original-owner bookkeeping during admission."""
+        method = getattr(self.backend, "reconcile_ready", None)
+        if callable(method):
+            return method(ready, deadline)
+        return None
+
+    def inspect(self):
+        return {"provider": self.support.lane, "configured": self.backend is not None,
+                "interactive": self.support.interactive,
+                "capabilities": sorted(self.capabilities),
+                "qualificationRequired": sorted(self.support.potential_recoveries - self.capabilities),
+                "blocker": None if self.backend is not None else "provider_backend_unavailable"}
+
+    def observe(self, requirements, deadline):
+        if self.backend is None:
+            raise readiness.AdapterBlocked("provider_unavailable")
+        try:
+            value = self.backend.observe(requirements, deadline)
+        except readiness.AdapterBlocked as error:
+            # Project a new finite code; never forward backend messages or fields.
+            reason = vars(error).get("reason") if type(error) is readiness.AdapterBlocked else None
+            if type(reason) is not str or reason not in readiness.AdapterBlocked.REASONS:
+                reason = "provider_unavailable"
+            raise readiness.AdapterBlocked(reason) from None
+        except ProviderError as error:
+            raise readiness.AdapterBlocked(_PUBLIC_REASONS.get(str(error), "provider_unavailable")) from None
+        except Exception:
+            raise readiness.AdapterBlocked("provider_unavailable") from None
+        if not _valid_observation(value):
+            raise ProviderError("provider_observation_invalid")
+        if (value.target, value.machine) != (self.target, self.machine):
+            raise ProviderError("provider_identity_mismatch")
+        return value
+
+    def _admit_recovery(self, action, recovery_identity, observed):
+        if self.backend is None or action not in self.capabilities:
+            raise ProviderError("provider_recovery_unqualified")
+        if not _valid_observation(observed) or (observed.target, observed.machine) != (self.target, self.machine):
+            raise ProviderError("provider_identity_mismatch")
+        if type(recovery_identity) is not str or re.fullmatch(r"[0-9a-f]{64}", recovery_identity) is None:
+            raise ProviderError("provider_recovery_identity_invalid") from None
+        if not observed.owned or not observed.trusted or not observed.integrity or observed.coordinator_host:
+            raise ProviderError("provider_recovery_not_owned")
+    def recover(self, action, recovery_identity, observed, deadline):
+        self._admit_recovery(action, recovery_identity, observed)
+        return self.backend.recover(action, recovery_identity, observed, deadline)
+
+    def reconcile_recovery(self, action, recovery_identity, observed, deadline, attempt, dispatch_digest):
+        """Publish an original owner's outcome; never submit another effect.
+
+        A failed connection may admit a new connection generation. Other
+        recovery effects keep their original once-only dispatch identity.
+        """
+        self._admit_recovery(action, recovery_identity, observed)
+        if (type(attempt) is not int or not 1 <= attempt <= 3 or type(dispatch_digest) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", dispatch_digest) is None):
+            raise ProviderError("provider_dispatch_identity_invalid")
+        method = getattr(self.backend, "reconcile_recovery", None)
+        if not callable(method):
+            return False
+        result = method(action, recovery_identity, observed, deadline, attempt, dispatch_digest)
+        if result is None or type(result) is bool:
+            return result
+        dispatch = {"attempt": attempt, "recoveryId": recovery_identity, "dispatchDigest": dispatch_digest}
+        if (action == "reconnect" and type(result) is readiness.RecoveryEnded
+                and set(vars(result)) == {"attempt", "recovery_id", "dispatch_digest", "proof_sha256"}
+                and result.matches(dispatch)):
+            return result
+        raise ProviderError("provider_recovery_outcome_invalid")
+
+    def observe_recovery(self, action, recovery_identity, observed, deadline, attempt, dispatch_digest):
+        self._admit_recovery(action, recovery_identity, observed)
+        if type(attempt) is not int or not 1 <= attempt <= 3 or type(dispatch_digest) is not str or re.fullmatch(r"[0-9a-f]{64}", dispatch_digest) is None:
+            raise ProviderError("provider_dispatch_identity_invalid")
+        method = getattr(self.backend, "observe_recovery", None)
+        if not callable(method):
+            return None
+        proof = method(action, recovery_identity, observed, deadline, attempt, dispatch_digest)
+        if proof is None:
+            return None
+        dispatch = {"attempt": attempt, "recoveryId": recovery_identity, "dispatchDigest": dispatch_digest}
+        if (type(proof) is not readiness.RecoveryUnsubmitted or set(vars(proof)) !=
+                {"attempt", "recovery_id", "dispatch_digest", "proof_sha256"} or not proof.matches(dispatch)):
+            raise ProviderError("provider_unsubmitted_proof_invalid")
+        return proof
+
+    def recover_attempt(self, action, recovery_identity, observed, deadline, attempt, dispatch_digest):
+        self._admit_recovery(action, recovery_identity, observed)
+        if type(attempt) is not int or not 1 <= attempt <= 3 or type(dispatch_digest) is not str or re.fullmatch(r"[0-9a-f]{64}", dispatch_digest) is None:
+            raise ProviderError("provider_dispatch_identity_invalid")
+        method = getattr(self.backend, "recover_attempt", None)
+        try:
+            if callable(method):
+                return method(action, recovery_identity, observed, deadline, attempt, dispatch_digest)
+            return self.backend.recover(action, recovery_identity, observed, deadline)
+        except readiness.RecoveryUnsubmitted as error:
+            dispatch = {"attempt": attempt, "recoveryId": recovery_identity, "dispatchDigest": dispatch_digest}
+            if (type(error) is not readiness.RecoveryUnsubmitted or set(vars(error)) !=
+                    {"attempt", "recovery_id", "dispatch_digest", "proof_sha256"} or not error.matches(dispatch)):
+                raise ProviderError("provider_unsubmitted_proof_invalid") from None
+            raise
+
+
+@dataclass(frozen=True)
+class AndroidBinding:
+    target: str
+    machine: str
+    adb: Path
+    avd_name: str
+    serial: str
+    server_port: int
+    expected_user: str = "0"
+
+    def __post_init__(self):
+        if (not self.adb.is_absolute() or not re.fullmatch(r"emulator-[0-9]+", self.serial)
+                or type(self.server_port) is not int or not 1024 <= self.server_port <= 65535
+                or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", self.avd_name)
+                or not self.expected_user.isdigit()):
+            raise ProviderError("android_binding_invalid")
+
+
+class AndroidAdbBackend:
+    """Read one live owned emulator; only directly qualified display wake mutates.
+
+    owner_guard reobserves the original emulator and the actual local ADB-server
+    generation and returns a connection identity. It must fail on missing or
+    foreign ownership. It is called around every ADB command. A stopped fixture
+    needs its lifecycle owner's backend; an ADB timeout cannot justify a boot.
+    """
+    def __init__(self, binding: AndroidBinding, owner_guard: Callable[[], str], *,
+                 wake_qualified=False, runner=subprocess.run, clock=time.monotonic, deadline_guard=None):
+        self.binding, self.owner_guard = binding, owner_guard
+        self.runner, self.clock = runner, clock
+        self.deadline_guard = deadline_guard
+        self.capabilities = frozenset({"wake_display"}) if wake_qualified else frozenset()
+
+    def _command(self, args, deadline):
+        if not math.isfinite(deadline) or deadline <= self.clock():
+            raise ProviderError("provider_deadline")
+        guard = (lambda: self.deadline_guard(deadline)) if self.deadline_guard is not None else self.owner_guard
+        connection = guard()
+        if type(connection) is not str or not connection:
+            raise ProviderError("android_owner_unavailable")
+        remaining = deadline - self.clock()
+        if not math.isfinite(remaining) or remaining <= 0:
+            raise ProviderError("provider_deadline")
+        # Numeric loopback is deliberately explicit: the native ADB client
+        # refuses implicit daemon startup for this host form. If the listener
+        # dies after our guard, only the readiness coordinator may replace it.
+        argv = [str(self.binding.adb), "-H", "127.0.0.1", "-P", str(self.binding.server_port), "-s", self.binding.serial, *args]
+        result = self.runner(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, timeout=min(10.0, remaining), check=False)
+        if guard() != connection:
+            raise ProviderError("android_connection_changed")
+        if type(result.returncode) is not int or result.returncode != 0:
+            raise ProviderError("android_transport_unavailable")
+        if not isinstance(result.stdout, bytes) or len(result.stdout) > 262144:
+            raise ProviderError("android_observation_overflow")
+        try:
+            return result.stdout.decode("utf-8", errors="strict").replace("\r", ""), connection
+        except UnicodeError:
+            raise ProviderError("android_observation_malformed") from None
+
+    def observe(self, requirements, deadline):
+        b = self.binding
+        name, connection = self._command(["emu", "avd", "name"], deadline)
+        if name.strip().splitlines() != [b.avd_name, "OK"]:
+            raise ProviderError("android_machine_mismatch")
+        boot, _ = self._command(["shell", "cat", "/proc/sys/kernel/random/boot_id"], deadline)
+        try:
+            boot = str(UUID(boot.strip()))
+        except ValueError:
+            raise ProviderError("android_boot_unrecognized") from None
+        completed, _ = self._command(["shell", "getprop", "sys.boot_completed"], deadline)
+        fields = dict(target=b.target, machine=b.machine, connection=connection, boot=boot,
+                      transport="ready", guest="running" if completed.strip() == "1" else "booting",
+                      guest_agent=completed.strip() == "1", trusted=True, owned=True, integrity=True)
+        if completed.strip() != "1" or not requirements.required & {"ordinary_session", "interactive_desktop"}:
+            return readiness.Observation(**fields)
+        user, _ = self._command(["shell", "am", "get-current-user"], deadline)
+        user = user.strip()
+        if not user.isdigit():
+            raise ProviderError("android_account_unrecognized")
+        # The event history grows over guest uptime. Stream only the one state
+        # field, preserving producer failure with Android mksh's pipefail. Never
+        # expand the full dump into argv (Android printf is an external binary).
+        power, _ = self._command(["shell", POWER_PROJECTION], deadline)
+        policy, _ = self._command(["shell", "dumpsys", "window", "policy"], deadline)
+        wake = re.findall(r"^\s*mWakefulness=(Awake|Asleep|Dozing|Dreaming)\s*$", power, re.MULTILINE)
+        showing = re.findall(r"^\s*showing=(true|false)\s*$", policy, re.MULTILINE)
+        policy_user = re.findall(r"^\s*currentUser=(-?[0-9]+)\s*$", policy, re.MULTILINE)
+        monitor_user = re.findall(r"^\s*mCurrentUserId=(-?[0-9]+)\s*$", policy, re.MULTILINE)
+        if monitor_user and monitor_user != [user]:
+            raise ProviderError("android_account_unrecognized")
+        if policy_user == ["-10000"]:
+            # Recent Android can retain USER_NULL in the delegate while the
+            # actual state monitor is already bound to the ordinary user. Admit
+            # only that independently reported monitor, after system readiness.
+            ready = (monitor_user == [user] and policy.count("KeyguardStateMonitor") == 1
+                     and re.findall(r"^\s*systemIsReady=(true|false)\s*$",policy,re.MULTILINE) == ["true"]
+                     and re.findall(r"^\s*bootCompleted=(true|false)\s*$",policy,re.MULTILINE) == ["true"])
+            if ready:
+                policy_user = monitor_user
+            else:
+                fields.update(guest="booting", guest_agent=False)
+                return readiness.Observation(**fields)
+        if policy_user != [user]:
+            raise ProviderError("android_account_unrecognized")
+        display = ("ready" if wake == ["Awake"] else "sleeping"
+                   if len(wake) == 1 else "unrecognized")
+        state = ("wrong_account" if user != b.expected_user else "ready" if showing == ["false"]
+                 else "locked" if showing == ["true"] else "unknown")
+        fields.update(account="android-user:" + user, session=boot + ":user:" + user,
+                      ordinary_session=state, display=display)
+        return readiness.Observation(**fields)
+
+    def recover(self, action, recovery_identity, observed, deadline):
+        if action != "wake_display" or action not in self.capabilities:
+            raise ProviderError("provider_recovery_unqualified")
+        # Reobserve immediately before GUI input; no command is generated against
+        # a boot/account/session/connection packet from an earlier generation.
+        current = self.observe(readiness.Requirements(frozenset({"interactive_desktop"})), deadline)
+        for field in ("target", "machine", "connection", "boot", "account", "session"):
+            if getattr(current, field) != getattr(observed, field):
+                raise ProviderError("android_input_identity_changed")
+        if current.ordinary_session != "ready" or current.display != "sleeping":
+            raise ProviderError("android_input_state_changed")
+        self._command(["shell", "input", "keyevent", "224"], deadline)
+
+
+def android_adapter(binding, owner_guard, **options):
+    return ProviderAdapter("android-emulator", binding.target, binding.machine,
+                           AndroidAdbBackend(binding, owner_guard, **options))

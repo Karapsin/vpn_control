@@ -11,12 +11,15 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import time
 import zlib
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from agent_tools import readiness_entrypoints
 RUNTIME_DIR = ROOT / ".runtime/visual-vms/windows"
 QMP_SOCKET = RUNTIME_DIR / "qmp.sock"
 READY_MARKER = RUNTIME_DIR / "READY"
@@ -31,7 +34,8 @@ class CaptureError(RuntimeError):
 
 
 class QmpClient:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, admission=None) -> None:
+        self._admission = admission
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._socket.settimeout(15)
         self._socket.connect(str(path))
@@ -61,14 +65,16 @@ class QmpClient:
         self._stream.write(json.dumps(request).encode("utf-8") + b"\n")
         response = self._receive()
         if "error" in response:
-            raise CaptureError(f"QMP {name} failed: {response['error']}")
+            raise CaptureError(f"QMP {name} failed")
         return response.get("return")
 
     def send_key(self, key: str) -> None:
-        self.execute(
-            "human-monitor-command",
-            {"command-line": f"sendkey {key}"},
-        )
+        if self._admission is not None:
+            self._admission.revalidate()
+        if self._admission is None:
+            self.execute("human-monitor-command", {"command-line": f"sendkey {key}"})
+        else:
+            self._admission.dispatch(self.execute, "human-monitor-command", {"command-line": f"sendkey {key}"})
 
 
 def _type_command(qmp: QmpClient, command: str) -> None:
@@ -238,14 +244,27 @@ def capture_vnc_frame(output: Path) -> tuple[int, int]:
     return size
 
 
-def capture_uac(output: Path) -> None:
-    if not READY_MARKER.is_file():
-        raise CaptureError("managed Windows VM has not passed agent provisioning checks")
+def capture_uac(output: Path, *, admission=None, target: str | None = None) -> None:
+    if admission is None:
+        if type(target) is not str or not target.startswith("qemu:") or not target[5:]:
+            raise CaptureError("Windows capture requires an explicit --target qemu:<disk>")
+        admission = readiness_entrypoints.from_environment(ROOT, "capture_visual_windows_qemu", "run", expected_target=target)
+    try:
+        _capture_uac_admitted(output, admission=admission)
+    finally:
+        admission.close()
+
+
+def _capture_uac_admitted(output: Path, *, admission) -> None:
+    global QMP_SOCKET, RUNTIME_DIR
+    QMP_SOCKET = Path(admission.binding["qmpSocket"])
+    RUNTIME_DIR = QMP_SOCKET.parent
     if not QMP_SOCKET.exists():
         raise CaptureError("managed Windows VM is not running or its QMP socket is missing")
     output.mkdir(parents=True, exist_ok=True)
     png = output / "windows-uac.png"
-    qmp = QmpClient(QMP_SOCKET)
+    admission.revalidate()
+    qmp = QmpClient(QMP_SOCKET, admission=admission)
     try:
         before = wait_for_active_display(qmp)
         run_dialog = b""
@@ -271,13 +290,28 @@ def capture_uac(output: Path) -> None:
             raise CaptureError("Windows UAC framebuffer is inactive")
         if changed_pixel_ratio(run_dialog, uac) < MIN_SURFACE_CHANGE_RATIO:
             raise CaptureError("Windows UAC surface did not replace the Run dialog")
-        capture_vnc_frame(png)
+        # Read the framebuffer from the same admitted QMP instance. A separate
+        # legacy VNC port is not an identity proof for this selected fixture.
+        ppm = RUNTIME_DIR / "windows-uac-final.ppm"
+        try:
+            admission.revalidate()
+            qmp.execute("screendump", {"filename": str(ppm)})
+            convert_ppm_to_png(ppm, png)
+        finally:
+            ppm.unlink(missing_ok=True)
     finally:
-        qmp.send_key("esc")
-        qmp.close()
+        try:
+            qmp.send_key("esc")
+        finally:
+            qmp.close()
 
 
-def probe_vm(output: Path | None = None, *, require_canonical: bool = True) -> tuple[int, int]:
+def probe_vm(output: Path | None = None, *, require_canonical: bool = True, target: str | None = None) -> tuple[int, int]:
+    global QMP_SOCKET, RUNTIME_DIR
+    binding = readiness_entrypoints.bound_target(ROOT, "capture_visual_windows_qemu", target,
+        fixture_id=os.environ.get("VPN_CONTROL_READINESS_FIXTURE_ID"))
+    QMP_SOCKET = Path(binding["qmpSocket"])
+    RUNTIME_DIR = QMP_SOCKET.parent
     if not QMP_SOCKET.exists():
         raise CaptureError("managed Windows VM is not running or its QMP socket is missing")
     ppm = RUNTIME_DIR / "probe-frame.ppm"
@@ -302,6 +336,7 @@ def probe_vm(output: Path | None = None, *, require_canonical: bool = True) -> t
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--target", required=True)
     parser.add_argument("--probe-output", type=Path)
     parser.add_argument("--allow-noncanonical", action="store_true")
     parser.add_argument("--send-key", action="append", default=[])
@@ -317,8 +352,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if args.send_key or args.type_text is not None:
-        qmp = QmpClient(QMP_SOCKET)
+        admission = readiness_entrypoints.from_environment(ROOT, "capture_visual_windows_qemu", "input", expected_target=args.target)
+        qmp = None
         try:
+            admission.revalidate()
+            qmp = QmpClient(Path(admission.binding["qmpSocket"]), admission=admission)
             if args.type_text is not None:
                 _type_command(qmp, args.type_text)
             for index, key in enumerate(args.send_key):
@@ -326,8 +364,13 @@ def main() -> int:
                     time.sleep(args.key_delay)
                 qmp.send_key(key)
         finally:
-            qmp.close()
-        print(json.dumps({"keys_sent": args.send_key, "text_length": len(args.type_text or "")}))
+            try:
+                if qmp is not None:
+                    qmp.close()
+            finally:
+                admission.close()
+        print(json.dumps({"operationId": admission.operation_identity,
+                          "keys_sent": len(args.send_key), "text_length": len(args.type_text or "")}))
         return 0
     if args.probe:
         if args.probe_output is not None:
@@ -335,6 +378,7 @@ def main() -> int:
         width, height = probe_vm(
             args.probe_output,
             require_canonical=not args.allow_noncanonical,
+            target=args.target,
         )
         print(json.dumps({"status": "running", "framebuffer": f"{width}x{height}"}))
         return 0
@@ -347,7 +391,7 @@ def main() -> int:
     known = {scene.get("id") for scene in manifest.get("scenes", [])}
     if "windows-uac" not in known:
         raise CaptureError("visual manifest does not contain windows-uac")
-    capture_uac(args.output)
+    capture_uac(args.output, target=args.target)
     return 0
 
 

@@ -1,0 +1,4 @@
+{
+  "sourceSha256": "1aaddb74aef0785b3518fbb2dcb023d46cf8f3e7851b72bc4dde122b495e5f20",
+  "failure": "The local committed-running getter used creating lock constructors; inspecting missing metadata recreated readiness.lock or the native inventory directory."
+}

@@ -344,8 +344,20 @@ def _privileged_capture(argv, payload, timeout):
     bounded = types.FunctionType(recovery._bounded_socket_query.__code__, namespace)
     namespace = dict(fresh._collect.__globals__)
     namespace['recovery'] = types.SimpleNamespace(_bounded_socket_query=bounded)
-    with ssh_transport.automatic_submission(argv) as submitted:
-        return types.FunctionType(fresh._collect.__code__, namespace)(submitted, payload, timeout)
+    children=[]
+    def launch(command, **kwargs):
+        child=ssh_transport.popen_ssh(command, **kwargs)
+        children.append(child)
+        return child
+    facade=types.SimpleNamespace(**vars(subprocess));facade.Popen=launch
+    namespace['subprocess']=facade
+    result=None
+    try:
+        result=types.FunctionType(fresh._collect.__code__, namespace)(argv, payload, timeout)
+        return result
+    finally:
+        for child in children:
+            ssh_transport.finish_ssh(child,failed=result is None or not result.get('complete'))
 
 
 def _privileged_projection(raw, timestamp, timeout):

@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys; s=sys.stdin.buffer.read(); exec(compile(s,'fixed-purpose-program','exec'),{'__name__':'__main__'})
+                                           ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "fixed-purpose-program", line 26, in <module>
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-component-acl.prepared-46bdb255-92d0-40bb-8893-62e033685645.py", line 209, in <module>
+    if __name__=='__main__':main()
+                            ~~~~^^
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-component-acl.prepared-46bdb255-92d0-40bb-8893-62e033685645.py", line 187, in main
+    after=root_probe('root-after')
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-component-acl.prepared-46bdb255-92d0-40bb-8893-62e033685645.py", line 162, in root_probe
+    result=executor.execute(argv,payload=payload)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/readiness_tart_macos.py", line 474, in execute
+    return _call(self._backend.custody.ordinary_guest_call, self._backend.binding, tuple(argv), payload, self._deadline)
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/readiness_tart_macos.py", line 69, in _call
+    raise MacBlocked("macos_custody_unavailable") from None
+_vpn_source_d8f710b0eef740218156d3326aaade85.readiness_tart_macos.MacBlocked: macos_custody_unavailable

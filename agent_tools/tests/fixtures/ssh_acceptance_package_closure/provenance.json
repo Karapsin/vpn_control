@@ -1,0 +1,14 @@
+{
+  "authority": "Exact whole actual failing controller/stager and fixed stager; test executes only authenticated dependency-copy statements, authentic SourceHold class/initial required-input loop, and complete finite package preflight. No transports/native/controller main or private histories.",
+  "nativeFailure": "a8ffc0b9 terminal1 FileNotFound bin/ssh before readiness/network; original raw preserved separately",
+  "noSyntheticNativeClaim": true,
+  "pins": {
+    "boundary.source": "5d6302ff641514e68b07da39a2c7abd5a7dbe7abd2a0ffd64aedf393dd833488",
+    "controller.before.source": "1528b117c2dc742c8a89585ad16331a503e44b44d44bc45d9f7af98cc83fd860",
+    "package_preflight.source": "e7e8a75c7e4d526d39fe3bcbc2062ce1ca98ec8f6ccb6a8b14f71a76d13d6b61",
+    "retention.source": "2c5f60321c667a9db4ae27f04103609318fbaff26c47fc140ea986c2fa9a426f",
+    "stage.before.source": "977848b6b776e53a46435d2ef63e8aa91cd6423e6779274a1b152b34680f020f",
+    "stage.fixed.source": "926d8562a6bbd4282effb5c1ffa796d453aac7143ab99417ac4fba58d003f695"
+  },
+  "schemaVersion": 1
+}

@@ -1,0 +1,19 @@
+function InvokeConverted([Reflection.MethodInfo]$method,[object[]]$values){
+ $parameters=$method.GetParameters()
+ if($parameters.Length -ne $values.Length){throw 'diagnostic_native_arity'}
+ $converted=[object[]]::new($values.Length)
+ for($i=0;$i -lt $values.Length;$i++){
+  $value=$values[$i]
+  $target=$parameters[$i].ParameterType
+  if($target.IsByRef){$target=$target.GetElementType()}
+  $converted[$i]=[Management.Automation.LanguagePrimitives]::ConvertTo($value,$target,[Globalization.CultureInfo]::InvariantCulture)
+ }
+ $result=$method.Invoke($null,$converted)
+ for($i=0;$i -lt $values.Length;$i++){if($parameters[$i].ParameterType.IsByRef){$values[$i]=$converted[$i]}}
+ return $result
+}
+function N([string]$name,[object[]]$values){
+ $method=[NativeJob].GetMethod($name,[Reflection.BindingFlags]'NonPublic,Static')
+ if($null -eq $method){throw 'diagnostic_native_method'}
+ return InvokeConverted $method $values
+}

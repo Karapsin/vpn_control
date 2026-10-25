@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "create-c9dad.fixed.ps1": {
+      "sha256": "c9dad79f0f3abbeebb3cf7e02b36cf93ed2a5aed78b60aedad5c7a862cf1c026",
+      "bytes": 1514
+    },
+    "parent-665b.before.ps1": {
+      "sha256": "665b3d850627c5c01c669a5c9245f1df2a81d838ba7b28a940bdccdce483dd81",
+      "bytes": 10897
+    }
+  },
+  "projection": "native-public-projection.json",
+  "configurationProjection": "Only SYSTEM SDDL owner/group/allow subject and three held-SID comparison constants map to the runtime current-token SID. FileMode.CreateNew, old FileAccess.Write, fixed FileSystemRights Write|ReadPermissions|ChangePermissions|Synchronize, shares, constructor overload, write/flush/readback and duplicate-refusal operations remain unchanged. Owned private directory has the same protected single-subject full-control DACL. This is a current-token causal projection, not a new SYSTEM/session0 qualification.",
+  "permissions": "No elevated token, services, tasks, guest calls, VM or input required. Windows .NET Framework actual test mandatory; POSIX skips it honestly."
+}

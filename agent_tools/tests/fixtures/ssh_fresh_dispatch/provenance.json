@@ -1,0 +1,9 @@
+{
+  "beforeimages": {
+    "ssh_transport.py": "370440c1130ea44fa3c3a7db1774fa74fb58e44e92abaf7537338c0045f9a3e0",
+    "ssh_automatic_program.py": "552bb3fc34050783ae65c41bc535f05e611ae8108828a38cf069cc2d60985acf",
+    "ssh_tmux_disconnect_probe.py": "6d46015d535174cb3d5e3d43afc9f8a25db659ba06bc4a6b03369e53f702ea61",
+    "ssh_forward.py": "3943b6957f195fc638b3f314cbec1adba6a7d972fe065d040d8097028cf058b8"
+  },
+  "failure": "Original intentional disconnect carrier mutates and JSON-wraps an admitted argv, losing saved-program custody and dispatch revalidation; forwarding derives a fresh master from selected reuse-only options."
+}

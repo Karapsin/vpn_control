@@ -1,0 +1,203 @@
+"""IGNORED SOURCE-ONLY startup-evidence proposal, never runtime authority.
+
+Caller must supply its existing operation-bound lifecycle Directory/intent.
+This private exact class is diagnostic only; no input/recovery authority or
+arbitrary callback. Captures only fixed public READONLY stream startup, and is
+disarmed before constructor returns. Original startup deadline stays THREE s.
+No exception messages, credentials, later observer replies or guest signals.
+"""
+import traceback
+from . import durable_remote_job as _startup_jobs
+
+class _StartupEvidence:
+    LIMITS = {'stdout': 16384, 'stderr': 65536}
+    PHASES = frozenset({'guard_before_builder','fixed_builder','guard_before_popen','popen',
+                       'write_fixed_payload','guard_after_payload','read_ready','validate_ready','ready'})
+    def __init__(self, directory, operation_id):
+        _need(type(directory) is private.Directory, 'macos_unlock_startup_evidence_invalid')
+        self.operation = _uuid(operation_id); directory.guard()
+        self.directory = directory; self.fds = {}; self.count = {key:0 for key in self.LIMITS}
+        self.eof = {key:False for key in self.LIMITS}; self.overflow = {key:False for key in self.LIMITS}
+        self.actor_value = None; self.failure_value = None
+        try:
+            for role in ('stdout','stderr','events'):
+                self.fds[role] = os.open('startup-'+self.operation+'.'+role,
+                    os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600, dir_fd=directory.fd)
+            os.fsync(directory.fd)
+        except BaseException:
+            self.close(); raise
+    def _write(self, fd, raw):
+        view=memoryview(raw)
+        while view:
+            count=os.write(fd,view)
+            if count<=0:raise OSError('startup_short_write')
+            view=view[count:]
+        os.fsync(fd)
+    def record(self, value):
+        # Retention uses the ORIGINAL preopened descriptor before route guards.
+        value={'operationId':self.operation,'replayAllowed':False,**value}
+        self._write(self.fds['events'],(json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode())
+    def phase(self, value):
+        _need(value in self.PHASES,'macos_unlock_startup_phase_invalid')
+        self.record({'stage':'phase','phase':value})
+    def actor(self, process):
+        self.actor_value={'pid':process.pid,'birth':_startup_jobs._birth(process.pid),'parent':os.getpid()}
+        self.record({'stage':'host_actor_started','actor':self.actor_value})
+    def bytes(self, role, raw):
+        if not raw:self.eof[role]=True;return
+        room=self.LIMITS[role]-self.count[role];keep=raw[:max(0,room)]
+        if keep:self._write(self.fds[role],keep);self.count[role]+=len(keep)
+        if len(raw)>room:self.overflow[role]=True
+    def drain(self, process):
+        # Bounded nonblocking queued bytes ONLY; no second handshake or wait.
+        for role in self.LIMITS:
+            pipe=getattr(process,role)
+            if pipe.closed:continue
+            os.set_blocking(pipe.fileno(),False)
+            for _ in range(32):
+                try:raw=os.read(pipe.fileno(),4096)
+                except (BlockingIOError,InterruptedError):break
+                self.bytes(role,raw)
+                if not raw:break
+    def failure(self, error, phase):
+        self.failure_value={'class':type(error).__name__,'frames':[
+            {'function':row.name,'line':row.lineno,'source':Path(row.filename).name}
+            for row in traceback.extract_tb(error.__traceback__)[-16:]]}
+        self.record({'stage':'startup_failed','phase':phase,'failure':self.failure_value})
+    def finish(self, state, process, phase):
+        self.record({'stage':'startup_retained','phase':phase,'state':state,'actor':self.actor_value,
+            'failure':self.failure_value,'stdoutBytes':self.count['stdout'],'stderrBytes':self.count['stderr'],
+            'stdoutEof':self.eof['stdout'],'stderrEof':self.eof['stderr'],
+            'stdoutOverflow':self.overflow['stdout'],'stderrOverflow':self.overflow['stderr'],
+            'returncode':None if process is None else process.poll(),'hostActorAbsent':process is not None and self.actor_value is not None and self.actor_value['birth']is not None
+               and _startup_jobs._birth(process.pid)!=self.actor_value['birth'],
+            'guestActorAbsenceProven':False})
+        self.close()
+    def close(self):
+        for fd in self.fds.values():os.close(fd)
+        self.fds.clear()
+
+class SessionObserver:
+    def __init__(self, backend, expected, deadline, *, guard, _startup=None):
+        self.process = None; self._startup = _startup
+        self.startup_phase = 'guard_before_builder'
+        try:
+            self._initialize(backend, expected, deadline, guard=guard, _startup=_startup)
+        except BaseException as error:
+            if type(self._startup) is _StartupEvidence:
+                self._startup.failure(error, self.startup_phase)
+                if self.process is not None: self._startup.drain(self.process)
+            if self.process is not None: self.close()
+            elif type(self._startup) is _StartupEvidence:
+                self._startup.finish('failed', None, self.startup_phase)
+                self._startup = None
+            raise
+
+    """One original fixed read-only guest observer; never starts a replacement."""
+    def _initialize(self, backend, expected, deadline, *, guard, _startup=None):
+        self.binding, self.expected, self.deadline = backend.binding, expected, deadline
+        self.buffer = bytearray()
+        self.counter, self.used_nonces = 0, set()
+        guard()
+        self._phase('fixed_builder')
+        argv, payload = stream.session_stream_command(backend.binding)
+        self._phase('guard_before_popen')
+        guard()
+        self._phase('popen')
+        self.process = subprocess.Popen([backend.binding.tart_binary, 'exec', '-i', backend.binding.vm_name, *argv],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
+            env={key: value for key, value in os.environ.items() if not key.startswith('DYLD_')})
+        if self._startup is not None: self._startup.actor(self.process)
+        try:
+            self._phase('write_fixed_payload')
+            os.set_blocking(self.process.stdin.fileno(), False)
+            remaining = memoryview(payload)
+            until = min(deadline, time.monotonic() + 10)
+            while remaining:
+                left = until - time.monotonic()
+                _need(left > 0 and select.select([], [self.process.stdin], [], left)[1], 'macos_unlock_observer_deadline')
+                try:
+                    count = os.write(self.process.stdin.fileno(), remaining[:4096])
+                    _need(count > 0, 'macos_unlock_observer_unavailable')
+                    remaining = remaining[count:]
+                except BlockingIOError:
+                    continue
+            os.set_blocking(self.process.stdin.fileno(), True)
+            self._phase('guard_after_payload')
+            guard()
+            self._phase('read_ready')
+            reply = self.read()
+            _need(set(reply) == {'protocol', 'state', 'observation'} and reply['state'] == 'observer_ready',
+                  'macos_unlock_observer_unavailable')
+            self._phase('validate_ready')
+            self.validate(reply['observation'])
+            self._phase('ready')
+            if self._startup is not None:
+                self._startup.finish('ready', self.process, self.startup_phase)
+                self._startup = None
+        except BaseException:
+            raise
+
+    def _phase(self, value):
+        self.startup_phase = value
+        if self._startup is not None: self._startup.phase(value)
+
+    def read(self):
+        _need(time.monotonic() < self.deadline, 'macos_unlock_observer_deadline')
+        until = min(self.deadline, time.monotonic() + 3)
+        while b'\n' not in self.buffer:
+            left = until - time.monotonic()
+            _need(left > 0 and select.select([self.process.stdout], [], [], left)[0], 'macos_unlock_observer_deadline')
+            block = os.read(self.process.stdout.fileno(), 4096)
+            if self._startup is not None: self._startup.bytes('stdout', block)
+            _need(block and len(self.buffer) + len(block) <= 16384, 'macos_unlock_observer_unavailable')
+            self.buffer.extend(block)
+        line, _, rest = self.buffer.partition(b'\n'); self.buffer[:] = rest
+        _need(not rest, 'macos_unlock_observer_unsolicited')
+        value = _json(line)
+        _need(type(value) is dict and value.get('protocol') == stream.PROTOCOL and set(value) in
+              ({'protocol', 'state', 'observation'}, {'protocol', 'state', 'counter', 'nonce', 'observation'}),
+              'macos_unlock_reply_invalid')
+        return value
+
+    def validate(self, value):
+        return _identity(value, self.binding, self.expected)
+
+    def check(self):
+        _need(self.process.poll() is None, 'macos_unlock_original_observer_ended')
+        # This protocol is strictly one request/one reply. No legitimate
+        # response may be cached or queued before its check was requested.
+        _need(not self.buffer and not select.select([self.process.stdout], [], [], 0)[0],
+              'macos_unlock_observer_unsolicited')
+        counter = self.counter + 1
+        _need(counter <= 1024, 'macos_unlock_observer_request_limit')
+        nonce = secrets.token_hex(16)
+        _need(type(nonce) is str and re.fullmatch(r'[0-9a-f]{32}', nonce) and nonce not in self.used_nonces,
+              'macos_unlock_observer_nonce_invalid')
+        self.used_nonces.add(nonce)
+        # Establish the exact pending public request before writing any bytes.
+        # A delayed old response, including one arriving after the queue check,
+        # cannot authorize the next event.
+        self.process.stdin.write(('check ' + str(counter) + ' ' + nonce + '\n').encode('ascii'))
+        self.process.stdin.flush()
+        value = self.read()
+        _need(set(value) == {'protocol', 'state', 'counter', 'nonce', 'observation'}
+              and value['state'] == 'observed' and type(value['counter']) is int and value['counter'] == counter
+              and type(value['nonce']) is str and value['nonce'] == nonce, 'macos_unlock_observer_uncorrelated')
+        actual = self.validate(value['observation'])
+        self.counter = counter
+        return actual
+
+    def close(self):
+        if not self.process.stdin.closed:
+            self.process.stdin.close()
+        try:
+            self.process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            self.process.terminate(); self.process.wait(timeout=3)
+        if self._startup is not None:
+            self._startup.drain(self.process)
+            self._startup.finish('failed', self.process, self.startup_phase)
+            self._startup = None
+        for pipe in (self.process.stdout, self.process.stderr):
+            pipe.close()

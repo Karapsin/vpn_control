@@ -60,7 +60,7 @@ class WindowsCredentialProbeSshTest(unittest.TestCase):
                 return b'{"state":"submitted","pid":7}'
             with mock.patch.object(backend.ssh_transport, "load_config", return_value=config), \
                  mock.patch.object(backend, "_run_ssh", side_effect=sent):
-                result = backend.start(root, "arch", self.correlation)
+                result = backend.start(root, "arch", self.correlation, environment="windows-fixture")
             self.assertEqual(("submitted", 7), (result["state"], result["pid"]))
             self.assertEqual([name for name, _ in backend._HELPERS], [x["name"] for x in seen[0]["helpers"]])
             self.assertEqual(3, len(seen[0]["helpers"]))
@@ -90,8 +90,8 @@ class WindowsCredentialProbeSshTest(unittest.TestCase):
 
             completed = mock.Mock(returncode=0, stdout=b'{"state":"submitted","pid":7}')
             with mock.patch.object(backend.ssh_transport, "load_config", return_value=config), \
-                 mock.patch.object(backend.subprocess, "run", return_value=completed) as run:
-                self.assertEqual("submitted", backend.start(root, "arch", self.correlation)["state"])
+                 mock.patch.object(backend.ssh_transport, "run_ssh", return_value=completed) as run:
+                self.assertEqual("submitted", backend.start(root, "arch", self.correlation, environment="windows-fixture")["state"])
                 completed.stdout = b'{"state":"terminal","pid":7,"success":false,"errorCategory":"invalid-credentials"}'
                 self.assertEqual("terminal", backend.status(root, "arch", self.correlation)["state"])
             self.assertEqual(2, run.call_count)
@@ -140,10 +140,10 @@ class WindowsCredentialProbeSshTest(unittest.TestCase):
             root = Path(raw); config = self.config(root, self.private_credential(root))
             with mock.patch.object(backend.ssh_transport, "load_config", return_value=config), \
                  mock.patch.object(backend, "_run_ssh", return_value=None) as run:
-                first = backend.start(root, "arch", self.correlation)
+                first = backend.start(root, "arch", self.correlation, environment="windows-fixture")
                 self.assertEqual("unknown", first["state"])
                 with self.assertRaisesRegex(backend.WindowsCredentialProbeSshError, "durable intent"):
-                    backend.start(root, "arch", self.correlation)
+                    backend.start(root, "arch", self.correlation, environment="windows-fixture")
             self.assertEqual(1, run.call_count)
 
     def test_status_observes_durable_remote_journal_after_local_helpers_change(self):
@@ -151,7 +151,7 @@ class WindowsCredentialProbeSshTest(unittest.TestCase):
             root = Path(raw); config = self.config(root, self.private_credential(root))
             with mock.patch.object(backend.ssh_transport, "load_config", return_value=config), \
                  mock.patch.object(backend, "_run_ssh", return_value=b'{"state":"submitted","pid":7}'):
-                backend.start(root, "arch", self.correlation)
+                backend.start(root, "arch", self.correlation, environment="windows-fixture")
             # Status does not capture or compare the current source helpers.
             with mock.patch.object(backend, "_capture_helpers", side_effect=AssertionError("must not read source")), \
                  mock.patch.object(backend.ssh_transport, "load_config", return_value=config), \
@@ -165,7 +165,7 @@ class WindowsCredentialProbeSshTest(unittest.TestCase):
             root = Path(raw); config = self.config(root, self.private_credential(root))
             with mock.patch.object(backend.ssh_transport, "load_config", return_value=config), \
                  mock.patch.object(backend, "_run_ssh", return_value=b"top-secret\nnot-json"):
-                result = backend.start(root, "arch", self.correlation)
+                result = backend.start(root, "arch", self.correlation, environment="windows-fixture")
             self.assertEqual({"state": "unknown", "correlationId": self.correlation}, result)
             self.assertNotIn("top-secret", repr(result))
 

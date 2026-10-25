@@ -68,7 +68,15 @@ class NativeExecutionContextTest(unittest.TestCase):
                     candidates=[name.replace('.','/')+'.py',name.replace('.','/')+'/__init__.py',relative.rsplit('/',1)[0]+'/'+name.replace('.','/')+'.py']
                     found=next((name for name in candidates if (ROOT/name).is_file()),None)
                     if found:pending.append(found)
-        (tools/'check_output_retention.py').write_text('check_only = 1\n')
+        # This generated-program dependency is loaded from authenticated bytes,
+        # rather than through a Python import visible to the AST closure above.
+        automatic = ssh_transport._automatic_module()
+        helper = automatic._PRIVATE_CONFIG_PATH
+        self.assertEqual(ROOT/'agent_tools/private_config_custody.py', helper)
+        helper_raw = helper.read_bytes()
+        self.assertEqual(automatic._PRIVATE_CONFIG_SHA, hashlib.sha256(helper_raw).hexdigest())
+        (tools/helper.name).write_bytes(helper_raw)
+        (tools/'managed_check_lease.py').write_text('check_only = 1\n')
         (tools/'unrelated_selector.py').write_text('value = 1\n')
         self.git('add','gradle.properties','.gitignore','agent_tools','scripts')
         self.git('commit','-m','exact clean native checkpoint')
@@ -138,7 +146,7 @@ class NativeExecutionContextTest(unittest.TestCase):
             'localPath':str(package),'sha256':hashlib.sha256(package.read_bytes()).hexdigest(),
             'size':package.stat().st_size,'evidenceClass':'local-verified','sourceSha':self.sha})
         if change=='unrelated':
-            (self.coordinator/'agent_tools/check_output_retention.py').write_text('check_only = 2\n')
+            (self.coordinator/'agent_tools/managed_check_lease.py').write_text('check_only = 2\n')
         elif change=='native':
             path=self.coordinator/'scripts/native_fixture_run.sh';path.write_bytes(path.read_bytes()+b'\n#changed native consumed script\n')
         elif change=='unknown':
@@ -190,8 +198,8 @@ class NativeExecutionContextTest(unittest.TestCase):
         with self.assertRaisesRegex(context.ExecutionContextError,'native_artifact_source_or_bytes_changed'):
             qualified.revalidate(self.native,self.request)
         package.write_bytes(b'actual original package')
-        (self.coordinator/'agent_tools/check_output_retention.py').write_text('check_only = 3\n')
-        self.git('add','agent_tools/check_output_retention.py');self.git('commit','-m','moved ref');self.git('push','origin','dev')
+        (self.coordinator/'agent_tools/managed_check_lease.py').write_text('check_only = 3\n')
+        self.git('add','agent_tools/managed_check_lease.py');self.git('commit','-m','moved ref');self.git('push','origin','dev')
         with self.assertRaisesRegex(context.ExecutionContextError,'native_target_ref_changed'):
             qualified.revalidate(self.native,self.request)
 
@@ -228,8 +236,8 @@ class NativeExecutionContextTest(unittest.TestCase):
             with self.assertRaisesRegex(context.ExecutionContextError,'native_source_requires_clean_exact_checkpoint'):
                 driver.submit(self.request)
             path.write_bytes(before)
-            (self.coordinator/'agent_tools/check_output_retention.py').write_text('check_only = 3\n')
-            self.git('add','agent_tools/check_output_retention.py');self.git('commit','-m','ref changed after preflight');self.git('push','origin','dev')
+            (self.coordinator/'agent_tools/managed_check_lease.py').write_text('check_only = 3\n')
+            self.git('add','agent_tools/managed_check_lease.py');self.git('commit','-m','ref changed after preflight');self.git('push','origin','dev')
             with self.assertRaisesRegex(context.ExecutionContextError,'native_target_ref_changed'):
                 driver.submit(self.request)
         effect.assert_not_called()
@@ -262,8 +270,8 @@ class NativeExecutionContextTest(unittest.TestCase):
         artifact,package=self.engineering()
         qualified=context.EngineeringExecutionContext.qualify(self.coordinator,self.native,self.request,(artifact['artifactId'],))
         before=qualified.authority
-        (self.coordinator/'agent_tools/check_output_retention.py').write_text('check_only = 3\n')
-        self.git('add','agent_tools/check_output_retention.py');self.git('commit','-m','unrelated tooling during old observation');self.git('push','origin','dev')
+        (self.coordinator/'agent_tools/managed_check_lease.py').write_text('check_only = 3\n')
+        self.git('add','agent_tools/managed_check_lease.py');self.git('commit','-m','unrelated tooling during old observation');self.git('push','origin','dev')
         proof=qualified.revalidate(self.native,self.request,admission=False)
         self.assertEqual(self.sha,proof['sourceSha'])
         self.assertFalse(proof['finalAcceptance'])

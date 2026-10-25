@@ -1,0 +1,195 @@
+"""REVIEW ONLY until coordinator GO: one original lease, wake, PUBLIC136, cleanup.
+
+No ordinary credential reader, private unlock, renewal, replacement, power,
+settings, or arbitrary program parameter. Invocation requires the reviewed plan
+SHA. All producer files remain held before acquisition through original cleanup.
+"""
+from pathlib import Path
+from contextlib import ExitStack
+from datetime import timedelta
+import argparse,asyncio,base64,hashlib,json,os,subprocess,sys,time
+EXECUTING=sys._getframe().f_code
+ROOT=Path(__file__).resolve().parents[3]
+sys.path.insert(0,str(ROOT))
+from agent_tools.source_module_loader import SourceSession
+PLAN_SHA='1f8515a9e38aeb6f0dd30cbe58a5fa7161e8f3440f8346cc03504cc7cee52a43'
+PLAN='macos-public-nonce-wake-plan.prepared-v3.json'
+FILES={
+ 'macos-known-session-wake-review.inert.py':'aa2d0429e2c83d7e46d33fbc85dc7a07b3f027209f785c92e26f4d4cf048dfac',
+ 'macos-unlock-nonce-public-preflight.inert.py':'3c1cc8938349e5b92d7913b85f98a7f53cf5c3a84fbd24d9d8947c44994246b1',
+ 'macos-normal-lease.py':'d758ae1181cc01c470e136131ea259d1305e397776cb8aaa85618622b12096c3',
+ PLAN:PLAN_SHA,
+}
+NAMES=('readiness_tart_macos','readiness_tart_macos_registry','readiness_fixture_registry','readiness_lease_workflow','readiness_tart_macos_lease_executor','readiness_tart_macos_lease_qualification','readiness_tart_macos_lease_bridge','readiness_tart_macos_session','readiness_tart_macos_session_stream','readiness_tart_macos_unlock','readiness_tart_macos_unlock_stream','readiness_tart_macos_unlock_qualification','readiness_tart_macos_wake','readiness_tart_vnc','readiness_qemu_jobs','durable_remote_job','tool_action_policy')
+MCP_FIXED=('source_module_loader.py','mcp_server.py','docs_assistant.py','local_build_environment.py','managed_check_lease.py','check_output_retention.py','windows_vm_setup_policy.py','native_workflow_policy.py','affected_agent_tests.py','affected_agent_test_dependencies.json','tool_action_policy.json','tool_action_policy.py')
+TARGET='tart:vpn-tool-recovery-tart-macos-7686d4aa'
+FIXTURE='tart-macos-independent-catalog-v10'
+LEASE='5e5e51db-b9e2-4785-a30b-da6bb2f0883c'
+WAKE='2dd616c6-90a3-4db7-8766-d446fec06177'
+BENCH='689a01c1-751c-4f37-a868-ea3407f070fb'
+APPROVAL_FIRST_OBSERVED=1792530854
+APPROVAL_DEADLINE=1792532354
+RUN=ROOT/'.runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9'
+def need(value,reason):
+ if not value:raise RuntimeError(reason)
+def parse(raw):
+ def pairs(rows):
+  value={}
+  for key,item in rows:
+   need(key not in value,'parent_duplicate_json');value[key]=item
+  return value
+ return json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda _:(_ for _ in ()).throw(ValueError('parent_nonfinite_json')))
+def digest(raw):return hashlib.sha256(raw).hexdigest()
+def main():
+ args=argparse.ArgumentParser();args.add_argument('--execute-plan',required=True);given=args.parse_args()
+ need(given.execute_plan==PLAN_SHA,'parent_plan_not_reviewed')
+ with ExitStack()as held:
+  sources=SourceSession(ROOT/'agent_tools','readiness_lease_workflow');held.callback(sources.close)
+  modules={name:sources.load(name)for name in NAMES};R=modules['readiness_tart_macos_registry'];P=modules['readiness_tart_macos_registry'].private;J=modules['durable_remote_job']
+  directory=held.enter_context(P.Directory(Path(__file__).parent));own=held.enter_context(P.Snapshot(directory,Path(__file__).name))
+  need(EXECUTING==compile(own.body,__file__,'exec',dont_inherit=True),'parent_executing_source_changed')
+  retained={};extra=[]
+  for name,sha in FILES.items():
+   item=held.enter_context(P.Snapshot(directory,name));need(digest(item.body)==sha,'parent_producer_changed');retained[name]=item
+  for name in MCP_FIXED:
+   path=ROOT/'agent_tools'/name
+   item=held.enter_context(R.PublicProof(path,{'generation':list(P._generation(path.lstat())),'sha256':digest(path.read_bytes())},private_file=False));extra.append(item)
+  literal=RUN/'native-iopm-v2-qualification-64faf820-ed64-44fc-a4f0-bfb8f31c2241/cancel-death-and-original-evidence-v2.inert.py'
+  extra.append(held.enter_context(R.PublicProof(literal,{'generation':list(P._generation(literal.lstat())),'sha256':'e0837869809c8a31f03d7db33028467581a37126227964dcd8fbfd343911ff19'})))
+  plan=parse(retained[PLAN].body)
+  need(plan['fixtureId']==FIXTURE and plan['target']==TARGET and plan['leaseOperationId']==LEASE and plan['wakeOperationId']==WAKE and plan['benchmarkOperationId']==BENCH and plan['lease']['ttlSeconds']==180,'parent_plan_binding_changed')
+  host_boot=J._boot()
+  parent_name='native-public-nonce-parent-'+LEASE+'-continuation-9c3608fb'
+  run=held.enter_context(P.Directory(RUN));run.guard();os.mkdir(parent_name,mode=0o700,dir_fd=run.fd);os.fsync(run.fd)
+  out=held.enter_context(P.Directory(RUN/parent_name))
+  def guard():
+   sources.guard();directory.guard();own.guard();run.guard();out.guard()
+   for item in (*retained.values(),*extra):item.guard()
+   need(J._boot()==host_boot,'parent_host_boot_changed')
+  def record(name,value):
+   out.guard();body=value if type(value)is bytes else json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+   fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd)
+   with os.fdopen(fd,'wb')as f:f.write(body);f.flush();os.fsync(f.fileno())
+   os.fsync(out.fd);out.guard()
+  def closure():
+   guard();return {'sources':[{'path':path,'sha256':digest(body)}for path,body in sorted(sources.cache.values())],'fixedFiles':FILES,'mcpFiles':[{'path':str(item.path),'sha256':digest(item.body)}for item in extra]}
+  record('driver.source.py',own.body);record('plan.json',retained[PLAN].body)
+  record('intent.json',{'target':TARGET,'fixtureId':FIXTURE,'leaseOperationId':LEASE,'wakeOperationId':WAKE,'benchmarkOperationId':BENCH,'ttlSeconds':180,'planSha256':PLAN_SHA,'driverSha256':digest(own.body),'acquireMaximum':1,'cancelMaximum':1,'renewalForbidden':True,'ordinaryCredentialReaderForbidden':True})
+  record('wake-approval-receipt.json',{'provenance':'parent root relayed refreshed user bounded wake approval; first root tool clock observed2026-10-20T21:14:14Z','firstObservedEpoch':APPROVAL_FIRST_OBSERVED,'conservativeExpiryEpoch':APPROVAL_DEADLINE,'scope':'this ONE2dd616c6 state-bound Shift pair only; no retry or other incidents; no password/unlock/power','fiveMinuteMarginWithinThirtyMinutes':True})
+  record('source-capsule-before.json',closure())
+  environment={k:v for k,v in os.environ.items()if not k.startswith('DYLD_')};environment['PYTHONPATH']=str(ROOT)
+  call_index=0;acquire_attempted=False;cancel_attempted=False;acquire_mono=None;acquire_wall=None;last_mono=None;last_wall=None
+  native_actors=[];mcp_actors=[]
+  def current_direct_children():
+   table=subprocess.run(['/bin/ps','-axo','pid=,ppid='],stdout=subprocess.PIPE,check=True).stdout
+   result=[]
+   for line in table.splitlines():
+    if not line.strip():continue
+    pid,ppid=map(int,line.split())
+    if ppid==os.getpid():
+     birth=J._birth(pid)
+     if birth is not None:result.append({'pid':pid,'birth':birth})
+   return result
+  def active(value):
+   return (type(value)is dict and type(value.get('schemaVersion'))is int and value['schemaVersion']==1 and value.get('fixtureId')==FIXTURE and value.get('operationId')==LEASE and value.get('provider')=='tart-macos'and value.get('qualificationScope')=='registered_guest_executor'and value.get('ok')is True and value.get('state')=='active'and value.get('nativeState')=='active'and value.get('jobState')=='running'and value.get('reason')=='original_lease_owner_running'and value.get('replayAllowed')is False)
+  def terminal(value):
+   return (type(value)is dict and value.get('operationId')==LEASE and value.get('fixtureId')==FIXTURE and value.get('provider')=='tart-macos'and value.get('ok')is True and value.get('jobState')=='terminal'and value.get('restored')is True and value.get('state')in{'cancelled','expired'}and value.get('replayAllowed')is False)
+  def remaining():
+   nonlocal last_mono,last_wall
+   mono=time.monotonic();wall=time.time()
+   need(acquire_mono is not None and mono>=acquire_mono and wall>=acquire_wall and (last_mono is None or mono>=last_mono)and(last_wall is None or wall>=last_wall),'parent_clock_reversed')
+   last_mono,last_wall=mono,wall;return 180-max(mono-acquire_mono,wall-acquire_wall)
+  async def call(action,inputs):
+   nonlocal call_index
+   from mcp import ClientSession,StdioServerParameters
+   from mcp.client.stdio import stdio_client
+   guard();call_index+=1;stem=f'{call_index:02d}-{action}'
+   record(stem+'.request.json',{'tool':'vm_workflow','action':action,'inputs':inputs})
+   parameters=StdioServerParameters(command=str(ROOT/'.agent_venv/bin/python'),args=['-B',str(ROOT/'agent_tools/mcp_server.py'),'serve'],cwd=ROOT,env=environment)
+   error_fd=os.open(stem+'.server.stderr',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd)
+   with os.fdopen(error_fd,'w')as errors:
+    async with stdio_client(parameters,errlog=errors)as streams:
+     async with ClientSession(*streams,read_timeout_seconds=timedelta(seconds=30))as client:
+      initialized=await client.initialize();record(stem+'.initialize.json',initialized.model_dump(mode='json'))
+      server_actors=current_direct_children();need(len(server_actors)==1,'parent_mcp_server_actor_ambiguous');mcp_actors.extend(server_actors);record(stem+'.server-actor.json',server_actors)
+      reply=await client.call_tool('vm_workflow',{'action':action,'inputs':inputs});record(stem+'.reply.json',reply.model_dump(mode='json'))
+      value=reply.structuredContent
+      if value is None:value=parse(next(block.text for block in reply.content if block.type=='text'))
+   guard();need(all(J._birth(a['pid'])!=a['birth']for a in server_actors),'parent_mcp_server_original_still_present');record(stem+'.server-closed.json',{'actors':server_actors,'allOriginalActorsAbsent':True});record(stem+'.result.json',value);return value
+  async def producer(name,argv,maximum,label):
+   guard();need(name in retained and name in FILES,'parent_producer_not_reviewed')
+   record(label+'.dispatch-unknown.json',{'program':name,'sha256':FILES[name],'argv':argv,'maximumCallerSeconds':maximum,'replacementForbidden':True})
+   stdout_fd=os.open(label+'.stdout',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd);stderr_fd=os.open(label+'.stderr',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd)
+   with os.fdopen(stdout_fd,'wb')as stdout,os.fdopen(stderr_fd,'wb')as stderr:
+    child=subprocess.Popen([str(ROOT/'.agent_venv/bin/python'),'-B',str(directory.path/name),*argv],cwd=ROOT,env=environment,stdin=subprocess.DEVNULL,stdout=stdout,stderr=stderr)
+    birth=J._birth(child.pid);need(type(birth)is str,'parent_child_birth_unavailable');actor={'pid':child.pid,'birth':birth};native_actors.append(actor);record(label+'.actor.json',actor)
+    # Producer owns its finite guards. Never replay or synthesize a modifier
+    # release after an uncertain key event, and never kill a VM/provider actor.
+    started=time.monotonic()
+    while child.poll()is None:
+     if time.monotonic()-started>maximum+10:
+      record(label+'.deadline-unknown.json',{'actor':actor,'replacementForbidden':True});raise RuntimeError('parent_producer_closure_unknown')
+     await asyncio.sleep(.05)
+    code=child.wait()
+   record(label+'.result.json',{'returncode':code,'originalActorAbsent':J._birth(actor['pid'])!=actor['birth']})
+   guard();need(code==0 and J._birth(actor['pid'])!=actor['birth'],'parent_producer_failed')
+  async def evidence():
+   await producer('macos-normal-lease.py',['--target',TARGET,'--fixture-id',FIXTURE,'--operation-id',LEASE,'--action','evidence'],45,'original-evidence')
+   result=parse((out.path/'original-evidence.stdout').read_bytes());need(result.get('operationId')==LEASE and result.get('returncode')==0 and result.get('stderr')=='','parent_original_evidence_reply_invalid')
+   value=parse(result['stdout']);need(value.get('actualOwnerPresent')is False and value.get('nativeOwnerAbsent')is True and value.get('status',{}).get('state')=='terminal'and value.get('terminalStatus',{}).get('state')=='terminal','parent_original_absence_incomplete')
+   stdout=base64.b64decode(value['stdout'],validate=True);stderr=base64.b64decode(value['stderr'],validate=True)
+   status=value['status'];collected=value['terminalStatus'];terminal_record=status.get('terminal',{})
+   acquired=value.get('acquired',{});lease_terminal=value.get('leaseTerminal',{})
+   need(terminal_record==collected.get('terminal') and terminal_record.get('operationId')==LEASE and terminal_record.get('streamsClosed')is True and terminal_record.get('exitCode')==0 and type(terminal_record.get('exitCode'))is int,'parent_original_terminal_incomplete')
+   need(acquired.get('operationId')==lease_terminal.get('operationId')==LEASE and acquired.get('leaseOwner')==lease_terminal.get('leaseOwner') and acquired.get('binding')==status.get('binding')==collected.get('binding')==lease_terminal.get('binding') and lease_terminal.get('restored')is True and lease_terminal.get('state')in{'cancelled','expired'},'parent_original_lease_correlation_invalid')
+   for name,body in (('stdout',stdout),('stderr',stderr)):
+    stream=terminal_record.get(name,{})
+    need(stream.get('overflow')is False and type(stream.get('retainedBytes'))is int and stream.get('retainedBytes')==len(body)==stream.get('totalBytes')and stream.get('sha256')==digest(body),'parent_original_streams_incomplete')
+   need(not stderr,'parent_original_stderr_present')
+   record('original-complete-evidence.json',value)
+   return {'owner':value['acquired']['leaseOwner'],'assertions':value['acquired']['assertions'],'stdoutBytes':len(stdout),'stderrBytes':len(stderr),'nativeOwnerAbsent':True,'originalActorAbsent':True}
+  async def pipeline():
+   nonlocal acquire_attempted,cancel_attempted,acquire_mono,acquire_wall
+   result=None;failure=None;cleanup=None
+   base={'fixtureId':FIXTURE,'operationId':LEASE}
+   try:
+    guard();need(APPROVAL_FIRST_OBSERVED<=time.time()<APPROVAL_DEADLINE-60,'parent_wake_approval_expired');acquire_mono=time.monotonic();acquire_wall=time.time()
+    record('acquire-dispatch-unknown.json',{'operationId':LEASE,'ttlSeconds':180,'hostBoot':host_boot,'monotonicBefore':acquire_mono,'wallBefore':acquire_wall,'replacementForbidden':True});acquire_attempted=True
+    result=await call('readiness-lease-acquire',{**base,'ttlSeconds':180})
+    while not active(result):
+     need(remaining()>=160 and result.get('nextAction',{}).get('kind')=='observe_original','parent_active_budget_or_identity_blocked')
+     result=await call('readiness-lease-status',base)
+    need(remaining()>=160,'parent_insufficient_lease_budget');record('active-budget.json',{'operationId':LEASE,'remainingLowerBoundSeconds':remaining(),'actualActive':result})
+    need(APPROVAL_FIRST_OBSERVED<=time.time()<APPROVAL_DEADLINE-60,'parent_wake_approval_expired')
+    await producer('macos-known-session-wake-review.inert.py',['--target',TARGET,'--fixture-id',FIXTURE,'--operation-id',WAKE,'--benchmark-operation-id',BENCH,'--lease-operation-id',LEASE],60,'wake')
+    wake_complete=RUN/('native-known-session-wake-'+WAKE)/'complete.json';wake=parse(wake_complete.read_bytes());need(wake.get('operationId')==WAKE and wake.get('after',{}).get('display')=='ready'and wake.get('ordinaryCredentialReaderOpened')is False,'parent_wake_not_ready')
+    need(remaining()>=100,'parent_benchmark_lease_budget_insufficient')
+    await producer('macos-unlock-nonce-public-preflight.inert.py',['--target',TARGET,'--fixture-id',FIXTURE,'--operation-id',BENCH],90,'public136')
+    complete=parse((RUN/('native-unlock-public-nonce-'+BENCH)/'complete.json').read_bytes());need(complete.get('operationId')==BENCH and len(complete.get('observations',[]))==136 and complete.get('ordinaryCredentialReaderOpened')is False and complete.get('observerActorAbsent')is True,'parent_public_benchmark_incomplete')
+    record('public-phase-complete.json',{'wakeOperationId':WAKE,'benchmarkOperationId':BENCH,'remainingLowerBoundSeconds':remaining(),'checks':136,'ordinaryCredentialReaderOpened':False})
+   except BaseException as error:
+    failure=type(error).__name__;record('phase-failure.json',{'failureClass':failure,'originalObservationRequired':acquire_attempted,'acquireRetryForbidden':True,'otherInputForbidden':True})
+   finally:
+    if acquire_attempted:
+     try:
+      stop=time.monotonic()+240
+      while True:
+       result=await call('readiness-lease-status',base)
+       if terminal(result):break
+       if active(result)and not cancel_attempted:
+        # Exact one original cancel, only after actual ACTIVE. If any phase
+        # still has an original live child, let the finite lease expire.
+        if all(J._birth(a['pid'])!=a['birth']for a in native_actors):
+         record('cancel-dispatch-unknown.json',{'operationId':LEASE,'replacementForbidden':True});cancel_attempted=True;result=await call('readiness-lease-cancel',base)
+         if terminal(result):break
+       need(time.monotonic()<stop and result.get('nextAction',{}).get('kind')=='observe_original','parent_original_cleanup_blocked')
+       await asyncio.sleep(.35)
+      cleanup=await evidence();record('lease-terminal.json',result);record('source-capsule-closed.json',closure())
+     except BaseException as error:
+      record('cleanup-unknown.json',{'failureClass':type(error).__name__,'operationId':LEASE,'acquireRetryForbidden':True,'cancelRetryForbidden':cancel_attempted,'originalObservationRequired':True})
+   actors=[{**a,'originalAbsent':J._birth(a['pid'])!=a['birth']}for a in native_actors]
+   record('complete.json',{'phaseFailureClass':failure,'leaseOriginalClosed':cleanup is not None,'cleanup':cleanup,'cancelSubmittedOnce':cancel_attempted,'acquireSubmittedOnce':acquire_attempted,'producerActors':actors,'mcpServerActors':[{**a,'originalAbsent':J._birth(a['pid'])!=a['birth']}for a in mcp_actors],'allProducerActorsAbsent':all(a['originalAbsent']for a in actors),'ordinaryCredentialReaderOpened':False,'leaseOperationId':LEASE,'wakeOperationId':WAKE,'benchmarkOperationId':BENCH})
+   print(json.dumps({'leaseOperationId':LEASE,'phaseFailureClass':failure,'leaseOriginalClosed':cleanup is not None,'allProducerActorsAbsent':all(a['originalAbsent']for a in actors)}))
+   return 0 if failure is None and cleanup is not None else 1
+  return asyncio.run(pipeline())
+if __name__=='__main__':raise SystemExit(main())

@@ -29,6 +29,8 @@ BEFORE_SHA = "32ea92fd1715fd5e261edfe7cd169c3afa31180f57bb582966e91c78df395b87"
 PRODUCERS = (
     "ssh_transport.py", "ssh_automatic_program.py",
     "private_inventory_lock.py", "native_review_source_closure.py",
+    # The automatic program now imports the shared readiness coordinator.
+    "readiness.py",
 )
 PROFILE_FUNCTIONS = {
     "ssh_transport.py": "_reject_duplicate_keys",
@@ -132,7 +134,7 @@ def prior_compiler_profile(code, raw, filename, name):
 
 
 def actual_guard_for_order(workflow):
-    """Emit and consume only an owned copied four-source import closure."""
+    """Emit and consume only an owned copied complete import closure."""
     prepared = position(workflow, "Set up Python 3.12") < position(workflow, "Check release hygiene")
     prefix = "_owned_fast_compiler_" + uuid.uuid4().hex
     package = types.ModuleType(prefix)
@@ -193,10 +195,20 @@ class WorkflowInterpreterOrderTests(unittest.TestCase):
     def test_reordering_retains_every_original_action_and_check(self):
         original = dict(steps(before_workflow()))
         current = dict(steps(self.workflow.read_text()))
-        self.assertEqual(set(original) | {"Install qemu-img for agent fixtures", "Retain public agent shard evidence"}, set(current))
+        # The TPM and creator census bodies are pinned exactly by test_linux_tpm_native_enrollment
+        # and test_linux_creator_census_native_enrollment.
+        self.assertEqual(set(original) | {"Install qemu-img for agent fixtures", "Retain public agent shard evidence",
+                                          "Test real Linux TPM ownership census",
+                                          "Test real Linux creator pre-VM root census"}, set(current))
         admit_public_uploader(current["Retain public agent shard evidence"])
+        continuation = "      - name: {}\n        if: ${{{{ !cancelled() }}}}\n"
         for name, body in original.items():
             actual = original_agent_step(current[name]) if name == "Test affected agent tools" else current[name]
+            # TEST-006 adds only a continuation after an earlier failed check
+            # and lets Gradle finish its other tasks; commands stay exact.
+            if actual.startswith(continuation.format(name)):
+                actual = "      - name: " + name + "\n" + actual[len(continuation.format(name)):]
+            actual = actual.replace("./gradlew --continue ", "./gradlew ", 1)
             self.assertEqual(body.strip(), actual.strip(), name)
 
     def test_prepared_runtime_and_dependencies_precede_all_python_hygiene(self):

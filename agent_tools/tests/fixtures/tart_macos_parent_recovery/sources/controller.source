@@ -1,0 +1,98 @@
+"""SOURCE-ONLY reviewed controller seam; no execution until coordinator GO.
+
+The selected original RUN's durable jobs root is already joined to idle_facts.
+One Program captures the whole fixed private producer. A disconnected client
+can only observe/collect that same controller; start never adopts an existing
+UNKNOWN admission. No host service/VM/input operation is implemented here.
+"""
+import argparse,ast,base64,hashlib,json,os,sys,time
+from pathlib import Path
+from contextlib import ExitStack
+EXECUTING=sys._getframe().f_code
+PROJECT=Path(__file__).resolve().parents[3];sys.path.insert(0,str(PROJECT))
+from agent_tools.source_module_loader import SourceSession
+DRIVERS={
+ 'public':('macos-v12-public136-qualification.inert.py','dc94e6c3e8746b0c9b410745c4096dd3cfdd141bece8c021d5bcfe3e473a3e74','native_macos_public136_v12'),
+ 'once':('macos-v12-once-qualification.inert.py','89d9e47e53f66006bb63ed7533d8117710f04a731f41b24d5695546a4c51da1a','native_macos_once_unlock_v12'),
+}
+def need(value,reason):
+ if not value:raise RuntimeError(reason)
+# Filled by source-only fixed data, never arbitrary caller source/command/path.
+WRAPPER=r'''import base64,hashlib,os,pathlib,sys
+CODE=sys._getframe().f_code
+P=CONFIG
+sys.path.insert(0,P['project'])
+from agent_tools.source_module_loader import SourceSession
+sources=SourceSession(pathlib.Path(P['project'])/'agent_tools','durable_remote_job')
+J=sources.module
+try:
+ root=pathlib.Path(P['jobRoot']);binding=J.MachineBinding.from_dict(P['hostBinding']);generation=tuple(P['jobRootGeneration'])
+ J._root(root,generation);J._binding_live(binding)
+ job=root/P['operationId'];intent=J._intent(job,P['operationId'],binding)
+ raw=J._read(job/'program.py',J.MAX_PROGRAM_BYTES)
+ if CODE!=compile(raw,'fixed-purpose-program','exec',dont_inherit=True):raise RuntimeError('controller_executed_program_changed')
+ if intent['purpose']!=P['purpose']or intent['programSha256']!=hashlib.sha256(raw).hexdigest():raise RuntimeError('controller_original_program_changed')
+ owner=J._record(job/'owner.json');J._correlate(owner,intent);actor=J._owner_identity(owner)
+ if actor['pid']!=os.getppid()or J._birth(actor['pid'])!=actor['birth']:raise RuntimeError('controller_not_original_owner_child')
+ original=base64.b64decode(P['source'],validate=True)
+ if hashlib.sha256(original).hexdigest()!=P['sourceSha256']:raise RuntimeError('controller_source_invalid')
+ path=pathlib.Path(P['driverPath']);info=path.lstat()
+ if path.read_bytes()!=original or list((info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns))!=P['sourceGeneration']:raise RuntimeError('controller_named_source_changed')
+ index={'schemaVersion':1,'operationId':P['operationId'],'fixtureId':P['fixtureId'],'target':P['target'],'phase':P['phase'],'sourceSha256':P['sourceSha256'],'programSha256':intent['programSha256'],'hostBinding':P['hostBinding'],'jobRootGeneration':P['jobRootGeneration'],'originalRunOperationId':P['originalRunOperationId'],'leaseOperationId':P['leaseOperationId'],'replayAllowed':False}
+ # The durable job intent existed before this index and before any driver code.
+ # A missing index after lost owner launch remains UNKNOWN, never a retry.
+ J._publish(pathlib.Path(P['indexPath']),index)
+ sources.guard()
+ sys.argv=[str(path),'--target',P['target'],'--fixture-id',P['fixtureId'],'--operation-id',P['operationId'],'--lease-operation-id',P['leaseOperationId']]
+ exec(compile(original,str(path),'exec',dont_inherit=True),{'__name__':'__main__','__file__':str(path)})
+finally:sources.close()
+'''
+p=argparse.ArgumentParser();p.add_argument('--action',required=True,choices=('start','status','collect'));p.add_argument('--phase',required=True,choices=tuple(DRIVERS));p.add_argument('--target',required=True);p.add_argument('--fixture-id',required=True);p.add_argument('--operation-id',required=True);p.add_argument('--lease-operation-id',required=True);args=p.parse_args()
+sources=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_registry');R=sources.module;F=sources.load('readiness_fixture_registry');J=sources.load('durable_remote_job');P=sources.load('private_inventory_lock')
+with ExitStack()as held:
+ held.callback(sources.close)
+ ownraw=Path(__file__).read_bytes();need(EXECUTING==compile(ownraw,__file__,'exec',dont_inherit=True),'controller_executing_source_changed')
+ selfheld=held.enter_context(R.PublicProof(Path(__file__).resolve(),{'generation':list(P._generation(Path(__file__).lstat())),'sha256':hashlib.sha256(ownraw).hexdigest()},private_file=False))
+ J._uuid(args.operation_id);J._uuid(args.lease_operation_id);need(args.operation_id!=args.lease_operation_id,'controller_operation_collision')
+ need(args.fixture_id=='tart-macos-independent-observer-namespace-v12','controller_fixture_epoch_changed')
+ descriptor,pin=F._json(PROJECT/'.rag_index/readiness-fixtures'/(args.fixture_id+'.json'))
+ need(descriptor['provider']=='tart-macos'and args.target=='tart:'+descriptor['binding']['vm_name'],'controller_explicit_target_mismatch')
+ run_path=Path(descriptor['originalRun']['path']);runproof=held.enter_context(R.PublicProof(run_path,descriptor['originalRun']['pin']))
+ run=runproof.value();root=run_path.parent/'jobs';generation=tuple(run['jobRootGeneration']);binding=J.MachineBinding.from_dict(run['hostBinding'])
+ original=J._intent(root/run['operationId'],run['operationId'],binding)
+ need(original['programSha256']==run['programSha256'],'controller_original_run_changed');J._root(root,generation)
+ filename,digest,purpose=DRIVERS[args.phase]
+ def guard():sources.guard();selfheld.guard();runproof.guard();J._root(root,generation)
+ guard();status=J.observe(root,args.operation_id,binding,generation=generation)
+ if status['state']!='unsubmitted':
+  original_intent=J._intent(root/args.operation_id,args.operation_id,binding)
+  original_program=J._read(root/args.operation_id/'program.py',J.MAX_PROGRAM_BYTES)
+  original_config=ast.literal_eval(original_program.decode().splitlines()[0].removeprefix('CONFIG='))
+  need(original_program==('CONFIG='+repr(original_config)+'\n'+WRAPPER).encode()and original_intent['purpose']==purpose and original_intent['programSha256']==hashlib.sha256(original_program).hexdigest(),'controller_original_program_changed')
+  need(all(original_config.get(key)==value for key,value in {'phase':args.phase,'operationId':args.operation_id,'leaseOperationId':args.lease_operation_id,'fixtureId':args.fixture_id,'target':args.target,'purpose':purpose,'jobRoot':str(root),'jobRootGeneration':list(generation),'hostBinding':binding.__dict__,'sourceSha256':digest,'originalRunOperationId':run['operationId'],'driverPath':str(Path(__file__).parent/filename),'indexPath':str(run_path.parent/('native-unlock-controller-'+args.operation_id+'.json'))}.items()),'controller_original_selector_changed')
+  need(hashlib.sha256(base64.b64decode(original_config['source'],validate=True)).hexdigest()==digest,'controller_original_producer_changed')
+ if args.action=='start':
+  # Existing admissions only observe. There is no replacement/relaunch branch.
+  if status['state']=='unsubmitted':
+   c=R.MacCustody(PROJECT,args.fixture_id,descriptor,pin);held.callback(c.close)
+   with c.operator(deadline=time.monotonic()+30):
+    c.guard(deadline=time.monotonic()+30);guard()
+    need(J.observe(root,args.operation_id,binding,generation=generation)['state']=='unsubmitted','controller_original_admission_changed')
+    path=Path(__file__).parent/filename
+    producer=held.enter_context(R.PublicProof(path,{'generation':list(P._generation(path.lstat())),'sha256':digest},private_file=False))
+    index=c.lifecycle_root/('native-unlock-controller-'+args.operation_id+'.json')
+    need(not index.exists()and not index.is_symlink(),'controller_original_index_present_no_replay')
+    config={'phase':args.phase,'project':str(PROJECT),'jobRoot':str(root),'jobRootGeneration':list(generation),'hostBinding':binding.__dict__,'operationId':args.operation_id,'leaseOperationId':args.lease_operation_id,'originalRunOperationId':run['operationId'],'fixtureId':args.fixture_id,'target':args.target,'purpose':purpose,'source':base64.b64encode(producer.body).decode(),'sourceSha256':digest,'sourceGeneration':list(P._generation(path.lstat())),'driverPath':str(path),'indexPath':str(index)}
+    source=('CONFIG='+repr(config)+'\n'+WRAPPER).encode()
+    program=J.Program(purpose,source,262144)
+    guard();producer.guard();c.guard(deadline=time.monotonic()+30)
+    status=J.submit(root,args.operation_id,binding,program,generation=generation)
+  else:
+   intent=J._intent(root/args.operation_id,args.operation_id,binding)
+   need(intent['purpose']==purpose,'controller_original_phase_changed')
+ if args.action=='collect':
+  status,stdout,stderr=J.collect(root,args.operation_id,binding,generation=generation)
+  # Retained full original streams are emitted as bounded public evidence.
+  value={'status':status,'stdout':base64.b64encode(stdout).decode(),'stderr':base64.b64encode(stderr).decode(),'replayAllowed':False}
+ else:value={'status':status,'replayAllowed':False}
+ guard();print(json.dumps(value,sort_keys=True))

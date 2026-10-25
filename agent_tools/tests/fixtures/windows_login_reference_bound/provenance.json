@@ -1,0 +1,9 @@
+{
+  "sourceSha256": "8df9e6c6902f0d6229e27541d707e9595dd5774cad52569e3ef46cc2ecc04334",
+  "originalOperations": [
+    "c22fc167-6d3b-4dff-a974-aabac0d08b51",
+    "41d789cf-13f8-4705-ada0-3848658fbf08"
+  ],
+  "originalFailure": "Code0/stderr0 precredential reference produced a single 1911194/1996170-byte lossless public screen reply, exceeding the DIRECT harness 1048576-byte envelope. Credential intent absent; no private input.",
+  "correction": "Pure bounded precredential decoder permits at most4194304 response bytes and16777216 decoded pixels, requires originalCredentialIntentAbsent proof and valid P6."
+}

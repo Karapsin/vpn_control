@@ -1,9 +1,12 @@
 """MCP admission for the exact Android unknown-install recovery boundary."""
 
 import unittest
+from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from agent_tools import mcp_server
+from agent_tools import mcp_server, readiness
+from agent_tools.tests.route_adapter import _routing_readiness
 
 
 class AndroidInstallRecoveryRouteTest(unittest.TestCase):
@@ -11,6 +14,15 @@ class AndroidInstallRecoveryRouteTest(unittest.TestCase):
     readback = "22222222-2222-4222-8222-222222222222"
     owner = "33333333-3333-4333-8333-333333333333"
     proof_sha = "a" * 64
+
+    @contextmanager
+    def routes(self, adapter, admission=None):
+        original = mcp_server._agent_module
+        named = {'android_package_install': adapter, 'readiness': readiness,
+                 'readiness_vm_dispatch': _routing_readiness() if admission is None else admission}
+        with patch.object(mcp_server, '_agent_module',
+                          side_effect=lambda name: named[name] if name in named else original(name)):
+            yield
 
     def request(self):
         return {
@@ -32,7 +44,7 @@ class AndroidInstallRecoveryRouteTest(unittest.TestCase):
             "reviewedProofSha256": self.proof_sha,
             "leaseReleased": True, "replayAllowed": False,
         }
-        with patch.object(mcp_server, "_agent_module", return_value=adapter):
+        with self.routes(adapter):
             proof = mcp_server._vm_workflow_impl("android-package-install-unknown-proof", self.request())
             release = mcp_server._vm_workflow_impl(
                 "android-package-install-unknown-release",
@@ -51,7 +63,7 @@ class AndroidInstallRecoveryRouteTest(unittest.TestCase):
 
     def test_uncertain_replayable_or_malformed_response_never_passes(self):
         adapter = Mock()
-        with patch.object(mcp_server, "_agent_module", return_value=adapter):
+        with self.routes(adapter):
             for state, replay, released in (
                 ("unknown", False, False),
                 ("proved", True, False),
@@ -112,6 +124,19 @@ class AndroidInstallRecoveryRouteTest(unittest.TestCase):
                 {**self.request(), "reviewedProofSha256": self.proof_sha, "command": "adb install"},
             )
             self.assertFalse(malformed["ok"])
+
+    def test_actual_readiness_refusal_precedes_mocked_native_adapter(self):
+        @contextmanager
+        def blocked(*args):
+            raise readiness.ReadinessBlocked('prepared_context_stale', self.correlation)
+            yield
+        adapter = Mock()
+        with self.routes(adapter, SimpleNamespace(admitted_dispatch=blocked)):
+            result = mcp_server._vm_workflow_impl('android-package-install-unknown-proof', self.request())
+        self.assertFalse(result['ok'])
+        self.assertEqual('prepared_context_stale', result['reason'])
+        self.assertEqual(self.correlation, result['operationId'])
+        adapter.prove_unknown_install.assert_not_called()
 
 
 if __name__ == "__main__":

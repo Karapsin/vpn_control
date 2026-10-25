@@ -191,7 +191,7 @@ def _check_argv(config,outer,path):
 def _pid_generation(pid):
     if type(pid)is not int or pid<=0:raise SessionUnknown('master')
     result=subprocess.run(['/bin/ps','-p',str(pid),'-o','uid=','-o','lstart=','-o','comm='],
-                          stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=3,check=False)
+                          stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=transport._remaining_timeout(3),check=False)
     if result.returncode!=0 or len(result.stdout)>1024:raise SessionUnknown('master')
     value=result.stdout.decode('ascii').strip()
     fields=value.split()
@@ -200,7 +200,7 @@ def _pid_generation(pid):
 
 def _master(config,outer,path):
     result=subprocess.run(_check_argv(config,outer,path),stdin=subprocess.DEVNULL,
-                          stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=3,check=False)
+                          stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=transport._remaining_timeout(3),check=False)
     raw=result.stdout+result.stderr
     if result.returncode!=0 or len(raw)>4096:raise SessionUnknown('master')
     match=re.fullmatch(rb'Master running \(pid=([1-9][0-9]{0,9})\)\r?\n?',raw)

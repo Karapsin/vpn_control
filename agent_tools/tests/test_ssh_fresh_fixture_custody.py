@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 import uuid
 from agent_tools import agent_test_runner as runner
@@ -20,6 +21,7 @@ BEFORE_SHA256 = '80e9fd0e34cd98e67826acdd065796695c67307948083c1e65df428c4114cef
 SETUP_SOURCES = (
     'agent_tools/agent_test_runner.py',
     'agent_tools/private_inventory_lock.py',
+    'agent_tools/readiness.py',
     'agent_tools/ssh_channel_inventory_diagnostics.py',
     'agent_tools/ssh_connection_recovery.py',
     'agent_tools/ssh_connection_session.py',
@@ -130,6 +132,22 @@ class FreshFixtureCustodyTests(unittest.TestCase):
 
     def criterion(self, fixture, facts):
         self.assertTrue(Path(facts['vcfRoot']).is_relative_to(fixture), 'actual helper escaped managed fixture custody')
+
+    def test_whole_before_missing_readiness_red_current_custody_green(self):
+        path = ROOT / 'agent_tools/tests/fixtures/ssh_generated_dependency_closure_before/fresh_fixture.before.source'
+        raw = path.read_bytes()
+        self.assertEqual('5c5fd77f2903b3e7a729fa29612191515f91e30c60e5d94e969ac393cee66d72', hashlib.sha256(raw).hexdigest())
+        original = types.ModuleType('_fresh_dependency_before_' + uuid.uuid4().hex)
+        original.__file__ = __file__
+        exec(compile(raw, str(path), 'exec'), original.__dict__)
+        result = unittest.TestResult()
+        original.FreshFixtureCustodyTests('test_actual_interrupted_foreign_generation_refused').run(result)
+        self.assertEqual(1, len(result.failures))
+        self.assertFalse(result.errors)
+        self.assertIn("cannot import name 'readiness'", result.failures[0][1])
+        current = unittest.TestResult()
+        FreshFixtureCustodyTests('test_actual_interrupted_foreign_generation_refused').run(current)
+        self.assertTrue(current.wasSuccessful(), current.failures + current.errors)
 
     def test_actual_interrupted_before_red_current_green(self):
         fixture, pin, original = self.child(before=True)

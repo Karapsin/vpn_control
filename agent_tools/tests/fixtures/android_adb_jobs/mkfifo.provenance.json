@@ -1,0 +1,9 @@
+{
+  "boot": "75a105da-7a4a-473d-bc95-565e3144033c",
+  "failure": "Actual native mkfifo -m 600 on newly created private UID2000/mode700 shell_data_file directory returns Permission denied for both FIFOs. Original owner dies after owner publication before payload. Omitted -m in help initially misdiagnosed; paired call accepts mode flag; diagnostic history preserved.",
+  "intermediateBeforeSha256": "59504260d88ca55c05ca4d23a4d709945c3c833c13d2c5929cef44dd631daf51",
+  "nativeEvidence": ".runtime/tool-recovery/android-jobs-native/bounded-diagnostic-fifo.txt",
+  "operationId": "b9e349f8-e7d0-4336-a564-25a793f8a0a2",
+  "sha256": "291050a5525991563a9baca01e0a53680894d7317047b889a49d5ac914a5decf",
+  "source": "agent_tools/readiness_adb_jobs.py"
+}

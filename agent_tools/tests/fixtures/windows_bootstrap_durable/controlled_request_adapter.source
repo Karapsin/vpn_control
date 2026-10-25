@@ -1,0 +1,6 @@
+def request_program(original):
+    """Controlled native role only; durable/producer source guards stay active."""
+    from .tests import test_windows_bootstrap_durable as fixture
+    if type(fixture._CONTROLLED_REQUEST_SOURCE) is not bytes:
+        raise ValueError("controlled_native_request_not_prepared")
+    return fixture._CONTROLLED_REQUEST_SOURCE

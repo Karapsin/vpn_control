@@ -1,0 +1,81 @@
+"""Fresh SDK/client/server loss + normal CLI. Requires exclusive native grant."""
+from pathlib import Path
+import hashlib,json,os,signal,subprocess,sys,time,uuid
+from agent_tools import durable_remote_job as host,readiness_adb_jobs as jobs
+from agent_tools.ssh_keeper_mcp_relay import actor
+root=Path(__file__).resolve().parents[3];fixture=sys.argv[1]
+run_id=uuid.UUID(sys.argv[2]);assert str(run_id)==sys.argv[2]
+evidence=root/'.runtime/tool-recovery/android-jobs-native'/('sdk-'+run_id.hex);evidence.mkdir(mode=0o700)
+(evidence/'harness-actor.json').write_text(json.dumps({'pid':os.getpid(),'birth':host._birth(os.getpid()),'runId':str(run_id)}))
+server_sha=hashlib.sha256((root/'agent_tools/mcp_server.py').read_bytes()).hexdigest()
+env={k:v for k,v in os.environ.items() if not k.startswith('DYLD_')};env['PYTHONPATH']=str(root)
+def save(p,v):p.write_text(json.dumps(v,sort_keys=True,indent=2)+'\n');p.chmod(0o600)
+def start_client(case,action,operation,name):
+ request=case/(name+'-request.json');save(request,{'operationId':operation})
+ out=case/(name+'.stdout');err=case/(name+'.stderr');handles=[out.open('xb'),err.open('xb')]
+ command=[str(root/'.agent_venv/bin/python'),'-B',str(root/'agent_tools/ssh_program_mcp_client.py'),'--session',name,'--server-sha256',server_sha,'--output-root',str(case),'--action',action,'--fixture',fixture,'--request-file',str(request),'--follow','--follow-seconds','180']
+ process=subprocess.Popen(command,cwd=root,env=env,stdin=subprocess.DEVNULL,stdout=handles[0],stderr=handles[1])
+ return process,handles,out
+
+def finish_client(process,handles,out):
+ code=process.wait(timeout=180)
+ for h in handles:h.close()
+ value=json.loads(out.read_bytes());assert code==0 and value['programState']=='terminal' and value['nextAction']['kind']=='complete',value
+ assert value['serverExecutionProven'] is True,value
+ return value
+
+def final_tool(case,session):
+ paths=sorted((case/session).glob('call-result-*.json'));assert paths
+ return json.loads(paths[-1].read_bytes())['structuredContent']
+
+def check_terminal(case,operation,value):
+ assert value['state']=='terminal' and value['operationId']==operation and value['fixtureId']==fixture
+ assert value['complete'] and value['exitCode']==0 and not value['streamCapped'] and value['replayAllowed'] is False
+ assert value['stdout']==''.join(f'counter {i}\n' for i in range(1,81))
+ assert value['stderr']=='owner-start\nowner-terminal\n'
+ args=case/'cli-inputs.json';save(args,{'fixtureId':fixture,'operationId':operation})
+ p=subprocess.run([str(root/'agent_tools/mcp_tool.sh'),'vm-workflow','android-program-collect','--inputs-file',str(args)],cwd=root,env=env,stdin=subprocess.DEVNULL,capture_output=True,timeout=30)
+ (case/'cli-collect.stdout').write_bytes(p.stdout);(case/'cli-collect.stderr').write_bytes(p.stderr)
+ assert p.returncode==0,p.stderr
+ cli=json.loads(p.stdout)
+ for key in ('schemaVersion','provider','fixtureId','operationId','durableProtocol','replayAllowed','qualificationScope','state','owner','exitCode','stdout','stderr','complete','stdoutBytes','stderrBytes','streamCapped'):
+  assert cli[key]==value[key],(key,cli.get(key),value.get(key))
+ return cli
+
+summaries=[]
+for loss in ('healthy','server','client'):
+ operation=str(uuid.uuid5(run_id,loss));case=evidence/loss;case.mkdir(mode=0o700)
+ args={'fixtureId':fixture,'operationId':operation};save(case/'inputs.json',args)
+ session='start-'+loss;process,handles,out=start_client(case,'android-program-start',operation,session)
+ before=None;deadline=time.monotonic()+40
+ while time.monotonic()<deadline and process.poll() is None:
+  try:
+   before=jobs.workflow(root,'status',args)
+   if before['state']=='running' and before['owner']['pid']>0:break
+  except jobs.AndroidJobError:pass
+  time.sleep(.1)
+ assert before and before['state']=='running',before
+ original_owner=before['owner'];save(case/'before-loss.json',before)
+ if loss!='healthy':
+  intent=case/session/'server-intent.json';assert intent.exists()
+  original=json.loads(intent.read_bytes());server=original['serverActor'];assert actor(server['pid'])==server and original['sourceSha256']==server_sha
+  server_birth=host._birth(server['pid']);assert server_birth is not None
+  if loss=='server':
+   save(case/'server-loss-intent.json',{'actor':server,'birth':server_birth,'originalOperation':operation})
+   assert host._birth(server['pid'])==server_birth;os.kill(server['pid'],signal.SIGTERM)
+  else:
+   client_birth=host._birth(process.pid);assert client_birth is not None
+   save(case/'client-loss-intent.json',{'pid':process.pid,'birth':client_birth,'originalServer':server,'originalOperation':operation})
+   assert host._birth(process.pid)==client_birth;os.kill(process.pid,signal.SIGTERM);process.wait(timeout=10)
+   for h in handles:h.close()
+   deadline=time.monotonic()+15
+   while host._birth(server['pid'])==server_birth and time.monotonic()<deadline:time.sleep(.1)
+   assert host._birth(server['pid'])!=server_birth,'original owned server did not close after client loss'
+   session='reconcile-after-client';process,handles,out=start_client(case,'android-program-reconcile',operation,session)
+ result=finish_client(process,handles,out);value=final_tool(case,session)
+ assert value['owner']==original_owner
+ cli=check_terminal(case,operation,value)
+ summary={'case':loss,'operationId':operation,'owner':original_owner,'completeStreams':True,'schemaEquivalent':True,'sameOriginal':True}
+ save(case/'qualification.json',summary);summaries.append(summary)
+save(evidence/'qualification.json',{'cases':summaries,'serverSha256':server_sha,'fixtureId':fixture})
+print(json.dumps({'allTerminal':True,'cases':len(summaries),'evidence':str(evidence)}))

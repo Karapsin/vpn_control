@@ -1,0 +1,210 @@
+"""Structured Python -c semantics over the existing configured SSH owner.
+
+No Windows implementation is supplied. PowerShell script-block and -File
+semantics must be separately declared and natively qualified.
+"""
+from __future__ import annotations
+
+import re
+
+MAX_SOURCE_BYTES = 8 * 1024 * 1024
+
+
+def validate(value):
+    fields = {"language", "source", "args", "cwd", "targetContext"}
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError("program_schema")
+    if value["language"] != "python3":
+        raise ValueError("program_language_unsupported")
+    source = value["source"]
+    if type(source) is not str or not 0 < len(source.encode("utf-8", "strict")) <= MAX_SOURCE_BYTES:
+        raise ValueError("program_source_bound")
+    compile(source, "<submitted-program>", "exec")
+    arguments = value["args"]
+    if (type(arguments) is not list or len(arguments) > 1024
+            or any(type(arg) is not str or "\0" in arg for arg in arguments)):
+        raise ValueError("program_arguments")
+    cwd = value["cwd"]
+    if (type(cwd) is not str or not cwd.startswith("/") or len(cwd.encode()) > 4096
+            or cwd != "/" and any(part in ("", ".", "..") for part in cwd.split("/")[1:])
+            or any(char in cwd for char in ("\0", "\r", "\n"))):
+        raise ValueError("program_cwd")
+    context = value["targetContext"]
+    if (type(context) is not dict or set(context) != {"kind", "uid", "principal", "home", "bootId"}
+            or context["kind"] != "ssh" or type(context["uid"]) is not int or context["uid"] < 0
+            or type(context["principal"]) is not str or not context["principal"]
+            or type(context["home"]) is not str or not context["home"].startswith("/")
+            or type(context["bootId"]) is not str
+            or re.fullmatch("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", context["bootId"]) is None):
+        raise ValueError("program_target_context")
+    return value
+
+
+def command(program):
+    """Preserve declared Python -c argv/stdin semantics in both transport modes.
+
+    The existing automatic transport can save this complete source unchanged.
+    Its loader already preserves sys.argv[0] == '-c' and original arguments.
+    cwd is data in fixed Python source, never a shell prefix.
+    """
+    value = validate(program)
+    payload = {"source": value["source"], "cwd": value["cwd"],
+               "targetContext": {key: value["targetContext"][key] for key in sorted(value["targetContext"])}}
+    wrapper = "PROGRAM=" + repr(payload) + "\n" + """import os,pwd,subprocess,sys,types
+expected=PROGRAM['targetContext']
+entry=pwd.getpwuid(os.geteuid())
+if sys.platform.startswith('linux'):
+ with open('/proc/sys/kernel/random/boot_id') as stream:boot=stream.read(128).strip()
+elif sys.platform=='darwin':
+ result=subprocess.run(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=3,check=True)
+ boot=result.stdout.decode('ascii','strict').strip().lower()
+else:raise ValueError('program_target_platform')
+actual={'kind':'ssh','uid':os.geteuid(),'principal':entry.pw_name,'home':entry.pw_dir,'bootId':boot}
+if actual!=expected:raise ValueError('program_target_changed')
+cwd=PROGRAM['cwd']
+fds=[os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)]
+try:
+ for part in ([] if cwd=='/' else cwd.split('/')[1:]):fds.append(os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fds[-1]))
+ os.fchdir(fds[-1])
+finally:
+ for descriptor in reversed(fds):os.close(descriptor)
+def execute(source):
+ main=types.ModuleType('__main__')
+ main.__dict__.update({'__package__':None,'__spec__':None,'__doc__':None,'__builtins__':__builtins__})
+ sys.modules['__main__']=main
+ exec(compile(source,'<submitted-program>','exec'),main.__dict__)
+execute(PROGRAM['source'])
+"""
+    carrier = "exec(" + repr(wrapper) + ")"
+    if len(carrier.encode("utf-8")) > MAX_SOURCE_BYTES:
+        raise ValueError("program_rendered_source_bound")
+    # repr makes the carrier one control-character-free argument, as required
+    # by ssh_transport's command boundary. It is not shell command parsing.
+    return ("python3", "-I", "-B", "-c", carrier, *value["args"])
+
+
+# Fixed internal durable-owner protocol. These functions render only the same
+# reviewed Python semantics above; they do not add an arbitrary command/path API.
+def _canonical(value):
+    import json
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def _operation(operation):
+    import uuid
+    if type(operation) is not str or str(uuid.UUID(operation)) != operation:
+        raise ValueError("program_operation_id")
+    return operation
+
+
+def _carrier(source):
+    return ("python3", "-I", "-B", "-c", "exec(" + repr(source) + ")")
+
+
+def prepare_command(operation, program, owner_source):
+    """Admit a task-only root and report actual identities before program render.
+
+    A deterministic operation-specific root makes a lost preparation ACK
+    reconcilable. Existing roots are accepted only with the complete original
+    create-only manifest; incomplete or foreign preparation is UNKNOWN.
+    """
+    import hashlib
+    _operation(operation)
+    value = validate(program)
+    parameters = {"operationId": operation, "targetContext": value["targetContext"],
+                  "requestSha256": hashlib.sha256(_canonical(value)).hexdigest(),
+                  "ownerSourceSha256": hashlib.sha256(owner_source).hexdigest()}
+    source = "PARAMETERS=" + repr(parameters) + "\nOWNER_SOURCE=" + repr(owner_source) + "\n" + r'''import hashlib,importlib.util,json,os,pathlib,pwd,sys,tempfile
+expected=PARAMETERS['targetContext'];entry=pwd.getpwuid(os.geteuid())
+if sys.platform.startswith('linux'):
+ boot=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+ machine=pathlib.Path('/etc/machine-id').read_text().strip()
+elif sys.platform=='darwin':
+ import subprocess
+ boot=subprocess.check_output(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],timeout=3).decode().strip().lower()
+ # IOPlatformUUID is the stable machine identity, distinct from boot identity.
+ import plistlib
+ rows=plistlib.loads(subprocess.check_output(['/usr/sbin/ioreg','-rd1','-c','IOPlatformExpertDevice','-a'],timeout=3))
+ machine=rows[0]['IOPlatformUUID']
+else:raise ValueError('program_target_platform')
+actual={'kind':'ssh','uid':os.geteuid(),'principal':entry.pw_name,'home':entry.pw_dir,'bootId':boot}
+if actual!=expected:raise ValueError('program_target_changed')
+root=pathlib.Path('/tmp').resolve()/('vpn-control-program-'+str(os.geteuid())+'-'+PARAMETERS['operationId'])
+module_path=root/'owner-module.py'
+manifest={**PARAMETERS,'machine':machine,'account':str(os.geteuid()),'root':str(root)}
+created=False
+try:root.mkdir(mode=0o700);created=True
+except FileExistsError:pass
+if created:
+ fd=os.open(module_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb') as stream:stream.write(OWNER_SOURCE);stream.flush();os.fsync(stream.fileno())
+else:
+ fd=os.open(module_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ with os.fdopen(fd,'rb') as stream:
+  info=os.fstat(stream.fileno());raw=stream.read(100000)
+ if info.st_uid!=os.geteuid() or info.st_mode&0o777!=0o600 or info.st_nlink!=1 or hashlib.sha256(raw).hexdigest()!=PARAMETERS['ownerSourceSha256']:raise ValueError('program_remote_owner_integrity')
+spec=importlib.util.spec_from_file_location('durable_remote_job',module_path)
+jobs=importlib.util.module_from_spec(spec);sys.modules[spec.name]=jobs;spec.loader.exec_module(jobs)
+generation=jobs.root_generation(root)
+if created:jobs._publish(root/'preparation.json',manifest)
+elif jobs._record(root/'preparation.json')!=manifest:raise ValueError('program_remote_preparation_conflict')
+binding=jobs.current_binding('program-target',machine)
+print(json.dumps({'remoteRoot':str(root),'generation':list(generation),'binding':jobs.asdict(binding),
+ 'operationId':PARAMETERS['operationId'],'requestSha256':PARAMETERS['requestSha256'],
+ 'ownerSourceSha256':PARAMETERS['ownerSourceSha256']},sort_keys=True,separators=(',',':')))
+'''
+    return _carrier(source)
+
+
+def durable_command(operation, program, packet, *, mode="observe", wait_seconds=5):
+    """One fixed original-operation receiver; observe mode never admits a job."""
+    import hashlib
+    _operation(operation)
+    value = validate(program)
+    if (type(packet) is not dict or set(packet) != {"remoteRoot", "generation", "binding", "operationId", "requestSha256", "ownerSourceSha256"}
+            or packet["operationId"] != operation
+            or packet["requestSha256"] != hashlib.sha256(_canonical(value)).hexdigest()
+            or mode not in ("submit", "observe") or type(wait_seconds) is not int or not 0 <= wait_seconds <= 30):
+        raise ValueError("program_remote_packet")
+    expected_root = "/tmp/vpn-control-program-" + str(value["targetContext"]["uid"]) + "-" + operation
+    if packet["remoteRoot"] not in (expected_root, "/private" + expected_root):
+        raise ValueError("program_remote_root")
+    # Preserve exactly python -c argv and __main__/cwd semantics. Credentials
+    # are not accepted by this protocol; source/args stay in private carriers.
+    payload = "import sys\nsys.argv=" + repr(["-c", *value["args"]]) + "\n" + command(value)[4]
+    parameters = {"operationId": operation, "packet": packet, "mode": mode,
+                  "waitSeconds": wait_seconds, "programSource": payload if mode == "submit" else None}
+    source = "PARAMETERS=" + repr(parameters) + "\n" + r'''import base64,hashlib,importlib.util,json,os,pathlib,sys,time
+packet=PARAMETERS['packet'];root=pathlib.Path(packet['remoteRoot'])
+fd=os.open(root/'owner-module.py',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+with os.fdopen(fd,'rb') as stream:
+ info=os.fstat(stream.fileno());raw=stream.read(100000)
+if info.st_uid!=os.geteuid() or info.st_mode&0o777!=0o600 or info.st_nlink!=1 or hashlib.sha256(raw).hexdigest()!=packet['ownerSourceSha256']:raise ValueError('program_remote_owner_integrity')
+spec=importlib.util.spec_from_file_location('durable_remote_job',root/'owner-module.py')
+jobs=importlib.util.module_from_spec(spec);sys.modules[spec.name]=jobs;spec.loader.exec_module(jobs)
+jobs._root(root,tuple(packet['generation']))
+manifest=jobs._record(root/'preparation.json')
+if manifest['operationId']!=PARAMETERS['operationId'] or manifest['requestSha256']!=packet['requestSha256'] or manifest['ownerSourceSha256']!=packet['ownerSourceSha256']:raise ValueError('program_remote_preparation_conflict')
+binding=jobs.MachineBinding.from_dict(packet['binding'])
+if binding.account!=str(os.geteuid()) or binding.machine!=manifest['machine']:raise ValueError('program_remote_machine_changed')
+if sys.platform.startswith('linux'):machine=pathlib.Path('/etc/machine-id').read_text().strip()
+elif sys.platform=='darwin':
+ import plistlib,subprocess
+ machine=plistlib.loads(subprocess.check_output(['/usr/sbin/ioreg','-rd1','-c','IOPlatformExpertDevice','-a'],timeout=3))[0]['IOPlatformUUID']
+else:raise ValueError('program_target_platform')
+if machine!=binding.machine:raise ValueError('program_remote_machine_changed')
+operation=PARAMETERS['operationId'];generation=tuple(packet['generation'])
+if PARAMETERS['mode']=='submit':
+ program=jobs.Program('generated-python-program',PARAMETERS['programSource'].encode(),jobs.MAX_STREAM_BYTES)
+ result=jobs.submit(root,operation,binding,program,generation=generation)
+else:result=jobs.observe(root,operation,binding,generation=generation)
+deadline=time.monotonic()+PARAMETERS['waitSeconds']
+while time.monotonic()<deadline and (result['state']=='running' or result['reason']=='record_unavailable'):
+ time.sleep(.05);result=jobs.observe(root,operation,binding,generation=generation)
+reply={'schemaVersion':1,'operationId':operation,'status':result}
+if result['state']=='terminal':
+ result,out,err=jobs.collect(root,operation,binding,generation=generation)
+ reply.update(status=result,stdout=base64.b64encode(out).decode(),stderr=base64.b64encode(err).decode())
+print(json.dumps(reply,sort_keys=True,separators=(',',':')))
+'''
+    return _carrier(source)

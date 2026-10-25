@@ -1,0 +1,8 @@
+{
+  "failure": "Actual MCP file edit after RPC caused relay to discard terminal raw/delivery receipt, masking source-integrity failure as client FileNotFoundError; original remote sentinel terminal once/full55.",
+  "nativeOperationId": "7f90eef3-c67b-4478-a758-b866a255d7ae",
+  "sha256": {
+    "ssh_keeper_mcp_relay.py": "8d534a90cce89cb105b8f8835043bd7eb49368ac2f98dc3a54d37dd03aebb47f",
+    "ssh_program_mcp_client.py": "d63dc60884a46ab17a93fdbcb8cb29ff66470c03c3b3bd57bdd1523715fb7ae6"
+  }
+}

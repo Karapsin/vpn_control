@@ -170,6 +170,17 @@ class GuardianTests(unittest.TestCase):
             bundle=historical_source.load(historical,transport.BUNDLE_SHA)
             origin=case.source_root/'agent_tools/android_installer_component_bundle.py'
             origin.write_bytes(raw)
+            # The frozen catalogue predates readiness. Current ssh_transport
+            # imports it, so a current-tree stage refuses before any read.
+            receipt=bundle.prepare(case.source_root,case.root/'current-stage',
+                bundle.reviewed_tree(case.source_root)['treeSha256'])
+            with self.assertRaisesRegex(ImportError,'component_bundle_external_import'):bundle.modules(receipt)
+            # Its last closure-compatible transport stays the historical member.
+            compatible=Path(__file__).parent/'fixtures/android_installer_hermetic/ssh_transport.closure-compatible.source'
+            compatible_raw=current_bundle._read(compatible)[0]
+            if hashlib.sha256(compatible_raw).hexdigest()!='16cbcfc396ba33e660d2550f4bb70b30a39367f1b823fd57eeee2281f844a367':
+                raise ValueError('historical_transport_source_changed')
+            (case.source_root/'agent_tools/ssh_transport.py').write_bytes(compatible_raw)
             # Keep the authenticated historical catalogue; current staging has
             # a separately admitted API35 getter leaf and is not its receipt.
             receipt=bundle.prepare(case.source_root,case.root/'historical-stage',

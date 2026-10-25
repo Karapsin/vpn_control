@@ -1,0 +1,41 @@
+{
+  "barrier": "Real first writer paused after native O_EXCL open and before initialization write; independent process calls same actual InventoryLock. Original publishes empty named lock and loses with unsafe private file. Atomic publisher exposes only complete nlink1 inode; competing loser sees normal cooperative flock contention.",
+  "beforeSha256": "d6ce7b228059470b4792c47e4562017235cad26ae6666c2a899dd459887358b8",
+  "originalFailure": {
+    "errorClass": "ValueError",
+    "frames": [
+      [
+        "readiness_resources.py",
+        509,
+        "prepare_start"
+      ],
+      [
+        "readiness.py",
+        203,
+        "locked"
+      ],
+      [
+        "private_inventory_lock.py",
+        184,
+        "__init__"
+      ],
+      [
+        "private_inventory_lock.py",
+        124,
+        "__init__"
+      ]
+    ],
+    "initialSuiteResult": "27 cases,1 error",
+    "reason": "unsafe private file",
+    "sharedLockSourceUnchanged": true,
+    "subsequentFocusedFailures": 0,
+    "subsequentFocusedRuns": 10,
+    "subsequentSuiteResult": "27 passed",
+    "test": "ResourceTests.test_concurrent_original_callers_share_capacity_and_one_submission",
+    "toolChunk": "6de270"
+  },
+  "primaryReferences": [
+    "https://man7.org/linux/man-pages/man2/rename.2.html",
+    "https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/sys/stdio.h"
+  ]
+}

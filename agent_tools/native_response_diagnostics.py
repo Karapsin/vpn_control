@@ -44,7 +44,13 @@ for _action in ("connection-channel-prepare", "connection-channel-status", "conn
     for _reason in _SNAPSHOT_REASONS:
         _REGRESSIONS[(_action, _reason)] = (
             "agent_tools/tests/test_ssh_channel_mcp_routes.py::test_snapshot_refusal_retains_only_complete_finite_diagnostics")
+for _action in ("readiness-status", "readiness-ensure", "readiness-reboot", "readiness-providers"):
+    for _reason in ("readiness_identity_invalid", "readiness_inputs_invalid"):
+        _REGRESSIONS[(_action, _reason)] = (
+            "agent_tools/tests/test_readiness_identity_refusal.py::test_whole_before_generic_blocker_current_typed_refusal")
 _MISSING_FACT = {
+    "readiness_identity_invalid": "original readiness identity {\"operationId\": canonical UUID}; no transport was contacted",
+    "readiness_inputs_invalid": "documented readiness inputs for a registered fixture; no provider was contacted",
     "fd_changed": "stable current master descriptor and listener ownership observation",
     "master_check": "successful current check of the exact channel master",
     "listener_owner": "exact current socket listener owned by the admitted master",

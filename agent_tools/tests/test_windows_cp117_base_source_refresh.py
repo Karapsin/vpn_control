@@ -1,6 +1,7 @@
 from agent_tools.tests.fixtures.windows_replacement_fixture_sections import replacement_fixture_outer_catch,replacement_fixture_finish
 from agent_tools.tests.fixtures.windows_shortcut_access_wire import inert_server_annotation_context,_test_shortcut_access_native_wire_schema,_qualify_shortcut_access_native_wire
-from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import HistoricalFactoryTestCase as HistoryCase, provider as historical_provider
+from agent_tools.tests.fixtures.windows_cp117_historical_factory.context import provider as historical_provider
+from agent_tools.tests.fixtures.windows_cp117_migration_head.context import HistoricalFactoryTestCase as HistoryCase
 import ast,base64,copy,gzip,hashlib,json,re,tempfile,unittest,sys,subprocess,os
 from pathlib import Path
 from unittest.mock import patch
@@ -899,8 +900,10 @@ SHORTCUT_STDIN_ORIGINAL_PROVIDER_SHA='f54029cf3259011d71df93c51f15b3c2b7a8864700
 class ShortcutStdinCarrierTests(HistoryCase):
  def functions(self,deadline=None,source_guard=None):
   import os,time,platform
+  from agent_tools.tests.fixtures.windows_cp117_migration_head.context import role
   production=historical_provider()
-  ns=dict(vars(production));ns.update({'_sources':source_guard or(lambda:None),'platform':platform,'Path':Path,'time':time,'os':os})
+  # The frozen collectors bind ROLE_STREAM_SHA of the role reader this provider's ROLE_SHA names.
+  ns=dict(vars(production));ns.update({'_sources':source_guard or(lambda:None),'platform':platform,'Path':Path,'time':time,'os':os,'role':role(production)})
   actual=Path(production.__file__).read_bytes()
   self.assertEqual(hashlib.sha256(actual).hexdigest(),SHORTCUT_STDIN_ORIGINAL_PROVIDER_SHA)
   node=next(n for n in ast.parse(actual).body if isinstance(n,ast.FunctionDef)and n.name=='_stream')

@@ -1,0 +1,76 @@
+"""Fixed read-only guest facts for owned headless QEMU recovery fixtures."""
+import inspect
+
+
+def _guest_facts():
+    import json, os, pathlib, subprocess
+    if os.geteuid() != 0:
+        raise ValueError('idle_privilege')
+    def run(argv):
+        value = subprocess.run(argv, text=True, capture_output=True, timeout=5)
+        if value.returncode or len(value.stdout.encode()) > 262144 or len(value.stderr.encode()) > 65536:
+            raise ValueError('idle_visibility')
+        return value.stdout
+    processes = []
+    blocked = []
+    for path in pathlib.Path('/proc').iterdir():
+        if not path.name.isdigit():
+            continue
+        try:
+            name = (path / 'comm').read_text().strip()
+            command = (path / 'cmdline').read_bytes()
+            if len(command) > 65536:
+                raise ValueError('process_visibility')
+        except FileNotFoundError:
+            continue
+        processes.append(int(path.name))
+        product = any(word.startswith((b'com.kardinal.vpncontrol.', b'/opt/vpn-control/')) for word in command.split(b'\0'))
+        if name in {'apt', 'apt-get', 'dpkg', 'msiexec', 'sing-box', 'vpn-control', 'vpncontrol'} or product:
+            blocked.append('installer' if name in {'apt', 'apt-get', 'dpkg', 'msiexec'} else 'protected_runtime')
+    jobs = run(['systemctl', 'list-jobs', '--no-legend', '--plain'])
+    cloud = run(['cloud-init', 'status'])
+    sessions = run(['loginctl', 'list-sessions', '--no-legend', '--no-pager'])
+    foreign = []
+    ordinary = []
+    for line in sessions.splitlines():
+        fields = line.split()
+        if len(fields) < 3 or not fields[0].isalnum() or not fields[1].isdigit():
+            raise ValueError('session_visibility')
+        details = run(['loginctl', 'show-session', fields[0], '--property=User', '--property=Name', '--property=Remote', '--property=Service'])
+        parsed = {}
+        for row in details.splitlines():
+            key, separator, value = row.partition('=')
+            if not separator or key in parsed or key not in {'User', 'Name', 'Remote', 'Service'}:
+                raise ValueError('session_visibility')
+            parsed[key] = value
+        if set(parsed) != {'User', 'Name', 'Remote', 'Service'} or parsed['User'] != fields[1] or parsed['Name'] != fields[2]:
+            raise ValueError('session_visibility')
+        if parsed == {'User': '1000', 'Name': 'recovery', 'Remote': 'yes', 'Service': 'sshd'}:
+            ordinary.append(fields[0])
+        else:
+            foreign.append(fields[0])
+    if len(ordinary) != 1:
+        foreign.append('competing_or_missing_operator')
+    registered = []
+    jobroot = pathlib.Path('/var/tmp/vc-recovery-jobs')
+    if jobroot.exists():
+        if jobroot.is_symlink() or not jobroot.is_dir():
+            raise ValueError('job_visibility')
+        paths = list(jobroot.glob('*/state.json'))
+        if len(paths) > 1024:
+            raise ValueError('job_visibility')
+        for path in paths:
+            if path.is_symlink() or path.stat().st_size > 65536:
+                raise ValueError('job_visibility')
+            registered.append(json.loads(path.read_text()))
+    print(json.dumps({'bootId': pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                      'account': os.environ.get('SUDO_USER'), 'originalUid': os.environ.get('SUDO_UID'),
+                      'processCount': len(processes), 'protectedOrInstallerProcesses': sorted(set(blocked)),
+                      'systemdJobs': jobs.splitlines(), 'cloudInit': cloud.strip(),
+                      'foreignSessions': foreign, 'registeredJobs': registered,
+                      'unknownOrRunningJobs': [row for row in registered if row.get('state') not in {'complete', 'failed', 'cancelled'}]}))
+
+
+def program():
+    """Build only; no transport, login, lock, power action or file mutation."""
+    return inspect.getsource(_guest_facts) + '\n_guest_facts()\n'

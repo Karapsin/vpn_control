@@ -1,0 +1,10 @@
+{
+  "beforeSha256": "1dcdc7cc160bcdd6ce6298ccca42f74318ea468705e9b27e197139eb919a0e00",
+  "beforeSource": "whole scripts/visual_platform.py",
+  "controlledScenario": "actual Tart list JSON stopped/running, libvirt dominfo shutoff, or configured QEMU disk and marker; no VM actions",
+  "failureType": "inventory presence falsely grants desktop and release qualification",
+  "nativeScenarioExecuted": false,
+  "originalReview": ".runtime/tool-recovery/final-explicit-target-review-20261021/review.json",
+  "originalReviewSha256": "22ce01ec5f0cab4c2b5b3ee0f75fa3b475bcd9ec706a8d48f30c750fabf8d950",
+  "schemaVersion": 1
+}

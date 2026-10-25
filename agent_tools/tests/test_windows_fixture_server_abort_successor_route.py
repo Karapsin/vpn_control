@@ -1,9 +1,10 @@
 """The CP117 server-abort successor is reachable only through exact MCP inputs."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 
 from agent_tools import mcp_server
+from agent_tools.tests import route_adapter
 
 
 class ServerAbortSuccessorRouteTests(unittest.TestCase):
@@ -23,16 +24,16 @@ class ServerAbortSuccessorRouteTests(unittest.TestCase):
                     "replayAllowed": False, "nativeActionAllowed": False,
                     "productAction": False,
                 }
-                with patch.object(mcp_server, "_agent_module", return_value=adapter) as loaded:
+                with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as loaded:
                     result = mcp_server._vm_workflow_impl(action, inputs)
-                loaded.assert_called_once_with("windows_fixture_server_abort_successor")
+                self.assertEqual([call("windows_fixture_server_abort_successor")], route_adapter.adapter_calls(loaded))
                 getattr(adapter, method).assert_called_once_with(mcp_server.REPO_ROOT, inputs)
                 self.assertTrue(result["ok"])
                 self.assertFalse(result["productAction"])
 
     def test_extra_fields_fail_closed_before_native_dispatch(self):
         adapter = Mock()
-        with patch.object(mcp_server, "_agent_module", return_value=adapter):
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)):
             result = mcp_server._vm_workflow_impl(
                 "windows-fixture-server-abort-successor-start",
                 {"successorCleanupCorrelationId": self.CORRELATION, "command": "remove-all"},
@@ -46,11 +47,11 @@ class ServerAbortSuccessorRouteTests(unittest.TestCase):
         adapter.start.return_value = {"state": "submitted", "serverCorrelationId": correlation,
                                       "replayAllowed": False, "nativeActionAllowed": False,
                                       "productAction": False}
-        with patch.object(mcp_server, "_agent_module", return_value=adapter) as loaded:
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as loaded:
             result = mcp_server._vm_workflow_impl("windows-fixture-server-resume-no-dispatch-start",
                                                   {"serverCorrelationId": correlation})
         self.assertTrue(result["ok"])
-        loaded.assert_called_once_with("windows_fixture_server_resume")
+        self.assertEqual([call("windows_fixture_server_resume")], route_adapter.adapter_calls(loaded))
         adapter.start.assert_called_once_with(mcp_server.REPO_ROOT, {"serverCorrelationId": correlation})
 
     def test_post_resource_diagnostic_route_is_fixed(self):
@@ -61,11 +62,11 @@ class ServerAbortSuccessorRouteTests(unittest.TestCase):
                                          "certificateDigestRecheck": "skipped",
                                          "loopbackEphemeralBind": "skipped", "replayAllowed": False,
                                          "nativeActionAllowed": False, "productAction": False}
-        with patch.object(mcp_server, "_agent_module", return_value=adapter) as loaded:
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as loaded:
             result = mcp_server._vm_workflow_impl("windows-fixture-server-post-resource-diagnostic",
                                                   {"serverCorrelationId": correlation})
         self.assertTrue(result["ok"])
-        loaded.assert_called_once_with("windows_fixture_post_resource_diagnostic")
+        self.assertEqual([call("windows_fixture_post_resource_diagnostic")], route_adapter.adapter_calls(loaded))
         adapter.diagnose.assert_called_once_with(mcp_server.REPO_ROOT, {"serverCorrelationId": correlation})
 
     def test_probe_events_acl_route_is_fixed(self):
@@ -74,11 +75,11 @@ class ServerAbortSuccessorRouteTests(unittest.TestCase):
         adapter.diagnose_events_acl.return_value = {
             "state": "observed", "serverCorrelationId": correlation, "probeEventsAcl": "mismatch",
             "replayAllowed": False, "nativeActionAllowed": False, "productAction": False}
-        with patch.object(mcp_server, "_agent_module", return_value=adapter) as loaded:
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as loaded:
             result = mcp_server._vm_workflow_impl("windows-fixture-server-probe-events-acl-diagnostic",
                                                   {"serverCorrelationId": correlation})
         self.assertTrue(result["ok"])
-        loaded.assert_called_once_with("windows_fixture_post_resource_diagnostic")
+        self.assertEqual([call("windows_fixture_post_resource_diagnostic")], route_adapter.adapter_calls(loaded))
         adapter.diagnose_events_acl.assert_called_once_with(mcp_server.REPO_ROOT,
                                                               {"serverCorrelationId": correlation})
 
@@ -93,14 +94,14 @@ class ServerAbortSuccessorRouteTests(unittest.TestCase):
             "replayAllowed": False, "nativeActionAllowed": False,
             "productAction": False,
         }
-        with patch.object(mcp_server, "_agent_module", return_value=adapter) as loaded:
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as loaded:
             result = mcp_server._vm_workflow_impl("windows-fixture-acl-preflight", inputs)
             invalid = mcp_server._vm_workflow_impl(
                 "windows-fixture-acl-preflight",
                 {**inputs, "command": "start-server"})
         self.assertTrue(result["ok"])
         self.assertFalse(invalid["ok"])
-        loaded.assert_called_once_with("windows_fixture_acl_preflight")
+        self.assertEqual([call("windows_fixture_acl_preflight")], route_adapter.adapter_calls(loaded))
         adapter.preflight.assert_called_once_with(mcp_server.REPO_ROOT, inputs)
 
     def test_acl_preflight_status_routes_to_read_only_adapter(self):
@@ -112,10 +113,10 @@ class ServerAbortSuccessorRouteTests(unittest.TestCase):
             "replayAllowed": False, "nativeActionAllowed": False,
             "productAction": False,
         }
-        with patch.object(mcp_server, "_agent_module", return_value=adapter) as loaded:
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as loaded:
             result = mcp_server._vm_workflow_impl("windows-fixture-acl-preflight-status", inputs)
         self.assertTrue(result["ok"])
-        loaded.assert_called_once_with("windows_fixture_acl_preflight")
+        self.assertEqual([call("windows_fixture_acl_preflight")], route_adapter.adapter_calls(loaded))
         adapter.status.assert_called_once_with(mcp_server.REPO_ROOT, inputs)
 
     def test_server_acl_preflight_routes_exact_source_bound_request(self):
@@ -136,10 +137,10 @@ class ServerAbortSuccessorRouteTests(unittest.TestCase):
             "serverReady": False, "replayAllowed": False,
             "nativeActionAllowed": False, "productAction": False,
         }
-        with patch.object(mcp_server, "_agent_module", return_value=adapter) as loaded:
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as loaded:
             result = mcp_server._vm_workflow_impl("windows-fixture-server-acl-preflight", inputs)
         self.assertTrue(result["ok"])
-        loaded.assert_called_once_with("windows_update_fixture_server")
+        self.assertEqual([call("windows_update_fixture_server")], route_adapter.adapter_calls(loaded))
         adapter.acl_preflight.assert_called_once_with(mcp_server.REPO_ROOT, inputs)
 
 

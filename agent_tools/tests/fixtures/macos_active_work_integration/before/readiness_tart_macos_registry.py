@@ -1,0 +1,1537 @@
+"""Private source-qualified local Mac custody and enrollment factory.
+
+CREATE/RUN lineage, live host actors, public source, guest identity and protected
+metadata must close before admission. Recovery, GUI and lease qualification is
+separate and initially absent. Mutable VM state and credentials are never read
+or hashed here. No public request supplies a path or ownership assertion.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager, ExitStack
+from dataclasses import dataclass, asdict
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+import math
+import ctypes
+import base64
+import hashlib
+import inspect
+import json
+import re
+import sys
+import os
+from pathlib import Path
+import shlex
+import stat
+import subprocess
+import threading
+import time
+import weakref
+from uuid import UUID
+
+from . import durable_remote_job as jobs
+from . import private_inventory_lock as private
+from .readiness_tart_macos import MacBlocked
+
+_EXECUTING_CODE = sys._getframe().f_code
+
+
+def _need(value, reason):
+    if not value:
+        raise MacBlocked(reason)
+
+
+def _uuid(value):
+    try:
+        _need(type(value) is str and str(UUID(value)) == value, "macos_operation_invalid")
+    except (ValueError, TypeError):
+        raise MacBlocked("macos_operation_invalid") from None
+    return value
+
+
+def _limit(deadline):
+    remaining = deadline - time.monotonic() if type(deadline) in {int, float} else -1
+    _need(math.isfinite(remaining) and remaining > 0, "macos_readiness_deadline")
+    return min(remaining, 10)
+
+
+class HeldArtifact:
+    """No-follow, ancestry-bound metadata holder; it never consumes file bytes.
+
+    Credentials use an exact generation, including size and timestamps. Guest
+    disk/Aux/NVRAM/saved-memory writes may change size and timestamps; their
+    inode, owner, access mode and link count must remain the original ones.
+    """
+    def __init__(self, path, *, mutable=False):
+        _need(type(mutable) is bool, "macos_artifact_invalid")
+        self.path, self.mutable, self.fd = Path(path), mutable, -1
+        _need(self.path.is_absolute() and ".." not in self.path.parts, "macos_artifact_invalid")
+        self.directory = None
+        try:
+            self.presented = private.PresentedPath(self.path.parent)
+            self.directory = private.Directory(self.presented.canonical)
+            self.fd = os.open(self.path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                              dir_fd=self.directory.fd)
+            info = os.fstat(self.fd)
+            _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
+                  and info.st_nlink == 1 and stat.S_IMODE(info.st_mode) == 0o600,
+                  "macos_artifact_unsafe")
+            self.generation = private._generation(info)
+            self.guard()
+        except (OSError, ValueError):
+            self.close()
+            raise MacBlocked("macos_artifact_unsafe") from None
+        except BaseException:
+            self.close()
+            raise
+
+    def _identity(self, info):
+        generation = private._generation(info)
+        return generation[:6] if self.mutable else generation
+
+    def guard(self):
+        try:
+            self.presented.guard(); self.directory.guard()
+            opened = os.fstat(self.fd)
+            named = os.stat(self.path.name, dir_fd=self.directory.fd, follow_symlinks=False)
+            original = self.generation[:6] if self.mutable else self.generation
+            _need(self._identity(opened) == self._identity(named) == original,
+                  "macos_artifact_generation_changed")
+        except (OSError, ValueError):
+            raise MacBlocked("macos_artifact_generation_changed") from None
+
+    def credential_fd(self):
+        """A separate reader FD, still metadata-pinned; no secret enters Python."""
+        _need(not self.mutable, "macos_credential_generation_required")
+        _need(0 < self.generation[6] <= 4096, "macos_credential_size_invalid")
+        self.guard()
+        fd = os.open(self.path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=self.directory.fd)
+        try:
+            _need(private._generation(os.fstat(fd)) == self.generation,
+                  "macos_artifact_generation_changed")
+            self.guard()
+            return fd
+        except BaseException:
+            os.close(fd)
+            raise
+
+    def close(self):
+        if self.fd >= 0:
+            os.close(self.fd); self.fd = -1
+        if self.directory is not None:
+            self.directory.close(); self.directory = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+
+@dataclass(frozen=True)
+class OriginalOwner:
+    """One admitted program; connection changes never select another owner."""
+    root: Path
+    generation: tuple
+    operation_id: str
+    binding: jobs.MachineBinding
+    program: jobs.Program
+    historical_owner_source: bytes | None = None
+
+    def __post_init__(self):
+        _uuid(self.operation_id)
+        _need(type(self.root) is type(Path()) and self.root.is_absolute() and ".." not in self.root.parts
+              and type(self.generation) is tuple and len(self.generation) == 2
+              and all(type(item) is int and item > 0 for item in self.generation)
+              and type(self.binding) is jobs.MachineBinding and type(self.program) is jobs.Program,
+              "macos_original_owner_invalid")
+
+    def observe(self):
+        _uuid(self.operation_id)
+        try:
+            root = jobs._root(self.root, self.generation)
+            job = root / self.operation_id
+            intent = jobs._intent(job, self.operation_id, self.binding)
+            _need((intent["purpose"], intent["programSha256"], intent["streamLimit"]) ==
+                  (self.program.purpose, self.program.digest, self.program.stream_limit),
+                  "macos_original_program_changed")
+            _need(jobs._read(job / "program.py", jobs.MAX_PROGRAM_BYTES) == self.program.source
+                  and jobs._read(job / "owner.py", jobs.MAX_PROGRAM_BYTES) == (self.historical_owner_source if self.historical_owner_source is not None else jobs.owner_source()),
+                  "macos_original_source_changed")
+            result = jobs.observe(root, self.operation_id, self.binding, generation=self.generation)
+            _need(result["state"] in {"running", "terminal"}, "macos_original_owner_unknown")
+            if result["state"] == "terminal":
+                # Terminal descriptors alone do not establish full collection.
+                collected, _, _ = jobs.collect(root, self.operation_id, self.binding,
+                                               generation=self.generation)
+                _need(collected == result, "macos_original_terminal_changed")
+            return result
+        except MacBlocked:
+            raise
+        except (OSError, ValueError, jobs.DurableJobError):
+            raise MacBlocked("macos_original_owner_unknown") from None
+
+
+@dataclass(frozen=True)
+class PublicActor:
+    """Exact public argv allowlist comparison before returning any projection.
+
+    Unexpected command lines remain transient private memory and never enter a
+    digest, result, log, or exception. Native custody must additionally bind the
+    actor to its original admitted CREATE/RUN worker before using this proof.
+    """
+    pid: int
+    birth: str
+    executable: str
+    argv: tuple
+
+    def guard(self, *, deadline):
+        _need(type(self.pid) is int and self.pid > 0 and type(self.argv) is tuple
+              and self.argv and self.argv[0] == self.executable
+              and all(type(item) is str and "\n" not in item and "\r" not in item for item in self.argv),
+              "macos_actor_invalid")
+        try:
+            _need(jobs._birth(self.pid) == self.birth, "macos_actor_generation_changed")
+            # BSD ps truncates comm to 16 characters even with -ww. Executable
+            # identity comes from the kernel, independently of formatted argv.
+            if sys.platform == "darwin":
+                proc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+                proc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+                proc.proc_pidpath.restype = ctypes.c_int
+                buffer = ctypes.create_string_buffer(4096)
+                size = proc.proc_pidpath(self.pid, buffer, len(buffer))
+                _need(0 < size < len(buffer) and buffer.value.decode("utf-8", "strict") == self.executable,
+                      "macos_actor_generation_changed")
+            elif sys.platform.startswith("linux"):
+                _need(os.readlink("/proc/" + str(self.pid) + "/exe") == self.executable, "macos_actor_generation_changed")
+            else:
+                raise MacBlocked("macos_actor_platform_unsupported")
+            result = subprocess.run(["/bin/ps", "-ww", "-p", str(self.pid), "-o", "uid=,args="],
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, timeout=_limit(deadline))
+            _need(result.returncode == 0 and len(result.stdout) <= 65536,
+                  "macos_actor_generation_changed")
+            fields = result.stdout.decode("utf-8", "strict").strip().split(None, 1)
+            _need(len(fields) == 2 and fields[0] == str(os.geteuid())
+                  and tuple(shlex.split(fields[1])) == self.argv
+                  and jobs._birth(self.pid) == self.birth, "macos_actor_generation_changed")
+            return {"pid": self.pid, "birth": self.birth}
+        except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+            raise MacBlocked("macos_actor_generation_changed") from None
+
+
+class OperatorLock:
+    """Create-once cooperative lock; observation never acquires or creates it."""
+    def __init__(self, path):
+        self.path, self._held = Path(path), False
+        self._thread_lock = threading.RLock()
+        self._guard = None
+
+    def guard(self):
+        _need(self._held and self._guard is not None, "macos_operator_not_held")
+        self._guard()
+
+    @contextmanager
+    def acquire(self, *, deadline, cancelled=lambda: False):
+        while not self._thread_lock.acquire(timeout=min(.02, _limit(deadline))):
+            _need(not cancelled(), "macos_readiness_cancelled")
+        try:
+            with self._acquire(deadline=deadline, cancelled=cancelled):
+                yield
+        finally:
+            self._thread_lock.release()
+
+    @contextmanager
+    def _acquire(self, *, deadline, cancelled):
+        _need(fcntl is not None, "macos_host_platform_unsupported")
+        # Core ensure and backend recovery intentionally share one nested
+        # operator scope. Another thread/process still acquires the OS lock.
+        if self._held:
+            _need(not cancelled(), "macos_readiness_cancelled"); _limit(deadline)
+            self.guard()
+            yield
+            self.guard()
+            return
+        presented = private.PresentedPath(self.path.parent)
+        with private.Directory(presented.canonical) as directory:
+            fd = -1
+            try:
+                fd = os.open(self.path.name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             0o600, dir_fd=directory.fd)
+                info = os.fstat(fd)
+                _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid()
+                      and stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1,
+                      "macos_operator_unsafe")
+                while True:
+                    _need(not cancelled(), "macos_readiness_cancelled"); _limit(deadline)
+                    presented.guard(); directory.guard()
+                    _need(private._generation(os.fstat(fd)) == private._generation(
+                        os.stat(self.path.name, dir_fd=directory.fd, follow_symlinks=False)),
+                        "macos_operator_generation_changed")
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        time.sleep(min(.02, _limit(deadline)))
+                self._held = True
+                generation = private._generation(info)
+                def guard():
+                    presented.guard(); directory.guard()
+                    _need(private._generation(os.fstat(fd)) == generation == private._generation(
+                        os.stat(self.path.name, dir_fd=directory.fd, follow_symlinks=False)),
+                        "macos_operator_generation_changed")
+                self._guard = guard
+                self.guard()
+                yield
+                self.guard()
+            finally:
+                self._held = False
+                self._guard = None
+                if fd >= 0:
+                    os.close(fd)
+
+
+class PublicProof:
+    """Held public source or proof JSON; never use this for VM/secret bytes."""
+    def __init__(self, path, expected, *, retain=True, private_file=True, allow_empty=False):
+        self.path, self.fd, self.directory = Path(path), -1, None
+        try:
+            _need(type(expected) is dict and set(expected) == {"generation", "sha256"}
+                  and type(expected["generation"]) is list and len(expected["generation"]) == 9
+                  and all(type(n) is int for n in expected["generation"])
+                  and type(expected["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", expected["sha256"]),
+                  "macos_public_proof_invalid")
+            self.presented = private.PresentedPath(self.path.parent)
+            self.directory = private.Directory(self.presented.canonical)
+            self.fd = os.open(self.path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=self.directory.fd)
+            info = os.fstat(self.fd)
+            _need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.geteuid()
+                  and not info.st_mode & 0o022 and (not private_file or stat.S_IMODE(info.st_mode) == 0o600)
+                  and type(allow_empty) is bool and (0 if allow_empty else 1) <= info.st_size <= 128 * 1024 * 1024,
+                  "macos_public_proof_unsafe")
+            self.generation = private._generation(info)
+            _need(list(self.generation) == expected["generation"], "macos_public_proof_changed")
+            digest, blocks = hashlib.sha256(), []
+            remaining = info.st_size
+            while remaining:
+                block = os.read(self.fd, min(remaining, 65536))
+                _need(bool(block), "macos_public_proof_incomplete")
+                remaining -= len(block); digest.update(block)
+                if retain: blocks.append(block)
+            _need(digest.hexdigest() == expected["sha256"], "macos_public_proof_changed")
+            self.body = b"".join(blocks) if retain else None
+            self.guard()
+        except MacBlocked:
+            self.close(); raise
+        except (OSError, ValueError, UnicodeError):
+            self.close(); raise MacBlocked("macos_public_proof_unavailable") from None
+
+    def guard(self):
+        try:
+            self.presented.guard(); self.directory.guard()
+            _need(private._generation(os.fstat(self.fd)) == self.generation == private._generation(
+                os.stat(self.path.name, dir_fd=self.directory.fd, follow_symlinks=False)), "macos_public_proof_changed")
+        except (OSError, ValueError):
+            raise MacBlocked("macos_public_proof_changed") from None
+
+    def value(self):
+        self.guard()
+        _need(self.body is not None and len(self.body) <= 1048576, "macos_public_record_invalid")
+        def pairs(rows):
+            value = {}
+            for key, item in rows:
+                _need(key not in value, "macos_public_record_invalid")
+                value[key] = item
+            return value
+        try:
+            value = json.loads(self.body, object_pairs_hook=pairs)
+            _need(type(value) is dict, "macos_public_record_invalid")
+            return value
+        except (ValueError, UnicodeError):
+            raise MacBlocked("macos_public_record_invalid") from None
+
+    def close(self):
+        if self.fd >= 0: os.close(self.fd); self.fd = -1
+        if self.directory is not None: self.directory.close(); self.directory = None
+
+    def __enter__(self): return self
+    def __exit__(self, *_): self.close()
+
+
+class PublicSourceTree:
+    """Exact declared public share; no discovery or reads of private VM data.
+
+    File bytes are checked once against the original source receipt. Later
+    checks use complete kernel generations, including ctime, and link targets.
+    Holding thousands of source FDs would exhaust the provider's descriptor
+    budget, so individual no-follow file holders close after initial hashing.
+    """
+    def __init__(self, root, rows):
+        self.root = Path(root)
+        self.rows = {}
+        _need(type(rows) is list and 0 < len(rows) <= 10000, "macos_share_manifest_invalid")
+        try:
+            self.presented = private.PresentedPath(self.root)
+            _need(self.presented.canonical == self.root, "macos_share_route_changed")
+            for row in rows:
+                _need(type(row) is dict and type(row.get("path")) is str, "macos_share_manifest_invalid")
+                name = row["path"]; path = Path(name)
+                _need(name and not path.is_absolute() and name == path.as_posix()
+                      and all(part not in {".", ".."} for part in path.parts)
+                      and name not in self.rows, "macos_share_manifest_invalid")
+                kind = row.get("kind")
+                keys = {"path", "kind", "generation"} | ({"sha256"} if kind == "file" else {"target"} if kind == "symlink" else set())
+                _need(kind in {"file", "directory", "symlink"} and set(row) == keys
+                      and type(row["generation"]) is list and len(row["generation"]) == 9
+                      and all(type(n) is int for n in row["generation"]), "macos_share_manifest_invalid")
+                self.rows[name] = dict(row)
+            for name, row in self.rows.items():
+                for parent in Path(name).parents:
+                    if parent == Path("."): break
+                    _need(self.rows.get(parent.as_posix(), {}).get("kind") == "directory", "macos_share_manifest_invalid")
+                if row["kind"] == "file":
+                    with PublicProof(self.root / name, {key: row[key] for key in ("generation", "sha256")},
+                                     retain=False, private_file=False, allow_empty=True): pass
+            self.guard()
+        except MacBlocked:
+            raise
+        except (OSError, ValueError):
+            raise MacBlocked("macos_share_unavailable") from None
+
+    def guard(self):
+        try:
+            self.presented.guard()
+            actual = set()
+            for directory, directories, files in os.walk(self.root, followlinks=False):
+                for name in (*directories, *files):
+                    actual.add((Path(directory) / name).relative_to(self.root).as_posix())
+                    _need(len(actual) <= 10000, "macos_share_changed")
+            _need(actual == set(self.rows), "macos_share_changed")
+            for name, row in self.rows.items():
+                path = self.root / name; info = path.lstat()
+                _need(list(private._generation(info)) == row["generation"] and info.st_uid == os.geteuid(),
+                      "macos_share_changed")
+                mode = info.st_mode
+                if row["kind"] == "symlink":
+                    _need(stat.S_ISLNK(mode) and type(row["target"]) is str and os.readlink(path) == row["target"]
+                          and path.resolve(strict=True).is_relative_to(self.root), "macos_share_changed")
+                else:
+                    _need(not mode & 0o022 and (stat.S_ISDIR(mode) if row["kind"] == "directory" else stat.S_ISREG(mode)),
+                          "macos_share_changed")
+        except MacBlocked:
+            raise
+        except (OSError, ValueError):
+            raise MacBlocked("macos_share_changed") from None
+
+
+def _source_pins():
+    from . import readiness_tart_macos as backend, readiness_qemu_jobs as protocol
+    from . import readiness, readiness_providers, tart_macos_probe, readiness_tart_vnc, readiness_fixture_registry
+    from . import readiness_tart_macos_lease_bridge, readiness_tart_macos_leases
+    paths = (Path(__file__), Path(__file__).with_name("readiness_tart_macos_lease_executor.py"),
+             Path(__file__).with_name("readiness_tart_macos_lease_qualification.py"), *(Path(module.__file__) for module in
+             (backend, protocol, readiness, readiness_providers, tart_macos_probe, readiness_tart_vnc, readiness_fixture_registry,
+              readiness_tart_macos_lease_bridge, readiness_tart_macos_leases, jobs, private)))
+    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def _reference(value, root):
+    _need(type(value) is dict and set(value) == {"path", "pin"} and type(value["path"]) is str,
+          "macos_record_reference_invalid")
+    try:
+        path = Path(value["path"])
+        _need(path.is_absolute() and path.suffix == ".json" and path.is_relative_to(root / ".runtime")
+              and path == path.resolve(strict=True), "macos_record_reference_invalid")
+        return path, value["pin"]
+    except (OSError, ValueError):
+        raise MacBlocked("macos_record_reference_invalid") from None
+
+
+def _parent(pid, deadline):
+    before = jobs._birth(pid)
+    _need(before is not None, "macos_actor_generation_changed")
+    result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "ppid="], stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=_limit(deadline))
+    value = result.stdout.strip()
+    _need(result.returncode == 0 and len(value) <= 20 and value.isdigit() and jobs._birth(pid) == before,
+          "macos_actor_generation_changed")
+    return int(value)
+
+
+def _listener(pid, birth, port, deadline):
+    """Read-only owned-process TCP listener identity, no socket connection."""
+    _need(type(port) is int and 1024 <= port <= 65535 and jobs._birth(pid) == birth,
+          "macos_endpoint_listener_changed")
+    try:
+        result = subprocess.run(["/usr/sbin/lsof", "-nP", "-a", "-p", str(pid), "-iTCP:" + str(port),
+                                 "-sTCP:LISTEN", "-Fpun"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, timeout=_limit(deadline))
+        _need(result.returncode == 0 and 0 < len(result.stdout) <= 4096, "macos_endpoint_listener_changed")
+        rows = result.stdout.decode("ascii", "strict").splitlines()
+        _need([row for row in rows if row.startswith("p")] == ["p" + str(pid)]
+              and [row for row in rows if row.startswith("u")] == ["u" + str(os.geteuid())],
+              "macos_endpoint_listener_changed")
+        descriptors, current = [], None
+        for row in rows:
+            if row.startswith("f"):
+                _need(row[1:].isdigit(), "macos_endpoint_listener_changed")
+                current = {"fd": int(row[1:])}; descriptors.append(current)
+            elif row.startswith("n"):
+                _need(current is not None and set(current) == {"fd"} and row[1:].endswith(":" + str(port)),
+                      "macos_endpoint_listener_changed")
+                current["address"] = row[1:]
+            else:
+                _need(row.startswith(("p", "u")), "macos_endpoint_listener_changed")
+        _need(descriptors and all(set(row) == {"fd", "address"} for row in descriptors)
+              and jobs._birth(pid) == birth, "macos_endpoint_listener_changed")
+        return sorted(descriptors, key=lambda row: row["fd"])
+    except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+        raise MacBlocked("macos_endpoint_listener_changed") from None
+
+
+class MacCustody:
+    """Source-qualified LOCAL Mac custody, initially observation/jobs only.
+
+    The private descriptor references original native CREATE/RUN receipts.
+    Construction does not submit work. No recovery or GUI/lease qualification
+    is inferred from a caller field or the mere existence of an account.
+    """
+    def _check_source_custody(self, descriptor):
+        _need(descriptor["sources"] == _LOADED_SOURCE_PINS == _source_pins(), "macos_custody_source_changed")
+
+    def __init__(self, root, fixture_id, descriptor, descriptor_pin):
+        from . import readiness_tart_macos as backend
+        from . import readiness_fixture_registry as registry
+        self.root = Path(root).resolve(strict=True)
+        _need(type(fixture_id) is str and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,95}", fixture_id), "macos_fixture_id_invalid")
+        fields = {"schemaVersion", "provider", "fixtureId", "binding", "sources", "originalCreate", "originalRun",
+                  "runEndpoint", "listener", "artifacts", "vncCredential", "ordinaryCredential", "guestProof", "sourceAdmission", "qualifications"}
+        _need(type(descriptor) is dict and set(descriptor) == fields and type(descriptor["schemaVersion"]) is int
+              and descriptor["schemaVersion"] == 3 and descriptor["provider"] == "tart-macos"
+              and descriptor["fixtureId"] == fixture_id
+              and type(descriptor["qualifications"]) is dict
+              and set(descriptor["qualifications"]) <= {"leases"}, "macos_descriptor_unqualified")
+        if "leases" in descriptor["qualifications"]:
+            _reference(descriptor["qualifications"]["leases"], self.root)
+        self._check_source_custody(descriptor)
+        self.fixture_id, self.descriptor, self.descriptor_pin = fixture_id, descriptor, descriptor_pin
+        self.binding = backend.MacBinding(**descriptor["binding"])
+        self._held = ExitStack(); self._cleanup = weakref.finalize(self, self._held.close); self._records = []
+        try:
+            self._descriptor_path = self.root / ".rag_index/readiness-fixtures" / (fixture_id + ".json")
+            self._registry = registry
+            self.create_intent = self._record(descriptor["originalCreate"])
+            self.run_intent = self._record(descriptor["originalRun"])
+            self.endpoint = self._record(descriptor["runEndpoint"])
+            self.create_root = Path(descriptor["originalCreate"]["path"]).parent
+            self.run_root = Path(descriptor["originalRun"]["path"]).parent
+            self.lifecycle_root = self.run_root
+            create, run = self.create_intent, self.run_intent
+            _need(set(create) == {"hostBinding", "jobRootGeneration", "operationId", "plan", "programSha256"}
+                  and set(run) == {"hostBinding", "jobRootGeneration", "operationId", "plan", "programSha256",
+                                   "originalCreateOperationId", "redactorSourceSha256"}
+                  and run["originalCreateOperationId"] == create["operationId"], "macos_original_lineage_invalid")
+            self.host_binding = jobs.MachineBinding.from_dict(run["hostBinding"])
+            creator = jobs.MachineBinding.from_dict(create["hostBinding"])
+            _need((creator.machine, creator.boot, creator.account) ==
+                  (self.host_binding.machine, self.host_binding.boot, self.host_binding.account), "macos_original_host_changed")
+            self.create_owner = self._original(self.create_root, create)
+            self.run_owner = self._original(self.run_root, run)
+            plan = run["plan"]
+            _need(type(plan) is dict and plan["fixtureDirectory"] == self.binding.fixture_root
+                  and plan["fixtureName"] == self.binding.vm_name and plan["tart"] == self.binding.tart_binary
+                  and plan["storageFixtureId"] == self.binding.storage_fixture_id
+                  and plan["hostBoot"] == self.host_binding.boot and plan["operationId"] == run["operationId"],
+                  "macos_original_target_changed")
+            _need(type(plan["bootstrapShare"]) is str and Path(plan["bootstrapShare"]).is_relative_to(self.root / ".runtime"),
+                  "macos_original_share_changed")
+            self.argv = (self.binding.tart_binary, "run", self.binding.vm_name, "--no-graphics", "--vnc-experimental",
+                         "--suspendable", "--dir", "bootstrap:" + plan["bootstrapShare"] + ":ro")
+            endpoint = self.endpoint
+            _need(set(endpoint) == {"operationId", "actor", "child", "port", "credentialMetadata"}
+                  and endpoint["operationId"] == run["operationId"] and type(endpoint["port"]) is int
+                  and 1024 <= endpoint["port"] <= 65535 and type(endpoint["actor"]) is dict
+                  and set(endpoint["actor"]) == {"operationId", "pid", "birth"}
+                  and endpoint["actor"]["operationId"] == run["operationId"], "macos_original_endpoint_changed")
+            self.actor = backend._actor(endpoint["child"])
+            self.wrapper_actor = backend._actor({k: endpoint["actor"][k] for k in ("pid", "birth")})
+            self._public_actor = PublicActor(self.actor["pid"], self.actor["birth"], self.binding.tart_binary, self.argv)
+            self._artifact_holders = []
+            artifacts = descriptor["artifacts"]
+            _need(type(artifacts) is dict and set(artifacts) == {"config", "disk", "nvram", "tartBinary"},
+                  "macos_artifact_manifest_invalid")
+            for key, filename in (("disk", "disk.img"), ("nvram", "nvram.bin")):
+                row = artifacts[key]
+                _need(type(row) is dict and set(row) == {"path", "generation"}
+                      and row["path"] == str(Path(self.binding.fixture_root) / filename), "macos_artifact_manifest_invalid")
+                held = self._held.enter_context(HeldArtifact(row["path"], mutable=True))
+                _need(list(held.generation[:6]) == row["generation"][:6], "macos_artifact_generation_changed")
+                if key == "disk":
+                    _need(list(held.generation[:6]) == plan["diskGeneration"][:6], "macos_original_disk_changed")
+                self._artifact_holders.append(held)
+            for key, wanted in (("config", str(Path(self.binding.fixture_root) / "config.json")),
+                                ("tartBinary", self.binding.tart_binary)):
+                row = artifacts[key]
+                _need(type(row) is dict and set(row) == {"path", "pin"} and row["path"] == wanted,
+                      "macos_artifact_manifest_invalid")
+                held = self._held.enter_context(PublicProof(row["path"], row["pin"], retain=key == "config", private_file=key == "config"))
+                self._records.append(held)
+                if key == "config":
+                    _need(list(held.generation[:6]) == plan["configGeneration"][:6], "macos_original_config_changed")
+                    config = held.value()
+                    _need(config.get("os") == "darwin" and config.get("memorySize") == self.binding.memory_mib * 1024 * 1024,
+                          "macos_config_changed")
+                else:
+                    _need(list(held.generation) == plan["binaryGeneration"]
+                          and row["pin"]["sha256"] == plan["binarySha256"], "macos_original_binary_changed")
+            self._credentials = {}
+            for key, record in (("vnc", descriptor["vncCredential"]), ("ordinary", descriptor["ordinaryCredential"])):
+                _need(type(record) is dict and set(record) == {"path", "generation"} and type(record["path"]) is str
+                      and Path(record["path"]).is_relative_to(self.root / ".runtime"), "macos_credential_reference_invalid")
+                held = self._held.enter_context(HeldArtifact(record["path"]))
+                _need(list(held.generation) == record["generation"], "macos_credential_generation_changed")
+                self._credentials[key] = held
+            _need(self._credentials["vnc"].path == self.run_root / "vnc-auth.bin"
+                  and list(self._credentials["vnc"].generation) == endpoint["credentialMetadata"]["generation"]
+                  and endpoint["credentialMetadata"]["name"] == "vnc-auth.bin", "macos_original_endpoint_changed")
+            self.guest_proof = self._record(descriptor["guestProof"])
+            self._validate_guest_proof()
+            self._admit_public_sources(descriptor["sourceAdmission"])
+            self._operator = OperatorLock(self.run_root / "macos-operator.lock")
+        except BaseException:
+            self.close(); raise
+
+    def _record(self, reference):
+        path, pin = _reference(reference, self.root)
+        held = self._held.enter_context(PublicProof(path, pin))
+        self._records.append(held)
+        return held.value()
+
+    def _original(self, root, intent):
+        operation = _uuid(intent["operationId"])
+        binding = jobs.MachineBinding.from_dict(intent["hostBinding"])
+        job_root = root / "jobs"
+        _need(type(intent["jobRootGeneration"]) is list and len(intent["jobRootGeneration"]) == 2,
+              "macos_original_lineage_invalid")
+        admission = jobs._intent(job_root / operation, operation, binding)
+        source = jobs._read(job_root / operation / "program.py", jobs.MAX_PROGRAM_BYTES)
+        _need(hashlib.sha256(source).hexdigest() == intent["programSha256"] == admission["programSha256"],
+              "macos_original_program_changed")
+        # Historical public owner source is retained, never regenerated/replayed.
+        owner = jobs._read(job_root / operation / "owner.py", jobs.MAX_PROGRAM_BYTES)
+        _need(owner == jobs.owner_source(), "macos_historical_owner_source_unqualified")
+        return OriginalOwner(job_root, tuple(intent["jobRootGeneration"]), operation, binding,
+                             jobs.Program(admission["purpose"], source, admission["streamLimit"]), owner)
+
+    def _guest_producer_source(self, intent, proof):
+        # New admission requires an actual receipt for this current renderer.
+        return guest_probe_source(self.binding, prefix=proof["prefix"], public_files=proof["publicFiles"])
+
+    def _validate_guest_proof(self):
+        proof = self.guest_proof
+        _need(type(proof) is dict and set(proof) == {"schemaVersion", "machine", "account", "uid", "home", "prefix", "publicFiles", "initialPacket", "nativeProducer"}
+              and type(proof["schemaVersion"]) is int and proof["schemaVersion"] == 1
+              and (proof["machine"], proof["account"], proof["uid"], proof["home"]) ==
+                  (self.binding.machine, self.binding.ordinary_account, self.binding.ordinary_uid, self.binding.ordinary_home)
+              and type(proof["prefix"]) is str
+              and re.fullmatch(r"/usr/local/libexec/vpn-tool-recovery(?:-[a-z0-9-]+)?", proof["prefix"]), "macos_guest_proof_invalid")
+        _need(self.binding.guest_python == proof["prefix"] + "/python/bin/python3.12", "macos_guest_python_unqualified")
+        files = proof["publicFiles"]
+        _need(type(files) is dict and set(files) == {"python/bin/python3.12", "tart-guest-agent", "guest-probe.py", "guest-probe-main.py", "readonly-probe", "launchDaemon"}
+              and all(type(digest) is str and re.fullmatch(r"[0-9a-f]{64}", digest) for digest in files.values()), "macos_guest_proof_invalid")
+        from . import readiness_tart_macos as backend
+        packet = proof["initialPacket"]
+        _need(type(packet) is dict and set(packet) == {"facts", "agent"}, "macos_guest_proof_invalid")
+        backend.guest_facts(packet["facts"], self.binding)
+        _need(packet["agent"]["uid"] == self.binding.ordinary_uid, "macos_guest_agent_unqualified")
+        producer = proof["nativeProducer"]
+        _need(type(producer) is dict and set(producer) == {"intent", "result", "stdout"}, "macos_guest_producer_invalid")
+        intent = self._record(producer["intent"]); result = self._record(producer["result"])
+        observed = self._record(producer["stdout"])
+        from . import readiness_qemu_jobs as protocol
+        source = self._guest_producer_source(intent, proof)
+        argv, payload = protocol.stdin_command(source)
+        wanted = [self.binding.tart_binary, "exec", "-i", self.binding.vm_name, self.binding.guest_python, *argv[1:]]
+        _need(set(intent) == {"originalRun", "state", "command"}
+              and intent["originalRun"] == self.run_intent["operationId"]
+              and intent["state"] == "readonly_observation_admitted"
+              and type(intent["command"]) is dict and set(intent["command"]) ==
+                  {"argv", "publicFiles", "registrySha256", "sourceSha256", "stdinFile"}
+              and intent["command"]["argv"] == wanted and intent["command"]["publicFiles"] == files
+              and intent["command"]["sourceSha256"] == hashlib.sha256(payload).hexdigest()
+              and set(result) == {"elapsed", "returncode", "stderrBytes", "stdoutBytes"}
+              and type(result["returncode"]) is int and result["returncode"] == 0
+              and type(result["stderrBytes"]) is int and result["stderrBytes"] == 0
+              and type(result["stdoutBytes"]) is int and result["stdoutBytes"] == producer["stdout"]["pin"]["generation"][6]
+              and observed == packet, "macos_guest_producer_invalid")
+
+    def _admit_public_sources(self, references):
+        _need(type(references) is dict and set(references) == {"originalManifest", "continuation", "logPreparation"},
+              "macos_source_admission_invalid")
+        original = self._record(references["originalManifest"])
+        addendum = self._record(references["continuation"])
+        recorded = self.run_intent["plan"]["publicShareManifest"]
+        _need(references["originalManifest"]["path"] == recorded["path"]
+              and references["originalManifest"]["pin"]["sha256"] == recorded["sha256"]
+              and set(original) == {"pins"} and type(original["pins"]) is list, "macos_original_share_changed")
+        fields = {"schemaVersion", "operationId", "originalRun", "originalPublicManifestSha256",
+                  "originalPartialPrefixRetained", "originalPartialPrefixIdentity", "guestPrefix", "guestBundle",
+                  "bundle", "files", "originalHistoricalManifestUnchanged", "originalEntriesUnchanged",
+                  "privateInputPresent", "state"}
+        _need(type(addendum) is dict and set(addendum) == fields and type(addendum["schemaVersion"]) is int
+              and addendum["schemaVersion"] == 1 and _uuid(addendum["operationId"])
+              and addendum["originalRun"] == self.run_intent["operationId"]
+              and addendum["originalPublicManifestSha256"] == recorded["sha256"]
+              and addendum["guestPrefix"] == self.guest_proof["prefix"]
+              and addendum["originalEntriesUnchanged"] == len(original["pins"])
+              and addendum["originalHistoricalManifestUnchanged"] is True
+              and addendum["privateInputPresent"] is False
+              and addendum["state"] == "fresh_public_source_admitted_not_executed", "macos_source_admission_invalid")
+        share = Path(self.run_intent["plan"]["bootstrapShare"])
+        bundle = Path(addendum["bundle"])
+        _need(bundle.parent == share and re.fullmatch(r"continuation-[0-9a-f]{8}", bundle.name)
+              and addendum["guestBundle"] == "/Volumes/My Shared Files/bootstrap/" + bundle.name,
+              "macos_source_admission_invalid")
+        files = addendum["files"]
+        expected = {"bootstrap-continuation.sh", "com.vpn-control.tool-recovery.agent.plist", "guest-probe-main.py",
+                    "guest-probe.py", "python-files.sha256", "python-manifest.json", "readonly-probe",
+                    "verify-installed.py", "verify-links.sh"}
+        _need(type(files) is dict and set(files) == expected, "macos_source_admission_invalid")
+        rows = list(original["pins"])
+        # The append admission pins files independently. The new top directory
+        # is observed now and remains generation-bound for this registration.
+        rows.append({"path": bundle.name, "kind": "directory", "generation": list(private._generation(bundle.lstat()))})
+        for name, pin in files.items():
+            _need(type(pin) is dict and set(pin) == {"generation", "sha256"}, "macos_source_admission_invalid")
+            rows.append({"path": bundle.name + "/" + name, "kind": "file", **pin})
+        logs = self._record(references["logPreparation"])
+        _need(set(logs) == {"schemaVersion", "operationId", "originalRun", "originalPublicManifestSha256",
+                            "priorContinuationSourceAdmission", "privateInputPresent", "publicSource", "action", "state"}
+              and type(logs["schemaVersion"]) is int and logs["schemaVersion"] == 1
+              and logs["originalRun"] == self.run_intent["operationId"]
+              and logs["originalPublicManifestSha256"] == recorded["sha256"]
+              and logs["priorContinuationSourceAdmission"] == Path(references["continuation"]["path"]).name
+              and logs["privateInputPresent"] is False and logs["state"] == "source_admitted_not_executed",
+              "macos_source_admission_invalid")
+        operation = _uuid(logs["operationId"]); public = logs["publicSource"]
+        _need(type(public) is dict and set(public) == {"path", "guestPath", "generation", "sha256"},
+              "macos_source_admission_invalid")
+        directory = "agent-logs-" + operation[:8]
+        _need(public["path"] == str(share / directory / "prepare-owned-agent-logs.py")
+              and public["guestPath"] == "/Volumes/My Shared Files/bootstrap/" + directory + "/prepare-owned-agent-logs.py",
+              "macos_source_admission_invalid")
+        rows.append({"path": directory, "kind": "directory", "generation": list(private._generation((share/directory).lstat()))})
+        rows.append({"path": directory + "/prepare-owned-agent-logs.py", "kind": "file",
+                     **{key: public[key] for key in ("generation", "sha256")}})
+        self._public_share = PublicSourceTree(share, rows)
+        hashes = {row["path"]: row.get("sha256") for row in original["pins"]}
+        expected_guest = {"python/bin/python3.12": hashes.get("python/python/bin/python3.12"),
+                          "tart-guest-agent": hashes.get("tart-guest-agent/tart-guest-agent")}
+        expected_guest.update({name: files[name]["sha256"] for name in ("guest-probe.py", "guest-probe-main.py", "readonly-probe")})
+        expected_guest["launchDaemon"] = files["com.vpn-control.tool-recovery.agent.plist"]["sha256"]
+        _need(self.guest_proof["publicFiles"] == expected_guest, "macos_guest_source_changed")
+
+    def guard(self, *, deadline=None):
+        deadline = time.monotonic() + 30 if deadline is None else deadline
+        _limit(deadline)
+        self._check_source_custody(self.descriptor)
+        current, pin = self._registry._json(self._descriptor_path)
+        _need(current == self.descriptor and pin == self.descriptor_pin, "macos_registration_changed")
+        for held in self._records: held.guard()
+        for held in self._artifact_holders: held.guard()
+        for held in self._credentials.values(): held.guard()
+        self._public_share.guard()
+        created = self.create_owner.observe()
+        _need(created["state"] == "terminal" and created["terminal"]["exitCode"] == 0, "macos_original_create_unknown")
+        original = self.run_owner.observe()
+        _need(original["state"] == "running", "macos_original_run_unknown")
+        jobs._binding_live(self.host_binding)
+        _need(jobs._birth(self.wrapper_actor["pid"]) == self.wrapper_actor["birth"]
+              and _parent(self.wrapper_actor["pid"], deadline) == original["owner"]["pid"]
+              and _parent(self.actor["pid"], deadline) == self.wrapper_actor["pid"], "macos_original_actor_lineage_changed")
+        self._public_actor.guard(deadline=deadline)
+        _need(_listener(self.actor["pid"], self.actor["birth"], self.endpoint["port"], deadline) == self.descriptor["listener"],
+              "macos_endpoint_listener_changed")
+        self._resource_claims()
+        return {"state": "running", "connection": "tart-macos:" + str(self.actor["pid"]) + ":" + self.actor["birth"],
+                "actor": dict(self.actor), "operator": dict(self.wrapper_actor),
+                "operationId": self.run_intent["operationId"], "jobState": "running"}
+
+    def _resource_claims(self):
+        plan = self.run_intent["plan"]
+        def read(name):
+            path = self.root / ".runtime/visual-vms" / name
+            key = "memoryLedger" if name == "resource-reservations.json" else "storageLedger"
+            _need(plan[key] == str(path), "macos_original_resource_route_changed")
+            raw, _ = self._registry._body(path, private_file=False)
+            value = json.loads(raw)
+            _need(type(value) is dict, "macos_resource_claims_unavailable")
+            return value
+        memory = read("resource-reservations.json")
+        _need(type(memory.get("reservations")) is dict and
+              memory["reservations"].get(plan["reservationKey"]) ==
+              {"memory_mib": self.binding.memory_mib, "pid": self.actor["pid"]}, "macos_memory_claim_changed")
+        storage = read("storage-plans.json")
+        _need(type(storage.get("plans")) is dict, "macos_storage_claim_changed")
+        own = storage["plans"].get(self.binding.storage_fixture_id)
+        _need(type(own) is dict and own.get("state") == "pending" and
+              own.get("writerPid") == self.wrapper_actor["pid"] and own.get("platform") == "macos"
+              and own.get("directory") == self.binding.fixture_root and own.get("disks") ==
+              [{"path": str(Path(self.binding.fixture_root) / "disk.img"),
+                "capacityBytes": self._artifact_holders[0].generation[6]}], "macos_storage_claim_changed")
+
+    def qualifications(self, binding, source_pins):
+        from . import readiness_tart_macos as backend
+        _need(binding == self.binding and source_pins == backend.source_pins(),
+              "macos_qualification_source_changed")
+        # Lease qualification supplies no VM recovery or GUI authority.
+        _need(set(self.descriptor["qualifications"]) <= {"leases"}, "macos_recovery_unqualified")
+        return None
+
+    def operator(self, *, deadline, cancelled=lambda: False):
+        return self._operator.acquire(deadline=deadline, cancelled=cancelled)
+
+    def close(self):
+        self._cleanup()
+
+    def _native_call(self, argv, payload, deadline):
+        """Bound only this owned observer process, never a VM or original job."""
+        import selectors
+        _limit(deadline)
+        process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   env={k: v for k, v in os.environ.items() if not k.startswith("DYLD_")})
+        output = {"stdout": bytearray(), "stderr": bytearray()}
+        data = memoryview(payload); offset = 0
+        try:
+            with selectors.DefaultSelector() as selector:
+                for name in output:
+                    stream = getattr(process, name); os.set_blocking(stream.fileno(), False)
+                    selector.register(stream, selectors.EVENT_READ, name)
+                os.set_blocking(process.stdin.fileno(), False)
+                selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
+                while selector.get_map():
+                    _limit(deadline)
+                    for key, _ in selector.select(min(.05, deadline - time.monotonic())):
+                        if key.data == "stdin":
+                            try: count = os.write(key.fileobj.fileno(), data[offset:offset+65536])
+                            except BrokenPipeError:
+                                selector.unregister(key.fileobj); key.fileobj.close(); continue
+                            offset += count
+                            if offset == len(data):
+                                selector.unregister(key.fileobj); key.fileobj.close()
+                        else:
+                            block = os.read(key.fileobj.fileno(), 65536)
+                            if not block: selector.unregister(key.fileobj); continue
+                            limit = 262144 if key.data == "stdout" else 65536
+                            _need(len(output[key.data]) + len(block) <= limit, "macos_guest_reply_overflow")
+                            output[key.data].extend(block)
+            code = process.wait(timeout=_limit(deadline))
+            return subprocess.CompletedProcess(argv, code, bytes(output["stdout"]), bytes(output["stderr"]))
+        except BaseException:
+            if process.poll() is None: process.terminate()
+            try: process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill(); process.wait(timeout=1)
+            raise MacBlocked("macos_guest_call_unknown") from None
+        finally:
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None and not stream.closed: stream.close()
+
+    def ordinary_guest_call(self, binding, argv, payload, deadline):
+        from . import readiness_qemu_jobs as protocol
+        _need(binding == self.binding and type(payload) is bytes and 0 < len(payload) <= 262144,
+              "macos_guest_program_unqualified")
+        canonical, _ = protocol.stdin_command(payload.decode("utf-8", "strict"))
+        _need(tuple(argv) == canonical, "macos_guest_program_unqualified")
+        before = self.guard(deadline=deadline)
+        command = [binding.tart_binary, "exec", "-i", binding.vm_name, binding.guest_python, *canonical[1:]]
+        result = self._native_call(command, payload, deadline)
+        _need(self.guard(deadline=deadline) == before, "macos_connection_generation_changed")
+        return result
+
+    def guest_probe(self, binding, deadline):
+        from . import readiness_qemu_jobs as protocol, readiness_tart_macos as backend
+        _need(binding == self.binding, "macos_guest_binding_changed")
+        source = guest_probe_source(binding, prefix=self.guest_proof["prefix"], public_files=self.guest_proof["publicFiles"])
+        argv, payload = protocol.stdin_command(source)
+        result = self.ordinary_guest_call(binding, argv, payload, deadline)
+        _need(result.returncode == 0, "macos_guest_probe_unavailable")
+        try:
+            packet = json.loads(result.stdout)
+        except (ValueError, UnicodeError):
+            raise MacBlocked("macos_guest_probe_invalid") from None
+        _need(type(packet) is dict and set(packet) == {"facts", "agent"}, "macos_guest_probe_invalid")
+        backend.guest_facts(packet["facts"], binding)
+        return packet
+
+    def idle_facts(self, facts, deadline):
+        """Partial actual observations never grant the seven-category idle gate."""
+        current = self.guard(deadline=deadline)
+        visibility, blockers = set(), set()
+        if self._operator._held:
+            self._operator.guard(); visibility.add("operators")
+        # The original VM wrapper is intentional. Other operations in its
+        # namespace must still be observed; missing/unknown roots block idle.
+        complete = True
+        for path in self.run_owner.root.iterdir():
+            try:
+                operation = _uuid(path.name)
+                status = jobs.observe(self.run_owner.root, operation, self.host_binding, generation=self.run_owner.generation)
+                if operation == self.run_owner.operation_id and status["state"] == "running": continue
+                if status["state"] == "running": blockers.add("running_jobs")
+                elif status["state"] != "terminal": blockers.add("unknown_jobs")
+            except (ValueError, OSError): complete = False
+        if complete: visibility |= {"running_jobs", "unknown_jobs"}
+        if facts["processVisibilityComplete"]: visibility.add("protected_processes")
+        if facts["installerVisibilityComplete"]: visibility.add("installers")
+        if facts["protectedProcesses"]: blockers.add("protected_processes")
+        if facts["installerBlockers"]: blockers.add("installers")
+        # Missing guest namespace, installers, host-wide reservations/lifecycle
+        # or competing-operator visibility cannot be synthesized from a PID.
+        if not facts["jobVisibilityComplete"]:
+            visibility -= {"running_jobs", "unknown_jobs"}
+            blockers.add("unknown_jobs")
+        for version in ("v1", "v2"):
+            lease_intent, lease_packet, _ = self._lease_paths(version)
+            if lease_intent.exists() or lease_intent.is_symlink() or lease_packet.exists() or lease_packet.is_symlink():
+                self._lease_original(version)
+                # Every original epoch remains visible, including lost ACKs.
+                self.load_lease_namespace(version)
+                visibility -= {"running_jobs", "unknown_jobs"}
+                blockers.add("unknown_jobs")
+        # The before-dispatch host index exists even if the first mkdir/start
+        # acknowledgement was lost. Malformed or uncollected originals cannot
+        # disappear merely because no guest packet reached the coordinator.
+        observer_paths = self._unlock_observer_paths()
+        if any(path.exists() or path.is_symlink() for path in observer_paths):
+            try:
+                inventory = self.unlock_observer_inventory(deadline=deadline)
+                if not inventory["visibilityComplete"] or not inventory["idle"]:
+                    visibility -= {"running_jobs", "unknown_jobs"}
+                    blockers.add("unknown_jobs")
+            except (OSError, ValueError, KeyError, TypeError):
+                visibility -= {"running_jobs", "unknown_jobs"}
+                blockers.add("unknown_jobs")
+        return {"visibility": frozenset(visibility), "blockers": frozenset(blockers)}
+
+    def reconcile_ready(self, ready, deadline):
+        _need(self.guard(deadline=deadline)["state"] == "running", "macos_original_run_unknown")
+
+    def dispatch_recovery(self, action, recovery_identity, observed, deadline):
+        raise MacBlocked("macos_recovery_unqualified")
+
+    def gui_endpoint(self, ready, deadline):
+        # Native account/screen and FD custody qualification is a distinct
+        # receipt. A healthy background agent does not authorize GUI input.
+        raise MacBlocked("macos_gui_native_qualification_missing")
+
+    def lease_executor(self, *, deadline=None):
+        from . import readiness_tart_macos_lease_executor
+        return readiness_tart_macos_lease_executor.QualifiedMacLeaseExecutor(self, deadline=deadline)
+
+    def _lease_binding(self, deadline):
+        from . import readiness_tart_macos_leases as leases
+        packet = self.guest_probe(self.binding, deadline)
+        facts, agent = packet["facts"], packet["agent"]
+        console = facts["console"]
+        # Background assertion qualification does not wake or unlock. It still
+        # requires the actual intended account's completed console session.
+        _need((console["uid"], console["name"]) == (self.binding.ordinary_uid, self.binding.ordinary_account)
+              and console["onConsole"] is True and console.get("loginDone") is True
+              and type(console["locked"]) is bool and type(console["session"]) is str,
+              "macos_lease_ordinary_session_missing")
+        return leases.MacLeaseBinding(self.binding.target, self.binding.machine, agent["rawBoot"],
+                                      str(self.binding.ordinary_uid), self.binding.ordinary_account,
+                                      self.binding.ordinary_home, console["session"])
+
+    def _lease_paths(self, version=None):
+        from . import readiness_tart_macos_lease_bridge as bridge
+        roots = {"v1": "/private/var/tmp/vc-recovery-macos-leases", "v2": "/private/var/tmp/vc-recovery-macos-leases-v2"}
+        if version is None:
+            version = next((key for key, value in roots.items() if value == bridge.ROOT), None)
+        _need(type(version) is str and version in roots, "macos_lease_namespace_version_invalid")
+        name = "guest-leases" + ("-v2" if version == "v2" else "")
+        return self.lifecycle_root / (name + ".intent.json"), self.lifecycle_root / (name + ".json"), roots[version]
+
+    def _lease_original(self, version=None):
+        path, _, expected_root = self._lease_paths(version)
+        intent = jobs._record(path)
+        from . import readiness_tart_macos_leases as leases, readiness_tart_macos_lease_bridge as bridge
+        fields = {"schemaVersion", "operationId", "fixtureId", "binding", "root", "controller", "capsule"}
+        _need(set(intent) == fields and type(intent["schemaVersion"]) is int and intent["schemaVersion"] == 1
+              and _uuid(intent["operationId"]) and type(intent["fixtureId"]) is str
+              and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,95}", intent["fixtureId"])
+              and intent["root"] == expected_root,
+              "macos_lease_enrollment_intent_changed")
+        bound = leases.MacLeaseBinding(**intent["binding"])
+        _need((bound.target, bound.machine, bound.account, bound.principal, bound.home) ==
+              (self.binding.target, self.binding.machine, str(self.binding.ordinary_uid),
+               self.binding.ordinary_account, self.binding.ordinary_home), "macos_lease_enrollment_target_changed")
+        controller = intent["controller"]
+        _need(type(controller) is dict and set(controller) == {"pid", "birth"}
+              and type(controller["pid"]) is int and controller["pid"] > 0
+              and type(controller["birth"]) is str
+              and re.fullmatch(r"(?:darwin:[1-9][0-9]*:[0-9]{1,6}|linux:[1-9][0-9]*)", controller["birth"]),
+              "macos_lease_enrollment_controller_invalid")
+        self._lease_capsule(intent)
+        return intent, bound
+
+    def _lease_capsule(self, intent):
+        from . import readiness_tart_macos_lease_bridge as bridge
+        path, pin = _reference(intent["capsule"], self.root)
+        _need(path == self.lifecycle_root / ("lease-source-" + intent["operationId"]) / "capsule.json",
+              "macos_lease_original_source_changed")
+        with PublicProof(path, pin) as held:
+            raw, value = held.body, held.value()
+            _need(value.get("binding") == intent["binding"] and value.get("namespace") is None,
+                  "macos_lease_original_source_changed")
+            _need(bridge.capsule_root(raw, expected_sha256=pin["sha256"]) == intent["root"],
+                  "macos_lease_original_source_changed")
+            # The expected digest is from our original create-only admission,
+            # never from a blob supplied by a public caller.
+            bridge.observer_source(raw, "namespace-status", expected_sha256=pin["sha256"])
+            return raw, value
+
+    def _lease_packet(self, packet, intent):
+        from . import readiness_tart_macos_lease_bridge as bridge
+        fields = {"schemaVersion", "root", "target", "machine", "account", "sources",
+                  "rootGeneration", "jobGeneration", "admissionGeneration"}
+        _need(type(packet) is dict and set(packet) == fields and type(packet["schemaVersion"]) is int
+              and packet["schemaVersion"] == 1 and packet["root"] == intent["root"]
+              and (packet["target"], packet["machine"], packet["account"]) ==
+                  (self.binding.target, self.binding.machine, str(self.binding.ordinary_uid))
+              and all(type(packet[key]) is list and len(packet[key]) == 2
+                      and all(type(n) is int and n > 0 for n in packet[key])
+                      for key in ("rootGeneration", "jobGeneration", "admissionGeneration")),
+              "macos_lease_namespace_changed")
+        _, value = self._lease_capsule(intent)
+        expected = {name: hashlib.sha256(base64.b64decode(body, validate=True)).hexdigest()
+                    for name, body in value["files"].items()}
+        _need(packet["sources"] == expected, "macos_lease_original_source_changed")
+        return packet
+
+    def load_lease_namespace(self, version=None):
+        _, path, _ = self._lease_paths(version)
+        if not path.exists():
+            _need(not path.is_symlink(), "macos_lease_namespace_changed")
+            return None
+        intent, _ = self._lease_original(version)
+        return self._lease_packet(jobs._record(path), intent)
+
+    def _lease_call(self, action, bound, intent, deadline):
+        from . import readiness_tart_macos_lease_bridge as bridge, readiness_qemu_jobs as protocol
+        _need(action in {"enroll", "namespace-status"}, "macos_lease_action_invalid")
+        raw, _ = self._lease_capsule(intent)
+        if action == "enroll":
+            # New effects use exactly the source saved before admission. A
+            # stale preparation is refused, never silently regenerated.
+            _need(raw == bridge.capsule(bound), "macos_lease_original_source_changed")
+            source = bridge.source(action, bound)
+        else:
+            source = bridge.observer_source(raw, "namespace-status", expected_sha256=intent["capsule"]["pin"]["sha256"])
+        argv, payload = protocol.stdin_command(source.decode("utf-8"))
+        result = self.ordinary_guest_call(self.binding, argv, payload, deadline)
+        _need(result.returncode == 0, "macos_lease_enrollment_unknown")
+        try: value = json.loads(result.stdout)
+        except (ValueError, UnicodeError): raise MacBlocked("macos_lease_enrollment_unknown") from None
+        return self._lease_packet(value, intent)
+
+    def prepare_lease_namespace(self, *, deadline=None):
+        from uuid import uuid4
+        from . import readiness_tart_macos_lease_bridge as bridge
+        deadline = time.monotonic() + 30 if deadline is None else deadline
+        with self.operator(deadline=deadline):
+            self.guard(deadline=deadline)
+            existing = self.load_lease_namespace()
+            if existing is not None: return existing
+            path, _, selected_root = self._lease_paths()
+            prior = path.exists() or path.is_symlink()
+            if not prior:
+                if selected_root.endswith("-v2"):
+                    self._require_old_lease_epoch_idle(deadline)
+                bound = self._lease_binding(deadline)
+                operation = str(uuid4())
+                directory = self.lifecycle_root / ("lease-source-" + operation)
+                directory.mkdir(mode=0o700)
+                source_path = directory / "capsule.json"
+                jobs._create(source_path, bridge.capsule(bound))
+                _, pin = self._registry._json(source_path)
+                intent = {"schemaVersion": 1, "operationId": operation, "fixtureId": self.fixture_id,
+                          "binding": asdict(bound), "root": bridge.ROOT,
+                          "controller": {"pid": os.getpid(), "birth": jobs._birth(os.getpid())},
+                          "capsule": {"path": str(source_path), "pin": pin}}
+                # This host record makes a lost first-enrollment ACK visible
+                # to a fresh client before any guest mkdir or assertion.
+                jobs._publish(path, intent)
+            intent, bound = self._lease_original()
+            packet = self._lease_call("namespace-status" if prior else "enroll", bound, intent, deadline)
+            return self.admit_lease_namespace(packet, deadline=deadline)
+
+    def _require_old_lease_epoch_idle(self, deadline):
+        from . import readiness_tart_macos_lease_bridge as bridge, readiness_qemu_jobs as protocol
+        old_intent_path, old_packet_path, _ = self._lease_paths("v1")
+        if not old_intent_path.exists() and not old_intent_path.is_symlink():
+            _need(not old_packet_path.exists() and not old_packet_path.is_symlink(), "macos_lease_original_unresolved")
+            return
+        intent, bound = self._lease_original("v1")
+        packet = self.load_lease_namespace("v1")
+        _need(packet is not None, "macos_lease_original_unresolved")
+        _need(self._lease_call("namespace-status", bound, intent, deadline) == packet,
+              "macos_lease_namespace_changed")
+        raw, _ = self._lease_capsule(intent)
+        archive = bridge.bind_namespace(raw, packet, expected_sha256=intent["capsule"]["pin"]["sha256"])
+        original_directory = Path(intent["capsule"]["path"]).parent
+        archive_path = original_directory / "inventory-capsule.json"
+        try: jobs._create(archive_path, archive)
+        except FileExistsError:
+            existing, _ = self._registry._body(archive_path)
+            _need(existing == archive, "macos_lease_original_source_changed")
+        _, archive_pin = self._registry._json(archive_path)
+        _, packet_pin = self._registry._json(old_packet_path)
+        admission = {"originalEnrollOperationId": intent["operationId"], "originalCapsule": intent["capsule"],
+                     "namespace": {"path": str(old_packet_path), "pin": packet_pin},
+                     "inventoryCapsule": {"path": str(archive_path), "pin": archive_pin}}
+        admission_path = original_directory / "inventory-admission.json"
+        try: jobs._publish(admission_path, admission)
+        except FileExistsError:
+            _need(jobs._record(admission_path) == admission, "macos_lease_original_source_changed")
+        admitted = jobs._record(admission_path)
+        with PublicProof(archive_path, admitted["inventoryCapsule"]["pin"]) as held:
+            source = bridge.observer_source(held.body, "inventory", expected_sha256=admitted["inventoryCapsule"]["pin"]["sha256"])
+        argv, payload = protocol.stdin_command(source.decode("utf-8"))
+        result = self.ordinary_guest_call(self.binding, argv, payload, deadline)
+        _need(result.returncode == 0, "macos_lease_original_unresolved")
+        try: value = json.loads(result.stdout)
+        except (ValueError, UnicodeError): raise MacBlocked("macos_lease_original_unresolved") from None
+        _need(type(value) is dict and set(value) == {"visibilityComplete", "leases", "idle"}
+              and value["visibilityComplete"] is True and value["idle"] is True and type(value["leases"]) is list
+              and all(type(row) is dict and row.get("restored") is True and row.get("jobState") == "terminal"
+                      for row in value["leases"]), "macos_lease_original_not_idle")
+
+    def admit_lease_namespace(self, packet, *, deadline=None):
+        deadline = time.monotonic() + 30 if deadline is None else deadline
+        with self.operator(deadline=deadline):
+            intent, bound = self._lease_original()
+            value = self._lease_packet(packet, intent)
+            _need(self._lease_call("namespace-status", bound, intent, deadline) == value,
+                  "macos_lease_namespace_changed")
+            _, path, _ = self._lease_paths()
+            try: jobs._publish(path, value)
+            except FileExistsError: _need(jobs._record(path) == value, "macos_lease_namespace_changed")
+            return self.load_lease_namespace()
+
+    def _unlock_observer_paths(self):
+        return (self.lifecycle_root / 'unlock-observer-namespace.intent.json',
+                self.lifecycle_root / 'unlock-observer-namespace.json',
+                self.lifecycle_root / 'unlock-observer-admissions')
+
+    def _unlock_observer_original(self):
+        from . import readiness_tart_macos_unlock_observer as observer
+        intent_path, _, _ = self._unlock_observer_paths()
+        value = jobs._record(intent_path)
+        _need(set(value) == {'schemaVersion', 'operationId', 'fixtureId', 'originalRun',
+              'enrollment', 'controller', 'capsule'} and type(value['schemaVersion']) is int
+              and value['schemaVersion'] == 1 and value['originalRun'] == self.run_intent['operationId']
+              and _uuid(value['operationId']) and type(value['fixtureId']) is str
+              and re.fullmatch(r'[a-z0-9][a-z0-9-]{0,95}', value['fixtureId']),
+              'macos_unlock_observer_enrollment_changed')
+        _need(value['operationId'] == value['enrollment']['commitment']['enrollmentId'],
+              'macos_unlock_observer_enrollment_changed')
+        # Validate the old commitment with current fixed READ-ONLY code. This
+        # never executes a retained old module or a caller-supplied program.
+        observer.namespace_source(self, 'namespace-status', enrollment=value['enrollment'])
+        controller = value['controller']
+        _need(type(controller) is dict and set(controller) == {'pid', 'birth'}
+              and type(controller['pid']) is int and controller['pid'] > 0
+              and type(controller['birth']) is str, 'macos_unlock_observer_enrollment_changed')
+        path, pin = _reference(value['capsule'], self.root)
+        _need(path == self.lifecycle_root / ('unlock-observer-source-' + value['operationId']) / 'capsule.json',
+              'macos_unlock_observer_capsule_changed')
+        with PublicProof(path, pin) as held:
+            capsule = held.value()
+            _need(set(capsule) == {'enrollment', 'producerSource', 'enrollSource', 'statusSource'}
+                  and capsule['enrollment'] == value['enrollment'], 'macos_unlock_observer_capsule_changed')
+            raw = base64.b64decode(capsule['producerSource'], validate=True)
+            _need(hashlib.sha256(raw).hexdigest() == value['enrollment']['commitment']['observerProducerSha256'],
+                  'macos_unlock_observer_capsule_changed')
+        return value
+
+    def load_unlock_observer_namespace(self):
+        """Pure original metadata read; never enrollment, recovery or a guest call."""
+        from . import readiness_tart_macos_unlock_observer as observer
+        intent_path, packet_path, _ = self._unlock_observer_paths()
+        if not packet_path.exists() and not packet_path.is_symlink():
+            if intent_path.exists() or intent_path.is_symlink(): self._unlock_observer_original()
+            return None
+        original = self._unlock_observer_original()
+        packet = observer._packet(jobs._record(packet_path), self.binding)
+        _need((packet['enrollmentId'], packet['hostIntentSha256']) ==
+              (original['operationId'], original['enrollment']['hostIntentSha256']),
+              'macos_unlock_observer_namespace_changed')
+        return packet
+
+    def _unlock_observer_namespace_call(self, action, original, deadline):
+        from . import readiness_tart_macos_unlock_observer as observer, readiness_qemu_jobs as protocol
+        source = observer.namespace_source(self, action, enrollment=original['enrollment'])
+        if action == 'enroll':
+            path, pin = _reference(original['capsule'], self.root)
+            with PublicProof(path, pin) as held:
+                _need(base64.b64decode(held.value()['enrollSource'], validate=True) == source,
+                      'macos_unlock_observer_original_source_changed')
+        argv, payload = protocol.stdin_command(source.decode())
+        result = self.ordinary_guest_call(self.binding, argv, payload, deadline)
+        _need(result.returncode == 0 and not result.stderr, 'macos_unlock_observer_enrollment_unknown')
+        try: value = json.loads(result.stdout)
+        except (ValueError, UnicodeError): raise MacBlocked('macos_unlock_observer_enrollment_unknown') from None
+        _need(type(value) is dict and set(value) == {'namespace'}, 'macos_unlock_observer_enrollment_unknown')
+        packet = observer._packet(value['namespace'], self.binding)
+        _need((packet['enrollmentId'], packet['hostIntentSha256']) ==
+              (original['operationId'], original['enrollment']['hostIntentSha256']),
+              'macos_unlock_observer_namespace_changed')
+        return packet
+
+    def prepare_unlock_observer_namespace(self, *, deadline=None):
+        """Durable host intent before ONE guest mkdir; lost ACK only observes."""
+        from uuid import uuid4
+        from . import readiness_tart_macos_unlock_observer as observer
+        deadline = time.monotonic() + 30 if deadline is None else deadline
+        with self.operator(deadline=deadline):
+            self.guard(deadline=deadline)
+            before = self.load_unlock_observer_namespace()
+            if before is not None: return before
+            intent_path, packet_path, _ = self._unlock_observer_paths()
+            prior = intent_path.exists() or intent_path.is_symlink()
+            if not prior:
+                operation = str(uuid4()); enrollment = observer.enrollment_spec(self, operation)
+                directory = self.lifecycle_root / ('unlock-observer-source-' + operation)
+                directory.mkdir(mode=0o700)
+                capsule_path = directory / 'capsule.json'
+                producer = Path(observer.__file__).read_bytes()
+                _need(observer._EXECUTING_CODE == compile(producer, observer.__file__, 'exec',
+                      dont_inherit=True, optimize=sys.flags.optimize), 'macos_unlock_observer_source_changed')
+                capsule = {'enrollment': enrollment, 'producerSource': base64.b64encode(producer).decode(),
+                    'enrollSource': base64.b64encode(observer.namespace_source(self, 'enroll', enrollment=enrollment)).decode(),
+                    'statusSource': base64.b64encode(observer.namespace_source(self, 'namespace-status', enrollment=enrollment)).decode()}
+                jobs._publish(capsule_path, capsule)
+                _, pin = self._registry._json(capsule_path)
+                original = {'schemaVersion': 1, 'operationId': operation, 'fixtureId': self.fixture_id,
+                    'originalRun': self.run_intent['operationId'], 'enrollment': enrollment,
+                    'controller': {'pid': os.getpid(), 'birth': jobs._birth(os.getpid())},
+                    'capsule': {'path': str(capsule_path), 'pin': pin}}
+                # idle_facts detects this original even if no packet returns.
+                jobs._publish(intent_path, original)
+            original = self._unlock_observer_original()
+            packet = self._unlock_observer_namespace_call('namespace-status' if prior else 'enroll', original, deadline)
+            _need(self._unlock_observer_namespace_call('namespace-status', original, deadline) == packet,
+                  'macos_unlock_observer_namespace_changed')
+            jobs._publish(packet_path, packet)
+            return self.load_unlock_observer_namespace()
+
+    def observe_unlock_observer_namespace(self, *, deadline=None):
+        """Same original fixed marker only; no mkdir or namespace adoption."""
+        deadline = time.monotonic() + 30 if deadline is None else deadline
+        with self.operator(deadline=deadline):
+            packet = self.load_unlock_observer_namespace()
+            _need(packet is not None, 'macos_unlock_observer_namespace_not_admitted')
+            _need(self._unlock_observer_namespace_call('namespace-status', self._unlock_observer_original(), deadline)
+                  == packet, 'macos_unlock_observer_namespace_changed')
+            return packet
+
+    def reserve_unlock_observer(self, operation, *, recipient, deadline):
+        """Index a deterministic original before any credential/input phase."""
+        from . import readiness_tart_macos_unlock_observer as observer
+        from . import readiness_tart_macos_unlock as unlock, readiness_tart_macos as backend
+        operation = _uuid(operation)
+        with self.operator(deadline=deadline):
+            self.guard(deadline=deadline)
+            namespace = self.observe_unlock_observer_namespace(deadline=deadline)
+            actual = unlock._snapshot(backend.MacTartBackend(self.binding, self), deadline)
+            _need(actual == unlock._identity(recipient, self.binding), 'macos_unlock_observer_recipient_changed')
+            _, _, directory = self._unlock_observer_paths()
+            try: directory.mkdir(mode=0o700)
+            except FileExistsError: pass
+            with private.Directory(directory):
+                reservation = {'schemaVersion': 1, 'originalOperationId': operation,
+                    'observerOperationId': observer.observer_id(operation), 'originalRun': self.run_intent['operationId'],
+                    'namespace': namespace, 'recipient': actual,
+                    'observerProducerSha256': hashlib.sha256(Path(observer.__file__).read_bytes()).hexdigest(),
+                    'controller': {'pid': os.getpid(), 'birth': jobs._birth(os.getpid())}}
+                jobs._publish(directory / (operation + '.intent.json'), reservation)
+            return reservation
+
+    def _unlock_observer_admissions(self, *, require_collected=False):
+        """Every reserved original is visible even without guest admission."""
+        from . import readiness_tart_macos_unlock_observer as observer, readiness_tart_macos_unlock_material as material
+        _, _, path = self._unlock_observer_paths()
+        if not path.exists() and not path.is_symlink(): return {}, False
+        with private.Directory(path) as held:
+            names = set(os.listdir(held.fd)); result = {}; pending = False
+            originals = {name.removesuffix('.intent.json') for name in names if name.endswith('.intent.json')}
+            allowed = set()
+            namespace = self.load_unlock_observer_namespace()
+            for operation in sorted(originals):
+                _uuid(operation); expected_id = observer.observer_id(operation)
+                self._unlock_observer_reservation(operation, namespace)
+                allowed.add(operation + '.intent.json')
+                admission_path = path / (operation + '.json')
+                if not admission_path.exists() and not admission_path.is_symlink(): pending = True; continue
+                admission = jobs._record(admission_path)
+                _need(admission['originalOperationId'] == operation and admission['observerOperationId'] == expected_id
+                      and admission['namespace'] == namespace, 'macos_unlock_observer_admission_changed')
+                source_path = path / (operation + '.program.json'); archived = jobs._record(source_path)
+                body = base64.b64decode(archived['source'], validate=True)
+                _need(archived['sha256'] == admission['programSha256'] == hashlib.sha256(body).hexdigest(),
+                      'macos_unlock_observer_admission_changed')
+                with private.Directory(self.lifecycle_root) as original_root:
+                    records = material._original_records(original_root, operation)
+                program, expected, _ = observer.admission_spec(self, operation, records, namespace)
+                _need(admission == expected and body == program.source,
+                      'macos_unlock_observer_admission_changed')
+                allowed |= {operation + '.json', operation + '.program.json'}
+                result[expected_id] = admission
+                collected_path = path / (operation + '.collected.json')
+                if collected_path.exists() or collected_path.is_symlink():
+                    value = jobs._record(collected_path)
+                    _need(value['originalOperationId'] == operation and value['observerOperationId'] == expected_id
+                          and value['namespace'] == namespace, 'macos_unlock_observer_collection_changed')
+                    allowed.add(operation + '.collected.json')
+                elif require_collected: pending = True
+            _need(names == allowed, 'macos_unlock_observer_inventory_changed')
+            return result, pending
+
+    def _unlock_observer_reservation(self, operation, namespace, *, for_admission=False):
+        from . import readiness_tart_macos_unlock_observer as observer, readiness_tart_macos_unlock as unlock
+        operation = _uuid(operation)
+        _, _, directory = self._unlock_observer_paths()
+        value = jobs._record(directory / (operation + '.intent.json'))
+        _need(set(value) == {'schemaVersion', 'originalOperationId', 'observerOperationId', 'originalRun',
+              'namespace', 'recipient', 'observerProducerSha256', 'controller'}
+              and type(value['schemaVersion']) is int and value['schemaVersion'] == 1
+              and (value['originalOperationId'], value['observerOperationId'], value['originalRun'], value['namespace']) ==
+                  (operation, observer.observer_id(operation), self.run_intent['operationId'], namespace),
+              'macos_unlock_observer_reservation_changed')
+        unlock._identity(value['recipient'], self.binding)
+        controller = value['controller']
+        _need(type(controller) is dict and set(controller) == {'pid', 'birth'}
+              and type(controller['pid']) is int and 0 < controller['pid'] < 2**31
+              and type(controller['birth']) is str
+              and re.fullmatch(r'(?:darwin:[1-9][0-9]*:[0-9]{1,6}|linux:[1-9][0-9]*)', controller['birth']),
+              'macos_unlock_observer_reservation_changed')
+        digest = value['observerProducerSha256']
+        _need(type(digest) is str and re.fullmatch('[0-9a-f]{64}', digest),
+              'macos_unlock_observer_reservation_changed')
+        if for_admission:
+            source = Path(observer.__file__).read_bytes()
+            _need(observer._EXECUTING_CODE == compile(source, observer.__file__, 'exec', dont_inherit=True,
+                  optimize=sys.flags.optimize) and hashlib.sha256(source).hexdigest() == digest,
+                  'macos_unlock_observer_reservation_changed')
+        return value
+
+    def admit_unlock_observer(self, operation, admission, program, *, deadline):
+        from . import readiness_tart_macos_unlock_material as material, readiness_tart_macos_unlock_observer as observer
+        operation = _uuid(operation)
+        with self.operator(deadline=deadline):
+            self.guard(deadline=deadline)
+            namespace = self.observe_unlock_observer_namespace(deadline=deadline)
+            _, _, directory = self._unlock_observer_paths()
+            reservation = self._unlock_observer_reservation(operation, namespace, for_admission=True)
+            with private.Directory(self.lifecycle_root) as root:
+                records = material._original_records(root, operation)
+            wanted, expected, _ = observer.admission_spec(self, operation, records, namespace)
+            _need(type(program) is jobs.Program and program == wanted and admission == expected
+                  and reservation['recipient'] == records[0]['recipient'], 'macos_unlock_observer_admission_changed')
+            jobs._publish(directory / (operation + '.program.json'),
+                          {'sha256': program.digest, 'source': base64.b64encode(program.source).decode()})
+            jobs._publish(directory / (operation + '.json'), expected)
+            return expected
+
+    def collect_unlock_observer(self, operation, proof, *, deadline):
+        from . import readiness_tart_macos_unlock_observer as observer
+        operation = _uuid(operation)
+        _need(type(proof) is observer.NativeObservation and proof._custody is self and proof.operation == operation,
+              'macos_unlock_original_observer_required')
+        proof.guard()
+        with self.operator(deadline=deadline):
+            namespace = self.load_unlock_observer_namespace()
+            _, _, directory = self._unlock_observer_paths()
+            value = {'schemaVersion': 1, 'originalOperationId': operation, 'observerOperationId': proof.observer,
+                'namespace': namespace, 'terminalSha256': hashlib.sha256(json.dumps(proof.terminal,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+            path = directory / (operation + '.collected.json')
+            try: jobs._publish(path, value)
+            except FileExistsError:
+                _need(jobs._record(path) == value, 'macos_unlock_observer_collection_changed')
+            return value
+
+    def unlock_observer_inventory(self, *, deadline):
+        from . import readiness_tart_macos_unlock_observer as observer, readiness_qemu_jobs as protocol
+        with self.operator(deadline=deadline):
+            namespace = self.load_unlock_observer_namespace()
+            _need(namespace is not None, 'macos_unlock_observer_namespace_not_admitted')
+            admissions, pending = self._unlock_observer_admissions(require_collected=True)
+            _need(not pending, 'macos_unlock_observer_original_pending')
+            source = observer.inventory_source(self, namespace, admissions)
+            argv, payload = protocol.stdin_command(source.decode())
+            result = self.ordinary_guest_call(self.binding, argv, payload, deadline)
+            _need(result.returncode == 0 and not result.stderr, 'macos_unlock_observer_inventory_unavailable')
+            value = json.loads(result.stdout)
+            _need(type(value) is dict and set(value) == {'generation', 'admissionGeneration', 'visibilityComplete', 'jobs', 'idle'}
+                  and value['generation'] == namespace['jobGeneration'] and value['admissionGeneration'] == namespace['admissionGeneration']
+                  and value['visibilityComplete'] is True and type(value['jobs']) is list and type(value['idle']) is bool,
+                  'macos_unlock_observer_inventory_changed')
+            # A collection receipt is a pointer, not authority. Compare it to
+            # the fresh actual original owner's authenticated terminal again.
+            _, _, directory = self._unlock_observer_paths()
+            for row in value['jobs']:
+                if row['state'] != 'terminal': continue
+                admission = admissions[row['operationId']]
+                collected = jobs._record(directory / (admission['originalOperationId'] + '.collected.json'))
+                _need(collected['terminalSha256'] == hashlib.sha256(json.dumps(row['terminal'],
+                      sort_keys=True, separators=(',', ':')).encode()).hexdigest(), 'macos_unlock_observer_collection_changed')
+            return value
+
+    def unlock_observer_idle_enrollment(self):
+        from . import readiness_tart_macos_unlock_observer as observer
+        return observer.idle_enrollment(self)
+
+
+    def load_guest_namespace(self):
+        from . import readiness_qemu_jobs as protocol
+        path = self.lifecycle_root / "guest-jobs.json"
+        if not path.exists():
+            _need(not path.is_symlink(), "macos_guest_namespace_changed")
+            return None
+        value = protocol._packet(jobs._record(path), guest_platform="darwin")
+        _need((value["target"], value["machine"], value["actualMachineId"], value["account"]) ==
+              (self.binding.target, self.binding.machine, self.binding.machine, str(self.binding.ordinary_uid)),
+              "macos_guest_namespace_changed")
+        return value
+
+    def admit_guest_namespace(self, packet, *, deadline=None):
+        from . import readiness_qemu_jobs as protocol
+        deadline = time.monotonic() + 30 if deadline is None else deadline
+        value = protocol._packet(packet, guest_platform="darwin")
+        _need((value["target"], value["machine"], value["actualMachineId"], value["account"]) ==
+              (self.binding.target, self.binding.machine, self.binding.machine, str(self.binding.ordinary_uid)),
+              "macos_guest_namespace_changed")
+        with self.operator(deadline=deadline):
+            before = self.load_guest_namespace()
+            if before is not None:
+                _need(before == value, "macos_guest_namespace_changed")
+                return before
+            argv, payload = protocol.stdin_command(protocol.observe_program(value))
+            response = self.ordinary_guest_call(self.binding, argv, payload, deadline)
+            _need(response.returncode == 0, "macos_guest_namespace_unavailable")
+            observed = json.loads(response.stdout)
+            _need(type(observed) is dict and set(observed) == {"visibilityComplete", "jobs", "idle"}
+                  and observed["visibilityComplete"] is True and type(observed["jobs"]) is list
+                  and type(observed["idle"]) is bool, "macos_guest_namespace_unavailable")
+            jobs._publish(self.lifecycle_root / "guest-jobs.json", value)
+            return self.load_guest_namespace()
+
+
+def _console_login_done(console, rows, uid, principal):
+    """Strict projection from the fixed root helper's actual console rows."""
+    def one(row, names, kind):
+        values = [row[name] for name in names if name in row]
+        if not values or any(type(value) is not kind or value != values[0] for value in values):
+            return None
+        return values[0]
+    values = []
+    for row in rows if type(rows) is list else []:
+        if type(row) is not dict: continue
+        if one(row, ("kCGSSessionUserIDKey", "kCGSessionUserIDKey"), int) != uid: continue
+        if one(row, ("kCGSSessionUserNameKey", "kCGSessionUserNameKey"), str) != principal: continue
+        if one(row, ("kCGSSessionOnConsoleKey", "kCGSessionOnConsoleKey"), bool) is not True: continue
+        if str(one(row, ("kSCSecuritySessionID",), int)) != console.get("session"): continue
+        values.append(one(row, ("kCGSSessionLoginDoneKey", "kCGSessionLoginDoneKey"), bool))
+    return values[0] if values and all(type(value) is bool and value == values[0] for value in values) else None
+
+
+def guest_probe_source(binding, *, prefix, public_files):
+    """Pure fixed caller for initial native qualification and later observers.
+
+    No initial packet, credentials, ownership flags, source, argv or executable
+    are accepted. Native authority still comes from actual provider custody.
+    """
+    from . import readiness_tart_macos as backend
+    _need(type(binding) is backend.MacBinding and type(prefix) is str
+          and re.fullmatch(r"/usr/local/libexec/vpn-tool-recovery(?:-[a-z0-9-]+)?", prefix)
+          and binding.guest_python == prefix + "/python/bin/python3.12", "macos_guest_proof_invalid")
+    fields = {"python/bin/python3.12", "tart-guest-agent", "guest-probe.py", "guest-probe-main.py", "readonly-probe", "launchDaemon"}
+    _need(type(public_files) is dict and set(public_files) == fields
+          and all(type(digest) is str and re.fullmatch(r"[0-9a-f]{64}", digest) for digest in public_files.values()),
+          "macos_guest_proof_invalid")
+    parameters = {"prefix": prefix, "files": {name: public_files[name] for name in sorted(fields)},
+                  "machine": binding.machine, "uid": binding.ordinary_uid,
+                  "principal": binding.ordinary_account, "home": binding.ordinary_home}
+    return "PARAMETERS=" + repr(parameters) + "\n" + inspect.getsource(_console_login_done) + "\n" + _GUEST_PROBE
+
+
+_GUEST_PROBE = r'''import ctypes as C,hashlib,json,os,pathlib,pwd,stat,subprocess,sys,types
+p=PARAMETERS
+prefix=pathlib.Path(p['prefix'])
+def need(value):
+ if not value:raise SystemExit(73)
+a=pwd.getpwuid(os.geteuid())
+need((a.pw_uid,a.pw_name,a.pw_dir)==(p['uid'],p['principal'],p['home']) and 80 not in os.getgrouplist(a.pw_name,a.pw_gid))
+def public(relative):
+ path=pathlib.Path('/Library/LaunchDaemons/com.vpn-control.tool-recovery.agent.plist')if relative=='launchDaemon'else prefix/relative
+ for parent in (path,*path.parents):
+  info=parent.lstat();need(info.st_uid==0 and not info.st_mode&0o022 and not stat.S_ISLNK(info.st_mode))
+ need(path.is_file() and path.stat().st_nlink==1 and hashlib.sha256(path.read_bytes()).hexdigest()==p['files'][relative])
+ return path
+for relative in p['files']:public(relative)
+probe=public('guest-probe.py')
+source=probe.read_bytes();need(hashlib.sha256(source).hexdigest()==p['files']['guest-probe.py'])
+m=types.ModuleType('_fixed_owned_mac_probe');m.__file__=str(probe);sys.modules[m.__name__]=m
+exec(compile(source,str(probe),'exec',dont_inherit=True),m.__dict__)
+native=m.Native();parent=os.getppid();info=m._Bsd();buf=C.create_string_buffer(4096)
+need(native.proc.proc_pidinfo(parent,3,0,C.byref(info),C.sizeof(info))==C.sizeof(info) and info.pid==parent and info.uid==p['uid'] and info.ppid==1)
+size=native.proc.proc_pidpath(parent,buf,len(buf));need(0<size<len(buf) and buf.value.decode()==str(prefix/'tart-guest-agent'))
+before=native.boot()[0];raw=subprocess.check_output(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],timeout=3).decode('ascii').strip()
+need(native.machine()==p['machine'] and raw.lower()==before)
+result=subprocess.run(['/usr/bin/sudo','-n',str(prefix/'readonly-probe')],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=8)
+need(result.returncode==0 and 0<len(result.stdout)<=262144)
+body=json.loads(result.stdout)
+need(type(body)is dict and set(body)=={'facts','qualification'})
+facts=body['facts'];q=body['qualification']
+need(type(q)is dict and set(q)=={'rawBoot','consoleRows','agentActors','probeAncestry','rootObserverUid'} and type(q['rootObserverUid'])is int and q['rootObserverUid']==0 and q['rawBoot']==raw)
+expected_agent={'pid':parent,'uid':p['uid'],'birth':[info.start_seconds,info.start_microseconds],'principal':p['principal'],'home':p['home'],'executable':str(prefix/'tart-guest-agent')}
+need(q['agentActors']==[expected_agent])
+ancestry=q['probeAncestry'];need(type(ancestry)is list and 1<=len(ancestry)<=16)
+need(all(type(row)is dict and set(row)=={'pid','ppid','uid','birth'} for row in ancestry))
+need(ancestry[0]['uid']==0 and any(row['pid']==os.getpid()and row['uid']==p['uid']for row in ancestry))
+need(ancestry[-1]['pid']==parent and ancestry[-1]['ppid']==1 and ancestry[-1]['uid']==p['uid']and ancestry[-1]['birth']==expected_agent['birth'])
+need(all(one['ppid']==two['pid']for one,two in zip(ancestry,ancestry[1:])))
+need(facts['machine']==p['machine'] and facts['boot']==before and native.boot()[0]==before)
+console=facts['console'];console['loginDone']=_console_login_done(console,q['consoleRows'],p['uid'],p['principal'])
+print(json.dumps({'facts':facts,'agent':{'actor':{'pid':parent,'birth':'darwin:'+str(info.start_seconds)+':'+str(info.start_microseconds)},'uid':a.pw_uid,'principal':a.pw_name,'home':a.pw_dir,'python':str(prefix/'python/bin/python3.12'),'rawBoot':raw}},sort_keys=True))
+'''
+
+
+def load_registered_fixture(root, fixture_id, descriptor, descriptor_pin, *, deadline=None):
+    """Internal factory; generic registry routing awaits actual native proof."""
+    from . import readiness_fixture_registry as registry, readiness_providers as providers
+    from . import readiness_tart_macos as backend, readiness
+    deadline = registry._lease_deadline(deadline, 30)
+    custody = MacCustody(root, fixture_id, descriptor, descriptor_pin)
+    try:
+        custody.guard(deadline=deadline)
+        adapter = providers.ProviderAdapter("tart-macos", custody.binding.target, custody.binding.machine,
+                                            backend.MacTartBackend(custody.binding, custody))
+        # Actual installed ordinary agent/root probe must work before admission.
+        adapter.observe(readiness.Requirements(frozenset({"guest_agent"})), deadline)
+        digest = hashlib.sha256(json.dumps([custody.binding.target, custody.binding.machine], separators=(",", ":")).encode()).hexdigest()
+        return registry.RegisteredFixture(custody.binding.target, custody.binding.machine, adapter,
+                                          Path(root)/".rag_index/readiness-targets"/digest)
+    except BaseException:
+        custody.close(); raise
+
+
+_LOADED_SOURCE_PINS = _source_pins()
+if _EXECUTING_CODE != compile(Path(__file__).read_bytes(), __file__, "exec", dont_inherit=True, optimize=sys.flags.optimize):
+    raise MacBlocked("macos_registry_executing_source_changed")

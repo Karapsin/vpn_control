@@ -1,0 +1,10 @@
+{
+  "failure": "Actual Windows-like collection fails before skips: os.geteuid evaluated by module/class/method decorators.",
+  "schemaVersion": 1,
+  "scope": "Whole original test callers; local WindowsOs import surface only, real global os and filesystems unchanged; no native test bodies run by collection probes.",
+  "sourceSha256": {
+    "test_windows_host_jobs.py": "b5b90f0469671c2245c97d224c5716bc7a6243b0d7fada2a3db0ef7dfef57477",
+    "test_windows_managed_host_original.py": "2598b5bbfd09fc229dc36ae19eaf6800e37e346eac9010332c4e4e4a437ba1e9",
+    "test_windows_start_closure.py": "9c9e341ec360a69d4df0aa36be73670a0cbcb3edf608d989b4d900fec23497ea"
+  }
+}

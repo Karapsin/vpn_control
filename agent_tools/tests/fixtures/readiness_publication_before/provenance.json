@@ -1,0 +1,5 @@
+{
+  "source": "agent_tools/readiness.py",
+  "sha256": "78651dc0afa4b8eff5f0b0a4141cb6d275b5e11f5a78953bce21c7e221313fbe",
+  "reason": "Original live recovery owner with lost local ready publication must reconcile without launching a replacement; locked sleeping desktop must wake before credential input."
+}

@@ -1,0 +1,4 @@
+{
+  "sha256": "9e3a39ce11baaf888de4f1c83c734c8dbfde74ff66d66a4d9134c4f59f30b465",
+  "cause": "New native JSON evidence and script beforeimages undergo actual Git autocrlf corruption without explicit byte policy."
+}

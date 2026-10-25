@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "d5da31e41fdd3f5778921f38dae23ec46509a7f1d0b9f6df9d98efcf909053b7",
+  "failure": "Full owned host census rejects actual libvirt QEMU -m size=6291456k as resource_identity_changed although every kernel process-generation guard is stable.",
+  "nativeEvidence": "start-b873-census-identity-diagnostic",
+  "nativePid": 730152,
+  "nativeStartTicks": 147154057,
+  "referenceUrl": "https://www.qemu.org/docs/master/system/qemu-manpage.html"
+}

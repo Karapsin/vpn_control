@@ -4,12 +4,13 @@ Only the source-bound screenshot stage is currently admitted. Credential and
 login effects require a reviewed current account-specific profile.
 """
 from __future__ import annotations
+from . import ssh_transport
 import base64,gzip,hashlib,json,os,selectors,stat,subprocess,time,uuid
 from pathlib import Path
 from . import windows_cp117_recovered_guest_observe as guest
 from . import windows_cp117_recovered_session_observe as session
 from .windows_diagnostic_authority_capture import AuthorityCapture
-GUEST_SHA='254d7495f1a4c02e68b34c6168c6dad93a693445b9569849f61fdf4ca2379b58'
+GUEST_SHA='c044f5d79a4a759ef8c5537b4710993980a7bc626f2892a8cab0c5c967f51f4c'
 SESSION_SHA='37311515a78969a7b992a848a22cecd18eb26dcf9bca214365551a1a8a56d586'
 TRANSFER='/home/kardinal/.vpn-control-mcp-fixtures'
 MAX_FRAME=16*1024*1024
@@ -207,7 +208,7 @@ def _capture(root,wake=False):
         if wake:
             capture.create('attempt.json',json.dumps({'diagnosticId':diagnostic,'state':'consumed','original':guest.ORIGINAL},sort_keys=True).encode());os.fsync(capture.fd)
             verify();r.authority._verify_outer(root,{'outerAuthority':outer})
-        completed=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
+        completed=r.authority.closure.base.ssh_transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
         capture.create('transport.stdout.private',completed.stdout);capture.create('transport.stderr.private',completed.stderr);os.fsync(capture.fd)
         if completed.returncode!=0 or len(completed.stdout)>1000000 or len(completed.stderr)>131072:raise ValueError('screen-transport')
         verify();r.authority._verify_outer(root,{'outerAuthority':outer});value=json.loads(completed.stdout)
@@ -357,7 +358,7 @@ def credential_program(root,record,nonce):
 def _probe_stream(argv,capture,nonce,sha,qemu,secret):
     diagnostic=CREDENTIAL_CORRELATION;recovery=guest.recovery
     if not isinstance(secret,bytes)or not 1<=len(secret)<=512:raise ValueError("private-input-cap")
-    p=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    p=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     selector=selectors.DefaultSelector();chunks={'stdout':bytearray(),'stderr':bytearray()};pending=bytearray();events=[];child=None;deadline=time.monotonic()+60
     selector.register(p.stdout,selectors.EVENT_READ,'stdout');selector.register(p.stderr,selectors.EVENT_READ,'stderr')
     try:
@@ -398,6 +399,8 @@ def _probe_stream(argv,capture,nonce,sha,qemu,secret):
     finally:
         capture.create('transport.stdout.private',bytes(chunks['stdout']));capture.create('transport.stderr.private',bytes(chunks['stderr']));os.fsync(capture.fd)
         selector.close();p.stdin.close();p.stdout.close();p.stderr.close()
+
+        ssh_transport.finish_ssh(p)
 
 
 def credential_probe(root):

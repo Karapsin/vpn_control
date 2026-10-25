@@ -1,0 +1,597 @@
+"""Owned headless QEMU Linux readiness, with retained per-effect remote intents.
+
+The public selector is a private registered fixture ID. Original actor, kernel,
+QMP peer, bootstrap files and SSH key metadata are rechecked on each observation.
+Guest sign-in and display recovery are deliberately absent on this headless lane.
+"""
+from dataclasses import dataclass
+from contextlib import contextmanager
+from types import SimpleNamespace
+import ast
+import base64
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import time
+from uuid import UUID, uuid5
+
+from . import readiness, readiness_providers as providers
+from . import readiness_fixture_registry as registry
+from . import readiness_qemu_remote as packets
+from . import readiness_qemu_guest as guest
+from . import readiness_qemu_idle as idle
+from . import readiness_resources as resources
+from . import readiness_qemu_jobs as guest_jobs
+from . import durable_remote_job as durable_jobs
+from .private_credential_file import SecretFile
+from . import ssh_transport as transport
+
+
+class QemuError(ValueError):
+    pass
+
+
+class QemuTransportUnavailable(QemuError):
+    pass
+
+
+def _need(value, reason):
+    if not value:
+        raise QemuError(reason)
+
+
+def _binding(value):
+    _need(type(value) is dict and set(value) == {'host', 'root', 'machine', 'target'}, 'qemu_binding_fields')
+    _need(type(value['host']) is str and bool(re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.-]{0,63}', value['host'])), 'qemu_host')
+    _need(type(value['root']) is str and bool(re.fullmatch('/home/[A-Za-z0-9_.-]+/vc-r-[a-f0-9]{8}', value['root'])), 'qemu_root')
+    _need(type(value['machine']) is str and str(UUID(value['machine'])) == value['machine'], 'qemu_machine')
+    _need(value['root'].endswith(value['machine'][:8]), 'qemu_root_machine')
+    _need(value['target'] == 'qemu-linux:' + value['machine'], 'qemu_target')
+    return dict(value)
+
+
+def _sources():
+    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in
+            (Path(__file__), Path(packets.__file__), Path(guest.__file__), Path(idle.__file__), Path(guest_jobs.__file__), Path(durable_jobs.__file__), Path(resources.__file__), Path(__file__).with_name('windows_vm_resources.py'))}
+
+
+def _private_directory(path):
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info=path.lstat()
+    _need(path==path.resolve(strict=True),'qemu_evidence_directory')
+    _need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700,
+          'qemu_evidence_directory')
+    return path
+
+
+def _save(path, value):
+    descriptor=os.open(path, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'w') as stream:
+        json.dump(value, stream, sort_keys=True); stream.flush(); os.fsync(stream.fileno())
+    parent=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:os.fsync(parent)
+    finally:os.close(parent)
+
+
+class QemuLinuxBackend:
+    """Effects are finite fixed packets; command submission never implies success."""
+    def __init__(self, root, binding, pins, *, capabilities=frozenset(), guard=lambda:None, credential=None):
+        self.root=Path(root).resolve(strict=True); self.binding=_binding(binding); self.pins=pins
+        self.capabilities=frozenset(capabilities)
+        source_snapshot=_sources()
+        def source_guard():
+            guard()
+            _need(_sources()==source_snapshot,'qemu_source_changed')
+        self.guard=source_guard
+        _need(self.capabilities <= {'reconnect','resume','reboot','start'}, 'qemu_capability')
+        if credential is not None:
+            _need(type(credential)is dict and set(credential)=={'path','generation'} and type(credential['path'])is str
+                  and Path(credential['path']).is_absolute() and type(credential['generation'])is list
+                  and len(credential['generation'])==9,'qemu_credential_binding')
+        self.last_facts=None; self.credential=credential; self._last_actual=None
+        self.last_response=None
+
+    @contextmanager
+    def _host_credential(self):
+        if type(self.credential)is not dict:
+            raise readiness.AdapterBlocked('credential_unavailable')
+        try:
+            protected=SecretFile(self.credential['path'])
+        except FileNotFoundError:
+            raise readiness.AdapterBlocked('credential_unavailable') from None
+        except (OSError,ValueError):
+            raise readiness.AdapterBlocked('integrity_mismatch') from None
+        with protected:
+            if list(protected.pin)!=self.credential['generation']:
+                raise readiness.AdapterBlocked('integrity_mismatch')
+            yield protected
+
+    def dispatch_binding(self, kind):
+        _need(kind == 'qmp', 'qemu_dispatch_kind')
+        # A remote pathname cannot authorize a coordinator-local AF_UNIX client.
+        raise readiness.AdapterBlocked('provider_unavailable')
+
+    def _run(self, action, operation, deadline, *, recovery_id=None, expected=None, enroll=False, dispatch_trace=None, resource_snapshot=None, guest_job_source=None, guest_job_mode=None):
+        self.guard()
+        _need(type(operation)is str and str(UUID(operation))==operation,'qemu_operation_identity')
+        remaining=deadline-time.monotonic()
+        _need(math.isfinite(remaining) and remaining>0, 'qemu_deadline')
+        directory=_private_directory(self.root/'.runtime/readiness-qemu'/operation)
+        # A different packet/call receives a different retained source filename;
+        # operation identity is independent of the transport connection identity.
+        packet_id=str(time.time_ns())+'-'+action
+        source=packets.program(self.binding, None if enroll else self.pins, action, recovery_id, expected, resource_snapshot, self.load_guest_namespace(), guest_job_source, guest_job_mode, getattr(self,'_enrolling_idle_context',None) or self.load_idle_context(), operation if action=='idle_enroll' else None)
+        source_sha=hashlib.sha256(source.encode()).hexdigest()
+        if dispatch_trace is not None:dispatch_trace['packetSha256']=source_sha
+        path=directory/(packet_id+'.py')
+        descriptor=os.open(path, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        with os.fdopen(descriptor,'w') as stream:stream.write(source);stream.flush();os.fsync(stream.fileno())
+        no_recovery=readiness.Requirements(frozenset({'transport'}),frozenset())
+        with transport.admitted_transport(self.root,self.binding['host'],operation,deadline=deadline,requirements=no_recovery) as admission:
+            # Source bytes are entirely saved before commands are generated.
+            command=['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(source.encode()).decode())+'))']
+            argv=transport.build_ssh_argv(transport.load_config(self.root),self.binding['host'],command=command)
+            self.guard()
+            _need(hashlib.sha256(path.read_bytes()).hexdigest()==source_sha,'qemu_packet_changed')
+            admission.revalidate()
+            if dispatch_trace is not None:dispatch_trace['popenCalled']=True
+            try:
+                result=transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                                         timeout=max(.1,min(30,deadline-time.monotonic())),check=False)
+            except transport.SubmittedResultReadinessChanged as changed:
+                # The original returned body remains subject to our exact
+                # packet/source/identity/JSON validator. Never dispatch again.
+                result=changed.take_submitted_result()
+            # Retain the original returned body even if a later provider
+            # custody check refuses to consume it. Retention grants no replay.
+            _save(directory/(packet_id+'.capture.json'), {'returnCode':result.returncode,
+                'stdout':result.stdout.decode('utf-8','replace')[:262145],
+                'stderrBytes':len(result.stderr),'sourceSha256':source_sha})
+            self.guard()
+            _need(hashlib.sha256(path.read_bytes()).hexdigest()==source_sha,'qemu_packet_changed')
+            if result.returncode != 0:
+                from . import readiness_transport
+                state=readiness_transport._failure({'complete':True,'overflow':len(result.stdout)>262144 or len(result.stderr)>65536,
+                    'returnCode':result.returncode,'stdout':result.stdout,'stderr':result.stderr})
+                if state in {'unavailable','dead','expired'}:raise QemuTransportUnavailable('qemu_transport_unavailable')
+                raise QemuError('qemu_transport_unknown')
+            _need(len(result.stdout)<=262144 and len(result.stderr)<=65536,'qemu_transport_unknown')
+            value=json.loads(result.stdout)
+            _need(type(value)is dict and value.get('state') in {'observed','submitted','blocked','guest-completed'},'qemu_response')
+            return value, admission.ready
+
+    def observe(self, requirements, deadline):
+        b=self.binding
+        try:
+            operation=str(uuid5(UUID(b['machine']),'readiness-observation'))
+            value,host_ready=self._run('observe',operation,deadline)
+        except QemuTransportUnavailable:
+            return readiness.Observation(b['target'],b['machine'],transport='unavailable',owned=True,trusted=True,integrity=True)
+        except readiness.ReadinessBlocked as error:
+            if error.reason in {'recovery_not_permitted','transport_attempts_exhausted','readiness_deadline'}:
+                return readiness.Observation(b['target'],b['machine'],transport='unavailable',owned=True,trusted=True,integrity=True)
+            raise
+        if value['state']!='observed':
+            reasons={'guest_account':'wrong_account','machine_identity':'machine_identity_mismatch',
+                'fixture_changed':'integrity_mismatch','file_changed':'integrity_mismatch',
+                'process_changed':'ownership_mismatch','socket_peer':'ownership_mismatch',
+                'file_ownership':'ownership_mismatch','process_owner':'ownership_mismatch',
+                'root_owner':'ownership_mismatch','owner_record':'ownership_mismatch',
+                'guest_namespace_custody_changed':'integrity_mismatch','guest_namespace_custody_missing':'integrity_mismatch'}
+            raise readiness.AdapterBlocked(reasons.get(value.get('reason'),'provider_unavailable'))
+        _need(value.get('pins')==self.pins,'qemu_pin_changed')
+        facts=value['facts']; self.last_facts=facts; self.last_response=value
+        _need(type(facts)is dict and set(facts)=={'guest','boot','account','session','guestAgent','idleVisibility','idleBlockers','owner','qmpInode','guestMachineId'},'qemu_facts')
+        if facts['guest']=='stopped' and 'start' in requirements.permitted_recoveries:
+            with self._host_credential():pass
+        connection='qemu:'+hashlib.sha256(json.dumps([host_ready.connection,facts['owner']['pid'],facts['owner']['startTicks'],facts['qmpInode']],separators=(',',':')).encode()).hexdigest()
+        observed=readiness.Observation(b['target'],b['machine'],connection=connection,boot=facts['boot'],account=facts['account'],session=None,
+            transport='ready',guest=facts['guest'],guest_agent=facts['guestAgent'],trusted=True,owned=True,integrity=True,
+            idle_visibility=frozenset(facts['idleVisibility']),idle_blockers=frozenset(facts['idleBlockers']))
+        self._last_actual=(observed,json.loads(json.dumps(facts)))
+        return observed
+
+    def _idle_path(self):
+        digest=hashlib.sha256(json.dumps([self.binding['target'],self.binding['machine']],separators=(',',':')).encode()).hexdigest()
+        return self.root/'.rag_index/readiness-qemu-idle'/(digest+'.json')
+
+    def load_idle_context(self):
+        path=self._idle_path()
+        if not path.exists():return None
+        value,_=registry._json(path)
+        fields={'schemaVersion','operationId','target','machine','actualMachineId','baseline','legacyJobs'}
+        _need(type(value)is dict and set(value)==fields and type(value['schemaVersion'])is int and value['schemaVersion']==1
+              and str(UUID(value['operationId']))==value['operationId'] and value['target']==self.binding['target']
+              and value['machine']==self.binding['machine'] and type(value['actualMachineId'])is str
+              and bool(re.fullmatch('[a-f0-9]{32}',value['actualMachineId'])) and type(value['baseline'])is dict
+              and value['baseline']['machineId']==value['actualMachineId'] and type(value['legacyJobs'])is list,
+              'qemu_idle_context')
+        return value
+
+    def enroll_idle_baseline(self, operation, deadline, *, legacy_receipts=()):
+        """Internal initial custody; public calls cannot supply process exemptions."""
+        self.guard()
+        _need(str(UUID(operation))==operation,'qemu_operation_identity')
+        path=self._idle_path();_private_directory(path.parent)
+        if path.exists():return self.load_idle_context()
+        packets=[];evidence=[]
+        for receipt in legacy_receipts:
+            receipt=Path(receipt).absolute()
+            _need(receipt.is_relative_to(self.root/'.runtime') and receipt==receipt.resolve(strict=True),'qemu_legacy_receipt_path')
+            original,pin=registry._json(receipt)
+            _need(original['result']['state']=='observed' and original['result']['facts']['account']=='uid:1000:recovery',
+                  'qemu_legacy_original_receipt')
+            witness=original['result']['diagnostic'][0]['sentinel']
+            fields={'root','generation','binding','operationId','requestSha256','ownerSourceSha256','status'}
+            _need(type(witness)is dict and set(witness)==fields and witness['ownerSourceSha256']==hashlib.sha256(durable_jobs.owner_source()).hexdigest()
+                  and witness['binding']['target']==self.binding['target'] and witness['binding']['machine']==self.binding['machine']
+                  and witness['binding']['account']=='1000' and witness['binding']['boot']==original['result']['facts']['boot']
+                  and witness['root']=='/tmp/vpn-control-program-1000-'+str(UUID(witness['operationId'])),'qemu_legacy_original_receipt')
+            packets.append({'remoteRoot':witness['root'],**{key:witness[key] for key in fields-{'root','status'}}})
+            evidence.append({'path':str(receipt),'pin':pin})
+        observed=self.observe(readiness.Requirements({'guest_agent'}),deadline)
+        _need(observed.guest=='running' and observed.guest_agent and self.last_facts['guestMachineId'] is not None,'qemu_idle_guest_not_ready')
+        context={'schemaVersion':1,'operationId':operation,'target':self.binding['target'],'machine':self.binding['machine'],
+                 'actualMachineId':self.last_facts['guestMachineId'],'baseline':None,'legacyJobs':packets}
+        intent_path=path.parent/(path.stem+'-'+operation+'.intent.json')
+        intent={'context':context,'sources':_sources(),'pins':self.pins,'legacyEvidence':evidence}
+        if intent_path.exists():_need(registry._json(intent_path)[0]==intent,'qemu_idle_intent_changed')
+        else:_save(intent_path,intent)
+        self._enrolling_idle_context=context
+        try:value,_=self._run('idle_enroll',operation,deadline)
+        finally:del self._enrolling_idle_context
+        _need(value['state']=='observed' and value['pins']==self.pins and type(value.get('idleContext'))is dict,'qemu_idle_enrollment_blocked')
+        admitted=value['idleContext']
+        _need({**admitted,'baseline':None,'legacyJobs':[{key:value for key,value in packet.items() if key!='collectedTerminal'} for packet in admitted['legacyJobs']]}==context and admitted['baseline']['machineId']==value['facts']['guestMachineId'],
+              'qemu_idle_enrollment_changed')
+        for retained in evidence:_need(registry._body(Path(retained['path']))[1]==retained['pin'],'qemu_legacy_original_changed')
+        if path.exists():_need(registry._json(path)[0]==admitted,'qemu_idle_context_changed')
+        else:_save(path,admitted)
+        return self.load_idle_context()
+
+    def refresh_idle_baseline(self, operation, deadline):
+        """Explicit metadata reconciliation, retaining every original baseline."""
+        self.guard();_need(str(UUID(operation))==operation,'qemu_operation_identity')
+        current=self.load_idle_context();_need(current is not None,'qemu_idle_context_missing')
+        path=self._idle_path()
+        intent_path=path.parent/(path.stem+'-'+operation+'.refresh.json')
+        if intent_path.exists():
+            intent=registry._json(intent_path)[0]
+            _need(set(intent)=={'operationId','before','sources','pins'} and intent['operationId']==operation
+                  and intent['sources']==_sources() and intent['pins']==self.pins,'qemu_idle_intent_changed')
+            original=intent['before']
+        else:
+            original=current;intent={'operationId':operation,'before':original,'sources':_sources(),'pins':self.pins}
+            _save(intent_path,intent)
+        self._enrolling_idle_context=original
+        try:value,_=self._run('idle_enroll',operation,deadline)
+        finally:del self._enrolling_idle_context
+        _need(value['state']=='observed' and value['pins']==self.pins,'qemu_idle_refresh_blocked')
+        candidate=value['idleContext']
+        _need({**candidate,'baseline':None,'legacyJobs':None}=={**original,'baseline':None,'legacyJobs':None}
+              and all(candidate['baseline']['units'].get(key)==row for key,row in original['baseline']['units'].items())
+              and all(candidate['baseline']['executables'].get(key)==row for key,row in original['baseline']['executables'].items())
+              and candidate['legacyJobs']==original['legacyJobs'],'qemu_idle_refresh_changed')
+        if candidate!=original:
+            _need(registry._json(path)[0] in (original,candidate),'qemu_idle_context_changed')
+            temporary=path.parent/(path.stem+'-'+operation+'.candidate.json')
+            if temporary.exists():_need(registry._json(temporary)[0]==candidate,'qemu_idle_candidate_changed')
+            else:_save(temporary,candidate)
+            os.replace(temporary,path)
+            directory=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+            try:os.fsync(directory)
+            finally:os.close(directory)
+        return self.load_idle_context()
+
+    def _namespace_path(self):
+        digest=hashlib.sha256(json.dumps([self.binding['target'],self.binding['machine']],separators=(',',':')).encode()).hexdigest()
+        return self.root/'.rag_index/readiness-qemu-namespaces'/(digest+'.json')
+
+    def load_guest_namespace(self):
+        path=self._namespace_path()
+        if not path.exists():return None
+        value,_=registry._json(path)
+        guest_jobs._packet(value)
+        _need((value['target'],value['machine'],value['account'])==(self.binding['target'],self.binding['machine'],'1000'),
+              'qemu_guest_namespace_binding')
+        return value
+
+    def admit_guest_namespace(self, packet):
+        guest_jobs._packet(packet)
+        _need(packet==getattr(self,'_last_namespace_observation',None),'qemu_guest_namespace_not_observed')
+        path=self._namespace_path();_private_directory(path.parent)
+        if path.exists():
+            _need(registry._json(path)[0]==packet,'qemu_guest_namespace_changed')
+        else:_save(path,packet)
+        return self.load_guest_namespace()
+
+    load_guest_job_namespace=load_guest_namespace
+    admit_guest_job_namespace=admit_guest_namespace
+
+    def _guest_source(self, source):
+        _need(type(source)is str and 0<len(source.encode())<=262144,'qemu_guest_source')
+        tree=ast.parse(source);first=tree.body[0]
+        _need(isinstance(first,ast.Assign) and len(first.targets)==1 and isinstance(first.targets[0],ast.Name)
+              and first.targets[0].id=='PARAMETERS','qemu_guest_source')
+        header,separator,remainder=source.partition('\n')
+        _need(separator and len(ast.parse(header).body)==1,'qemu_guest_source_changed')
+        # Namespace custody files sort JSON keys. Order is data formatting,
+        # while duplicate keys, executable expressions and extra statements
+        # must never gain authority through literal/dict normalization.
+        for node in ast.walk(first.value):
+            if isinstance(node,ast.Dict):
+                keys=[key.value for key in node.keys if isinstance(key,ast.Constant) and type(key.value)is str]
+                _need(len(keys)==len(node.keys)==len(set(keys)),'qemu_guest_source_changed')
+        def data(value):
+            if type(value)is dict:
+                _need(all(type(key)is str for key in value),'qemu_guest_source_changed')
+                return {key:data(item) for key,item in value.items()}
+            if type(value)is list:return [data(item) for item in value]
+            _need(value is None or type(value)in (str,bool,int,float),'qemu_guest_source_changed')
+            return value
+        parameters=ast.literal_eval(first.value);mode=parameters['mode']
+        namespace=self.load_guest_namespace()
+        if mode=='enroll':
+            canonical=guest_jobs.enroll_program(self.binding['target'],self.binding['machine'],1000,actual_machine_id=self.last_facts['guestMachineId'])
+        elif mode=='inventory':
+            canonical=guest_jobs.observe_program(namespace)
+        else:
+            _need(mode in {'observe','submit'},'qemu_guest_source')
+            canonical=guest_jobs.operation_program(namespace,parameters['operationId'],parameters['binding'],
+                submit=mode=='submit',count=parameters['count'],interval_seconds=parameters['intervalSeconds'])
+        expected=ast.literal_eval(ast.parse(canonical).body[0].value)
+        _need(remainder==canonical.partition('\n')[2]
+              and json.dumps(data(parameters),sort_keys=True,allow_nan=False)==json.dumps(data(expected),sort_keys=True,allow_nan=False),
+              'qemu_guest_source_changed')
+        return parameters
+
+    @contextmanager
+    def guest_job_executor(self, *, deadline, operation_id=None):
+        self.guard()
+        observed=self.observe(readiness.Requirements({'guest_agent'}),deadline)
+        _need(observed.guest=='running' and observed.guest_agent and observed.boot is not None
+              and observed.account=='uid:1000:recovery','qemu_guest_not_ready')
+        expected={key:self.last_facts[key] for key in ('owner','boot','guest')}
+        machine_id=self.last_facts['guestMachineId']
+        def execute_source(source):
+            parameters=self._guest_source(source)
+            operation=operation_id or parameters.get('operationId') or str(uuid5(UUID(self.binding['machine']),'guest-namespace'))
+            value,_=self._run('guest_jobs',operation,deadline,expected=expected,guest_job_source=source,guest_job_mode=parameters['mode'])
+            _need(value['state']=='guest-completed','qemu_guest_dispatch_unknown')
+            if value['returnCode']==0 and parameters['mode']=='enroll':
+                namespace=json.loads(value['stdout'])['namespace'];guest_jobs._packet(namespace)
+                _need(namespace['actualMachineId']==machine_id,'qemu_guest_machine_changed')
+                self._last_namespace_observation=namespace
+            return subprocess.CompletedProcess(['registered-guest-program'],value['returnCode'],value['stdout'].encode(),
+                b'' if not value['stderrBytes'] else b'guest_program_failed')
+        yield SimpleNamespace(provider='raw-qemu-linux',target=self.binding['target'],machine=self.binding['machine'],
+            boot=observed.boot,uid=1000,principal='recovery',home='/home/recovery',actualMachineId=machine_id,guest_machine_id=machine_id,
+            execute_source=execute_source)
+        self.guard()
+
+    def reconcile_ready(self, ready, deadline):
+        """Explicit coordinator reconciliation; observers never update claims."""
+        self.guard()
+        actual=self._last_actual
+        if actual is None:
+            current=self.observe(ready.requirements,deadline)
+            facts=self.last_facts
+        else:
+            current,facts=actual
+        _need((current.target,current.machine,current.connection,current.boot,current.account,current.session)==ready.identities(),
+              'qemu_context_stale')
+        # An already-bound claim needs only its protected local receipt and the
+        # exact observation which produced this ReadyContext. The coordinator
+        # still revalidates remotely after this hook. Missing bookkeeping uses
+        # mark_running's fresh complete kernel census below, never cache alone.
+        owner=facts['owner'];recovery_id=owner['operationId']
+        if len(recovery_id)!=64:
+            return {'state':'initial-owner','resourceAction':False}
+        operation=str(uuid5(UUID(self.binding['machine']),recovery_id))
+        directory=self.root/'.rag_index/readiness-resources'/operation
+        if not directory.exists():
+            raise readiness.AdapterBlocked('ownership_mismatch')
+        actor={key:owner[key] for key in ('pid','startTicks')}
+        with readiness.RecoveryJournal(directory).locked(deadline=deadline) as journal:
+            running=journal.lookup('running')
+            if running is not None:
+                _need(running['actor']==actor and running['hostBootId']==owner['hostBootId'],'qemu_original_actor_changed')
+                return {'state':'resource-running','resourceAction':False,'operationId':operation}
+        if type(self.credential)is not dict:raise readiness.AdapterBlocked('credential_unavailable')
+        with self._host_credential() as protected:
+            _need(list(protected.pin)==self.credential['generation'],'qemu_credential_changed')
+            target=resources.ResourceTarget(operation,self.binding['host'],self.binding['root'])
+            original=resources.ResourceAdmission(self.root,target,self.binding['machine'],operation,directory,self.credential['path'],deadline)
+            original.mark_running(actor)
+            protected.guard();self.guard()
+        return {'state':'resource-running','resourceAction':True,'operationId':operation}
+
+    def _recover(self, action, recovery_identity, observed, deadline, dispatch_trace=None, attempt=1, dispatch_digest=None):
+        _need(action in self.capabilities,'qemu_recovery_unqualified')
+        if action=='reconnect':
+            operation=str(uuid5(UUID(self.binding['machine']),recovery_identity))
+            with transport.admitted_transport(self.root,self.binding['host'],operation,deadline=deadline):
+                return
+        current=self.observe(readiness.Requirements(frozenset({'guest_agent'})),deadline)
+        _need((current.target,current.machine,current.connection,current.boot,current.account,current.session)==
+              (observed.target,observed.machine,observed.connection,observed.boot,observed.account,observed.session),'qemu_context_stale')
+        expected={key:self.last_facts[key] for key in ('owner','boot','guest')}
+        operation=str(uuid5(UUID(self.binding['machine']),recovery_identity))
+        reservation=None; snapshot=None
+        if action=='start':
+            _need(dispatch_digest is not None,'qemu_start_dispatch_identity_required')
+            if type(self.credential)is not dict:raise readiness.AdapterBlocked('credential_unavailable')
+            with self._host_credential() as credential:
+                _need(list(credential.pin)==self.credential['generation'],'qemu_credential_changed')
+                prior=self.last_facts['owner']['operationId']
+                if len(prior)==64:
+                    previous=str(uuid5(UUID(self.binding['machine']),prior))
+                    directory=self.root/'.rag_index/readiness-resources'/previous
+                    if directory.exists():
+                        proof=self.last_response.get('cleanStop')
+                        _need(proof is not None,'qemu_original_stopped_work_unknown')
+                        target=resources.ResourceTarget(previous,self.binding['host'],self.binding['root'])
+                        old=resources.ResourceAdmission(self.root,target,self.binding['machine'],previous,directory,self.credential['path'],deadline)
+                        old.release_stopped(proof)
+                reservation=resources.prepare_start(self.root,host=self.binding['host'],machine_uuid=self.binding['machine'],
+                    fixture_root=self.binding['root'],credential_file=self.credential['path'],deadline=deadline,operation_id=operation)
+                for previous_attempt in range(1,attempt):
+                    path=self.root/'.runtime/readiness-qemu/unsubmitted'/recovery_identity/(str(previous_attempt)+'.json')
+                    native,pin=registry._json(path)
+                    proof=readiness.RecoveryUnsubmitted(recovery_identity,previous_attempt,native['dispatchDigest'],pin['sha256'])
+                    digest=hashlib.sha256(json.dumps([self.binding['target'],self.binding['machine']],separators=(',',':')).encode()).hexdigest()
+                    reservation.reconcile_unsubmitted(proof,core_journal_directory=self.root/'.rag_index/readiness-targets'/digest,proof_file=path)
+                credential.guard();self.guard()
+                _need(reservation.mark_submitting(attempt=attempt,recovery_id=recovery_identity,dispatch_digest=dispatch_digest),
+                      'qemu_original_resource_dispatch_unknown')
+                snapshot=reservation.submission_snapshot(attempt=attempt)
+                credential.guard()
+        value,_=self._run(action,operation,deadline,recovery_id=recovery_identity,expected=expected,
+                          dispatch_trace=dispatch_trace,resource_snapshot=snapshot)
+        _need(type(value)is dict and set(value)=={'state','action','recoveryId'}
+              and value['state']=='submitted' and value['action']==action and value['recoveryId']==recovery_identity,
+              'qemu_recovery_unknown')
+        if reservation is not None:
+            # Only the original source-bound actor may consume this claim.
+            self.observe(readiness.Requirements(frozenset({'guest_agent'})),deadline)
+            owner=self.last_facts['owner']
+            _need(owner['operationId']==recovery_identity,'qemu_original_actor_unknown')
+            reservation.mark_running({key:owner[key] for key in ('pid','startTicks')})
+
+
+    def recover(self, action, recovery_identity, observed, deadline):
+        return self._recover(action,recovery_identity,observed,deadline)
+
+    def recover_attempt(self,action,recovery_identity,observed,deadline,attempt,dispatch_digest):
+        _need(action in self.capabilities, 'qemu_recovery_unqualified')
+        _need(type(attempt) is int and 1 <= attempt <= readiness.MAX_DISPATCH_ATTEMPTS
+              and all(type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
+                      for value in (recovery_identity, dispatch_digest)), 'qemu_dispatch_identity')
+        trace={'popenCalled':False,'packetSha256':None}
+        try:
+            return self._recover(action,recovery_identity,observed,deadline,trace,attempt,dispatch_digest)
+        except Exception as error:
+            # This is the live, local fence for the *power operation*. Read-only
+            # preparation may itself have executed or lost its acknowledgement;
+            # that never means the later VM mutation was submitted. The flag is
+            # changed only immediately before the mutating carrier is invoked.
+            prelaunch=isinstance(error,(transport.PrelaunchE2Big,transport.PrelaunchReadinessRefusal)) and not error.executable_started and not error.child_handle_returned
+            staged=trace['popenCalled'] and type(error)is transport.StagedExecutionUnsubmitted and error.transfer_submitted is True and error.target_executable_started is False and error.target_child_handle_returned is False
+            if action=='reconnect' or not (not trace['popenCalled'] or prelaunch or staged):
+                raise
+            if staged:
+                # A harmless source-transfer child did run. Retain its actual
+                # identity separately; the proof below concerns only the later
+                # power executable which the carrier never yielded.
+                directory=_private_directory(self.root/'.runtime/readiness-qemu/unsubmitted-carrier'/recovery_identity)
+                _save(directory/(str(attempt)+'.json'),{'schemaVersion':1,'recoveryId':recovery_identity,
+                    'attempt':attempt,'dispatchDigest':dispatch_digest,'correlationId':error.correlation,
+                    'argvSha256':error.argv_sha256,'stageReceiptSha256':error.stage_receipt_sha256,
+                    'transferSubmitted':True,'targetExecutableStarted':False,'targetChildHandleReturned':False})
+            proof={'schemaVersion':1,'recoveryId':recovery_identity,'attempt':attempt,
+                   'dispatchDigest':dispatch_digest,'packetSha256':trace['packetSha256'],
+                   'mutationExecutableStarted':False,'popenCalled':False,'evidence':'prelaunch_e2big' if isinstance(error,transport.PrelaunchE2Big) else 'admission_before_mutation_dispatch'}
+            directory=_private_directory(self.root/'.runtime/readiness-qemu/unsubmitted'/recovery_identity)
+            path=directory/(str(attempt)+'.json');_save(path,proof)
+            raise readiness.RecoveryUnsubmitted(recovery_identity,attempt,dispatch_digest,
+                hashlib.sha256(path.read_bytes()).hexdigest()) from None
+
+
+@dataclass(frozen=True)
+class RegisteredQemuFixture:
+    target:str
+    machine:str
+    adapter:providers.ProviderAdapter
+    journal_directory:Path
+    required_readiness:frozenset=frozenset({'guest_agent'})
+
+    def context(self,*,deadline=None):
+        _private_directory(self.journal_directory)
+        return readiness.Context(self.target,self.machine,self.adapter,readiness.RecoveryJournal(self.journal_directory),deadline=deadline)
+
+    def reconcile_ready(self, ready, *, deadline):
+        return self.adapter.backend.reconcile_ready(ready,deadline)
+
+
+def load_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
+    root=Path(root).resolve(strict=True)
+    fields={'schemaVersion','fixtureId','provider','binding','pins','sources','qualification','credential'}
+    _need(type(descriptor)is dict and set(descriptor)==fields and descriptor['schemaVersion']==1
+          and descriptor['fixtureId']==fixture_id and descriptor['provider']=='raw-qemu-linux','qemu_descriptor')
+    binding=_binding(descriptor['binding'])
+    def guard():
+        current,pin=registry._json(root/'.rag_index/readiness-fixtures'/(fixture_id+'.json'))
+        _need(current==descriptor and pin==descriptor_pin,'qemu_registration_changed')
+        _need(_sources()==descriptor['sources'],'qemu_source_changed')
+        credential=descriptor['credential']
+        _need(type(credential)is dict and set(credential)=={'path','generation'},'qemu_credential_binding')
+        proof=Path(descriptor['qualification']['path'])
+        _need(proof.is_relative_to(root/'.runtime') and proof==proof.resolve(strict=True),'qemu_qualification_path')
+        _need(registry._body(proof)[1]==descriptor['qualification']['pin'],'qemu_qualification_changed')
+    guard()
+    proof=json.loads(Path(descriptor['qualification']['path']).read_text())
+    _need(proof.get('sources')==descriptor['sources'] and proof.get('machine')==binding['machine'],'qemu_qualification_source')
+    capabilities=frozenset(proof.get('qualifiedRecoveries',[]))
+    _need(capabilities<={'reconnect','resume','reboot','start'},'qemu_qualification_capability')
+    backend=QemuLinuxBackend(root,binding,descriptor['pins'],capabilities=capabilities,guard=guard,credential=descriptor['credential'])
+    adapter=providers.ProviderAdapter('raw-qemu-linux',binding['target'],binding['machine'],backend)
+    digest=hashlib.sha256(json.dumps([binding['target'],binding['machine']],separators=(',',':')).encode()).hexdigest()
+    return RegisteredQemuFixture(binding['target'],binding['machine'],adapter,root/'.rag_index/readiness-targets'/digest)
+
+
+def register_owned_fixture(root, fixture_id, *, host, launch_receipt, qualification, credential_file, deadline=None):
+    """Internal custody step after direct proof of this exact owned instance.
+
+    Public MCP/CLI actions accept only the resulting fixture ID. The machine and
+    private root are derived from the original create receipt and configured
+    account; enrollment checks their actual kernel, socket and file authorities.
+    """
+    root=Path(root).resolve(strict=True);registry._id(fixture_id)
+    def owned(path):
+        value=Path(path).absolute()
+        _need(value.is_relative_to(root/'.runtime') and value==value.resolve(strict=True),'qemu_original_receipt_path')
+        return value
+    original,pin=registry._json(owned(launch_receipt))
+    _need(set(original)=={'returnCode','stdout','stderr'} and original['returnCode']==0 and original['stderr']=='',
+          'qemu_original_create_receipt')
+    actor=json.loads(original['stdout']);machine=actor['preparationId']
+    _need(actor['state']=='running' and actor['guestSubmitted'] is True,'qemu_original_create_receipt')
+    config=transport.load_config(root)
+    _need(host in config.hosts,'qemu_original_host')
+    account=config.hosts[host].user
+    _need(bool(re.fullmatch('[A-Za-z0-9_.-]+',account)),'qemu_original_account')
+    binding=_binding({'host':host,'root':'/home/'+account+'/vc-r-'+machine[:8],
+                      'machine':machine,'target':'qemu-linux:'+machine})
+    proof_path=owned(qualification);proof,proof_pin=registry._json(proof_path)
+    sources=_sources()
+    _need(set(proof)=={'schemaVersion','machine','sources','qualifiedRecoveries','evidence'} and proof['schemaVersion']==1
+          and proof['machine']==machine and proof['sources']==sources,'qemu_qualification_source')
+    capabilities=frozenset(proof['qualifiedRecoveries'])
+    _need(capabilities<={'reconnect','resume','reboot','start'} and type(proof['evidence'])is dict
+          and capabilities<=set(proof['evidence']),'qemu_qualification_capability')
+    for action in capabilities:
+        evidence=proof['evidence'][action]
+        _need(type(evidence)is dict and set(evidence)=={'path','pin'},'qemu_qualification_evidence')
+        _need(registry._body(owned(evidence['path']))[1]==evidence['pin'],'qemu_qualification_evidence_changed')
+    with SecretFile(str(owned(credential_file))) as secret:
+        credential={'path':str(secret.path),'generation':list(secret.pin)}
+        backend=QemuLinuxBackend(root,binding,{},credential=credential)
+        operation=str(uuid5(UUID(machine),'readiness-registration'))
+        value,_=backend._run('enroll',operation,deadline or time.monotonic()+180,enroll=True)
+        _need(value['state']=='observed','qemu_enrollment_blocked')
+        _need(value['pins']['initialOwner']['sha256']==hashlib.sha256(json.dumps(actor,sort_keys=True).encode()).hexdigest(),
+              'qemu_original_actor_receipt_changed')
+        secret.guard()
+    descriptor={'schemaVersion':1,'fixtureId':fixture_id,'provider':'raw-qemu-linux','binding':binding,
+        'pins':value['pins'],'sources':sources,'credential':credential,
+        'qualification':{'path':str(proof_path),'pin':proof_pin}}
+    parent=_private_directory(root/'.rag_index/readiness-fixtures')
+    path=parent/(fixture_id+'.json')
+    _save(path,descriptor)
+    _,descriptor_pin=registry._json(path)
+    return load_registered_fixture(root,fixture_id,descriptor,descriptor_pin)

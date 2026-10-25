@@ -411,7 +411,7 @@ def _remote(root: str | Path, correlation_id: str, mode: str, timeout_seconds: i
         raise ValueError("Configured Arch transport is unavailable.")
     argv = ssh_transport.build_ssh_argv(config, HOST, min(timeout_seconds, 30),
                                         command=("python3", "-c", "exec(" + repr(_program(correlation_id, mode)) + ")"))
-    completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+    completed = ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL, timeout=timeout_seconds, check=False)
     if completed.returncode or not 0 < len(completed.stdout) <= 2048:
         raise ValueError("Secure Boot fresh VM transport is unknown.")

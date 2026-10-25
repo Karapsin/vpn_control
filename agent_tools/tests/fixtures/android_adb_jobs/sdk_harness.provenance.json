@@ -1,0 +1,24 @@
+{
+  "failureTypes": {
+    "counts": "Acceptance harness incorrectly demanded attempted==returned during actual lost server acknowledgement. Actual original server-loss operation automatically reconciled under same UUID, with5 attempted/5 forwarded/4 returned, 2 closed relay sessions, terminal complete result.",
+    "flag": "Acceptance harness incorrectly demanded serverExecutionProven true; delivery observer intentionally never infers execution from forwarding. Actual native healthy result was terminal/collected with closed original server and complete raw RPC receipts."
+  },
+  "fixture": "android-independent-v1",
+  "nativeEvidence": ".runtime/tool-recovery/android-jobs-native/sdk-e246e56a1c5443ba89b3bf3f7f19cdde",
+  "operations": {
+    "client": "1cbef06d-8001-5d2b-8387-0201bfb7c714",
+    "healthy": "f08a897b-ae85-5c61-926b-4de041f1f7c8",
+    "server": "55f8a6f3-2261-5bda-8ec1-c297c1ebeb81"
+  },
+  "receiptSha256": {
+    "sdk_client.native.json": "c6c98e628a599bb1751dae4205d975e6bc47e819f3918fad790a88a60d253c94",
+    "sdk_healthy.native.json": "d0c3ded957175e7b0e3e48dcd518c3892b72e7a80d8b50276b71c6f67a143825",
+    "sdk_server.native.json": "f7741b0e71079159c322ec1f949c8e2ce6d8e4bfe33ba6e5823e47f75871ad69"
+  },
+  "remoteJobsNeverResubmitted": true,
+  "sourceSha256": {
+    "sdk_counts.before.source": "7bf5759dc325afc6fbb0348e3d4ffc27a27a462f5b5f79b5607065b149419451",
+    "sdk_flag.before.source": "8ccb126533b82da4205173690e4dbac6d44354bf532352122fe884e7d77b8fb3",
+    "sdk_harness.fixed.source": "41634e7851ee26fbb982bc970480b085f2ce14bceba6d367fb43ff770c7e9601"
+  }
+}

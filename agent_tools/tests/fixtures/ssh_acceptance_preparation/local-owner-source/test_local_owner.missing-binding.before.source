@@ -1,0 +1,152 @@
+"""Actual short local owner/client-exit tests; no sockets, SSH, native campaign or signals."""
+from pathlib import Path
+from dataclasses import asdict
+import ast,hashlib,importlib.util,json,os,shutil,subprocess,sys,tempfile,time,unittest,uuid
+HERE=Path(__file__).resolve().parent
+spec=importlib.util.spec_from_file_location('_local_owner_under_review',HERE/'local_owner.py');local=importlib.util.module_from_spec(spec);sys.modules[spec.name]=local;spec.loader.exec_module(local)
+class LocalOwnerTests(unittest.TestCase):
+ def setUp(self):
+  self.parent=Path(tempfile.mkdtemp(prefix='vc-local-owner-test-')).resolve();self.parent.chmod(0o700)
+  self.root=self.parent/'namespace';self.api,self.held=local.owner_api();self.binding=asdict(self.api.current_binding('controlled-fixture','owned-local-fixture'))
+  local.initialize(self.root,self.binding,source_guard=lambda:None)
+  self.op=str(uuid.uuid4());self.counter=self.parent/'counter';self.campaign={'kind':'fixed-public-local-test','original':self.op}
+ def tearDown(self):
+  terminal=True
+  for job in(self.root/'jobs').glob('*'):
+   if not job.is_dir():continue
+   end=time.monotonic()+8
+   while time.monotonic()<end:
+    value=self.api.observe(self.root/'jobs',job.name,self.api.MachineBinding.from_dict(self.binding),generation=self.api.root_generation(self.root/'jobs'))
+    if value['state']=='terminal':break
+    time.sleep(.02)
+   else:terminal=False
+  self.held.close()
+  if terminal:shutil.rmtree(self.parent)
+  else:self.fail('owned bounded local job did not close; retained private test scope')
+ def program(self):
+  source=('from pathlib import Path\nimport sys,time\np=Path('+repr(str(self.counter))+')\nwith p.open("x") as f:\n f.write("execution\\n");f.flush()\n for i in range(15):\n  f.write(str(i)+"\\n");f.flush();print(i,flush=True);time.sleep(.04)\nsys.stderr.write("public local stderr\\n")\nsys.exit(7)\n').encode()
+  return self.api.Program('controlled-public-local-test',source,4096)
+ def terminal(self):
+  end=time.monotonic()+8
+  with local.Namespace(self.root)as namespace:
+   while time.monotonic()<end:
+    value=namespace.observe(self.op)
+    if value['state']=='terminal':return value
+    time.sleep(.02)
+  self.fail('bounded owner did not become terminal')
+ def test_real_parent_exit_after_one_submit_lost_ack_preserves_original_owner_and_streams(self):
+  program=self.program()
+  client=('from pathlib import Path\nimport importlib.util,sys,os\ns=importlib.util.spec_from_file_location("_fixed_client_wrapper",'+repr(str(HERE/'local_owner.py'))+')\nm=importlib.util.module_from_spec(s);sys.modules[s.name]=m;s.loader.exec_module(m)\nwith m.Namespace(Path('+repr(str(self.root))+')) as n:\n p=n.owner.Program('+repr(program.purpose)+','+repr(program.source)+',4096)\n n.submit_once('+repr(self.op)+',p,campaign='+repr(self.campaign)+',source_guard=lambda:None)\n os._exit(0)\n')
+  clientfile=self.parent/'fixed-client.py';clientfile.write_text(client);clientfile.chmod(0o600)
+  child=subprocess.Popen([sys.executable,'-I','-B',str(clientfile)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+  _,error=child.communicate(timeout=8);self.assertEqual((0,b''),(child.returncode,error))
+  end=time.monotonic()+4
+  with local.Namespace(self.root)as namespace:
+   while time.monotonic()<end:
+    first=namespace.observe(self.op)
+    if first['state']=='running'and self.counter.exists():break
+    time.sleep(.01)
+   self.assertEqual('running',first['state']);original=first['owner'];before=len(self.counter.read_text().splitlines());time.sleep(.08)
+   self.assertGreater(len(self.counter.read_text().splitlines()),before)
+   def forbidden(*args,**kwargs):self.fail('consumed original index must never enter submit again')
+   namespace.owner.submit=forbidden
+   duplicate=namespace.submit_once(self.op,program,campaign=self.campaign,source_guard=lambda:None)
+   self.assertEqual(original,duplicate['owner'])
+  terminal=self.terminal();self.assertEqual(original,terminal['owner']);self.assertEqual(7,terminal['terminal']['exitCode'])
+  with local.Namespace(self.root)as namespace:
+   result,path=namespace.collect(self.op,closing_guard=lambda:None)
+  self.assertEqual(b''.join(str(i).encode()+b'\n'for i in range(15)),(path/'stdout.bin').read_bytes())
+  self.assertEqual(b'public local stderr\n',(path/'stderr.bin').read_bytes());self.assertEqual(terminal,result)
+  self.assertEqual(['execution',*[str(i)for i in range(15)]],self.counter.read_text().splitlines())
+ def test_authentic_foreground_footer_projection_loses_output_on_parent_exit_durable_owner_retains_it(self):
+  # Only the authentic footer/parser is executed. main is a bounded fixed-public
+  # local sentinel, so this never imports or runs the native SSH controller.
+  controller=HERE.parent/'controller.4674.before.source';raw=controller.read_bytes()
+  self.assertEqual('46748882bd73fd27b51ccb03e33da057749b7e805c4b20b8b3634310e3a77660',hashlib.sha256(raw).hexdigest())
+  footer=next(n for n in ast.parse(raw).body if isinstance(n,ast.If)and isinstance(n.test,ast.Compare)and isinstance(n.test.left,ast.Name)and n.test.left.id=='__name__')
+  def payload(counter,done):
+   fixed=('from pathlib import Path\nimport sys,time\nwith Path('+repr(str(counter))+').open("x")as f:\n f.write("execution\\n");f.flush()\n for n in range(8):\n  f.write(str(n)+"\\n");f.flush();print(n,flush=True);time.sleep(.03)\nsys.stderr.write("public footer stderr\\n")\n')
+   return ('import argparse,sys\nfrom pathlib import Path\nsys.argv=["fixed-public-footer","--mode","direct","--native-go"]\ndef main(args):\n try:exec('+repr(fixed)+')\n finally:Path('+repr(str(done))+').write_text("closed")\n'+ast.unparse(footer)+'\n').encode()
+  before_counter=self.parent/'before-counter';before_done=self.parent/'before-done';worker=self.parent/'foreground-fixed-worker.py';worker.write_bytes(payload(before_counter,before_done));worker.chmod(0o600)
+  client=self.parent/'foreground-fixed-client.py';client.write_text('import subprocess,sys,os\nsubprocess.Popen([sys.executable,"-I","-B",'+repr(str(worker))+'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,close_fds=True)\nos._exit(0)\n');client.chmod(0o600)
+  parent=subprocess.Popen([sys.executable,'-I','-B',str(client)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+  _,stderr=parent.communicate(timeout=5);self.assertEqual((0,b''),(parent.returncode,stderr))
+  end=time.monotonic()+5
+  while not before_done.exists()and time.monotonic()<end:time.sleep(.01)
+  self.assertTrue(before_done.exists());self.assertEqual(['execution',*[str(i)for i in range(8)]],before_counter.read_text().splitlines())
+  self.assertFalse(any((self.root/'jobs').iterdir()),'authentic foreground footer creates no retained owner/terminal/streams')
+  source=payload(self.counter,self.parent/'durable-done');program=self.api.Program('controlled-footer-local-test',source,4096)
+  with local.Namespace(self.root)as namespace:namespace.submit_once(self.op,program,campaign=self.campaign,source_guard=lambda:None)
+  self.terminal()
+  with local.Namespace(self.root)as namespace:status,leaf=namespace.collect(self.op,closing_guard=lambda:None)
+  self.assertEqual(b'0\n1\n2\n3\n4\n5\n6\n7\n',(leaf/'stdout.bin').read_bytes())
+  self.assertEqual(b'public footer stderr\n',(leaf/'stderr.bin').read_bytes());self.assertEqual(0,status['terminal']['exitCode'])
+ def test_lost_submission_ack_and_closing_source_failure_do_not_discard_retained_result(self):
+  program=self.program()
+  with local.Namespace(self.root)as namespace:
+   actual=namespace.owner.submit
+   def lost(*args,**kwargs):actual(*args,**kwargs);raise ConnectionError('controlled local ACK loss')
+   namespace.owner.submit=lost
+   value=namespace.submit_once(self.op,program,campaign=self.campaign,source_guard=lambda:None)
+   self.assertEqual('unknown',value['state'])
+  self.terminal()
+  with local.Namespace(self.root)as namespace:
+   def source_refused():raise ValueError('controlled closing source failure')
+   with self.assertRaisesRegex(ValueError,'controlled closing source failure'):namespace.collect(self.op,closing_guard=source_refused)
+  leaves=list((self.root/'collections').glob('counter-*'));self.assertEqual(1,len(leaves))
+  self.assertEqual(b'public local stderr\n',(leaves[0]/'stderr.bin').read_bytes());self.assertEqual(7,json.loads((leaves[0]/'terminal.json').read_bytes())['terminal']['exitCode'])
+  with local.Namespace(self.root)as namespace:status,collected=namespace.collect(self.op,closing_guard=lambda:None)
+  self.assertEqual((leaves[0]/'stdout.bin').read_bytes(),(collected/'stdout.bin').read_bytes());self.assertEqual('terminal',status['state'])
+  self.assertEqual(1,self.counter.read_text().splitlines().count('execution'))
+ def test_consumed_index_without_job_is_unknown_and_never_resubmits(self):
+  program=self.program()
+  with local.Namespace(self.root)as namespace:namespace.submit_once(self.op,program,campaign=self.campaign,source_guard=lambda:None)
+  terminal=self.terminal();owner=terminal['owner'];end=time.monotonic()+3
+  while self.api._birth(owner['pid'])==owner['birth']and time.monotonic()<end:time.sleep(.01)
+  self.assertNotEqual(owner['birth'],self.api._birth(owner['pid']))
+  shutil.rmtree(self.root/'jobs'/self.op)
+  with local.Namespace(self.root)as namespace:
+   namespace.owner.submit=lambda *a,**k:self.fail('replacement forbidden')
+   value=namespace.submit_once(self.op,program,campaign=self.campaign,source_guard=lambda:None)
+  self.assertEqual(('unknown','local_consumed_index_job_missing'),(value['state'],value['reason']))
+  self.assertEqual(1,self.counter.read_text().splitlines().count('execution'))
+ def test_preparation_source_refusal_never_creates_admission_or_job(self):
+  with local.Namespace(self.root)as namespace:
+   def refuse():raise ValueError('controlled source refusal')
+   with self.assertRaisesRegex(ValueError,'controlled source refusal'):namespace.submit_once(self.op,self.program(),campaign=self.campaign,source_guard=refuse)
+   self.assertEqual('unsubmitted',namespace.observe(self.op)['state'])
+  self.assertEqual([],list((self.root/'admissions').iterdir()));self.assertEqual([],list((self.root/'jobs').iterdir()))
+ def test_namespace_replacement_and_changed_index_block_without_any_submission(self):
+  program=self.program()
+  with local.Namespace(self.root)as namespace:namespace.submit_once(self.op,program,campaign=self.campaign,source_guard=lambda:None)
+  self.terminal()
+  admission=self.root/'admissions'/(self.op+'.json');value=json.loads(admission.read_bytes());value['operationId']=str(uuid.uuid4());admission.write_text(json.dumps(value));admission.chmod(0o600)
+  with local.Namespace(self.root)as namespace,self.assertRaisesRegex(local.LocalOwnerBlocked,'local_admission_changed'):namespace.observe(self.op)
+  jobs=self.root/'jobs';jobs.rename(self.root/'original-jobs');jobs.mkdir(mode=0o700)
+  with self.assertRaisesRegex(local.LocalOwnerBlocked,'local_namespace_changed'):local.Namespace(self.root)
+class AdmissionDeadlineBoundaryTests(unittest.TestCase):
+ def test_actual_predeadline_submit_callback_cost_red_current_consumed_index_no_child_green(self):
+  from types import SimpleNamespace
+  for name,old in(('local_owner.pre-deadline.before.source',True),('local_owner.py',False)):
+   tree=ast.parse((HERE/name).read_bytes());cls=next(n for n in tree.body if isinstance(n,ast.ClassDef)and n.name=='Namespace');node=next(n for n in cls.body if isinstance(n,ast.FunctionDef)and n.name=='submit_once')
+   with tempfile.TemporaryDirectory()as temporary:
+    root=Path(temporary).resolve();(root/'jobs').mkdir(mode=0o700);(root/'admissions').mkdir(mode=0o700);fd=os.open(root/'admissions',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    now,calls,guards=[100],[],[]
+    def guard():
+     guards.append(1)
+     if len(guards)==2:now[0]=701
+    fake=SimpleNamespace(root=root,record={'binding':{'target':'fixed'}},fds={'admissions':fd},job_generation=(1,2),_index=lambda op:None,guard=lambda:None,
+      _unknown=lambda op,reason:{'state':'unknown','reason':reason},owner=SimpleNamespace(submit=lambda *a,**k:calls.append('child')or{'state':'running'}))
+    scope=dict(vars(local));scope['time']=SimpleNamespace(monotonic=lambda:now[0]);exec(compile(ast.fix_missing_locations(ast.Module(body=[node],type_ignores=[])),'<whole-local-submit-deadline>','exec'),scope)
+    try:result=scope['submit_once'](fake,str(uuid.uuid4()),SimpleNamespace(digest='a'*64,purpose='fixed-public-test',stream_limit=100),campaign={'mode':'fixture'},source_guard=guard)
+    finally:os.close(fd)
+    self.assertEqual(['child']if old else[],calls);self.assertEqual('running'if old else'unknown',result['state'])
+    records=list((root/'admissions').iterdir());self.assertEqual(1,len(records))
+    if not old:self.assertEqual(700,json.loads(records[0].read_bytes())['absoluteDeadline'])
+ def test_admission_budget_types_and_spent_deadline_never_submit(self):
+  import math
+  for value in(True,False,0,-1,float('nan'),float('inf'),7201):
+   with self.subTest(value=value),self.assertRaises(local.LocalOwnerBlocked):
+    local.Namespace.submit_once(None,str(uuid.uuid4()),None,campaign={},source_guard=lambda:None,budget_seconds=value)
+
+if __name__=='__main__':unittest.main()

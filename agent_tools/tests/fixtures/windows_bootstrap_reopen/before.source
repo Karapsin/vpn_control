@@ -1,0 +1,225 @@
+"""Unexposed managed bootstrap closure after selected private seed ejection.
+
+The live ROOT observer is required before any closure command is generated.
+Only a source-owned collector can mint a historical closure; DTOs and manager
+ACKs never grant ordinary signin or resolve the original creator bootstrap.
+"""
+from contextlib import contextmanager
+import hashlib
+import inspect
+import json
+from pathlib import Path
+import subprocess
+import time
+import weakref
+from uuid import UUID,uuid4,uuid5
+
+from . import readiness_windows_seed_detach as seed
+from . import readiness_windows_host_jobs as host
+from . import durable_remote_job as jobs
+from . import ssh_transport as transport
+from . import windows_vm_deploy as deploy
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+_PROOFS=weakref.WeakKeyDictionary()
+_ADMISSIONS=weakref.WeakKeyDictionary()
+QUALIFIED_RECOVERIES=frozenset()
+
+
+def _need(value):
+    if not value:raise ValueError('windows_bootstrap_closure_unresolved')
+
+
+class ClosureAdmission:
+    __slots__=('__weakref__',)
+    def __new__(cls,*args,**kwargs):raise TypeError('windows_bootstrap_admission_opaque')
+    def __reduce__(self):raise TypeError('windows_bootstrap_admission_opaque')
+    def as_dict(self):return _load_admission(self)[0]
+
+
+def _load_admission(value):
+    _need(type(value)is ClosureAdmission and value in _ADMISSIONS)
+    directory,expected,manifest,pin=_ADMISSIONS[value]
+    _need(host._file_pin(directory/'admission-custody.json')==pin
+        and host._custody(directory,'admission-custody.json',('admission.json',))==manifest)
+    actual=jobs._record(directory/'admission.json');_need(actual==expected)
+    return json.loads(json.dumps(actual)),directory
+
+
+def admission(root,original):
+    """Atomically publish private original metadata before command generation."""
+    import os,tempfile
+    body,_,_=seed._body(original);packet=seed.original_ejection(original);record,_,_=host._load(packet)
+    parent=host._local_parent(root,'windows-bootstrap:'+body['binding']['spec']['host'],body['binding']['spec']['deploymentId'])
+    directory=parent/body['operationId']
+    expected={'schemaVersion':1,'kind':'windows-bootstrap-closure-admission-v1','original':body,'hostPacket':record}
+    if not directory.exists()and not directory.is_symlink():
+        with tempfile.TemporaryDirectory(prefix='.pending-bootstrap-',dir=parent)as temporary:
+            stage=Path(temporary);stage.chmod(0o700)
+            jobs._publish(stage/'admission.json',{**expected,'admissionId':str(uuid4())})
+            host._create_custody(stage,'admission-custody.json',('admission.json',))
+            try:os.rename(stage,directory);jobs._sync_directory(parent)
+            except OSError:
+                _need(directory.exists()and not directory.is_symlink())
+    jobs._private(directory,directory=True)
+    actual=jobs._record(directory/'admission.json')
+    _need(type(actual)is dict and set(actual)==set(expected)|{'admissionId'}and seed._uuid(actual['admissionId'])
+        and {k:actual[k]for k in expected}==expected)
+    manifest=host._custody(directory,'admission-custody.json',('admission.json',));pin=host._file_pin(directory/'admission-custody.json')
+    result=object.__new__(ClosureAdmission);_ADMISSIONS[result]=(directory,actual,manifest,pin);_load_admission(result);return result
+
+
+def _bound_admission(original,value):
+    body,_,_=seed._body(original);record,_=_load_admission(value);packet,_,_=host._load(seed.original_ejection(original))
+    _need(record['original']==body and record['hostPacket']==packet);return record
+
+
+def program(original,witness,admitted):
+    """Fixed metadata publication and fresh SYSTEM observation, no login."""
+    body,_,_=seed._body(original);local=_bound_admission(original,admitted)
+    _need(type(witness)is seed.ReaderWitness)
+    result=witness.require_clear(original);request=witness.request
+    _need(witness._state()['consumedBy']==body['operationId'])
+    source=seed.request_program(original).decode()
+    marker='        seed_guard();print(json.dumps(request));return\n';_need(source.count(marker)==1)
+    nonce=str(uuid5(UUID(body['operationId']),str(result['observedNs'])))
+    branch='''        require(request==CLOSE_REQUEST,'windows_bootstrap_target_changed')
+        if os.path.lexists(root/'managed-bootstrap-closed.json'):
+            require(read('managed-bootstrap-closed.json').get('admissionId')==CLOSE_ADMISSION_ID,'windows_bootstrap_foreign_closure')
+        _reader_clock_guard(CLOSE_REQUEST,CLOSE_READERS)
+        # An uncertain earlier read is reconciled before a fresh read. These
+        # public SYSTEM probes cannot replace a missing ACK with guest-exec.
+        prefix='readiness-'+OPERATION+'-seed-final-'
+        for path in sorted(root.glob(prefix+'*.intent.json')):
+            old=read(path.name);label=old['label'];suffix=label[len('seed-final-'):]
+            require(len(suffix)==32 and all(c in '0123456789abcdef'for c in suffix),'windows_bootstrap_original_probe_unknown')
+            # Exact old public source is reconstructed from the nonce in its
+            # original label; no current source is substituted for it.
+            old_source=SEED_FINAL_TEMPLATE.replace(SEED_FINAL_NONCE,suffix[:8]+'-'+suffix[8:12]+'-'+suffix[12:16]+'-'+suffix[16:20]+'-'+suffix[20:])
+            require(old['operationId']==OPERATION and old['sourceSha256']==hashlib.sha256(old_source.encode()).hexdigest(),'windows_bootstrap_original_probe_unknown')
+            script(label,None,{'operationId':OPERATION,'sourceSha256':old['sourceSha256']})
+        fresh=script('seed-final-'+SEED_FINAL_NONCE.replace('-',''),SEED_FINAL_TEMPLATE)
+        validate_system(fresh,SPEC['deploymentId'],SEED_FINAL_NONCE)
+        require(fresh['boot']==CLOSE_REQUEST['detachment']['boot']and fresh['account']==CLOSE_REQUEST['detachment']['account'],'windows_bootstrap_guest_identity_changed')
+        seed_guard();_reader_clock_guard(CLOSE_REQUEST,CLOSE_READERS)
+        receipt={'schemaVersion':1,'kind':'windows-managed-bootstrap-closed-v1','admissionId':CLOSE_ADMISSION_ID,'machine':SPEC['deploymentId'],'hostBoot':CONTEXT['hostBootId'],
+            'creatorOperationId':SEED_ORIGINAL['creatorOperationId'],'seedOperationId':OPERATION,'boot':fresh['boot'],'account':fresh['account'],
+            'seedGeneration':request['seedGeneration'],'rootRequest':CLOSE_REQUEST,'rootReaders':CLOSE_READERS,'system':fresh,
+            'ordinarySigninAllowed':True,'replayAllowed':False}
+        name='managed-bootstrap-closed.json'
+        if not os.path.lexists(root/name):save(name,receipt)
+        else:
+            previous=read(name)
+            # Preserve the original published evidence. Current independent
+            # ROOT/SYSTEM facts still have to close the same original target.
+            for key in ('schemaVersion','kind','admissionId','machine','hostBoot','creatorOperationId','seedOperationId','boot','account','seedGeneration','ordinarySigninAllowed','replayAllowed'):
+                require(previous[key]==receipt[key],'windows_bootstrap_original_closure_changed')
+        seed_guard();_reader_clock_guard(CLOSE_REQUEST,CLOSE_READERS)
+        row=private(root/name)
+        print(json.dumps({'kind':'windows-managed-bootstrap-closure-observed-v1','closure':read(name),'closureGeneration':list(generation(row)),
+            'currentSystem':fresh,'currentReaders':CLOSE_READERS,'currentRequest':CLOSE_REQUEST}));return
+'''
+    source=source.replace(marker,branch)
+    call='\n_main()\n';_need(source.endswith(call))
+    prefix=inspect.getsource(seed._reader_clock_guard)+'\n'
+    constants={'CLOSE_ADMISSION_ID':local['admissionId'],'CLOSE_REQUEST':request,'CLOSE_READERS':result,'SEED_FINAL_NONCE':nonce,
+        'SEED_FINAL_TEMPLATE':seed.system_source(body['binding']['setup'],body['binding']['spec']['deploymentId'],nonce)}
+    source=source[:-len(call)]+'\n'+prefix+'\n'.join(k+'='+repr(v)for k,v in constants.items())+call
+    compile(source,'fixed original managed bootstrap closure','exec');return source.encode()
+
+
+def validate_reply(original,witness,reply,admitted):
+    body,_,_=seed._body(original);local=_bound_admission(original,admitted);_need(type(witness)is seed.ReaderWitness)
+    current=witness.require_clear(original)
+    _need(type(reply)is dict and set(reply)=={'kind','closure','closureGeneration','currentSystem','currentReaders','currentRequest'}
+        and reply['kind']=='windows-managed-bootstrap-closure-observed-v1'and reply['currentReaders']==current
+        and reply['currentRequest']==witness.request and seed._pin(reply['closureGeneration'],9)
+        and reply['closureGeneration'][2]==0o100600 and reply['closureGeneration'][3]==witness.request['uid']and reply['closureGeneration'][5]==1)
+    nonce=str(uuid5(UUID(body['operationId']),str(current['observedNs'])))
+    fresh=seed.validate_system(reply['currentSystem'],body['binding']['spec']['deploymentId'],nonce)
+    c=reply['closure'];_need(type(c)is dict and set(c)=={'schemaVersion','kind','admissionId','machine','hostBoot','creatorOperationId','seedOperationId','boot','account',
+        'seedGeneration','rootRequest','rootReaders','system','ordinarySigninAllowed','replayAllowed'}and type(c['schemaVersion'])is int and c['schemaVersion']==1
+        and c['kind']=='windows-managed-bootstrap-closed-v1'and c['admissionId']==local['admissionId']and c['machine']==body['binding']['spec']['deploymentId']and c['hostBoot']==body['binding']['context']['hostBootId']
+        and c['creatorOperationId']==body['creatorOperationId']and c['seedOperationId']==body['operationId']and c['boot']==fresh['boot']and c['account']==fresh['account']
+        and c['seedGeneration']==witness.request['seedGeneration']and c['ordinarySigninAllowed']is True and c['replayAllowed']is False)
+    seed.validate_read_request(c['rootRequest']);seed.validate_reader_result(c['rootReaders'])
+    _need(c['rootRequest']==witness.request and not c['rootReaders']['holders'])
+    seed.validate_system(c['system'],c['machine'],c['system']['nonce'])
+    _need(c['system']['boot']==fresh['boot']and c['system']['account']==fresh['account'])
+    return json.loads(json.dumps(reply))
+
+
+class BootstrapClosure:
+    """Historical original proof, not current desktop/session readiness."""
+    __slots__=('__weakref__',)
+    def __new__(cls,*args,**kwargs):raise TypeError('windows_bootstrap_collector_required')
+    def __init_subclass__(cls,**kwargs):raise TypeError('windows_bootstrap_collector_required')
+    def __reduce__(self):raise TypeError('windows_bootstrap_collector_required')
+    def as_dict(self):
+        _need(type(self)is BootstrapClosure and self in _PROOFS)
+        original,admitted,directory,expected,manifest,pin=_PROOFS[self]
+        _bound_admission(original,admitted)
+        _need(host._file_pin(directory/'proof-custody.json')==pin and host._custody(directory,'proof-custody.json',('closure.json','closure-program.source'))==manifest)
+        record=jobs._record(directory/'closure.json');_need(record==expected);return json.loads(json.dumps(record))
+
+
+def collect(root,original,witness,*,guard,deadline=None):
+    """Internal normal admitted collector; never accepts a success assertion."""
+    _need(type(witness)is seed.ReaderWitness);body,_,_=seed._body(original);witness.require_clear(original)
+    deadline=time.monotonic()+180 if deadline is None else deadline;_need(type(deadline)in (int,float)and deadline>time.monotonic())
+    if witness._state()['consumedBy']is None:witness.consume(original,body['operationId'])
+    _need(witness._state()['consumedBy']==body['operationId'])
+    target=body['binding']['spec']['host']
+    local=admission(root,original)
+    with transport.admitted_transport(root,target,body['operationId'],deadline=deadline)as admitted:
+        with deploy.direct.Guard(root,host=target)as authority:
+            guard();witness.require_clear(original);witness.guard_dispatch(original,admitted)
+            source=program(original,witness,local)
+            command=('python3','-I','-B','-c','exec('+repr(source.decode())+')')
+            argv=transport.build_ssh_argv(authority.config,target,60,command=command)
+            admitted.revalidate();authority.guard();guard();witness.require_clear(original)
+            result=transport.run_ssh(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=max(.001,min(60,deadline-time.monotonic())),cwd=root)
+            _need(result.returncode==0 and not result.stderr and type(result.stdout)is bytes and 0<len(result.stdout)<=1024**2)
+            reply=validate_reply(original,witness,json.loads(result.stdout,object_pairs_hook=transport._reject_duplicate_keys),local)
+            admitted.revalidate();authority.guard();guard();witness.require_clear(original)
+            record,directory=_load_admission(local);proof_directory=directory/'proof'
+            import os,tempfile
+            if not proof_directory.exists()and not proof_directory.is_symlink():
+                with tempfile.TemporaryDirectory(prefix='.pending-proof-',dir=directory)as temporary:
+                    stage=Path(temporary);stage.chmod(0o700);jobs._publish(stage/'closure.json',reply)
+                    jobs._create(stage/'closure-program.source',source)
+                    host._create_custody(stage,'proof-custody.json',('closure.json','closure-program.source'))
+                    try:os.rename(stage,proof_directory);jobs._sync_directory(directory)
+                    except OSError:_need(proof_directory.exists()and not proof_directory.is_symlink())
+            stored=jobs._record(proof_directory/'closure.json')
+            _need(stored['closure']==reply['closure']and stored['closureGeneration']==reply['closureGeneration'])
+            manifest=host._custody(proof_directory,'proof-custody.json',('closure.json','closure-program.source'))
+            pin=host._file_pin(proof_directory/'proof-custody.json')
+            proof=object.__new__(BootstrapClosure);_PROOFS[proof]=(original,local,proof_directory,stored,manifest,pin)
+            proof.as_dict();return proof
+
+
+def reopen(root,original):
+    """Pure local historical proof discovery after client/server replacement."""
+    body,_,_=seed._body(original)
+    try:parent=host._local_parent(root,'windows-bootstrap:'+body['binding']['spec']['host'],body['binding']['spec']['deploymentId'],create=False)
+    except FileNotFoundError:return None
+    directory=parent/body['operationId']
+    if not directory.exists()and not directory.is_symlink():return None
+    # The existing path prevents admission() from creating any metadata.
+    admitted=admission(root,original);_,directory=_load_admission(admitted);proof_directory=directory/'proof'
+    if not proof_directory.exists()and not proof_directory.is_symlink():return None
+    manifest=host._custody(proof_directory,'proof-custody.json',('closure.json','closure-program.source'))
+    pin=host._file_pin(proof_directory/'proof-custody.json');reply=jobs._record(proof_directory/'closure.json')
+    source=jobs._read(proof_directory/'closure-program.source',jobs.MAX_PROGRAM_BYTES)
+    captured=seed._literals(source,{'CLOSE_ADMISSION_ID','CLOSE_REQUEST','CLOSE_READERS','SEED_ORIGINAL','SEED_DETACH_SOURCE','SEED_DETACH_OWNER'})
+    packet,actual,owner=host._load(seed.original_ejection(original))
+    _need(captured['CLOSE_ADMISSION_ID']==admitted.as_dict()['admissionId']and captured['SEED_ORIGINAL']==body
+        and captured['SEED_DETACH_SOURCE']==actual and captured['SEED_DETACH_OWNER']==owner
+        and captured['CLOSE_REQUEST']==reply['currentRequest']and captured['CLOSE_READERS']==reply['currentReaders']
+        and reply['closure']['admissionId']==captured['CLOSE_ADMISSION_ID']and reply['closure']['machine']==body['binding']['spec']['deploymentId']
+        and reply['closure']['creatorOperationId']==body['creatorOperationId']and reply['closure']['seedOperationId']==body['operationId']
+        and reply['closure']['ordinarySigninAllowed']is True and reply['closure']['replayAllowed']is False)
+    seed.validate_read_request(reply['currentRequest']);seed.validate_reader_result(reply['currentReaders'])
+    _need(not reply['currentReaders']['holders'])
+    proof=object.__new__(BootstrapClosure);_PROOFS[proof]=(original,admitted,proof_directory,reply,manifest,pin);proof.as_dict();return proof

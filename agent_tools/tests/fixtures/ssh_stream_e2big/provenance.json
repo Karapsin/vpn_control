@@ -1,0 +1,20 @@
+{
+  "beforeimages": {
+    "android_admission_readback.py": "301c4d6427f49df6d430b8c628d79dbed21dbf1d86499d0258943e269b6a07d3",
+    "android_installer_direct_transport.py": "9ab419556adbde1f8da1478d705dde7fc1252ff1248e31f4af8fecb8df7ddc17",
+    "windows_cp117_base_source_refresh.py": "8708e75d47885830702fe5553661f5dd3a1f4f758000f1e8f9368d75aa79bcfa",
+    "windows_cp117_bound_absence_completion.py": "48234c12de9d48e61919fa981daacd03bf681ce56348bae2f381e9ab84b15ee0",
+    "windows_cp117_fixture_recovery.py": "4b9133adb7a4b1794dbe2f3348ad9ea4198cfb8d6a2b85e20efba3e8f84e6ac9",
+    "windows_cp117_fixture_recovery_short_socket.py": "55b562ef9d3c1ac4315b64d8838d500c6975073cf27ee29bdbb0faa779ec00bc",
+    "windows_cp117_recovered_guest_observe.py": "254d7495f1a4c02e68b34c6168c6dad93a693445b9569849f61fdf4ca2379b58",
+    "windows_cp117_recovered_gui_login.py": "7d4a73a2ee267a1a4ac6d9468b63f244af5a158104060bdd3c1a2a4b3d7160f8",
+    "windows_cp117_recovered_login.py": "8cf4087a82f542f9c30ce8453cd3802b7daf0ef63ee06320edeeb97bb005b779",
+    "windows_cp117_windowless_gui_login.py": "afaa1184bc10f9358d57238e2d6d736de2435c0f7b2553a7aaf7343efe9ae7a8",
+    "windows_cp117_windowless_provider_login.py": "3447001b51cb4df248e4566135bba568c5e3e090a9a9744d4ba3eafc4e9a8c12",
+    "windows_parallel_vm_prepare_transport.py": "24ac75dcbf43083f8979f7d63de28166d392d2f21b0bc1a917fc3f1639842c9f",
+    "windows_parallel_vm_source_inventory.py": "47441adfc9ae3cc23e1c599971b02d3c9318292adad507ee87f8fd653f59ffbb",
+    "windows_vm_optical_post_collect.py": "f7f76b6a393cf4c7e98b6c123d8981f1e38dd7253a1cd657adcbef0b1c718288",
+    "test_windows_parallel_vm_prepare_transport.py": "c1e03cbb61db92f5f7f909aafeacaf7c0241f689651358696f27c9528af4eb53"
+  },
+  "failure": "Raw SSH stream callers ignore retained inline fallback and carried readiness. Complete source beforeimages retain their original pipe ownership and protocol parsers for causal real-kernel E2BIG and prelaunch identity tests."
+}

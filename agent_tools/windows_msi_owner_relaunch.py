@@ -431,25 +431,33 @@ def _result(value: Mapping[str, Any], state: str) -> dict[str, Any]:
             "replayAllowed": False, "nativeActionAllowed": False}
 
 
+def _validate_target(root, inputs):
+    try:
+        return stale_lock._validate_target(root, inputs)
+    except stale_lock.WindowsMsiStaleLockRecoveryError as error:
+        raise WindowsMsiOwnerRelaunchError(str(error)) from None
+
+
 def launch(root: Path | str, inputs: Mapping[str, Any]) -> dict[str, Any]:
     """Launch exactly once after fresh absence evidence; unknown effects stay armed."""
-    if not isinstance(inputs, Mapping) or dict(inputs) != {"host": "archlinux"}:
-        raise WindowsMsiOwnerRelaunchError("Exact CP117 host is required.")
+    selected = _validate_target(root, inputs)
     try:
         root = Path(root).resolve(strict=True); admitted = _admit(root)
+        if admitted is None or admitted[1] != selected: return dict(_UNKNOWN)
         terminal = {"state": "terminal-proven", "replayAllowed": False, "nativeActionAllowed": False}
         if (admitted is None or stale_reconcile.status(root, {"host": "archlinux"}) != terminal
                 or liveness.observe(root, {"host": "archlinux"}).get("state") != "absent"):
             return dict(_UNKNOWN)
         current = _read_intent(root)
         if current is not None:
-            return dict(_UNKNOWN) if current["state"] == "intent" else status(root, inputs)
+            return dict(_UNKNOWN) if current["state"] == "intent" else status(root, {'host': inputs['host']})
         config, descriptor, cli_hash, stale_evidence = admitted
         _env, socket, pid, ticks, _sid = descriptor
         record = {"version": 1, "correlationId": _CORRELATION, "sourceSha": _SOURCE,
                   "guestGeneration": {"socketPath": socket, "qemuPid": pid, "startTicks": ticks},
                   "staleRecoveryEvidenceSha256": stale_evidence, "state": "intent"}
         _write_intent(root, record)
+        if _validate_target(root, inputs) != selected: return dict(_UNKNOWN)
         result = _run(config, descriptor, cli_hash, "launch")
         if result.get("state") != "launched":
             return dict(_UNKNOWN)

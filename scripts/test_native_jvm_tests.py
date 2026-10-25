@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from native_jvm_tests import run_native_jvm_tests
 
@@ -12,6 +13,12 @@ def java_tool(name):
     home = os.environ.get("JAVA_HOME")
     if home:
         return str(Path(home) / "bin" / (name + (".exe" if os.name == "nt" else "")))
+    if name == "javac":
+        selected = java_tool("java")
+        if selected:
+            sibling = Path(selected).resolve().with_name("javac.exe" if os.name == "nt" else "javac")
+            if sibling.is_file() and sibling.resolve().parent == Path(selected).resolve().parent and os.access(sibling, os.X_OK):
+                return str(sibling)
     return shutil.which(name)
 
 
@@ -107,6 +114,31 @@ class NativeJvmPreflightTest(unittest.TestCase):
         result = self.probe(str(other), self.directory)
         self.assertNotEqual(0, result.returncode)
         self.assertIn("differs from the selected interpreter", result.stderr)
+
+
+class NativeJvmCompilerSelectionTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix' and java_tool('java') and Path(java_tool('java')).resolve().with_name('javac').is_file(),
+                         'actual selected JDK compiler and POSIX shim boundary required')
+    def test_whole_before_mixed_path_stub_red_selected_jdk_compiler_native_green(self):
+        import hashlib,json,types
+        folder=Path(__file__).parent/'tests/fixtures/readiness_test_seams'
+        records=json.loads((folder/'provenance.json').read_bytes())['sourceSha256']
+        for name,digest in records.items():
+            self.assertEqual(digest,hashlib.sha256((folder/name).read_bytes()).hexdigest())
+        selected=Path(java_tool('java')).resolve()
+        with tempfile.TemporaryDirectory()as temporary:
+            root=Path(temporary);(root/'java').symlink_to(selected)
+            stub=root/'javac';stub.write_text('#!/bin/sh\nprintf "%s\\n" "Unable to locate a Java Runtime" >&2\nexit 1\n');stub.chmod(0o700)
+            with mock.patch.dict(os.environ,{'JAVA_HOME':'','VPN_CONTROL_NATIVE_JVM_PROBE_CLASSES':'','PATH':str(root)+os.pathsep+os.environ.get('PATH','')}):
+                source=folder/'test_native_jvm_tests.py.before.source'
+                old=types.ModuleType('retained_mixed_jvm_tools');old.__file__=__file__
+                exec(compile(source.read_bytes(),str(source),'exec'),vars(old))
+                self.assertEqual(str(stub),old.java_tool('javac'))
+                result=unittest.TestResult();unittest.defaultTestLoader.loadTestsFromTestCase(old.NativeJvmPreflightTest).run(result)
+                self.assertEqual(1,len(result.errors));self.assertIn('Unable to locate a Java Runtime',result.errors[0][1])
+                self.assertEqual(str(selected.with_name('javac')),java_tool('javac'))
+                result=unittest.TestResult();unittest.defaultTestLoader.loadTestsFromTestCase(NativeJvmPreflightTest).run(result)
+                self.assertEqual(3,result.testsRun);self.assertTrue(result.wasSuccessful(),str(result.errors)+str(result.failures));self.assertFalse(result.skipped)
 
 
 if __name__ == "__main__":

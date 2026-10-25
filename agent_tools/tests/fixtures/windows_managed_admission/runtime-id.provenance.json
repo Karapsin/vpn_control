@@ -1,0 +1,7 @@
+{
+  "beforeSha256": "4f5092447409193198b3ea7a842f6e52fb203a805ba11b20ab72fe1ed1c92b58",
+  "discovery": "historical live domain root id is a manager runtime identity and changes across same persisted domain start; compare only after exact selected current domain ID validation",
+  "nativeFailureClaimed": false,
+  "schemaVersion": 1,
+  "scope": "only live domain root id; every other XML attribute/device and inactive canonical hash remain exact"
+}

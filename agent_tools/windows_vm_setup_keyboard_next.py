@@ -205,7 +205,7 @@ def _remote_json(root: str | Path, action: str, next_correlation_id: str,
     program = _program(action, next_correlation_id, expected_owner)
     argv = boot.ssh_transport.build_ssh_argv(config, boot.HOST, min(timeout_seconds, 30),
                                               command=("python3", "-c", "exec(" + repr(program) + ")"))
-    result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    result = boot.ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                             timeout=timeout_seconds, check=False)
     if result.returncode != 0 or len(result.stdout) > 4096:
         raise ValueError("Windows Setup Next transport is unknown")

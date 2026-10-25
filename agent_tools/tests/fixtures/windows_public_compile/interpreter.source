@@ -1,0 +1,43 @@
+# Fixed PUBLIC interpreter-only controls, current token SID, no guest/compile/input.
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$root=Join-Path ([IO.Path]::GetTempPath()) ('vpn-control-public-stream-causal-'+[guid]::NewGuid().ToString('N'))
+$directoryAcl=[Security.AccessControl.DirectorySecurity]::new();$directoryAcl.SetSecurityDescriptorSddlForm('D:P(A;OICI;FA;;;'+$sid+')')
+[IO.Directory]::CreateDirectory($root,$directoryAcl)|Out-Null
+function NewPrivateCompileFile([string]$path,[IO.FileShare]$share){
+ $a=[Security.AccessControl.FileSecurity]::new();$a.SetSecurityDescriptorSddlForm('D:P(A;;FA;;;'+$sid+')')
+ [Security.AccessControl.FileSystemRights]$rights=[Security.AccessControl.FileSystemRights]::Write -bor [Security.AccessControl.FileSystemRights]::ReadPermissions -bor [Security.AccessControl.FileSystemRights]::ChangePermissions -bor [Security.AccessControl.FileSystemRights]::Synchronize
+ return [IO.FileStream]::new($path,[IO.FileMode]::CreateNew,$rights,$share,4096,[IO.FileOptions]::None,$a)
+}
+function OldRetention([AllowEmptyCollection()][byte[]]$out,[AllowEmptyCollection()][byte[]]$err,[string]$job){
+__OLD_ROLE_LOOP__
+}
+function NewRetention([AllowEmptyCollection()][byte[]]$out,[AllowEmptyCollection()][byte[]]$err,[string]$job){
+__NEW_ROLE_LOOP__
+}
+$empty=[byte[]]::new(0);$public=[Text.Encoding]::UTF8.GetBytes('fixed-public-bytes')
+$cases=@(@{name='stdout-empty';out=$empty;err=$public},@{name='stderr-empty';out=$public;err=$empty},@{name='both-empty';out=$empty;err=$empty},@{name='both-nonempty';out=$public;err=$public})
+$results=@()
+foreach($case in $cases){
+ $oldPath=Join-Path $root ($case.name+'-old');$newPath=Join-Path $root ($case.name+'-new');[IO.Directory]::CreateDirectory($oldPath,$directoryAcl)|Out-Null;[IO.Directory]::CreateDirectory($newPath,$directoryAcl)|Out-Null
+ $old=[ordered]@{completed=$false;errorClass=$null}
+ try{OldRetention -out $case.out -err $case.err -job $oldPath;$old.completed=$true}catch{$old.errorClass=$_.Exception.GetBaseException().GetType().FullName}
+ $new=[ordered]@{completed=$false;errorClass=$null;readback=$false}
+ try{
+  NewRetention -out $case.out -err $case.err -job $newPath;$new.completed=$true
+  $actualOut=[IO.File]::ReadAllBytes((Join-Path $newPath 'stdout.bin'));$actualErr=[IO.File]::ReadAllBytes((Join-Path $newPath 'stderr.bin'))
+  $new.readback=([Convert]::ToBase64String($actualOut) -ceq [Convert]::ToBase64String($case.out) -and [Convert]::ToBase64String($actualErr) -ceq [Convert]::ToBase64String($case.err))
+ }catch{$new.errorClass=$_.Exception.GetBaseException().GetType().FullName}
+ $expectedOldFailure=$case.out.Length -eq 0 -or $case.err.Length -eq 0
+ $results+=,[ordered]@{name=$case.name;old=$old;new=$new;oldRed=($(if($expectedOldFailure){-not $old.completed -and $old.errorClass -ceq 'System.ArgumentNullException'}else{$old.completed}));newGreen=($new.completed -and $new.readback -and $null -eq $new.errorClass)}
+}
+# Actual .NET Task runtime type is observed, not assumed from a source string.
+$memory=[IO.MemoryStream]::new();$writer=[IO.StreamWriter]::new($memory,[Text.UTF8Encoding]::new($false),1024,$true)
+try{
+ $write=$writer.WriteAsync('fixed-public-task-one');$oldTask=@(&{__OLD_AWAITER__})
+ $write=$writer.WriteAsync('fixed-public-task-two');$newTask=@(&{__NEW_AWAITER__})
+ $task=[ordered]@{oldCount=$oldTask.Count;oldType=$(if($oldTask.Count -eq 1){$oldTask[0].GetType().FullName}else{$null});newCount=$newTask.Count;qualified=($oldTask.Count -eq 1 -and $oldTask[0].GetType().FullName -ceq 'System.Threading.Tasks.VoidTaskResult' -and $newTask.Count -eq 0)}
+}finally{$writer.Dispose();$memory.Dispose()}
+$qualified=$task.qualified -and @($results|Where-Object {-not $_.oldRed -or -not $_.newGreen}).Count -eq 0
+[Console]::WriteLine((([ordered]@{schemaVersion=1;currentSid=$sid;root=$root;cases=$results;awaiter=$task;causalQualified=$qualified;inputAuthority=$false;nativeCompilerQualified=$false;replayAllowed=$false})|ConvertTo-Json -Depth 12 -Compress))

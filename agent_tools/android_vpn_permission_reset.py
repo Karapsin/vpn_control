@@ -35,8 +35,6 @@ except ImportError:  # pragma: no cover
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\Z")
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _PACKAGE = "com.kardinal.vpncontrol"
-_HOST = "archlinux"
-_DEVICE = "api29"
 _API = 29
 _USER = "0"
 _OP = "ACTIVATE_VPN"
@@ -90,9 +88,9 @@ def _load(root: Path | str, correlation: str) -> dict[str, Any] | None:
         return None
 
 
-def _endpoint_lease_active(root: Path | str) -> bool:
+def _endpoint_lease_active(root: Path | str, *, host: str, device: str) -> bool:
     """Fail closed while endpoint admission holds the same device lease."""
-    path = Path(root).resolve() / ".rag_index/android-native-device-leases/lease-archlinux-api29.json"
+    path = Path(root).resolve() / ".rag_index/android-native-device-leases" / ("lease-" + host + "-" + device + ".json")
     try:
         info = path.lstat()
     except FileNotFoundError:
@@ -105,17 +103,17 @@ def _endpoint_lease_active(root: Path | str) -> bool:
     return True
 
 
-def _claim_reset_lease(root: Path | str, correlation: str) -> None:
+def _claim_reset_lease(root: Path | str, correlation: str, *, host: str, device: str) -> None:
     """Atomically claim the shared device lease after all read-only admission."""
     root_path = Path(root).resolve()
-    with android_endpoint_admission._shared_device_lease(root_path, _HOST, _DEVICE) as lease:
+    with android_endpoint_admission._shared_device_lease(root_path, host, device) as lease:
         try:
             lease.lstat()
         except FileNotFoundError:
             fd = os.open(lease, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
             with os.fdopen(fd, "wb") as out:
                 out.write(json.dumps({"owner": "android-vpn-permission-reset", "correlationId": correlation,
-                                      "device": _DEVICE, "host": _HOST}, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+                                      "device": device, "host": host}, sort_keys=True, separators=(",", ":")).encode() + b"\n")
                 out.flush(); os.fsync(out.fileno())
             directory = os.open(lease.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
             try: os.fsync(directory)
@@ -310,8 +308,11 @@ print(json.dumps({"ready":ready},separators=(",",":")))'''
 
 def start(root: Path | str, correlation_id: str, artifact_id: str, cli_stage_correlation_id: str,
           opening_readback_correlation_id: str, expected_backup_sha256: str,
-          expected_owner: str, expected_revision: int) -> dict[str, Any]:
-    """Submit the one-shot reset.  Every input is an existing bounded receipt ID."""
+          expected_owner: str, expected_revision: int, *, host: str | None = None,
+          device: str | None = None) -> dict[str, Any]:
+    """Submit only to the explicitly selected configured API29 device."""
+    if any(type(value) is not str or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", value) is None for value in (host, device)):
+        raise ValueError("Android permission-reset requires explicit host and device")
     if (not all(isinstance(v, str) and _UUID.fullmatch(v) for v in (correlation_id, cli_stage_correlation_id,
             opening_readback_correlation_id, expected_owner)) or not isinstance(artifact_id, str)
             or not isinstance(expected_backup_sha256, str) or not _SHA.fullmatch(expected_backup_sha256)
@@ -320,13 +321,13 @@ def start(root: Path | str, correlation_id: str, artifact_id: str, cli_stage_cor
     root_path = Path(root)
     if _load(root_path, correlation_id) is not None:
         return {"ok": False, "state": "unknown", "reason": "existing_intent_no_replay", "correlationId": correlation_id, "replayAllowed": False}
-    if _endpoint_lease_active(root_path):
+    if _endpoint_lease_active(root_path, host=host, device=device):
         return {"ok": False, "state": "blocked", "reason": "endpoint_lease_active", "correlationId": correlation_id, "replayAllowed": False}
     config = ssh_transport.load_config(root_path)
-    if (_HOST not in config.hosts or _DEVICE not in config.hosts[_HOST].android_devices or
-            config.hosts[_HOST].fixture_transfer_root is None or ssh_transport.connection_host(config, _HOST).password is not None):
+    if (host not in config.hosts or device not in config.hosts[host].android_devices or
+            config.hosts[host].fixture_transfer_root is None or ssh_transport.connection_host(config, host).password is not None):
         raise ValueError("Android permission-reset route is unavailable")
-    profile = android_observation._profile(config.hosts[_HOST].android_devices[_DEVICE])
+    profile = android_observation._profile(config.hosts[host].android_devices[device])
     if profile.get("api") != _API:
         raise ValueError("Android permission-reset requires API29")
     artifact = native_artifact_registry.verify_artifact(root_path, artifact_id)
@@ -338,7 +339,7 @@ def start(root: Path | str, correlation_id: str, artifact_id: str, cli_stage_cor
     package_sha = artifact["artifact"]["sha256"]
     stage = android_cli_stage.status(root_path, cli_stage_correlation_id)
     cli = stage.get("receipt", {}).get("cliPath")
-    remote_root = config.hosts[_HOST].fixture_transfer_root
+    remote_root = config.hosts[host].fixture_transfer_root
     if (stage.get("state") != "published" or not stage.get("ok") or stage.get("sourceSha") != source_sha or
             not isinstance(cli, str) or not cli.startswith(str(remote_root) + "/android-cli-stage-" + cli_stage_correlation_id + "/tree/")):
         raise ValueError("Android permission-reset CLI stage is not source-bound")
@@ -349,18 +350,18 @@ def start(root: Path | str, correlation_id: str, artifact_id: str, cli_stage_cor
             observed.get("backup", {}).get("rulesValid") is not True or observed.get("guard", {}).get("controllerId") != expected_owner or observed.get("guard", {}).get("configurationRevision") != expected_revision or
             observed.get("device", {}).get("api") != _API):
         raise ValueError("Android permission-reset opening readback is not admitted")
-    live = android_admission_readback.readback_status(root_path, _HOST, _DEVICE, opening_readback_correlation_id, timeout_seconds=30)
+    live = android_admission_readback.readback_status(root_path, host, device, opening_readback_correlation_id, timeout_seconds=30)
     if (not live.get("ok") or live.get("result", {}).get("stage") != "backup_present" or
             live["result"].get("controllerId") != expected_owner or live["result"].get("configurationRevision") != expected_revision or
             live["result"].get("backup", {}).get("sha256") != expected_backup_sha256 or
             live["result"].get("backup", {}).get("rulesValid") is not True):
         raise ValueError("Android permission-reset full routing readback changed")
-    if not _public_preflight(root_path, _HOST, profile, cli, expected_owner, expected_revision):
+    if not _public_preflight(root_path, host, profile, cli, expected_owner, expected_revision):
         raise ValueError("Android permission-reset public owner/runtime/operations admission failed")
-    public = android_public_inspect.inspect(root_path, _HOST, _DEVICE, correlation_id, package_sha, expected_owner, expected_revision)
+    public = android_public_inspect.inspect(root_path, host, device, correlation_id, package_sha, expected_owner, expected_revision)
     if public.get("outcome") != "admitted" or public.get("result", {}).get("runtime", {}).get("running") is not False:
         raise ValueError("Android permission-reset public state is not admitted")
-    intent = {"schema": 1, "host": _HOST, "device": _DEVICE, "correlationId": correlation_id, "api": _API,
+    intent = {"schema": 1, "host": host, "device": device, "correlationId": correlation_id, "api": _API,
               "package": _PACKAGE, "appOp": _OP, "mode": _MODE, "artifactId": artifact_id, "packageSha256": package_sha,
               "cliStageCorrelationId": cli_stage_correlation_id, "cliPath": cli, "cliManifestSha256": stage["receipt"]["manifestSha256"], "cliRpmSha256": stage["receipt"]["rpmSha256"], "cliLauncherSha256": stage["receipt"]["launcherSha256"], "cliDesktopJarSha256": stage["receipt"]["desktopJarSha256"], "openingReadbackCorrelationId": opening_readback_correlation_id,
               "backupSha256": expected_backup_sha256, "expectedOwner": expected_owner, "expectedRevision": expected_revision,
@@ -368,7 +369,7 @@ def start(root: Path | str, correlation_id: str, artifact_id: str, cli_stage_cor
     args = [profile["adb"], cli, profile["serial"], profile["expectedAvd"], str(remote_root), correlation_id, package_sha, expected_owner, str(expected_revision), opening_readback_correlation_id, expected_backup_sha256, cli_stage_correlation_id, stage["receipt"]["manifestSha256"], stage["receipt"]["rpmSha256"], stage["receipt"]["launcherSha256"], stage["receipt"]["desktopJarSha256"]]
     worker = android_document_acceptance._worker(_REMOTE, args)
     encoded = base64.urlsafe_b64encode(worker.encode()).decode("ascii")
-    argv = ssh_transport.build_ssh_argv(config, _HOST, 60, command=("python3", "-I", "-B", "-c", "exec(" + repr(_SUBMIT) + ")", str(remote_root), correlation_id, json.dumps(intent, sort_keys=True, separators=(",", ":")), encoded))
+    argv = ssh_transport.build_ssh_argv(config, host, 60, command=("python3", "-I", "-B", "-c", "exec(" + repr(_SUBMIT) + ")", str(remote_root), correlation_id, json.dumps(intent, sort_keys=True, separators=(",", ":")), encoded))
     # Recheck the complete staged CLI receipt immediately before durable intent/effect.
     current_stage = android_cli_stage.status(root_path, cli_stage_correlation_id)
     if (current_stage.get("state") != "published" or not current_stage.get("ok") or current_stage.get("sourceSha") != source_sha or
@@ -378,7 +379,7 @@ def start(root: Path | str, correlation_id: str, artifact_id: str, cli_stage_cor
     _save(root_path, intent)  # durable local intent precedes the one async native job
     # The claim is deliberately never removed by status or submit failure.
     # Unknown native outcome retains it for a later explicit review/collection.
-    _claim_reset_lease(root_path, correlation_id)
+    _claim_reset_lease(root_path, correlation_id, host=host, device=device)
     try:
         code, output = android_observation._run_probe(argv, 60)
         value = json.loads(output.decode("utf-8", "strict")) if code == 0 else None
@@ -393,12 +394,13 @@ def status(root: Path | str, correlation_id: str) -> dict[str, Any]:
     intent = _load(root, correlation_id)
     if intent is None:
         return {"ok": False, "state": "unknown", "reason": "missing_local_intent", "correlationId": correlation_id, "replayAllowed": False}
-    if intent.get("host") != _HOST or intent.get("device") != _DEVICE or intent.get("api") != _API:
+    host, device = intent.get("host"), intent.get("device")
+    if any(type(value) is not str or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", value) is None for value in (host, device)) or intent.get("api") != _API:
         return {"ok": False, "state": "unknown", "reason": "intent_invalid", "correlationId": correlation_id, "replayAllowed": False}
     config = ssh_transport.load_config(root)
-    if _HOST not in config.hosts or ssh_transport.connection_host(config, _HOST).password is not None or str(config.hosts[_HOST].fixture_transfer_root) != intent.get("fixtureRoot"):
+    if host not in config.hosts or ssh_transport.connection_host(config, host).password is not None or str(config.hosts[host].fixture_transfer_root) != intent.get("fixtureRoot"):
         return {"ok": False, "state": "unknown", "reason": "route_unavailable", "correlationId": correlation_id, "replayAllowed": False}
-    argv = ssh_transport.build_ssh_argv(config, _HOST, 30, command=("python3", "-I", "-B", "-c", "exec(" + repr(_STATUS) + ")", str(config.hosts[_HOST].fixture_transfer_root), correlation_id, json.dumps(intent, sort_keys=True, separators=(",", ":"))))
+    argv = ssh_transport.build_ssh_argv(config, host, 30, command=("python3", "-I", "-B", "-c", "exec(" + repr(_STATUS) + ")", str(config.hosts[host].fixture_transfer_root), correlation_id, json.dumps(intent, sort_keys=True, separators=(",", ":"))))
     try:
         code, output = android_observation._run_probe(argv, 30)
         value = json.loads(output.decode("utf-8", "strict")) if code == 0 else None
@@ -462,12 +464,12 @@ print(json.dumps({"state":"complete"},separators=(",",":")))
 '''
 
 
-def _release_reset_lease(root: Path | str, correlation: str) -> bool:
+def _release_reset_lease(root: Path | str, correlation: str, *, host: str, device: str) -> bool:
     """Remove only this exact terminal owner's shared lease."""
     root_path = Path(root).resolve()
-    expected = {"owner": "android-vpn-permission-reset", "correlationId": correlation, "device": _DEVICE, "host": _HOST}
+    expected = {"owner": "android-vpn-permission-reset", "correlationId": correlation, "device": device, "host": host}
     try:
-        with android_endpoint_admission._shared_device_lease(root_path, _HOST, _DEVICE) as lease:
+        with android_endpoint_admission._shared_device_lease(root_path, host, device) as lease:
             fd = os.open(lease, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             try:
                 info = os.fstat(fd); raw = os.read(fd, 2048)
@@ -494,18 +496,19 @@ def collect(root: Path | str, correlation_id: str) -> dict[str, Any]:
     intent = _load(root, correlation_id)
     if not isinstance(intent, dict):
         return {"ok": False, "state": "unknown", "reason": "missing_local_intent", "correlationId": correlation_id, "replayAllowed": False}
+    host, device = intent["host"], intent["device"]
     config = ssh_transport.load_config(root)
     stage = android_cli_stage.status(root, intent["cliStageCorrelationId"])
     if (stage.get("state") != "published" or not stage.get("ok") or stage.get("sourceSha") != intent.get("sourceSha") or stage.get("receipt", {}).get("cliPath") != intent.get("cliPath") or stage.get("receipt", {}).get("manifestSha256") != intent.get("cliManifestSha256") or stage.get("receipt", {}).get("rpmSha256") != intent.get("cliRpmSha256") or stage.get("receipt", {}).get("launcherSha256") != intent.get("cliLauncherSha256") or stage.get("receipt", {}).get("desktopJarSha256") != intent.get("cliDesktopJarSha256")):
         return {"ok": False, "state": "unknown", "reason": "cli_stage_changed", "correlationId": correlation_id, "replayAllowed": False}
-    profile = android_observation._profile(config.hosts[_HOST].android_devices[_DEVICE])
-    argv = ssh_transport.build_ssh_argv(config, _HOST, 360, command=("python3", "-I", "-B", "-c", "exec(" + repr(_COLLECT) + ")", profile["adb"], intent["cliPath"], profile["serial"], intent["expectedAvd"], str(config.hosts[_HOST].fixture_transfer_root), correlation_id, intent["packageSha256"], intent["expectedOwner"], str(intent["expectedRevision"]), intent["openingReadbackCorrelationId"], intent["backupSha256"]))
+    profile = android_observation._profile(config.hosts[host].android_devices[device])
+    argv = ssh_transport.build_ssh_argv(config, host, 360, command=("python3", "-I", "-B", "-c", "exec(" + repr(_COLLECT) + ")", profile["adb"], intent["cliPath"], profile["serial"], intent["expectedAvd"], str(config.hosts[host].fixture_transfer_root), correlation_id, intent["packageSha256"], intent["expectedOwner"], str(intent["expectedRevision"]), intent["openingReadbackCorrelationId"], intent["backupSha256"]))
     try:
         code, output = android_observation._run_probe(argv, 360)
         value = json.loads(output.decode("utf-8", "strict")) if code == 0 else None
     except (OSError, RuntimeError, TimeoutError, UnicodeError, ValueError): value = None
     if value != {"state": "complete"}:
         return {"ok": False, "state": "unknown", "reason": "fresh_postcondition_unknown", "correlationId": correlation_id, "replayAllowed": False}
-    if not _release_reset_lease(root, correlation_id):
+    if not _release_reset_lease(root, correlation_id, host=host, device=device):
         return {"ok": False, "state": "unknown", "reason": "lease_release_unconfirmed", "correlationId": correlation_id, "replayAllowed": False}
     return {"ok": True, "state": "complete", "correlationId": correlation_id, "leaseReleased": True, "replayAllowed": False}

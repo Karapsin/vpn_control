@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "beforePath": "agent_tools/readiness_windows_bootstrap_closure.py",
+  "beforeSha256": "781596c5000048b1fb66f6ceeeee2299426e92713af5469f47acbc709f97de34",
+  "discovery": "source-reviewed foreground-only authority cannot survive fresh agent after signin or guest reboot",
+  "nativeFailureClaimed": false,
+  "originalSourceChanged": false
+}

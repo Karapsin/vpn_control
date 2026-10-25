@@ -2,21 +2,23 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+target="${VPN_CONTROL_VISUAL_VM_TARGET:-}"
+if [[ "${1:-}" == "--target" ]]; then
+  [[ $# -ge 2 ]] || { echo "Android capture requires --target android:<avd>." >&2; exit 2; }
+  [[ -z "$target" || "$target" == "$2" ]] || { echo "Android capture target inputs disagree." >&2; exit 2; }
+  target="$2"
+  shift 2
+fi
+[[ "$target" == android:* && -n "${target#android:}" && "$target" != *$'\n'* && "$target" != *$'\r'* ]] || {
+  echo "Android capture requires an explicit --target android:<avd>." >&2; exit 2;
+}
 output_dir="${1:-$repo_root/build/visual-actual/android}"
 scene_csv="${2:-}"
 device_dir="/data/local/tmp/vpn-control-visual"
 provider="${VPN_CONTROL_VISUAL_PROVIDER:-local}"
-android_config="$(python3 "$repo_root/scripts/visual_platform.py" android-local-config)" || exit $?
-read -r expected_avd_name emulator_port < <(python3 -c '
-import json
-import sys
-result = json.load(sys.stdin)["result"]
-print(result["avd_name"], result["emulator_port"])
-' <<< "$android_config" | tr -d '\r')
+expected_avd_name="${target#android:}"
 if [[ "$provider" == "hosted" ]]; then
   emulator_serial="${ANDROID_SERIAL:?Android hosted visual capture requires ANDROID_SERIAL}"
-else
-  emulator_serial="emulator-$emulator_port"
 fi
 sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 if [[ -z "$sdk_root" && -f "$repo_root/local.properties" ]]; then
@@ -26,12 +28,52 @@ adb_bin="$(command -v adb || true)"
 if [[ -z "$adb_bin" && -n "$sdk_root" && -x "$sdk_root/platform-tools/adb" ]]; then
   adb_bin="$sdk_root/platform-tools/adb"
 fi
-[[ -n "$adb_bin" ]] || { echo "Android adb was not found." >&2; exit 1; }
+if [[ "$provider" == "hosted" && -z "$adb_bin" ]]; then
+  echo "Android adb was not found." >&2; exit 1
+fi
+readiness_operation=""
+adb_server_args=()
+readiness_check() {
+  if [[ -n "$readiness_operation" ]]; then
+    # This is observation of the original admission. It cannot unlock, wake,
+    # or admit a replacement packet after a boot/session change.
+    (cd "$repo_root" && python3 -m agent_tools.readiness_entrypoints check \
+      --operation-id "$readiness_operation") >/dev/null || return 2
+  fi
+}
+finish_readiness() {
+  if [[ -n "$readiness_operation" ]]; then
+    local finish_reply
+    finish_reply="$(cd "$repo_root" && python3 -m agent_tools.readiness_entrypoints finish \
+      --operation-id "$readiness_operation")" || {
+      printf '%s\n' "$finish_reply" >&2
+      return 2
+    }
+  fi
+}
+if [[ "$provider" != "hosted" ]]; then
+  readiness_reply="$(cd "$repo_root" && python3 -m agent_tools.readiness_entrypoints admit \
+    --surface capture_visual_android --entry-action run --target "$target")" || {
+    printf '%s\n' "$readiness_reply" >&2
+    exit 2
+  }
+  IFS=$'\t' read -r readiness_operation adb_bin emulator_serial expected_avd_name adb_server_port < <(python3 -c '
+import json,sys
+value=json.load(sys.stdin); binding=value["binding"]
+print("\t".join((value["operationId"],binding["adb"],binding["serial"],binding["avd"],str(binding["serverPort"]))))
+' <<< "$readiness_reply" | tr -d '\r')
+  [[ -n "$readiness_operation" && -n "$adb_server_port" ]] || exit 2
+  export ANDROID_ADB_SERVER_PORT="$adb_server_port"
+  export ADB_SERVER_SOCKET="tcp:127.0.0.1:$adb_server_port"
+  adb_server_args=(-H127.0.0.1)
+  trap finish_readiness EXIT
+fi
 adb() {
-  "$adb_bin" -s "$emulator_serial" "$@"
+  readiness_check || return 2
+  "$adb_bin" "${adb_server_args[@]}" -s "$emulator_serial" "$@"
 }
 
-if [[ "$provider" != "hosted" ]]; then
+if [[ "$provider" == "hosted" || -n "$readiness_operation" ]]; then
   avd_name="$(adb emu avd name 2>/dev/null | sed '/^OK$/d' | head -n 1 | tr -d '\r')"
   [[ "$avd_name" == "$expected_avd_name" ]] || {
     echo "Local Android visual capture refuses non-isolated device: ${avd_name:-unknown}." >&2
@@ -45,7 +87,13 @@ mkdir -p "$output_dir"
 restore_system_ui() {
   adb shell am broadcast -a com.android.systemui.demo -e command exit >/dev/null 2>&1 || true
 }
-trap restore_system_ui EXIT
+cleanup_capture() {
+  local capture_exit=$?
+  restore_system_ui
+  finish_readiness || return 2
+  return "$capture_exit"
+}
+trap cleanup_capture EXIT
 while IFS= read -r scene; do
   rm -f "$output_dir/$scene.png" "$output_dir/$scene.geometry.json"
 done < <(python3 - "$repo_root/visual-tests/scenes.json" "$scene_csv" <<'PY' | tr -d '\r'
@@ -70,6 +118,7 @@ native_scenes="$(python3 scripts/select_visual_scenes.py \
 
 run_gradle_capture() {
   local selected_scenes="$1"
+  readiness_check || return 2
   ANDROID_SERIAL="$emulator_serial" ./gradlew :app:connectedDebugAndroidTest \
     -Pandroid.testInstrumentationRunnerArguments.class=com.kardinal.vpncontrol.ui.VisualCaptureInstrumentedTest \
     -Pandroid.testInstrumentationRunnerArguments.visualManifest="$repo_root/visual-tests/scenes.json" \

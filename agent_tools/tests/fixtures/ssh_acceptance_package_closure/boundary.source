@@ -1,0 +1,89 @@
+#!/Users/karapsin_de/projects/vpn_control_tool_recovery/.agent_venv/bin/python
+"""Task-private public-sentinel SSH ACK fault boundary; no production patch.
+
+Real OpenSSH executes every invocation. Masters/controls exec directly, retaining
+original PID identity. Ordinary calls retain bounded bytes only in memory. The
+one intentional loss requires an exit-zero, exact original-owner terminal reply
+whose complete fixed public streams authenticate against the armed sentinel.
+"""
+import base64,hashlib,json,os,selectors,signal,stat,subprocess,sys,time
+from pathlib import Path
+REAL='/usr/bin/ssh';LIMIT=2*1024*1024;ELIMIT=65536
+
+def generation(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def read(path,limit=1048576):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  before=os.fstat(fd)
+  if not stat.S_ISREG(before.st_mode)or before.st_uid!=os.getuid()or stat.S_IMODE(before.st_mode)!=0o600 or before.st_nlink!=1 or not 0<before.st_size<=limit:raise ValueError('shape')
+  raw=os.read(fd,limit+1)
+  if len(raw)!=before.st_size or generation(before)!=generation(os.fstat(fd))or generation(before)!=generation(os.lstat(path)):raise ValueError('changed')
+  return raw
+ finally:os.close(fd)
+def save(path,value):
+ raw=json.dumps(value,sort_keys=True,separators=(',',':')).encode();fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+def exact_terminal(body,arm):
+ value=json.loads(body)
+ if type(value)is not dict or set(value)!={'schemaVersion','operationId','status','stdout','stderr'}or value['schemaVersion']!=1 or value['operationId']!=arm['operationId']:return False
+ status=value['status']
+ if type(status)is not dict or set(status)!={'schemaVersion','operationId','state','reason','replayAllowed','binding','owner','terminal'}or status!={**status,'schemaVersion':1,'operationId':arm['operationId'],'state':'terminal','reason':'correlated_terminal','replayAllowed':False,'binding':arm['binding'],'owner':arm['owner']}:return False
+ terminal=status['terminal']
+ if type(terminal)is not dict or set(terminal)!={'operationId','generation','binding','programSha256','owner','exitCode','streamsClosed','stdout','stderr'}or terminal!={**terminal,'operationId':arm['operationId'],'generation':arm['generation'],'binding':arm['binding'],'programSha256':arm['programSha256'],'owner':arm['owner'],'exitCode':0,'streamsClosed':True}:return False
+ for name in ('stdout','stderr'):
+  raw=base64.b64decode(value[name],validate=True);expected=arm[name].encode()
+  if raw!=expected or terminal[name]!={'overflow':False,'retainedBytes':len(expected),'totalBytes':len(expected),'sha256':hashlib.sha256(expected).hexdigest()}:return False
+ return True
+
+def main():
+ root=Path(os.environ['VC_DURABLE_ACCEPTANCE_ROOT']).resolve(strict=True)
+ info=os.lstat(root)
+ if not stat.S_ISDIR(info.st_mode)or info.st_uid!=os.getuid()or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('root')
+ authority_raw=read(root/'ssh-boundary.json');authority=json.loads(authority_raw)
+ real=os.stat(REAL)
+ if authority['realSsh']!=REAL or list(generation(real))!=authority['realSshGeneration']:raise ValueError('real_ssh_changed')
+ source=Path(__file__).resolve()
+ if hashlib.sha256(source.read_bytes()).hexdigest()!=authority['boundarySha256']:raise ValueError('boundary_source_changed')
+ # No wrapper process around the actual master/control actor.
+ if any(arg in ('-M','-N','-O')for arg in sys.argv[1:]):os.execv(REAL,[REAL,*sys.argv[1:]])
+ child=subprocess.Popen([REAL,*sys.argv[1:]],stdin=sys.stdin.buffer,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True)
+ buffers={'stdout':bytearray(),'stderr':bytearray()};selector=selectors.DefaultSelector()
+ for name in buffers:
+  stream=getattr(child,name);os.set_blocking(stream.fileno(),False);selector.register(stream,selectors.EVENT_READ,name)
+ limit=time.monotonic()+55
+ def close_owned(signum=None,frame=None):
+  if child.poll()is None:child.terminate()
+  try:child.wait(timeout=3)
+  except subprocess.TimeoutExpired:child.kill();child.wait(timeout=3)
+  if signum is not None:raise SystemExit(128+signum)
+ for kind in (signal.SIGTERM,signal.SIGINT):signal.signal(kind,close_owned)
+ try:
+  while selector.get_map():
+   if time.monotonic()>=limit:raise ValueError('observer_timeout')
+   for key,_ in selector.select(min(.1,limit-time.monotonic())):
+    part=os.read(key.fileobj.fileno(),65536)
+    if not part:selector.unregister(key.fileobj);continue
+    name=key.data;buffers[name].extend(part)
+    if len(buffers[name])>(LIMIT if name=='stdout'else ELIMIT):raise ValueError('observer_overflow')
+  code=child.wait(timeout=max(.001,limit-time.monotonic()))
+ except BaseException:
+  close_owned();raise
+ finally:selector.close()
+ if read(root/'ssh-boundary.json')!=authority_raw or list(generation(os.stat(REAL)))!=authority['realSshGeneration']or hashlib.sha256(source.read_bytes()).hexdigest()!=authority['boundarySha256']:raise ValueError('boundary_closing_changed')
+ body=bytes(buffers['stdout']);err=bytes(buffers['stderr']);arm_path=root/'ack-arm.json'
+ if code==0 and not err and arm_path.exists():
+  arm_raw=read(arm_path);arm=json.loads(arm_raw)
+  try:matched=exact_terminal(body,arm)
+  except (ValueError,TypeError,KeyError,UnicodeError):matched=False
+  if matched:
+   if read(arm_path)!=arm_raw:raise ValueError('arm_changed')
+   proof={'schemaVersion':1,'operationId':arm['operationId'],'owner':arm['owner'],'binding':arm['binding'],'actualSshReturnCode':0,'validatedExactPublicSentinelTerminal':True,'realSshGeneration':authority['realSshGeneration'],'fault':'lost-one-original-terminal-SSH-reply','remoteTargetReplayAllowed':False}
+   try:save(root/'ack-loss-once.json',proof)
+   except FileExistsError:pass
+   else:return 255
+ sys.stdout.buffer.write(body);sys.stdout.buffer.flush();sys.stderr.buffer.write(err);sys.stderr.buffer.flush()
+ return code if code>=0 else 128-code
+if __name__=='__main__':
+ try:raise SystemExit(main())
+ except Exception:
+  sys.stderr.write('acceptance_ssh_boundary_refused\n');raise SystemExit(254)

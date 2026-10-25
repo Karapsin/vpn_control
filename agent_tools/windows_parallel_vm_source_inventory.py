@@ -4,6 +4,7 @@ Only the historical flat native fixture disk is inspected. No source selector,
 copy, VM launch, guest command, reservation or installer action is exposed.
 """
 from __future__ import annotations
+from . import ssh_transport
 
 import base64
 import hashlib
@@ -364,7 +365,7 @@ def bounded_collect(argv, secret, timeout_seconds):
     On deadline/overflow only this owned read-only SSH client is terminated.
     Its remote read remains unknown; no VM/native operation is cancelled.
     """
-    process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    process = ssh_transport.popen_ssh(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     selector = selectors.DefaultSelector()
     raw, eof, reason = bytearray(), False, None
     deadline = time.monotonic() + timeout_seconds
@@ -410,6 +411,8 @@ def bounded_collect(argv, secret, timeout_seconds):
             process.stdin.close()
         process.stdout.close()
         selector.close()
+
+        ssh_transport.finish_ssh(process)
 
 
 def observe(root: Path | str, *, host: str, timeout_seconds: int = 240) -> dict[str, Any]:

@@ -77,7 +77,7 @@ class WindowsInstallDiskProofTest(unittest.TestCase):
                 mock.patch.object(proof.boot.ssh_transport, "connection_host",
                                   return_value=types.SimpleNamespace(password=None)), \
                 mock.patch.object(proof.boot.ssh_transport, "build_ssh_argv", return_value=["ssh"]), \
-                mock.patch.object(proof.subprocess, "run",
+                mock.patch.object(proof.boot.ssh_transport, "run_ssh",
                                   return_value=types.SimpleNamespace(returncode=0,
                                       stdout=json.dumps(diagnostic).encode())):
             result = proof.preflight(".", host="archlinux")

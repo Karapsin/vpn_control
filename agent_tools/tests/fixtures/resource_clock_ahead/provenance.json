@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "source": "agent_tools/windows_vm_deploy.py",
+  "sourceSha256": "fec00524066cb15d23a4008a79e5df6372ab701fd5e1c655989d26a237b9f1db",
+  "failure": "Fresh remote resource samples were 65 milliseconds ahead of the coordinator wall clock and failed the unchanged admission freshness guard.",
+  "nativeEvidence": ".runtime/windows-vm-credentials/c282ff7c-d7ad-4aaf-a9a2-9643e183850c/preparation-failure.private.json"
+}

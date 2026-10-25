@@ -1,0 +1,20 @@
+import json,os,pathlib,subprocess
+boot=pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+processes=[]
+for p in pathlib.Path('/proc').iterdir():
+ if p.name.isdigit():
+  try:processes.append((int(p.name),(p/'comm').read_text().strip()))
+  except FileNotFoundError:pass
+blocked=[name for pid,name in processes if name in ['apt','apt-get','dpkg','unattended-upgr','msiexec','sing-box','vpn-control','vpncontrol']]
+jobs=subprocess.run(['systemctl','list-jobs','--no-legend','--plain'],text=True,capture_output=True,timeout=5)
+cloud=subprocess.run(['cloud-init','status'],text=True,capture_output=True,timeout=5)
+sessions=subprocess.run(['loginctl','list-sessions','--json=short'],text=True,capture_output=True,timeout=5)
+if jobs.returncode or sessions.returncode:raise ValueError('idle_visibility')
+rows=json.loads(sessions.stdout)
+foreign=[r for r in rows if r.get('user')!='recovery']
+jobroot=pathlib.Path('/var/tmp/vc-recovery-jobs')
+registered=[]
+if jobroot.exists():
+ for p in jobroot.glob('*/state.json'):registered.append(json.loads(p.read_text()))
+unknown=[r for r in registered if r.get('state') not in ['complete','failed','cancelled']]
+print(json.dumps({'bootId':boot,'account':os.environ.get('SUDO_USER'),'originalUid':os.environ.get('SUDO_UID'),'processCount':len(processes),'protectedOrInstallerProcesses':blocked,'systemdJobs':jobs.stdout.splitlines(),'cloudInit':cloud.stdout.strip(),'foreignSessions':foreign,'registeredJobs':registered,'unknownOrRunningJobs':unknown}))

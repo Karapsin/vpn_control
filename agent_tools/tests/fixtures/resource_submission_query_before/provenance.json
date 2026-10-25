@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "d668916535952743657bd1f888d32c4c1f12b48a6d5008afd354224c4b3b7906",
+  "failure": "Consumed snapshot getter initializes a missing cooperative lock before reading original metadata.",
+  "nativeEffects": false
+}

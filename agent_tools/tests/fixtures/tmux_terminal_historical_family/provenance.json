@@ -1,0 +1,59 @@
+{
+  "beforeTests": {
+    "test_ssh_tmux_bounded_pipe_collection.py": "e0a3b3330caca6e0bd43a2a72a5350f00bf547faf1d73b53954a73f0b7cccf63",
+    "test_ssh_tmux_closure_census_diagnostic.py": "f069d730b68b991ea0026686650a0b87e217443e134038815b79768c792591c5",
+    "test_ssh_tmux_privileged_terminal_claim_bridge.py": "cf676de6e962c391b99cf443a519097ff3e018100d1ec934266657ec21caaa26"
+  },
+  "modules": {
+    "linux_package_fixture_build": {
+      "original": "agent_tools/linux_package_fixture_build.py",
+      "sha256": "5735a594076c28c70483e77012e84265bdc403c0f9d3312d17929caaa02a623e"
+    },
+    "private_inventory_lock": {
+      "original": "agent_tools/private_inventory_lock.py",
+      "sha256": "d6ce7b228059470b4792c47e4562017235cad26ae6666c2a899dd459887358b8"
+    },
+    "ssh_tmux_bounded_pipe_collection": {
+      "original": "agent_tools/ssh_tmux_bounded_pipe_collection.py",
+      "sha256": "9e5d5e629c03c7cdefb42882f2d4459c7bcbafcb27455a407340e64b9d1d27f8"
+    },
+    "ssh_tmux_closure_census_diagnostic": {
+      "original": "agent_tools/ssh_tmux_closure_census_diagnostic.py",
+      "sha256": "03bfeef02852dbec326273b2364b616e144ce60be241504b02b8bd7a179a08d1"
+    },
+    "ssh_tmux_mcp_adapter": {
+      "original": "agent_tools/ssh_tmux_mcp_adapter.py",
+      "sha256": "0f0d41ad25edcde8189de82bc22ad62b2c4a241912bbc4f19891f8882b5e68b2"
+    },
+    "ssh_tmux_privileged_terminal_claim_bridge": {
+      "original": "agent_tools/ssh_tmux_privileged_terminal_claim_bridge.py",
+      "sha256": "c69412413ca4d27477c7d96c56904a9cff7e0868322f379df7cfb3b0d3f86c2c"
+    },
+    "ssh_tmux_privileged_terminal_closure": {
+      "original": "agent_tools/ssh_tmux_privileged_terminal_closure.py",
+      "sha256": "01f90d3afa8f107139861b11835f1b1b3d712fe235113dfe5554c40619b441c1"
+    },
+    "ssh_tmux_resource_admission": {
+      "original": "agent_tools/ssh_tmux_resource_admission.py",
+      "sha256": "a76cdfeb444a217ddd65e9ab79812c99ed0c97654a9e7a53bb6049f0958952d1"
+    },
+    "ssh_tmux_session": {
+      "original": "agent_tools/ssh_tmux_session.py",
+      "sha256": "6fae107abb444ef300a124a754796961d206495143ea4ce522ff4aa1a60c58c7"
+    },
+    "ssh_tmux_session_ssh": {
+      "original": "agent_tools/ssh_tmux_session_ssh.py",
+      "sha256": "b61177cf4e9c2fcfaec0fca4aa5974bbc98eec1ca1f96fd4889898dffc19428a"
+    },
+    "ssh_tmux_source_staging_recovery": {
+      "original": "agent_tools/ssh_tmux_source_staging_recovery.py",
+      "sha256": "6624aa898aaced378b4ee56fb18c4c024a028628786b492f0a5d5b45496f28cc"
+    },
+    "ssh_tmux_terminal_closure": {
+      "original": "agent_tools/ssh_tmux_terminal_closure.py",
+      "sha256": "f8d49f05186f441594f28e59e2922b0145ac1bdfe363fcfbaf8d6510e0306304"
+    }
+  },
+  "purpose": "Whole unchanged historical dependency family for inert pin-gate tests. Existing production historical pins/readers remain blocked on changed current modules. Never imports/executes old private transport against real inventory or submits a native operation.",
+  "sourceCommit": "d24c19047ec15689948404ede40f50c5ec284e77"
+}

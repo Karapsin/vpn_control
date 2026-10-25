@@ -1,0 +1,13 @@
+{
+  "cause": "Current DIRECT closure names were applied to an immutable16-file historical archive; missing current-only helper is a fixture epoch mismatch, not permission to change the historical approved source graph.",
+  "fullNativeLogSha256": "4e49e2853e08ab3004449f56f2b1ecb90bf832178bd9a6ff9e4d7720517b47b5",
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "diagnostic_context.before.source": "186db6e027abb195b8484df57cc1e9868a0fd531849a470b9275c69dbb72fb75",
+    "native-errors.txt": "b97bda4f2c07a328c8b2bc6a0fa8168e61a088f52e7c557bd5ce3ef769cbbc9c",
+    "ssh_direct_inventory_diagnostic.before.source": "4d33ddf32bf050259373da5f017a37868664719165ca032d0872aad616ba5a53",
+    "ssh_direct_original6b_observation.before.source": "1db70ebfc5b9b78f6999e0b3f1734a14f59b85ad7331ed22efa399411339f4e9",
+    "ssh_direct_route_local_reason.before.source": "bce1550885f7b5dc7a589e49e86f91accc6d6cb96675ba86fa3966337adaddfc",
+    "successor.before.source": "edda86852d3014ae827a3fa59239d3ccfc9096fbda4b6f5ab3bc8117d851dd6e"
+  }
+}

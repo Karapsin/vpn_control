@@ -57,8 +57,9 @@ class WindowsFixturePythonHostSourceTest(unittest.TestCase):
         with mock.patch.object(source.ssh_transport, "load_config", return_value=config), \
              mock.patch.object(source.ssh_transport, "connection_host", return_value=SimpleNamespace(password=None)), \
              mock.patch.object(source.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]), \
-             mock.patch.object(source.subprocess, "run", side_effect=OSError("offline")):
+             mock.patch.object(source.ssh_transport, "run_ssh", side_effect=OSError("offline")) as run:
             self.assertEqual("unknown", source.observe(".", REQUEST)["state"])
+        self.assertEqual(["ssh", "archlinux"], run.call_args.args[0])
 
     def test_public_result_rejects_paths_and_unexpected_remote_shapes(self):
         self.assertEqual("unknown", source._public(b'{"state":"present","path":"private"}')["state"])

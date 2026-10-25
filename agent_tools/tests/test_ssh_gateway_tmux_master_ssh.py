@@ -1,6 +1,7 @@
 """Source/config-bound adapter tests through real inert gateway subprocesses."""
 import json
 import os
+import pwd
 from pathlib import Path
 import shlex
 import subprocess
@@ -13,7 +14,7 @@ from agent_tools import ssh_gateway_tmux_master as owner
 from agent_tools import ssh_gateway_tmux_master_ssh as adapter
 from agent_tools import ssh_recovery_adoption as adoption
 from agent_tools import ssh_connection_recovery as recovery
-from agent_tools.tests.test_ssh_gateway_tmux_master import GatewayOwnerTests
+from agent_tools.tests.test_ssh_gateway_tmux_master import GatewayOwnerTests, PROC, fixture_worker_source
 
 
 @unittest.skipUnless(os.name == 'posix', 'POSIX fixture')
@@ -33,7 +34,7 @@ class GatewayAdapterTests(GatewayOwnerTests):
         self.controller = Path(temporary.name).resolve(); self.controller.chmod(0o700)
         key = self.controller / 'key'; key.write_bytes(b'inert-outer-key'); key.chmod(0o600)
         known = self.controller / 'known'; known.write_bytes(b'inert-host-key'); known.chmod(0o600)
-        outer = {'host': 'gateway.invalid', 'port': 2228, 'user': 'fixture', 'identityFile': str(key), 'knownHostsFile': str(known)}
+        outer = {'host': 'gateway.invalid', 'port': 2228, 'user': pwd.getpwuid(os.geteuid()).pw_name, 'identityFile': str(key), 'knownHostsFile': str(known)}
         target = {**outer, 'host': '192.0.2.1', 'port': 22, 'transport': 'nested', 'gateway': 'gateway',
                   'remoteHostAlias': 'arch', 'remoteConfigFile': self.request['configFile'],
                   'remoteControlPath': self.request['configuredControlPath'], 'knownHostsFile': str(self.home / '.ssh/known'),
@@ -42,18 +43,26 @@ class GatewayAdapterTests(GatewayOwnerTests):
         self.config.write_bytes(owner.canonical({'schemaVersion': 1, 'hosts': {'gateway': outer, 'archlinux': target}})); self.config.chmod(0o600)
         self.source = self.controller / 'gateway-owner.py'; self.source.write_bytes(self.raw); self.source.chmod(0o600)
         file_patch = mock.patch.object(owner, '__file__', str(self.source)); file_patch.start(); self.addCleanup(file_patch.stop)
+        if hasattr(adapter, 'new_owner'):
+            text = Path(adapter.new_owner.__file__).read_text().replace("SSH = '/usr/bin/ssh'", 'SSH = '+repr(str(self.ssh))).replace("TMUX = '/usr/bin/tmux'", 'TMUX = '+repr(str(self.tmux)))
+            start = text.index('def proc(pid):'); end = text.index('def packet(raw):', start)
+            self.new_raw = fixture_worker_source(text[:start]+PROC+text[end:], self.fixture_nonce).encode()
+            self.new_source = self.controller/'gateway-owner-v2.py'; self.new_source.write_bytes(self.new_raw); self.new_source.chmod(0o600)
+            patch = mock.patch.object(adapter.new_owner, '__file__', str(self.new_source)); patch.start(); self.addCleanup(patch.stop)
         self.calls = []; self.original_popen = subprocess.Popen
         self.request_inputs = {'correlationId': self.request['correlationId']}
         def launch(argv, **kw):
             self.calls.append(argv)
-            self.assertEqual(argv[2:5], ['-B', '-c', adapter.EXEC])
-            ssh = json.loads(argv[-1]); self.assertEqual('/usr/bin/ssh', ssh[0]); self.assertEqual(['-F','/dev/null'], ssh[1:3]);
+            ssh = argv; self.assertEqual('/usr/bin/ssh', ssh[0]); self.assertEqual(['-F','/dev/null'], ssh[1:3]);
             self.assertIn('ControlMaster=no',ssh); self.assertIn('ControlPath=none',ssh); self.assertIn('PermitLocalCommand=no',ssh); self.assertEqual('gateway.invalid', ssh[-2])
             self.assertNotIn('inert-secret', ' '.join(ssh)); self.assertNotIn('192.0.2.1', ' '.join(ssh))
-            command = shlex.split(ssh[-1]); self.assertEqual(['python3', '-I', '-B', '-c'], command[:4])
+            command = shlex.split(ssh[-1]); self.assertIn(command[0], ('python3','/usr/bin/python3')); self.assertEqual(['-I','-B','-c'], command[1:4])
             # Execute the exact staged gateway source/packet through the same
             # stdin/private stdout/stderr boundary, without network activity.
-            return self.original_popen([os.sys.executable, '-I', '-B', '-c', command[4]], **kw)
+            # sshd is a separate remote process and does not inherit the local
+            # client's file cap. A dedicated test covers the real capped writer.
+            kw.pop('preexec_fn', None)
+            return self.original_popen([os.sys.executable, '-I', '-B', '-c', command[4], *command[5:]], **kw)
         self.launcher = mock.patch.object(adapter.subprocess, 'Popen', side_effect=launch)
         self.launcher.start(); self.addCleanup(self.launcher.stop)
 
@@ -79,7 +88,7 @@ class GatewayAdapterTests(GatewayOwnerTests):
             if Path(path)==Path(adapter.owner.__file__).absolute():raise ValueError('private-sensitive-sentinel')
             return actual_capture(authority,path,**kw)
         scenarios=(('source',mock.patch.object(adapter.LocalAuthority,'capture',source_failure)),
-            ('config',mock.patch.object(adapter.connection,'_snapshot',side_effect=ValueError('private-sensitive-sentinel'))),
+            ('config',mock.patch.object(adapter.transport,'load_config',side_effect=ValueError('private-sensitive-sentinel'))),
             ('authority',mock.patch.object(adapter,'original_authority',side_effect=ValueError('private-sensitive-sentinel'))),
             ('localmaster',mock.patch.object(adapter.transport,'build_ssh_argv',side_effect=ValueError('private-sensitive-sentinel'))),
             ('remotequery',mock.patch.object(adapter.subprocess,'Popen',side_effect=OSError('private-sensitive-sentinel'))),
@@ -93,7 +102,14 @@ class GatewayAdapterTests(GatewayOwnerTests):
         with mock.patch.object(adapter,'original_authority',side_effect=ValueError('private-sensitive-sentinel')):
             self.assertEqual({'state':'unknown','replayAllowed':False},adapter.operate(self.controller,'status',self.request_inputs))
 
+    def compact_inline_owner(self):
+        """Keep explicit final-reply mocks outside saved-source preflight."""
+        import base64,zlib
+        raw=self.new_source.read_bytes();encoded=base64.b64encode(zlib.compress(raw,9)).decode()
+        self.new_source.write_text("import base64,zlib;exec(compile(zlib.decompress(base64.b64decode("+repr(encoded)+")),__file__,'exec'))\n")
+
     def test_readonly_status_actual_child_unknown_and_malformed_reply(self):
+        self.compact_inline_owner()
         self.prepare_adapter()
         real_popen=self.original_popen
         for body,phase in (('{"state":"unknown","replayAllowed":false}','remotequery'),
@@ -159,11 +175,15 @@ class GatewayAdapterTests(GatewayOwnerTests):
         self.assertEqual('ready',result['state'],result)
 
     def test_original_ready_observer_survives_exact_separately_proven_adoption(self):
-        original=self.ready_adapter(); self.adopt_original()
-        result=adapter.operate(self.controller,'status',self.request_inputs)
-        self.assertEqual('ready',result['state'],result)
-        self.assertEqual(original['readyPin'],result['readyPin'])
-        self.assertEqual('unknown',adapter.operate(self.controller,'release',self.request_inputs)['state'])
+        # Preserve the exact v1 reader contract inside its authenticated source
+        # archive. New schema2 jobs never acquire old adoption authority.
+        from agent_tools.tests.ssh_gateway_historical_fixture import archived
+        with archived():
+            original=self.ready_adapter(); self.adopt_original()
+            result=adapter.operate(self.controller,'status',self.request_inputs)
+            self.assertEqual('ready',result['state'],result)
+            self.assertEqual(original['readyPin'],result['readyPin'])
+            self.assertEqual('unknown',adapter.operate(self.controller,'release',self.request_inputs)['state'])
 
     def test_config_change_without_exact_adoption_proof_rejects_before_query(self):
         self.ready_adapter(); raw=json.loads(self.config.read_text())

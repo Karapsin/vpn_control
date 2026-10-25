@@ -77,6 +77,12 @@ def response(*, job: str = JOB, diagnostic: object = None) -> bytes:
 
 
 class WindowsMsiPreinstallStatusTest(unittest.TestCase):
+    def setUp(self):
+        # In-process remote programs set umask 077; never leak it to later suites.
+        mask = os.umask(0o022)
+        os.umask(mask)
+        self.addCleanup(os.umask, mask)
+
     def test_public_intent_write_failure_cannot_claim_or_dispatch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); ids, helper = fake_pair(root)
@@ -650,7 +656,7 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
         with (patch.object(scenario.ssh_transport, "load_config", return_value=config),
               patch.object(scenario.windows_credential_probe_ssh, "_descriptor", return_value=("windows-cp117", "/private/qga.sock", 589342, 520739, "account", "sid", Path("private"))),
               patch.object(scenario.ssh_transport, "build_ssh_argv", return_value=["ssh", "fixed-host"]) as argv,
-              patch.object(scenario.subprocess, "run", return_value=done)):
+              patch.object(scenario.ssh_transport, "run_ssh", return_value=done)):
             result = scenario.preinstall_status(Path("."), "archlinux", JOB)
         self.assertEqual("observed", result["state"])
         self.assertEqual("INVENTORY", result["diagnostic"]["stage"])
@@ -663,7 +669,7 @@ class WindowsMsiPreinstallStatusTest(unittest.TestCase):
         config = types.SimpleNamespace(hosts={"archlinux": target})
         with (patch.object(scenario.ssh_transport, "load_config", return_value=config),
               patch.object(scenario.windows_credential_probe_ssh, "_descriptor", return_value=("other-guest", "/private/qga.sock", 589342, 520739, "account", "sid", Path("private"))),
-              patch.object(scenario.subprocess, "run") as run):
+              patch.object(scenario.ssh_transport, "run_ssh") as run):
             with self.assertRaises(scenario.WindowsMsiPreinstallStatusError):
                 scenario.preinstall_status(Path("."), "archlinux", JOB)
             run.assert_not_called()

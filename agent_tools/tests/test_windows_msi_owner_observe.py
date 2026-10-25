@@ -38,6 +38,12 @@ REJECTED_INTENT = {"request": REJECTED_REQUEST,
 
 
 class OwnerObserveTests(unittest.TestCase):
+    def setUp(self):
+        # In-process remote programs set umask 077; never leak it to later suites.
+        mask = os.umask(0o022)
+        os.umask(mask)
+        self.addCleanup(os.umask, mask)
+
     @unittest.skipUnless(hasattr(os, "geteuid"), "owner staging runs on a POSIX coordinator")
     def test_owner_remote_start_accepts_its_own_empty_artifact_payload(self):
         """Exercise the actual remote admission parser before any guest command."""

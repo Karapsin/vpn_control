@@ -1,0 +1,30 @@
+{
+  "actualCaretObservedBrightRows": [
+    450,
+    468
+  ],
+  "compressedFixtureSha256": "345149552391afa5243dae9cf70aad69f7e32b5b37a2968f729476625bb6a0ca",
+  "currentDriverSha256": "0f674530e4d907450d045f39189f4c08f55b70630bd569ecfa5d435fc5fb19d3",
+  "excludedCaretRect": [
+    502,
+    450,
+    503,
+    469
+  ],
+  "finding": "Pre-admission source/profile review; no actual credential/native failure or real password read/submitted.",
+  "nativePhaseOperationId": "3ba9840a-f6a2-474a-b98b-b98209117604",
+  "nativePngSha256": "5e52b144f70c788ea16ec46315178efc89ca44708e26f853cd1f0b710ee5957b",
+  "nativePpmSha256": "3a5737adb903e901a379bc4079f9d5d0ac2456088ef33767b4f8e98ddad4d511",
+  "nativeTransportOperationId": "8751fa4a-8116-468f-9441-eeae1572e99d",
+  "originalDriverSha256": "5d7bc9e6990cad029c780db791efec4fa54cd0c68b03a5e54ff601c693d79cda",
+  "originalPasswordBox": [
+    492,
+    441,
+    788,
+    480
+  ],
+  "originalProfileSha256": "db9aaf3b9689de460f00ef392f9b4e0a557fd6d0b16df9c5510843af865a0977",
+  "pixelTolerance": 0,
+  "reviewedNewProfileSha256": "15589d4c7b9b90ea7a5694fea53f3d044f7b816fd93b80210952e5c094a61ca1",
+  "schemaVersion": 1
+}

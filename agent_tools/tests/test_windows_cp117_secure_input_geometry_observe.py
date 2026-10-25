@@ -137,7 +137,7 @@ public static class CensusFixture {
 """
 def old_geometry_predicate():
  p=ROOT/'agent_tools/windows_cp117_secure_input_descendants_observe.py';raw=p.read_bytes()
- if hashlib.sha256(raw).hexdigest()!='571bc5a22dcdcdb11e49e6572a50b123339a8b6b39e6f8e154e960583f0f306b':raise ValueError('old-geometry-source')
+ if hashlib.sha256(raw).hexdigest()!='c11d73f56e89219c64ae820e9986fea33a7749479101c7bc8bd8913e043e8d70':raise ValueError('old-geometry-source')
  tree=ast.parse(raw);cs=next(ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='_SEMANTIC_CS'for t in n.targets))
  return re.search(r'Need\((!double[^;]+),"CENSUS_GEOMETRY_BOUND"\)',cs).group(1)
 

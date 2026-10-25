@@ -282,7 +282,7 @@ try:
                         "DISPLAY": environment.get("DISPLAY", "vpn-control-askpass"),
                         "VPN_CONTROL_SSH_PASSWORD_FILE": password_path})
     command = ssh + ["-M", "-N", "-f", "-S", control_path,
-               "-o", "ControlMaster=yes", "-o", "ControlPersist=3600",
+               "-o", "ControlMaster=yes", "-o", "ControlPersist=18000",
                "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + known_hosts,
                "-o", "IdentitiesOnly=yes", "-o", "BatchMode=no",
                "-o", "NumberOfPasswordPrompts=1", "-o", "ConnectTimeout=" + str(timeout), profile]

@@ -13,6 +13,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 from typing import Any, Mapping
@@ -195,6 +196,30 @@ except Exception:out({'version':1,'category':'unknown'})
 '''.replace('DIAG_PS', repr(_DIAGNOSTIC_PS)).replace('CATEGORIES', repr(_DIAGNOSTIC_CATEGORIES))
 
 
+def _validate_target(root: Path | str, inputs: Mapping[str, Any]) -> tuple[str, str, int, int, str]:
+    # These historical records contain an authenticated QEMU generation, not an
+    # SMBIOS UUID or a historical host-boot witness. Preserve that exact scope.
+    if (not isinstance(inputs, Mapping) or set(inputs) != {'host', 'vmIdentity'}
+            or inputs['host'] != 'archlinux' or type(inputs['vmIdentity']) is not str
+            or re.fullmatch(r'[1-9][0-9]{0,9}:[1-9][0-9]{0,18}', inputs['vmIdentity']) is None):
+        raise WindowsMsiStaleLockRecoveryError('Explicit original VM process generation is required.')
+    pid, ticks = map(int, inputs['vmIdentity'].split(':'))
+    if pid > 2147483647 or ticks > 9223372036854775807:
+        raise WindowsMsiStaleLockRecoveryError('Original VM process generation is invalid.')
+    root = Path(root).resolve(strict=True)
+    intent = base._private_intent(root, _CORRELATION)
+    if (not isinstance(intent, dict) or type(intent.get('pid')) is not int
+            or type(intent.get('startTicks')) is not int or intent.get('pid') != pid or intent.get('startTicks') != ticks
+            or intent.get('request') != {'host': 'archlinux', 'correlationId': _CORRELATION,
+                'sourceSha': _SOURCE, **_ARTIFACTS, 'expectedCurrentVersion': '2.1.17'}):
+        raise WindowsMsiStaleLockRecoveryError('Original VM selector does not match retained intent.')
+    expected = tuple(intent.get(key) for key in ('environment','socketPath','pid','startTicks','expectedSid'))
+    descriptor = base._descriptor(root)[2]
+    if expected[0] != 'windows-cp117' or descriptor != expected:
+        raise WindowsMsiStaleLockRecoveryError('Original VM binding changed.')
+    return expected
+
+
 def _admit(root: Path) -> tuple[Any, tuple[str, str, int, int, str], str] | None:
     intent = base._private_intent(root, _CORRELATION)
     if not isinstance(intent, dict) or intent.get('request') != {"host": "archlinux", "correlationId": _CORRELATION,
@@ -338,13 +363,13 @@ def reconciliation_status(root: Path | str, inputs: Mapping[str, Any]) -> dict[s
 
 def recover(root: Path | str, inputs: Mapping[str, Any]) -> dict[str, Any]:
     """Remove the fixed lock once, only after a fresh exact guest proof."""
-    if not isinstance(inputs, Mapping) or dict(inputs) != {'host':'archlinux'}:
-        raise WindowsMsiStaleLockRecoveryError('Exact CP117 host is required.')
+    selected = _validate_target(root, inputs)
     try:
         root = Path(root).resolve(strict=True); admitted = _admit(root)
         if admitted is None: return dict(_UNKNOWN)
         current = _read_intent(root)
         config, descriptor, cli_hash = admitted
+        if descriptor != selected: return dict(_UNKNOWN)
         if current is not None:
             if not _matches_current(current, descriptor): return dict(_UNKNOWN)
             return {'state':'recovered','replayAllowed':False,'nativeActionAllowed':False} if current['state'] == 'recovered' else dict(_UNKNOWN)
@@ -352,6 +377,7 @@ def recover(root: Path | str, inputs: Mapping[str, Any]) -> dict[str, Any]:
         generation, evidence = _evidence(descriptor)
         record = {'version':1,'correlationId':_CORRELATION,'sourceSha':_SOURCE,'guestGeneration':generation,'evidenceSha256':evidence,'state':'intent'}
         _write_intent(root, record)
+        if _validate_target(root, inputs) != selected: return dict(_UNKNOWN)
         if _run(config, descriptor, cli_hash, 'remove') != 'removed': return dict(_UNKNOWN)
         record['state'] = 'recovered'
         _finish_intent(root, record)

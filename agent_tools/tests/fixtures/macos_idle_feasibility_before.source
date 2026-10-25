@@ -1,0 +1,189 @@
+"""Ordinary guest GET-only source/activity feasibility, never idle authority.
+
+The sole native operator must independently collect the existing fixed root
+census before and after this packet and correlate exact actors. Unexpected
+paths, service labels, arguments, environment, code hashes and errors remain
+private memory. Missing permissions are observations, never positive defaults.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import stat
+import sys
+from uuid import UUID
+if os.name == 'posix':
+    import pwd
+else:
+    pwd = None
+
+_EXECUTING_CODE = sys._getframe().f_code
+_FILES = ('tart_macos_probe.py', 'tart_macos_idle_collector.py',
+          'tart_macos_service_census.py', 'tart_macos_idle_feasibility.py')
+_CODE = frozenset({'apple_valid', 'not_apple_valid', 'identity_changed', 'unavailable'})
+_ACTIVITY = frozenset({'tracked_clean_idle_exit', 'tracked_clean', 'tracked_dirty',
+                     'launch_in_progress', 'untracked', 'unavailable', 'identity_changed'})
+
+
+class FeasibilityUnavailable(ValueError):
+    pass
+
+
+def need(value, reason):
+    if not value:raise FeasibilityUnavailable(reason)
+
+
+def _inputs(machine, boot, uid, principal, agent):
+    try:
+        need(type(machine) is str and str(UUID(machine)) == machine
+             and type(boot) is str and str(UUID(boot)) == boot,
+             'macos_idle_target_invalid')
+    except (ValueError, TypeError, AttributeError):
+        raise FeasibilityUnavailable('macos_idle_target_invalid') from None
+    need(type(uid) is int and uid >= 501 and type(principal) is str and principal
+         and type(agent) is tuple and len(agent) == 5
+         and all(type(item) is int for item in agent)
+         and agent[0] > 0 and agent[1] == uid and agent[2] == 1
+         and agent[3] > 0 and 0 <= agent[4] < 1000000, 'macos_idle_account_or_agent_invalid')
+
+
+def arm_budget():
+    """Kernel deadline for this new synchronous GET process only."""
+    import signal
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    signal.alarm(60)
+
+
+def collect(base, processes, native, service, *, machine, boot, uid, principal, agent):
+    _inputs(machine, boot, uid, principal, agent)
+    def target():
+        need(pwd is not None and os.geteuid() == uid and pwd.getpwuid(uid).pw_name == principal,
+             'macos_idle_account_changed')
+        need(base.machine() == machine and base.boot()[0] == boot, 'macos_idle_target_changed')
+        need(processes.process(os.getppid()) == agent, 'macos_idle_agent_changed')
+    target();first = processes.snapshot();observer = processes.process(os.getpid())
+    need(type(first) is dict and 0 < len(first) <= 65535, 'macos_idle_process_invalid')
+    need(first.get(observer[0]) == (observer, 'unmanaged') and observer[1] == uid
+         and observer[2] == agent[0], 'macos_idle_observer_changed')
+    domains = [];missing = set()
+    for kind in ('system', 'caller_user'):
+        try:
+            domain = native.domain(kind)
+            need(type(domain) is service.Domain and domain.kind == kind and domain.uid == uid,
+                 'macos_idle_service_domain_unavailable')
+            domains.append(domain)
+        except Exception:
+            missing.add(kind + '_domain_unavailable')
+    other_users = {actor[1] for actor, _ in first.values() if actor[1] >= 501 and actor[1] != uid}
+    if other_users:missing.add('other_user_service_domain_unobserved')
+    active = {}
+    for domain in domains:
+        for row in domain.rows:
+            pid = row.get('PID', 0)
+            if type(pid) is int and pid > 0:active.setdefault(pid, []).append(row)
+    try:
+        volume = native.volume();public_volume = volume.public();catalog = service.Catalog(volume, uid)
+    except Exception:
+        catalog = None;public_volume = {'state': 'unavailable'}
+        missing.add('protected_service_source_catalog_unavailable')
+    reports = []
+    for pid, (actor, role) in sorted(first.items()):
+        need(type(actor) is tuple and len(actor) == 5 and all(type(item) is int for item in actor)
+             and actor[0] == pid and pid > 0 and actor[1] >= 0 and actor[2] >= 0
+             and actor[3] > 0 and 0 <= actor[4] < 1000000
+             and role in {'unmanaged', 'installer', 'protected_runtime'}, 'macos_idle_process_invalid')
+        code = activity = 'unavailable';mapped = 'unavailable';source = 'unavailable'
+        origin = 'unavailable';transactions = 'unavailable'
+        try:
+            value = processes.code(actor)
+            need(type(value) is str and value in _CODE, 'macos_idle_code_unavailable')
+            code = value
+        except Exception:missing.add('code_visibility_incomplete')
+        try:
+            value = processes.activity(actor)
+            need(type(value) is str and value in _ACTIVITY, 'macos_idle_activity_unavailable')
+            activity = value
+        except Exception:missing.add('dirty_visibility_incomplete')
+        if code == 'unavailable':missing.add('code_visibility_incomplete')
+        if activity == 'unavailable':missing.add('dirty_visibility_incomplete')
+        if code == 'identity_changed' or activity == 'identity_changed':missing.add('actor_identity_changed')
+        try:
+            before = native.image(actor)
+            need(type(before) is bytes and len(before) == 20 and any(before), 'macos_idle_mapping_unavailable')
+            need(native.image(actor) == before, 'macos_idle_mapping_changed')
+            mapped = 'observed'
+        except Exception:
+            missing.add('mapped_visibility_incomplete')
+        if mapped == 'observed' and catalog is not None:
+            try:
+                rows = active.get(pid, [])
+                if not rows:source = 'unmatched'
+                elif len(rows) != 1:source = 'ambiguous'
+                else:
+                    match = catalog.match(rows[0], actor, native)
+                    need(match.origin in {'system_daemon', 'system_agent'} and type(match.transactions) is bool,
+                         'macos_idle_source_unavailable')
+                    origin = match.origin;transactions = 'declared' if match.transactions else 'not_declared'
+                    source = 'matched'
+                need(native.image(actor) == before, 'macos_idle_mapping_changed')
+            except Exception:
+                source = origin = transactions = 'unavailable'
+                missing.add('loaded_source_visibility_incomplete')
+        reports.append({'pid': actor[0], 'uid': actor[1], 'ppid': actor[2],
+            'birth': f'darwin:{actor[3]}:{actor[4]}', 'role': role,
+            'observer': actor == observer, 'code': code, 'activity': activity,
+            'mappedCode': mapped, 'loadedSource': source, 'sourceOrigin': origin,
+            'sourceTransactions': transactions})
+    second = processes.snapshot();target()
+    if first != second:missing.add('process_snapshot_changed')
+    try:source_stable = catalog is not None and catalog.stable() is True
+    except Exception:source_stable = False
+    if not source_stable:missing.add('service_source_changed_or_unavailable')
+    # This is feasibility data. Even every GET succeeding does not prove any
+    # OS service's purpose/activity applicability or complete seven-category idle.
+    return {'schemaVersion': 1, 'state': 'diagnostic', 'machine': machine, 'boot': boot, 'uid': uid,
+        'observer': {'pid': observer[0], 'birth': f'darwin:{observer[3]}:{observer[4]}'},
+        'nativeQualified': False, 'idleAuthority': False, 'processSnapshotStable': first == second,
+        'sourceCatalogStable': source_stable, 'volume': public_volume,
+        'domains': [{'kind': domain.kind, 'executionUid': domain.uid, 'jobs': len(domain.rows)} for domain in domains],
+        'processes': reports, 'missingVisibility': sorted(missing),
+        'missingAuthority': ['independent_root_census_join', 'known_service_purpose_and_activity_applicability',
+                             'protected_network_provider_join', 'durable_namespaces', 'host_categories']}
+
+
+def source(*, machine, boot, uid, principal, agent):
+    """Fixed ordinary GET producer, internal typed binding only."""
+    _inputs(machine, boot, uid, principal, agent)
+    need(os.name == 'posix' and hasattr(os, 'O_NOFOLLOW'), 'macos_idle_source_unavailable')
+    captured = {}
+    for name in _FILES:
+        path = Path(__file__).with_name(name);fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            before = os.fstat(fd)
+            need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and 0 < before.st_size <= 262144,
+                 'macos_idle_source_unavailable')
+            raw = os.read(fd, before.st_size + 1)
+            after = os.fstat(fd)
+            fields = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+            need(len(raw) == before.st_size and all(getattr(before, field) == getattr(after, field) for field in fields),
+                 'macos_idle_source_changed')
+            captured[name] = raw
+        finally:os.close(fd)
+    need(_EXECUTING_CODE == compile(captured[_FILES[-1]], __file__, 'exec', dont_inherit=True), 'macos_idle_source_changed')
+    config = dict(machine=machine, boot=boot, uid=uid, principal=principal, agent=agent)
+    text = 'import json,sys,types\n_modules=[]\n'
+    for name in _FILES:
+        text += '_module=types.ModuleType(' + repr('_fixed_feasibility_' + name[:-3]) + ');sys.modules[_module.__name__]=_module\n'
+        text += 'exec(compile(' + repr(captured[name]) + ',' + repr('<fixed-' + name + '>') + ',"exec"),_module.__dict__)\n_modules.append(_module)\n'
+    text += ('_modules[1].__dict__["__bsd_class__"]=_modules[0]._Bsd\n'
+        'try:\n'
+        ' _modules[3].need(sys.platform=="darwin" and len(sys.argv)==1,"macos_idle_guest_required")\n'
+        ' _modules[3].arm_budget()\n'
+        ' _base=_modules[0].Native();_processes=_modules[1].Native(_base);_native=_modules[2].NativeServices(_base,_processes)\n'
+        ' _result=_modules[3].collect(_base,_processes,_native,_modules[2],**' + repr(config) + ')\n'
+        'except Exception:\n _result={"state":"blocked","reason":"macos_idle_getters_unavailable"}\n'
+        'if len(json.dumps(_result).encode("utf-8"))>2097152:_result={"state":"blocked","reason":"macos_idle_getters_overflow"}\n'
+        'print(json.dumps(_result,sort_keys=True))\n'
+        'raise SystemExit(0 if _result.get("state")=="diagnostic" else 3)\n')
+    need(len(text) <= 262144, 'macos_idle_source_overflow')
+    return text.encode('utf-8')

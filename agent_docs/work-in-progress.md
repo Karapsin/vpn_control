@@ -1,5 +1,15 @@
 # Current MCP repair work; Windows parity deferred
 
+The independent 2026-10-20 automatic readiness/recovery implementation is tracked
+in [its infrastructure ledger](tool-recovery-ledger.md). It runs in a separate
+clone; Windows product parity and its original remote operations remain paused.
+The ledger records task ownership, isolated fixtures, original job identities,
+causal regressions and the incomplete provider acceptance matrix. It does not
+supersede the retained parity history below.
+Permissions recorded in that earlier campaign do not authorize terminating this
+task's retained UNKNOWN work or changing the paused checkout. Use the current
+infrastructure ledger and resume guide for those boundaries.
+
 The user deferred the Windows parity plan on 2026-10-15 and requested the
 MCP/tooling repair described below. The later instructions in the active chat
 permit subagents and authorize stopping all prior unknown or historical test VM
@@ -1142,3 +1152,31 @@ One ordinary regression executes the same receipt-collection test with an access
 All four N package workflows succeeded, but N remains failed. Its private verifier also stopped before Linux qualification; retained-source inspection found a stale 99-case companion check against the sealed 102-case plan. The original top-level `ValueError` did not print its operand, and Windows qualification was not reached. That original report and its outcome-neutral resource closure remain unchanged; no native acceptance is inferred. The successor must preserve all prior obligations and explicitly include the original receipt test and its new regression.
 
 This test-only bucket includes the existing test module, this work record and the normal changelog note. The completed 7,568-test/584-module N audit remains evidence for its original source. The follow-up requires fresh affected checks through the complete managed prepush tier and all five workflows for its own exact pushed SHA; it does not relabel the N audit or require a duplicate intentional audit. Historical VMs and SSH connections remain closed. Product parity, caller acceptance, H14 and product-native/visual work remain deferred; no release is authorized.
+
+### Automatic readiness and recovery delivery buckets (2026-10-24)
+
+This delivery comes from the separate recovery clone and intentionally spans several
+dirty buckets, which are committed together because the tests of each depend on the
+others' sources:
+
+- the shared readiness coordinator, its SSH transport migration and the callers it
+  moved, with their causal fixtures and reviewed-loader pins;
+- the CP117 historical re-pin cascade that the transport migration required;
+- exact literal action routes and pure request fences before readiness, with the
+  AST contract test;
+- test-isolation fixes, the managed-runner stdin fix and the shared-worker umask and
+  socket-root fixes found by the TEST-006 full audit, and the durable program status
+  race, the gateway fixture cleanup wait, the runner's Darwin zombie-group cleanup
+  and the test-timing flakes found by the managed pre-push and its load sweep;
+- the Android staged update substitution and the stage-1 Windows creator pre-VM
+  closure with its Fast Checks root-census enrollment;
+- the `TEST-006` managed checks: every failure in one pass, failed-first reruns, and
+  the agent stage planned as the SSH-close gate then the two hosted CI shards, with
+  one non-recursive failed-level regrouping and a SIGTERM-first launcher timeout;
+- the infrastructure ledger, resume guide and this record.
+
+The remote Claude Code project configuration commit is merged before the managed
+pre-push tier. No native step is part of this delivery: the creator closure runbook
+and the remaining provider lanes start only after the exact pushed SHA passes all
+five required workflows. Windows product parity stays paused and no release is
+authorized.

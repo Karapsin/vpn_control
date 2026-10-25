@@ -5,6 +5,7 @@ assembly and typed DTOs never manufacture current device/lease/custody authority
 No caller command/program/path selector, lease adoption, retry or signal API.
 """
 from __future__ import annotations
+from . import ssh_transport
 import ast
 import base64
 import hashlib
@@ -610,13 +611,14 @@ def fixed_ssh_argv(root,source):
     command=['sudo','-S','-p','','--','python3','-I','-u','-B','-c',bridge]
     argv=ssh_transport.build_ssh_argv(config,'archlinux',timeout_seconds=60,command=command)
     # Validate the actual generated two-leg template; never rewrite its options.
-    inner=shlex.split(argv[-1])
+    raw=tuple(argv) if isinstance(argv,list) else argv.original_argv
+    inner=shlex.split(raw[-1])
     require(inner and Path(inner[0]).name=='ssh'and inner[-1]==shlex.join(command),'direct_nested_route_changed')
-    for leg in (argv[:-1],inner[:-1]):
+    for leg in (raw[:-1],inner[:-1]):
         for option in ('ControlMaster=no','ControlPersist=no','ProxyCommand=false'):
             require(leg.count(option)==1,'direct_reuse_only_route_required')
         require(leg.count('-S')==1 and leg[leg.index('-S')+1].startswith('/'),'direct_reuse_only_route_required')
-    require(sum(len(x.encode())+1 for x in argv)<65536,'direct_argv_limit')
+    require(sum(len(x.encode())+1 for x in raw)<65536,'direct_argv_limit')
     return argv
 
 
@@ -660,7 +662,7 @@ def _dispatch_guard(held):
 
 def _transport_capture(capsule,argv,frame,role,root,pins,program_sha):
     """One concrete process, complete raw-before-parse. No retry on failure."""
-    dispatch_raw=canonical({'schema':1,'phase':role,'argvSha256':sha(canonical(argv)),'framedSourceSha256':program_sha,'replayAllowed':False})
+    dispatch_raw=canonical({'schema':1,'phase':role,'argvSha256':ssh_transport.argv_sha256(argv),'framedSourceSha256':program_sha,'replayAllowed':False})
     # Separate create-only reservation stays sticky even if dispatch is removed.
     once_pin=write_once(capsule,role+'-once.json',dispatch_raw)
     dispatch_pin=write_once(capsule,role+'-dispatch.json',dispatch_raw)
@@ -669,7 +671,7 @@ def _transport_capture(capsule,argv,frame,role,root,pins,program_sha):
         for name,pin in [(role+'-once.json',once_pin),(role+'-dispatch.json',dispatch_pin)]:held.append(_dispatch_hold(capsule/name,pin,dispatch_raw))
         _source_guard(root,pins)
         _dispatch_guard(held)
-        child=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+        child=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
         publication_failures=[]
         def publish(name,raw,kind):
             # Storage failure cannot discard the already accepted original child.
@@ -725,6 +727,7 @@ def _transport_capture(capsule,argv,frame,role,root,pins,program_sha):
             reason='direct_dispatch_changed'
             publish(role+'-custody-unknown.json',canonical({'schema':1,'reason':reason,'pid':child.pid,'rawRetained':True,'replayAllowed':False}),'custody')
         if publication_failures:reason='direct_journal_publication_failed'
+        ssh_transport.finish_ssh(child,failed=reason is not None or not all(eof.values()))
         return child,stdout,stderr,eof,reason
 
     finally:

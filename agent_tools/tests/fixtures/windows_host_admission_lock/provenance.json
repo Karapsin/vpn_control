@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "18f66b79b9459861ea56679eb5afd15899d36754671858b7fcb68df56dcdab95",
+  "sourcePath": "agent_tools/readiness_windows_host_jobs.py",
+  "evidence": "Source-reviewed VM idle-to-power versus first HOST admission race. No native namespace enrolled; real generated subprocess/socket causal only."
+}

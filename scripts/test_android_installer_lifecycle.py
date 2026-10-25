@@ -127,6 +127,16 @@ class InstallerLifecycleTest(unittest.TestCase):
             "backupSha256": "c" * 64, "expectedOwner": "controller", "expectedRevision": 4})
         self.intent_patch.start()
         self.addCleanup(self.intent_patch.stop)
+        # These cases exercise the admitted installer's callback protocol. The
+        # real fixture admission and per-input guards have socket caller tests.
+        from agent_tools import readiness_entrypoints
+        self.readiness_patch = patch.object(readiness_entrypoints, "from_environment",
+            return_value=SimpleNamespace(revalidate=lambda: None, close=lambda: None))
+        from agent_tools import readiness_adb_dispatch
+        self.adb_environment_patch = patch.object(readiness_adb_dispatch, "environment", side_effect=lambda _admission, base: base)
+        self.adb_environment_patch.start(); self.addCleanup(self.adb_environment_patch.stop)
+        self.readiness = self.readiness_patch.start()
+        self.addCleanup(self.readiness_patch.stop)
 
     class InstalledAdb(Adb):
         def shell(self, *words):
@@ -180,6 +190,7 @@ class InstallerLifecycleTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "new direct private file"):
                     driver.main()
             launched.assert_not_called()
+
 
     @unittest.skipIf(os.name == "nt", "native Android lifecycle requires POSIX private file APIs")
     def test_main_forwards_file_callback_and_fixture_identity_without_stdin(self):
@@ -934,6 +945,23 @@ class InstallerEarlyReplyEvidenceTest(unittest.TestCase):
                 except RuntimeError as error:
                     self.assertNotIn(secret,str(error));self.assertNotIn(secret,''.join(traceback.format_exception(error)))
                 else:self.fail('invalid response admitted')
+
+class ReadinessDependencySeamTest(unittest.TestCase):
+    def test_complete_before_patches_removed_attribute_current_patches_actual_lazy_dependency(self):
+        import types
+        folder=Path(__file__).parent/'tests/fixtures/readiness_test_seams'
+        records=json.loads((folder/'provenance.json').read_bytes())['sourceSha256']
+        for name,digest in records.items():
+            self.assertEqual(digest,hashlib.sha256((folder/name).read_bytes()).hexdigest())
+        source=folder/'test_android_installer_lifecycle.py.before.source'
+        module=types.ModuleType('retained_installer_dependency_tests');module.__file__=__file__
+        exec(compile(source.read_bytes(),str(source),'exec'),vars(module))
+        method='test_async_ok_is_not_accepted_and_input_is_not_reached'
+        before=unittest.TestResult();module.InstallerLifecycleTest(method).run(before)
+        self.assertEqual(1,len(before.errors));self.assertIn('readiness_entrypoints',before.errors[0][1])
+        after=unittest.TestResult();InstallerLifecycleTest(method).run(after)
+        self.assertTrue(after.wasSuccessful(),str(after.errors)+str(after.failures))
+
 
 if __name__ == "__main__":
     unittest.main()

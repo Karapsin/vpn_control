@@ -1,0 +1,123 @@
+"""SOURCE ONLY fixed clang -### plan query: no compiler/linker stage dispatch."""
+from pathlib import Path
+import hashlib,json,os,selectors,stat,subprocess,sys,time,types
+W=Path('/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart-suspend-preparation-134a68b4-4521-467c-a8fc-3d66d69d647c/linker-driver-plan-395a1e0c-8963-4eb7-a6a9-5f64e5cdb76d');OP='395a1e0c-8963-4eb7-a6a9-5f64e5cdb76d'
+I=_PLAN_INPUTS;H=_PLAN_HOLDS
+def need(v,r):
+ if not v:raise ValueError(r)
+def gen(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def guard():
+ for p,fd,g,sha in H:need(gen(os.fstat(fd))==g==gen(p.lstat()),'driver_plan_source_changed')
+ for row in I['directories']:need(gen(Path(row['path']).lstat())[:5]==row['identity']and stat.S_ISDIR(Path(row['path']).lstat().st_mode),'driver_plan_directory_changed')
+ for row in I['aliases']:need(gen(Path(row['path']).lstat())==row['generation']and str(Path(row['path']).resolve())==row['resolved'],'driver_plan_alias_changed')
+def save(name,value):
+ raw=value if isinstance(value,bytes)else(json.dumps(value,indent=2,sort_keys=True)+'\n').encode()
+ fd=os.open(W/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+ return hashlib.sha256(raw).hexdigest()
+p=Path(I['jobsPath']);row=next(x for x in H if x[0]==p);jobs=types.ModuleType('_driver_plan_jobs');jobs.__file__=str(p);sys.modules[jobs.__name__]=jobs;exec(compile(os.pread(row[1],os.fstat(row[1]).st_size+1,0),str(p),'exec'),jobs.__dict__)
+def work_inventory():
+ result=[]
+ for path in sorted((W/'work').rglob('*')):
+  s=path.lstat();need(not stat.S_ISLNK(s.st_mode),'driver_plan_work_symlink')
+  result.append({'relative':str(path.relative_to(W/'work')),'identity':gen(s)[:5],'fileGeneration':gen(s)if stat.S_ISREG(s.st_mode)else None})
+ return result
+def capture_plan():
+ # Preopen exact create-only private leaves BEFORE any child can produce output.
+ # Mutable file contents are ours; immutable FD identity and complete current
+ # named/fstat generation are checked before and after every write/fsync.
+ leaves={};child=None;birth=None;pid=None;counts={'stdout':0,'stderr':0};eof={'stdout':False,'stderr':False}
+ raw_hash={k:hashlib.sha256()for k in counts};retained={'stdout':0,'stderr':0};pipes={};fault=None;code=None;waited=False;start=time.monotonic();deadline=start+10
+ def leaf_guard(row):
+  fd,path,identity=row;s=os.fstat(fd)
+  need(gen(s)[:6]==identity and gen(path.lstat())==gen(s)and stat.S_ISREG(s.st_mode)and stat.S_IMODE(s.st_mode)==0o600,'driver_plan_capture_leaf_changed')
+ def append(row,raw):
+  leaf_guard(row);at=0
+  while at<len(raw):
+   count=os.write(row[0],raw[at:]);need(count>0,'driver_plan_capture_short_write');at+=count
+  os.fsync(row[0]);leaf_guard(row)
+ def event(value):append(leaves['capture'],(json.dumps(value,sort_keys=True)+'\n').encode())
+ def remember(exc,stage):
+  nonlocal fault
+  if fault is None:fault={'stage':stage,'type':type(exc).__name__,'message':str(exc)}
+ def sample_returncode():
+  nonlocal code
+  if child is not None:
+   try:code=child.poll()
+   except Exception as exc:remember(exc,'poll')
+ try:
+  for key,suffix in [('stdout','stdout'),('stderr','stderr'),('capture','capture.jsonl')]:
+   path=W/('driver-plan.'+suffix);fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,0o600)
+   leaves[key]=(fd,path,gen(os.fstat(fd))[:6]);leaf_guard(leaves[key]);os.fsync(fd)
+  event({'phase':'leaves-open','operationId':OP,'deadlineSeconds':10,'aggregateRetainLimit':65536})
+  save('driver-plan.intent.json',{'operationId':OP,'argv':I['argv'],'env':I['env'],'profileSha256':I['profileSha256'],'diagnosticOnly':True,'noCommandsFromOutputExecuted':True})
+  guard();start=time.monotonic();deadline=start+10
+  child=subprocess.Popen(I['argv'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True,start_new_session=True,cwd=W/'work',env=I['env']);pid=child.pid
+  pipes={'stdout':child.stdout,'stderr':child.stderr}
+  event({'phase':'launched','pid':pid,'observedBirth':None,'birthNotYetSampled':True})
+  birth=jobs._birth(pid);event({'phase':'birth-observed','pid':pid,'observedBirth':birth})
+  save('driver-plan.started.json',{'operationId':OP,'pid':pid,'observedBirth':birth,'argv':I['argv'],'deadlineSeconds':10})
+ except Exception as exc:remember(exc,'launch-or-bookkeeping')
+ finally:
+  # Even a birth/start-record/selector-independent exception must drain/persist
+  # actual output before any source/semantic gate. No signal or repeat occurs.
+  if child is not None:
+   readable=set()
+   for key,pipe in pipes.items():
+    try:os.set_blocking(pipe.fileno(),False);readable.add(key)
+    except Exception as exc:remember(exc,'set-nonblocking-'+key)
+   while not all(eof.values())and time.monotonic()<deadline:
+    progressed=False
+    for key,pipe in pipes.items():
+     if eof[key]or key not in readable:continue
+     try:raw=os.read(pipe.fileno(),65536)
+     except BlockingIOError:continue
+     except Exception as exc:remember(exc,'read-'+key);continue
+     if not raw:eof[key]=True;progressed=True;continue
+     progressed=True;counts[key]+=len(raw);remaining=max(0,65536-sum(retained.values()));piece=raw[:remaining]
+     if piece:
+      try:append(leaves[key],piece);raw_hash[key].update(piece);retained[key]+=len(piece)
+      except Exception as exc:remember(exc,'persist-'+key)
+    sample_returncode()
+    if not progressed:time.sleep(.005)
+   sample_returncode()
+   if all(eof.values()):
+    try:code=child.wait(timeout=max(.001,deadline-time.monotonic()));waited=True
+    except subprocess.TimeoutExpired as exc:remember(exc,'waitpid-timeout')
+    except Exception as exc:remember(exc,'waitpid')
+   else:remember(TimeoutError('capture observation deadline; child/streams unknown'),'drain-deadline')
+   for pipe in pipes.values():
+    try:pipe.close()
+    except Exception as exc:remember(exc,'close-pipe')
+  streams={}
+  for key in counts:
+   if key not in leaves:continue
+   try:
+    os.fsync(leaves[key][0]);leaf_guard(leaves[key]);streams[key]={'sha256':raw_hash[key].hexdigest(),'totalBytes':counts[key],'retainedBytes':retained[key],'eof':eof[key],'generation':gen(os.fstat(leaves[key][0]))}
+   except Exception as exc:remember(exc,'close-persist-'+key)
+  terminal={'operationId':OP,'pid':pid,'observedBirth':birth,'exitCode':code,'directWaitpidCompleted':waited,'streamsEOF':all(eof.values()),'streams':streams,'elapsedSeconds':round(time.monotonic()-start,4),'fault':fault,'noSignalOrRetry':True,'semanticAndSourceGuardsNotYetRun':True}
+  try:
+   if 'capture'in leaves:event(dict(terminal,phase='capture-final'))
+  finally:
+   for row in leaves.values():
+    try:os.close(row[0])
+    except OSError:pass
+ # This record is additional. Raw leaves and final EOF/partial/rc/birth above
+ # are durable even when this publication or any later guard refuses.
+ save('driver-plan.terminal.json',terminal)
+ need(fault is None,'driver_plan_capture_fault:'+str(fault))
+ need(waited and all(eof.values()),'driver_plan_child_or_stream_unknown')
+ need(sum(counts.values())<=65536 and counts==retained,'driver_plan_stream_overflow')
+ need(code==0,'driver_plan_refused')
+ return terminal
+
+def main():
+ need(os.geteuid()==I['uid']and jobs._boot()==I['boot'],'driver_plan_host_changed')
+ need(I['argv'][3]==I['clangPath']and I['argv'][4]=='-###'and not any(x in I['env']for x in ['HOME','home','CODEX_HOME']),'driver_plan_fixed_arguments')
+ initial=work_inventory();need(initial==I['workInventory'],'driver_plan_work_changed');guard()
+ terminal=capture_plan()
+ guard();need(jobs._birth(terminal['pid'])is None,'driver_plan_child_not_absent')
+ need(work_inventory()==initial and not os.path.lexists(W/'work/bin/probe-not-created'),'driver_plan_unexpected_work_output')
+ result={'schemaVersion':1,'operationId':OP,'state':'driver-plan-only-complete','results':[terminal],'writer':{'pid':os.getpid(),'birth':jobs._birth(os.getpid())},'workUnchanged':True,'outputExecutableAbsent':True,'noCompileLinkOrImageVmActions':True,'noCommandsFromOutputExecuted':True,'limits':'Documented -### driver nonexecution; this is planned-command evidence only, not link/confinement qualification or independent all-descendant census.'}
+ sha=save('driver-plan-result.json',result);print(json.dumps({'operationId':OP,'state':result['state'],'resultSha256':sha}),flush=True)
+if __name__=='__main__':main()

@@ -1,0 +1,855 @@
+"""SOURCE-ONLY fixed native-test owner. No SSH/provider/credential entry point.
+
+Initialization is a separate explicit operation; controller packets NEVER initialize.
+The caller must review a new exact packet before any future remote use. An old
+foreground operation cannot be adopted by this adapter.
+"""
+from pathlib import Path
+import ast, base64, fcntl, hashlib, inspect, json, os, re, stat, subprocess, sys, types, uuid
+
+_EXECUTING_CODE = inspect.currentframe().f_code
+PURPOSE = 'native-test-source-cohort'
+LIMIT = 4 * 1024 * 1024
+CHUNK = 65536
+_ORIGINALS = {}
+_ADMISSIONS = {}
+_REMOTE_CAPSULES = {}
+_LIVE_HOLDS = {}
+_OWNER_APIS = {}
+_PUBLICATIONS = {}
+
+
+def need(value, reason='native_test_custody_refused'):
+    if not value:
+        raise ValueError(reason)
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def gen(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def pairs(rows):
+    result = {}
+    for key, value in rows:
+        need(key not in result)
+        result[key] = value
+    return result
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
+
+
+def absolute(path):
+    path = Path(path)
+    need(path.is_absolute() and '..' not in path.parts and str(path) == str(path.absolute()))
+    return path
+
+
+def directory(path, expected=None):
+    path = absolute(path)
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in path.parts[1:]:
+            other = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = other
+        info = os.fstat(fd)
+        need(info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700)
+        need(expected is None or gen(info)[:5] == expected)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def read(path, expected=None, bound=LIMIT * 3, private=True):
+    path = absolute(path)
+    # Anchor every ancestor without requiring public source ancestors to be 0700.
+    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in path.parts[1:-1]:
+            other = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = other
+        item = os.open(path.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=fd)
+        try:
+            before = gen(os.fstat(item))
+            need(stat.S_ISREG(before[2]) and before[3] == os.geteuid() and before[5] == 1)
+            need(stat.S_IMODE(before[2]) == 0o600 if private else not (before[2] & 0o022))
+            need(0 <= before[6] <= bound)
+            if expected is not None:
+                need(set(expected) == {'generation', 'sha256'} and before == expected['generation'])
+            chunks = []
+            count = 0
+            while True:
+                chunk = os.read(item, min(65536, bound + 1 - count))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                count += len(chunk)
+                need(count <= bound)
+            raw = b''.join(chunks)
+            need(gen(os.fstat(item)) == before == gen(os.stat(path.name, dir_fd=fd, follow_symlinks=False)))
+            need(expected is None or sha(raw) == expected['sha256'])
+            return raw, {'generation': before, 'sha256': sha(raw)}
+        finally:
+            os.close(item)
+    finally:
+        os.close(fd)
+
+
+class Publication:
+    """Exact create-only writer descriptor and canonical bytes, never a path repin."""
+    __slots__ = ('fd', 'parent', 'name', 'raw', 'pin', 'closed')
+
+    def __init__(self, fd, parent, name, raw):
+        self.fd, self.parent, self.name, self.raw = fd, parent, name, raw
+        self.pin = {'generation': gen(os.fstat(fd)), 'sha256': sha(raw)}
+        self.closed = False
+        _PUBLICATIONS[id(self)] = self
+
+    def guard(self):
+        need(not self.closed and _PUBLICATIONS.get(id(self)) is self)
+        need(gen(os.fstat(self.fd)) == self.pin['generation'] ==
+             gen(os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)))
+        chunks, offset = [], 0
+        while True:
+            chunk = os.pread(self.fd, min(65536, len(self.raw) + 1 - offset), offset)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            offset += len(chunk)
+            need(offset <= len(self.raw))
+        need(b''.join(chunks) == self.raw and sha(self.raw) == self.pin['sha256'])
+        need(gen(os.fstat(self.fd)) == self.pin['generation'] ==
+             gen(os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)))
+        return {'pin': json.loads(encoded(self.pin)), 'body': self.raw}
+
+    def close(self):
+        if not self.closed:
+            self.closed = True
+            _PUBLICATIONS.pop(id(self), None)
+            os.close(self.fd)
+            os.close(self.parent)
+
+
+def atomic(fd, name, raw, *, retained=False):
+    """Mint from held original writer, not from a post-publication path read."""
+    need('/' not in name and name not in {'.', '..'} and type(raw) is bytes)
+    temporary = '.' + name + '.' + str(uuid.uuid4()) + '.tmp'
+    out = os.open(temporary, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
+    publication = None
+    handed = False
+    try:
+        view = memoryview(raw)
+        while view:
+            count = os.write(out, view)
+            need(count > 0)
+            view = view[count:]
+        os.fsync(out)
+        try:
+            os.link(temporary, name, src_dir_fd=fd, dst_dir_fd=fd, follow_symlinks=False)
+        finally:
+            os.unlink(temporary, dir_fd=fd)
+        os.fsync(fd)
+        publication = Publication(out, os.dup(fd), name, raw)
+        publication.guard()
+        if retained:
+            handed = True
+            return publication
+        return publication.guard()
+    finally:
+        if publication is not None:
+            if not handed:
+                publication.close()
+        else:
+            os.close(out)
+
+
+def self_guard():
+    raw, pin = read(Path(__file__).absolute(), private=False)
+    code = compile(raw, str(Path(__file__).absolute()), 'exec', dont_inherit=True)
+    need(code == _EXECUTING_CODE)
+    functions = {item.co_name: item for item in code.co_consts if isinstance(item, types.CodeType)}
+    for node in ast.parse(raw).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            current = globals().get(node.name)
+            need(type(current) is types.FunctionType and current.__code__ == functions[node.name])
+        elif isinstance(node, ast.ClassDef):
+            current = globals().get(node.name)
+            need(type(current) is type)
+            methods = {item.co_name: item for item in functions[node.name].co_consts if isinstance(item, types.CodeType)}
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef):
+                    method = current.__dict__.get(child.name)
+                    need(type(method) is types.FunctionType and method.__code__ == methods[child.name])
+    return raw, pin
+
+
+def machine():
+    if sys.platform.startswith('linux'):
+        value = Path('/etc/machine-id').read_text().strip()
+        need(re.fullmatch('[0-9a-f]{32}', value) is not None)
+        return value
+    need(sys.platform == 'darwin')
+    value = subprocess.run(['/usr/sbin/ioreg', '-rd1', '-c', 'IOPlatformExpertDevice'],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=True).stdout
+    rows = re.findall(rb'"IOPlatformUUID" = "([0-9A-Fa-f-]{36})"', value)
+    need(len(rows) == 1)
+    return str(uuid.UUID(rows[0].decode()))
+
+
+def load_owner(path, expected):
+    raw, pin = read(path, expected)
+    # Fresh private snapshot API; never mutate a production imported module or
+    # shared pycache. Dataclass definition needs only this temporary registry.
+    name = 'native_test_retained_durable_owner_' + uuid.uuid4().hex
+    module = types.ModuleType(name)
+    module.__file__ = str(path)
+    sys.modules[name] = module
+    try:
+        exec(compile(raw, str(path), 'exec', dont_inherit=True), module.__dict__)
+    finally:
+        sys.modules.pop(name, None)
+    need(module.owner_source() == raw)
+
+    def captured_owner_source():
+        # The ONE approved pure getter seam. Even a constructor-induced source
+        # mutation is rejected BEFORE owner.py publication/Popen. The exact
+        # original owner bytes never come from a current-producer reread.
+        self_guard()
+        current, observed = read(path, expected)
+        need(current == raw and observed == pin, 'captured_owner_source_changed')
+        return raw
+
+    module.owner_source = captured_owner_source
+    _OWNER_APIS[id(module)] = (module, captured_owner_source, module.Program,
+        module.Program.__post_init__.__code__, {name: getattr(module, name).__code__ for name in ('submit', 'observe', 'collect')})
+    return module
+
+
+def owner_api_guard(module):
+    self_guard()
+    saved = _OWNER_APIS.get(id(module))
+    need(saved is not None and saved[0] is module and module.owner_source is saved[1]
+         and module.Program is saved[2] and module.Program.__post_init__.__code__ == saved[3])
+    for name, code in saved[4].items():
+        current = getattr(module, name)
+        need(type(current) is types.FunctionType and current.__code__ == code)
+    return saved[1]()
+
+
+def initialize(root, target, owner_path, owner_sha):
+    """Separate LOCAL-controlled initialization now; no remote initializer driver."""
+    adapter, adapter_pin = self_guard()
+    owner, owner_pin = read(owner_path, private=False)
+    need(sha(owner) == owner_sha and re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', target))
+    root = absolute(root)
+    parent = directory(root.parent)
+    try:
+        os.mkdir(root.name, 0o700, dir_fd=parent)  # Existing namespaces are never adopted.
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+    fd = directory(root)
+    try:
+        for name in ('jobs', 'admissions'):
+            os.mkdir(name, 0o700, dir_fd=fd)
+        pins = {}
+        pins['adapter.py'] = atomic(fd, 'adapter.py', adapter)['pin']
+        pins['protocol.py'] = atomic(fd, 'protocol.py', owner)['pin']
+        pins['operator.lock'] = atomic(fd, 'operator.lock', b'native-test-once-v1\n')['pin']
+        retained = load_owner(root / 'protocol.py', pins['protocol.py'])
+        binding = retained.current_binding(target, machine())
+        marker = {'kind': PURPOSE, 'schemaVersion': 1, 'binding': retained.asdict(binding),
+                  'adapterSha256': sha(adapter), 'ownerSha256': owner_sha}
+        pins['marker.json'] = atomic(fd, 'marker.json', encoded(marker))['pin']
+        result = {'root': str(root), 'rootIdentity': gen(os.fstat(fd))[:5], 'binding': marker['binding'],
+                  'files': pins,
+                  'directories': {name: gen(os.stat(name, dir_fd=fd, follow_symlinks=False))[:5] for name in ('jobs', 'admissions')}}
+        os.fsync(fd)
+        return result
+    finally:
+        os.close(fd)
+
+
+def namespace(value):
+    self_guard()
+    need(type(value) is dict and set(value) == {'root', 'rootIdentity', 'binding', 'files', 'directories'})
+    root = absolute(value['root'])
+    fd = directory(root, value['rootIdentity'])
+    try:
+        for name in ('adapter.py', 'protocol.py', 'operator.lock', 'marker.json'):
+            read(root / name, value['files'][name])
+        need(value['files']['adapter.py']['sha256'] == sha(read(Path(__file__).absolute(), private=False)[0]))
+        marker = json.loads(read(root / 'marker.json', value['files']['marker.json'])[0], object_pairs_hook=pairs)
+        need(marker == {'kind': PURPOSE, 'schemaVersion': 1, 'binding': value['binding'],
+                        'adapterSha256': value['files']['adapter.py']['sha256'],
+                        'ownerSha256': value['files']['protocol.py']['sha256']})
+        for name in ('jobs', 'admissions'):
+            child = directory(root / name, value['directories'][name])
+            os.close(child)
+        owner = load_owner(root / 'protocol.py', value['files']['protocol.py'])
+        binding = owner.MachineBinding.from_dict(value['binding'])
+        need(binding.machine == machine())
+        owner._binding_live(binding)
+        return root, fd, owner, binding
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+class Original:
+    __slots__ = ('directory', 'custody')
+
+    def __init__(self, directory, custody):
+        self.directory, self.custody = directory, custody
+
+
+def validate_remote_shape(ns):
+    """Data validation only; never opens a provider path on coordinator."""
+    self_guard()
+    need(type(ns) is dict and set(ns) == {'root', 'rootIdentity', 'binding', 'files', 'directories'})
+    absolute(ns['root'])
+    need(set(ns['binding']) == {'target', 'machine', 'boot', 'account'})
+    for value in ns['binding'].values():
+        need(type(value) is str and re.fullmatch('[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', value) is not None)
+    need(set(ns['files']) == {'adapter.py', 'protocol.py', 'operator.lock', 'marker.json'}
+         and set(ns['directories']) == {'jobs', 'admissions'})
+    for identity in [ns['rootIdentity'], *ns['directories'].values()]:
+        need(type(identity) is list and len(identity) == 5 and all(type(x) is int and x >= 0 for x in identity)
+             and stat.S_ISDIR(identity[2]) and stat.S_IMODE(identity[2]) == 0o700)
+    for pin in ns['files'].values():
+        need(type(pin) is dict and set(pin) == {'generation', 'sha256'} and type(pin['generation']) is list
+             and len(pin['generation']) == 9 and all(type(x) is int and x >= 0 for x in pin['generation'])
+             and stat.S_ISREG(pin['generation'][2]) and stat.S_IMODE(pin['generation'][2]) == 0o600
+             and pin['generation'][5] == 1 and re.fullmatch('[0-9a-f]{64}', pin['sha256']) is not None)
+    need(ns['files']['adapter.py']['sha256'] == self_guard()[1]['sha256'])
+
+
+def remote_namespace_observe(ns):
+    """Remote-only actual namespace/source/machine/boot/UID observation."""
+    root, fd, owner, binding = namespace(ns)
+    try:
+        return {'schemaVersion': 2, 'kind': 'remote-native-test-namespace-observed',
+                'namespace': ns, 'binding': owner.asdict(binding), 'machine': machine(),
+                'boot': owner._boot(), 'uid': str(os.geteuid()), 'namespaceDigest': sha(encoded(ns))}
+    finally:
+        os.close(fd)
+
+
+def remote_observer_source(ns):
+    loader = remote_loader(ns)
+    loader += 'value=m.remote_namespace_observe(json.loads(' + repr(encoded(ns).decode()) + '))\n'
+    loader += 'print(json.dumps(value,sort_keys=True));os.close(fd)\n'
+    compile(loader, 'fixed-native-namespace-observer', 'exec')
+    return loader.encode()
+
+
+def validate_remote_capsule(value):
+    self_guard()
+    need(type(value) is dict and set(value) == {'kind', 'namespace', 'observerSourceBase64', 'observerSourceSHA256',
+         'returnedBase64', 'returnedSHA256', 'returnCode', 'nativeQualified'})
+    need(value['kind'] == 'remote-native-test-observation-v2' and value['nativeQualified'] is False
+         and type(value['returnCode']) is int and value['returnCode'] == 0)
+    ns = value['namespace']
+    validate_remote_shape(ns)
+    source = base64.b64decode(value['observerSourceBase64'], validate=True)
+    returned = base64.b64decode(value['returnedBase64'], validate=True)
+    need(len(returned) <= 65536 and source == remote_observer_source(ns)
+         and sha(source) == value['observerSourceSHA256'] and sha(returned) == value['returnedSHA256'])
+    reply = json.loads(returned, object_pairs_hook=pairs)
+    need(reply == {'schemaVersion': 2, 'kind': 'remote-native-test-namespace-observed',
+                   'namespace': ns, 'binding': ns['binding'], 'machine': ns['binding']['machine'],
+                   'boot': ns['binding']['boot'], 'uid': ns['binding']['account'], 'namespaceDigest': sha(encoded(ns))})
+    return ns
+
+
+class RemoteNamespace:
+    __slots__ = ('capsule',)
+
+    def __init__(self, capsule):
+        self.capsule = capsule
+
+
+def remote_namespace_from_returned(ns, expected_binding, submitted_source, stdout, stderr, returncode):
+    """Bind exact observer packet and actual returned callback, not a ready flag.
+
+    No transport is run here. Caller owns carrier provenance. This SOURCE-ONLY
+    boundary has not qualified an SSH/native dispatcher; it grants no VM action.
+    """
+    self_guard()
+    validate_remote_shape(ns)
+    need(ns['binding'] == expected_binding and type(returncode) is int and returncode == 0
+         and type(stdout) is bytes and len(stdout) <= 65536 and stderr == b''
+         and submitted_source == remote_observer_source(ns))
+    value = {'kind': 'remote-native-test-observation-v2', 'namespace': ns,
+             'observerSourceBase64': base64.b64encode(submitted_source).decode(),
+             'observerSourceSHA256': sha(submitted_source), 'returnedBase64': base64.b64encode(stdout).decode(),
+             'returnedSHA256': sha(stdout), 'returnCode': returncode, 'nativeQualified': False}
+    validate_remote_capsule(value)
+    result = RemoteNamespace(value)
+    _REMOTE_CAPSULES[id(result)] = (result, encoded(value))
+    return result
+
+
+def retain_remote(destination, remote, operation, caller_path, caller_sha, source_rows):
+    """Coordinator-local artifacts only; never opens remote namespace paths."""
+    self_guard()
+    need(type(remote) is RemoteNamespace and _REMOTE_CAPSULES.get(id(remote)) == (remote, encoded(remote.capsule)))
+    ns = validate_remote_capsule(remote.capsule)
+    return _retain(destination, ns, operation, caller_path, caller_sha, source_rows, capsule=remote.capsule)
+
+
+def retain(destination, ns, operation, caller_path, caller_sha, source_rows):
+    """LOCAL POSIX namespaces only. Remote descriptors use retain_remote()."""
+    return _retain(destination, ns, operation, caller_path, caller_sha, source_rows)
+
+
+def _retain(destination, ns, operation, caller_path, caller_sha, source_rows, capsule=None):
+    self_guard()
+    need(str(uuid.UUID(operation)) == operation)
+    caller, caller_pin = read(caller_path, private=False)
+    need(sha(caller) == caller_sha and len(caller) <= LIMIT)
+    compile(caller, 'exact-native-test-caller', 'exec')
+    # Exact public source manifest, including original caller and owner/adapter.
+    rows = []
+    for path, expected in source_rows:
+        raw, actual = read(path, expected, private=False)
+        rows.append({'path': str(path), **actual, 'bytes': len(raw)})
+    if capsule is None:
+        root, nfd, owner, binding = namespace(ns)
+        os.close(nfd)
+        namespace_raw = encoded(ns)
+    else:
+        need(capsule['namespace'] == ns)
+        validate_remote_capsule(capsule)
+        namespace_raw = encoded(capsule)
+    destination = absolute(destination)
+    os.mkdir(destination, 0o700)
+    fd = directory(destination)
+    try:
+        values = {'namespace.json': namespace_raw, 'caller.py': caller,
+                  'sources.json': encoded(rows), 'operation.json': encoded({'operationId': operation,
+                    'purpose': PURPOSE, 'callerSha256': caller_sha, 'callerBytes': len(caller),
+                    'ownerSha256': ns['files']['protocol.py']['sha256'], 'binding': ns['binding']})}
+        pins = {}
+        for name, raw in values.items():
+            pins[name] = atomic(fd, name, raw)['pin']
+        value = {'schemaVersion': 1, 'directoryIdentity': gen(os.fstat(fd))[:5], 'files': pins}
+        published = atomic(fd, 'custody.json', encoded(value))
+        return reopen(destination, published['pin'])
+    finally:
+        os.close(fd)
+
+
+def reopen(path, custody_pin):
+    self_guard()
+    path = absolute(path)
+    raw, actual = read(path / 'custody.json', custody_pin)
+    value = json.loads(raw, object_pairs_hook=pairs)
+    need(set(value) == {'schemaVersion', 'directoryIdentity', 'files'} and value['schemaVersion'] == 1)
+    fd = directory(path, value['directoryIdentity'])
+    os.close(fd)
+    need(set(value['files']) == {'namespace.json', 'caller.py', 'sources.json', 'operation.json'})
+    for name, pin in value['files'].items():
+        read(path / name, pin)
+    result = Original(path, actual)
+    _ORIGINALS[id(result)] = (result, str(path), encoded(actual))
+    original_data(result)
+    return result
+
+
+def original_data(original):
+    self_guard()
+    need(type(original) is Original and _ORIGINALS.get(id(original)) ==
+         (original, str(original.directory), encoded(original.custody)))
+    raw, _ = read(original.directory / 'custody.json', original.custody)
+    custody = json.loads(raw, object_pairs_hook=pairs)
+    fd = directory(original.directory, custody['directoryIdentity'])
+    os.close(fd)
+    values = {name: read(original.directory / name, pin)[0] for name, pin in custody['files'].items()}
+    namespace_record = json.loads(values['namespace.json'], object_pairs_hook=pairs)
+    if namespace_record.get('kind') == 'remote-native-test-observation-v2':
+        validate_remote_capsule(namespace_record)
+        ns = namespace_record['namespace']
+    else:
+        ns = namespace_record
+    operation = json.loads(values['operation.json'], object_pairs_hook=pairs)
+    need(operation == {'operationId': str(uuid.UUID(operation['operationId'])), 'purpose': PURPOSE,
+                       'callerSha256': sha(values['caller.py']), 'callerBytes': len(values['caller.py']),
+                       'ownerSha256': ns['files']['protocol.py']['sha256'], 'binding': ns['binding']})
+    for row in json.loads(values['sources.json'], object_pairs_hook=pairs):
+        raw, _ = read(row['path'], {key: row[key] for key in ('generation', 'sha256')}, private=False)
+        need(len(raw) == row['bytes'])
+    return ns, operation, values['caller.py']
+
+
+def job_custody(root, ns, operation, caller, *, publish=False, expected_pin=None):
+    """Pin original generic admission artifacts; an interrupted publication blocks.
+
+    The trusted generic owner writes these complete artifacts before launch. If a
+    controller dies before this adapter's custody receipt, observation is UNKNOWN
+    rather than reconstructing/adopting a replacement generation.
+    """
+    op = operation['operationId']
+    job = root / 'jobs' / op
+    receipt = root / 'admissions' / (op + '.custody.json')
+    publication = None
+    if publish:
+        files = {name: read(job / name)[1] for name in ('intent.json', 'program.py', 'owner.py')}
+        need(files['program.py']['sha256'] == sha(caller))
+        need(files['owner.py']['sha256'] == ns['files']['protocol.py']['sha256'])
+        value = {'jobIdentity': gen(job.lstat())[:5], 'files': files,
+                 'admissionPin': read(root / 'admissions' / (op + '.json'))[1]}
+        ad = directory(root / 'admissions', ns['directories']['admissions'])
+        try:
+            publication = atomic(ad, receipt.name, encoded(value), retained=True)
+        finally:
+            os.close(ad)
+    else:
+        need(expected_pin is not None, 'original_custody_authority_required')
+        value = json.loads(read(receipt, expected_pin)[0], object_pairs_hook=pairs)
+    try:
+        fd = directory(job, value['jobIdentity'])
+        os.close(fd)
+        read(root / 'admissions' / (op + '.json'), value['admissionPin'])
+        need(set(value) == {'jobIdentity', 'files', 'admissionPin'} and set(value['files']) == {'intent.json', 'program.py', 'owner.py'})
+        for name, pin in value['files'].items():
+            read(job / name, pin)
+        need(value['files']['program.py']['sha256'] == sha(caller))
+        need(value['files']['owner.py']['sha256'] == ns['files']['protocol.py']['sha256'])
+        intent = json.loads(read(job / 'intent.json', value['files']['intent.json'])[0], object_pairs_hook=pairs)
+        need(intent['programSha256'] == operation['callerSha256'] and intent['purpose'] == PURPOSE
+             and intent['binding'] == ns['binding'] and intent['operationId'] == op and intent['streamLimit'] == LIMIT)
+        if publication is not None:
+            verified = publication.guard()
+            need(verified['body'] == encoded(value))
+            return {'value': value, 'publication': publication, **verified}
+        return value
+    except BaseException:
+        if publication is not None:
+            publication.close()
+        raise
+
+
+def run(ns, operation, caller, mode, stream=None, offset=0, custody_pin=None):
+    """Fixed remote controller. Never initializes, scans, deletes, or signals."""
+    need(mode in {'submit', 'observe', 'collect'})
+    need(type(operation) is dict and operation['purpose'] == PURPOSE and
+         operation['callerSha256'] == sha(caller) and operation['callerBytes'] == len(caller) and
+         operation['binding'] == ns['binding'] and operation['ownerSha256'] == ns['files']['protocol.py']['sha256'])
+    op = str(uuid.UUID(operation['operationId']))
+    need(op == operation['operationId'])
+    root, fd, owner, binding = namespace(ns)
+    try:
+        jobs_root = root / 'jobs'
+        jobs_gen = tuple(ns['directories']['jobs'][:2])
+        index = root / 'admissions' / (op + '.json')
+        expected = {'schemaVersion': 1, 'operation': operation, 'namespace': ns,
+                    'streamLimit': LIMIT, 'ownerSha256': ns['files']['protocol.py']['sha256']}
+        if mode == 'submit':
+            lock = os.open('operator.lock', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+            try:
+                need(gen(os.fstat(lock)) == ns['files']['operator.lock']['generation'])
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                namespace_fd = namespace(ns)[1]
+                os.close(namespace_fd)
+                # Publish an independent complete index BEFORE generic admission.
+                if index.exists() or index.is_symlink():
+                    need(json.loads(read(index)[0], object_pairs_hook=pairs) == expected)
+                    mode = 'observe'
+                else:
+                    ad = directory(root / 'admissions', ns['directories']['admissions'])
+                    try:
+                        atomic(ad, index.name, encoded(expected))
+                    finally:
+                        os.close(ad)
+                    owner_api_guard(owner)
+                    program = owner.Program(PURPOSE, caller, LIMIT)
+                    owner_api_guard(owner)  # constructor/source mutation: zero generic jobs
+                    result = owner.submit(jobs_root, op, binding, program, generation=jobs_gen)
+                    custody = None
+                    try:
+                        custody = job_custody(root, ns, operation, caller, publish=True)
+                        verified = custody['publication'].guard()
+                        need(verified['pin'] == custody['pin'] and verified['body'] == custody['body'])
+                        result['adapterSubmitted'] = True
+                        result['originalCustodyPin'] = custody['pin']
+                        result['originalCustodyBodyBase64'] = base64.b64encode(custody['body']).decode()
+                        result['originalOperation'] = operation
+                        custody['publication'].guard()
+                        return result
+                    except (OSError, ValueError):
+                        return {'state': 'unknown', 'reason': 'original_job_custody_unavailable', 'replayAllowed': False}
+                    finally:
+                        if custody is not None:
+                            custody['publication'].close()
+            finally:
+                os.close(lock)
+        if not index.exists() and not index.is_symlink():
+            return {'state': 'unknown', 'reason': 'original_admission_unavailable', 'replayAllowed': False}
+        need(json.loads(read(index)[0], object_pairs_hook=pairs) == expected)
+        # Consumed index with no generic job stays UNKNOWN. NEVER call submit here.
+        result = owner.observe(jobs_root, op, binding, generation=jobs_gen)
+        if result['state'] == 'unsubmitted':
+            result = {'state': 'unknown', 'reason': 'consumed_original_job_missing', 'replayAllowed': False}
+        if result.get('reason') != 'consumed_original_job_missing':
+            try:
+                job_custody(root, ns, operation, caller, expected_pin=custody_pin)
+            except (OSError, ValueError):
+                return {'state': 'unknown', 'reason': 'original_job_custody_changed', 'replayAllowed': False}
+        if mode == 'collect' and result['state'] == 'terminal':
+            need(stream in {'stdout', 'stderr'} and type(offset) is int and offset >= 0)
+            result, stdout, stderr = owner.collect(jobs_root, op, binding, generation=jobs_gen)
+            body = stdout if stream == 'stdout' else stderr
+            need(offset <= len(body))
+            raw, pin = read(jobs_root / op / (stream + '.bin'))
+            need(raw == body)
+            chunk = body[offset:offset + CHUNK]
+            result.update(stream=stream, offset=offset, nextOffset=offset + len(chunk),
+                          complete=offset + len(chunk) == len(body), streamPin=pin,
+                          chunkBase64=base64.b64encode(chunk).decode())
+        return result
+    finally:
+        os.close(fd)
+
+
+class SourceHold:
+    """Keep original public descriptors open through a future admitted carrier.
+
+    This object performs no carrier action. The future dispatcher MUST use this
+    scope and retain a returned raw callback before invoking finish().
+    """
+    __slots__ = ('original', 'files', 'descriptors', 'closed')
+
+    def __init__(self, original):
+        self.original, self.files, self.descriptors, self.closed = original, {}, [], False
+
+    def __enter__(self):
+        self_guard()
+        ns, operation, caller = original_data(self.original)
+        custody_raw, _ = read(self.original.directory / 'custody.json', self.original.custody)
+        custody = json.loads(custody_raw, object_pairs_hook=pairs)
+        self.files[str(self.original.directory / 'custody.json')] = self.original.custody
+        for name, pin in custody['files'].items():
+            self.files[str(self.original.directory / name)] = pin
+        rows = json.loads(read(self.original.directory / 'sources.json', custody['files']['sources.json'])[0], object_pairs_hook=pairs)
+        for row in rows:
+            self.files[row['path']] = {key: row[key] for key in ('generation', 'sha256')}
+        namespace_record = json.loads(read(self.original.directory / 'namespace.json', custody['files']['namespace.json'])[0], object_pairs_hook=pairs)
+        if namespace_record.get('kind') != 'remote-native-test-observation-v2':
+            for name, pin in ns['files'].items():
+                self.files[str(Path(ns['root']) / name)] = pin
+        accepted = _ADMISSIONS.get(id(self.original))
+        if accepted is not None:
+            need(accepted[0] is self.original)
+            self.files[str(self.original.directory / 'original-admission.json')] = accepted[1]
+        try:
+            root_fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            self.descriptors.append(root_fd)
+            parents = {'/': root_fd}
+            for path, pin in self.files.items():
+                item_path = Path(path)
+                fd = root_fd
+                parent_path = Path('/')
+                for name in item_path.parts[1:-1]:
+                    parent_path = parent_path / name
+                    key = str(parent_path)
+                    if key not in parents:
+                        parents[key] = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                        self.descriptors.append(parents[key])
+                    fd = parents[key]
+                fd = os.open(item_path.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=fd)
+                self.descriptors.append(fd)
+                need(gen(os.fstat(fd)) == pin['generation'])
+                raw = bytearray()
+                while True:
+                    part = os.read(fd, 65536)
+                    if not part:
+                        break
+                    raw.extend(part)
+                    need(len(raw) <= LIMIT * 3)
+                need(sha(bytes(raw)) == pin['sha256'] and gen(os.fstat(fd)) == pin['generation'])
+            self.finish()
+            _LIVE_HOLDS[id(self)] = self
+            return self
+        except BaseException:
+            self.close()
+            raise
+
+    def finish(self):
+        need(not self.closed)
+        self_guard()
+        original_data(self.original)
+        for path, pin in self.files.items():
+            read(path, pin, private=False)
+
+    def close(self):
+        _LIVE_HOLDS.pop(id(self), None)
+        for fd in reversed(self.descriptors):
+            os.close(fd)
+        self.descriptors.clear()
+        self.closed = True
+
+    def __exit__(self, kind, value, traceback):
+        try:
+            self.finish()
+        finally:
+            self.close()
+
+
+def remote_loader(ns):
+    """Pure fixed source. Every remote path is opened only in emitted process."""
+    validate_remote_shape(ns)
+    adapter_path = str(Path(ns['root']) / 'adapter.py')
+    # Source authority is the held exact adapter file, not an arbitrary module import.
+    loader = "import pathlib,hashlib,types,sys,json,base64,os\n"
+    loader += "p=pathlib.Path(" + repr(adapter_path) + ")\n"
+    loader += "fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW); before=os.fstat(fd); raw=b''\n"
+    loader += "while True:\n c=os.read(fd,65536)\n if not c: break\n raw+=c\n if len(raw)>1048576: raise ValueError('adapter_bound')\n"
+    loader += "assert hashlib.sha256(raw).hexdigest()==" + repr(ns['files']['adapter.py']['sha256']) + "\n"
+    loader += "m=types.ModuleType('fixed_native_test_adapter');m.__file__=str(p);sys.modules[m.__name__]=m\n"
+    loader += "exec(compile(raw,str(p),'exec',dont_inherit=True),m.__dict__)\n"
+    loader += "assert m.gen(before)==" + repr(ns['files']['adapter.py']['generation']) + "==m.gen(os.fstat(fd))==m.gen(p.lstat())\n"
+    return loader
+
+
+def controller_source(original, mode, stream=None, offset=0):
+    """Exact stored caller bytes; never rebuilds/imports current test graph."""
+    ns, operation, caller = original_data(original)
+    need(mode in {'submit', 'observe', 'collect'})
+    loader = remote_loader(ns)
+    custody_pin = admission(original)
+    loader += "value=m.run(json.loads(" + repr(encoded(ns).decode()) + '),json.loads(' + repr(encoded(operation).decode()) + '),base64.b64decode(' + repr(base64.b64encode(caller).decode()) + '),' + repr(mode) + ',' + repr(stream) + ',' + repr(offset) + ',' + repr(custody_pin) + ')\n'
+    loader += "print(json.dumps(value,sort_keys=True));os.close(fd)\n"
+    compile(loader, 'fixed-native-test-controller', 'exec')
+    return loader.encode()
+
+
+def accept_admission(original, submitted_source, returned_stdout, returned_stderr, returncode):
+    """Trusted caller's ACTUAL initial submitted callback, under SourceHold only.
+
+    This is not an observer or disk DTO loader. A future native dispatcher must
+    authenticate its real carrier callback before invoking this boundary. Missing
+    initial authority stays UNKNOWN, and readonly observation cannot call this.
+    """
+    self_guard()
+    ns, operation, caller = original_data(original)
+    need(any(item.original is original and not item.closed for item in _LIVE_HOLDS.values()), 'actual_initial_carrier_scope_required')
+    need(returncode == 0 and type(returncode) is int and type(returned_stdout) is bytes
+         and type(returned_stderr) is bytes and not returned_stderr and len(returned_stdout) <= LIMIT)
+    need(submitted_source == controller_source(original, 'submit'))
+    value = json.loads(returned_stdout, object_pairs_hook=pairs)
+    need(value.get('adapterSubmitted') is True and value.get('originalOperation') == operation)
+    pin = value.get('originalCustodyPin')
+    need(type(pin) is dict and set(pin) == {'generation', 'sha256'} and
+         type(pin['generation']) is list and len(pin['generation']) == 9 and
+         all(type(item) is int and item >= 0 for item in pin['generation']) and
+         re.fullmatch('[0-9a-f]{64}', pin['sha256']) is not None)
+    receipt_body = base64.b64decode(value['originalCustodyBodyBase64'], validate=True)
+    need(sha(receipt_body) == pin['sha256'])
+    receipt = json.loads(receipt_body, object_pairs_hook=pairs)
+    need(set(receipt) == {'jobIdentity', 'files', 'admissionPin'} and
+         set(receipt['files']) == {'intent.json', 'program.py', 'owner.py'} and
+         receipt['files']['owner.py']['sha256'] == operation['ownerSha256'] and
+         receipt['files']['program.py']['sha256'] == operation['callerSha256'])
+    expected = {'operation': operation, 'namespace': ns, 'originalCustodyPin': pin,
+                'originalCustodyBodyBase64': value['originalCustodyBodyBase64'],
+                'submitPacketSha256': sha(submitted_source), 'callbackSha256': sha(returned_stdout)}
+    fd = directory(original.directory)
+    publication = None
+    try:
+        publication = atomic(fd, 'original-admission.json', encoded(expected), retained=True)
+        verified = publication.guard()
+        need(verified['body'] == encoded(expected))
+        pin = verified['pin']
+        # Transfer duplicates of the SAME publication descriptor, never reopen
+        # a name and choose its current generation as authority.
+        for held in _LIVE_HOLDS.values():
+            if held.original is original:
+                path = str(original.directory / 'original-admission.json')
+                item = os.dup(publication.fd)
+                held.descriptors.append(item)
+                need(gen(os.fstat(item)) == pin['generation'])
+                held.files[path] = pin
+        publication.guard()
+        _ADMISSIONS[id(original)] = (original, pin)
+        return pin
+    finally:
+        if publication is not None:
+            publication.close()
+        os.close(fd)
+
+
+def admission(original):
+    """Only exact already-pinned external authority, never a fresh current read."""
+    self_guard()
+    item = _ADMISSIONS.get(id(original))
+    if item is None:
+        return None
+    need(item[0] is original)
+    value = json.loads(read(original.directory / 'original-admission.json', item[1])[0], object_pairs_hook=pairs)
+    ns, operation, caller = original_data(original)
+    need(value['operation'] == operation and value['namespace'] == ns)
+    return value['originalCustodyPin']
+
+
+def restore_admission(original, expected_pin):
+    """Fresh agent requires externally retained exact original metadata pin."""
+    self_guard()
+    read(original.directory / 'original-admission.json', expected_pin)
+    need(id(original) not in _ADMISSIONS)
+    _ADMISSIONS[id(original)] = (original, expected_pin)
+    return admission(original)
+
+
+def admit_submit(original):
+    """Complete local once fence BEFORE any future protected transport admission.
+
+    Lost ACK, caller death, or uncertain submission always chooses observe next.
+    This metadata creates no remote namespace and does not run a transport.
+    """
+    ns, operation, caller = original_data(original)
+    expected = {'schemaVersion': 1, 'operation': operation, 'namespace': ns,
+                'callerSha256': sha(caller), 'replayAllowed': False}
+    fd = directory(original.directory)
+    try:
+        try:
+            atomic(fd, 'transport-admission.json', encoded(expected))
+            mode = 'submit'
+        except FileExistsError:
+            need(json.loads(read(original.directory / 'transport-admission.json')[0], object_pairs_hook=pairs) == expected)
+            mode = 'observe'
+        return mode, controller_source(original, mode)
+    finally:
+        os.close(fd)
+
+
+def retain_returned(directory_path, label, stdout, stderr, returncode, final_guard, *, stdout_eof=False, stderr_eof=False):
+    """PUBLIC raw prefix first; returned, EOF and retained-complete are distinct."""
+    need(re.fullmatch('[a-z][a-z0-9-]{0,63}', label) is not None)
+    need((stdout is None or type(stdout) is bytes) and (stderr is None or type(stderr) is bytes)
+         and (returncode is None or type(returncode) is int) and type(stdout_eof) is bool and type(stderr_eof) is bool)
+    fd = directory(directory_path)
+    try:
+        value = {'returnCode': returncode, 'transportReturned': returncode is not None, 'replayAllowed': False}
+        for name, raw, eof in (('stdout', stdout, stdout_eof), ('stderr', stderr, stderr_eof)):
+            available = type(raw) is bytes
+            retained = raw[:LIMIT] if available else b''
+            atomic(fd, label + '.' + name, retained)
+            value.update({name + 'Available': available, name + 'Bytes': len(raw) if available else None,
+                          name + 'Retained': len(retained), name + 'Sha256': sha(raw) if available else None,
+                          name + 'RetainedSha256': sha(retained), name + 'Truncated': available and len(raw) > LIMIT,
+                          name + 'EOF': eof, name + 'RetainedComplete': available and eof and len(raw) <= LIMIT})
+        value['complete'] = (returncode is not None and value['stdoutRetainedComplete'] and value['stderrRetainedComplete'])
+        atomic(fd, label + '.callback.json', encoded(value))
+        final_guard()
+    finally:
+        os.close(fd)

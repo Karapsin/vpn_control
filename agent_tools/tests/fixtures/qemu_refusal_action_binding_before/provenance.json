@@ -1,0 +1,1 @@
+{"finding": "Retained completed-refusal validation did not explicitly bind the core-requested action or start-only resource snapshot presence", "sourceSha256": {"readiness_qemu.py": "238806f8dd0c94aa97fd7b0015551d101276d8afcf15cc4d04e38462ee9f1610", "readiness_qemu_refusal.py": "4a48b0837907de15a991a2b670899d2f357ab30b846ab43e78ca1b70e2ef44ae"}}

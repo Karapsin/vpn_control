@@ -1,0 +1,5 @@
+{
+  "failure": "Completed original read-only target body lost when closing readiness changed; no original mutation replay is authorized.",
+  "nativeEvidence": ".runtime/tool-recovery-qemu/canonical-bookkeeping-before/analysis.json",
+  "sha256": "f45cbcb03509bb659ac9553ccc3a4caa0839ee373c9fa3df5815b77a5d4ff2f1"
+}

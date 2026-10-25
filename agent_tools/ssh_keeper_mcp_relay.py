@@ -55,8 +55,12 @@ def main(output,expected):
    pin=generation(info)
    if generation(os.stat(OUTPUT/('server.'+name),follow_symlinks=False))!=pin or generation(os.fstat(fd))!=pin:raise ValueError('raw_closing')
    manifest[name]={'bytes':len(body),'sha256':hashlib.sha256(body).hexdigest(),'generation':list(pin)}
-  if hashlib.sha256(server.read_bytes()).hexdigest()!=EXPECTED:raise ValueError('server_source_changed')
-  save('server-terminal.json',{'returnCode':rc,'eof':eof,**flags,'complete':all(eof.values()) and not any(flags.values()),'raw':manifest,'delivery':delivery.summary(),'automaticReplay':False})
+  try:source_unchanged=hashlib.sha256(server.read_bytes()).hexdigest()==EXPECTED
+  except OSError:source_unchanged=False
+  # Kernel return/EOF and retained RPC delivery remain facts even when the
+  # source changed. Preserve them before refusing that source generation.
+  save('server-terminal.json',{'returnCode':rc,'eof':eof,**flags,'complete':all(eof.values()) and not any(flags.values()),'raw':manifest,'delivery':delivery.summary(),'automaticReplay':False,'sourceSha256':EXPECTED,'sourceUnchanged':source_unchanged})
+  if not source_unchanged:raise ValueError('server_source_changed')
  finally:
   for fd in logs.values():os.close(fd)
   if proc is not None:

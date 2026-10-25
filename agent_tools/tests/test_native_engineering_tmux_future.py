@@ -8,7 +8,7 @@ import unittest
 from agent_tools.tests import test_native_execution_context as fixture
 
 _DRIVER = r'''
-import json,os,sys,subprocess
+import hashlib,json,os,sys,subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -18,6 +18,7 @@ from agent_tools import linux_package_fixture_build as build
 from agent_tools import native_execution_context as context
 from agent_tools import ssh_tmux_resource_admission as resource
 from agent_tools import ssh_tmux_session_ssh as old
+from agent_tools import ssh_tmux_mcp_adapter as adapter
 from agent_tools import ssh_transport
 admitted=context.EngineeringExecutionContext.qualify(root,source,request,(artifact,))
 driver=resource.ResourceDriver(root,source_root=source,engineering_context=admitted)
@@ -25,6 +26,21 @@ assert Path(build.__file__).is_relative_to(source) and Path(resource.__file__).i
 tools=driver._tools();assert tools['linux_package_fixture_build.py']['pin']['sha256']==old.BUILD_SHA
 calls=[]
 def pin(number):return {'generation':[1,number,33152,os.getuid(),os.getgid(),1,1,1,1],'sha256':'a'*64}
+# This test replaces the transport boundary, while the production adapter keeps
+# its actual intent reader and source-bound equality checks. Supply its current
+# public record shape using real, harmless private files and a public host pin.
+route=root/'.rag_index/engineering-transport-fixture';route.mkdir(mode=0o700)
+config=route/'inventory.json';key=route/'identity';known=route/'known-hosts'
+for path,body in ((config,b'{}'),(key,b'local noncredential test fixture'),(known,b'public test host key')):
+ path.write_bytes(body);path.chmod(0o600)
+def fixed_transport():
+ value={'version':2,'purpose':'mcp-tmux-private-transport-v2','host':'archlinux',
+        'publicRouteSha256':hashlib.sha256(b'fixed public engineering transport fixture').hexdigest(),
+        'privateFiles':{str(path):adapter._private_metadata(path) for path in (config,key)},
+        'publicFiles':{str(known):old.blob(known)[1]},
+        'privateCustodySourceSha256':ssh_transport._automatic_module()._PRIVATE_CONFIG_SHA}
+ assert adapter._valid_transport(value)
+ return None,value
 def fixed_effect(program,payload,*,job=None,guard=None):
  if guard:guard()
  calls.append('availability' if program==old._AVAILABILITY else 'stage' if program==old._STAGE else payload['action'])
@@ -34,7 +50,7 @@ def fixed_effect(program,payload,*,job=None,guard=None):
  if action=='prepare':return {'state':'prepared','correlationId':request['correlationId'],'anchorPin':pin(2),'replayAllowed':False,'artifactVerification':'required'}
  if action=='release':return {'state':'released','correlationId':request['correlationId'],'replayAllowed':False,'artifactVerification':'required'}
  return {'state':'running','correlationId':request['correlationId'],'replayAllowed':False,'artifactVerification':'required'}
-with patch.object(ssh_transport,'load_config',return_value=SimpleNamespace(hosts={'archlinux':object()})),patch.object(driver,'_transport',return_value=(None,{})),patch.object(driver,'_query',side_effect=fixed_effect):
+with patch.object(ssh_transport,'load_config',return_value=SimpleNamespace(hosts={'archlinux':object()})),patch.object(driver,'_transport',side_effect=fixed_transport),patch.object(driver,'_query',side_effect=fixed_effect):
  proof=driver.preflight(request);assert proof['state']=='ready' and not proof['finalAcceptance']
  result=build.start(root,request,source_root=source,engineering_context=admitted,driver=driver,admission=lambda unused,req:driver.preflight(req))
  assert result['state']=='submitted',result

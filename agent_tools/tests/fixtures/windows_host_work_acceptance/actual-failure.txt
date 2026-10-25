@@ -1,0 +1,29 @@
+F
+======================================================================
+FAIL: test_changed_original_evidence_blocks_before_transport (agent_tools.tests.test_windows_host_phase_integration.BackendOriginalHostPhaseTests.test_changed_original_evidence_blocks_before_transport)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_windows_host_phase_integration.py", line 51, in test_changed_original_evidence_blocks_before_transport
+    with self.assertRaisesRegex(readiness.AdapterBlocked,'integrity_mismatch'):backend.observe(readiness.Requirements(frozenset({'guest_agent'})),99999999999)
+                                                                               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/readiness_windows.py", line 236, in observe
+    try:value,host=self._run('observe',str(uuid4()),deadline,interactive=interactive,idle=with_idle,
+                   ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            expected_sid=self.expected_sid,lease_root_generation=self.lease_root_generation,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            job_root_generation=job_root,job_admission_generation=job_admission,preexec_rejections=self._preexec_rejections,original_host_phases=self._original_host_phases)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py", line 1175, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py", line 1179, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py", line 1234, in _execute_mock_call
+    raise effect
+AssertionError: changed_original_capture_reached_transport_boundary
+
+----------------------------------------------------------------------
+Ran 1 test in 0.051s
+
+FAILED (failures=1)

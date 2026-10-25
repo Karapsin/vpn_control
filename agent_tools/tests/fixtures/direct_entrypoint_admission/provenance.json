@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "beforeimages": {
+    "android_installer_lifecycle.before.source": "5a3e3e69d6b300d5f61bf2420907a59ad58ae8209a36bf0ace671e0930085d2b",
+    "capture_visual_android.before.source": "d1eb2ae313cd9550481c345a08e663fde282224e36b61764dd56325a45a82bd6",
+    "capture_visual_macos_tart.before.source": "1949bfd37bb2aa334789c5ce50e0b6662f4f0edb2bbbd7558586486df00cade5",
+    "capture_visual_windows_qemu.before.source": "75c909247fc08ca5fdd7b1b29ea9c82773a4d527c69f0bd450f82c6200b90854",
+    "readiness_gui_lease.before-startup-observation.source": "7b14c4e60f8df95599886177f37015eba114f6095cf9dc4c67b9528f9220bddc",
+    "readiness_vm_dispatch.before-source-owned-context.source": "10ac0c44c5f9872a89e020e09605a9113f431870ce7c4bead42dbf53afca5a72",
+    "readiness_gui_lease.before-original-reconciliation.source": "26a99c880dc7a690df21ad734cbfcfbbcc34ed1cf922e529a40ed06e165eb92a",
+    "readiness_recovery_status.before-dispatch-digest.source": "d21d44576bb7775dbd57e0d37159b55e8fb1a26bee795250e4fcece9d38e5a00",
+    "readiness_recovery_status.before-shared-reboot.source": "45f5cae3fc504b8cdda0119b2d5b95d7d3655944137112217525fa1e6fba0366",
+    "readiness_recovery_status.before-dispatch-version.source": "e382490f4f802eb53fc74a502a245f34b7b9539603feb12b4c819841c989af44"
+  },
+  "cases": {
+    "capture_visual_windows_qemu.before.source": "Actual complete QMP input caller dispatches under wrong account before admission; fixed refuses before input.",
+    "capture_visual_android.before.source": "Actual whole shell caller invokes ADB under wrong account before admission; fixed refuses before any ADB.",
+    "capture_visual_macos_tart.before.source": "Synthetic credential appears in generated VNC argv; fixed delegates protected executor without credential argv.",
+    "readiness_gui_lease.before-startup-observation.source": "Actual retained lease job startup UNKNOWN is rejected rather than observed; fixed observes same owner to active.",
+    "readiness_vm_dispatch.before-source-owned-context.source": "Real source loader changes stdlib callable context manager into function; fixed source-owned context preserves guarded enter/cleanup.",
+    "android_installer_lifecycle.before.source": "Actual baseline PATH-only CLI child still executes trusted ADB after guest boot changes; fixed protected child checks original admission before exec.",
+    "readiness_gui_lease.before-original-reconciliation.source": "Actual original lease owner loses daemon at expiry, keeps failed immutable receipt and setting7; old automatic wrapper refuses cleanup, fixed reconciles original once through derived durable owner and restores original setting3.",
+    "readiness_recovery_status.before-dispatch-digest.source": "Original pure status reader accepts a corrupt canonical dispatch digest as a complete history snapshot; fixed reader rejects it without locks/writes/recovery.",
+    "readiness_recovery_status.before-shared-reboot.source": "Two real coordinator callers share one unknown reboot. The joining caller owns its request marker, while the original caller retains the single reboot budget; old reader rejects the valid shared association, fixed reader preserves it without effects.",
+    "readiness_recovery_status.before-dispatch-version.source": "Original summary accepts floating dispatch protocol version2.0 with recomputed digest; core rejects the noncanonical body. Fixed reader requires integer protocol version2."
+  }
+}

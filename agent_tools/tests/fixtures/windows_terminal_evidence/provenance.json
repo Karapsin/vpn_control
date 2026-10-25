@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "5ba37a088bcbaf838c7260ab9c812b94be75aa0f7773402134e4ebb41e0eaa6d",
+  "nativeBeforeOperation": "79b4d0ac-8596-43cb-aea6-b2cd8eb15fdd",
+  "failure": "Read-only process observer exceeded existing 65536 output bound; original untrusted terminal was not retained before validation. Keep strict bound, retain bounded raw nonsecret controller response separately from accepted terminal."
+}

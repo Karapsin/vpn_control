@@ -8,11 +8,13 @@ unrecognised response asks the caller to inspect evidence.
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any, Mapping
 
 
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _JOB_IDENTITY = frozenset(("jobId", "pid", "startTicks", "receiptPath"))
+_FIXTURE = re.compile(r"[a-z0-9][a-z0-9-]{0,95}\Z")
 
 
 def _guidance(kind: str, reason: str, *, action: dict[str, Any] | None = None,
@@ -32,6 +34,147 @@ def _guidance(kind: str, reason: str, *, action: dict[str, Any] | None = None,
 def _host(result: Mapping[str, Any]) -> str | None:
     value = result.get("host")
     return value if isinstance(value, str) and _TOKEN.fullmatch(value) else None
+
+
+def _operation(result: Mapping[str, Any]) -> str | None:
+    value = result.get("operationId")
+    try:
+        return value if type(value) is str and str(uuid.UUID(value)) == value else None
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+def _fixture(result: Mapping[str, Any]) -> str | None:
+    value = result.get("fixtureId")
+    return value if type(value) is str and _FIXTURE.fullmatch(value) else None
+
+
+def _readiness_guidance(tool, action, result):
+    operation = _operation(result)
+    selected = _host(result) if tool == "ssh_workflow" else _fixture(result)
+    if operation is None or selected is None or result.get("replayAllowed") is not False:
+        return _guidance("resolve_blocker", "original readiness identity is incomplete", fresh=True)
+    state = result.get("state")
+    if type(state) is not str or result.get("readinessBlocker") or state in {"blocked", "unknown", "failed"}:
+        return _guidance("resolve_blocker", "readiness has an unresolved evidence blocker", fresh=True)
+    if state == "ready" and result.get("ok") is True:
+        return _guidance("complete", "the same target is ready", fresh=False)
+    if action != "readiness-status" or state not in {"not_ready", "expired", "dead", "unavailable"}:
+        return _guidance("resolve_blocker", "readiness has no proven safe continuation", fresh=True)
+    args = ({"host": selected, "identity": {"operationId": operation}} if tool == "ssh_workflow" else
+            {"inputs": {"fixtureId": selected, "operationId": operation}})
+    return _guidance("ensure_ready", "establish readiness for the same original target and operation",
+                     action={"tool": tool, "action": "readiness-ensure", "args": args}, fresh=True)
+
+
+def _lease_guidance(result):
+    operation, fixture = _operation(result), _fixture(result)
+    if operation is None or fixture is None or result.get("replayAllowed") is not False:
+        return _guidance("resolve_blocker", "original lease identity is incomplete", fresh=True)
+    state, owner = result.get("state"), result.get("jobState")
+    if type(state) is not str or type(owner) is not str:
+        return _guidance("resolve_blocker", "original lease state is incomplete", fresh=True)
+    qualified_mac = (type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
+                     and result.get("provider") == "tart-macos"
+                     and result.get("qualificationScope") == "registered_guest_executor")
+    mac_pending_reason = (type(result.get("reason")) is str and result["reason"] in {
+        "lease_deadline_reached", "original_lease_cancelled", "macos_lease_failed", "macos_assertion_release_unverified"})
+    mac_final_receipt = (qualified_mac and result.get("nextAction") == "none"
+                         and result.get("nativeState") == state
+                         and type(result.get("reason")) is str and result["reason"] in {
+                             "lease_deadline_reached", "original_lease_cancelled", "original_assertion_owner_exited"})
+    if (state in {"expired", "cancelled", "restored"} and owner == "terminal"
+            and result.get("restored") is True and result.get("ok") is True
+            and (result.get("provider") != "tart-macos" or mac_final_receipt)):
+        return _guidance("complete", "the original lease and retained owner result are terminal", fresh=False)
+    if (type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
+            and result.get("provider") == "tart-macos"
+            and result.get("qualificationScope") == "registered_guest_executor"
+            and state == "restore_blocked" and owner == "terminal"
+            and result.get("restored") is False
+            and result.get("reason") == "macos_assertion_release_unverified"
+            and result.get("nextAction") == "reconcile_original"):
+        return _guidance("reconcile_original", "verify cleanup of only the same original Mac assertion owner",
+                         action={"tool": "vm_workflow", "action": "readiness-lease-reconcile",
+                                 "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
+    if (state == "restore_blocked" and owner == "terminal" and result.get("restored") is False
+            and result.get("provider") == "android-emulator"
+            and result.get("qualificationScope") == "registered_android_fixture"
+            and result.get("restorationState") == "unsubmitted"
+            and result.get("reason") == "lease_restore_not_admitted"
+            and type(result.get("restorationOperationId")) is str
+            and result["restorationOperationId"] == str(uuid.uuid5(uuid.UUID(operation), "temporary-keep-awake-restore-v1"))):
+        return _guidance("reconcile_original", "restore only the same original lease setting through its owned transport",
+                         action={"tool": "vm_workflow", "action": "readiness-lease-reconcile",
+                                 "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
+    mac_cleanup_pending = (type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
+            and result.get("provider") == "tart-macos"
+            and result.get("qualificationScope") == "registered_guest_executor"
+            and state == "unknown" and result.get("nativeState") == "restore_pending"
+            and owner == "running" and result.get("ok") is True
+            and type(result.get("restored")) is bool
+            and result.get("nextAction") == "observe_original"
+            and mac_pending_reason)
+    pending = (state == "unknown" and owner in {"unknown", "pending"} and result.get("ok") is True
+               and type(result.get("reason")) is str
+               and result.get("reason") in {"original_owner_ack_pending", "original_admission_pending"})
+    starting = (state == "starting" and owner in {"running", "pending"} and result.get("ok") is True
+                and type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
+                and type(result.get("provider")) is str
+                and (result.get("qualificationScope") == "registered_guest_executor"
+                     and result.get("provider") in {"raw-qemu-windows", "libvirt-windows", "tart-macos"}
+                     or result.get("qualificationScope") == "registered_android_fixture"
+                     and result.get("provider") == "android-emulator"))
+    if mac_cleanup_pending or pending or starting or owner in {"running", "pending"} and (
+            state == "active" and result.get("ok") is True
+            or state in {"restore_pending", "restoring"}
+            or state in {"expired", "cancelled"} and result.get("restored") is True
+            and (result.get("provider") != "tart-macos"
+                 or qualified_mac and owner == "running" and result.get("ok") is True
+                 and result.get("nativeState") == state and result.get("nextAction") == "observe_original"
+                 and mac_pending_reason)):
+        return _guidance("observe_original", "observe the same original lease until its owner receipt is terminal",
+                         action={"tool": "vm_workflow", "action": "readiness-lease-status",
+                                 "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
+    return _guidance("resolve_blocker", "original lease evidence is blocked or incomplete", fresh=True)
+
+
+def _guest_program_guidance(prefix, action, result):
+    operation, fixture = _operation(result), _fixture(result)
+    qualified = (type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
+                 and type(result.get("durableProtocol")) is int and result["durableProtocol"] == 1
+                 and result.get("qualificationScope") == "fixed-counter"
+                 and (prefix != "android-program" or result.get("provider") == "android-emulator"))
+    if operation is None or fixture is None or result.get("replayAllowed") is not False or not qualified:
+        return _guidance("resolve_blocker", "original guest program admission is incomplete", fresh=True)
+    state, reason = result.get("state"), result.get("reason")
+    if type(state) is not str:
+        return _guidance("resolve_blocker", "original guest program state is unrecognized", fresh=True)
+    if state == "terminal":
+        if action == prefix + "-collect":
+            incomplete = (any(key in result and type(result[key]) is not bool for key in ("complete", "streamCapped"))
+                          or result.get("complete") is False or result.get("streamCapped") is True
+                          or prefix == "android-program" and (result.get("complete") is not True or result.get("streamCapped") is not False))
+            if incomplete:
+                return _guidance("resolve_blocker", "original retained guest streams are incomplete", fresh=True)
+            return _guidance("complete", "original retained guest program result is collected", fresh=False)
+        kind, verb = "collect_original", "collect"
+    else:
+        known_unknown = (
+            prefix == "guest-program" and type(reason) is str and reason in {
+                "record_unavailable", "guest_submission_unresolved", "guest_original_observation_unavailable"}
+            or prefix == "guest-program" and type(result.get("provider")) is str
+            and result["provider"] in {"raw-qemu-windows", "libvirt-windows"}
+            and type(reason) is str and reason == "original_owner_ack_pending"
+            or prefix == "android-program" and (reason is None or type(reason) is str and reason in {
+                "android_job_admission_unknown", "android_job_transport_unknown", "android_job_transport_timeout",
+                "android_job_deadline", "android_job_original_owner_unresolved"}))
+        if state not in {"running", "pending"} and not (state == "unknown" and known_unknown):
+            return _guidance("resolve_blocker", "original guest program evidence is blocked or incomplete", fresh=True)
+        kind, verb = "reconcile_original", "reconcile"
+    return _guidance(kind, "observe the same admitted guest program without replacement",
+                     action={"tool": "vm_workflow", "action": prefix + "-" + verb,
+                             "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
 
 
 def _job_identity(result: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -100,6 +243,38 @@ def next_action(tool: str, action: str, result: Mapping[str, Any] | Any) -> dict
     status = result.get("status")
     verification = result.get("verification")
     summary = " ".join(str(result.get(key, "")) for key in ("summary", "message", "reason")).lower()
+
+    if action in {"readiness-status", "readiness-ensure", "readiness-reboot"}:
+        return _readiness_guidance(tool, action, result)
+    if tool == "vm_workflow" and action in {"readiness-lease-acquire", "readiness-lease-status", "readiness-lease-cancel", "readiness-lease-reconcile"}:
+        return _lease_guidance(result)
+    if tool == "vm_workflow" and action in {
+            "guest-program-start", "guest-program-status", "guest-program-reconcile", "guest-program-collect",
+            "android-program-start", "android-program-status", "android-program-reconcile", "android-program-collect"}:
+        return _guest_program_guidance("android-program" if action.startswith("android-program-") else "guest-program", action, result)
+
+    if tool == "ssh_workflow" and action in {"program-start", "program-status", "program-collect", "program-reconcile"}:
+        host, operation = _host(result), _operation(result)
+        if host is None or operation is None or result.get("replayAllowed") is not False:
+            return _guidance("resolve_blocker", "original program identity is incomplete", fresh=True)
+        kind = result.get("nextAction")
+        allowed = {"collect_original": "program-collect", "observe_original": "program-status",
+                   "reconcile_original": "program-reconcile"}
+        if state == "terminal":
+            if action == "program-collect":
+                return _guidance("complete", "original retained program result is collected", fresh=False)
+            kind = "collect_original"
+        elif state == "running":
+            kind = "observe_original"
+        elif state == "pending":
+            kind = "reconcile_original" if type(result.get("durableProtocol")) is int and result["durableProtocol"] == 1 else "observe_original"
+        elif kind == "reconcile_original" and (type(result.get("durableProtocol")) is not int or result["durableProtocol"] != 1):
+            kind = "resolve_blocker"
+        if type(kind) is not str or kind not in allowed:
+            return _guidance("resolve_blocker", "original program outcome requires evidence", fresh=True)
+        return _guidance(kind, "continue observing the same original program", action={
+            "tool": "ssh_workflow", "action": allowed[kind],
+            "args": {"host": host, "identity": {"operationId": operation}}}, fresh=True)
 
     if tool == "ssh_workflow" and result.get("ok") is True:
         host = _host(result)

@@ -1,0 +1,380 @@
+{
+  "windows_cp117_fixture_recovery.py": {
+    "beforeSha256": "cf992351e2ddf09913279e00d59f1c07886763a487474fb379e220ba3b73a948",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "status",
+        "line": 506,
+        "transport": "authority.closure.base.ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "preflight",
+        "line": 530,
+        "transport": "authority.closure.base.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_cp117_fixture_recovery.py"
+  },
+  "windows_cp117_fixture_recovery_short_socket.py": {
+    "beforeSha256": "cf04c35984444740e5228ca70ce866748e2f718543bffdab620a84c290180642",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "status",
+        "line": 522,
+        "transport": "authority.closure.base.ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "preflight",
+        "line": 546,
+        "transport": "authority.closure.base.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_cp117_fixture_recovery_short_socket.py"
+  },
+  "windows_cp117_lockpage_dismiss_observe.py": {
+    "beforeSha256": "b54fb8b64519f042b69e95caae14de66221fb75287db2369d22c260380fd5458",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "wake",
+        "line": 139,
+        "transport": "r.authority.closure.base.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_cp117_lockpage_dismiss_observe.py"
+  },
+  "windows_cp117_recovered_login.py": {
+    "beforeSha256": "0906ff550bb990f19fa2627e77c3e0eda9c5305744097a46900577f1d36612ab",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_capture",
+        "line": 211,
+        "transport": "r.authority.closure.base.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_cp117_recovered_login.py"
+  },
+  "windows_cp117_windowless_dismiss_observe.py": {
+    "beforeSha256": "2df3dc5a517a9bb57e123106af7014c825559a23154f9b70429b48d247f83757",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "wake",
+        "line": 144,
+        "transport": "r.authority.closure.base.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_cp117_windowless_dismiss_observe.py"
+  },
+  "windows_cp117_windowless_provider_login.py": {
+    "beforeSha256": "4c8a4eb4b52abcac9936677e5781dcbf862dbd865b602565db952c3968fff8ee",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "prepare",
+        "line": 664,
+        "transport": "r.authority.closure.base.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_cp117_windowless_provider_login.py"
+  },
+  "windows_fixture_python_host_source.py": {
+    "beforeSha256": "ef41ceb156dbfb97d510910e40acdf31ff9cf75b2fea4c20e9a5f89dc9244558",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "observe",
+        "line": 98,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_fixture_python_host_source.py"
+  },
+  "windows_msi_base_prepare.py": {
+    "beforeSha256": "b1ab2ec62a4be0b7ff68f86eef31cd73b92f5a2454b9481f1bdb49d8e02c632a",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 928,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 932,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_msi_base_prepare.py"
+  },
+  "windows_msi_public_scenario.py": {
+    "beforeSha256": "2d045346078a110370b48ecade281d54d0057ff13c77b222a2d8daf961d07b2c",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "preinstall_status",
+        "line": 265,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_msi_public_scenario.py"
+  },
+  "windows_vm_baseline_inventory.py": {
+    "beforeSha256": "91d7a5b8211ed94466aa5a26560bb419af97f9e47c158384eda660c218dd9dd9",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "observe",
+        "line": 277,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "media_fingerprint",
+        "line": 298,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_baseline_inventory.py"
+  },
+  "windows_vm_driver_fetch.py": {
+    "beforeSha256": "cd87fd9d65566cc7bc3085e6bf24ca85eb7ba7cbce75df16f287db2ecc4978f7",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 178,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_driver_fetch.py"
+  },
+  "windows_vm_fresh_setup.py": {
+    "beforeSha256": "371dabc9d811f12a38c1a85d032ca69f915f7d46c2af5e3efdb3777638e56cdf",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 373,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "_screen_remote",
+        "line": 392,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "_probe_remote",
+        "line": 477,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_fresh_setup.py"
+  },
+  "windows_vm_optical_boot.py": {
+    "beforeSha256": "41208d3813743b3964da63aaada3d25a83bb0fec58795d8c9532733954acf27a",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 570,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_optical_boot.py"
+  },
+  "windows_vm_optical_current_screen.py": {
+    "beforeSha256": "05baaaaf7ece50b24ed97158d6c1da6e9e873280aa44f8331ddbc497530e0954",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote_json",
+        "line": 170,
+        "transport": "boot.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_optical_current_screen.py"
+  },
+  "windows_vm_secureboot_clone.py": {
+    "beforeSha256": "f1f953f5340e142a51b1123245f8d22092715dcb3aa502a5d03c5d319ee8b586",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "preflight",
+        "line": 245,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_secureboot_clone.py"
+  },
+  "windows_vm_secureboot_fresh.py": {
+    "beforeSha256": "54b810469e39bc95865d51bfcc0b43934a73b246a1d5deb56e60d74585c4d9e9",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 414,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_secureboot_fresh.py"
+  },
+  "windows_vm_secureboot_inventory.py": {
+    "beforeSha256": "fe80bba58739eedf56779b82e3da9ca28b19428aef9691d9bd724871b6a07c1a",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "observe",
+        "line": 211,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_secureboot_inventory.py"
+  },
+  "windows_vm_setup_install_ack.py": {
+    "beforeSha256": "1883096038d94a6f3dfd0aa04d4933827e194de036071b407e858a63cb4b1ab5",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote_json",
+        "line": 221,
+        "transport": "boot.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_setup_install_ack.py"
+  },
+  "windows_vm_setup_install_disk_proof.py": {
+    "beforeSha256": "c551fd68242e0e17b3228d87fbd2c88901c8256b7f2f9a3795f7701742d60b82",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "preflight",
+        "line": 168,
+        "transport": "boot.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_setup_install_disk_proof.py"
+  },
+  "windows_vm_setup_install_focus.py": {
+    "beforeSha256": "e919798655888fe518c94edfb115e8a5d9c54bda2c8639366e8d0e958de7b252",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote_json",
+        "line": 220,
+        "transport": "boot.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_setup_install_focus.py"
+  },
+  "windows_vm_setup_install_next.py": {
+    "beforeSha256": "7b5a20327169e574c5e9fca74aab0a879f7a9d1bc39ea467a87c9ab48f768f05",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote_json",
+        "line": 221,
+        "transport": "boot.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_setup_install_next.py"
+  },
+  "windows_vm_setup_keyboard_next.py": {
+    "beforeSha256": "8b81fa84ae8e0af93a9c72cbc4f71e625413701284b85368acea6fbcd305bcf8",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote_json",
+        "line": 208,
+        "transport": "boot.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_setup_keyboard_next.py"
+  },
+  "windows_vm_setup_language_next.py": {
+    "beforeSha256": "86db404ee71c56207153bf635a9117cee5e61e2a36001618fda20c8c0850116a",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote_json",
+        "line": 203,
+        "transport": "boot.ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_setup_language_next.py"
+  },
+  "windows_vm_swtpm_repair.py": {
+    "beforeSha256": "e50826fe85b8d79a88c9442ec652f73bd10f2d17c95ea55cd7cee1f48a20d02a",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 254,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "owner_observe",
+        "line": 276,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_swtpm_repair.py"
+  },
+  "windows_vm_virt_firmware_admission.py": {
+    "beforeSha256": "ef7f2e1c09b292f40731edce6483ec24f295ff125bd5cc766ef08fe08f59402b",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "observe",
+        "line": 76,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_virt_firmware_admission.py"
+  },
+  "windows_vm_virt_firmware_install.py": {
+    "beforeSha256": "60881fb3f92415ff5dc7b40493b7009a2e9d0c0bda7b4805ef6bcad93434e719",
+    "calls": [
+      {
+        "argv": "argv",
+        "function": "_remote",
+        "line": 262,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "argv",
+        "function": "_signature_policy_state",
+        "line": 279,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "gateway_argv",
+        "function": "_transport_diagnostic",
+        "line": 305,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "target_argv",
+        "function": "_transport_diagnostic",
+        "line": 311,
+        "transport": "ssh_transport"
+      },
+      {
+        "argv": "runtime_argv",
+        "function": "_transport_diagnostic",
+        "line": 317,
+        "transport": "ssh_transport"
+      }
+    ],
+    "source": "agent_tools/windows_vm_virt_firmware_install.py"
+  }
+}

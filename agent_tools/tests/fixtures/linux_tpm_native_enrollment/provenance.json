@@ -1,0 +1,6 @@
+{
+  "source": ".github/workflows/fast-checks.yml",
+  "sha256": "e30aa537076d870093450eb68d20fdaea04d48b537973029b0c4c019592aa3c2",
+  "bytes": 13887,
+  "failure": "ordinary affected suite skips real Linux root/CAP_SYS_PTRACE causal; no required native enrollment"
+}

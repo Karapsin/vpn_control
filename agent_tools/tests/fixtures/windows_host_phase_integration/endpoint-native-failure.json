@@ -1,0 +1,1 @@
+{"actualError": "KeyError: hostWork", "cause": "Controlled QGA endpoint lacks Windows idle reply shape; generated caller has no hostWork result", "errors": 4, "failures": 0, "nativeOperationId": "d1656dc3-2806-4c4c-a162-7e6624ef669a", "schemaVersion": 1, "scope": "No VM or native Windows call; harmless Linux process/socket fixture", "state": "failed", "testsRun": 8}

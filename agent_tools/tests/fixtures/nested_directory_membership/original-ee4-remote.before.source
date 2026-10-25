@@ -1,0 +1,339 @@
+import selectors,time,pwd
+from pathlib import Path
+_SOCKET_CAPTURE_BYTES=4096
+def owned_home_identity(value):
+    if not isinstance(value,str) or '%' in value or '..' in value.split('/') or any(ord(c)<32 for c in value):raise ValueError('effective_key_not_literal')
+    if value.startswith('~/'):
+        home=Path(pwd.getpwuid(os.getuid()).pw_dir)
+        if not home.is_absolute():raise ValueError('effective_home_unknown')
+        info=os.lstat(home)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o022:raise ValueError('effective_home_foreign')
+        return {'path':str(home/value[2:]),'home':str(home),'homePin':generation(info)}
+    if value.startswith('~') or not Path(value).is_absolute():raise ValueError('effective_key_unknown')
+    return {'path':value,'home':None,'homePin':None}
+
+def generation(info):
+    return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,
+            info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+
+def parent_guard(chain):
+    for index,(fd,name,pin) in enumerate(chain):
+        named=os.stat('/',follow_symlinks=False) if index==0 else os.stat(name,dir_fd=chain[index-1][0],follow_symlinks=False)
+        if generation(os.fstat(fd))!=pin or generation(named)!=pin or not stat.S_ISDIR(named.st_mode):
+            raise ValueError('route_parent_changed')
+
+def file_pin(path, *, body=False, private=False):
+    path=Path(path)
+    if not path.is_absolute() or '..' in path.parts:raise ValueError('route_parent_unsafe')
+    chain=[];leaf=-1
+    try:
+        flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
+        try:
+            fd=os.open('/',flags);chain.append((fd,None,generation(os.fstat(fd))))
+            for name in path.parent.parts[1:]:
+                fd=os.open(name,flags,dir_fd=chain[-1][0]);chain.append((fd,name,generation(os.fstat(fd))))
+        except OSError as exc:raise ValueError('route_parent_unsafe') from exc
+        final=os.fstat(chain[-1][0])
+        if final.st_uid!=os.getuid() or final.st_mode&0o022:raise ValueError('route_parent_unsafe')
+        parent_guard(chain)
+        before=os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid!=os.getuid() or before.st_nlink!=1 or before.st_mode&0o022 or private and stat.S_IMODE(before.st_mode)!=0o600:
+            raise ValueError('route_file_unsafe')
+        pin={'generation':generation(before),'parents':[{'name':name,'generation':meta} for _,name,meta in chain]}
+        if body:
+            leaf=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=chain[-1][0])
+            if generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            parent_guard(chain)
+            chunks=[];total=0
+            while True:
+                chunk=os.read(leaf,65536)
+                if not chunk:break
+                chunks.append(chunk);total+=len(chunk)
+                if total>1048576:raise ValueError('route_file_unbounded')
+            raw=b''.join(chunks)
+            if len(raw)!=before.st_size or generation(os.fstat(leaf))!=pin['generation']:raise ValueError('route_file_changed')
+            pin.update(bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),
+                       unsupportedConfigDirectives=any(re.match(rb'\s*(include|match)\b',line,re.I) for line in raw.splitlines()))
+        if generation(os.stat(path.name,dir_fd=chain[-1][0],follow_symlinks=False))!=pin['generation']:raise ValueError('route_file_changed')
+        parent_guard(chain)
+        return pin
+    finally:
+        if leaf>=0:os.close(leaf)
+        for fd,_,_ in reversed(chain):os.close(fd)
+
+def ssh_options(spec):
+    return ['ssh','-T','-F',spec['configFile'],'-S',spec['controlPath'],'-o','ControlMaster=no','-o','ControlPersist=no',
+            '-o','ClearAllForwardings=yes','-o','PermitLocalCommand=no','-o','UpdateHostKeys=no','-o','ProxyCommand=false']
+
+def effective_route(spec):
+    result=subprocess.run([*ssh_options(spec),'-G',spec['remoteHostAlias']],capture_output=True,timeout=5)
+    if result.returncode!=0 or len(result.stdout)>65536 or result.stderr:raise ValueError('effective_route_unknown')
+    values={}
+    for line in result.stdout.decode('utf-8',errors='strict').splitlines():
+        name,_,value=line.partition(' ')
+        if name=='identityfile':values.setdefault(name,[]).append(value)
+    keys=values.get('identityfile',[])
+    if not keys:raise ValueError('effective_key_unknown')
+    identities=[owned_home_identity(p) for p in keys]
+    keys=[item['path'] for item in identities]
+    homes={item['home']:item['homePin'] for item in identities if item['home'] is not None}
+    existing={p:file_pin(p,private=True) for p in keys if os.path.lexists(p)}
+    if not existing:raise ValueError('effective_key_unavailable')
+    for home,pin in homes.items():
+        if generation(os.lstat(home))!=pin:raise ValueError('effective_home_changed')
+    return {'effectiveSha256':hashlib.sha256(result.stdout).hexdigest(),'keyMetadata':existing,'ownedHomePins':homes}
+
+def inner(argv, timeout_seconds, environment=None):
+    """Fixed caller's binary pipes: both EOFs, cap and original child deadline."""
+    result={'stdout':b'', 'stderr':b'', 'counts':{'stdout':0,'stderr':0},
+            'eof':{'stdout':False,'stderr':False},'returnCode':None,
+            'complete':False,'overflow':False,'timeout':False,'readError':False}
+    process=None
+    selector=selectors.DefaultSelector()
+    try:
+        process=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE,text=False,env=environment)
+        result['pid']=process.pid
+        for name,stream in (('stdout',process.stdout),('stderr',process.stderr)):
+            os.set_blocking(stream.fileno(),False)
+            selector.register(stream,selectors.EVENT_READ,name)
+        deadline=time.monotonic()+timeout_seconds
+        while True:
+            code=process.poll()
+            if code is not None and all(result['eof'].values()):
+                result['returnCode']=code
+                break
+            remaining=deadline-time.monotonic()
+            if remaining<=0:
+                result['timeout']=True
+                break
+            for key,_ in selector.select(min(remaining,.05)):
+                name=key.data
+                try:body=os.read(key.fileobj.fileno(),4096)
+                except BlockingIOError:continue
+                if not body:
+                    result['eof'][name]=True
+                    selector.unregister(key.fileobj)
+                    continue
+                result['counts'][name]+=len(body)
+                left=_SOCKET_CAPTURE_BYTES+1-len(result[name])
+                if left>0:result[name]+=body[:left]
+                if result['counts'][name]>_SOCKET_CAPTURE_BYTES:result['overflow']=True
+        result['complete']=(all(result['eof'].values()) and type(result['returnCode']) is int and
+            not result['timeout'] and not result['readError'] and not result['overflow'])
+    except (OSError,ValueError,subprocess.SubprocessError):
+        result['readError']=True
+    finally:
+        selector.close()
+        if process is not None:
+            if process.poll() is None:
+                process.kill()
+            try:result['returnCode']=process.wait(timeout=1)
+            except subprocess.TimeoutExpired:result['timeout']=True
+            process.stdout.close();process.stderr.close()
+    return result
+
+import base64,hashlib,json,os,re,stat,subprocess,sys,tempfile,time
+def reject_pairs(pairs):
+ value={}
+ for key,item in pairs:
+  if key in value:raise ValueError('duplicate')
+  value[key]=item
+ return value
+request=json.loads(sys.stdin.buffer.read(4097),object_pairs_hook=reject_pairs)
+corr,action,config,profile,source_sha=sys.argv[1:]
+if not re.fullmatch('[0-9a-f]{32}',corr) or action not in ('prepare','status') or not re.fullmatch('[0-9a-f]{64}',source_sha):raise SystemExit(2)
+stage='/tmp/vpn-channel-'+corr
+control=stage+'/m'
+def gen(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def pin(path):
+ before=os.lstat(path)
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+ try:
+  if path=='/proc/net/unix':
+   chunks=[];total=0;read_count=0;deadline=time.monotonic()+2
+   while True:
+    if time.monotonic()>deadline or read_count>=256:raise ValueError('changed')
+    chunk=os.read(fd,65537-total);read_count+=1
+    if not chunk:break
+    total+=len(chunk)
+    if total>65536:raise ValueError('changed')
+    chunks.append(chunk)
+   body=b''.join(chunks)
+  else:body=os.read(fd,65537)
+  # Only this fixed procfs seq-file has volatile lookup timestamps. Its
+  # descriptor/name inode, type, ownership, links and size remain strict.
+  fields=7 if path=='/proc/net/unix' else 9
+  if len(body)>65536 or gen(before)[:fields]!=gen(os.fstat(fd))[:fields] or gen(before)[:fields]!=gen(os.lstat(path))[:fields]:raise ValueError('changed')
+ finally:os.close(fd)
+ return body,gen(before)
+def launch_capture(value):
+ if value is None:return None
+ result={key:value.get(key) for key in ('pid','returnCode','complete','counts','eof','timeout','overflow','readError')}
+ result['streams']={}
+ for name in ('stdout','stderr'):
+  raw=value[name];prefix=raw[:512]
+  result['streams'][name]={'prefixBase64':base64.b64encode(prefix).decode(),'prefixBytes':len(prefix),'prefixSha256':hashlib.sha256(prefix).hexdigest(),'prefixComplete':len(prefix)==value['counts'][name],'retainedBytes':len(raw),'retainedSha256':hashlib.sha256(raw).hexdigest(),'retainedComplete':len(raw)==value['counts'][name]}
+ return result
+def save(name,value):
+ fd=os.open(stage+'/'+name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w') as f:json.dump(value,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+ fd=os.open(stage,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:os.fsync(fd)
+ finally:os.close(fd)
+def directory():
+ s=os.lstat(stage)
+ if not stat.S_ISDIR(s.st_mode) or s.st_uid!=os.getuid() or stat.S_IMODE(s.st_mode)!=0o700:raise ValueError('directory')
+ names=os.listdir(stage)
+ if len(names)>3 or any(name not in ('m','intent.json','ready.json') for name in names):raise ValueError('directory_membership')
+ return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid]
+def actor(pid):
+ body,_=pin('/proc/%d/stat'%pid);tail=body[body.rindex(b')')+2:].split()
+ if len(tail)<20 or tail[0] in (b'Z',b'X'):raise ValueError('actor')
+ info=os.stat('/proc/%d'%pid)
+ if info.st_uid!=os.getuid():raise ValueError('actor_uid')
+ return {'pid':pid,'startTicks':int(tail[19]),'uid':info.st_uid}
+def table_rows(table):
+ if not table.startswith(b'Num       RefCount Protocol Flags    Type St Inode Path\n') or not table.endswith(b'\n'):raise ValueError('kernel_header')
+ rows=[];seen=set()
+ for line in table.splitlines()[1:]:
+  fields=line.split(maxsplit=7)
+  if len(fields) not in (7,8) or not re.fullmatch(rb'[0-9a-fA-F]+:',fields[0]):raise ValueError('kernel_row')
+  if any(re.fullmatch(rb'[0-9a-fA-F]+',item) is None for item in fields[1:6]) or re.fullmatch(rb'[0-9]+',fields[6]) is None:raise ValueError('kernel_fields')
+  if fields[6] in seen:raise ValueError('kernel_duplicate_inode')
+  seen.add(fields[6]);rows.append(fields)
+ return rows
+def control_row(row):
+ # OpenSSH muxserver_listen binds m.<16 alphanumerics>, then links m and
+ # unlinks its temporary pathname. Linux retains the original bind name.
+ return len(row)==8 and (row[7]==os.fsencode(control) or re.fullmatch(re.escape(os.fsencode(control))+rb'\.[A-Za-z0-9]{16}',row[7]) is not None)
+def pending_absent():
+ if os.path.lexists(control):return False
+ present=os.path.lexists(stage)
+ parent=stage.rsplit('/',1)[0]
+ def boundary():
+  if present:return directory()
+  if os.path.lexists(stage):raise ValueError('stage_appeared')
+  info=os.lstat(parent)
+  if not stat.S_ISDIR(info.st_mode):raise ValueError('stage_parent')
+  return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid]
+ initial=boundary()
+ for _ in range(2):
+  table,_=pin('/proc/net/unix')
+  if any(control_row(row) for row in table_rows(table)):return False
+  names=os.listdir('/proc')
+  if len(names)>4096:raise ValueError('process_cap')
+  for name in names:
+   if not name.isdecimal() or int(name)==os.getpid():continue
+   path='/proc/'+name
+   try:
+    info=os.stat(path)
+    if info.st_uid!=os.getuid():continue
+    command,_=pin(path+'/cmdline')
+    if corr.encode() in command.split(b'\0') or control.encode() in command:return False
+    closing=os.stat(path)
+    if (info.st_dev,info.st_ino,info.st_uid)!=(closing.st_dev,closing.st_ino,closing.st_uid):raise ValueError('process_changed')
+   except FileNotFoundError:
+    if os.path.lexists(path):raise ValueError('process_disappeared_partial')
+  if boundary()!=initial or os.path.lexists(control):return False
+ return True
+def snapshot():
+ remote_guard();parent=directory();sock=os.lstat(control)
+ if not stat.S_ISSOCK(sock.st_mode) or sock.st_uid!=os.getuid() or sock.st_nlink!=1 or sock.st_mode&0o077:raise ValueError('socket')
+ result=inner(ssh+['-S',control,'-O','check',profile],5)
+ match=re.fullmatch(rb'Master running \(pid=([1-9][0-9]*)\)\r?\n',result['stderr'])
+ if not result['complete'] or result['returnCode']!=0 or result['stdout'] or not match:raise ValueError('master_check')
+ identity=actor(int(match[1]));inodes=set()
+ names=os.listdir('/proc/%d/fd'%identity['pid'])
+ if len(names)>256:raise ValueError('fd_cap')
+ for name in names:
+  try:link=os.readlink('/proc/%d/fd/%s'%(identity['pid'],name))
+  except FileNotFoundError:continue
+  match=re.fullmatch(r'socket:\[([0-9]+)\]',link)
+  if match:inodes.add(match[1].encode())
+ table,_=pin('/proc/net/unix');rows=[]
+ for fields in table_rows(table):
+  if control_row(fields) and fields[3]==b'00010000' and fields[4]==b'0001' and fields[5]==b'01':rows.append(fields)
+ if len(rows)!=1 or rows[0][6] not in inodes:raise ValueError('listener_owner')
+ if directory()!=parent or gen(os.lstat(control))!=gen(sock) or actor(identity['pid'])!=identity:raise ValueError('closing')
+ remote_guard()
+ return {'actor':identity,'socket':gen(sock),'directory':parent,'listenerInode':rows[0][6].decode(),'gatewayBoot':boot}
+ssh=['ssh']+(['-F',config] if config else [])+['-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no']
+config_file=config if config else str(Path.home()/'.ssh/config')
+spec={'configFile':config_file,'controlPath':control,'remoteHostAlias':profile}
+config_pin=file_pin(config_file,body=True)
+if config_pin['unsupportedConfigDirectives']:raise ValueError('config_dependencies')
+route_pin=effective_route(spec)
+def remote_guard():
+ if file_pin(config_file,body=True)!=config_pin or effective_route(spec)!=route_pin:raise ValueError('config_or_keys_changed')
+remote_guard()
+boot=pin('/proc/sys/kernel/random/boot_id')[0].decode().strip()
+intent_value={'correlationId':corr,'gatewayBoot':boot,'gatewayUid':os.getuid(),'sourceSha256':source_sha,'configPin':config_pin,'effectiveRoute':route_pin}
+_REFUSALS=('actor', 'actor_uid', 'arch_identity', 'changed', 'closing', 'closing_master', 'config_dependencies', 'config_or_keys_changed', 'directory', 'directory_membership', 'duplicate', 'effective_home_changed', 'effective_home_foreign', 'effective_home_unknown', 'effective_key_not_literal', 'effective_key_unavailable', 'effective_key_unknown', 'effective_route_unknown', 'fd_cap', 'fd_changed', 'gateway_reboot', 'kernel_duplicate_inode', 'kernel_fields', 'kernel_header', 'kernel_row', 'launch_unknown', 'listener_owner', 'listener_present', 'master_check', 'process_cap', 'process_changed', 'process_disappeared_partial', 'publication_master_changed', 'publication_ready_changed', 'ready_changed', 'ready_private', 'ready_publication', 'remote_intent', 'remote_intent_changed', 'route_file_changed', 'route_file_unbounded', 'route_file_unsafe', 'route_parent_changed', 'route_parent_unsafe', 'route_unknown', 'saved_binding', 'secret', 'socket', 'stage_appeared', 'stage_parent', 'status_input', 'unclassified', 'unseen_unknown')
+phase='prepare_stage';launch=None
+try:
+ if action=='prepare':
+  if set(request)!={'passphrase'} or not isinstance(request['passphrase'],str) or not 0<len(request['passphrase'])<=512:raise ValueError('secret')
+  os.mkdir(stage,0o700);directory();save('intent.json',intent_value)
+  with tempfile.TemporaryDirectory(prefix='askpass-',dir=stage) as secret_dir:
+   password=secret_dir+'/password';helper=secret_dir+'/askpass'
+   fd=os.open(password,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+   with os.fdopen(fd,'w') as f:f.write(request['passphrase'])
+   fd=os.open(helper,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o700)
+   with os.fdopen(fd,'w') as f:f.write('#!/bin/sh\ncat "$VPN_CONTROL_SSH_PASSWORD_FILE"\n')
+   env=os.environ.copy();env.update(SSH_ASKPASS=helper,SSH_ASKPASS_REQUIRE='force',DISPLAY='vpn-channel',VPN_CONTROL_SSH_PASSWORD_FILE=password)
+   phase='launch'
+   launch=inner(ssh+['-M','-N','-f','-S',control,'-o','ControlMaster=yes','-o','ControlPersist=18000','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','ConnectTimeout=10',profile],20,env)
+   if not launch['complete'] or launch['returnCode']!=0:raise ValueError('launch_unknown')
+ elif request!={}:raise ValueError('status_input')
+ phase='remote_intent'
+ if action=='status':
+  if not os.path.lexists(stage):
+   if not pending_absent():raise ValueError('unseen_unknown')
+   remote_guard();print(json.dumps({'state':'ended','correlationId':corr,'prior':None,'gatewayBoot':boot},sort_keys=True));raise SystemExit(0)
+  directory();intent_info=os.lstat(stage+'/intent.json')
+  if not stat.S_ISREG(intent_info.st_mode) or stat.S_IMODE(intent_info.st_mode)!=0o600 or intent_info.st_uid!=os.getuid() or intent_info.st_nlink!=1:raise ValueError('remote_intent')
+  if json.loads(pin(stage+'/intent.json')[0],object_pairs_hook=reject_pairs)!=intent_value:raise ValueError('remote_intent_changed')
+  saved=json.loads(pin(stage+'/ready.json')[0],object_pairs_hook=reject_pairs) if os.path.lexists(stage+'/ready.json') else None
+  if saved is not None and (saved.get('state')!='ready' or saved.get('correlationId')!=corr or saved.get('controlPath')!=control):raise ValueError('saved_binding')
+  if saved is None and pending_absent():
+   remote_guard();print(json.dumps({'state':'ended','correlationId':corr,'prior':None,'gatewayBoot':boot},sort_keys=True));raise SystemExit(0)
+  if saved is not None and not os.path.lexists(control) and not os.path.lexists('/proc/%d'%saved['master']['actor']['pid']):
+   table,_=pin('/proc/net/unix')
+   if any(control_row(f) for f in table_rows(table)):raise ValueError('listener_present')
+   if saved['master']['gatewayBoot']!=boot:raise ValueError('gateway_reboot')
+   directory()
+   print(json.dumps({'state':'ended','correlationId':corr,'prior':saved,'gatewayBoot':boot},sort_keys=True));raise SystemExit(0)
+ phase='master_snapshot'
+ first=snapshot()
+ phase='arch_identity'
+ probe=inner(ssh+['-T','-S',control,'-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false','-o','BatchMode=yes',profile,"python3 -I -B -c 'import json,os;from pathlib import Path;print(json.dumps({\"uid\":os.getuid(),\"boot\":Path(\"/proc/sys/kernel/random/boot_id\").read_text().strip()},sort_keys=True))'"],10)
+ if not probe['complete'] or probe['returnCode']!=0 or probe['stderr'] or len(probe['stdout'])>4096:raise ValueError('route_unknown')
+ arch=json.loads(probe['stdout'])
+ if (type(arch)is not dict or set(arch)!={'uid','boot'} or type(arch['uid'])is not int
+     or not 0<=arch['uid']<2**32 or type(arch['boot'])is not str
+     or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',arch['boot']) is None):raise ValueError('arch_identity')
+ phase='master_closing'
+ if snapshot()!=first:raise ValueError('closing_master')
+ result={'state':'ready','correlationId':corr,'master':first,'arch':arch,'controlPath':control}
+ phase='publication'
+ if action=='prepare' or not os.path.lexists(stage+'/ready.json'):save('ready.json',result)
+ else:
+  previous=json.loads(pin(stage+'/ready.json')[0])
+  if previous!=result:raise ValueError('ready_changed')
+ # Custody must close after readiness publication, not before it.
+ saved_info=os.lstat(stage+'/ready.json')
+ if not stat.S_ISREG(saved_info.st_mode) or stat.S_IMODE(saved_info.st_mode)!=0o600 or saved_info.st_uid!=os.getuid() or saved_info.st_nlink!=1:raise ValueError('ready_private')
+ saved_bytes,saved_generation=pin(stage+'/ready.json')
+ if json.loads(saved_bytes,object_pairs_hook=reject_pairs)!=result:raise ValueError('ready_publication')
+ if snapshot()!=first:raise ValueError('publication_master_changed')
+ if gen(os.lstat(stage+'/ready.json'))!=saved_generation:raise ValueError('publication_ready_changed')
+ remote_guard()
+ print(json.dumps(result,sort_keys=True))
+except (OSError,ValueError,KeyError,subprocess.SubprocessError) as failure:
+ label=str(failure) if isinstance(failure,ValueError) else 'unclassified'
+ if label not in _REFUSALS:label='unclassified'
+ kind=type(failure).__name__
+ if kind not in ('ValueError','FileNotFoundError','PermissionError','OSError','KeyError','TimeoutExpired','SubprocessError'):kind='other'
+ number=failure.errno if isinstance(failure,OSError) and type(failure.errno)is int and 0<=failure.errno<=255 else None
+ print(json.dumps({'state':'unknown','correlationId':corr,'failurePhase':phase,'failureReason':label,'exceptionClass':kind,'errno':number,'launchCapture':launch_capture(launch)},sort_keys=True));raise SystemExit(3)

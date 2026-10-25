@@ -1,0 +1,36 @@
+def idle_facts(self, facts, deadline):
+        """Partial actual observations never grant the seven-category idle gate."""
+        current = self.guard(deadline=deadline)
+        visibility, blockers = set(), set()
+        if self._operator._held:
+            self._operator.guard(); visibility.add("operators")
+        # The original VM wrapper is intentional. Other operations in its
+        # namespace must still be observed; missing/unknown roots block idle.
+        complete = True
+        for path in self.run_owner.root.iterdir():
+            try:
+                operation = _uuid(path.name)
+                status = jobs.observe(self.run_owner.root, operation, self.host_binding, generation=self.run_owner.generation)
+                if operation == self.run_owner.operation_id and status["state"] == "running": continue
+                if status["state"] == "running": blockers.add("running_jobs")
+                elif status["state"] != "terminal": blockers.add("unknown_jobs")
+            except (ValueError, OSError): complete = False
+        if complete: visibility |= {"running_jobs", "unknown_jobs"}
+        if facts["processVisibilityComplete"]: visibility.add("protected_processes")
+        if facts["installerVisibilityComplete"]: visibility.add("installers")
+        if facts["protectedProcesses"]: blockers.add("protected_processes")
+        if facts["installerBlockers"]: blockers.add("installers")
+        # Missing guest namespace, installers, host-wide reservations/lifecycle
+        # or competing-operator visibility cannot be synthesized from a PID.
+        if not facts["jobVisibilityComplete"]:
+            visibility -= {"running_jobs", "unknown_jobs"}
+            blockers.add("unknown_jobs")
+        for version in ("v1", "v2"):
+            lease_intent, lease_packet, _ = self._lease_paths(version)
+            if lease_intent.exists() or lease_intent.is_symlink() or lease_packet.exists() or lease_packet.is_symlink():
+                self._lease_original(version)
+                # Every original epoch remains visible, including lost ACKs.
+                self.load_lease_namespace(version)
+                visibility -= {"running_jobs", "unknown_jobs"}
+                blockers.add("unknown_jobs")
+        return {"visibility": frozenset(visibility), "blockers": frozenset(blockers)}

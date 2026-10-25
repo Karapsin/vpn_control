@@ -1,0 +1,96 @@
+ // NEW evidence-only system image inquiry. Generic private Pin is unchanged.
+ // No result in this inquiry authorizes image admission, input, launch or idle.
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr FindFirstFileNameW(string path,uint flags,ref uint characters,StringBuilder name);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool FindNextFileNameW(IntPtr search,ref uint characters,StringBuilder name);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool FindClose(IntPtr search);
+ [DllImport("advapi32.dll")]static extern uint GetSecurityInfo(IntPtr handle,int objectType,uint securityInformation,out IntPtr owner,out IntPtr group,out IntPtr dacl,out IntPtr sacl,out IntPtr descriptor);
+ [DllImport("advapi32.dll")]static extern bool IsValidSecurityDescriptor(IntPtr descriptor);
+ [DllImport("advapi32.dll")]static extern uint GetSecurityDescriptorLength(IntPtr descriptor);
+ [DllImport("kernel32.dll")]static extern IntPtr LocalFree(IntPtr memory);
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct InquiryTrustFile{public uint size;[MarshalAs(UnmanagedType.LPWStr)]public string path;public IntPtr file,knownSubject;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct InquiryTrustData{public uint size;public IntPtr policy,sip;public uint ui,revocation,choice;public IntPtr file;public uint action;public IntPtr state,url;public uint flags,context;public IntPtr signatures;}
+ [DllImport("wintrust.dll",ExactSpelling=true,PreserveSig=true)]static extern int WinVerifyTrust(IntPtr window,ref Guid action,ref InquiryTrustData data);
+ static string InquiryFileTag(FI i){return i.Volume+":"+i.IndexHigh+":"+i.IndexLow+":"+i.Created.dwHighDateTime+":"+i.Created.dwLowDateTime+":"+i.Attr+":"+i.SizeHigh+":"+i.SizeLow+":"+i.Written.dwHighDateTime+":"+i.Written.dwLowDateTime+":"+i.Links;}
+ static FI InquiryInfo(IntPtr h){FI i;Need(GetFileInformationByHandle(h,out i),"INQUIRY_FILE_ID");return i;}
+ static Dictionary<string,object>InquiryPhysical(FI i){return O("volume",i.Volume,"indexHigh",i.IndexHigh,"indexLow",i.IndexLow,"links",i.Links,"attributes",i.Attr,"sizeHigh",i.SizeHigh,"sizeLow",i.SizeLow,"generation",InquiryFileTag(i));}
+ sealed class InquiryImage:IDisposable{
+  readonly string PathName,Id;readonly List<Pin>Parents=new List<Pin>();readonly SafeFileHandle Held;readonly FileStream Reader;
+  public IntPtr Handle{get{Guard();return Held.DangerousGetHandle();}}
+  public string Identity{get{Guard();return Id;}}
+  public InquiryImage(){
+   PathName=Ps();Need(Path.GetFullPath(PathName)==PathName,"INQUIRY_IMAGE_CANONICAL");string p=Path.GetPathRoot(PathName);
+   try{
+    Parents.Add(new Pin(p,true,false));foreach(string part in PathName.Substring(p.Length).Split('\\').Take(PathName.Substring(p.Length).Split('\\').Length-1)){p=Path.Combine(p,part);Parents.Add(new Pin(p,true,false));}
+    // READ_CONTROL is for GetSecurityInfo only; deny writes/deletes while held.
+    IntPtr h=CreateFileW(PathName,0x80020000u,1,IntPtr.Zero,3,0x00200000u,IntPtr.Zero);Need(h!=new IntPtr(-1),"INQUIRY_IMAGE_OPEN");Held=new SafeFileHandle(h,true);
+    FI i=InquiryInfo(h);Need((i.Attr&(0x400u|0x10u))==0&&i.Links>0&&i.Links<=8,"INQUIRY_IMAGE_TYPE_OR_LINK_BOUND");Id=InquiryFileTag(i);Reader=new FileStream(Held,FileAccess.Read);Guard();
+   }catch{Dispose();throw;}
+  }
+  public void Guard(){foreach(var p in Parents)p.Guard();Need(Held!=null&&!Held.IsInvalid&&!Held.IsClosed&&InquiryFileTag(InquiryInfo(Held.DangerousGetHandle()))==Id,"INQUIRY_HELD_IMAGE_CHANGED");IntPtr h=CreateFileW(PathName,0x80,7,IntPtr.Zero,3,0x00200000u,IntPtr.Zero);Need(h!=new IntPtr(-1),"INQUIRY_NAMED_IMAGE_MISSING");try{Need(InquiryFileTag(InquiryInfo(h))==Id,"INQUIRY_NAMED_IMAGE_CHANGED");}finally{CloseHandle(h);}}
+  public string BytesSha(){Guard();Need(Reader.Length>0&&Reader.Length<=33554432,"INQUIRY_IMAGE_SIZE");Reader.Position=0;using(var hash=SHA256.Create()){string value=BitConverter.ToString(hash.ComputeHash(Reader)).Replace("-","").ToLowerInvariant();Guard();return value;}}
+  public void Dispose(){if(Reader!=null)Reader.Dispose();if(Held!=null)Held.Dispose();foreach(var p in Parents)p.Dispose();}
+ }
+ static Dictionary<string,object>InquiryAcl(InquiryImage image){
+  image.Guard();IntPtr owner,group,dacl,sacl,descriptor;uint code=GetSecurityInfo(image.Handle,1,7,out owner,out group,out dacl,out sacl,out descriptor);Need(code==0&&descriptor!=IntPtr.Zero,"INQUIRY_ACL_READ");
+  try{
+   Need(IsValidSecurityDescriptor(descriptor),"INQUIRY_ACL_INVALID");uint size=GetSecurityDescriptorLength(descriptor);Need(size>=20&&size<=65536,"INQUIRY_ACL_BOUND");var bytes=new byte[(int)size];Marshal.Copy(descriptor,bytes,0,bytes.Length);var sd=new RawSecurityDescriptor(bytes,0);Need(sd.Owner!=null&&sd.Group!=null&&sd.SystemAcl==null,"INQUIRY_ACL_PARTS");var entries=new List<object>();
+   if(sd.DiscretionaryAcl!=null){Need(sd.DiscretionaryAcl.Count<=32,"INQUIRY_ACE_COUNT");foreach(GenericAce item in sd.DiscretionaryAcl){var ace=item as CommonAce;Need(ace!=null&&!ace.IsCallback&&(ace.AceQualifier==AceQualifier.AccessAllowed||ace.AceQualifier==AceQualifier.AccessDenied),"INQUIRY_ACE_UNSUPPORTED");entries.Add(O("sid",ace.SecurityIdentifier.Value,"accessMask",ace.AccessMask,"qualifier",(int)ace.AceQualifier,"flags",(int)ace.AceFlags));}}
+   image.Guard();return O("ownerSid",sd.Owner.Value,"groupSid",sd.Group.Value,"control",(int)sd.ControlFlags,"nullDacl",sd.DiscretionaryAcl==null,"entries",entries.ToArray(),"saclRequested",false);
+  }finally{Need(LocalFree(descriptor)==IntPtr.Zero,"INQUIRY_ACL_FREE");}
+ }
+ static string InquiryLinkPath(string name){
+  Need(name!=null&&name.Length>1&&name.Length<=512&&name[0]=='\\'&&name[1]!='\\'&&!name.Any(c=>c<' '||c==':'||c=='/'||c=='*'||c=='?'||c=='\0'),"INQUIRY_LINK_NAME");var parts=name.Substring(1).Split('\\');Need(parts.All(p=>p.Length>0&&p!="."&&p!=".."),"INQUIRY_LINK_COMPONENT");string root=Path.GetPathRoot(Ps()),path=Path.Combine(root,name.Substring(1));Need(Path.GetFullPath(path)==path&&path.StartsWith(root,StringComparison.OrdinalIgnoreCase),"INQUIRY_LINK_CANONICAL");return path;
+ }
+ static Dictionary<string,object>InquiryNamedLink(string name,InquiryImage image){
+  string path=InquiryLinkPath(name),p=Path.GetPathRoot(path);var parents=new List<Pin>();
+  try{parents.Add(new Pin(p,true,false));foreach(string part in path.Substring(p.Length).Split('\\').Take(path.Substring(p.Length).Split('\\').Length-1)){p=Path.Combine(p,part);parents.Add(new Pin(p,true,false));}foreach(var parent in parents)parent.Guard();IntPtr h=CreateFileW(path,0x80,7,IntPtr.Zero,3,0x00200000u,IntPtr.Zero);Need(h!=new IntPtr(-1),"INQUIRY_LINK_OPEN");try{FI i=InquiryInfo(h);Need((i.Attr&(0x400u|0x10u))==0&&InquiryFileTag(i)==image.Identity,"INQUIRY_LINK_DIFFERENT_FILE");foreach(var parent in parents)parent.Guard();image.Guard();return O("volumeRelativeName",name,"sameFileIdAndGeneration",true,"physical",InquiryPhysical(i));}finally{CloseHandle(h);}}
+  finally{foreach(var parent in parents)parent.Dispose();}
+ }
+ static object[]InquiryLinks(InquiryImage image){
+  image.Guard();uint length=513;var buffer=new StringBuilder(513);IntPtr find=FindFirstFileNameW(Ps(),0,ref length,buffer);Need(find!=new IntPtr(-1),"INQUIRY_LINK_ENUM_OPEN");var names=new List<string>();
+  try{for(int n=0;;n++){Need(n<8&&length<=513,"INQUIRY_LINK_ENUM_BOUND");string name=buffer.ToString();InquiryLinkPath(name);Need(!names.Any(v=>string.Equals(v,name,StringComparison.OrdinalIgnoreCase)),"INQUIRY_LINK_DUPLICATE");names.Add(name);length=513;buffer.Clear();if(!FindNextFileNameW(find,ref length,buffer)){Need(Marshal.GetLastWin32Error()==38,"INQUIRY_LINK_ENUM_INCOMPLETE");break;}}}
+  finally{Need(FindClose(find),"INQUIRY_LINK_ENUM_CLOSE");}
+  image.Guard();Need(names.Count==InquiryInfo(image.Handle).Links,"INQUIRY_LINK_COUNT_CHANGED");return names.OrderBy(v=>v,StringComparer.Ordinal).Select(v=>(object)InquiryNamedLink(v,image)).ToArray();
+ }
+ static Dictionary<string,object>InquirySignature(InquiryImage image){
+  // Offline/no-UI provider result is evidence ONLY; no revocation-complete claim.
+  image.Guard();var file=new InquiryTrustFile{size=(uint)Marshal.SizeOf(typeof(InquiryTrustFile)),path=Ps(),file=image.Handle,knownSubject=IntPtr.Zero};IntPtr memory=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(InquiryTrustFile)));bool marshaled=false;var action=new Guid("00AAC56B-CD44-11D0-8CC2-00C04FC295EE");var data=new InquiryTrustData{size=(uint)Marshal.SizeOf(typeof(InquiryTrustData)),ui=2,revocation=0,choice=1,file=memory,action=1,flags=0x1010};int status=0,closed=0;
+  try{Marshal.StructureToPtr(file,memory,false);marshaled=true;try{status=WinVerifyTrust(new IntPtr(-1),ref action,ref data);}finally{data.action=2;closed=WinVerifyTrust(new IntPtr(-1),ref action,ref data);}Need(closed==0,"INQUIRY_SIGNATURE_STATE_CLOSE");image.Guard();return O("verifyStatus",status,"closeStatus",closed,"cacheOnly",true,"uiNone",true,"revocationChecked",false,"subject","fixed-held-powershell-image","imageAdmission",false);}
+  finally{if(marshaled)Marshal.DestroyStructure(memory,typeof(InquiryTrustFile));Marshal.FreeHGlobal(memory);}
+ }
+ static Dictionary<string,object>InquiryFailure(string stage,Exception error){
+  string reason="INQUIRY_NATIVE_UNEXPECTED";int? code=null;var known=error as InvalidOperationException;if(known!=null&&(known.Message.StartsWith("INQUIRY_",StringComparison.Ordinal)||known.Message.StartsWith("READONLY_",StringComparison.Ordinal)||known.Message.StartsWith("CLIENT_",StringComparison.Ordinal)))reason=known.Message;var native=error as Win32Exception;if(native!=null){reason="INQUIRY_NATIVE_UNAVAILABLE";code=native.NativeErrorCode;}return O("state","blocked","stage",stage,"reason",reason,"nativeError",code,"admission",false);
+ }
+ static Dictionary<string,object>InquiryWts(string name,string expectedSid){
+  var result=O("state","blocked","admission",false,"stableRecipientAdmission",false);string stage="console";
+  try{
+   uint console=SessionFacts.WTSGetActiveConsoleSessionId();Need(console!=uint.MaxValue&&console<=65535,"INQUIRY_CONSOLE_UNAVAILABLE");var all=SessionFacts.All();Need(all.Count(s=>s.Id==(int)console)==1,"INQUIRY_CONSOLE_ENUMERATION");var info=SessionFacts.Read(console);Need(info.Data.SessionId==console,"INQUIRY_WTS_SESSION");
+   result["console"]=O("session",console,"state",info.Data.State,"flags",info.Data.Flags,"logon",info.Data.Logon.ToString(),"intendedUserNameMatches",string.Equals(info.Data.User,name,StringComparison.OrdinalIgnoreCase),"localDomainMatches",string.Equals(info.Data.Domain,Environment.MachineName,StringComparison.OrdinalIgnoreCase),"enumeratedCount",all.Length);
+   Need(info.Data.State==0&&string.Equals(info.Data.User,name,StringComparison.OrdinalIgnoreCase)&&string.Equals(info.Data.Domain,Environment.MachineName,StringComparison.OrdinalIgnoreCase),"INQUIRY_INTENDED_SESSION_UNAVAILABLE");stage="ordinary-token";
+   IntPtr ordinary;Need(WTSQueryUserToken(console,out ordinary),"INQUIRY_ORDINARY_TOKEN_UNAVAILABLE");try{var actual=D(ReadonlyToken(ordinary));result["ordinaryToken"]=actual;Need(S(actual["sid"])==expectedSid&&L(actual["session"])==console&&ReadonlyTokenGroup(actual,"S-1-5-32-545")&&!ReadonlyTokenGroup(actual,"S-1-5-32-544"),"INQUIRY_ORDINARY_TOKEN_IDENTITY");}finally{CloseHandle(ordinary);}
+   stage="closing-console";var after=SessionFacts.Read(console);Need(SessionFacts.WTSGetActiveConsoleSessionId()==console&&after.Data.SessionId==info.Data.SessionId&&after.Data.State==info.Data.State&&after.Data.Flags==info.Data.Flags&&after.Data.Logon==info.Data.Logon&&after.Data.User==info.Data.User&&after.Data.Domain==info.Data.Domain,"INQUIRY_WTS_CHANGED");result["state"]="observed";
+  }catch(Exception error){result["failure"]=InquiryFailure(stage,error);}
+  return result;
+ }
+ public static string InquireSystemImageAndSession(string raw){
+  var c=D(J.DeserializeObject(raw));Need(c.Keys.OrderBy(v=>v).SequenceEqual(new[]{"accountName","accountSid","boot","machine","nativeSha256","operationId"}.OrderBy(v=>v)),"INQUIRY_CONFIG_FIELDS");U(c["operationId"]);U(c["machine"]);string name=S(c["accountName"]),sid=S(c["accountSid"]);Need(name.Length>0&&name.Length<=20&&sid.StartsWith("S-1-5-21-",StringComparison.Ordinal),"INQUIRY_ACCOUNT_CONFIG");
+  var result=O("schemaVersion",1,"operationId",c["operationId"],"machine",c["machine"],"boot",c["boot"],"state","blocked","stage","system-source","inputAuthority",false,"pipeAuthority",false,"uiAuthority",false,"imageAdmission",false,"idleAuthority",false,"replayAllowed",false);
+  try{
+   System0();using(var self=Process.GetCurrentProcess()){
+    result["selfBase"]=O("pid",self.Id,"birth",Born(self.Handle),"session",self.SessionId);Need(string.Equals(Image(self.Handle),Ps(),StringComparison.OrdinalIgnoreCase),"INQUIRY_SELF_IMAGE_PATH");IntPtr token;Need(OpenProcessToken(self.Handle,8,out token),"INQUIRY_SELF_TOKEN_OPEN");try{var own=D(ReadonlyToken(token));Need(S(own["sid"])=="S-1-5-18"&&L(own["session"])==0,"INQUIRY_SELF_TOKEN_IDENTITY");result["selfToken"]=own;}finally{CloseHandle(token);}
+    string native=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"VPNControlSystemImageInquiry-v1",U(c["machine"]),U(c["operationId"]),"native.cs");
+    using(var nativePin=new Pin(native,false)){
+     Need(H(nativePin.Bytes(131072))==S(c["nativeSha256"]),"INQUIRY_NATIVE_SOURCE");result["source"]=O("nativeGeneration",nativePin.Identity,"nativeSha256",c["nativeSha256"]);result["stage"]="independent-gates";
+     // An image evidence failure must NOT suppress the independent WTS snapshot.
+     try{using(var image=new InquiryImage()){
+      var imageFacts=O("state","observed","physical",InquiryPhysical(InquiryInfo(image.Handle)),"generation",image.Identity,"sha256",image.BytesSha(),"imageAdmission",false,"policy","evidence-only-no-system-image-admission");result["image"]=imageFacts;
+      foreach(string gate in new[]{"hardlinks","acl","signature"}){nativePin.Guard();image.Guard();try{if(gate=="hardlinks"){var links=InquiryLinks(image);Need(J.Serialize(links)==J.Serialize(InquiryLinks(image)),"INQUIRY_LINK_SET_CHANGED");imageFacts[gate]=O("state","observed","links",links,"admission",false);}else if(gate=="acl"){var acl=InquiryAcl(image);Need(J.Serialize(acl)==J.Serialize(InquiryAcl(image)),"INQUIRY_ACL_CHANGED");acl["state"]="observed";acl["admission"]=false;imageFacts[gate]=acl;}else{var signature=InquirySignature(image);signature["state"]="observed";signature["admission"]=false;imageFacts[gate]=signature;}}catch(Exception error){imageFacts[gate]=InquiryFailure(gate,error);}image.Guard();nativePin.Guard();}
+      image.Guard();
+     }}catch(Exception error){result["image"]=InquiryFailure("image",error);}
+     nativePin.Guard();try{result["session"]=InquiryWts(name,sid);}catch(Exception error){result["session"]=InquiryFailure("wts-token",error);}nativePin.Guard();Need(H(nativePin.Bytes(131072))==S(c["nativeSha256"]),"INQUIRY_CLOSING_NATIVE_SOURCE");Need(Born(self.Handle)==S(D(result["selfBase"])["birth"])&&self.SessionId==0&&string.Equals(Image(self.Handle),Ps(),StringComparison.OrdinalIgnoreCase),"INQUIRY_CLOSING_SELF");
+     result["state"]="evidence-collected";result["stage"]="closed-evidence-only";
+    }
+   }
+  }catch(Exception error){result["failure"]=InquiryFailure("system-source",error);}
+  return J.Serialize(result);
+ }

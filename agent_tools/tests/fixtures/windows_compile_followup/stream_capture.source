@@ -1,0 +1,28 @@
+"""SOURCE-ONLY public fixed-compiler raw-stream retention before result gates.
+
+Only the fixed compiler parent emits this envelope. This pure boundary neither
+launches work nor converts diagnostics into successful compile/input authority.
+"""
+import base64,hashlib
+LIMIT=16384
+
+def need(ok,reason):
+ if not ok:raise ValueError(reason)
+
+def retain(cap,reply,packet):
+ need(type(reply)is dict and reply.get('operationId')==packet['config']['operationId']and reply.get('machine')==packet['config']['machine']and reply.get('provider')=='raw-qemu-windows','public_compile_stream_outer')
+ guest=reply.get('sessionFacts');need(type(guest)is dict and guest.get('operationId')==packet['config']['operationId']and guest.get('nativeSha256')==packet['config']['nativeSha256']and guest.get('inputAuthority')is False,'public_compile_stream_original')
+ rows=guest.get('publicStreams');need(type(rows)is dict and set(rows)=={'stdout','stderr'},'public_compile_stream_roles')
+ pending={};report={}
+ for role in ('stdout','stderr'):
+  row=rows[role];need(type(row)is dict and set(row)=={'bytes','retainedBytes','sha256','prefixSha256','complete','raw'},'public_compile_stream_schema')
+  need(type(row['bytes'])is int and 0<=row['bytes']<=1048576 and type(row['retainedBytes'])is int and row['retainedBytes']==min(row['bytes'],LIMIT)and type(row['complete'])is bool and row['complete']==(row['bytes']<=LIMIT),'public_compile_stream_bound')
+  need(type(row['raw'])is str and len(row['raw'])<=21848,'public_compile_stream_encoding_bound')
+  raw=base64.b64decode(row['raw'],validate=True)
+  need(len(raw)==row['retainedBytes']and hashlib.sha256(raw).hexdigest()==row['prefixSha256']and row['bytes']==guest.get(role+'Bytes')and row['sha256']==guest.get(role+'Sha256'),'public_compile_stream_identity')
+  if row['complete']:need(hashlib.sha256(raw).hexdigest()==row['sha256'],'public_compile_stream_full_hash')
+  pending[role]=raw;report[role]={k:row[k]for k in ('bytes','retainedBytes','sha256','prefixSha256','complete')}
+ # Save the bounded public diagnostic bytes before any compile-success test.
+ for role,raw in pending.items():cap.save('original-compiler-'+role+'.public',raw)
+ cap.save('original-compiler-streams.json',{'operationId':packet['config']['operationId'],'streams':report,'inputAuthority':False,'notTerminalAuthority':True,'notIdleAuthority':True})
+ return report

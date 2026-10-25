@@ -1,0 +1,5 @@
+Preserved actual tool-output transcript from focused137 run, session90369:
+FAIL: test_invalid_diagnostic_payload_refuses_without_private_field_leak (agent_tools.tests.test_ssh_direct_inventory_diagnostic.DirectInventoryDiagnosticTests.test_invalid_diagnostic_payload_refuses_without_private_field_leak)
+AssertionError: 8 != 28 : owned parent or leaf FD leaked
+Ran 137 tests in 46.965s
+FAILED (failures=1)

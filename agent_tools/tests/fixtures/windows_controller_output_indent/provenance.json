@@ -1,0 +1,1 @@
+{"cause": "lstrip output census must still require original unindented final-line prefix before exact slicing; code-review causal complete-caller regression", "schemaVersion": 1, "source": "agent_tools/readiness_windows_remote.py", "sourceSha256": "d8d8a069eb82c6197fd8f1c8ac2e2f97104d07a5716ae20a1868351d5e9e9b5a"}

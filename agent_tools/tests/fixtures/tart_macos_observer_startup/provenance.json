@@ -1,0 +1,25 @@
+{
+  "files": {
+    "controller.constructor.before.source": "4813b97431bb71995fbaca9c49a94289ced255209c60c480e00af51497592c51",
+    "controller.current.source": "4723098644a375e821cd80a2a988cd4fb736010882bf7870436a9068f3bc942b",
+    "controller.deadline.before.source": "0f1732c7eabfdc111fb49d67a3a251471f53403a8e342cf2a56470fbbb39c2d7",
+    "driver.current.source": "fc0c83c1fbec04affae3f01cac3bd0e09eb3912857725ec91bcde4794fc475ee",
+    "driver.deadline.before.source": "cbbc3bd209fb909aeb802833e4d019d5898357d67525b687cd55bc18e1757fc1",
+    "retention.before.source": "2f585e773704809b9db8e3c104ea86968aefdc057b368c06282b00e578db05ed",
+    "retention.reviewed.source": "98a9de44f74f5a2e6b051531082ff9be811e274399f0fb9b25dbf687f402de88",
+    "unlock.before.source": "ba316162d6191922253ba7d3a03a3bea1599a1612cffe2e0049fcdea4706f135"
+  },
+  "nativeAuthority": false,
+  "runtimeInventoryReadByTests": false,
+  "schemaVersion": 1,
+  "scope": {
+    "controller.constructor.before.source": "whole actual pre-admission unsupported-keyword failure,4813",
+    "controller.current.source": "whole corrected original-only census controller,4723",
+    "controller.deadline.before.source": "whole uncapped local-constructor controller,0f17",
+    "driver.current.source": "whole bracketed original-cap driver,fc0c",
+    "driver.deadline.before.source": "whole initial uncapped local constructor driver,cbbc",
+    "retention.before.source": "whole reviewed diagnostic draft before cleanup correction, 2f585",
+    "retention.reviewed.source": "whole reviewed cleanup-safe diagnostic draft,98a9",
+    "unlock.before.source": "whole original071 producer bytes, ba316"
+  }
+}

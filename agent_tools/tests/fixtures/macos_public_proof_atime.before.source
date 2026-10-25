@@ -1,0 +1,4 @@
+def ref(path):
+ info=path.stat();raw=path.read_bytes()
+ if info!=path.stat():raise SystemExit('public_proof_changed')
+ return {'path':str(path),'pin':{'generation':list(mac.private._generation(info)),'sha256':hashlib.sha256(raw).hexdigest()}}

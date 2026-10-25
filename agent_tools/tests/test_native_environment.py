@@ -142,7 +142,7 @@ class NativeEnvironmentTest(unittest.TestCase):
 
     def test_direct_module_import_supports_standalone_mcp_loading(self):
         with tempfile.TemporaryDirectory() as temporary:
-            result = subprocess.run([sys.executable, "-c", "import native_environment"],
+            result = subprocess.run([sys.executable, "-B", "-c", "import native_environment"],
                 cwd=temporary, env={"PYTHONPATH": str(Path(native_environment.__file__).parent)},
                 capture_output=True, text=True, check=False)
             self.assertEqual(0, result.returncode, result.stderr)

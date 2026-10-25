@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "8c5326e03736cd166c80248053e2256541aa212b2c62fa79a74e5522e22a4d3e",
+  "nativeBeforeOperation": "8cf17085-6aca-4a39-87ae-654654f90f6b",
+  "nativePackageIntegrityQualification": "6dc78ee5-a592-44dc-9f07-e05c7cba194a",
+  "failure": "Finite Microsoft OS background roles remain unclassified after native image/birth/protection; retain blocker until exact role path and publisher/package integrity are positively verified."
+}

@@ -11,9 +11,12 @@ import time
 from types import SimpleNamespace
 import unittest
 
+from agent_tools import affected_agent_tests
+
 SOURCE = Path(__file__).resolve().parents[1] / "mcp_server.py"
 GATE = [sys.executable, "-m", "unittest", "agent_tools.tests.test_ssh_connection_session_close"]
 SELECTED = [sys.executable, "-m", "unittest", "agent_tools.tests.test_ssh_transport"]
+SELECTION = affected_agent_tests.Selection("0" * 40, ("agent_tools/ssh_transport.py",), (GATE[3], SELECTED[3]), 2)
 
 
 def actual_planner_runner():
@@ -33,8 +36,8 @@ def actual_planner_runner():
     ns = {"sys": sys, "AGENT_TEST_PYTHON": sys.executable, "Path": Path,
           "hashlib": hashlib, "time": time, "__file__": str(SOURCE),
           "Any": object, "REPO_ROOT": Path("/inert-unused-root"),
-          "RECEIPT_PATH": Path("/inert-unused-root/receipt.json"),
-          "_agent_test_selection": lambda: SimpleNamespace(commands=lambda python: [GATE, SELECTED])}
+          "RECEIPT_PATH": Path("/inert-unused-root/receipt.json"), "affected_agent_tests": affected_agent_tests,
+          "_agent_test_selection": lambda: SELECTION}
     exec(compile(ast.Module(body=chosen, type_ignores=[]), str(SOURCE), "exec"), ns)
     return ns
 
@@ -89,7 +92,7 @@ class PrepushSshCloseGateTests(unittest.TestCase):
 
     def test_product_only_omits_agent_checks_and_plans_are_independent(self):
         ns = actual_planner_runner()
-        ns["_agent_test_selection"] = lambda: SimpleNamespace(commands=lambda python: [])
+        ns["_agent_test_selection"] = lambda: affected_agent_tests.Selection("0" * 40, ("Feature.kt",), (), 2)
         for area, commands in ns["FOCUSED_COMMANDS"].items():
             self.assertEqual(commands, ns["_commands_for"](area, "focused"))
         self.assertFalse(any("unittest" in c for c in ns["_commands_for"]("desktop", "prepush")))

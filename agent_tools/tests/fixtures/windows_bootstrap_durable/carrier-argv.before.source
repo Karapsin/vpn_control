@@ -1,0 +1,23 @@
+@contextmanager
+def admitted_transport(root, host, operation_identity, *, deadline=None, requirements=None):
+    if host != 'lab-one':raise ValueError('controlled_carrier_wrong_target')
+    class Admission:
+        def revalidate(self):pass
+    yield Admission()
+
+def build_ssh_argv(config, host, timeout_seconds=60, *, command=None, **kwargs):
+    if host != 'lab-one' or type(command) is not tuple:raise ValueError('controlled_carrier_wrong_target')
+    return command
+
+def run_ssh(argv, *, runner=None, **kwargs):
+    if os.environ.get('VPN_CONTROL_BOOTSTRAP_CARRIER_FAULT') == 'malformed':
+        return subprocess.run([sys.executable,'-I','-B','-c','import sys;print("malformed-public-reply");print("public-controller-failure",file=sys.stderr);sys.exit(9)'],**kwargs)
+    return subprocess.run([sys.executable,*argv[1:]],**kwargs)
+
+class Guard:
+    def __init__(self, root, *, host):
+        if host != 'lab-one':raise ValueError('controlled_guard_wrong_target')
+        self.config = object()
+    def __enter__(self):return self
+    def __exit__(self,*error):return False
+    def guard(self):pass

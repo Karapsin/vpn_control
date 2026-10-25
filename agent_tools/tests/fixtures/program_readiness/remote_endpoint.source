@@ -1,0 +1,25 @@
+"""Owned fixture guest: remote execution never inherits local SSH diagnostics cap."""
+import base64,json,os,shlex,socket,subprocess,sys,threading
+path=sys.argv[1]
+def receive(connection):
+ body=b''
+ while not body.endswith(b'\n'):
+  part=connection.recv(65536)
+  if not part:raise ValueError('fixture_eof')
+  body+=part
+  if len(body)>16*1024*1024:raise ValueError('fixture_bound')
+ return json.loads(body)
+def handle(connection):
+ try:
+  with connection:
+   request=receive(connection);command=shlex.split(request['command'])
+   if command[0]=='python3':command[0]=sys.executable
+   result=subprocess.run(command,input=base64.b64decode(request['stdin']),capture_output=True,
+       env={**os.environ,'SSH_CONNECTION':'192.0.2.1 12345 192.0.2.2 22'})
+   reply={'stdout':base64.b64encode(result.stdout).decode(),'stderr':base64.b64encode(result.stderr).decode(),'code':result.returncode}
+   connection.sendall(json.dumps(reply).encode()+b'\n')
+ except (OSError,ValueError):pass
+with socket.socket(socket.AF_UNIX) as server:
+ server.bind(path);os.chmod(path,0o600);server.listen()
+ while True:
+  connection,_=server.accept();threading.Thread(target=handle,args=(connection,),daemon=True).start()

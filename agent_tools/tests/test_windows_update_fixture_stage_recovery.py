@@ -30,6 +30,10 @@ IDLE = {"state": "ready", "ready": True, "code": "READY", "installedVersion": "2
 
 
 class StageRecoveryTest(unittest.TestCase):
+    def setUp(self):
+        for patcher in (patch.object(recovery.stage,'_read_intent',return_value=self._intent()),patch.object(recovery.base,'_descriptor',return_value=(object(),object(),DESCRIPTOR))):
+            patcher.start();self.addCleanup(patcher.stop)
+
     def _intent(self):
         return {"request": REQUEST, "environment": DESCRIPTOR[0], "socketPath": DESCRIPTOR[1],
                 "pid": DESCRIPTOR[2], "startTicks": DESCRIPTOR[3], "expectedSid": SID,
@@ -50,7 +54,7 @@ class StageRecoveryTest(unittest.TestCase):
              patch.object(recovery, "_remote_absence_reconciled", return_value=False), \
              patch.object(recovery, "_idle", return_value=True), \
              patch.object(recovery, "_campaign_closed") as close:
-            result = recovery.recover(temporary, {"host": "archlinux"})
+            result = recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
         self.assertEqual("unknown", result["state"])
         cleanup.assert_called_once()
         close.assert_not_called()
@@ -62,7 +66,7 @@ class StageRecoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, self._patch_bound()[0], \
              patch.object(recovery.stage, "diagnose", side_effect=[good, bad]), \
              patch.object(recovery, "_remote_cleanup") as cleanup:
-            result = recovery.recover(temporary, {"host": "archlinux"})
+            result = recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
         self.assertEqual("unknown", result["state"])
         cleanup.assert_not_called()
 
@@ -141,7 +145,7 @@ class StageRecoveryTest(unittest.TestCase):
                  patch.object(recovery, "_remote_cleanup", return_value=True), \
                  patch.object(recovery, "_idle", return_value=True), \
                  patch.object(recovery, "_campaign_closed", return_value=True):
-                result = recovery.recover(root, {"host": "archlinux"})
+                result = recovery.recover(root, {'host':'archlinux','vmIdentity':'589342:520739'})
             self.assertEqual("recovered", result["state"])
             self.assertFalse(bundle.exists())
             receipt = recovery._read_receipt(root)
@@ -155,7 +159,7 @@ class StageRecoveryTest(unittest.TestCase):
              patch.object(recovery, "_remote_cleanup", return_value=True), \
              patch.object(recovery, "_idle", return_value=False), \
              patch.object(recovery, "_campaign_closed") as close:
-            result = recovery.recover(temporary, {"host": "archlinux"})
+            result = recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
         self.assertEqual("unknown", result["state"])
         close.assert_not_called()
 
@@ -175,8 +179,8 @@ class StageRecoveryTest(unittest.TestCase):
                                            "leaseId": LEASE, "guestGeneration": {"socketPath": "/qga", "qemuPid": 589342,
                                                                                        "startTicks": 520739}, "evidenceSha256": evidence,
                                            "cleanupReceiptSha256": cleanup, "state": "remote-cleaned"})
-            first = recovery.recover(root, {"host": "archlinux"})
-            second = recovery.recover(root, {"host": "archlinux"})
+            first = recovery.recover(root, {'host':'archlinux','vmIdentity':'589342:520739'})
+            second = recovery.recover(root, {'host':'archlinux','vmIdentity':'589342:520739'})
         self.assertEqual("unknown", first["state"])
         self.assertEqual("recovered", second["state"])
 
@@ -192,7 +196,7 @@ class StageRecoveryTest(unittest.TestCase):
              patch.object(recovery, "_idle", return_value=True), \
              patch.object(recovery, "_campaign_closed", return_value=True), \
              patch.object(recovery, "_remove_bundle", return_value=True):
-            result = recovery.recover(temporary, {"host": "archlinux"})
+            result = recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
         self.assertEqual("recovered", result["state"])
         reconciled.assert_called_once()
 
@@ -209,7 +213,7 @@ class StageRecoveryTest(unittest.TestCase):
              patch.object(recovery, "_idle", return_value=True), \
              patch.object(recovery, "_campaign_closed", return_value=True), \
              patch.object(recovery, "_remove_bundle", return_value=True):
-            result = recovery.recover(temporary, {"host": "archlinux"})
+            result = recovery.recover(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
         self.assertEqual("recovered", result["state"])
         cleanup.assert_not_called()
         reconciled.assert_called_once()

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/tests/test_ssh_program_execution.py",
+  "baseline": "2dfa2f2e recovery worktree",
+  "sourceBytes": 71514,
+  "sourceSha256": "5f2598bfdbf1ee77fea43bd3ca17af3e5dd1f2b19aca971a3b4a2b92f5e11478",
+  "originalFailureTestId": "agent_tools.tests.test_ssh_program_execution.ProgramExecutionTests.test_original_route_order_failure_and_fixed_actual_worker",
+  "originalFailure": "Managed pre-push run 4, affected agent-test stage: FAIL at line 187. The assertion's own read of the original worker's worker.stderr.private held only its first traceback line.",
+  "originalFailureTrace": [
+    "======================================================================",
+    "FAIL: test_original_route_order_failure_and_fixed_actual_worker (agent_tools.tests.test_ssh_program_execution.ProgramExecutionTests.test_original_route_order_failure_and_fixed_actual_worker)",
+    "----------------------------------------------------------------------",
+    "Traceback (most recent call last):",
+    "  File \"/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_program_execution.py\", line 187, in test_original_route_order_failure_and_fixed_actual_worker",
+    "    self.assertIn(b\"program_route_changed_before_launch\", (directory / \"worker.stderr.private\").read_bytes())",
+    "    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "AssertionError: b'program_route_changed_before_launch' not found in b'Traceback (most recent call last):\\n'"
+  ],
+  "originalFailureTraceSha256": "edd4ca0256716137c94b94ed490189bfdf1aec303b62b527877416c275b91294",
+  "originalFailureLogSha256": "02445ba71f965879d97a5d97cf6549ec25cad275cc133aa928e7f3e3c2d5be71",
+  "originalFailureLogScope": "Preserved failure excerpt of that run; it also holds an unrelated test_macos_fixture_stage subprocess timeout.",
+  "confirmedCause": "The case polled worker.stderr.private only until it was non-empty, then re-read it once for the expected error. The original worker's uncaught ValueError traceback reaches that file in several separate writes: 'Traceback (most recent call last):' first, its own 'raise ValueError(\"program_route_changed_before_launch\")' source line near the end and the final 'ValueError: program_route_changed_before_launch' line last. Under load the poll's first non-empty read and the assertion's immediate re-read both fell between the first line and the rest. The case reads that file directly and never calls status(); ssh_program_execution.py, its unfixed owner beforeimage and the worker are not involved.",
+  "controlledRegression": "agent_tools.tests.test_ssh_program_route_stderr_completion runs the actual case from this whole beforeimage and from the current module, each with its real snapshot worker, unfixed-owner original worker and fixed worker. Only the case's reads of the original worker's own worker.stderr.private are controlled, and only after that real worker has exited: the first two reads return its actual first line, the two reads the trace shows partial, and every later read its complete actual bytes. Unfixed: the original statement at line 187 fails with the identical message after exactly those two reads. Fixed, once with NO_COLOR=1 and once with FORCE_COLOR=1 set explicitly (the worker inherits both, and from Python 3.13 FORCE_COLOR colors its traceback): the case keeps polling until the asserted error text appears, stops at that first complete read and passes its assertion on one more read, including its fixed-worker half; a wait that never matches re-reads until its 10 s deadline and fails the four-read bound.",
+  "passingEvidence": "The fixed case re-reads after both partial observations, stops at the first read that holds the asserted error text, plain or colored, passes its assertion within four reads of the file, and its fixed worker still runs the target once with exit code 0.",
+  "routineSuite": "agent_tools.tests.test_ssh_program_route_stderr_completion runs in the affected agent-test stage of the managed pre-push tier and the Fast Checks agent shards whenever the selector reaches it, including changes to test_ssh_program_execution.py, this beforeimage or provenance, or any reviewed scope of that case.",
+  "nativeFailureClaimed": false,
+  "nativeEvidenceLimit": "Local test-harness observation race only; no VM, SSH host, guest or product native behavior is involved or claimed."
+}

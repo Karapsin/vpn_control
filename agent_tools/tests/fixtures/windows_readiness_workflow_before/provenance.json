@@ -1,0 +1,1 @@
+{"evidence": ".runtime/tool-recovery/root-windows-workflow-red.log", "failure": "native_workflow_existing_selector_contract", "sha256": "54229369500fd95d9935876fb9aac887362f55df2eeee9f6fb2f22a5f9f42d57", "source": ".github/workflows/windows-desktop.yml"}

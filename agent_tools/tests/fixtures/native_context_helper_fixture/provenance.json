@@ -1,0 +1,8 @@
+{
+  "cause": "AST-only temp native source fixture omitted the automatic carrier protected helper; actual held-byte loader raises FileNotFoundError before stage.",
+  "files": {
+    "actual-failure.txt": "463bf3bee49d15c446e822cee64477bb0c262be710128500bffa017c8b622adb",
+    "before.source": "5d8b9e1fbecd956950bfe9f036b75376e5e96b0f743eb444e823498b41f0eee7"
+  },
+  "schemaVersion": 1
+}

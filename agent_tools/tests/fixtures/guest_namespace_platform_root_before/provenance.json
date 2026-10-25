@@ -1,0 +1,10 @@
+{
+  "failure": "Actual Darwin /var symlink violates strict canonical durable owner root before namespace admission.",
+  "nativeReadonlyEvidence": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-darwin-canonical-tmp-readonly-87cd8ba0-bac4-4aad-bfca-e64ae9d6c3a6/result.json",
+  "regression": "Complete original/current emitted ordinary-account caller through actual local Darwin /var symlink in isolated own temporary namespaces; no VM namespace or job calls.",
+  "schemaVersion": 1,
+  "sha256": {
+    "readiness_guest_jobs.py": "12c5ff60c03b2c9981f15571028b903b4c98e2ec7ee2231aa0bc0d89e1d3a1af",
+    "readiness_qemu_jobs.py": "5b2910175d4f3324da497f829806b7e5c0d8c09a6b0c4f9a86caffb8a8809ca3"
+  }
+}

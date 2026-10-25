@@ -95,6 +95,9 @@ def parse_memory(argv):
  if len(values)!=1: return None
  kind,value=values[0]
  try:
+  # libvirt uses QEMU's documented explicit size property for the scalar
+  # boot RAM value. Other properties/duplicate values remain fail-closed.
+  if kind==b"qemu" and value.startswith(b"size="): value=value[5:]
   text=value.decode("ascii").upper()
   if kind==b"android":
    if not text.isdigit() or int(text)<=0: return None
@@ -228,13 +231,12 @@ def _measurement(payload: Mapping[str, Any], timestamp: int, identity: dict[str,
 
 
 def _run(argv: list[str], timeout_seconds: int) -> bytes:
-    with ssh_transport.automatic_submission(argv) as submitted:
-        return _run_submitted(submitted, timeout_seconds)
+    return _run_submitted(argv, timeout_seconds)
 
 
 def _run_submitted(argv: list[str], timeout_seconds: int) -> bytes:
     try:
-        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        process = ssh_transport.popen_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except OSError as error:
         raise RuntimeError("ssh_unavailable") from error
     assert process.stdout is not None
@@ -257,6 +259,7 @@ def _run_submitted(argv: list[str], timeout_seconds: int) -> bytes:
         if process.poll() is None:
             process.kill(); process.wait()
         process.stdout.close()
+        ssh_transport.finish_ssh(process)
 
 
 def observe_host(root: Path | str, host_alias: str, timeout_seconds: int, vm_identity: Mapping[str, Any] | None = None) -> dict[str, Any]:

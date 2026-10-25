@@ -1,0 +1,8 @@
+{
+  "files": {
+    "actual-failure.txt": "3292e9fb4cce003f1a5ca797ef651707b23c668b76ed6b4d03819392ad63c9ae",
+    "native_execution_context.py.before.source": "1539f4cdb0c32981e21db8d67c8bac31717e82ad5b54b7aed2d32a8bf7b96114"
+  },
+  "schemaVersion": 1,
+  "source": "actual full native_execution_context.py before finite dynamic catalogue repair"
+}

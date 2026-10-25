@@ -1,0 +1,8 @@
+{
+  "cause": "Historical generator manually compiled in copied live globals is foreign to the held SourceSession; repaired loader correctly rejects before old callable-context expectation.",
+  "files": {
+    "actual-failure.txt": "c98c0f967e96d5bb2c32cbcf06ed6d6398388a46b8c9ad1956d309432a22ba25",
+    "before.source": "42fae0fe880cb619bb00750858f674caaae8263be7c5f3d0c7937ead86916918"
+  },
+  "schemaVersion": 1
+}

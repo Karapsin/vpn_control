@@ -1,0 +1,51 @@
+{
+  "contract": {
+    "path": ".runtime/tool-recovery/managed-creator-home-review/creator-prevm-refusal-recovery-contract.json",
+    "sha256": "bc4833df5cb2e8858ba121009185b8365b550f2a75d40f38447b20ae52017b50"
+  },
+  "executingBeforeimage": {
+    "path": "agent_tools/tests/fixtures/windows_managed_creator_unix_address/managed_create.before.source",
+    "sha256": "8aeb4c0153ea840c595a5996295e62f6ef6b5504df2cb4845cbbab953955d218"
+  },
+  "files": {
+    "evidence/collect.callback.json": {
+      "path": ".runtime/tool-recovery-windows/direct/new-libvirt-create-successor-7e8b2dcd-63c1-58fc-b382-f64695bacf11/original-collect-7093f151-c85a-4dab-b8c8-a51cc1c43270/collect.callback.json",
+      "sha256": "2a7f6922d37e3b0fcf7601a8598228b96291e0a9473cc8f3fc0a58b1f94e669e"
+    },
+    "evidence/original-unsubmitted.proof.json": {
+      "path": ".runtime/tool-recovery-windows/direct/new-libvirt-create-successor-7e8b2dcd-63c1-58fc-b382-f64695bacf11/original-unsubmitted.proof.json",
+      "sha256": "b47cd36057960366b5814d1c84d8ebec62c8bfedae25b98d33f101eeda039491"
+    },
+    "evidence/owner.stderr.public": {
+      "path": ".runtime/tool-recovery-windows/direct/new-libvirt-create-successor-7e8b2dcd-63c1-58fc-b382-f64695bacf11/original-collect-7093f151-c85a-4dab-b8c8-a51cc1c43270/owner.stderr.public",
+      "sha256": "05be7b88a77714dc3b8cc4baeb69ecd01cdb05eecf9379ec6c1d4e386d82ec4b"
+    },
+    "evidence/owner.stdout.public": {
+      "path": ".runtime/tool-recovery-windows/direct/new-libvirt-create-successor-7e8b2dcd-63c1-58fc-b382-f64695bacf11/original-collect-7093f151-c85a-4dab-b8c8-a51cc1c43270/owner.stdout.public",
+      "sha256": "63b22dd1676e83ed84091bef84c02b9f9c0a96d838eb187bd7940f8dc6523f90"
+    },
+    "evidence/socket-path-causal.json": {
+      "path": ".runtime/tool-recovery-windows/direct/new-libvirt-create-successor-7e8b2dcd-63c1-58fc-b382-f64695bacf11/native-record-unavailable-before/socket-path-causal.json",
+      "sha256": "aa66555f6f6d3196587fce1fa9d42f093cbb972f1680ac07014b50da10ebda7d"
+    },
+    "evidence/submission.once.json": {
+      "path": ".runtime/tool-recovery-windows/direct/new-libvirt-create-successor-7e8b2dcd-63c1-58fc-b382-f64695bacf11/submission.once.json",
+      "sha256": "dcbfc8621baff5a51facf3b7e11abc596d5e0f5b3cdee2a5f0af3b52e28d1684"
+    },
+    "evidence/unknown.json": {
+      "path": ".runtime/tool-recovery-windows/direct/new-libvirt-create-successor-7e8b2dcd-63c1-58fc-b382-f64695bacf11/unknown.json",
+      "sha256": "71da92a4fb2d95055e4e50aaf2ba689964a6e1f0ed5cc86a4cdaa19e2c86da09"
+    }
+  },
+  "finding": "original operation 7e8b2dcd consumed its readiness-resources claim (prepared + submitting attempt 1, UNKNOWN) and then ended terminal 0 with a typed BLOCKED result in phase credential-listener: the executing creator bound credentials.sock through its 141-byte canonical job path beyond the Linux AF_UNIX limit before any VM existed; no existing API could legitimately close the consumed claim",
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "originalOperationId": "7e8b2dcd-63c1-58fc-b382-f64695bacf11",
+  "schemaVersion": 1,
+  "unchangedContractSources": {
+    "agent_tools/native_environment.py": "e842650c8308d5b2cd8d9770afcd86d930556c0ae0836dea9b76d4cb864147cf",
+    "agent_tools/readiness.py": "eda12770d2141a1933159d0151eb8e512effb04663e6475a29dca90ea0a39a23",
+    "agent_tools/readiness_resources.py": "45cc6144e9f330c288576214d9f92d96641ee615421ab3b0e43c620d420cc05a",
+    "agent_tools/readiness_windows_creator_registry.py": "d1f06ac9df5f1ce232570b0fb077d7fbf857fdacf643ff93d23ed6e985f0ef7c"
+  }
+}

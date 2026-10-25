@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "cause": "Two old synthetic new-start requests omitted mandatory explicit environment. Correct early target gate returns refusal before mocked backend; tests then indexed absent state. Current test supplies finite configured metadata to real target admission and keeps wrong/missing target zero effects.",
+  "files": {
+    "actual-failure.txt": "5439f5736c125f8edb12cefe1fd3caf8767d96640b486ac171650c61532f643c",
+    "before.source": "88fa72700e8853ef94a049a069ce1ba5d27d50b88ba9d01a1ce30bb06c57007b",
+    "bypassed_admission.before.source": "7c806dd03386226c53768e0621bc57af5386c3a47ff3f817487f33a305ae9abd",
+    "bypassed-admission-failure.txt": "4094032b14576574a0ad3f156bc84a73c0271b873a87ed175cb245fb7d4ddf98"
+  },
+  "additionalCause": "First fixture repair mocked start after its own native target validation, so wrong environment reached that mock. Final finite start seam calls the actual pure environment admission before effect mock; no production relaxation."
+}

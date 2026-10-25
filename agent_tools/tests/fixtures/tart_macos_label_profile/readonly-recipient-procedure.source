@@ -1,0 +1,51 @@
+"""Private PUBLIC-only timing body for the reviewed native controller.
+
+This is a measurement body, not a tool or an authority issuer. Its enclosing
+fixed controller must supply actual selected custody, opaque LabelProfile,
+original nonce observer and the normal source/physical/native guard. It opens no
+credential, sends no input and persists no image. A successful measurement does
+not qualify private input or a successful unlock.
+"""
+import time
+
+
+def measure(U, V, view, baseline, profile, epoch, custody, guard, observer, *, deadline):
+    # These are the SAME helper/callback calls used by the proposed U and e217.
+    # No material or ordinary-account credential is fabricated to measure them.
+    start = time.monotonic()
+    initial_counter = observer.counter
+    def recipient():
+        return U._recipient_image(view, baseline, profile, guard=guard,
+                                  epoch=epoch, custody=custody)
+    image = recipient()
+    U._need(U._empty(image, baseline, profile), 'macos_unlock_field_not_known_empty')
+    image = None
+    guard()
+    # The secret API starts its group here. It reads protected input and starts
+    # a once journal in real use; this PUBLIC measurement does neither.
+    group_deadline = min(deadline, view._active())
+    group_start = time.monotonic()
+    view._check(recipient)  # secret API admission guard
+    durations = []
+    for _ in range(128):  # 32 printable ASCII chars, all shifted: four events each
+        before = time.monotonic()
+        view._check(recipient)  # exact e217 _send mutation guard, no send
+        V._remaining(group_deadline)  # exact no-late-input fence after callback
+        durations.append(time.monotonic() - before)
+    group_elapsed = time.monotonic() - group_start
+    recipient()  # actual U post-group account check; does NOT require empty field
+    guard()
+    # Public Return is unchanged and has only base native guards: _active plus
+    # key-down/key-up. No Return event is sent by this measurement.
+    return_deadline = min(deadline, view._active())
+    for _ in range(2):
+        view._check()
+        V._remaining(return_deadline)
+    guard()
+    return {'secretEventGuardChecks': 128, 'recipientCaptures': 131,
+            'observerCounterBefore': initial_counter, 'observerCounterAfter': observer.counter,
+            'observerCounterLimit': 1024, 'groupSeconds': group_elapsed,
+            'totalSeconds': time.monotonic() - start, 'maximumEventGuardSeconds': max(durations),
+            'inputSent': False, 'ordinaryCredentialAccess': False,
+            'framePersisted': False, 'fieldOrFrameDigest': False,
+            'scope': 'public_guard_cost_only_no_late_input_admission'}

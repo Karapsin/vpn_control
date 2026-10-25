@@ -1,0 +1,5 @@
+function N([string]$name,[object[]]$values){
+ $method=[NativeJob].GetMethod($name,[Reflection.BindingFlags]'NonPublic,Static')
+ if($null  -eq  $method){throw 'diagnostic_native_method'}
+ return $method.Invoke($null,$values)
+}

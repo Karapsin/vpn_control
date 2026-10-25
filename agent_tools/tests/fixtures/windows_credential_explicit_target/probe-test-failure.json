@@ -1,0 +1,8 @@
+{
+  "kind": "controlled-test-seam-failure",
+  "test": "test_raw_multiline_helpers_are_rejected_but_both_real_paths_build_encoded_argv",
+  "expected": "submitted",
+  "actual": "unknown",
+  "cause": "subprocess.run fake does not intercept central ssh_transport.run_ssh",
+  "nativeFailureClaimed": false
+}

@@ -1,0 +1,11 @@
+{
+  "agentPlistSha256": "7dd0b139e5b7f0c567c6a8810e015132699ecb3620c39769768181d28eff0c80",
+  "agentSha256": "8bbbffe09d207164cbabc06a2b2f5085e041290e75247d28db0a0e1fa852646e",
+  "helper": "/usr/local/libexec/vpn-tool-recovery-idle-4a9f62cc-6a93-4cd7-86c3-4b4ab81a4dc7/main.py",
+  "machine": "ecdc399a-8f2b-5410-b85d-e4db56ddc6c1",
+  "ordinaryPrincipal": "toolrecovery",
+  "ordinaryUid": 502,
+  "python": "/usr/local/libexec/vpn-tool-recovery-cont-63517582/python/bin/python3.12",
+  "pythonSha256": "3274dde21f9767655564d093e63c9a5faacefbf1d41bc1e6bf8b6f6e5a441903",
+  "qualificationOriginBoot": "87ac272f-619b-4cc0-b9fc-3e32daee5b18"
+}

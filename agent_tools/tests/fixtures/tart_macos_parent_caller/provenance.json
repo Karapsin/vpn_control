@@ -1,0 +1,34 @@
+{
+  "beforeSha256": "6b4165c7c8c275d5c8ea27d85918d18bac3338e68be7b61237342d98506ec075",
+  "currentSha256": "343acc434600b79d031c1419e7c3af654e872698f2a492e489dfcbc41fbff79d",
+  "dependenciesAreUnexecutedPublicSource": true,
+  "failure": "held lifecycle Directory named run is shadowed by nested async function run before its first guard",
+  "files": {
+    "dependencies/benchmark.source": "3c1cc8938349e5b92d7913b85f98a7f53cf5c3a84fbd24d9d8947c44994246b1",
+    "dependencies/lease-evidence.source": "d758ae1181cc01c470e136131ea259d1305e397776cb8aaa85618622b12096c3",
+    "dependencies/original-evidence.source": "e0837869809c8a31f03d7db33028467581a37126227964dcd8fbfd343911ff19",
+    "dependencies/plan.json": "1f8515a9e38aeb6f0dd30cbe58a5fa7161e8f3440f8346cc03504cc7cee52a43",
+    "dependencies/wake.source": "aa2d0429e2c83d7e46d33fbc85dc7a07b3f027209f785c92e26f4d4cf048dfac",
+    "parent.before.source": "6b4165c7c8c275d5c8ea27d85918d18bac3338e68be7b61237342d98506ec075",
+    "parent.current.source": "343acc434600b79d031c1419e7c3af654e872698f2a492e489dfcbc41fbff79d"
+  },
+  "historicalPlanIsDataNotCurrentApproval": true,
+  "nativeBefore": {
+    "acquireSubmitted": false,
+    "failureClass": "AttributeError",
+    "inputSubmitted": false,
+    "mcpServersStarted": 0,
+    "operationId": "5e5e51db-b9e2-4785-a30b-da6bb2f0883c",
+    "receipt": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-public-nonce-parent-5e5e51db-b9e2-4785-a30b-da6bb2f0883c/phase-failure.json"
+  },
+  "nativeCurrent": {
+    "ordinaryCredentialReaderOpened": false,
+    "originalLeaseClosed": true,
+    "phaseFailureClass": null,
+    "publicChecks": 136,
+    "receipt": ".runtime/tool-recovery/tart/macos-existing-start-after-rfb-2d933a39-0fb6-46a4-9fd9-02221d81c4b9/native-public-nonce-parent-5e5e51db-b9e2-4785-a30b-da6bb2f0883c-continuation-9c3608fb/complete.json",
+    "receiptSha256": "a0d9de08cb13b47f46c5fb42201409c6a44ffb6ced70451e7d80b6fbf710357f"
+  },
+  "routineScope": "unchanged complete caller with actual SourceSession and private Directory/Snapshot guards; only clock/boot inputs and MCP boundary controlled; no producer is executed",
+  "schemaVersion": 1
+}

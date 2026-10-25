@@ -13,6 +13,10 @@ Use the smallest tier that gives meaningful coverage for the touched boundary.
 
 If a mapped check cannot run because the environment lacks an Android SDK, emulator, VM, network access, or platform host, run the closest non-risky local check and report the missing prerequisite explicitly.
 
+Every tier runs to completion and reports every failure (`TEST-006`). Required CI steps continue under `!cancelled()` and multi-task Gradle invocations use `--continue`; `scripts/check_ci_failure_discovery.py` enforces both in release hygiene. To fix while a long pass continues, run that pass from an immutable snapshot copy and edit only the working tree. Each managed `run_checks` pass records its failed checks beside the pre-push receipt. After fixing, run `./agent_tools/mcp_tool.sh run-checks --level failed`, which reruns exactly the recorded failures with agent tests narrowed to their failed modules; only when it passes, run `--level prepush`. The pre-push tier refuses while a recorded failure set is unresolved. After a CI failure, collect every failed step and test from the complete run and fix them together before the same failed-first sequence.
+
+The managed agent stage (prepush, and focused `agent_tools`) runs the SSH-close gate alone first, then the two hosted CI shards from `shard_selection` (sorted and alternating over the whole selection) without the gate. Each is a separate command with the 50-minute managed bound, and a failed gate stops everything planned after it at every level. On timeout the launcher sends SIGTERM, so the agent test runner stops its worker sessions before the next command starts; it sends SIGKILL only after a 30-second grace and reports only the original timeout, even when the drained text output does not decode. A failed agent command without parsed failed modules (timeout, truncated or unparsed output, or an import failure reported as `unittest.loader._FailedTest`) reruns once at the failed level without its removed modules and is never split recursively: the gate alone if it was recorded, then the remaining modules grouped by index parity in the sorted union of the current selection and those modules. While every remaining module is still selected, each group is the row's part of one current CI shard, so for an unchanged selection a recorded shard reruns as itself and a resolved rerun shows that the same pre-push command fits its bound; a changed selection regroups them, and a newly selected module sorting between recorded ones can split a recorded shard. A row whose modules were all removed is skipped, a single-module row included, so a removed module cannot wedge failed-first. Regrouping two or more non-gate modules consults the current selection once per pass, so a selector refusal such as a stale reviewed pin blocks that pass with the `agent-test-selection` blocker; rows with at most one remaining non-gate module never consult it. Narrowed rows rerun their recorded failed modules.
+
 ## Quick Mapping
 
 ### Desktop GUI CLI test selection
@@ -88,6 +92,16 @@ The `VPN Integration` workflow has two profiles. `core` runs fast deterministic 
 `TEST-001` in `contracts.md` applies to every distinct failure type found in VM, emulator, native/package, manual, visual, and integration testing. Preserve original failure evidence and relevant unfixed source/file beforeimages before editing. Workers may first implement and test reversible quick fixes within explicit file and environment ownership without coordinator micro-approval; scope, runtime-interruption authorization, unknown-outcome non-replay, and source/artifact provenance gates remain binding. Once the flow works, report the finite encountered failure types, known or unresolved causes, and proposed regression coverage. Then implement each required causal reproducer, run the same test on an isolated owned copy of preserved unfixed source for actual RED and on the fix for GREEN, and wire it into the relevant routine suite above before integration, push, or completion; proposed coverage alone does not satisfy TEST-001. Preserve and rerun the original native scenario against the fixed artifact without reverting shared or live native state for RED. Kotlin regressions belong in the ordinary shared/desktop/Android unit-test tasks; constrained-heap regressions must run without a device or privileged runtime. New standalone script regressions must be wired into routine hygiene/pre-push and applicable CI, not left as optional commands. Record failing/passing evidence and the suite mapping alongside the native finding. Keep native verification for OS behavior that a host regression cannot faithfully reproduce; a skipped native test is not early regression coverage. Reproducible infrastructure failures require fixture, script, or workflow-contract regressions too.
 
 ## Common Combined Checks
+
+Automatic tool readiness changes additionally run the action-policy exposure audit
+(`python3 agent_tools/tool_action_policy.py`) and fixture storage admission tests
+(`python3 scripts/test_native_fixture_storage.py`) through release hygiene. The
+affected agent selection includes readiness, provider/registry, durable job,
+keep-awake, generated-program and typed-next-action tests. These local gates do
+not replace each provider's DIRECT, fresh MCP and CLI acceptance tracked in
+[the recovery ledger](tool-recovery-ledger.md). At the user's direction,
+expiry tests use accelerated intervals; real tool calls retain five-hour SSH
+persistence. A five-hour test dwell is not a completion gate.
 
 Localization patch:
 

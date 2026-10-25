@@ -1,0 +1,136 @@
+"""Fixed ordinary ServiceManagement domain shape GET; diagnostic only.
+No job mutation, disk catalog read, process permission waiver or idle authority.
+Private values remain in memory only; unknown field names are never exported.
+"""
+import ctypes as C
+import hashlib,json,os,pwd,stat,sys
+from pathlib import PurePosixPath
+_EXECUTING=sys._getframe().f_code
+PINS={'tart_macos_probe.py': 'dc535e8943efc18051bf606200174dd0c103aca80bc39bcddc90946f757cc157', 'tart_macos_service_census.py': 'e103665a0d940e5a01f50b709256b957b4dd5480745e26d1b05170fca9687d29'}
+MACHINE='ecdc399a-8f2b-5410-b85d-e4db56ddc6c1';BOOT='87ac272f-619b-4cc0-b9fc-3e32daee5b18';UID=502;PRINCIPAL='toolrecovery'
+MAX_ROWS=4096
+MAX_SINGLE=1024
+MAX_FIELDS=256
+MAX_NESTED=4096
+FIELDS=frozenset({'Label','PID','Program','ProgramArguments','UserName','GroupName','RunAtLoad','KeepAlive','EnableTransactions','EnablePressuredExit','ProcessType','MachServices','Sockets','EnvironmentVariables','LastExitStatus','TimeOut','ExitTimeOut','ThrottleInterval','StartInterval','StartCalendarInterval','StandardInPath','StandardOutPath','StandardErrorPath','WorkingDirectory','RootDirectory','LimitLoadToSessionType','LimitLoadToHosts','LimitLoadFromHosts','Disabled','OnDemand','LaunchOnlyOnce','AbandonProcessGroup','AssociatedBundleIdentifiers','BundleProgram','EnableGlobbing','InitGroups','Nice','SessionCreate','WaitForDebugger','SoftResourceLimits','HardResourceLimits','LaunchEvents','QueueDirectories','WatchPaths','Umask'})
+TYPES=('null','boolean','integer','real','string','array','dictionary','data','date','other')
+class Unavailable(ValueError):pass
+def need(value,reason='domain_shape_unavailable'):
+ if not value:raise Unavailable(reason)
+def _agent(value):
+ need(type(value)is tuple and len(value)==5 and all(type(v)is int for v in value)and value[0]>0 and value[1]==UID and value[2]==1 and value[3]>0 and 0<=value[4]<1000000)
+def value_type(value):
+ if value is None:return'null'
+ return {bool:'boolean',int:'integer',float:'real',str:'string',list:'array',dict:'dictionary',bytes:'data'}.get(type(value),'date'if type(value).__module__=='datetime'and type(value).__name__=='datetime'else'other')
+def active(row):return type(row)is dict and type(row.get('PID'))is int and 0<row['PID']<2**31
+def label_ok(row):return type(row)is dict and type(row.get('Label'))is str and 0<len(row['Label'])<=4096
+
+def summarize(rows):
+ need(type(rows)is list and len(rows)<=MAX_ROWS,'domain_rows_unavailable')
+ result={'rows':len(rows),'dictionaryRows':0,'malformedRows':0,'activePositivePidRows':0,'missingPidRows':0,'invalidPidRows':0,'missingLabelRows':0,'invalidLabelRows':0,'duplicateLabels':0,'duplicateActivePids':0,'unknownTopFieldOccurrences':0,'nonStringTopKeyOccurrences':0,'fieldOverflowRows':0,'fields':{name:{'present':0,'missing':0,'activePresent':0,'types':{},'activeTypes':{},'containerValueTypes':{},'containerOverflow':0}for name in sorted(FIELDS)}}
+ labels=set();pids=set()
+ for row in rows:
+  if type(row)is not dict:result['malformedRows']+=1;continue
+  result['dictionaryRows']+=1;live=active(row);result['activePositivePidRows']+=int(live)
+  if 'PID'not in row:result['missingPidRows']+=1
+  elif type(row['PID'])is not int or not 0<=row['PID']<2**31:result['invalidPidRows']+=1
+  if 'Label'not in row:result['missingLabelRows']+=1
+  elif not label_ok(row):result['invalidLabelRows']+=1
+  else:
+   label=row['Label'];result['duplicateLabels']+=int(label in labels);labels.add(label)
+  if live:
+   pid=row['PID'];result['duplicateActivePids']+=int(pid in pids);pids.add(pid)
+  if len(row)>MAX_FIELDS:result['fieldOverflowRows']+=1;continue
+  for key,value in row.items():
+   if type(key)is not str:result['nonStringTopKeyOccurrences']+=1;continue
+   if key not in FIELDS:result['unknownTopFieldOccurrences']+=1;continue
+   field=result['fields'].setdefault(key,{'present':0,'missing':0,'activePresent':0,'types':{},'activeTypes':{},'containerValueTypes':{},'containerOverflow':0})
+   field['present']+=1;field['activePresent']+=int(live);kind=value_type(value);field['types'][kind]=field['types'].get(kind,0)+1
+   if live:field['activeTypes'][kind]=field['activeTypes'].get(kind,0)+1
+   # No nested key names, element values, string lengths or content hashes.
+   if type(value)in(list,dict):
+    if len(value)>MAX_NESTED:field['containerOverflow']+=1;continue
+    for member in (value.values()if type(value)is dict else value):
+     name=value_type(member);field['containerValueTypes'][name]=field['containerValueTypes'].get(name,0)+1
+ for field in result['fields'].values():field['missing']=result['dictionaryRows']-field['present']
+ return result
+
+def merge_shapes(total,one):
+ for key,value in one.items():
+  if key=='fields':continue
+  total[key]+=value
+ for name,field in one['fields'].items():
+  dest=total['fields'].setdefault(name,{'present':0,'missing':0,'activePresent':0,'types':{},'activeTypes':{},'containerValueTypes':{},'containerOverflow':0})
+  for key in('present','activePresent','containerOverflow'):dest[key]+=field[key]
+  for key in('types','activeTypes','containerValueTypes'):
+   for kind,count in field[key].items():dest[key][kind]=dest[key].get(kind,0)+count
+ for field in total['fields'].values():field['missing']=total['dictionaryRows']-field['present']
+ return total
+
+def observe_rows(rows,copy_one):
+ result=summarize(rows);candidates=[row for row in rows if active(row)and label_ok(row)]
+ query={'eligibleActiveRows':len(candidates),'attempted':0,'nullResults':0,'dictionaryResults':0,'wrongTypeResults':0,'labelMatches':0,'labelMismatches':0,'pidMatches':0,'pidMismatches':0,'unavailable':0,'boundedCoverage':len(candidates)<=MAX_SINGLE,'descriptions':None}
+ descriptions=summarize([]);labels=set();pids=set()
+ if query['boundedCoverage']:
+  for row in candidates:
+   query['attempted']+=1
+   try:answer=copy_one(row['Label'])
+   except Exception:query['unavailable']+=1;continue
+   if answer is None:query['nullResults']+=1;continue
+   if type(answer)is not dict:query['wrongTypeResults']+=1;continue
+   query['dictionaryResults']+=1;merge_shapes(descriptions,summarize([answer]))
+   if label_ok(answer):
+    descriptions['duplicateLabels']+=int(answer['Label']in labels);labels.add(answer['Label'])
+   if active(answer):
+    descriptions['duplicateActivePids']+=int(answer['PID']in pids);pids.add(answer['PID'])
+   same=type(answer.get('Label'))is str and answer['Label']==row['Label'];query['labelMatches'if same else'labelMismatches']+=1
+   same=type(answer.get('PID'))is int and answer['PID']==row['PID'];query['pidMatches'if same else'pidMismatches']+=1
+ query['descriptions']=descriptions;result['activeSingleJobQuery']=query
+ return result
+
+class NativeDomain:
+ def __init__(self,base,sm):
+  self.base,self.sm=base,sm;base._fn(sm,'SMJobCopyDictionary',C.c_void_p,[C.c_void_p,C.c_void_p])
+ def rows(self,kind):
+  need(kind in('system','caller_user'),'domain_kind_unavailable')
+  symbol='kSMDomainSystemLaunchd'if kind=='system'else'kSMDomainUserLaunchd';domain=C.c_void_p.in_dll(self.sm,symbol).value
+  need(domain,'domain_constant_unavailable');owned=self.sm.SMCopyAllJobDictionaries(domain)
+  need(owned,'domain_null_result');rows=self.base.value(owned)
+  def single(label):
+   # Only a label returned by that exact all-jobs snapshot reaches this API.
+   text=self.base.cf.CFStringCreateWithCString(None,label.encode('utf-8','strict'),0x08000100);need(text,'job_label_unavailable')
+   try:
+    owned=self.sm.SMJobCopyDictionary(domain,text)
+    return None if not owned else self.base.value(owned)
+   finally:self.base.cf.CFRelease(text)
+  return observe_rows(rows,single)
+
+def collect(probe,service,agent):
+ _agent(agent);base=probe.Native();native=service.NativeServices(base,None);getter=NativeDomain(base,native.sm)
+ def target():
+  need(os.geteuid()==UID and pwd.getpwuid(UID).pw_name==PRINCIPAL and os.getppid()==agent[0]and base.machine()==MACHINE and base.boot()[0]==BOOT,'target_changed')
+  row=probe._Bsd();need(base.proc.proc_pidinfo(agent[0],3,0,C.byref(row),C.sizeof(row))==C.sizeof(row)and(row.pid,row.uid,row.ppid,row.start_seconds,row.start_microseconds)==agent,'agent_changed')
+ target();domains=[]
+ for kind in('system','caller_user'):
+  target()
+  try:shape=getter.rows(kind);domains.append({'domain':kind,'state':'available','shape':shape})
+  except Exception as error:
+   reason=error.args[0]if type(error)is Unavailable and len(error.args)==1 and error.args[0]in{'domain_kind_unavailable','domain_constant_unavailable','domain_null_result','domain_rows_unavailable','job_label_unavailable'}else'domain_shape_unavailable'
+   domains.append({'domain':kind,'state':'unavailable','reason':reason})
+  target()
+ result={'schemaVersion':1,'state':'diagnostic','machine':MACHINE,'boot':BOOT,'uid':UID,'nativeQualified':False,'idleAuthority':False,'allUidVisibilityQualified':False,'diskOriginAuthority':False,'effectiveServiceActivity':'not_evaluated','domains':domains}
+ need(len(json.dumps(result).encode())<=1048576,'domain_shape_unavailable');return result
+
+def build(sources,agent,component_raw):
+ _agent(agent);need(type(sources)is dict and set(sources)==set(PINS)and type(component_raw)is bytes and _EXECUTING==compile(component_raw,__file__,'exec',dont_inherit=True,optimize=sys.flags.optimize))
+ for name,digest in PINS.items():need(type(sources[name])is bytes and hashlib.sha256(sources[name]).hexdigest()==digest)
+ source='import json,sys,types\n'
+ source+='if sys.platform!="darwin" or len(sys.argv)!=1:\n print(json.dumps({"public":{"state":"blocked","reason":"macos_sm_domain_shape_unavailable"}}));raise SystemExit(3)\n'
+ source+='import signal;signal.signal(signal.SIGALRM,signal.SIG_DFL);signal.alarm(60)\n'
+ source+='_pkg=types.ModuleType("agent_tools");_pkg.__path__=[];sys.modules["agent_tools"]=_pkg\n_modules=[]\n'
+ for name in PINS:
+  key='agent_tools.'+name[:-3];source+='_m=types.ModuleType('+repr(key)+');sys.modules[_m.__name__]=_m;setattr(_pkg,'+repr(name[:-3])+',_m)\n';source+='exec(compile('+repr(sources[name])+','+repr('<fixed-'+name+'>')+',"exec"),_m.__dict__);_modules.append(_m)\n'
+ source+='_m=types.ModuleType("_fixed_sm_domain_shape");sys.modules[_m.__name__]=_m\nexec(compile('+repr(component_raw)+',"<fixed-component>","exec"),_m.__dict__)\n'
+ source+='try:\n _result=_m.collect(*_modules,'+repr(agent)+')\nexcept Exception:\n _result={"public":{"state":"blocked","reason":"macos_sm_domain_shape_unavailable"}}\n'
+ source+='print(json.dumps(_result,sort_keys=True));raise SystemExit(0 if _result.get("state")=="diagnostic" else 3)\n'
+ need(len(source.encode())<=262144);return source.encode()

@@ -334,8 +334,19 @@ def _public(raw: bytes | None, correlation_id: str, handle: str) -> dict[str, An
     return result
 
 
-def start(root: Path | str, host: str, correlation_id: str, timeout_seconds: int = 15) -> dict[str, Any]:
-    config,target,recovery = _admission(root,host)
+def start(root: Path | str, host: str, correlation_id: str, timeout_seconds: int = 15, *, environment=None) -> dict[str, Any]:
+    try:
+        config,target,descriptor,target_guard = transport._admit_environment(root,host,environment)
+    except transport.WindowsCredentialProbeSshError as error:
+        raise WindowsCredentialRecoveryError(str(error)) from None
+    def guard():
+        try:
+            target_guard()
+        except transport.WindowsCredentialProbeSshError as error:
+            raise WindowsCredentialRecoveryError(str(error)) from None
+    recovery = getattr(target.windows_credential_probe, 'recovery_admission', None)
+    if recovery is None:
+        raise WindowsCredentialRecoveryError('Windows recovery admission is unavailable.')
     store = native_credentials.NativeCredentialStore(root)
     path = _journal_path(store,correlation_id)
     if path.exists():
@@ -344,8 +355,11 @@ def start(root: Path | str, host: str, correlation_id: str, timeout_seconds: int
     task=_task(recovery)
     program,program_hash=_program(probe,recovery,correlation_id)
     binding=_binding(target,correlation_id)
+    guard()
     _reserve(root,binding)
+    guard()
     handle=store.create(binding)
+    guard()
     secret=store.read(handle,binding)
     if any(c in secret for c in (b'\x00',b'\r',b'\n')):
         raise WindowsCredentialRecoveryError('Generated credential is invalid.')
@@ -368,6 +382,7 @@ def start(root: Path | str, host: str, correlation_id: str, timeout_seconds: int
         'expectedSid':probe.expected_sid,'task':task,'encodedProgram':program,
         'programSha256':program_hash,'credential':base64.b64encode(secret).decode()}
     secret=b''
+    guard()
     raw=transport._run_ssh(config,host,transport._remote_command(_REMOTE_START,
         str(target.fixture_transfer_root),probe.environment,correlation_id),transport._remote_payload(payload),timeout_seconds)
     return _public(raw,correlation_id,handle)
@@ -438,7 +453,13 @@ def _verify_and_publish(root: Path | str, host: str, record: dict[str, Any], tim
     if probe_intent.exists():
         observed=transport.status(root,host,probe_corr,timeout_seconds)
     else:
-        observed=transport.start_with_private_secret(root,host,probe_corr,secret,timeout_seconds)
+        expected=(record['environment'],record['socketPath'],record['pid'],record['startTicks'],
+                  record['accountName'],record['expectedSid'],Path(record['previousCredentialPath']))
+        try:
+            observed=transport.start_with_private_secret(root,host,probe_corr,secret,timeout_seconds,
+                environment=record['environment'],expected_binding=expected)
+        except transport.WindowsCredentialProbeSshError as error:
+            raise WindowsCredentialRecoveryError(str(error)) from None
     if observed['state']=='terminal' and observed.get('success') is True and observed.get('errorCategory')=='none':
         _publish_inventory(root,host,record)
         store.publish_active(handle,binding)

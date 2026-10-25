@@ -1,0 +1,324 @@
+"""Ordinary guest GET-only source/activity feasibility, never idle authority.
+
+The sole native operator must independently collect the existing fixed root
+census before and after this packet and correlate exact actors. Unexpected
+paths, service labels, arguments, environment, code hashes and errors remain
+private memory. Missing permissions are observations, never positive defaults.
+"""
+from __future__ import annotations
+
+import os
+import ctypes as C
+from pathlib import Path
+import stat
+import sys
+from uuid import UUID
+if os.name == 'posix':
+    import pwd
+else:
+    pwd = None
+
+_EXECUTING_CODE = sys._getframe().f_code
+_FILES = ('tart_macos_probe.py', 'tart_macos_idle_collector.py',
+          'tart_macos_service_census.py', 'tart_macos_idle_feasibility.py')
+_CODE = frozenset({'apple_valid', 'not_apple_valid', 'identity_changed', 'unavailable'})
+_ACTIVITY = frozenset({'tracked_clean_idle_exit', 'tracked_clean', 'tracked_dirty',
+                     'launch_in_progress', 'untracked', 'unavailable', 'identity_changed'})
+
+
+class FeasibilityUnavailable(ValueError):
+    pass
+
+
+_STAGES = frozenset({'guest_guard', 'kernel_budget', 'base_native_init', 'process_native_init',
+    'service_native_init', 'collection', 'target_admission', 'process_snapshot_before',
+    'observer_identity', 'process_snapshot_after', 'target_revalidation'})
+_REASONS = frozenset({'macos_idle_target_invalid', 'macos_idle_account_or_agent_invalid',
+    'macos_idle_account_changed', 'macos_idle_target_changed', 'macos_idle_agent_changed',
+    'macos_idle_process_invalid', 'macos_idle_observer_changed', 'macos_idle_guest_required'})
+
+
+class StageUnavailable(ValueError):
+    pass
+
+
+def _step(stage, getter):
+    need(stage in _STAGES, 'macos_idle_stage_invalid')
+    try:return getter()
+    except FeasibilityUnavailable:
+        raise
+    except Exception:
+        raise StageUnavailable(stage) from None
+
+
+def failure(error, stage):
+    """Only trusted finite phase/reason tags escape; never str(native_error)."""
+    result = {'state': 'blocked', 'reason': 'macos_idle_getters_unavailable',
+              'stage': stage if type(stage) is str and stage in _STAGES else 'collection'}
+    if type(error) is StageUnavailable and len(error.args) == 1 and type(error.args[0]) is str and error.args[0] in _STAGES:
+        result['stage'] = error.args[0]
+    elif type(error) is FeasibilityUnavailable and len(error.args) == 1 and type(error.args[0]) is str and error.args[0] in _REASONS:
+        result['reason'] = error.args[0]
+    return result
+
+
+def need(value, reason):
+    if not value:raise FeasibilityUnavailable(reason)
+
+
+def _inputs(machine, boot, uid, principal, agent):
+    try:
+        need(type(machine) is str and str(UUID(machine)) == machine
+             and type(boot) is str and str(UUID(boot)) == boot,
+             'macos_idle_target_invalid')
+    except (ValueError, TypeError, AttributeError):
+        raise FeasibilityUnavailable('macos_idle_target_invalid') from None
+    need(type(uid) is int and uid >= 501 and type(principal) is str and principal
+         and type(agent) is tuple and len(agent) == 5
+         and all(type(item) is int for item in agent)
+         and agent[0] > 0 and agent[1] == uid and agent[2] == 1
+         and agent[3] > 0 and 0 <= agent[4] < 1000000, 'macos_idle_account_or_agent_invalid')
+
+
+def arm_budget():
+    """Kernel deadline for this new synchronous GET process only."""
+    import signal
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    signal.alarm(60)
+
+
+def root_candidates(packet, *, machine, boot, uid, principal):
+    """Project a host-authenticated fixed root packet, never authorize idle.
+
+    The caller must retain/authenticate its actual source and before/after
+    receipts. This pure projection grants only candidate GET scope.
+    """
+    need(type(packet) is dict and set(packet) == {'facts', 'agent'}, 'macos_idle_root_packet_invalid')
+    facts = packet['facts']
+    need(type(facts) is dict and facts.get('machine') == machine and facts.get('boot') == boot
+         and type(facts.get('uid')) is int and facts['uid'] == uid and facts.get('account') == principal
+         and type(facts.get('observerUid')) is int and facts['observerUid'] == 0
+         and facts.get('processVisibilityComplete') is True
+         and type(facts.get('processes')) is list and 0 < len(facts['processes']) <= 65535,
+         'macos_idle_root_packet_invalid')
+    rows = []
+    for row in facts['processes']:
+        need(type(row) is dict and set(row) == {'pid','uid','birth','executableRole'}
+             and type(row['pid']) is int and row['pid'] > 0 and type(row['uid']) is int and row['uid'] >= 0
+             and type(row['birth']) is str and type(row['executableRole']) is str
+             and row['executableRole'] in {'unmanaged','protected_runtime','installer','verified_probe'},
+             'macos_idle_root_packet_invalid')
+        parts = row['birth'].split(':')
+        need(len(parts) == 3 and parts[0] == 'darwin' and all(part.isascii() and part.isdecimal() for part in parts[1:]),
+             'macos_idle_root_packet_invalid')
+        seconds, micros = int(parts[1]), int(parts[2])
+        need(seconds > 0 and 0 <= micros < 1000000 and row['birth'] == f'darwin:{seconds}:{micros}',
+             'macos_idle_root_packet_invalid')
+        rows.append((row['pid'], row['uid'], seconds, micros,
+                     'unmanaged' if row['executableRole'] == 'verified_probe' else row['executableRole']))
+    return _candidates(tuple(sorted(rows)))
+
+
+def _candidates(rows):
+    need(type(rows) is tuple and 0 < len(rows) <= 65535, 'macos_idle_candidates_invalid')
+    seen = set()
+    for row in rows:
+        need(type(row) is tuple and len(row) == 5 and all(type(item) is int for item in row[:4])
+             and row[0] > 0 and row[0] not in seen and row[1] >= 0 and row[2] > 0 and 0 <= row[3] < 1000000
+             and type(row[4]) is str and row[4] in {'unmanaged','protected_runtime','installer'}, 'macos_idle_candidates_invalid')
+        seen.add(row[0])
+    return rows
+
+
+def _raw_pids(base):
+    count = base.proc.proc_listallpids(None, 0)
+    need(0 < count < 65535, 'macos_idle_pid_visibility_unavailable')
+    capacity = min(count + 256, 65536);buffer = (C.c_int * capacity)()
+    size = base.proc.proc_listallpids(buffer, C.sizeof(buffer))
+    need(0 < size < capacity, 'macos_idle_pid_visibility_unavailable')
+    rows = [pid for pid in buffer[:size] if pid != 0]
+    need(all(pid > 0 for pid in rows) and len(set(rows)) == len(rows), 'macos_idle_pid_visibility_unavailable')
+    return tuple(sorted(rows))
+
+
+def _errno_reason():
+    return 'permission_denied' if C.get_errno() in {1, 13} else 'process_exited' if C.get_errno() == 3 else 'unavailable'
+
+
+def _path_access(base, processes, actor):
+    try:
+        if processes.process(actor[0]) != actor:return 'identity_changed'
+        buffer = C.create_string_buffer(4096);C.set_errno(0)
+        size = base.proc.proc_pidpath(actor[0], buffer, len(buffer))
+        result = 'available' if 0 < size < len(buffer) else _errno_reason()
+        return result if processes.process(actor[0]) == actor else 'identity_changed'
+    except Exception:return _errno_reason()
+
+
+def collect(base, processes, native, service, *, machine, boot, uid, principal, agent, actors):
+    _inputs(machine, boot, uid, principal, agent)
+    actors = _candidates(actors)
+    def target():
+        need(pwd is not None and os.geteuid() == uid and pwd.getpwuid(uid).pw_name == principal,
+             'macos_idle_account_changed')
+        need(base.machine() == machine and base.boot()[0] == boot, 'macos_idle_target_changed')
+        need(processes.process(os.getppid()) == agent, 'macos_idle_agent_changed')
+    _step('target_admission', target)
+    first_pids = _step('process_snapshot_before', lambda: _raw_pids(base))
+    observer = _step('observer_identity', lambda: processes.process(os.getpid()))
+    need(observer[1] == uid
+         and observer[2] == agent[0], 'macos_idle_observer_changed')
+    first = {};unavailable_actors = []
+    for pid, expected_uid, seconds, micros, role in actors:
+        try:
+            C.set_errno(0);actor = processes.process(pid)
+            if (actor[0],actor[1],actor[3],actor[4]) != (pid,expected_uid,seconds,micros):
+                state = 'identity_changed'
+            else:
+                first[pid] = (actor, role);continue
+        except Exception:state = _errno_reason()
+        unavailable_actors.append({'pid':pid,'uid':expected_uid,'birth':f'darwin:{seconds}:{micros}',
+                                   'identity':state})
+    domains = [];missing = set()
+    for kind in ('system', 'caller_user'):
+        try:
+            domain = native.domain(kind)
+            need(type(domain) is service.Domain and domain.kind == kind and domain.uid == uid,
+                 'macos_idle_service_domain_unavailable')
+            domains.append(domain)
+        except Exception:
+            missing.add(kind + '_domain_unavailable')
+    other_users = {actor[1] for actor, _ in first.values() if actor[1] >= 501 and actor[1] != uid}
+    if other_users:missing.add('other_user_service_domain_unobserved')
+    active = {}
+    for domain in domains:
+        for row in domain.rows:
+            pid = row.get('PID', 0)
+            if type(pid) is int and pid > 0:active.setdefault(pid, []).append((row,domain))
+    try:
+        volume = native.volume();public_volume = volume.public();catalog = service.Catalog(volume, uid)
+    except Exception:
+        catalog = None;public_volume = {'state': 'unavailable'}
+        missing.add('protected_service_source_catalog_unavailable')
+    reports = []
+    for pid, (actor, role) in sorted(first.items()):
+        need(type(actor) is tuple and len(actor) == 5 and all(type(item) is int for item in actor)
+             and actor[0] == pid and pid > 0 and actor[1] >= 0 and actor[2] >= 0
+             and actor[3] > 0 and 0 <= actor[4] < 1000000
+             and role in {'unmanaged', 'installer', 'protected_runtime'}, 'macos_idle_process_invalid')
+        code = activity = 'unavailable';mapped = 'unavailable';source = 'unavailable'
+        origin = 'unavailable';transactions = 'unavailable'
+        path_access = _path_access(base, processes, actor)
+        if path_access != 'available':missing.add('path_visibility_incomplete')
+        if path_access == 'identity_changed':missing.add('actor_identity_changed')
+        try:
+            value = processes.code(actor)
+            need(type(value) is str and value in _CODE, 'macos_idle_code_unavailable')
+            code = value
+        except Exception:missing.add('code_visibility_incomplete')
+        try:
+            value = processes.activity(actor)
+            need(type(value) is str and value in _ACTIVITY, 'macos_idle_activity_unavailable')
+            activity = value
+        except Exception:missing.add('dirty_visibility_incomplete')
+        if code == 'unavailable':missing.add('code_visibility_incomplete')
+        if activity == 'unavailable':missing.add('dirty_visibility_incomplete')
+        if code == 'identity_changed' or activity == 'identity_changed':missing.add('actor_identity_changed')
+        try:
+            before = native.image(actor)
+            need(type(before) is bytes and len(before) == 20 and any(before), 'macos_idle_mapping_unavailable')
+            need(native.image(actor) == before, 'macos_idle_mapping_changed')
+            mapped = 'observed'
+        except Exception:
+            missing.add('mapped_visibility_incomplete')
+        if mapped == 'observed' and catalog is not None:
+            try:
+                rows = active.get(pid, [])
+                if not rows:source = 'unmatched'
+                elif len(rows) != 1:source = 'ambiguous'
+                else:
+                    row,domain=rows[0]
+                    match = catalog.match(row, actor, native, domain=domain)
+                    need(match.origin in {'system_daemon', 'system_agent'} and type(match.transactions) is bool,
+                         'macos_idle_source_unavailable')
+                    origin = match.origin;transactions = 'declared' if match.transactions else 'not_declared'
+                    source = 'matched'
+                need(native.image(actor) == before, 'macos_idle_mapping_changed')
+            except Exception:
+                source = origin = transactions = 'unavailable'
+                missing.add('loaded_source_visibility_incomplete')
+        reports.append({'pid': actor[0], 'uid': actor[1], 'ppid': actor[2],
+            'birth': f'darwin:{actor[3]}:{actor[4]}', 'role': role,
+            'observer': actor == observer, 'code': code, 'activity': activity,
+            'pathAccess': path_access,
+            'mappedCode': mapped, 'loadedSource': source, 'sourceOrigin': origin,
+            'sourceTransactions': transactions})
+    second_pids = _step('process_snapshot_after', lambda: _raw_pids(base))
+    stable_actors = True
+    for actor, _ in first.values():
+        try:stable_actors = processes.process(actor[0]) == actor and stable_actors
+        except Exception:stable_actors = False
+    _step('target_revalidation', target)
+    if first_pids != second_pids or not stable_actors:missing.add('process_snapshot_changed')
+    if unavailable_actors:missing.add('candidate_actor_identity_unavailable')
+    try:source_stable = catalog is not None and catalog.stable() is True
+    except Exception:source_stable = False
+    if not source_stable:missing.add('service_source_changed_or_unavailable')
+    # This is feasibility data. Even every GET succeeding does not prove any
+    # OS service's purpose/activity applicability or complete seven-category idle.
+    return {'schemaVersion': 1, 'state': 'diagnostic', 'machine': machine, 'boot': boot, 'uid': uid,
+        'observer': {'pid': observer[0], 'birth': f'darwin:{observer[3]}:{observer[4]}'},
+        'nativeQualified': False, 'idleAuthority': False,
+        'processSnapshotStable': first_pids == second_pids and stable_actors,
+        'actorInputScope':'candidate_ids_from_independent_root_census',
+        'candidateActorCount':len(actors),'unavailableCandidateActors':unavailable_actors,
+        'candidatePidsAbsentFromCurrent':sorted({row[0]for row in actors}-set(second_pids)),
+        'currentPidsOutsideCandidates':sorted(set(second_pids)-{row[0]for row in actors}),
+        'sourceCatalogStable': source_stable, 'volume': public_volume,
+        'domains': [{'kind': domain.kind, 'executionUid': domain.uid, 'jobs': len(domain.rows)} for domain in domains],
+        'processes': reports, 'missingVisibility': sorted(missing),
+        'missingAuthority': ['independent_root_census_join', 'known_service_purpose_and_activity_applicability',
+                             'protected_network_provider_join', 'durable_namespaces', 'host_categories']}
+
+
+def source(*, machine, boot, uid, principal, agent, actors):
+    """Fixed ordinary GET producer, internal typed binding only."""
+    _inputs(machine, boot, uid, principal, agent)
+    actors = _candidates(actors)
+    need(os.name == 'posix' and hasattr(os, 'O_NOFOLLOW'), 'macos_idle_source_unavailable')
+    captured = {}
+    for name in _FILES:
+        path = Path(__file__).with_name(name);fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            before = os.fstat(fd)
+            need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and 0 < before.st_size <= 262144,
+                 'macos_idle_source_unavailable')
+            raw = os.read(fd, before.st_size + 1)
+            after = os.fstat(fd)
+            fields = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+            need(len(raw) == before.st_size and all(getattr(before, field) == getattr(after, field) for field in fields),
+                 'macos_idle_source_changed')
+            captured[name] = raw
+        finally:os.close(fd)
+    need(_EXECUTING_CODE == compile(captured[_FILES[-1]], __file__, 'exec', dont_inherit=True), 'macos_idle_source_changed')
+    config = dict(machine=machine, boot=boot, uid=uid, principal=principal, agent=agent, actors=actors)
+    text = 'import json,sys,types\n_modules=[]\n'
+    for name in _FILES:
+        text += '_module=types.ModuleType(' + repr('_fixed_feasibility_' + name[:-3]) + ');sys.modules[_module.__name__]=_module\n'
+        text += 'exec(compile(' + repr(captured[name]) + ',' + repr('<fixed-' + name + '>') + ',"exec"),_module.__dict__)\n_modules.append(_module)\n'
+    text += ('_modules[1].__dict__["__bsd_class__"]=_modules[0]._Bsd\n_stage="guest_guard"\n'
+        'try:\n'
+        ' _modules[3].need(sys.platform=="darwin" and len(sys.argv)==1,"macos_idle_guest_required")\n'
+        ' _stage="kernel_budget"\n'
+        ' _modules[3].arm_budget()\n'
+        ' _stage="base_native_init";_base=_modules[0].Native()\n'
+        ' _stage="process_native_init";_processes=_modules[1].Native(_base)\n'
+        ' _stage="service_native_init";_native=_modules[2].NativeServices(_base,_processes)\n'
+        ' _stage="collection"\n'
+        ' _result=_modules[3].collect(_base,_processes,_native,_modules[2],**' + repr(config) + ')\n'
+        'except Exception as _error:\n _result=_modules[3].failure(_error,_stage)\n'
+        'if len(json.dumps(_result).encode("utf-8"))>2097152:_result={"state":"blocked","reason":"macos_idle_getters_overflow"}\n'
+        'print(json.dumps(_result,sort_keys=True))\n'
+        'raise SystemExit(0 if _result.get("state")=="diagnostic" else 3)\n')
+    need(len(text) <= 262144, 'macos_idle_source_overflow')
+    return text.encode('utf-8')

@@ -1,0 +1,510 @@
+"""Owned direct SSH masters, separate from jobs and historical outer sessions.
+
+Masters use five-hour idle persistence. OpenSSH's actual background daemon is
+joined by socket/PID generation and an authenticated peer proof. No VPN or VM power
+operation is available. Missing/uncertain launch records never permit replay.
+"""
+from __future__ import annotations
+
+from contextlib import contextmanager
+from dataclasses import dataclass
+import hashlib
+import errno
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import socket
+import stat
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+from . import private_inventory_lock as private
+from . import ssh_connection_session as session
+from . import ssh_channel_keeper_entry as keeper
+from . import ssh_transport as transport
+
+GROUP = '.rag_index/readiness-ssh-master'
+HASH = re.compile('[0-9a-f]{64}')
+DEFAULT_IDLE_SECONDS=18000
+
+
+class MasterUnknown(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class UnavailableProof:
+    """Internal result of the fixed read-only probe, never request JSON."""
+    recovery_id: str
+    actor: dict
+    socket_fingerprint: tuple
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
+
+
+def identity(config, host):
+    """Trust-route digest excludes passwords, private keys and their hashes."""
+    route = transport._route_hosts(config.hosts, host)
+    rows = []
+    for entry in route:
+        row = {'alias': entry.alias, 'host': entry.host, 'port': entry.port,
+               'user': entry.user, 'transport': entry.transport,
+               'gateway': entry.gateway, 'remoteHostAlias': entry.remote_host_alias,
+               'remoteConfig': str(entry.remote_config_file),
+               'identityPath': str(entry.identity_file), 'trustPath': str(entry.known_hosts_file)}
+        if entry.transport == 'direct':
+            # This public trust file is not a credential. Read it through the
+            # existing strict nofollow single-link generation checker.
+            raw, _ = session._bytes(entry.known_hosts_file, private=False)
+            row['trustSha256'] = hashlib.sha256(raw).hexdigest()
+            _, key_generation = session._bytes(entry.identity_file)
+            row['keyGeneration'] = key_generation
+        rows.append(row)
+    return hashlib.sha256(_json(rows)).hexdigest()
+
+
+def _path(root, host):
+    if type(host) is not str or transport._ALIAS_RE.fullmatch(host) is None:
+        raise ValueError('invalid_master_host')
+    return Path(root).absolute() / GROUP / host
+
+
+def initialize(root, host):
+    root = Path(root).resolve(strict=True)
+    for path in (root / '.rag_index', root / GROUP, _path(root, host)):
+        path.mkdir(mode=0o700, exist_ok=True)
+        with private.Directory(path):
+            if stat.S_IMODE(path.stat().st_mode) != 0o700:
+                raise MasterUnknown('master_private_directory')
+    return _path(root, host)
+
+
+class Lock(private.InventoryLock):
+    name = 'master.lock'
+    body = b'readiness-master-v1\n'
+
+
+@contextmanager
+def locked(root, host):
+    with private.Directory(initialize(root, host)) as directory, Lock(directory):
+        yield directory
+
+
+def _read(directory, name):
+    with private.Snapshot(directory, name) as held:
+        value = json.loads(held.body, object_pairs_hook=transport._reject_duplicate_keys)
+        if type(value)is not dict:raise MasterUnknown('master_record_schema')
+        held.guard()
+        return value
+
+
+def _save(directory, name, value):
+    directory.guard()
+    session._create(directory.path / name, value, directory.fd)
+    if _read(directory, name) != value:
+        raise MasterUnknown('master_record_changed')
+
+
+def _current(directory):
+    value = _read(directory, 'current.json')
+    if type(value) is not dict or set(value) != {'recoveryId'} or type(value['recoveryId'])is not str or HASH.fullmatch(value['recoveryId']) is None:
+        raise MasterUnknown('master_current_binding')
+    return value['recoveryId']
+
+
+def _publish(directory, recovery_id):
+    value = {'recoveryId': recovery_id}
+    name = 'pointer-' + recovery_id + '.json'
+    _save(directory, name, value)
+    temporary = 'publish-' + recovery_id + '.json'
+    _save(directory, temporary, value)
+    directory.guard()
+    os.replace(temporary, 'current.json', src_dir_fd=directory.fd, dst_dir_fd=directory.fd)
+    os.fsync(directory.fd); directory.guard()
+
+
+def prefix(config, host):
+    return transport.fresh_direct_prefix(config,host)
+
+
+def _socket_root_kind(root):
+    # Tempfile's environment-dependent current default is not original authority.
+    # Only fixed OS roots, or Darwin's OS-derived per-UID private root, qualify.
+    system_roots = {Path('/tmp').resolve(), Path('/var/tmp').resolve()}
+    if root in system_roots:
+        return 'system'
+    if sys.platform == 'darwin':
+        result = subprocess.run(['/usr/bin/getconf', 'DARWIN_USER_TEMP_DIR'],
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=3,
+                                env={'PATH': os.defpath, 'LC_ALL': 'C'})
+        raw = result.stdout
+        if (result.returncode == 0 and not result.stderr and 1 < len(raw) <= 4096
+                and raw.endswith(b'\n') and b'\n' not in raw[:-1]
+                and b'\x00' not in raw):
+            native = Path(raw[:-1].decode('utf-8')).resolve(strict=True)
+            if native.is_absolute() and native == root:
+                return 'private'
+    raise MasterUnknown('master_socket_provenance')
+
+
+def _socket_root_secure(info, kind):
+    return (stat.S_ISDIR(info.st_mode) and
+            (kind == 'system' and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o1777
+             or kind == 'private' and info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700))
+
+
+def _socket_temp_root():
+    # Creation uses an independently trusted native OS root, never inherited TMPDIR.
+    for value in ('/tmp', '/var/tmp'):
+        root = Path(value).resolve()
+        try:
+            descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError:
+            continue
+        try:
+            original = os.fstat(descriptor)
+            structural = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid)
+            if (_socket_root_secure(original, 'system')
+                    and structural(os.lstat(root)) == structural(original)
+                    and structural(os.fstat(descriptor)) == structural(original)):
+                return root
+        finally:
+            os.close(descriptor)
+    raise MasterUnknown('master_socket_root_unavailable')
+
+
+def _socket(intent):
+    path = Path(intent['socketPath'])
+    if (not path.is_absolute() or '..' in path.parts or path.name != 'm'
+            or len(os.fsencode(path)) >= 90 or path.resolve(strict=False) != path):
+        raise MasterUnknown('master_socket_provenance')
+    root = path.parent.parent
+    kind = _socket_root_kind(root)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        original = os.fstat(descriptor)
+        structural = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid)
+        if (not _socket_root_secure(original, kind)
+                or structural(os.lstat(root)) != structural(original)):
+            raise MasterUnknown('master_socket_provenance')
+        parent = os.stat(path.parent.name, dir_fd=descriptor, follow_symlinks=False)
+        if ([parent.st_dev, parent.st_ino, parent.st_mode, parent.st_uid] != intent['socketParent']
+                or not stat.S_ISDIR(parent.st_mode) or parent.st_uid != os.getuid()
+                or stat.S_IMODE(parent.st_mode) != 0o700
+                or session._directory(path.parent) != intent['socketParent']):
+            raise MasterUnknown('master_socket_parent_changed')
+        closing_parent = os.stat(path.parent.name, dir_fd=descriptor, follow_symlinks=False)
+        if [closing_parent.st_dev, closing_parent.st_ino, closing_parent.st_mode, closing_parent.st_uid] != intent['socketParent']:
+            raise MasterUnknown('master_socket_parent_changed')
+        if (structural(os.fstat(descriptor)) != structural(original)
+                or structural(os.lstat(root)) != structural(original)):
+            raise MasterUnknown('master_socket_provenance')
+    finally:
+        os.close(descriptor)
+    return path
+
+
+def _alive(intent, child, ready=None):
+    path = _socket(intent)
+    try:
+        actual = keeper.actor(child['pid'])
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # Exact PID absence, not a changed actor or unavailable visibility.
+        result = subprocess.run(['/bin/ps', '-p', str(child['pid']), '-o', 'pid='],
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=3)
+        if result.returncode == 1 and result.stdout == result.stderr == b'':
+            if os.path.lexists(path):
+                # ControlPersist can fork a live master after its submitting
+                # PID ends. Never infer connection death from PID absence alone.
+                session._socket(path, intent['socketParent'])
+                with socket.socket(socket.AF_UNIX) as probe:
+                    probe.settimeout(.5)
+                    outcome = probe.connect_ex(str(path))
+                if outcome != errno.ECONNREFUSED:
+                    raise MasterUnknown('master_socket_owner_unresolved')
+            return 'dead'
+        raise MasterUnknown('master_actor_unknown') from None
+    if actual != child['actor']:
+        raise MasterUnknown('master_actor_changed')
+    if ready is not None and session._socket(path, intent['socketParent']) != ready['socketFingerprint']:
+        raise MasterUnknown('master_socket_changed')
+    return 'ready' if path.exists() else 'starting'
+
+
+def status(root, host, config=None, *, recovery_id=None):
+    """Observation only: no journal creation, launch, cleanup or reconnect."""
+    config = transport.load_config(root) if config is None else config
+    path = _path(root, host)
+    if not os.path.lexists(path):
+        return {'state': 'absent'}
+    with private.Directory(path) as directory:
+        if recovery_id is None:
+            try:
+                recovery_id = _current(directory)
+            except FileNotFoundError:
+                return {'state': 'absent'}
+        elif type(recovery_id)is not str or HASH.fullmatch(recovery_id)is None:
+            raise MasterUnknown('master_original_generation_invalid')
+        intent = _read(directory, recovery_id + '.intent.json')
+        if (intent.get('recoveryId') != recovery_id or intent.get('host') != host
+                or intent.get('machine') != identity(config, host)):
+            raise MasterUnknown('master_authority_changed')
+        try:
+            child = _read(directory, recovery_id + '.child.json')
+        except FileNotFoundError:
+            return {'state': 'unknown', 'recoveryId': recovery_id}
+        if child.get('recoveryId') != recovery_id:
+            raise MasterUnknown('master_child_binding')
+        try:
+            ready = _read(directory, recovery_id + '.ready.json')
+        except FileNotFoundError:
+            ready = None
+        try:
+            daemon = _read(directory, recovery_id + '.daemon-reconciled.json')
+        except FileNotFoundError:
+            daemon = None
+        if daemon is not None:
+            if (daemon.get('recoveryId') != recovery_id or daemon.get('originalChildSha256') != hashlib.sha256(_json(child)).hexdigest()
+                    or daemon.get('proof') != 'private-control-and-authenticated-peer'):
+                raise MasterUnknown('master_daemon_binding')
+            child = daemon['child']; ready = daemon['ready']
+        state = _alive(intent, child, ready)
+        if ready is not None and (ready.get('recoveryId')!=recovery_id or ready.get('masterActor')!=child.get('actor')):
+            raise MasterUnknown('master_ready_binding')
+        if state=='ready' and ready is None:
+            state='starting'
+        return {'state': state, 'recoveryId': recovery_id, 'intent': intent, 'child': child,
+                'ready': ready, 'socketPath': intent['socketPath']}
+
+
+def options(root, host, config):
+    value = status(root, host, config)
+    if value['state'] == 'absent':
+        return None
+    if value['state'] != 'ready':
+        raise MasterUnknown('master_not_ready')
+    return ['-S', value['socketPath'], '-o', 'ControlMaster=no', '-o', 'ControlPersist=no',
+            '-o', 'ProxyCommand=false', '-o', 'BatchMode=yes']
+
+
+def command_argv(config, host, command, value=None):
+    value = status(config.root, host, config) if value is None else value
+    if value['state'] != 'ready':
+        raise MasterUnknown('master_not_ready')
+    base, endpoint = prefix(config, host)
+    return [*base, '-S', value['socketPath'], '-o', 'ControlMaster=no',
+            '-o', 'ControlPersist=no', '-o', 'ProxyCommand=false', '-T', endpoint, shlex.join(command)]
+
+
+def _reap(process):
+    threading.Thread(target=process.wait, daemon=True, name='readiness-master-reaper').start()
+
+
+def _await_ready(root,host,config,directory,deadline,clock,sleep):
+    base,endpoint=prefix(config,host)
+    while clock()<deadline:
+        try:value=status(root,host,config)
+        except MasterUnknown as error:
+            if str(error)!='master_socket_owner_unresolved':raise
+            _reconcile_daemon_locked(root,host,config,directory,deadline)
+            return status(root,host,config)
+        if value['state']!='starting':return value
+        path=Path(value['socketPath']);intent=value['intent'];child=value['child']
+        if path.exists():
+            check=subprocess.run([*base,'-S',str(path),'-o','ControlMaster=no','-o','ProxyCommand=false','-O','check',endpoint],
+                                 stdin=subprocess.DEVNULL,capture_output=True,timeout=min(3,max(.01,deadline-clock())))
+            match=re.fullmatch(rb'Master running \(pid=([1-9][0-9]*)\)\r?\n?',check.stdout+check.stderr)
+            if check.returncode==0 and match is not None and int(match[1])!=child['pid']:
+                _reconcile_daemon_locked(root,host,config,directory,deadline)
+                return status(root,host,config)
+            if check.returncode!=0 or match is None:
+                return {'state':'unknown','recoveryId':value['recoveryId']}
+            _save(directory,value['recoveryId']+'.ready.json',{'recoveryId':value['recoveryId'],
+                  'socketFingerprint':session._socket(path,intent['socketParent']),'masterActor':child['actor']})
+            return status(root,host,config)
+        sleep(min(.1,max(0,deadline-clock())))
+    return {'state':'unknown','recoveryId':_current(directory)}
+
+
+def start(root, host, recovery_id, *, deadline, clock=time.monotonic, sleep=time.sleep, unavailable=None,
+          idle_seconds=DEFAULT_IDLE_SECONDS):
+    """One create-only launch; observe original after lost acknowledgement."""
+    if type(recovery_id) is not str or HASH.fullmatch(recovery_id) is None:
+        raise ValueError('master_recovery_id')
+    if type(idle_seconds)is not int or not 1<=idle_seconds<=DEFAULT_IDLE_SECONDS:
+        raise ValueError('master_idle_seconds')
+    config = transport.load_config(root)
+    with locked(root, host) as directory:
+        try:previous=status(root,host,config)
+        except MasterUnknown as error:
+            if str(error)!='master_socket_owner_unresolved':raise
+            _reconcile_daemon_locked(root,host,config,directory,deadline)
+            return status(root,host,config)
+        if previous['state']=='starting':
+            return _await_ready(root,host,config,directory,deadline,clock,sleep)
+        if previous['state']=='ready' and unavailable is not None:
+            if type(unavailable)is not UnavailableProof:raise MasterUnknown('master_unavailable_proof')
+            if unavailable.recovery_id!=previous['recoveryId']:
+                return previous  # Another caller already admitted its successor.
+            if (unavailable.actor!=previous['child']['actor']
+                    or tuple(session._socket(Path(previous['socketPath']),previous['intent']['socketParent']))!=unavailable.socket_fingerprint):
+                raise MasterUnknown('master_unavailable_generation_changed')
+            _save(directory,previous['recoveryId']+'.unavailable-'+recovery_id+'.json',
+                  {'state':'transport-unavailable','originalRecoveryId':previous['recoveryId'],
+                   'successorRecoveryId':recovery_id,'originalActor':unavailable.actor,
+                   'originalSocketFingerprint':list(unavailable.socket_fingerprint),
+                   'observer':'fixed-readonly-readiness-probe','oldHistoryRetained':True,
+                   'oldOwnerRetired':False,'jobReplayAllowed':False})
+        elif previous['state'] in {'ready', 'unknown'}:
+            return previous
+        if previous['state'] == 'dead':
+            # Preserve history and never remove the old socket or process.
+            _save(directory, previous['recoveryId'] + '.retired.json',
+                  {'state': 'retired', 'recoveryId': previous['recoveryId'],
+                   'pidAbsent': True, 'oldHistoryRetained': True})
+        parent = Path(tempfile.mkdtemp(prefix='vcrd-', dir=_socket_temp_root())).resolve(strict=True)
+        parent.chmod(0o700)
+        intent = {'version': 1, 'host': host, 'machine': identity(config, host),
+                  'recoveryId': recovery_id, 'socketPath': str(parent / 'm'),
+                  'socketParent': session._directory(parent),'idleSeconds':idle_seconds}
+        _socket(intent)  # Validate original root/parent before admission or SSH launch.
+        if previous['state']=='ready':
+            intent['previousConnection']=previous['recoveryId']
+            intent['previousState']='transport-unavailable'
+        _save(directory, recovery_id + '.intent.json', intent)
+        _publish(directory, recovery_id)
+        base, endpoint = prefix(config, host)
+        argv = [*base, '-S', intent['socketPath'], '-M', '-N', '-o', 'ControlMaster=yes',
+                '-o', 'ControlPersist='+str(idle_seconds), '-o', 'ForkAfterAuthentication=no',
+                '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3', endpoint]
+        if identity(transport.load_config(root), host) != intent['machine']:
+            raise MasterUnknown('master_authority_changed')
+        # The existing primitive bounds stderr before exec and owns its PID.
+        # _spawn uses sibling launch.json; each generation gets a private subdir.
+        launch_dir = directory.path / (recovery_id + '.launch')
+        launch_dir.mkdir(mode=0o700)
+        process = session._spawn(argv, launch_dir / 'stderr.private')
+        _reap(process)
+        try:
+            actor = keeper.actor(process.pid)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            code=process.poll()
+            if code is not None:
+                _save(directory,recovery_id+'.child.json',{'recoveryId':recovery_id,
+                      'pid':process.pid,'actor':None,'alreadyExited':True,'exitCode':code})
+                return _await_ready(root,host,config,directory,deadline,clock,sleep)
+            return {'state': 'unknown', 'recoveryId': recovery_id}
+        _save(directory, recovery_id + '.child.json',
+              {'recoveryId': recovery_id, 'pid': process.pid, 'actor': actor})
+        return _await_ready(root,host,config,directory,deadline,clock,sleep)
+
+
+
+def reconcile_original(root, host, recovery_id, *, deadline):
+    """Publish only an original owner's observation; never launch or signal.
+
+    A terminal receipt proves known submitting/adopted actors absent and the
+    private socket closed. It does not assert readiness or job non-submission.
+    """
+    if type(recovery_id)is not str or HASH.fullmatch(recovery_id)is None:
+        raise MasterUnknown('master_recovery_id')
+    config=transport.load_config(root)
+    with locked(root,host)as directory:
+        selected=_current(directory)==recovery_id
+        try:
+            value=status(root,host,config,recovery_id=recovery_id)
+        except MasterUnknown as error:
+            if str(error)!='master_socket_owner_unresolved':raise
+            if not selected:return {'state':'unknown','recoveryId':recovery_id}
+            _reconcile_daemon_locked(root,host,config,directory,deadline)
+            value=status(root,host,config)
+        if not selected and value['state']!='dead':
+            return {'state':'unknown','recoveryId':recovery_id}
+        if value['state']=='starting':
+            value=_await_ready(root,host,config,directory,deadline,time.monotonic,time.sleep)
+        if value['state']=='ready':return {'state':'ready','recoveryId':recovery_id}
+        if value['state']!='dead':return {'state':'unknown','recoveryId':recovery_id}
+        original=_read(directory,recovery_id+'.child.json')
+        intent=value['intent']
+        # _alive proves exact PID absence, checks private parent generation, and
+        # refuses a listening socket or any unresolved/changed actor.
+        if _alive(intent,original)!='dead':
+            return {'state':'unknown','recoveryId':recovery_id}
+        if _alive(intent,value['child'],value['ready'])!='dead':
+            return {'state':'unknown','recoveryId':recovery_id}
+        record={'state':'terminal-failed','recoveryId':recovery_id,'host':host,
+                'machine':intent['machine'],'intentSha256':hashlib.sha256(_json(intent)).hexdigest(),
+                'originalChildSha256':hashlib.sha256(_json(original)).hexdigest(),
+                'effectiveChildSha256':hashlib.sha256(_json(value['child'])).hexdigest(),
+                'knownActorsAbsent':True,'privateSocketClosed':True,
+                'jobReplayAllowed':False,'ready':False}
+        name=recovery_id+'.terminal-failed.json'
+        try:existing=_read(directory,name)
+        except FileNotFoundError:_save(directory,name,record)
+        else:
+            if existing!=record:raise MasterUnknown('master_terminal_proof_changed')
+        return {'state':'terminal-failed','recoveryId':recovery_id,
+                'proofSha256':hashlib.sha256(_json(record)).hexdigest()}
+
+
+def reconcile_daemon(root, host, *, deadline):
+    """Observe one already submitted private daemon; never launch or signal."""
+    config=transport.load_config(root)
+    with locked(root,host)as directory:
+        return _reconcile_daemon_locked(root,host,config,directory,deadline)
+
+
+def _reconcile_daemon_locked(root,host,config,directory,deadline):
+    from . import readiness_transport as adapter
+    recovery_id = _current(directory)
+    intent = _read(directory, recovery_id+'.intent.json')
+    original = _read(directory, recovery_id+'.child.json')
+    if intent.get('host') != host or intent.get('machine') != identity(config,host):
+        raise MasterUnknown('master_authority_changed')
+    path = _socket(intent)
+    base, endpoint = prefix(config,host)
+    result = adapter._bounded([*base,'-S',str(path),'-o','ControlMaster=no',
+                '-o','ProxyCommand=false','-O','check',endpoint],deadline)
+    match = re.fullmatch(rb'Master running \(pid=([1-9][0-9]*)\)\r?\n?',result['stdout']+result['stderr'])
+    if not result['complete'] or result['overflow'] or result['returnCode'] != 0 or match is None:
+        raise MasterUnknown('master_daemon_control_unproved')
+    pid = int(match[1]); actor = keeper.actor(pid)
+    try:session._pid_generation(pid)  # An actual same-user SSH executable.
+    except session.SessionUnknown:raise MasterUnknown('master_daemon_actor_unproved')from None
+    before = session._socket(path,intent['socketParent'])
+    command = [*base,'-S',str(path),'-o','ControlMaster=no','-o','ProxyCommand=false',
+               '-T',endpoint,shlex.join(adapter.PROBE_COMMAND)]
+    proof = adapter._bounded(command,deadline)
+    if not proof['complete'] or proof['overflow'] or proof['returnCode'] != 0 or proof['stderr']:
+        raise MasterUnknown('master_daemon_peer_unproved')
+    value = json.loads(proof['stdout'],object_pairs_hook=transport._reject_duplicate_keys)
+    if (set(value) != {'boot','uid','principal','home','connection'} or value['principal'] != config.hosts[host].user
+            or type(value['uid']) is not int or type(value['boot']) is not str
+            or re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',value['boot']) is None
+            or type(value['connection']) is not str or len(value['connection'].split()) != 4):
+        raise MasterUnknown('master_daemon_peer_identity')
+    if before != session._socket(path,intent['socketParent']) or keeper.actor(pid) != actor:
+        raise MasterUnknown('master_daemon_changed')
+    if identity(transport.load_config(root),host) != intent['machine']:
+        raise MasterUnknown('master_authority_changed')
+    record={'version':1,'recoveryId':recovery_id,'originalChildSha256':hashlib.sha256(_json(original)).hexdigest(),
+            'proof':'private-control-and-authenticated-peer',
+            'child':{'recoveryId':recovery_id,'pid':pid,'actor':actor},
+            'ready':{'recoveryId':recovery_id,'socketFingerprint':before,'masterActor':actor},
+            'boot':value['boot'],'account':str(value['uid'])+':'+value['principal'],
+            'connectionSha256':hashlib.sha256(value['connection'].encode()).hexdigest()}
+    name=recovery_id+'.daemon-reconciled.json'
+    try:
+        existing=_read(directory,name)
+    except FileNotFoundError:
+        _save(directory,name,record)
+    else:
+        if existing != record:raise MasterUnknown('master_daemon_reconciliation_changed')
+    return {'state':'ready','recoveryId':recovery_id,'pid':pid,'originalChildRetained':True}

@@ -239,7 +239,7 @@ def _observe(root, program_factory, validator):
         return ssh_transport.popen_ssh(argv, cwd=root, stdin=adapter.subprocess.PIPE,
                                         stdout=adapter.subprocess.PIPE, stderr=adapter.subprocess.PIPE, bufsize=0)
     outcome, capsule = adapter._capture(root, authority=authority, launch=launch, payload=secret,
-                                        guard=full_guard)
+                                        guard=full_guard, private_payload=True, public_reply=validator)
     need(outcome["state"] == "captured", "terminal_transport_unknown")
     receipt_raw, receipt_pin = closure.pipe._read(capsule / "receipt.json")
     need(receipt_pin == outcome["receiptPin"], "terminal_capture_changed")

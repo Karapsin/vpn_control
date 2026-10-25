@@ -173,7 +173,7 @@ class AndroidVpnPermissionResetTest(unittest.TestCase):
             root = Path(tmp); lease = root / ".rag_index/android-native-device-leases/lease-archlinux-api29.json"
             lease.parent.mkdir(mode=0o700, parents=True); lease.write_text('{"correlationId":"x"}')
             lease.chmod(0o600)
-            self.assertTrue(subject._endpoint_lease_active(root))
+            self.assertTrue(subject._endpoint_lease_active(root, host="archlinux", device="api29"))
             self.assertTrue(lease.exists())
 
     def test_local_intent_is_durable_and_status_missing_intent_has_no_replay(self):
@@ -216,10 +216,10 @@ class AndroidVpnPermissionResetTest(unittest.TestCase):
             exact = {"owner": "android-vpn-permission-reset", "correlationId": CORRELATION,
                      "device": "api29", "host": "archlinux"}
             lease.write_text(json.dumps(exact)); lease.chmod(0o600)
-            self.assertTrue(subject._release_reset_lease(root, CORRELATION))
+            self.assertTrue(subject._release_reset_lease(root, CORRELATION, host="archlinux", device="api29"))
             self.assertFalse(lease.exists())
             lease.write_text(json.dumps({**exact, "owner": "foreign"})); lease.chmod(0o600)
-            self.assertFalse(subject._release_reset_lease(root, CORRELATION))
+            self.assertFalse(subject._release_reset_lease(root, CORRELATION, host="archlinux", device="api29"))
             self.assertTrue(lease.exists())
 
     def test_lease_same_inode_replacement_after_read_is_not_released(self):
@@ -239,7 +239,7 @@ class AndroidVpnPermissionResetTest(unittest.TestCase):
                     os.utime(lease, None)
                 return value
             with mock.patch("os.read", side_effect=mutate):
-                self.assertFalse(subject._release_reset_lease(root, CORRELATION))
+                self.assertFalse(subject._release_reset_lease(root, CORRELATION, host="archlinux", device="api29"))
             self.assertTrue(lease.exists())
 
     def test_collector_source_uses_configured_avd_and_bounded_private_exports(self):
@@ -263,8 +263,8 @@ class AndroidVpnPermissionResetTest(unittest.TestCase):
         self.assertEqual(_collect_remote(device), {"state": "unknown", "reason": "collect_private_file_unsafe"})
 
     def test_fixed_api29_constants_prevent_foreign_user_package_or_operation(self):
-        self.assertEqual((subject._HOST, subject._DEVICE, subject._API, subject._USER, subject._PACKAGE, subject._OP, subject._MODE),
-                         ("archlinux", "api29", 29, "0", "com.kardinal.vpncontrol", "ACTIVATE_VPN", "ignore"))
+        self.assertEqual((subject._API, subject._USER, subject._PACKAGE, subject._OP, subject._MODE),
+                         (29, "0", "com.kardinal.vpncontrol", "ACTIVATE_VPN", "ignore"))
 
 
 class PermissionTerminalTypesTest(unittest.TestCase):

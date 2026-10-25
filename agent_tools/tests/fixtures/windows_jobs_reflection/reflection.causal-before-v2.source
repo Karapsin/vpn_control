@@ -1,0 +1,43 @@
+$ErrorActionPreference='Stop'
+Add-Type -TypeDefinition @'
+using System;
+public static class NativeJob {
+ static string Text(string value){return value;}
+ static int Bytes(byte[] value){return value.Length;}
+ static int Next(ref int value){value++;return value;}
+}
+'@
+function OldN([string]$name,[object[]]$values){
+ $method=[NativeJob].GetMethod($name,[Reflection.BindingFlags]'NonPublic,Static')
+ if($null  -eq  $method){throw 'diagnostic_native_method'}
+ return $method.Invoke($null,$values)
+}
+function InvokeConverted([Reflection.MethodInfo]$method,[object[]]$values){
+ $parameters=$method.GetParameters()
+ if($parameters.Length -ne $values.Length){throw 'diagnostic_native_arity'}
+ $converted=[object[]]::new($values.Length)
+ for($i=0;$i -lt $values.Length;$i++){
+  $value=$values[$i]
+  while($value -is [Management.Automation.PSObject] -and -not [object]::ReferenceEquals($value,$value.BaseObject)){$value=$value.BaseObject}
+  $target=$parameters[$i].ParameterType
+  if($target.IsByRef){$target=$target.GetElementType()}
+  $converted[$i]=[Management.Automation.LanguagePrimitives]::ConvertTo($value,$target,[Globalization.CultureInfo]::InvariantCulture)
+ }
+ $result=$method.Invoke($null,$converted)
+ for($i=0;$i -lt $values.Length;$i++){if($parameters[$i].ParameterType.IsByRef){$values[$i]=$converted[$i]}}
+ return $result
+}
+function N([string]$name,[object[]]$values){
+ $method=[NativeJob].GetMethod($name,[Reflection.BindingFlags]'NonPublic,Static')
+ if($null -eq $method){throw 'diagnostic_native_method'}
+ return InvokeConverted $method $values
+}
+
+$red=$false
+try{$ignored=OldN 'Text' @([psobject]'literal')}catch{$red=$_.Exception.ToString().Contains('PSObject')}
+if(-not $red){throw 'causal_red_missing'}
+if((N 'Text' @([psobject]'literal')) -ne 'literal'){throw 'fixed_text_failed'}
+if((N 'Bytes' @(,[psobject]([byte[]]@(1,2,3)))) -ne 3){throw 'fixed_binary_failed'}
+$values=[object[]]@([psobject]41);$method=[NativeJob].GetMethod('Next',[Reflection.BindingFlags]'NonPublic,Static')
+if((InvokeConverted $method $values) -ne 42 -or $values[0] -ne 42){throw 'fixed_byref_failed'}
+[Console]::WriteLine('{"schemaVersion":1,"causalRed":true,"causalGreen":true,"text":true,"binary":true,"byref":true}')

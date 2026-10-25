@@ -1,0 +1,6 @@
+def validate_complete(packet,value):
+ need(type(value)is dict and set(value)=={'status','stdout','stderr'},'fixed_compiler_collect_schema')
+ out=base64.b64decode(value['stdout'],validate=True);err=base64.b64decode(value['stderr'],validate=True)
+ result=fixed_owner().validate_result(packet,value['status'],out,err)
+ need(result['state']=='compiled','fixed_compiler_actual_compile_failed')
+ return {**result,'historicalActualRedPreserved':True,'notInputAuthority':True,'notIdleAuthority':True}

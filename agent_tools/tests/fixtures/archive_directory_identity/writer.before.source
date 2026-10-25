@@ -1,0 +1,156 @@
+"""UNEXECUTED private fixed-operation confinement qualifier; no package evaluation or VM effects.
+Run ONLY as the exact reviewed durable Program assembled by confinement_control.
+"""
+from pathlib import Path
+import zlib,copy,errno,hashlib,json,os,plistlib,selectors,shutil,signal,socket,stat,subprocess,sys,time,types
+W=Path('/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart-suspend-preparation-134a68b4-4521-467c-a8fc-3d66d69d647c/archive-original58a-b3d46903-00b3-4ed5-92c5-0bbee897878c')
+ROOT=W.parents[3]
+OP='b3d46903-00b3-4ed5-92c5-0bbee897878c'
+IMAGE=W/'artifacts/original58a-2gib.apfs.dmg.gz';MOUNT=W/'artifacts'
+CLAIM='original58a-lossless-archive-'+OP
+FILE_CAP=64*1024**2;WORKING=128*1024**2
+# Injected by exact authenticated durable bootstrap, never caller source.
+need=lambda value,reason:None if value else (_ for _ in()).throw(ValueError(reason))
+INPUTS=_ARCHIVE_INPUTS
+HOLDS=_ARCHIVE_HOLDS
+OWNER_DEADLINE=time.monotonic()+120
+
+def generation(s):return[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def guard():
+    need(time.monotonic()<OWNER_DEADLINE,'owner_deadline')
+    for path,fd,g,digest in HOLDS:
+        need(generation(os.fstat(fd))==g and generation(path.lstat())==g,'input_changed')
+    for alias in INPUTS['aliases']:
+        path=Path(alias['path']);need(generation(path.lstat())==alias['generation']and str(path.resolve())==alias['resolved'],'input_alias_changed')
+
+def write(name,data):
+    path=Path(name);need(path.is_absolute()and(path.is_relative_to(W)or path.is_relative_to(MOUNT)),'evidence_path')
+    raw=data if isinstance(data,bytes)else(json.dumps(data,indent=2,sort_keys=True)+'\n').encode()
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,0o600)
+    with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+    return hashlib.sha256(raw).hexdigest()
+
+# Exact held local modules under two isolated packages; no normal project importer.
+for package in ('agent_tools','_confinement_scripts'):
+    module=types.ModuleType(package);module.__path__=[];sys.modules[package]=module
+modules={}
+for name,relative in (
+ ('agent_tools.durable_remote_job','agent_tools/durable_remote_job.py'),
+ ('agent_tools.private_inventory_lock','agent_tools/private_inventory_lock.py'),
+ ('_confinement_scripts.fixture_environment','scripts/fixture_environment.py'),
+ ('_confinement_scripts.native_fixture_storage','scripts/native_fixture_storage.py'),
+ ('_confinement_scripts.visual_target','scripts/visual_target.py'),
+ ('_confinement_scripts.visual_platform','scripts/visual_platform.py')):
+    path=ROOT/relative;held=next(item for item in HOLDS if item[0]==path)
+    raw=os.pread(held[1],os.fstat(held[1]).st_size+1,0)
+    need(hashlib.sha256(raw).hexdigest()==held[3],'module_sha_changed')
+    module=types.ModuleType(name);module.__file__=str(path);module.__package__=name.rsplit('.',1)[0]
+    sys.modules[name]=module;exec(compile(raw,str(path),'exec'),module.__dict__)
+    setattr(sys.modules[module.__package__],name.rsplit('.',1)[1],module);modules[name]=module
+jobs=modules['agent_tools.durable_remote_job'];storage=modules['_confinement_scripts.native_fixture_storage'];v=modules['_confinement_scripts.visual_platform']
+# Existing observation bodies stay unchanged; exact executable dispatch removes
+# PATH lookup for the three source-owned readonly resource commands.
+_original_run=v._run
+def fixed_observation_run(command,**kwargs):
+    need(command[0]in('tart','sysctl','vm_stat'),'resource_executable_scope')
+    guard();mapped=[INPUTS['tools'][command[0]]['path'],*command[1:]]
+    result=_original_run(mapped,**kwargs);guard();return result
+v._run=fixed_observation_run
+need(os.geteuid()!=0,'ordinary_user_required');PID=os.getpid();BIRTH=jobs._birth(PID);need(BIRTH is not None,'writer_birth_unavailable')
+COMMANDS=[]
+
+ORIGINAL=Path('/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/tart-suspend-preparation-134a68b4-4521-467c-a8fc-3d66d69d647c/confinement-2gib.dmg')
+ORIGINAL_CLAIM='suspend-confinement-58a90aca-ad23-4aa3-b755-14d0c809d0ac'
+ORIGINAL_OPERATION='58a90aca-ad23-4aa3-b755-14d0c809d0ac'
+RAW_CAP=2*1024**3
+DIR_HOLDS=[]
+def held_bytes(path):
+ row=next(x for x in HOLDS if x[0]==path);return os.pread(row[1],os.fstat(row[1]).st_size+1,0)
+def parent_fd(path):
+ """Walk absolute fixed parent chain with openat/nofollow directory FDs."""
+ need(path.is_absolute(),'absolute_parent_required');fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC)
+ for part in path.parts[1:]:
+  nxt=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=fd);os.close(fd);fd=nxt
+  st=os.fstat(fd);need(stat.S_ISDIR(st.st_mode)and st.st_uid in(0,os.geteuid())and not st.st_mode&0o022,'private_parent_chain')
+ need(generation(os.fstat(fd))[:6]==generation(path.lstat())[:6],'parent_named_generation');DIR_HOLDS.append((path,fd,generation(os.fstat(fd))[:6]));return fd
+def directory_guard():
+ for p,fd,g in DIR_HOLDS:need(generation(os.fstat(fd))[:6]==g==generation(p.lstat())[:6],'parent_generation_changed')
+def native_info(name):
+ guard();directory_guard();argv=['/usr/bin/hdiutil','info','-plist'];child=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True,env={'PATH':'/usr/bin:/bin'})
+ birth=jobs._birth(child.pid);write(W/(name+'.started.json'),{'pid':child.pid,'observedBirth':birth,'argv':argv});sel=selectors.DefaultSelector();buffers={'stdout':bytearray(),'stderr':bytearray()};counts={k:0 for k in buffers};deadline=min(OWNER_DEADLINE,time.monotonic()+15)
+ for key,pipe in [('stdout',child.stdout),('stderr',child.stderr)]:sel.register(pipe,selectors.EVENT_READ,key)
+ while sel.get_map():
+  if time.monotonic()>deadline:
+   for pipe in(child.stdout,child.stderr):pipe.close()
+   sel.close()
+   for key,raw in buffers.items():write(W/(name+'.'+key+'.partial'),bytes(raw))
+   write(W/(name+'.unknown.json'),{'pid':child.pid,'observedBirth':birth,'noSignalOrRetry':True,'streamsEOF':False});raise ValueError('archive_observer_unknown')
+  for key,_ in sel.select(.05):
+   raw=os.read(key.fileobj.fileno(),65536)
+   if not raw:sel.unregister(key.fileobj);key.fileobj.close();continue
+   counts[key.data]+=len(raw);buffers[key.data].extend(raw[:max(0,2*1024**2-len(buffers[key.data]))])
+ sel.close();code=child.wait(timeout=max(.01,deadline-time.monotonic()));row={'pid':child.pid,'observedBirth':birth,'exitCode':code,'streamsEOF':True,'directWaitpid':True,'streams':{}}
+ for key,raw in buffers.items():row['streams'][key]={'sha256':write(W/(name+'.'+key),bytes(raw)),'bytes':counts[key],'retained':len(raw)}
+ write(W/(name+'.terminal.json'),row);need(code==0 and not buffers['stderr']and all(counts[k]==len(v)for k,v in buffers.items()),'archive_observer_refused')
+ need(jobs._birth(child.pid)is None,'archive_observer_not_absent');guard();return plistlib.loads(buffers['stdout']),row
+
+def original_proof():
+ oldmeta=json.loads(held_bytes(ORIGINAL.parent/'confinement-control.intent.json'));binding=jobs.MachineBinding(**oldmeta['binding']);status,out,err=jobs.collect(ORIGINAL.parent/'confinement-jobs',ORIGINAL_OPERATION,binding,generation=tuple(oldmeta['rootGeneration']))
+ need(status['terminal']['exitCode']==1 and status['terminal']['programSha256']=='34016b5db7d917c77cb54a1c9b0011e584a6d70e52f450ecd3ac08a95171780f','wrong_original_terminal')
+ need(hashlib.sha256(out).hexdigest()==INPUTS['originalStdoutSha256']and hashlib.sha256(err).hexdigest()==INPUTS['originalStderrSha256'],'wrong_original_streams')
+ reply=json.loads(out);need(reply['reason']=='attach_device_absent'and[x['name']for x in reply['commands']]==['hdi-before','create','imageinfo','attach'],'original_not_blank_phase')
+ cleanup=json.loads(held_bytes(ORIGINAL.parent/'original58a-cleanup-sourceclosing.json'))
+ need(cleanup['sourceClosing']is True and cleanup['settled']['ownPlan']==INPUTS['originalPlan']and cleanup['cleanupResult']['imageGenerationAfter']==INPUTS['imageGeneration'],'wrong_original_cleanup')
+ for actor in INPUTS['originalActors']:need(jobs._birth(actor['pid'])is None,'original_actor_not_absent')
+ return cleanup
+
+def admit():
+ guard();directory_guard();need(not os.path.lexists(IMAGE),'archive_create_only');plan={'platform':'macos','directory':str(MOUNT),'disks':[{'path':str(IMAGE),'capacityBytes':FILE_CAP}],'workingBytes':WORKING,'writerPid':PID,'state':'pending','stagingBytes':0};plans=storage.StoragePlans(ROOT/'.runtime/visual-vms')
+ with v._resource_lock():
+  policy,_=v._resource_policy();alloc=v._reservation_allocations(v._read_reservations())+v._tart_running_allocations();samples=[v._host_memory_snapshot(),v._host_memory_snapshot()]
+  for sample in samples:
+   need(sample['pressure_critical']is False and sample['available_mib']>=policy['minimum_available_mib']+128,'archive_memory_available');need(sample['physical_mib']>=sum(alloc)+policy['build_headroom_mib']+128,'archive_memory_physical')
+  need(samples[0]['physical_mib']==samples[1]['physical_mib']and samples[1]['swap_used_mib']<=samples[0]['swap_used_mib'],'archive_memory_samples')
+  with plans._locked():
+   state=plans._read();need(CLAIM not in state['plans']and state['plans'].get(ORIGINAL_CLAIM)==INPUTS['originalPlan'],'archive_claim_or_original_changed');plans._validate(CLAIM,plan);before=copy.deepcopy(state);seen=set();dev=MOUNT.stat().st_dev;candidate=plans._growth(plan,dev,seen);others=sum(plans._growth(p,dev,seen)for p in state['plans'].values());free=shutil.disk_usage(MOUNT).free
+   measurement={'freeBytes':free,'candidateGrowthBytes':candidate,'otherGrowthBytes':others,'headroomBytes':storage.HEADROOM_BYTES,'requiredBytes':candidate+others+storage.HEADROOM_BYTES}
+   write(W/'archive-capacity-observed.json',measurement);need(free>=measurement['requiredBytes'],'archive_storage_capacity');guard();directory_guard();need(jobs._birth(PID)==BIRTH,'archive_writer_changed')
+   before_sha=write(W/'archive-ledger-before.private.json',before);state['plans'][CLAIM]=plan;plans._save(state)
+ admission={'operationId':OP,'writer':{'pid':PID,'birth':BIRTH},'claim':CLAIM,'plan':plan,'beforeLedgerSha256':before_sha,'memorySamples':samples,'configuredAndRetainedMiB':sum(alloc),'nonVmMemoryBudgetMiB':128,'measurement':measurement}
+ return write(W/'archive-admission.json',admission)
+
+def main():
+ raw_parent=parent_fd(ORIGINAL.parent);output_parent=parent_fd(MOUNT);need(stat.S_IMODE(os.fstat(output_parent).st_mode)==0o700 and generation(os.fstat(output_parent))==INPUTS['outputDirectoryGeneration']==generation(MOUNT.lstat()),'private_output_directory');original_proof()
+ rawfd=os.open(ORIGINAL.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=raw_parent);rs=os.fstat(rawfd);rg=generation(rs);need(rg==INPUTS['imageGeneration']==generation(ORIGINAL.lstat())and stat.S_ISREG(rs.st_mode)and rs.st_uid==os.geteuid()and stat.S_IMODE(rs.st_mode)==0o600 and rs.st_nlink==1 and rs.st_size==RAW_CAP,'original_image_generation')
+ info,pre=native_info('archive-hdi-before');need(not any(row.get('image-path')==str(ORIGINAL)for row in info.get('images',[])),'original_image_mounted');need((ORIGINAL.parent/'confinement-volume').stat().st_dev==ORIGINAL.parent.stat().st_dev,'original_mount_not_absent')
+ admission_sha=admit();guard();directory_guard();need(generation(os.fstat(rawfd))==rg==generation(ORIGINAL.lstat()),'image_prewrite_changed')
+ outfd=os.open(IMAGE.name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,0o600,dir_fd=output_parent);compressed=0;compressed_sha=hashlib.sha256();source_sha=hashlib.sha256();read=0
+ def put(data):
+  nonlocal compressed
+  need(compressed+len(data)<=FILE_CAP,'archive_compressed_cap');at=0
+  while at<len(data):
+   guard();directory_guard();n=os.write(outfd,data[at:at+65536]);need(n>0,'archive_short_write');compressed_sha.update(data[at:at+n]);compressed+=n;at+=n
+ compressor=zlib.compressobj(6,zlib.DEFLATED,31)
+ try:
+  while read<RAW_CAP:
+   guard();directory_guard();raw=os.pread(rawfd,min(1024**2,RAW_CAP-read),read);need(raw,'archive_source_short');source_sha.update(raw);read+=len(raw);put(compressor.compress(raw))
+  need(os.pread(rawfd,1,RAW_CAP)==b''and generation(os.fstat(rawfd))==rg==generation(ORIGINAL.lstat()),'archive_source_changed');put(compressor.flush());os.fsync(outfd)
+ finally:os.close(outfd)
+ # Verify stored compressed bytes and full bounded reverse stream, never extract.
+ afd=os.open(IMAGE.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=output_parent);ag=generation(os.fstat(afd));need(ag==generation(IMAGE.lstat())and ag[6]==compressed and ag[3]==os.geteuid()and ag[5]==1 and stat.S_IMODE(ag[2])==0o600,'archive_output_shape');decompressor=zlib.decompressobj(31);reversed_sha=hashlib.sha256();stored_sha=hashlib.sha256();decoded=0;offset=0
+ while offset<compressed:
+  guard();chunk=os.pread(afd,min(65536,compressed-offset),offset);need(chunk,'archive_verify_short');offset+=len(chunk);stored_sha.update(chunk);pending=chunk
+  while pending:
+   raw=decompressor.decompress(pending,min(1024**2,RAW_CAP-decoded+1));pending=decompressor.unconsumed_tail;need(decoded+len(raw)<=RAW_CAP,'archive_decoded_cap');decoded+=len(raw);reversed_sha.update(raw)
+   need(not decompressor.unused_data,'archive_trailing_data')
+ need(decompressor.eof and not decompressor.unconsumed_tail and not decompressor.unused_data and decoded==RAW_CAP and reversed_sha.hexdigest()==source_sha.hexdigest()and stored_sha.hexdigest()==compressed_sha.hexdigest(),'archive_roundtrip_unproven')
+ need(generation(os.fstat(afd))==ag==generation(IMAGE.lstat())and generation(os.fstat(rawfd))==rg==generation(ORIGINAL.lstat()),'archive_verify_generation');os.close(afd);os.close(rawfd);os.fsync(output_parent)
+ info,post=native_info('archive-hdi-after');need(not any(row.get('image-path')==str(ORIGINAL)for row in info.get('images',[])),'original_image_became_mounted');original_proof();guard();directory_guard()
+ result={'schemaVersion':1,'state':'archive-verified-original-retained','operationId':OP,'writer':{'pid':PID,'birth':BIRTH},'admissionSha256':admission_sha,'claim':CLAIM,'originalClaim':ORIGINAL_CLAIM,'originalImage':str(ORIGINAL),'originalImageGeneration':rg,'sourceBytes':read,'sourceSha256':source_sha.hexdigest(),'archive':str(IMAGE),'archiveGeneration':ag,'archiveBytes':compressed,'archiveSha256':compressed_sha.hexdigest(),'decodedBytes':decoded,'decodedSha256':reversed_sha.hexdigest(),'nativeBefore':pre,'nativeAfter':post,'originalUnlinked':False,'noVmOrCompilerAction':True,'archiveClaimRemainsPendingFullWorking':True}
+ sha=write(W/'archive-result.json',result)
+ for _,fd,_ in DIR_HOLDS:os.close(fd)
+ print(json.dumps({'operationId':OP,'state':result['state'],'resultSha256':sha}),flush=True)
+
+try:main()
+except BaseException as error:
+ print(json.dumps({'operationId':OP,'state':'archive-failed-original-retained','reason':str(error),'noUnlinkOrRetry':True}),flush=True);raise

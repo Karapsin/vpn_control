@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "observe.before.source": "6ea19c6ffd6e53190df564f4ec56bc9772d60a663ad2820ea08dc2a4ed0f5e50"
+  },
+  "failure": "Wrong WTS information class26 returned zeroed configuration data; session identity was not validated.",
+  "nativeBeforeOperation": "cb34c77f-d7cb-4041-a1e9-11d3ecf2ef5e",
+  "nativeAfterOperation": "919d68d9-de87-4675-b908-3daf98fb2eae"
+}

@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "88ed18d597b3596f0ccaaae8c6dd2813f65572818d9e449359bcc5899e57e880",
+  "failure": "Full Windows backend produced/saved VM packet before actual target transport admission; unavailable transport must refuse before packet generation while keeping observer recovery disabled.",
+  "additionalReviewFailure": "A configured lease root generation was ignored during executor preparation; fresh enrollment could replace the known generation. Fixed preparation preserves the immutable known generation and never invokes enrollment for it; native Control/Inventory retains root-integrity checks."
+}

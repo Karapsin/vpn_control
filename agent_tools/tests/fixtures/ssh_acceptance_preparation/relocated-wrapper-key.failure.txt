@@ -1,0 +1,14 @@
+.........F.........................................
+======================================================================
+FAIL: test_actual_generic_owner_omits_file_before_nameerror_red_fixed_saved_source_green (_routine_generic_bootstrap_tests.GenericBootstrapProgramPathTests.test_actual_generic_owner_omits_file_before_nameerror_red_fixed_saved_source_green)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/fixtures/ssh_acceptance_preparation/test_generic_bootstrap_program_path.py", line 43, in test_actual_generic_owner_omits_file_before_nameerror_red_fixed_saved_source_green
+    if old:self.assertIn(b"name '__file__' is not defined",error);self.assertEqual(b'',output);self.assertFalse(marker.exists())
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: b"name '__file__' is not defined" not found in b'Traceback (most recent call last):\n  File "<string>", line 1, in <module>\n    import sys; s=sys.stdin.buffer.read(); exec(compile(s,\'fixed-purpose-program\',\'exec\'),{\'__name__\':\'__main__\'})\n                                           ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "fixed-purpose-program", line 153, in <module>\nKeyError: \'/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/ssh-full-ordinary-successor/0c306e20-c304-4b7e-a2aa-f3fa33ab422e/local-owner-source/local_owner_v2.py\'\n'
+
+----------------------------------------------------------------------
+Ran 51 tests in 4.923s
+
+FAILED (failures=1)

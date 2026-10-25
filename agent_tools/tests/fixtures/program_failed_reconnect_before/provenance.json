@@ -1,0 +1,18 @@
+{
+  "files": {
+    "readiness.py": {
+      "bytes": 34018,
+      "sha256": "78651dc0afa4b8eff5f0b0a4141cb6d275b5e11f5a78953bce21c7e221313fbe"
+    },
+    "readiness_ssh_master.py": {
+      "bytes": 19198,
+      "sha256": "14407f17c0f78a50101a35f1e54e8a1a15639240cfef7b582f46207bc2380937"
+    },
+    "readiness_transport.py": {
+      "bytes": 15586,
+      "sha256": "f4d1ebce158cfefc3b45ef2312ee357a1717f400a8fb9571c188be7ecab02ba6"
+    }
+  },
+  "operationId": "6c74c33d-7a0a-4c56-a7e7-7a831787f354",
+  "scope": "Exact admitted source capsule for threefailedconnectionattempts then sameUUID freshobserver permanentlypending afterfixture restoration"
+}

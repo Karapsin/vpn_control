@@ -1,8 +1,9 @@
 """MCP admission for read-only disposable Windows install-disk proof."""
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 
 from agent_tools import mcp_server
+from agent_tools.tests import route_adapter
 
 
 class WindowsInstallDiskProofRouteTest(unittest.TestCase):
@@ -11,9 +12,9 @@ class WindowsInstallDiskProofRouteTest(unittest.TestCase):
         adapter = Mock()
         adapter.preflight.return_value = {"state": "ready", "replayAllowed": False,
                                           "nativeActionAllowed": False}
-        with patch.object(mcp_server, "_agent_module", return_value=adapter) as module:
+        with patch.object(mcp_server, "_agent_module", side_effect=route_adapter.admitted_adapter(adapter)) as module:
             result = mcp_server._vm_workflow_impl("windows-vm-setup-install-disk-proof", request)
-        module.assert_called_once_with("windows_vm_setup_install_disk_proof")
+        self.assertEqual([call("windows_vm_setup_install_disk_proof")], route_adapter.adapter_calls(module))
         adapter.preflight.assert_called_once_with(mcp_server.REPO_ROOT, host="archlinux", timeout_seconds=90)
         self.assertTrue(result["ok"])
         self.assertFalse(result["nativeActionAllowed"])

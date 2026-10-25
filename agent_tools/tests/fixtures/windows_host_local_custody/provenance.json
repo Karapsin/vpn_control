@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "7d7869f94cda087993b2f79b94056b5126cd6c854cc922c57de70c850936c4d7",
+  "sourcePath": "agent_tools/readiness_windows_host_jobs.py",
+  "evidence": "Reviewed equal-content local inode replacement defect before any native lifecycle namespace enrollment; actual controlled private-file RED/GREEN only."
+}

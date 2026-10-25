@@ -787,7 +787,8 @@ def main(argv=None):
             else:
                 command = serial_command(args.root, command, fingerprint)
             if evidence is None:
-                code = subprocess.run(command, cwd=args.root).returncode
+                # Selected tests never read this selector's own stdin stream.
+                code = subprocess.run(command, cwd=args.root, stdin=subprocess.DEVNULL).returncode
             else:
                 report_dir = Path(command[command.index("--report-dir") + 1]) if "--report-dir" in command else None
                 try:

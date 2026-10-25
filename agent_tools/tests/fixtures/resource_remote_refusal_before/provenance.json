@@ -1,0 +1,5 @@
+{
+  "sourceSha256": "1a7226f8835b69411d9ba3822a07de90149e56034d390697f4ad2cccc996f108",
+  "originalSource": "agent_tools/readiness_resources.py",
+  "failure": "The v1-only resource proof validator cannot reconcile an authenticated completed original remote pre-power refusal. Unknown and unbound remote observations remain ineligible."
+}

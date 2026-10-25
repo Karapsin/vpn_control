@@ -1,0 +1,130 @@
+"""PREPARED ONLY: one fixed observer namespace and empty GET-only inventory.
+
+No observer job, ordinary credential reader, GUI input, lease, settings or power
+operation is reachable. The source-qualified alias must already exist. The
+original host intent is published before the sole guest mkdir; loss observes
+that original, never invokes this qualification driver again.
+"""
+import argparse,hashlib,json,os,subprocess,sys,time
+from pathlib import Path
+from contextlib import ExitStack
+_EXECUTING_CODE=sys._getframe().f_code
+PROJECT=Path(__file__).resolve().parents[3];sys.path.insert(0,str(PROJECT))
+from agent_tools.source_module_loader import SourceSession
+p=argparse.ArgumentParser();p.add_argument('--target',required=True);p.add_argument('--fixture-id',required=True);p.add_argument('--operation-id',required=True);args=p.parse_args()
+sources=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_registry')
+R=sources.module;F=sources.load('readiness_fixture_registry');O=sources.load('readiness_tart_macos_unlock_observer');P=sources.load('private_inventory_lock');J=sources.load('durable_remote_job');M=sources.load('readiness_tart_macos');I=sources.load('readiness_tart_macos_idle');protocol=sources.load('readiness_qemu_jobs')
+def need(value,reason):
+ if not value:raise RuntimeError(reason)
+def save(path,value):
+ body=value if type(value)is bytes else json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+ fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb')as output:output.write(body);output.flush();os.fsync(output.fileno())
+ fd=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:os.fsync(fd)
+ finally:os.close(fd)
+F._id(args.fixture_id);R._uuid(args.operation_id)
+raw=Path(__file__).read_bytes();need(_EXECUTING_CODE==compile(raw,__file__,'exec',dont_inherit=True),'namespace_executing_source_changed')
+self_source=R.PublicProof(Path(__file__).resolve(),{'generation':list(P._generation(Path(__file__).lstat())),'sha256':hashlib.sha256(raw).hexdigest()},private_file=False)
+c=None;folder=None;actors=[];calls=[]
+try:
+ with ExitStack()as held:
+  held.callback(sources.close);held.callback(self_source.close)
+  descriptor,pin=F._json(PROJECT/'.rag_index/readiness-fixtures'/(args.fixture_id+'.json'))
+  need(descriptor['provider']=='tart-macos'and args.target=='tart:'+descriptor['binding']['vm_name'],'namespace_explicit_target_mismatch')
+  c=R.MacCustody(PROJECT,args.fixture_id,descriptor,pin);held.callback(c.close)
+  need(args.target=='tart:'+c.binding.vm_name,'namespace_explicit_target_mismatch')
+  folder=c.lifecycle_root/('native-unlock-observer-namespace-'+args.operation_id);folder.mkdir(mode=0o700)
+  out=held.enter_context(P.Directory(folder));deadline=time.monotonic()+45
+  def guard():
+   need(time.monotonic()<deadline,'namespace_qualification_deadline');sources.guard();self_source.guard();out.guard();c._operator.guard();c.guard(deadline=deadline)
+  def closure():
+   sources.guard();self_source.guard();out.guard()
+   return {'schemaVersion':1,'sources':{path:hashlib.sha256(body).hexdigest()for path,body in sources.cache.values()},'registration':{'path':str(PROJECT/'.rag_index/readiness-fixtures'/(args.fixture_id+'.json')),'pin':pin}}
+  held.enter_context(c.operator(deadline=deadline))
+  guard();save(folder/'driver.source.py',raw);save(folder/'source-capsule-before.json',closure())
+  save(folder/'intent.json',{'schemaVersion':1,'operationId':args.operation_id,'target':args.target,'fixtureId':args.fixture_id,'originalRunOperationId':c.run_intent['operationId'],'driverSha256':hashlib.sha256(raw).hexdigest(),'maximumCallerSeconds':45,'allowedActions':['enroll','namespace-status','empty_inventory'],'maximumEnrollDispatches':1,'observerJobsStarted':False,'credentialReaderOpened':False,'guiInputSubmitted':False,'powerOrLeaseActions':False,'genericCapabilitiesActivated':False})
+  # A fixture with a previous namespace admission cannot be relabelled as a
+  # new first-enrollment qualification. Existing originals remain observation.
+  intent_path,packet_path,index_path=c._unlock_observer_paths()
+  need(not any(path.exists()or path.is_symlink()for path in(intent_path,packet_path,index_path)),'namespace_original_already_present_no_reenroll')
+  original_native=c._native_call
+  def captured_native(argv,payload,call_deadline):
+   guard()
+   need(tuple(argv[:5])==(c.binding.tart_binary,'exec','-i',c.binding.vm_name,c.binding.guest_python),'namespace_native_dispatch_target_changed')
+   need(type(payload)is bytes and 0<len(payload)<=262144,'namespace_source_bound')
+   source=payload.decode('utf-8');params=__import__('ast').literal_eval(source.splitlines()[0].removeprefix('PARAMETERS='))
+   current=c._unlock_observer_original()
+   if params.get('action')in{'enroll','namespace-status'}:
+    action=params['action'];expected=O.namespace_source(c,action,enrollment=current['enrollment'])
+   else:
+    action='empty_inventory';namespace=c.load_unlock_observer_namespace();admissions,pending=c._unlock_observer_admissions(require_collected=True)
+    need(not admissions and not pending,'namespace_observer_work_not_empty');expected=O.inventory_source(c,namespace,{})
+   need(expected==payload and protocol.stdin_command(source)[0][1:]==tuple(argv[5:]),'namespace_dispatch_source_changed')
+   if action=='enroll':need('enroll'not in calls,'namespace_enroll_replay_forbidden')
+   calls.append(action);label='call-'+str(len(calls))+'-'+action
+   actual_intent,actual_pin=F._json(intent_path)
+   need(actual_intent==current,'namespace_host_intent_changed')
+   before_packet=packet_path.exists()or packet_path.is_symlink()
+   if action=='enroll':need(not before_packet,'namespace_guest_mkdir_must_follow_host_intent')
+   # This is a host-index observation, not a fabricated full seven-category
+   # idle claim. Existing Mac service visibility remains unqualified.
+   if not before_packet:
+    idle=c.idle_facts(c.guest_proof['initialPacket']['facts'],call_deadline)
+    need('unknown_jobs'in idle['blockers'],'namespace_pending_intent_idle_barrier_missing')
+    projection={'idleVisibility':sorted(idle['visibility']),'idleBlockers':sorted(idle['blockers'])}
+   else:
+    # Calling idle_facts from inside its own inventory carrier would recurse.
+    # Actual post-admission observer visibility is the separately captured GET.
+    projection={'idleProjection':'separate_fixed_inventory_only_no_recursive_probe'}
+   save(folder/(label+'.host-before.json'),{'intentPin':actual_pin,'enrollmentId':current['operationId'],'guestPacketAdmitted':before_packet,'fullIdleAuthority':False,**projection})
+   save(folder/(label+'.source.py'),payload);save(folder/(label+'.request.stdin'),payload)
+   save(folder/(label+'.request.json'),{'target':args.target,'argv':list(argv),'sourceSha256':hashlib.sha256(payload).hexdigest(),'actualHostIntentPin':actual_pin,'operationId':args.operation_id,'enrollmentId':current['operationId']})
+   guard();process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env={key:value for key,value in os.environ.items()if not key.startswith('DYLD_')})
+   actor={'pid':process.pid,'birth':J._birth(process.pid),'parent':os.getpid(),'action':action}
+   actors.append(actor)
+   try:
+    save(folder/(label+'.actor.json'),actor)
+    need(actor['birth']is not None and R._parent(process.pid,call_deadline)==os.getpid(),'namespace_rpc_actor_not_owned')
+    stdout,stderr=process.communicate(payload,timeout=min(10,call_deadline-time.monotonic()))
+   except subprocess.TimeoutExpired:
+    save(folder/(label+'.timeout.json'),{'state':'original_enrollment_unknown_no_replay','actor':actor})
+    if actor['birth']is not None and J._birth(process.pid)==actor['birth']and R._parent(process.pid,time.monotonic()+2)==os.getpid():process.kill()
+    process.communicate(timeout=3);raise RuntimeError('namespace_original_rpc_timeout_no_replay')from None
+   finally:
+    if process.poll()is None:
+     if actor['birth']is not None and J._birth(process.pid)==actor['birth']and R._parent(process.pid,time.monotonic()+2)==os.getpid():process.kill()
+     process.wait(timeout=3)
+    for stream in(process.stdin,process.stdout,process.stderr):
+     if stream is not None:stream.close()
+   save(folder/(label+'.stdout.json'),stdout);save(folder/(label+'.stderr.txt'),stderr)
+   save(folder/(label+'.result.json'),{'returncode':process.returncode,'stdoutBytes':len(stdout),'stderrBytes':len(stderr),'stdoutSha256':hashlib.sha256(stdout).hexdigest(),'stderrSha256':hashlib.sha256(stderr).hexdigest(),'actorAbsent':J._birth(actor['pid'])!=actor['birth']})
+   need(J._birth(actor['pid'])!=actor['birth'],'namespace_rpc_actor_still_present');guard()
+   return subprocess.CompletedProcess(argv,process.returncode,stdout,stderr)
+  c._native_call=captured_native
+  try:
+   namespace=c.prepare_unlock_observer_namespace(deadline=deadline)
+   first_intent,first_intent_pin=F._json(intent_path);save(folder/'namespace-original-intent.json',first_intent)
+   save(folder/'namespace-packet.json',namespace)
+   need(c.observe_unlock_observer_namespace(deadline=deadline)==namespace,'namespace_second_marker_read_changed')
+   before=list(calls);need(c.prepare_unlock_observer_namespace(deadline=deadline)==namespace,'namespace_healthy_repeat_changed')
+   need(calls==before,'namespace_healthy_repeat_dispatched_unnecessarily')
+   inventory=c.unlock_observer_inventory(deadline=deadline);save(folder/'empty-inventory.json',inventory)
+   need(inventory=={'generation':namespace['jobGeneration'],'admissionGeneration':namespace['admissionGeneration'],'visibilityComplete':True,'jobs':[],'idle':True},'namespace_empty_inventory_invalid')
+   need(calls==['enroll','namespace-status','namespace-status','empty_inventory'],'namespace_original_dispatch_count_changed')
+   need(F._json(intent_path)[1]==first_intent_pin,'namespace_original_intent_generation_changed')
+   with c.unlock_observer_idle_enrollment()as admitted:
+    admitted.guard()
+    need(admitted.generations==(tuple(namespace['jobGeneration']),tuple(namespace['admissionGeneration'])),'namespace_optional_idle_role_generation_changed')
+   guard();save(folder/'source-capsule-closed.json',closure());guard()
+   save(folder/'complete.json',{'schemaVersion':1,'operationId':args.operation_id,'fixtureId':args.fixture_id,'target':args.target,'originalRunOperationId':c.run_intent['operationId'],'enrollmentId':first_intent['operationId'],'state':'observer_namespace_and_empty_inventory_qualified_direct','dispatches':calls,'nativeRpcActors':actors,'allActorsAbsent':all(J._birth(row['pid'])!=row['birth']for row in actors),'ordinaryCredentialReaderOpened':False,'observerJobsStarted':False,'guiInputSubmitted':False,'powerOrLeaseActions':False,'genericCapabilitiesActivated':False,'fullIdleAuthority':False})
+   print(json.dumps({'operationId':args.operation_id,'state':'observer_namespace_and_empty_inventory_qualified_direct','dispatches':calls}))
+  finally:c._native_call=original_native
+except BaseException as error:
+ if folder is not None:
+  try:save(folder/'failure.json',{'failureClass':type(error).__name__,'originalOutcome':'unknown_no_replay','ordinaryCredentialReaderOpened':False,'observerJobsStarted':False,'guiInputSubmitted':False})
+  except FileExistsError:pass
+ raise
+finally:
+ if c is not None:c.close()
+ self_source.close();sources.close()

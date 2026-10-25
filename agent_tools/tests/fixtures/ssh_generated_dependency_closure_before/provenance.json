@@ -1,0 +1,28 @@
+{
+  "cases": {
+    "fresh_fixture.before.source": {
+      "originalPath": "agent_tools/tests/test_ssh_fresh_fixture_custody.py",
+      "sha256": "5c5fd77f2903b3e7a729fa29612191515f91e30c60e5d94e969ac393cee66d72"
+    },
+    "keeper_entry.before.source": {
+      "originalPath": "agent_tools/ssh_channel_keeper_entry.py",
+      "sha256": "83c30a87daf6afeefe074d58b53ab380946d99d457469c077e75296e3ca5e48a"
+    },
+    "keeper_reader.before.source": {
+      "endLine": 2168,
+      "originalPath": "agent_tools/mcp_server.py",
+      "scope": "Exact complete role binding and authenticated keeper reader function, unchanged original source slice.",
+      "sha256": "caccd482155dc4e9dddd8cbc547cb906ea22c9007602071122f07758d16e1aec",
+      "startLine": 2111,
+      "wholeBeforeEvidence": ".runtime/tool-recovery/ssh-dependency-closure/mcp-before/mcp_server.before.source",
+      "wholeSourceSha256": "d05b7b407580c1ba2a574b90b84cb3b69294262d3a855f72c20649a3d63d9eff"
+    },
+    "selected_program.before.source": {
+      "originalPath": "agent_tools/tests/test_ssh_program_selected_source.py",
+      "sha256": "ec44f28b9747abe1415777e8494bc6798a0695ed77218190cd6d0a73f941d718"
+    }
+  },
+  "failureEvidence": ".runtime/tool-recovery/ssh-native-diagnostic.log",
+  "schemaVersion": 1,
+  "scope": "Complete original local generated callers; no network or remote fixture calls."
+}

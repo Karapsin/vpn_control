@@ -1,0 +1,6 @@
+{
+  "source": "agent_tools/check_output_retention.py",
+  "sha256": "02d602b0d49ac77bbd84ca573c88c7f85b0f0622557d4cbd17cd85da2fc910c2",
+  "bytes": 9202,
+  "failure": "actual fresh nested private prepare capture supplies credentialStreamsSuppressed=True but exact retention schema rejects input"
+}

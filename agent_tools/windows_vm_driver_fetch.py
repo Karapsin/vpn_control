@@ -175,7 +175,7 @@ def _remote(root: str | Path, host: str, correlation_id: str, mode: str, timeout
         raise ValueError("Configured Arch transport is unavailable")
     command = ("python3", "-c", "exec(" + repr(program) + ")")
     argv = ssh_transport.build_ssh_argv(config, host, min(timeout_seconds, 30), command=command)
-    completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    completed = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                timeout=timeout_seconds, check=False)
     if completed.returncode != 0 or len(completed.stdout) > 2048:
         raise ValueError("Windows driver fetch transport is unknown")

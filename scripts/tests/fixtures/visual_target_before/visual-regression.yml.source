@@ -1,0 +1,303 @@
+name: Visual Capture
+run-name: Visual Capture / ${{ inputs.platform || 'preflight-all' }} / ${{ inputs.target_sha || github.sha }}
+
+on:
+  push:
+    branches:
+      - "visual-preflight/**"
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact commit whose UI must be captured
+        required: true
+        type: string
+      platform:
+        description: Hosted fallback platform
+        required: true
+        type: choice
+        options:
+          - android
+          - linux
+          - windows
+          - macos
+      scenes:
+        description: Comma-separated capability-compatible scenes selected by visual_platform
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-capture-${{ inputs.platform }}-${{ inputs.target_sha }}
+  cancel-in-progress: false
+
+env:
+  VPN_CONTROL_VISUAL_PROVIDER: hosted
+  VPN_CONTROL_VISUAL_TARGET_SHA: ${{ inputs.target_sha || github.sha }}
+
+jobs:
+  android:
+    # Android evidence is captured by the agent-owned isolated emulator.
+    # macOS hosted workers do not provide nested HVF for API 35 emulation.
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'android'
+    # GitHub's Ubuntu runners do not expose /dev/kvm. Use the arm64 macOS
+    # runner's Hypervisor-backed emulator instead of a non-booting x86_64 AVD.
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          fetch-depth: 0
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Resolve hosted-capable scenes
+        shell: bash
+        env:
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          scenes="$INPUT_SCENES"
+          if [[ -z "$scenes" ]]; then
+            scenes="$(python3 -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("android")["routes"]["hosted"]))')"
+          fi
+          echo "VISUAL_SCENES=$scenes" >> "$GITHUB_ENV"
+      - name: Capture Android scenes in API 35 emulator
+        shell: bash
+        env:
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+          export PATH="$sdk_root/emulator:$sdk_root/platform-tools:$sdk_root/cmdline-tools/latest/bin:$PATH"
+          # Keep avdmanager and the emulator on the same explicit config path.
+          # Hosted runners can expose a different Android config directory to
+          # the two tools, which otherwise leaves the freshly-created AVD
+          # undiscoverable by the emulator process.
+          export ANDROID_SDK_HOME="${ANDROID_SDK_HOME:-$HOME/.android}"
+          export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$ANDROID_SDK_HOME/avd}"
+          mkdir -p "$ANDROID_AVD_HOME"
+          set +e
+          yes | sdkmanager "platform-tools" "emulator" "platforms;android-35" \
+            "system-images;android-35;google_apis;arm64-v8a"
+          sdk_status="${PIPESTATUS[1]}"
+          set -e
+          [[ "$sdk_status" == "0" ]]
+          yes | sdkmanager --licenses >/dev/null || true
+          echo "no" | avdmanager create avd --force --name vpn-control-visual-hosted \
+            --package "system-images;android-35;google_apis;arm64-v8a" --device pixel_6
+          avdmanager list avd
+          "$sdk_root/emulator/emulator" -list-avds | grep -qx 'vpn-control-visual-hosted'
+          mkdir -p build/visual-actual/android
+          "$sdk_root/emulator/emulator" -avd vpn-control-visual-hosted -port 5554 -no-window -no-audio \
+            -no-boot-anim -no-snapshot -no-snapshot-save -memory 2048 -accel tcg -gpu swiftshader_indirect \
+            > build/visual-actual/android/emulator.log 2>&1 &
+          emulator_pid=$!
+          cleanup() {
+            "$sdk_root/platform-tools/adb" -s "$ANDROID_SERIAL" emu kill >/dev/null 2>&1 || true
+            kill "$emulator_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          adb start-server
+          for _ in $(seq 1 600); do
+            if ! kill -0 "$emulator_pid" >/dev/null 2>&1; then
+              echo "Emulator process exited before becoming available"
+              cat build/visual-actual/android/emulator.log
+              exit 1
+            fi
+            if adb -s "$ANDROID_SERIAL" get-state 2>/dev/null | grep -q '^device$'; then
+              break
+            fi
+            sleep 1
+          done
+          adb -s "$ANDROID_SERIAL" get-state | grep -q '^device$'
+          for _ in $(seq 1 600); do
+            if [[ "$(adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              break
+            fi
+            sleep 1
+          done
+          adb -s "$ANDROID_SERIAL" shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'
+          adb -s "$ANDROID_SERIAL" shell settings put global window_animation_scale 0
+          adb -s "$ANDROID_SERIAL" shell settings put global transition_animation_scale 0
+          adb -s "$ANDROID_SERIAL" shell settings put global animator_duration_scale 0
+          adb -s "$ANDROID_SERIAL" shell settings put system font_scale 1.0
+          scripts/capture_visual_android.sh build/visual-actual/android "$VISUAL_SCENES"
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-capture-android-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          path: |
+            build/visual-actual/android
+          if-no-files-found: warn
+
+  linux:
+    if: inputs.platform == 'linux' || github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          fetch-depth: 0
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install isolated X11 capture environment
+        run: sudo apt-get update && sudo apt-get install -y cpio dbus-x11 fakeroot gdebi-core gdebi haskell-gtk-sni-tray-utils imagemagick libayatana-appindicator3-1 openbox policykit-1-gnome rpm stalonetray xvfb xdotool x11-utils
+      - name: Resolve hosted-capable scenes
+        shell: bash
+        env:
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          scenes="$INPUT_SCENES"
+          if [[ -z "$scenes" ]]; then
+            scenes="$(python3 -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("linux")["routes"]["hosted"]))')"
+          fi
+          echo "VISUAL_SCENES=$scenes" >> "$GITHUB_ENV"
+      - name: Capture Linux scenes
+        run: dbus-run-session -- xvfb-run --server-args='-screen 0 1280x800x24' scripts/capture_visual_desktop.sh linux build/visual-actual/linux "$VISUAL_SCENES"
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-capture-linux-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          path: |
+            build/visual-actual/linux
+          if-no-files-found: warn
+
+  windows:
+    if: inputs.platform == 'windows' || github.event_name == 'push'
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: pwsh
+        env:
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+        run: if ($env:TARGET_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid target SHA' }
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          fetch-depth: 0
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Read native helper SDK version
+        id: native-helper-sdk
+        shell: pwsh
+        run: |
+          $Pin = Get-Content desktopApp/native/windows/toolchain.lock.json -Raw | ConvertFrom-Json
+          "version=$($Pin.sdkVersion)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - name: Set up native helper SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ steps.native-helper-sdk.outputs.version }}
+      - name: Set canonical visual resolution
+        shell: pwsh
+        run: |
+          Set-DisplayResolution -Width 1280 -Height 800 -Force
+          Start-Sleep -Seconds 2
+      - name: Resolve hosted-capable scenes
+        shell: pwsh
+        env:
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          $scenes = $env:INPUT_SCENES
+          if (-not $scenes) {
+            $scenes = python -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("windows")["routes"]["hosted"]))'
+          }
+          "VISUAL_SCENES=$scenes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Capture repeatable Windows scenes
+        shell: pwsh
+        run: ./scripts/capture_visual_desktop.ps1 -Platform windows -Output build/visual-actual/windows -Scenes $env:VISUAL_SCENES
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-capture-windows-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          path: |
+            build/visual-actual/windows
+          if-no-files-found: warn
+
+  macos:
+    if: inputs.platform == 'macos' || github.event_name == 'push'
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Validate exact SHA
+        shell: bash
+        env:
+          TARGET_SHA: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+        run: '[[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - name: Checkout exact source and LFS baselines
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          fetch-depth: 0
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set canonical macOS capture resolution
+        shell: bash
+        run: |
+          brew install --quiet screenresolution
+          mode="$(screenresolution list | grep -oE '[0-9]+x[0-9]+x[0-9]+@[0-9]+' | python3 -c '
+          import re, sys
+          modes = set(value.strip() for value in sys.stdin if value.strip())
+          eligible = []
+          for value in modes:
+              width, height = (int(part) for part in value.split("x", 2)[:2])
+              if width >= 1280 and height >= 800:
+                  eligible.append((width * height, width, height, value))
+          print(min(eligible)[3] if eligible else "")
+          ')"
+          [[ -n "$mode" ]] || { screenresolution list; exit 1; }
+          screenresolution set "$mode"
+          screenresolution get
+          # A fresh macOS account otherwise displays its first-run desktop-help bubble over
+          # Finder-backed FileDialog scenes. The visual fixture must capture the dialog itself.
+          defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
+      - name: Resolve hosted-capable scenes
+        shell: bash
+        env:
+          INPUT_SCENES: ${{ inputs.scenes }}
+        run: |
+          scenes="$INPUT_SCENES"
+          if [[ -z "$scenes" ]]; then
+            scenes="$(python3 -c 'from scripts.visual_platform import capture_plan; print(",".join(capture_plan("macos")["routes"]["hosted"]))')"
+          fi
+          echo "VISUAL_SCENES=$scenes" >> "$GITHUB_ENV"
+      - name: Capture repeatable macOS scenes
+        run: scripts/capture_visual_desktop.sh macos build/visual-actual/macos "$VISUAL_SCENES"
+      - name: Upload capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-capture-macos-${{ env.VPN_CONTROL_VISUAL_TARGET_SHA }}
+          path: |
+            build/visual-actual/macos
+          if-no-files-found: warn

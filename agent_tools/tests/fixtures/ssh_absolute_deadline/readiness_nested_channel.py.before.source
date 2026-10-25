@@ -1,0 +1,123 @@
+"""Current readiness admission over immutable original nested-channel capsules.
+
+The legacy provider remains unchanged: this separate read-only observation route
+executes only its original status capsule, verifies the original ready receipt,
+and retains connection identity across unrelated coordinator source revisions.
+"""
+from __future__ import annotations
+from contextlib import ExitStack
+from dataclasses import asdict
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import time
+
+from . import private_inventory_lock as private
+from . import ssh_connection_session as session
+from . import ssh_fresh_nested_channel as channel
+from . import ssh_transport as transport
+
+GROUP='.rag_index/readiness-nested-channel'
+
+class NestedUnknown(ValueError):
+    pass
+
+class NestedEnded(NestedUnknown):
+    pass
+
+def directory(root,host):
+    if type(host)is not str or transport._ALIAS_RE.fullmatch(host)is None:raise NestedUnknown('nested_host')
+    return Path(root).absolute()/GROUP/host
+
+
+def present(root,host):
+    return os.path.lexists(directory(root,host)/'current.json')
+
+
+def _original(root,host,corr,receipt,deadline=None):
+    channel._corr(corr)
+    if type(receipt)is not str or re.fullmatch('[0-9a-f]{64}',receipt)is None:raise NestedUnknown('nested_receipt')
+    root=Path(root).resolve(strict=True)
+    with ExitStack()as stack:
+        base=stack.enter_context(private.Directory(root))
+        config=transport.load_config(root);target=config.hosts[host]
+        if target.transport!='nested' or len(transport._route_hosts(config.hosts,host))!=2:raise NestedUnknown('nested_route')
+        parent=stack.enter_context(private.Directory(channel._context_journal(root,host,corr,False,True)))
+        intent=stack.enter_context(private.Snapshot(parent,corr+'.intent.json'))
+        ready=stack.enter_context(private.Snapshot(parent,corr+'.ready.json'))
+        value=json.loads(intent.body,object_pairs_hook=transport._reject_duplicate_keys)
+        admitted=json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys)
+        if type(value)is not dict or type(admitted)is not dict:raise NestedUnknown('nested_record_schema')
+        from . import ssh_direct_nested_channel as direct
+        version=value.get('version')
+        config_pin=stack.enter_context(direct.private_inventory(root) if version==3 else private.Snapshot(base,transport.CONFIG_FILENAME))
+        if version==3:
+            config=config_pin.load_config(root);target=config.hosts[host]
+            if target.transport!='nested' or len(transport._route_hosts(config.hosts,host))!=2:raise NestedUnknown('nested_route')
+        if (version not in (2,3) or value.get('host')!=host or value.get('correlationId')!=corr
+                or value.get('transportMode')!='direct' or value.get('inventory')!=config_pin.pin()
+                or ready.digest!=receipt or admitted.get('intent')!=intent.pin()):raise NestedUnknown('nested_original_binding')
+        # The complete historical fixed source catalog is retained as data.
+        # Never import an old local module or substitute current source bytes.
+        from . import ssh_direct_nested_channel as direct
+        if set(value.get('directSourcePins',{}))!=set(direct.source_catalog(version)):raise NestedUnknown('nested_source_catalog')
+        hashes={'remote':value['remoteSourceSha256'],'ssh_fresh_nested_channel.py':value['sourceSha256'],**value['directSourcePins']}
+        capsules=[]
+        for name,digest in hashes.items():
+            held=stack.enter_context(private.Snapshot(parent,corr+'.'+name+'.source'))
+            if held.digest!=digest:raise NestedUnknown('nested_capsule_changed')
+            capsules.append(held)
+            if name=='remote':remote=held.body.decode()
+        gateway=transport.connection_host(config,target.gateway)
+        prefix,endpoint=transport.fresh_direct_prefix(config,gateway.alias)
+        argv=[*prefix,'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-T',endpoint,
+              shlex.join(('python3','-I','-B','-c','exec('+repr(remote)+')',corr,'status',
+                          str(target.remote_config_file or ''),target.remote_host_alias,value['sourceSha256']))]
+        config_pin.guard();intent.guard();ready.guard()
+        timeout=35 if deadline is None else min(35,max(.001,deadline-time.monotonic()))
+        captured=channel._collect(argv,b'{}',timeout)
+        for held in [config_pin,intent,ready,*capsules]:held.guard()
+        if (not captured['complete'] or captured['overflow'] or captured['returnCode']!=0 or captured['stderr']):raise NestedUnknown('nested_original_unknown')
+        actual=json.loads(captured['stdout'],object_pairs_hook=transport._reject_duplicate_keys)
+        if type(actual)is not dict:raise NestedUnknown('nested_original_schema')
+        if (set(actual)=={'state','correlationId','prior','gatewayBoot'} and actual.get('state')=='ended'
+                and actual.get('correlationId')==corr and actual.get('prior')==admitted.get('result')
+                and actual.get('gatewayBoot')==admitted['result']['master']['gatewayBoot']):
+            raise NestedEnded('nested_original_ended')
+        if actual!=admitted.get('result'):raise NestedUnknown('nested_original_changed')
+        if (actual.get('state')!='ready' or actual.get('controlPath')!='/tmp/vpn-channel-'+corr+'/m'
+                or actual.get('correlationId')!=corr or not channel._peer_shape(actual.get('arch'))
+                or not channel._master_shape(actual.get('master'))):raise NestedUnknown('nested_original_schema')
+        return {'correlationId':corr,'receiptSha256':receipt,'controlPath':actual['controlPath'],
+                'boot':actual['arch']['boot'],'uid':actual['arch']['uid']}
+
+
+def admit(root,host,corr,receipt):
+    """Explicit new readiness selection; original legacy history stays intact."""
+    observed=_original(root,host,corr,receipt)
+    for path in (Path(root)/'.rag_index',Path(root)/GROUP,directory(root,host)):
+        path.mkdir(mode=0o700,exist_ok=True)
+    with private.Directory(directory(root,host))as parent,private.InventoryLock(parent):
+        record={'version':1,'host':host,'correlationId':corr,'receiptSha256':receipt}
+        name='admission-'+corr+'.json'
+        if not os.path.lexists(parent.path/name):session._create(parent.path/name,record,parent_fd=parent.fd)
+        with private.Snapshot(parent,name)as held:
+            if json.loads(held.body)!=record:raise NestedUnknown('nested_admission_changed')
+            temporary='pointer-'+hashlib.sha256(os.urandom(32)).hexdigest()+'.json'
+            session._create(parent.path/temporary,record,parent_fd=parent.fd)
+            os.replace(temporary,'current.json',src_dir_fd=parent.fd,dst_dir_fd=parent.fd);os.fsync(parent.fd)
+            held.guard();parent.guard()
+    return {'state':'selected','host':host,**observed}
+
+
+def route_options(root,host,config=None,deadline=None):
+    if config is not None and asdict(transport.load_config(root))!=asdict(config):raise NestedUnknown('nested_configuration_changed')
+    with private.Directory(directory(root,host))as parent,private.Snapshot(parent,'current.json')as current:
+        value=json.loads(current.body,object_pairs_hook=transport._reject_duplicate_keys)
+        if (type(value)is not dict or set(value)!={'version','host','correlationId','receiptSha256'}
+                or type(value.get('version'))is not int or value['version']!=1 or value.get('host')!=host):raise NestedUnknown('nested_selection_binding')
+        observed=_original(root,host,value['correlationId'],value['receiptSha256'],deadline)
+        current.guard();parent.guard();return observed

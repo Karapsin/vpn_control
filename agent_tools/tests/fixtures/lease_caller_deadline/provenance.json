@@ -1,0 +1,15 @@
+{
+  "kind": "complete_before_caller_deadline_propagation",
+  "files": {
+    "readiness_gui_lease.py.before.source": "94a364b9690d6ad06c5e9345f1db77be6fc1ba9a42e5428b1913654a05a67d1d",
+    "readiness_lease_workflow.py.before.source": "9459eac8e9b564a240f5f6498b39b7133cb159b9e06654cd768dc19e9676b411",
+    "readiness_fixture_registry.py.before.source": "df3c531057acffc9e3b9e2b4f79fd6866afc8b045fb729947776b5849c9ea0af",
+    "readiness_windows.py.before.source": "86c07301a040a0751b7a1eee150d7e39fefb2962855e8ca3175bd68d8f907642",
+    "readiness_tart_macos.py.before.source": "038f901bd043c3bebb9540e5b06027f9667736f40aa36804169d7cff07981de1",
+    "readiness_tart_macos_registry.py.before.source": "95d683b31e22ca4d7efc037b394a9bbb44bd452e2d4880c3a4b3f235f0d6a3ab",
+    "readiness_tart_macos_lease_executor.py.before.source": "66bc15545333fe032847552086ea95e3470dd13851cc7308211959a08265a940",
+    "readiness_gui_lease.phase-cap.py.before.source": "5a73c13dfc9777fb961b448bcf2090f4f54ebca3e4e58e4fd104f793a015e77a"
+  },
+  "scope": "host caller deadlines only; no durable guest owner/source/TTL changes",
+  "phaseCapBefore": "Review-observed acquisition-budget persistence; no native failure claimed"
+}

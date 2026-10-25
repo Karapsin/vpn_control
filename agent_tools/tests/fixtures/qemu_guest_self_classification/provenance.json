@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "source": "agent_tools/readiness_qemu_guest.py",
+  "sourceSha256": "b79ed7a97e1bdebce0a8c749a3fcfeab11e34683026adac25d9088e221dab742",
+  "failure": "The diagnostic classified its own Python source argument as an active VPN runtime because it contained the runtime class-name literal.",
+  "nativeEvidence": ".runtime/tool-recovery-qemu/linux-idle-native-fixed.json"
+}

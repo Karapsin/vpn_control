@@ -1,0 +1,4 @@
+{
+  "sha256": "b7bc70a6d75cb6608a202540bea7f2cfaa1fb489d2c9b004654b1c85fb29fe51",
+  "reason": "Existing ensure_ready returns ready without reconciling original resource owner admission after lost acknowledgement."
+}

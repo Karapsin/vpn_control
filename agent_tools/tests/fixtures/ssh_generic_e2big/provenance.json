@@ -1,0 +1,6 @@
+{
+  "beforeSha256": "19f3532ae369cbb53665330b8de70adcbbb13dfcd5f569a634167af5ab897ac5",
+  "failure": "Generic run_ssh has no automatic actual prelaunch E2BIG fallback; only the explicit program owner handles the typed refusal.",
+  "loaderBeforeSha256": "2f5a5e3f65ee571d608a54602b3a6934818ddbff3b8a4e45c3f6fb42f9f93431",
+  "popenBeforeSha256": "c9361f557872c8914865b74656c18c1f1895b4d7b87790ded52741ae2c518525"
+}

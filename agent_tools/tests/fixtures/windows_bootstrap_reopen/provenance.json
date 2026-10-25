@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "e6ff15658b7462d37acfda04ae1f1c6bfaa9399334a47d916a53f195ed212233",
+  "origin": "unexposed-source-review",
+  "failure": "partial local receipt and constant-only source could mint opaque bootstrap proof without actual collection",
+  "nativeQualification": false
+}

@@ -5,6 +5,7 @@ retry, adoption or signal operation. A timed-out SSH submission retains its actu
 handle; the detached remote supervisor owns and reaps the original gated copy.
 """
 from __future__ import annotations
+from . import ssh_transport
 
 import base64
 import hashlib
@@ -387,7 +388,7 @@ class RetainedClient:
         self.selector = None
         self.initialization_unknown = False
         self.fallback_readiness = False
-        self.child = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.child = ssh_transport.popen_ssh(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL)
         try:
             self.selector = selectors.DefaultSelector()
@@ -466,6 +467,7 @@ class RetainedClient:
             self.selector.close()
         os.close(self.raw_fd)
         self.raw_fd = None
+        ssh_transport.finish_ssh(self.child)
         self.capture.close()
 
 

@@ -1,0 +1,519 @@
+"""Actual held files, process generations, locks and detached durable owners.
+
+These tests do not qualify a Mac VM or manufacture guest/desktop visibility.
+"""
+from dataclasses import replace
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+from uuid import uuid4
+
+from agent_tools import durable_remote_job as jobs
+from agent_tools import readiness_tart_macos_registry as subject
+
+
+@unittest.skipUnless(os.name == "posix", "private FD, process generation and flock custody")
+class MacCustodyPrimitivesTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve())
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name); self.root.chmod(0o700)
+
+    def file(self, name, body=b'private-value'):
+        path = self.root / name
+        path.write_bytes(body); path.chmod(0o600)
+        return path
+
+    def test_credential_pin_never_reads_or_hashes_bytes_and_rejects_changed_generation(self):
+        path = self.file('credential')
+        with mock.patch('hashlib.sha256', side_effect=AssertionError('credential hash forbidden')), \
+                mock.patch('os.read', side_effect=AssertionError('credential read forbidden')), \
+                subject.HeldArtifact(path) as held:
+            held.guard()
+            fd = held.credential_fd(); os.close(fd)
+            path.write_bytes(b'changed-private-value')
+            with self.assertRaisesRegex(subject.MacBlocked, '^macos_artifact_generation_changed$'):
+                held.credential_fd()
+
+    def test_mutable_disk_accepts_guest_writes_but_not_inode_or_access_changes(self):
+        path = self.file('disk.img', b'x')
+        with subject.HeldArtifact(path, mutable=True) as held:
+            with path.open('ab') as stream: stream.write(b'guest-write')
+            held.guard()
+            with self.assertRaisesRegex(subject.MacBlocked, 'macos_credential_generation_required'):
+                held.credential_fd()
+            path.chmod(0o640)
+            with self.assertRaisesRegex(subject.MacBlocked, 'macos_artifact_generation_changed'):
+                held.guard()
+        path.chmod(0o600)
+        with subject.HeldArtifact(path, mutable=True) as held:
+            replacement = self.file('replacement')
+            os.replace(replacement, path)
+            with self.assertRaisesRegex(subject.MacBlocked, 'macos_artifact_generation_changed'):
+                held.guard()
+
+    def test_symlinks_hardlinks_and_redirected_parents_fail_closed(self):
+        path = self.file('original')
+        link = self.root/'link'; link.symlink_to(path)
+        with self.assertRaises(subject.MacBlocked): subject.HeldArtifact(link)
+        link.unlink(); os.link(path,link)
+        with self.assertRaises(subject.MacBlocked): subject.HeldArtifact(path)
+        link.unlink()
+        directory=self.root/'private'; directory.mkdir(mode=0o700)
+        item=directory/'credential';item.write_bytes(b'secret');item.chmod(0o600)
+        with subject.HeldArtifact(item) as held:
+            directory.rename(self.root/'old');directory.mkdir(mode=0o700)
+            with self.assertRaisesRegex(subject.MacBlocked,'macos_artifact_generation_changed'):held.guard()
+
+    def test_operator_competition_and_cancellation_use_actual_flock(self):
+        path=self.root/'operator.lock'
+        outer=subject.OperatorLock(path)
+        with outer.acquire(deadline=time.monotonic()+2):
+            with outer.acquire(deadline=time.monotonic()+1):outer.guard()
+            child = subprocess.run([sys.executable,'-I','-c',
+                'import fcntl,os,sys;f=os.open(sys.argv[1],os.O_RDWR);'
+                '\ntry:fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)'
+                '\nexcept BlockingIOError:sys.exit(9)',str(path)],capture_output=True,timeout=2)
+            self.assertEqual(child.returncode,9)
+            with self.assertRaisesRegex(subject.MacBlocked,'macos_readiness_cancelled'):
+                subject.OperatorLock(path).acquire(deadline=time.monotonic()+1,cancelled=lambda:True).__enter__()
+        with subject.OperatorLock(path).acquire(deadline=time.monotonic()+1):pass
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_operator_not_held'):outer.guard()
+
+    def test_replacing_locked_operator_file_cannot_preserve_ownership_proof(self):
+        path=self.root/'operator.lock';operator=subject.OperatorLock(path)
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_operator_generation_changed'):
+            with operator.acquire(deadline=time.monotonic()+1):
+                os.replace(self.file('foreign-lock',b''),path)
+                operator.guard()
+
+    @unittest.skipUnless(sys.platform=='darwin','native kernel/ps spelling is Darwin-specific')
+    def test_actual_public_actor_rejects_birth_argv_and_private_diagnostics(self):
+        executable=str(Path('/bin/sleep').resolve())
+        process=subprocess.Popen([executable,'3'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda:process.poll() is None and process.terminate())
+        self.addCleanup(process.wait)
+        actor=subject.PublicActor(process.pid,jobs._birth(process.pid),executable,(executable,'3'))
+        self.assertEqual(actor.guard(deadline=time.monotonic()+2)['pid'],process.pid)
+        for changed in (replace(actor,birth='darwin:1:1'),replace(actor,argv=(executable,'private-secret'))):
+            with self.assertRaisesRegex(subject.MacBlocked,'^macos_actor_generation_changed$'):
+                changed.guard(deadline=time.monotonic()+2)
+
+    def test_whole_original_ps_comm_long_executable_is_red_kernel_executable_guard_green(self):
+        from importlib.machinery import SourceFileLoader
+        import importlib.util,shutil
+        before=Path(__file__).parent/'fixtures/tart_macos_actor_comm.before.source'
+        loader=SourceFileLoader('agent_tools._mac_actor_comm_before',str(before))
+        spec=importlib.util.spec_from_loader(loader.name,loader)
+        old=importlib.util.module_from_spec(spec);sys.modules[loader.name]=old
+        self.addCleanup(sys.modules.pop,loader.name,None);loader.exec_module(old)
+        executable=self.root/'owned-native-public-executable-name-longer-than-bsd-comm-width'
+        shutil.copyfile(Path('/bin/sleep').resolve(),executable);executable.chmod(0o700)
+        process=subprocess.Popen([str(executable),'5'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        def close():
+            if process.poll() is None:process.terminate()
+            process.wait(timeout=2)
+        self.addCleanup(close)
+        birth=jobs._birth(process.pid);argv=(str(executable),'5')
+        with self.assertRaisesRegex(subject.MacBlocked,'^macos_actor_generation_changed$'):
+            old.PublicActor(process.pid,birth,str(executable),argv).guard(deadline=time.monotonic()+2)
+        actor=subject.PublicActor(process.pid,birth,str(executable),argv)
+        self.assertEqual(actor.guard(deadline=time.monotonic()+2)['pid'],process.pid)
+        for changed in (replace(actor,executable='/another/kernel/executable',argv=('/another/kernel/executable','5')),
+                        replace(actor,argv=(str(executable),'private-unexpected-input'))):
+            with self.assertRaisesRegex(subject.MacBlocked,'^macos_actor_generation_changed$'):
+                changed.guard(deadline=time.monotonic()+2)
+
+    def owner(self):
+        root=self.root/'jobs';root.mkdir(mode=0o700)
+        binding=jobs.current_binding('controlled-mac-owner','actual-local-host')
+        program=jobs.Program('controlled-mac-custody',b'import time\nprint("retained",flush=True)\ntime.sleep(.15)\n')
+        operation=str(uuid4());generation=jobs.root_generation(root)
+        jobs.submit(root,operation,binding,program,generation=generation)
+        return subject.OriginalOwner(root,generation,operation,binding,program)
+
+    def terminal(self,owner):
+        end=time.monotonic()+5
+        while time.monotonic()<end:
+            # The submit ACK may precede publication of this SAME owner's
+            # receipt; wait observation-only, without changing admission.
+            status=jobs.observe(owner.root,owner.operation_id,owner.binding,generation=owner.generation)
+            if status['state']=='unknown' and status['reason']=='record_unavailable':
+                time.sleep(.02);continue
+            result=owner.observe()
+            if result['state']=='terminal':return result
+            time.sleep(.02)
+        self.fail('original detached owner did not finish')
+
+    def test_actual_original_owner_collects_terminal_and_never_replaces_missing_receipt(self):
+        owner=self.owner();result=self.terminal(owner)
+        self.assertEqual(result['terminal']['exitCode'],0)
+        self.assertEqual((owner.root/owner.operation_id/'stdout.bin').read_bytes(),b'retained\n')
+        # Publication precedes the original owner's process exit. A missing
+        # terminal is UNKNOWN only after that exact live actor is absent.
+        actor=result['owner'];end=time.monotonic()+5
+        while jobs._birth(actor['pid'])==actor['birth'] and time.monotonic()<end:
+            time.sleep(.01)
+        self.assertNotEqual(jobs._birth(actor['pid']),actor['birth'])
+        (owner.root/owner.operation_id/'terminal.json').unlink()
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_original_owner_unknown'):owner.observe()
+        self.assertEqual(len(list(owner.root.iterdir())),1)
+
+    def test_actual_owner_rejects_foreign_source_generation_and_incomplete_stream(self):
+        owner=self.owner();self.terminal(owner)
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_original_program_changed'):
+            replace(owner,program=jobs.Program(owner.program.purpose,b'print("foreign")\n')).observe()
+        (owner.root/owner.operation_id/'stdout.bin').write_bytes(b'partial')
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_original_owner_unknown'):owner.observe()
+
+
+
+@unittest.skipUnless(os.name == "posix", "POSIX provider host boundary")
+class MacProductionCustodyBoundariesTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve())
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name); self.root.chmod(0o700)
+
+    def pin(self, path):
+        import hashlib
+        return {'generation':list(subject.private._generation(path.stat())), 'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+
+    def test_public_source_holder_validates_exact_metadata_bytes_without_reopening_secrets(self):
+        path = self.root/'public-proof.json';path.write_text('{"schemaVersion":1}');path.chmod(0o600)
+        pin = self.pin(path)
+        with subject.PublicProof(path,pin) as held:
+            self.assertEqual({'schemaVersion':1},held.value())
+            with mock.patch('os.read',side_effect=AssertionError('no repeated content read')):
+                held.guard()
+            path.write_text('{"schemaVersion":2}')
+            with self.assertRaisesRegex(subject.MacBlocked,'macos_public_proof_changed'):held.guard()
+        bad={**pin,'sha256':'0'*64}
+        path.write_text('{"schemaVersion":1}')
+        bad['generation']=list(subject.private._generation(path.stat()))
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_public_proof_changed'):subject.PublicProof(path,bad)
+
+    def test_public_records_reject_duplicate_fields_and_foreign_generation(self):
+        path=self.root/'public.json';path.write_text('{"a":1,"a":2}');path.chmod(0o600)
+        with subject.PublicProof(path,self.pin(path)) as held:
+            with self.assertRaisesRegex(subject.MacBlocked,'macos_public_record_invalid'):held.value()
+        pin=self.pin(path);pin['generation'][1]+=1
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_public_proof_changed'):subject.PublicProof(path,pin)
+
+    def test_public_share_exact_entries_links_and_generations_have_no_repeated_content_reads(self):
+        directory=self.root/'public';directory.mkdir(mode=0o755)
+        source=directory/'source.py';source.write_bytes(b'print("public source")\n');source.chmod(0o444)
+        link=directory/'source-link';link.symlink_to('source.py')
+        rows=[{'path':'source.py','kind':'file',**self.pin(source)},
+              {'path':'source-link','kind':'symlink','generation':list(subject.private._generation(link.lstat())),'target':'source.py'}]
+        held=subject.PublicSourceTree(directory,rows)
+        with mock.patch('os.read',side_effect=AssertionError('no repeated source or private data read')):held.guard()
+        extra=directory/'unexpected';extra.write_bytes(b'public unexpected')
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_share_changed'):held.guard()
+        extra.unlink();held.guard()
+        source.chmod(0o644);source.write_bytes(b'changed source')
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_share_changed'):held.guard()
+
+    def test_public_share_never_follows_undeclared_ancestor_or_escaping_link(self):
+        directory=self.root/'public';directory.mkdir(mode=0o755)
+        outside=self.root/'outside';outside.mkdir(mode=0o755)
+        source=outside/'source.py';source.write_bytes(b'public source');source.chmod(0o444)
+        (directory/'redirect').symlink_to(outside,target_is_directory=True)
+        row={'path':'redirect/source.py','kind':'file',**self.pin(source)}
+        with mock.patch('os.read',side_effect=AssertionError('must reject redirect before reading')):
+            with self.assertRaisesRegex(subject.MacBlocked,'macos_share_manifest_invalid'):
+                subject.PublicSourceTree(directory,[row])
+        link=directory/'escaping';link.symlink_to(source)
+        rows=[{'path':'redirect','kind':'symlink','generation':list(subject.private._generation((directory/'redirect').lstat())),'target':str(outside)},
+              {'path':'escaping','kind':'symlink','generation':list(subject.private._generation(link.lstat())),'target':str(source)}]
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_share_changed'):subject.PublicSourceTree(directory,rows)
+
+    def test_original_complete_source_rejects_empty_public_file_before_fix_and_admits_exact_empty_after(self):
+        from importlib.machinery import SourceFileLoader
+        import importlib.util
+        before=Path(__file__).parent/'fixtures/tart_macos_public_empty.before.source'
+        loader=SourceFileLoader('agent_tools._mac_public_empty_before',str(before))
+        spec=importlib.util.spec_from_loader(loader.name,loader)
+        old=importlib.util.module_from_spec(spec);sys.modules[loader.name]=old
+        self.addCleanup(sys.modules.pop,loader.name,None);loader.exec_module(old)
+        directory=self.root/'public';directory.mkdir(mode=0o755)
+        source=directory/'__init__.py';source.write_bytes(b'');source.chmod(0o644)
+        rows=[{'path':'__init__.py','kind':'file',**self.pin(source)}]
+        with self.assertRaisesRegex(subject.MacBlocked,'^macos_public_proof_unsafe$'):
+            old.PublicSourceTree(directory,rows)
+        held=subject.PublicSourceTree(directory,rows);held.guard()
+        # Empty JSON/metadata is still not an admissible public proof record.
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_public_proof_unsafe'):
+            subject.PublicProof(source,self.pin(source))
+        source.write_bytes(b'changed')
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_share_changed'):held.guard()
+
+    def test_native_readonly_producer_refs_bind_exact_fixed_source_target_and_collected_bytes(self):
+        import json
+        from copy import deepcopy
+        from contextlib import ExitStack
+        from agent_tools.tests.test_readiness_tart_macos import binding, facts
+        from agent_tools import readiness_qemu_jobs as protocol
+        prefix='/usr/local/libexec/vpn-tool-recovery-cont-controlled'
+        bound=replace(binding(),guest_python=prefix+'/python/bin/python3.12')
+        files={name:'a'*64 for name in ('python/bin/python3.12','tart-guest-agent','guest-probe.py','guest-probe-main.py','readonly-probe','launchDaemon')}
+        packet={'facts':facts(),'agent':{'uid':bound.ordinary_uid}}
+        source=subject.guest_probe_source(bound,prefix=prefix,public_files=files)
+        argv,payload=protocol.stdin_command(source)
+        original=str(uuid4())
+        intent={'originalRun':original,'state':'readonly_observation_admitted','command':{
+            'argv':[bound.tart_binary,'exec','-i',bound.vm_name,bound.guest_python,*argv[1:]],
+            'sourceSha256':__import__('hashlib').sha256(payload).hexdigest(),'publicFiles':files,
+            'registrySha256':'a'*64,'stdinFile':'/private/declared-public-source.py'}}
+        directory=self.root/'.runtime';directory.mkdir(mode=0o700)
+        def check(intent_value, result_override=None):
+            paths={}
+            stdout=json.dumps(packet).encode()
+            result={'elapsed':.1,'returncode':0,'stderrBytes':0,'stdoutBytes':len(stdout)}
+            result.update(result_override or {})
+            for name,value in (('intent',intent_value),('result',result),('stdout',packet)):
+                path=directory/(name+'.json');path.write_bytes(stdout if name=='stdout' else json.dumps(value).encode());path.chmod(0o600)
+                paths[name]={'path':str(path),'pin':self.pin(path)}
+            custody=subject.MacCustody.__new__(subject.MacCustody)
+            custody.root=self.root;custody.binding=bound;custody.run_intent={'operationId':original};custody._records=[]
+            custody.guest_proof={'schemaVersion':1,'machine':bound.machine,'account':bound.ordinary_account,
+                                 'uid':bound.ordinary_uid,'home':bound.ordinary_home,'prefix':prefix,
+                                 'publicFiles':files,'initialPacket':packet,'nativeProducer':paths}
+            with ExitStack() as custody._held:custody._validate_guest_proof()
+        check(intent)
+        wrong=deepcopy(intent);wrong['command']['argv'][3]='another-vm'
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_guest_producer_invalid'):check(wrong)
+        wrong=deepcopy(intent);wrong['command']['sourceSha256']='0'*64
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_guest_producer_invalid'):check(wrong)
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_guest_producer_invalid'):check(intent,{'stdoutBytes':1})
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_guest_producer_invalid'):check(intent,{'returncode':True})
+
+    def test_mac_namespace_requires_fixed_darwin_root_before_operator_or_guest_dispatch(self):
+        import hashlib,json
+        from agent_tools.tests.test_readiness_tart_macos import binding
+        from agent_tools import readiness_qemu_jobs as protocol
+        custody=subject.MacCustody.__new__(subject.MacCustody)
+        custody.lifecycle_root=self.root;custody.binding=binding()
+        value={'schemaVersion':1,'root':protocol.DARWIN_ROOT,'generation':[1,2],'admissionGeneration':[1,3],
+               'target':custody.binding.target,'machine':custody.binding.machine,'actualMachineId':custody.binding.machine,
+               'account':str(custody.binding.ordinary_uid),'ownerSourceSha256':hashlib.sha256(jobs.owner_source()).hexdigest()}
+        path=self.root/'guest-jobs.json';path.write_text(json.dumps(value));path.chmod(0o600)
+        self.assertEqual(custody.load_guest_namespace(),value)
+        wrong={**value,'root':protocol.ROOT};path.write_text(json.dumps(wrong))
+        with mock.patch.object(custody,'operator',side_effect=AssertionError('wrong root before lock')), \
+                mock.patch.object(custody,'ordinary_guest_call',side_effect=AssertionError('wrong root before guest')):
+            with self.assertRaises(ValueError):custody.load_guest_namespace()
+            with self.assertRaises(ValueError):custody.admit_guest_namespace(wrong)
+
+    def lease_custody(self):
+        from agent_tools.tests.test_readiness_tart_macos import binding
+        from agent_tools import readiness_fixture_registry as registry,readiness_tart_macos_leases as leases
+        custody=subject.MacCustody.__new__(subject.MacCustody)
+        custody.root=self.root;custody.lifecycle_root=self.root/'.runtime'/'lifecycle'
+        custody.lifecycle_root.mkdir(mode=0o700,parents=True)
+        custody.fixture_id='controlled-current';custody.binding=binding();custody._registry=registry
+        custody._operator=subject.OperatorLock(custody.lifecycle_root/'operator.lock')
+        bound=leases.MacLeaseBinding(custody.binding.target,custody.binding.machine,
+                                    '11234567-89AB-4DEF-8123-0123456789AB','501','toolrecovery','/Users/toolrecovery','101')
+        custody.guard=lambda **kwargs:None
+        custody._lease_binding=lambda deadline:bound
+        return custody,bound
+
+    def test_lease_enrollment_host_admission_precedes_guest_write_and_healthy_repeat_has_no_dispatch(self):
+        import ast,hashlib,json
+        from agent_tools import readiness_tart_macos_lease_bridge as bridge
+        custody,bound=self.lease_custody();calls=[]
+        packet={'schemaVersion':1,'root':bridge.ROOT,'target':bound.target,'machine':bound.machine,'account':bound.account,
+                'rootGeneration':[1,2],'jobGeneration':[1,3],'admissionGeneration':[1,4],
+                'sources':{name:hashlib.sha256(Path(subject.__file__).with_name(name).read_bytes()).hexdigest()
+                           for name in ('durable_remote_job.py','tart_macos_probe.py','readiness_tart_macos_leases.py')}}
+        def execute(binding,argv,payload,deadline):
+            self.assertTrue(custody._lease_paths()[0].is_file())
+            intent,_=custody._lease_original()
+            self.assertTrue(Path(intent['capsule']['path']).is_file())
+            source=payload.decode();config=ast.literal_eval(next(line[7:]for line in source.splitlines()if line.startswith('CONFIG=')))
+            calls.append(config['action'])
+            return subprocess.CompletedProcess(argv,0,json.dumps(packet).encode(),b'')
+        custody.ordinary_guest_call=execute
+        self.assertEqual(custody.prepare_lease_namespace(deadline=time.monotonic()+3),packet)
+        self.assertEqual(calls,['enroll','namespace-status'])
+        custody.fixture_id='fresh-source-only-alias'
+        self.assertEqual(custody.prepare_lease_namespace(deadline=time.monotonic()+3),packet)
+        self.assertEqual(calls,['enroll','namespace-status'])
+        if Path('/dev/fd').is_dir():
+            before=len(list(Path('/dev/fd').iterdir()))
+            for _ in range(20):self.assertEqual(custody.load_lease_namespace(),packet)
+            self.assertEqual(len(list(Path('/dev/fd').iterdir())),before)
+
+    def test_lost_lease_enrollment_ack_reconciles_original_marker_without_second_enroll(self):
+        import ast,hashlib,json
+        from agent_tools import readiness_tart_macos_lease_bridge as bridge
+        custody,bound=self.lease_custody();calls=[]
+        packet={'schemaVersion':1,'root':bridge.ROOT,'target':bound.target,'machine':bound.machine,'account':bound.account,
+                'rootGeneration':[1,2],'jobGeneration':[1,3],'admissionGeneration':[1,4],
+                'sources':{name:hashlib.sha256(Path(subject.__file__).with_name(name).read_bytes()).hexdigest()
+                           for name in ('durable_remote_job.py','tart_macos_probe.py','readiness_tart_macos_leases.py')}}
+        def execute(binding,argv,payload,deadline):
+            config=ast.literal_eval(next(line[7:]for line in payload.decode().splitlines()if line.startswith('CONFIG=')))
+            calls.append(config['action'])
+            if len(calls)==1:raise subject.MacBlocked('macos_guest_call_unknown')
+            return subprocess.CompletedProcess(argv,0,json.dumps(packet).encode(),b'')
+        custody.ordinary_guest_call=execute
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_guest_call_unknown'):
+            custody.prepare_lease_namespace(deadline=time.monotonic()+3)
+        self.assertFalse(custody._lease_paths()[1].exists())
+        original=jobs._record(custody._lease_paths()[0])
+        self.assertEqual(custody.prepare_lease_namespace(deadline=time.monotonic()+3),packet)
+        self.assertEqual(calls,['enroll','namespace-status','namespace-status'])
+        self.assertEqual(jobs._record(custody._lease_paths()[0]),original)
+
+    def test_background_lease_binding_preserves_known_lock_and_sleep_and_rejects_wrong_account(self):
+        from copy import deepcopy
+        from agent_tools.tests.test_readiness_tart_macos import binding,facts
+        custody=subject.MacCustody.__new__(subject.MacCustody);custody.binding=binding()
+        packet={'facts':facts(),'agent':{'rawBoot':facts()['boot'].upper()}}
+        packet['facts']['console']['locked']=True;packet['facts']['display']='sleeping'
+        before=deepcopy(packet)
+        custody.guest_probe=lambda *args:packet
+        bound=custody._lease_binding(time.monotonic()+3)
+        self.assertEqual((bound.account,bound.session),('501','101'))
+        self.assertEqual(packet,before)
+        packet['facts']['console']['uid']=502
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_lease_ordinary_session_missing'):
+            custody._lease_binding(time.monotonic()+3)
+
+    def test_lease_epochs_have_finite_distinct_host_paths_without_redirecting_original_v1(self):
+        custody=subject.MacCustody.__new__(subject.MacCustody);custody.lifecycle_root=self.root
+        old=custody._lease_paths('v1');new=custody._lease_paths('v2')
+        self.assertEqual(old,(self.root/'guest-leases.intent.json',self.root/'guest-leases.json',
+                              '/private/var/tmp/vc-recovery-macos-leases'))
+        self.assertEqual(new,(self.root/'guest-leases-v2.intent.json',self.root/'guest-leases-v2.json',
+                              '/private/var/tmp/vc-recovery-macos-leases-v2'))
+        for value in ('../other',True,1,'/private/var/tmp/other'):
+            with self.assertRaisesRegex(subject.MacBlocked,'macos_lease_namespace_version_invalid'):
+                custody._lease_paths(value)
+
+    def test_v2_enrollment_requires_captured_v1_idle_and_preserves_original_files(self):
+        import ast,base64,hashlib,json
+        from agent_tools import readiness_tart_macos_lease_bridge as bridge
+        custody,bound=self.lease_custody()
+        original=json.loads(bridge.capsule(bound))
+        original['bridge']=base64.b64encode((Path(__file__).parent/'fixtures/macos_lease_bridge_namespace_v1_before.source').read_bytes()).decode()
+        raw=json.dumps(original,sort_keys=True,separators=(',',':')).encode()
+        operation=str(uuid4());directory=custody.lifecycle_root/('lease-source-'+operation)
+        directory.mkdir(mode=0o700);source=directory/'capsule.json';jobs._create(source,raw)
+        _,pin=custody._registry._json(source)
+        old_intent,old_packet,old_root=custody._lease_paths('v1')
+        intent={'schemaVersion':1,'operationId':operation,'fixtureId':'controlled-original',
+                'binding':bound.__dict__,'root':old_root,
+                'controller':{'pid':os.getpid(),'birth':jobs._birth(os.getpid())},
+                'capsule':{'path':str(source),'pin':pin}}
+        packet={'schemaVersion':1,'root':old_root,'target':bound.target,'machine':bound.machine,'account':bound.account,
+                'rootGeneration':[1,2],'jobGeneration':[1,3],'admissionGeneration':[1,4],
+                'sources':{name:hashlib.sha256(base64.b64decode(body)).hexdigest()for name,body in original['files'].items()}}
+        jobs._publish(old_intent,intent);jobs._publish(old_packet,packet)
+        before={path:path.read_bytes()for path in (source,old_intent,old_packet)}
+        current={**packet,'root':bridge.ROOT,'rootGeneration':[2,2],'jobGeneration':[2,3],'admissionGeneration':[2,4]}
+        calls=[];idle=False
+        def execute(binding,argv,payload,deadline):
+            config=ast.literal_eval(next(line[7:]for line in payload.decode().splitlines()if line.startswith('CONFIG=')))
+            calls.append((config['root'],config['action']))
+            if config['root']==old_root:
+                value=packet if config['action']=='namespace-status' else {
+                    'visibilityComplete':True,'idle':idle,
+                    'leases':[{'restored':idle,'jobState':'terminal'if idle else'unknown'}]}
+            else:
+                self.assertTrue(custody._lease_paths('v2')[0].is_file())
+                value=current
+            return subprocess.CompletedProcess(argv,0,json.dumps(value).encode(),b'')
+        custody.ordinary_guest_call=execute
+        with self.assertRaisesRegex(subject.MacBlocked,'macos_lease_original_not_idle'):
+            custody.prepare_lease_namespace(deadline=time.monotonic()+3)
+        self.assertFalse(custody._lease_paths('v2')[0].exists())
+        self.assertEqual(calls,[(old_root,'namespace-status'),(old_root,'inventory')])
+        idle=True
+        self.assertEqual(custody.prepare_lease_namespace(deadline=time.monotonic()+3),current)
+        self.assertEqual(calls[-4:],[(old_root,'namespace-status'),(old_root,'inventory'),(bridge.ROOT,'enroll'),(bridge.ROOT,'namespace-status')])
+        self.assertEqual({path:path.read_bytes()for path in before},before)
+        self.assertEqual(custody.load_lease_namespace('v1'),packet)
+        self.assertEqual(custody.load_lease_namespace('v2'),current)
+
+    def test_real_native_observer_subprocess_preserves_framed_stdin_without_host_ssh(self):
+        custody=subject.MacCustody.__new__(subject.MacCustody)
+        payload=b'controlled public source and input'
+        response=custody._native_call([sys.executable,'-I','-c','import sys;sys.stdout.buffer.write(sys.stdin.buffer.read());sys.stderr.write("public-error")'],payload,time.monotonic()+3)
+        self.assertEqual(0,response.returncode);self.assertEqual(payload,response.stdout);self.assertEqual(b'public-error',response.stderr)
+
+    def test_real_observer_overflow_and_timeout_are_finite_and_reap_only_owned_child(self):
+        custody=subject.MacCustody.__new__(subject.MacCustody)
+        for code,seconds in [('import sys;sys.stdout.buffer.write(b"x"*300000)',3),('import time;time.sleep(2)',.15)]:
+            with self.subTest(code=code),self.assertRaisesRegex(subject.MacBlocked,'^macos_guest_call_unknown$'):
+                custody._native_call([sys.executable,'-I','-c',code],b'public',time.monotonic()+seconds)
+
+    def test_factory_refuses_unqualified_descriptor_before_any_native_or_credential_effect(self):
+        with mock.patch('subprocess.Popen',side_effect=AssertionError('no native dispatch')),mock.patch('os.read',side_effect=AssertionError('no credential read')):
+            for invalid in ({},{'schemaVersion':3,'provider':'tart-macos','fixtureId':'controlled','qualifications':{'login':True}}):
+                with self.assertRaisesRegex(subject.MacBlocked,'macos_descriptor_unqualified'):
+                    subject.MacCustody(self.root,'controlled',invalid,{})
+
+    def test_fixed_guest_probe_is_source_owned_no_private_input_or_dynamic_root_program(self):
+        source='PARAMETERS='+repr({'prefix':'/usr/local/libexec/vpn-tool-recovery-v2','files':{},'uid':502,'principal':'toolrecovery','home':'/Users/toolrecovery','machine':str(uuid4())})+'\n'+subject._GUEST_PROBE
+        compile(source,'<fixed-guest-probe>','exec')
+        self.assertIn("['/usr/bin/sudo','-n',str(prefix/'readonly-probe')]",source)
+        self.assertNotIn('password',source)
+        self.assertNotIn('shell=True',source)
+
+
+    @unittest.skipUnless(sys.platform == 'darwin' and Path('/usr/sbin/lsof').exists(), 'native Darwin process/listener observer')
+    def test_actual_kernel_tcp_listener_generation_and_fd_are_bound_without_connecting(self):
+        import socket
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0)); listener.listen(1)
+            pid = os.getpid(); birth = jobs._birth(pid); port = listener.getsockname()[1]
+            self.assertEqual([{'fd': listener.fileno(), 'address': '127.0.0.1:' + str(port)}],
+                             subject._listener(pid, birth, port, time.monotonic()+3))
+            with self.assertRaisesRegex(subject.MacBlocked, '^macos_endpoint_listener_changed$'):
+                subject._listener(pid, 'darwin:1:1', port, time.monotonic()+3)
+
+
+    def test_pure_initial_probe_builder_is_canonical_and_wrong_account_child_fails_before_files(self):
+        from agent_tools import readiness_tart_macos as backend, readiness_qemu_jobs as protocol
+        import pwd
+        account = pwd.getpwuid(os.geteuid())
+        prefix = '/usr/local/libexec/vpn-tool-recovery-controlled'
+        binding = backend.MacBinding('local-tart-macos-'+'a'*24, str(uuid4()), 'vpn-tool-recovery-tart-macos-controlled',
+                    '/tmp/public-tart-binary', '/tmp/vpn-tool-recovery-tart-macos-controlled',
+                    'controlledordinary', max(501, os.geteuid()+1), '/Users/controlledordinary', prefix+'/python/bin/python3.12',4096,'controlled')
+        fields = ['python/bin/python3.12','tart-guest-agent','guest-probe.py','guest-probe-main.py','readonly-probe','launchDaemon']
+        one = {name:'a'*64 for name in fields}; two = {name:'a'*64 for name in reversed(fields)}
+        with mock.patch('subprocess.Popen',side_effect=AssertionError('builder is pure')):
+            source = subject.guest_probe_source(binding,prefix=prefix,public_files=one)
+            self.assertEqual(source,subject.guest_probe_source(binding,prefix=prefix,public_files=two))
+        argv,payload=protocol.stdin_command(source)
+        custody=subject.MacCustody.__new__(subject.MacCustody)
+        response=custody._native_call([sys.executable,*argv[1:]],payload,time.monotonic()+3)
+        self.assertEqual(73,response.returncode)
+        self.assertEqual(b'',response.stdout);self.assertEqual(b'',response.stderr)
+
+
+    def test_actual_root_console_row_projection_never_infers_missing_or_ambiguous_login_done(self):
+        from copy import deepcopy
+        console = {'session': '100006'}
+        row = {'kCGSSessionUserIDKey':502,'kCGSSessionUserNameKey':'toolrecovery',
+               'kCGSSessionOnConsoleKey':True,'kSCSecuritySessionID':100006,'kCGSSessionLoginDoneKey':True}
+        project = lambda rows: subject._console_login_done(console,rows,502,'toolrecovery')
+        self.assertIs(True,project([row]))
+        self.assertIs(False,project([{**row,'kCGSSessionLoginDoneKey':False}]))
+        for rows in (None, [], [{k:v for k,v in row.items()if k!='kCGSSessionLoginDoneKey'}],
+                     [{**row,'kCGSSessionLoginDoneKey':1}], [{**row,'kCGSessionLoginDoneKey':False}],
+                     [row,{**row,'kCGSSessionLoginDoneKey':False}], [{**row,'kCGSSessionUserIDKey':501}],
+                     [{**row,'kSCSecuritySessionID':100007}], [{**row,'kCGSSessionOnConsoleKey':False}]):
+            with self.subTest(rows=rows):self.assertIsNone(project(rows))
+
+
+if __name__=='__main__':unittest.main()

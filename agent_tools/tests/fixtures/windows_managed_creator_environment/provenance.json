@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "before.source": "711318c27f3a4a59615c338eb2d82abc00df0c7bcda4ddfc8555fa9041b6bd44"
+  },
+  "sourceOrigin": "complete original readiness_windows_managed_create.py before HOME environment correction",
+  "failureClaim": "source-contract defect; authentic whole nested run produces wrong HOME in controlled actual subprocess; no native installer failure claimed",
+  "executedScope": "exact complete _creator_main.run FunctionDef only; AST inspections of libvirt.open binding and private_answer AutoLogon removal are pure, no outer module execution"
+}

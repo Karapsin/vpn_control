@@ -20,7 +20,17 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fixture_environment import vm_admission_reason
+if __package__:
+    from . import visual_target
+else:
+    import visual_target
+
+if __package__:
+    from .fixture_environment import vm_admission_reason
+    from .native_fixture_storage import FixtureStorageError, StoragePlans, require_fixture_storage
+else:
+    from fixture_environment import vm_admission_reason
+    from native_fixture_storage import FixtureStorageError, StoragePlans, require_fixture_storage
 
 try:
     import fcntl
@@ -32,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "visual-tests" / "scenes.json"
 ENVIRONMENTS_PATH = ROOT / "visual-tests" / "environments.json"
 RUNTIME_ROOT = ROOT / ".runtime" / "visual-vms"
+STORAGE_PLANS_ROOT = RUNTIME_ROOT
 RESOURCE_POLICY_PATH = RUNTIME_ROOT / "resource-policy.json"
 RESOURCE_RESERVATIONS_PATH = RUNTIME_ROOT / "resource-reservations.json"
 RESOURCE_LOCK_PATH = RUNTIME_ROOT / "resource-reservations.lock"
@@ -368,17 +379,76 @@ def _write_reservations(reservations: dict[str, dict[str, int]]) -> None:
     )
 
 
-def _admit_visual_start(platform: str, requested_mib: int) -> dict[str, Any]:
+_RECOVERY_LANES = {"android-emulator": "android", "raw-qemu-linux": "linux",
+                   "raw-qemu-windows": "windows", "libvirt-windows": "windows",
+                   "tart-linux": "linux", "tart-macos": "macos",
+                   "tart-macos-installer": "macos"}
+
+
+def _qualified_reservation_key(lane: str, fixture_digest: str) -> str:
+    if lane not in _RECOVERY_LANES or not isinstance(fixture_digest, str) or re.fullmatch(r"[0-9a-f]{64}", fixture_digest) is None:
+        raise VisualPlatformError("qualified recovery fixture reservation identity is invalid")
+    return "recovery-test:" + lane + ":" + fixture_digest
+
+
+def _reservation_is_tart(name: str) -> bool:
+    return name in {"linux", "macos"} or name.startswith(("recovery-test:tart-linux:", "recovery-test:tart-macos:"))
+
+
+def _reservation_allocations(reservations: dict) -> list[int]:
+    # Actual running Tart allocations are observed separately. Pending claims
+    # and every other provider's legacy/qualified/unknown claim still count.
+    # A tart-macos-installer uses TART_HOME/tmp and is absent from `tart list`:
+    # its bound PID never qualifies for ordinary Tart guest deduplication.
+    return [item["memory_mib"] for name,item in reservations.items() if not _reservation_is_tart(name) or not item["pid"]]
+
+
+def _admit_recovery_fixture_start(lane: str, fixture_digest: str, requested_mib: int, *, storage_fixture_id: str) -> dict[str, Any]:
+    """Private infrastructure qualification profile; product admission stays max1.
+
+    The caller derives the digest from its registered physical fixture. No CLI
+    or MCP input accepts this profile, a reservation key, or an ownership flag.
+    Existing unknown/pending claims are retained and counted, never overwritten.
+    """
+    key=_qualified_reservation_key(lane,fixture_digest)
+    if lane=="tart-macos-installer" and (type(requested_mib) is not int or requested_mib!=4096):
+        raise VisualPlatformError("qualified Tart installer requires its configured 4096MiB allocation")
+    policy,policy_source=_resource_policy()
+    qualification_policy={**policy,"max_local_vms":2}
+    with _resource_lock():
+        _admit_fixture_storage(_RECOVERY_LANES[lane],"start",fixture_id=storage_fixture_id)
+        reservations=_read_reservations()
+        if key in reservations:
+            raise VisualPlatformError("qualified recovery fixture already has a live or pending reservation")
+        allocations=_reservation_allocations(reservations)
+        if host_platform.system()=="Darwin":
+            allocations.extend(_tart_running_allocations())
+        physical=None
+        for _ in range(2 if lane=="tart-macos-installer" else 1):
+            snapshot=_host_memory_snapshot()
+            if physical is not None and physical!=snapshot.get("physical_mib"):
+                raise VisualPlatformError("qualified recovery fixture host memory identity changed")
+            physical=snapshot.get("physical_mib")
+            reason=vm_admission_reason(**snapshot,running_allocations_mib=allocations,
+                                       requested_mib=requested_mib,**qualification_policy)
+            if reason:
+                raise VisualPlatformError("qualified recovery fixture deferred: "+reason)
+        reservations[key]={"memory_mib":requested_mib,"pid":0}
+        _write_reservations(reservations)
+    return {"profile":"infrastructure-recovery-tests","reservationKey":key,"policySource":policy_source,
+            "policy":qualification_policy,"memory_mib":requested_mib}
+
+
+def _admit_visual_start(platform: str, requested_mib: int, *, storage_fixture_id: str | None = None) -> dict[str, Any]:
     policy, policy_source = _resource_policy()
     with _resource_lock():
+        _admit_fixture_storage(platform, "start", fixture_id=storage_fixture_id)
         reservations = _read_reservations()
-        reservations = {name: item for name, item in reservations.items() if not item["pid"] or _pid_running(item["pid"])}
+        reservations = {name: item for name, item in reservations.items()
+                        if name.startswith("recovery-test:") or not item["pid"] or _pid_running(item["pid"])}
         if platform in reservations:
             raise VisualPlatformError("visual VM start deferred: this platform already has a live or pending reservation")
-        allocations = [
-            item["memory_mib"] for name, item in reservations.items()
-            if name not in {"linux", "macos"} or not item["pid"]
-        ]
+        allocations = _reservation_allocations(reservations)
         if host_platform.system() == "Darwin":
             allocations.extend(_tart_running_allocations())
         snapshot = _host_memory_snapshot()
@@ -393,6 +463,26 @@ def _admit_visual_start(platform: str, requested_mib: int) -> dict[str, Any]:
         reservations[platform] = {"memory_mib": requested_mib, "pid": 0}
         _write_reservations(reservations)
     return {"policy_source": policy_source, "policy": policy, "memory_mib": requested_mib}
+
+
+def _admit_fixture_storage(platform: str, phase: str, *, fixture_id: str | None = None) -> dict[str, Any]:
+    raw_disks: list[Path] = []
+    if platform in {"linux", "macos"}:
+        config = _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["local"]
+        disk = Path.home() / ".tart" / "vms" / str(config["vm_name"]) / "disk.img"
+        if disk.is_file():
+            raw_disks.append(disk)
+    try:
+        current = require_fixture_storage(platform, phase, RUNTIME_ROOT, sparse_raw_disks=raw_disks)
+        # All retained fixtures and unacknowledged writers share this lock/ledger.
+        # A producer holding an explicit original plan excludes only that same
+        # plan from the other-provider sum; aliases never release claims.
+        return StoragePlans(STORAGE_PLANS_ROOT).check(
+            platform, phase, RUNTIME_ROOT, current_fixture_id=fixture_id,
+            minimum_growth_bytes=current["requiredBytes"] - current["headroomBytes"],
+        )
+    except FixtureStorageError as error:
+        raise VisualPlatformError(str(error)) from None
 
 
 def _bind_visual_reservation(platform: str, pid: int) -> None:
@@ -416,12 +506,16 @@ def _which_any(*names: str) -> str | None:
     return next((value for name in names if (value := shutil.which(name))), None)
 
 
-def _qmp_execute(path: Path, command: str, *, timeout: float = 15.0) -> object:
+def _qmp_execute(path: Path, command: str, *, timeout: float = 15.0, disk: Path | None = None,
+                 expected_actor: dict | None = None, return_actor: bool = False) -> object:
+    if command != "query-status" and disk is None:
+        raise VisualPlatformError("selected disk identity is required for QMP mutation")
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection, contextlib.ExitStack() as held:
             connection.settimeout(timeout)
             connection.connect(str(path))
-            stream = connection.makefile("rwb", buffering=0)
+            guard = held.enter_context(visual_target.QmpDisk(disk, connection, expected_actor)) if disk is not None else None
+            stream = held.enter_context(connection.makefile("rwb", buffering=0))
 
             def receive() -> dict[str, object]:
                 while True:
@@ -436,26 +530,30 @@ def _qmp_execute(path: Path, command: str, *, timeout: float = 15.0) -> object:
             if "QMP" not in greeting:
                 raise VisualPlatformError("QEMU did not return a QMP greeting")
             for name in ("qmp_capabilities", command):
+                if guard is not None: guard.guard()
                 stream.write(json.dumps({"execute": name}).encode("utf-8") + b"\n")
                 response = receive()
                 if "error" in response:
                     raise VisualPlatformError(f"QMP {name} failed: {response['error']}")
-            return response.get("return")
+            if guard is not None and command == "query-status": guard.guard()
+            return guard.actor if return_actor and guard is not None else response.get("return")
+    except visual_target.TargetError:
+        raise VisualPlatformError("selected QMP target identity mismatch") from None
     except (OSError, json.JSONDecodeError) as error:
         raise VisualPlatformError(f"could not communicate with QEMU through {path}: {error}") from error
 
 
-def _qmp_ready(path: Path) -> bool:
+def _qmp_ready(path: Path, *, disk: Path | None = None) -> bool:
     try:
-        _qmp_execute(path, "query-status", timeout=2.0)
+        _qmp_execute(path, "query-status", timeout=2.0, disk=disk)
         return True
-    except VisualPlatformError:
+    except (VisualPlatformError, visual_target.TargetError):
         return False
 
 
 def _disk_user_pids(path: Path) -> list[int]:
     if not shutil.which("lsof") or not path.is_file():
-        return []
+        raise VisualPlatformError("selected VM disk ownership visibility unavailable")
     completed = _run(["lsof", "-t", "--", str(path)], timeout=30)
     if completed.returncode not in (0, 1):
         raise VisualPlatformError(completed.stderr.strip() or f"could not inspect managed VM disk: {path}")
@@ -564,9 +662,18 @@ def _tart_names() -> set[str]:
     } if completed.returncode == 0 else set()
 
 
-def local_probe(platform: str) -> dict[str, Any]:
+def _selected_target(platform: str, target: str | None) -> tuple[str, str]:
+    config = android_local_config() if platform == "android" else _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["local"]
+    try:
+        return visual_target.select(platform, target, config)
+    except (visual_target.TargetError, KeyError):
+        raise VisualPlatformError("explicit visual target missing or mismatched") from None
+
+
+def local_probe(platform: str, *, target: str | None = None) -> dict[str, Any]:
     environments = _read_json(ENVIRONMENTS_PATH)
     config = environments["platforms"][platform]
+    selected = _selected_target(platform, target)[0] if target is not None else None
     system = host_platform.system().lower()
     capabilities: set[str] = set()
     backend = ""
@@ -586,7 +693,7 @@ def local_probe(platform: str) -> dict[str, Any]:
         host_arch = host_platform.machine().lower()
         if host_arch not in {canonical_arch.lower(), "amd64" if canonical_arch == "x86_64" else canonical_arch.lower()}:
             detail = f"local Linux visual architecture {host_arch} does not match canonical {canonical_arch}; use hosted capture"
-        elif system == "linux" and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        elif selected in {None, "native-linux"} and system == "linux" and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
             backend = "native-linux"
             capabilities.update(("app", "native"))
         else:
@@ -597,19 +704,19 @@ def local_probe(platform: str) -> dict[str, Any]:
             else:
                 detail = f"local Linux GUI or Tart VM {vm_name} is not ready"
     elif platform == "windows":
-        if system == "windows" and os.environ.get("VPN_CONTROL_VISUAL_ISOLATED") == "1":
+        if selected in {None, "native-windows"} and system == "windows" and os.environ.get("VPN_CONTROL_VISUAL_ISOLATED") == "1":
             backend = "native-windows"
             capabilities.update(("app", "native", "secure_desktop"))
         else:
             name = str(config["local"]["libvirt_name"])
-            completed = _run(["virsh", "dominfo", name], timeout=30) if shutil.which("virsh") else None
+            completed = _run(["virsh", "dominfo", name], timeout=30) if selected != "qemu-windows" and shutil.which("virsh") else None
             if completed is not None and completed.returncode == 0:
                 backend = "libvirt-windows"
                 capabilities.update(("app", "native", "secure_desktop"))
             else:
                 disk = ROOT / str(config["local"]["qemu_disk"])
                 ready_marker = ROOT / str(config["local"]["qemu_ready_marker"])
-                if (
+                if selected != "libvirt-windows" and (
                     disk.is_file()
                     and ready_marker.is_file()
                     and _which_any("qemu-system-aarch64", "qemu-system-x86_64")
@@ -621,7 +728,7 @@ def local_probe(platform: str) -> dict[str, Any]:
                 else:
                     detail = "a Windows 11 client VM is required for secure-desktop capture"
     elif platform == "macos":
-        if system == "darwin" and os.environ.get("VPN_CONTROL_VISUAL_ISOLATED") == "1":
+        if selected in {None, "native-macos"} and system == "darwin" and os.environ.get("VPN_CONTROL_VISUAL_ISOLATED") == "1":
             backend = "native-macos"
             capabilities.update(("app", "native", "secure_desktop"))
         else:
@@ -631,11 +738,20 @@ def local_probe(platform: str) -> dict[str, Any]:
                 capabilities.update(("app", "native", "secure_desktop"))
             else:
                 detail = f"isolated native session or Tart VM {vm_name} is not ready"
+    if selected is not None and backend != selected:
+        backend = ""; capabilities.clear(); detail = "selected visual target is unavailable"
+    # Inventory establishes a lifecycle candidate, never a qualified capture
+    # session. No source-owned visual qualification is consumed by this pure
+    # probe; actual capture still uses its own target/session/input admission.
+    available = bool(backend)
     return {
-        "ready": bool(backend),
+        "infrastructureAvailable": available,
+        "candidateKinds": sorted(capabilities),
+        "qualificationState": "unqualified" if available else "unavailable",
+        "ready": False,
         "backend": backend,
-        "capabilities": sorted(capabilities),
-        "detail": detail,
+        "capabilities": [],
+        "detail": detail or ("local capture qualification is unavailable" if available else ""),
     }
 
 
@@ -649,7 +765,9 @@ def capture_plan(platform: str) -> dict[str, Any]:
     # therefore always captured by an agent-started isolated emulator.
     if platform == "android":
         hosted_capabilities.clear()
-    local_capabilities = set(local["capabilities"])
+    local_capabilities = set(local["capabilities"]) if (
+        local.get("qualificationState") == "qualified" and local.get("ready") is True
+    ) else set()
     routes: dict[str, list[str]] = {"local": [], "hosted": [], "blocked": []}
     for scene in scenes_for(platform):
         scene_id = str(scene["id"])
@@ -670,7 +788,8 @@ def capture_plan(platform: str) -> dict[str, Any]:
     }
 
 
-def bootstrap_commands(platform: str) -> list[list[str]]:
+def bootstrap_commands(platform: str, *, target: str | None = None) -> list[list[str]]:
+    selected, _ = _selected_target(platform, target)
     config = _read_json(ENVIRONMENTS_PATH)["platforms"][platform]
     system = host_platform.system().lower()
     if platform == "android":
@@ -689,19 +808,20 @@ def bootstrap_commands(platform: str) -> list[list[str]]:
                 "--package", system_image, "--device", str(local["device"]),
             ],
         ]
-    if platform in {"linux", "macos"} and system == "darwin":
+    if selected.startswith("tart-") and system == "darwin":
         local = config["local"]
         return [["tart", "clone", str(local["image"]), str(local["vm_name"])]]
-    if platform == "windows" and system == "darwin":
-        return [[str(ROOT / "scripts" / "bootstrap_windows_visual_vm.sh")]]
+    if selected == "qemu-windows" and system == "darwin":
+        return [[str(ROOT / "scripts" / "bootstrap_windows_visual_vm.sh"), "--target", target]]
     return []
 
 
-def bootstrap(platform: str, *, dry_run: bool) -> dict[str, Any]:
-    before = local_probe(platform)
-    if before["ready"]:
+def bootstrap(platform: str, *, dry_run: bool, target: str | None = None) -> dict[str, Any]:
+    _selected_target(platform, target)
+    before = local_probe(platform, target=target)
+    if before["infrastructureAvailable"]:
         return {"platform": platform, "changed": False, "probe": before, "commands": []}
-    commands = bootstrap_commands(platform)
+    commands = bootstrap_commands(platform, target=target)
     if not commands:
         raise VisualPlatformError(f"no local bootstrap adapter is available: {before['detail']}")
     if dry_run:
@@ -711,9 +831,12 @@ def bootstrap(platform: str, *, dry_run: bool) -> dict[str, Any]:
             "probe": before,
             "commands": [shlex.join(command) for command in commands],
         }
+    _admit_fixture_storage(platform, "bootstrap")
     RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, Any]] = []
     for index, command in enumerate(commands):
+        # SDK downloads can consume space before avdmanager; recheck each writer.
+        _admit_fixture_storage(platform, "bootstrap")
         input_text = "no\n" if platform == "android" and index == 1 else None
         completed = _run(command, timeout=2 * 60 * 60, input_text=input_text)
         results.append({
@@ -724,14 +847,17 @@ def bootstrap(platform: str, *, dry_run: bool) -> dict[str, Any]:
         })
         if completed.returncode != 0:
             raise VisualPlatformError(f"visual bootstrap failed: {shlex.join(command)}\n{completed.stderr[-1000:]}")
-    return {"platform": platform, "changed": True, "probe": local_probe(platform), "results": results}
+    return {"platform": platform, "changed": True, "probe": local_probe(platform, target=target), "results": results}
 
 
-def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
-    probe = local_probe(platform)
-    if not probe["ready"]:
-        raise VisualPlatformError(f"local visual environment is not ready: {probe['detail']}")
+def start_platform(platform: str, *, dry_run: bool = False, target: str | None = None) -> dict[str, Any]:
+    selected, selected_name = _selected_target(platform, target)
+    probe = local_probe(platform, target=target)
+    if not probe["infrastructureAvailable"]:
+        raise VisualPlatformError(f"local visual infrastructure is unavailable: {probe['detail']}")
     backend = str(probe["backend"])
+    if backend != selected:
+        raise VisualPlatformError("selected visual target provider mismatch")
     config = (
         android_local_config()
         if platform == "android"
@@ -748,6 +874,11 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
         adb = _android_tool("adb") or "adb"
         avd_name = str(config["avd_name"])
         running = _running_android_avds(adb)
+        expected_serial = f"emulator-{int(config['emulator_port'])}"
+        if expected_serial in running.values() and running.get(avd_name) != expected_serial:
+            raise VisualPlatformError("selected Android target port belongs to another AVD")
+        if avd_name in running and running[avd_name] != expected_serial:
+            raise VisualPlatformError("selected Android target endpoint differs from configuration")
         if avd_name in running:
             identifier = running[avd_name]
             prior_state = _read_state(platform)
@@ -789,23 +920,26 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             command = ["virsh", "start", vm_name]
             started_by_agent = True
     elif backend == "qemu-windows":
-        disk = ROOT / str(config["qemu_disk"])
-        identifier = str(config["qemu_disk"])
+        disk = Path(selected_name)
+        identifier = selected_name
         users = _disk_user_pids(disk)
-        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        qmp = disk.parent / "qmp.sock"
         if users:
-            if not _qmp_ready(qmp):
+            if not _qmp_ready(qmp, disk=disk):
                 raise VisualPlatformError(
                     f"managed Windows disk is already in use by PID(s) {users}, but its QMP socket is unavailable"
                 )
-            process_id = users[0]
+            actual_actor = _qmp_execute(qmp, "query-status", disk=disk, return_actor=True)
+            if users != [actual_actor["pid"]]:
+                raise VisualPlatformError("selected VM disk has competing owners")
+            process_id = actual_actor["pid"]
             prior_state = _read_state(platform)
             started_by_agent = (
                 prior_state.get("started_by_agent") is True and
-                int(prior_state.get("pid", 0)) in users
+                int(prior_state.get("pid", 0)) == process_id
             )
         else:
-            command = [str(ROOT / "scripts" / "start_windows_visual_vm.sh")]
+            command = [str(ROOT / "scripts" / "start_windows_visual_vm.sh"), "--target", target]
             started_by_agent = True
     if dry_run:
         return {
@@ -860,13 +994,13 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
                 _release_visual_reservation(platform)
                 raise VisualPlatformError(completed.stderr.strip() or f"could not start {backend}")
     if backend == "qemu-windows":
-        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        qmp = disk.parent / "qmp.sock"
         deadline = time.monotonic() + 60
-        while time.monotonic() < deadline and not _qmp_ready(qmp):
+        while time.monotonic() < deadline and not _qmp_ready(qmp, disk=disk):
             if process is not None and process.poll() is not None:
                 raise VisualPlatformError(f"managed Windows VM exited during startup; see {log_dir / f'{platform}.log'}")
             time.sleep(0.5)
-        if not _qmp_ready(qmp):
+        if not _qmp_ready(qmp, disk=disk):
             if process is not None and process.poll() is None:
                 process.terminate()
                 process.wait(timeout=15)
@@ -893,18 +1027,24 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             ("global", "animator_duration_scale", "0"),
             ("system", "font_scale", "1.0"),
         ):
+            actual = _run([adb, "-s", identifier, "emu", "avd", "name"], timeout=30)
+            if actual.returncode != 0 or actual.stdout.strip().splitlines() != [selected_name, "OK"]:
+                raise VisualPlatformError("selected visual target does not match actual Android guest")
             completed = _run([adb, "-s", identifier, "shell", "settings", "put", *setting], timeout=30)
             if completed.returncode != 0:
                 raise VisualPlatformError(f"could not freeze Android visual setting: {' '.join(setting)}")
     state = {
         "schema_version": 1,
         "platform": platform,
+        "target": target,
         "backend": backend,
         "identifier": identifier,
         "started_by_agent": started_by_agent,
         "pid": process_id,
         "started_at_epoch": int(time.time()),
     }
+    if backend == "qemu-windows":
+        state["actor"] = _qmp_execute(qmp, "query-status", disk=disk, return_actor=True)
     _write_state(platform, state)
     if admission is not None:
         state["resource_admission"] = admission
@@ -912,8 +1052,11 @@ def start_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
     return state
 
 
-def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
+def stop_platform(platform: str, *, dry_run: bool = False, target: str | None = None) -> dict[str, Any]:
+    selected, selected_name = _selected_target(platform, target)
     state = _read_state(platform)
+    if state and (state.get("target") != target or state.get("backend") != selected):
+        raise VisualPlatformError("selected visual target does not match original lifecycle state")
     if not state:
         return {"platform": platform, "stopped": False, "reason": "no agent-owned lifecycle state"}
     if state.get("started_by_agent") is not True:
@@ -922,13 +1065,20 @@ def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
     identifier = str(state.get("identifier", ""))
     command: list[str] | None = None
     if backend == "android-emulator":
-        command = [_android_tool("adb") or "adb", "-s", identifier, "emu", "kill"]
+        adb = _android_tool("adb") or "adb"
+        actual = _run([adb, "-s", identifier, "emu", "avd", "name"], timeout=30)
+        if actual.returncode != 0 or actual.stdout.strip().splitlines() != [selected_name, "OK"]:
+            raise VisualPlatformError("selected visual target does not match actual Android guest")
+        command = [adb, "-s", identifier, "emu", "kill"]
     elif backend.startswith("tart-"):
-        command = ["tart", "stop", identifier]
+        if identifier != selected_name: raise VisualPlatformError("selected visual target does not match original VM")
+        command = ["tart", "stop", selected_name]
     elif backend == "libvirt-windows":
-        command = ["virsh", "shutdown", identifier]
+        if identifier != selected_name: raise VisualPlatformError("selected visual target does not match original VM")
+        command = ["virsh", "shutdown", selected_name]
     elif backend == "qemu-windows":
-        qmp = RUNTIME_ROOT / "windows" / "qmp.sock"
+        if identifier != selected_name: raise VisualPlatformError("selected visual target does not match original disk")
+        disk = Path(selected_name); qmp = disk.parent / "qmp.sock"
         if not qmp.exists():
             raise VisualPlatformError("QEMU VM can be stopped only through its QMP socket; refusing a broad process kill")
     if dry_run:
@@ -938,7 +1088,10 @@ def stop_platform(platform: str, *, dry_run: bool = False) -> dict[str, Any]:
             "command": shlex.join(command) if command else "",
         }
     if backend == "qemu-windows":
-        _qmp_execute(qmp, "system_powerdown")
+        actor = state.get("actor")
+        if type(actor) is not dict or set(actor) != {"pid", "birth"} or actor["pid"] != state.get("pid"):
+            raise VisualPlatformError("original QMP actor identity unavailable")
+        _qmp_execute(qmp, "system_powerdown", disk=disk, expected_actor=actor)
         pid = int(state.get("pid", 0))
         deadline = time.monotonic() + 60
         while _pid_running(pid) and time.monotonic() < deadline:
@@ -1107,7 +1260,8 @@ def stamp_capture(
     return {"metadata": str(metadata_path), "scene_count": len(scene_ids)}
 
 
-def run_local_driver(platform: str, driver: str, output: Path, scene_ids: list[str]) -> dict[str, Any]:
+def run_local_driver(platform: str, driver: str, output: Path, scene_ids: list[str], *, target: str | None = None) -> dict[str, Any]:
+    _selected_target(platform, target)
     command = shlex.split(driver)
     if not command:
         raise VisualPlatformError("a local capture driver command is required")
@@ -1117,12 +1271,13 @@ def run_local_driver(platform: str, driver: str, output: Path, scene_ids: list[s
     command.extend(
         [
             "--platform", platform,
+            "--target", target,
             "--manifest", str(MANIFEST_PATH),
             "--scenes", str(scene_file),
             "--output", str(output.resolve()),
         ],
     )
-    completed = subprocess.run(command, cwd=ROOT, check=False)
+    completed = subprocess.run(command, cwd=ROOT, check=False, env={**os.environ, "VPN_CONTROL_VISUAL_VM_TARGET": target})
     if completed.returncode != 0:
         raise VisualPlatformError(f"local capture driver failed with exit code {completed.returncode}")
     provider = os.environ.get("VPN_CONTROL_VISUAL_PROVIDER", "local").strip() or "local"
@@ -1225,10 +1380,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     command = subparsers.add_parser("bootstrap")
     command.add_argument("--platform", required=True, choices=PLATFORMS)
     command.add_argument("--dry-run", action="store_true")
+    command.add_argument("--target", required=True)
     for action in ("start", "stop"):
         command = subparsers.add_parser(action)
         command.add_argument("--platform", required=True, choices=PLATFORMS)
         command.add_argument("--dry-run", action="store_true")
+        command.add_argument("--target", required=True)
     command = subparsers.add_parser("dispatch-hosted")
     command.add_argument("--platform", required=True, choices=PLATFORMS)
     command.add_argument("--target-sha", required=True)
@@ -1240,6 +1397,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     command.add_argument("--output", required=True, type=Path)
     command.add_argument("--timeout-seconds", type=int, default=60 * 60)
     command = subparsers.add_parser("capture-local")
+    command.add_argument("--target", required=True)
     command.add_argument("--platform", required=True, choices=PLATFORMS)
     command.add_argument("--driver", required=True)
     command.add_argument("--output", required=True, type=Path)
@@ -1267,11 +1425,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "android-local-config":
             result = android_local_config()
         elif args.action == "bootstrap":
-            result = bootstrap(args.platform, dry_run=args.dry_run)
+            result = bootstrap(args.platform, dry_run=args.dry_run, target=args.target)
         elif args.action == "start":
-            result = start_platform(args.platform, dry_run=args.dry_run)
+            result = start_platform(args.platform, dry_run=args.dry_run, target=args.target)
         elif args.action == "stop":
-            result = stop_platform(args.platform, dry_run=args.dry_run)
+            result = stop_platform(args.platform, dry_run=args.dry_run, target=args.target)
         elif args.action == "dispatch-hosted":
             result = dispatch_hosted(
                 args.platform, args.target_sha, args.ref, resource_fallback=args.resource_fallback,
@@ -1282,7 +1440,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.action == "capture-local":
             selected = args.scene or [str(scene["id"]) for scene in scenes_for(args.platform)]
-            result = run_local_driver(args.platform, args.driver, args.output, selected)
+            result = run_local_driver(args.platform, args.driver, args.output, selected, target=args.target)
         elif args.action == "stamp":
             result = stamp_capture(args.platform, args.target_sha, args.provider, args.output, args.scene)
         else:

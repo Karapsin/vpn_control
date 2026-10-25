@@ -1,0 +1,391 @@
+"""Strict original Windows controller and lifecycle phase observations.
+
+A completed controller or historical host phase does not complete guest jobs,
+credential work, reservations or lifecycle dependencies. These validators never
+submit work, infer URI equivalence, rewrite receipts or authorize replay.
+"""
+from dataclasses import dataclass, field
+import ast
+import base64
+import hashlib
+import inspect
+import json
+from pathlib import Path
+import re
+from uuid import UUID
+from xml.etree import ElementTree
+
+_EXECUTING_CODE = inspect.currentframe().f_code
+_AUTHORITY = object()
+_DIGEST = re.compile(r'[0-9a-f]{64}\Z')
+_REVIEWED = {
+    'define': {'_actor_absent':'ad1fa578ca664939afd5e913d8addd99afca06b7d79e13798ed9646fab05e344',
+               'main':'a63834b941d47ea126e97046b0129248ee9099bfe65a16785a550bfa25500927'},
+    'start': {'_actor_absent':'ad1fa578ca664939afd5e913d8addd99afca06b7d79e13798ed9646fab05e344',
+              'main':'5b560b91592c9bf5a159e687cf132d3b8d5ed68a1da493ad3a5600653c692b1c'}}
+_PROPOSED_XML = 'b2edafe6410441a63462f912ae1bf7fb79973c23d2e6c8163037344d3d7639f8'
+_ORIGINAL_STOP = '83098dfa-0f42-4ee9-863e-c3479636a3e2'
+_DOCUMENT_OBSERVER_SHA = 'a7b4beaa8ba899cc9335c1c0cc1ad3065ec874fc8c0f6cb935da447a6c0a83dc'
+
+
+def _need(value, reason='windows_host_work_protocol_invalid'):
+    if not value:
+        raise ValueError(reason)
+
+
+def _uuid(value):
+    try:
+        _need(type(value) is str and str(UUID(value)) == value)
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError('windows_host_work_identity_invalid') from None
+    return value
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'))
+
+
+def _read(root, relative):
+    from . import readiness_fixture_registry as registry
+    _need(type(relative) is str and not Path(relative).is_absolute() and relative.startswith('.runtime/'))
+    path = registry._under(str(Path(root) / relative), Path(root) / '.runtime')
+    return registry._body(path)
+
+
+def _source(raw, phase, spec, setup, host_boot):
+    """Authenticate reviewed historical control flow; old Python never executes."""
+    _need(phase in _REVIEWED)
+    assignments, functions, called = {}, {}, 0
+    for node in ast.parse(raw).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            _need(name in {'SPEC','SETUP','CONTEXT','OP'} and name not in assignments)
+            assignments[name] = ast.literal_eval(node.value)
+        elif isinstance(node, ast.FunctionDef):
+            _need(node.name not in functions)
+            functions[node.name] = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
+        elif isinstance(node, ast.Expr):
+            _need(isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+                  and node.value.func.id == 'main' and not node.value.args and not node.value.keywords)
+            called += 1
+        else:
+            raise ValueError('windows_host_work_source_unreviewed')
+    _need(set(assignments) == {'SPEC','SETUP','CONTEXT','OP'} and functions == _REVIEWED[phase] and called == 1,
+          'windows_host_work_source_unreviewed')
+    _need(assignments['SPEC'] == spec and assignments['SETUP'] == setup
+          and assignments['CONTEXT'] == {'hostBootId':host_boot,'pending':[]}, 'windows_host_work_original_changed')
+    return _uuid(assignments['OP'])
+
+
+def _capture(value, closing, original_result, operation):
+    _need(type(value) is dict and value.get('state') == 'observed' and value.get('result') == original_result)
+    capture = value.get('capture')
+    _need(type(capture) is dict and capture.get('complete') is True and capture.get('timeout') is False
+          and type(capture.get('returnCode')) is int and capture['returnCode'] == 0
+          and capture.get('refusal') is None and capture.get('eof') == {'stdout':True,'tty':True},
+          'windows_host_work_original_capture_incomplete')
+    _need(type(closing) is dict and set(closing) == {'operationId','sourceClosing'}
+          and closing['operationId'] == operation and closing['sourceClosing'] is True,
+          'windows_host_work_original_source_unclosed')
+
+
+def _definition(intent, result, operation, spec):
+    _need(type(intent) is dict and set(intent) == {'operationId','domain','uri','uuid','xmlSha256','originalStop','replayAllowed'})
+    _need(type(result) is dict and set(result) == {'state','operationId','domain','uri','uuid','xmlSha256','xml',
+                                                'samePersistedArtifacts','stagingActorsAbsent','replayAllowed'})
+    _need(intent['operationId'] == operation == result['operationId'] and intent['uuid'] == result['uuid'] == spec['deploymentId']
+          and intent['domain'] == result['domain'] and type(intent['domain']) is str
+          and intent['uri'] == result['uri'] == 'qemu:///session'
+          and intent['xmlSha256'] == _PROPOSED_XML and intent['originalStop'] == _ORIGINAL_STOP
+          and intent['replayAllowed'] is False and result['replayAllowed'] is False
+          and result['state'] == 'libvirt_defined' and result['samePersistedArtifacts'] is True
+          and result['stagingActorsAbsent'] is True and type(result['xml']) is str
+          and len(result['xml'].encode()) <= 262144 and type(result['xmlSha256']) is str
+          and _DIGEST.fullmatch(result['xmlSha256'])
+          and hashlib.sha256(result['xml'].encode()).hexdigest() == result['xmlSha256'])
+    tree = ElementTree.fromstring(result['xml'])
+    _need(tree.tag == 'domain' and tree.findtext('uuid') == spec['deploymentId']
+          and tree.findtext('name') == result['domain'] and tree.findtext('os/nvram') == spec['root'] + '/uefi-vars.fd')
+    disks = tree.findall("devices/disk[@device='disk']/source")
+    tpm = tree.find('devices/tpm/backend/source')
+    _need(len(disks) == 1 and disks[0].get('file') == spec['root'] + '/disk.qcow2'
+          and tpm is not None and tpm.get('path') == spec['root'] + '/tpm')
+
+
+def _start(intent, result, operation, defined):
+    _need(type(intent) is dict and set(intent) == {'operationId','domain','uri','uuid','xmlSha256',
+          'samePersistedArtifacts','stagingActorsAbsent','reservationId','samples','replayAllowed'})
+    _need(type(result) is dict and set(result) == {'state','operationId','domain','uri','uuid','startCode','domainState','replayAllowed'})
+    _need(intent['operationId'] == operation == result['operationId']
+          and all(intent[k] == result[k] == defined[k] for k in ('domain','uri','uuid'))
+          and intent['xmlSha256'] == defined['xmlSha256']
+          and intent['samePersistedArtifacts'] is True and intent['stagingActorsAbsent'] is True
+          and intent['replayAllowed'] is False and result['replayAllowed'] is False
+          and result['state'] == 'libvirt_running' and result['domainState'] == 'running'
+          and type(result['startCode']) is int and result['startCode'] == 0
+          and type(intent['reservationId']) is str and re.fullmatch(r'env-[0-9a-f]{32}', intent['reservationId'])
+          and type(intent['samples']) is list and len(intent['samples']) == 2)
+    for sample in intent['samples']:
+        _need(type(sample) is dict and set(sample) == {'memory','counters'}
+              and type(sample['memory']) is dict and set(sample['memory']) == {'MemTotal','MemAvailable'}
+              and type(sample['counters']) is dict and set(sample['counters']) == {'pswpout','oom_kill'}
+              and all(type(v) is int and v >= 0 for values in sample.values() for v in values.values()))
+    _need(intent['samples'][0]['counters'] == intent['samples'][1]['counters'])
+
+
+@dataclass(frozen=True)
+class OriginalPhaseProof:
+    """Only original phase completion; grants no current URI/guest authority."""
+    serialized: str
+    _root: Path = field(repr=False, compare=False)
+    _pins: tuple = field(repr=False, compare=False)
+    _authority: object = field(repr=False, compare=False)
+
+    def guard(self):
+        _need(self._authority is _AUTHORITY, 'windows_host_work_authority_invalid')
+        for relative, expected in self._pins:
+            _, actual = _read(self._root, relative)
+            _need(actual == expected, 'windows_host_work_original_evidence_changed')
+        return json.loads(self.serialized)
+
+
+def libvirt_lifecycle_proofs(root, snapshot_path, *, define_source, define_capture, define_closing,
+                            start_source, start_capture, start_closing, spec, setup, host_boot):
+    """Authenticate exact original documents, source graphs and retained EOFs.
+
+    The host-only snapshot must itself be obtained through a source-held reviewed
+    collector. This factory does not infer any current libvirt URI equivalence.
+    """
+    root = Path(root).resolve(strict=True)
+    observer_path = str(Path(snapshot_path).parent / 'caller.py')
+    callback_path = str(Path(snapshot_path).parent / 'callback.json')
+    stdout_path = str(Path(snapshot_path).parent / 'stdout.private')
+    names = [snapshot_path, observer_path, callback_path, stdout_path,
+             define_source, define_capture, define_closing, start_source, start_capture, start_closing]
+    _need(len(set(names)) == 10)
+    payloads, pins = {}, []
+    for name in names:
+        raw, pin = _read(root, name);payloads[name] = raw;pins.append((name,pin))
+    snapshot = json.loads(payloads[snapshot_path])
+    _need(hashlib.sha256(payloads[observer_path]).hexdigest() == _DOCUMENT_OBSERVER_SHA,
+          'windows_host_work_document_observer_unreviewed')
+    callback = json.loads(payloads[callback_path])
+    _need(type(callback) is dict and set(callback) == {'code','stderrBytes','stdoutBytes'}
+          and type(callback['code']) is int and callback['code'] == 0
+          and type(callback['stderrBytes']) is int and callback['stderrBytes'] == 0
+          and type(callback['stdoutBytes']) is int and callback['stdoutBytes'] == len(payloads[stdout_path])
+          and json.loads(payloads[stdout_path]) == snapshot,
+          'windows_host_work_document_observation_incomplete')
+    _need(type(snapshot) is dict and snapshot.get('schemaVersion') == 1 and type(snapshot['schemaVersion']) is int
+          and snapshot.get('state') == 'host-metadata-observed' and snapshot.get('noGuestCalls') is True
+          and snapshot.get('noHistoryWrites') is True and snapshot.get('machine') == spec['deploymentId']
+          and snapshot.get('hostBoot') == host_boot and type(snapshot.get('records')) is list)
+    _need(type(snapshot.get('rootLockGeneration')) is list and len(snapshot['rootLockGeneration']) == 9
+          and all(type(v) is int and v >= 0 for v in snapshot['rootLockGeneration'])
+          and type(snapshot.get('rootIntentPublicSha256')) is str and _DIGEST.fullmatch(snapshot['rootIntentPublicSha256']))
+    documents = {}
+    for row in snapshot['records']:
+        _need(type(row) is dict and row.get('intent') in {'libvirt-define.intent.json','libvirt-start.intent.json'}
+              and type(row.get('files')) is list)
+        for record in row['files']:
+            if record.get('present') is True and 'publicBody' in record:
+                name = record['name'];_need(name not in documents)
+                body = record['publicBody']
+                _need(type(body) is dict and type(record.get('publicSha256')) is str
+                      and hashlib.sha256((json.dumps(body,sort_keys=True)+'\n').encode()).hexdigest() == record['publicSha256'])
+                documents[name] = body
+    required = {'libvirt-define.intent.json','libvirt-defined.result.json','libvirt-start.intent.json','libvirt-start.result.json'}
+    _need(required <= set(documents), 'windows_host_work_original_documents_unavailable')
+    define_op = _source(payloads[define_source], 'define', spec, setup, host_boot)
+    start_op = _source(payloads[start_source], 'start', spec, setup, host_boot)
+    definition, started = documents['libvirt-defined.result.json'], documents['libvirt-start.result.json']
+    _definition(documents['libvirt-define.intent.json'], definition, define_op, spec)
+    _start(documents['libvirt-start.intent.json'], started, start_op, definition)
+    _capture(json.loads(payloads[define_capture]), json.loads(payloads[define_closing]), definition, define_op)
+    _capture(json.loads(payloads[start_capture]), json.loads(payloads[start_closing]), started, start_op)
+    result = []
+    for kind, operation, intent_name, result_name in (
+            ('libvirt-define',define_op,'libvirt-define.intent.json','libvirt-defined.result.json'),
+            ('libvirt-start',start_op,'libvirt-start.intent.json','libvirt-start.result.json')):
+        value = {'schemaVersion':1,'kind':kind,'operationId':operation,'machine':spec['deploymentId'],'root':spec['root'],
+                 'hostBoot':host_boot,'intent':documents[intent_name],'result':documents[result_name],
+                 'intentName':intent_name,'resultName':result_name}
+        result.append(OriginalPhaseProof(_canonical(value),root,tuple(pins),_AUTHORITY))
+    return tuple(result)
+
+
+def original_phase_terminal(intent, result, proof):
+    _need(type(proof) is OriginalPhaseProof, 'windows_host_work_authority_invalid')
+    return _original_phase_terminal(intent, result, proof.guard())
+
+
+def _phase_record(root, target, machine, create=False):
+    from . import readiness_windows as windows
+    from . import durable_remote_job as durable
+    _uuid(machine)
+    _need(type(target) is str and 1 <= len(target) <= 512)
+    directory = Path(root).resolve(strict=True) / '.runtime/readiness-windows-host-work'
+    if create:
+        windows._directory(directory)
+    elif not directory.exists() and not directory.is_symlink():
+        return None
+    durable._private(directory, directory=True)
+    _need(directory.resolve() == directory, 'windows_host_work_local_redirected')
+    return directory / (hashlib.sha256(_canonical([target,machine]).encode()).hexdigest() + '.v2.json')
+
+
+def register_libvirt_lifecycle_proofs(root, target, **arguments):
+    """Explicit create-only local admission; no remote effects or history edit."""
+    from . import readiness_windows as windows
+    from . import readiness_fixture_registry as registry
+    proofs = libvirt_lifecycle_proofs(root, **arguments)
+    machine = arguments['spec']['deploymentId']
+    path = _phase_record(root,target,machine,True)
+    value = {'schemaVersion':2,'target':target,'machine':machine,'arguments':arguments,
+             'artifactPins':dict(proofs[0]._pins),'originalPhases':[proof.guard() for proof in proofs]}
+    try:
+        windows._save(path,value)
+    except FileExistsError:
+        _need(_canonical(registry._json(path)[0]) == _canonical(value), 'windows_host_work_acceptance_changed')
+    return proofs
+
+
+def accepted_libvirt_lifecycle_proofs(root, target, *, spec, setup, host_boot):
+    """Pure accepted-history lookup; changed original artifacts remain blockers."""
+    from . import readiness_fixture_registry as registry
+    path = _phase_record(root,target,spec['deploymentId'])
+    if path is None:
+        return ()
+    if not path.exists() and not path.is_symlink():
+        legacy=path.with_name(path.name.removesuffix('.v2.json')+'.json')
+        _need(not legacy.exists() and not legacy.is_symlink(),'windows_host_work_acceptance_unpinned')
+        return ()
+    record,pin = registry._json(path)
+    _need(type(record) is dict and set(record) == {'schemaVersion','target','machine','arguments','artifactPins','originalPhases'}
+          and type(record['schemaVersion']) is int and record['schemaVersion'] == 2
+          and record['target'] == target and record['machine'] == spec['deploymentId']
+          and type(record['arguments']) is dict and record['arguments'].get('spec') == spec
+          and record['arguments'].get('setup') == setup and record['arguments'].get('host_boot') == host_boot,
+          'windows_host_work_acceptance_changed')
+    proofs = libvirt_lifecycle_proofs(root,**record['arguments'])
+    _need(_canonical(dict(proofs[0]._pins)) == _canonical(record['artifactPins']),
+          'windows_host_work_original_evidence_changed')
+    _need(_canonical([proof.guard() for proof in proofs]) == _canonical(record['originalPhases']), 'windows_host_work_acceptance_changed')
+    relative = str(path.relative_to(Path(root).resolve(strict=True)))
+    return tuple(OriginalPhaseProof(proof.serialized,proof._root,proof._pins+((relative,pin),),_AUTHORITY) for proof in proofs)
+
+
+def _original_phase_terminal(intent, result, expected):
+    """Standalone remote predicate. Source-held expected proof is mandatory."""
+    import json
+    def need(value):
+        if not value:
+            raise ValueError('windows_host_work_original_changed')
+    need(type(expected) is dict and expected.get('schemaVersion') == 1 and type(expected['schemaVersion']) is int
+         and expected.get('kind') in {'libvirt-define','libvirt-start'}
+         and type(intent) is dict and type(result) is dict
+         and json.dumps(intent,sort_keys=True,separators=(',',':')) == json.dumps(expected['intent'],sort_keys=True,separators=(',',':'))
+         and json.dumps(result,sort_keys=True,separators=(',',':')) == json.dumps(expected['result'],sort_keys=True,separators=(',',':'))
+         and intent.get('operationId') == result.get('operationId') == expected.get('operationId')
+         and intent.get('replayAllowed') is False and result.get('replayAllowed') is False)
+    return {'schemaVersion':1,'kind':'original-host-phase-terminal','phase':expected['kind'],'operationId':expected['operationId'],
+            'controllerTerminal':True,'guestWorkComplete':False,'currentBindingAuthorized':False,'replayAllowed':False}
+
+
+def protocol_source():
+    return inspect.getsource(_original_phase_terminal)
+
+
+@dataclass(frozen=True)
+class OriginalControllerProof:
+    serialized: str
+    _root: Path = field(repr=False, compare=False)
+    _pins: tuple = field(repr=False, compare=False)
+    _authority: object = field(repr=False, compare=False)
+
+    def guard(self):
+        _need(self._authority is _AUTHORITY, 'windows_host_work_authority_invalid')
+        for relative, expected in self._pins:
+            _, actual = _read(self._root, relative)
+            _need(actual == expected, 'windows_host_work_original_evidence_changed')
+        return json.loads(self.serialized)
+
+
+def controller_proof(root, packet_path, packet_sha256, *, script_name, operation, label, machine, host_boot, actor):
+    """Bind the ORIGINAL source packet held by its preparation/source receipt.
+
+    The digest must come from that original receipt, never a rebuilt/current
+    packet. Only public-program carriers admitted by the existing producer are
+    accepted; protected login sources use their separate ownership protocol.
+    """
+    _need(type(packet_sha256) is str and _DIGEST.fullmatch(packet_sha256)
+          and script_name in {'SESSION_SCRIPT','INTERACTIVE_SCRIPT','IDLE_SCRIPT','LEASE_SCRIPT','JOB_SCRIPT'})
+    _uuid(operation);_uuid(machine);_uuid(host_boot)
+    _need(type(label) is str and re.fullmatch(r'[a-z][a-z0-9-]{0,79}',label)
+          and type(actor) is dict and type(actor.get('pid')) is int and actor['pid'] > 0
+          and type(actor.get('startTicks')) is int and actor['startTicks'] > 0)
+    root = Path(root).resolve(strict=True)
+    raw, pin = _read(root, packet_path)
+    _need(pin['sha256'] == packet_sha256, 'windows_host_work_original_source_changed')
+    required = {'OPERATION','MODE','SPEC','CONTEXT',script_name}
+    values = {}
+    for node in ast.parse(raw).body:
+        if isinstance(node,ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in required:
+            key = node.targets[0].id;_need(key not in values)
+            values[key] = ast.literal_eval(node.value)
+    _need(set(values) == required and values['OPERATION'] == operation
+          and type(values['SPEC']) is dict and values['SPEC'].get('deploymentId') == machine
+          and type(values['CONTEXT']) is dict and values['CONTEXT'].get('hostBootId') == host_boot
+          and values['MODE'] in {'observe','idle-inventory','reboot','resume','wake_display',
+              'lease-acquire','lease-status','lease-cancel','lease-enroll','lease-enrollment-status',
+              'job-enroll','job-namespace-status','job-start','job-status','job-inventory'}
+          and type(values[script_name]) is str and 0 < len(values[script_name].encode()) <= 262144,
+          'windows_host_work_original_source_changed')
+    value = {'operation':operation,'label':label,'source_sha256':hashlib.sha256(values[script_name].encode()).hexdigest(),
+             'host_boot':host_boot,'actor':actor}
+    return OriginalControllerProof(_canonical(value),root,((packet_path,pin),),_AUTHORITY)
+
+
+def controller_terminal(intent, ack, terminal, proof):
+    _need(type(proof) is OriginalControllerProof, 'windows_host_work_authority_invalid')
+    return _controller_terminal(intent, ack, terminal, **proof.guard())
+
+
+def _controller_terminal(intent, ack, terminal, *, operation, label, source_sha256, host_boot, actor):
+    """Validate a framed ORIGINAL controller; never return guest-job completion.
+
+    Callers must hold the original packet/source and private record generations.
+    Protected/unframed legacy output is not accepted by this public-frame route.
+    """
+    _uuid(operation)
+    _need(type(label) is str and re.fullmatch(r'[a-z][a-z0-9-]{0,79}',label)
+          and type(source_sha256) is str and _DIGEST.fullmatch(source_sha256))
+    frame = {'schemaVersion':1,'operationId':operation,'label':label,'sourceSha256':source_sha256}
+    _need(type(intent) is dict and type(intent.get('controllerIdentity')) is dict
+          and type(intent['controllerIdentity'].get('schemaVersion')) is int and intent['controllerIdentity'] == frame
+          and intent.get('operationId') == operation and intent.get('label') == label
+          and intent.get('sourceSha256') == source_sha256 and intent.get('hostBoot') == host_boot
+          and intent.get('actor') == actor and intent.get('replayAllowed') is False
+          and type(ack) is dict and ack.get('operationId') == operation and ack.get('label') == label
+          and ack.get('replayAllowed') is False and type(ack.get('ack')) is dict
+          and type(ack['ack'].get('pid')) is int and 0 < ack['ack']['pid'] < 2**31)
+    _need(type(terminal) is dict and terminal.get('exited') is True and type(terminal.get('exitcode')) is int
+          and terminal.get('out-truncated',False) is False and terminal.get('err-truncated',False) is False,
+          'windows_host_work_controller_not_terminal')
+    try:
+        raw = base64.b64decode(terminal.get('out-data',''),validate=True)
+        error = base64.b64decode(terminal.get('err-data',''),validate=True)
+        _need(not error and 0 < len(raw) <= 65536)
+        value = json.loads(raw.decode('utf-8-sig'))
+    except (ValueError,TypeError,UnicodeError):
+        raise ValueError('windows_host_work_controller_unframed') from None
+    _need(type(value) is dict and set(value) == set(frame) | {'owner','result'}
+          and type(value.get('schemaVersion')) is int and all(value.get(k) == v for k,v in frame.items())
+          and type(value.get('result')) is dict and type(value.get('owner')) is dict
+          and set(value['owner']) == {'pid','birth'} and type(value['owner']['pid']) is int
+          and value['owner']['pid'] == ack['ack']['pid'] and type(value['owner']['birth']) is str
+          and re.fullmatch(r'[1-9][0-9]{0,19}',value['owner']['birth']) and int(value['owner']['birth']) < 2**64,
+          'windows_host_work_controller_identity_changed')
+    return {'schemaVersion':1,'kind':'original-controller-terminal','operationId':operation,'label':label,
+            'sourceSha256':source_sha256,'owner':dict(value['owner']),'exitCode':terminal['exitcode'],
+            'controllerTerminal':True,'guestWorkComplete':False,'replayAllowed':False}

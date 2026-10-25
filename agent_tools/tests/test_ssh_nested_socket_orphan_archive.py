@@ -18,7 +18,7 @@ from agent_tools.tests import test_ssh_nested_socket_retirement as old_tests
 class OrphanArchiveTests(unittest.TestCase):
     @contextmanager
     def fixture(self, generated=False):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp, ExitStack() as stack:
+        with tempfile.TemporaryDirectory(dir=old_tests.FIXTURE_PARENT) as tmp, ExitStack() as stack:
             root=Path(tmp).resolve();spec,home,key,stdout=home_tests.OwnedHomeObserverTests().full_fixture(root)
             stack.enter_context(old_tests.ObserverTests().controlled()[0])
             stack.enter_context(mock.patch.object(tool.pwd,'getpwuid',return_value=SimpleNamespace(pw_dir=str(home))))

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "0a50f0008fcee34ae290275bce20a6af021a9f59a36d716998dc2692441afbd3",
+  "cause": "Review: second discarded program generation inside _dispatch_held still preceded _run readiness despite outer _dispatch correction. Pure _config validation must cover both levels.",
+  "scope": "Complete authenticated helper before/current through actual local journal and operation lock; only program generator and remote dispatch boundary controlled; no remote or guest effects."
+}

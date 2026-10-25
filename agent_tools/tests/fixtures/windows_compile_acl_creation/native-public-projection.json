@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "kind": "finite-public-native-ACL-causal-projection",
+  "sourceQualificationSha256": "e185fc515fc2e219eacc086536dfa169b448fb8be2e29324b8bcb8be757b9f50",
+  "actualToken": "SYSTEM",
+  "actualSession": 0,
+  "old": {
+    "completed": false,
+    "errorClass": "System.UnauthorizedAccessException",
+    "failed": true,
+    "hresult": -2147024891
+  },
+  "new": {
+    "completed": true,
+    "duplicateRefused": true,
+    "errorClass": null,
+    "hresult": null
+  },
+  "causalQualified": true,
+  "inputAuthority": false,
+  "nativeCompilerQualified": false,
+  "wholeCompileAllowed": false,
+  "projectionExcludes": [
+    "machine",
+    "boot",
+    "process identity",
+    "private inventory",
+    "runtime paths",
+    "operation IDs",
+    "original partial metadata"
+  ]
+}

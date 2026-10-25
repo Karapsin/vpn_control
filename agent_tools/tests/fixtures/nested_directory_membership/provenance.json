@@ -1,0 +1,44 @@
+{
+  "purpose": "Actual remote HOME directory membership alone invalidated original immutable nested readiness; original stays UNKNOWN and no master/job is replaced or killed. New independent successor only after finite unchanged authority proof.",
+  "sources": {
+    "agent_tools/tests/fixtures/nested_directory_membership/original-ee4-remote.before.source": {
+      "original": "original ee4 retained remote source",
+      "sha256": "6a67cbde6e7c34ce4745801fa58e666557225cc1f6dca803d2a1528d1f047139"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/readiness_nested_channel.before-code-guard.source": {
+      "original": "agent_tools/readiness_nested_channel.py",
+      "purpose": "Complete actual intermediate before executing-code and comparator constant custody; retained for stale cached code regression.",
+      "sha256": "941015748c247f79cebbddaabb59a5c04ac3d11d4f7d1cbdeb79638e6c8f02da"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/readiness_nested_channel.proof-gap.before.source": {
+      "original": "agent_tools/readiness_nested_channel.py",
+      "purpose": "Exact immediate pre-review correction reconstructed by reversing only the recorded fingerprint/FD-scope and deadline hunks. Preserves complete actual intermediate module, not a synthetic old comparator.",
+      "sha256": "8a586ccbae90c2bda7772e8d37136317565e6c6b5b477a0a72d637bb339a44cc"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/readiness_nested_channel.py.before.source": {
+      "original": "agent_tools/readiness_nested_channel.py",
+      "sha256": "79e0611ef7fb44afca121e9cd5089f5f01bc8fa59dbd8f0ffc7c473b664b3ff5"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/readiness_transport.missing-capsule.before.source": {
+      "original": "agent_tools/readiness_transport.py",
+      "purpose": "Complete actual immediate before-FNF-catch correction, recovered by exact reverse of recorded single hunk; missing existing candidate capsule was misclassified absent.",
+      "sha256": "015746c2cdfd4754bdd1d99d83c6c5ff1888763826b9f730468f251fa660911a"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/readiness_transport.py.before.source": {
+      "original": "agent_tools/readiness_transport.py",
+      "sha256": "ee9f5ecba328309386a77c301f5038e27073b5f7d5c2c667e3a82dedacc9e259"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/ssh_direct_nested_channel.py.before.source": {
+      "original": "agent_tools/ssh_direct_nested_channel.py",
+      "sha256": "48b45beac4027d31efc05f002158ab7c82ba362a866caf8f74fd1fee9a8cb9ad"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/ssh_fresh_nested_channel.py.before.source": {
+      "original": "agent_tools/ssh_fresh_nested_channel.py",
+      "sha256": "77a71b758f4008fe157a8b743d2f70cee1e5e2c360cd4737d4822814dec32a5d"
+    },
+    "agent_tools/tests/fixtures/nested_directory_membership/test_ssh_fresh_nested_channel.py.before.source": {
+      "original": "agent_tools/tests/test_ssh_fresh_nested_channel.py",
+      "sha256": "f2c1937eea26a1a642b387e3e0ed6b54fd89320dd7796fd38cf230019d17d366"
+    }
+  }
+}

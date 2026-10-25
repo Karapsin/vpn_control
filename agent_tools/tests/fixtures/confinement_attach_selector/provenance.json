@@ -1,0 +1,14 @@
+{
+  "executionAuthority": "Tests execute ONLY the authentic old main selector AST statements and the two exact new pure parser definitions; no complete historical runner execution, filesystem/native commands or qualification.",
+  "failure": "Actual 2GiB native attach succeeded; original exact-key selector refused its GPT content-hint fields before any compile. Prior actual 64MiB attach raw row lacked these fields.",
+  "files": {
+    "attach-2gib.plist": "c4adea0c69e98f5219ea865693c2b8e4323c2e5c4f863ccc4f04a989bead6f99",
+    "attach-64mib.plist": "ef6b03599e14bd476c789d790010ba5e1d4cd099a6538afd5faa3ef2bff4f8ac",
+    "hdi-2gib-info.plist": "2c4d76e1670a540e5973c24b52ae8dfd5a06683397a964d53c0ead2baf01c1d7",
+    "runner.before.source": "8a0dae5a706c2d60bef63de1cb6e334da71fcce91f2d7d166df820c65d94e8dc",
+    "runner.fixed.source": "50b75bb466a5fda49983a8f57fc194b2e8eb51c44ad005db3d2817d00e5e6139"
+  },
+  "nativeQualifierRetried": false,
+  "originalOperationId": "58a90aca-ad23-4aa3-b755-14d0c809d0ac",
+  "schemaVersion": 1
+}

@@ -1,0 +1,545 @@
+"""Owned Windows readiness through exact QMP or libvirt instance identities.
+
+Registration is private and observation-only. Capabilities require retained
+native proof; an absent capability is a blocker and never a replacement VM.
+"""
+from dataclasses import dataclass
+import ast
+import base64
+import hashlib
+import inspect
+import json
+import math
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import time
+import types
+from contextlib import closing
+from uuid import UUID,uuid4,uuid5
+
+from . import readiness,readiness_providers as providers
+from . import readiness_fixture_registry as registry
+from . import readiness_windows_remote as packets
+from . import readiness_windows_guest as guest
+from . import readiness_windows_leases as leases
+from . import readiness_windows_display as monitor
+from . import readiness_windows_idle as idle_module
+from . import readiness_windows_processes as process_module
+from . import readiness_windows_jobs as job_module
+from . import readiness_windows_preexec as preexec_module
+from . import readiness_windows_host_work as host_work_module
+from . import readiness_windows_creator_registry as creator_registry
+from . import ssh_transport as transport
+from .native_review_source_closure import _Held
+from .private_credential_file import SecretFile
+from . import private_inventory_lock as publication
+from .private_inventory_lock import Directory, PresentedPath, _rename_create_only, _generation
+
+_EXECUTING_CODE=inspect.currentframe().f_code
+
+
+def _need(value,reason):
+    if not value:raise providers.ProviderError(reason)
+
+
+def _source_pins():
+    from . import native_vm_spec,windows_vm_unattend
+    from . import readiness_reservation_observation,native_environment,windows_vm_deploy,windows_vm_resources,private_credential_file
+    creator_modules=(creator_registry,creator_registry.creator,creator_registry.custody,creator_registry.creator.lifecycle)
+    modules=(packets,guest,leases,monitor,idle_module,process_module,job_module,preexec_module,host_work_module,*creator_modules,creator_registry.jobs,readiness,providers,transport,
+             packets.instance,packets.deployment,native_vm_spec,windows_vm_unattend,
+             readiness_reservation_observation,native_environment,windows_vm_deploy,windows_vm_resources,private_credential_file,publication)
+    paths=(Path(__file__),*(Path(module.__file__)for module in modules))
+    result={}
+    for path in paths:
+        raw,pin=registry._body(path,private_file=False)
+        result[str(path)]=pin
+        # Source-bound requests also retain the complete transitive closure.
+        # These producers carry fixed native literals, so a previously imported
+        # module must never pair its old constants with newly read source pins.
+        module=next((item for item in (packets,guest,leases,monitor,idle_module,process_module,job_module,preexec_module,host_work_module,*creator_modules)if Path(item.__file__)==path),None)
+        if module is not None:
+            _need(getattr(module,'_EXECUTING_CODE',None)==compile(raw,str(path),'exec',dont_inherit=True),
+                  'windows_producer_source_changed')
+    return result
+
+
+def _directory(path):
+    path.mkdir(mode=0o700,parents=True,exist_ok=True);s=path.lstat()
+    _need(stat.S_ISDIR(s.st_mode)and s.st_uid==os.geteuid()and stat.S_IMODE(s.st_mode)==0o700,'windows_evidence_owner')
+    return path
+
+
+def _publication_guard():
+    raw=registry._body(Path(publication.__file__),private_file=False)[0]
+    code=compile(raw,str(Path(publication.__file__)),'exec',dont_inherit=True)
+    actual={value.co_name:value for value in code.co_consts if isinstance(value,types.CodeType)}
+    def class_matches(cls):
+        methods={value.co_name:value for value in actual[cls.__name__].co_consts if isinstance(value,types.CodeType)and value.co_name!='__annotate__'}
+        return all(value==(getattr(cls,name).fget.__code__ if isinstance(getattr(cls,name),property)else getattr(cls,name).__code__)for name,value in methods.items())
+    _need(class_matches(Directory)and class_matches(PresentedPath)and publication.PresentedPath is PresentedPath
+          and actual.get('_directory_identity')==publication._directory_identity.__code__
+          and publication.Directory is Directory
+          and actual.get('_rename_create_only')==_rename_create_only.__code__
+          and publication._rename_create_only is _rename_create_only
+          and actual.get('_generation')==_generation.__code__,
+          'windows_publication_source_changed')
+
+
+def _save(path,value):
+    """Publish a complete private inode once; never adopt a partial final name."""
+    _publication_guard();path=Path(path)
+    raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode()
+    presented=PresentedPath(path.parent)
+    with closing(_Held())as held,Directory(presented.canonical)as directory:
+        helper=Path(publication.__file__)
+        held.read(str(helper),hashlib.sha256(helper.read_bytes()).hexdigest(),max_bytes=1048576)
+        _publication_guard();presented.guard();held.finish();held.final_identity_pass()
+        temporary='.'+path.name+'.'+uuid4().hex+'.tmp'
+        fd=os.open(temporary,os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory.fd)
+        try:
+            offset=0
+            while offset<len(raw):
+                count=os.write(fd,raw[offset:]);_need(count>0,'windows_evidence_incomplete');offset+=count
+            os.fsync(fd);directory.guard();presented.guard();_publication_guard()
+            info=os.fstat(fd)
+            _need(stat.S_ISREG(info.st_mode)and info.st_uid==os.geteuid()and stat.S_IMODE(info.st_mode)==0o600
+                  and info.st_nlink==1 and info.st_size==len(raw)and os.pread(fd,len(raw)+1,0)==raw
+                  and _generation(os.fstat(fd))==_generation(info)
+                  and _generation(os.stat(temporary,dir_fd=directory.fd,follow_symlinks=False))==_generation(info),
+                  'windows_evidence_generation')
+            held.finish();held.final_identity_pass()
+            _rename_create_only(directory.fd,temporary,path.name)
+            directory.guard();presented.guard()
+            _need(_generation(os.stat(path.name,dir_fd=directory.fd,follow_symlinks=False))==_generation(os.fstat(fd)),
+                  'windows_evidence_generation')
+            os.fsync(directory.fd);held.finish();held.final_identity_pass()
+        finally:
+            try:
+                try:named=os.stat(temporary,dir_fd=directory.fd,follow_symlinks=False)
+                except FileNotFoundError:pass
+                else:
+                    directory.guard();_need(_generation(named)==_generation(os.fstat(fd))and named.st_nlink==1,'windows_evidence_generation')
+                    os.unlink(temporary,dir_fd=directory.fd)
+            finally:os.close(fd)
+
+
+def _binding(value):
+    _need(type(value)is dict and set(value)=={'provider','spec','setup','context','uri','domain','xmlSha256'},'windows_binding_invalid')
+    # The finite producer validates all paths, locale, machine and domain fields.
+    packets.validate_binding(value)
+    return json.loads(json.dumps(value))
+
+
+class WindowsBackend:
+    def __init__(self,root,binding,expected_sid,*,capabilities=frozenset(),guard=None,lease_root_generation=None,credential_file=None):
+        self.root=Path(root).resolve(strict=True);self.binding=_binding(binding);self.guard=guard
+        self.provider=self.binding['provider'];self.machine=self.binding['spec']['deploymentId']
+        self.target='windows:'+self.binding['spec']['host']+':'+self.machine
+        _need(type(expected_sid)is str and re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',expected_sid)is not None,'windows_account_invalid')
+        self.expected_sid=expected_sid;self.capabilities=frozenset(capabilities);self.last_facts=None
+        _need(self.capabilities<={'reconnect','resume','wake_display','reboot'},'windows_recovery_unqualified')
+        _need(lease_root_generation is None or type(lease_root_generation)is str and leases._ROOT.fullmatch(lease_root_generation),'windows_lease_root_invalid')
+        self.lease_root_generation=lease_root_generation;self.credential_file=credential_file
+        self.reservation_proof=None;self._preexec_rejections=();self._original_host_phases=();self._creator_handle=None
+        self.credential_pin=None
+        if 'reboot'in self.capabilities:
+            _need(type(credential_file)is str,'windows_recovery_unqualified')
+            _need(Path(credential_file).is_relative_to(self.root/'.runtime'),'windows_credential_binding')
+            with SecretFile(credential_file)as secret:self.credential_pin=tuple(secret.pin)
+
+    def dispatch_binding(self,family):
+        if self.provider=='raw-qemu-windows':
+            _need(family=='qmp','windows_dispatch_family');return {'qmpSocket':self.binding['spec']['root']+'/qmp.sock'}
+        _need(family=='libvirt','windows_dispatch_family');return {'uri':self.binding['uri'],'domain':self.binding['domain']}
+
+    def _guard(self):
+        raw=registry._body(Path(__file__),private_file=False)[0]
+        _need(_EXECUTING_CODE==compile(raw,str(Path(__file__)),'exec',dont_inherit=True),'windows_source_changed')
+        _source_pins()
+        try:
+            for proof in (*self._preexec_rejections,*self._original_host_phases):proof.guard()
+            if self._creator_handle is not None:self._creator_handle.guard()
+        except (OSError,ValueError):raise readiness.AdapterBlocked('integrity_mismatch')from None
+        if self.credential_pin is not None:
+            with SecretFile(self.credential_file)as secret:
+                _need(tuple(secret.pin)==self.credential_pin,'windows_credential_changed')
+        if self.guard is not None:self.guard()
+
+    def _reservations(self,facts,deadline):
+        """Fresh privileged host census, then protected local proof; no VM action."""
+        from . import windows_vm_deploy as deployment,windows_vm_resources as resources
+        from . import readiness_reservation_observation as reservations
+        if self.reservation_proof is not None:self.reservation_proof.close();self.reservation_proof=None
+        self._guard();census=deployment.resources(self.root,self.binding['spec'],self.credential_file)
+        _need(census.get('state')=='resources-observed','windows_reservation_census_unavailable')
+        deployment._wait_for_resource_clock(resources.measurement(census),deadline)
+        proof=reservations.observe(self.root,self.binding,facts,census=census)
+        try:
+            value=proof.as_dict()
+            _need(type(value)is dict and value.get('machine')==self.machine
+                  and value.get('hostBoot')==self.binding['context']['hostBootId']
+                  and value.get('actor')=={key:facts['actor'][key]for key in ('pid','startTicks')}
+                  and type(value.get('visibilityComplete'))is bool and type(value.get('blockers'))is list,
+                  'windows_reservation_proof_invalid')
+            if value['visibilityComplete']and not value['blockers']:
+                proof.guard();self.reservation_proof=proof
+            else:proof.close()
+            return value
+        except BaseException:proof.close();raise
+
+    def _run(self,mode,operation,deadline,*,reconcile=False,**options):
+        self._guard();remaining=deadline-time.monotonic()
+        _need(math.isfinite(remaining)and remaining>0,'windows_deadline')
+        with transport.admitted_transport(self.root,self.binding['spec']['host'],operation,deadline=deadline,
+                requirements=readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})if reconcile else frozenset()))as admission:
+            admission.revalidate();self._guard()
+            _need(deadline>time.monotonic(),'windows_deadline')
+            directory=_directory(self.root/'.runtime/readiness-windows'/operation)
+            label=mode+'-'+uuid4().hex;source=packets.program(self.binding,mode,operation,**options)
+            path=directory/(label+'.py');_save(path,source)
+            held=_Held()
+            try:
+                held.read(str(path),hashlib.sha256(source).hexdigest(),max_bytes=1048576)
+                command=['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(source).decode())+'))']
+                argv=transport.build_ssh_argv(transport.load_config(self.root),self.binding['spec']['host'],command=command)
+                self._guard();held.finish();held.final_identity_pass()
+                remaining=deadline-time.monotonic()
+                _need(math.isfinite(remaining)and remaining>0,'windows_deadline')
+                result=transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                        timeout=min(50,remaining),check=False)
+                _save(directory/(label+'.stdout.private'),result.stdout);_save(directory/(label+'.stderr.private'),result.stderr)
+                _save(directory/(label+'.callback.json'),{'returnCode':result.returncode,'stdoutBytes':len(result.stdout),'stderrBytes':len(result.stderr),'sourceSha256':hashlib.sha256(source).hexdigest()})
+                self._guard();held.finish();held.final_identity_pass()
+                _need(result.returncode==0 and len(result.stdout)<=262144 and len(result.stderr)<=65536,'windows_original_outcome_unknown')
+                value=json.loads(result.stdout)
+                _need(type(value)is dict and value.get('state')in {'observed','submitted','blocked'},'windows_response_invalid')
+                _save(directory/(label+'.result.json'),value);return value,admission.ready
+            finally:held.close()
+
+    def observe(self,requirements,deadline):
+        interactive='interactive_desktop'in requirements.required
+        with_idle='reboot'in self.capabilities
+        namespace=None;namespace_unknown=False
+        if with_idle:
+            try:namespace=job_module.namespace_binding(self.root,self.target,self.machine,self.binding)
+            except (OSError,ValueError):namespace_unknown=True
+        job_root=None if namespace is None else namespace.root_generation
+        job_admission=None if namespace is None else namespace.admission_generation
+        try:self._preexec_rejections=(()if namespace is None else preexec_module.preexec_rejections(self.root,self.target,namespace))
+        except (OSError,ValueError):raise readiness.AdapterBlocked('integrity_mismatch')from None
+        try:
+            self._creator_handle=(creator_registry.load(self.root,self.binding)if with_idle and self.provider=='libvirt-windows'else None)
+            self._original_host_phases=(host_work_module.accepted_libvirt_lifecycle_proofs(self.root,self.target,
+                spec=self.binding['spec'],setup=self.binding['setup'],host_boot=self.binding['context']['hostBootId'])
+                if with_idle and self.provider=='libvirt-windows'else())
+        except (OSError,ValueError):raise readiness.AdapterBlocked('integrity_mismatch')from None
+        try:value,host=self._run('observe',str(uuid4()),deadline,interactive=interactive,idle=with_idle,
+                expected_sid=self.expected_sid,lease_root_generation=self.lease_root_generation,
+                job_root_generation=job_root,job_admission_generation=job_admission,preexec_rejections=self._preexec_rejections,original_host_phases=self._original_host_phases,creator_handle=self._creator_handle)
+        except readiness.ReadinessBlocked as error:
+            if error.reason in {'recovery_not_permitted','transport_attempts_exhausted','readiness_deadline'}:
+                return readiness.Observation(self.target,self.machine,transport='unavailable',owned=True,trusted=True,integrity=True)
+            raise
+        if value['state']!='observed':
+            reason=value.get('reason')
+            if reason in {'instance_machine','instance_libvirt_identity'}:raise readiness.AdapterBlocked('machine_identity_mismatch')
+            if reason in {'instance_host_epoch','instance_libvirt_xml_changed','instance_parent_changed','instance_source_changed'}:raise readiness.AdapterBlocked('integrity_mismatch')
+            raise readiness.AdapterBlocked('provider_unavailable')
+        _need(value.get('machine')==self.machine and value.get('provider')==self.provider,'windows_machine_mismatch')
+        facts=value['sessionFacts'];state=value['guest'];ordinary='unknown';boot=account=session=None
+        if facts is not None:
+            validated=guest.validate_session(facts,self.expected_sid,self.binding['setup']['user'],self.machine)
+            ordinary=validated['ordinary_session'];boot=validated['boot'];account=validated['account'];session=validated['session']
+            value['boot']=boot
+        elif state=='running':state='booting'
+        display='unknown'
+        # The fixed composite probe guards its current boot before and after
+        # the actual display notification; no second discovery/SSH trip is needed.
+        if interactive and boot is not None and state=='running':
+            actual=monitor.validate(value['displayFacts'],self.machine,boot)
+            display={'awake':'ready','asleep':'sleeping','dimmed':'sleeping'}[actual]
+            value['boot']=boot
+        self.last_facts=value
+        connection=getattr(getattr(host,'binding',None),'connection',None)or getattr(host,'connection',None)
+        _need(type(connection)is str and connection and type(value.get('controlConnection'))is str,'windows_connection_unrecognized')
+        connection=connection+'|'+value['controlConnection']
+        idle_visibility=frozenset();idle_blockers=frozenset({'windows_idle_not_qualified'})
+        if with_idle and boot is not None and state=='running':
+            census=idle_module.validate(value['idleFacts'],self.machine,boot,self.binding['setup']['user'],self.expected_sid,self.lease_root_generation,
+                                       job_root,job_admission,preexec_rejections=self._preexec_rejections)
+            work=value['hostWork'];_need(type(work)is dict and set(work)=={'visibilityComplete','terminalCount','unresolved'}
+                    and type(work['visibilityComplete'])is bool and type(work['unresolved'])is list,'windows_idle_host_visibility')
+            blockers=set(census['blockers'])
+            if namespace_unknown:blockers.update({'running_jobs','unknown_jobs'})
+            if work['unresolved']:blockers.update({'running_jobs','unknown_jobs','lifecycle_phases'})
+            if census['visibilityComplete']and work['visibilityComplete']:
+                idle_visibility=readiness.IDLE_VISIBILITY-{'reservations'}
+            idle_blockers=frozenset(blockers|{'reservations'})
+            if not blockers and census['visibilityComplete']and work['visibilityComplete']:
+                reservation=self._reservations(value,deadline)
+                if reservation['visibilityComplete']:
+                    idle_visibility=readiness.IDLE_VISIBILITY
+                    idle_blockers=frozenset(reservation['blockers'])
+        return readiness.Observation(self.target,self.machine,connection=connection,boot=boot,account=account,session=session,
+            transport='ready',guest=state if state in {'running','booting','stopped','paused','suspended','unhealthy','unknown'}else'unknown',
+            guest_agent=value['guestAgent'],ordinary_session=ordinary,display=display,owned=True,trusted=True,integrity=True,
+            credential_available=False,idle_visibility=idle_visibility,idle_blockers=idle_blockers)
+
+    def recover(self,action,recovery_identity,observed,deadline):
+        self._guard();_need(action in self.capabilities,'windows_recovery_unqualified')
+        if action=='reconnect':
+            with transport.admitted_transport(self.root,self.binding['spec']['host'],str(uuid5(UUID(self.machine),recovery_identity)),deadline=deadline):pass
+            return
+        if action=='reboot':
+            _need(observed.idle_visibility==readiness.IDLE_VISIBILITY and not observed.idle_blockers
+                  and self.reservation_proof is not None,'windows_positive_idle_missing')
+            self.reservation_proof.guard()
+            namespace=job_module.namespace_binding(self.root,self.target,self.machine,self.binding)
+            value,_=self._run('reboot',str(uuid5(UUID(self.machine),recovery_identity)),deadline,expected=self.last_facts,
+                recovery_id=recovery_identity,expected_sid=self.expected_sid,lease_root_generation=self.lease_root_generation,
+                job_root_generation=None if namespace is None else namespace.root_generation,
+                job_admission_generation=None if namespace is None else namespace.admission_generation,
+                reservation=self.reservation_proof.as_dict(),preexec_rejections=self._preexec_rejections,original_host_phases=self._original_host_phases,creator_handle=self._creator_handle)
+            self.reservation_proof.guard();_need(value.get('state')=='submitted','windows_original_outcome_unknown');return
+        _need(self.last_facts is not None and (action=='resume'and observed.guest in {'paused','suspended'}or action=='wake_display'and observed.guest=='running'and observed.display=='sleeping'),'windows_recovery_state_changed')
+        value,_=self._run(action,str(uuid5(UUID(self.machine),recovery_identity)),deadline,expected=self.last_facts,recovery_id=recovery_identity)
+        _need(value.get('state')=='submitted'and value.get('guest')=='running','windows_original_outcome_unknown')
+
+    def close(self):
+        if self.reservation_proof is not None:self.reservation_proof.close();self.reservation_proof=None
+
+    def windows_job_executor(self,*,deadline=None):
+        """Enroll one durable background namespace after current guest admission."""
+        self._guard()
+        _need(type(self.last_facts)is dict and self.last_facts.get('guest')=='running'
+              and self.last_facts.get('guestAgent')is True,'windows_job_readiness_missing')
+        return job_module.ensure_namespace(self,deadline=time.monotonic()+180 if deadline is None else deadline)
+
+    def lease_executor(self):
+        """Prepare fixed private metadata only after an actual desktop admission."""
+        self._guard();facts=self.last_facts
+        _need(type(facts)is dict and facts.get('guest')=='running' and facts.get('guestAgent')is True,
+              'windows_lease_readiness_missing')
+        current=guest.validate_session(facts['sessionFacts'],self.expected_sid,self.binding['setup']['user'],self.machine)
+        _need(current['ordinary_session']=='ready'and not current['competingSessions']
+              and monitor.validate(facts['displayFacts'],self.machine,current['boot'])=='awake',
+              'windows_lease_desktop_unavailable')
+        host={key:facts[key]for key in ('actor','hostBoot','controlConnection')}
+        # The placeholder is never used by Enroll; its generation is returned by
+        # the protected Windows directory handle and bound before acquisition.
+        provisional=leases.WindowsLeaseBinding(self.machine,current['boot'],self.expected_sid,current['session'],
+                                               '00000000:0000000000000000:0000000000000000')
+        operation=str(uuid5(UUID(self.machine),'lease-enrollment:'+current['boot']))
+        deadline=time.monotonic()+180;generation=self.lease_root_generation
+        directory=self.root/'.runtime/readiness-windows'/operation
+        # A previously bound private root is never recreated by metadata enrollment.
+        # Native Control/Inventory verifies that exact root before any lease effect.
+        if generation is None:
+            if directory.exists():
+                previous=list(directory.glob('lease-enroll-*.py'))
+                _need(len(previous)<=3,'windows_enrollment_attempt_limit')
+                for path in previous:
+                    raw,pin=registry._body(path)
+                    # Retained negative admission proof belongs to one exact saved
+                    # packet generation. New preparation never deletes that source.
+                    proofs=[]
+                    for resolution in directory.glob('enrollment-resolution-*.json'):
+                        record,_=registry._json(resolution)
+                        if record.get('originalOperationId')==operation and record.get('originalPacketPin')==pin:proofs.append(record)
+                    if any(proof.get('state')=='proven_unsubmitted'and proof.get('reason')=='original_admission_absent'for proof in proofs):continue
+                    result_path=path.with_suffix('.result.json')
+                    # _run uses a shared label for its source and retained response.
+                    if os.path.lexists(result_path):
+                        value,_=registry._json(result_path)
+                        _need(value.get('state')=='observed'and value.get('provider')==self.provider
+                              and value.get('machine')==self.machine and type(value.get('lease'))is dict,
+                              'windows_enrollment_original_invalid')
+                        actual=leases.validate_enrollment(value['lease'],self.machine,current['boot'])
+                    else:
+                        resolved=reconcile_enrollment(self.root,self.binding,self.expected_sid,path,deadline=deadline)
+                        if resolved['state']=='proven_unsubmitted':continue
+                        _need(resolved['state']=='terminal'and resolved['boot']==current['boot'],'windows_lease_enrollment_unknown')
+                        actual=resolved['rootGeneration']
+                    _need(generation is None or generation==actual,'windows_lease_root_changed');generation=actual
+                _need(generation is not None or len(previous)<3,'windows_enrollment_attempt_limit')
+            if generation is None:
+                value,_=self._run('lease-enroll',operation,deadline,expected=host,lease_binding=provisional)
+                _need(value.get('state')=='observed'and type(value.get('lease'))is dict,'windows_lease_enrollment_unknown')
+                generation=leases.validate_enrollment(value['lease'],self.machine,current['boot'])
+        binding=leases.WindowsLeaseBinding(self.machine,current['boot'],self.expected_sid,current['session'],generation)
+        snapshot={'schemaVersion':1,'provider':self.provider,'binding':self.binding,'expectedSid':self.expected_sid,
+                  'host':host,'guest':vars(binding),'sources':_source_pins()}
+        return WindowsLeaseExecutor(self.root,snapshot,guard=self.guard)
+
+
+class WindowsLeaseExecutor:
+    """One original guest lease; connection repair never creates another owner."""
+    def __init__(self,root,snapshot,*,guard=None):
+        self.root=Path(root).resolve(strict=True)
+        _need(type(snapshot)is dict and set(snapshot)=={'schemaVersion','provider','binding','expectedSid','host','guest','sources'}
+              and type(snapshot['schemaVersion'])is int and snapshot['schemaVersion']==1,'windows_lease_snapshot_invalid')
+        self._snapshot=json.loads(json.dumps(snapshot));self.provider=snapshot['provider']
+        self.backend=WindowsBackend(self.root,snapshot['binding'],snapshot['expectedSid'],guard=guard)
+        _need(self.provider==self.backend.provider and type(snapshot['host'])is dict
+              and set(snapshot['host'])=={'actor','hostBoot','controlConnection'}
+              and snapshot['host']['hostBoot']==snapshot['binding']['context']['hostBootId']
+              and type(snapshot['host']['actor'])is dict
+              and type(snapshot['host']['controlConnection'])is str,'windows_lease_snapshot_invalid')
+        _need(type(snapshot['guest'])is dict and set(snapshot['guest'])=={'machine','boot','account','session','root_generation'},
+              'windows_lease_snapshot_invalid')
+        self.binding=leases.WindowsLeaseBinding(**snapshot['guest'])
+        _need(self.binding.machine==self.backend.machine and self.binding.account==self.backend.expected_sid,
+              'windows_lease_snapshot_invalid')
+        self._guard()
+
+    def _guard(self):
+        self.backend._guard()
+        _need(self._snapshot['sources']==_source_pins(),'windows_lease_original_source_changed')
+
+    def snapshot(self):
+        self._guard();return json.loads(json.dumps(self._snapshot))
+
+    def _state(self,operation):
+        _need(type(operation)is str and str(UUID(operation))==operation,'windows_lease_operation_invalid')
+        return _directory(self.root/'.runtime/readiness-windows-leases'/operation)
+
+    def _identity(self,state,value,operation):
+        path=state/'admission-identity.json'
+        if os.path.lexists(path):original=registry._json(path)[0]
+        else:original=None
+        owner=state/'owner-identity.json'
+        if os.path.lexists(owner):original=registry._json(owner)[0]
+        result=leases.validate_observation(value,self.binding,operation,original_identity=original)
+        identity=result['identity']
+        if identity:
+            admission={key:identity[key]for key in ('admissionNonce','programSha256')}
+            try:_save(path,admission)
+            except FileExistsError:_need(registry._json(path)[0]==admission,'windows_lease_original_owner_changed')
+            if 'owner'in identity:
+                try:_save(owner,identity)
+                except FileExistsError:_need(registry._json(owner)[0]==identity,'windows_lease_original_owner_changed')
+        return result
+
+    def _dispatch(self,action,operation,ttl=None):
+        self._guard();state=self._state(operation)
+        if action=='acquire':
+            admission={'operationId':operation,'ttlSeconds':ttl,'executor':self._snapshot}
+            try:_save(state/'admission.json',admission)
+            except FileExistsError:_need(registry._json(state/'admission.json')[0]==admission,'windows_lease_original_inputs_changed')
+        elif os.path.lexists(state/'admission.json'):
+            original=registry._json(state/'admission.json')[0]
+            _need(original.get('operationId')==operation and original.get('executor')==self._snapshot,
+                  'windows_lease_original_inputs_changed')
+        # Every status request has a fresh host observation, while the guest
+        # operation UUID and its retained owner stay exactly the same. Acquire
+        # and cancellation each retain one original host admission/ACK.
+        host_operation=(str(uuid4())if action=='status'else str(uuid5(UUID(operation),'windows-lease-'+action)))
+        value,_=self.backend._run('lease-'+action,host_operation,time.monotonic()+180,reconcile=True,
+                expected=self._snapshot['host'],lease_binding=self.binding,lease_operation=operation,
+                **({'ttl_seconds':ttl}if action=='acquire'else{}))
+        self._guard()
+        if value.get('state')!='observed' or type(value.get('lease'))is not dict:
+            return {'ok':False,'schemaVersion':1,'operationId':operation,'state':'unknown',
+                    'reason':'windows_original_lease_unresolved','replayAllowed':False,'jobState':'unknown',
+                    'nextAction':'resolve_blocker'}
+        _save(state/(host_operation+'-'+uuid4().hex+'.raw.json'),value)
+        return self._identity(state,value['lease'],operation)
+
+    def submit(self,operation_id,ttl_seconds):
+        # Validate TTL before publishing any original admission.
+        leases.program('acquire',self.binding,operation_id,ttl_seconds=ttl_seconds)
+        return self._dispatch('acquire',operation_id,ttl_seconds)
+
+    def observe(self,operation_id):return self._dispatch('status',operation_id)
+
+    def cancel(self,operation_id):return self._dispatch('cancel',operation_id)
+
+
+def lease_executor_from_snapshot(root,snapshot):
+    """Reconcile immutable private custody without registration or GUI readiness."""
+    return WindowsLeaseExecutor(root,snapshot)
+
+
+def reconcile_enrollment(root,binding,expected_sid,original_packet,*,deadline=None):
+    """Observe one saved metadata preparation; never resubmit its guest script."""
+    root=Path(root).resolve(strict=True)
+    path=registry._under(str(original_packet),root/'.runtime/readiness-windows')
+    _need(re.fullmatch(r'lease-enroll-[0-9a-f]{32}\.py',path.name)is not None,'windows_enrollment_original_invalid')
+    raw,pin=registry._body(path);tree=ast.parse(raw)
+    names={'SPEC','SETUP','CONTEXT','PROVIDER','URI','DOMAIN','XML_SHA','OPERATION','MODE','EXPECTED','LEASE_SCRIPT'}
+    values={}
+    for item in tree.body:
+        if isinstance(item,ast.Assign)and len(item.targets)==1 and isinstance(item.targets[0],ast.Name)and item.targets[0].id in names:
+            _need(item.targets[0].id not in values,'windows_enrollment_original_invalid')
+            values[item.targets[0].id]=ast.literal_eval(item.value)
+    _need(set(values)==names and values['MODE']=='lease-enroll' and values['OPERATION']==path.parent.name,
+          'windows_enrollment_original_invalid')
+    actual=_binding(binding)
+    _need({key:values[name]for key,name in [('spec','SPEC'),('setup','SETUP'),('context','CONTEXT'),('provider','PROVIDER'),('uri','URI'),('domain','DOMAIN'),('xmlSha256','XML_SHA')]}==actual,
+          'windows_enrollment_original_invalid')
+    original={'operationId':values['OPERATION'],'sourceSha256':hashlib.sha256(values['LEASE_SCRIPT'].encode()).hexdigest()}
+    backend=WindowsBackend(root,actual,expected_sid)
+    operation=str(uuid4())
+    value,_=backend._run('lease-enrollment-status',operation,deadline or time.monotonic()+180,reconcile=True,
+                         expected=values['EXPECTED'],original_script=original)
+    _need(registry._body(path)[1]==pin,'windows_enrollment_original_changed')
+    result={'operationId':operation,'originalOperationId':original['operationId'],'originalPacketPin':pin,
+            'state':'unknown','replayAllowed':False,'reason':'windows_original_enrollment_unresolved'}
+    if value.get('state')=='observed'and type(value.get('lease'))is dict:
+        prior=value['lease']
+        if prior=={'state':'unsubmitted','reason':'original_admission_absent','replayAllowed':False}:
+            result.update(state='proven_unsubmitted',reason='original_admission_absent')
+        else:
+            _need(prior.get('machine')==backend.machine,'windows_enrollment_original_invalid')
+            _need(type(prior.get('boot'))is str and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z',prior['boot'])is not None,
+                  'windows_enrollment_original_invalid')
+            generation=leases.validate_enrollment(prior,backend.machine,prior.get('boot'))
+            result.update(state='terminal',reason='original_enrollment_collected',rootGeneration=generation,boot=prior['boot'])
+    _save(path.parent/('enrollment-resolution-'+operation+'.json'),result)
+    return result
+
+
+@dataclass(frozen=True)
+class RegisteredWindowsFixture(registry.RegisteredFixture):
+    required_readiness:frozenset=frozenset({'interactive_desktop'})
+
+
+def load_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
+    root=Path(root).resolve(strict=True)
+    fields={'schemaVersion','fixtureId','provider','binding','expectedSid','sources','originalIntent','originalIntentPin','qualifications',
+            'leaseRootGeneration','credential'}
+    _need(type(descriptor)is dict and set(descriptor)==fields and type(descriptor['schemaVersion'])is int and descriptor['schemaVersion']==1
+            and descriptor['fixtureId']==fixture_id and descriptor['provider']in {'raw-qemu-windows','libvirt-windows'},'windows_registration_invalid')
+    binding=_binding(descriptor['binding']);_need(binding['provider']==descriptor['provider'],'windows_registration_invalid')
+    original=registry._under(descriptor['originalIntent'],root/'.rag_index/windows-vm-deploy-intents')
+    value,pin=registry._json(original)
+    _need(pin==descriptor['originalIntentPin']and value.get('spec')==binding['spec']and value.get('setup')==binding['setup']
+            and value.get('context')==binding['context']and value.get('mode')=='start','windows_original_intent_changed')
+    proofs=descriptor['qualifications'];_need(type(proofs)is dict and set(proofs)<={'resume','transport','wake_display','reboot'},'windows_qualification_invalid')
+    credential=descriptor['credential']
+    _need(credential is None or type(credential)is dict and set(credential)=={'path','generation'},'windows_credential_binding')
+    if credential is not None:
+        registry._under(credential['path'],root/'.runtime')
+        with SecretFile(credential['path'])as secret:_need(list(secret.pin)==credential['generation'],'windows_credential_changed')
+    capabilities=set()
+    for name,proof in proofs.items():
+        _need(type(proof)is dict and set(proof)=={'path','pin'},'windows_qualification_invalid')
+        path=registry._under(proof['path'],root/'.runtime');body,pin=registry._json(path)
+        _need(pin==proof['pin']and body.get('provider')==descriptor['provider']and body.get('machine')==binding['spec']['deploymentId']
+                and body.get('capability')==name and body.get('qualified')is True and body.get('sourcePins')==descriptor['sources'],'windows_qualification_invalid')
+        capabilities.add('reconnect'if name=='transport'else name)
+    def custody():
+        current,pin=registry._json(root/'.rag_index/readiness-fixtures'/(fixture_id+'.json'))
+        _need(current==descriptor and pin==descriptor_pin and descriptor['sources']==_source_pins(),'windows_registration_changed')
+        _need(registry._json(original)[1]==descriptor['originalIntentPin'],'windows_original_intent_changed')
+        for proof in proofs.values():_need(registry._json(Path(proof['path']))[1]==proof['pin'],'windows_qualification_changed')
+        if credential is not None:
+            with SecretFile(credential['path'])as secret:_need(list(secret.pin)==credential['generation'],'windows_credential_changed')
+    custody();backend=WindowsBackend(root,binding,descriptor['expectedSid'],capabilities=frozenset(capabilities),guard=custody,
+            lease_root_generation=descriptor['leaseRootGeneration'],credential_file=credential['path']if credential is not None else None)
+    digest=hashlib.sha256(json.dumps([backend.target,backend.machine],separators=(',',':')).encode()).hexdigest()
+    return RegisteredWindowsFixture(backend.target,backend.machine,providers.ProviderAdapter(descriptor['provider'],backend.target,backend.machine,backend),root/'.rag_index/readiness-targets'/digest)

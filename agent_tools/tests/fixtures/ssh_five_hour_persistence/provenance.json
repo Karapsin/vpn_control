@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "beforeSourceSha256": "9c1d6389c73c9c11950dea434ac5bcb743d2382e6d510b916f774a37b68f4963",
+  "beforeRemoteSha256": "a7d46e729101e05ddea7c8150484a8376210213d5c73e93b70102866e82766e3",
+  "sourceSha": "d24c19047ec15689948404ede40f50c5ec284e77",
+  "failure": "Existing recovery emits one-hour idle persistence instead of configured five hours.",
+  "freshBeforeModuleSha256": "fe8d1e6c27898507ce97a057ce6c89c006d608db48a82de5fe6b8f9d8e1f6b36",
+  "freshBeforeRemoteSha256": "53878553d25d77782643209635898741a94b27e92308e8744d33c032e798846f",
+  "freshBeforeIdleSeconds": 60
+}

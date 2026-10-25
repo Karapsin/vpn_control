@@ -17,6 +17,8 @@ class WindowsMsiOwnerRelaunchRouteTest(unittest.TestCase):
         guard = patch.object(mcp_server, "_MCP_BOOT_TIME_NS", 2**63 - 1)
         guard.start()
         self.addCleanup(guard.stop)
+        target = patch.object(relaunch, '_validate_target', return_value=('windows-cp117','/owned/qga',589342,520739,'S-1-5-21-1-2-3-1002'))
+        target.start(); self.addCleanup(target.stop)
 
     def test_exact_host_and_phase_projection(self):
         launched = {"state": "launched", "sourceSha": relaunch._SOURCE,
@@ -25,11 +27,12 @@ class WindowsMsiOwnerRelaunchRouteTest(unittest.TestCase):
                     "sessionId": 1, "runtimeRunning": False,
                     "replayAllowed": False, "nativeActionAllowed": False}
         for phase in ("launch", "status", "collect"):
+            inputs = {"host":"archlinux", **({"vmIdentity":"589342:520739"} if phase=="launch" else {})}
             with self.subTest(phase=phase), patch.object(relaunch, "workflow",
                 return_value=launched) as call:
                 result = mcp_server._vm_workflow_impl(
-                    "windows-msi-owner-relaunch-" + phase, {"host": "archlinux"})
-            call.assert_called_once_with(mcp_server.REPO_ROOT, phase, {"host": "archlinux"})
+                    "windows-msi-owner-relaunch-" + phase, inputs)
+            call.assert_called_once_with(mcp_server.REPO_ROOT, phase, inputs)
             self.assertTrue(result["ok"])
             self.assertFalse(result["nativeActionAllowed"])
         with patch.object(relaunch, "workflow", side_effect=AssertionError("unsafe dispatch")):

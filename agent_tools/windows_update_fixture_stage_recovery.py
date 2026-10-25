@@ -561,14 +561,35 @@ def _remove_bundle(root: Path, intent: Mapping[str, Any]) -> bool:
     return True
 
 
+def _validate_target(root: Path | str, value: Mapping[str, Any]) -> tuple[Any, ...]:
+    if (not isinstance(value, Mapping) or set(value) != {'host', 'vmIdentity'}
+            or value['host'] != 'archlinux' or type(value['vmIdentity']) is not str
+            or re.fullmatch(r'[1-9][0-9]{0,9}:[1-9][0-9]{0,18}', value['vmIdentity']) is None):
+        raise WindowsUpdateFixtureStageRecoveryError('Explicit original VM process generation is required.')
+    pid, ticks = map(int, value['vmIdentity'].split(':'))
+    if pid > 2147483647 or ticks > 9223372036854775807:
+        raise WindowsUpdateFixtureStageRecoveryError('Original VM process generation is invalid.')
+    root = Path(root).resolve(strict=True)
+    intent = stage._read_intent(root, _CORRELATION)
+    if (not isinstance(intent, dict) or type(intent.get('pid')) is not int
+            or type(intent.get('startTicks')) is not int or intent.get('pid') != pid or intent.get('startTicks') != ticks
+            or stage._request(intent.get('request', {}))['correlationId'] != _CORRELATION):
+        raise WindowsUpdateFixtureStageRecoveryError('Original VM selector does not match retained intent.')
+    expected = tuple(intent.get(key) for key in ('environment','socketPath','pid','startTicks','expectedSid'))
+    if expected[0] != 'windows-cp117' or base._descriptor(root)[2] != expected:
+        raise WindowsUpdateFixtureStageRecoveryError('Original VM binding changed.')
+    return expected
+
+
 def recover(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
     """Close and archive the one diagnosed pre-dispatch stage, never replay it."""
-    _request(value)
+    selected = _validate_target(root, value)
     root = Path(root).resolve(strict=True)
     unknown = {"state": "unknown", "correlationId": _CORRELATION, "replayAllowed": False}
     try:
         receipt = _read_receipt(root)
         intent, pair, config, target, descriptor = _bound(root, receipt["state"] if receipt is not None else None)
+        if descriptor != selected: return unknown
         evidence, cleanup = _evidence(intent, descriptor)
         expected = {"version": 1, "correlationId": _CORRELATION, "leaseId": intent["leaseId"],
                     "guestGeneration": {"socketPath": descriptor[1], "qemuPid": descriptor[2],
@@ -583,6 +604,7 @@ def recover(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
                      "phase": "guest-stage-absent", "replayAllowed": False,
                      "nativeActionAllowed": False}
             if first == exact and second == exact:
+                if _validate_target(root, value) != selected: return unknown
                 cleaned = _remote_cleanup(intent, pair, config, target, descriptor)
                 if not cleaned and not _remote_absence_reconciled(intent, pair, config, target, descriptor):
                     return unknown
@@ -594,13 +616,14 @@ def recover(root: Path | str, value: Mapping[str, Any]) -> dict[str, Any]:
                 # before removing it; no other mismatch is admitted.
                 empty = {**exact, "binding": "mismatch", "phase": "remote-binding-mismatch"}
                 if ((first != absent or second != absent) and (first != empty or second != empty)) \
-                        or not _remote_absence_reconciled(intent, pair, config, target, descriptor):
+                        or _validate_target(root, value) != selected or not _remote_absence_reconciled(intent, pair, config, target, descriptor):
                     return unknown
             receipt = {**expected, "state": "remote-cleaned"}
             _write_receipt(root, receipt)
         elif receipt["state"] != "remote-cleaned":
             return unknown
-        if not _idle(root, pair) or not _campaign_closed(root, intent, descriptor, config, target, evidence, cleanup):
+        if (_validate_target(root, value) != selected or not _idle(root, pair)
+                or not _campaign_closed(root, intent, descriptor, config, target, evidence, cleanup)):
             return unknown
         if not _remove_bundle(root, intent):
             return unknown

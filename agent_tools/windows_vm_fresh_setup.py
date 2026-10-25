@@ -370,7 +370,7 @@ def _remote(root: str | Path, host: str, correlation_id: str, mode: str, timeout
         raise ValueError("Configured Arch transport is unavailable")
     argv = ssh_transport.build_ssh_argv(config, host, min(timeout_seconds, 30),
                                         command=("python3", "-c", "exec(" + repr(program) + ")"))
-    completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    completed = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                timeout=timeout_seconds, check=False)
     if completed.returncode != 0 or len(completed.stdout) > 2048:
         raise ValueError("Windows fresh setup transport is unknown")
@@ -389,7 +389,7 @@ def _screen_remote(root: str | Path, host: str, correlation_id: str, mode: str, 
         raise ValueError("Configured Arch transport is unavailable")
     argv = ssh_transport.build_ssh_argv(config, host, min(timeout_seconds, 30),
                                         command=("python3", "-c", "exec(" + repr(_program(correlation_id, mode)) + ")"))
-    completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    completed = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                timeout=timeout_seconds, check=False)
     if completed.returncode != 0 or len(completed.stdout) > 13_000_000:
         raise ValueError("Windows screen transport is unknown")
@@ -474,7 +474,7 @@ def _probe_remote(root: str | Path, host: str, correlation_id: str, mode: str, t
         raise ValueError("Configured Arch transport is unavailable")
     argv = ssh_transport.build_ssh_argv(config, host, min(timeout_seconds, 30),
                                         command=("python3", "-c", "exec(" + repr(program) + ")"))
-    completed = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    completed = ssh_transport.run_ssh(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                timeout=timeout_seconds, check=False)
     if completed.returncode != 0 or len(completed.stdout) > 512:
         raise ValueError("Windows disk probe transport is unknown")

@@ -220,7 +220,7 @@ class WindowsVmFreshSetupTest(unittest.TestCase):
         with (mock.patch.object(setup.ssh_transport, "load_config", return_value=mock.Mock(hosts={"archlinux": mock.Mock()})),
               mock.patch.object(setup.ssh_transport, "connection_host", return_value=mock.Mock(password=None)),
               mock.patch.object(setup.ssh_transport, "build_ssh_argv", return_value=["ssh"]),
-              mock.patch.object(setup.subprocess, "run", return_value=mock.Mock(returncode=0, stdout=json.dumps(response).encode()))):
+              mock.patch.object(setup.ssh_transport, "run_ssh", return_value=mock.Mock(returncode=0, stdout=json.dumps(response).encode()))):
             with self.assertRaisesRegex(ValueError, "digest changed"):
                 setup._screen_remote(".", "archlinux", CORR, "screen-status", 60)
 

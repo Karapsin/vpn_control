@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "beforePath": "agent_tools/readiness_windows_bootstrap_durable.py",
+  "beforeSha256": "b40ec6208f56662e02e1b46255ec91ed2bfc810a2b3aa09d1fae07d175ea70c7",
+  "discovery": "direct helper did not authenticate actual carrier/admission/Guard callable identity",
+  "nativeFailureClaimed": false,
+  "controlledFailurePending": false,
+  "testBeforeSha256": "ce2d3b05fe8e475df5cdaaf9ffeafb2627dc6028a0f0472e81cbccb8d42175ee",
+  "failureSha256": "0955149a517e0c6ad77a8677c99a15b97f314b00d8dce64bbc52c8fef3a57e0e"
+}

@@ -1,0 +1,154 @@
+"""SOURCE-ONLY ordinary reliability helper; no transport or native implementation.
+
+Callbacks supply fresh normal-SDK public status and fixed harmless counter data.
+This file cannot start/replay a job, create a connection, inject a fault, read a
+credential or signal a process. A later reviewed adapter must bind every callback
+to its current source capsule before any actual qualification is authorized.
+"""
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import time
+from uuid import UUID
+
+
+STDOUT_LIMIT = 2 * 1024 * 1024
+STDERR_LIMIT = 65536
+OLD_OPERATION = '61bd241b-5633-46d8-9a7f-0e90d74bf5c0'
+
+
+class QualificationBlocked(ValueError):
+    pass
+
+
+_RUNNING_ISSUER = object()
+
+
+@dataclass(frozen=True, repr=False)
+class _ObservedRunning:
+    issuer: object
+    operation: str
+    host: str
+    owner: tuple
+
+
+def _identity(operation, host):
+    if (type(operation) is not str or str(UUID(operation)) != operation or operation == OLD_OPERATION or
+            type(host) is not str or re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,63}', host) is None):
+        raise QualificationBlocked('qualification_identity_invalid')
+
+
+def wait_running(operation, host, fresh_sdk_status, *, deadline, pause=time.sleep, clock=time.monotonic):
+    """Only the actual observed-running schema permits a later counter probe."""
+    _identity(operation, host)
+    while clock() < deadline:
+        value = fresh_sdk_status('program-status', {'host': host, 'identity': {'operationId': operation}})
+        if (type(value) is not dict or value.get('operationId') != operation or value.get('host') != host or
+                type(value.get('schemaVersion')) is not int or value['schemaVersion'] != 1 or
+                value.get('replayAllowed') is not False):
+            raise QualificationBlocked('qualification_status_identity_mismatch')
+        if value.get('state') == 'terminal':
+            raise QualificationBlocked('qualification_original_terminal_collect_only')
+        owner = value.get('remoteOwner')
+        owner_valid = (type(owner) is dict and set(owner) == {'pid', 'birth'} and
+                       type(owner['pid']) is int and owner['pid'] > 0 and type(owner['birth']) is str and
+                       re.fullmatch(r'(?:linux:[1-9][0-9]*|darwin:[1-9][0-9]*:[0-9]{1,6})', owner['birth']) is not None)
+        if (value.get('state') == 'pending' and value.get('reason') == 'original_remote_owner_observed' and
+                value.get('remoteState') == 'running' and value.get('remoteOperationId') == operation and
+                type(value.get('durableProtocol')) is int and value['durableProtocol'] == 1 and owner_valid):
+            return _ObservedRunning(_RUNNING_ISSUER, operation, host, tuple(sorted(owner.items())))
+        if value.get('state') not in ('pending', 'running'):
+            raise QualificationBlocked('qualification_original_state_unresolved')
+        remaining = deadline - clock()
+        if remaining > 0:
+            pause(min(.15, remaining))
+    raise QualificationBlocked('qualification_running_not_observed')
+
+
+def _write(path, raw):
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def _retain(root, label, operation, result):
+    if type(result) is not subprocess.CompletedProcess:
+        raise QualificationBlocked('qualification_completed_result_invalid')
+    if type(result.stdout) is not bytes or type(result.stderr) is not bytes or type(result.returncode) is not int:
+        raise QualificationBlocked('qualification_completed_binary_result_invalid')
+    root = Path(root)
+    info = root.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700 or
+            re.fullmatch(r'counter-[0-9]{6}', label) is None):
+        raise QualificationBlocked('qualification_retention_root_invalid')
+    leaf = root / label
+    leaf.mkdir(mode=0o700)
+    capped = len(result.stdout) > STDOUT_LIMIT or len(result.stderr) > STDERR_LIMIT
+    _write(leaf / 'stdout.bin', result.stdout[:STDOUT_LIMIT])
+    _write(leaf / 'stderr.bin', result.stderr[:STDERR_LIMIT])
+    receipt = {'schemaVersion': 1, 'operationId': operation, 'purpose': 'ordinary-fixed-counter-observation',
+               'returnCode': result.returncode, 'complete': not capped, 'streamCapped': capped,
+               'countsObserved': {'stdout': len(result.stdout), 'stderr': len(result.stderr)},
+               'countsRetained': {'stdout': min(len(result.stdout), STDOUT_LIMIT),
+                                  'stderr': min(len(result.stderr), STDERR_LIMIT)},
+               'replayAllowed': False, 'nativeAcceptanceClaim': False}
+    _write(leaf / 'receipt.json', json.dumps(receipt, sort_keys=True).encode() + b'\n')
+    return receipt
+
+
+def _counter_probe(running, public_probe, closing_guard, output_root, *,
+                  label='counter-000001', submitted_result_error_type=None):
+    """Retain completed public bytes before assertions and post-return guards."""
+    if type(running) is not _ObservedRunning or running.issuer is not _RUNNING_ISSUER:
+        raise QualificationBlocked('qualification_running_proof_invalid')
+    operation, host, owner = running.operation, running.host, dict(running.owner)
+    _identity(operation, host)
+    if submitted_result_error_type is not None and not (
+            isinstance(submitted_result_error_type, type) and issubclass(submitted_result_error_type, Exception)):
+        raise QualificationBlocked('qualification_completed_error_type_invalid')
+    closing_guard()
+    try:
+        result = public_probe()
+    except Exception as error:
+        if submitted_result_error_type is not None and type(error) is submitted_result_error_type:
+            # A reviewed adapter may pass ONLY the exact current transport class,
+            # never a general exception/duck-typed getter. CompletedProcess.args
+            # is never retained, hashed, rendered or used to select a new call.
+            result = error.take_submitted_result()
+            _retain(output_root, label, operation, result)
+            raise QualificationBlocked('qualification_completed_public_result_readiness_refused') from None
+        raise QualificationBlocked('qualification_public_probe_outcome_unknown') from None
+    receipt = _retain(output_root, label, operation, result)
+    try:
+        closing_guard()
+    except BaseException:
+        raise QualificationBlocked('qualification_public_probe_closing_guard_refused') from None
+    if not receipt['complete']:
+        raise QualificationBlocked('qualification_public_probe_stream_limit')
+    if result.returncode or result.stderr:
+        raise QualificationBlocked('qualification_public_probe_failed')
+    try:
+        value = json.loads(result.stdout)
+    except (ValueError, UnicodeError):
+        raise QualificationBlocked('qualification_counter_reply_malformed') from None
+    if (type(value) is not dict or set(value) != {'operationId', 'owner', 'executions', 'lines'} or
+            value['operationId'] != operation or value['owner'] != owner or
+            type(value['executions']) is not int or value['executions'] != 1 or
+            type(value['lines']) is not int or value['lines'] < 0):
+        raise QualificationBlocked('qualification_counter_reply_mismatch')
+    return value
+
+
+def observe_ordinary(operation, host, fresh_sdk_status, public_probe, closing_guard, output_root, *, deadline,
+                     submitted_result_error_type=None, pause=time.sleep, clock=time.monotonic):
+    running = wait_running(operation, host, fresh_sdk_status, deadline=deadline, pause=pause, clock=clock)
+    if clock() >= deadline:
+        raise QualificationBlocked('qualification_deadline_before_counter_probe')
+    return _counter_probe(running, public_probe, closing_guard, output_root,
+                         submitted_result_error_type=submitted_result_error_type)

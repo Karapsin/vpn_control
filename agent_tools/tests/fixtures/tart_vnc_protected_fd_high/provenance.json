@@ -1,0 +1,9 @@
+{
+  "files": {
+    "vnc.before.source": "a5b5196c62cdfb2270d3f54faf3f8c318022d16a174447722a94f9d18d2b0a1d"
+  },
+  "nativeAuthority": false,
+  "nativeCredentialsOrWireValuesStored": false,
+  "schemaVersion": 1,
+  "scope": "Whole original native-cd476 VNC producer before minimum protected-reader readiness fix. Native original retained sanitized vnc_credential_unavailable at catch line114; underlying FD number and exception were not retained. Controlled real high-FD regular-file/FIFO failures demonstrate a cause candidate and regression, not retrospective native FD proof."
+}

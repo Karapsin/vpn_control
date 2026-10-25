@@ -1,0 +1,1240 @@
+"""One retained generated Python execution on an explicit SSH target.
+The existing SSH builder, automatic file transport, stream collector, actor
+identity and request-scoped source loader remain authoritative.
+"""
+from __future__ import annotations
+
+from contextlib import ExitStack, contextmanager
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import select
+import selectors
+import stat
+import subprocess
+import sys
+import time
+import threading
+import uuid
+
+from . import durable_remote_job as durable_jobs
+from . import native_review_source_closure as closure
+from . import private_inventory_lock as private
+from . import readiness
+from . import readiness_transport
+from . import ssh_channel_keeper_entry as keeper
+from . import ssh_program_execution_remote as remote
+from . import ssh_transport as transport
+from .android_qualified_cli_observation import OuterCustody
+
+GROUP = "ssh-program-execution"
+def _operation(value):
+    if type(value) is not str or str(uuid.UUID(value)) != value:
+        raise ValueError("program_operation_id")
+    return value
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def _save(directory, name, value):
+    # Existing create-only, readback-checked private-record implementation.
+    keeper.save(directory / name, value)
+
+
+def _bytes(directory, name, raw):
+    with private.Directory(directory) as parent:
+        descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=parent.fd)
+        try:
+            offset = 0
+            while offset < len(raw):
+                count = os.write(descriptor, raw[offset:offset + 65536])
+                if count <= 0:
+                    raise OSError("program_record_short_write")
+                offset += count
+            os.fsync(descriptor); parent.guard()
+        finally:
+            os.close(descriptor)
+
+
+def _source_capsule(root, directory, context):
+    # Internal source capability supplied by the route, never JSON authority.
+    if context is None or not callable(getattr(context, "guard", None)):
+        raise ValueError("program_source_context_required")
+    context.guard()
+    entries = tuple(context.held.files.items())
+    capsule = directory / "capsule"
+    capsule.mkdir(mode=0o700)
+    pins = {}; total = 0
+    source_root = context.directory.parent
+    for source, (_, generation, digest, raw) in entries:
+        relative = Path(source).relative_to(source_root)
+        if relative.parts[0] not in ("agent_tools", "scripts"):
+            raise ValueError("program_source_outside_repository")
+        total += len(raw)
+        if total > 32 * 1024 * 1024:
+            raise ValueError("program_source_capsule_bound")
+        target = capsule / relative
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        _bytes(target.parent, target.name, raw)
+        pins[relative.as_posix()] = {"sha256": digest, "bytes": len(raw), "originalGeneration": list(generation)}
+    context.guard()
+    if "agent_tools/source_module_loader.py" not in pins or "agent_tools/native_review_source_closure.py" not in pins:
+        raise ValueError("program_source_bootstrap_missing")
+    _save(directory, "source-manifest.json", {"files": pins})
+    return capsule, pins
+
+
+def _bootstrap(root, operation, source_root, source_pins, directory_pins):
+    # Preserve the admitted modules' original namespace and selector generations.
+    # Authenticate all original inputs with stdlib-only held descriptors before
+    # executing the loader or its bootstrap primitive. Copies remain evidence.
+    parameters = {"root": str(root), "operation": operation, "sourceRoot": str(source_root),
+                  "files": source_pins, "directories": directory_pins}
+    return "PARAMETERS=" + repr(parameters) + "\n" + r'''import hashlib,os,stat,sys,types
+from pathlib import Path
+root=Path(PARAMETERS['root']);source_root=Path(PARAMETERS['sourceRoot'])
+generation=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)
+structural=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid)
+directories={};files={}
+def directory(path):
+ if path in directories:return directories[path]
+ if path=='/':fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ else:
+  parent,name=os.path.split(path)
+  fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=directory(parent or '/'))
+ expected=tuple(PARAMETERS['directories'][path])
+ if structural(os.fstat(fd))!=expected:
+  os.close(fd);raise ValueError('program_original_directory')
+ directories[path]=fd;return fd
+def guard():
+ for path,fd in directories.items():
+  parent,name=os.path.split(path)
+  named=os.lstat('/') if path=='/' else os.stat(name,dir_fd=directories[parent or '/'],follow_symlinks=False)
+  expected=tuple(PARAMETERS['directories'][path])
+  if structural(os.fstat(fd))!=expected or structural(named)!=expected:raise ValueError('program_original_directory_changed')
+ for path,(fd,pin,raw) in files.items():
+  parent,name=os.path.split(path)
+  named=os.stat(name,dir_fd=directories[parent],follow_symlinks=False)
+  expected=tuple(pin['originalGeneration'])
+  if generation(os.fstat(fd))!=expected or generation(named)!=expected or hashlib.sha256(os.pread(fd,pin['bytes']+1,0)).hexdigest()!=pin['sha256']:raise ValueError('program_original_source_changed')
+try:
+ for relative,pin in PARAMETERS['files'].items():
+  path=str(source_root/relative);parent,name=os.path.split(path)
+  fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory(parent))
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or generation(info)!=tuple(pin['originalGeneration']):raise ValueError('program_original_source_generation')
+   parts=[];total=0
+   while total<pin['bytes']:
+    block=os.read(fd,min(65536,pin['bytes']-total))
+    if not block:raise ValueError('program_original_source_short')
+    parts.append(block);total+=len(block)
+   raw=b''.join(parts)
+   if hashlib.sha256(raw).hexdigest()!=pin['sha256']:raise ValueError('program_original_source_hash')
+   files[path]=(fd,pin,raw)
+  except BaseException:
+   os.close(fd);raise
+ guard()
+ path=str(source_root/'agent_tools/source_module_loader.py')
+ module=types.ModuleType('_program_source_loader');module.__file__=path;sys.modules[module.__name__]=module
+ exec(compile(files[path][2],path,'exec'),module.__dict__)
+ expected={str(source_root/name):pin['sha256'] for name,pin in PARAMETERS['files'].items()}
+ with module.request_scope(source_root/'agent_tools',expected_sources=expected):
+  owner=module.adapter(source_root/'agent_tools','ssh_program_execution')
+  owner.worker(root,PARAMETERS['operation'],source_context=owner._session)
+ guard()
+finally:
+ for fd,_,_ in reversed(tuple(files.values())):os.close(fd)
+ for fd in reversed(tuple(directories.values())):os.close(fd)
+'''
+
+
+
+def _worker_command(worker, body, root, operation):
+    # CPython must not reopen a mutable pathname before authenticating it. This
+    # fixed stdlib-only entry holds the original file and executes its bytes.
+    digest = hashlib.sha256(body).hexdigest()
+    receipt = (" import json\n"
+               " directory=Path(" + repr(str(root)) + ")/'.rag_index/ssh-program-execution'/" + repr(operation) + "\n"
+               " terminal=directory/'terminal.json'\n"
+               " tf=os.open(terminal,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n"
+               " try:\n"
+               "  ti=os.fstat(tf);data=os.read(tf,65537)\n"
+               "  if not stat.S_ISREG(ti.st_mode) or ti.st_uid!=os.getuid() or ti.st_nlink!=1 or len(data)!=ti.st_size or len(data)>65536:raise ValueError('program_terminal_shape')\n"
+               "  if generation(os.fstat(tf))!=generation(ti) or generation(os.lstat(terminal))!=generation(ti):raise ValueError('program_terminal_changed')\n"
+               " finally:os.close(tf)\n"
+               " receipt=json.dumps({'operationId':" + repr(operation) + ",'terminalSha256':hashlib.sha256(data).hexdigest(),'sourceClosing':True},sort_keys=True,separators=(',',':')).encode()\n"
+               " cf=os.open(directory/'owner-closed.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n"
+               " try:\n"
+               "  offset=0\n"
+               "  while offset<len(receipt):\n"
+               "   count=os.write(cf,receipt[offset:])\n"
+               "   if count<=0:raise OSError('program_closing_write')\n"
+               "   offset+=count\n"
+               "  os.fsync(cf)\n"
+               " finally:os.close(cf)\n")
+    code = ("import hashlib,os,stat,sys,types\nfrom pathlib import Path\n"
+            "def run():\n"
+            " path=Path(" + repr(str(worker)) + ")\n"
+            " fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n"
+            " generation=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_gid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)\n"
+            " try:\n"
+            "  info=os.fstat(fd)\n"
+            "  if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or info.st_size!=" + repr(len(body)) + ":raise ValueError('program_worker_shape')\n"
+            "  parts=[];total=0\n"
+            "  while total<info.st_size:\n"
+            "   block=os.read(fd,min(65536,info.st_size-total))\n"
+            "   if not block:raise ValueError('program_worker_short')\n"
+            "   parts.append(block);total+=len(block)\n"
+            "  raw=b''.join(parts)\n"
+            "  if hashlib.sha256(raw).hexdigest()!=" + repr(digest) + ":raise ValueError('program_worker_hash')\n"
+            "  if generation(os.fstat(fd))!=generation(info) or generation(os.lstat(path))!=generation(info):raise ValueError('program_worker_changed')\n"
+            "  module=types.ModuleType('_program_worker_bootstrap');module.__file__=str(path);sys.modules[module.__name__]=module\n"
+            "  exec(compile(raw,str(path),'exec'),module.__dict__)\n"
+            "  if generation(os.fstat(fd))!=generation(info) or generation(os.lstat(path))!=generation(info):raise ValueError('program_worker_closing')\n" +
+            ''.join(' ' + line + '\n' for line in receipt.splitlines()) +
+            " finally:os.close(fd)\nrun()\n")
+    argv = [sys.executable, "-I", "-B", "-c", code]
+    if sum(len(os.fsencode(word)) + 1 for word in argv) > 60000:
+        raise ValueError("program_local_worker_command_bound")
+    return argv
+
+
+def _reap(process):
+    try:
+        threading.Thread(target=process.wait, daemon=True, name="program-owner-reaper").start()
+    except BaseException:
+        # Thread creation may fail after Popen. Retain this same handle until
+        # terminal instead of detaching it or creating another execution.
+        process.wait()
+        raise
+
+def _hold_connection(held, root, host, expected=None):
+    if expected is not None:
+        for name, pin in expected.items():
+            held.read(name, pin["sha256"], tuple(pin["generation"]))
+    config = transport.load_config(root)
+    outer = transport.connection_host(config, host)
+    paths = [transport._private_config_path(root), outer.identity_file, outer.known_hosts_file]
+    if expected is not None and {str(path) for path in paths} != set(expected):
+        raise ValueError("program_private_route_changed")
+    pins = {}
+    for path in paths:
+        if not isinstance(path, Path):
+            raise ValueError("program_private_route_files")
+        body = path.read_bytes()
+        held.read(str(path), hashlib.sha256(body).hexdigest())
+        pins[str(path)] = {"sha256": held.files[str(path)][2], "generation": list(held.files[str(path)][1])}
+    held.finish(); held.final_identity_pass()
+    return config, pins
+
+
+@contextmanager
+def _holding():
+    held = closure._Held()
+    try:
+        yield held
+    finally:
+        held.close()
+
+
+def _directory(root, operation, create=False):
+    root = Path(root).resolve(strict=True)
+    group = root / ".rag_index" / GROUP
+    if create:
+        for parent in (root / ".rag_index", group):
+            parent.mkdir(mode=0o700, exist_ok=True)
+            with private.Directory(parent):
+                pass
+    directory = group / _operation(operation)
+    if create:
+        directory.mkdir(mode=0o700)
+    return directory
+
+
+def _request(host, value):
+    if type(host) is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", host) is None:
+        raise ValueError("program_host")
+    if type(value) is not dict or set(value) != {"operationId", "program"}:
+        raise ValueError("program_request")
+    _operation(value["operationId"])
+    remote.validate(value["program"])
+    return {"host": host, **value}
+
+
+
+def admit_start(root, host, request):
+    """No-effect validation for a useful public refusal before submission."""
+    try:
+        root = Path(root).resolve(strict=True)
+        normalized = _request(host, request)
+        directory = _directory(root, normalized["operationId"])
+        if directory.exists() and (directory / "intent.json").exists():
+            with _holding() as held:
+                original = _read(directory, "intent.json", held)
+                if original["requestSha256"] != hashlib.sha256(_json(normalized)).hexdigest():
+                    raise ValueError("program_operation_conflict")
+                held.finish(); held.final_identity_pass()
+            return {"ok": True}
+        if directory.exists():
+            # The original admission owns this provisional identity. Do not
+            # reacquire a new route or submit while its intent is publishing.
+            return {"ok": True}
+        config = transport.load_config(root)
+        if host not in config.hosts or config.hosts[host].user != normalized["program"]["targetContext"]["principal"]:
+            raise ValueError("program_configured_principal")
+        argv = transport.build_ssh_argv(config, host, 15, remote.command(normalized["program"]))
+        transport.argv_byte_sizes(argv)
+        return {"ok": True}
+    except (OSError, ValueError, TypeError, KeyError, SyntaxError) as error:
+        reason = ("program_source_syntax" if isinstance(error, SyntaxError) else str(error))
+        if re.fullmatch("program_[a-z_]+", reason) is None:
+            reason = "program_admission_unavailable"
+        return {"ok": False, "state": "refused", "reason": reason,
+                "operationId": request.get("operationId") if type(request) is dict else None,
+                "replayAllowed": False}
+
+
+def _command_bounds(argv):
+    raw = argv if type(argv) is list else argv.original_argv
+    sizes = [len(word.encode("utf-8")) for word in raw]
+    return {"wholeArgvBytes": sum(size + 1 for size in sizes),
+            "maxArgumentBytes": max(sizes), "limitBytes": 60000}
+
+def _read(directory, name, held):
+    with private.Directory(directory) as parent:
+        descriptor = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=parent.fd)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1
+                    or not 0 < info.st_size <= 32 * 1024 * 1024):
+                raise ValueError("program_record_shape")
+            chunks = []; total = 0
+            while total < info.st_size:
+                block = os.read(descriptor, min(65536, info.st_size - total))
+                if not block:
+                    raise ValueError("program_record_short_read")
+                chunks.append(block); total += len(block)
+            body = b"".join(chunks)
+            held.read(str(directory / name), hashlib.sha256(body).hexdigest(),
+                      closure.generation(info), max_bytes=32 * 1024 * 1024)
+            parent.guard()
+        finally:
+            os.close(descriptor)
+    return json.loads(body, object_pairs_hook=closure._pairs)
+
+
+def _public(intent, state, **extra):
+    program = intent["request"]["program"]
+    return {"schemaVersion": 1, "operationId": intent["operationId"], "host": intent["request"]["host"],
+            "requestSha256": intent["requestSha256"],
+            "state": state, "language": program["language"],
+            "sourceSha256": hashlib.sha256(program["source"].encode()).hexdigest(),
+            "executionSemantics": "python-c", "replayAllowed": False,
+            "windowsSupported": False, "sourceBytes": len(program["source"].encode()),
+            "transport": intent["transport"], "originalCommandBounds": intent["originalCommandBounds"],
+            "nextAction": ("collect_original" if state == "terminal" else "observe_original" if state == "running"
+                           else "reconcile_original" if state == "pending" and intent.get("durableProtocol") == 1
+                           or state == "unknown" and intent.get("durableProtocol") == 1
+                           and extra.get("reason") in {"original_owner_terminal_unproved", "original_remote_transport_unavailable"}
+                           else "observe_original" if state == "pending" else "resolve_blocker"), **extra}
+
+
+
+def _initializing(operation, host):
+    return {"schemaVersion": 1, "operationId": operation, "host": host,
+            "state": "unknown", "reason": "original_initialization_in_progress", "replayAllowed": False,
+            "nextAction": "observe_original"}
+
+
+def _reconcile(root, host, operation, fingerprint):
+    directory = _directory(root, operation)
+    with _holding() as held:
+        try:
+            original = _read(directory, "intent.json", held)
+        except FileNotFoundError:
+            return _initializing(operation, host)
+        if original["requestSha256"] != fingerprint:
+            raise ValueError("program_operation_conflict")
+        held.finish(); held.final_identity_pass()
+    return status(root, host, {"operationId": operation})
+
+def status(root, host, identity):
+    if type(identity) is not dict or set(identity) != {"operationId"}:
+        raise ValueError("program_status_identity")
+    directory = _directory(root, identity["operationId"])
+    with ExitStack() as stack:
+        held = stack.enter_context(_holding())
+        parent = stack.enter_context(private.Directory(directory))
+        try:
+            intent = _read(directory, "intent.json", held)
+        except FileNotFoundError:
+            return _initializing(identity["operationId"], host)
+        if intent["request"]["host"] != host:
+            raise ValueError("program_status_host")
+        if intent.get("durableProtocol") == 1:
+            reconciled = _reconciled_status(directory, intent, held)
+            if reconciled is not None:
+                parent.guard(); held.finish(); held.final_identity_pass()
+                return reconciled
+        terminal = directory / "terminal.json"
+        if terminal.exists():
+            result = _read(directory, "terminal.json", held)
+            expected = _public(intent, result.get("state"))
+            expected.pop("nextAction", None)  # historical records predate typed guidance
+            if result.get("nextAction", "resolve_blocker") not in {"collect_original", "observe_original", "reconcile_original", "resolve_blocker"}:
+                raise ValueError("program_next_action_invalid")
+            if (result.get("state") not in ("terminal", "unknown")
+                    or any(result.get(key) != value for key, value in expected.items())):
+                raise ValueError("program_terminal_binding")
+            if result["state"] == "terminal":
+                if not (directory / "owner-closed.json").exists():
+                    live = False
+                    try:
+                        owner = _read(directory, "owner.json", held)
+                        live = (type(owner) is dict and set(owner) == {"actor", "operationId"}
+                                and owner["operationId"] == intent["operationId"] == identity["operationId"]
+                                and type(owner["actor"]) is dict
+                                and set(owner["actor"]) == {"pid", "uid", "sessionId", "birthSha256"}
+                                and all(type(owner["actor"][key]) is int for key in ("pid", "uid", "sessionId"))
+                                and type(owner["actor"]["birthSha256"]) is str
+                                and keeper.actor(owner["actor"]["pid"]) == owner["actor"])
+                    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+                        pass
+                    # The exact publisher may close while its one bounded actor
+                    # observation runs. Any arrived receipt still takes the
+                    # unchanged terminal/digest/capture validation path below.
+                    if not (directory / "owner-closed.json").exists():
+                        pending = _public(intent, "pending" if live else "unknown",
+                                          reason="original_source_closing_pending" if live
+                                          else "original_source_closing_unproved")
+                        parent.guard(); held.finish(); held.final_identity_pass()
+                        return pending
+                closed = _read(directory, "owner-closed.json", held)
+                terminal_body = held.files[str(directory / "terminal.json")][3]
+                if closed != {"operationId": intent["operationId"], "terminalSha256": hashlib.sha256(terminal_body).hexdigest(), "sourceClosing": True}:
+                    raise ValueError("program_source_closing_binding")
+                capture = result.get("capture")
+                if (type(capture) is not dict or capture.get("complete") is not True
+                        or capture.get("eof") != {"stdout": True, "stderr": True}
+                        or capture.get("returnCode") != result.get("exitCode")
+                        or result.get("exitCode") == 255 and intent.get("durableProtocol") != 1
+                        or set(result.get("streams", {})) != {"stdout", "stderr"}):
+                    raise ValueError("program_terminal_capture")
+            for name, pin in result.get("streams", {}).items():
+                if name not in ("stdout", "stderr"):
+                    raise ValueError("program_terminal_stream_schema")
+                raw = held.read(str(directory / (name + ".private")), pin["retainedSha256"], max_bytes=16 * 1024 * 1024)
+                if len(raw) != pin["bytes"] or len(raw) > pin["receivedBytes"]:
+                    raise ValueError("program_terminal_stream_count")
+        else:
+            observations = sorted(path.name for path in directory.glob("observation-*.json"))
+            result = (_read(directory, observations[-1], held) if observations
+                      else _read(directory, "submission-unknown.json", held) if (directory / "submission-unknown.json").exists()
+                      else _public(intent, "pending", reason="original_owner_not_yet_observed"))
+            expected = _public(intent, result.get("state"))
+            expected.pop("nextAction", None)
+            if result.get("nextAction", "resolve_blocker") not in {"collect_original", "observe_original", "reconcile_original", "resolve_blocker"}:
+                raise ValueError("program_next_action_invalid")
+            if result.get("state") not in ("pending", "unknown") or any(result.get(key) != value for key, value in expected.items()):
+                raise ValueError("program_pending_binding")
+            owner_path = directory / "owner.json"
+            if owner_path.exists():
+                owner = _read(directory, "owner.json", held)
+                try:
+                    live = keeper.actor(owner["actor"]["pid"]) == owner["actor"]
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    live = False
+                if not live:
+                    result = _public(intent, "unknown", reason="original_owner_terminal_unproved")
+        parent.guard(); held.finish(); held.final_identity_pass()
+        return result
+
+
+def collect(root, host, identity):
+    # No network, child creation, cleanup, retry or output deletion.
+    return status(root, host, identity)
+
+
+def start(root, host, request, *, source_context=None, durable=True):
+    root = Path(root).resolve(strict=True)
+    request = _request(host, request)
+    operation = request["operationId"]
+    fingerprint = hashlib.sha256(_json(request)).hexdigest()
+    existing = _directory(root, operation)
+    if existing.exists():
+        return _reconcile(root, host, operation, fingerprint)
+    config = transport.load_config(root)
+    if host not in config.hosts or config.hosts[host].user != request["program"]["targetContext"]["principal"]:
+        raise ValueError("program_configured_principal")
+    # Readiness owns connection lifecycle; getters stay pure. Bind actual boot
+    # and ordinary SSH account before generating any new execution packet.
+    if durable:
+        _ensure_transport(root, host, operation, expected=request["program"]["targetContext"])
+    # Preflight the final configured/nested argv before any operation journal or
+    # launch. Existing transport returns a bound automatic plan when oversized.
+    command = remote.command(request["program"])
+    argv = transport.build_ssh_argv(config, host, 15, command)
+    transport.argv_byte_sizes(argv)
+    with _holding() as held:
+        _, connection_pins = _hold_connection(held, root, host)
+        try:
+            directory = _directory(root, operation, create=True)
+        except FileExistsError:
+            return _reconcile(root, host, operation, fingerprint)
+        # Fallback may import the existing automatic owner after a definite
+        # kernel no-start refusal. Admit that source closure before submission.
+        transport._automatic_module()
+        capsule, source_pins = _source_capsule(root, directory, source_context)
+        intent = {"schemaVersion": 1, "operationId": operation, "request": request,
+                  "requestSha256": fingerprint, "sourcePins": source_pins, "connectionPins": connection_pins,
+                  "sourceRoot": str(source_context.directory.parent), "capsuleRoot": str(capsule),
+                  "transport": "saved-file" if type(argv).__name__ == "PlannedArgv" else "inline",
+                  "originalArgvSha256": transport.argv_sha256(argv), "originalCommandBounds": _command_bounds(argv), "replayAllowed": False,
+                  **({"durableProtocol": 1} if durable else {})}
+        _save(directory, "intent.json", intent)
+        # A saved local worker holds its own fresh source session until the
+        # original SSH child and both pipes finish. MCP can return meanwhile.
+        directory_pins = {path: list(pin[1]) for path, pin in source_context.held.parents.items()}
+        body = _bootstrap(root, operation, source_context.directory.parent, source_pins, directory_pins)
+        worker = directory / "worker.py"
+        _bytes(directory, "worker.py", body.encode())
+        held.read(str(worker), hashlib.sha256(body.encode()).hexdigest())
+        _save(directory, "spawn-intent.json", {"operationId": operation, "workerSha256": hashlib.sha256(body.encode()).hexdigest(), "replayAllowed": False})
+        logs = []
+        try:
+            for name in ("worker.stdout.private", "worker.stderr.private"):
+                logs.append(os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600))
+            held.finish(); held.final_identity_pass()
+            argv = _worker_command(worker, body.encode(), root, operation)
+            process = subprocess.Popen(argv, stdin=subprocess.DEVNULL,
+                                       stdout=logs[0], stderr=logs[1], cwd=root,
+                                       env={key: value for key, value in os.environ.items() if not key.startswith("DYLD_")})
+            # Retain/reap the exact local keeper child even after this MCP
+            # request returns. This target is the original stdlib bound wait;
+            # it performs no remote operation or source-session call.
+            _reap(process)
+            _save(directory, "owner.json", {"actor": keeper.actor(process.pid), "operationId": operation})
+            held.finish(); held.final_identity_pass()
+        except (OSError, ValueError, subprocess.SubprocessError, RuntimeError):
+            # No fallback is attempted. An exact local Popen E2BIG can later
+            # support a separately recorded prelaunch fallback; stderr cannot.
+            result = _public(intent, "unknown", reason="local_owner_submission_unproved")
+            _save(directory, "submission-unknown.json", result)
+            return result
+        finally:
+            for descriptor in logs:
+                os.close(descriptor)
+    return status(root, host, {"operationId": operation})
+
+
+class _Capture(OuterCustody):
+    """Existing original-child lifecycle, with durable two-stream tee custody."""
+    def __init__(self, directory):
+        self.output = {}
+        self.hashes = {name: hashlib.sha256() for name in ("stdout", "stderr")}
+        self.retained_hashes = {name: hashlib.sha256() for name in self.hashes}
+        self.retained = {name: 0 for name in self.hashes}
+        self.limit = 16 * 1024 * 1024
+        self.child = None
+        self.submitted_bounds = None
+        self.effective_transport = None
+        self.selector = selectors.DefaultSelector()
+        self.raw = {name: bytearray() for name in self.hashes}
+        self.counts = {name: 0 for name in self.hashes}
+        self.eof = {name: False for name in self.hashes}
+        self.overflow = self.timeout = self.closed = False
+        self.sendError = None
+        self.sink_errors = set()
+        try:
+            for name in self.hashes:
+                self.output[name] = os.open(directory / (name + ".private"),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except BaseException:
+            for descriptor in self.output.values():
+                os.close(descriptor)
+            raise
+
+    def start(self, argv):
+        # The caller already owns this observer before the only Popen. A pipe
+        # attachment failure therefore cannot discard its original child.
+        self.effective_transport = "inline" if type(argv) is list else "saved-file"
+        self.child = transport.popen_ssh(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.submitted_bounds = _command_bounds(self.child.args)
+        if self.submitted_bounds["wholeArgvBytes"] > 60000:
+            raise ValueError("program_submitted_command_bound")
+        for name in self.eof:
+            pipe = getattr(self.child, name)
+            os.set_blocking(pipe.fileno(), False)
+            self.selector.register(pipe.fileno(), selectors.EVENT_READ, name)
+        self.child.stdin.close()
+
+    def snapshot(self):
+        return {**super().snapshot(), "submittedCommandBounds": self.submitted_bounds,
+                "effectiveTransport": self.effective_transport}
+
+    def step(self, seconds):
+        for key, _ in self.selector.select(seconds):
+            try:
+                block = os.read(key.fd, 65536)
+            except BlockingIOError:
+                continue
+            name = key.data
+            if not block:
+                self.eof[name] = True; self.selector.unregister(key.fd)
+                os.fsync(self.output[name]); continue
+            self.receive(name, block)
+
+    def receive(self, name, block):
+        self.counts[name] += len(block); self.hashes[name].update(block)
+        if self.counts[name] > self.limit:
+            self.overflow = True
+        keep = block[:max(0, self.limit - self.retained[name])]
+        if name in self.sink_errors:
+            return
+        offset = 0
+        try:
+            while offset < len(keep):
+                count = os.write(self.output[name], keep[offset:])
+                if count <= 0:
+                    raise OSError("program_raw_short_write")
+                written = keep[offset:offset + count]
+                self.retained[name] += count
+                self.retained_hashes[name].update(written)
+                offset += count
+        except OSError:
+            self.sink_errors.add(name)
+            raise
+
+    def stream_records(self, tolerant=False):
+        for name, descriptor in self.output.items():
+            try:
+                os.fsync(descriptor)
+            except OSError:
+                self.sink_errors.add(name)
+                if not tolerant:
+                    raise
+        return {name: {"bytes": self.retained[name], "receivedBytes": self.counts[name],
+                       "receivedSha256": self.hashes[name].hexdigest(),
+                       "retainedSha256": self.retained_hashes[name].hexdigest(), "eof": self.eof[name]}
+                for name in self.output}
+
+    def close_raw(self):
+        for descriptor in self.output.values():
+            os.close(descriptor)
+        self.output.clear()
+
+    def finish_unknown(self):
+        """Read-only recovery drain of this same child; never kill or replay."""
+        self.selector.close()
+        unreadable = set()
+        if not self.child.stdin.closed:
+            self.child.stdin.close()
+        while self.child.poll() is None or any(not self.eof[name] and name not in unreadable for name in self.eof):
+            ready = []
+            for name in self.eof:
+                if self.eof[name] or name in unreadable:
+                    continue
+                try:
+                    pipe = getattr(self.child, name)
+                    os.set_blocking(pipe.fileno(), False)
+                    ready.append((name, pipe))
+                except (OSError, ValueError):
+                    unreadable.add(name)
+            if not ready:
+                time.sleep(.05); continue
+            try:
+                readable, _, _ = select.select([pipe for _, pipe in ready], [], [], .05)
+            except (OSError, ValueError):
+                unreadable.update(name for name, _ in ready); continue
+            for name, pipe in ready:
+                if pipe not in readable:
+                    continue
+                try:
+                    block = os.read(pipe.fileno(), 65536)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    unreadable.add(name); continue
+                if not block:
+                    self.eof[name] = True; continue
+                try:
+                    self.receive(name, block)
+                except OSError:
+                    # Preserve both original pipes and every available sink.
+                    # A failed sink never stops collection of its peer stream.
+                    pass
+        self.child.wait()
+        for name in self.eof:
+            getattr(self.child, name).close()
+        self.closed = True
+        transport.finish_ssh(self.child, failed=True)
+
+
+
+def _child_record(child, operation):
+    code = child.poll()
+    if code is None:
+        try:
+            return {"actor": keeper.actor(child.pid), "operationId": operation}
+        except (OSError, ValueError, subprocess.SubprocessError):
+            code = child.poll()
+            if code is None:
+                raise
+    # The retained original Popen/waitpid proves this exit. No birth or
+    # live-actor identity is invented after the process has already ended.
+    return {"actor": None, "pid": child.pid, "operationId": operation,
+            "alreadyExited": True, "exitCode": code}
+
+
+_FAILURE_DIAGNOSTIC_LIMIT = 16384
+
+
+def _failure_diagnostic(directory, error, phase, intent, admission=None):
+    """Best-effort private evidence; never replace the original failure."""
+    try:
+        truncated = [False]
+        def value(item, depth=0):
+            if item is None or type(item) in (bool, int, float):
+                return item
+            if type(item) is str:
+                if len(item) > 2048:
+                    truncated[0] = True
+                return item[:2048]
+            if type(item) is bytes:
+                import base64
+                prefix = item[:4097]
+                if len(prefix) != len(item): truncated[0] = True
+                return {"bytes": len(item), "sha256": hashlib.sha256(item).hexdigest(),
+                        "prefixBase64": base64.b64encode(prefix).decode("ascii"),
+                        "prefixBytes": len(prefix), "complete": len(prefix) == len(item)}
+            if depth >= 6:
+                truncated[0] = True
+                return {"unretainedType": type(item).__name__}
+            if type(item) in (list, tuple):
+                if len(item) > 16: truncated[0] = True
+                return [value(part, depth + 1) for part in item[:16]]
+            if type(item) is dict:
+                if len(item) > 24: truncated[0] = True
+                return {str(key)[:128]: value(part, depth + 1)
+                        for key, part in list(item.items())[:24]}
+            return {"unsupportedType": type(item).__name__}
+        seen = set()
+        def exception(item, depth=0):
+            if item is None: return None
+            if id(item) in seen or depth >= 6:
+                truncated[0] = True
+                return {"chainTruncated": True, "errorClass": type(item).__name__}
+            seen.add(id(item))
+            try: message = str(item)
+            except BaseException: message = "<exception message unavailable>"
+            frames = []; trace = item.__traceback__
+            while trace is not None and len(frames) < 16:
+                code = trace.tb_frame.f_code
+                frames.append({"file": value(code.co_filename), "line": trace.tb_lineno,
+                               "function": value(code.co_name)})
+                trace = trace.tb_next
+            if trace is not None: truncated[0] = True
+            result = {"errorClass": type(item).__name__, "message": value(message),
+                      "traceback": frames, "arguments": value(item.args)}
+            detail = getattr(item, "_private_selected_admission", None)
+            if detail is not None: result["selectedAdmission"] = value(detail)
+            try:
+                typed = getattr(item, "result", None)
+                if type(typed) is dict: result["typedRefusal"] = value(typed)
+            except BaseException:
+                result["typedRefusalCaptureFailed"] = True
+            cause = item.__cause__ if item.__cause__ is not None else item.__context__
+            if cause is not None:
+                result["chainKind"] = "cause" if item.__cause__ is not None else "context"
+                result["suppressContext"] = item.__suppress_context__
+                result["chained"] = exception(cause, depth + 1)
+            return result
+        pins = intent.get("sourcePins", {})
+        identity = {"requestSha256": intent.get("requestSha256"),
+                    "originalArgvSha256": intent.get("originalArgvSha256"),
+                    "executingFile": __file__, "sourceRoot": intent.get("sourceRoot"),
+                    "sourceManifestSha256": hashlib.sha256(_json(pins)).hexdigest(),
+                    "workerSource": pins.get("agent_tools/ssh_program_execution.py"),
+                    "transportSource": pins.get("agent_tools/ssh_transport.py")}
+        retained = []
+        if admission is not None:
+            for ordinal, observation in enumerate(admission["observations"], 1):
+                row = {"schemaVersion": 1, "operationId": intent["operationId"],
+                       "observation": ordinal, "sourceManifestSha256": identity["sourceManifestSha256"],
+                       "record": value(observation)}
+                body = json.dumps(row, sort_keys=True, separators=(",", ":")).encode()
+                if len(body) > _FAILURE_DIAGNOSTIC_LIMIT:
+                    raise ValueError("program_admission_diagnostic_bound")
+                name = "selected-admission-%08d.private.json" % ordinal
+                _save(directory, name, row)
+                retained.append({"name": name, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()})
+        report = {"schemaVersion": 1, "operationId": intent["operationId"],
+                  "phase": phase, "sourceIdentity": identity, "exception": exception(error),
+                  "admissionRecords": retained, "admissionCaptureFailures": [] if admission is None else admission["captureFailures"]}
+        report.update(overflow=truncated[0], complete=not truncated[0])
+        raw = json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
+        if len(raw) > _FAILURE_DIAGNOSTIC_LIMIT:
+            import base64
+            original = raw
+            report = {"schemaVersion": 1, "operationId": intent["operationId"],
+                      "phase": phase, "errorClass": None if error is None else type(error).__name__, "sourceIdentity": identity,
+                      "overflow": True, "complete": False, "originalBytes": len(original),
+                      "originalSha256": hashlib.sha256(original).hexdigest(),
+                      "jsonPrefixBase64": base64.b64encode(original[:8192]).decode("ascii")}
+            raw = json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
+        if len(raw) > _FAILURE_DIAGNOSTIC_LIMIT:
+            raise ValueError("program_failure_diagnostic_bound")
+        _save(directory, "failure-diagnostic.private.json", report)
+        return {"failureDiagnosticSha256": hashlib.sha256(raw).hexdigest(),
+                "failureDiagnosticBytes": len(raw), "failureDiagnosticOverflow": report["overflow"]}
+    except BaseException:
+        # Reporting failure cannot turn a primary UNKNOWN into a different error
+        # or unwind an original child's existing collection/source custody.
+        return {"failureDiagnosticAvailable": False}
+
+
+def worker(root, operation, *, source_context):
+    """Called only by the saved local owner; never by the public route."""
+    root = Path(root).resolve(strict=True)
+    directory = _directory(root, operation)
+    custody = None
+    with _holding() as held, transport._private_admission_capture() as admission:
+        intent = _read(directory, "intent.json", held)
+        # Bootstrap/import/intent-read failures remain outside this boundary.
+        # Initial admission still propagates its exact original exception.
+        try:
+            source_root = source_context.directory.parent
+            if str(source_root) != intent["sourceRoot"]:
+                raise ValueError("program_original_source_namespace")
+            for name, pin in intent["sourcePins"].items():
+                held.read(str(source_root / name), pin["sha256"], tuple(pin["originalGeneration"]))
+            host = intent["request"]["host"]
+            config, _ = _hold_connection(held, root, host, intent["connectionPins"])
+            # The configured private inventory and every imported source remain
+            # held by this worker's SourceSession/automatic-submission owner.
+            if intent.get("durableProtocol") == 1:
+                _ensure_transport(root, host, operation)
+            command = remote.command(intent["request"]["program"])
+            argv = transport.build_ssh_argv(config, host, 15, command)
+            if intent.get("durableProtocol") != 1 and transport.argv_sha256(argv) != intent["originalArgvSha256"]:
+                raise ValueError("program_route_changed_before_launch")
+            held.finish(); held.final_identity_pass()
+            _save(directory, "execution-intent.json", {"operationId": operation, "replayAllowed": False})
+            if intent.get("durableProtocol") == 1:
+                _durable_worker(root, directory, intent, config, source_context, held)
+                return
+        except BaseException as error:
+            _failure_diagnostic(directory, error, "initial-admission", intent, admission)
+            raise
+        phase = "source-guard-before-submission"
+        try:
+            source_context.guard()
+            phase = "capture-open"
+            custody = _Capture(directory)
+            try:
+                phase = "ssh-submission"
+                custody.start(argv)
+            except transport.PrelaunchE2Big as error:
+                # Only the original plain-list Popen boundary can mint this
+                # proof. No returned child, stderr or disconnect is replayed.
+                if (custody.child is not None or type(argv) is not list
+                        or error.argv_sha256 != transport.argv_sha256(argv)):
+                    raise ValueError("program_prelaunch_refusal_binding")
+                refusal = {"operationId": operation, "requestSha256": intent["requestSha256"],
+                           "attempt": 0, "errno": error.errno, "errorClass": "OSError",
+                           "argvSha256": error.argv_sha256, "childCreated": False,
+                           "programStarted": False, "replayAllowed": False}
+                _save(directory, "prelaunch-refusal.json", refusal)
+                source_context.guard(); held.finish(); held.final_identity_pass()
+                phase = "saved-fallback-admission"
+                saved = transport.build_saved_program_argv(config, host, 15, command)
+                if tuple(argv) != saved.original_argv:
+                    raise ValueError("program_file_fallback_changed_argv")
+                _save(directory, "file-fallback-intent.json",
+                      {"operationId": operation, "requestSha256": intent["requestSha256"],
+                       "attempt": 1, "reason": "kernel_prelaunch_e2big",
+                       "refusalSha256": hashlib.sha256(_json(refusal)).hexdigest(),
+                       "correlationId": saved.correlation, "argvSha256": transport.argv_sha256(saved),
+                       "replayAllowed": False})
+                source_context.guard(); held.finish(); held.final_identity_pass()
+                phase = "saved-fallback-submission"
+                custody.start(saved)
+            phase = "child-identity"
+            _save(directory, "child.json", _child_record(custody.child, operation))
+            phase = "child-observation"
+            ordinal = 0; next_observation = 0
+            while not custody.snapshot()["complete"]:
+                custody.step(.05)
+                if time.monotonic() >= next_observation:
+                    source_context.guard(); held.finish(); held.final_identity_pass()
+                    _save(directory, "observation-%08d.json" % ordinal,
+                          _public(intent, "pending", capture=custody.snapshot(), streams=custody.stream_records()))
+                    ordinal += 1; next_observation = time.monotonic() + 1
+            custody.finish_naturally()
+            capture = custody.snapshot()
+            streams = custody.stream_records()
+            source_context.guard(); held.finish(); held.final_identity_pass()
+            verified = (capture["complete"] and not capture["overflow"] and capture["sendError"] is None
+                        and capture["returnCode"] != 255)
+            diagnostic = {} if verified else _failure_diagnostic(directory, None, "child-terminal-unverified", intent, admission)
+            _save(directory, "terminal.json", _public(intent, "terminal" if verified else "unknown",
+                  exitCode=capture["returnCode"], capture=capture, streams=streams, **diagnostic))
+        except BaseException as error:
+            # A source change or observer failure cannot detach, kill, or replay
+            # the original SSH child. Preserve its original observer to EOF.
+            if custody is not None and not custody.closed:
+                if custody.child is not None:
+                    custody.finish_unknown()
+            diagnostic = _failure_diagnostic(directory, error, phase, intent, admission)
+            _save(directory, "terminal.json", _public(intent, "unknown",
+                  reason="original_execution_unverified", errorClass=type(error).__name__, **diagnostic,
+                  capture=custody.snapshot() if custody is not None and custody.child is not None else None,
+                  streams=custody.stream_records(tolerant=True) if custody is not None else {}))
+        finally:
+            if custody is not None:
+                custody.close_raw()
+
+
+def _ensure_transport(root, host, operation, *, expected=None):
+    context = readiness_transport.context(root, host)
+    required = readiness.Requirements(frozenset({"transport"}), frozenset({"reconnect"}))
+    ready = readiness.ensure_ready(context, required, operation)
+    readiness.revalidate(context, ready)
+    if expected is not None and (ready.boot != expected["bootId"]
+            or ready.account != str(expected["uid"]) + ":" + expected["principal"]):
+        raise ValueError("program_target_changed")
+    return context, ready
+
+
+class _RemoteObservationFailed(ValueError):
+    pass
+
+
+def _remote_json(config, host, command, directory, ordinal, source_context, held, *, operation=None):
+    """Bounded original SSH observer, retaining each attempt's complete streams.
+
+    Terminating this observer on timeout never terminates its detached remote
+    owner. A replacement observer cannot submit a replacement operation.
+    """
+    attempt = directory / ("remote-attempt-%08d" % ordinal)
+    attempt.mkdir(mode=0o700)
+    capture = _Capture(attempt)
+    try:
+        source_context.guard(); held.finish(); held.final_identity_pass()
+        # Observe/recover the connection separately from the original remote
+        # operation. Core readiness owns its three bounded backoff attempts.
+        context, ready = _ensure_transport(config.root, host, operation or _operation(directory.name))
+        command = command() if callable(command) else command
+        argv = transport.build_ssh_argv(config, host, 15, command)
+        readiness.revalidate(context, ready)
+        source_context.guard(); held.finish(); held.final_identity_pass()
+        try:
+            capture.start(argv)
+        except transport.PrelaunchE2Big as error:
+            if capture.child is not None or type(argv) is not list or error.argv_sha256 != transport.argv_sha256(argv):
+                raise ValueError("program_prelaunch_refusal_binding")
+            _save(attempt, "prelaunch-refusal.json", {"errno": error.errno, "childCreated": False,
+                                                    "argvSha256": error.argv_sha256})
+            saved = transport.build_saved_program_argv(config, host, 15, command)
+            if tuple(argv) != saved.original_argv:
+                raise ValueError("program_file_fallback_changed_argv")
+            readiness.revalidate(context, ready)
+            capture.start(saved)
+        _save(attempt, "child.json", _child_record(capture.child, directory.name))
+        deadline = time.monotonic() + 60
+        while not capture.snapshot()["complete"]:
+            capture.step(.05)
+            if time.monotonic() >= deadline:
+                # Only this newly owned SSH observation child is stopped. The
+                # remote durable owner is independent and remains untouched.
+                capture.timeout = True
+                capture.child.terminate()
+                capture.finish_unknown()
+                raise _RemoteObservationFailed("program_remote_observer_timeout")
+        capture.finish_naturally()
+        metadata = capture.snapshot()
+        _save(attempt, "capture.json", metadata)
+        if (metadata["returnCode"] != 0 or metadata["overflow"] or metadata["sendError"] is not None):
+            raise _RemoteObservationFailed("program_remote_transport_unavailable")
+        raw = (attempt / "stdout.private").read_bytes()
+        try:
+            value = json.loads(raw, object_pairs_hook=closure._pairs)
+        except (ValueError, UnicodeError):
+            raise _RemoteObservationFailed("program_remote_reply_invalid") from None
+        if type(value) is not dict:
+            raise _RemoteObservationFailed("program_remote_reply_invalid")
+        source_context.guard(); held.finish(); held.final_identity_pass()
+        return value, metadata
+    except readiness.ReadinessBlocked as error:
+        if error.reason == "prepared_context_stale":
+            raise _RemoteObservationFailed("program_remote_connection_generation_changed") from None
+        raise
+    except transport.SshConfigError:
+        raise _RemoteObservationFailed("program_remote_connection_generation_changed") from None
+    finally:
+        if capture.child is not None and not capture.closed:
+            capture.finish_unknown()
+        capture.close_raw()
+
+
+def _durable_worker(root, directory, intent, config, source_context, held):
+    """Prepare before render, then reconcile the original remote owner only."""
+    import base64
+    operation = intent["operationId"]
+    host = intent["request"]["host"]
+    program = intent["request"]["program"]
+    attempt = 0
+    # Reconciliation owners continue the unique observation ordinal sequence.
+    existing = [int(path.name.rsplit("-", 1)[1]) for path in directory.glob("remote-attempt-*") if path.is_dir()]
+    if existing:
+        attempt = max(existing) + 1
+    packet = None
+    if (directory / "remote-admission.json").exists():
+        packet = _read(directory, "remote-admission.json", held)
+    command_mode = "observe" if packet is not None else "submit"
+    failures = 0
+    next_observation = max([int(path.stem.rsplit("-", 1)[1]) for path in directory.glob("observation-*.json")] + [-1]) + 1
+    try:
+        if packet is None:
+            # The actual remote machine/boot/account and private root generation
+            # are durably pinned before generating the command that can submit.
+            prepare = lambda: remote.prepare_command(operation, program, durable_jobs.owner_source())
+            while packet is None:
+                try:
+                    packet, _ = _remote_json(config, host, prepare, directory, attempt, source_context, held)
+                    attempt += 1
+                    # Validate the packet using an OBSERVER render, which has no
+                    # new-job effect even if its transport is subsequently lost.
+                    remote.durable_command(operation, program, packet, mode="observe")
+                    _save(directory, "remote-admission.json", packet)
+                except _RemoteObservationFailed:
+                    attempt += 1; failures += 1
+                    if failures >= 3:
+                        raise
+                    time.sleep(2 ** (failures - 1))
+            failures = 0
+        while True:
+            command = lambda mode=command_mode: remote.durable_command(operation, program, packet, mode=mode)
+            # Once a submit command reaches Popen, only observe is permitted
+            # after lost acknowledgement. Proven admission_absent is the sole
+            # route back to the same immutable original admission.
+            submitted_mode = command_mode
+            command_mode = "observe"
+            try:
+                reply, capture = _remote_json(config, host, command, directory, attempt, source_context, held)
+                attempt += 1
+            except _RemoteObservationFailed:
+                attempt += 1; failures += 1
+                if failures >= 3:
+                    raise
+                time.sleep(2 ** (failures - 1)); continue
+            failures = 0
+            if (set(reply) - {"schemaVersion", "operationId", "status", "stdout", "stderr"}
+                    or reply.get("schemaVersion") != 1 or reply.get("operationId") != operation
+                    or type(reply.get("status")) is not dict or reply["status"].get("operationId") != operation):
+                raise ValueError("program_remote_reply_binding")
+            status = reply["status"]
+            state = status.get("state")
+            if state == "unsubmitted" and status.get("reason") == "admission_absent":
+                if submitted_mode == "submit":
+                    raise ValueError("program_remote_admission_not_consumed")
+                # Same verified private root, same operation and immutable body;
+                # the original launch fence is conclusively absent.
+                command_mode = "submit"
+            elif state == "running" or status.get("reason") == "record_unavailable":
+                pass
+            elif state == "terminal":
+                terminal = status.get("terminal")
+                if (type(terminal) is not dict or terminal.get("operationId") != operation
+                        or terminal.get("binding") != packet["binding"] or type(terminal.get("exitCode")) is not int):
+                    raise ValueError("program_remote_terminal_binding")
+                streams = {}
+                for name in ("stdout", "stderr"):
+                    try:
+                        raw = base64.b64decode(reply[name], validate=True)
+                    except (ValueError, TypeError, KeyError):
+                        raise ValueError("program_remote_stream_invalid") from None
+                    pin = terminal[name]
+                    digest = hashlib.sha256(raw).hexdigest()
+                    if (type(pin) is not dict or pin.get("overflow") is not False
+                            or len(raw) != pin.get("retainedBytes") or len(raw) != pin.get("totalBytes")
+                            or digest != pin.get("sha256")):
+                        raise ValueError("program_remote_stream_integrity")
+                    _bytes(directory, name + ".private", raw)
+                    streams[name] = {"bytes": len(raw), "receivedBytes": len(raw), "receivedSha256": digest,
+                                     "retainedSha256": digest, "eof": True}
+                _save(directory, "remote-terminal.json", status)
+                source_context.guard(); held.finish(); held.final_identity_pass()
+                verified_capture = {**capture, "returnCode": terminal["exitCode"], "complete": True,
+                                    "counts": {name: row["bytes"] for name, row in streams.items()},
+                                    "eof": {"stdout": True, "stderr": True}, "remoteDurable": True}
+                _save(directory, "terminal.json", _public(intent, "terminal", exitCode=terminal["exitCode"],
+                      capture=verified_capture, streams=streams, remoteOperationId=operation,
+                      remoteOwner=status["owner"], durableProtocol=1))
+                return
+            else:
+                raise ValueError("program_remote_original_unknown")
+            _save(directory, "observation-%08d.json" % next_observation,
+                  _public(intent, "pending", reason="original_remote_owner_observed",
+                          remoteState=state, remoteOwner=status.get("owner"), remoteOperationId=operation,
+                          durableProtocol=1))
+            next_observation += 1
+    except BaseException as error:
+        diagnostic = _failure_diagnostic(directory, error, "remote-durable-reconciliation", intent)
+        _save(directory, "terminal.json", _public(intent, "unknown", reason="original_remote_execution_unverified",
+              errorClass=type(error).__name__, remoteOperationId=operation, durableProtocol=1,
+              streams={}, capture=None, nextAction="reconcile_original" if isinstance(error, _RemoteObservationFailed) else "resolve_blocker",
+              **diagnostic))
+
+
+def _reconciled_status(directory, intent, held):
+    """Read only complete, independently retained remote reconciliation receipts."""
+    records = sorted(directory.glob("reconciliation-*/closed.json"))
+    if not records:
+        return None
+    closed_path = records[-1]
+    collector = closed_path.parent
+    closed = _read(collector, "closed.json", held)
+    result = _read(collector, "result.json", held)
+    raw = held.files[str(collector / "result.json")][3]
+    if (closed != {"operationId": intent["operationId"], "requestSha256": intent["requestSha256"],
+                   "resultSha256": hashlib.sha256(raw).hexdigest(), "sourceClosing": True}
+            or result.get("state") != "terminal"
+            or any(result.get(key) != value for key, value in _public(intent, "terminal").items() if key != "nextAction")
+            or result.get("remoteOperationId") != intent["operationId"]):
+        raise ValueError("program_reconciliation_binding")
+    capture = result.get("capture")
+    if (type(capture) is not dict or capture.get("complete") is not True
+            or capture.get("remoteDurable") is not True or capture.get("returnCode") != result.get("exitCode")
+            or capture.get("eof") != {"stdout": True, "stderr": True}
+            or set(result.get("streams", {})) != {"stdout", "stderr"}):
+        raise ValueError("program_reconciliation_capture")
+    for name, pin in result["streams"].items():
+        raw = held.read(str(collector / (name + ".private")), pin["retainedSha256"], max_bytes=16 * 1024 * 1024)
+        if len(raw) != pin["bytes"] or len(raw) != pin["receivedBytes"] or not pin["eof"]:
+            raise ValueError("program_reconciliation_stream")
+    return result
+
+
+def reconcile(root, host, identity, *, source_context=None):
+    """Network observation of an original durable job after local owner death.
+
+    Local status/collect remain observation-only and never call this function.
+    Legacy foreground jobs are not recoverable by this protocol. A running
+    original local owner is observed, not replaced. This synchronous observer
+    can be called again while pending; it never replaces an admitted remote job.
+    """
+    if type(identity) is not dict or set(identity) != {"operationId"}:
+        raise ValueError("program_status_identity")
+    operation = _operation(identity["operationId"])
+    root = Path(root).resolve(strict=True)
+    directory = _directory(root, operation)
+    with _holding() as held:
+        intent = _read(directory, "intent.json", held)
+        if intent["request"]["host"] != host:
+            raise ValueError("program_status_host")
+        if intent.get("durableProtocol") != 1:
+            return _public(intent, "unknown", reason="legacy_foreground_owner_not_recoverable")
+        completed = _reconciled_status(directory, intent, held)
+        if completed is not None:
+            held.finish(); held.final_identity_pass()
+            return completed
+        if (directory / "terminal.json").exists():
+            previous = _read(directory, "terminal.json", held)
+            if previous.get("state") == "terminal":
+                held.finish(); held.final_identity_pass()
+                return status(root, host, identity)
+        try:
+            owner = _read(directory, "owner.json", held)
+            actor = owner["actor"]
+            if owner["operationId"] != operation or type(actor) is not dict:
+                raise ValueError("program_original_owner_identity")
+            try:
+                actual = keeper.actor(actor["pid"])
+            except (OSError, ValueError, subprocess.SubprocessError):
+                try:
+                    os.kill(actor["pid"], 0)
+                except ProcessLookupError:
+                    actual = None
+                except OSError:
+                    raise ValueError("program_original_owner_visibility") from None
+                else:
+                    raise ValueError("program_original_owner_visibility") from None
+            if actual == actor:
+                held.finish(); held.final_identity_pass()
+                return status(root, host, identity)
+        except (OSError, KeyError):
+            raise ValueError("program_original_owner_visibility") from None
+        if not (directory / "remote-admission.json").exists():
+            return _public(intent, "unknown", reason="original_remote_admission_unproved")
+        if source_context is None:
+            raise ValueError("program_source_context_required")
+        source_context.guard()
+        packet = _read(directory, "remote-admission.json", held)
+        config, _ = _hold_connection(held, root, host, intent["connectionPins"])
+        collector = directory / ("reconciliation-%020d-%s" % (time.time_ns(), uuid.uuid4().hex))
+        collector.mkdir(mode=0o700)
+        program = intent["request"]["program"]
+        mode = "observe"
+        attempt = 0
+        failures = 0
+        while True:
+            command = lambda chosen_mode=mode: remote.durable_command(operation, program, packet, mode=chosen_mode, wait_seconds=5)
+            submitted_mode = mode
+            mode = "observe"
+            try:
+                reply, capture = _remote_json(config, host, command, collector, attempt, source_context, held, operation=operation)
+            except _RemoteObservationFailed:
+                attempt += 1; failures += 1
+                if failures >= 3:
+                    return _public(intent, "unknown", reason="original_remote_transport_unavailable", remoteOperationId=operation)
+                time.sleep(2 ** (failures - 1)); continue
+            attempt += 1
+            remote_status = reply.get("status")
+            if (reply.get("operationId") != operation or type(remote_status) is not dict
+                    or remote_status.get("operationId") != operation):
+                raise ValueError("program_remote_reply_binding")
+            state = remote_status.get("state")
+            if state == "unsubmitted" and remote_status.get("reason") == "admission_absent" and submitted_mode == "observe":
+                mode = "submit"
+                continue
+            if state == "running" or remote_status.get("reason") == "record_unavailable":
+                source_context.guard(); held.finish(); held.final_identity_pass()
+                return _public(intent, "pending", reason="original_remote_owner_observed",
+                               remoteOwner=remote_status.get("owner"), remoteOperationId=operation, durableProtocol=1)
+            if state != "terminal":
+                return _public(intent, "unknown", reason="original_remote_execution_unverified", remoteOperationId=operation)
+            import base64
+            terminal = remote_status.get("terminal")
+            if (type(terminal) is not dict or terminal.get("operationId") != operation
+                    or terminal.get("binding") != packet["binding"] or type(terminal.get("exitCode")) is not int):
+                raise ValueError("program_remote_terminal_binding")
+            streams = {}
+            for name in ("stdout", "stderr"):
+                try:
+                    raw = base64.b64decode(reply[name], validate=True)
+                except (ValueError, TypeError, KeyError):
+                    raise ValueError("program_remote_stream_invalid") from None
+                pin = terminal[name]; digest = hashlib.sha256(raw).hexdigest()
+                if pin.get("overflow") is not False or len(raw) != pin.get("totalBytes") or len(raw) != pin.get("retainedBytes") or digest != pin.get("sha256"):
+                    raise ValueError("program_remote_stream_integrity")
+                _bytes(collector, name + ".private", raw)
+                streams[name] = {"bytes": len(raw), "receivedBytes": len(raw), "receivedSha256": digest,
+                                 "retainedSha256": digest, "eof": True}
+            verified_capture = {**capture, "returnCode": terminal["exitCode"], "complete": True,
+                                "eof": {"stdout": True, "stderr": True}, "remoteDurable": True}
+            result = _public(intent, "terminal", exitCode=terminal["exitCode"], capture=verified_capture, streams=streams,
+                             remoteOperationId=operation, remoteOwner=remote_status["owner"], durableProtocol=1)
+            _save(collector, "remote-terminal.json", remote_status)
+            _save(collector, "result.json", result)
+            source_context.guard(); held.finish(); held.final_identity_pass()
+            _save(collector, "closed.json", {"operationId": operation, "requestSha256": intent["requestSha256"],
+                  "resultSha256": hashlib.sha256(_json(result)).hexdigest(), "sourceClosing": True})
+            source_context.guard(); held.finish(); held.final_identity_pass()
+            return result

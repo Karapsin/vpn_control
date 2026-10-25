@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "android_vpn_permission_reset.before.source": "e207ef95aafe791c4ee8f8851af22f8d4784ff24b4807627a13f5c3fa66bb947",
+    "mcp_server.before.source": "2e89f46650ee51562756e83af6c8ea588ab20c2ddd34ecc3702cc4a6d156ed3f",
+    "readiness_vm_dispatch.before.source": "e31bf9b8f565e37c894c20535b012aeffe302a38983774fad0da8bcf193c0549",
+    "readiness_vm_dispatch.before.json": "6ccc073d3cefd72aac89102983f58b47be15852c9f73b22698ebb5b69d4983fe"
+  },
+  "failure": "API29 reset start selects fixed host/device without caller target input."
+}

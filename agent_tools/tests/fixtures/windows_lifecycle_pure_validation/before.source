@@ -1,0 +1,236 @@
+"""Read-only lineage and pure plans for an existing owned Windows fixture.
+
+A plan describes topology; it grants no power, reservation or clean-stop
+permission. The admitted controller retains source/results and supplies those
+independent fences immediately before any existing-instance dispatch. Canonical
+argv[0] is descriptive: dispatch must use a newly held, generation-and-digest
+verified executable FD as Popen(executable=...), with that FD inherited. It
+must never resolve the canonical executable pathname again after validation.
+"""
+from dataclasses import dataclass
+import hashlib
+import inspect
+import json
+from pathlib import PurePosixPath
+import re
+from types import MappingProxyType
+from uuid import UUID
+
+from . import readiness_windows_remote as packets
+from .native_vm_spec import FreshWindowsVmSpec
+
+_KIND = 'windows-existing-lineage-v1'
+_KEYS = {'schemaVersion','kind','operationId','machine','provider','hostBoot','rootIdentity',
+         'qemu','tpm','executables','firmware','mutable','tpmState','libvirt'}
+
+
+def _need(value, reason='windows_lifecycle_lineage_invalid'):
+    if not value:
+        raise ValueError(reason)
+
+
+def _uuid(value):
+    try:return type(value) is str and str(UUID(value)) == value
+    except ValueError:return False
+
+
+def _pin(value, length):
+    return type(value) is list and len(value) == length and all(type(v) is int and v >= 0 for v in value)
+
+
+def _digest(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def _canonical(value):
+    return (type(value) is str and value.startswith('/') and str(PurePosixPath(value)) == value
+            and '..' not in PurePosixPath(value).parts and not any(ord(c) < 32 for c in value)
+            and not value.startswith(('/proc/','/dev/fd/')) and not value.endswith(' (deleted)'))
+
+
+def _freeze(value):
+    if type(value) is dict:return MappingProxyType({key:_freeze(item) for key,item in value.items()})
+    if type(value) is list:return tuple(_freeze(item) for item in value)
+    return value
+
+
+def _plain(value):
+    if isinstance(value, MappingProxyType):return {key:_plain(item) for key,item in value.items()}
+    if type(value) is tuple:return [_plain(item) for item in value]
+    return value
+
+
+@dataclass(frozen=True)
+class ExistingLineage:
+    _body: object
+
+    def as_dict(self):
+        return _plain(self._body)
+
+
+@dataclass(frozen=True)
+class ExistingStartPlan:
+    machine: str
+    root: str
+    lineage_sha256: str
+    qemu_argv: tuple[str, ...]
+    tpm_argv: tuple[str, ...]
+    firmware_asset: str = 'firmware-code'
+
+
+def validate_lineage(binding, result):
+    """Validate source-bound observation shape, never infer stop authority."""
+    spec = FreshWindowsVmSpec.parse(binding['spec'])
+    _need(binding.get('provider') == 'raw-qemu-windows', 'windows_lifecycle_libvirt_lineage_unqualified')
+    # Use the same finite producer's binding validation, without executing it.
+    packets.program(binding, 'observe', result.get('operationId') if type(result) is dict else None)
+    _need(type(result) is dict and set(result) == _KEYS)
+    _need(type(result['schemaVersion']) is int and result['schemaVersion'] == 1
+          and result['kind'] == _KIND and _uuid(result['operationId']))
+    _need(result['machine'] == spec.deployment_id and result['provider'] == binding['provider']
+          and result['hostBoot'] == binding['context']['hostBootId'] and _pin(result['rootIdentity'],5)
+          and result['libvirt'] is None)
+    for actor_name in ('qemu','tpm'):
+        actor = result[actor_name]
+        _need(type(actor) is dict and set(actor) == {'pid','startTicks','argv','commandSha256','executableGeneration'})
+        _need(all(type(actor[key]) is int and actor[key] > 0 for key in ('pid','startTicks'))
+              and _pin(actor['executableGeneration'],9) and _digest(actor['commandSha256']))
+        argv = actor['argv']
+        _need(type(argv) is list and 0 < len(argv) <= 256
+              and all(type(word) is str and '\0' not in word and len(word.encode()) <= 8192 for word in argv))
+        _need(hashlib.sha256(b'\0'.join(word.encode() for word in argv)+b'\0').hexdigest() == actor['commandSha256'])
+    _need(result['qemu']['pid'] != result['tpm']['pid'])
+    for name,wanted in (('-uuid',spec.deployment_id),('-m',str(spec.memory_mib)),('-smp',str(spec.cpus))):
+        words=result['qemu']['argv'];_need(words.count(name)==1)
+        index=words.index(name);_need(index+1<len(words) and words[index+1]==wanted)
+    words=result['tpm']['argv'];_need(words.count('--tpmstate')==1)
+    index=words.index('--tpmstate');_need(index+1<len(words) and words[index+1]=='dir='+str(PurePosixPath(spec.root)/'tpm'))
+    _need(type(result['executables']) is dict and set(result['executables']) == {'qemu','swtpm'})
+    for name,actor in (('qemu','qemu'),('swtpm','tpm')):
+        item=result['executables'][name]
+        _need(type(item) is dict and set(item) == {'path','generation','sha256'} and _canonical(item['path'])
+              and _pin(item['generation'],9) and item['generation'] == result[actor]['executableGeneration']
+              and _digest(item['sha256']))
+    firmware=result['firmware'];asset=spec.firmware_code
+    _need(type(firmware) is dict and set(firmware) == {'path','bytes','sha256','generation'}
+          and firmware['path'] == asset.path and firmware['bytes'] == asset.bytes and type(firmware['bytes']) is int
+          and firmware['sha256'] == asset.sha256 and _pin(firmware['generation'],9)
+          and firmware['generation'][6] == asset.bytes)
+    _need(type(result['mutable']) is dict and set(result['mutable']) == {'disk.qcow2','uefi-vars.fd'}
+          and all(_pin(value,5) for value in result['mutable'].values()))
+    _need(type(result['tpmState']) is dict and set(result['tpmState']) == {'path','identity'}
+          and result['tpmState']['path'] == str(PurePosixPath(spec.root)/'tpm')
+          and _pin(result['tpmState']['identity'],5))
+    return ExistingLineage(_freeze(result))
+
+
+def existing_start_plan(binding, lineage):
+    """Return disk-only topology with symbolic freshly held firmware input."""
+    _need(type(lineage) is ExistingLineage)
+    body=lineage.as_dict();validate_lineage(binding,body);spec=FreshWindowsVmSpec.parse(binding['spec'])
+    root=PurePosixPath(spec.root)
+    argv=[body['executables']['qemu']['path'],'-name','vpn-control-'+spec.deployment_id,'-uuid',spec.deployment_id,
+          '-machine','q35,smm=on','-accel','kvm','-cpu','host','-smp',str(spec.cpus),'-m',str(spec.memory_mib),
+          '-global','driver=cfi.pflash01,property=secure,value=on',
+          '-drive','if=pflash,format=raw,readonly=on,file=/dev/fdset/1',
+          '-drive','if=pflash,format=raw,file='+str(root/'uefi-vars.fd'),
+          '-drive','file='+str(root/'disk.qcow2')+',if=none,id=system,format=qcow2',
+          '-device','ide-hd,drive=system,bus=ide.0']
+    for bus,name in enumerate(('installer','drivers','seed'),1):
+        argv.extend(('-drive','media=cdrom,readonly=on,if=none,id='+name,
+                     '-device','ide-cd,drive='+name+',bus=ide.'+str(bus)))
+    argv.extend(('-chardev','socket,id=tpmchar,path='+str(root/'swtpm.sock'),
+                 '-tpmdev','emulator,id=tpm0,chardev=tpmchar','-device','tpm-tis,tpmdev=tpm0',
+                 '-device','virtio-serial-pci','-chardev','socket,path='+str(root/'qga.sock')+',server=on,wait=off,id=qga',
+                 '-device','virtserialport,chardev=qga,name=org.qemu.guest_agent.0',
+                 '-netdev','user,id=net0','-device','e1000e,netdev=net0','-boot','order=c,menu=off',
+                 '-display','none','-vnc','127.0.0.1:'+str(spec.vnc_port-5900),
+                 '-monitor','none','-qmp','unix:'+str(root/'qmp.sock')+',server=on,wait=off',
+                 '-add-fd','fd={firmware-code-fd},set=1,opaque=asset:firmwareCode'))
+    tpm=(body['executables']['swtpm']['path'],'socket','--tpm2','--tpmstate','dir='+str(root/'tpm'),
+         '--ctrl','type=unixio,path='+str(root/'swtpm.sock'))
+    digest=hashlib.sha256(json.dumps(body,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+    return ExistingStartPlan(spec.deployment_id,spec.root,digest,tuple(argv),tpm)
+
+
+def _capture_existing_lineage(spec,context,operation,provider,root,current_actor,
+                              read,process,owns,vm_guard,closing,generation,structure,
+                              private,instance_intent,pin):
+    import hashlib,json,os,stat
+    def require(value,reason='instance_lifecycle_lineage'):
+        if not value:raise ValueError(reason)
+    require(provider=='raw-qemu-windows','instance_lifecycle_libvirt_lineage_unqualified')
+    vm_guard();intent=instance_intent();qemu=read('qemu-started.json');tpm=read('swtpm-started.json')
+    require(qemu==current_actor,'instance_lifecycle_original_actor')
+    process(qemu);process(tpm)
+    def executable(row):
+        path=os.path.realpath('/proc/'+str(row['pid'])+'/exe')
+        require(path.startswith('/') and not path.startswith(('/proc/','/dev/fd/'))
+                and not path.endswith(' (deleted)') and not any(ord(c)<32 for c in path),'instance_lifecycle_executable')
+        actual=os.stat('/proc/'+str(row['pid'])+'/exe')
+        require(list(generation(actual))==row['executableGeneration'],'instance_lifecycle_executable')
+        descriptor,digest=pin(path,executable=True)
+        require(generation(os.fstat(descriptor))==generation(actual),'instance_lifecycle_executable')
+        process(row)
+        return {'path':path,'generation':list(generation(actual)),'sha256':digest}
+    executables={'qemu':executable(qemu),'swtpm':executable(tpm)}
+    original=intent['assetIdentities']['firmwareCode'];asset=spec['assets']['firmwareCode']
+    descriptor,digest=pin(asset['path'],asset['sha256'],asset['bytes'])
+    firmware_generation=list(generation(os.fstat(descriptor)))
+    require(original['set']==1 and original['generation']==firmware_generation,'instance_lifecycle_firmware')
+    # Prove the held firmware inode remains an actual descriptor of this actor.
+    descriptors=os.listdir('/proc/'+str(qemu['pid'])+'/fd');require(len(descriptors)<=8192,'instance_fd_capacity')
+    matched=False
+    for name in descriptors:
+        try:actual=os.stat('/proc/'+str(qemu['pid'])+'/fd/'+name)
+        except FileNotFoundError:continue
+        if list(generation(actual))==firmware_generation:matched=True
+    require(matched,'instance_lifecycle_firmware_owner')
+    mutable=read('mutable-artifacts.json');require(set(mutable)=={'disk.qcow2','uefi-vars.fd'},'instance_lifecycle_mutable')
+    for name,identity in mutable.items():
+        require(identity==list(structure(private(root/name))),'instance_lifecycle_mutable')
+        owns(qemu['pid'],root/name)
+    tpm_path=root/'tpm';tpm_identity=structure(private(tpm_path,True))
+    state_files=[]
+    for name in os.listdir(tpm_path):
+        require(len(state_files)<128,'instance_lifecycle_tpm_state_capacity')
+        path=tpm_path/name;info=private(path)
+        state_files.append((path,structure(info)))
+    require(state_files,'instance_lifecycle_tpm_state')
+    tpm_fds=os.listdir('/proc/'+str(tpm['pid'])+'/fd');require(len(tpm_fds)<=8192,'instance_fd_capacity')
+    state_owned=False
+    for name in tpm_fds:
+        try:actual=os.stat('/proc/'+str(tpm['pid'])+'/fd/'+name)
+        except FileNotFoundError:continue
+        if any(structure(actual)==identity for path,identity in state_files):state_owned=True
+    require(state_owned,'instance_lifecycle_tpm_state_owner')
+    tpm_state={'path':str(tpm_path),'identity':list(tpm_identity)}
+    argv=tpm['argv'];require(argv.count('--tpmstate')==1,'instance_lifecycle_tpm_state')
+    index=argv.index('--tpmstate');require(index+1<len(argv)and argv[index+1]=='dir='+str(tpm_path),'instance_lifecycle_tpm_state')
+    owns(tpm['pid'],root/'swtpm.sock',True)
+    result={'schemaVersion':1,'kind':'windows-existing-lineage-v1','operationId':operation,
+            'machine':spec['deploymentId'],'provider':provider,'hostBoot':context['hostBootId'],
+            'rootIdentity':intent['rootIdentity'],'qemu':qemu,'tpm':tpm,'executables':executables,
+            'firmware':{'path':asset['path'],'bytes':asset['bytes'],'sha256':digest,'generation':firmware_generation},
+            'mutable':mutable,'tpmState':tpm_state,'libvirt':None}
+    vm_guard();process(qemu);process(tpm);closing()
+    require(structure(private(tpm_path,True))==tpm_identity,'instance_lifecycle_tpm_state_changed')
+    for path,identity in state_files:require(structure(private(path))==identity,'instance_lifecycle_tpm_state_changed')
+    return result
+
+
+def lineage_program(binding,operation):
+    """Generate only a fixed host observation; no QGA or VM/input mutation."""
+    _need(type(binding) is dict and binding.get('provider')=='raw-qemu-windows','windows_lifecycle_libvirt_lineage_unqualified')
+    packet=packets.program(binding,'observe',operation).decode()
+    marker="        if PROVIDER=='raw-qemu-windows':\n            suffix="
+    _need(packet.count(marker)==1,'windows_lifecycle_source_changed')
+    branch="""        print(json.dumps(_capture_existing_lineage(SPEC,CONTEXT,OPERATION,PROVIDER,root,current_actor,
+            read,process,owns,vm_guard,closing,generation,structure,private,instance_intent,pin)))
+        return
+"""
+    packet=packet.replace(marker,branch+marker)
+    marker='def _main():\n';_need(packet.count(marker)==1,'windows_lifecycle_source_changed')
+    packet=packet.replace(marker,inspect.getsource(_capture_existing_lineage)+'\n'+marker)
+    compile(packet,'existing Windows lineage packet','exec')
+    return packet.encode()

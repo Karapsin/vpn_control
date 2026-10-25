@@ -1,0 +1,27 @@
+{
+  "capture": {
+    "bytes": 11421,
+    "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/macos-active-work-public-integration-v1/qualification_capture.py",
+    "sha256": "ae05e06dc4a7bd8eff4c05881c18c488746d374f7c62b122ab985398329e8687"
+  },
+  "configuration": {
+    "bytes": 637,
+    "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/macos-active-work-candidate-v1/render-v5-progress-final/configuration.json",
+    "sha256": "89f51e320bcac1ec6549d6ea892ae87a773d9513d48efbe1ca85d30074ee0fa5"
+  },
+  "decoder": {
+    "bytes": 55631,
+    "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/macos-active-work-candidate-v1/candidate.py",
+    "sha256": "aeb346395e89ca5a45f5a8378872d61553759aa21cc7806fc21c38736f559f10"
+  },
+  "ordinary": {
+    "bytes": 1273,
+    "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/macos-active-work-candidate-v1/render-v5-progress-final/ordinary-source.py",
+    "sha256": "9438c989b24b3ebeb8de98e5ec08375c28f32b5979497616dd90036a85c53499"
+  },
+  "shape": {
+    "bytes": 10560,
+    "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/macos-sm-domain-shape-diagnostic/component.py",
+    "sha256": "35bddb6c2dca2814672d3c36b86be862f9b0315bf903b20991739110f52cf173"
+  }
+}

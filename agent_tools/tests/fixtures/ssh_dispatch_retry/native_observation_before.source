@@ -1,0 +1,44 @@
+from pathlib import Path
+import hashlib,json,os,subprocess,time,uuid,shlex
+from dataclasses import asdict
+from agent_tools import ssh_transport as t,readiness_transport as a,readiness as r,readiness_nested_channel as n,ssh_fresh_nested_channel as f
+base=Path.cwd();root=base/'.runtime/tool-recovery/transport-native/private-inventory-v3-3e1795c5e83e49feaf9bed770648cbb0'
+op=str(uuid.uuid4());out=root/('current-source-loss-'+op);out.mkdir(mode=0o700)
+def save(name,value):
+ p=out/name
+ fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ with os.fdopen(fd,'w')as s:json.dump(value,s,sort_keys=True,indent=2)
+sources={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in (base/'agent_tools').glob('*.py')}
+save('intent.json',{'operationId':op,'originalCorrelationId':'285797bfa84045a3afa8c2ab720d7cac','effects':'one proven idle own SSH multiplex master graceful close then original transport readiness successor; no VM/job/application effects','sourceSha256':sources})
+config=t.load_config(root);selected=n.route_options(root,'archlinux',config,deadline=time.monotonic()+45)
+assert selected['correlationId']=='285797bfa84045a3afa8c2ab720d7cac'
+journal=f._context_journal(root,'archlinux',selected['correlationId'],False,True)
+old=json.loads((journal/(selected['correlationId']+'.ready.json')).read_bytes())['result']
+master=old['master'];actor=master['actor'];gateway=t.connection_host(config,config.hosts['archlinux'].gateway)
+assert not (root/'.rag_index/ssh-program-owner').exists()
+assert not (root/'.rag_index/ssh-automatic-program').exists()
+fixed="""import json,os,subprocess,sys
+from pathlib import Path
+expected=json.loads(sys.argv[1]);pid=expected['actor']['pid'];control=expected['control'];p=Path('/proc')/str(pid)
+assert os.getuid()==expected['actor']['uid'] and Path('/proc/sys/kernel/random/boot_id').read_text().strip()==expected['boot']
+assert control=='/tmp/vpn-channel-285797bfa84045a3afa8c2ab720d7cac/m'
+assert p.stat().st_uid==os.getuid() and int((p/'stat').read_text().rsplit(')',1)[1].split()[19])==expected['actor']['startTicks']
+assert (p/'task'/str(pid)/'children').read_text().strip()==''
+value=subprocess.run(['ssh','-F',expected['config'],'-S',control,'-O','exit',expected['profile']],capture_output=True,timeout=10)
+print(json.dumps({'state':'close-returned','returnCode':value.returncode,'stdout':value.stdout.decode(),'stderr':value.stderr.decode(),'actor':expected['actor'],'control':control,'noActiveMasterChildren':True},sort_keys=True))
+"""
+expected={'actor':actor,'boot':master['gatewayBoot'],'control':old['controlPath'],'config':str(config.hosts['archlinux'].remote_config_file),'profile':config.hosts['archlinux'].remote_host_alias}
+argv=t.build_ssh_argv(config,gateway.alias,10,('python3','-I','-B','-c','exec('+repr(fixed)+')',json.dumps(expected,sort_keys=True)))
+closed=t.run_ssh(argv,capture_output=True,timeout=20)
+save('close-result.json',{'returnCode':closed.returncode,'stdout':closed.stdout.decode(),'stderr':closed.stderr.decode()})
+assert closed.returncode==0
+value=json.loads(closed.stdout);assert value['returnCode']==0 and value['noActiveMasterChildren']is True
+ctx=a.context(root,'archlinux',deadline=time.monotonic()+180)
+first=ctx.adapter.observe(r.Requirements(frozenset({'transport'})),ctx.deadline);save('after-loss-observation.json',asdict(first));assert first.transport=='expired'
+ready=r.ensure_ready(ctx,r.Requirements(frozenset({'transport'}),frozenset({'reconnect'})),op);r.revalidate(ctx,ready)
+current=n.route_options(root,'archlinux',t.load_config(root),deadline=time.monotonic()+30)
+assert current['correlationId']!=selected['correlationId'] and ready.boot==first.boot if first.boot is not None else current['correlationId']!=selected['correlationId']
+assert ready.boot==old['arch']['boot'] and ready.account=='1000:kardinal'
+assert sources=={p.name:hashlib.sha256(p.read_bytes()).hexdigest()for p in (base/'agent_tools').glob('*.py')}
+result={'state':'recovered-and-revalidated','operationId':op,'oldCorrelationId':selected['correlationId'],'newCorrelationId':current['correlationId'],'actualIdentities':ready.identities(),'loss':'one graceful multiplex exit after actual UID/kernelbirth/gatewayboot/noactivechildren proof','jobSubmissions':0,'vmActions':0,'configuredTargetUnchanged':True,'productionIdleSeconds':18000,'sourceSha256':sources}
+save('result.json',result);print(json.dumps({'state':result['state'],'receipt':str(out/'result.json'),'newCorrelationId':current['correlationId']}))

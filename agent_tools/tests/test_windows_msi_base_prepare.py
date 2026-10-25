@@ -692,7 +692,7 @@ def call(sock,command,args):
             package.write_bytes(b"source")
             with patch.object(base.windows_credential_probe_ssh, "_remote_command", return_value=("python3", "-c", "pass")), \
                  patch.object(base.ssh_transport, "build_ssh_argv", return_value=["ssh", "archlinux"]) as argv, \
-                 patch.object(base.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh", 1800)) as run:
+                 patch.object(base.ssh_transport, "run_ssh", side_effect=subprocess.TimeoutExpired("ssh", 1800)) as run:
                 self.assertIsNone(base._remote(object(), "", (), package, 1800))
                 self.assertEqual(run.call_args.kwargs["timeout"], 1800)
                 self.assertEqual(argv.call_args.args[2], 60)

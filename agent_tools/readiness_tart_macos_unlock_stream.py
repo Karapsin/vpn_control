@@ -1,0 +1,107 @@
+"""Nonce-correlated, read-only Mac unlock observer; no input authority.
+
+The historical native-qualified session stream is unchanged. Each reply in this
+separate protocol follows a fresh native observation and echoes exactly one
+public request nonce and sequence number. Initial READY cannot satisfy a check.
+"""
+from __future__ import annotations
+
+import hashlib
+import inspect
+import textwrap
+
+from . import readiness_tart_macos_session as session
+
+PROTOCOL = 'macos-unlock-stream-v1'
+
+
+def session_stream_command(binding):
+    raw = guest_session_stream_source(binding)
+    gate = ('import hashlib,sys;raw=sys.stdin.buffer.read(' + str(len(raw)) + ');'
+            'assert len(raw)==' + str(len(raw)) + ' and hashlib.sha256(raw).hexdigest()==' +
+            repr(hashlib.sha256(raw).hexdigest()) + ", 'guest_source_changed';"
+            "exec(compile(raw,'<registered-unlock-observer>','exec'),{'__name__':'__main__'})")
+    return (binding.guest_python, '-I', '-B', '-c', gate), raw
+
+
+def guest_session_stream_source(binding):
+    complete = session.guest_session_source(binding).decode('utf-8')
+    parameters = complete.splitlines()[0]
+    init, observe = session._OBSERVER.split('native=module.Native();boot,_=native.boot()\n')
+    marker = 'print(json.dumps('
+    start = observe.index(marker); tail = observe[start + len(marker):]
+    if not tail.endswith(',sort_keys=True))\n'):
+        raise session.backend.MacBlocked('macos_unlock_stream_source_changed')
+    observe = observe[:start] + 'return ' + tail[:-len(',sort_keys=True))\n')] + '\n'
+    observer = ('def _observe():\n' + textwrap.indent('boot,_=native.boot()\n' + observe, ' '))
+    return (parameters + '\n' + inspect.getsource(session.registry._console_login_done) + '\n' +
+            inspect.getsource(session._load_verified_probe) + '\n' + init +
+            'native=module.Native()\n' + observer + '\n' + _LAYOUT + '\n' + _STREAM).encode()
+
+
+_LAYOUT = r'''def _require_us_layout():
+ import ctypes as T
+ # These public system framework paths and identifiers are fixed source.
+ # No keystrokes, event history or private input buffer is inspected.
+ hit=T.CDLL('/System/Library/Frameworks/Carbon.framework/Frameworks/HIToolbox.framework/HIToolbox')
+ cf=T.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
+ copy=hit.TISCopyCurrentKeyboardInputSource;copy.argtypes=[];copy.restype=T.c_void_p
+ get=hit.TISGetInputSourceProperty;get.argtypes=[T.c_void_p,T.c_void_p];get.restype=T.c_void_p
+ cf.CFRelease.argtypes=[T.c_void_p];cf.CFRelease.restype=None
+ cf.CFGetTypeID.argtypes=[T.c_void_p];cf.CFGetTypeID.restype=T.c_ulong
+ cf.CFStringGetTypeID.argtypes=[];cf.CFStringGetTypeID.restype=T.c_ulong
+ cf.CFStringGetLength.argtypes=[T.c_void_p];cf.CFStringGetLength.restype=T.c_long
+ cf.CFStringGetCString.argtypes=[T.c_void_p,T.c_void_p,T.c_long,T.c_uint32];cf.CFStringGetCString.restype=T.c_bool
+ source=copy();need(bool(source))
+ try:
+  key=T.c_void_p.in_dll(hit,'kTISPropertyInputSourceID')
+  value=get(source,key);need(bool(value) and cf.CFGetTypeID(value)==cf.CFStringGetTypeID())
+  need(0<cf.CFStringGetLength(value)<=128)
+  buffer=T.create_string_buffer(513)
+  need(cf.CFStringGetCString(value,buffer,len(buffer),0x08000100))
+  need(buffer.value==b'com.apple.keylayout.US')
+ finally:cf.CFRelease(source)
+'''
+
+
+_STREAM = r'''import re,signal,sys
+def _expired(signum,frame):raise SystemExit(73)
+signal.signal(signal.SIGALRM,_expired);signal.setitimer(signal.ITIMER_REAL,180)
+def _generation(path):
+ info=path.lstat()
+ return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+agent=prefix/'tart-guest-agent';protected(agent)
+probe_generation=_generation(probe);agent_generation=_generation(agent)
+need(probe_generation==(before.st_dev,before.st_ino,before.st_mode,before.st_uid,before.st_gid,before.st_nlink,
+                        before.st_size,before.st_mtime_ns,before.st_ctime_ns))
+_require_us_layout()
+initial=_observe()
+_require_us_layout()
+need(_generation(probe)==probe_generation and _generation(agent)==agent_generation)
+def _fresh():
+ user=pwd.getpwuid(os.geteuid())
+ need((user.pw_uid,user.pw_name,user.pw_dir)==(p['uid'],p['principal'],p['home']))
+ need(80 not in os.getgrouplist(user.pw_name,user.pw_gid))
+ need(_generation(probe)==probe_generation and _generation(agent)==agent_generation)
+ _require_us_layout()
+ actual=_observe()
+ _require_us_layout()
+ need(_generation(probe)==probe_generation and _generation(agent)==agent_generation)
+ need(actual['agent']==initial['agent'] and actual['boot']==initial['boot'] and actual['rawBoot']==initial['rawBoot'])
+ return actual
+print(json.dumps({'protocol':'macos-unlock-stream-v1','state':'observer_ready','observation':initial},sort_keys=True),flush=True)
+used=set()
+for counter in range(1,1025):
+ line=sys.stdin.buffer.readline(128)
+ if not line:break
+ match=re.fullmatch(rb'check ([1-9][0-9]{0,3}) ([0-9a-f]{32})\n',line)
+ need(match is not None and int(match[1])==counter)
+ nonce=match[2].decode('ascii');need(nonce not in used);used.add(nonce)
+ actual=_fresh()
+ # Recheck source generations after the complete native identity projection and
+ # immediately before publishing this exact request's observation.
+ need(_generation(probe)==probe_generation and _generation(agent)==agent_generation)
+ print(json.dumps({'protocol':'macos-unlock-stream-v1','state':'observed','counter':counter,
+                   'nonce':nonce,'observation':actual},sort_keys=True),flush=True)
+signal.setitimer(signal.ITIMER_REAL,0)
+'''

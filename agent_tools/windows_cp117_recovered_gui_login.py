@@ -4,12 +4,13 @@ Historical secure observations are evidence only. Each prospective phase gets
 its own closed source/nonce and new current secure-input observation. No public
 script, guest, account, path, or keyboard selector is accepted.
 """
+from . import ssh_transport
 import ast,base64,hashlib,inspect,json,os,time
 from pathlib import Path
 from . import windows_cp117_secure_layout_observe as secure
 from .windows_diagnostic_authority_capture import AuthorityCapture
 login=secure.login
-SECURE_SHA='bbcb1de84c89b44d7e541a35a2634ba0cf644e89f5cef7d9061e3a33e6499782'
+SECURE_SHA='26bafc28d72bc08baa673012a1ea7649d7b531f6328623668198974589de84df'
 CORRELATION='6c4bac9a-e05a-49e2-b9f0-4b390385bb4a'
 _PHASES={'wake': ('92be3503-58b0-44c6-9d3e-f2debb0a7852', 'b73b5c39-e446-4b13-92b6-8834f0962994'), 'typing': ('1f0ea39d-68e7-44e4-bdf0-0b6f038546e0', 'df788b4d-c869-41d9-b460-e85bd7520c66'), 'enter': ('e1339f6a-7d0b-43bd-b76d-40ba470e42cc', '327baa15-3742-4fa2-9273-dd8d1737fa39')}
 _READ_SHA={'wake': ('ecdb8bb086d142cb40e805738ca04b315849131f742173e0457d9bdc3d635bdf', '4ef88944fc44f863b3955cc8a6c424e2c8066ddb500995e093bafec60d4b13ef'), 'typing': ('86709d77f90bd65ac1845361b724126485c0df7f5eef16d2f1f8b6415ccb3c41', '8f19f6f23d0bfb0a0347d578b98cd8f82add12a658a0c5a034c4efcb13384497'), 'enter': ('85cafc667058fb1275dad8628a65703d7825771fd5009a3a14d1f356a6999a12', '635d77aff46268ac5d120be71879847cbf5cf6cd15c40b6aada431533c412148')}
@@ -221,7 +222,7 @@ def _stream(argv,capture,diagnostic,nonce,sha,qemu,secret):
     import selectors,subprocess
     r=login.guest.recovery
     if not isinstance(secret,bytes)or len(secret)>64:raise ValueError('gui-private-input-bound')
-    process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    process=ssh_transport.popen_ssh(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     selector=selectors.DefaultSelector();chunks={'stdout':bytearray(),'stderr':bytearray()};pending=bytearray();events=[];child=None;deadline=time.monotonic()+60
     selector.register(process.stdout,selectors.EVENT_READ,'stdout');selector.register(process.stderr,selectors.EVENT_READ,'stderr')
     try:
@@ -258,6 +259,8 @@ def _stream(argv,capture,diagnostic,nonce,sha,qemu,secret):
     finally:
         capture.create(diagnostic+'-transport.stdout.private',bytes(chunks['stdout']));capture.create(diagnostic+'-transport.stderr.private',bytes(chunks['stderr']));os.fsync(capture.fd)
         selector.close();process.stdin.close();process.stdout.close();process.stderr.close()
+
+        ssh_transport.finish_ssh(process)
 
 
 def start(root):

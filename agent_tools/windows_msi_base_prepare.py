@@ -925,11 +925,11 @@ def _remote(config: Any, program: str, args: tuple[str, ...], source: Path | Non
     argv = ssh_transport.build_ssh_argv(config, "archlinux", min(timeout, 60), command=command)
     try:
         if source is None:
-            completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            completed = ssh_transport.run_ssh(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, timeout=timeout, check=False)
         else:
             with source.open("rb") as stream:
-                completed = subprocess.run(argv, stdin=stream, stdout=subprocess.PIPE,
+                completed = ssh_transport.run_ssh(argv, stdin=stream, stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=timeout, check=False)
         return completed.stdout if completed.returncode == 0 and len(completed.stdout) <= 16384 else None
     except (OSError, subprocess.TimeoutExpired):

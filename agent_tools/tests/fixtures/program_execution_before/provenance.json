@@ -1,0 +1,14 @@
+{
+  "originalObservation": "program_route_changed_before_launch in original actual local saved worker tests; original exact source also preserves preexec worker pathname vulnerability found in read-only review",
+  "source": ".runtime/windows-parity-20261019/program-tool-draft/route-order-before",
+  "files": {
+    "ssh_program_execution.py": {
+      "sha256": "73b2c90337b6460a9f04beed58b810f0cc8394510b1a3c838ea6d8d0e37f6ed3",
+      "bytes": 25996
+    },
+    "ssh_program_execution_remote.py": {
+      "sha256": "a4373e56281a7aba0fabdb968a80a75fcb3e221ccfb468a5c712ac483be6c06c",
+      "bytes": 4109
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "sourceSha256": "8ebd96b9304f3457169a31269e51680f46321d65407af8e81d205a8b89ac03ca",
+  "failure": "Transport readiness ran before pure consumed mutation-claim refusal. Original consumed stop must refuse before connection/credentials/source generation while new dispatches still admit exact target transport."
+}

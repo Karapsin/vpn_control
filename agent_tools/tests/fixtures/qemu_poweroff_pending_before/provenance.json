@@ -1,0 +1,1 @@
+{"failure": "Acknowledged poweroff left original live actor admitting new guest work before actual shutdown", "nativeEvidence": "complete controller real QMP/QGA socket pending-shutdown scenario", "schemaVersion": 1, "sha256": "71c41344ea318255d50914c3961954443d1c9b6307ad20befcd33d7818c0d103"}

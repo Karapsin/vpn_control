@@ -1,0 +1,104 @@
+"""Whole unchanged aa2d with private import facade and actual public RPC child.
+
+Controlled dependency seams only; no VM, RFB or credential operation occurs.
+"""
+import ast,builtins,hashlib,json,os,subprocess,sys,tempfile,time,types,unittest
+from pathlib import Path
+from contextlib import ExitStack,nullcontext
+from unittest import mock
+PROJECT=ROOT
+from agent_tools.source_module_loader import SourceSession
+from agent_tools import source_module_loader as canonical_loader
+from agent_tools.tests.test_readiness_tart_macos import binding,facts
+BASE=FIXTURE;PARENT=BASE/'sources/parent.current.source'
+def value(name):
+ tree=ast.parse(PARENT.read_bytes());return ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id==name for t in n.targets)))
+def methods(names):return [n for n in ast.walk(ast.parse(PARENT.read_bytes()))if isinstance(n,ast.FunctionDef)and n.name in names]
+class Checks(unittest.TestCase):
+ def exercise(self,postguard=False,display="ready"):
+  original_factory=canonical_loader.SourceSession
+  with ExitStack()as held,tempfile.TemporaryDirectory(prefix='public-parent-')as temporary:
+   root=Path(temporary).resolve();root.chmod(0o700)
+   session=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_registry');held.callback(session.close)
+   names=value('NAMES');modules={name:session.load(name)for name in names};R=modules['readiness_tart_macos_registry'];P=modules['private_inventory_lock'];J=modules['durable_remote_job'];protocol=modules['readiness_qemu_jobs'];M=modules['readiness_tart_macos'];F=modules['readiness_fixture_registry'];L=modules['readiness_lease_workflow']
+   producer_dir=root/'.runtime/tool-recovery/direct-entrypoints';producer_dir.mkdir(parents=True,mode=0o700);wake_path=producer_dir/value('WAKE_FILE');wake_path.write_bytes((BASE/'sources/wake.source').read_bytes());wake_path.chmod(0o600)
+   directory=held.enter_context(P.Directory(producer_dir));wake_held=held.enter_context(P.Snapshot(directory,value('WAKE_FILE')))
+   self.assertEqual(hashlib.sha256(wake_held.body).hexdigest(),value('WAKE_SHA'))
+   out=held.enter_context(P.Directory(root));capture=types.ModuleType('held_capture');raw=(BASE/'sources/capture.source').read_bytes();exec(compile(raw,str(BASE/value('CAPTURE_FILE')),'exec'),capture.__dict__)
+   bound=binding();packet={'facts':facts(),'agent':{'actor':{'pid':42,'birth':'darwin:100:50'},'uid':bound.ordinary_uid,'principal':bound.ordinary_account,'home':bound.ordinary_home,'python':bound.guest_python,'rawBoot':facts()['boot'].upper()}}
+   packet['facts']['console']['locked']=True;packet['facts']['display']=display;public_source=('import json\nprint('+repr(json.dumps(packet))+')\n').encode()
+   descriptor={'provider':'tart-macos','binding':{'vm_name':bound.vm_name,'machine':bound.machine}}
+   sequence=0;native_callbacks=[]
+   def need(v,r):
+    if not v:raise RuntimeError(r)
+   def guard():session.guard();directory.guard();wake_held.guard();out.guard()
+   def label(stage):
+    nonlocal sequence
+    sequence+=1;return 'call-'+str(sequence)+'-'+stage
+   scope={'guard':guard,'need':need,'descriptor':descriptor,'run':{'operationId':'controlled-run'},'protocol':protocol,'label':label,'stage':{'value':'public'},'args':types.SimpleNamespace(target='tart:'+bound.vm_name),
+      'hashlib':hashlib,'capture':capture,'out':out,'time':time,'deadline':time.monotonic()+10,'J':J,'R':R,'native_callbacks':native_callbacks,'capture_attempts':[],'sys':sys,'os':os,'json':json}
+   exec(compile(ast.Module(body=methods({'record','join_capture','attempt_closed','capture_closure','captured_native'}),type_ignores=[]),str(PARENT),'exec'),scope)
+   parent_hook=scope['captured_native'];ordinary=R.MacCustody.ordinary_guest_call
+   class Custody:
+    def __init__(self,*a):
+     self.binding=bound;self.lifecycle_root=root;self.guest_proof={'prefix':'/controlled','publicFiles':{}};self.run_intent={'operationId':'controlled-run'};self._operator=types.SimpleNamespace(guard=lambda:None);self.after=False
+    def close(self):pass
+    def guard(self,**kw):return {'generation':'changed'if postguard and self.after else 'original'}
+    def _native_call(self,argv,payload,deadline):
+     reply=parent_hook(self,argv,payload,deadline);self.after=True;return reply
+   class Executor:
+    target=bound.target;machine=bound.machine;uid=bound.ordinary_uid;boot=packet['agent']['rawBoot']
+    def __init__(self,c):self.c=c
+    def execute(self,argv,*,payload):return ordinary(self.c,bound,argv,payload,time.monotonic()+3)
+   class Backend:
+    def __init__(self,b,c):self.binding=b;self.custody=c
+    def operation_scope(self,**kw):return nullcontext()
+    def guest_job_executor(self,**kw):return nullcontext(Executor(self.custody))
+   lease={'schemaVersion':1,'fixtureId':'controlled-v12','operationId':value('LEASE'),'provider':'tart-macos','qualificationScope':'registered_guest_executor','ok':True,'state':'active','nativeState':'active','jobState':'running','reason':'original_lease_owner_running','replayAllowed':False}
+   real=subprocess.Popen;children=[]
+   def launch(argv,**kw):
+    if argv[0]!=bound.tart_binary:return real(argv,**kw)
+    self.assertEqual(argv[:4],[bound.tart_binary,'exec','-i',bound.vm_name])
+    child=real([sys.executable,*argv[5:]],**kw);children.append(child);return child
+   wake_scope={'sources':session,'modules':modules,'NAMES':names,'PROJECT':root,'guard':guard,'need':need,'wake_attempted':False,
+     'types':types,'builtins':builtins,'sys':sys,'Path':Path,'stage':scope['stage'],'directory':directory,'WAKE_FILE':value('WAKE_FILE'),'producers':{value('WAKE_FILE'):wake_held},
+     'args':types.SimpleNamespace(target='tart:'+bound.vm_name),'FIXTURE':'controlled-v12','WAKE':value('WAKE'),'PUBLIC':value('PUBLIC'),'LEASE':value('LEASE')}
+   exec(compile(ast.Module(body=methods({'wake_with_held_session'}),type_ignores=[]),str(PARENT),'exec'),wake_scope)
+   try:
+    with mock.patch.object(R,'MacCustody',Custody),mock.patch.object(R,'guest_probe_source',return_value=public_source),mock.patch.object(M,'MacTartBackend',Backend),mock.patch.object(F,'_json',return_value=(descriptor,{})),mock.patch.object(L,'workflow',return_value=lease),mock.patch.object(subprocess,'Popen',launch),mock.patch.object(modules['readiness_tart_macos_wake'],'_wake_once',side_effect=AssertionError('No native input in controlled test'))as wake_call:
+     if postguard or display=='unknown':
+      with self.assertRaises(Exception):wake_scope['wake_with_held_session']()
+     else:wake_scope['wake_with_held_session']()
+     wake_call.assert_not_called()
+   finally:
+    for child in children:
+     if child.poll()is None:child.kill();child.wait()
+   self.assertIs(canonical_loader.SourceSession,original_factory)
+   session.guard() # exact aa2d close did not close the parent-held session
+   self.assertTrue(wake_scope['wake_attempted']);self.assertTrue(native_callbacks)
+   self.assertTrue(all(r['actorAbsent']and r['stdoutEof']and r['stderrEof']for r in native_callbacks))
+   self.assertTrue(scope['capture_closure']()['allAttemptsClosed'])
+   self.assertTrue(all(child.poll()is not None for child in children))
+   if not postguard and display=='ready':
+    complete=json.loads((root/('native-known-session-wake-'+value('WAKE'))/'complete.json').read_bytes())
+    self.assertEqual(complete['outcome']['inputGroups'],0);self.assertFalse(complete['ordinaryCredentialReaderOpened'])
+    self.assertTrue((root/('native-known-session-wake-'+value('WAKE'))/'source-capsule-closed.json').exists())
+   else:
+    self.assertTrue((root/'call-1-public.stdout.json').read_bytes())
+    if postguard:self.assertFalse((root/('native-known-session-wake-'+value('WAKE'))/'root-before.stdout.json').exists())
+    self.assertFalse((root/('native-known-session-wake-'+value('WAKE'))/'complete.json').exists())
+ def test_exact_whole_aa2d_ready_has_zeroinput_actualchild_raw_and_complete_closure(self):self.exercise()
+ def test_whole_aa2d_postguard_failure_still_retains_actual_native_raw(self):self.exercise(postguard=True)
+ def test_ambient_handled_error_does_not_mark_successful_capture_failed(self):
+  global PARENT
+  original=PARENT
+  try:
+   PARENT=BASE/'sources/parent.ambient.before.source'
+   try:raise RuntimeError('unrelated previously handled observer failure')
+   except RuntimeError:
+    with self.assertRaises(AssertionError):self.exercise()
+  finally:PARENT=original
+  try:raise RuntimeError('unrelated previously handled observer failure')
+  except RuntimeError:self.exercise()
+ def test_whole_aa2d_unknown_display_stops_before_wake_or_input(self):self.exercise(display='unknown')
+if __name__=='__main__':unittest.main(verbosity=2)

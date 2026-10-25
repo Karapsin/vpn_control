@@ -1,0 +1,170 @@
+"""Fixed ordinary-user POSIX guest job namespace and fail-closed idle projection.
+
+The builders perform no effects. Providers execute their captured source only
+through an admitted ordinary-account executor. A persisted namespace pin must
+survive clients and boots; its disappearance is never proof of an idle guest.
+"""
+import hashlib
+import inspect
+import json
+import math
+
+from . import durable_remote_job as jobs
+
+ROOT = "/var/tmp/vc-recovery-jobs"
+
+
+def _spec(count, interval_seconds):
+    if (type(count) is not int or not 1 <= count <= 120
+            or type(interval_seconds) not in (int, float)
+            or not math.isfinite(interval_seconds) or not .01 <= interval_seconds <= 1):
+        raise ValueError("guest_sentinel_spec")
+    return {"count": count, "intervalSeconds": interval_seconds}
+
+
+def _packet(value):
+    fields = {"schemaVersion", "root", "generation", "target", "machine", "actualMachineId", "account", "ownerSourceSha256"}
+    if (type(value) is not dict or set(value) != fields or value["schemaVersion"] != 1
+            or value["root"] != ROOT or type(value["generation"]) is not list
+            or len(value["generation"]) != 2
+            or any(type(n) is not int or n <= 0 for n in value["generation"])
+            or value["ownerSourceSha256"] != hashlib.sha256(jobs.owner_source()).hexdigest()):
+        raise ValueError("guest_namespace_packet")
+    jobs.MachineBinding(value["target"], value["machine"], "namespace", value["account"])
+    jobs._token(value["actualMachineId"])
+    if not value["account"].isdigit() or int(value["account"]) <= 0:
+        raise ValueError("guest_namespace_account")
+    return value
+
+
+def _main():
+    import base64, hashlib, json, os, pathlib, pwd, sys, types
+    module = types.ModuleType("fixed_guest_owner")
+    sys.modules[module.__name__] = module
+    exec(compile(OWNER, "<verified-guest-owner>", "exec"), module.__dict__)
+    module.owner_source = lambda: OWNER
+    root = pathlib.Path(PARAMETERS["root"])
+    def need(condition, reason):
+        if not condition:
+            raise ValueError(reason)
+    account = pwd.getpwuid(os.geteuid())
+    need(os.geteuid() > 0 and str(os.geteuid()) == PARAMETERS["account"], "guest_namespace_account")
+    marker = {key: PARAMETERS[key] for key in ("target", "machine", "actualMachineId", "account", "ownerSourceSha256")}
+    if sys.platform.startswith("linux"):
+        machines = {pathlib.Path("/etc/machine-id").read_text().strip().lower()}
+        product = pathlib.Path("/sys/class/dmi/id/product_uuid")
+        if product.exists():
+            try:
+                machines.add(product.read_text().strip().lower())
+            except PermissionError:
+                pass
+    elif sys.platform == "darwin":
+        import plistlib, subprocess
+        rows = plistlib.loads(subprocess.check_output(["/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice", "-a"], timeout=3))
+        machines = {rows[0]["IOPlatformUUID"].lower()}
+    else:
+        raise ValueError("guest_namespace_platform")
+    need(marker["actualMachineId"].lower() in machines, "guest_namespace_machine")
+    need(hashlib.sha256(OWNER).hexdigest() == marker["ownerSourceSha256"], "guest_owner_source")
+    mode = PARAMETERS["mode"]
+    if mode == "enroll":
+        created = False
+        try:
+            root.mkdir(mode=0o700)
+            created = True
+        except FileExistsError:
+            pass
+        module._root(root)
+        path = root / "namespace.json"
+        if not path.exists() and not path.is_symlink():
+            # An incomplete or foreign existing root cannot be adopted.
+            need(created and not list(root.iterdir()), "guest_namespace_foreign")
+            module._publish(path, marker)
+        need(module._record(path) == marker, "guest_namespace_changed")
+        packet = {"schemaVersion": 1, "root": str(root), "generation": list(module.root_generation(root)), **marker}
+        print(json.dumps({"namespace": packet}))
+        return
+    module._root(root, tuple(PARAMETERS["generation"]))
+    need(module._record(root / "namespace.json") == marker, "guest_namespace_changed")
+    binding = module.current_binding(marker["target"], marker["machine"])
+    if mode == "inventory":
+        rows = []
+        for path in sorted(root.iterdir()):
+            if path.name == "namespace.json":
+                continue
+            need(len(rows) < 1024, "guest_job_visibility")
+            operation = module._uuid(path.name)
+            module._private(path, directory=True)
+            original = module.MachineBinding.from_dict(module._record(path / "intent.json")["binding"])
+            need((original.target, original.machine, original.account) ==
+                 (binding.target, binding.machine, binding.account), "guest_job_binding")
+            status = module.observe(root, operation, original, generation=tuple(PARAMETERS["generation"]))
+            if status["state"] == "terminal":
+                module.collect(root, operation, original, generation=tuple(PARAMETERS["generation"]))
+            rows.append(status)
+        print(json.dumps({"visibilityComplete": True, "jobs": rows,
+                          "idle": all(row["state"] == "terminal" for row in rows)}))
+        return
+    operation = PARAMETERS["operationId"]
+    original = module.MachineBinding.from_dict(PARAMETERS["binding"])
+    need((original.target, original.machine, original.account) ==
+         (binding.target, binding.machine, binding.account), "guest_job_binding")
+    if mode == "submit":
+        need(binding == original, "guest_job_boot_changed")
+        source = ("import os,sys,time\n"
+                  "descriptor=os.open(" + repr(str(root / operation / "counter.txt")) +
+                  ",os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n"
+                  "with os.fdopen(descriptor,'w') as counter:\n"
+                  " counter.write('execution\\n');counter.flush();os.fsync(counter.fileno())\n"
+                  " for n in range(" + repr(PARAMETERS["count"]) + "):\n"
+                  "  counter.write(str(n)+'\\n');counter.flush();os.fsync(counter.fileno())\n"
+                  "  print(n,flush=True);time.sleep(" + repr(PARAMETERS["intervalSeconds"]) + ")\n"
+                  "sys.stderr.write('guest sentinel retained stderr\\n')\n").encode()
+        module.submit(root, operation, original, module.Program("registered-guest-sentinel-v1", source, 8192),
+                      generation=tuple(PARAMETERS["generation"]))
+    status = module.observe(root, operation, original, generation=tuple(PARAMETERS["generation"]))
+    reply = {"status": status}
+    if status["state"] == "terminal":
+        _, stdout, stderr = module.collect(root, operation, original, generation=tuple(PARAMETERS["generation"]))
+        reply.update(stdout=base64.b64encode(stdout).decode(), stderr=base64.b64encode(stderr).decode())
+        reply["counter"] = base64.b64encode(module._read(root / operation / "counter.txt", 8192)).decode()
+    print(json.dumps(reply))
+
+
+def _program(parameters):
+    return "PARAMETERS=" + repr(parameters) + "\nOWNER=" + repr(jobs.owner_source()) + "\n" + inspect.getsource(_main) + "\n_main()\n"
+
+
+def enroll_program(target, machine, expected_uid, *, actual_machine_id=None):
+    jobs.MachineBinding(target, machine, "namespace", str(expected_uid))
+    if type(expected_uid) is not int or expected_uid <= 0:
+        raise ValueError("guest_namespace_account")
+    return _program({"mode": "enroll", "root": ROOT, "target": target, "machine": machine,
+                     "actualMachineId": jobs._token(machine if actual_machine_id is None else actual_machine_id),
+                     "account": str(expected_uid), "ownerSourceSha256": hashlib.sha256(jobs.owner_source()).hexdigest()})
+
+
+def observe_program(namespace):
+    return _program({**_packet(namespace), "mode": "inventory"})
+
+
+def operation_program(namespace, operation, binding, *, submit=False, count=10, interval_seconds=.1):
+    namespace = _packet(namespace)
+    operation = jobs._uuid(operation)
+    parsed = jobs.MachineBinding.from_dict(binding)
+    if (parsed.target, parsed.machine, parsed.account) != (namespace["target"], namespace["machine"], namespace["account"]):
+        raise ValueError("guest_job_binding")
+    return _program({**namespace, "mode": "submit" if submit else "observe", "operationId": operation,
+                     "binding": binding, **_spec(count, interval_seconds)})
+
+
+def stdin_command(source):
+    """Small fixed Python carrier; source bytes travel only via verified stdin."""
+    raw = source.encode("utf-8")
+    if not 0 < len(raw) <= 262144:
+        raise ValueError("guest_source_bound")
+    gate = ("import hashlib,sys;raw=sys.stdin.buffer.read(262145);"
+            "assert len(raw)==" + str(len(raw)) + " and hashlib.sha256(raw).hexdigest()==" +
+            repr(hashlib.sha256(raw).hexdigest()) + ", 'guest_source_changed';"
+            "exec(compile(raw,'<registered-guest-job>','exec'),{'__name__':'__main__'})")
+    return ("python3", "-I", "-B", "-c", gate), raw

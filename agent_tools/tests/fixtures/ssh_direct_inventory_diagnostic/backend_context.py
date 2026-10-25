@@ -19,6 +19,17 @@ def fixed_module(filename):
     exec(compile(raw,str(path),'exec',dont_inherit=True),vars(module))
     return module
 
+def reviewed_provider(before=False):
+    """Bind the complete historical producer, not current v3 inventory custody."""
+    from agent_tools.tests.test_ssh_direct_ended_inventory_successor import historical_sources
+    provider=fixed_module('direct_before.py' if before else 'direct_after.py')
+    source=historical_sources()['ssh_fresh_nested_channel.py']
+    module=types.ModuleType('agent_tools._inventory_diagnostic_historical_fresh')
+    module.__package__='agent_tools';module.__file__=str(HERE/'historical-fresh-source')
+    exec(compile(source,module.__file__,'exec',dont_inherit=True),vars(module))
+    provider._dependencies=lambda:(channel.session,module,current_direct._dependencies()[2])
+    return provider
+
 def generation(info):
     return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
 
@@ -55,11 +66,11 @@ class Capture:
 class Context:
     def __init__(self,root,before=False):
         self.root=Path(root).resolve(strict=True);self.held=[];self.capture=Capture(self.root/'capture')
-        self.provider=fixed_module('direct_before.py') if before else current_direct
+        self.provider=reviewed_provider(before)
         self.retained=fixed_module('retained_before.py' if before else 'retained_after.py')
         if not before:
             expected=fixed_module('direct_after.py')
-            if ast.dump(ast.parse(inspect.getsource(self.provider.status)))!=ast.dump(ast.parse(inspect.getsource(expected.status))):
+            if ast.dump(ast.parse(inspect.getsource(current_direct.status)))!=ast.dump(ast.parse(inspect.getsource(expected.status))):
                 raise ValueError('canonical_direct_status_not_reviewed_candidate')
             self.retained.direct_channel=self.provider
         self.originals=(channel.status,self.provider.status,channel.session.reuse_only_options)
@@ -70,7 +81,7 @@ class Context:
             held=self.held,root=self.root,correlation_id=CORR,diagnostic=None,runtime=None)
     def refused_route(self):
         try:self.build(lambda _:self.provider.route_options(self.root,channel.HOST,CORR,RECEIPT))
-        except channel.ChannelUnknown as error:return error.result
+        except self.provider._dependencies()[1].ChannelUnknown as error:return error.result
         raise AssertionError('inventory refusal unexpectedly admitted route')
     def close(self):
         direct._dispatch_guard(self.held)

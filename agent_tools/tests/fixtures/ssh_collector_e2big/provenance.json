@@ -1,0 +1,14 @@
+{
+  "beforeimages": {
+    "arch_ai_loop_observe.py": "c4fd86a0eaff5e05c910163b714aee24e54901f75e4a0e7c32570b0c79a18902",
+    "arch_qemu_holder_census.py": "a45de3f2fcf5405cb7e2a667f5b8445e4954e20f4b73eedab4b09c09a1f29220",
+    "ssh_transfer.py": "de3406bd69f74c7a4aeeddd8034e43ba3487f06d0ac57ce020c248279013e67e",
+    "android_observation.py": "d5472b4b4607a0edfa8f047d4817fd751d5e82919e9b7c878101843fc689eaef",
+    "native_host_observation.py": "600d5ec9d44d8dc83bec2f0dbe891383166b0a5ea128206074b87e272010a6d2",
+    "ssh_jobs.py": "d359951c1302753a1d528a329e6a97488ddaeda483550d55e81256d7a2f6234a",
+    "native_rpm_public_install_ssh.py": "3a44c8260ef04c9619247848edb49add03e36542096c80a3b38eb68d29eef01e",
+    "linux_rpm_fixture_server_lifecycle.py": "2064f5e0188edbf34de55748e805343ac2c0ee0c6c2e9a70f5d0e530bab08ec6",
+    "native_owner_gui_lifecycle_ssh.py": "daf935ebb3f4013d80fd25eaa1e6aafaef36c9824eff0a2a05a056157a6087ac"
+  },
+  "failure": "Synchronous and custom pipe collectors submitted plain short inline argv and did not handle actual prelaunch kernel E2BIG with the already captured saved-program plan."
+}

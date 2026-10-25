@@ -48,9 +48,18 @@ macOS workers do not expose the nested Hypervisor framework required for it.
 Local capture is preferred. If the local provider is absent, bootstrap and start it:
 
 ```bash
-python3 scripts/visual_platform.py bootstrap --platform <platform>
-python3 scripts/visual_platform.py start --platform <platform>
+python3 scripts/visual_platform.py bootstrap --platform <platform> --target <provider>:<configured-name>
+python3 scripts/visual_platform.py start --platform <platform> --target <provider>:<configured-name>
 ```
+
+Local mutation and capture require an explicit target: `android:<configured-AVD>`,
+`tart:<configured-VM>`, `libvirt:<configured-domain>` or
+`qemu:<absolute-configured-disk>`. Existing native host capture uses
+`native:<platform>`. The selector must match the configured provider and current
+owned instance; a missing or conflicting selector blocks before recovery or
+input. There is no fallback to another provider. A QMP mutation additionally
+verifies the connected local peer and its held selected disk. Historical
+operation inspection uses its original retained target.
 
 Android uses an isolated Pixel 6/API 35 AVD. Linux and macOS use an isolated native session or pinned Tart VM. Windows uses an isolated Windows 11 client session, the existing `vpn-control-win11` libvirt guest, or the QEMU disk managed by `bootstrap_windows_visual_vm.sh`. A QEMU disk alone is never treated as ready: after the agent has completed Windows setup and verified the fixed display/capture prerequisites, it records that check with `scripts/mark_windows_visual_vm_ready.sh --agent-confirmed`. Windows media and license acceptance remain vendor-controlled; set `VPN_CONTROL_WINDOWS_ISO` to an official local ISO and `VPN_CONTROL_WINDOWS_DRIVER_ISO` to the UTM Windows guest-tools ISO when first creating an ARM64 guest. The agent must verify the Windows image against Microsoft's published digest before use.
 
@@ -67,6 +76,7 @@ After the managed Windows guest is ready, capture its secure-desktop scene from 
 ```bash
 python3 scripts/visual_platform.py capture-local \
   --platform windows \
+  --target qemu:<absolute-configured-disk> \
   --driver "python3 scripts/capture_visual_windows_qemu.py" \
   --output build/visual-actual/windows \
   --scene windows-uac
@@ -77,6 +87,7 @@ The Windows VM exposes a loopback-only headless VNC framebuffer; the capture dri
 ```bash
 python3 scripts/visual_platform.py capture-local \
   --platform macos \
+  --target tart:<configured-vm-name> \
   --driver "python3 scripts/capture_visual_macos_tart.py" \
   --output build/visual-actual/macos \
   --scene macos-gatekeeper \
@@ -134,7 +145,7 @@ Hosted jobs use pinned Ubuntu 24.04, Windows 2025, and macOS 15 images. Windows 
 After capture, stop only an environment recorded as started by the agent:
 
 ```bash
-python3 scripts/visual_platform.py stop --platform <platform>
+python3 scripts/visual_platform.py stop --platform <platform> --target <provider>:<configured-name>
 ```
 
 The stop command refuses to touch pre-existing environments and does not stop VPN Control or `sing-box`.

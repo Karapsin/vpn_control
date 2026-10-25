@@ -58,7 +58,7 @@ class LocalBuildEnvironmentTest(unittest.TestCase):
             (root / ".codex").mkdir()
             (root / ".codex" / "build-env.local.json").write_text("{}", encoding="utf-8")
             with mock.patch.object(os, "getuid", create=True), mock.patch.object(mcp_server, "REPO_ROOT", root), \
-                    mock.patch.object(mcp_server.subprocess, "run") as child:
+                    mock.patch.object(mcp_server.subprocess, "Popen") as child:
                 del os.getuid
                 result = mcp_server._run([sys.executable, "-c", "pass"])
             self.assertFalse(result["ok"])

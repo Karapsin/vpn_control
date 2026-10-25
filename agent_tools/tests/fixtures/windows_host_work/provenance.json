@@ -1,0 +1,33 @@
+{
+  "kind": "actual-original-libvirt-producer-consumer-schemas",
+  "originalPaths": {
+    "define.capture.json": ".runtime/tool-recovery-windows/direct/native-d88fb3ff-4748-4d76-b32f-650bfbd3f5d8/native-result.json",
+    "define.closing.json": ".runtime/tool-recovery-windows/direct/native-d88fb3ff-4748-4d76-b32f-650bfbd3f5d8/closing.json",
+    "define.source": ".runtime/tool-recovery-windows/direct/native-d88fb3ff-4748-4d76-b32f-650bfbd3f5d8/caller.py",
+    "documents.callback.json": ".runtime/tool-recovery-windows/direct/admitted-42269eda-c4ec-4b5c-9827-9c2678c250ce/callback.json",
+    "documents.result.json": ".runtime/tool-recovery-windows/direct/admitted-42269eda-c4ec-4b5c-9827-9c2678c250ce/result.json",
+    "documents.source": ".runtime/tool-recovery-windows/direct/admitted-42269eda-c4ec-4b5c-9827-9c2678c250ce/caller.py",
+    "documents.stdout.source": ".runtime/tool-recovery-windows/direct/admitted-42269eda-c4ec-4b5c-9827-9c2678c250ce/stdout.private",
+    "native-failure.json": ".runtime/tool-recovery-windows/hostwork-22-diagnosis/full-idle.before.json",
+    "remote.before.source": ".runtime/tool-recovery-windows/hostwork-22-diagnosis/readiness_windows_remote.before.source",
+    "start.capture.json": ".runtime/tool-recovery-windows/direct/native-94d59c52-525f-4c24-8849-87d11b577930/native-result.json",
+    "start.closing.json": ".runtime/tool-recovery-windows/direct/native-94d59c52-525f-4c24-8849-87d11b577930/closing.json",
+    "start.source": ".runtime/tool-recovery-windows/direct/native-94d59c52-525f-4c24-8849-87d11b577930/caller.py"
+  },
+  "schemaVersion": 1,
+  "scope": "Original sources/complete EOF+closing and exact public documents. Historical Python AST only; old nested host_work executed separately by finite test projection, not a whole-caller native claim. Original controller/guest outcomes never rewritten.",
+  "sourceSha256": {
+    "define.capture.json": "fdfe2da870de6f1b57fec354473cecbe80d8873a0e266d78ae0ced8c4b1a0847",
+    "define.closing.json": "7329107b2b8e6de58a2a06e25afcc2683ec7fcbc51aaf4b3f3028a8a75f7f551",
+    "define.source": "e16d26b2e4e079c89854cb7c4abe4dd080ae0a6a85b7bdabf1209cb041fb2b10",
+    "documents.callback.json": "0aeb76bd2408d1d5b94cfd159deb5197c44eb3f9f0acbd6fdbdd0d637752ec4b",
+    "documents.result.json": "21224eabd44969681155b5cb0928c2db9f303a99f5cf3f7c3f23bddcacc04868",
+    "documents.source": "a7b4beaa8ba899cc9335c1c0cc1ad3065ec874fc8c0f6cb935da447a6c0a83dc",
+    "documents.stdout.source": "21224eabd44969681155b5cb0928c2db9f303a99f5cf3f7c3f23bddcacc04868",
+    "native-failure.json": "7be6fb9f4d4c8ae9621bf796ed26e84f44c473da09269e1d43cae1f3001c92f8",
+    "remote.before.source": "1e6d91297ee23b31b7025ea408ceb6069cf41b61be22f8d38f96b335259931dc",
+    "start.capture.json": "a7f1f0c6d78fdfca3dbade6687de11fe9c35b55f9f883dae10673b31bd3e03e0",
+    "start.closing.json": "491714e8e0f0dca73cf50a330b60121e981422d65396e43d761d1177bd9e5a09",
+    "start.source": "8c852fdbae075f925bf8667382155db43f25f453754113486c6e074c466f0e6e"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "beforeSha256": "43465154530518881f8ba47a1f32177ebb24a7ecbf670d768e7ca7284b26bc84",
+  "discovery": "actual local cloned host unittest caller failed before launching child",
+  "failure": "TypeError: Popen.__init__() got an unexpected keyword argument input",
+  "failures": 1,
+  "nativeFailureClaimed": false,
+  "schemaVersion": 1,
+  "skips": 3,
+  "testsRun": 32,
+  "toolChunk": "48461c",
+  "vmCalls": 0
+}

@@ -1,0 +1,83 @@
+"""Structured Python -c semantics over the existing configured SSH owner.
+
+No Windows implementation is supplied. PowerShell script-block and -File
+semantics must be separately declared and natively qualified.
+"""
+from __future__ import annotations
+
+import re
+
+MAX_SOURCE_BYTES = 8 * 1024 * 1024
+
+
+def validate(value):
+    fields = {"language", "source", "args", "cwd", "targetContext"}
+    if type(value) is not dict or set(value) != fields:
+        raise ValueError("program_schema")
+    if value["language"] != "python3":
+        raise ValueError("program_language_unsupported")
+    source = value["source"]
+    if type(source) is not str or not 0 < len(source.encode("utf-8", "strict")) <= MAX_SOURCE_BYTES:
+        raise ValueError("program_source_bound")
+    compile(source, "<submitted-program>", "exec")
+    arguments = value["args"]
+    if (type(arguments) is not list or len(arguments) > 1024
+            or any(type(arg) is not str or "\0" in arg for arg in arguments)):
+        raise ValueError("program_arguments")
+    cwd = value["cwd"]
+    if (type(cwd) is not str or not cwd.startswith("/") or len(cwd.encode()) > 4096
+            or cwd != "/" and any(part in ("", ".", "..") for part in cwd.split("/")[1:])
+            or any(char in cwd for char in ("\0", "\r", "\n"))):
+        raise ValueError("program_cwd")
+    context = value["targetContext"]
+    if (type(context) is not dict or set(context) != {"kind", "uid", "principal", "home", "bootId"}
+            or context["kind"] != "ssh" or type(context["uid"]) is not int or context["uid"] < 0
+            or type(context["principal"]) is not str or not context["principal"]
+            or type(context["home"]) is not str or not context["home"].startswith("/")
+            or type(context["bootId"]) is not str
+            or re.fullmatch("[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", context["bootId"]) is None):
+        raise ValueError("program_target_context")
+    return value
+
+
+def command(program):
+    """Preserve declared Python -c argv/stdin semantics in both transport modes.
+
+    The existing automatic transport can save this complete source unchanged.
+    Its loader already preserves sys.argv[0] == '-c' and original arguments.
+    cwd is data in fixed Python source, never a shell prefix.
+    """
+    value = validate(program)
+    payload = {"source": value["source"], "cwd": value["cwd"],
+               "targetContext": {key: value["targetContext"][key] for key in sorted(value["targetContext"])}}
+    wrapper = "PROGRAM=" + repr(payload) + "\n" + """import os,pwd,subprocess,sys,types
+expected=PROGRAM['targetContext']
+entry=pwd.getpwuid(os.geteuid())
+if sys.platform.startswith('linux'):
+ with open('/proc/sys/kernel/random/boot_id') as stream:boot=stream.read(128).strip()
+elif sys.platform=='darwin':
+ result=subprocess.run(['/usr/sbin/sysctl','-n','kern.bootsessionuuid'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=3,check=True)
+ boot=result.stdout.decode('ascii','strict').strip().lower()
+else:raise ValueError('program_target_platform')
+actual={'kind':'ssh','uid':os.geteuid(),'principal':entry.pw_name,'home':entry.pw_dir,'bootId':boot}
+if actual!=expected:raise ValueError('program_target_changed')
+cwd=PROGRAM['cwd']
+fds=[os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)]
+try:
+ for part in ([] if cwd=='/' else cwd.split('/')[1:]):fds.append(os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fds[-1]))
+ os.fchdir(fds[-1])
+finally:
+ for descriptor in reversed(fds):os.close(descriptor)
+def execute(source):
+ main=types.ModuleType('__main__')
+ main.__dict__.update({'__package__':None,'__spec__':None,'__doc__':None,'__builtins__':__builtins__})
+ sys.modules['__main__']=main
+ exec(compile(source,'<submitted-program>','exec'),main.__dict__)
+execute(PROGRAM['source'])
+"""
+    carrier = "exec(" + repr(wrapper) + ")"
+    if len(carrier.encode("utf-8")) > MAX_SOURCE_BYTES:
+        raise ValueError("program_rendered_source_bound")
+    # repr makes the carrier one control-character-free argument, as required
+    # by ssh_transport's command boundary. It is not shell command parsing.
+    return ("python3", "-I", "-B", "-c", carrier, *value["args"])

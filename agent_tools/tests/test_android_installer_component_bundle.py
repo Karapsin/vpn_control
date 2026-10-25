@@ -292,7 +292,7 @@ else:raise SystemExit(94)
         backend,request,_,log=helper.fixture()
         # Real production FILES and importer, with only the process limit/UID
         # OS assembly seam from the standalone helper fixture.
-        self.assertEqual(41,len(bundle.FILES))
+        self.assertEqual(43,len(bundle.FILES))
         self.assertIn('agent_tools/android_api35_coldboot_product_observation.py',bundle.FILES)
         if os.getuid()!=0:
             with self.assertRaisesRegex(ValueError,'routing_backup_root_required'):

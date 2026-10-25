@@ -14,7 +14,7 @@ from agent_tools.tests import test_native_vm_spec as specs
 
 @unittest.skipUnless(os.name=='posix','POSIX package/physical metadata boundary')
 class WindowsVmPreflightTests(unittest.TestCase):
-    def observe(self,producer=subject,*,alteration='uid',layout='a',directory_readable=True,missing_binary=None):
+    def observe(self,producer=subject,*,alteration='uid',layout='a',directory_readable=True,missing_binary=None,repository_warning=False):
         with tempfile.TemporaryDirectory(prefix='vcv-',dir=Path('/tmp').resolve()) as tmp:
             base=Path(tmp).resolve();base.chmod(0o700)
             binaries=base/'bin';binaries.mkdir()
@@ -41,14 +41,18 @@ class WindowsVmPreflightTests(unittest.TestCase):
                 return real_open(path(value),flags,*args,**kwargs)
             def run(argv,**kw):
                 calls.append(argv)
-                self.assertEqual(str(binaries/'pacman'),argv[0]);self.assertIn(argv[1],('-Q','-Qkk','-Ql','-Qoq'))
-                if argv[1]=='-Qoq':return subprocess.CompletedProcess(argv,0,b'libisoburn\n',b'')
-                if argv[1]=='-Q':return subprocess.CompletedProcess(argv,0,(argv[2]+' 42.7-3\n').encode(),b'')
-                if argv[1]=='-Ql':return subprocess.CompletedProcess(argv,0,b'swtpm /usr/lib/tmpfiles.d/swtpm.conf\n',b'')
-                if argv[2]=='swtpm' and alteration:
+                self.assertEqual(str(binaries/'pacman'),argv[0])
+                isolated=argv[1:7]==['--config','/dev/null','--root','/','--dbpath','/var/lib/pacman']
+                arguments=argv[7:] if isolated else argv[1:]
+                self.assertIn(arguments[0],('-Q','-Qkk','-Ql','-Qoq'))
+                nuisance=(b"warning: database file for 'openai-chatgpt' does not exist (use '-Sy' to download)\n" if repository_warning and not isolated else b'')
+                if arguments[0]=='-Qoq':return subprocess.CompletedProcess(argv,0,b'libisoburn\n',nuisance)
+                if arguments[0]=='-Q':return subprocess.CompletedProcess(argv,0,(arguments[1]+' 42.7-3\n').encode(),nuisance)
+                if arguments[0]=='-Ql':return subprocess.CompletedProcess(argv,0,b'swtpm /usr/lib/tmpfiles.d/swtpm.conf\n',nuisance)
+                if arguments[1]=='swtpm' and alteration:
                     stderr=b'warning: swtpm: /var/lib/swtpm-localca (UID mismatch)\n'
                     if alteration=='extra':stderr+=b'warning: swtpm: /usr/bin/swtpm (SHA256 checksum mismatch)\n'
-                    return subprocess.CompletedProcess(argv,1,b'swtpm: 259 total files, 1 altered file\n',stderr)
+                    return subprocess.CompletedProcess(argv,1,b'swtpm: 259 total files, 1 altered file\n',nuisance+stderr)
                 return subprocess.CompletedProcess(argv,0,b'',b'')
             stream=io.StringIO();body=producer.program(spec,'preflight')
             with mock.patch.object(os,'O_PATH',metadata_flag,create=True),mock.patch.object(os,'open',side_effect=native_open),mock.patch.object(os,'stat',side_effect=lambda p,*a,**kw:real_stat(path(p),*a,**kw)),mock.patch.object(builtins,'open',side_effect=lambda p,*a,**kw:real_builtin(path(p),*a,**kw)),mock.patch('shutil.which',side_effect=lambda n,**kw:None if n==missing_binary else str(binaries/n)),mock.patch.object(subprocess,'run',side_effect=run),mock.patch('shutil.disk_usage',return_value=types.SimpleNamespace(free=1024**4)),contextlib.redirect_stdout(stream):
@@ -56,6 +60,17 @@ class WindowsVmPreflightTests(unittest.TestCase):
             self.assertFalse(Path(spec.root).exists())
             if missing_binary is None:self.assertTrue(calls)
             return json.loads(stream.getvalue())
+    def test_unavailable_sync_repository_cannot_block_local_installed_file_verification(self):
+        self.assertEqual('qualified',self.observe(repository_warning=True)['state'])
+        self.assertEqual('package_integrity',self.observe(repository_warning=True,alteration='extra')['reason'])
+    def test_preserved_repository_configuration_failure_is_causal(self):
+        path=Path(__file__).parent/'fixtures/local_package_database_query/windows_vm_deploy_remote.py.before.source'
+        raw=path.read_bytes()
+        self.assertEqual('f057a59b70cb8e3a79d520bf435fc246725a8ee54a7cb97e5d754b9a328515f2',hashlib.sha256(raw).hexdigest())
+        old=types.ModuleType('agent_tools._local_package_database_before');old.__package__='agent_tools';old.__file__=str(path)
+        exec(compile(raw,str(path),'exec'),old.__dict__)
+        self.assertEqual('blocked',self.observe(old,repository_warning=True)['state'])
+        self.assertEqual('qualified',self.observe(repository_warning=True)['state'])
     def test_runtime_policy_owner_is_accepted_without_chown_or_version_pin(self):
         self.assertEqual('qualified',self.observe()['state'])
         self.assertEqual('qualified',self.observe(layout='another layout')['state'])
@@ -90,9 +105,16 @@ class WindowsVmPreflightTests(unittest.TestCase):
 
 class VmDeployMcpBoundaryTests(unittest.TestCase):
     def setUp(self):
+        from contextlib import nullcontext
+        from agent_tools import readiness_vm_dispatch
+        # This suite isolates schema/adapter routing. Generated socket callers
+        # and native fixtures exercise the actual readiness boundary separately.
+        admission = mock.patch.object(readiness_vm_dispatch, 'admitted_dispatch', return_value=nullcontext())
+        admission.start(); self.addCleanup(admission.stop)
         from agent_tools.tests.route_adapter import bind_cached_routes
         from agent_tools import mcp_server as _route_server
         bind_cached_routes(self,_route_server,
+            'readiness_vm_dispatch',
             'arch_package_integrity',
             'windows_vm_deploy',
             'windows_vm_deploy_remote',

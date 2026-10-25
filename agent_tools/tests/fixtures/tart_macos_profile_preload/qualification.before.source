@@ -1,0 +1,826 @@
+"""Mac unlock evidence admission, separate from executable input authority.
+
+The retained bootstrap unlock is historical component evidence. Its independent
+observer has no retained producer envelope, so it cannot qualify the new nonce
+producer. Generic admission additionally requires a complete, reviewed native
+case and a source-owned resolution of every enrolled legacy GUI incident.
+"""
+from __future__ import annotations
+
+from contextlib import ExitStack
+from copy import deepcopy
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+from types import MappingProxyType
+
+from . import readiness_tart_macos_registry as registry
+from . import readiness_tart_macos_unlock as unlock
+
+_EXECUTING_CODE = sys._getframe().f_code
+_HISTORICAL_SOURCE = '80ac36469ccac1e241b44d4b4e6c90d382845b3fdd98afd8d6144681a0d8a39d'
+_HISTORICAL_STREAM = '8a0df0f6501713cba553d16932e89289d22b521ec0d08a67e8730a0ab84f0be4'
+# No new native once case has been performed. Adding an entry requires the
+# complete source-held native scenario, not a caller-supplied producer digest.
+_NATIVE_DRIVERS = frozenset()
+_TOKEN = object()
+_HISTORY_ROLES = frozenset({'source', 'plan', 'phase', 'password', 'returnIntent', 'returnComplete',
+                           'postProbe', 'publicPreflight', 'baseline'})
+PROFILE = MappingProxyType({'dimensions': (1024, 768), 'accountBox': (425, 410, 605, 451),
+                           'fieldBox': (432, 458, 592, 489), 'caretBox': (14, 7, 15, 23)})
+
+
+class QualificationBlocked(ValueError):
+    """Only finite identifiers; never proof bodies or private input."""
+
+
+def _need(condition, reason='macos_unlock_qualification_invalid'):
+    if not condition:
+        raise QualificationBlocked(reason)
+
+
+def _json(raw):
+    def pairs(rows):
+        value = {}
+        for key, item in rows:
+            _need(key not in value)
+            value[key] = item
+        return value
+    try:
+        value = json.loads(raw, object_pairs_hook=pairs,
+                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+        _need(type(value) is dict)
+        return value
+    except Exception:
+        raise QualificationBlocked('macos_unlock_qualification_invalid') from None
+
+
+def _projection(packet, binding):
+    """Finite identity projection; historical packets never execute code."""
+    _need(type(packet) is dict and set(packet) == {'facts', 'agent'})
+    facts, agent = packet['facts'], packet['agent']
+    _need(type(facts) is dict and type(agent) is dict
+          and set(agent) == {'actor', 'uid', 'principal', 'home', 'python', 'rawBoot'}
+          and agent['python'] == binding.guest_python)
+    return unlock._identity({'target': binding.target, 'machine': facts.get('machine'),
+        'boot': facts.get('boot'), 'rawBoot': agent.get('rawBoot'), 'uid': facts.get('uid'),
+        'principal': facts.get('account'), 'home': facts.get('home'),
+        'agent': {**agent['actor'], 'uid': agent['uid']}, 'console': facts.get('console'),
+        'display': facts.get('display')}, binding)
+
+
+def historical_profile(records, binding, original_run):
+    """Validate historical public data only; returns no dispatch capability."""
+    try:
+        _need(type(records) is dict and set(records) == _HISTORY_ROLES)
+        _need(type(records['source']) is bytes and hashlib.sha256(records['source']).hexdigest() == _HISTORICAL_SOURCE)
+        values = {key: _json(value) for key, value in records.items() if key not in {'source', 'baseline'}}
+        plan, phase = values['plan'], values['phase']
+        _need(set(plan) == {'schemaVersion', 'operationId', 'fixtureId', 'baseline', 'streamProducerSha256',
+              'secretOperation', 'submitOperation', 'noCredentialBytesInPlan', 'actions'}
+              and type(plan['schemaVersion']) is int and plan['schemaVersion'] == 1
+              and plan['streamProducerSha256'] == _HISTORICAL_STREAM
+              and plan['noCredentialBytesInPlan'] is True)
+        for key in ('operationId', 'secretOperation', 'submitOperation'):
+            unlock._uuid(plan[key])
+        _need(len({plan[key] for key in ('operationId', 'secretOperation', 'submitOperation')}) == 3)
+        _need(set(phase) == {'operationId', 'originalRun', 'recipient', 'state'}
+              and phase['operationId'] == plan['operationId'] and phase['originalRun'] == original_run
+              and phase['state'] == 'unknown_no_replay')
+        before = deepcopy(phase['recipient']); before['display'] = 'ready'
+        unlock._identity(before, binding)
+        _need(before['console']['locked'] is True)
+        _need(values['password'] == {'operationId': plan['secretOperation'], 'state': 'transport_complete_not_unlock_receipt'}
+              and values['returnIntent'] == {'operationId': plan['submitOperation'], 'action': 'one_Return_existing_original_field', 'state': 'unknown'}
+              and values['returnComplete'] == {'operationId': plan['submitOperation'], 'state': 'submitted_awaiting_independent_session'})
+        after = _projection(values['postProbe'], binding)
+        unlock._identity(after, binding, before)
+        _need(after['console']['locked'] is False)
+        preflight = values['publicPreflight']
+        recipient = deepcopy(preflight.get('recipient')); recipient['display'] = 'ready'
+        _need(preflight.get('operationId') == plan['operationId'] and recipient == before
+              and preflight.get('sourceSha256') == _HISTORICAL_SOURCE
+              and preflight.get('state') == 'public_only_complete_secret_unsubmitted'
+              and preflight.get('simulatedMaximumAscii32EventGuards') == 136
+              and type(preflight.get('fastGuardSeconds')) is list and len(preflight['fastGuardSeconds']) == 136)
+        unlock._image(records['baseline'], PROFILE['dimensions'])
+        return {'operationId': plan['operationId'], 'secretOperation': plan['secretOperation'],
+                'returnOperation': plan['submitOperation'], 'before': before, 'after': after,
+                'baselineName': plan['baseline'], 'profile': dict(PROFILE),
+                'authority': 'historical_component_data_only', 'newProducerQualified': False}
+    except (QualificationBlocked, unlock.UnlockBlocked):
+        raise
+    except Exception:
+        raise QualificationBlocked('macos_unlock_historical_profile_invalid') from None
+
+
+class QualifiedUnlock:
+    """Opaque admission, unavailable until a complete new native case exists."""
+    __slots__ = ('_token', '_custody', '_held', '_closed', '_profile', '_baseline', '_binding', '_manifest')
+
+    def __init__(self, *args, **kwargs):
+        raise QualificationBlocked('macos_unlock_native_case_required')
+
+    def guard(self):
+        _need(self._token is _TOKEN and not self._closed, 'macos_unlock_qualification_closed')
+        self._custody._operator.guard()
+        for item in self._held:
+            item.guard()
+
+    def close(self):
+        if not self._closed:
+            self._closed = True
+            for item in reversed(self._held):
+                item.close()
+
+
+def _validate_native_case(case, records, binding, run_operation):
+    """Strict closed schema; source allowlist remains empty before native proof."""
+    _need(type(case) is dict and set(case) == {'driverSha256', 'operationId', 'originalRunOperationId',
+          'before', 'after', 'producerSources', 'publicBenchmark', 'intentSha256', 'rawReplySha256'})
+    _need(type(case['driverSha256']) is str and case['driverSha256'] in _NATIVE_DRIVERS,
+          'macos_unlock_new_native_case_unqualified')
+    unlock._uuid(case['operationId'])
+    _need(case['originalRunOperationId'] == run_operation)
+    before, after = case['before'], case['after']
+    unlock._identity(before, binding); unlock._identity(after, binding, before)
+    _need(before['console']['locked'] is True and after['console']['locked'] is False)
+    _need(type(records) is dict and set(records) == {'intent', 'rawReply', 'publicBenchmark', 'driver'})
+    for role, digest in (('intent', case['intentSha256']), ('rawReply', case['rawReplySha256']), ('driver', case['driverSha256'])):
+        _need(type(digest) is str and re.fullmatch('[0-9a-f]{64}', digest)
+              and hashlib.sha256(records[role]).hexdigest() == digest)
+    # Complete producer/request/reply and new full-chain timing validation will
+    # be added with the first reviewed native driver. A label cannot skip it.
+    raise QualificationBlocked('macos_unlock_native_driver_protocol_unqualified')
+
+
+def load(custody):
+    """Selected private registration only; no caller path, profile or boolean."""
+    _need(type(custody) is registry.MacCustody, 'macos_unlock_custody_unqualified')
+    custody._operator.guard()
+    reference = custody.descriptor.get('qualifications', {}).get('unlock')
+    _need(type(reference) is dict, 'macos_unlock_native_case_required')
+    path, pin = registry._reference(reference, custody.root)
+    _need(path == custody.lifecycle_root / 'unlock-native-qualification.json')
+    # Until the new native envelope and legacy incident resolutions exist, no
+    # manifest label, digest, fabricated DTO or historical result mints material.
+    with registry.PublicProof(path, pin) as holder:
+        manifest = holder.value()
+        _need(type(manifest) is dict and set(manifest) == {'schemaVersion', 'originalRunOperationId', 'nativeCase', 'legacyGui'})
+        _need(type(manifest['schemaVersion']) is int and manifest['schemaVersion'] == 1
+              and manifest['originalRunOperationId'] == custody.run_intent['operationId'])
+        _need(type(manifest['legacyGui']) is dict, 'macos_unlock_legacy_gui_unqualified')
+        _validate_native_case(manifest['nativeCase'], {}, custody.binding, custody.run_intent['operationId'])
+    raise QualificationBlocked('macos_unlock_native_case_required')
+_PROFILE_DRIVER_TEMPLATE = r'''"""One fixed read-only account ROI diagnostic. Full captured frame stays RAM-only."""
+import argparse,ast,io,hashlib,json,os,sys,time,types
+from pathlib import Path
+from contextlib import ExitStack
+ENTRY=time.monotonic();global_deadline=ENTRY+120;EXECUTING=sys._getframe().f_code
+PROJECT=Path(@@PROJECT@@);sys.path.insert(0,str(PROJECT))
+from agent_tools.source_module_loader import SourceSession
+PINNED_CONSUMERS=@@SOURCE_PINS@@
+p=argparse.ArgumentParser();p.add_argument('--target',required=True);p.add_argument('--fixture-id',required=True);p.add_argument('--operation-id',required=True);p.add_argument('--lease-operation-id',required=True);args=p.parse_args()
+sources=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_unlock')
+U=sources.module;R=sources.load('readiness_tart_macos_registry');F=sources.load('readiness_fixture_registry');Q=sources.load('readiness_tart_macos_unlock_qualification');S=sources.load('readiness_tart_macos_unlock_stream');O=sources.load('readiness_tart_macos_unlock_observer');H=sources.load('readiness_tart_macos_legacy_phases');MAT=sources.load('readiness_tart_macos_unlock_material');L=sources.load('readiness_lease_workflow');P=sources.load('private_inventory_lock');V=sources.load('readiness_tart_vnc');J=sources.load('durable_remote_job');protocol=sources.load('readiness_qemu_jobs');mac=sources.load('readiness_tart_macos')
+for name in('readiness_tart_macos_lease_qualification','readiness_tart_macos_lease_executor','readiness_tart_macos_session_stream','readiness_tart_macos_wake'):sources.load(name)
+FIXTURE=@@FIXTURE@@;TARGET=@@TARGET@@;PURPOSE='native_macos_label_profile_v1'
+DIAGNOSTIC_CODES=frozenset(['diagnostic_consumer_epoch_changed', 'diagnostic_deadline', 'diagnostic_dimensions_invalid', 'diagnostic_display_not_locked_ready', 'diagnostic_executed_source_changed', 'diagnostic_explicit_selector_mismatch', 'diagnostic_lease_clock_reversed', 'diagnostic_operation_collision', 'diagnostic_original_admission_changed', 'diagnostic_original_lease_admission_changed', 'diagnostic_original_lease_budget_insufficient', 'diagnostic_original_lease_not_active', 'diagnostic_original_owner_changed', 'diagnostic_public_crop_geometry', 'diagnostic_raw_boot_changed', 'diagnostic_root_probe_failed', 'diagnostic_rpc_closure_unknown', 'diagnostic_label_profile_refused', 'native_capture_callback_limit', 'native_public_rpc_count_limit', 'native_public_rpc_original_unknown', 'native_public_rpc_payload_invalid', 'native_rpc_selected_custody_changed', 'native_rpc_verified_stdin_target_changed'])
+class DiagnosticGuard(RuntimeError):
+ pass
+def need(value,reason):
+ if not value:raise DiagnosticGuard(reason)
+def source_guard():
+ need(time.monotonic()<global_deadline,'diagnostic_deadline');sources.guard()
+ actual={str(Path(path).relative_to(PROJECT)):hashlib.sha256(body).hexdigest()for path,body in sources.cache.values()}
+ need(actual==PINNED_CONSUMERS,'diagnostic_consumer_epoch_changed')
+def roi_difference(image,baseline):
+ need(image.size==baseline.size==Q.PROFILE['dimensions'],'diagnostic_dimensions_invalid')
+ a=image.crop(Q.PROFILE['accountBox']);b=baseline.crop(Q.PROFILE['accountBox'])
+ from PIL import ImageChops
+ d=ImageChops.difference(a,b);changed=sum(1 for pixel in d.getdata()if pixel!=(0,0,0))
+ return {'accountBox':list(Q.PROFILE['accountBox']),'accountRoiDimensions':list(a.size),'accountCropEqual':changed==0,'changedPixelCount':changed,'changedBoundingBoxAccountRelative':d.getbbox()}
+def record(name,value):
+ raw=value if type(value)is bytes else json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+ fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=capture_out.fd)
+ with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+ os.fsync(capture_out.fd)
+raw=Path(__file__).read_bytes();need(EXECUTING==compile(raw,__file__,'exec',dont_inherit=True),'diagnostic_executed_source_changed');J._uuid(args.operation_id);J._uuid(args.lease_operation_id);need(args.operation_id!=args.lease_operation_id,'diagnostic_operation_collision')
+need(args.fixture_id==FIXTURE and args.target==TARGET,'diagnostic_explicit_selector_mismatch')
+source_guard();stage='admission';native_attempts=[];native_callbacks=[];capture_phase={'value':'factory'};custody=None
+with ExitStack()as held:
+ held.callback(sources.close)
+ selfheld=held.enter_context(R.PublicProof(Path(__file__).resolve(),{'generation':list(P._generation(Path(__file__).lstat())),'sha256':hashlib.sha256(raw).hexdigest()},private_file=False))
+ descriptor,pin=F._json(PROJECT/'.rag_index/readiness-fixtures'/(FIXTURE+'.json'))
+ need(descriptor['provider']=='tart-macos'and args.target=='tart:'+descriptor['binding']['vm_name'],'diagnostic_explicit_selector_mismatch')
+ runheld=held.enter_context(R.PublicProof(Path(descriptor['originalRun']['path']),descriptor['originalRun']['pin']));run=runheld.value();root=runheld.path.parent
+ binding=J.MachineBinding.from_dict(run['hostBinding']);controller_path=root/('native-unlock-controller-'+args.operation_id+'.json');controller,indexpin=F._json(controller_path)
+ controllerheld=held.enter_context(R.PublicProof(controller_path,indexpin));intent=J._intent(root/'jobs'/args.operation_id,args.operation_id,binding);owner=J._record(root/'jobs'/args.operation_id/'owner.json');J._correlate(owner,intent);actor=J._owner_identity(owner)
+ need(intent['purpose']==PURPOSE and controller['sourceSha256']==hashlib.sha256(raw).hexdigest()and controller['programSha256']==intent['programSha256']and controller['leaseOperationId']==args.lease_operation_id and controller['operationId']==args.operation_id and controller['target']==args.target and controller['fixtureId']==args.fixture_id and controller['hostBinding']==binding.__dict__ and controller['jobRootGeneration']==run['jobRootGeneration'],'diagnostic_original_admission_changed')
+ need(os.getppid()==actor['pid']and J._birth(actor['pid'])==actor['birth'],'diagnostic_original_owner_changed')
+ folder=root/('native-label-profile-'+args.operation_id);folder.mkdir(mode=0o700);capture_out=held.enter_context(P.Directory(folder))
+ capture_path=Path(__file__).parent/'@@CAPTURE_NAME@@';captureheld=held.enter_context(R.PublicProof(capture_path,{'generation':list(P._generation(capture_path.lstat())),'sha256':'387919a86e815bfb879be04c280db870a64ca09fd65931dace82b51d6d113b36'},private_file=False));capture_module=types.ModuleType('_held_account_roi_rpc_capture');exec(compile(captureheld.body,str(capture_path),'exec',dont_inherit=True),capture_module.__dict__)
+ original_native=R.MacCustody._native_call
+ def capture_guard():
+  source_guard();selfheld.guard();runheld.guard();controllerheld.guard();captureheld.guard();capture_out.guard()
+  need(os.getppid()==actor['pid']and J._birth(actor['pid'])==actor['birth'],'diagnostic_original_owner_changed')
+ native_record=record
+ def join_native_capture(attempt,output,error):
+   attempt['errorClass']=None if error is None else type(error).__name__
+   attempt['integrityClosed']=error is None or(type(error)is capture_module.CaptureUnknown and str(error)=='namespace_original_rpc_unknown_no_replay')
+   rows=[]
+   if output is not None:
+    try:
+     data=bytes(output.callback);need(len(data)<=16384,'native_capture_callback_limit');rows=[json.loads(line)for line in data.splitlines()]
+    except BaseException:rows=[]
+   start=next((row for row in rows if type(row)is dict and row.get('stage')=='started'),None)
+   last=rows[-1]if rows and type(rows[-1])is dict and rows[-1].get('stage')=='retained'else None
+   actor_value=start.get('actor')if start else None
+   if last is not None and last.get('actor')!=actor_value:last=None
+   attempt['actor']=actor_value;attempt['callback']=last;attempt['state']='retained_original_callback'if last is not None else 'unknown_missing_original_callback'
+   native_record(attempt['label']+'.attempt.json',attempt)
+ def native_attempt_closed(attempt):
+   try:
+    actor_value=attempt['actor'];callback=attempt['callback']
+    return(attempt['integrityClosed']is True and type(actor_value)is dict and type(actor_value['pid'])is int and type(actor_value['birth'])is str and type(actor_value['parent'])is int and callback is not None and callback['stdoutEof']is True and callback['stderrEof']is True and J._birth(actor_value['pid'])!=actor_value['birth'])
+   except (KeyError,TypeError,ValueError):return False
+ def captured_native(selected,argv,payload,call_deadline):
+   capture_guard()
+   need((selected.binding.vm_name,selected.binding.machine,selected.run_intent['operationId'])==(descriptor['binding']['vm_name'],descriptor['binding']['machine'],'2d933a39-0fb6-46a4-9fd9-02221d81c4b9'),'native_rpc_selected_custody_changed')
+   need(type(payload)is bytes and 0<len(payload)<=262144,'native_public_rpc_payload_invalid')
+   canonical,_=protocol.stdin_command(payload.decode('utf-8'))
+   need(tuple(argv)==(selected.binding.tart_binary,'exec','-i',selected.binding.vm_name,selected.binding.guest_python,*canonical[1:]),'native_rpc_verified_stdin_target_changed')
+   need(len(native_attempts)<32,'native_public_rpc_count_limit')
+   label='call-'+str(len(native_attempts)+1)+'-'+capture_phase['value']
+   native_record(label+'.request.stdin',payload)
+   native_record(label+'.request.json',{'schemaVersion':1,'operationId':args.operation_id,'target':args.target,'fixtureId':args.fixture_id,'stage':capture_phase['value'],'argv':list(argv),'sourceSha256':hashlib.sha256(payload).hexdigest(),'payloadScope':'fixed held producer public source only; no RFB or credential channel'})
+   attempt={'label':label,'stage':capture_phase['value'],'actor':None,'callback':None,'integrityClosed':False};native_attempts.append(attempt)
+   retained=None;capture_error=None
+   try:
+    with capture_module.PublicRpcCapture(capture_out,label)as retained:
+     try:
+      capture_guard()
+      result,callback=retained.run(argv,payload,deadline=min(call_deadline,global_deadline,time.monotonic()+45),birth=J._birth,parent=lambda pid:R._parent(pid,time.monotonic()+2))
+     except BaseException as own_error:
+      capture_error=own_error;raise
+     finally:join_native_capture(attempt,retained,capture_error)
+   finally:
+    if retained is None:join_native_capture(attempt,None,sys.exc_info()[1])
+   native_callbacks.append(callback)
+   need(callback['actorAbsent']and not callback['partial'],'native_public_rpc_original_unknown')
+   capture_guard();return result
+ R.MacCustody._native_call=captured_native;held.callback(setattr,R.MacCustody,'_native_call',original_native)
+ try:
+  capture_guard();custody=R.MacCustody(PROJECT,args.fixture_id,descriptor,pin);held.callback(custody.close);capture_guard()
+  c=custody;backend=mac.MacTartBackend(c.binding,c)
+  capture_phase['value']='lease';lease=L.workflow(PROJECT,'status',{'fixtureId':args.fixture_id,'operationId':args.lease_operation_id},deadline=global_deadline);record('lease-original-status.json',lease)
+  need(type(lease.get('schemaVersion'))is int and lease['schemaVersion']==1 and lease.get('fixtureId')==args.fixture_id and lease.get('operationId')==args.lease_operation_id and lease.get('provider')=='tart-macos'and lease.get('qualificationScope')=='registered_guest_executor'and lease.get('ok')is True and lease.get('state')==lease.get('nativeState')=='active'and lease.get('jobState')=='running'and lease.get('reason')=='original_lease_owner_running'and lease.get('replayAllowed')is False,'diagnostic_original_lease_not_active')
+  lease_path=PROJECT/'.rag_index/readiness-leases/admissions'/args.fixture_id/(args.lease_operation_id+'.json');lease_value,lease_pin=F._json(lease_path)
+  need(lease_value.get('schemaVersion')==2 and lease_value.get('provider')=='tart-macos'and lease_value.get('fixtureId')==args.fixture_id and lease_value.get('operationId')==args.lease_operation_id and type(lease_value.get('ttlSeconds'))is int and lease_value['ttlSeconds']==300,'diagnostic_original_lease_admission_changed')
+  lease_held=held.enter_context(R.PublicProof(lease_path,lease_pin));lease_wall=time.time();lease_mono=time.monotonic();lease_created=lease_pin['generation'][8]/1000000000;initial_remaining=lease_created+300-lease_wall
+  need(lease_wall>=lease_created and initial_remaining>=80,'diagnostic_original_lease_budget_insufficient');global_deadline=min(global_deadline,lease_mono+initial_remaining-10)
+  held.enter_context(backend.operation_scope(deadline=global_deadline))
+  def physical():
+   capture_guard();lease_held.guard();need(time.monotonic()>=lease_mono and time.time()>=lease_wall,'diagnostic_lease_clock_reversed');c._operator.guard();c.guard(deadline=global_deadline)
+  executor=held.enter_context(backend.guest_job_executor(deadline=global_deadline,operation_id=args.operation_id))
+  def root_probe(label):
+   capture_phase['value']=label;physical();body=R.guest_probe_source(c.binding,prefix=c.guest_proof['prefix'],public_files=c.guest_proof['publicFiles']);body=body.encode()if type(body)is str else body
+   argv,payload=protocol.stdin_command(body.decode('utf-8'));record(label+'.source.py',body);record(label+'.request.stdin',payload);record(label+'.request.json',{'operationId':args.operation_id,'target':args.target,'fixtureId':args.fixture_id,'argv':list(argv),'sourceSha256':hashlib.sha256(body).hexdigest(),'payloadSha256':hashlib.sha256(payload).hexdigest()})
+   result=executor.execute(argv,payload=payload);record(label+'.stdout.json',result.stdout);record(label+'.stderr.txt',result.stderr);record(label+'.result.json',{'returncode':result.returncode,'stdoutBytes':len(result.stdout),'stderrBytes':len(result.stderr)})
+   physical();need(result.returncode==0 and not result.stderr,'diagnostic_root_probe_failed');packet=Q._json(result.stdout);need(type(packet.get('facts'))is dict and packet['facts'].get('display')=='ready','diagnostic_display_not_locked_ready');projection=Q._projection(packet,c.binding);U._identity(projection,c.binding);need(projection['rawBoot']==executor.boot,'diagnostic_raw_boot_changed');need(projection['console']['locked']is True and projection['display']=='ready','diagnostic_display_not_locked_ready');return projection
+  record('driver.source.py',raw);record('rpc-capture.source.py',captureheld.body);record('intent.json',{'operationId':args.operation_id,'target':args.target,'fixtureId':args.fixture_id,'purpose':PURPOSE,'capturesMaximum':1,'ordinaryCredentialAccess':False,'input':False,'wake':False,'fullFramePersistence':False,'newBaselineAuthority':False,'sourceSha256':hashlib.sha256(raw).hexdigest()});record('source-capsule-before.json',PINNED_CONSUMERS)
+  stage='root_before';before=root_probe('root-before');record('root-before.validated.json',before)
+  baseline_name='public-held-source-native-wake-empty-Tool-Recovery-lockscreen-1792522029846637000.png'
+  baselineheld=held.enter_context(R.PublicProof(root/baseline_name,{'generation':list(P._generation((root/baseline_name).lstat())),'sha256':hashlib.sha256((root/baseline_name).read_bytes()).hexdigest()}));need(hashlib.sha256(baselineheld.body).hexdigest()==Q._LABEL_BASELINE_SHA,'diagnostic_label_profile_refused');baseline=U._image(baselineheld.body,Q.PROFILE['dimensions']);record('baseline-reference.json',{'path':str(baselineheld.path),'pin':{'generation':list(baselineheld.generation),'sha256':hashlib.sha256(baselineheld.body).hexdigest()}})
+  stage='one_capture';physical();fd=c._credentials['vnc'].credential_fd()
+  try:
+   with V.ProtectedVncSession(port=c.endpoint['port'],credential_fd=fd,guard=physical,timeout=min(20,global_deadline-time.monotonic()))as view:
+    frame=view.capture_png();image=U._image(frame,Q.PROFILE['dimensions']);frame=None
+    label_match=U._foreground_label_matches(image,baseline,Q.PROFILE)
+    empty_match=U._empty(image,baseline,Q.PROFILE)
+    from PIL import ImageChops,ImageDraw
+    first=image.crop(Q.PROFILE['fieldBox']);second=baseline.crop(Q.PROFILE['fieldBox']);x0,y0,x1,y1=Q.PROFILE['caretBox']
+    for crop in(first,second):ImageDraw.Draw(crop).rectangle((x0,y0,x1-1,y1-1),fill=(0,0,0))
+    delta=ImageChops.difference(first,second).tobytes();different=sum(delta[i:i+3]!=b'\x00\x00\x00'for i in range(0,len(delta),3));first.close();second.close()
+    mask=U._white_label_mask(baseline,Q.PROFILE)
+    metrics={'labelMatch':label_match,'baselineForegroundPixels':sum(mask),'emptyFieldMatch':empty_match,'nonCaretFieldDifferingPixels':different,'nativeProfileMode':'exact_white_foreground_v1'};image=None
+
+  finally:os.close(fd)
+  physical();baselineheld.guard();record('profile-match-result.json',metrics)
+  stage='root_after';after=root_probe('root-after');U._identity(after,c.binding,before);record('root-after.validated.json',after)
+  physical();source_guard();record('source-capsule-closed.json',PINNED_CONSUMERS);record('rpc-closure.json',{'attempts':native_attempts,'allClosed':all(native_attempt_closed(x)for x in native_attempts)})
+  need(all(native_attempt_closed(x)for x in native_attempts),'diagnostic_rpc_closure_unknown');need(metrics['labelMatch']is True and metrics['emptyFieldMatch']==(metrics['nonCaretFieldDifferingPixels']==0),'diagnostic_label_profile_refused');stage='complete';record('complete.json',{'operationId':args.operation_id,'state':'readonly_label_profile_qualified','captures':1,'sameIdentityBeforeAfter':True,'fullFramePersisted':False,'ordinaryCredentialAccess':False,'guiInput':False,'fullIdleAuthority':False,'newBaselineAuthority':False,'profileMode':'exact_white_foreground_v1'});print(json.dumps({'operationId':args.operation_id,'state':'readonly_label_profile_qualified',**metrics}))
+ except BaseException as error:
+  record('failure.json',{'operationId':args.operation_id,'stage':stage,'failureClass':type(error).__name__,'code':error.args[0]if type(error)is DiagnosticGuard and len(error.args)==1 and type(error.args[0])is str and error.args[0]in DIAGNOSTIC_CODES else 'unclassified','replayAllowed':False,'originalOutcome':'unknown_no_replay','rawExceptionTextRetained':False})
+  record('rpc-closure-failed.json',{'attempts':native_attempts,'allClosed':all(native_attempt_closed(x)for x in native_attempts)})
+  raise
+'''
+
+_PROFILE_WRAPPER = r'''import base64,hashlib,os,pathlib,sys
+CODE=sys._getframe().f_code
+P=CONFIG
+sys.path.insert(0,P['project'])
+from agent_tools.source_module_loader import SourceSession
+sources=SourceSession(pathlib.Path(P['project'])/'agent_tools','durable_remote_job')
+J=sources.module
+try:
+ root=pathlib.Path(P['jobRoot']);binding=J.MachineBinding.from_dict(P['hostBinding']);generation=tuple(P['jobRootGeneration'])
+ J._root(root,generation);J._binding_live(binding)
+ job=root/P['operationId'];intent=J._intent(job,P['operationId'],binding)
+ raw=J._read(job/'program.py',J.MAX_PROGRAM_BYTES)
+ if CODE!=compile(raw,'fixed-purpose-program','exec',dont_inherit=True):raise RuntimeError('controller_executed_program_changed')
+ if intent['purpose']!=P['purpose']or intent['programSha256']!=hashlib.sha256(raw).hexdigest():raise RuntimeError('controller_original_program_changed')
+ owner=J._record(job/'owner.json');J._correlate(owner,intent);actor=J._owner_identity(owner)
+ if actor['pid']!=os.getppid()or J._birth(actor['pid'])!=actor['birth']:raise RuntimeError('controller_not_original_owner_child')
+ original=base64.b64decode(P['source'],validate=True)
+ if hashlib.sha256(original).hexdigest()!=P['sourceSha256']:raise RuntimeError('controller_source_invalid')
+ J._create(pathlib.Path(P['driverPath']).parent/'label-profile-capture.py',base64.b64decode(P['captureSource'],validate=True));path=pathlib.Path(P['driverPath']);J._create(path,original);info=path.lstat()
+ if path.read_bytes()!=original or info.st_uid!=os.getuid()or info.st_nlink!=1 or info.st_mode&0o777!=0o600:raise RuntimeError('controller_named_source_changed')
+ index={'schemaVersion':1,'operationId':P['operationId'],'fixtureId':P['fixtureId'],'target':P['target'],'phase':P['phase'],'sourceSha256':P['sourceSha256'],'programSha256':intent['programSha256'],'hostBinding':P['hostBinding'],'jobRootGeneration':P['jobRootGeneration'],'originalRunOperationId':P['originalRunOperationId'],'leaseOperationId':P['leaseOperationId'],'replayAllowed':False}
+ # The durable job intent existed before this index and before any driver code.
+ # A missing index after lost owner launch remains UNKNOWN, never a retry.
+ J._publish(pathlib.Path(P['indexPath']),index)
+ sources.guard()
+ sys.argv=[str(path),'--target',P['target'],'--fixture-id',P['fixtureId'],'--operation-id',P['operationId'],'--lease-operation-id',P['leaseOperationId']]
+ exec(compile(original,str(path),'exec',dont_inherit=True),{'__name__':'__main__','__file__':str(path)})
+finally:sources.close()
+'''
+
+_PROFILE_CAPTURE_SOURCE = rb'''"""Bounded public v12 RPC evidence for the private qualification caller.
+
+This is an internal capture helper, not a provider/tool action. Its caller must
+admit the fixed target/source before constructing argv. It signals only its own
+original Popen actor after exact kernel birth and parent checks. A timeout never
+cancels the guest operation or grants permission to submit it again.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import selectors
+import stat
+import subprocess
+import time
+
+
+class CaptureUnknown(RuntimeError):
+    pass
+
+
+def _identity(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid, info.st_nlink)
+
+
+def _generation(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _write(fd, raw):
+    view = memoryview(raw)
+    while view:
+        n = os.write(fd, view)
+        if n <= 0:
+            raise OSError('capture_short_write')
+        view = view[n:]
+    os.fsync(fd)
+
+
+class PublicRpcCapture:
+    """Preopen all output leaves against a held directory before dispatch.
+
+    Raw bytes always go to those original descriptors, including when a named
+    route is replaced. Final evidence precedes external source/semantic guards.
+    The helper retains bounded prefixes only; overflow/partial EOF is UNKNOWN.
+    """
+    limits = {'stdout': 262144, 'stderr': 65536}
+
+    def __init__(self, directory, label):
+        if os.name != 'posix' or not re.fullmatch(r'call-[1-9][0-9]*-(?:factory|lease|executor|namespace|inventory|root-before|root-after|public|once|observer|source-close)', label):
+            raise ValueError('capture_scope')
+        directory.guard()
+        self.directory = directory
+        self.fd = os.dup(directory.fd)
+        self.identity = _identity(os.fstat(self.fd))[:5]
+        self.leaves = {}
+        self.callback = bytearray()
+        try:
+            for role, suffix in (('stdout', '.stdout.json'), ('stderr', '.stderr.txt'), ('callback', '.capture.jsonl')):
+                name = label + suffix
+                fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=self.fd)
+                self.leaves[role] = (fd, name, _identity(os.fstat(fd)))
+            os.fsync(self.fd)
+            self._guard_routes()
+        except BaseException:
+            self.close()
+            raise
+
+    def _guard_routes(self):
+        self.directory.guard()
+        if _identity(os.fstat(self.fd))[:5] != self.identity:
+            raise CaptureUnknown('capture_directory_changed')
+        for fd, name, identity in self.leaves.values():
+            if _identity(os.fstat(fd)) != identity or _identity(os.stat(name, dir_fd=self.fd, follow_symlinks=False)) != identity:
+                raise CaptureUnknown('capture_output_route_changed')
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600:
+                raise CaptureUnknown('capture_output_generation_changed')
+
+    def _record(self, value):
+        raw = (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode()
+        if len(self.callback) + len(raw) > 16384: raise CaptureUnknown('capture_callback_limit')
+        _write(self.leaves['callback'][0], raw)
+        self.callback.extend(raw)
+
+    def run(self, argv, payload, *, deadline, birth, parent):
+        """One admitted RPC; birth/parent are pure source-held kernel getters."""
+        if type(payload) is not bytes or len(payload) > 262144 or not time.monotonic() < deadline <= time.monotonic() + 90:
+            raise ValueError('capture_bound')
+        self._guard_routes()
+        data = {name: bytearray() for name in self.limits}
+        eof = {name: False for name in self.limits}
+        overflow = {name: False for name in self.limits}
+        process = None; actor = None; failure = None; cleanup = None; sent = 0; code = None
+        selector = selectors.DefaultSelector()
+
+        def owned():
+            return (actor is not None and actor['birth'] is not None and birth(actor['pid']) == actor['birth']
+                    and parent(actor['pid']) == actor['parent'])
+
+        def event(key):
+            nonlocal sent, failure
+            pipe = key.fileobj; role = key.data
+            if role == 'stdin':
+                try:
+                    n = os.write(pipe.fileno(), memoryview(payload)[sent:sent + 65536])
+                except (BlockingIOError, InterruptedError):
+                    return
+                except BrokenPipeError:
+                    selector.unregister(pipe); pipe.close(); failure = failure or 'stdin_closed'; return
+                if n <= 0:
+                    raise OSError('capture_stdin_write')
+                sent += n
+                if sent == len(payload):
+                    selector.unregister(pipe); pipe.close()
+                return
+            try:
+                block = os.read(pipe.fileno(), 65536)
+            except (BlockingIOError, InterruptedError):
+                return
+            if not block:
+                eof[role] = True; selector.unregister(pipe); pipe.close(); return
+            room = self.limits[role] - len(data[role])
+            keep = block[:room]
+            if keep:
+                # Retain immediately, before any external source/actor guard.
+                _write(self.leaves[role][0], keep); data[role].extend(keep)
+            if len(block) > room:
+                overflow[role] = True; failure = failure or 'output_limit'
+
+        try:
+            process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env={k: v for k, v in os.environ.items() if not k.startswith('DYLD_')}, close_fds=True, bufsize=0)
+            actor = {'pid': process.pid, 'birth': birth(process.pid), 'parent': os.getpid()}
+            self._record({'schemaVersion': 1, 'stage': 'started', 'actor': actor, 'replayAllowed': False})
+            for role in ('stdout', 'stderr', 'stdin'):
+                pipe = getattr(process, role); os.set_blocking(pipe.fileno(), False)
+                if role == 'stdin' and not payload:
+                    pipe.close(); continue
+                selector.register(pipe, selectors.EVENT_WRITE if role == 'stdin' else selectors.EVENT_READ, role)
+            if not owned():
+                failure = 'actor_not_owned'
+            while selector.get_map() and failure is None:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    failure = 'timeout'; break
+                for key, _ in selector.select(min(.05, left)):
+                    event(key)
+                    if failure: break
+            if failure is None:
+                try: code = process.wait(timeout=max(.001, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired: failure = 'timeout'
+        except BaseException as error:
+            failure = failure or 'capture_' + type(error).__name__
+        finally:
+            # No source/named-output guards may run before bounded drainage and
+            # callback retention. Never signal a group/manager/guest process.
+            if process is not None:
+                try:
+                    if process.poll() is None:
+                        if owned(): process.kill()
+                        else: cleanup = 'original_actor_not_owned_no_signal'
+                    end = time.monotonic() + 2
+                    # Read remaining queued output after exact-child cleanup;
+                    # inherited descendants holding pipes cannot wait forever.
+                    while selector.get_map() and time.monotonic() < end:
+                        for key, _ in selector.select(min(.05, max(0, end - time.monotonic()))):
+                            if key.data == 'stdin':
+                                selector.unregister(key.fileobj); key.fileobj.close()
+                            else: event(key)
+                    try: code = process.wait(timeout=max(.001, end - time.monotonic()))
+                    except subprocess.TimeoutExpired: cleanup = cleanup or 'original_actor_wait_timeout'
+                except BaseException as error:
+                    cleanup = cleanup or 'cleanup_' + type(error).__name__
+                finally:
+                    for pipe in (process.stdin, process.stdout, process.stderr):
+                        if pipe is not None and not pipe.closed:
+                            try: pipe.close()
+                            except OSError: cleanup = cleanup or 'pipe_close_failed'
+            selector.close()
+            try:
+                actor_absent = actor is not None and actor['birth'] is not None and birth(actor['pid']) != actor['birth']
+            except BaseException:
+                actor_absent = False
+            if not actor_absent: cleanup = cleanup or 'original_actor_absence_unproven'
+            result = {'schemaVersion': 1, 'stage': 'retained', 'actor': actor, 'returncode': code,
+                'actorAbsent': actor_absent, 'outputGenerations': {role: list(_generation(os.fstat(self.leaves[role][0]))) for role in self.limits},
+                'stdinBytesWritten': sent, 'stdoutBytes': len(data['stdout']), 'stderrBytes': len(data['stderr']),
+                'stdoutEof': eof['stdout'], 'stderrEof': eof['stderr'],
+                'stdoutOverflow': overflow['stdout'], 'stderrOverflow': overflow['stderr'],
+                'partial': bool(failure or cleanup) or not all(eof.values()) or sent != len(payload) or any(overflow.values()),
+                'failure': failure, 'cleanupFailure': cleanup, 'replayAllowed': False,
+                'originalOutcome': 'unknown_no_replay' if failure or cleanup else 'callback_retained_not_semantic_success',
+                'stdoutSha256': hashlib.sha256(data['stdout']).hexdigest(), 'stderrSha256': hashlib.sha256(data['stderr']).hexdigest()}
+            self._record(result)
+            os.fsync(self.fd)
+        # Original raw/callback are durable even if this final custody check fails.
+        self._guard_routes()
+        for role in self.limits:
+            fd = self.leaves[role][0]
+            before = _generation(os.fstat(fd))
+            if list(before) != result['outputGenerations'][role]:
+                raise CaptureUnknown('capture_output_generation_changed')
+            if os.pread(self.leaves[role][0], self.limits[role] + 1, 0) != bytes(data[role]):
+                raise CaptureUnknown('capture_output_bytes_changed')
+            if _generation(os.fstat(fd)) != before:
+                raise CaptureUnknown('capture_output_generation_changed')
+        if os.pread(self.leaves['callback'][0], 16385, 0) != bytes(self.callback):
+            raise CaptureUnknown('capture_callback_changed')
+        self._guard_routes()
+        if failure or cleanup or result['partial']:
+            raise CaptureUnknown('namespace_original_rpc_unknown_no_replay')
+        return subprocess.CompletedProcess(argv, code, bytes(data['stdout']), bytes(data['stderr'])), result
+
+    def close(self):
+        for fd, _, _ in self.leaves.values(): os.close(fd)
+        self.leaves.clear()
+        if self.fd >= 0: os.close(self.fd); self.fd = -1
+
+    def __enter__(self): return self
+    def __exit__(self, *_): self.close()
+'''
+
+_LABEL_TOKEN = object()
+_LABEL_MODE = 'exact_white_foreground_v1'
+# Fixed historical PUBLIC empty baseline, never a new or filled frame.
+_LABEL_BASELINE_SHA = 'ccfa8f4d3940612f63b591a78af4708d5746d0288b10c823d5991a18d190fc29'
+_PROFILE_PURPOSE = 'native_macos_label_profile_v1'
+_PROFILE_MODULES = ('readiness_tart_macos_registry','readiness_fixture_registry','readiness_tart_macos','readiness_tart_macos_unlock','readiness_tart_macos_wake','readiness_qemu_jobs','private_inventory_lock','durable_remote_job','readiness_lease_workflow','readiness_tart_macos_lease_executor','readiness_tart_macos_lease_qualification','readiness_tart_macos_lease_bridge','readiness_tart_macos_session','readiness_tart_macos_session_stream','readiness_tart_macos_unlock_qualification','readiness_tart_macos_unlock_observer','readiness_tart_macos_legacy_phases','readiness_tart_macos_unlock_material')
+
+
+def _profile_roles(root):
+    from .source_module_loader import SourceSession
+    with ExitStack() as held:
+        sources = SourceSession(root / 'agent_tools', 'readiness_tart_macos_registry')
+        held.callback(sources.close)
+        for name in _PROFILE_MODULES: sources.load(name)
+        sources.guard()
+        result = {str(Path(path).relative_to(root)): hashlib.sha256(body).hexdigest()
+                  for path, body in sources.cache.values()}
+        _need(result.get('agent_tools/readiness_tart_macos_unlock_qualification.py') ==
+              hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'macos_label_profile_source_epoch')
+        return result
+
+
+def _profile_context(custody):
+    _need(type(custody) is registry.MacCustody, 'macos_label_profile_custody')
+    custody._operator.guard()
+    _need(Path(__file__).resolve() == custody.root / 'agent_tools' / Path(__file__).name,
+          'macos_label_profile_staging_only')
+    _need(_EXECUTING_CODE == compile(Path(__file__).read_bytes(), __file__, 'exec', dont_inherit=True),
+          'macos_label_profile_source_epoch')
+    return custody.lifecycle_root / 'jobs', custody.run_owner.generation, custody.host_binding
+
+
+def _render_profile_driver(project, fixture, target, source_pins):
+    # Four typed DATA substitutions only; all executable statements are fixed.
+    _need(type(project) is str and type(fixture) is str and type(target) is str
+          and type(source_pins) is dict, 'macos_label_profile_render')
+    result = _PROFILE_DRIVER_TEMPLATE
+    for marker, value in (('@@PROJECT@@', repr(project)), ('@@FIXTURE@@', repr(fixture)),
+                          ('@@TARGET@@', repr(target)), ('@@SOURCE_PINS@@', repr(source_pins)),
+                          ('@@CAPTURE_NAME@@', 'label-profile-capture.py')):
+        result = result.replace(marker, value)
+    _need('@@' not in result, 'macos_label_profile_render')
+    return result.encode()
+
+
+def _label_program(custody, operation, lease_operation, fixture_id):
+    """Fixed read-only Program builder; no submit, callback, path or source argument."""
+    import base64
+    root, generation, binding = _profile_context(custody)
+    operation = unlock._uuid(operation); lease_operation = unlock._uuid(lease_operation)
+    _need(operation != lease_operation, 'macos_label_profile_operation')
+    source = _render_profile_driver(str(custody.root), fixture_id,
+             'tart:' + custody.binding.vm_name, _profile_roles(custody.root))
+    config = {'phase': 'public', 'project': str(custody.root), 'jobRoot': str(root),
+        'jobRootGeneration': list(generation), 'hostBinding': binding.__dict__,
+        'operationId': operation, 'leaseOperationId': lease_operation,
+        'originalRunOperationId': custody.run_intent['operationId'], 'fixtureId': fixture_id,
+        'target': 'tart:' + custody.binding.vm_name, 'purpose': _PROFILE_PURPOSE,
+        'source': base64.b64encode(source).decode(), 'captureSource': base64.b64encode(_PROFILE_CAPTURE_SOURCE).decode(), 'sourceSha256': hashlib.sha256(source).hexdigest(),
+        'driverPath': str(root / operation / 'label-driver.py'),
+        'indexPath': str(custody.lifecycle_root / ('native-unlock-controller-' + operation + '.json'))}
+    # The durable J intent/owner predates fixed-file publication/native effects.
+    return registry.jobs.Program(_PROFILE_PURPOSE, ('CONFIG=' + repr(config) + '\n' + _PROFILE_WRAPPER).encode(), 262144)
+
+
+def label_profile_program(custody, operation, lease_operation):
+    _need(type(custody) is registry.MacCustody, 'macos_label_profile_custody')
+    return _label_program(custody, operation, lease_operation, custody.fixture_id)
+
+
+def _original_profile_fixture(custody, fixture_id, held):
+    # Exact historical fixture association, no old receipt/source relabeling.
+    from . import readiness_fixture_registry as fixtures
+    fixtures._id(fixture_id)
+    path = custody.root / '.rag_index/readiness-fixtures' / (fixture_id + '.json')
+    original, pin = fixtures._json(path)
+    proof = registry.PublicProof(path, pin, private_file=False); held.append(proof)
+    before, current = deepcopy(original), deepcopy(custody.descriptor)
+    before['fixtureId'] = current['fixtureId']
+    before['qualifications'].pop('labelProfile', None)
+    current['qualifications'].pop('labelProfile', None)
+    _need(before == current, 'macos_label_profile_original_fixture_changed')
+    return fixture_id
+
+
+def _baseline_reference(custody, reference):
+    _need(type(reference) is dict and set(reference) == {'path','pin'}
+          and type(reference['path']) is str, 'macos_label_profile_baseline_route')
+    path = Path(reference['path'])
+    _need(path == custody.lifecycle_root / 'public-held-source-native-wake-empty-Tool-Recovery-lockscreen-1792522029846637000.png'
+          and path == path.resolve(strict=True), 'macos_label_profile_baseline_route')
+    _need(reference['pin'].get('sha256') == _LABEL_BASELINE_SHA, 'macos_label_profile_baseline_epoch')
+    return path, reference['pin']
+
+
+def _read_profile_case(custody, operation, held):
+    import ast
+    root, generation, binding = _profile_context(custody)
+    operation = unlock._uuid(operation)
+    job = root / operation
+    raw_program = registry.jobs._read(job / 'program.py', registry.jobs.MAX_PROGRAM_BYTES)
+    try:
+        config = ast.literal_eval(raw_program.decode().splitlines()[0].removeprefix('CONFIG='))
+    except Exception:
+        raise QualificationBlocked('macos_label_profile_program') from None
+    fixture_id = _original_profile_fixture(custody, config.get('fixtureId'), held)
+    expected = _label_program(custody, operation, config.get('leaseOperationId'), fixture_id)
+    _need(raw_program == expected.source, 'macos_label_profile_program')
+    owner = registry.OriginalOwner(root, tuple(generation), operation, binding, expected)
+    status = owner.observe()
+    _need(status['state'] == 'terminal' and status['terminal']['exitCode'] == 0
+          and status['terminal']['streamsClosed'] is True
+          and registry.jobs._birth(status['owner']['pid']) != status['owner']['birth'],
+          'macos_label_profile_original_pending')
+    collected, stdout, stderr = registry.jobs.collect(root, operation, binding, generation=tuple(generation))
+    _need(collected == status, 'macos_label_profile_original_changed')
+    # Full terminal streams are authenticated by the original durable owner;
+    # metrics JSON is a projection, never caller success authority.
+    for name, data in (('stdout', stdout), ('stderr', stderr)):
+        meta = status['terminal'][name]
+        _need(not meta['overflow'] and meta['totalBytes'] == meta['retainedBytes'] == len(data)
+              and meta['sha256'] == hashlib.sha256(data).hexdigest(), 'macos_label_profile_streams')
+    response = _json(stdout)
+    folder = custody.lifecycle_root / ('native-label-profile-' + operation)
+    records = {}
+    for name in ('complete.json','profile-match-result.json','root-before.source.py','root-before.stdout.json',
+                 'root-before.result.json','root-after.source.py','root-after.stdout.json','root-after.result.json',
+                 'source-capsule-before.json','source-capsule-closed.json','rpc-closure.json','lease-original-status.json','baseline-reference.json'):
+        path = folder / name
+        pin = {'generation': list(registry.private._generation(path.lstat())),
+               'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+        proof = registry.PublicProof(path, pin); held.append(proof); records[name] = proof.body
+    done, metrics = _json(records['complete.json']), _json(records['profile-match-result.json'])
+    _need(done.get('operationId') == operation and done.get('captures') == 1
+          and done.get('sameIdentityBeforeAfter') is True and done.get('profileMode') == _LABEL_MODE
+          and done.get('state') == 'readonly_label_profile_qualified'
+          and done.get('ordinaryCredentialAccess') is False and done.get('guiInput') is False
+          and done.get('fullFramePersisted') is False and done.get('newBaselineAuthority') is False,
+          'macos_label_profile_protocol')
+    _need(set(metrics) == {'labelMatch','baselineForegroundPixels','emptyFieldMatch','nonCaretFieldDifferingPixels','nativeProfileMode'}
+          and type(metrics['baselineForegroundPixels']) is int and 0 < metrics['baselineForegroundPixels'] < 180*41
+          and response == {'operationId': operation, 'state': 'readonly_label_profile_qualified', **metrics}
+          and metrics.get('nativeProfileMode') == _LABEL_MODE and metrics.get('labelMatch') is True
+          and type(metrics.get('emptyFieldMatch')) is bool
+          and type(metrics.get('nonCaretFieldDifferingPixels')) is int
+          and 0 <= metrics['nonCaretFieldDifferingPixels'] < 160 * 31
+          and metrics['emptyFieldMatch'] == (metrics['nonCaretFieldDifferingPixels'] == 0),
+          'macos_label_profile_metrics')
+    source_pins = _profile_roles(custody.root)
+    _need(_json(records['source-capsule-before.json']) == _json(records['source-capsule-closed.json']) == source_pins,
+          'macos_label_profile_source_epoch')
+    before = _projection(_json(records['root-before.stdout.json']), custody.binding)
+    after = _projection(_json(records['root-after.stdout.json']), custody.binding)
+    unlock._identity(after, custody.binding, before)
+    _need(before['console']['locked'] is True and after['console']['locked'] is True, 'macos_label_profile_session')
+    expected_probe = registry.guest_probe_source(custody.binding, prefix=custody.guest_proof['prefix'], public_files=custody.guest_proof['publicFiles'])
+    if type(expected_probe) is str: expected_probe = expected_probe.encode()
+    for stage in ('root-before', 'root-after'):
+        _need(records[stage + '.source.py'] == expected_probe
+              and _json(records[stage + '.result.json'])['returncode'] == 0,
+              'macos_label_profile_root_source')
+    closure = _json(records['rpc-closure.json'])
+    _need(closure.get('allClosed') is True and type(closure.get('attempts')) is list
+          and closure['attempts'], 'macos_label_profile_rpc_closure')
+    for item in closure['attempts']:
+        callback, actor = item.get('callback'), item.get('actor')
+        _need(type(actor) is dict and type(callback) is dict and callback.get('actor') == actor
+              and callback.get('stdoutEof') is True and callback.get('stderrEof') is True
+              and callback.get('partial') is False and callback.get('actorAbsent') is True
+              and registry.jobs._birth(actor['pid']) != actor['birth'], 'macos_label_profile_rpc_closure')
+    baseline_ref = _json(records['baseline-reference.json'])
+    baseline_path, baseline_pin = _baseline_reference(custody, baseline_ref)
+    _need(baseline_path == custody.lifecycle_root / 'public-held-source-native-wake-empty-Tool-Recovery-lockscreen-1792522029846637000.png', 'macos_label_profile_baseline_route')
+    baseline_proof = registry.PublicProof(baseline_path, baseline_pin); held.append(baseline_proof)
+    mask = unlock._white_label_mask(unlock._image(baseline_proof.body, PROFILE['dimensions']), PROFILE)
+    _need(sum(mask) == metrics['baselineForegroundPixels'], 'macos_label_profile_baseline_changed')
+    for proof in held: proof.guard()
+    return {'operationId': operation, 'programSha256': expected.digest, 'sourcePins': source_pins,
+            'before': before, 'after': after, 'metrics': metrics, 'baseline': baseline_ref}, owner, status
+
+
+class LabelProfile:
+    __slots__ = ('_token','_custody','_held','_owner','_owner_state','_baseline','_mask','_binding','_closed','_case')
+    def __init__(self, *args, **kwargs):
+        raise QualificationBlocked('macos_label_profile_not_opaque')
+    def guard(self):
+        _need(self._token is _LABEL_TOKEN and not self._closed, 'macos_label_profile_closed')
+        self._custody._operator.guard()
+        for proof in self._held: proof.guard()
+        _need(self._owner.observe() == self._owner_state, 'macos_label_profile_original_changed')
+    def close(self):
+        if not self._closed:
+            self._closed = True
+            for proof in reversed(self._held): proof.close()
+
+
+def admit_label_profile(custody, operation):
+    """After one actual readonly case, create immutable informational epoch receipt."""
+    held = []
+    try:
+        case, owner, validated_status = _read_profile_case(custody, operation, held)
+        _need(owner.observe() == validated_status, 'macos_label_profile_original_changed')
+        path = custody.lifecycle_root / ('label-profile-epoch-' + case['operationId'] + '.json')
+        registry.jobs._publish(path, {'schemaVersion': 1, 'mode': _LABEL_MODE, 'case': case})
+        return {'path': str(path), 'pin': {'generation': list(registry.private._generation(path.lstat())),
+                 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}}
+    finally:
+        for proof in reversed(held): proof.close()
+
+
+def load_label_epoch(custody):
+    """No caller path/flag. Missing informational role retains legacy RGB mode."""
+    reference = custody.descriptor.get('qualifications', {}).get('labelProfile')
+    if reference is None: return None
+    _profile_context(custody)
+    path, pin = registry._reference(reference, custody.root)
+    held = []
+    try:
+        proof = registry.PublicProof(path, pin); held.append(proof); receipt = proof.value()
+        _need(set(receipt) == {'schemaVersion','mode','case'} and receipt['schemaVersion'] == 1
+              and receipt['mode'] == _LABEL_MODE, 'macos_label_profile_receipt')
+        operation = unlock._uuid(receipt['case']['operationId'])
+        _need(path == custody.lifecycle_root / ('label-profile-epoch-' + operation + '.json'), 'macos_label_profile_route')
+        case, owner, validated_status = _read_profile_case(custody, operation, held)
+        _need(case == receipt['case'], 'macos_label_profile_receipt')
+        baseline_path, baseline_pin = _baseline_reference(custody, case['baseline'])
+        baseline = registry.PublicProof(baseline_path, baseline_pin); held.append(baseline)
+        mask = unlock._white_label_mask(unlock._image(baseline.body, PROFILE['dimensions']), PROFILE)
+        _need(0 < sum(mask) < len(mask), 'macos_label_profile_blank')
+        value = object.__new__(LabelProfile)
+        value._token, value._custody, value._held, value._owner = _LABEL_TOKEN, custody, held, owner
+        value._owner_state = deepcopy(validated_status)
+        value._baseline, value._mask, value._closed, value._case = baseline, mask, False, case
+        value._binding = (case['before']['boot'], case['before']['console']['session'])
+        value.guard(); return value
+    except BaseException:
+        for item in reversed(held): item.close()
+        raise
+
+
+def _label_epoch_guard(epoch, custody, profile):
+    _need(type(epoch) is LabelProfile and getattr(epoch, '_token', None) is _LABEL_TOKEN
+          and epoch._custody is custody and dict(profile) == dict(PROFILE), 'macos_label_profile_not_opaque')
+    epoch.guard()
+
+
+def _label_epoch_mask(epoch, mask):
+    _need(type(epoch) is LabelProfile and epoch._token is _LABEL_TOKEN and epoch._mask == mask,
+          'macos_label_profile_baseline_changed')
+    epoch.guard()

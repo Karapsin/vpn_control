@@ -1,0 +1,11 @@
+{
+  "beforeSha256": {
+    "host.before.source": "b1ad8236004908ceee969f54a33958b652f3efec8453e48a53b4a53f420df383",
+    "registry.before.source": "cc4b0b1213ff87d3a7d038089cc163ec76749adaf0c7c85cda7494fe5fec7638"
+  },
+  "discovery": "normal HOST purpose rejects exact bootstrap finalizer; creator registry has no authenticated durable historical admission consumer",
+  "nativeCausalEvidence": "admitted-d04a540c-86b4-4319-a032-7b3e0a9f117f",
+  "nativeFailureClaimed": false,
+  "schemaVersion": 1,
+  "scope": "historical bootstrap only; no current readiness or creator idle exemption"
+}

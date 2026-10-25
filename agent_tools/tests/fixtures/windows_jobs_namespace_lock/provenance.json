@@ -1,0 +1,6 @@
+{
+  "sourceSha256": "e95c2cddbc9215421446eb5b8549c0f3408943dab24003533d26470f1f3de950",
+  "failure": "Full ensure_namespace admission failed before dispatch: durable_remote_job._private requires keyword-only directory; lock-file validator omitted directory=False.",
+  "red": "actual complete ensure_namespace with original source raises TypeError before fixed controller boundary",
+  "green": "same complete caller reaches one mocked transport boundary and preserves original intent for read-only reconcile"
+}

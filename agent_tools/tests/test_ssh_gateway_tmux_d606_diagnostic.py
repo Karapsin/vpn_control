@@ -118,6 +118,8 @@ class DiagnosticRemoteTests(fixtures.GatewayOwnerTests):
 
 class DiagnosticCallerTests(adapter_fixtures.GatewayAdapterTests):
     def setUp(self):
+        from agent_tools.tests.ssh_gateway_historical_fixture import archived
+        self.enterContext(archived())
         super().setUp()
         self.request_inputs['correlationId'] = diagnostic.CORRELATION
         self.request['correlationId'] = diagnostic.CORRELATION
@@ -143,12 +145,13 @@ class DiagnosticCallerTests(adapter_fixtures.GatewayAdapterTests):
         self.ready_adapter()
         self.launcher.stop()
         def launch(argv, **kwargs):
-            ssh = json.loads(argv[-1]); command = shlex.split(ssh[-1])
+            ssh = argv; command = shlex.split(ssh[-1])
             self.assertEqual(['/usr/bin/python3','-I','-B','-c'], command[:4])
             self.assertEqual('gateway.invalid', ssh[-2])
             self.assertLessEqual(sum(len(word.encode()) + 1 for word in ssh), 60000)
             self.assertNotIn('inert-secret', ' '.join(ssh))
-            return self.original_popen([os.sys.executable,'-I','-B','-c',command[4]], **kwargs)
+            kwargs.pop('preexec_fn',None)
+            return self.original_popen([os.sys.executable,'-I','-B','-c',command[4],*command[5:]], **kwargs)
         with mock.patch.object(diagnostic.subprocess, 'Popen', side_effect=launch):
             result = diagnostic.observe(self.controller)
         self.assertEqual('observed', result['state'], result)
@@ -161,28 +164,37 @@ class DiagnosticCallerTests(adapter_fixtures.GatewayAdapterTests):
         self.assertEqual(result['privateProofPin']['sha256'], owner.sha((capsule/'proof.private.json').read_bytes()))
         self.assertFalse(result['adoptionAllowed']); self.assertFalse(result['readyPublicationAllowed'])
 
-    def test_oversized_inert_caller_refuses_before_readonly_transport(self):
+    def test_oversized_inert_caller_uses_bound_saved_transport(self):
         self.ready_adapter()
         self.caller.write_bytes(self.expanded_caller)
         self.launcher.stop()
         actual = adapter.transport.build_ssh_argv; plans = []
         def build(*args, **kwargs):
             argv = actual(*args, **kwargs)
-            self.assertEqual('PlannedArgv', type(argv).__name__)
-            self.assertGreater(sum(len(word.encode()) + 1 for word in argv.original_argv), 60000)
-            plans.append(argv)
+            if type(argv).__name__ == 'PlannedArgv':
+                self.assertGreater(sum(len(word.encode()) + 1 for word in argv.original_argv), 60000)
+                plans.append(argv)
             return argv
+        def launch(argv, **kwargs):
+            self.assertEqual('/usr/bin/ssh', argv[0])
+            self.assertIn('ControlPath=none', argv)
+            self.assertEqual('gateway.invalid', argv[-2])
+            self.assertNotIn('inert-secret', ' '.join(argv))
+            command = shlex.split(argv[-1])
+            self.assertEqual(['/usr/bin/python3','-I','-B','-c'], command[:4])
+            kwargs.pop('preexec_fn',None)
+            return self.original_popen([os.sys.executable,*command[1:]], **kwargs)
+        stage = self.controller/'automatic-stage'; stage.mkdir(mode=0o700)
         with mock.patch.object(adapter.transport, 'build_ssh_argv', side_effect=build), \
-             mock.patch.object(diagnostic.subprocess, 'Popen') as submit:
+             mock.patch.object(diagnostic.subprocess, 'Popen', side_effect=launch), \
+             mock.patch.dict(os.environ, {'TMPDIR':str(stage)}), \
+             mock.patch('tempfile.tempdir',None):
             result = diagnostic.observe(self.controller)
+        self.assertEqual('observed', result['state'], result)
         self.assertEqual(1, len(plans))
-        self.assertEqual({'state': 'unknown', 'phase': 'local_original_authority',
-                         'reason': 'diagnostic_unknown', 'replayAllowed': False,
-                         'readyPublicationAllowed': False, 'adoptionAllowed': False}, result)
-        submit.assert_not_called()
-        job = self.controller/'.rag_index/ssh-gateway-tmux-master'/diagnostic.CORRELATION
-        self.assertEqual([], list(job.glob('query-diagnostic-*')))
-        self.assertFalse((self.controller/'.rag_index/ssh-automatic-program').exists())
+        journal = self.controller/'.rag_index/ssh-automatic-program'/plans[0].correlation
+        self.assertTrue((journal/'submission-returned.json').exists())
+        self.assertFalse((journal/'unknown.json').exists())
 
     def test_original_config_drift_blocks_before_readonly_transport(self):
         self.ready_adapter(); self.config.write_bytes(self.config.read_bytes()); before = len(self.calls)

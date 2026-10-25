@@ -95,7 +95,7 @@ class HostSupervisorTest(unittest.TestCase):
 
     def test_status_rejects_symlink_job_parent_before_result_read(self):
         intent, admission = self.fixture()
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as temp:
             parent = Path(temp)
             root = parent / "jobs"
             root.mkdir(mode=0o700)
@@ -118,7 +118,7 @@ class HostSupervisorTest(unittest.TestCase):
 
     def test_submit_rechecks_qmp_before_creating_host_claim(self):
         intent, admission = self.fixture()
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp:
+        with tempfile.TemporaryDirectory(dir=Path("/tmp").resolve()) as temp:
             parent = Path(temp)
             prefix = str(parent / "vpn-control-install-vm-parity-")
             tree = Path(prefix + intent.guest_role)

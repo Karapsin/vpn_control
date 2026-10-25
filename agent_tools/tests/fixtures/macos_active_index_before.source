@@ -1,0 +1,377 @@
+"""Read-only source/service/activity join for the owned Mac fixture.
+
+No framework opens on import, no command runner, no service/power/settings API.
+Root/system and ordinary-user domain snapshots must be collected by the fixed
+helper in their actual UID contexts. Unexpected labels/paths/argv and hashes of
+those values remain private memory; only finite roles and kernel actors escape.
+This producer is not routed and has no lifecycle authority before native proof.
+
+Primary declarations: Apple ServiceManagement.h SMCopyAllJobDictionaries,
+XNU bsd/sys/mount.h, bsd/sys/csr.h, bsd/sys/codesign.h, and libproc.h.
+https://developer.apple.com/documentation/servicemanagement/smcopyalljobdictionaries(_:)
+https://support.apple.com/guide/security/signed-system-volume-security-secd698747c9/web
+"""
+from __future__ import annotations
+
+import ctypes as C
+from dataclasses import dataclass
+import os
+from pathlib import Path
+import plistlib
+if os.name == 'posix':
+    import pwd
+else:
+    pwd = None
+import stat
+import sys
+
+_EXECUTING_CODE = sys._getframe().f_code
+MAX_SERVICES = 16384
+
+
+class ServiceUnavailable(ValueError):
+    """Finite reason only; no raw native exception data."""
+
+
+def need(value, reason):
+    if not value: raise ServiceUnavailable(reason)
+
+
+def generation(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+            info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+class _Statfs(C.Structure):
+    _fields_ = [('blocksize',C.c_uint32),('iosize',C.c_int32)]+[
+        (name,C.c_uint64)for name in ('blocks','free','available','files','filesfree')]+[
+        ('fsid',C.c_int32*2),('owner',C.c_uint32),('kind',C.c_uint32),('flags',C.c_uint32),
+        ('subtype',C.c_uint32),('typename',C.c_char*16),('mounted',C.c_char*1024),
+        ('source',C.c_char*1024),('extended',C.c_uint32),('reserved',C.c_uint32*7)]
+
+
+class NativeServices:
+    def __init__(self, base, processes):
+        need(sys.platform=='darwin','macos_service_native_platform_unavailable')
+        self.base,self.processes=base,processes
+        self.sm=C.CDLL('/System/Library/Frameworks/ServiceManagement.framework/ServiceManagement')
+        base._fn(self.sm,'SMCopyAllJobDictionaries',C.c_void_p,[C.c_void_p])
+        base._fn(base.lib,'csr_get_active_config',C.c_int,[C.POINTER(C.c_uint32)])
+        self.statfs=getattr(base.lib,'statfs$INODE64',None) or base.lib.statfs
+        self.statfs.restype=C.c_int;self.statfs.argtypes=[C.c_char_p,C.POINTER(_Statfs)]
+        base._fn(base.lib,'csops',C.c_int,[C.c_int,C.c_uint32,C.c_void_p,C.c_size_t])
+        base._fn(base.lib,'sysctl',C.c_int,
+                 [C.POINTER(C.c_int),C.c_uint,C.c_void_p,C.POINTER(C.c_size_t),C.c_void_p,C.c_size_t])
+
+    def domain(self, kind):
+        need(kind in {'system','caller_user'},'macos_service_domain_invalid')
+        symbol='kSMDomainSystemLaunchd'if kind=='system'else'kSMDomainUserLaunchd'
+        domain=C.c_void_p.in_dll(self.sm,symbol).value
+        need(domain,'macos_service_domain_unavailable')
+        # Contents remain private. In particular EnvironmentVariables are never
+        # copied into a result, receipt, generated source or diagnostic digest.
+        rows=self.base.value(self.sm.SMCopyAllJobDictionaries(domain))
+        need(type(rows)is list and len(rows)<=MAX_SERVICES,'macos_service_domain_unavailable')
+        seen=set()
+        for row in rows:
+            need(type(row)is dict and type(row.get('Label'))is str and row['Label']
+                 and row['Label']not in seen,'macos_service_dictionary_unqualified')
+            seen.add(row['Label'])
+            if 'PID'in row:need(type(row['PID'])is int and 0<=row['PID']<2**31,'macos_service_dictionary_unqualified')
+        return Domain(kind,os.geteuid(),rows)
+
+    def volume(self):
+        one=_Statfs();config=C.c_uint32()
+        need(self.statfs(b'/',C.byref(one))==0,'macos_root_volume_unavailable')
+        need(self.base.lib.csr_get_active_config(C.byref(config))==0,'macos_root_policy_unavailable')
+        # MNT_RDONLY|MNT_ROOTFS|MNT_SNAPSHOT; root policy is a separate fact.
+        return Volume(tuple(one.fsid),one.typename==b'apfs' and one.mounted==b'/'
+                      and one.flags&0x40004001==0x40004001,
+                      not bool(config.value&(1<<11)),os.stat('/').st_dev,config.value==0)
+
+    def image(self, actor):
+        need(self.processes.process(actor[0])==actor,'macos_service_process_changed')
+        value=(C.c_ubyte*20)()
+        # Fixed GET operation only, never any csops marking/clearing operation.
+        need(self.base.lib.csops(actor[0],5,value,20)==0,'macos_mapped_code_unavailable')
+        need(self.processes.process(actor[0])==actor,'macos_service_process_changed')
+        return bytes(value)  # Private memory only; no mapped-code digest output.
+
+    def argv(self, actor):
+        need(self.processes.process(actor[0])==actor,'macos_service_process_changed')
+        mib=(C.c_int*3)(1,49,actor[0]) # CTL_KERN, KERN_PROCARGS2
+        buffer=C.create_string_buffer(2*1024*1024);size=C.c_size_t(len(buffer))
+        need(self.base.lib.sysctl(mib,3,buffer,C.byref(size),None,0)==0 and 4<size.value<=len(buffer),
+             'macos_service_arguments_unavailable')
+        argc=int.from_bytes(buffer.raw[:4],sys.byteorder,signed=True)
+        need(0<argc<=4096,'macos_service_arguments_unavailable')
+        raw=buffer.raw[:size.value];end=raw.find(b'\0',4)
+        need(end>4,'macos_service_arguments_unavailable')
+        executable=raw[4:end];offset=end
+        while offset<len(raw)and raw[offset]==0:offset+=1
+        arguments=[]
+        for _ in range(argc):
+            end=raw.find(b'\0',offset);need(end>=offset,'macos_service_arguments_unavailable')
+            arguments.append(raw[offset:end]);offset=end+1
+        need(self.processes.process(actor[0])==actor,'macos_service_process_changed')
+        return executable,tuple(arguments) # Never expose env, argv or their hashes.
+
+
+@dataclass(frozen=True)
+class Domain:
+    kind:str
+    uid:int
+    rows:list # Private native dictionary objects, never serialize this object.
+
+
+@dataclass(frozen=True)
+class Volume:
+    filesystem:tuple
+    readonly_root_snapshot:bool
+    authenticated_root_policy:bool
+    device:int
+    standard_policy:bool
+
+    @property
+    def source_eligible(self):
+        # Apple documents authenticated-root as boot-time SSV enforcement. This
+        # is the observed kernel policy+mount precondition, not a new seal check.
+        return self.readonly_root_snapshot and self.authenticated_root_policy and self.standard_policy
+
+    def public(self):
+        return {'rootMount':'readonly_apfs_snapshot'if self.readonly_root_snapshot else'unqualified',
+                'authenticatedRootPolicy':'enabled'if self.authenticated_root_policy else'disabled',
+                'systemIntegrityPolicy':'standard'if self.standard_policy else'unqualified'}
+
+
+@dataclass(frozen=True)
+class _Source:
+    path:Path
+    identity:tuple
+    label:str
+    executable:Path
+    arguments:tuple
+    uid:int|None
+    origin:str
+    transactions:bool
+
+
+class Catalog:
+    """Actual protected source files only; no caller-supplied approval booleans."""
+    _DIRECTORIES=(('/System/Library/LaunchDaemons','system_daemon'),
+                  ('/System/Library/LaunchAgents','system_agent'))
+    def __init__(self,volume,ordinary_uid):
+        need(type(volume)is Volume and volume.source_eligible,'macos_system_source_volume_unqualified')
+        self.volume,self.ordinary_uid=volume,ordinary_uid;self.sources={};self.directories=[]
+        for name,origin in self._DIRECTORIES:
+            directory=Path(name);before=directory.lstat()
+            need(stat.S_ISDIR(before.st_mode)and before.st_uid==0 and not before.st_mode&0o022
+                 and before.st_dev==volume.device,'macos_service_source_directory_unqualified')
+            files=list(directory.iterdir())
+            need(len(files)<=MAX_SERVICES,'macos_service_source_overflow')
+            for path in files:
+                if path.suffix!='.plist':continue
+                raw,identity=self._read(path)
+                try:value=plistlib.loads(raw)
+                except (ValueError,TypeError):raise ServiceUnavailable('macos_service_source_invalid')from None
+                if type(value)is not dict:raise ServiceUnavailable('macos_service_source_invalid')
+                label=value.get('Label');arguments=value.get('ProgramArguments')
+                executable=value.get('Program')
+                need(type(label)is str and label and label not in self.sources,'macos_service_source_invalid')
+                if arguments is None and type(executable)is str:arguments=[executable]
+                need(type(arguments)is list and 0<len(arguments)<=4096 and all(type(a)is str for a in arguments),
+                     'macos_service_source_invalid')
+                if executable is None:executable=arguments[0]
+                need(type(executable)is str and executable.startswith('/'),'macos_service_source_invalid')
+                username=value.get('UserName')
+                if username is None:uid=0 if origin=='system_daemon'else None
+                else:
+                    need(type(username)is str,'macos_service_source_invalid')
+                    try:uid=pwd.getpwnam(username).pw_uid
+                    except KeyError:raise ServiceUnavailable('macos_service_source_account_unavailable')from None
+                self.sources[label]=_Source(path,identity,label,Path(executable),tuple(a.encode()for a in arguments),
+                    uid,origin,value.get('EnableTransactions')is True or value.get('EnablePressuredExit')is True)
+            need(generation(directory.lstat())==generation(before),'macos_service_source_changed')
+            self.directories.append((directory,generation(before)))
+
+    def _read(self,path):
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+        try:
+            before=os.fstat(fd)
+            need(stat.S_ISREG(before.st_mode)and before.st_uid==0 and before.st_nlink==1
+                 and not before.st_mode&0o022 and before.st_dev==self.volume.device and 0<before.st_size<=1048576,
+                 'macos_service_source_unqualified')
+            raw=os.read(fd,before.st_size+1)
+            need(len(raw)==before.st_size and generation(os.fstat(fd))==generation(before),
+                 'macos_service_source_changed')
+            return raw,generation(before)
+        finally:os.close(fd)
+
+    def match(self,row,actor,native,*,domain):
+        source=self.sources.get(row['Label'])
+        need(source is not None,'macos_loaded_service_source_unmatched')
+        _,identity=self._read(source.path)
+        need(identity==source.identity,'macos_service_source_changed')
+        need(type(domain)is Domain and domain.kind in {'system','caller_user'}and type(domain.uid)is int,
+             'macos_service_domain_invalid')
+        if source.origin=='system_daemon':
+            need(domain.kind=='system','macos_service_source_domain_unqualified')
+            uid=source.uid
+        else:
+            need(source.origin=='system_agent'and domain.kind=='caller_user'and domain.uid>=501
+                 and(source.uid is None or source.uid==domain.uid),'macos_service_source_domain_unqualified')
+            uid=domain.uid
+        need(actor[1]==uid and actor[2]==1,'macos_service_account_or_parent_unqualified')
+        # Public source argv and actual process argv are compared only in memory.
+        before=source.executable.stat()
+        need(stat.S_ISREG(before.st_mode)and before.st_uid==0 and not before.st_mode&0o022
+             and before.st_dev==self.volume.device,'macos_service_executable_unqualified')
+        executable,arguments=native.argv(actor)
+        need(executable==os.fsencode(str(source.executable)) and arguments==source.arguments,
+             'macos_service_arguments_unqualified')
+        if 'Program'in row:need(row['Program']==str(source.executable),'macos_loaded_service_source_unmatched')
+        if 'ProgramArguments'in row:
+            need(type(row['ProgramArguments'])is list and tuple(os.fsencode(a)for a in row['ProgramArguments'])==source.arguments,
+                 'macos_loaded_service_source_unmatched')
+        need(generation(source.executable.stat())==generation(before),'macos_service_executable_changed')
+        return source
+
+    def stable(self):
+        return all(generation(path.lstat())==identity for path,identity in self.directories)
+
+
+def review(processes,domains,catalog,native,*,ordinary_uid,observer):
+    """Join real getters. Positive flags are computed; no name/prefix allowlist.
+
+    observer is the exact source-owned helper actor, not an accepted public DTO.
+    Untracked services, unmatched XPC/UI source or missing user domains remain
+    finite blockers until those source/activity cases are natively qualified.
+    """
+    need(type(processes)is dict and type(domains)is list,'macos_service_census_invalid')
+    active={};domain_keys=set();reasons=set();reports=[]
+    for domain in domains:
+        need(type(domain)is Domain and domain.kind in {'system','caller_user'}and type(domain.uid)is int,
+             'macos_service_domain_invalid')
+        key=(domain.kind,domain.uid);need(key not in domain_keys,'macos_service_domain_duplicate');domain_keys.add(key)
+        for row in domain.rows:
+            need(type(row)is dict and type(row.get('Label'))is str,'macos_service_dictionary_unqualified')
+            pid=row.get('PID',0)
+            need(type(pid)is int and 0<=pid<2**31,'macos_service_dictionary_unqualified')
+            if pid:
+                if pid in active:reasons.add('loaded_service_pid_ambiguous')
+                active.setdefault(pid,(row,domain))
+    if ('system',0)not in domain_keys:reasons.add('system_service_domain_unobserved')
+    required={actor[1]for actor,_ in processes.values()if actor[1]>=501}
+    if any(('caller_user',uid)not in domain_keys for uid in required):reasons.add('user_service_domain_unobserved')
+    for pid,(actor,original_role)in sorted(processes.items()):
+        role='unresolved';reason='loaded_service_unmatched';activity='unavailable'
+        if original_role in {'protected_runtime','installer'}:
+            role=original_role;reason=original_role+'_activity_unqualified'
+        try:
+            if original_role=='protected_runtime':raise ServiceUnavailable('protected_runtime_present')
+            if actor==observer:
+                need(original_role=='unmanaged','macos_observer_role_unqualified')
+                role='verified_probe';reason='source_owned_observer'
+            else:
+                need(pid in active,'macos_loaded_service_unmatched')
+                before=native.image(actor)
+                row,domain=active[pid]
+                source=catalog.match(row,actor,native,domain=domain)
+                need(native.processes.code(actor)=='apple_valid','macos_service_code_unqualified')
+                activity=native.processes.activity(actor)
+                need(activity=='tracked_clean_idle_exit','macos_service_activity_unqualified')
+                need(native.image(actor)==before,'macos_service_executable_changed')
+                if original_role=='installer':
+                    # Installer service presence alone is not active install.
+                    # It must independently opt into tracked clean idle exit.
+                    need(source.transactions,'macos_installer_transactions_unqualified')
+                    role='idle_installer_service'
+                else:role='idle_system_service'
+                reason='source_and_kernel_clean'
+        except (ServiceUnavailable,OSError,ValueError,TypeError,KeyError)as error:
+            if isinstance(error,ServiceUnavailable):reason=str(error)
+            else:reason='macos_service_evidence_unavailable'
+            reasons.add(reason)
+        reports.append({'pid':actor[0],'uid':actor[1],'birth':f'darwin:{actor[3]}:{actor[4]}',
+                        'role':role,'reason':reason,'activity':activity})
+    if set(active)-set(processes):reasons.add('loaded_service_process_changed')
+    if not catalog.stable():reasons.add('macos_service_source_changed')
+    return {'visibilityComplete':not reasons,'processes':reports,'reasons':sorted(reasons),
+            'protectedProcesses':[r['pid']for r in reports if r['role']=='protected_runtime'],
+            'installerBlockers':[r['pid']for r in reports if r['role']=='installer'],
+            'runningJobs':[r for r in reports if r['role']not in {'verified_probe','idle_system_service','idle_installer_service'}]}
+
+
+def capability_facts(base,native,*,machine,boot,uid,principal):
+    """Read-only native API feasibility facts, never an idle admission.
+
+    Even a healthy response makes no service/installer/runtime claim. Native
+    dictionaries stay in this process; only finite counts/shapes escape.
+    """
+    from uuid import UUID
+    need(type(machine)is str and str(UUID(machine))==machine
+         and type(boot)is str and str(UUID(boot))==boot
+         and type(uid)is int and uid>=501 and type(principal)is str and principal,
+         'macos_service_target_invalid')
+    need(pwd is not None and callable(getattr(os,'geteuid',None)),
+         'macos_service_account_changed')
+    need(os.geteuid()==uid and pwd.getpwuid(uid).pw_name==principal,
+         'macos_service_account_changed')
+    need(base.machine()==machine and base.boot()[0]==boot,'macos_service_target_changed')
+    domains=[]
+    for kind in ('system','caller_user'):
+        try:
+            domain=native.domain(kind)
+            # Counts expose no label, path, argument, environment or derived
+            # content, including dictionary contents on a malformed result.
+            need(type(domain)is Domain and domain.kind==kind and domain.uid==uid,
+                 'macos_service_domain_unavailable')
+            domains.append({'domain':kind,'state':'available','jobs':len(domain.rows),
+                            'activePids':sum(type(row.get('PID'))is int and row['PID']>0 for row in domain.rows),
+                            'programFields':sum('Program'in row or'ProgramArguments'in row for row in domain.rows)})
+        except (ServiceUnavailable,OSError,ValueError,TypeError,KeyError,AttributeError):
+            domains.append({'domain':kind,'state':'unavailable'})
+    try:volume=native.volume().public()
+    except (ServiceUnavailable,OSError,ValueError,TypeError,AttributeError):volume={'state':'unavailable'}
+    need(os.geteuid()==uid and pwd.getpwuid(uid).pw_name==principal
+         and base.machine()==machine and base.boot()[0]==boot,'macos_service_target_changed')
+    return {'schemaVersion':1,'state':'diagnostic','machine':machine,'boot':boot,'uid':uid,
+            'nativeQualified':False,'idleAuthority':False,'domains':domains,'volume':volume}
+
+
+def capability_source(*,machine,boot,uid,principal):
+    """Fixed ordinary-guest getter packet; no arbitrary path/command API."""
+    need(os.name=='posix' and hasattr(os,'O_NOFOLLOW'),
+         'macos_service_source_unavailable')
+    from uuid import UUID
+    need(type(machine)is str and str(UUID(machine))==machine
+         and type(boot)is str and str(UUID(boot))==boot
+         and type(uid)is int and uid>=501 and type(principal)is str and principal,
+         'macos_service_target_invalid')
+    captured={}
+    for name in ('tart_macos_probe.py','tart_macos_service_census.py'):
+        path=Path(__file__).with_name(name);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+        try:
+            before=os.fstat(fd)
+            need(stat.S_ISREG(before.st_mode)and before.st_nlink==1 and 0<before.st_size<=262144,
+                 'macos_service_source_unavailable')
+            raw=os.read(fd,before.st_size+1)
+            need(len(raw)==before.st_size and generation(os.fstat(fd))==generation(before),
+                 'macos_service_source_changed')
+            captured[name]=raw.decode('utf-8','strict')
+        finally:os.close(fd)
+    need(_EXECUTING_CODE==compile(captured['tart_macos_service_census.py'],str(Path(__file__)),'exec',dont_inherit=True),
+         'macos_service_source_changed')
+    config={'machine':machine,'boot':boot,'uid':uid,'principal':principal}
+    return ('import json,sys,types\n'
+        '_probe=types.ModuleType("_macos_service_probe");sys.modules[_probe.__name__]=_probe\n'
+        + 'exec(compile('+repr(captured['tart_macos_probe.py'])+',"<fixed-probe>","exec"),_probe.__dict__)\n'
+        + '_service=types.ModuleType("_macos_service_getter");sys.modules[_service.__name__]=_service\n'
+        + 'exec(compile('+repr(captured['tart_macos_service_census.py'])+',"<fixed-service>","exec"),_service.__dict__)\n'
+        + 'try:\n'
+        + ' _service.need(sys.platform=="darwin" and len(sys.argv)==1,"macos_service_guest_required")\n'
+        + ' _base=_probe.Native();_native=_service.NativeServices(_base,None)\n'
+        + ' _result=_service.capability_facts(_base,_native,**'+repr(config)+')\n'
+        + 'except Exception:\n _result={"state":"blocked","reason":"macos_service_getter_unavailable"}\n'
+        + 'print(json.dumps(_result,sort_keys=True))\n'
+        + 'raise SystemExit(0 if _result.get("state")=="diagnostic" else 3)\n').encode('utf-8')

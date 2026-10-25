@@ -95,7 +95,7 @@ c=t.SshConfig(root=r,hosts={
 try:t.build_ssh_argv(c,'a')
 except t.SshConfigError:print('guarded')
 '''
-        result = subprocess.run([sys.executable, '-I', '-c', program, str(source), str(self.root)],
+        result = subprocess.run([sys.executable, '-I', '-B', '-c', program, str(source), str(self.root)],
                                 cwd=self.root, capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), 'guarded')
@@ -127,7 +127,7 @@ try:
  print('reused')
 finally:f.doCleanups()
 '''
-        result = subprocess.run([sys.executable, '-I', '-c', program, str(source)],
+        result = subprocess.run([sys.executable, '-I', '-B', '-c', program, str(source)],
                                 cwd=self.root, capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), 'reused')

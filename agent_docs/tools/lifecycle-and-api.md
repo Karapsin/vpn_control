@@ -595,9 +595,32 @@ consumer list to make an unknown mapping appear qualified.
 The runner retains each test's duration and outcome privately, with aggregate
 counts in its result. Only reviewed source-bound independent groups run concurrently,
 with at most two local workers and separate immutable fixture copies. All other
-modules run in one serialized group. Fixture/import errors, skips, subtests and
-incomplete children remain visible. Windows named checks use serial stdout timing.
-This bounds local test execution; it does not change remote agent concurrency.
+modules of one runner command run in one serialized group. Fixture/import errors,
+skips, subtests and incomplete children remain visible. Windows named checks use
+serial stdout timing. This bounds local test execution; it does not change remote
+agent concurrency.
+
+Managed `run_checks` (prepush, and focused `agent_tools`) plans the selected
+modules as separately bounded commands: the SSH-close gate alone first as plain
+`unittest`, then the two hosted CI shards from `shard_selection` (sorted and
+alternating over the whole selection, duplicates refused) without the gate, each
+shard in its own runner. Every command has the 50-minute managed bound, and a
+failed gate stops the commands planned after it. On timeout `_run` sends SIGTERM,
+so the runner's cancellation handler stops its worker sessions before the next
+command starts; `_run` keeps draining output and sends SIGKILL only after a
+30-second grace (or the command's shorter bound). The result still reports no
+return code and only the original timeout, even when drained text output does
+not decode. A timed-out, unparsed or import-failed command
+(`unittest.loader._FailedTest`) records no failed modules;
+`run_checks(level="failed")` reruns it once without removed modules and never
+splits it recursively: the gate alone when it was recorded, then the remaining
+modules by index parity in the sorted union of the current selection and those
+modules. While every remaining module is still selected, each group is the
+row's part of one current CI shard, so for an unchanged selection a recorded
+shard reruns as itself; a changed selection regroups it. A row whose modules
+were all removed, including a single-module row, is skipped. Regrouping two or
+more non-gate modules runs the selector once per pass, so a selector refusal
+blocks that pass with the `agent-test-selection` blocker.
 
 The complete local pre-push tier is documented in `agent_docs/test-matrix.md` and is also encoded by `run_checks(level="prepush")`.
 

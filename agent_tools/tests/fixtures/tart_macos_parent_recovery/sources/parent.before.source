@@ -1,0 +1,204 @@
+"""SOURCE ONLY: one original normal lease, qualified wake, durable PUBLIC136.
+
+No ordinary credential reader/once unlock/renewal/replacement/power. This whole
+parent runs under its original detached durable host owner in the selected
+RUN's jobs root; client death cannot drop its owner or retained stdout/stderr.
+"""
+import argparse,ast,base64,builtins,hashlib,json,os,sys,time,types
+from contextlib import ExitStack
+from pathlib import Path
+EXECUTING=sys._getframe().f_code
+PROJECT=Path(__file__).resolve().parents[3];sys.path.insert(0,str(PROJECT))
+from agent_tools.source_module_loader import SourceSession
+FIXTURE='tart-macos-independent-observer-namespace-v12'
+PUBLIC='07110b57-2828-4f20-a0cc-b8caea05c334';LEASE='847bc27d-4436-4a16-8d81-e79e2808801a'
+PARENT='ee3822b0-89a4-58a2-a778-dd37c970b571';WAKE='084e1c45-0468-58ca-9922-71a5fb523d73'
+PURPOSE='native_macos_public_parent_v12'
+WAKE_FILE='macos-known-session-wake-review.inert.py';WAKE_SHA='aa2d0429e2c83d7e46d33fbc85dc7a07b3f027209f785c92e26f4d4cf048dfac'
+CHILD_FILE='macos-v12-durable-controller.inert.py';CHILD_SHA='f9dcfe4e89de24ed55e0c21fede28e61e5bad187ea0d085662aa9dbf9108fca7'
+CAPTURE_FILE='macos-v12-public-rpc-capture.inert.py';CAPTURE_SHA='387919a86e815bfb879be04c280db870a64ca09fd65931dace82b51d6d113b36'
+NAMES=('readiness_tart_macos_registry','readiness_fixture_registry','readiness_tart_macos','readiness_tart_macos_unlock','readiness_tart_macos_wake','readiness_qemu_jobs','private_inventory_lock','durable_remote_job','readiness_lease_workflow','readiness_tart_macos_lease_executor','readiness_tart_macos_lease_qualification','readiness_tart_macos_lease_bridge','readiness_tart_macos_session','readiness_tart_macos_session_stream')
+p=argparse.ArgumentParser();p.add_argument('--target',required=True);p.add_argument('--fixture-id',required=True);p.add_argument('--operation-id',required=True);p.add_argument('--lease-operation-id',required=True);args=p.parse_args()
+def need(value,reason):
+ if not value:raise RuntimeError(reason)
+need(args.fixture_id==FIXTURE and args.operation_id==PARENT and args.lease_operation_id==LEASE,'parent_explicit_original_changed')
+sources=SourceSession(PROJECT/'agent_tools','readiness_tart_macos_registry');R=sources.module
+modules={name:sources.load(name)for name in NAMES};F=modules['readiness_fixture_registry'];L=modules['readiness_lease_workflow'];J=modules['durable_remote_job'];P=modules['private_inventory_lock'];protocol=modules['readiness_qemu_jobs']
+raw=Path(__file__).read_bytes();need(EXECUTING==compile(raw,__file__,'exec',dont_inherit=True),'parent_executing_source_changed')
+with ExitStack()as held:
+ held.callback(sources.close)
+ own=held.enter_context(R.PublicProof(Path(__file__).resolve(),{'generation':list(P._generation(Path(__file__).lstat())),'sha256':hashlib.sha256(raw).hexdigest()},private_file=False))
+ descriptor,pin=F._json(PROJECT/'.rag_index/readiness-fixtures'/(FIXTURE+'.json'))
+ need(descriptor['provider']=='tart-macos'and args.target=='tart:'+descriptor['binding']['vm_name'],'parent_selected_target_changed')
+ runproof=held.enter_context(R.PublicProof(Path(descriptor['originalRun']['path']),descriptor['originalRun']['pin']));run=runproof.value()
+ lifecycle=Path(descriptor['originalRun']['path']).parent;jobroot=lifecycle/'jobs';generation=tuple(run['jobRootGeneration']);binding=J.MachineBinding.from_dict(run['hostBinding'])
+ parent_intent=J._intent(jobroot/PARENT,PARENT,binding);need(parent_intent['purpose']==PURPOSE,'parent_original_program_changed')
+ owner=J._record(jobroot/PARENT/'owner.json');J._correlate(owner,parent_intent);actor=J._owner_identity(owner)
+ need(actor['pid']==os.getppid()and J._birth(actor['pid'])==actor['birth'],'parent_not_original_owner_child')
+ index_path=lifecycle/('native-unlock-controller-'+PARENT+'.json');index,index_pin=F._json(index_path)
+ need(type(index.get('schemaVersion'))is int and index['schemaVersion']==1 and index['operationId']==PARENT and index['phase']=='parent'and index['fixtureId']==FIXTURE and index['target']==args.target and index['sourceSha256']==hashlib.sha256(raw).hexdigest()and index['programSha256']==parent_intent['programSha256']and index['hostBinding']==binding.__dict__ and index['jobRootGeneration']==list(generation)and index['originalRunOperationId']==run['operationId']and index['leaseOperationId']==LEASE and index['replayAllowed']is False,'parent_original_controller_index_changed')
+ index_held=held.enter_context(R.PublicProof(index_path,index_pin))
+ directory=held.enter_context(P.Directory(Path(__file__).parent))
+ producers={}
+ for name,sha in ((WAKE_FILE,WAKE_SHA),(CHILD_FILE,CHILD_SHA),(CAPTURE_FILE,CAPTURE_SHA)):
+  item=held.enter_context(P.Snapshot(directory,name));need(hashlib.sha256(item.body).hexdigest()==sha,'parent_fixed_producer_changed');producers[name]=item
+ folder=lifecycle/('native-v12-public-parent-'+PARENT);folder.mkdir(mode=0o700);out=held.enter_context(P.Directory(folder));deadline=time.monotonic()+600
+ stage={'value':'factory'};sequence=0;native_callbacks=[];helper_callbacks=[];dispatches=[];acquired=False;cancelled=False;wake_attempted=False;public_attempted=False;phase_failure=None
+ capture=types.ModuleType('_parent_public_rpc_capture');exec(compile(producers[CAPTURE_FILE].body,str(directory.path/CAPTURE_FILE),'exec',dont_inherit=True),capture.__dict__)
+ def guard():
+  sources.guard();own.guard();runproof.guard();index_held.guard();directory.guard();out.guard()
+  for item in producers.values():item.guard()
+  need(time.monotonic()<deadline,'parent_total_deadline');need(os.getppid()==actor['pid']and J._birth(actor['pid'])==actor['birth'],'parent_original_owner_lost')
+ def record(name,value):
+  body=value if type(value)is bytes else json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
+  need(len(body)<=1048576,'parent_record_limit')
+  fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=out.fd)
+  with os.fdopen(fd,'wb')as stream:stream.write(body);stream.flush();os.fsync(stream.fileno())
+  os.fsync(out.fd)
+ def label(kind):
+  global sequence
+  sequence+=1;need(sequence<=512,'parent_actual_rpc_cap');return 'call-'+str(sequence)+'-'+kind
+ def closure():
+  guard();return {'sources':[{'path':path,'sha256':hashlib.sha256(body).hexdigest()}for path,body in sorted(sources.cache.values())],'privateProducers':{name:hashlib.sha256(item.body).hexdigest()for name,item in producers.items()},'originalParentOwner':actor}
+ original_native=R.MacCustody._native_call
+ def captured_native(c,argv,payload,call_deadline):
+  guard();need((c.binding.vm_name,c.binding.machine,c.run_intent['operationId'])==(descriptor['binding']['vm_name'],descriptor['binding']['machine'],run['operationId']),'parent_rpc_wrong_selected_target')
+  need(type(payload)is bytes and 0<len(payload)<=262144,'parent_rpc_public_payload_limit');canonical,_=protocol.stdin_command(payload.decode())
+  need(tuple(argv)==(c.binding.tart_binary,'exec','-i',c.binding.vm_name,c.binding.guest_python,*canonical[1:]),'parent_rpc_verified_stdin_changed')
+  name=label(stage['value']);record(name+'.request.stdin',payload);record(name+'.request.json',{'target':args.target,'stage':stage['value'],'argv':list(argv),'sourceSha256':hashlib.sha256(payload).hexdigest(),'scope':'fixed held producer public RPC only; excludes VNC/privatecredentials'})
+  with capture.PublicRpcCapture(out,name)as output:
+   guard();reply,callback=output.run(argv,payload,deadline=min(deadline,call_deadline,time.monotonic()+89),birth=J._birth,parent=lambda pid:R._parent(pid,time.monotonic()+2))
+  native_callbacks.append(callback);guard();return reply
+ R.MacCustody._native_call=captured_native;held.callback(setattr,R.MacCustody,'_native_call',original_native)
+ record('driver.source.py',raw);record('intent.json',{'schemaVersion':1,'operationId':PARENT,'target':args.target,'fixtureId':FIXTURE,'publicOperationId':PUBLIC,'leaseOperationId':LEASE,'wakeOperationId':WAKE,'ttlSeconds':180,'acquireMaximum':1,'cancelMaximum':1,'wakeInputGroupMaximum':1,'ordinaryCredentialReaderForbidden':True,'onceUnlockForbidden':True,'parentPurpose':PURPOSE,'originalOwner':actor,'maximumParentSeconds':600,'genericCapabilitiesActivated':False})
+ record('source-capsule-before.json',closure())
+ def active(value):
+  return type(value)is dict and type(value.get('schemaVersion'))is int and value['schemaVersion']==1 and value.get('fixtureId')==FIXTURE and value.get('operationId')==LEASE and value.get('provider')=='tart-macos'and value.get('qualificationScope')=='registered_guest_executor'and value.get('ok')is True and value.get('state')==value.get('nativeState')=='active'and value.get('jobState')=='running'and value.get('reason')=='original_lease_owner_running'and value.get('replayAllowed')is False
+ def terminal(value):
+  return type(value)is dict and value.get('operationId')==LEASE and value.get('fixtureId')==FIXTURE and value.get('provider')=='tart-macos'and value.get('ok')is True and value.get('jobState')=='terminal'and value.get('restored')is True and value.get('state')in{'cancelled','expired'}and value.get('replayAllowed')is False
+ facade_calls=0;acquire_mono=None;acquire_wall=None
+ def remaining():
+  now_mono=time.monotonic();now_wall=time.time();need(acquire_mono is not None and now_mono>=acquire_mono and now_wall>=acquire_wall,'parent_lease_clock_reversed')
+  return 180-max(now_mono-acquire_mono,now_wall-acquire_wall)
+ def facade(action):
+  global facade_calls
+  guard();stage['value']='lease';facade_calls+=1;inputs={'fixtureId':FIXTURE,'operationId':LEASE}
+  if action=='acquire':inputs['ttlSeconds']=180
+  stem='facade-'+str(facade_calls)+'-'+action;record(stem+'.request.json',{'action':action,'inputs':inputs})
+  result=L.workflow(PROJECT,action,inputs)
+  record(stem+'.reply.json',result) # actual callback BEFORE the parent closing guard
+  guard();return result
+ # The exact retained aa2d program gets the same held source modules. Only its
+ # SourceSession import is injected locally; no canonical module/global change.
+ # Its executing-code/file check and actual wake/source/account guards remain.
+ def wake_with_held_session():
+  global wake_attempted
+  need(not wake_attempted,'parent_wake_replay_forbidden')
+  wake_module=modules['readiness_tart_macos_wake'];alive={'value':True}
+  class SessionView:
+   module=wake_module
+   cache=sources.cache
+   def load(self,name):
+    need(alive['value']and name in NAMES,'parent_wake_dependency_changed');guard();return modules[name]
+   def guard(self):need(alive['value'],'parent_wake_session_closed');guard()
+   def close(self):need(alive['value'],'parent_wake_session_closed') # parent ExitStack alone owns actual close
+  def fixed_session(path,entry):
+   need(Path(path)==PROJECT/'agent_tools'and entry=='readiness_tart_macos_wake'and alive['value'],'parent_wake_session_target_changed');guard();return SessionView()
+  imported=types.ModuleType('agent_tools.source_module_loader');imported.SourceSession=fixed_session
+  original_import=builtins.__import__
+  def fixed_import(name,globals=None,locals=None,fromlist=(),level=0):
+   if name=='agent_tools.source_module_loader':
+    need(level==0 and tuple(fromlist)==('SourceSession',),'parent_wake_import_shape_changed');return imported
+   return original_import(name,globals,locals,fromlist,level)
+  wake_attempted=True
+  oldargv=sys.argv[:];sys.argv=[str(directory.path/WAKE_FILE),'--target',args.target,'--fixture-id',FIXTURE,'--operation-id',WAKE,'--benchmark-operation-id',PUBLIC,'--lease-operation-id',LEASE]
+  try:
+   stage['value']='public';code=compile(producers[WAKE_FILE].body,str(directory.path/WAKE_FILE),'exec',dont_inherit=True)
+   namespace={'__name__':'__main__','__file__':str(directory.path/WAKE_FILE),'__builtins__':{**vars(builtins),'__import__':fixed_import}}
+   guard();exec(code,namespace);guard()
+  finally:alive['value']=False;sys.argv=oldargv
+ def child(action):
+  guard();name=label('public');argv=[str(PROJECT/'.agent_venv/bin/python'),'-B',str(directory.path/CHILD_FILE),'--phase','public','--target',args.target,'--fixture-id',FIXTURE,'--operation-id',PUBLIC,'--lease-operation-id',LEASE,'--action',action]
+  record(name+'.request.json',{'scope':'exact held PUBLIC controller CLI only','argv':argv,'action':action,'originalOperationId':PUBLIC,'driverSha256':CHILD_SHA})
+  with capture.PublicRpcCapture(out,name)as output:
+   guard();result,callback=output.run(argv,b'',deadline=min(deadline,time.monotonic()+30),birth=J._birth,parent=lambda pid:R._parent(pid,time.monotonic()+2))
+  helper_callbacks.append(callback);record(name+'.result.json',{'returncode':result.returncode,'callback':callback});guard()
+  need(result.returncode==0 and not result.stderr,'parent_public_controller_client_failed')
+  value=json.loads(result.stdout);need(type(value)is dict and value.get('replayAllowed')is False,'parent_public_controller_reply_invalid');return value
+ def public_terminal_status():return J.observe(jobroot,PUBLIC,binding,generation=generation)
+ def original_evidence():
+  stage['value']='lease';state,_=L._paths(PROJECT,FIXTURE,create=False);admission=L._external_admission(J._record(state/(LEASE+'.json')),FIXTURE,LEASE)
+  original=F.lease_executor_from_snapshot(PROJECT,admission['executor'])
+  try:
+   producer=lifecycle/'native-iopm-v2-qualification-64faf820-ed64-44fc-a4f0-bfb8f31c2241/cancel-death-and-original-evidence-v2.inert.py'
+   evidence=held.enter_context(R.PublicProof(producer,{'generation':list(P._generation(producer.lstat())),'sha256':'e0837869809c8a31f03d7db33028467581a37126227964dcd8fbfd343911ff19'}))
+   body=next(node.value.value for node in ast.parse(evidence.body).body if isinstance(node,ast.Assign)and any(isinstance(name,ast.Name)and name.id=='READ_ORIGINAL'for name in node.targets))
+   bridge=modules['readiness_tart_macos_lease_bridge'];source=bridge.observer_source(original._capsule(),'status',expected_sha256=admission['executor']['capsule']['pin']['sha256'],operation=LEASE)
+   end=b'raise SystemExit(main())\n';need(source.endswith(end),'parent_original_evidence_shape_changed');source=source[:-len(end)]+body.encode();argv,payload=protocol.stdin_command(source.decode())
+   record('lease-original-evidence.source.py',source);record('lease-original-evidence.request.json',{'operationId':LEASE,'target':args.target,'sourceSha256':hashlib.sha256(source).hexdigest(),'originalCapsule':admission['executor']['capsule'],'literalSha256':hashlib.sha256(evidence.body).hexdigest()})
+   guard()
+   with original.custody.operator(deadline=time.monotonic()+30):reply=R.MacCustody.ordinary_guest_call(original.custody,original.custody.binding,argv,payload,time.monotonic()+30)
+   record('lease-original-evidence.stdout.json',reply.stdout);record('lease-original-evidence.stderr.txt',reply.stderr);record('lease-original-evidence.result.json',{'returncode':reply.returncode})
+   guard();need(reply.returncode==0 and not reply.stderr,'parent_original_evidence_failed');value=json.loads(reply.stdout)
+   status=value['status'];collected=value['terminalStatus'];receipt=status['terminal'];acquired_value=value['acquired'];lease_terminal=value['leaseTerminal']
+   need(value['actualOwnerPresent']is False and value['nativeOwnerAbsent']is True and status['state']==collected['state']=='terminal'and receipt==collected['terminal']and receipt['streamsClosed']is True and receipt['exitCode']==0,'parent_original_terminal_or_absence_unproved')
+   need(acquired_value['operationId']==lease_terminal['operationId']==LEASE and acquired_value['leaseOwner']==lease_terminal['leaseOwner']and acquired_value['binding']==status['binding']==collected['binding']==lease_terminal['binding']and lease_terminal['restored']is True and lease_terminal['state']in{'expired','cancelled'},'parent_original_lease_mismatch')
+   for stream in('stdout','stderr'):
+    raw_stream=base64.b64decode(value[stream],validate=True);metadata=receipt[stream]
+    need(metadata['overflow']is False and metadata['retainedBytes']==metadata['totalBytes']==len(raw_stream)and metadata['sha256']==hashlib.sha256(raw_stream).hexdigest(),'parent_original_stream_incomplete')
+    record('lease-original-full-'+stream+'.bin',raw_stream)
+   record('lease-original-full-closure.json',value);return value
+  finally:original.custody.close()
+ cleanup=None;public_collected=None
+ try:
+  guard();acquire_mono=time.monotonic();acquire_wall=time.time();record('acquire-dispatch-unknown.json',{'operationId':LEASE,'ttlSeconds':180,'monotonicBefore':acquire_mono,'wallBefore':acquire_wall,'replacementForbidden':True});acquired=True
+  value=facade('acquire')
+  while not active(value):
+   need(remaining()>=150 and value.get('nextAction',{}).get('kind')=='observe_original','parent_lease_active_or_budget_blocked');time.sleep(.2);value=facade('status')
+  need(remaining()>=150,'parent_lease_budget_insufficient');record('lease-active.json',value)
+  # Exact aa2d performs a fresh intended502/locked root observation. READY does
+  # nothing; SLEEPING permits one qualified823 Shift pair; unknown stops.
+  record('wake-original-dispatch-unknown.json',{'operationId':WAKE,'originalLeaseOperationId':LEASE,'maximumGroups':1,'expiredExceptionReused':False});wake_with_held_session()
+  wake=json.loads((lifecycle/('native-known-session-wake-'+WAKE)/'complete.json').read_bytes());record('wake-complete-association.json',wake)
+  need(wake['operationId']==WAKE and wake['after']['display']=='ready'and wake['after']['console']['uid']==502 and wake['after']['console']['locked']is True and wake['ordinaryCredentialReaderOpened']is False,'parent_wake_not_intended_ready')
+  need(remaining()>=100,'parent_public_remaining_budget_insufficient');record('public-controller-dispatch-unknown.json',{'operationId':PUBLIC,'originalLeaseOperationId':LEASE,'replacementForbidden':True});public_attempted=True
+  child('start') # Exactly one start; lostACK routes only this original status.
+  stop=time.monotonic()+150
+  while True:
+   value=child('status');status=value.get('status',{})
+   need(status.get('operationId')==PUBLIC and status.get('replayAllowed')is False,'parent_public_original_identity_changed')
+   if status.get('state')=='terminal'and J._birth(status['owner']['pid'])!=status['owner']['birth']:break
+   need(status.get('state')in{'running','terminal'}and time.monotonic()<stop,'parent_public_original_unknown');time.sleep(.25)
+  public_collected=child('collect');record('public-controller-full-collection.json',public_collected)
+  receipt=public_collected['status']['terminal'];need(receipt['exitCode']==0 and receipt['streamsClosed']is True,'parent_public_controller_failed')
+  for stream in('stdout','stderr'):
+   complete_stream=base64.b64decode(public_collected[stream],validate=True);metadata=receipt[stream]
+   need(metadata['overflow']is False and metadata['retainedBytes']==metadata['totalBytes']==len(complete_stream)and metadata['sha256']==hashlib.sha256(complete_stream).hexdigest(),'parent_public_original_streams_incomplete')
+   record('public-controller-original-'+stream+'.bin',complete_stream)
+  need(J._birth(public_collected['status']['owner']['pid'])!=public_collected['status']['owner']['birth'],'parent_public_original_owner_still_present')
+  complete=json.loads((lifecycle/('native-v12-public136-'+PUBLIC)/'complete.json').read_bytes());record('public-complete-association.json',complete)
+  need(complete['operationId']==PUBLIC and complete['checks']==136 and complete['ordinaryCredentialReaderOpened']is False and complete['observerJobsStarted']is False and complete['genericGuiCapabilityEnabled']is False,'parent_public_qualification_invalid')
+ except BaseException as error:
+  phase_failure=type(error).__name__;record('phase-unknown.json',{'failureClass':phase_failure,'originalLease':LEASE,'originalPublic':PUBLIC,'replacementForbidden':True,'ordinaryCredentialReaderOpened':False})
+ finally:
+  if acquired:
+   try:
+    stop=min(deadline-10,time.monotonic()+240)
+    while True:
+     value=facade('status')
+     if terminal(value):break
+     public_state=public_terminal_status()if public_attempted else {'state':'unsubmitted'}
+     public_closed=public_state['state']=='unsubmitted'or(public_state['state']=='terminal'and J._birth(public_state['owner']['pid'])!=public_state['owner']['birth'])
+     # No cancellation while the original PUBLIC controller is live/UNKNOWN.
+     # Let the finite original lease expire; never signal/replace that owner.
+     if active(value)and not cancelled and public_closed:
+      record('cancel-dispatch-unknown.json',{'operationId':LEASE,'maximum':1});cancelled=True;value=facade('cancel')
+      if terminal(value):break
+     need(time.monotonic()<stop and value.get('nextAction',{}).get('kind')=='observe_original','parent_original_cleanup_unknown');time.sleep(.35)
+    cleanup=original_evidence();record('lease-terminal.json',value)
+   except BaseException as error:record('cleanup-unknown.json',{'failureClass':type(error).__name__,'operationId':LEASE,'acquireReplayForbidden':True,'cancelReplayForbidden':cancelled})
+ record('native-rpc-closure.json',{'actors':[r['actor']for r in native_callbacks+helper_callbacks],'allOriginalActorsAbsent':all(J._birth(r['actor']['pid'])!=r['actor']['birth']for r in native_callbacks+helper_callbacks),'allRawEof':all(r['stdoutEof']and r['stderrEof']for r in native_callbacks+helper_callbacks),'actualDispatches':sequence})
+ record('source-capsule-closed.json',closure());guard()
+ record('complete.json',{'schemaVersion':1,'operationId':PARENT,'originalLeaseOperationId':LEASE,'originalPublicOperationId':PUBLIC,'phaseFailureClass':phase_failure,'leaseRestorationCollected':cleanup is not None,'publicControllerCollected':public_collected is not None,'acquireSubmittedOnce':acquired,'cancelSubmittedOnce':cancelled,'wakeAttemptedOnce':wake_attempted,'ordinaryCredentialReaderOpened':False,'onceUnlockSubmitted':False,'genericCapabilitiesActivated':False})
+ print(json.dumps({'operationId':PARENT,'phaseFailureClass':phase_failure,'leaseRestorationCollected':cleanup is not None,'publicControllerCollected':public_collected is not None}))
+ need(phase_failure is None and cleanup is not None and public_collected is not None,'parent_qualification_incomplete')

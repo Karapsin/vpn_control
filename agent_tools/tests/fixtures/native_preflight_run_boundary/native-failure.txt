@@ -1,0 +1,40 @@
+test_changed_bundle_and_unknown_host_never_admit (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_changed_bundle_and_unknown_host_never_admit) ... ok
+test_import_profile_verifies_bytes_bundle_and_live_host (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_import_profile_verifies_bytes_bundle_and_live_host) ... ok
+test_invalid_timeout_fails_before_any_probe_or_intent (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_invalid_timeout_fails_before_any_probe_or_intent) ... ok
+test_prepared_scheduled_fixture_checks_real_guest_result_and_rejects_wrong_endpoint (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_prepared_scheduled_fixture_checks_real_guest_result_and_rejects_wrong_endpoint) ... ok
+test_private_credential_input_is_scoped_to_exact_environment_and_vm (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_private_credential_input_is_scoped_to_exact_environment_and_vm) ... ok
+test_scheduled_static_admission_defers_dynamic_fixture_until_runner_prepares_it (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_scheduled_static_admission_defers_dynamic_fixture_until_runner_prepares_it) ... ok
+test_scheduled_static_probe_uses_local_gateway_auth_through_three_hosts (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_scheduled_static_probe_uses_local_gateway_auth_through_three_hosts) ... FAIL
+test_complete_measurement_has_vm_workflow_shape_and_exact_identity (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_complete_measurement_has_vm_workflow_shape_and_exact_identity) ... ok
+test_emitted_census_counts_qemu_executable_after_comm_rename (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_emitted_census_counts_qemu_executable_after_comm_rename) ... ok
+test_emitted_census_ignores_same_generation_kernel_threads (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_emitted_census_ignores_same_generation_kernel_threads) ... ok
+test_emitted_census_ignores_same_generation_terminal_zombies (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_emitted_census_ignores_same_generation_terminal_zombies) ... ok
+test_emitted_census_keeps_unknown_for_uninspectable_live_executable (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_emitted_census_keeps_unknown_for_uninspectable_live_executable) ... ok
+test_emitted_census_keeps_unknown_when_kernel_marker_is_unbound_or_absent (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_emitted_census_keeps_unknown_when_kernel_marker_is_unbound_or_absent) ... ok
+test_emitted_census_keeps_unknown_when_zombie_marker_or_generation_changes (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_emitted_census_keeps_unknown_when_zombie_marker_or_generation_changes) ... ok
+test_emitted_census_preserves_bounds_generation_and_positive_non_qemu_exclusion (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_emitted_census_preserves_bounds_generation_and_positive_non_qemu_exclusion) ... ok
+test_fixed_remote_program_collects_a_real_linux_proc_fixture (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_fixed_remote_program_collects_a_real_linux_proc_fixture) ... skipped 'remote /proc fixture is Linux-only'
+test_fixed_remote_program_reads_proc_and_never_accepts_caller_command (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_fixed_remote_program_reads_proc_and_never_accepts_caller_command) ... ok
+test_incomplete_inventory_or_known_qemu_read_failure_cannot_admit (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_incomplete_inventory_or_known_qemu_read_failure_cannot_admit) ... ok
+test_malformed_or_failed_output_is_unknown_not_zero (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_malformed_or_failed_output_is_unknown_not_zero) ... ok
+test_memory_parser_accepts_android_emulator_memory_mebibytes (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_memory_parser_accepts_android_emulator_memory_mebibytes) ... ok
+test_memory_parser_accepts_only_unambiguous_explicit_qemu_size_scalar (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_memory_parser_accepts_only_unambiguous_explicit_qemu_size_scalar) ... ok
+test_memory_parser_does_not_mistake_machine_for_compact_m (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_memory_parser_does_not_mistake_machine_for_compact_m) ... ok
+test_memory_parser_rejects_ambiguous_or_invalid_android_memory (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_memory_parser_rejects_ambiguous_or_invalid_android_memory) ... ok
+test_missing_required_vmstat_counter_cannot_be_fabricated_as_zero (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_missing_required_vmstat_counter_cannot_be_fabricated_as_zero) ... ok
+test_remote_non_linux_and_transport_failures_are_categorical_unknown (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_remote_non_linux_and_transport_failures_are_categorical_unknown) ... ok
+test_unparsed_live_qemu_memory_never_becomes_zero_or_a_measurement (agent_tools.tests.test_native_host_observation.NativeHostObservationTest.test_unparsed_live_qemu_memory_never_becomes_zero_or_a_measurement) ... ok
+
+======================================================================
+FAIL: test_scheduled_static_probe_uses_local_gateway_auth_through_three_hosts (agent_tools.tests.test_native_fixture_preflight.NativeFixturePreflightTest.test_scheduled_static_probe_uses_local_gateway_auth_through_three_hosts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_fixture_preflight.py", line 58, in test_scheduled_static_probe_uses_local_gateway_auth_through_three_hosts
+    self.assertIsNotNone(preflight._remote_linux_static(root, "guest", b"{}", 5))
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: unexpectedly None
+
+----------------------------------------------------------------------
+Ran 26 tests in 1.337s
+
+FAILED (failures=1, skipped=1)

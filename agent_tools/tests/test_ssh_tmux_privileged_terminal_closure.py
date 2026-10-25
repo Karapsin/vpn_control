@@ -72,6 +72,7 @@ class PrivilegedTerminalCensusTests(unittest.TestCase):
         self.assertEqual("complete-root-census", value["state"])
         self.assertIn("receiptPin", value)
         self.assertEqual(b"PRIVATE\n", captured[0]["payload"])
+        self.assertIs(True,captured[0]["private_payload"])
         with mock.patch.object(privileged.credentials, "_read_credential", return_value=b"PRIVATE\n"), \
              mock.patch.object(privileged.adapter, "McpTmuxDriver", return_value=driver), \
              mock.patch.object(privileged.ssh_transport, "connection_host", return_value=types.SimpleNamespace(password=None)), \
@@ -515,26 +516,47 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
              self.assertRaises(ValueError):
             privileged.observe(Path(self.tempdir()))
         self.assertEqual(b"PRIVATE\n", captured[0]["payload"])
+        self.assertIs(True,captured[0]["private_payload"])
 
+    @unittest.skipUnless(os.name == 'posix', 'private FD driver requires POSIX')
     def test_current_prepared_adapter_replaces_only_retired_legacy_saved_admission(self):
         """Run both real inherited _saved methods over the same prepared record."""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        job = Path(tmp.name) / privileged.CORRELATION
+        job = Path(tmp.name).resolve() / privileged.CORRELATION
         job.mkdir(mode=0o700)
         request = privileged.closure.pipe.REQUEST
-        prepared = {"request": request, "prepared": "current-86"}
+        # The current adapter keeps real private FD custody even when the
+        # public transport projection is a finite, connection-free fixture.
+        transport_v2 = {"version": 2, "purpose": "mcp-tmux-private-transport-v2", "host": "archlinux",
+                        "publicRouteSha256": "a" * 64,
+                        "privateFiles": {str(job / "inert-private-reference"): [1] * 8},
+                        "publicFiles": {str(job / "inert-public-reference"):
+                                        {"generation": [1] * 9, "sha256": "b" * 64}},
+                        "privateCustodySourceSha256": "c" * 64}
+        prepared = {"request": request, "prepared": "current-86", "transport": transport_v2}
         retired = {"request": request, "prepared": "retired-legacy"}
         session.write_once(job / "tmux-adapter-intent.json", session.canonical(prepared))
         legacy = object.__new__(old.TmuxArchDriver)
         legacy._job = lambda _: job
         legacy._snapshot = lambda _: retired
-        current = object.__new__(privileged.adapter.McpTmuxDriver)
+        current = privileged.adapter.McpTmuxDriver(Path(tmp.name))
+        self.addCleanup(current.close)
         current._job = lambda _: job
-        current._snapshot = lambda _: prepared
+        admissions = []
+        def current_snapshot(_, *, admission=False):
+            admissions.append(admission)
+            self.assertIs(admission, False)
+            return prepared
+        current._snapshot = current_snapshot
         with self.assertRaisesRegex(ValueError, "admission_changed"):
             old.TmuxArchDriver._saved(legacy, request)
         self.assertEqual((job, prepared), privileged.adapter.McpTmuxDriver._saved(current, request))
+        self.assertEqual([False], admissions)
+        self.assertEqual(1, len(current._private_owners))
+        current.close()
+        with self.assertRaisesRegex(ValueError, "transport_custody_closed"):
+            privileged.adapter.McpTmuxDriver._saved(current, request)
         config, transport = object(), {"transport": "pin"}
         driver = types.SimpleNamespace(_saved=lambda _: (job, prepared), _transport=lambda: (config, transport))
         calls = []
@@ -552,6 +574,85 @@ def _anchor(job,source,anchor): return {'pane':{'pid':777,'startTicks':1}}
             privileged.observe(Path(self.tempdir()))
         self.assertEqual("status", calls[0]["authority"]["phase"])
         self.assertEqual(prepared, calls[0]["authority"]["snapshot"])
+
+    @unittest.skipUnless(os.name == 'posix', 'private FD driver requires POSIX')
+    def test_whole_before_synthetic_driver_fails_real_private_lifecycle_current_guards_stay_strict(self):
+        path = Path(__file__).with_name("fixtures") / "ssh_tmux_private_fixture.before.source"
+        raw = path.read_bytes()
+        self.assertEqual("d128482c53ace2c674974cafeca9f8322a55e79086f7bf4edb667e340ac8db76",
+                         hashlib.sha256(raw).hexdigest())
+        module = types.ModuleType("agent_tools.tests._tmux_private_fixture_before")
+        module.__file__ = str(path)
+        exec(compile(raw, str(path), "exec"), module.__dict__)
+        method = "test_current_prepared_adapter_replaces_only_retired_legacy_saved_admission"
+        result = unittest.TestResult()
+        module.PrivilegedTerminalCensusTests(method).run(result)
+        self.assertEqual(0, len(result.failures))
+        self.assertEqual(1, len(result.errors))
+        self.assertIn("AttributeError", result.errors[0][1])
+        self.assertIn("_private_closed", result.errors[0][1])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            job = root / privileged.CORRELATION
+            job.mkdir(mode=0o700)
+            request = privileged.closure.pipe.REQUEST
+            # A legacy/forged marker must not acquire authority by using the
+            # real constructor: full public-v2 admission still runs.
+            session.write_once(job / "tmux-adapter-intent.json",
+                               session.canonical({"request": request, "prepared": "forged"}))
+            current = privileged.adapter.McpTmuxDriver(root)
+            self.addCleanup(current.close)
+            current._job = lambda _: job
+            current._snapshot = lambda _: {"request": request, "prepared": "forged"}
+            with self.assertRaisesRegex(ValueError, "legacy_transport_snapshot_blocker"):
+                current._saved(request)
+            current.close()
+            with self.assertRaisesRegex(ValueError, "transport_custody_closed"):
+                current._saved(request)
+
+    @unittest.skipUnless(os.name == 'posix', 'private no-follow fixture requires POSIX')
+    def test_whole_constructor_fixture_before_symlink_temp_root_red_current_canonical_custody_green(self):
+        path = Path(__file__).with_name('fixtures') / 'ssh_tmux_private_fixture_path.before.source'
+        raw = path.read_bytes()
+        self.assertEqual('238e53398abe51d23974f76f43de0dc60583c09ac3035f81482b48b10925d938', hashlib.sha256(raw).hexdigest())
+        module = types.ModuleType('agent_tools.tests._tmux_private_path_before')
+        module.__file__ = str(path)
+        exec(compile(raw, str(path), 'exec'), module.__dict__)
+        actual_temporary = tempfile.TemporaryDirectory
+        with actual_temporary() as temporary:
+            root = Path(temporary).resolve()
+            owned = root / 'owned'; owned.mkdir(mode=0o700)
+            alias = root / 'alias'; alias.symlink_to(owned, target_is_directory=True)
+            def aliased_temporary():
+                value = actual_temporary(dir=owned)
+                return types.SimpleNamespace(name=str(alias / Path(value.name).name), cleanup=value.cleanup)
+            method = 'test_current_prepared_adapter_replaces_only_retired_legacy_saved_admission'
+            with mock.patch.object(tempfile, 'TemporaryDirectory', side_effect=aliased_temporary):
+                result = unittest.TestResult()
+                module.PrivilegedTerminalCensusTests(method).run(result)
+                self.assertEqual(1, len(result.errors))
+                self.assertIn('NotADirectoryError', result.errors[0][1])
+                current = unittest.TestResult()
+                PrivilegedTerminalCensusTests(method).run(current)
+                self.assertTrue(current.wasSuccessful(), current.errors or current.failures)
+
+    @unittest.skipUnless(os.name == 'posix', 'private FD driver requires POSIX')
+    def test_whole_before_snapshot_fixture_keyword_mismatch_red_current_matches_real_api(self):
+        path = Path(__file__).with_name('fixtures') / 'ssh_tmux_private_fixture_signature.before.source'
+        raw = path.read_bytes()
+        self.assertEqual('f6a80e1d8e9080da3adb909210be09e65f540ea8d4f24d5c4a38e1566fdc13f0', hashlib.sha256(raw).hexdigest())
+        module = types.ModuleType('agent_tools.tests._tmux_snapshot_fixture_before')
+        module.__file__ = str(path)
+        exec(compile(raw, str(path), 'exec'), module.__dict__)
+        method = 'test_current_prepared_adapter_replaces_only_retired_legacy_saved_admission'
+        before = unittest.TestResult()
+        module.PrivilegedTerminalCensusTests(method).run(before)
+        self.assertEqual(1, len(before.errors))
+        self.assertIn('TypeError', before.errors[0][1])
+        self.assertIn("unexpected keyword argument 'admission'", before.errors[0][1])
+        current = unittest.TestResult()
+        PrivilegedTerminalCensusTests(method).run(current)
+        self.assertTrue(current.wasSuccessful(), current.errors or current.failures)
 
     def test_public_diagnostic_entry_uses_its_own_closed_factory_and_rejects_factory_drift(self):
         job, snapshot, config, transport = object(), {"prepared": "86"}, object(), {"transport": "pin"}

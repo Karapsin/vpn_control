@@ -1,0 +1,50 @@
+"""Whole before/current private native hook: unknown first actor, original status."""
+import ast,hashlib,json,os,subprocess,sys,tempfile,time,types,unittest
+from pathlib import Path
+from unittest import mock
+PROJECT=ROOT
+from agent_tools import durable_remote_job as J,private_inventory_lock as P,readiness_tart_macos_registry as R,readiness_qemu_jobs as protocol
+BASE=FIXTURE;OLD=BASE/'sources/public.before.source';NEW=BASE/'sources/public.current.source'
+assert hashlib.sha256(OLD.read_bytes()).hexdigest()=='33d0f165c5d8d7566cf90a30d7a80acc791a8e200a4482ece0c1d105b5d21bec'
+class Checks(unittest.TestCase):
+ def exercise(self,current):
+  with tempfile.TemporaryDirectory(prefix='native-attempts-')as temporary:
+   root=Path(temporary).resolve();root.chmod(0o700)
+   with P.Directory(root)as directory:
+    module=types.ModuleType('held_capture');raw=(BASE/'sources/capture.source').read_bytes();exec(compile(raw,str(BASE/'sources/capture.source'),'exec'),module.__dict__)
+    tree=ast.parse((NEW if current else OLD).read_bytes());nodes=[n for n in ast.walk(tree)if isinstance(n,ast.FunctionDef)and n.name in{'captured_native','join_native_capture','native_attempt_closed'}]
+    def need(v,r):
+     if not v:raise RuntimeError(r)
+    def record(name,value):
+     raw=value if type(value)is bytes else json.dumps(value).encode();fd=os.open(name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory.fd)
+     with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+    scope={'capture_guard':lambda:None,'need':need,'descriptor':{'binding':{'vm_name':'explicit-vm','machine':'controlled-machine'}},'protocol':protocol,'native_callbacks':[],'native_attempts':[],
+       'capture_phase':{'value':'observer'},'native_record':record,'args':types.SimpleNamespace(operation_id='controlled-original',target='tart:explicit-vm',fixture_id='controlled'),'hashlib':hashlib,
+       'capture_module':module,'capture_out':directory,'time':time,'J':J,'R':R,'sys':sys,'json':json}
+    exec(compile(ast.Module(body=nodes,type_ignores=[]),str(NEW if current else OLD),'exec'),scope)
+    c=types.SimpleNamespace(binding=types.SimpleNamespace(vm_name='explicit-vm',machine='controlled-machine',tart_binary='CONTROLLED_TART',guest_python=sys.executable),run_intent={'operationId':'2d933a39-0fb6-46a4-9fd9-02221d81c4b9'})
+    raw=b"print('original readonly reply')\n";canonical,payload=protocol.stdin_command(raw.decode());argv=['CONTROLLED_TART','exec','-i','explicit-vm',sys.executable,*canonical[1:]]
+    real=subprocess.Popen;real_birth=J._birth;children=[];first={'pid':None}
+    def launch(argv,**kw):
+     if argv[0]!='CONTROLLED_TART':return real(argv,**kw)
+     child=real(argv[4:],**kw);children.append(child)
+     if first['pid']is None:first['pid']=child.pid
+     return child
+    def birth(pid):return None if pid==first['pid']else real_birth(pid)
+    try:
+     with mock.patch.object(subprocess,'Popen',launch),mock.patch.object(J,'_birth',birth):
+      with self.assertRaises(module.CaptureUnknown):scope['captured_native'](c,argv,payload,time.monotonic()+3)
+      if current:
+       result=scope['captured_native'](c,argv,payload,time.monotonic()+3);self.assertEqual(result.stdout,b'original readonly reply\n')
+       self.assertEqual([a['label']for a in scope['native_attempts']],['call-1-observer','call-2-observer'])
+       self.assertFalse(scope['native_attempt_closed'](scope['native_attempts'][0]));self.assertTrue(scope['native_attempt_closed'](scope['native_attempts'][1]))
+      else:
+       with self.assertRaises(FileExistsError):scope['captured_native'](c,argv,payload,time.monotonic()+3)
+       self.assertEqual(scope['native_callbacks'],[])
+    finally:
+     for child in children:
+      if child.poll()is None:child.kill();child.wait()
+    self.assertTrue(all(c.poll()is not None for c in children))
+ def test_preserved_hook_reuses_label_red_new_attempt_ledger_status_green_unknown_actor_remains(self):
+  self.exercise(False);self.exercise(True)
+if __name__=='__main__':unittest.main(verbosity=2)

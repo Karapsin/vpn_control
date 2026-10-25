@@ -1,0 +1,7 @@
+{
+  "sourceSha256": "c1ff6a2cd8b577ddf2bb66f0f41e563ffd318d9d70c62a7c2ee4b63120830ebb",
+  "nativeOperationId": "72b9841d-8be2-4d5d-aac8-2cb66ca98198",
+  "failure": "Exact password-field RGB reference was captured during native login fade. Single fixed1s post-dismiss capture still varied across runs; all five precredential ROIs differed while account/layout/empty field remained correct.",
+  "nativeFramesReceipt": "admitted-d56786cc-4a88-4cb2-9278-1c4351bd0700",
+  "nativeOriginalCredentialIntentAbsent": true
+}

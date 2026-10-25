@@ -241,7 +241,7 @@ class WindowsVmOpticalBootTest(unittest.TestCase):
         with mock.patch.object(boot.ssh_transport, "load_config", return_value=config), \
                 mock.patch.object(boot.ssh_transport, "connection_host", return_value=mock.Mock(password=None)), \
                 mock.patch.object(boot.ssh_transport, "build_ssh_argv", return_value=["ssh"]), \
-                mock.patch.object(boot.subprocess, "run") as run:
+                mock.patch.object(boot.ssh_transport, "run_ssh") as run:
             for bad in ({**ready, "owner": {}},
                         {**ready, "blankDisk": {**ready["blankDisk"], "inode": 22}},
                         {**ready, "media": {**ready["media"], "sha256": "f" * 64}}):

@@ -1,0 +1,56 @@
+"""Inert complete SSH executable peer using real Unix control sockets."""
+import base64,json,os,shlex,socket,subprocess,sys,time
+from pathlib import Path
+args=sys.argv[1:]
+control=args[max(i for i,part in enumerate(args)if part=='-S')+1]
+modefile=Path(os.environ['VC_READINESS_FIXTURE_MODE'])
+def receive(connection):
+ body=b''
+ while not body.endswith(b'\n'):
+  part=connection.recv(4096)
+  if not part:raise ValueError('fixture_eof')
+  body+=part
+ return json.loads(body)
+if '-N' in args:
+ if 'ProxyCommand=false' in args:
+  sys.stderr.write('Connection closed by UNKNOWN port 65535\n');raise SystemExit(255)
+ if 'ControlPersist=18000' in args and os.environ.get('VC_READINESS_FIXTURE_FORK')=='1':
+  pid=os.fork()
+  if pid:
+   time.sleep(.15);raise SystemExit(0)
+ server=socket.socket(socket.AF_UNIX);server.bind(control);os.chmod(control,0o600);server.listen()
+ while True:
+  connection,_=server.accept()
+  with connection:
+   try:request=receive(connection)
+   except ValueError:continue  # A read-only socket liveness probe may send EOF.
+   if request['kind']=='check':reply={'pid':os.getpid()}
+   else:
+    command=shlex.split(request['command'])
+    if command[0]=='python3':command[0]=sys.executable
+    result=subprocess.run(command,stdin=subprocess.DEVNULL,capture_output=True,
+        env={**os.environ,'SSH_CONNECTION':'192.0.2.1 12345 192.0.2.2 22'})
+    out,err,code=result.stdout,result.stderr,result.returncode
+    mode=modefile.read_text() if modefile.exists() else ''
+    if mode=='wrong_account':
+     value=json.loads(out);value['principal']='foreign';out=json.dumps(value).encode()
+    elif mode=='overflow':out=b'X'*9000
+    elif mode=='malformed':out=b'{}'
+    elif mode=='authentication':code=255;out=b'';err=b'Permission denied (publickey).\n'
+    elif mode=='trust':code=255;out=b'';err=b'Host key verification failed.\n'
+    elif mode=='unavailable:'+str(os.getpid()):code=255;out=b'';err=b'mux_client_request_session: read from master failed: Broken pipe\n'
+    reply={'stdout':base64.b64encode(out).decode(),'stderr':base64.b64encode(err).decode(),'code':code}
+   connection.sendall(json.dumps(reply).encode()+b'\n')
+else:
+ if control=='none':
+  if 'ProxyCommand=false' in args:
+   sys.stderr.write('Connection closed by UNKNOWN port 65535\n');raise SystemExit(255)
+  command=shlex.split(args[-1])
+  if command[0]=='python3':command[0]=sys.executable
+  os.execvpe(command[0],command,os.environ)
+ client=socket.socket(socket.AF_UNIX);client.connect(control)
+ request={'kind':'check'} if '-O' in args else {'kind':'command','command':args[-1]}
+ client.sendall(json.dumps(request).encode()+b'\n');reply=receive(client)
+ if '-O' in args:sys.stderr.write('Master running (pid=%d)\n'%reply['pid'])
+ else:
+  sys.stdout.buffer.write(base64.b64decode(reply['stdout']));sys.stderr.buffer.write(base64.b64decode(reply['stderr']));sys.exit(reply['code'])

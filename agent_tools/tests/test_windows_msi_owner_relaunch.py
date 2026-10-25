@@ -15,6 +15,13 @@ LAUNCHED = {"version": 1, "state": "launched", "cliSha256": "a" * 64,
 
 
 class OwnerRelaunchTests(TestCase):
+    def setUp(self):
+        target = relaunch.stale_lock
+        request = {'host':'archlinux','correlationId':target._CORRELATION,'sourceSha':target._SOURCE,**target._ARTIFACTS,'expectedCurrentVersion':'2.1.17'}
+        intent = {'request':request,'environment':DESCRIPTOR[0],'socketPath':DESCRIPTOR[1],'pid':DESCRIPTOR[2],'startTicks':DESCRIPTOR[3],'expectedSid':DESCRIPTOR[4]}
+        for patcher in (mock.patch.object(target.base,'_private_intent',return_value=intent),mock.patch.object(target.base,'_descriptor',return_value=(object(),object(),DESCRIPTOR))):
+            patcher.start();self.addCleanup(patcher.stop)
+
     def _admitted(self):
         evidence = relaunch.hashlib.sha256(json.dumps({"socketPath": DESCRIPTOR[1], "qemuPid": DESCRIPTOR[2],
                                                         "startTicks": DESCRIPTOR[3]}, sort_keys=True).encode()).hexdigest()
@@ -26,11 +33,11 @@ class OwnerRelaunchTests(TestCase):
              mock.patch.object(relaunch.stale_reconcile, "status", return_value={"state": "terminal-proven", "replayAllowed": False, "nativeActionAllowed": False}), \
              mock.patch.object(relaunch.liveness, "observe", return_value={"state": "absent"}), \
              mock.patch.object(relaunch, "_run", return_value={"state": "unknown"}) as run:
-            value = relaunch.launch(temporary, {"host": "archlinux"})
+            value = relaunch.launch(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
             self.assertEqual(value, relaunch._UNKNOWN)
             self.assertEqual(run.call_args.args[-1], "launch")
             self.assertEqual(relaunch._read_intent(Path(temporary))["state"], "intent")
-            self.assertEqual(relaunch.launch(temporary, {"host": "archlinux"}), relaunch._UNKNOWN)
+            self.assertEqual(relaunch.launch(temporary, {'host':'archlinux','vmIdentity':'589342:520739'}), relaunch._UNKNOWN)
             self.assertEqual(run.call_count, 1)
 
     def test_relaunch_requires_fresh_global_absence_before_mutation(self):
@@ -39,7 +46,7 @@ class OwnerRelaunchTests(TestCase):
              mock.patch.object(relaunch.stale_reconcile, "status", return_value={"state": "terminal-proven", "replayAllowed": False, "nativeActionAllowed": False}), \
              mock.patch.object(relaunch.liveness, "observe", return_value={"state": "blocked"}), \
              mock.patch.object(relaunch, "_run") as run:
-            self.assertEqual(relaunch.launch(temporary, {"host": "archlinux"}), relaunch._UNKNOWN)
+            self.assertEqual(relaunch.launch(temporary, {'host':'archlinux','vmIdentity':'589342:520739'}), relaunch._UNKNOWN)
             run.assert_not_called()
             self.assertIsNone(relaunch._read_intent(Path(temporary)))
 
@@ -76,7 +83,7 @@ class OwnerRelaunchTests(TestCase):
              mock.patch.object(relaunch.stale_reconcile, "status", return_value=relaunch._UNKNOWN), \
              mock.patch.object(relaunch.liveness, "observe", return_value={"state": "absent"}), \
              mock.patch.object(relaunch, "_run") as run:
-            self.assertEqual(relaunch.launch(root, {"host": "archlinux"}), relaunch._UNKNOWN)
+            self.assertEqual(relaunch.launch(root, {'host':'archlinux','vmIdentity':'589342:520739'}), relaunch._UNKNOWN)
             run.assert_not_called()
 
     def test_mismatched_owner_or_noninteractive_task_is_denied_in_guest_program(self):
@@ -254,7 +261,7 @@ class OwnerRelaunchTests(TestCase):
              mock.patch.object(relaunch.stale_reconcile, "status", return_value={"state": "terminal-proven", "replayAllowed": False, "nativeActionAllowed": False}), \
              mock.patch.object(relaunch.liveness, "observe", return_value={"state": "absent"}), \
              mock.patch.object(relaunch, "_run", return_value=LAUNCHED):
-            result = relaunch.launch(temporary, {"host": "archlinux"})
+            result = relaunch.launch(temporary, {'host':'archlinux','vmIdentity':'589342:520739'})
             self.assertEqual(result["state"], "launched")
             self.assertEqual(relaunch._read_intent(Path(temporary))["state"], "launched")
         with self.assertRaises(relaunch.WindowsMsiOwnerRelaunchError):

@@ -1,0 +1,14 @@
+{
+  "actualCausal": "Complete emitted _nested_state and actual _bounded execute unchanged with finite local gateway seam that verifies exact control argv and invokes /usr/bin/ssh -F /dev/null -S ownabsentpath -O check. No TCP/server/VM/native target; real OpenSSH produces CRLF/255 and oldRED/currentGREEN.",
+  "beforeSha256": "1aac6f55e4b1a856166f10d5cd090ed7e5aa1f540d3e7995c408afa8cfd30c7f",
+  "failure": "exact complete rc255 missing control socket response ends CRLF; old recognizer accepts only LF",
+  "fixedSha256": "c85e37230be1e171010f13f4c385e860f3ba04b34362b40a3d7f8c4a8297be53",
+  "nativeEvidence": "Separate source-held current original-selector readonly observation after failed initial readiness; initial probe raw absent and not retroactively asserted",
+  "negativeCount": 9,
+  "schemaVersion": 1,
+  "selectedAst": [
+    "TransportAdapter._nested_state",
+    "_failure",
+    "_bounded"
+  ]
+}

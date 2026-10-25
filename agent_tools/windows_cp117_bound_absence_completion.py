@@ -4,6 +4,7 @@ The original unknown binding-dispatch outcome stays unknown. This separately
 journaled action can only complete the existing, freshly validated binding.
 """
 from __future__ import annotations
+from . import ssh_transport
 import base64
 from contextlib import contextmanager
 from collections.abc import Mapping
@@ -185,7 +186,7 @@ def _stream(argv,receive,retain_failure=None):
     """Bounded original-frame capture; kill only the owned client on failure."""
     import selectors
     subprocess=closure.base.subprocess
-    process=subprocess.Popen(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    process=ssh_transport.popen_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     selector=selectors.DefaultSelector()
     selector.register(process.stdout,selectors.EVENT_READ,'stdout')
     selector.register(process.stderr,selectors.EVENT_READ,'stderr')
@@ -213,6 +214,8 @@ def _stream(argv,receive,retain_failure=None):
         process.kill();process.wait(timeout=3);raise
     finally:
         selector.close();process.stdout.close();process.stderr.close()
+
+        ssh_transport.finish_ssh(process)
 
 
 def _capture_frame(capture,role,request,target,line,anchors):

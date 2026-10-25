@@ -36,6 +36,86 @@ class CoordinatorTests(unittest.TestCase):
                'correlationId':correlation,'callerSha256':hashlib.sha256(source).hexdigest()}
         path=parent/(self.spec.deployment_id+'.intent.json');deploy.stage._retain(parent,path.name,value)
         return path,directory/'caller.py'
+    def clock_ahead_reservation(self,module=deploy,*,ahead=65):
+        from agent_tools import vm_workflow
+        class Clock:
+            now=2_000_000_000_000_000_000
+            elapsed=0.0
+            sleeps=[]
+            @classmethod
+            def time_ns(cls):return cls.now
+            @classmethod
+            def monotonic(cls):return cls.elapsed
+            @classmethod
+            def sleep(cls,seconds):cls.sleeps.append(seconds);cls.elapsed+=seconds;cls.now+=round(seconds*1_000_000_000)
+        now=Clock.now//1_000_000
+        samples=[{'observedAtUnixMs':now+ahead-100,'availableMemoryBytes':32*1024**3,'psi':'normal','psiSomeAvg10':0.0,'psiFullAvg10':0.0,'vmstat':{'pswpin':0,'pswpout':0,'oomKill':0}},
+                 {'observedAtUnixMs':now+ahead,'availableMemoryBytes':32*1024**3,'psi':'normal','psiSomeAvg10':0.0,'psiFullAvg10':0.0,'vmstat':{'pswpin':0,'pswpout':0,'oomKill':0}}]
+        observation={'schemaVersion':1,'deploymentId':self.spec.deployment_id,'mode':'host-resources','state':'resources-observed','reason':None,
+                     'hostBootId':self.context['hostBootId'],'vms':[],'physicalMemoryBytes':64*1024**3,'swapUsedBytes':0,'samples':samples,
+                     'freeDiskBytes':512*1024**3,'inventoryComplete':True,'nativeActionAllowed':False,'replayAllowed':False}
+        authority=mock.MagicMock();authority.config.hosts={self.spec.host:object()}
+        guard=mock.MagicMock();guard.__enter__.return_value=authority
+        with mock.patch.object(module,'time',Clock),mock.patch.object(vm_workflow,'time',Clock),mock.patch.object(module.direct,'Guard',return_value=guard),mock.patch.object(module,'resources',return_value=observation):
+            result=module._prepare_reservation(self.root,self.spec,'/INERT_PRIVATE_CREDENTIAL')
+        return result,Clock
+    def test_fresh_remote_clock_ahead_waits_then_uses_unchanged_freshness_guard(self):
+        result,clock=self.clock_ahead_reservation()
+        self.assertEqual('pending',result['request']['allocationState'])
+        self.assertTrue(clock.sleeps)
+        self.assertGreaterEqual(clock.now//1_000_000,2_000_000_000_065)
+        self.assertEqual(2_000_000_000_065,result['request']['measurement']['samples'][-1]['observedAtUnixMs'])
+    def test_clock_ahead_exceeding_readiness_budget_cannot_reserve(self):
+        with self.assertRaises(environments.NativeEnvironmentError):self.clock_ahead_reservation(ahead=181_000)
+        self.assertFalse((self.root/'.rag_index/native-environments/reservations.json').exists())
+    def test_preserved_clock_failure_uses_the_same_real_reservation_guard(self):
+        folder=Path(__file__).parent/'fixtures/resource_clock_ahead';raw=(folder/'windows_vm_deploy.py.before.source').read_bytes()
+        metadata=json.loads((folder/'provenance.json').read_bytes());self.assertEqual(metadata['sourceSha256'],hashlib.sha256(raw).hexdigest())
+        before=types.ModuleType('agent_tools._resource_clock_before');before.__package__='agent_tools';before.__file__=str(folder/'windows_vm_deploy.py.before.source')
+        exec(compile(raw,before.__file__,'exec'),before.__dict__)
+        with self.assertRaisesRegex(environments.NativeEnvironmentError,'samples are not recent'):self.clock_ahead_reservation(before)
+        self.assertFalse((self.root/'.rag_index/native-environments/reservations.json').exists())
+        self.assertEqual('pending',self.clock_ahead_reservation()[0]['request']['allocationState'])
+    def retry_unsubmitted_preparation(self,module=deploy,*,change=None):
+        credential=self.root/'sudo.secret';credential.write_text('INERT_LOCAL_FIXTURE\n');credential.chmod(0o600)
+        def prepare(*_):
+            request={'hostAlias':self.spec.host,'environment':'owned-unit-vm','operator':'windows-vm-deploy',
+                     'requestedMemoryBytes':self.spec.memory_mib*1024**2,'headroomBytes':8*1024**3,
+                     'measurement':{'physicalMemoryBytes':32*1024**3,'runningConfiguredMemoryBytes':0,'pressure':'normal','swapUsedBytes':0},'allocationState':'pending'}
+            return {'reservation':environments.reserve_environment(self.root,request),'request':request,'hostBootId':self.context['hostBootId'],'pending':[]}
+        def native(_root,_spec,mode,**kwargs):
+            self.assertEqual('start',mode);kwargs['before_submit']()
+            return {'state':'unknown','nativeActionAllowed':False,'replayAllowed':False}
+        with mock.patch.object(module,'_prepare_reservation',side_effect=environments.NativeEnvironmentError('receipt clock is ahead')):
+            first=module.start(self.root,self.spec.as_dict(),self.setup,str(credential))
+        self.assertFalse(first['vmSubmitted'])
+        setup=dict(self.setup)
+        if change=='setup':setup['user']='anotherUser'
+        if change=='credential':credential.write_text('ANOTHER_INERT_LOCAL_FIXTURE\n')
+        with mock.patch.object(module,'_prepare_reservation',side_effect=prepare),mock.patch.object(module,'_execute',side_effect=native) as dispatch:
+            result=module.start(self.root,self.spec.as_dict(),setup,str(credential))
+        self.assertEqual(1,dispatch.call_count)
+        return result
+    def test_unsubmitted_resource_refusal_can_prepare_again_without_replacing_credentials(self):
+        self.assertEqual('unknown',self.retry_unsubmitted_preparation()['state'])
+    def test_unsubmitted_preparation_cannot_change_payload_or_credential_generation(self):
+        for change in ['setup','credential']:
+            with self.subTest(change=change),tempfile.TemporaryDirectory(dir=Path('/tmp').resolve()) as temporary:
+                original=self.root;self.root=Path(temporary);self.root.chmod(0o700)
+                try:
+                    with self.assertRaisesRegex(ValueError,'deployment_preparation_changed'):self.retry_unsubmitted_preparation(change=change)
+                finally:self.root=original
+    def test_legacy_unbound_credential_preparation_is_preserved_and_blocks(self):
+        parent=deploy._runtime_group(self.root,'windows-vm-credentials')/self.spec.deployment_id;parent.mkdir(mode=0o700)
+        marker=parent/'original';marker.write_bytes(b'UNCHANGED_ORIGINAL_PREPARATION');marker.chmod(0o600)
+        with mock.patch.object(deploy,'_prepare_reservation',side_effect=AssertionError('no new preparation')):
+            with self.assertRaisesRegex(ValueError,'deployment_preparation_exists'):deploy.start(self.root,self.spec.as_dict(),self.setup,'/MISSING')
+        self.assertEqual(b'UNCHANGED_ORIGINAL_PREPARATION',marker.read_bytes())
+    def test_preserved_preparation_failure_created_unbound_credentials_that_prevented_retry(self):
+        folder=Path(__file__).parent/'fixtures/resource_clock_ahead';raw=(folder/'windows_vm_deploy.py.before.source').read_bytes()
+        before=types.ModuleType('agent_tools._preparation_order_before');before.__package__='agent_tools';before.__file__=str(folder/'windows_vm_deploy.py.before.source')
+        exec(compile(raw,before.__file__,'exec'),before.__dict__)
+        with mock.patch.object(before,'installer_media',return_value={'state':'media-observed','images':[{'name':'Windows 11 Pro','languages':['en-US']}]}),self.assertRaises(FileExistsError):self.retry_unsubmitted_preparation(before)
     def test_empty_runtime_is_created_without_prior_attempt_directories(self):
         self.assertFalse((self.root/'.runtime').exists())
         path=deploy._runtime_group(self.root,'windows-vm-deploy')

@@ -1,0 +1,60 @@
+ERROR: test_altered_missing_other_pin_and_current_image_refuse (agent_tools.tests.test_ssh_direct_ended_inventory_successor.EndedInventorySuccessorTests.test_altered_missing_other_pin_and_current_image_refuse)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_direct_ended_inventory_successor.py", line 30, in setUp
+    shutil.copyfile(source,self.old_dir/name)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/shutil.py", line 313, in copyfile
+    with open(src, 'rb') as fsrc:
+         ~~~~^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_direct_inventory.py'
+
+======================================================================
+ERROR: test_authentic_matcher_exact_predecessor_and_current_tuple (agent_tools.tests.test_ssh_direct_ended_inventory_successor.EndedInventorySuccessorTests.test_authentic_matcher_exact_predecessor_and_current_tuple)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_direct_ended_inventory_successor.py", line 30, in setUp
+    shutil.copyfile(source,self.old_dir/name)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/shutil.py", line 313, in copyfile
+    with open(src, 'rb') as fsrc:
+         ~~~~^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_direct_inventory.py'
+
+======================================================================
+ERROR: test_existing_reviewed_provider_mcp_pair_remains_finite (agent_tools.tests.test_ssh_direct_ended_inventory_successor.EndedInventorySuccessorTests.test_existing_reviewed_provider_mcp_pair_remains_finite)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_direct_ended_inventory_successor.py", line 30, in setUp
+    shutil.copyfile(source,self.old_dir/name)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/shutil.py", line 313, in copyfile
+    with open(src, 'rb') as fsrc:
+         ~~~~^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_direct_inventory.py'
+
+======================================================================
+ERROR: test_incomplete_or_nonended_history_never_starts_second_consumer (agent_tools.tests.test_ssh_direct_ended_inventory_successor.EndedInventorySuccessorTests.test_incomplete_or_nonended_history_never_starts_second_consumer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_direct_ended_inventory_successor.py", line 30, in setUp
+    shutil.copyfile(source,self.old_dir/name)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/shutil.py", line 313, in copyfile
+    with open(src, 'rb') as fsrc:
+         ~~~~^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_direct_inventory.py'
+
+======================================================================
+ERROR: test_real_existing_ended_history_preparation_preserves_all_prior_bytes (agent_tools.tests.test_ssh_direct_ended_inventory_successor.EndedInventorySuccessorTests.test_real_existing_ended_history_preparation_preserves_all_prior_bytes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_ssh_direct_ended_inventory_successor.py", line 30, in setUp
+    shutil.copyfile(source,self.old_dir/name)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/shutil.py", line 313, in copyfile
+    with open(src, 'rb') as fsrc:
+         ~~~~^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_direct_inventory.py'
+
+======================================================================

@@ -1,9 +1,11 @@
 """Fixed gateway tmux routing exposes no command or credential overrides."""
+import contextlib
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 from agent_tools import mcp_server as server
@@ -16,6 +18,15 @@ class GatewayTmuxRoutes(unittest.TestCase):
     def setUp(self):
         from agent_tools.tests.route_adapter import bind_cached_routes
         self.real_agent_module=bind_cached_routes(self,server,'ssh_gateway_tmux_master_ssh','ssh_gateway_tmux_reconciliation_status')
+        # Routing unit: transport admission is recorded but inert. Real readiness has
+        # its own controlled callers and never reaches a configured host from here.
+        routed=server._agent_module;self.admissions=[]
+        def admitted(root,host,operation_identity,*,deadline=None,requirements=None):
+            self.admissions.append((root,host));return contextlib.nullcontext()
+        def route(name):
+            module=routed(name)
+            return types.SimpleNamespace(**{**vars(module),'admitted_transport':admitted}) if name=='ssh_transport' else module
+        patch=mock.patch.object(server,'_agent_module',side_effect=route);patch.start();self.addCleanup(patch.stop)
 
     def test_fixed_dispatch_and_finite_projection(self):
         for action, method, result in (
@@ -26,8 +37,11 @@ class GatewayTmuxRoutes(unittest.TestCase):
         ):
             identity = None if method == 'availability' else {'correlationId': self.corr}
             with self.subTest(action=action), mock.patch.object(adapter, 'operate', return_value=result) as call:
+                self.admissions.clear()
                 value = server._ssh_workflow_impl(action, 'archlinux', identity=identity)
                 call.assert_called_once_with(server.REPO_ROOT, method, {} if identity is None else identity)
+                # Only transport-class availability is admitted; recovery primitives never reconnect.
+                self.assertEqual([(server.REPO_ROOT, 'archlinux')] if method == 'availability' else [], self.admissions)
                 self.assertTrue(value['ok'])
                 self.assertNotIn('/private/marker', str(value))
 
@@ -111,7 +125,7 @@ with mock.patch.object(s,'_agent_module',side_effect=fixed) as load:
  raise SystemExit(code)
 """
         with tempfile.TemporaryDirectory() as directory:
-            p = subprocess.run([sys.executable, '-I', '-c', program,
+            p = subprocess.run([sys.executable, '-I', '-B', '-c', program,
                                 str(Path(server.__file__).resolve())],
                                cwd=directory, capture_output=True, text=True, timeout=30)
         self.assertEqual(0, p.returncode, p.stderr)
@@ -119,20 +133,27 @@ with mock.patch.object(s,'_agent_module',side_effect=fixed) as load:
         self.assertTrue(value['ok']); self.assertEqual('adopted', value['state'])
 
     def test_fresh_cli_from_unrelated_directory(self):
-        program="""import importlib.util,json,sys
+        program="""import contextlib,importlib.util,json,sys,types
 from pathlib import Path
 from unittest import mock
 source=Path(sys.argv[1]);sys.path.insert(0,str(source.parent))
 spec=importlib.util.spec_from_file_location('gateway_cli_server',source)
 s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 from agent_tools import ssh_gateway_tmux_master_ssh as a
-original=s._agent_module
-s._agent_module=lambda name:a if name=='ssh_gateway_tmux_master_ssh' else original(name)
+original=s._agent_module;admissions=[]
+def admitted(root,host,operation_identity,*,deadline=None,requirements=None):
+ admissions.append((root,host));return contextlib.nullcontext()
+def route(name):
+ if name=='ssh_gateway_tmux_master_ssh':return a
+ module=original(name)
+ return types.SimpleNamespace(**{**vars(module),'admitted_transport':admitted}) if name=='ssh_transport' else module
+s._agent_module=route
 with mock.patch.object(a,'operate',return_value={'available':True,'reason':'available','nativeActionAllowed':False}) as call:
  code=s.main(['ssh-workflow','gateway-tmux-availability','--host','archlinux'])
  assert call.call_count==1
+ assert admissions==[(s.REPO_ROOT,'archlinux')],admissions
  raise SystemExit(code)
 """
         with tempfile.TemporaryDirectory() as directory:
-            p=subprocess.run([sys.executable,'-I','-c',program,str(Path(server.__file__).resolve())],cwd=directory,capture_output=True,text=True,timeout=30)
+            p=subprocess.run([sys.executable,'-I','-B','-c',program,str(Path(server.__file__).resolve())],cwd=directory,capture_output=True,text=True,timeout=30)
         self.assertEqual(0,p.returncode,p.stderr);self.assertTrue(json.loads(p.stdout)['ok'])

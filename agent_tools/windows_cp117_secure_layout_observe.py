@@ -7,7 +7,7 @@ import base64,hashlib,inspect,json,os,uuid
 from pathlib import Path
 from . import windows_cp117_recovered_login as login
 from .windows_diagnostic_authority_capture import AuthorityCapture
-LOGIN_SHA='8cf4087a82f542f9c30ce8453cd3802b7daf0ef63ee06320edeeb97bb005b779'
+LOGIN_SHA='2d920cdbc73bb22bbd9ecb03692e2c75b187c4cb782fd22f7d6d6710d55b0375'
 CORRELATION='bdd32853-f9ac-4ba8-90a8-e4d5e2b85c6e'
 NONCE='4a298f67-a9af-4fe0-a993-a263461b6a18'
 NATIVE_SHA='ca66d3aead0c278b4a69b2baf02628acf4c906d2d9d227cf053483e236137858'

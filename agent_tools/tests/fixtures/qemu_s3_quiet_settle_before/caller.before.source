@@ -1,0 +1,198 @@
+import asyncio,hashlib,json,os,subprocess,time,sys,uuid
+from pathlib import Path
+from datetime import timedelta
+from mcp import ClientSession,StdioServerParameters
+from mcp.client.stdio import stdio_client
+from agent_tools import readiness_fixture_registry as registry,durable_remote_job as jobs,readiness_qemu_jobs as protocol,readiness_qemu as q
+ROOT=Path.cwd();ID='qemu-linux-recovery-0f559886-s3';operation='15e956d7-fb65-4c84-a941-4f7363a53cf7';BASE=ROOT/'.runtime/tool-recovery-qemu'/('canonical-mcp-'+operation);BASE.mkdir(mode=0o700)
+def save(name,value):
+ fd=os.open(BASE/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w')as stream:json.dump(value,stream,sort_keys=True);stream.flush();os.fsync(stream.fileno())
+def payload(result):
+ value=result.structuredContent
+ if type(value)is dict and 'state'in value:return value
+ if type(value)is dict and type(value.get('result'))is dict:return value['result']
+ for item in result.content:
+  if item.type=='text':
+   value=json.loads(item.text)
+   if type(value)is dict and 'state'in value:return value
+ raise ValueError('mcp_result_schema_unrecognized')
+def server_actor():
+ p=subprocess.run(['pgrep','-P',str(os.getpid())],capture_output=True,text=True)
+ for text in p.stdout.splitlines():
+  if text.isdigit():
+   pid=int(text);v=subprocess.run(['ps','-p',text,'-o','command='],capture_output=True,text=True)
+   if str(ROOT/'agent_tools/mcp_server.py')+' serve'in v.stdout:return {'pid':pid,'birth':jobs._birth(pid)}
+ raise ValueError('original_mcp_server_unavailable')
+COUNTER=r'''
+import json,os,pathlib,stat,sys,types
+module=types.ModuleType('fixed_qemu_counter_observer');sys.modules[module.__name__]=module
+exec(compile(OWNER,'<fixed-qemu-counter-observer>','exec'),module.__dict__);module.owner_source=lambda:OWNER
+assert os.geteuid()==1000 and pathlib.Path('/etc/machine-id').read_text().strip()==NAMESPACE['actualMachineId']
+root=module._root(NAMESPACE['root'],tuple(NAMESPACE['generation']));admissions=module._root(root/'admissions',tuple(NAMESPACE['admissionGeneration']))
+marker={key:NAMESPACE[key] for key in ['target','machine','actualMachineId','account','ownerSourceSha256','admissionGeneration']}
+assert module._record(root/'namespace.json')==marker
+binding=module.MachineBinding.from_dict(INTENT['binding']);module._binding_live(binding)
+intent=module._intent(root/OPERATION,OPERATION,binding)
+admission=module._record(admissions/(OPERATION+'.json'))
+assert admission=={'operationId':OPERATION,'binding':INTENT['binding'],'programSha256':intent['programSha256']}
+assert intent['purpose']=='registered-guest-sentinel-v1'
+status=module.observe(root,OPERATION,binding,generation=tuple(NAMESPACE['generation']))
+assert status['state'] in {'running','terminal'}
+p=root/OPERATION/'counter.txt';fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+try:
+ before=os.fstat(fd);assert stat.S_ISREG(before.st_mode) and before.st_uid==1000 and stat.S_IMODE(before.st_mode)==0o600 and before.st_nlink==1
+ raw=os.read(fd,8193);assert len(raw)<=8192
+ after=os.fstat(fd);linked=p.lstat();assert (before.st_dev,before.st_ino,before.st_uid,before.st_mode)==(after.st_dev,after.st_ino,after.st_uid,after.st_mode)==(linked.st_dev,linked.st_ino,linked.st_uid,linked.st_mode)
+finally:os.close(fd)
+lines=raw[:raw.rfind(b'\n')+1].splitlines();assert lines[0]==b'execution' and lines[1:]==[str(n).encode()for n in range(len(lines)-1)] and len(lines)-1<=INTENT['spec']['count']
+print(json.dumps({'count':len(lines)-1,'executions':lines.count(b'execution'),'operationId':OPERATION,'owner':status['owner'],'state':status['state'],'binding':INTENT['binding']}))
+'''
+def counter():
+ f=registry.registered_fixture(ROOT,ID);b=f.adapter.backend;namespace=b.load_guest_namespace()
+ intent=jobs._record(ROOT/'.runtime/readiness-guest-jobs'/ID/operation/'intent.json')
+ source='OWNER='+repr(jobs.owner_source())+'\nNAMESPACE='+repr(namespace)+'\nOPERATION='+repr(operation)+'\nINTENT='+repr(intent)+'\n'+COUNTER
+ argv,raw=protocol.stdin_command(source);original=q.packets.program
+ def observed_packet(*args,**kwargs):
+  packet=original(*args,**kwargs)
+  branch="""        if ACTION == 'observe':
+            need(observed['guest'] == 'running' and observed['boot'] == COUNTER_BOOT and observed['guestMachineId'] == COUNTER_MACHINE, 'counter_actual_binding')
+            closing()
+            response = ssh(COUNTER_COMMAND, COUNTER_PAYLOAD)
+            print(json.dumps({'state':'guest-completed','returnCode':response.returncode,'stdout':response.stdout.decode('utf-8','strict'),'stderrBytes':len(response.stderr)},sort_keys=True));return
+"""
+  packet=packet.replace("        if ACTION == 'guest_jobs':",branch+"        if ACTION == 'guest_jobs':")
+  return 'COUNTER_BOOT='+repr(intent['binding']['boot'])+'\nCOUNTER_MACHINE='+repr(namespace['actualMachineId'])+'\nCOUNTER_COMMAND='+repr(list(argv))+'\nCOUNTER_PAYLOAD='+repr(raw)+'\n'+packet
+ q.packets.program=observed_packet
+ try:reply,_=b._run('observe',operation,time.monotonic()+60)
+ finally:q.packets.program=original
+ assert reply['state']=='guest-completed' and reply['returnCode']==0 and reply['stderrBytes']==0,reply
+ return json.loads(reply['stdout'])
+def params():return StdioServerParameters(command=str(ROOT/'.agent_venv/bin/python'),args=['-B',str(ROOT/'agent_tools/mcp_server.py'),'serve'],cwd=str(ROOT),env={k:v for k,v in os.environ.items()if not k.startswith('DYLD_')})
+async def client_phase(first):
+ name='first'if first else'second';fd=os.open(BASE/(name+'-server.stderr.private'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w')as errors:
+  async with stdio_client(params(),errlog=errors)as streams:
+   async with ClientSession(*streams,read_timeout_seconds=timedelta(seconds=600))as client:
+    save(name+'-initialize.json',(await client.initialize()).model_dump(mode='json'));actor=server_actor();save(name+'-server-actor.json',actor)
+    inputs={'fixtureId':ID,'operationId':operation}
+    if first:
+     r=await client.call_tool('vm_workflow',{'action':'guest-program-start','inputs':{**inputs,'count':120,'intervalSeconds':1.0}});save('start.json',r.model_dump(mode='json'));value=payload(r);assert value['state']in{'running','unknown'},value
+     before=await asyncio.to_thread(counter)
+     assert before['state']=='running' and 2<=before['count']<120 and before['executions']==1;save('counter-before-client-server-close.json',before);save('first-original-running.json',before)
+    else:
+     for n in range(4):
+      r=await client.call_tool('vm_workflow',{'action':'guest-program-reconcile','inputs':inputs});save('reconcile-'+str(n)+'.json',r.model_dump(mode='json'));value=payload(r)
+      if value['state']=='terminal':break
+      assert value['state']in{'running','unknown'},value
+     assert value['state']=='terminal'and value['executions']==1 and value['counterValues']==120,value
+     save('original-terminal.json',value)
+ return actor
+async def main():
+ inputs={'fixtureId':ID,'operationId':operation};save('inputs.json',inputs);save('source-closure.json',q._sources())
+ actor=await client_phase(True);assert jobs._birth(actor['pid'])is None
+ before=json.loads((BASE/'counter-before-client-server-close.json').read_text());after=await asyncio.to_thread(counter)
+ assert after['count']>before['count'] and after['executions']==1 and after['owner']==before['owner'] and after['binding']==before['binding'];save('counter-after-server-loss.json',after)
+ new_actor=await client_phase(False);assert new_actor!=actor
+ terminal=json.loads((BASE/'original-terminal.json').read_text());assert terminal['remoteOwner']==before['owner'];results={}
+ for action in ('guest-program-status','guest-program-reconcile','guest-program-collect'):
+  reply=subprocess.run([str(ROOT/'agent_tools/mcp_tool.sh'),'vm-workflow',action,'--inputs-file',str(BASE/'inputs.json')],capture_output=True,text=True,timeout=210)
+  save('cli-'+action+'.json',{'exitCode':reply.returncode,'stdout':reply.stdout,'stderr':reply.stderr});assert reply.returncode==0,reply.stderr;value=json.loads(reply.stdout);assert value['state']=='terminal' and value['executions']==1 and value['operationId']==operation and value['stdout']==terminal['stdout'] and value['stderr']==terminal['stderr'],value;assert set(value)==set(terminal);results[action]=True
+ save('result.json',{'fixtureId':ID,'operationId':operation,'freshMcpStart':True,'clientAndOriginalServerEnded':actor,'newServer':new_actor,'continuedProgress':True,'sameOriginalOwner':True,'oneExecution':True,'completeRetainedOutput':True,'cliSchemaEquivalent':True,'counterBefore':before,'counterAfter':after,'cli':results,'qemuSources':q._sources()})
+ print(json.dumps({'result':str(BASE/'result.json'),'operationId':operation,'sameOriginal':True,'singleExecution':True,'freshMcpServerRecovery':True,'cliEquivalent':True}))
+
+def cli_phase(action,operation,label,expected):
+ inputs={'fixtureId':ID,'operationId':operation};input_path=BASE/(label+'-cli-inputs.json');save(input_path.name,inputs)
+ reply=subprocess.run([str(ROOT/'agent_tools/mcp_tool.sh'),'vm-workflow',action,'--inputs-file',str(input_path)],capture_output=True,text=True,timeout=720)
+ save(label+'-cli.json',{'exitCode':reply.returncode,'stdout':reply.stdout,'stderr':reply.stderr});assert reply.returncode==0,reply.stderr
+ value=json.loads(reply.stdout);assert value['state']=='ready'and value['operationId']==operation and set(value)==set(expected),(action,value)
+ if 'identities'in value:assert value['identities'][:2]+value['identities'][3:]==expected['identities'][:2]+expected['identities'][3:]
+ else:assert value['observation']['boot']==expected['observation']['boot']and value['observation']['machine']==expected['observation']['machine']
+ return value
+
+def native_precondition(action,operation):
+ fixture=registry.registered_fixture(ROOT,ID);backend=fixture.adapter.backend;deadline=time.monotonic()+180
+ for preflight in range(12):
+  before,_=backend._run('observe',operation,deadline)
+  save(operation+'-preflight-'+str(preflight)+'.json',before)
+  assert before['state']=='observed'and before['facts']['guest']=='running',before
+  if action!='poweroff'or(set(before['facts']['idleVisibility'])==q.readiness.IDLE_VISIBILITY and not before['facts']['idleBlockers']):break
+ else:raise ValueError('owned_precondition_positive_idle_unavailable')
+ expected={key:before['facts'][key]for key in ('owner','boot','guest')};rid=hashlib.sha256(('normal-tool-lifecycle-precondition:'+operation+':'+action).encode()).hexdigest()
+ value,_=backend._run(action,operation,deadline,recovery_id=rid,expected=expected)
+ save(operation+'-precondition.json',{'action':action,'before':before,'result':value,'recoveryId':rid});assert value=={'state':'submitted','action':action,'recoveryId':rid}
+ for attempt in range(12):
+  observed,_=backend._run('observe',operation,deadline)
+  save(operation+'-observation-'+str(attempt)+'.json',observed)
+  assert observed['state']=='observed',observed
+  facts=observed['facts']
+  met=(facts['guest']=='paused')if action=='pause'else(facts['guest']=='stopped'and observed.get('cleanStop')is not None)
+  if met:return before['facts'],facts
+ raise ValueError('owned_precondition_not_observed')
+
+def s3_precondition(operation):
+ fixture=registry.registered_fixture(ROOT,ID);backend=fixture.adapter.backend;deadline=time.monotonic()+180
+ before,_=backend._run('observe',operation,deadline)
+ save(operation+'-before.json',before)
+ assert before['state']=='observed'and before['facts']['guest']=='running'and set(before['facts']['idleVisibility'])==q.readiness.IDLE_VISIBILITY and not before['facts']['idleBlockers'],before
+ original=q.packets.program
+ def suspend_packet(*args,**kwargs):
+  source=original(*args,**kwargs)
+  extra="""            need(observed['guest']=='running' and observed['boot']==S3_BOOT and observed['owner']==S3_OWNER and len(observed['idleVisibility'])==7 and not observed['idleBlockers'],'s3_positive_idle_proof')
+            info=rpc('qmp.sock','query-current-machine')
+            need(info.get('wakeup-suspend-support') is True,'s3_wakeup_support')
+            info=rpc('qga.sock','guest-info',agent=True)
+            need(any(row.get('name')=='guest-suspend-ram' and row.get('enabled') is True for row in info.get('supported_commands',[])),'s3_guest_support')
+            save(manager/('s3-test-'+S3_OPERATION+'.json'),{'operationId':S3_OPERATION,'action':'intentional-s3','owner':owner,'boot':observed['boot'],'idleVisibility':observed['idleVisibility'],'idleBlockers':observed['idleBlockers'],'controllerSourceSha256':CONTROLLER_SOURCE_SHA})
+            closing()
+            result['s3Submission']=rpc('qga.sock','guest-suspend-ram',agent=True)
+"""
+  needle='            closing(); print(json.dumps(result, sort_keys=True)); return\n';assert source.count(needle)==1
+  source=source.replace(needle,extra+needle)
+  needle='                for _ in range(32):\n                    response = json.loads(read())';assert source.count(needle)==1
+  source=source.replace(needle,"                if agent and item=='guest-suspend-ram':\n                    response={'return':{'submittedNoReply':True}}; break\n"+needle)
+  return 'S3_BOOT='+repr(before['facts']['boot'])+'\nS3_OWNER='+repr(before['facts']['owner'])+'\nS3_OPERATION='+repr(operation)+'\n'+source
+ q.packets.program=suspend_packet
+ try:sent,_=backend._run('observe',operation,deadline)
+ finally:q.packets.program=original
+ save(operation+'-suspend-returned.json',sent);assert sent['state']=='observed'and sent['s3Submission']=={'submittedNoReply':True}
+ for attempt in range(8):
+  asleep,_=backend._run('observe',operation,deadline);save(operation+'-sleep-observation-'+str(attempt)+'.json',asleep)
+  if asleep['state']=='observed'and asleep['facts']['guest']=='suspended':
+   assert asleep['facts']['owner']==before['facts']['owner'];return before['facts'],asleep['facts']
+ raise ValueError('owned_intentional_s3_not_observed')
+
+async def lifecycle_phase():
+ lifecycle_started=time.monotonic();fd=os.open(BASE/'lifecycle-server.stderr.private',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w')as errors:
+  async with stdio_client(params(),errlog=errors)as streams:
+   async with ClientSession(*streams,read_timeout_seconds=timedelta(seconds=900))as client:
+    save('lifecycle-initialize.json',(await client.initialize()).model_dump(mode='json'));save('lifecycle-server-actor.json',server_actor())
+    async def call(action,operation,label):
+     raw=await client.call_tool('vm_workflow',{'action':action,'inputs':{'fixtureId':ID,'operationId':operation}});save(label+'-mcp.json',raw.model_dump(mode='json'));value=payload(raw)
+     assert value['state']=='ready'and value['operationId']==operation,value
+     await asyncio.to_thread(cli_phase,action,operation,label,value);return value
+    status=await call('readiness-status','ba7eea3b-b4f3-4147-b6f5-9026f57595d0','healthy-status')
+    healthy=await call('readiness-ensure','cc3b15cf-ec56-4989-b277-5bb718d1d81f','healthy-ensure')
+    before,paused=await asyncio.to_thread(native_precondition,'pause','0e50ce2e-2269-40bf-83e6-1bc98d174d7b')
+    resumed=await call('readiness-ensure','a15457d2-f8a9-4fef-8eaa-3d2c98ff7000','automatic-resume');assert resumed['identities'][3]==before['boot']
+    before,asleep=await asyncio.to_thread(s3_precondition,'a3926af1-0571-4fd5-aab3-b09cb62c9576')
+    awakened=await call('readiness-ensure','2105d553-d646-4825-894e-995196008aeb','automatic-s3-wakeup');assert awakened['identities'][3]==before['boot']
+    rebooted=await call('readiness-reboot','d67b917e-6301-4915-8c1e-bd760f9e69b6','idle-reboot');assert rebooted['identities'][3]!=resumed['identities'][3]
+    before,stopped=await asyncio.to_thread(native_precondition,'poweroff','c21b3930-5bdf-4f80-a799-6fb5c42b37ec')
+    started=await call('readiness-ensure','613e9e08-881f-4710-9e85-7cb448b3e4a4','stopped-start');assert started['identities'][3]!=before['boot']
+ fixture=registry.registered_fixture(ROOT,ID)
+ from agent_tools import readiness_recovery_status
+ summary=readiness_recovery_status.inspect(fixture.journal_directory,target=fixture.target,machine=fixture.machine)
+ save('lifecycle-final-recovery-status.json',summary);assert summary['complete']is True
+ for action,original in [('resume','a15457d2-f8a9-4fef-8eaa-3d2c98ff7000'),('resume','2105d553-d646-4825-894e-995196008aeb'),('reboot','d67b917e-6301-4915-8c1e-bd760f9e69b6'),('start','613e9e08-881f-4710-9e85-7cb448b3e4a4')]:
+  records=[row for row in summary['recoveries']if row['action']==action and row['originalOperationId']==original]
+  assert len(records)==1 and records[0]['state']=='observed_complete'and records[0]['consumedAttempts']-records[0]['provenUnsubmittedAttempts']==1,(action,records)
+ save('lifecycle-result.json',{'state':'ready','fixtureId':ID,'freshMcpAndCliEquivalent':True,'healthyStatus':status['operationId'],'healthyEnsure':healthy['operationId'],'automaticResume':resumed['operationId'],'automaticS3Wakeup':awakened['operationId'],'idleReboot':rebooted['operationId'],'sameOperationCliRebootNoSecondPower':True,'stoppedStartup':started['operationId'],'finalIdentities':started['identities'],'sources':q._sources(),'elapsedSeconds':time.monotonic()-lifecycle_started})
+async def all_phases():
+ await main()
+ await lifecycle_phase()
+ save('full-result.json',{'canonicalCounterOperationId':operation,'canonicalResult':'result.json','normalLifecycleResult':'lifecycle-result.json','allCasesPassed':True,'fixtureId':ID,'sources':q._sources()})
+ print(json.dumps({'state':'complete','evidence':str(BASE/'full-result.json'),'canonicalAndNormalLifecycle':True}))
+asyncio.run(all_phases())
+

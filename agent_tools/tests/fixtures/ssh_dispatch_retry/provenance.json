@@ -1,0 +1,10 @@
+{
+  "beforeSha256": {
+    "ssh_transport.py": "62934526569c0ea77ebdb25ea84dd1d679d6bd0e4cc976b6cfe8ca7b8275c397",
+    "ssh_automatic_program.py": "f439622c875ac8ad5348ac74f4bc714816009c932e2ee2d4b8e90454494cb8d7",
+    "ssh_dispatch_admission.py": "af395af5791970476c780fe42b44e6b17f28d4279303c062d1a6757a5725f766",
+    "native_observation": "f0329186f10504a2fd4a3a8c5bf2b544cae99409419aac103422775470e4b2cb"
+  },
+  "failure": "Authenticated admission stale after harmless saved-source stage; no original target execution yielded. Existing callers did not regenerate safely.",
+  "originalEvidence": "04f5c82e-57a1-4856-8029-2425456e3973 stage 9611ecbe84564bb492a96ac373fed65a"
+}

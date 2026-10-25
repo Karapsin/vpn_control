@@ -288,8 +288,9 @@ class AndroidPackageInstallTest(unittest.TestCase):
     def test_collect_rejects_missing_or_unbound_terminal_fields(self):
         correlation = "9304d8aa-578d-4df1-9eaa-81021744cd43"
         bad = {"state":"complete","receipt":{"result":{"state":"complete","package":{"baseSha256":"a"*64}}}}
-        with mock.patch.object(installer,"status",return_value=bad):
-            self.assertFalse(installer.collect(".",correlation)["ok"])
+        # A private root: the checkout's install journal is never consulted.
+        with tempfile.TemporaryDirectory() as raw, mock.patch.object(installer,"status",return_value=bad):
+            self.assertFalse(installer.collect(raw,correlation)["ok"])
 
     def test_terminal_lease_reconciliation_requires_current_admission_and_exact_owner(self):
         old="17ccbfc7-e8dc-4c2a-aa07-ad47bdc390a0"

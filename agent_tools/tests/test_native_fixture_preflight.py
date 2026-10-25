@@ -47,14 +47,18 @@ class NativeFixturePreflightTest(unittest.TestCase):
         guest = ssh_transport.SshHost("guest", "unused", 2328, "unused", Path("/unused/key"),
                                       PurePosixPath("/owned/guest_known_hosts"), transport="nested", gateway="arch",
                                       remote_host_alias="fedora", remote_config_file=PurePosixPath("/owned/scp-config"))
-        config = ssh_transport.SshConfig(root, {"gateway": direct, "arch": arch, "guest": guest})
+        # Only the checked-in guest helper is read from the checkout. The synthetic route gets a temporary
+        # configuration root, so the checkout's private inventory or route state never binds it.
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        config = ssh_transport.SshConfig(Path(temporary.name).resolve(), {"gateway": direct, "arch": arch, "guest": guest})
         result = Mock(returncode=0, stdout=json.dumps({"profile": "linux-scheduled-refresh-static",
                                                         "checks": {"package": True, "desktopJar": True,
                                                                    "protectedOwner": True,
                                                                    "ownedWorkspace": True}}).encode())
         with patch.object(ssh_transport, "load_config", return_value=config), \
              patch.object(ssh_transport, "_askpass_environment", return_value=(Path("/unused/askpass"), {})) as askpass, \
-             patch.object(preflight.subprocess, "run", return_value=result) as run:
+             patch.object(ssh_transport, "run_ssh", return_value=result) as run:
             self.assertIsNotNone(preflight._remote_linux_static(root, "guest", b"{}", 5))
         self.assertEqual("gateway-secret", askpass.call_args.args[0])
         self.assertIn("archlinux", run.call_args.args[0][-1])

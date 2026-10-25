@@ -75,10 +75,15 @@ def retain_observation_capture(root, *, label, capture, source_fingerprint):
     """
     required = {"stdout", "stderr", "counts", "eof", "returnCode",
                 "complete", "overflow", "timeout", "readError"}
-    if (type(capture) is not dict or set(capture) not in (required, required | {"pid"})
+    shapes=(required,required|{"pid"},required|{"credentialStreamsSuppressed"},required|{"pid","credentialStreamsSuppressed"})
+    if (type(capture) is not dict or set(capture) not in shapes
             or type(label) is not str or not re.fullmatch(r"[A-Za-z0-9._ -]{1,128}", label)
             or type(source_fingerprint) is not str
             or not re.fullmatch(r"[0-9a-f]{64}", source_fingerprint)):
+        raise RetentionError("input")
+    suppressed="credentialStreamsSuppressed" in capture
+    if suppressed and (capture["credentialStreamsSuppressed"] is not True
+                       or capture["stdout"] != b"" or capture["stderr"] != b""):
         raise RetentionError("input")
     if (any(type(capture[k]) is not bytes for k in ("stdout", "stderr"))
             or any(type(capture[k]) is not bool for k in ("complete", "overflow", "timeout", "readError"))
@@ -92,7 +97,7 @@ def retain_observation_capture(root, *, label, capture, source_fingerprint):
         count = capture["counts"][name]
         if (type(count) is not int or count < len(capture[name])
                 or type(capture["eof"][name]) is not bool
-                or (count > len(capture[name]) and not capture["overflow"])):
+                or (count > len(capture[name]) and not capture["overflow"] and not suppressed)):
             raise RetentionError("input")
     complete = (all(capture["eof"].values()) and type(capture["returnCode"]) is int
                 and not any(capture[k] for k in ("overflow", "timeout", "readError")))

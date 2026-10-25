@@ -1,6 +1,6 @@
 """DIRECT inventory retention regression; own TempFS and explicit inert transport seams."""
 from pathlib import Path
-import errno,importlib.util,json,os,tempfile,unittest
+import errno,gc,importlib.util,json,os,tempfile,unittest
 from unittest import mock
 from agent_tools import ssh_direct_nested_channel as canonical_direct
 COORDINATOR_CAPABLE=canonical_direct.coordinator_capable()
@@ -13,10 +13,10 @@ if COORDINATOR_CAPABLE:
 @unittest.skipUnless(COORDINATOR_CAPABLE,'POSIX private inventory descriptors required')
 class DirectInventoryDiagnosticTests(unittest.TestCase):
     source_before=False
-    def setUp(self):self.opening=ctx.fd_count()
+    def setUp(self):gc.collect();self.opening=ctx.fd_count()
     def tearDown(self):self.assertEqual(ctx.fd_count(),self.opening,'owned parent or leaf FD leaked')
     def test_direct_status_forwards_actual_missing_config_classification(self):
-        provider=ctx.fixed_module('direct_before.py') if self.source_before else canonical_direct
+        provider=ctx.reviewed_provider(self.source_before)
         events=[]
         with tempfile.TemporaryDirectory() as name:
             with mock.patch.object(ctx.channel,'_collect',side_effect=AssertionError('forbidden transport')):

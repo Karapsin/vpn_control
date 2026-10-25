@@ -14,6 +14,7 @@ from agent_tools import windows_msi_public_scenario as current_public
 from agent_tools import windows_cp117_installed_base_observe as current_installed
 from agent_tools.tests.fixtures import historical_source
 from agent_tools.tests.fixtures.windows_cp117_historical_factory import context
+from agent_tools.tests.fixtures.windows_cp117_migration_head.context import sealed_diagnostic
 
 
 class HistoricalPackageSourceTests(unittest.TestCase):
@@ -34,7 +35,7 @@ class HistoricalPackageSourceTests(unittest.TestCase):
         self.assertIs(current_installed.body_current, producer)
 
     def test_actual_package_factory_uses_exact_historical_public_source(self):
-        with context.historical_factories():
+        with context.historical_factories(), sealed_diagnostic():
             installed = context.installed()
             body = installed.body(installed.PAIR_EXPECTED)
             self.assertTrue(body)

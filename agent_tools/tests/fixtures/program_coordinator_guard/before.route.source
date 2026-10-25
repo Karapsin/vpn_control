@@ -1,0 +1,410 @@
+def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
+    """Inspect SSH connections, transfer fixtures, or run structured generated programs."""
+    if action in {"program-start", "program-status", "program-collect"}:
+        starting = action == "program-start"
+        if (type(host) is not str or device is not None or type(timeout_seconds) is not int
+                or not 1 <= timeout_seconds <= 60
+                or starting and (identity is not None or type(transfer) is not dict)
+                or not starting and (transfer is not None or type(identity) is not dict)):
+            return _error("ssh_workflow", "Program execution requires an explicit host and one structured program or original operation identity.")
+        try:
+            owner = _agent_module("ssh_program_execution")
+            if starting:
+                admission = owner.admit_start(REPO_ROOT, host, transfer)
+                if not admission["ok"]:
+                    return {"tool": "ssh_workflow", "host": host, **admission}
+                result = owner.start(REPO_ROOT, host, transfer, source_context=owner._session)
+            else:
+                method = owner.status if action == "program-status" else owner.collect
+                result = method(REPO_ROOT, host, identity)
+            return {"tool": "ssh_workflow", **result,
+                    "ok": result.get("state") in {"pending", "terminal"}
+                          and (result.get("state") != "terminal" or result.get("exitCode") == 0)}
+        except (OSError, ValueError, TypeError, KeyError, SyntaxError):
+            original = transfer if starting else identity
+            return {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                    "operationId": original.get("operationId"), "host": host,
+                    "reason": "program_execution_unavailable", "replayAllowed": False}
+    if action == "windows-caller-file-receipt":
+        if (type(host)is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}",host)is None or transfer is not None or device is not None
+                or type(identity) is not dict or set(identity) != {"correlationId"}):
+            return _error("ssh_workflow", "Windows caller receipt requires only its original correlation identity.")
+        try:
+            staging = _agent_module("ssh_source_file_stage_direct")
+            result = staging.retained_receipt(REPO_ROOT, identity["correlationId"],host=host)
+        except (OSError, ValueError, TypeError, KeyError):
+            return {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                    "reason": "source_stage_receipt_unavailable", "nativeActionAllowed": False,
+                    "sourceExecuted": False, "replayAllowed": False}
+        return {"tool": "ssh_workflow", "ok": result.get("state") == "recorded", **result}
+    if action == "windows-caller-file-stage":
+        if (type(host)is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}",host)is None or identity is not None or device is not None
+                or type(transfer) is not dict
+                or set(transfer) != {"sourceFile", "sourceSha256", "correlationId"}
+                or type(timeout_seconds) is not int or timeout_seconds != 60):
+            return _error("ssh_workflow", "Windows caller staging requires an exact saved-file identity, configured host and fixed 60-second phase observations.")
+        try:
+            staging = _agent_module("ssh_source_file_stage_direct")
+            result = staging.publish(REPO_ROOT, host, transfer["sourceFile"],
+                                     transfer["sourceSha256"], transfer["correlationId"])
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            reason = str(error) if type(error) is ValueError and re.fullmatch("[a-z_]{1,80}", str(error)) else "source_stage_admission"
+            return {"tool": "ssh_workflow", "ok": False, "state": "refused", "reason": reason,
+                    "sourceExecuted": False, "nativeActionAllowed": False, "replayAllowed": False}
+        return {"tool": "ssh_workflow", "ok": result.get("state") == "staged",
+                "nativeActionAllowed": False, **result}
+    if action in {"connection-channel-keeper-source", "connection-channel-keep", "connection-channel-keep-status"}:
+        return _ssh_channel_keeper_workflow(action,host,timeout_seconds,identity,transfer,device)
+    if action in {"connection-channel-prepare", "connection-channel-status", "connection-channel-ensure"}:
+        return _ssh_channel_workflow(action, host, timeout_seconds, identity, transfer, device)
+    if action in {"connection-direct-channel-prepare","connection-direct-channel-status","connection-direct-channel-select"}:
+        return _ssh_direct_channel_workflow(action,host,timeout_seconds,identity,transfer,device)
+    transport = _agent_module('ssh_transport')
+    try:
+        if action in {"connection-master-status", "gateway-tmux-status-diagnostic"}:
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                       "diagnosticOnly": True, "replayAllowed": False,
+                       "launchAllowed": False, "nativeActionAllowed": False}
+            try:
+                if (host != "archlinux" or type(timeout_seconds) is not int
+                        or not 1 <= timeout_seconds <= 60 or transfer is not None or device is not None):
+                    return unknown
+                if action == "connection-master-status":
+                    if identity is not None:
+                        return unknown
+                    adapter = _agent_module('ssh_connection_recovery')
+                    result = adapter.configured_master_fenced_status(REPO_ROOT, host, timeout_seconds)
+                    if (type(result) is not dict
+                            or set(result) != {"nestedState", "socketState", "failurePhase", "replayAllowed", "launchAllowed", "nativeActionAllowed"}
+                            or type(result["nestedState"]) is not str or result["nestedState"] not in {"ready", "unknown", "absent"}
+                            or type(result["socketState"]) is not str or result["socketState"] not in {"ready", "unknown", "absent", "refused"}
+                            or type(result["failurePhase"]) is not str or result["failurePhase"] not in {
+                                "configuration", "outer_admission", "socket_query", "closing_admission", "socket_parser", "capture_retention", "none"}
+                            or any(result[k] is not False for k in ("replayAllowed", "launchAllowed", "nativeActionAllowed"))):
+                        return unknown
+                    if result["nestedState"] in {"ready", "absent"}:
+                        if result["socketState"] != result["nestedState"] or result["failurePhase"] != "none":
+                            return unknown
+                    elif (result["socketState"] not in {"unknown", "refused"}
+                          or result["failurePhase"] == "none"
+                          or (result["socketState"] == "refused" and result["failurePhase"] != "socket_parser")):
+                        return unknown
+                    return {**unknown, **result, "ok": result["nestedState"] != "unknown",
+                            "state": "observed" if result["nestedState"] != "unknown" else "unknown"}
+                if (type(identity) is not dict or set(identity) != {"correlationId"}
+                        or type(identity["correlationId"]) is not str or not _valid_uuid(identity["correlationId"])):
+                    return unknown
+                adapter = _agent_module("ssh_gateway_tmux_master_ssh")
+                result = adapter.configured_status_diagnostic(REPO_ROOT, dict(identity))
+                if type(result) is not dict or result.get("nativeActionAllowed") is not False or result.get("replayAllowed") is not False:
+                    return unknown
+                if result.get("state") == "unknown":
+                    if (set(result) != {"state", "replayAllowed", "failurePhase", "nativeActionAllowed"}
+                            or type(result["failurePhase"]) is not str or result["failurePhase"] not in {"source", "config", "authority", "localmaster", "remotequery", "parser"}):
+                        return unknown
+                    return {**unknown, **result}
+                fields = {"state", "correlationId", "replayAllowed", "nativeActionAllowed"}
+                if result.get("correlationId") != identity["correlationId"]:
+                    return unknown
+                if result.get("state") == "prepared":
+                    if set(result) != fields:
+                        return unknown
+                elif result.get("state") == "ended":
+                    if set(result) != fields | {"exitCode"} or type(result["exitCode"]) is not int:
+                        return unknown
+                elif result.get("state") == "ready":
+                    if (set(result) != fields | {"readyPin", "controlPath", "recoveryCorrelationId", "adoptionAllowed"}
+                            or result["adoptionAllowed"] is not False
+                            or result["recoveryCorrelationId"] != identity["correlationId"].replace("-", "")
+                            or type(result["controlPath"]) is not str or not result["controlPath"].startswith("/")
+                            or len(result["controlPath"].encode()) > 85):
+                        return unknown
+                    adapter.valid_pin(result["readyPin"])
+                else:
+                    return unknown
+                return {**unknown, **{k: v for k, v in result.items() if k != "controlPath"}, "ok": True}
+            except (OSError, ValueError, TypeError, KeyError, AttributeError, ImportError, subprocess.SubprocessError):
+                return unknown
+        if action == "tmux-disconnect-probe":
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
+                       "replayAllowed": False, "productAcceptance": False}
+            if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None or type(identity) is not dict
+                    or set(identity) != {"hop", "correlationId"}
+                    or identity["hop"] not in ("gateway", "archlinux")
+                    or type(identity["correlationId"]) is not str or not _valid_uuid(identity["correlationId"])):
+                return unknown
+            probe = None
+            try:
+                adapter = _agent_module("ssh_tmux_disconnect_probe")
+                probe = adapter.Probe(REPO_ROOT, identity["hop"], identity["correlationId"])
+                for method, expected in ((probe.prepare, "prepared"), (probe.release, "released"),
+                                         (probe.disconnect, "disconnected")):
+                    result = method()
+                    if (type(result) is not dict or set(result) != {"state", "replayAllowed"}
+                            or result["state"] != expected or result["replayAllowed"] is not False):
+                        return unknown
+                deadline = time.monotonic() + 35
+                while True:
+                    result = probe.observe()
+                    if (type(result) is not dict
+                            or set(result) != {"state", "sequence", "replayAllowed", "productAcceptance"}
+                            or result["state"] not in ("prepared", "released", "running", "completed")
+                            or type(result["sequence"]) is not int or not 0 <= result["sequence"] <= 20
+                            or result["replayAllowed"] is not False or result["productAcceptance"] is not False):
+                        return unknown
+                    if result["state"] == "completed":
+                        if result["sequence"] != 20:
+                            return unknown
+                        return {"tool": "ssh_workflow", "ok": True, **result,
+                                "hop": identity["hop"], "correlationId": identity["correlationId"]}
+                    if time.monotonic() >= deadline:
+                        return unknown
+                    time.sleep(4)
+            except (OSError, ValueError, TypeError, KeyError, ImportError, subprocess.SubprocessError):
+                return unknown
+            finally:
+                if probe is not None:
+                    probe.close()
+        if action == "gateway-tmux-reconciliation-status":
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or any(value is not None for value in (identity, transfer, device))):
+                return unknown
+            try:
+                adapter = _agent_module("ssh_gateway_tmux_reconciliation_status")
+                result = adapter.observe(REPO_ROOT)
+                if (type(result) is not dict
+                        or set(result) != {"state", "replayAllowed", "launchAllowed", "adoptionAllowed"}
+                        or result["state"] not in ("published", "adopted", "unknown")
+                        or any(result[key] is not False for key in
+                               ("replayAllowed", "launchAllowed", "adoptionAllowed"))):
+                    return unknown
+                return {"tool": "ssh_workflow", "ok": result["state"] != "unknown", **result}
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+        if action in ("gateway-tmux-availability", "gateway-tmux-prepare", "gateway-tmux-release", "gateway-tmux-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            method = action.removeprefix("gateway-tmux-")
+            if (host != "archlinux" or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None):
+                return unknown
+            if method == "availability":
+                if identity is not None:
+                    return unknown
+                inputs = {}
+            else:
+                if (type(identity) is not dict or set(identity) != {"correlationId"}
+                        or not isinstance(identity["correlationId"], str) or not _valid_uuid(identity["correlationId"])):
+                    return unknown
+                inputs = dict(identity)
+            try:
+                adapter = _agent_module("ssh_gateway_tmux_master_ssh")
+                result = adapter.operate(REPO_ROOT, method, inputs)
+                if type(result) is not dict:
+                    return unknown
+                if method == "availability":
+                    if (set(result) != {"available", "reason", "nativeActionAllowed"}
+                            or type(result["available"]) is not bool or result["nativeActionAllowed"] is not False
+                            or result["reason"] != ("available" if result["available"] else "tmux_unavailable")):
+                        return unknown
+                    return {"tool": "ssh_workflow", "ok": True, **result}
+                if result.get("replayAllowed") is not False or result.get("correlationId") != inputs["correlationId"]:
+                    return unknown
+                state = result.get("state")
+                fields = {"state", "correlationId", "replayAllowed"}
+                if method == "prepare":
+                    if state != "prepared" or set(result) != fields | {"anchorPin"}:
+                        return unknown
+                    adapter.valid_pin(result["anchorPin"])
+                elif method == "release":
+                    if state != "released" or set(result) != fields:
+                        return unknown
+                elif state == "ready":
+                    if (set(result) != fields | {"readyPin", "controlPath", "recoveryCorrelationId", "adoptionAllowed"}
+                            or result["adoptionAllowed"] is not False
+                            or result["recoveryCorrelationId"] != inputs["correlationId"].replace("-", "")
+                            or not isinstance(result["controlPath"], str) or not result["controlPath"].startswith("/")
+                            or len(result["controlPath"].encode()) > 85):
+                        return unknown
+                    adapter.valid_pin(result["readyPin"])
+                elif state == "ended":
+                    if set(result) != fields | {"exitCode"} or type(result["exitCode"]) is not int:
+                        return unknown
+                elif state != "prepared" or set(result) != fields:
+                    return unknown
+                return {"tool": "ssh_workflow", "ok": True, **{k: v for k, v in result.items() if k != "controlPath"}}
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+        if action in {"connection-nested-orphan-archive", "connection-nested-orphan-archive-status", "android-availability"}:
+            transport._session_module()
+            routes = _agent_module('ssh_acceptance_observation_routes')
+            return routes.dispatch(REPO_ROOT, action, host, timeout_seconds, identity, transfer, device)
+        if action == "inventory":
+            return {"ok": True, "tool": "ssh_workflow", "hosts": list(transport.inventory(REPO_ROOT))}
+        if action == "probe" and host:
+            return {"tool": "ssh_workflow", **transport.probe(REPO_ROOT, host, timeout_seconds).as_dict()}
+        if action in ("connection-session-close", "connection-session-close-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not transport._ALIAS_RE.fullmatch(host)
+                    or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None
+                    or not isinstance(identity, dict) or set(identity) != {"receiptSha256"}
+                    or not isinstance(identity["receiptSha256"], str)
+                    or re.fullmatch(r"[0-9a-f]{64}", identity["receiptSha256"]) is None):
+                return unknown
+            try:
+                transport._session_module()
+                close = _agent_module("ssh_connection_session_close")
+                operation = close.close if action == "connection-session-close" else close.status
+                result = operation(REPO_ROOT, host, identity["receiptSha256"])
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+            state = "exit_sent" if action == "connection-session-close" else "closed"
+            if result == {"state": "unknown", "host": host, "replayAllowed": False}:
+                return unknown
+            if (not isinstance(result, dict) or result.get("replayAllowed") is not False
+                    or result != {"state": state, "host": host, "receiptSha256": identity["receiptSha256"], "replayAllowed": False}):
+                return unknown
+            return {"tool": "ssh_workflow", "ok": True, **result}
+        if action in ("connection-session-retire", "connection-session-retirement-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not transport._ALIAS_RE.fullmatch(host)
+                    or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None
+                    or not isinstance(identity, dict) or set(identity) != {"receiptSha256"}
+                    or not isinstance(identity["receiptSha256"], str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", identity["receiptSha256"])):
+                return unknown
+            try:
+                # Match the transport's package bootstrap for fresh CLI scripts.
+                transport._session_module()
+                retirement = _agent_module('ssh_connection_session_retirement')
+                operation = retirement.retire if action == "connection-session-retire" else retirement.status
+                result = operation(REPO_ROOT, host, identity["receiptSha256"])
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+            if (not isinstance(result, dict) or result.get("replayAllowed") is not False
+                    or result != {"state": "retired", "host": host, "receiptSha256": identity["receiptSha256"], "replayAllowed": False}):
+                return unknown
+            return {"tool": "ssh_workflow", "ok": True, **result}
+        if action in ("connection-session-prepare", "connection-session-status"):
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not transport._ALIAS_RE.fullmatch(host)
+                    or type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 60
+                    or transfer is not None or device is not None):
+                return unknown
+            status = action == "connection-session-status"
+            if status:
+                if (not isinstance(identity, dict) or set(identity) != {"receiptSha256"}
+                        or not isinstance(identity["receiptSha256"], str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", identity["receiptSha256"])):
+                    return unknown
+            elif identity is not None:
+                return unknown
+            try:
+                session = transport._session_module()
+                result = (session.admission(REPO_ROOT, host, identity["receiptSha256"]) if status
+                          else session.prepare(REPO_ROOT, host))
+            except (OSError, ValueError, TypeError, ImportError):
+                return unknown
+            if not isinstance(result, dict) or result.get("host") != host:
+                return unknown
+            if result.get("state") == "ready":
+                keys = {"state", "host", "receiptSha256"} | (set() if status else {"created"})
+                if (set(result) != keys or not isinstance(result.get("receiptSha256"), str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", result["receiptSha256"])
+                        or not status and type(result.get("created")) is not bool
+                        or status and result["receiptSha256"] != identity["receiptSha256"]):
+                    return unknown
+                return {"tool": "ssh_workflow", "ok": True, "replayAllowed": False, **result}
+            if (set(result) == {"state", "host", "phase"} and result.get("state") == "unknown"
+                    and result.get("phase") in session._PHASES):
+                return {**unknown, "host": host, "phase": result["phase"]}
+            return unknown
+        if action == "connection-recover" and host:
+            recovery = _agent_module('ssh_connection_recovery')
+            return {"tool": "ssh_workflow", "host": host, **recovery.recover(REPO_ROOT, host, timeout_seconds)}
+        if action == "connection-adopt":
+            unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown", "replayAllowed": False}
+            if (not isinstance(host, str) or not host or type(timeout_seconds) is not int
+                    or not 1 <= timeout_seconds <= 60 or any(value is not None for value in (identity, transfer, device))):
+                return unknown
+            adoption = _agent_module('ssh_recovery_adoption')
+            try:
+                result = adoption.adopt(REPO_ROOT, host, timeout_seconds)
+            except (OSError, ValueError, TypeError):
+                return unknown
+            if (not isinstance(result, dict) or set(result) != {"state", "nextAction", "replayAllowed"}
+                    or result.get("replayAllowed") is not False
+                    or (result.get("state"), result.get("nextAction")) not in
+                    (("ready", "configured-probe"), ("unknown", "inspect-recovery"))):
+                return unknown
+            return {"tool": "ssh_workflow", "host": host, "ok": result["state"] == "ready", **result}
+        if action in ("forward-open", "forward-status", "forward-close") and host:
+            forward = _agent_module('ssh_forward')
+            if action == "forward-open":
+                result = forward.open_forward(REPO_ROOT, host)
+            elif action == "forward-status":
+                result = forward.status(REPO_ROOT, host)
+            else:
+                result = forward.close(REPO_ROOT, identity or {}, host)
+            return {"tool": "ssh_workflow", **result}
+        if action in ("apk-publish", "apk-status") and host:
+            publisher = _agent_module('ssh_transfer')
+            try:
+                if action == "apk-status":
+                    result = publisher.android_apk_stage_status(REPO_ROOT, host, identity or {}, timeout_seconds=timeout_seconds)
+                else:
+                    required = {"apkPath", "manifestPath", "receiptPath", "owner", "environment", "correlationId"}
+                    if not isinstance(transfer, dict) or set(transfer) != required or any(not isinstance(value, str) or not value for value in transfer.values()):
+                        return _error("ssh_workflow", "APK publication requires exactly apkPath, manifestPath, receiptPath, owner, environment and correlationId as nonempty strings.")
+                    result = publisher.publish_android_apk(REPO_ROOT, host, transfer["apkPath"], transfer["manifestPath"],
+                        transfer["receiptPath"], transfer["owner"], transfer["environment"], transfer["correlationId"], timeout_seconds=timeout_seconds)
+                return {"tool": "ssh_workflow", **result}
+            except publisher.SshTransferError as error:
+                return _error("ssh_workflow", str(error))
+        if action == "android-observe" and host and device:
+            if identity is not None:
+                if transfer is not None or type(identity) is not dict or set(identity) != {"cliArtifact"}:
+                    return _error("ssh_workflow", "Qualified Android observation requires only cliArtifact.")
+                qualified = _agent_module('android_qualified_cli_observation')
+                try:
+                    result = qualified.observe(REPO_ROOT, host, device, identity["cliArtifact"], timeout_seconds)
+                    return {"tool": "ssh_workflow", "ok": result.get("available") is True, **result}
+                except qualified.QualifiedCliError as error:
+                    return _error("ssh_workflow", str(error))
+            configured = transport.load_config(REPO_ROOT).hosts.get(host)
+            if configured is None or device not in configured.android_devices:
+                return _error("ssh_workflow", "Unknown configured Android device alias.")
+            observer = _agent_module('android_observation')
+            try:
+                result = observer.observe(REPO_ROOT, host, configured.android_devices[device], timeout_seconds)
+                return {"tool": "ssh_workflow", "ok": result.get("available") is True, **result}
+            except observer.AndroidObservationError as error:
+                return _error("ssh_workflow", str(error))
+        if action == "job-status" and host and identity:
+            jobs = _agent_module('ssh_jobs')
+            try:
+                return {"tool": "ssh_workflow", **jobs.observe(REPO_ROOT, host, identity, timeout_seconds).as_dict()}
+            except jobs.SshJobError as error:
+                return _error("ssh_workflow", str(error))
+        if action in ("fixture-publish", "fixture-status") and host:
+            publisher = _agent_module('ssh_transfer')
+            try:
+                if action == "fixture-status":
+                    result = publisher.status(REPO_ROOT, host, identity or {}, timeout_seconds=timeout_seconds)
+                else:
+                    required = {"sourceDirectory", "owner", "environment", "correlationId"}
+                    if not isinstance(transfer, dict) or set(transfer) != required:
+                        return _error("ssh_workflow", "Fixture publication requires sourceDirectory, owner, environment and correlationId.")
+                    if any(not isinstance(value, str) or not value for value in transfer.values()):
+                        return _error("ssh_workflow", "Fixture publication fields must be nonempty strings.")
+                    result = publisher.publish(REPO_ROOT, host, transfer["sourceDirectory"], transfer["owner"],
+                                               transfer["environment"], transfer["correlationId"], timeout_seconds=timeout_seconds)
+                return {"tool": "ssh_workflow", **result}
+            except publisher.SshTransferError as error:
+                return _error("ssh_workflow", str(error))
+        return _error("ssh_workflow", "Use inventory, probe, or job-status with a configured host alias and job identity.")
+    except transport.SshConfigError:
+        return _error("ssh_workflow", "Private host configuration is missing or invalid; check the documented schema and permissions.")

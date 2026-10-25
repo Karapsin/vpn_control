@@ -15,12 +15,25 @@ from agent_tools import windows_cp117_installed_base_observe as current_installe
 from agent_tools.tests.fixtures import historical_source
 from agent_tools.tests.fixtures.cp117_gzip_runtime import historical_gzip_context
 from agent_tools.tests.fixtures.windows_cp117_historical_factory import context
+from agent_tools.tests.fixtures.windows_cp117_migration_head.context import sealed_diagnostic
 
 
 FIXTURE = Path(__file__).with_name('fixtures') / 'windows_cp117_historical_factory'
 BASE_SHA = '5d06ef745bbaba0208f08907a9b1c8ed7a3c8c549a940ecf5a4f127744d47cb7'
 BEFORE_SHA = 'e75ff49fdc5b8ec73c5e0738a4e44aa41062bbad5128317ad329724218e7c216'
 COMMIT = 'c68058eb64f8452207bf2091bd2950e5a06231da'
+_SEALED = []
+
+
+def setUpModule():
+    # Frozen diagnostic 615e1b09 keeps its OWNER_SHA; nested suite runs re-enter this hook.
+    stack = ExitStack()
+    _SEALED.append(stack)
+    stack.enter_context(sealed_diagnostic(context))
+
+
+def tearDownModule():
+    _SEALED.pop().close()
 
 
 def retained_sources():
@@ -326,7 +339,7 @@ class PublicSourceContextTests(unittest.TestCase):
                     raise AttributeError("module 'os' has no attribute 'O_NOFOLLOW'")
                 return getattr(os, name)
         path = Path(binding.__file__)
-        with self.definitions(path, '48234c12de9d48e61919fa981daacd03bf681ce56348bae2f381e9ab84b15ee0',
+        with self.definitions(path, '33f9d0e4d029af69f8f1acd0ee86aac7e40dd5740879eb5adb982d631e1ad9c1',
                               ('_read_bound_file',), dict(binding.__dict__, os=MissingFlag())) as ns:
             with patch.object(binding, '_read_bound_file', ns['_read_bound_file']):
                 yield binding
@@ -485,7 +498,8 @@ class CompleteInertContextLifetimeTests(unittest.TestCase):
                 family = historical_source.verify(context, path, hashlib.sha256(raw).hexdigest())
             guard()
             try:
-                yield family
+                with sealed_diagnostic(family):
+                    yield family
             finally:
                 guard()
 

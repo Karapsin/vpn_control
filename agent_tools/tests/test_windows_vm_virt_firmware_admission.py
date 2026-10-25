@@ -79,7 +79,7 @@ class WindowsVmVirtFirmwareAdmissionTest(unittest.TestCase):
                                return_value=SimpleNamespace(password=None)), \
              mock.patch.object(admission.ssh_transport, "build_ssh_argv",
                                return_value=["ssh", "archlinux"]) as argv, \
-             mock.patch.object(admission.subprocess, "run", return_value=completed) as run:
+             mock.patch.object(admission.ssh_transport, "run_ssh", return_value=completed) as run:
             result = admission.observe(".", {"host": "archlinux", "timeoutSeconds": 20})
         self.assertTrue(result["noninteractivePacmanEligible"])
         self.assertIn("sudo", argv.call_args.kwargs["command"][2])

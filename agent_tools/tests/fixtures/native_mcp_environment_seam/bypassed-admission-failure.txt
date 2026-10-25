@@ -1,0 +1,44 @@
+.............F..........F.....FF
+======================================================================
+FAIL: test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands (agent_tools.tests.test_native_mcp_routes.NativeRoutesTest.test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_routes.py", line 172, in test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands
+    self.assertFalse(mcp_server.vm_workflow("windows-credential-recover-start", invalid)["ok"])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+
+======================================================================
+FAIL: test_windows_probe_routes_only_configured_identity_and_deadline (agent_tools.tests.test_native_mcp_routes.NativeRoutesTest.test_windows_probe_routes_only_configured_identity_and_deadline)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_routes.py", line 137, in test_windows_probe_routes_only_configured_identity_and_deadline
+    start.assert_not_called()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py", line 946, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'start' to not have been called. Called 1 times.
+Calls: [call(PosixPath('/Users/karapsin_de/projects/vpn_control_tool_recovery'), 'owned', '00000000-0000-0000-0000-000000000001', timeout_seconds=20, environment='other-vm')].
+
+======================================================================
+FAIL: test_whole_old_missing_environment_errors_current_exact_target_and_original_status_pass (agent_tools.tests.test_native_mcp_environment_test_seam.NativeMcpEnvironmentTestSeamTests.test_whole_old_missing_environment_errors_current_exact_target_and_original_status_pass) (method='test_windows_probe_routes_only_configured_identity_and_deadline', before=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_environment_test_seam.py", line 46, in test_whole_old_missing_environment_errors_current_exact_target_and_original_status_pass
+    self.assertTrue(result.wasSuccessful(), str(result.errors) + str(result.failures))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : [][(<agent_tools.tests.test_native_mcp_routes.NativeRoutesTest testMethod=test_windows_probe_routes_only_configured_identity_and_deadline>, 'Traceback (most recent call last):\n  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_routes.py", line 137, in test_windows_probe_routes_only_configured_identity_and_deadline\n    start.assert_not_called()\n    ~~~~~~~~~~~~~~~~~~~~~~~^^\n  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py", line 946, in assert_not_called\n    raise AssertionError(msg)\nAssertionError: Expected \'start\' to not have been called. Called 1 times.\nCalls: [call(PosixPath(\'/Users/karapsin_de/projects/vpn_control_tool_recovery\'), \'owned\', \'00000000-0000-0000-0000-000000000001\', timeout_seconds=20, environment=\'other-vm\')].\n')]
+
+======================================================================
+FAIL: test_whole_old_missing_environment_errors_current_exact_target_and_original_status_pass (agent_tools.tests.test_native_mcp_environment_test_seam.NativeMcpEnvironmentTestSeamTests.test_whole_old_missing_environment_errors_current_exact_target_and_original_status_pass) (method='test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands', before=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_environment_test_seam.py", line 46, in test_whole_old_missing_environment_errors_current_exact_target_and_original_status_pass
+    self.assertTrue(result.wasSuccessful(), str(result.errors) + str(result.failures))
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : [][(<agent_tools.tests.test_native_mcp_routes.NativeRoutesTest testMethod=test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands>, 'Traceback (most recent call last):\n  File "/Users/karapsin_de/projects/vpn_control_tool_recovery/agent_tools/tests/test_native_mcp_routes.py", line 172, in test_credential_recovery_routes_exclude_secrets_and_unconfigured_commands\n    self.assertFalse(mcp_server.vm_workflow("windows-credential-recover-start", invalid)["ok"])\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: True is not false\n')]
+
+----------------------------------------------------------------------
+Ran 31 tests in 10.522s
+
+FAILED (failures=4)

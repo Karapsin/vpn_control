@@ -1,0 +1,247 @@
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+Add-Type -TypeDefinition @'
+using System;using System.IO;using System.Diagnostics;using System.Collections.Generic;using System.Text;using System.Threading;using System.Management;using System.Runtime.InteropServices;using System.Security.AccessControl;using System.Security.Principal;using System.Security.Cryptography;using System.Web.Script.Serialization;
+
+public static class NativeJob {
+ static JavaScriptSerializer Json=new JavaScriptSerializer(){MaxJsonLength=262144};
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectoryW(string path,IntPtr security);
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CreateFileW(string path,UInt32 access,UInt32 share,IntPtr security,UInt32 disposition,UInt32 flags,IntPtr template);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(IntPtr handle,out FileInfoNative info);
+ [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr handle);
+ [StructLayout(LayoutKind.Sequential)]struct FileInfoNative {public UInt32 Attributes;public System.Runtime.InteropServices.ComTypes.FILETIME Created,Accessed,Written;public UInt32 Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
+ static void Need(bool yes,string reason){if(!yes)throw new Exception(reason);}
+ static Dictionary<string,object> Read(string path){Need(new FileInfo(path).Length<=262144,"RECORD_BOUND");NoLink(path);FileTag(path);return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(path,Encoding.UTF8));}
+ static string S(Dictionary<string,object> v,string key){return Convert.ToString(v[key],System.Globalization.CultureInfo.InvariantCulture);}
+ static string Hash(byte[] value){using(var h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(value)).Replace("-","").ToLowerInvariant();}
+ static void Write(string path,Dictionary<string,object> value){byte[] raw=Encoding.UTF8.GetBytes(Json.Serialize(value));string temp=path+".pending-"+Guid.NewGuid().ToString("N");using(var f=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(raw,0,raw.Length);f.Flush(true);}File.Move(temp,path);}
+ static void NoLink(string path){Need((File.GetAttributes(path)&FileAttributes.ReparsePoint)==0,"REPARSE_POINT");}
+ static void Private(string path,bool create=false){
+  if(!Directory.Exists(path)){
+   Need(create,"ROOT_GENERATION_CHANGED");
+   var acl=new DirectorySecurity();var system=new SecurityIdentifier("S-1-5-18");acl.SetOwner(system);acl.SetAccessRuleProtection(true,false);
+   foreach(string sid in new[]{"S-1-5-18","S-1-5-32-544"})acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid),FileSystemRights.FullControl,InheritanceFlags.ContainerInherit|InheritanceFlags.ObjectInherit,PropagationFlags.None,AccessControlType.Allow));
+   Directory.CreateDirectory(path,acl);
+  }
+  NoLink(path);var actual=Directory.GetAccessControl(path);Need(actual.GetOwner(typeof(SecurityIdentifier)).Value=="S-1-5-18","ROOT_OWNER");
+  foreach(FileSystemAccessRule row in actual.GetAccessRules(true,true,typeof(SecurityIdentifier)))Need(row.AccessControlType==AccessControlType.Allow&&(row.IdentityReference.Value=="S-1-5-18"||row.IdentityReference.Value=="S-1-5-32-544"),"ROOT_ACL");
+ }
+ static string Root(Dictionary<string,object> c){return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),"VPNControlRecoveryJobs-v1",S(c,"machine"));}
+ static string Tag(string path){
+  NoLink(path);IntPtr h=CreateFileW(path,0,7,IntPtr.Zero,3,0x02000000,IntPtr.Zero);Need(h!=new IntPtr(-1),"ROOT_HANDLE");
+  try{FileInfoNative i;Need(GetFileInformationByHandle(h,out i),"ROOT_IDENTITY");UInt64 birth=((UInt64)(UInt32)i.Created.dwHighDateTime<<32)|(UInt32)i.Created.dwLowDateTime;
+   return i.Volume.ToString("x8")+":"+i.IndexHigh.ToString("x8")+i.IndexLow.ToString("x8")+":"+birth.ToString("x16");}finally{CloseHandle(h);}
+ }
+ static bool Machine(Dictionary<string,object> c,bool terminalHistory=false){
+  Need(WindowsIdentity.GetCurrent().User.Value=="S-1-5-18","SYSTEM_REQUIRED");
+  string machine=null,boot=null;
+  using(var q=new ManagementObjectSearcher("SELECT UUID FROM Win32_ComputerSystemProduct"))foreach(ManagementObject row in q.Get())machine=new Guid(Convert.ToString(row["UUID"])).ToString("D");
+  using(var q=new ManagementObjectSearcher("SELECT LastBootUpTime FROM Win32_OperatingSystem"))foreach(ManagementObject row in q.Get())boot=ManagementDateTimeConverter.ToDateTime(Convert.ToString(row["LastBootUpTime"])).ToUniversalTime().ToString("o");
+  bool sameBoot=boot==S(c,"boot");Need(machine==S(c,"machine")&&(terminalHistory||sameBoot),"GUEST_IDENTITY_CHANGED");return sameBoot;
+ }
+ [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateProcessW(string app,StringBuilder command,IntPtr processSecurity,IntPtr threadSecurity,bool inherit,UInt32 flags,IntPtr environment,string directory,ref Startup startup,out ProcessInfo result);
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct Startup {public int Size;public string Reserved,Desktop,Title;public UInt32 X,Y,Width,Height,CharsX,CharsY,Fill,Flags;public UInt16 Show,ReservedBytes;public IntPtr ReservedPtr,Input,Output,Error;}
+ [StructLayout(LayoutKind.Sequential)]struct ProcessInfo {public IntPtr Process,Thread;public UInt32 Pid,Tid;}
+ static void FileTag(string path){NoLink(path);IntPtr h=CreateFileW(path,0,7,IntPtr.Zero,3,0,IntPtr.Zero);Need(h!=new IntPtr(-1),"FILE_HANDLE");try{FileInfoNative i;Need(GetFileInformationByHandle(h,out i)&&i.Links==1&&(i.Attributes&0x10)==0,"FILE_IDENTITY");}finally{CloseHandle(h);}}
+ static bool Exists(string path){try{File.GetAttributes(path);return true;}catch(FileNotFoundException){return false;}catch(DirectoryNotFoundException){return false;}}
+ static string Index(string root){return Path.Combine(root,"admissions");}
+ static string RootGuard(Dictionary<string,object> c){
+  NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c);Private(Path.GetDirectoryName(root));Private(root);Private(Index(root));Private(Path.Combine(root,"operations"));
+  Need(Tag(root)==S(c,"rootGeneration")&&Tag(Index(root))==S(c,"admissionGeneration"),"ROOT_GENERATION_CHANGED");return root;
+ }
+ static string Birth(int pid){try{using(var p=Process.GetProcessById(pid)){return p.HasExited?null:p.StartTime.ToUniversalTime().ToFileTimeUtc().ToString();}}catch(ArgumentException){return null;}}
+ static Dictionary<string,object> Base(Dictionary<string,object> c,string state,string reason){return new Dictionary<string,object>{{"schemaVersion",1},{"operationId",c["operationId"]},{"machine",c["machine"]},{"boot",c["boot"]},{"rootGeneration",c["rootGeneration"]},{"admissionGeneration",c["admissionGeneration"]},{"state",state},{"reason",reason},{"replayAllowed",false}};}
+ static Dictionary<string,object> Correlation(Dictionary<string,object> intent){var result=new Dictionary<string,object>();foreach(string k in new[]{"schemaVersion","operationId","machine","boot","rootGeneration","admissionGeneration","nonce","programSha256","count","intervalMilliseconds"})result[k]=intent[k];return result;}
+ static void Correlate(Dictionary<string,object> actual,Dictionary<string,object> expected){foreach(var pair in expected)Need(actual.ContainsKey(pair.Key)&&Json.Serialize(actual[pair.Key])==Json.Serialize(pair.Value),"ORIGINAL_IDENTITY_CHANGED");}
+ static Dictionary<string,object> Intent(Dictionary<string,object> c,string root){string op=S(c,"operationId");var index=Read(Path.Combine(Index(root),op+".json"));foreach(string k in new[]{"operationId","machine","boot","rootGeneration","admissionGeneration","count","intervalMilliseconds"})Need(S(index,k)==S(c,k),"ORIGINAL_IDENTITY_CHANGED");return index;}
+ static string Reason(Exception error){foreach(string known in new[]{"GUEST_IDENTITY_CHANGED","ROOT_GENERATION_CHANGED","ROOT_OWNER","ROOT_ACL","REPARSE_POINT","FILE_IDENTITY","FILE_HANDLE","ROOT_HANDLE","ROOT_IDENTITY","SYSTEM_REQUIRED","RECORD_BOUND","ORIGINAL_IDENTITY_CHANGED","JOB_GENERATION_CHANGED","SOURCE_INTEGRITY","OWNER_ACCOUNT_CHANGED","TERMINAL_EXIT_CHANGED","STREAM_BOUND","STREAM_INCOMPLETE","STREAM_INTEGRITY","ADMISSION_INDEX_MISSING","ACTION_INVALID","ENROLLMENT_ALREADY_CONSUMED","ENROLLMENT_IDENTITY_CHANGED"})if(error.Message==known)return "windows_job_"+known.ToLowerInvariant();return "original_evidence_unavailable";}
+ static string NamespaceBlocked(Exception error){return Json.Serialize(new Dictionary<string,object>{{"schemaVersion",1},{"state","blocked"},{"reason",Reason(error)}});}
+ public static string NamespaceStatus(string raw){try{return NamespaceStatusCore(raw);}catch(Exception error){return NamespaceBlocked(error);}}
+ public static string Enroll(string raw){try{return EnrollCore(raw);}catch(Exception error){return NamespaceBlocked(error);}}
+ static string NamespaceStatusCore(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);Machine(c,true);NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c);Private(Path.GetDirectoryName(root));Private(root);Private(Index(root));Private(Path.Combine(root,"operations"));
+  var value=Read(Path.Combine(root,"namespace.json"));foreach(string k in new[]{"machine","boot","enrollmentOperation","enrollmentNonce"})Need(S(value,k)==S(c,k),"ENROLLMENT_IDENTITY_CHANGED");
+  Need(Tag(root)==S(value,"rootGeneration")&&Tag(Index(root))==S(value,"admissionGeneration"),"ROOT_GENERATION_CHANGED");return Json.Serialize(value);
+ }
+ static string EnrollCore(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);Machine(c);NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c);Private(Path.GetDirectoryName(root),true);
+  Need(!Exists(root),"ENROLLMENT_ALREADY_CONSUMED");Private(root,true);Private(Index(root),true);Private(Path.Combine(root,"operations"),true);
+  var value=new Dictionary<string,object>{{"schemaVersion",1},{"machine",c["machine"]},{"boot",c["boot"]},{"enrollmentOperation",c["enrollmentOperation"]},{"enrollmentNonce",c["enrollmentNonce"]},{"rootGeneration",Tag(root)},{"admissionGeneration",Tag(Index(root))}};
+  Write(Path.Combine(root,"namespace.json"),value);return Json.Serialize(value);
+ }
+ static byte[] Bytes(string path,int limit){FileTag(path);using(var f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.None)){Need(f.Length<=limit,"STREAM_BOUND");byte[] raw=new byte[(int)f.Length];int n=0;while(n<raw.Length){int k=f.Read(raw,n,raw.Length-n);Need(k>0,"STREAM_INCOMPLETE");n+=k;}return raw;}}
+ static Dictionary<string,object> Stream(byte[] raw){return new Dictionary<string,object>{{"bytes",raw.Length},{"sha256",Hash(raw)},{"base64",Convert.ToBase64String(raw)}};}
+ static Dictionary<string,object> Progress(string path,int count){
+  FileTag(path);byte[] raw;using(var f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.ReadWrite)){Need(f.Length<=32768,"STREAM_BOUND");raw=new byte[(int)f.Length];int offset=0;while(offset<raw.Length){int n=f.Read(raw,offset,raw.Length-offset);Need(n>0,"STREAM_INCOMPLETE");offset+=n;}}
+  int end=Array.LastIndexOf(raw,(byte)10)+1;if(end==0)return null;byte[] prefix=new byte[end];Array.Copy(raw,prefix,end);
+  string[] rows=Encoding.ASCII.GetString(prefix).Split('\n');Need(rows.Length>=2&&rows[0]=="execution","STREAM_INTEGRITY");int completed=rows.Length-2;Need(completed<=count,"STREAM_BOUND");
+  var expected=new StringBuilder("execution\n");for(int n=0;n<completed;n++)expected.Append(n.ToString(System.Globalization.CultureInfo.InvariantCulture)+"\n");Need(Hash(prefix)==Hash(Encoding.ASCII.GetBytes(expected.ToString())),"STREAM_INTEGRITY");
+  return new Dictionary<string,object>{{"completed",completed},{"bytes",prefix.Length},{"sha256",Hash(prefix)},{"base64",Convert.ToBase64String(prefix)}};
+ }
+ static Dictionary<string,object> Observe(Dictionary<string,object> c){
+  bool sameBoot=Machine(c,true);string root=RootGuard(c),op=S(c,"operationId"),job=Path.Combine(root,"operations",op),claim=Path.Combine(Index(root),op+".json");
+  if(!Exists(claim)){
+   Need(sameBoot,"GUEST_IDENTITY_CHANGED");Need(!Exists(job),"ADMISSION_INDEX_MISSING");return Base(c,"unsubmitted","original_admission_absent");
+  }
+  var intent=Intent(c,root);var result=Base(c,"unknown","original_owner_unresolved");result["admissionNonce"]=intent["nonce"];result["programSha256"]=intent["programSha256"];
+  if(!Exists(job)){Need(sameBoot,"GUEST_IDENTITY_CHANGED");return result;}
+  Need(Directory.Exists(job),"JOB_GENERATION_CHANGED");
+  Private(job);var full=Read(Path.Combine(job,"intent.json"));Correlate(full,Correlation(intent));Need(Tag(job)==S(full,"jobGeneration"),"JOB_GENERATION_CHANGED");
+  string script=Path.Combine(job,"owner.ps1");Need(Hash(Bytes(script,131072))==S(intent,"programSha256"),"SOURCE_INTEGRITY");
+  string ownerPath=Path.Combine(job,"owner.json");if(!File.Exists(ownerPath)){Need(sameBoot,"GUEST_IDENTITY_CHANGED");result["reason"]="original_owner_ack_pending";return result;}
+  var owner=Read(ownerPath);Correlate(owner,Correlation(intent));Need(S(owner,"accountSid")=="S-1-5-18"&&Convert.ToInt32(owner["sessionId"])==0,"OWNER_ACCOUNT_CHANGED");
+  int pid=Convert.ToInt32(owner["pid"]);string birth=S(owner,"birth");bool alive=sameBoot&&Birth(pid)==birth;
+  result["owner"]=new Dictionary<string,object>{{"pid",pid},{"birth",birth},{"sessionId",0},{"accountSid","S-1-5-18"}};
+  string terminalPath=Path.Combine(job,"terminal.json");
+  if(File.Exists(terminalPath)&&!alive){
+   var terminal=Read(terminalPath);Correlate(terminal,owner);Need(Convert.ToInt32(terminal["exitCode"])==0,"TERMINAL_EXIT_CHANGED");
+   var streams=new Dictionary<string,object>();foreach(string name in new[]{"stdout","stderr","counter"}){byte[] data=Bytes(Path.Combine(job,name+".bin"),32768);Need(Hash(data)==S(terminal,name+"Sha256")&&data.Length==Convert.ToInt32(terminal[name+"Bytes"]),"STREAM_INTEGRITY");streams[name]=Stream(data);}
+   result["state"]="terminal";result["reason"]="original_terminal_retained";result["exitCode"]=0;result["streams"]=streams;if(!sameBoot)result["historicalTerminal"]=true;
+  }else if(alive){result["state"]="running";result["reason"]="original_owner_running";if(File.Exists(Path.Combine(job,"counter.bin"))){var progress=Progress(Path.Combine(job,"counter.bin"),Convert.ToInt32(c["count"]));if(progress!=null)result["progress"]=progress;}}
+  if(!sameBoot)Need(S(result,"state")=="terminal","GUEST_IDENTITY_CHANGED");return result;
+ }
+ public static string Control(string action,string raw,string ownerBase64,string programSha){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);FileStream admission=null;
+  try{
+   if(action=="status")return Json.Serialize(Observe(c));Need(action=="start","ACTION_INVALID");Machine(c);string root=RootGuard(c);
+   string lockPath=Path.Combine(root,"admission.lock");if(File.Exists(lockPath))FileTag(lockPath);admission=new FileStream(lockPath,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
+   string op=S(c,"operationId"),claim=Path.Combine(Index(root),op+".json"),job=Path.Combine(root,"operations",op);
+   if(Exists(claim))return Json.Serialize(Observe(c));Need(!Exists(job),"ADMISSION_INDEX_MISSING");
+   byte[] owner=Convert.FromBase64String(ownerBase64);Need(owner.Length<=131072&&Hash(owner)==programSha,"SOURCE_INTEGRITY");
+   // Publish consumption BEFORE per-job state; a crash here remains UNKNOWN.
+   var intent=new Dictionary<string,object>(c);intent["nonce"]=Guid.NewGuid().ToString("D");intent["programSha256"]=programSha;
+   Write(claim,intent);
+   Need(CreateDirectoryW(job,IntPtr.Zero),"ADMISSION_CREATE");Private(job);intent["jobGeneration"]=Tag(job);
+   string script=Path.Combine(job,"owner.ps1");using(var f=new FileStream(script,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(owner,0,owner.Length);f.Flush(true);}
+   Write(Path.Combine(job,"intent.json"),intent);
+   Machine(c);RootGuard(c);
+   string ps=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),@"System32\WindowsPowerShell\v1.0\powershell.exe");
+   var start=new Startup{Size=Marshal.SizeOf(typeof(Startup))};ProcessInfo process;
+   Need(CreateProcessW(ps,new StringBuilder("\""+ps+"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \""+script+"\""),IntPtr.Zero,IntPtr.Zero,false,0x08000000,IntPtr.Zero,job,ref start,out process),"OWNER_LAUNCH_UNVERIFIED");
+   try{var launch=Correlation(intent);launch["pid"]=(int)process.Pid;launch["birth"]=Birth((int)process.Pid);Write(Path.Combine(job,"launcher.json"),launch);}finally{CloseHandle(process.Thread);CloseHandle(process.Process);}
+   return Json.Serialize(Observe(c));
+  }catch(Exception error){string reason=Reason(error);return Json.Serialize(Base(c,"unknown",reason));}finally{if(admission!=null)admission.Dispose();}
+ }
+ public static void Own(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);Machine(c);Need(Process.GetCurrentProcess().SessionId==0,"OWNER_SESSION_CHANGED");string root=RootGuard(c),job=Path.Combine(root,"operations",S(c,"operationId"));Private(job);
+  var index=Intent(c,root);var intent=Read(Path.Combine(job,"intent.json"));Correlate(intent,Correlation(index));Need(Tag(job)==S(intent,"jobGeneration"),"JOB_GENERATION_CHANGED");
+  Need(Hash(Bytes(Path.Combine(job,"owner.ps1"),131072))==S(intent,"programSha256"),"SOURCE_INTEGRITY");
+  using(var fence=new FileStream(Path.Combine(job,"owner-fence"),FileMode.CreateNew,FileAccess.Write,FileShare.None)){fence.WriteByte(1);fence.Flush(true);}
+  var identity=Correlation(intent);identity["pid"]=Process.GetCurrentProcess().Id;identity["birth"]=Birth(Process.GetCurrentProcess().Id);identity["accountSid"]=WindowsIdentity.GetCurrent().User.Value;identity["sessionId"]=0;Write(Path.Combine(job,"owner.json"),identity);
+  string stdout=Path.Combine(job,"stdout.bin"),stderr=Path.Combine(job,"stderr.bin"),counter=Path.Combine(job,"counter.bin");
+  using(var output=new FileStream(stdout,FileMode.CreateNew,FileAccess.Write,FileShare.Read))using(var error=new FileStream(stderr,FileMode.CreateNew,FileAccess.Write,FileShare.Read))using(var effect=new FileStream(counter,FileMode.CreateNew,FileAccess.Write,FileShare.Read)){
+   byte[] once=Encoding.ASCII.GetBytes("execution\n");effect.Write(once,0,once.Length);effect.Flush(true);
+   byte[] message=Encoding.ASCII.GetBytes("guest sentinel retained stderr\n");error.Write(message,0,message.Length);error.Flush(true);
+   for(int n=0;n<Convert.ToInt32(c["count"]);n++){
+    RootGuard(c);byte[] line=Encoding.ASCII.GetBytes(n.ToString(System.Globalization.CultureInfo.InvariantCulture)+"\n");Need(output.Length+line.Length<=32768&&effect.Length+line.Length<=32768,"STREAM_BOUND");output.Write(line,0,line.Length);effect.Write(line,0,line.Length);output.Flush(true);effect.Flush(true);Thread.Sleep(Convert.ToInt32(c["intervalMilliseconds"]));
+   }
+  }
+  var terminal=new Dictionary<string,object>(identity);terminal["exitCode"]=0;foreach(string name in new[]{"stdout","stderr","counter"}){byte[] data=Bytes(Path.Combine(job,name+".bin"),32768);terminal[name+"Bytes"]=data.Length;terminal[name+"Sha256"]=Hash(data);}
+  Machine(c);RootGuard(c);Write(Path.Combine(job,"terminal.json"),terminal);
+ }
+ public static string Inventory(string raw){
+  var c=Json.Deserialize<Dictionary<string,object>>(raw);var blockers=new List<Dictionary<string,object>>();var result=new Dictionary<string,object>{{"schemaVersion",1},{"machine",c["machine"]},{"boot",c["boot"]},{"rootGeneration",c["rootGeneration"]},{"admissionGeneration",c["admissionGeneration"]},{"visibilityComplete",false},{"terminalCount",0},{"blockers",blockers}};
+  FileStream admission=null;
+  try{
+   Machine(c);NoLink(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));string root=Root(c),parent=Path.GetDirectoryName(root);if(Directory.Exists(parent))Private(parent);
+   if(!Exists(root)){Need(c["rootGeneration"]==null&&c["admissionGeneration"]==null,"ROOT_GENERATION_CHANGED");result["visibilityComplete"]=true;return Json.Serialize(result);}
+   Need(c["rootGeneration"]!=null&&c["admissionGeneration"]!=null,"ROOT_UNENROLLED");RootGuard(c);
+   string lockPath=Path.Combine(root,"admission.lock");if(File.Exists(lockPath)){FileTag(lockPath);admission=new FileStream(lockPath,FileMode.Open,FileAccess.ReadWrite,FileShare.None);}
+   string[] claims=Directory.GetFileSystemEntries(Index(root));Need(claims.Length<=1024,"INVENTORY_BOUND");var seen=new HashSet<string>();int terminal=0;
+   foreach(string path in claims){Guid op;string name=Path.GetFileNameWithoutExtension(path);Need(Path.GetExtension(path)==".json"&&Guid.TryParse(name,out op)&&op.ToString("D")==name,"INVENTORY_ENTRY_CHANGED");var intent=Read(path);Need(S(intent,"operationId")==name,"INVENTORY_IDENTITY_CHANGED");var observed=Observe(intent);seen.Add(name);if(S(observed,"state")=="terminal")terminal++;else blockers.Add(new Dictionary<string,object>{{"operationId",name},{"reason","job_original_work_not_terminal"}});}
+   foreach(string path in Directory.GetFileSystemEntries(Path.Combine(root,"operations")))Need(Directory.Exists(path)&&seen.Contains(Path.GetFileName(path)),"ADMISSION_INDEX_MISSING");
+   Machine(c);RootGuard(c);result["terminalCount"]=terminal;result["visibilityComplete"]=true;
+  }catch(Exception){blockers.Add(new Dictionary<string,object>{{"operationId",null},{"reason","job_inventory_unavailable"}});}finally{if(admission!=null)admission.Dispose();}return Json.Serialize(result);
+ }
+}
+
+'@ -ReferencedAssemblies @('System','System.Core','System.Management','System.Web.Extensions')
+
+function InvokeConverted([Reflection.MethodInfo]$method,[object[]]$values){
+ $parameters=$method.GetParameters()
+ if($parameters.Length -ne $values.Length){throw 'diagnostic_native_arity'}
+ $converted=[object[]]::new($values.Length)
+ for($i=0;$i -lt $values.Length;$i++){
+  $value=$values[$i]
+  $target=$parameters[$i].ParameterType
+  if($target.IsByRef){$target=$target.GetElementType()}
+  $converted[$i]=[Management.Automation.LanguagePrimitives]::ConvertTo($value,$target,[Globalization.CultureInfo]::InvariantCulture)
+ }
+ $result=$method.Invoke($null,$converted)
+ for($i=0;$i -lt $values.Length;$i++){if($parameters[$i].ParameterType.IsByRef){$values[$i]=$converted[$i]}}
+ return $result
+}
+function N([string]$name,[object[]]$values){
+ $method=[NativeJob].GetMethod($name,[Reflection.BindingFlags]'NonPublic,Static')
+ if($null -eq $method){throw 'diagnostic_native_method'}
+ return InvokeConverted $method $values
+}
+function Guard($c){
+ $v=[Collections.Generic.Dictionary[string,object]]::new();$v['machine']=$c.machine;$v['boot']=$c.boot
+ [void](N 'Machine' @($v,$false))
+ if([Diagnostics.Process]::GetCurrentProcess().SessionId-ne0){throw 'diagnostic_session'}
+ [void](N 'Private' @($c.root,$false))
+ if((N 'Tag' @($c.root))  -ne  $c.rootGeneration){throw 'diagnostic_root'}
+}
+$id=('{"operationId":"fa6717b3-c1c8-4402-8b24-1afb968f454b","machine":"6e848ad1-8078-4435-9abc-e3a24c6556cd","boot":"2026-10-20T12:51:49.5000000Z"}'|ConvertFrom-Json)
+
+$root=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) ('VPNControlRecoveryJobDiagnostic-'+$id.operationId)
+$v=[Collections.Generic.Dictionary[string,object]]::new();$v['machine']=$id.machine;$v['boot']=$id.boot
+[void](N 'Machine' @($v,$false))
+if([Diagnostics.Process]::GetCurrentProcess().SessionId -ne 0){throw 'diagnostic_session'}
+$common=[Environment]::GetFolderPath('CommonApplicationData')
+[void](N 'NoLink' @($common))
+if(Test-Path -LiteralPath $root){[void](N 'Private' @($root,$false))}
+$canonical=Join-Path ([Environment]::GetFolderPath('Windows')) 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$ownerPath=Join-Path $root 'owner.ps1'
+Add-Type -TypeDefinition @'
+using System;using System.Runtime.InteropServices;using System.Collections.Generic;
+public static class DiagnosticArguments {
+ [DllImport("shell32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern IntPtr CommandLineToArgvW(string command,out int count);
+ [DllImport("kernel32.dll")]static extern IntPtr LocalFree(IntPtr value);
+ public static string[] Parse(string command){int count;IntPtr result=CommandLineToArgvW(command,out count);if(result==IntPtr.Zero||count<1||count>64)throw new Exception("diagnostic_command_bound");try{var values=new List<string>();for(int n=0;n<count;n++)values.Add(Marshal.PtrToStringUni(Marshal.ReadIntPtr(result,n*IntPtr.Size)));return values.ToArray();}finally{LocalFree(result);}}
+}
+'@
+$actors=@();$processes=@(Get-WmiObject -Query "SELECT ProcessId,ExecutablePath,CommandLine,SessionId FROM Win32_Process WHERE Name='powershell.exe'")
+if($processes.Count -gt 128){throw 'diagnostic_process_bound'}
+foreach($process in $processes){
+ if($null -eq $process.ExecutablePath -or $null -eq $process.CommandLine){throw 'diagnostic_process_visibility'}
+ if(-not [string]::Equals([string]$process.ExecutablePath,$canonical,[StringComparison]::OrdinalIgnoreCase)){throw 'diagnostic_process_executable'}
+ $arguments=[DiagnosticArguments]::Parse([string]$process.CommandLine)
+ $matches=$false
+ for($i=1;$i -lt $arguments.Length;$i++){if([string]::Equals($arguments[$i],'-File',[StringComparison]::OrdinalIgnoreCase)){
+  if($i+1 -ge $arguments.Length){throw 'diagnostic_process_arguments'}
+  if([string]::Equals($arguments[$i+1],$ownerPath,[StringComparison]::OrdinalIgnoreCase)){$matches=$true}
+ }}
+ if($matches){
+  if([int]$process.SessionId -ne 0){throw 'diagnostic_process_account'}
+  $sid=$process.GetOwnerSid();if($sid.ReturnValue -ne 0 -or $sid.Sid -ne 'S-1-5-18'){throw 'diagnostic_process_account'}
+  $birth=N 'Birth' @([int]$process.ProcessId)
+  if($null -eq $birth){throw 'diagnostic_process_race'}
+  $actors+=@{pid=[int]$process.ProcessId;birth=[string]$birth;sessionId=0;accountSid='S-1-5-18'}
+ }
+}
+if(-not (Test-Path -LiteralPath $root)){
+ [void](N 'Machine' @($v,$false));[void](N 'NoLink' @($common))
+ $out=@{schemaVersion=1;state='observed_absent';operationId=$id.operationId;machine=$id.machine;boot=$id.boot;rootPresent=$false;visibilityComplete=$true;matchingActors=$actors;actorCount=$actors.Count;replayAllowed=$false}
+}else{
+$intent=N 'Read' @((Join-Path $root 'intent.json'))
+foreach($key in @('operationId','machine','boot')){if([string]$intent[$key] -ne [string]$id.$key){throw 'diagnostic_identity'}}
+$c=[pscustomobject]@{machine=$intent['machine'];boot=$intent['boot'];rootGeneration=$intent['rootGeneration'];root=$root};Guard $c
+$owner=N 'Read' @((Join-Path $root 'owner.json'));$launch=N 'Read' @((Join-Path $root 'launch.json'))
+foreach($key in @('operationId','machine','boot','rootGeneration','parentPid','parentBirth')){if([string]$owner[$key] -ne [string]$intent[$key] -or [string]$launch[$key] -ne [string]$intent[$key]){throw 'diagnostic_identity'}}
+if([int]$owner['pid'] -ne [int]$launch['childPid'] -or [string]$owner['birth'] -ne [string]$launch['childBirth'] -or [int]$owner['sessionId']-ne0 -or [string]$owner['accountSid'] -ne 'S-1-5-18'){throw 'diagnostic_owner'}
+$parentAbsent=(N 'Birth' @([int]$intent['parentPid'])) -ne [string]$intent['parentBirth']
+$childAbsent=(N 'Birth' @([int]$owner['pid'])) -ne [string]$owner['birth']
+$markerPresent=Test-Path -LiteralPath (Join-Path $root 'marker.json')
+$complete=$false
+if($markerPresent){
+ $marker=N 'Read' @((Join-Path $root 'marker.json'))
+ foreach($key in @('operationId','machine','boot','rootGeneration','parentPid','parentBirth','pid','birth','sessionId','accountSid')){if([string]$marker[$key] -ne [string]$owner[$key]){throw 'diagnostic_marker'}}
+ if($marker['observedParentAbsent'] -ne $true -or $marker['programSha256'] -ne $intent['programSha256']){throw 'diagnostic_marker'}
+ $complete=$parentAbsent -and $childAbsent
+}
+Guard $c
+$out=@{schemaVersion=1;state=$(if($complete){'terminal'}else{'unknown'});operationId=$id.operationId;machine=$id.machine;boot=$id.boot;root=$root;rootGeneration=$intent['rootGeneration'];parentPid=$intent['parentPid'];parentBirth=$intent['parentBirth'];parentAbsent=$parentAbsent;childPid=$owner['pid'];childBirth=$owner['birth'];childAbsent=$childAbsent;markerPresent=$markerPresent;complete=$complete;replayAllowed=$false}
+}
+[Console]::WriteLine(($out|ConvertTo-Json -Depth 6 -Compress))

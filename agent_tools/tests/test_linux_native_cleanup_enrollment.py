@@ -63,6 +63,16 @@ def _steps(job):
     return rows
 
 
+# TEST-006 adds exactly this continuation under a step name so an earlier
+# failed check never hides the step; every other condition is still refused.
+CONTINUATION = '        if: ${{ !cancelled() }}\n'
+
+
+def _without_continuation(step):
+    head, newline, rest = step.partition('\n')
+    return head + newline + rest[len(CONTINUATION):] if rest.startswith(CONTINUATION) else step
+
+
 def enrolled_cleanup_ids(workflow_raw, test_raw):
     text = _workflow_text(workflow_raw)
     assert re.search(r'^  push:\n    branches:\n      - dev$', text, re.M), 'dev push coverage required'
@@ -73,7 +83,7 @@ def enrolled_cleanup_ids(workflow_raw, test_raw):
                        "    runs-on: ubuntu-latest\n"
                        "    timeout-minutes: 45")
     assert separator and header.strip('\n') == expected_header, 'ordinary dev job header, Linux capability and failure policy must be exact'
-    rows = _steps(job)
+    rows = [(name, _without_continuation(block)) for name, block in _steps(job)]
     target = [(i, b) for i, (n, b) in enumerate(rows) if n == 'Verify native JDK launcher before packaging']
     assert len(target) == 1, 'native-JDK step must be unique'
     i, step = target[0]
@@ -182,7 +192,8 @@ class LinuxNativeCleanupEnrollmentTests(unittest.TestCase):
         temurin = _read(TEMURIN)
         for variant in (raw.encode('utf-8'), raw.replace('\n', '\r\n').encode('utf-8')):
             enrolled_cleanup_ids(variant, temurin)
-            rows = _steps(_job(_workflow_text(variant), 'package-linux-desktop'))
+            rows = [(name, _without_continuation(block))
+                    for name, block in _steps(_job(_workflow_text(variant), 'package-linux-desktop'))]
             guards = [(i, block) for i, (name, block) in enumerate(rows)
                       if name == 'Verify Linux cleanup enrollment guards']
             self.assertEqual(len(guards), 1, 'ordinary Linux cleanup enrollment step must be unique')

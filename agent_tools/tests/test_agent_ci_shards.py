@@ -69,7 +69,7 @@ class ShardTests(unittest.TestCase):
         tests.mkdir(parents=True)
         for path in (tools / '__init__.py', tests / '__init__.py'):
             path.write_bytes(b'')
-        for name in ('affected_agent_test_dependencies.json', 'agent_test_runner.py', 'agent_ci_evidence.py'):
+        for name in ('affected_agent_test_dependencies.json', 'agent_test_runner.py', 'agent_test_session_observer.py', 'agent_ci_evidence.py'):
             (tools / name).write_bytes((ROOT / 'agent_tools' / name).read_bytes())
         (tools / 'affected_agent_tests.py').write_bytes(retained('selector.before.source') if before else (ROOT / 'agent_tools/affected_agent_tests.py').read_bytes())
         (root / '.gitignore').write_text('.rag_index/\n__pycache__/\n')

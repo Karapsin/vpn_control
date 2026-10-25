@@ -1,0 +1,62 @@
+{
+  "guestBoot": "c57b661b-088b-4f62-93a0-e2baa0e8f12c",
+  "nativeEvidenceRetained": ".runtime/tool-recovery-qemu/noncanonical-idle-before/native-original-red.json",
+  "operationId": "8bdcaa65-f1d2-4460-9e1c-671f6ebd89fe",
+  "ordinaryProcesses": [
+    {
+      "birth": 330057,
+      "cgroup": "0::/user.slice/user-1000.slice/session-45.scope\n",
+      "exe": "/usr/bin/python3.12",
+      "gids": [
+        1000,
+        1000,
+        1000,
+        1000
+      ],
+      "name": "python3",
+      "pid": 2791,
+      "ppid": 1,
+      "uid": 1000,
+      "uids": [
+        1000,
+        1000,
+        1000,
+        1000
+      ]
+    },
+    {
+      "birth": 330060,
+      "cgroup": "0::/user.slice/user-1000.slice/session-45.scope\n",
+      "exe": "/usr/bin/python3.12",
+      "gids": [
+        1000,
+        1000,
+        1000,
+        1000
+      ],
+      "name": "python3",
+      "pid": 2795,
+      "ppid": 2791,
+      "uid": 1000,
+      "uids": [
+        1000,
+        1000,
+        1000,
+        1000
+      ]
+    }
+  ],
+  "originalIdleBlockers": [],
+  "originalIdleVisibility": [
+    "reservations",
+    "running_jobs",
+    "unknown_jobs",
+    "installers",
+    "lifecycle_phases",
+    "operators",
+    "protected_processes"
+  ],
+  "sentinelOperationId": "d8395c56-9c8c-4103-88ba-f6a2db6e3223",
+  "sentinelState": "unknown",
+  "sourceSha256": "99c64f36c27910d4645ac985294e22709bd2b0e1d31ad66bd3fbe366c70e7ea0"
+}

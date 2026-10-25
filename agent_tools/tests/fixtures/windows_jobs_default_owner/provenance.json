@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "cause": "Actual SYSTEM token default owner BuiltinAdmins: atomic CreateDirectoryW(job,NULL) created an empty Administrators-owned job before Private(job) rejected ROOT_OWNER, so payload never launched. Explicit protected SYSTEM security descriptor must accompany atomic creation, never repair or adopt an existing directory.",
+  "sourceSha256": {
+    "before.source": "caf379b37636f1adcd6cea365b0a8840cbabf8810cdb28a65e50c0a53cf672b8",
+    "native-failure.json": "149ac1ef9d25ba29d3275f997e2df36bf1f0a9d3c25ddb544e3f322bd7da369b",
+    "native-owner-diagnostic.json": "cbb9bb9b1fd85ec003a8c041a358bbf48826c2a6e27ee4fa0692825c90fc2fdb"
+  }
+}

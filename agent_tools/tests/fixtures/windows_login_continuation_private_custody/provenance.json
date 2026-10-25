@@ -1,0 +1,1 @@
+{"discovery": "Initial private artifact inode checked, then held.read reopened without the initial generation; identical-content inode replacement could be adopted.", "nativePrivateInput": false, "regression": "deterministic real file replacement between initial open and retained open", "sourceSha256": "841f9a7d56f5828d7e9269a135f741cb2c980281112ea36d03e166cf6b934204"}
