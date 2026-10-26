@@ -181,6 +181,10 @@ and source digest. Never use an SSH disconnect as authority to run a replacement
 | Descriptor counts disturbed by earlier garbage | At `005852a2`, `ProviderEndedClosureHistoryTests.test_actual_equal_source_ended_then_new_intent` saw `43 != 7` open descriptors on Linux CI. Earlier modules in the same serial worker leave cyclic garbage whose private-config owners hold descriptors until collected, so a collection inside a later global `/dev/fd` count moves it; the measured code opens and closes all of its own descriptors | A shared `descriptor_window` helper finalizes pending garbage, keeps the collector off for the measured window and compares exact descriptor identities, printing both tables on failure; it is applied to every test with the same global count. A controlled regression is actually RED on the whole beforeimages and GREEN, and a real descriptor kept by the measured code still fails |
 | Worker traceback read before its exit | `test_direct_source_session_lazy_dependency_before_red_current_green` failed on Linux CI with a traceback cut off at an import frame: the shared `terminal()` helper reported a legacy worker's stderr at its first non-empty observation, while CPython 3.12 was still writing the traceback line by line | `terminal()` reports the stderr only after the exact recorded worker has exited, and reports it whole. A regression drives the actual case from the whole beforeimage with a controlled partial-then-complete write: actually RED and GREEN on Python 3.11 to 3.14 |
 | CPython 3.15 suggestion in probe comparison | The macOS runner's CPython 3.15 adds nested-attribute suggestions, so the simulated AF_UNIX absence ended with `Did you mean '.AF_APPLETALK.AF_UNIX' instead of '.AF_UNIX'?` and no longer equalled the five recorded Windows lines | The probe comparison strips the interpreter's trailing suggestion from both sides; every recorded Windows outcome stays exact. A regression with the exact CI line is actually RED on the whole beforeimage and GREEN on CPython 3.10 to 3.15 |
+| Unenrolled VM host storage ledger | On 2026-10-26 the creator pre-VM proof of `7e8b2dcd` refused `storage_unenrolled`: `~/.cache/vpn-control-fixture-storage` had never existed on archlinux, and the creator and libvirt lifecycle refuse the same way. No writer creates the ledger | `scripts/fixture_storage_host.py enroll` creates it through `StoragePlans._locked`; `scripts/test_fixture_storage_host.py` checks the prevm lock admission is refused before and admitted after enrollment, in release hygiene. RED on `c68f4a5c` is the missing tool. Native: enrolled 18:12, then R1 proved twice identically and R3 closed |
+| Running fixtures uncovered by the storage ledger | Attempt 2 (`575c610c`) of the managed creator accepted its credentials, then blocked in the capacity phase: a local replay of `_start_capacity` passes at the real timing, and a read-only host scan showed five running QEMU fixtures whose writable disks had no claim, so `_storage_vm_coverage` refused. The typed result names only `windows_managed_create_original_unknown` | `fixture_storage_host.py coverage` reports uncovered disks and `register` claims named running fixtures bound to their exact QEMU process. The Linux-only test runs the real `_storage_vm_coverage` against a real process holding a writable disk: RED before registration, GREEN after. Native: unused `21b29aa0` and `d493a373` stopped, `6e848ad1`, `942cca12` and `0f559886` registered. The user chose to reuse existing fixtures: the a3aec884 creator lane is not pursued and `575c610c` stays UNKNOWN, never replayed |
+| Stale fixture registration hidden | `vm_workflow readiness-status` on `tart-macos-independent-v9` returned `readiness_admission_unavailable`; the cause was `MacBlocked('macos_custody_source_changed')` after the delivery changed pinned sources | Both readiness routes now return `fixture_registration_stale` for exactly that refusal and `android_lifecycle_spec_changed`; other errors and message text stay generic. `test_readiness_provider_error_projection` runs the whole `c68f4a5c` server beforeimage (RED, 4 failures) and the fix (GREEN) |
+| Follow deadline during an in-flight call | Fresh-client counter `301b6a4e` (25 s follow) ended `ExceptionGroup` with `allRelayAttemptsClosed: false`: `asyncio.timeout_at(deadline)` cancelled the in-flight status call and the MCP SDK killed the relay 2 s after stdin closed, before it wrote `server-terminal.json`. Fail-safe: UNKNOWN, reconcile, no replay | The deadline now stops only new calls; one in-flight call and the relay close get a bounded 30 s grace. `test_follow_deadline_during_call_before_red_closes_relay_green` runs the whole `c68f4a5c` client (RED: no terminal) and the fix (GREEN: closed relay, `followDeadlineReached`) through the actual SDK and relay |
 
 Additional retained failure classes include lost connection-readiness publication,
 terminal failed connection generations, old failed history hidden by a changed
@@ -226,6 +230,25 @@ active UNKNOWN custody and the remaining native acceptance sequence.
    required workflows for the exact SHA. No release is authorized.
 
 ## Current integration checkpoint
+
+### Native lanes after delivery (2026-10-26)
+
+`c68f4a5c` passed all five exact-SHA workflows. Creator pre-VM closure: after
+enrolling the archlinux storage ledger, R1 proved twice identically (P `3145df2c`,
+N `0c9cfc0d`), R3 closed (A `a0818558`), R4 confirmed history and attempt-2
+custody. Attempt 2 `575c610c` blocked in the capacity phase on uncovered running
+disks; the user chose to reuse existing fixtures, so no new Windows VM is created
+and `575c610c` stays UNKNOWN. Current-source counters passed with fresh-MCP
+reconciliation and equal CLI collection on libvirt Windows (`b89cd5ff`, alias
+`windows-libvirt-6e848ad1-current-v3`), raw QEMU Windows (`e78939b3`, alias
+`windows-raw942cca12-current-v2`) and the SSH durable job (`301b6a4e`, client and
+server loss). Still blocked: Windows idle, protected login, S3 and start/reboot need
+the pending login protocol and idle qualification; raw QEMU Linux `0f559886` has its
+own UNKNOWN retirement `8042e683`; Tart macOS has no reachable guest agent; the
+Android installer update needs the archlinux `api35` device and one target APK
+(base artifact `352af218` exists). Channel-loss SSH faults were not run to protect
+shared connection `3ec9cdaeb`.
+
 
 ### Source integration checkpoint (2026-10-24)
 

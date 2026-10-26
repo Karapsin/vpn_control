@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "finding": "vm_workflow readiness-status on tart-macos-independent-v9 (operation 5beada98-c094-4a8c-b81f-55ab148433d7) returned generic readiness_admission_unavailable; the actual cause was MacBlocked('macos_custody_source_changed') after the delivery changed pinned sources",
+  "originalEvidence": ".runtime/tool-recovery/local-lanes-20261026/findings.json",
+  "files": {
+    "mcp_server.before.source": {
+      "path": "agent_tools/mcp_server.py",
+      "sha256": "0c15c7fc5157b4fab791480c3f91411a9cd13085622a2758af2fd0433c35dd0b"
+    }
+  }
+}

@@ -148,6 +148,9 @@ credential. VM readiness status includes the same local recovery view.
 Headless fixtures require their guest agent. Desktop fixtures also
 require the intended ordinary session and usable display. Capability inspection
 distinguishes a provider's potential from available qualified recovery.
+A registration whose pinned sources or lifecycle spec changed since it was
+qualified returns `fixture_registration_stale`: re-enroll the fixture against the
+current source. Other unclassified failures stay `readiness_admission_unavailable`.
 
 `readiness-reboot` takes the same two inputs and requests one graceful reboot
 of an already running, positively idle fixture. It checks reservations, running

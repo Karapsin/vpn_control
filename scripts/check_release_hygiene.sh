@@ -144,6 +144,7 @@ run_check python3 scripts/test_visual_regression.py
 run_check python3 scripts/test_visual_platform.py
 run_check python3 scripts/test_visual_target.py
 run_check python3 scripts/test_native_fixture_storage.py
+run_check python3 scripts/test_fixture_storage_host.py
 run_check python3 -m scripts.test_native_restore_image
 run_check python3 -m scripts.test_qualified_fixture_reservations
 run_check python3 -m scripts.test_tart_installer_admission

@@ -8,7 +8,7 @@ from types import ModuleType
 import unittest
 
 FIXTURE = Path(__file__).parent / 'fixtures/ssh_acceptance_preparation'
-PROVENANCE_SHA = 'e5ea0600c7630c8dba21949a120347fbd822cbdd1f98659fd27c2b281560e8eb'
+PROVENANCE_SHA = 'aca4e88787264298e02f33c6f12c030d0a402a02f077d1ab0eb25090890c7386'
 FILES = ['audit_prepared_sources.py', 'audit_prepared_sources.remote-path.before.source', 'build_controller_program.generation-before.source', 'build_controller_program_v2.py', 'controller.4674.before.source', 'controller.edc5.before.source', 'controller.py', 'controller14d.before.source', 'local-owner-source/local_owner.pre-deadline.before.source', 'local-owner-source/local_owner.py', 'local-owner-source/local_owner_v2.py', 'local-owner-source/test_local_owner.missing-binding.before.source', 'local-owner-source/test_local_owner_v2.py', 'ordinary-controller-direct-v2.source', 'ordinary-controller-direct-v3.source', 'ordinary-controller-nested-v2.source', 'ordinary-controller-nested-v3.source', 'ordinary_retention.py', 'prepare_absolute_epoch.py', 'prepare_absolute_epoch.syntax-before.source', 'prepare_sources.c141.before.source', 'prepare_sources.py', 'relocated-wrapper-key.failure.txt', 'test_controller.py', 'test_generic_bootstrap_program_path.port-before.source', 'test_generic_bootstrap_program_path.py', 'test_preparation_causals.before.source', 'test_preparation_causals.py', 'test_prepare_private_roots.py', 'test_program_builder_v2.py']
 
 

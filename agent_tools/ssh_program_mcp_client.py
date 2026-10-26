@@ -79,6 +79,11 @@ def follow_request(action, host, operation, value, fixture=None):
     return request(next_action, host, {"operationId": operation}, fixture)
 
 
+# Bounded overrun past the follow deadline for one in-flight call and the
+# relay close; the MCP SDK kills the relay 2 s after stdin closes otherwise.
+CLOSE_GRACE_SECONDS = 30
+
+
 def protocol_loss(error):
     """Finite typed transport errors; source, trust and cancellation never retry."""
     import anyio
@@ -188,7 +193,10 @@ async def main(arguments):
                 raise ValueError("program_mcp_server_source_changed")
             with (relay / "sdk.stderr").open("x", encoding="utf-8") as errors:
                 os.chmod(relay / "sdk.stderr", 0o600)
-                async with asyncio.timeout_at(deadline), stdio_client(parameters, errlog=errors) as streams:
+                # The follow deadline only stops new calls: an in-flight call
+                # keeps a bounded grace so the relay closes and records its
+                # terminal instead of being killed mid-call.
+                async with asyncio.timeout_at(deadline + CLOSE_GRACE_SECONDS), stdio_client(parameters, errlog=errors) as streams:
                     async with ClientSession(*streams, read_timeout_seconds=timedelta(seconds=max(.01, min(30, deadline-asyncio.get_running_loop().time())))) as session:
                         initialized = await session.initialize()
                         save(relay, "initialize.json", initialized.model_dump(mode="json"))
@@ -207,7 +215,7 @@ async def main(arguments):
                                  "operationId": operation, "relayAttempt": attempt, "automaticReplay": False})
                             attempted_calls += 1
                             response = await session.call_tool(tool, active_payload,
-                                read_timeout_seconds=timedelta(seconds=min(90, remaining)))
+                                read_timeout_seconds=timedelta(seconds=min(90, remaining + CLOSE_GRACE_SECONDS)))
                             returned_calls += 1
                             wire = response.model_dump(mode="json")
                             save(directory, "call-result-%08d.json" % ordinal, wire)

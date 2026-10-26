@@ -35,6 +35,7 @@ for raw in sys.stdin:
          'nextAction':{'kind':'complete'if terminal and action=='program-collect'else 'collect_original'if terminal else 'reconcile_original'}}
   if terminal:value['owner']=status['owner']
   if mode=='always-loss':os.kill(os.getpid(),signal.SIGTERM)
+  if mode=='slow-follow'and action!='program-start':time.sleep(3)
   if mode=='typed-blocker':value.update(state='unknown',nextAction={'kind':'resolve_blocker'})
   if terminal and mode=='lost-terminal'and once('lost-terminal'):os.kill(os.getpid(),signal.SIGTERM)
   result={'content':[{'type':'text','text':json.dumps(value)}],'structuredContent':value,'isError':False}

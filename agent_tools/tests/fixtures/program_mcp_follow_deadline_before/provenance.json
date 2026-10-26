@@ -1,0 +1,5 @@
+{
+  "scope": "Whole actual SDK client at c68f4a5c: a follow deadline during an in-flight call cancelled the relay before server-terminal.json (native counter 301b6a4e-9776-4e82-869f-39dcb3e558e5, ExceptionGroup, allRelayAttemptsClosed false)",
+  "sha256": "f8a083e3f9b6462d9b4c4c4a89bf16c9ac4272658f7aa3a1c901d3518cefd469",
+  "bytes": 17140
+}

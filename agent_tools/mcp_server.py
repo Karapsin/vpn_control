@@ -2480,8 +2480,7 @@ def _ssh_workflow_impl(action: str = "inventory", host: str | None = None, timeo
             core = _agent_module("readiness")
             if isinstance(error, core.ReadinessBlocked):
                 return {"tool": "ssh_workflow", **error.as_dict()}
-            return {"tool": "ssh_workflow", "ok": False, "state": "blocked",
-                    "reason": "readiness_admission_unavailable", "replayAllowed": False}
+            return _readiness_provider_refusal("ssh_workflow", error)
     if action in {"program-start", "program-status", "program-collect", "program-reconcile"}:
         unknown = {"tool": "ssh_workflow", "ok": False, "state": "unknown",
                    "reason": "program_admission_unavailable", "replayAllowed": False}
@@ -3172,6 +3171,23 @@ def _valid_uuid(value: str) -> bool:
         return str(uuid.UUID(value)) == value
     except (ValueError, AttributeError, TypeError):
         return False
+
+
+_STALE_REGISTRATION_REFUSALS = frozenset({"macos_custody_source_changed", "android_lifecycle_spec_changed"})
+
+
+def _readiness_provider_refusal(tool: str, error: BaseException) -> dict[str, Any]:
+    """Project a readiness exception that is not ReadinessBlocked.
+
+    Only the finite provider refusals that mean a source-bound fixture
+    registration went stale are named; every other exception, and any message
+    text, stays the generic admission refusal.
+    """
+    providers = _agent_module("readiness_providers")
+    stale = isinstance(error, providers.ProviderError) and str(error) in _STALE_REGISTRATION_REFUSALS
+    return {"tool": tool, "ok": False, "state": "blocked",
+            "reason": "fixture_registration_stale" if stale else "readiness_admission_unavailable",
+            "replayAllowed": False}
 
 
 def _readiness_input_refusal(tool: str, action: str, value: Any) -> dict[str, Any] | None:
@@ -4007,8 +4023,7 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
                 core = _agent_module("readiness")
                 if isinstance(error, core.ReadinessBlocked):
                     return {"tool": "vm_workflow", **error.as_dict()}
-                return {"tool": "vm_workflow", "ok": False, "state": "blocked",
-                        "reason": "readiness_admission_unavailable", "replayAllowed": False}
+                return _readiness_provider_refusal("vm_workflow", error)
         if action in {'windows-vm-deploy-secure','windows-vm-deploy-secure-status'}:
             if set(inputs)!={'deploymentId','operationId','credentialFile'} or any(type(v)is not str for v in inputs.values()):
                 return _error('vm_workflow','Secure setup requires deploymentId, operationId and credentialFile.')

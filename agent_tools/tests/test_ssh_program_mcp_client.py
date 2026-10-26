@@ -20,7 +20,7 @@ FIXTURE = Path(__file__).parent / "fixtures/program_mcp_client"
 
 @unittest.skipUnless(os.name == "posix" and importlib.util.find_spec("mcp"), "actual MCP SDK on POSIX")
 class ProgramMcpClientTests(unittest.TestCase):
-    def controlled_protocol(self, parent, mode, source, *, guest=False, relay_source=None):
+    def controlled_protocol(self, parent, mode, source, *, guest=False, relay_source=None, follow_seconds=15):
         root = parent / (mode + "-" + uuid.uuid4().hex)
         tools = root / "agent_tools"
         tools.mkdir(parents=True)
@@ -48,8 +48,8 @@ class ProgramMcpClientTests(unittest.TestCase):
                 "--session", "owned", "--server-sha256", hashlib.sha256((tools / "mcp_server.py").read_bytes()).hexdigest(),
                 "--output-root", str(root), "--action", "android-program-start" if guest == "android" else "guest-program-start" if guest else "program-start",
                 "--fixture" if guest else "--host", "owned-peer",
-                "--request-file", str(request), "--follow-seconds", "15"]
-        child = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
+                "--request-file", str(request), "--follow-seconds", str(follow_seconds)]
+        child = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25 + follow_seconds)
         self.assertEqual(b"", child.stderr)
         result = json.loads((root / "owned/client-result.json").read_bytes())
         self.assertTrue((root / "calls").exists(), (root / "owned/sdk.stderr").read_text())
@@ -137,6 +137,31 @@ class ProgramMcpClientTests(unittest.TestCase):
             self.assertEqual("program-reconcile", calls[1]["action"])
             self.assertTrue((directory / "server-terminal.json").exists())
             self.assertTrue((directory / "relay-recovery-00000001/server-terminal.json").exists())
+
+    def test_follow_deadline_during_call_before_red_closes_relay_green(self):
+        fixture = Path(__file__).parent / "fixtures/program_mcp_follow_deadline_before"
+        before = fixture / "ssh_program_mcp_client.py.source"
+        self.assertEqual(json.loads((fixture / "provenance.json").read_bytes())["sha256"], hashlib.sha256(before.read_bytes()).hexdigest())
+        with tempfile.TemporaryDirectory(prefix="program-follow-deadline-") as temporary:
+            parent = Path(temporary).resolve()
+            # The follow status call is still in flight when the 2 s deadline passes.
+            child, result, calls, directory, operation = self.controlled_protocol(parent, "slow-follow", before, follow_seconds=2)
+            self.assertEqual("ExceptionGroup", result["exceptionClass"])
+            self.assertFalse((directory / "server-terminal.json").exists())
+            with self.assertRaises(AssertionError):
+                self.assertTrue(result["allRelayAttemptsClosed"])  # actual whole before RED
+            child, result, calls, directory, operation = self.controlled_protocol(parent, "slow-follow",
+                ROOT / "agent_tools/ssh_program_mcp_client.py", follow_seconds=2)
+            self.assertTrue(result["followDeadlineReached"])
+            self.assertNotIn("exceptionClass", result)
+            self.assertEqual(1, result["relayAttempts"])
+            self.assertTrue(result["originalServerTerminalClosed"])
+            self.assertTrue(result["allRelayAttemptsClosed"])
+            self.assertEqual(result["attemptedToolCalls"], result["returnedToolCalls"])
+            self.assertEqual(result["attemptedToolCalls"], result["forwardedToolCalls"])
+            self.assertTrue(json.loads((directory / "server-terminal.json").read_bytes())["complete"])
+            self.assertEqual(operation, result["operationId"])
+            self.assertFalse(result["automaticReplay"])
 
     def test_actual_terminal_ack_loss_reconciles_and_collects_original(self):
         with tempfile.TemporaryDirectory(prefix="program-terminal-ack-") as temporary:

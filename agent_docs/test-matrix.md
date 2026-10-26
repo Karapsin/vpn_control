@@ -95,7 +95,8 @@ The `VPN Integration` workflow has two profiles. `core` runs fast deterministic 
 
 Automatic tool readiness changes additionally run the action-policy exposure audit
 (`python3 agent_tools/tool_action_policy.py`) and fixture storage admission tests
-(`python3 scripts/test_native_fixture_storage.py`) through release hygiene. The
+(`python3 scripts/test_native_fixture_storage.py`) and VM host ledger enrollment
+(`python3 scripts/test_fixture_storage_host.py`, real `/proc` coverage on Linux) through release hygiene. The
 affected agent selection includes readiness, provider/registry, durable job,
 keep-awake, generated-program and typed-next-action tests. These local gates do
 not replace each provider's DIRECT, fresh MCP and CLI acceptance tracked in

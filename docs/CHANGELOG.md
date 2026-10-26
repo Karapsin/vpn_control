@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Recognize the Windows creator's credential listener on Linux and keep reviewed source digests stable across Python versions.
 - Run hosted agent tests in six shards and keep agent tests portable to Windows and Linux runners.
 - Keep agent descriptor, traceback and capability tests deterministic across CI platforms and Python versions.
+- Add VM host storage ledger enrollment, name stale fixture registrations and close the relay when a follow deadline lands mid-call.
 
 ## 2.2.14 - 2026-10-23
 

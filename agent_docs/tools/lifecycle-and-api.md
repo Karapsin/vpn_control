@@ -121,6 +121,14 @@ routes remain. No stage action starts or restores a VM or establishes product
 acceptance. Programme transfer uses stdin in bounded chunks and executes a saved,
 hash-checked filename; the outer command stays within 60,000 bytes.
 
+A Linux VM host's creator, libvirt lifecycle and creator pre-VM proof refuse
+unless `~/.cache/vpn-control-fixture-storage` is enrolled and every writable disk of
+every running VM there is claimed; no writer creates that state. Set it up once with
+`python3 scripts/fixture_storage_host.py --host <host> enroll`, inspect gaps with
+`coverage` (read-only) and claim running fixtures with
+`register --fixture <linux|windows>:<deploymentId>`, which binds each claim to the
+fixture's exact QEMU process and never changes a VM.
+
 `vm_workflow` provides argument-driven Windows VM actions:
 
 | Action | Exact inputs | Result scope |

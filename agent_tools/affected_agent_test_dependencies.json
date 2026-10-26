@@ -105,7 +105,8 @@
         "2ce9314d18ea92767941d751d4805ef1751be9d56358856fcc2b773b179b83f5",
         "b214ffb61a3b18854d8a02a116cfd551b4ca6b46830cf55a7efab485050924d6",
         "3d7f548378c9d9ad9a4c157904bf6026bc785decb77072b41075c8c24115ee54",
-        "0c15c7fc5157b4fab791480c3f91411a9cd13085622a2758af2fd0433c35dd0b"
+        "0c15c7fc5157b4fab791480c3f91411a9cd13085622a2758af2fd0433c35dd0b",
+        "b04dc01019e9328110caf482877dba48dcf58061e1febb40616a7d48bdbb8bd4"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -1278,7 +1279,8 @@
         "agent_tools/tests/fixtures/ssh_acceptance_preparation/ordinary_retention.py"
       ],
       "sourceSha256": [
-        "a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51"
+        "a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51",
+        "e722b3b25c0d24356c36e38490b2d6065b5dc40b13f91668754d5eb3b07df2ce"
       ]
     },
     "agent_tools/tests/fixtures/ssh_acceptance_preparation/controller14d.before.source": {
@@ -6019,6 +6021,22 @@
         "e121b01386609d55d2a3cc91abf178936259b980efc755ffb44deb813dd141bf"
       ]
     },
+    "agent_tools/tests/test_readiness_provider_error_projection.py": {
+      "reason": "One exact authenticated whole mcp_server beforeimage exercises the public readiness facade. Only the undecorated _ssh_workflow_impl, _vm_workflow_impl, _vm_workflow_dispatch and _readiness_provider_refusal AST functions and the _STALE_REGISTRATION_REFUSALS assignment are compiled over the current server helpers; finite fixed adapter names resolve to their agent_tools modules and the readiness workflow is a raising stub.",
+      "scopes": [
+        "agent_tools/mcp_server.py",
+        "agent_tools/readiness.py",
+        "agent_tools/readiness_providers.py",
+        "agent_tools/readiness_tart_macos.py",
+        "agent_tools/readiness_transport.py",
+        "agent_tools/readiness_workflow.py",
+        "agent_tools/tests/fixtures/readiness_provider_error_projection/mcp_server.before.source",
+        "agent_tools/tests/fixtures/readiness_provider_error_projection/provenance.json"
+      ],
+      "sourceSha256": [
+        "f2fc4ed9ad79c453afa778efe5a202740a269f277e3e159d6e7fa37d49b382d3"
+      ]
+    },
     "agent_tools/tests/test_readiness_qemu.py": {
       "reason": "Whole authenticated preserved QEMU modules selected from finite literal fixture groups, including source-bound no-mutation admission and parameter-order equivalence. No arbitrary source root.",
       "scopes": [
@@ -6683,7 +6701,8 @@
         "agent_tools/tests/fixtures/ssh_acceptance_preparation/test_program_builder_v2.py"
       ],
       "sourceSha256": [
-        "f2fa8b20acabc830334d4f83f830c71506bcc7c49f5c5f84706253f85f479bb9"
+        "f2fa8b20acabc830334d4f83f830c71506bcc7c49f5c5f84706253f85f479bb9",
+        "ff4ca501153500e2bda6f8c2bad0d67c15cfacc6f74308d60c7be2c2c7b791b2"
       ]
     },
     "agent_tools/tests/test_ssh_acceptance_stream_cleanup.py": {
@@ -7405,7 +7424,8 @@
       "sourceSha256": [
         "8dc448f54ee4f85938585294f989c997c9f538131b9724bf82002c91ff3358a6",
         "77066fe52ff7f81ce42927d5b7296bbc1a3e0f443fa971c97fb91fea0cc037bd",
-        "9e432990a6e1970c26e5c5fc474e0ecdf3c9a9cabed4f5eaaf37610b6c802c2b"
+        "9e432990a6e1970c26e5c5fc474e0ecdf3c9a9cabed4f5eaaf37610b6c802c2b",
+        "bc626f83321610016cf80629097487f0c2ee1876d366271a1d6214d74c6ea39b"
       ]
     },
     "agent_tools/tests/test_ssh_program_private_custody.py": {
@@ -9494,9 +9514,11 @@
     "agent_tools/tests/fixtures/macos_active_work_integration/qualification-dependencies/configuration.source": "89f51e320bcac1ec6549d6ea892ae87a773d9513d48efbe1ca85d30074ee0fa5",
     "agent_tools/tests/fixtures/macos_active_work_integration/qualification-pins.json": "bf412f06eca0a46c47a70a34edc604c17574f42e899046edbb35ba6bce05e2ce",
     "agent_tools/tests/fixtures/msi_qga_fixture_bounds/receive.before.fragment": "142b4f66c31007ee273bbd1f04781c52c21302aeaa40638e747dd9359c41aa75",
+    "agent_tools/tests/fixtures/program_mcp_follow_deadline_before/ssh_program_mcp_client.py.source": "f8a083e3f9b6462d9b4c4c4a89bf16c9ac4272658f7aa3a1c901d3518cefd469",
     "agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment": "beab62becfbb8b2e9947243ba5d2ec7c848bb91998480e6f1ef21d2c7d7cbad6",
     "agent_tools/tests/fixtures/readiness_identity_refusal/mcp_server.before.source": "d1620c0e27b48721bc20f099eac6e6d4c2ed3a0922788e7874df0411133b1c34",
     "agent_tools/tests/fixtures/readiness_identity_refusal/native_response_diagnostics.before.source": "08ef37f5d97ff69a26e5a7d187ef411f072d066aeaec90f20d90c5b2ad4d32d4",
+    "agent_tools/tests/fixtures/readiness_provider_error_projection/mcp_server.before.source": "0c15c7fc5157b4fab791480c3f91411a9cd13085622a2758af2fd0433c35dd0b",
     "agent_tools/tests/fixtures/recovery_checkout_extended/attributes.before": "9e3a39ce11baaf888de4f1c83c734c8dbfde74ff66d66a4d9134c4f59f30b465",
     "agent_tools/tests/fixtures/runner_stdin_isolation/affected_agent_tests.before.source": "5e09740df63d87e9f2c8dfbc322e302353cb4026a122878d701f8ee912158237",
     "agent_tools/tests/fixtures/runner_stdin_isolation/agent_test_runner.before.source": "5cb3ad7066980985b12000b5d373a7299e23ce75b3d18ef966d0f6c3464d9e1b",
