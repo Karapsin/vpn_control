@@ -1,0 +1,140 @@
+{
+  "confirmedCause": "The same mechanism as the Fast Checks failure of test_ssh_direct_ended_source_transition: earlier serial modules (test_ssh_absolute_deadline, test_ssh_automatic_key_custody, test_ssh_collector_e2big) leave BoundInlineArgv plans whose observation-only PlannedArgv config/key custody is reachable only from reference cycles (popen_ssh E2BIG traceback frames, assertRaises contexts, Popen.args, CompletedProcess.args, MagicMock call records) and is closed silently by __del__. Every peer compared len(/dev/fd) before and after its measurement without first finalizing that garbage, so a collection inside the measurement lowered the count. With the same producer first, every fixed peer window (exact identities, collector off inside) passes on both interpreters, so no measured code kept or closed a descriptor of its own, and the window diagnostic named what its pre-baseline collection finalized: only .vm-hosts.local.json and inert-key custody chains with their directories (for example 54 = 48 directories, 3 config and 3 key files on 3.12.13).",
+  "controlledRegression": "agent_tools.tests.test_descriptor_window runs one actual measured case of every peer from its whole beforeimage here and from the current module, with their real fixtures and local children. Automatic collection is off; three real config/key PrivateConfigCustody pairs reachable only from a cycle are pending when the case starts, as earlier serial modules leave them, and one full collection runs at a seam call inside the measured window (the first call of old_history, control, git, route_options, observe, invoke or prepare, and the fourth load_lease_namespace, after the three loads of enrollment). Unfixed: every case fails AssertionError: N != M with |N - M| exactly the planted descriptors that collection finalized and no window diagnostic. Fixed: every case passes, the in-window collection finds none and the one diagnostic line names exactly the planted descriptors. Fixed controls of the case-long window run with automatic collection on outside and observe it off inside: a kept descriptor, a cyclic custody created inside, a closed pre-existing descriptor and a same-number replacement each fail with the complete tables.",
+  "failingEvidence": "Unfixed beforeimages, CPython 3.14.3 and 3.12.13 on this host: all 11 measured cases fail with the count difference equal to the 54 planted custody descriptors (48 directories and 6 files at this host's /var/folders depth; a plan under the CI runner's /tmp/vct-*/tmp holds 12), for example 58 != 4 (successor, census, readonly), 4 != 58 (Tart) and 60 != 6 (retained delivery and wrapper, original6b, nested channel).",
+  "failureType": "A global descriptor count compared around a measurement in one serial non-isolated worker is counterfeited: an allocation-triggered collection inside the measurement finalizes cyclic garbage that earlier cases left, whose PrivateConfigCustody.__del__ closes a held directory chain and file, so the count falls although the measured code opened and closed all of its own descriptors.",
+  "fix": "agent_tools/tests/descriptor_window.py holds the one exact window: it stops the automatic collector, finalizes pending cyclic garbage and only then takes the baseline table; the final table, collector state and live threads are recorded before the collector is restored, and the tables are compared by exact identity (S_IFMT, st_dev, st_ino). A descriptor the measured code keeps, one whose release it leaves to the collector, a pre-existing one it closes and one it replaces under the same number all fail with both complete tables (fd, type, device, inode, readlink or F_GETPATH target), the opened and closed sets, the threads, the collector state and what the pre-baseline collection finalized. When that collection finalized earlier descriptors, the window writes one stderr line naming their kinds even when it passes. test_ssh_direct_ended_source_transition delegates to it; the setUp-to-tearDown windows of the inventory successor, census child imports and readonly checkpoint and the operation windows of the retained delivery and wrapper, original6b, nested-channel closing refusals and Tart lease repeats use it. No product source changes.",
+  "kind": "whole-test-module-beforeimages",
+  "localReproductions": [
+    {
+      "by": "patch verifier",
+      "command": "serial run of the patched tree's 60-module prefix of the next-run shard (848 tests, natural collection)",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13",
+      "result": "only EndedInventorySuccessorTests.test_authentic_matcher_exact_predecessor_and_current_tuple failed, at tearDown line 62: AssertionError: 77 != 5; the 72 custody descriptors of test_ssh_collector_e2big were finalized by generation-1 and -2 collections inside its window"
+    },
+    {
+      "by": "patch verifier",
+      "command": "python -m unittest agent_tools.tests.test_ssh_collector_e2big agent_tools.tests.test_ssh_direct_ended_inventory_successor",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13",
+      "result": "4 of 4 runs failed AssertionError: 95 != 5, with and without the first patch; the successor module passes alone"
+    },
+    {
+      "by": "this fix",
+      "command": "serial run, in one process with natural collection, of the first 62 modules of hosted shard index 2 of this change's own 776-module selection (test_ssh_absolute_deadline, test_ssh_automatic_key_custody and test_ssh_collector_e2big run right before the successor)",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13",
+      "result": "with only the first patch: 615 tests, failures=1, EndedInventorySuccessorTests.test_altered_missing_other_pin_and_current_image_refuse at tearDown line 62: AssertionError: 59 != 5. With this fix: OK (skipped=10); the successor's first window reported finalizing 54 earlier descriptors before its baseline: {\".vm-hosts.local.json\": 3, \"directory\": 48, \"inert-key\": 3}"
+    },
+    {
+      "by": "this fix",
+      "command": "python -m unittest agent_tools.tests.test_ssh_collector_e2big agent_tools.tests.test_ssh_direct_ended_inventory_successor",
+      "host": "this macOS arm64 host",
+      "python": "3.14.3 and 3.12.13",
+      "result": "EndedInventorySuccessorTests.test_altered_missing_other_pin_and_current_image_refuse failed at tearDown line 62: AssertionError: 76 != 40 (3.14.3) and AssertionError: 58 != 4 (3.12.13)"
+    },
+    {
+      "by": "this fix",
+      "command": "python -m unittest agent_tools.tests.test_ssh_collector_e2big agent_tools.tests.test_windows_census_child_imports",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13",
+      "result": "WindowsCensusChildImportsTests.test_exact_one_import_fix_completes_entire_main_JSON failed in assert_fd_count line 51: AssertionError: 112 != 76 (3.14.3 passed)"
+    },
+    {
+      "by": "this fix",
+      "command": "python -m unittest agent_tools.tests.test_ssh_collector_e2big agent_tools.tests.test_readiness_tart_macos_registry",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13",
+      "result": "MacProductionCustodyBoundariesTests.test_lease_enrollment_host_admission_precedes_guest_write_and_healthy_repeat_has_no_dispatch failed at line 353: AssertionError: 4 != 22 (3.14.3 passed)"
+    },
+    {
+      "by": "this fix",
+      "command": "the same producer first, then each other peer module",
+      "host": "this macOS arm64 host",
+      "python": "3.14.3 and 3.12.13",
+      "result": "retained delivery and wrapper, original6b, readonly checkpoint and the nested-channel closing refusals passed: no collection happened to run inside their shorter windows in those runs, although the controlled regression shows the same counterfeit"
+    }
+  ],
+  "nativeEvidenceLimit": "Hosted-runner test-harness measurement only; no SSH, VM, guest or product native behavior is involved or claimed. Which owners the Linux collection finalized is inferred, not observed; the window diagnostic line lets the next Linux Fast Checks run name them. Only that run shows the fixed peers green in the hosted shard order (CPython 3.12.15, TMPDIR=/tmp/vct-*/tmp), and readlink(/proc/self/fd/N) targets are exercised only on Linux.",
+  "nativeFailureClaimed": false,
+  "originalFailure": "Fast Checks run 40232090301, job 121285779898 'Agent Tools Shard 4' (ubuntu-latest x86_64, CPython 3.12.15, the shard's one serial non-isolated worker): FAIL at line 103 after 0.66 s, event 1343 of that worker, 1648 tests, failures=1. The same case passes when the module runs alone, on this macOS host and with CPython 3.12.13.",
+  "originalFailureEvent": {
+    "elapsedSeconds": 0.6633205949999592,
+    "event": "finished",
+    "outcome": "failure",
+    "publicTestId": "agent_tools.tests.test_ssh_direct_ended_source_transition.ProviderEndedClosureHistoryTests.test_actual_equal_source_ended_then_new_intent",
+    "schemaVersion": 1
+  },
+  "originalFailureEventSha256": "4d74885d65dd2bbdde4e91d84d43e5d3ebc65f816436b43064851d356296c009",
+  "originalFailureEventsSha256": "1f304a800a579a50506753dd89143c6df5732fc0f78da85fc8c2e2d9280ecd4f",
+  "originalFailureLogScope": "Preserved failed-job log of run 40232090301 (all failed jobs); the trace is its Agent Tools Shard 4 lines 4365-4372. It also holds unrelated Agent Tools Shard 2 failures.",
+  "originalFailureLogSha256": "1f48ad052c90ad32e0ca21e329d33c3657518a0aa973366aa6702a8208208864",
+  "originalFailureTestId": "agent_tools.tests.test_ssh_direct_ended_source_transition.ProviderEndedClosureHistoryTests.test_actual_equal_source_ended_then_new_intent",
+  "originalFailureTrace": [
+    "======================================================================",
+    "FAIL: test_actual_equal_source_ended_then_new_intent (agent_tools.tests.test_ssh_direct_ended_source_transition.ProviderEndedClosureHistoryTests.test_actual_equal_source_ended_then_new_intent)",
+    "----------------------------------------------------------------------",
+    "Traceback (most recent call last):",
+    "  File \"/home/runner/work/vpn_control/vpn_control/agent_tools/tests/test_ssh_direct_ended_source_transition.py\", line 103, in test_actual_equal_source_ended_then_new_intent",
+    "    self.assertEqual('ready',value['state']);self.assertEqual(fd,len(os.listdir('/dev/fd')))",
+    "                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "AssertionError: 43 != 7"
+  ],
+  "originalFailureTraceSha256": "786f26037f0298ffb692cdadec9ab74a618aeea55096c79d80d83b158fe6d4a8",
+  "passingEvidence": "Current peers under the same planted garbage and in-window collection: all 11 cases pass and each window reports finalizing exactly the 54 planted descriptors before its baseline. With the real producer test_ssh_collector_e2big first, every fixed peer module passes on CPython 3.14.3 and 3.12.13 (the nested-channel module apart from its real-OpenSSH dead-socket case, which the runner's host-tool stub blocks here), and its first window reports the producer's custody chains it finalized. The realistic 62-module serial shard prefix above passes with this fix. Each peer module passes alone.",
+  "residualRisk": "Two global counts were not changed. test_agent_test_runner_self_input counts around run_plan; no test module that references build_ssh_argv, popen_ssh or automatic_submission sorts before it, so no serial worker can run a known or candidate producer first. test_source_loader_bootstrap counts around one refused Adapter construction; 37 modules that reference those builders sort before it (not checked for leftover custody garbage), and several of its cases patch os.fstat or os.read around that window, so an identity table there needs its own design. Both passed after the real producer on CPython 3.14.3 and 3.12.13; an earlier producer could still counterfeit them. Count windows inside preserved beforeimages that other regressions execute (ssh_direct_inventory_epoch) are reached only after their expected RED or setUp error, and the ssh_master_root_provenance fixtures collect before counting. The producer itself is a product follow-up: ssh_transport.build_ssh_argv binds an observation-only PlannedArgv with two PrivateConfigCustody owners to every inline python3/sudo argv, only automatic_submission's fallback or __del__ closes it, and popen_ssh's E2BIG fallback keeps the traceback cycle. ssh_transport.py is a pinned DIRECT source-closure member (_SOURCE_NAMES_V2) whose hash ended DIRECT histories bind, so changing it is its own reviewed source epoch with its own causal regression.",
+  "routineSuite": "agent_tools.tests.test_descriptor_window and agent_tools.tests.test_ssh_direct_ended_descriptor_window run in the affected agent-test stage of the managed pre-push tier and the Fast Checks agent shards whenever the selector reaches them, including changes to descriptor_window.py, private_config_custody.py, any peer, these beforeimages or this provenance.",
+  "schemaVersion": 1,
+  "sourceBaseline": "005852a2 (pushed dev commit of Fast Checks run 40232090301)",
+  "sources": {
+    "agent_tools/tests/test_readiness_tart_macos_registry.py": {
+      "beforeimage": "test_readiness_tart_macos_registry.py.before.source",
+      "measuredWindow": "the 20 healthy load_lease_namespace repeats",
+      "sourceBytes": 35549,
+      "sourceSha256": "89a8f3a8b5a95fdf6c4397e469b4f40f92d8fa0fe87b292068015e7846175f9c"
+    },
+    "agent_tools/tests/test_ssh_direct_ended_inventory_successor.py": {
+      "beforeimage": "test_ssh_direct_ended_inventory_successor.py.before.source",
+      "measuredWindow": "setUp to tearDown of every case",
+      "sourceBytes": 10502,
+      "sourceSha256": "f14fdd7dbece56e9c5fb393e06db46eac91741f7725829a5a59e7c171946c046"
+    },
+    "agent_tools/tests/test_ssh_direct_nested_channel.py": {
+      "beforeimage": "test_ssh_direct_nested_channel.py.before.source",
+      "measuredWindow": "prepare of closing_refusal (key, config, source)",
+      "sourceBytes": 19439,
+      "sourceSha256": "9410e7d3c0ad2e0bdd847e2beba70ea0c0d0b2c2db3794301d0141ec5799d3bd"
+    },
+    "agent_tools/tests/test_ssh_direct_original6b_observation.py": {
+      "beforeimage": "test_ssh_direct_original6b_observation.py.before.source",
+      "measuredWindow": "the original-only status invocation of refuse(), the ended case and the missing-ready case",
+      "sourceBytes": 16467,
+      "sourceSha256": "da572fc1fefb4a954be0eef2aa02222332bee416420001c2d178a79f199eb2cb"
+    },
+    "agent_tools/tests/test_ssh_direct_retained_delivery_transition.py": {
+      "beforeimage": "test_ssh_direct_retained_delivery_transition.py.before.source",
+      "measuredWindow": "route_options of the new connection",
+      "sourceBytes": 4836,
+      "sourceSha256": "c8e8e6439942d03a8368a3393a7e24581bc01e55b2773fa3f9d1f62fa8db238f"
+    },
+    "agent_tools/tests/test_ssh_direct_retained_wrapper_transition.py": {
+      "beforeimage": "test_ssh_direct_retained_wrapper_transition.py.before.source",
+      "measuredWindow": "the retained status observation and every refuse() observation",
+      "sourceBytes": 6512,
+      "sourceSha256": "be7d111f466747b509aac5eb6b99e7a8624bdffa1a4857936a4c5a83976adaec"
+    },
+    "agent_tools/tests/test_windows_census_child_imports.py": {
+      "beforeimage": "test_windows_census_child_imports.py.before.source",
+      "measuredWindow": "setUp to the last cleanup of every case",
+      "sourceBytes": 5754,
+      "sourceSha256": "57e1c069139b71d9df9f2042cd615a331376b1da6690caf65d60ad281fafee91"
+    },
+    "agent_tools/tests/test_windows_direct_readonly_checkpoint.py": {
+      "beforeimage": "test_windows_direct_readonly_checkpoint.py.before.source",
+      "measuredWindow": "setUp (after its temporary root) to the last cleanup of every case",
+      "sourceBytes": 7714,
+      "sourceSha256": "ed1b2e12c8ae6babf56aa4930a454a872af6030ef39fb62340669be1671e0a46"
+    }
+  }
+}

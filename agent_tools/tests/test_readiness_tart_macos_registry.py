@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from agent_tools import durable_remote_job as jobs
 from agent_tools import readiness_tart_macos_registry as subject
+from agent_tools.tests import descriptor_window
 
 
 @unittest.skipUnless(os.name == "posix", "private FD, process generation and flock custody")
@@ -348,9 +349,9 @@ class MacProductionCustodyBoundariesTests(unittest.TestCase):
         self.assertEqual(custody.prepare_lease_namespace(deadline=time.monotonic()+3),packet)
         self.assertEqual(calls,['enroll','namespace-status'])
         if Path('/dev/fd').is_dir():
-            before=len(list(Path('/dev/fd').iterdir()))
-            for _ in range(20):self.assertEqual(custody.load_lease_namespace(),packet)
-            self.assertEqual(len(list(Path('/dev/fd').iterdir())),before)
+            with descriptor_window.measured() as window:
+                for _ in range(20):self.assertEqual(custody.load_lease_namespace(),packet)
+            descriptor_window.check(self,window)
 
     def test_lost_lease_enrollment_ack_reconciles_original_marker_without_second_enroll(self):
         import ast,hashlib,json

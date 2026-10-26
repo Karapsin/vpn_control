@@ -274,7 +274,7 @@ class OwnedDescendantSourceTests(unittest.TestCase):
                      'Actual subreaper/PIDfd causal test requires Linux; Mac does not prove viability')
 class OwnedDescendantLinuxTests(unittest.TestCase):
     def test_actual_separate_session_descendants_reaped_and_flag_restored(self):
-        code = """
+        code = r"""
 import importlib.util,sys,os,pathlib,ctypes,signal,select,time,json
 s=importlib.util.spec_from_file_location('fixture',sys.argv[1]);f=importlib.util.module_from_spec(s);s.loader.exec_module(f)
 exec(f.OWNED_DESCENDANT_SOURCE)
@@ -307,8 +307,15 @@ assert set(proof['reapedPids'])=={process,escape} and children_of(os.getpid())==
 assert subreaper_flag()==original
 print(json.dumps(proof,sort_keys=True))
 """
-        result = subprocess.run([sys.executable, '-I', '-B', '-c', code, fixture.__file__],
-                                capture_output=True, timeout=8)
+        try:
+            result = subprocess.run([sys.executable, '-I', '-B', '-c', code, fixture.__file__],
+                                    capture_output=True, timeout=8)
+        except subprocess.TimeoutExpired as error:
+            # Descendants left by a refusal keep the inherited output pipes open past the
+            # timeout; run() keeps what the child already wrote on the error.
+            raise self.failureException('timed out after %ss\nstdout=%s\nstderr=%s\nhost=%s' % (
+                error.timeout, (error.stdout or b'').decode(errors='replace'),
+                (error.stderr or b'').decode(errors='replace'), host_facts())) from error
         details = lambda: 'returncode=%r\nstdout=%s\nstderr=%s\nhost=%s' % (
             result.returncode, result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace'), host_facts())
         self.assertEqual(result.returncode, 0, details())

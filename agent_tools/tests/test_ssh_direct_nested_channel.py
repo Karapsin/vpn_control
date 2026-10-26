@@ -3,10 +3,11 @@
 Remote kernel/master reply is a declared fixture seam. Native MCP equivalent
 retest remains required; these controls prove only local admission behavior.
 """
-import ast,json,os,shlex,shutil,socket,subprocess,sys,tempfile,unittest
+import ast,json,shlex,shutil,socket,subprocess,sys,tempfile,unittest
 from pathlib import Path
 from unittest import mock
 from agent_tools import ssh_direct_nested_channel as direct
+from agent_tools.tests import descriptor_window
 
 # Windows discovery must not import POSIX fixtures before honoring their skip.
 COORDINATOR_CAPABLE=(direct.coordinator_capable() and hasattr(socket,'AF_UNIX')
@@ -124,12 +125,11 @@ class DirectChannelTests(unittest.TestCase):
                 before=path.read_bytes();original=self.consumer
                 def changed(argv,**kw):
                     child=original(argv,**kw);path.write_bytes(before+b' ');return child
-                fd_before=len(os.listdir('/dev/fd'))
                 try:
-                    with mock.patch.object(subprocess,'Popen',side_effect=changed):value=direct.prepare(self.root,'archlinux',self.corr)
+                    with descriptor_window.measured() as window,mock.patch.object(subprocess,'Popen',side_effect=changed):value=direct.prepare(self.root,'archlinux',self.corr)
                     self.assertEqual('unknown',value['state']);self.assertEqual('closing',value['failurePhase'])
                 finally:path.write_bytes(before)
-                self.assertEqual(fd_before,len(os.listdir('/dev/fd')))
+                descriptor_window.check(self,window)
     def test_closing_key_mutation_refuses_and_closes_holders(self):self.closing_refusal('key')
     def test_closing_config_mutation_refuses_and_closes_holders(self):self.closing_refusal('config')
     def test_closing_source_mutation_refuses_and_closes_holders(self):self.closing_refusal('source')

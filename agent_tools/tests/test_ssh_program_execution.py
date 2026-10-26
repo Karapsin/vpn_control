@@ -31,6 +31,16 @@ def target():
     return {"kind": "ssh", "uid": os.getuid(), "principal": user.pw_name, "home": user.pw_dir, "bootId": boot}
 
 
+def original_worker_exited(directory):
+    """True once the exact original worker that start() recorded in owner.json is gone."""
+    from agent_tools import ssh_channel_keeper_entry as keeper
+    try:
+        owner = json.loads((directory / "owner.json").read_bytes())
+        return keeper.actor(owner["actor"]["pid"]) != owner["actor"]
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return True
+
+
 @unittest.skipUnless(os.name == "posix", "configured POSIX peer")
 class ProgramExecutionTests(unittest.TestCase):
     def setUp(self):
@@ -77,17 +87,23 @@ class ProgramExecutionTests(unittest.TestCase):
 
     def terminal(self, deadline=15):
         end = time.monotonic() + deadline
+        directory = self.root / ".rag_index/ssh-program-execution" / self.operation
+        stderr = directory / "worker.stderr.private"
         while time.monotonic() < end:
             result = self.observe()
             if result["state"] == "terminal":
                 return result
-            directory = self.root / ".rag_index/ssh-program-execution" / self.operation
             if result["state"] == "unknown" and not (directory / "owner-closed.json").exists():
-                stderr = directory / "worker.stderr.private"
-                if stderr.exists() and stderr.stat().st_size:
-                    self.fail("Original worker failed before terminal: " + stderr.read_text()[-4000:])
+                # A worker's traceback reaches this file in several writes (CPython 3.12
+                # writes each File line before reading its source line), and a legacy
+                # intent is unknown from the first observation. Report the whole stderr
+                # only once that exact recorded worker has exited.
+                if stderr.exists() and stderr.stat().st_size and original_worker_exited(directory):
+                    self.fail("Original worker failed before terminal: " + stderr.read_text(errors="backslashreplace"))
             time.sleep(.05)
-        self.fail("Original program did not reach a verified terminal: " + json.dumps(self.observe()))
+        self.fail("Original program did not reach a verified terminal: " + json.dumps(self.observe())
+                  + "\nOriginal worker stderr so far: "
+                  + (stderr.read_text(errors="backslashreplace") if stderr.exists() else "<absent>"))
 
     def raw(self, name):
         return (self.root / ".rag_index/ssh-program-execution" / self.operation / (name + ".private")).read_bytes()

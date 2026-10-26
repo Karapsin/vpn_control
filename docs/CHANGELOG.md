@@ -12,6 +12,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Finish agent test cleanup on macOS when a process group holds only zombies.
 - Recognize the Windows creator's credential listener on Linux and keep reviewed source digests stable across Python versions.
 - Run hosted agent tests in six shards and keep agent tests portable to Windows and Linux runners.
+- Keep agent descriptor, traceback and capability tests deterministic across CI platforms and Python versions.
 
 ## 2.2.14 - 2026-10-23
 

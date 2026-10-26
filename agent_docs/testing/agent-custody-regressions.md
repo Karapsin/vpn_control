@@ -51,10 +51,17 @@ Run `python3 -m unittest agent_tools.tests.test_android_api35_os_session_project
 ## Launcher collector test fixture isolation
 
 After changing the launcher snapshot fixture or its external ancestry test view,
-run `python3 -m unittest agent_tools.tests.test_android_launcher_version_source_snapshot agent_tools.tests.test_android_launcher_collector_ancestry`.
-The21 controls preserve actual FIFO and1024-FD causal cases, controlled external
+run `python3 -m unittest agent_tools.tests.test_android_launcher_version_source_snapshot agent_tools.tests.test_android_launcher_collector_ancestry agent_tools.tests.test_android_owned_descendant_child_syntax`.
+The25 controls preserve actual FIFO and1024-FD causal cases, controlled external
 churn, owned ancestry/bytes and named FD exchange, identity/mode/principal and
-symlink refusal. On macOS, one existing Linux-only subreaper case skips honestly.
+symlink refusal. On macOS, one existing Linux-only subreaper case skips honestly;
+the exact child program it generates still runs on every POSIX host up to its
+fixture load, from the whole `005852a2` beforeimage (RED, a SyntaxError at program
+line 22) and from the fix (GREEN). Its exact call also runs under a real shortened
+timeout while an owned probe descendant holds the child's output pipes: the
+beforeimage with only the raw fix reports a bare timeout (RED), and the fix reports
+the child's captured output and host facts (GREEN). Only Linux runs the subreaper
+case itself.
 Native guard and historical source bytes remain unchanged. These modules belong
 to ordinary discovery and the related change-scoped agent-test selection.
 

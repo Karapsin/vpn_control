@@ -1,9 +1,10 @@
 """Exact reviewed DIRECT predecessor bridge; real local history, no SSH actors."""
-import ast,copy,hashlib,importlib.util,json,os,shutil,socket,subprocess,tempfile,unittest
+import ast,copy,hashlib,importlib.util,json,shutil,socket,subprocess,tempfile,unittest
 from pathlib import Path
 from unittest import mock
 import agent_tools
 from agent_tools import ssh_direct_nested_channel as direct
+from agent_tools.tests import descriptor_window
 CAPABLE=(direct.coordinator_capable() and hasattr(socket,'AF_UNIX') and Path('/dev/fd').is_dir() and shutil.which('ssh') is not None)
 if CAPABLE:
     from agent_tools import ssh_fresh_nested_channel as channel
@@ -40,7 +41,9 @@ def load_public(path,name):
 class EndedInventorySuccessorTests(unittest.TestCase):
     source_before=False
     def setUp(self):
-        self.fd_before=len(os.listdir('/dev/fd'))
+        # The whole case is the FD window; earlier serial cases' cyclic owners
+        # are finalized first and the collector stays off until tearDown measures.
+        self.descriptors=descriptor_window.begin();self.addCleanup(descriptor_window.restore,self.descriptors)
         self.f=fixtures.DirectChannelTests('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups)
         self.old_dir=self.f.root/'old-public-source';self.old_dir.mkdir()
         for name,body in historical_sources().items():
@@ -59,7 +62,7 @@ class EndedInventorySuccessorTests(unittest.TestCase):
 
     def tearDown(self):
         self.f.doCleanups()
-        self.assertEqual(self.fd_before,len(os.listdir('/dev/fd')))
+        descriptor_window.check(self,descriptor_window.end(self.descriptors),'test')
     def old_history(self):
         with mock.patch.object(self.f,'expected_remote',self.old_fresh._REMOTE),mock.patch.object(agent_tools,'ssh_fresh_nested_channel',self.old_fresh),mock.patch.object(agent_tools,'ssh_direct_nested_channel',self.old_direct),mock.patch.object(subprocess,'Popen',side_effect=self.f.consumer):
             ready=self.old_direct.prepare(self.f.root,'archlinux',self.f.corr)

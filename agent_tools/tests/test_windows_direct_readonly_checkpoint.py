@@ -1,6 +1,7 @@
 """Routine causal readonly checkpoint controls; owned synthetic Git and callbacks only."""
 import hashlib,json,os,shutil,subprocess,sys,tempfile,unittest
 from pathlib import Path
+from agent_tools.tests import descriptor_window
 FIXTURES=Path(__file__).with_name('fixtures')/'windows_readonly_checkpoint'
 PINS={'readonly_checkpoint.py':'8c791334f5036336c43eb287a3bf3a3d7aa96351102aafe1226b4bdbc93936e8','checkpoint.before.public.py':'982abc064f167b8a3083b93042e92f58ea790e4c524577d8c5f7d95be64aa09c','original-refusal.public.json':'620b6466bdd18d0c864151027bfe39b9f64230c768b3862134d146a7dcb2a915'}
 SIZES={'readonly_checkpoint.py':8841,'checkpoint.before.public.py':673,'original-refusal.public.json':292}
@@ -21,7 +22,9 @@ class WindowsDirectReadonlyCheckpointTests(unittest.TestCase):
     _docs_consumer="new"
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='owned-readonly-checkpoint-');self.root=Path(self.temp.name)/'repo';self.root.mkdir()
-        self.fd_before=len(os.listdir('/dev/fd'));self.addCleanup(self.assert_fd_count);self.addCleanup(self.temp.cleanup)
+        # The case is the FD window (earlier serial cases' cyclic owners are finalized first).
+        self.descriptors=descriptor_window.begin();self.addCleanup(descriptor_window.restore,self.descriptors)
+        self.addCleanup(self.assert_fd_count);self.addCleanup(self.temp.cleanup)
         self.git('init','-b','dev');self.git('config','user.email','fixture@example.invalid');self.git('config','user.name','Owned Fixture');self.git('config','commit.gpgsign','false')
         for name in ('app/main.kt','desktopApp/main.kt','shared/main.kt','buildSrc/build.gradle.kts','gradle/gradle-wrapper.properties','scripts/package.ps1','.github/workflows/windows.yml','gradle.properties','build.gradle.kts','settings.gradle.kts','gradlew','.gitignore','.gitattributes','docs/readme.md','agent_tools/tool.py'):
             path=self.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('owned-fixture\n')
@@ -31,7 +34,7 @@ class WindowsDirectReadonlyCheckpointTests(unittest.TestCase):
         exec(compile(read_fixture('readonly_checkpoint.py'),str(FIXTURES/'readonly_checkpoint.py'),'exec'),self.local);self.local['EXPECTED_HEAD']=self.head
         self.calls=[]
     def assert_fd_count(self):
-        self.assertEqual(self.fd_before,len(os.listdir('/dev/fd')))
+        descriptor_window.check(self,descriptor_window.end(self.descriptors),'test')
     def git(self,*args):
         result=subprocess.run(['git','-c','core.hooksPath=/dev/null',*args],cwd=self.root,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=fixture_env(),timeout=10)
         self.assertEqual(0,result.returncode,result.stderr.decode());return result.stdout

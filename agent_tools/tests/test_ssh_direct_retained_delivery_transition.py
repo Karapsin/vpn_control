@@ -3,9 +3,10 @@
 Original native badc terminal/READY evidence is retained separately. These local
 controls prove admission/refusal decisions, not new native connection acceptance.
 """
-import hashlib,os,subprocess,unittest
+import hashlib,subprocess,unittest
 from unittest import mock
 from agent_tools import ssh_direct_nested_channel as direct
+from agent_tools.tests import descriptor_window
 from agent_tools.tests import test_ssh_direct_retained_wrapper_transition as prior
 from agent_tools.tests import test_ssh_direct_ended_source_transition as history
 
@@ -28,13 +29,13 @@ class RetainedDeliveryTransitionTests(prior.RetainedWrapperTransitionTests):
         p=self.f.source/'mcp_server.py';p.write_bytes(MCP_DELIVERY+b'\n# unreviewed next delivery\n');self.refuse()
     def test_new_connection_has_actual_working_direct_route_only(self):
         f=self.f;value=f.invoke(corr=f.new);self.assertEqual('ready',value['state'])
-        before=len(f.calls);fds=len(os.listdir('/dev/fd'))
-        with mock.patch.object(f.owner,'expected_remote',f.module._REMOTE),mock.patch.object(subprocess,'Popen',side_effect=f.owner.consumer):
+        before=len(f.calls)
+        with descriptor_window.measured() as window,mock.patch.object(f.owner,'expected_remote',f.module._REMOTE),mock.patch.object(subprocess,'Popen',side_effect=f.owner.consumer):
             route=direct.route_options(f.root,'archlinux',f.new,value['receiptSha256'])
         self.assertEqual(f.new,route['correlationId']);self.assertEqual(value['receiptSha256'],route['receiptSha256'])
         self.assertEqual(('-S','/tmp/vpn-channel-'+f.new+'/m','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false'),route['innerOptions'])
         self.assertEqual(before+1,len(f.calls));self.assertEqual(['prepare','status','prepare','status'],[c[6]for c in f.calls])
-        self.assertEqual(fds,len(os.listdir('/dev/fd')));self.unchanged()
+        descriptor_window.check(self,window);self.unchanged()
     def test_original_provider_same_delivery_mcp_ended_history_remains_admitted(self):
         f=self.f
         # A separate owned fixture seeds the actual predecessor under the exact

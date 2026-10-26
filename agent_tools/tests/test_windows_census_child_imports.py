@@ -1,6 +1,7 @@
 """Complete emitted census import regression, with declared isolated inert IO boundaries."""
 import ast,hashlib,json,os,subprocess,sys,unittest
 from pathlib import Path
+from agent_tools.tests import descriptor_window
 FIXTURES=Path(__file__).with_name('fixtures')/'windows_census_child_imports'
 PINS={'inert_consumer.py': {'bytes': 3370, 'sha256': '22b81eeeb2ce8245a97892632b4987fcb230689648afbc13054caa87c936991e'}, 'after.py.txt': {'bytes': 9373, 'sha256': '392f5e9778de50fe9598d01c80a6e2934ed9358ae7c1cc07f7d36ce569c4dbb1'}, 'metadata.public.json': {'bytes': 984, 'sha256': '423d779113f869a204e7c1fa630d579c740953a58a10f4a1c3809d3c4f5943a8'}, 'before.py.txt': {'bytes': 9362, 'sha256': '7fd5c034e02760c760661e07cbb2c5e1b6c9a51a0da2c1ac77918896d272350a'}}
 
@@ -41,14 +42,15 @@ finally:
 @unittest.skipUnless(os.name=='posix' and hasattr(os,'O_NOFOLLOW') and Path('/dev/fd').is_dir(),'requires owned POSIX inert child')
 class WindowsCensusChildImportsTests(unittest.TestCase):
     def setUp(self):
-        self.fd_before=len(os.listdir('/dev/fd'));self.addCleanup(self.assert_fd_count)
+        # The whole case is the FD window (earlier serial cases' cyclic owners are finalized first).
+        self.descriptors=descriptor_window.begin();self.addCleanup(descriptor_window.restore,self.descriptors);self.addCleanup(self.assert_fd_count)
         before=read_fixture('before.py.txt');after=read_fixture('after.py.txt')
         self.assertEqual(before.replace(b'import os,sys,json,stat,socket,secrets,time,base64,hashlib\n',b'import os,sys,json,stat,socket,secrets,time,base64,hashlib,subprocess\n',1),after)
         # No used function/main-body change is accepted beside that one import.
         a=ast.parse(before);b=ast.parse(after);a.body[0]=b.body[0]
         self.assertEqual(ast.dump(a,include_attributes=False),ast.dump(b,include_attributes=False))
         metadata=json.loads(read_fixture('metadata.public.json'));self.assertIs(metadata['native'],False);self.assertIs(metadata['rawPrivateExport'],False)
-    def assert_fd_count(self):self.assertEqual(self.fd_before,len(os.listdir('/dev/fd')))
+    def assert_fd_count(self):descriptor_window.check(self,descriptor_window.end(self.descriptors),'test')
     def control(self,name):
         envelope=json.dumps([read_fixture('inert_consumer.py').decode(),read_fixture(name).decode()]).encode()
         self.assertLessEqual(len(envelope),20000)

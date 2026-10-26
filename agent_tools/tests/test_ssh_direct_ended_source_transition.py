@@ -3,10 +3,11 @@
 No actual config, SSH, route or native guest. Actual local Python children consume
 private stdin and emit declared remote kernel facts, like routine owner controls.
 """
-import gzip,hashlib,json,os,shutil,sys,types,unittest
+import gzip,hashlib,json,shutil,sys,types,unittest
 from pathlib import Path
 from unittest import mock
 from agent_tools import ssh_direct_nested_channel as direct
+from agent_tools.tests import descriptor_window
 from agent_tools.tests import test_ssh_direct_nested_channel as fixture_owner
 if fixture_owner.COORDINATOR_CAPABLE:
     from agent_tools import ssh_connection_session as session,ssh_fresh_nested_channel as channel
@@ -80,11 +81,17 @@ class ProviderEndedHistoryTests(unittest.TestCase):
         value=self.row('intent');fn(value);self.write('intent',value)
         if keep_terminal_digest:
             terminal=self.row('terminal');terminal['intentSha256']=hashlib.sha256((self.journal/(self.corr+'.intent.json')).read_bytes()).hexdigest();self.write('terminal',terminal)
+    def descriptors(self):
+        # Only the measured operation may change the FD table: earlier serial
+        # cases' cyclic custody owners are finalized before the baseline and no
+        # collection can finalize one inside the window.
+        return descriptor_window.measured()
+    def assert_descriptors(self,window):descriptor_window.check(self,window)
     def refuse(self):
-        count=len(self.calls);fd=len(os.listdir('/dev/fd'))
-        value=self.invoke(corr=self.new)
+        count=len(self.calls)
+        with self.descriptors() as window:value=self.invoke(corr=self.new)
         self.assertEqual('unknown',value['state']);self.assertEqual(count,len(self.calls))
-        self.assertFalse((self.journal/(self.new+'.intent.json')).exists());self.assertEqual(fd,len(os.listdir('/dev/fd')))
+        self.assertFalse((self.journal/(self.new+'.intent.json')).exists());self.assert_descriptors(window)
         self.assert_legacy_unchanged()
     def test_current_provider_cannot_replay_an_unresolved_original_v1_history(self):
         self.seed();(self.journal/(self.corr+'.terminal.json')).unlink();before=len(self.calls)
@@ -99,12 +106,14 @@ class ProviderEndedHistoryTests(unittest.TestCase):
     def test_actual_equal_source_ended_then_new_intent(self):
         # Seed with the actual selected provider so this is same-source on both modes.
         self.provider_path.write_bytes(CURRENT_PROVIDER_SOURCE.read_bytes());self.module=self.load()
-        self.seed();fd=len(os.listdir('/dev/fd'));value=self.invoke(corr=self.new)
-        self.assertEqual('ready',value['state']);self.assertEqual(fd,len(os.listdir('/dev/fd')))
+        self.seed()
+        with self.descriptors() as window:value=self.invoke(corr=self.new)
+        self.assertEqual('ready',value['state']);self.assert_descriptors(window)
         self.assertEqual(self.before,{name:(self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in self.before})
         self.assert_legacy_unchanged()
     def test_actual_old_provider_and_mcp_transition(self):
-        self.seed();self.transition();fd=len(os.listdir('/dev/fd'));value=self.invoke(corr=self.new)
+        self.seed();self.transition()
+        with self.descriptors() as window:value=self.invoke(corr=self.new)
         self.assertEqual('ready',value['state'])
         new=self.row_for(self.new,'intent');old=self.row('intent')
         self.assertEqual(hashlib.sha256(PROVIDER_BEFORE).hexdigest(),old['sourceSha256'])
@@ -113,7 +122,7 @@ class ProviderEndedHistoryTests(unittest.TestCase):
         self.assertEqual('5707593229d5fa3c331998a0f6bbc2bae1ca4dff3a94fd4f5f5c8064e07a14d7',new['directSourcePins']['mcp_server.py'])
         self.assertEqual(new['sourceSha256'],new['directSourcePins']['ssh_fresh_nested_channel.py'])
         self.assertEqual(self.before,{name:(self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in self.before})
-        self.assertEqual(fd,len(os.listdir('/dev/fd')));self.assert_legacy_unchanged()
+        self.assert_descriptors(window);self.assert_legacy_unchanged()
     def test_unreviewed_current_or_future_mcp_refuses_without_successor(self):
         self.seed()
         bodies=[MCP_REVIEWED_AFTER+b'\n# inert unreviewed future MCP fixture\n']
@@ -194,8 +203,8 @@ class ProviderEndedClosureHistoryTests(ProviderEndedHistoryTests):
     def test_actual_b1a_closure_only_transition_preserves_every_saved_byte(self):
         self.seed_b1a()
         self.transition(mcp_body=CURRENT_MCP_SOURCE.read_bytes())
-        fd_before = len(os.listdir('/dev/fd'))
-        value = self.invoke(corr=self.new)
+        with self.descriptors() as window:
+            value = self.invoke(corr=self.new)
         self.assertEqual('ready', value['state'])
         old = self.row('intent')
         new = self.row_for(self.new, 'intent')
@@ -206,7 +215,7 @@ class ProviderEndedClosureHistoryTests(ProviderEndedHistoryTests):
         self.assertEqual({**old['directSourcePins'], 'ssh_fresh_nested_channel.py': new['sourceSha256'],
                           'native_review_source_closure.py': CURRENT_CLOSURE_SHA}, new['directSourcePins'])
         self.assertEqual(self.before, {name: (self.journal/(self.corr+'.'+name+'.json')).read_bytes() for name in self.before})
-        self.assertEqual(fd_before, len(os.listdir('/dev/fd')))
+        self.assert_descriptors(window)
         self.assert_legacy_unchanged()
 
     def test_actual_b1a_cannot_add_an_unobserved_mcp_transition(self):
@@ -242,10 +251,11 @@ class Checkpoint74EndedPopulationTests(unittest.TestCase):
             (f.source/name).write_bytes(data)
         f.module=f.load()
     def admit(self,kind):
-        self.seed_original(kind);self.transition();f=self.f;before=len(os.listdir('/dev/fd'))
-        value=f.invoke(corr=f.new);self.assertEqual('ready',value['state'])
+        self.seed_original(kind);self.transition();f=self.f
+        with f.descriptors() as window:value=f.invoke(corr=f.new)
+        self.assertEqual('ready',value['state'])
         self.assertEqual(f.before,{name:(f.journal/(f.corr+'.'+name+'.json')).read_bytes()for name in f.before})
-        self.assertEqual(before,len(os.listdir('/dev/fd')));f.assert_legacy_unchanged()
+        f.assert_descriptors(window);f.assert_legacy_unchanged()
         self.assertEqual(['prepare','status','prepare'],[c[6]for c in f.calls])
     def test_actual_b957_full_population_to_checkpoint74(self):self.admit('b957')
     def test_actual_f569_full_population_to_checkpoint74(self):self.admit('f569')

@@ -4,8 +4,9 @@ The original source fixture is public Git 71431848. Remote replies during
 fixture seeding are the existing inert declared seam. Retained status is wholly
 local positive ENDED evidence; it never proves current native connectivity.
 """
-import hashlib,json,os,unittest
+import hashlib,json,unittest
 from unittest import mock
+from agent_tools.tests import descriptor_window
 from agent_tools.tests import test_ssh_direct_ended_source_transition as history
 from agent_tools.tests import test_ssh_direct_nested_channel as owner
 
@@ -25,15 +26,18 @@ class RetainedWrapperTransitionTests(unittest.TestCase):
         f.assert_legacy_unchanged()
     def observe(self):return self.f.invoke('status')
     def refuse(self,*,new_prepare=True):
-        f=self.f;before=len(f.calls);fds=len(os.listdir('/dev/fd'));self.assertEqual('unknown',self.observe()['state'])
-        self.assertEqual(before,len(f.calls));self.assertEqual(fds,len(os.listdir('/dev/fd')))
+        f=self.f;before=len(f.calls)
+        with descriptor_window.measured() as window:value=self.observe()
+        self.assertEqual('unknown',value['state'])
+        self.assertEqual(before,len(f.calls));descriptor_window.check(self,window)
         if new_prepare:
             self.assertEqual('unknown',f.invoke(corr=f.new)['state']);self.assertEqual(before,len(f.calls))
         self.assertFalse((f.journal/(f.new+'.intent.json')).exists());f.assert_legacy_unchanged()
     def test_retained_status_reports_only_original_positive_end_without_child_or_writes(self):
-        f=self.f;before=len(f.calls);fds=len(os.listdir('/dev/fd'))
-        self.assertEqual({'state':'ended','nativeActionAllowed':False,'replayAllowed':False,'correlationId':f.corr},self.observe())
-        self.assertEqual(before,len(f.calls));self.assertEqual(fds,len(os.listdir('/dev/fd')));self.unchanged()
+        f=self.f;before=len(f.calls)
+        with descriptor_window.measured() as window:value=self.observe()
+        self.assertEqual({'state':'ended','nativeActionAllowed':False,'replayAllowed':False,'correlationId':f.corr},value)
+        self.assertEqual(before,len(f.calls));descriptor_window.check(self,window);self.unchanged()
     def test_new_prepare_creates_only_new_connection_after_qualified_history(self):
         f=self.f;self.assertEqual('ready',f.invoke(corr=f.new)['state']);self.unchanged()
         self.assertEqual(['prepare','status','prepare'],[c[6]for c in f.calls])

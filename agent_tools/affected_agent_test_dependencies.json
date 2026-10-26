@@ -435,6 +435,65 @@
         "b5c1469e6f541e43b3ba16811353ad41511ac071cb009f357efb1f7d94fd7236"
       ]
     },
+    "agent_tools/tests/fixtures/descriptor_window/test_ssh_direct_ended_inventory_successor.py.before.source": {
+      "reason": "Authentic whole unfixed 005852a2 generation of test_ssh_direct_ended_inventory_successor.py, held byte-for-byte for the descriptor-window causal regression. test_descriptor_window compiles and executes it only in a ModuleType whose __file__ is the current public module and runs one measured case with its real fixtures; only when one planted cyclic PrivateConfigCustody owner is finalized is controlled. Its scopes are exactly the reviewed scopes of that same generation. No caller-selected source path, remote target or historical pin rewrite.",
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/check_output_retention.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/mcp_server.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/native_review_source_closure.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/private_inventory_lock.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/provenance.json",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_channel_selection.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_connection_recovery.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_connection_session.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_direct_nested_channel.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_fresh_nested_channel.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_retirement.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_recovery_adoption.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_transport.py",
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/direct_before.py",
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/fresh_before.py",
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/retained_after.py",
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/retained_before.py",
+        "agent_tools/tests/fixtures/ssh_direct_inventory_diagnostic/direct_after.py",
+        "agent_tools/tests/test_ssh_direct_ended_inventory_successor.py",
+        "agent_tools/tests/test_ssh_direct_ended_source_transition.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/android_installer_direct_transport.py",
+        "agent_tools/private_inventory_lock.py"
+      ],
+      "sourceSha256": [
+        "f14fdd7dbece56e9c5fb393e06db46eac91741f7725829a5a59e7c171946c046"
+      ]
+    },
+    "agent_tools/tests/fixtures/descriptor_window/test_windows_census_child_imports.py.before.source": {
+      "reason": "Authentic whole unfixed 005852a2 generation of test_windows_census_child_imports.py, held byte-for-byte for the descriptor-window causal regression. test_descriptor_window compiles and executes it only in a ModuleType whose __file__ is the current public module and runs one measured case with its real fixtures; only when one planted cyclic PrivateConfigCustody owner is finalized is controlled. Its scopes are exactly the reviewed scopes of that same generation. No caller-selected source path, remote target or historical pin rewrite.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_census_child_imports/after.py.txt",
+        "agent_tools/tests/fixtures/windows_census_child_imports/before.py.txt",
+        "agent_tools/tests/fixtures/windows_census_child_imports/inert_consumer.py",
+        "agent_tools/tests/fixtures/windows_census_child_imports/metadata.public.json"
+      ],
+      "sourceSha256": [
+        "57e1c069139b71d9df9f2042cd615a331376b1da6690caf65d60ad281fafee91"
+      ]
+    },
+    "agent_tools/tests/fixtures/descriptor_window/test_windows_direct_readonly_checkpoint.py.before.source": {
+      "reason": "Authentic whole unfixed 005852a2 generation of test_windows_direct_readonly_checkpoint.py, held byte-for-byte for the descriptor-window causal regression. test_descriptor_window compiles and executes it only in a ModuleType whose __file__ is the current public module and runs one measured case with its real fixtures; only when one planted cyclic PrivateConfigCustody owner is finalized is controlled. Its scopes are exactly the reviewed scopes of that same generation. No caller-selected source path, remote target or historical pin rewrite.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_readonly_checkpoint/checkpoint.before.public.py",
+        "agent_tools/tests/fixtures/windows_readonly_checkpoint/original-refusal.public.json",
+        "agent_tools/tests/fixtures/windows_readonly_checkpoint/readonly_checkpoint.py"
+      ],
+      "sourceSha256": [
+        "ed1b2e12c8ae6babf56aa4930a454a872af6030ef39fb62340669be1671e0a46"
+      ]
+    },
     "agent_tools/tests/fixtures/durable_remote_job/socket_endpoint.py": {
       "reason": "Fixed loopback sentinel harness loads only the current or preserved durable_remote_job implementation supplied by its owned test. The source path is fixture custody, not a runtime repository discovery override.",
       "scopes": [
@@ -1562,6 +1621,42 @@
         "de3406bd69f74c7a4aeeddd8034e43ba3487f06d0ac57ce020c248279013e67e"
       ]
     },
+    "agent_tools/tests/fixtures/ssh_direct_ended_descriptor_window/test_ssh_direct_ended_source_transition.py.before.source": {
+      "reason": "Authentic whole unfixed 42214f1e generation of test_ssh_direct_ended_source_transition.py, held byte-for-byte for the descriptor-window causal regression. test_ssh_direct_ended_descriptor_window compiles and executes it only in a ModuleType whose __file__ is the current public module and runs exactly its five measured FD cases with the real provider, TempFS custody and local consumers; only when one planted cyclic PrivateConfigCustody owner is finalized is controlled. Its scopes are exactly the reviewed scopes of that same 42214f1e generation. No caller-selected source path, remote target or historical pin rewrite.",
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.checkpoint74.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.reviewed-after.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/native_review_source_closure.before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/check_output_retention.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/mcp_server.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/native_review_source_closure.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/private_inventory_lock.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/provenance.json",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_channel_selection.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_connection_recovery.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_connection_session.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_direct_nested_channel.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_fresh_nested_channel.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_retirement.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_recovery_adoption.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/ssh_transport.py",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_direct_nested_channel.before-reviewed74.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.closure-provider-before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.current-provider-before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_fresh_nested_channel.inventory-provider-before.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_transport.before-reviewed74.py.gz",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/ssh_transport.checkpoint74.py.gz"
+      ],
+      "sourceSha256": [
+        "42214f1ea959d4848b9796fbc3f1fc9be6c8f188f758cceeee664e7fcd6391fc"
+      ]
+    },
     "agent_tools/tests/fixtures/ssh_direct_ended_v1/mcp_server.android-wrapper-reviewed.py.gz": {
       "scopes": [
         "@modules:_VM_NATIVE_ADAPTERS",
@@ -2122,6 +2217,45 @@
       ],
       "sourceSha256": [
         "c9361f557872c8914865b74656c18c1f1895b4d7b87790ded52741ae2c518525"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_program_lazy_dependency_stderr_completion/test_ssh_program_execution.py.before.source": {
+      "reason": "Authentic whole unfixed f0ebe34b generation of test_ssh_program_execution.py (005852a2), held byte-for-byte for the lazy-dependency stderr completion causal regression. test_ssh_program_lazy_dependency_stderr_completion compiles and executes it only in a ModuleType whose __file__ is the current public module and runs exactly its test_direct_source_session_lazy_dependency_before_red_current_green case with the real unfixed owner and worker and the fixed owner's worker; only when that original worker's own stderr bytes reach worker.stderr.private is controlled, through a fixed stdlib relay. Its scopes are exactly the reviewed scopes of that same f0ebe34b generation. No caller-selected source path, remote target or historical pin rewrite.",
+      "scopes": [
+        "agent_tools/ssh_program_execution.py",
+        "agent_tools/ssh_program_execution_remote.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/private_config_custody.py",
+        "agent_tools/tests/fixtures/program_execution_before/provenance.json",
+        "agent_tools/tests/fixtures/program_execution_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_execution_before/ssh_program_execution_remote.py.source",
+        "agent_tools/tests/fixtures/program_direct_capsule_before/provenance.json",
+        "agent_tools/tests/fixtures/program_direct_capsule_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_config_pin_before/provenance.json",
+        "agent_tools/tests/fixtures/program_config_pin_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_e2big_before/provenance.json",
+        "agent_tools/tests/fixtures/program_e2big_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_fast_child_before/provenance.json",
+        "agent_tools/tests/fixtures/program_fast_child_before/ssh_program_execution.py.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/provenance.json",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_channel_selection.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_direct_nested_channel.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_fresh_nested_channel.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_program_execution.py.before.source",
+        "agent_tools/tests/fixtures/program_worker_diagnostics/ssh_transport.py.before.source",
+        "agent_tools/tests/fixtures/program_source_closing_publication/provenance.json",
+        "agent_tools/tests/fixtures/program_source_closing_publication/ssh_program_execution.private-identity.before.source",
+        "agent_tools/tests/fixtures/program_source_closing_publication/ssh_program_execution.py.before.source",
+        "agent_tools/tests/fixtures/ssh_generic_e2big/provenance.json",
+        "agent_tools/tests/fixtures/ssh_generic_e2big/source_module_loader.py.before.source",
+        "agent_tools/tests/fixtures/ssh_generic_e2big/ssh_transport.py.before-popen.source",
+        "agent_tools/tests/fixtures/ssh_generic_e2big/ssh_transport.py.before.source",
+        "agent_tools/tests/fixtures/ssh_program_private_custody/ssh_program_execution.py.before.source",
+        "agent_tools/tests/fixtures/ssh_program_private_custody/provenance.json"
+      ],
+      "sourceSha256": [
+        "f0ebe34b40f910accd8f8b20ea3e85fc28d17d807b742e236ce4913a75571f1b"
       ]
     },
     "agent_tools/tests/fixtures/ssh_program_route_stderr_completion/test_ssh_program_execution.py.before.source": {
@@ -4925,6 +5059,23 @@
         "50266031efcec3764c3f7d2035a5954468c4bf79b3a8e05177a004fd74a7a80b"
       ]
     },
+    "agent_tools/tests/test_descriptor_window.py": {
+      "reason": "Executes only the authenticated whole 005852a2 beforeimages of the eight descriptor-window peers named in its provenance, each in a ModuleType whose __file__ is the current public peer, plus the current peers it imports. Planted real cyclic PrivateConfigCustody owners and one in-window collection reproduce the counterfeit global count; the current exact descriptor window still rejects a kept, deferred, closed or replaced descriptor. No native transport or source graph is relaxed.",
+      "scopes": [
+        "agent_tools/tests/fixtures/descriptor_window/provenance.json",
+        "agent_tools/tests/fixtures/descriptor_window/test_readiness_tart_macos_registry.py.before.source",
+        "agent_tools/tests/fixtures/descriptor_window/test_ssh_direct_ended_inventory_successor.py.before.source",
+        "agent_tools/tests/fixtures/descriptor_window/test_ssh_direct_nested_channel.py.before.source",
+        "agent_tools/tests/fixtures/descriptor_window/test_ssh_direct_original6b_observation.py.before.source",
+        "agent_tools/tests/fixtures/descriptor_window/test_ssh_direct_retained_delivery_transition.py.before.source",
+        "agent_tools/tests/fixtures/descriptor_window/test_ssh_direct_retained_wrapper_transition.py.before.source",
+        "agent_tools/tests/fixtures/descriptor_window/test_windows_census_child_imports.py.before.source",
+        "agent_tools/tests/fixtures/descriptor_window/test_windows_direct_readonly_checkpoint.py.before.source"
+      ],
+      "sourceSha256": [
+        "f081001ba70a1b67c21f2179e256ea2950446c93d1201ee1f04891b2ba2b013c"
+      ]
+    },
     "agent_tools/tests/test_fast_agent_shards.py": {
       "reason": "Source-bound workflow regression reads the current Fast Checks workflow, exact original workflow/provenance, its actual current test and the retained failed wiring test. Its saved isolated no-site child exercises the same positive with the authentic missing-YAML beforeimage and standard-library fix. Static controls verify both audit branches, source selection, current-attempt artifacts, parent acceptance and the entire unchanged original validation tail without CI or product dispatch. The same wiring positives also read the authenticated whole cc2873b5 workflow as their RED input.",
       "scopes": [
@@ -6765,7 +6916,8 @@
         "c74a8f359d6deccb6a10968559d48036a679ed2418dcd04877f23840eaa6df55",
         "c22befe3622d6b1ffae2f363480b718562e0333fbb93d1ecf837e66d4d46f080",
         "edda86852d3014ae827a3fa59239d3ccfc9096fbda4b6f5ab3bc8117d851dd6e",
-        "f14fdd7dbece56e9c5fb393e06db46eac91741f7725829a5a59e7c171946c046"
+        "f14fdd7dbece56e9c5fb393e06db46eac91741f7725829a5a59e7c171946c046",
+        "f17571fe4eeac522f2b34d949326ffc06ad52ae1cecec2edd97483bdf88f0e20"
       ]
     },
     "agent_tools/tests/test_ssh_direct_ended_source_transition.py": {
@@ -6803,7 +6955,8 @@
       "sourceSha256": [
         "584c2db7def52571850a05c5c0334ba09410700b6e7109b212b7a38c622eb748",
         "82e92959f87101cf62e30d33fc2ca6d7a6272d85b8b360ac093c2279785d9222",
-        "42214f1ea959d4848b9796fbc3f1fc9be6c8f188f758cceeee664e7fcd6391fc"
+        "42214f1ea959d4848b9796fbc3f1fc9be6c8f188f758cceeee664e7fcd6391fc",
+        "e2801a7c15f64fd93f90d2b14e2ca264a7b7702982a7cf41d5fda3b612fbb8a0"
       ]
     },
     "agent_tools/tests/test_ssh_direct_inventory_diagnostic.py": {
@@ -7234,7 +7387,8 @@
         "085f93c253fc735ee2289959ff09cb452e61b4f31027624ca616623ed0e0546a",
         "5f2598bfdbf1ee77fea43bd3ca17af3e5dd1f2b19aca971a3b4a2b92f5e11478",
         "05be765353324ddf1bc7a84acfced0c7a169988e4989ab1c32377b64c0a424e1",
-        "f0ebe34b40f910accd8f8b20ea3e85fc28d17d807b742e236ce4913a75571f1b"
+        "f0ebe34b40f910accd8f8b20ea3e85fc28d17d807b742e236ce4913a75571f1b",
+        "484f54116e36934bcdd61dd1d771a74b78918970a23ce8c7f09bc1eaae3e9340"
       ]
     },
     "agent_tools/tests/test_ssh_program_mcp_client.py": {
@@ -8119,7 +8273,8 @@
         "agent_tools/tests/fixtures/windows_census_child_imports/metadata.public.json"
       ],
       "sourceSha256": [
-        "57e1c069139b71d9df9f2042cd615a331376b1da6690caf65d60ad281fafee91"
+        "57e1c069139b71d9df9f2042cd615a331376b1da6690caf65d60ad281fafee91",
+        "5f1527a8084deb6bb59b9513d409e6797e3f225d6fca2ebf7e899256ac22de76"
       ]
     },
     "agent_tools/tests/test_windows_compile_acl_creation.py": {
@@ -8400,7 +8555,8 @@
         "agent_tools/tests/fixtures/windows_readonly_checkpoint/readonly_checkpoint.py"
       ],
       "sourceSha256": [
-        "ed1b2e12c8ae6babf56aa4930a454a872af6030ef39fb62340669be1671e0a46"
+        "ed1b2e12c8ae6babf56aa4930a454a872af6030ef39fb62340669be1671e0a46",
+        "10fd7851c4fc012ca935ed58747b5cb902deae1a20fa487b1e410bf72aeba325"
       ]
     },
     "agent_tools/tests/test_windows_fixture_checkout_bytes.py": {

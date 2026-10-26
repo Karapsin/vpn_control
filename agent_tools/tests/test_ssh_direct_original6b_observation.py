@@ -10,6 +10,7 @@ from unittest import mock
 from agent_tools import ssh_direct_nested_channel as direct
 if direct.coordinator_capable():
  from agent_tools import ssh_fresh_nested_channel as channel,ssh_transport as transport,ssh_connection_session as session
+from agent_tools.tests import descriptor_window
 from agent_tools.tests import test_ssh_direct_ended_source_transition as history
 from agent_tools.tests.test_ssh_direct_ended_inventory_successor import historical_sources
 CHECKPOINT74_PROVIDER_BEFORE=history.CHECKPOINT74_PROVIDER_BEFORE
@@ -63,9 +64,11 @@ class Original6bObservationTests(unittest.TestCase):
  def assert_originals(self):
   self.assertEqual(self.original,{k:(self.f.journal/(CORR+'.'+k+'.json')).read_bytes()for k in self.original})
  def refuse(self):
-  fd=len(os.listdir('/dev/fd'));value=self.invoke();self.assertEqual('unknown',value['state']);self.assertFalse((self.f.journal/(CORR+'.terminal.json')).exists());self.assert_originals();self.assertEqual(fd,len(os.listdir('/dev/fd')))
+  with descriptor_window.measured() as window:value=self.invoke()
+  self.assertEqual('unknown',value['state']);self.assertFalse((self.f.journal/(CORR+'.terminal.json')).exists());self.assert_originals();descriptor_window.check(self,window)
  def test_actual_original_ended_status_appends_terminal_only(self):
-  fd=len(os.listdir('/dev/fd'));value=self.invoke();self.assertEqual('ended',value['state']);self.assertEqual(1,len(self.emitted));self.assert_originals();terminal=json.loads((self.f.journal/(CORR+'.terminal.json')).read_bytes());self.assertEqual(terminal['intentSha256'],hashlib.sha256(self.original['intent']).hexdigest());self.assertEqual(terminal['receiptSha256'],hashlib.sha256(self.original['ready']).hexdigest());self.assertEqual(fd,len(os.listdir('/dev/fd')));self.f.assert_legacy_unchanged()
+  with descriptor_window.measured() as window:value=self.invoke()
+  self.assertEqual('ended',value['state']);self.assertEqual(1,len(self.emitted));self.assert_originals();terminal=json.loads((self.f.journal/(CORR+'.terminal.json')).read_bytes());self.assertEqual(terminal['intentSha256'],hashlib.sha256(self.original['intent']).hexdigest());self.assertEqual(terminal['receiptSha256'],hashlib.sha256(self.original['ready']).hexdigest());descriptor_window.check(self,window);self.f.assert_legacy_unchanged()
  def test_prepare_never_migrates_or_dispatches(self):
   self.assertEqual('unknown',self.invoke('prepare')['state']);self.assertEqual([],self.emitted);self.assert_originals()
  def test_ready_reply_never_promotes_usable_selection(self):
@@ -79,7 +82,9 @@ class Original6bObservationTests(unittest.TestCase):
  def test_changed_current_inventory_refuses(self):
   self.f.owner.config_path.write_bytes(self.f.owner.config_path.read_bytes()+b' ');self.refuse();self.assertEqual([],self.emitted)
  def test_missing_ready_refuses(self):
-  (self.f.journal/(CORR+'.ready.json')).unlink();fd=len(os.listdir('/dev/fd'));self.assertEqual('unknown',self.invoke()['state']);self.assertEqual([],self.emitted);self.assertEqual(fd,len(os.listdir('/dev/fd')))
+  (self.f.journal/(CORR+'.ready.json')).unlink()
+  with descriptor_window.measured() as window:value=self.invoke()
+  self.assertEqual('unknown',value['state']);self.assertEqual([],self.emitted);descriptor_window.check(self,window)
  def test_changed_proof_during_capture_blocks_terminal(self):
   self.closing=lambda:self.proof.write_bytes(b'{"drift":true}');self.refuse();self.assertEqual(1,len(self.emitted))
  def test_changed_local_key_during_capture_blocks_terminal(self):

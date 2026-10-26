@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-test-module-beforeimage",
+  "nativeFailureClaimed": false,
+  "beforeimage": "test_python_platform_contracts.py.before.source",
+  "sourcePath": "scripts/test_python_platform_contracts.py",
+  "sourceBaseline": "005852a2d2ca8b8df1ce281488f5f018c073c052",
+  "sourceBytes": 8588,
+  "sourceSha256": "2097be5715ee195c5a89e233ba4c9a57d4a214d9055fd39360c46a879cd94cd5",
+  "finding": "On the macOS runner the Windows visual capability probe reproduced all 17 recorded Windows outcomes, but VisualTestCapabilityProbeTest rejected the five qmp-peer-af-unix-absent cases: their final line carried the interpreter's name suggestion after the recorded AttributeError.",
+  "cause": "The probe removes socket.AF_UNIX in the QMP peer child (prefix 'import socket as _windows;del _windows.AF_UNIX;'), whose 'server=socket.socket(socket.AF_UNIX)' then raises AttributeError; VisualTargetTests.server fails with the child's stderr, so the case's final line is the child's traceback line. CPython 3.15 traceback suggestions check the first 20 public attributes of the module for a nested match when no close name exists; socket.AF_APPLETALK is a socket.AddressFamily member and AddressFamily still defines AF_UNIX, so it appends \". Did you mean '.AF_APPLETALK.AF_UNIX' instead of '.AF_UNIX'?\". Windows CPython has no AF_UNIX in socket or AddressFamily and CPython 3.10 to 3.14 have no nested suggestion, so their line ends at the message. The comparison normalized only the [WinError n]/[Errno n] prefix.",
+  "ciFailure": {
+    "workflow": "macOS Desktop Package",
+    "runId": 40232090293,
+    "jobId": 121285779837,
+    "job": "Build DMG",
+    "steps": [
+      "Check release hygiene",
+      "Build macOS package"
+    ],
+    "headSha": "005852a2d2ca8b8df1ce281488f5f018c073c052",
+    "runner": "macos-26-arm64 image 20261013.0424.1",
+    "python": "CPython 3.15 python3 of the image: the job's '<frozen linecache>:265: DeprecationWarning: Module globals is missing a __spec__.loader' is CPython 3.15.0's linecache line 265, and only 3.15 formats AttributeError suggestions as \"'.X' instead of '.Y'\"",
+    "command": "python3 scripts/test_python_platform_contracts.py, run by scripts/check_release_hygiene.sh in both steps",
+    "testId": "__main__.VisualTestCapabilityProbeTest.test_unfixed_visual_tests_reproduce_every_recorded_windows_failure",
+    "summary": [
+      "Check release hygiene: Ran 14 tests in 5.072s, FAILED (failures=5)",
+      "Build macOS package: Ran 14 tests in 3.363s, FAILED (failures=5)"
+    ],
+    "failureType": "qmp-peer-af-unix-absent",
+    "cases": [
+      "test_visual_target.VisualTargetTests.test_foreign_socket_peer_holding_another_disk_is_never_mutated",
+      "test_visual_target.VisualTargetTests.test_missing_stop_target_cannot_send_power_to_default_vm",
+      "test_visual_target.VisualTargetTests.test_reused_peer_pid_birth_is_rejected_before_capabilities_or_power",
+      "test_visual_target.VisualTargetTests.test_unsafe_actual_disk_parent_returns_typed_blocker_without_power",
+      "test_visual_target.VisualTargetTests.test_valid_selected_disk_and_actual_peer_owner_accept_one_power_packet"
+    ],
+    "failureHeaders": [
+      "FAIL: test_unfixed_visual_tests_reproduce_every_recorded_windows_failure (__main__.VisualTestCapabilityProbeTest.test_unfixed_visual_tests_reproduce_every_recorded_windows_failure) (failure='qmp-peer-af-unix-absent', test='test_visual_target.VisualTargetTests.test_foreign_socket_peer_holding_another_disk_is_never_mutated')",
+      "FAIL: test_unfixed_visual_tests_reproduce_every_recorded_windows_failure (__main__.VisualTestCapabilityProbeTest.test_unfixed_visual_tests_reproduce_every_recorded_windows_failure) (failure='qmp-peer-af-unix-absent', test='test_visual_target.VisualTargetTests.test_missing_stop_target_cannot_send_power_to_default_vm')",
+      "FAIL: test_unfixed_visual_tests_reproduce_every_recorded_windows_failure (__main__.VisualTestCapabilityProbeTest.test_unfixed_visual_tests_reproduce_every_recorded_windows_failure) (failure='qmp-peer-af-unix-absent', test='test_visual_target.VisualTargetTests.test_reused_peer_pid_birth_is_rejected_before_capabilities_or_power')",
+      "FAIL: test_unfixed_visual_tests_reproduce_every_recorded_windows_failure (__main__.VisualTestCapabilityProbeTest.test_unfixed_visual_tests_reproduce_every_recorded_windows_failure) (failure='qmp-peer-af-unix-absent', test='test_visual_target.VisualTargetTests.test_unsafe_actual_disk_parent_returns_typed_blocker_without_power')",
+      "FAIL: test_unfixed_visual_tests_reproduce_every_recorded_windows_failure (__main__.VisualTestCapabilityProbeTest.test_unfixed_visual_tests_reproduce_every_recorded_windows_failure) (failure='qmp-peer-af-unix-absent', test='test_visual_target.VisualTargetTests.test_valid_selected_disk_and_actual_peer_owner_accept_one_power_packet')"
+    ],
+    "recordedLine": "AttributeError: module 'socket' has no attribute 'AF_UNIX'",
+    "observedLine": "AttributeError: module 'socket' has no attribute 'AF_UNIX'. Did you mean '.AF_APPLETALK.AF_UNIX' instead of '.AF_UNIX'?",
+    "trace": [
+      "======================================================================",
+      "FAIL: test_unfixed_visual_tests_reproduce_every_recorded_windows_failure (__main__.VisualTestCapabilityProbeTest.test_unfixed_visual_tests_reproduce_every_recorded_windows_failure) (failure='qmp-peer-af-unix-absent', test='test_visual_target.VisualTargetTests.test_foreign_socket_peer_holding_another_disk_is_never_mutated')",
+      "----------------------------------------------------------------------",
+      "Traceback (most recent call last):",
+      "  File \"/Users/runner/work/vpn_control/vpn_control/scripts/test_python_platform_contracts.py\", line 143, in test_unfixed_visual_tests_reproduce_every_recorded_windows_failure",
+      "    self.assertEqual(self.final_line(case[\"excerpt\"]), self.final_line(observed[test][1]))",
+      "    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+      "AssertionError: \"Attr[49 chars]UNIX'\" != \"Attr[49 chars]UNIX'. Did you mean '.AF_APPLETALK.AF_UNIX' in[16 chars]IX'?\"",
+      "- AttributeError: module 'socket' has no attribute 'AF_UNIX'",
+      "+ AttributeError: module 'socket' has no attribute 'AF_UNIX'. Did you mean '.AF_APPLETALK.AF_UNIX' instead of '.AF_UNIX'?"
+    ],
+    "traceSha256": "982e42e80fa031ed40c74f9e99c19acbb74df3073f4df7562dd45321cabc695b",
+    "jobLogSha256": "71cc88c67cc859d9ad55db324f6c988687367c85c4d30422ae6b66694a917057",
+    "jobLogScope": "gh run view 40232090293 --log --job 121285779837 (read-only). trace is the first of the five failure blocks of its 'Check release hygiene' step with timestamps removed; the five blocks differ only in their FAIL header, and 'Build macOS package' repeats them byte for byte apart from its run time."
+  },
+  "fix": "VisualTestCapabilityProbeTest.final_line also removes a trailing interpreter suggestion ('. Did you mean ...?') from both the recorded and the observed line, so the exception type and message are compared on every interpreter. The probe and every recorded Windows outcome are unchanged.",
+  "controlledRegression": "scripts/test_python_platform_contracts.py VisualProbeInterpreterSuggestionTest runs the whole unfixed test_unfixed_visual_tests_reproduce_every_recorded_windows_failure from this beforeimage and the fixed one while probe_windows_visual_test_suites returns the runner's summary: the exact CI line for the five AF_UNIX cases and the recorded Windows line for the other twelve.",
+  "failingEvidence": "Unfixed: this beforeimage, run as scripts/test_python_platform_contracts.py with local CPython 3.15.0, fails exactly the five qmp-peer-af-unix-absent subtests with the CI lines; CPython 3.10 to 3.14.5 print no suggestion there. Given the exact CI observation, its test fails the same five subtests on CPython 3.10.20 to 3.15.0 at line 143 with the CI AssertionError and diff lines, and the regression with only final_line reverted fails on CPython 3.12.13 and 3.15.0.",
+  "passingEvidence": "Fixed: the same observation passes the fixed test; the whole module passes on CPython 3.11.15, 3.12.13, 3.13.13, 3.14.5 and 3.15.0, where the real probe again prints the suggestion, and scripts/check_python_platform_contracts.py passes on 3.12.13 and 3.15.0.",
+  "routineSuite": "scripts/check_release_hygiene.sh runs scripts/test_python_platform_contracts.py in Fast Checks and the Android, Linux, macOS and Windows release-hygiene steps.",
+  "nativeEvidenceLimit": "Hosted-runner test-harness outcome only; no visual VM, emulator, capture or product native behavior is involved or claimed. The suggestion text itself is interpreter behavior: CPython 3.15 emits it through the real probe (locally reproduced with CPython 3.15.0); on CPython 3.12 to 3.14 the regression uses the retained CI line. Only the next macOS Desktop Package run confirms the fixed comparison with the runner's own interpreter."
+}
