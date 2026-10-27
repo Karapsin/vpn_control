@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "sourcePath": "agent_tools/tests/test_ssh_gateway_fixture_release_gate.py",
+  "sourceSha256": "fcc34697548b0d9901ceb9f6252154e2b9c9aca3f29b97b64f512391aa15e5ff",
+  "sourceBytes": 12926,
+  "beforeimage": "test_ssh_gateway_fixture_release_gate.py.before.source",
+  "causalBoundary": "The complete original delayed-release test reads its real inert manager terminal marker after file existence but before JSON is written. A synchronized writer/reader gate returns actual filesystem observations without replacing the test body or owner fixture.",
+  "originalFailure": {
+    "baseSha": "3a753cbe830f5793d19d2b283b5fa3630a0d6d20",
+    "checkedFingerprint": "c7e11117f5536a62ecf7edc41b623b8cd51c1f2373a963620ac24abb0e8d2116",
+    "evidenceDirectory": ".runtime/tool-recovery/ci-completion-20261027/prepush-01-gateway-failure",
+    "stderrSha256": "f1a0e52e46262571a4c0b9fbb4523efc0bec58717e8a606e1162e21b29145853",
+    "timingsSha256": "bcee096ec935f20af76e6635caf4d37fc03cb8cbc64839d99eff094cb8e76806",
+    "testId": "agent_tools.tests.test_ssh_gateway_fixture_release_gate.FixtureReleaseGateTests.test_authentic_whole_before_short_gate_red_current_same_delayed_release_green",
+    "subtest": "short=True",
+    "sourceLine": 38,
+    "exception": "json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+  },
+  "fixedSourceSha256": "7dd0c41bc114bc12671f03e457addfa32a79f623f1e526ed0b125cd38abe1150",
+  "regressionPath": "agent_tools/tests/test_ssh_gateway_terminal_publication.py",
+  "regressionSha256": "addbc07e144c0510df102f62389a432a66e20f86ee3271f5d55836c0e4a9194c",
+  "controlledProof": {
+    "python314": {
+      "version": "3.14.3 (main, Feb  3 2026, 15:32:20) [Clang 17.0.0 (clang-1700.6.3.2)]",
+      "resultPath": ".runtime/tool-recovery/ci-completion-20261027/gateway-terminal-draft/regression-deferred-import-py314.results.json",
+      "resultSha256": "49f4cd8851961a4b7228e812406bce16bcf98c81868b6b793568f6fb50f55b1c",
+      "elapsedSeconds": 19.469,
+      "currentSourceAdmission": "Exact candidate bytes supplied only at its frozen destination read; original __file__ and all fixture references retained."
+    },
+    "python312": {
+      "version": "3.12.13 (main, Jun  4 2026, 20:14:05) [Clang 21.0.0 (clang-2100.1.1.101)]",
+      "resultPath": ".runtime/tool-recovery/ci-completion-20261027/gateway-terminal-draft/regression-deferred-import-py312.results.json",
+      "resultSha256": "fa2e708332c9bbdfd1c31e00b952b8aefb1b68b55400253c754a0c3a4de9eff8",
+      "elapsedSeconds": 19.241,
+      "currentSourceAdmission": "Exact candidate bytes supplied only at its frozen destination read; original __file__ and all fixture references retained."
+    },
+    "before": "Exactly one original-line JSONDecodeError; public marker exists and actual read has zero bytes while the writer is gated before JSON.",
+    "current": "No failures/errors; public marker is absent at the same writer gate and becomes complete JSON after private-write close and create-only atomic link.",
+    "closure": "Both interpreter runs verify original manager process generations are absent and every owned fixture home is removed.",
+    "scope": "Local inert Unix fixture processes only; no real SSH, VM, emulator or VPN operation."
+  },
+  "importDiscoveryProof": {
+    "beforeDraftSha256": "49b8b99c0ebd55eaa9c551848f8e8cfe43991fc85125362c89610b040c9f5e36",
+    "beforeDraftPath": ".runtime/tool-recovery/ci-completion-20261027/gateway-terminal-draft/test_ssh_gateway_terminal_publication.py.import-before-skip.source",
+    "currentDraftSha256": "addbc07e144c0510df102f62389a432a66e20f86ee3271f5d55836c0e4a9194c",
+    "boundary": "The old module imports its POSIX fixture before the class-level platform skip and fails when pwd is unavailable. The corrected module defers fixture import and current-path construction until the skipped method executes.",
+    "control": "Only the target module sees os.name=nt; pwd is unavailable to every import. This is import/discovery coverage, not native Windows acceptance.",
+    "results": {
+      "py314": {
+        "before": {
+          "path": ".runtime/tool-recovery/ci-completion-20261027/gateway-terminal-draft/import-skip-py314-before.results.json",
+          "sha256": "2b3f6e4a49c05630f36bff68908a32f1f62b064fbc64b0539263c931a6b57534"
+        },
+        "current": {
+          "path": ".runtime/tool-recovery/ci-completion-20261027/gateway-terminal-draft/import-skip-py314-current.results.json",
+          "sha256": "dafad5c40af8a84292c3095174f7358de91e2bd378415d1929e168b026f099f0"
+        }
+      },
+      "py312": {
+        "before": {
+          "path": ".runtime/tool-recovery/ci-completion-20261027/gateway-terminal-draft/import-skip-py312-before.results.json",
+          "sha256": "05216d08966aba760a4481be5cd7ccf0d4bbdf79ee5c23ccab5cbe7a0d1d9b9b"
+        },
+        "current": {
+          "path": ".runtime/tool-recovery/ci-completion-20261027/gateway-terminal-draft/import-skip-py312-current.results.json",
+          "sha256": "d3ade2d7273437329d9601805aafa5691b7433e7daf982753b8e429d27af12a4"
+        }
+      }
+    },
+    "expectedBefore": "ModuleNotFoundError for pwd before unittest discovery, one POSIX fixture import attempt.",
+    "expectedCurrent": "One discovered test skipped, no errors/failures and zero POSIX fixture import attempts."
+  }
+}

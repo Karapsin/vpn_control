@@ -186,6 +186,11 @@ and source digest. Never use an SSH disconnect as authority to run a replacement
 | Stale fixture registration hidden | `vm_workflow readiness-status` on `tart-macos-independent-v9` returned `readiness_admission_unavailable`; the cause was `MacBlocked('macos_custody_source_changed')` after the delivery changed pinned sources | Both readiness routes now return `fixture_registration_stale` for exactly that refusal and `android_lifecycle_spec_changed`; other errors and message text stay generic. `test_readiness_provider_error_projection` runs the whole `c68f4a5c` server beforeimage (RED, 4 failures) and the fix (GREEN) |
 | Follow deadline during an in-flight call | Fresh-client counter `301b6a4e` (25 s follow) ended `ExceptionGroup` with `allRelayAttemptsClosed: false`: `asyncio.timeout_at(deadline)` cancelled the in-flight status call and the MCP SDK killed the relay 2 s after stdin closed, before it wrote `server-terminal.json`. Fail-safe: UNKNOWN, reconcile, no replay | The deadline now stops only new calls; one in-flight call and the relay close get a bounded 30 s grace. `test_follow_deadline_during_call_before_red_closes_relay_green` runs the whole `c68f4a5c` client (RED: no terminal) and the fix (GREEN: closed relay, `followDeadlineReached`) through the actual SDK and relay |
 
+| Windows storage-host test capability | Windows Desktop Package run `40383276339` at `3a753cbe` executed a POSIX-only enrollment test and raised `fixture_storage_lock_unsupported`; the unsafe-ledger case could also pass for the wrong unsupported-platform reason | Preserve the two POSIX test gates. The executable Windows capability probe runs the complete original test source from `3a753cbe` against the actual storage lock: RED with the exact unsupported-lock error and three existing Linux skips; GREEN with three portable passes and exactly five capability skips. `scripts/test_python_platform_contracts.py` and the standalone checker run in release hygiene; both Python 3.14 and 3.12 passed. The preserved source is byte-authenticated and protected from checkout conversion. Actual Windows confirmation remains the exact-SHA package workflow |
+
+| Concurrent guest test mixed preflight and publication | Fast Checks run `40383276223` at `3a753cbe` failed `test_concurrent_same_original_starts_have_one_remote_admission` with `guest_original_observation_unavailable`. Controlled whole-source reproduction captured `DurableJobError: record_unavailable` when a real namespace inventory read the operation after its directory existed but before its intent was published; this is intentional fail-closed behavior, not a new production defect | The test completes all three real preflights before admission contention. `test_guest_concurrent_preflight` executes the complete original test for RED and the revised test for GREEN under the same controlled publication schedule, independently proves the partial inventory still refuses, and collects the original sentinel with exactly one execution and no repeated dispatch. Both Python 3.14 and 3.12 pass; actual Linux CI remains required |
+| Concurrent guest test read a temporary host hardlink | The first preflight-only test fix exposed the same scheduling mistake in host intent publication: another real `_save` read a record while its temporary and final hardlinks both existed, correctly raising `record_unavailable` at link count two | Preserve the complete intermediate test as a separate beforeimage. The fixture serializes complete host `_save` calls, while a second three-party barrier forces all contenders to observe an absent dispatch before real admission decisions; results must be exactly two losers and one winner. The same causal module gives actual intermediate-source RED and final-source GREEN, proves the hardlink refusal, unchanged final record with one link, and one original execution. Production publication/visibility guards and UNKNOWN handling are unchanged; lower-layer unsynchronized admission tests remain in the routine suite |
+
 Additional retained failure classes include lost connection-readiness publication,
 terminal failed connection generations, old failed history hidden by a changed
 current pointer, stale saved-transfer non-submission claims, Android implicit
@@ -903,3 +908,29 @@ this Mac; its real VM interpreter qualification is retained separately. The
 Windows workflow explicitly includes that native test. Raw-byte rules cover the
 three new SHA-authenticated proxy JSON files. A new aggregate byte roundtrip and
 the full affected/pre-push tiers remain required.
+
+## Gateway terminal publication regression (2026-10-27)
+
+The first pooled agent group in the delivery prepush completed 4,296 tests with
+one error: the delayed-release fixture's `short=True` subtest read an empty
+terminal JSON file at its original line 38. The complete stderr, timings and
+whole beforeimage are retained in
+`.runtime/tool-recovery/ci-completion-20261027/prepush-01-gateway-failure/`.
+The committed beforeimage and adjacent `terminal-publication.provenance.json`
+record the original hashes and the new routine regression's finite source scope.
+
+The inert manager now closes its private JSON stage before a create-only atomic
+link publishes the terminal marker. The unchanged whole test body reproduced
+exactly one JSONDecodeError on the preserved source and passed on the fix under
+both Python 3.12.13 and 3.14.3. An explicit writer/reader gate observed the actual
+zero-byte old marker and the fixed marker's absence before publication; both
+runs verified original manager exit and removal of every owned fixture home.
+Proofs are retained in the same execution packet's `gateway-terminal-draft/`.
+Review also found that the new test imported its POSIX fixture before its class
+skip. That import now occurs inside the gated method. On both interpreters, a
+non-POSIX discovery control with `pwd` unavailable reproduces the old import
+error and discovers/skips the corrected test without importing the fixture.
+This control is not native Windows acceptance.
+No real SSH, VM, emulator or VPN action was involved. Final failed-first and
+fresh managed prepush checks, then all five workflows for the new exact pushed
+SHA, remain delivery gates.

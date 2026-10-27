@@ -1,0 +1,8 @@
+{
+  "baseCommit": "3a753cbe830f5793d19d2b283b5fa3630a0d6d20",
+  "sourcePath": "agent_tools/tests/test_readiness_guest_jobs.py",
+  "sha256": "a5f0266bd36ea3786ee35d5354902c6447771af0c9c4d18bd411c3acb2763cda",
+  "intermediateChange": "Three-party real namespace preflight barrier; no host publication serialization.",
+  "failure": "Concurrent host intent publication reaches st_nlink=2 before temporary link removal; another contender correctly refuses with DurableJobError(record_unavailable).",
+  "originalEvidence": ".runtime/tool-recovery/ci-completion-20261027/guest-host-publication-original-diagnostics.json"
+}

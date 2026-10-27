@@ -109,6 +109,57 @@ class AndroidTestCapabilityProbeTest(unittest.TestCase):
         self.assertEqual([], summary["failures"])
 
 
+class FixtureStorageTestCapabilityProbeTest(unittest.TestCase):
+    FIXTURES = subject.SCRIPTS / "tests/fixtures/windows_fixture_storage_capabilities"
+    MODULE = "test_fixture_storage_host"
+
+    @classmethod
+    def provenance(cls):
+        return json.loads((cls.FIXTURES / "provenance.json").read_bytes())
+
+    @classmethod
+    def beforeimage(cls):
+        """Complete test source from Windows run 40383276339, kept byte-for-byte."""
+        filename, entry = next(iter(cls.provenance()["files"].items()))
+        raw = (cls.FIXTURES / filename).read_bytes()
+        if len(raw) != entry["bytes"] or hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+            raise AssertionError("preserved storage-host test beforeimage changed")
+        return raw.decode("utf-8")
+
+    @classmethod
+    def ids(cls, methods):
+        return {cls.MODULE + "." + method for method in methods}
+
+    def test_unfixed_storage_host_suite_reproduces_recorded_windows_lock_refusal(self):
+        result = subject.probe_windows_fixture_storage_test_suite(self.beforeimage())
+        details = result.stdout + result.stderr
+        self.assertNotEqual(0, result.returncode, details)
+        self.assertTrue(result.stdout.splitlines(), details)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        original = self.provenance()["originalFailure"]
+        self.assertEqual({original["test"]: original["excerpt"]}, summary["errors"], details)
+        self.assertEqual({}, summary["failures"], details)
+        self.assertEqual(self.ids(subject.FIXTURE_STORAGE_LINUX_METHODS), set(summary["skipped"]), details)
+        self.assertEqual(self.ids(subject.FIXTURE_STORAGE_WINDOWS_METHODS), set(summary["portablePassed"]), details)
+        self.assertEqual(8, summary["testsRun"], details)
+        # The broad ValueError assertion also passed on Windows for the wrong
+        # reason: unsupported locking, rather than an unsafe ledger directory.
+        self.assertEqual(4, summary["passed"], details)
+
+    def test_fixed_storage_host_suite_keeps_exact_platform_skips_and_portable_coverage(self):
+        result = subject.probe_windows_fixture_storage_test_suite()
+        details = result.stdout + result.stderr
+        self.assertEqual(0, result.returncode, details)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        expected = self.ids((*subject.FIXTURE_STORAGE_POSIX_METHODS, *subject.FIXTURE_STORAGE_LINUX_METHODS))
+        self.assertEqual(expected, set(summary["skipped"]), details)
+        self.assertEqual(self.ids(subject.FIXTURE_STORAGE_WINDOWS_METHODS), set(summary["portablePassed"]), details)
+        self.assertEqual({}, summary["errors"], details)
+        self.assertEqual({}, summary["failures"], details)
+        self.assertEqual(8, summary["testsRun"], details)
+        self.assertEqual(3, summary["passed"], details)
+
+
 class VisualTestCapabilityProbeTest(unittest.TestCase):
     FIXTURES = subject.SCRIPTS / "tests/fixtures/windows_visual_test_capabilities"
 

@@ -540,6 +540,38 @@
         "ebb636c93b106341812682d713ff76f16be64c4633b52a5f91a5fd92fc69ecac"
       ]
     },
+    "agent_tools/tests/fixtures/guest_concurrent_host_publication_before/test_readiness_guest_jobs.py.source": {
+      "reason": "Complete authenticated beforeimage of test_readiness_guest_jobs. The causal test executes only its concurrent same-original start case over its own loopback server and temporary namespace. Preserve the original finite facade/protocol and historical fixture dependency closure; no native provider or private inventory is accessed.",
+      "scopes": [
+        "agent_tools/readiness_guest_jobs.py",
+        "agent_tools/readiness_qemu_jobs.py",
+        "agent_tools/readiness_fixture_registry.py",
+        "agent_tools/readiness.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/tests/fixtures/guest_unsubmitted_boot_before/provenance.json",
+        "agent_tools/tests/fixtures/guest_unsubmitted_boot_before/readiness_guest_jobs.py.source",
+        "agent_tools/tests/fixtures/guest_unsubmitted_boot_before/readiness_qemu_jobs.py.source"
+      ],
+      "sourceSha256": [
+        "a5f0266bd36ea3786ee35d5354902c6447771af0c9c4d18bd411c3acb2763cda"
+      ]
+    },
+    "agent_tools/tests/fixtures/guest_concurrent_preflight_before/test_readiness_guest_jobs.py.source": {
+      "reason": "Complete authenticated beforeimage of test_readiness_guest_jobs. The causal test executes only its concurrent same-original start case over its own loopback server and temporary namespace. Preserve the original finite facade/protocol and historical fixture dependency closure; no native provider or private inventory is accessed.",
+      "scopes": [
+        "agent_tools/readiness_guest_jobs.py",
+        "agent_tools/readiness_qemu_jobs.py",
+        "agent_tools/readiness_fixture_registry.py",
+        "agent_tools/readiness.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/tests/fixtures/guest_unsubmitted_boot_before/provenance.json",
+        "agent_tools/tests/fixtures/guest_unsubmitted_boot_before/readiness_guest_jobs.py.source",
+        "agent_tools/tests/fixtures/guest_unsubmitted_boot_before/readiness_qemu_jobs.py.source"
+      ],
+      "sourceSha256": [
+        "990188d6cc8b2ca779f58bdb7dca7bbb6a28062bc6239e9e04d6c9092c8e15bc"
+      ]
+    },
     "agent_tools/tests/fixtures/historical_source.py": {
       "scopes": [],
       "sourceSha256": [
@@ -1956,6 +1988,25 @@
       ],
       "sourceSha256": [
         "0e334ff6e2dcf0b7863689cc630f707e432b09ef8e30d2c3b8bc73d1069677b8"
+      ]
+    },
+    "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_fixture_release_gate.py.before.source": {
+      "reason": "Authentic whole prior release-gate test module fcc346 is compiled with its original public __file__. Only the named delayed-release method is invoked; imports and complete definitions remain intact. Transitive helper inputs are exactly those of its original reviewed declaration. The terminal-publication counterfactual gates only the emitted first inert manager before its JSON write; no real SSH or configurable target/source is executed.",
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_tmux_master.py.before.source",
+        "agent_tools/tests/test_ssh_gateway_tmux_master.py",
+        "agent_tools/tests/test_ssh_gateway_tmux_master_ssh.py",
+        "agent_tools/ssh_gateway_tmux_master.py",
+        "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_tmux_master.integrated.before.source",
+        "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_bound_carrier.before.source",
+        "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_tmux_master_ssh.integrated.before.source",
+        "agent_tools/tests/test_ssh_gateway_bound_carrier.py",
+        "agent_tools/tests/test_ssh_tmux_disconnect_probe.py",
+        "agent_tools/ssh_gateway_tmux_master_ssh.py",
+        "agent_tools/ssh_tmux_disconnect_probe.py"
+      ],
+      "sourceSha256": [
+        "fcc34697548b0d9901ceb9f6252154e2b9c9aca3f29b97b64f512391aa15e5ff"
       ]
     },
     "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_tmux_master.integrated.before.source": {
@@ -5151,6 +5202,22 @@
         "d96a78925432c8717a2451037d563954f7eee6668abfcdc6374b43d37c4358f3"
       ]
     },
+    "agent_tools/tests/test_guest_concurrent_preflight.py": {
+      "reason": "Execute only the two authenticated complete concurrent-test beforeimages and the current test over owned temporary files and real loopback transport. Controlled scheduling holds actual guest mkdir-to-intent and host hardlink publication windows, retaining original inventory/record refusals, real dispatch contention and exactly one terminal execution. No caller-selected source, native target or relaxed production guard.",
+      "scopes": [
+        "agent_tools/tests/test_readiness_guest_jobs.py",
+        "agent_tools/readiness_guest_jobs.py",
+        "agent_tools/readiness_qemu_jobs.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/tests/fixtures/guest_concurrent_preflight_before/provenance.json",
+        "agent_tools/tests/fixtures/guest_concurrent_preflight_before/test_readiness_guest_jobs.py.source",
+        "agent_tools/tests/fixtures/guest_concurrent_host_publication_before/provenance.json",
+        "agent_tools/tests/fixtures/guest_concurrent_host_publication_before/test_readiness_guest_jobs.py.source"
+      ],
+      "sourceSha256": [
+        "94e460f1cb867a887d35d0c505d0827aacc13419c4c423e35ef476cd86eb064f"
+      ]
+    },
     "agent_tools/tests/test_guest_rpc_definitions.py": {
       "reason": "Compile fixed RPC and retained import before fragment, finite protocol/peer IO seam, and explicit missing-peer-site mutation which must refuse before emitting any code.",
       "scopes": [
@@ -5883,7 +5950,8 @@
       "sourceSha256": [
         "e366e172a5b98e6d2febb007aeedeb3ad38902e20f8e81a9cdc03cfcbda1ed01",
         "4b0bfde4a0aedda6dad24de32dd625a826afc29951bbd2ba7cae0a87edcb6236",
-        "990188d6cc8b2ca779f58bdb7dca7bbb6a28062bc6239e9e04d6c9092c8e15bc"
+        "990188d6cc8b2ca779f58bdb7dca7bbb6a28062bc6239e9e04d6c9092c8e15bc",
+        "e1a6cbe0b21468eb5be59a8105fa2a1e50d4543639dd198511162664e3a304ed"
       ]
     },
     "agent_tools/tests/test_readiness_identity_refusal.py": {
@@ -7156,7 +7224,7 @@
       ]
     },
     "agent_tools/tests/test_ssh_gateway_fixture_release_gate.py": {
-      "reason": "The causal regression executes exactly one hash-checked complete base5512 beforeimage in a ModuleType and the current imported fixtures, with only an emitted inert helper terminal-observation seam. The beforeimage file is literal BEFORE; the other two paired archived sources are preserved diagnostic beforeimages, not executed by this regression. Current reviewed successor: Fixed complete-source counterfactuals: hash-checked base5512 short release gate, integrated9c gateway-only role, bound0e33 final-reply fixture, adaptercd4 parser fixture. The complete existing disconnect testcaller is compiled against each exact base binding. Runtime inputs are exactly these4 beforefiles and current imported public fixture bodies; other2 beforefiles remain diagnostic only. No arbitrary paths/private target configuration. Complete counterfactual modules compile/exec with __file__ set to their corresponding current public fixture filename for repository-root lookup; sys.modules temporary unique names are local test namespace, not data-chosen package import. Complete current test_ssh_tmux_disconnect_probe source is read from its imported __file__, compiled unchanged, and only its imported base-fixture binding is patched for before/current comparison. Nonexecuted preserved owner_v2/adapter beforeimages receive normal Python analysis and are not opaque resources.",
+      "reason": "The causal regression executes exactly one hash-checked complete base5512 beforeimage in a ModuleType and the current imported fixtures, with only an emitted inert helper terminal-observation seam. The beforeimage file is literal BEFORE; the other two paired archived sources are preserved diagnostic beforeimages, not executed by this regression. Current reviewed successor: Fixed complete-source counterfactuals: hash-checked base5512 short release gate, integrated9c gateway-only role, bound0e33 final-reply fixture, adaptercd4 parser fixture. The complete existing disconnect testcaller is compiled against each exact base binding. Runtime inputs are exactly these4 beforefiles and current imported public fixture bodies; other2 beforefiles remain diagnostic only. No arbitrary paths/private target configuration. Complete counterfactual modules compile/exec with __file__ set to their corresponding current public fixture filename for repository-root lookup; sys.modules temporary unique names are local test namespace, not data-chosen package import. Complete current test_ssh_tmux_disconnect_probe source is read from its imported __file__, compiled unchanged, and only its imported base-fixture binding is patched for before/current comparison. Nonexecuted preserved owner_v2/adapter beforeimages receive normal Python analysis and are not opaque resources. The terminal-observation helper now writes closed JSON into an exclusive private stage and atomically links it create-only into the marker path; generated source scope and the actual release-gate body are unchanged.",
       "scopes": [
         "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_tmux_master.py.before.source",
         "agent_tools/tests/test_ssh_gateway_tmux_master.py",
@@ -7172,7 +7240,8 @@
       ],
       "sourceSha256": [
         "be3e80c93eb0c0bb7653331ffefb066b7a360415350eb883913988f678b97143",
-        "fcc34697548b0d9901ceb9f6252154e2b9c9aca3f29b97b64f512391aa15e5ff"
+        "fcc34697548b0d9901ceb9f6252154e2b9c9aca3f29b97b64f512391aa15e5ff",
+        "7dd0c41bc114bc12671f03e457addfa32a79f623f1e526ed0b125cd38abe1150"
       ]
     },
     "agent_tools/tests/test_ssh_gateway_sanitized_interpreter.py": {
@@ -7184,6 +7253,17 @@
       ],
       "sourceSha256": [
         "7239bba671faa76c279b1b32479c7eb8792333d982b93fc7d86e06115f310a50"
+      ]
+    },
+    "agent_tools/tests/test_ssh_gateway_terminal_publication.py": {
+      "reason": "The causal test compiles exactly its SHA-checked complete release-gate beforeimage and current imported public test source. Both retain original __file__ for finite fixture references and execute only the exact named delayed-release method. Narrow pathlib seams coordinate the first real inert manager before JSON write and return the original observed existence/bytes. Original manager identity and every owned fixture home are checked after cleanup; no real SSH, provider configuration, native VM or arbitrary source selection. The adjacent fixed provenance JSON is an explicit metadata dependency of this causal regression; it is not executed as source. The POSIX fixture import and current-source path construction execute only inside the class-skipped test method; non-POSIX discovery does not import the fixture.",
+      "scopes": [
+        "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/test_ssh_gateway_fixture_release_gate.py.before.source",
+        "agent_tools/tests/test_ssh_gateway_fixture_release_gate.py",
+        "agent_tools/tests/fixtures/ssh_gateway_fixture_release_gate/terminal-publication.provenance.json"
+      ],
+      "sourceSha256": [
+        "addbc07e144c0510df102f62389a432a66e20f86ee3271f5d55836c0e4a9194c"
       ]
     },
     "agent_tools/tests/test_ssh_gateway_tmux_master.py": {

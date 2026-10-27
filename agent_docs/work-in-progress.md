@@ -10,6 +10,34 @@ Permissions recorded in that earlier campaign do not authorize terminating this
 task's retained UNKNOWN work or changing the paused checkout. Use the current
 infrastructure ledger and resume guide for those boundaries.
 
+## Recovery delivery follow-up (2026-10-27)
+
+The active recovery checkout is `/Users/karapsin_de/projects/vpn_control_tool_recovery`
+on `dev`, starting from `3a753cbe830f5793d19d2b283b5fa3630a0d6d20`. Its Windows
+package and Fast Checks workflows failed; Android, Linux and macOS succeeded.
+The current patch owns the two CI test failures and the terminal-publication
+fixture race found by prepush, their causal regressions, portable capability
+coverage, dependency/byte-preservation declarations and required delivery metadata. Original logs and beforeimages are retained under
+`.runtime/tool-recovery/ci-completion-20261027/`. Final managed prepush and all five
+required workflows for one new exact SHA remain mandatory.
+
+The prepush race's original stderr, timings and whole beforeimage are preserved
+in that packet's `prepush-01-gateway-failure/`. The actual old delayed-release
+body reproduced an empty-file JSONDecodeError; atomic publication passed the
+same synchronized reader/writer schedule on Python 3.12.13 and 3.14.3. Both runs
+proved owned helper closure. Evidence and hashes are in `gateway-terminal-draft/`
+and the committed beforeimage provenance; these focused proofs do not replace
+the final managed pass or exact-SHA CI. The regression also defers its POSIX
+fixture import until after the platform skip; both interpreters passed discovery
+with `pwd` unavailable and no fixture import.
+
+Native VM/emulator lanes stay closed. The Linux retirement, single Android APK
+and installer update, Tart macOS restart and Windows login/idle work need user
+decisions after CI is green. Operations `575c610c` and `8042e683` stay UNKNOWN;
+no replay, VPN interruption, merge to `main`, tag or release is authorized.
+
+## Earlier MCP repair history
+
 The user deferred the Windows parity plan on 2026-10-15 and requested the
 MCP/tooling repair described below. The later instructions in the active chat
 permit subagents and authorize stopping all prior unknown or historical test VM

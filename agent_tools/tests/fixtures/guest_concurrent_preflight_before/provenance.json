@@ -1,0 +1,7 @@
+{
+  "sourceCommit": "3a753cbe830f5793d19d2b283b5fa3630a0d6d20",
+  "sourcePath": "agent_tools/tests/test_readiness_guest_jobs.py",
+  "sha256": "990188d6cc8b2ca779f58bdb7dca7bbb6a28062bc6239e9e04d6c9092c8e15bc",
+  "failure": "Fast Checks 40383276223 shard 5: concurrent test inventory overlapped operation publication and correctly failed closed with guest_original_observation_unavailable.",
+  "ciRun": "https://github.com/Karapsin/vpn_control/actions/runs/40383276223"
+}

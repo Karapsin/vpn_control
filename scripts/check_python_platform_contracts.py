@@ -132,6 +132,23 @@ VISUAL_WINDOWS_METHODS = (
     "test_visual_target.VisualTargetTests.test_wrong_or_missing_selectors_refuse_all_mutation_paths_before_processes",
 )
 
+# VM-host enrollment needs the POSIX ledger lock; /proc coverage needs Linux.
+# Windows run 40383276339 exposed the missing enrollment-test guards.
+FIXTURE_STORAGE_POSIX_METHODS = (
+    "EnrollmentTest.test_unenrolled_host_refuses_then_enroll_admits_and_is_idempotent",
+    "EnrollmentTest.test_unsafe_existing_ledger_refuses",
+)
+FIXTURE_STORAGE_LINUX_METHODS = (
+    "LinuxCoverageTest.test_changed_actor_identity_refuses_without_claim",
+    "LinuxCoverageTest.test_read_only_descriptor_is_not_a_writable_disk",
+    "LinuxCoverageTest.test_unregistered_running_disk_blocks_then_register_covers",
+)
+FIXTURE_STORAGE_WINDOWS_METHODS = (
+    "EnrollmentTest.test_coverage_and_register_refuse_unenrolled",
+    "EnrollmentTest.test_host_program_compiles_inline",
+    "EnrollmentTest.test_resolve_requires_exactly_one_actor",
+)
+
 
 def probe_windows_android_test_suites(
     source_overrides: dict[str, str] | None = None,
@@ -331,6 +348,88 @@ raise SystemExit(not result.wasSuccessful())
 ''', timeout=120, input_text=json.dumps(payload))
 
 
+def probe_windows_fixture_storage_test_suite(
+    source_override: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Execute the real storage-host suite with module-local Windows capabilities.
+
+    Test discovery sees Windows os/sys surfaces and the actual storage lock sees
+    Windows os. The host interpreter and pathlib retain their native semantics.
+    A complete preserved source override reproduces the original CI error.
+    """
+    payload = {"source": source_override,
+               "skipped": (*FIXTURE_STORAGE_POSIX_METHODS, *FIXTURE_STORAGE_LINUX_METHODS),
+               "portable": FIXTURE_STORAGE_WINDOWS_METHODS}
+    return _run('''import builtins
+import json
+import os
+from pathlib import Path
+import sys
+from types import ModuleType
+import unittest
+from unittest.mock import patch
+
+payload = json.load(sys.stdin)
+class WindowsOs:
+    name = "nt"
+    def __getattr__(self, name):
+        if name in {"getuid", "geteuid", "O_DIRECTORY", "O_NOFOLLOW"}:
+            raise AttributeError(name)
+        return getattr(os, name)
+
+class WindowsSys:
+    platform = "win32"
+    def __getattr__(self, name):
+        return getattr(sys, name)
+
+surface = WindowsOs()
+windows_sys = WindowsSys()
+original_import = builtins.__import__
+def local_import(name, *args, **kwargs):
+    if name == "os":
+        return surface
+    if name == "sys":
+        return windows_sys
+    return original_import(name, *args, **kwargs)
+
+name = "test_fixture_storage_host"
+path = Path(name + ".py").resolve()
+module = ModuleType(name)
+module.__file__ = str(path)
+module.__dict__["__builtins__"] = dict(vars(builtins), __import__=local_import)
+sys.modules[name] = module
+source = payload["source"] if payload["source"] is not None else path.read_text(encoding="utf-8")
+exec(compile(source, str(path), "exec"), module.__dict__)
+suite = unittest.TestLoader().loadTestsFromModule(module)
+
+class Result(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.passed = set()
+    def addSuccess(self, test):
+        self.passed.add(test.id())
+        super().addSuccess(test)
+
+def final_line(trace):
+    return [line.strip() for line in trace.splitlines() if line.strip()][-1]
+
+import native_fixture_storage
+with patch.object(native_fixture_storage, "os", surface):
+    result = unittest.TextTestRunner(verbosity=1, resultclass=Result).run(suite)
+skipped = {test.id() for test, reason in result.skipped}
+required_skips = {name + "." + method for method in payload["skipped"]}
+portable = {name + "." + method for method in payload["portable"]}
+summary = {"testsRun": result.testsRun, "passed": len(result.passed), "skipped": sorted(skipped),
+    "errors": {test.id(): final_line(trace) for test, trace in result.errors},
+    "failures": {test.id(): final_line(trace) for test, trace in result.failures},
+    "portablePassed": sorted(portable & result.passed)}
+print(json.dumps(summary, sort_keys=True))
+assert required_skips == skipped, "Storage-host tests have missing platform skips or skipped portable coverage"
+assert portable <= result.passed, "Portable Windows storage-host coverage was skipped"
+raise SystemExit(not result.wasSuccessful())
+''', input_text=json.dumps(payload))
+
+
 def probe_absent_getuid() -> subprocess.CompletedProcess[str]:
     """Exercise the guest fixture's actual file gate with Windows-like os."""
     return _run('''from pathlib import Path
@@ -472,7 +571,8 @@ def check_contracts(root: Path = ROOT) -> list[str]:
     for name, probe in (("windows-phase-recorder", probe_windows_phase_recorder),
                         ("windows-android-installer", probe_windows_android_installer_boundary),
                         ("windows-android-test-suites", probe_windows_android_test_suites),
-                        ("windows-visual-test-suites", probe_windows_visual_test_suites)):
+                        ("windows-visual-test-suites", probe_windows_visual_test_suites),
+                        ("windows-fixture-storage-test-suite", probe_windows_fixture_storage_test_suite)):
         result = probe()
         if result.returncode:
             errors.append(_failure(name, result))
@@ -485,7 +585,7 @@ def main() -> int:
         print("Python platform contract check failed:", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 5} capability probes)")
+    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 6} capability probes)")
     return 0
 
 

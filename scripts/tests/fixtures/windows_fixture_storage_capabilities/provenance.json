@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-ci-beforeimage",
+  "nativeFailureClaimed": false,
+  "finding": "VM-host enrollment tests ran on Windows although their actual ledger requires POSIX locking and ownership APIs.",
+  "originalFailure": {
+    "workflow": "Windows Desktop Package",
+    "job": "Build EXE and MSI",
+    "step": "Check release hygiene",
+    "runId": 40383276339,
+    "headSha": "3a753cbe830f5793d19d2b283b5fa3630a0d6d20",
+    "runner": "Windows CPython 3.12.10",
+    "failedLogSha256": "8c8b7e9fe3b04c93f34a78bb2b8c597d00357e815d246058e9bda83efeea9086",
+    "failedLogPath": ".runtime/tool-recovery/ci-completion-20261027/ci-40383276339-failed.log",
+    "ciTestModule": "__main__",
+    "summary": "Ran 8 tests; FAILED (errors=1, skipped=3)",
+    "test": "test_fixture_storage_host.EnrollmentTest.test_unenrolled_host_refuses_then_enroll_admits_and_is_idempotent",
+    "excerpt": "native_fixture_storage.FixtureStorageError: fixture_storage_lock_unsupported"
+  },
+  "cause": "StoragePlans._locked deliberately refuses os.name != posix before importing fcntl. The success test expected enrollment; the unsafe-ledger test accidentally accepted this unrelated ValueError as an unsafe-directory refusal.",
+  "fix": "Keep both enrollment tests POSIX-only; keep the three portable helper cases and the three existing Linux-only /proc tests.",
+  "files": {
+    "test_fixture_storage_host.py.before.source": {
+      "path": "scripts/test_fixture_storage_host.py",
+      "baseline": "3a753cbe830f5793d19d2b283b5fa3630a0d6d20",
+      "bytes": 7597,
+      "sha256": "f37625488645e3be999bad1cd2684b8cbc78a7ca070d086ef8fed94438e98d16"
+    }
+  },
+  "reproducer": "probe_windows_fixture_storage_test_suite executes the whole test source with module-local os.name nt and sys.platform win32; the actual native_fixture_storage lock sees the same local os. Global host os/sys/pathlib semantics remain unchanged.",
+  "causalAssertion": "FixtureStorageTestCapabilityProbeTest executes the preserved source for the exact original unsupported-lock error with three existing Linux skips, then the fixed source for exactly five platform skips and all three portable cases passing.",
+  "routineSuite": "scripts/check_release_hygiene.sh runs scripts/test_python_platform_contracts.py and scripts/check_python_platform_contracts.py in managed prepush and required CI.",
+  "nativeEvidenceLimit": "The local probe exercises the recorded platform refusal and test discovery. Actual Windows package CI remains required; the probe neither runs a VM nor claims native storage enrollment acceptance."
+}

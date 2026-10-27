@@ -214,3 +214,6 @@ agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.
 # Pending-shutdown causal data are also authenticated byte-for-byte.
 /agent_tools/tests/fixtures/qemu_original_shutdown_pending/original8042-public-projection.json -text
 /agent_tools/tests/fixtures/qemu_original_shutdown_pending/fixtures/qemu_poweroff_pending_before/provenance.json -text
+
+# Preserve the Windows storage-test failure source across checkout platforms.
+/scripts/tests/fixtures/windows_fixture_storage_capabilities/test_fixture_storage_host.py.before.source -text

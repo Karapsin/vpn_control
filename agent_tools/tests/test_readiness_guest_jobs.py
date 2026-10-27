@@ -194,14 +194,42 @@ class RegisteredGuestJobsTests(unittest.TestCase):
         facade.start(self.root, "fixture", first, count=1, interval_seconds=.01)
         self.finish(first)
         operation = str(uuid4())
+        preflight = facade._namespace
+        ready = threading.Barrier(3)
+        save = facade._save
+        publication = threading.Lock()
+        dispatch_ready = threading.Barrier(3)
+        admissions = []
+        def validated_namespace(*args, **kwargs):
+            namespace = preflight(*args, **kwargs)
+            # Inventory deliberately refuses a partially published operation.
+            # Finish all real preflights before racing the operation admission.
+            ready.wait(timeout=8)
+            return namespace
+        def published_record(path, value):
+            if path.name == "dispatch.json":
+                # All contenders must observe the absent dispatch before any
+                # can publish it. The actual create-only decision still races.
+                self.assertFalse(path.exists())
+                dispatch_ready.wait(timeout=8)
+            # Complete host record publication is a fixture prerequisite;
+            # reading its temporary second hardlink deliberately fails closed.
+            with publication:
+                admitted = save(path, value)
+                if path.name == "dispatch.json":
+                    admissions.append(admitted)
+                return admitted
         def call(_):
             try:
                 return facade.start(self.root, "fixture", operation, count=12, interval_seconds=.02)
             except FileExistsError:
                 return None  # A racing create-only host intent is a safe loser.
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with patch.object(facade, "_namespace", side_effect=validated_namespace), \
+                patch.object(facade, "_save", side_effect=published_record), \
+                ThreadPoolExecutor(max_workers=3) as pool:
             list(pool.map(call, range(3)))
         result = self.finish(operation)
+        self.assertEqual(sorted(admissions), [False, False, True])
         self.assertEqual(result["executions"], 1)
         self.assertEqual(self.submissions, 2)  # warmup plus one new dispatch
 

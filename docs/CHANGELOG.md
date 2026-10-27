@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Publish complete gateway fixture terminal markers atomically before observation.
+
+## 2.2.15 - 2026-10-27
+
 - Establish agent tool readiness before dispatch and recover transport, guests and durable jobs without replaying uncertain work.
 - Report every managed check failure in one pass, rerun failures first and bound agent checks by CI shard.
 - Report a durable SSH program as finished when its owner exits during a status check.
@@ -14,6 +18,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Run hosted agent tests in six shards and keep agent tests portable to Windows and Linux runners.
 - Keep agent descriptor, traceback and capability tests deterministic across CI platforms and Python versions.
 - Add VM host storage ledger enrollment, name stale fixture registrations and close the relay when a follow deadline lands mid-call.
+- Stabilize concurrent guest-job test phases and verify Windows storage-host test capabilities.
 
 ## 2.2.14 - 2026-10-23
 

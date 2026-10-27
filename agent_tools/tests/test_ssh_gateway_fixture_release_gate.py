@@ -33,7 +33,17 @@ class FixtureReleaseGateTests(unittest.TestCase):
         for module,short in((old,True),(fixture,False)):
             with self.subTest(short=short),self.case(implementation=module)as case:
                 terminal=case.home/'test-pane-terminal.json';text=case.tmux.read_text();anchor='  if child.poll() is not None:break';self.assertEqual(1,text.count(anchor))
-                replacement="  if child.poll() is not None:\n   _fd=os.open("+repr(str(terminal))+",os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n   with os.fdopen(_fd,'w')as _out:json.dump({'exitCode':child.returncode,'pid':child.pid},_out)\n   break"
+                replacement=(
+                    "  if child.poll() is not None:\n"
+                    "   _terminal="+repr(str(terminal))+"\n"
+                    "   _staged="+repr(str(terminal.parent/'.test-pane-terminal.'))+"+os.urandom(16).hex()+'.tmp'\n"
+                    "   _fd=os.open(_staged,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n"
+                    "   try:\n"
+                    "    with os.fdopen(_fd,'w')as _out:json.dump({'exitCode':child.returncode,'pid':child.pid},_out)\n"
+                    "    os.link(_staged,_terminal,follow_symlinks=False)\n"
+                    "   finally:os.unlink(_staged)\n"
+                    "   break"
+                )
                 case.tmux.write_text(text.replace(anchor,replacement));case.prepare();start=time.monotonic()
                 if short:self.wait(terminal.exists);self.assertEqual(72,json.loads(terminal.read_bytes())['exitCode'])
                 while time.monotonic()-start<hold:time.sleep(.01)

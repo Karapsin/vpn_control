@@ -85,6 +85,7 @@ Use applicable CLI, state and desktop lifecycle contracts for native acceptance 
 | macOS packaging | `./scripts/package_macos_desktop.sh` on macOS |
 | Documentation only | `git diff --check` and `./scripts/check_docs_hygiene.sh` |
 | `agent_tools/`, `.codex/config.toml`, `.mcp.json`, `.claude/settings.json`, or `.github/required-workflows.json` | `python3 agent_tools/affected_agent_tests.py --run`, `./scripts/check_docs_hygiene.sh`, `./scripts/check_release_hygiene.sh`, and `git diff --check`; the complete managed pre-push tier selects affected agent consumers when lifecycle or CI behavior changes |
+| Inert gateway terminal marker publication | `python3 -m unittest agent_tools.tests.test_ssh_gateway_fixture_release_gate agent_tools.tests.test_ssh_gateway_terminal_publication`; run the causal regression on Python 3.12 and the primary interpreter. Its whole-before source must reproduce the original empty JSON read under an explicit writer/reader gate; the fix must publish complete JSON atomically and close every owned helper. The beforeimage provenance links the original prepush failure and both interpreter proofs. Non-POSIX discovery must skip before importing the POSIX fixture. Ordinary affected selection and managed prepush include these tests. |
 | Release workflow/package guardrails | `./scripts/check_release_hygiene.sh`, `./scripts/check_docs_hygiene.sh`, agent tool tests, visual comparator tests, and `git diff --check` |
 
 The `VPN Integration` workflow has two profiles. `core` runs fast deterministic contracts and is advisory on `dev`; `all` additionally runs full traffic on an Android emulator, Windows, Arch Linux, Ubuntu, and Linux Mint, including Linux update install/relaunch. Release readiness accepts only explicit exhaustive VPN success plus a complete exact-SHA agent visual receipt and matching commit status. Never run the full desktop probe on a machine carrying an active VPN connection; its environment opt-in is reserved for disposable runners. Visual capture uses only isolated agent-owned environments or eligible GitHub-hosted ephemeral fallbacks with synthetic fixtures.
@@ -98,7 +99,12 @@ Automatic tool readiness changes additionally run the action-policy exposure aud
 (`python3 scripts/test_native_fixture_storage.py`) and VM host ledger enrollment
 (`python3 scripts/test_fixture_storage_host.py`, real `/proc` coverage on Linux) through release hygiene. The
 affected agent selection includes readiness, provider/registry, durable job,
-keep-awake, generated-program and typed-next-action tests. These local gates do
+keep-awake, generated-program and typed-next-action tests. The guest admission
+fixture regressions (`test_guest_concurrent_preflight`) exercise both complete
+unfixed test generations and the fixed schedule, including partial-inventory
+and temporary-hardlink refusals, in routine agent checks. The executable Python
+platform-contract probes also retain the Windows storage-host failure and exact
+portable/unsupported test split in release hygiene. These local gates do
 not replace each provider's DIRECT, fresh MCP and CLI acceptance tracked in
 [the recovery ledger](tool-recovery-ledger.md). At the user's direction,
 expiry tests use accelerated intervals; real tool calls retain five-hour SSH

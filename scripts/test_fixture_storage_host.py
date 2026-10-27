@@ -32,6 +32,7 @@ def prevm_lock_admitted(ledger):
 
 
 class EnrollmentTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX storage-plan lock; the helper runs on Linux VM hosts")
     def test_unenrolled_host_refuses_then_enroll_admits_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as temporary:
             ledger = Path(os.path.realpath(temporary)) / ".cache" / "vpn-control-fixture-storage"
@@ -46,6 +47,7 @@ class EnrollmentTest(unittest.TestCase):
             self.assertEqual(host.enroll(storage, str(ledger)),
                              {"state": "already-enrolled", "ledger": str(ledger), "plans": 0})
 
+    @unittest.skipUnless(os.name == "posix", "POSIX storage-plan lock; the helper runs on Linux VM hosts")
     def test_unsafe_existing_ledger_refuses(self):
         with tempfile.TemporaryDirectory() as temporary:
             ledger = Path(os.path.realpath(temporary)) / "ledger"
