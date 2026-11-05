@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "baseCommit": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "finding": "after the gateway host rebooted, the selected nested channel's retained remote status reported ended with no prior record under a new gateway boot; the route check, original reconciliation and status parser accepted only a same-boot end, so transport readiness refused connection_generation_changed and no successor could be prepared; an earlier local reboot had renumbered the checkout volume (st_dev only), so every retained pre-reboot channel record also failed its exact generation binding and the inherited version-2 unusable original could not issue its successor proof",
+  "originalOperationId": "5be4c4ce-e252-4e48-8ffb-85af227b384c",
+  "nativeObservations": {
+    "gatewayReboot": "selected channel 5e3e1ddbc36af4fd543603742469ea3c answered {state: ended, prior: null} under gateway boot 1771fff5-4a6d-4148-b82c-3632fbe5ca69; its READY master ran under f0efe38b-5ce1-40f1-a7d6-a2a1e816d1fe",
+    "localReboot": "Mac booted 2026-10-29T09:42:26Z; checkout st_dev 16777231 -> 16777229; every pre-reboot channel record differed from the live pins only in st_dev",
+    "localRebootHistory": "the 2026-10-29 renewal (decb975e terminal, 5e3e1ddb selection) used a private scoped successor outside the tracked tooling (.runtime/tool-recovery/android-ee4-scoped-successor-20261029)",
+    "privateEvidence": ".runtime/tool-recovery/windows-lane-20261103/ (status refusal, read-only route diagnostics, local record checks); never committed"
+  },
+  "nativeEvidenceLimits": [
+    "the local reboot is simulated at the os.stat/os.lstat/os.fstat boundary, not by a real remount",
+    "the gateway is simulated by the generated-socket consumer, including the vanished-stage reply and pending_absent()",
+    "a gateway whose /tmp survives a reboot is not covered and stays UNKNOWN",
+    "version-1 receipts and the non-direct inventory comparison keep exact pins after a local reboot",
+    "a non-direct channel never ends across a gateway reboot: its status is not bound to the original outer authority",
+    "a cloned gateway sharing the same host key, inventory and trust files is indistinguishable from the original gateway",
+    "OpenSSH still consults the unpinned global known_hosts for fresh direct routes (pre-existing)"
+  ],
+  "files": {
+    "readiness_nested_channel.before.source": {
+      "path": "agent_tools/readiness_nested_channel.py",
+      "sha256": "dc86319f0af7be503f713b4e1ba7f5602a09cd5d7bb4553c40491061b51c6a4e"
+    },
+    "ssh_direct_nested_channel.before.source": {
+      "path": "agent_tools/ssh_direct_nested_channel.py",
+      "sha256": "0e1aa290112a6555c1c0e1b52cbdb076159dd243c5ac3d97b618a787e8a25d95"
+    },
+    "ssh_fresh_nested_channel.before.source": {
+      "path": "agent_tools/ssh_fresh_nested_channel.py",
+      "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+    }
+  }
+}

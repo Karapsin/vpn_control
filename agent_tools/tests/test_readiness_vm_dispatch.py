@@ -144,6 +144,27 @@ class VmDispatchTests(unittest.TestCase):
         self.assertTrue(audited['ok'])
         self.assertEqual(len(subject.ROUTES),audited['actions'])
 
+    def test_every_shipped_windows_instance_source_is_reviewed_before_dispatch(self):
+        # windows_vm_deploy ships _INSTANCE_SOURCES to the lab host. An unreviewed
+        # edit to any shipped source must refuse before recovery or host selection,
+        # like every other pinned closure member (windows_vm_image was shipped
+        # without being in any Windows deployment closure).
+        from agent_tools import windows_vm_deploy
+        shipped = sorted(set(windows_vm_deploy._INSTANCE_SOURCES))
+        self.assertIn('windows_vm_image', shipped)
+        # Every other pin holds the current bytes, so only the injected one can refuse.
+        current = {name: subject.policies._capture(subject._SOURCE.parent / (name + '.py'))[2] for name in subject._SOURCE_PINS}
+        for module in shipped:
+            pins = {**current, module: '0'*64}
+            with mock.patch.object(subject,'_SOURCE_PINS',pins), self.assertRaises(subject.DispatchBlocked) as caught:
+                subject.resolve(self.root,'windows-vm-deploy-status',self.inputs())
+            self.assertEqual('vm_readiness_target_source_unreviewed',caught.exception.reason,module)
+        self.assertEqual([],self.children)
+        routes = sorted(action for action, row in subject.ROUTES.items() if row['kind'] == 'windows_deployment')
+        self.assertIn('windows-vm-deploy-start',routes)
+        for action in routes:
+            self.assertEqual([],sorted(set(shipped)-set(subject.ROUTES[action]['closure'])),action)
+
     def test_missing_action_or_changed_target_source_fails_before_recovery(self):
         routes = dict(subject.ROUTES)
         routes.pop('windows-credential-probe-status')

@@ -157,6 +157,49 @@ def route_options(root,host,correlation_id,receipt_sha256,*,_private_capture=Non
                 '-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false')}
 
 
+# The module whose digest each outer-authority schema embeds.
+_AUTHORITY_MODULE={1:'ssh_connection_session.py',2:'ssh_direct_inventory.py'}
+
+
+def recorded_authority_continuity(session,intent,authority,old_device=None,new_device=None):
+    """The intent's recorded outer authority still names the same gateway route.
+
+    The authority hashes the outer route's private inventory, identity key and
+    public host trust together with the digest of the module that computed it.
+    Take that module digest from the intent's own retained catalog pin, so a
+    later tooling revision alone never changes the answer while every route
+    fact must match. After a local remount (``old_device`` to ``new_device``)
+    also rewind exactly the known st_dev-bearing fields of the schema. Any
+    other difference, or a record on a third device, refuses.
+    """
+    recorded=intent.get('outerAuthoritySha256') if type(intent)is dict else None
+    pins=intent.get('directSourcePins') if type(intent)is dict else None
+    if (type(recorded)is not str or re.fullmatch('[0-9a-f]{64}',recorded)is None or type(authority)is not dict
+            or type(pins)is not dict):return False
+    version=authority.get('version')
+    module=_AUTHORITY_MODULE.get(version) if type(version)is int else None
+    if module is None or type(pins.get(module))is not str or re.fullmatch('[0-9a-f]{64}',pins[module])is None:return False
+    candidate=json.loads(json.dumps(authority));candidate['sourceSha256']=pins[module]
+    if hashlib.sha256(session._json(candidate)).hexdigest()==recorded:return True
+    if type(old_device)is not int or type(new_device)is not int or old_device==new_device:return False
+    def rewind(value,length):
+        if type(value)is list and len(value)==length and all(type(item)is int for item in value) and value[0]==new_device:
+            return [old_device,*value[1:]]
+        return value
+    files=candidate.get('files')
+    if type(files)is not list:return False
+    if version==1:
+        if 'configFingerprint' in candidate:candidate['configFingerprint']=rewind(candidate['configFingerprint'],8)
+    elif type(candidate.get('configGeneration'))is dict and 'generation' in candidate['configGeneration']:
+        candidate['configGeneration']['generation']=rewind(candidate['configGeneration']['generation'],9)
+    for row in files:
+        if type(row)is not dict:return False
+        if type(row.get('generation'))is dict and 'generation' in row['generation']:
+            row['generation']['generation']=rewind(row['generation']['generation'],9)
+        if 'fingerprint' in row:row['fingerprint']=rewind(row['fingerprint'],8)
+    return hashlib.sha256(session._json(candidate)).hexdigest()==recorded
+
+
 def reconcile_original(root,host,correlation_id):
     """Observe a retained original remote capsule after local tooling changes.
 
@@ -178,9 +221,19 @@ def reconcile_original(root,host,correlation_id):
             version=intent.get('version')
             current=stack.enter_context(Guard(root,host,legacy=version!=3))
             config_snapshot=stack.enter_context(private_inventory(root) if version==3 else private.Snapshot(base,transport.CONFIG_FILENAME))
+            ready_name=correlation_id+'.ready.json'
+            ready=stack.enter_context(private.Snapshot(directory,ready_name)) if os.path.lexists(directory.path/ready_name) else None
+            receipt=json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys) if ready else None
+            if ready is not None and (type(receipt)is not dict or set(receipt)!={'intent','result'}):return channel._public()
+            # Retained pins equal the live ones, or all moved with one local
+            # volume renumbering; the route authority must still match.
+            anchor=channel.directory_device(base)
+            pairs=[(intent.get('inventory'),config_snapshot.pin(),anchor)]
+            if ready is not None:pairs.append((receipt['intent'],held.pin(),channel.directory_device(directory)))
+            old_device=channel.same_records_after_local_reboot(pairs)
             if (version not in (2,3) or intent.get('host')!=host or intent.get('correlationId')!=correlation_id
-                    or intent.get('transportMode')!='direct' or intent.get('inventory')!=config_snapshot.pin()
-                    or intent.get('outerAuthoritySha256')!=current.authority_sha):return channel._public()
+                    or intent.get('transportMode')!='direct' or old_device is False
+                    or not recorded_authority_continuity(session,intent,current.authority,old_device,anchor)):return channel._public()
             sources={'remote':intent['remoteSourceSha256'],'ssh_fresh_nested_channel.py':intent['sourceSha256'],**intent['directSourcePins']}
             if set(intent['directSourcePins'])!=set(source_catalog(version)):return channel._public()
             capsules={}
@@ -200,20 +253,21 @@ def reconcile_original(root,host,correlation_id):
             for capsule in capsules.values():capsule.guard()
             if (not captured['complete'] or captured['overflow'] or captured['returnCode']!=0 or captured['stderr']):return channel._public()
             value=json.loads(captured['stdout'],object_pairs_hook=transport._reject_duplicate_keys)
-            ready_name=correlation_id+'.ready.json'
-            ready=stack.enter_context(private.Snapshot(directory,ready_name)) if os.path.lexists(directory.path/ready_name) else None
-            prior=json.loads(ready.body).get('result') if ready else None
+            prior=receipt['result'] if receipt is not None else None
+            # A READY original whose stage vanished with a gateway reboot ended
+            # positively; its terminal keeps the READY boot it ended under.
+            rebooted=channel.gateway_reboot_end(value,correlation_id,prior) if prior is not None else None
             if (set(value)!={'state','correlationId','prior','gatewayBoot'} or value.get('state')!='ended'
-                    or value.get('correlationId')!=correlation_id or value.get('prior')!=prior
+                    or value.get('correlationId')!=correlation_id or (rebooted is None and value.get('prior')!=prior)
                     or type(value.get('gatewayBoot'))is not str
                     or re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',value['gatewayBoot'])is None):return channel._public()
-            if prior is not None and prior['master']['gatewayBoot']!=value['gatewayBoot']:return channel._public()
+            if prior is not None and rebooted is None and prior['master']['gatewayBoot']!=value['gatewayBoot']:return channel._public()
             terminal={'state':'ended','correlationId':correlation_id,'receiptSha256':ready.digest if ready else None,
-                      'intentSha256':held.digest,'gatewayBoot':value['gatewayBoot']}
-            name=correlation_id+'.terminal.json'
-            if not os.path.lexists(directory.path/name):session._create(directory.path/name,terminal,parent_fd=directory.fd)
-            closed=stack.enter_context(private.Snapshot(directory,name))
-            if json.loads(closed.body)!=terminal:return channel._public()
-            current.guard();held.guard();config_snapshot.guard();closed.guard()
+                      'intentSha256':held.digest,'gatewayBoot':rebooted['readyGatewayBoot'] if rebooted is not None else value['gatewayBoot']}
+            closed=channel.close_ended(stack,directory,correlation_id,terminal,rebooted,ready.digest if ready else None)
+            if closed is None:return channel._public()
+            current.guard();held.guard();config_snapshot.guard()
+            if ready is not None:ready.guard()
+            for part in closed:part.guard()
             return channel._public('ended',correlationId=correlation_id)
     except (OSError,ValueError,KeyError,TypeError,session.SessionUnknown):return channel._public()

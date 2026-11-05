@@ -21,6 +21,28 @@ def _gateway_private_capture(custody):
             'eof':dict(custody.eof),'credentialSent':custody.sent}
 
 
+# Every literal ValueError token the shipped gateway can raise, and the custody's
+# own refusal tokens. An UNKNOWN names one of these, never exception text.
+_GATEWAY_REASONS=('config_or_keys_changed','duplicate','effective_home_changed','effective_home_foreign','effective_home_unknown',
+                  'effective_key_not_literal','effective_key_unavailable','effective_key_unknown','effective_route_unknown',
+                  'effective_user_unknown','inner_capture_cap','input_cap','input_deadline','live_child_custody','payload_bound',
+                  'payload_shape','private_output_refused','private_result_refused','program_observation_unknown','request_shape',
+                  'route_file_changed','route_file_unbounded','route_file_unsafe','route_identity','route_parent_changed',
+                  'route_parent_unsafe','secret_shape','source_binding','sudo_shape')
+_GATEWAY_REFUSALS=('capture_overflow','capture_read','credential_write','echo_enabled','extra_prompt','foreign_prompt','secret_shape')
+
+
+def _gateway_unknown_facts(error,custody):
+    # Credential-bearing UNKNOWN keeps no stream content, so name the cause:
+    # one closed token (never exception text, stream bytes or secrets) plus the
+    # custody's own closed facts as last observed.
+    reason=str(error) if type(error)is ValueError and str(error)in GATEWAY_REASONS else 'unclassified'
+    if custody is None:return {'reason':reason,'capture':None}
+    code=custody.child.returncode;refusal=custody.refusal
+    return {'reason':reason,'capture':{'complete':code is not None and all(custody.eof.values()),'returnCode':code,
+            'timeout':custody.timeout,'refusal':refusal if refusal is None or refusal in GATEWAY_REFUSALS else 'unclassified'}}
+
+
 def _gateway_echo_free(raw,protected):
     import base64,binascii
     def check(data):
@@ -131,7 +153,7 @@ def _gateway_main():
         print(json.dumps({'state':'observed','correlationId':corr,'result':value,'capture':capture,'_operatorPrivateCapture':_gateway_private_capture(custody)},sort_keys=True),flush=True)
         return 0
     except BaseException as error:
-        print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(error).__name__,
+        print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(error).__name__,**_gateway_unknown_facts(error,custody),
                           '_operatorPrivateCapture':_gateway_private_capture(custody) if custody else None},sort_keys=True),flush=True)
         if custody is not None and not custody.closed:custody.finish_naturally()
         return 3
@@ -161,7 +183,7 @@ def gateway_program(receipt,privileged=False,input_payload=False,*,file_output=F
     command=shlex.join((*(['/usr/bin/sudo','-k','-S','-p','','--'] if privileged else []),'/usr/bin/python3' if privileged else 'python3','-I','-B','-c',loader,receipt['path'],receipt['sha256'],str(receipt['bytes'])))
     if len(command.encode())>60000:raise ValueError('saved_command_bound')
     from .windows_vm_deploy_remote import _REASONS
-    body=prefix+('\nCAP=5242880\n' if file_output else '')+'\nPRIVILEGED='+repr(privileged)+'\nINPUT_PAYLOAD='+repr(input_payload)+'\nCOMMAND='+repr(command)+'\nPRINCIPAL='+repr(receipt['principal'])+'\nRESPONSE='+repr(response)+'\nPUBLIC_BLOCKERS='+repr(tuple(sorted(_REASONS)))+'\n'+''.join(inspect.getsource(f)+'\n'for f in (_gateway_private_capture,_gateway_echo_free,_gateway_payload_result,_gateway_main))+"\nif __name__=='__main__':sys.exit(_gateway_main())\n"
+    body=prefix+('\nCAP=5242880\n' if file_output else '')+'\nPRIVILEGED='+repr(privileged)+'\nINPUT_PAYLOAD='+repr(input_payload)+'\nCOMMAND='+repr(command)+'\nPRINCIPAL='+repr(receipt['principal'])+'\nRESPONSE='+repr(response)+'\nPUBLIC_BLOCKERS='+repr(tuple(sorted(_REASONS)))+'\nGATEWAY_REASONS='+repr(_GATEWAY_REASONS)+'\nGATEWAY_REFUSALS='+repr(_GATEWAY_REFUSALS)+'\n'+''.join(inspect.getsource(f)+'\n'for f in (_gateway_private_capture,_gateway_unknown_facts,_gateway_echo_free,_gateway_payload_result,_gateway_main))+"\nif __name__=='__main__':sys.exit(_gateway_main())\n"
     compile(body,'saved Windows VM gateway','exec');return body.encode()
 
 
@@ -197,19 +219,36 @@ def _retain_sources(directory,paths,guard):
     guard.guard();stage._retain(target,'manifest.json',{'schemaVersion':1,'sources':records,'sourceClosingBeforeTransfer':True})
 
 
+_CLAIM_GROUPS={'host-policy-apply':'windows-vm-host-policy','start':'windows-vm-deploy-intents','stop':'windows-vm-deploy-stops',
+               'secure':'windows-vm-deploy-secure','generalize':'windows-vm-deploy-generalize','capture-image':'windows-vm-image-captures'}
+_INSTANCE_SOURCES=('windows_vm_resources','native_host_observation','ssh_tmux_resource_admission','windows_vm_unattend','windows_vm_instance',
+                   'windows_vm_hardware','windows_vm_lifecycle','native_environment','windows_vm_image')
+
+
+def _claim_name(spec,mode,operation_id):
+    """One mutation claim per deployment; generalize claims one per operation.
+
+    A later generalize operation is admitted remotely only after the guest
+    positively refused every earlier attempt before its first modification.
+    """
+    if mode=='generalize':
+        if type(operation_id)is not str or str(uuid.UUID(operation_id))!=operation_id:raise ValueError('generalize_identity')
+        return spec.deployment_id+'.'+operation_id+'.intent.json'
+    return spec.deployment_id+'.intent.json'
+
+
 def _execute(root,spec,mode,*,credential_file=None,setup=None,context=None,payload=None,before_submit=None,operation_id=None):
     """Save the entire fixed producer before transfer; never replay a start."""
     if not direct.coordinator_capable():raise ValueError('unsupported_deployment_coordinator')
     # An already consumed mutation is a local refusal, even when its transport
     # is unavailable. Keep the later atomic admission check as the race fence.
-    groups={'host-policy-apply':'windows-vm-host-policy','start':'windows-vm-deploy-intents',
-            'stop':'windows-vm-deploy-stops','secure':'windows-vm-deploy-secure'}
+    groups=_CLAIM_GROUPS
     if mode in groups:
         claims=Path(root).resolve(strict=True)/'.rag_index'/groups[mode]
         if os.path.lexists(claims):
             info=claims.lstat()
             if not stat.S_ISDIR(info.st_mode)or info.st_uid!=os.getuid()or info.st_mode&0o077:raise ValueError('policy_claim_owner')
-            if os.path.lexists(claims/(spec.deployment_id+'.intent.json')):raise ValueError('policy_original_exists')
+            if os.path.lexists(claims/_claim_name(spec,mode,operation_id)):raise ValueError('policy_original_exists')
     from . import readiness
     # Resource peer census calls this helper for each actual trusted alias,
     # including aliases outside the enclosing public workflow's initial route.
@@ -226,17 +265,18 @@ def _execute_admitted(root,spec,mode,*,credential_file,setup,context,payload,bef
     from . import windows_vm_deploy_remote as producer
     from . import windows_vm_media as media
     root=Path(root).resolve(strict=True);corr=uuid.uuid4().hex
-    file_output=mode in ('media','frame','frame-collect')
+    # Larger bounded JSON results use the private file-output path (4 KiB otherwise).
+    file_output=mode in ('media','frame','frame-collect','images','retire-images','vm-inventory','vm-cleanup','disk-logs')
     group=_runtime_group(root,'windows-vm-deploy')
     directory=group/corr;directory.mkdir(mode=0o700)
-    privileged=mode in ('host-policy-apply','host-resources','start','status','stop','qualify','qualify-status','secure','secure-status')
+    privileged=mode in ('host-policy-apply','host-resources','start','status','stop','qualify','qualify-status','secure','secure-status','generalize','generalize-status','capture-image','disk-logs')
     # Recovery modes operate as the same configured ordinary principal. Their
     # local and remote O_EXCL fences belong to windows_secure_recovery; password
     # payload remains protected stdin, never command/source/receipt material.
     recovery_mutation=mode=='secure-continue'
     if recovery_mutation and (type(payload)is not dict or set(payload)!={'password'}):raise ValueError('secure_recovery_payload')
     if mode in ('secure-resolve','secure-continue-status')and payload is not None:raise ValueError('secure_recovery_payload')
-    mutation=mode in ('host-policy-apply','start','stop','secure')
+    mutation=mode in _CLAIM_GROUPS
     if privileged and credential_file is None:raise ValueError('privileged_operation_requires_credential_file')
     media_rows=media.dependency_sources() if mode in ('start','media') else []
     media_reader=media.dependency_capsule(media_rows) if media_rows else None
@@ -245,17 +285,18 @@ def _execute_admitted(root,spec,mode,*,credential_file,setup,context,payload,bef
     stage._retain(directory,'caller.py',caller)
     stage._retain(directory,'request.json',{'spec':spec.as_dict(),'mode':mode,'correlationId':corr,'callerSha256':sha})
     if mutation:
-        claim_group={'host-policy-apply':'windows-vm-host-policy','start':'windows-vm-deploy-intents','stop':'windows-vm-deploy-stops','secure':'windows-vm-deploy-secure'}[mode]
+        claim_group=_CLAIM_GROUPS[mode]
         claims=root/'.rag_index'/claim_group;claims.mkdir(mode=0o700,exist_ok=True)
         if claims.is_symlink() or claims.stat().st_uid!=os.getuid() or claims.stat().st_mode&0o077:raise ValueError('policy_claim_owner')
-        if os.path.lexists(claims/(spec.deployment_id+'.intent.json')):raise ValueError('policy_original_exists')
+        if os.path.lexists(claims/_claim_name(spec,mode,operation_id)):raise ValueError('policy_original_exists')
     with direct.Guard(root,host=spec.host) as guard,ExitStack() as secrets:
         if privileged:credential=secrets.enter_context(SecretFile(credential_file))
         paths=[Path(__file__),Path(producer.__file__),Path(stage.__file__),Path(files.__file__),Path(__file__).with_name('native_vm_spec.py'),Path(__file__).with_name('arch_package_integrity.py'),Path(__file__).with_name('private_credential_file.py'),Path(__file__).with_name('source_module_loader.py'),files.GATEWAY_SOURCE,directory/'caller.py']
         if mode=='host-resources':paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_resources','native_host_observation','ssh_tmux_resource_admission'))
-        if mode in ('start','status','stop','qualify','qualify-status','secure','secure-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_resources','native_host_observation','ssh_tmux_resource_admission','windows_vm_unattend','windows_vm_instance','windows_vm_hardware','windows_vm_lifecycle','native_environment'))
+        if mode in producer._INSTANCE_MODES:paths.extend(Path(__file__).with_name(name+'.py') for name in _INSTANCE_SOURCES)
+        if mode in ('images','retire-images','vm-inventory','vm-cleanup','disk-logs'):paths.append(Path(__file__).with_name('windows_vm_image.py'))
         if mode in ('secure-resolve','secure-continue','secure-continue-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_secure_recovery','windows_vm_guest','windows_guest_input','windows_vm_instance'))
-        if mode in ('qualify','qualify-status','secure','secure-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_guest','windows_guest_input'))
+        if mode in ('qualify','qualify-status','secure','secure-status','generalize','generalize-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_guest','windows_guest_input'))
         if mode in ('frame','frame-collect'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_instance','windows_vm_unattend'))
         if media_rows:paths.append(Path(media.__file__))
         for path in paths:
@@ -285,7 +326,7 @@ def _execute_admitted(root,spec,mode,*,credential_file,setup,context,payload,bef
         if payload is not None:request['payload']=payload
         if privileged:
             request['sudo']=credential.text;credential.guard()
-        if mutation:stage._retain(claims,spec.deployment_id+'.intent.json',{'spec':spec.as_dict(),'setup':setup,'context':context,'correlationId':corr,'mode':mode,'callerSha256':sha})
+        if mutation:stage._retain(claims,_claim_name(spec,mode,operation_id),{'spec':spec.as_dict(),'setup':setup,'context':context,'correlationId':corr,'mode':mode,'callerSha256':sha})
         if before_submit is not None:before_submit()
         admission.revalidate();guard.guard();value=stage._run(directory,argv,json.dumps(request).encode(),'native',file_output=file_output)
         request.clear()
@@ -369,9 +410,10 @@ def _prepare_reservation(root,spec,credential_file):
         request={'hostAlias':spec.host,'resourceAliases':sorted(selected),'environment':'windows-'+spec.deployment_id,
                  'operator':'windows-vm-deploy','requestedMemoryBytes':spec.memory_mib*1024**2,
                  'headroomBytes':spec.headroom_mib*1024**2,'allocationState':'pending',
-                 'measurement':facts.measurement(observation),'runningAllocationMapping':mapping,
+                 'measurement':facts.conservative_policy_measurement(observation,mapping),'runningAllocationMapping':mapping,
                  'expectedInventorySha256':hashlib.sha256(original).hexdigest()}
         _wait_for_resource_clock(request['measurement'],deadline)
+        facts.validate_conservative_policy_measurement(request['measurement'],observation,mapping)
         authority.guard();reservation=environments.reserve_environment(root,request);authority.guard()
         pending=[{'id':row['id'],'memoryBytes':row['requestedMemoryBytes']} for row in same_host if row['allocationState']=='pending']
         return {'reservation':reservation,'request':request,'hostBootId':observation['hostBootId'],'pending':pending}
@@ -395,17 +437,20 @@ def _mark_running(root,spec,prepared,credential_file):
         raw=environments._read_private(locked.path).encode()
     identity=prepared['reservation']['identity']
     if not any(row['reservationId']==identity['reservationId'] for row in mapping):mapping.append({'reservationId':identity['reservationId'],'memoryBytes':spec.memory_mib*1024**2})
-    request.update(allocationState='running',measurement=facts.measurement(observation),runningAllocationMapping=mapping,
+    request.update(allocationState='running',measurement=facts.conservative_policy_measurement(observation,mapping),runningAllocationMapping=mapping,
                    reservationIdentity=identity,observations=[_lease_receipt(prepared,'active')],expectedInventorySha256=hashlib.sha256(raw).hexdigest())
     _wait_for_resource_clock(request['measurement'],deadline)
+    facts.validate_conservative_policy_measurement(request['measurement'],observation,mapping)
     return environments.reserve_environment(root,request)
 
 
-def _bind_preparation(root,spec,setup,credential_file):
+def _bind_preparation(root,spec,setup,credential_file,image=None,network=None):
     """Keep a retry bound to its original unsubmitted payload and file generation."""
     with SecretFile(credential_file) as credential:
         expected={'schemaVersion':1,'spec':spec.as_dict(),'setup':setup,
                   'credentialPath':str(credential.path),'credentialGeneration':list(credential.pin)}
+        if image is not None:expected['image']=image
+        if network is not None:expected['network']=network
         credential.guard()
     parent=root/'.rag_index/windows-vm-preparations';parent.mkdir(mode=0o700,parents=True,exist_ok=True)
     if parent.is_symlink() or parent.stat().st_uid!=os.getuid() or parent.stat().st_mode&0o077:
@@ -426,14 +471,27 @@ def _bind_preparation(root,spec,setup,credential_file):
         finally:os.close(descriptor)
 
 
-def start(root,request,setup,credential_file):
-    """Create one blank instance; the immutable start is never resubmitted."""
+def start(root,request,setup,credential_file,*,image=None,network=None):
+    """Create one instance; the immutable start is never resubmitted.
+
+    Without image the disk is blank and Windows installs from the pinned media.
+    With one exact published image ({imageId, manifestSha256}) the disk is a
+    copy-on-write clone that reruns the same answer file and setup.
+    """
     if not direct.coordinator_capable():raise ValueError('unsupported_deployment_coordinator')
     from . import windows_vm_unattend as unattended,native_environment as environments
     root=Path(root).resolve(strict=True);spec=FreshWindowsVmSpec.parse(request);setup=unattended.parse_setup(setup)
+    if image is not None:
+        from .windows_vm_image import validate_context_image
+        image=validate_context_image(image)
+    if network is not None:
+        # Only an image source uses a restricted network, never a clone.
+        from .windows_vm_image import validate_context_network
+        network=validate_context_network(network)
+        if image is not None:raise ValueError('deployment_network_image')
     if os.path.lexists(root/'.rag_index/windows-vm-deploy-intents'/(spec.deployment_id+'.intent.json')):raise ValueError('deployment_original_exists_use_status')
     if os.path.lexists(root/'.runtime/windows-vm-credentials'/spec.deployment_id):raise ValueError('deployment_preparation_exists_use_original_evidence')
-    _bind_preparation(root,spec,setup,credential_file)
+    _bind_preparation(root,spec,setup,credential_file,image,network)
     media_result=installer_media(root,spec.as_dict())
     if media_result['state']!='media-observed':return {'state':'blocked','reason':'media_observation_unknown','deploymentId':spec.deployment_id,'vmSubmitted':False,'nativeActionAllowed':False,'replayAllowed':False}
     from .windows_vm_media import select_image
@@ -462,7 +520,7 @@ def start(root,request,setup,credential_file):
         environments.reserve_environment(root,update)
     with SecretFile(str(directory/'user.secret')) as user,SecretFile(str(directory/'administrator.secret')) as administrator:
         result=_execute(root,spec,'start',credential_file=credential_file,setup=setup,
-                        context={'hostBootId':prepared['hostBootId'],'pending':prepared['pending']},
+                        context={'hostBootId':prepared['hostBootId'],'pending':prepared['pending'],**({}if image is None else {'image':image}),**({}if network is None else {'network':network})},
                         payload={'user':user.text,'administrator':administrator.text},before_submit=submitting)
         user.guard();administrator.guard()
     stage._retain(directory,'boot-result.private.json',result)
@@ -502,6 +560,69 @@ def secure(root,deployment_id,operation_id,credential_file,*,status_only=False):
     with SecretFile(str(path))as secret:
         result=_original_operation(root,deployment_id,credential_file,'secure',operation_id=operation_id,payload={'password':secret.text})
         secret.guard();return result
+
+
+def generalize(root,deployment_id,operation_id,credential_file,*,status_only=False):
+    """Turn one qualified original fixture into an image template, once.
+
+    The guest removes the fixture accounts and setup state, then sysprep powers
+    it off; status only observes the same original and never resubmits.
+    """
+    if type(operation_id)is not str or str(uuid.UUID(operation_id))!=operation_id or type(status_only)is not bool:raise ValueError('generalize_identity')
+    return _original_operation(root,deployment_id,credential_file,'generalize-status' if status_only else 'generalize',operation_id=operation_id)
+
+
+def capture_image(root,deployment_id,operation_id,credential_file):
+    """Publish one generalized, guest-stopped original disk read-only, once."""
+    if type(operation_id)is not str or str(uuid.UUID(operation_id))!=operation_id:raise ValueError('capture_identity')
+    return _original_operation(root,deployment_id,credential_file,'capture-image',operation_id=operation_id)
+
+
+def images(root,request):
+    """List the published images on the request's host; read-only."""
+    return _execute(root,FreshWindowsVmSpec.parse(request),'images')
+
+
+def retire_images(root,request,image_ids):
+    """Delete exact superseded images on the request's host.
+
+    The current image schema and any image whose files a running process holds
+    open are refused per image; nothing else on the host is touched.
+    """
+    return _execute(root,FreshWindowsVmSpec.parse(request),'retire-images',context={'imageIds':list(image_ids)})
+
+
+def disk_logs(root,deployment_id,credential_file):
+    """Read Windows setup logs from one stopped original instance disk (read-only)."""
+    return _original_operation(root,deployment_id,credential_file,'disk-logs')
+
+
+def vm_inventory(root,request):
+    """Read-only sizes of VM data under the request host's fixture home."""
+    return _execute(root,FreshWindowsVmSpec.parse(request),'vm-inventory')
+
+
+def vm_cleanup(root,request,paths,keep):
+    """Delete an exact approved path list under the fixture home; never a kept path.
+
+    Refuses everything while any QEMU, swtpm or emulator process runs, matched by
+    executable or argv[0]; a descriptor-executed process whose executable cannot
+    be read counts as a possible VM. libvirtd alone does not block; virtqemud
+    matches 'qemu' and does. Each path must lie under the fixture home, and each
+    path a process holds open is refused.
+    """
+    return _execute(root,FreshWindowsVmSpec.parse(request),'vm-cleanup',context={'paths':list(paths),'keep':list(keep)})
+
+
+def create(root,request,setup,credential_file,*,now_ms=None):
+    """Reuse the newest matching unexpired image, otherwise install from scratch."""
+    from .windows_vm_image import choose_image
+    from . import windows_vm_unattend as unattended
+    spec=FreshWindowsVmSpec.parse(request);setup=unattended.parse_setup(setup)
+    image=choose_image(images(root,spec.as_dict()),spec.as_dict(),setup,time.time_ns()//1_000_000 if now_ms is None else now_ms)
+    # A blank install only ever becomes the next image template, so it is built offline.
+    result=start(root,spec.as_dict(),setup,credential_file,image=image,network=None if image is not None else 'restricted')
+    return {**result,'image':image,'nextAction':None if image is not None else 'generalize-and-capture-after-qualification'}
 
 
 def frame(root,deployment_id,operation_id,*,collect=False):

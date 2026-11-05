@@ -58,9 +58,23 @@ def facade(is_before, workflow):
     return ns
 
 
+WINDOWS_FIXTURES = Path(__file__).parent / 'fixtures/readiness_provider_error_projection_windows'
+
+
+def windows_before_facade(workflow):
+    """Current public facade over the preserved 2efd2569 stale-registration decision (F1)."""
+    leaf = 'mcp_server.windows-stale.before.source'
+    raw = (WINDOWS_FIXTURES / leaf).read_bytes()
+    record = json.loads((WINDOWS_FIXTURES / 'provenance.json').read_bytes())['files'][leaf]
+    assert hashlib.sha256(raw).hexdigest() == record['sha256']
+    ns = facade(False, workflow)
+    exec(compile(raw, str(WINDOWS_FIXTURES / leaf), 'exec'), ns)
+    return ns
+
+
 class ReadinessProviderErrorProjectionTests(unittest.TestCase):
     def invoke(self, is_before, error, tool):
-        ns = facade(is_before, _Raising(error))
+        ns = windows_before_facade(_Raising(error)) if is_before == 'windows' else facade(is_before, _Raising(error))
         with mock.patch.object(readiness_transport, 'TransportAdapter',
                                side_effect=AssertionError('transport constructed')) as adapter:
             if tool == 'ssh_workflow':
@@ -77,6 +91,19 @@ class ReadinessProviderErrorProjectionTests(unittest.TestCase):
                 with self.subTest(error=str(error), tool=tool):
                     self.assertEqual(self.invoke(True, error, tool), {'tool': tool, **GENERIC})
                     self.assertEqual(self.invoke(False, error, tool), {'tool': tool, **STALE})
+
+    def test_preserved_windows_registration_change_generic_current_names_stale(self):
+        # F1: a changed Windows registration or original intent behind a retired
+        # alias was projected as the generic admission refusal.
+        for reason in ('windows_original_intent_changed', 'windows_registration_changed'):
+            for tool in ('vm_workflow', 'ssh_workflow'):
+                with self.subTest(reason=reason, tool=tool):
+                    error = providers.ProviderError(reason)
+                    self.assertEqual(self.invoke('windows', error, tool), {'tool': tool, **GENERIC})
+                    self.assertEqual(self.invoke(False, error, tool), {'tool': tool, **STALE})
+        for error in (providers.ProviderError('windows_registration_changed: private detail'), ValueError('windows_original_intent_changed')):
+            with self.subTest(error=repr(error)):
+                self.assertEqual(self.invoke(False, error, 'vm_workflow'), {'tool': 'vm_workflow', **GENERIC})
 
     def test_other_errors_and_message_text_stay_generic(self):
         for error in (providers.ProviderError('macos_custody_source_changed: private detail'),

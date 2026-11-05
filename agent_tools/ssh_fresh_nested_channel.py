@@ -411,6 +411,127 @@ def _peer_shape(value):
             and re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',value['boot']) is not None)
 
 
+def gateway_reboot_end(result,correlation_id,ready_result):
+    """Positive end of a READY channel whose gateway rebooted afterwards.
+
+    The original remote status reports a vanished stage as ``ended`` with no
+    prior record and the gateway's current kernel boot. When that boot is not
+    the boot of the retained READY master, the master cannot still run:
+    processes never survive a reboot. Only this exact shape qualifies; a
+    stage that vanished on the same boot stays UNKNOWN because a live master
+    may merely have lost its socket. Returns the finite evidence, or None.
+    """
+    if (type(result)is not dict or set(result)!={'state','correlationId','prior','gatewayBoot'}
+            or result['state']!='ended' or result['correlationId']!=correlation_id or result['prior'] is not None
+            or type(result['gatewayBoot'])is not str
+            or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',result['gatewayBoot']) is None
+            or type(ready_result)is not dict or set(ready_result)!={'state','correlationId','master','arch','controlPath'}
+            or ready_result['state']!='ready' or ready_result['correlationId']!=correlation_id
+            or ready_result['controlPath']!='/tmp/vpn-channel-'+correlation_id+'/m'
+            or not _peer_shape(ready_result['arch']) or not _master_shape(ready_result['master'])
+            or ready_result['master']['gatewayBoot']==result['gatewayBoot']):return None
+    return {'state':'ended','cause':'gateway_reboot','correlationId':correlation_id,
+            'readyGatewayBoot':ready_result['master']['gatewayBoot'],'observedGatewayBoot':result['gatewayBoot']}
+
+
+def retain_gateway_reboot_end(stack,directory,evidence,receipt_sha256):
+    """Create-only witness beside the terminal; the terminal keeps the READY boot.
+
+    A later observation may see a still newer gateway boot; every other field
+    must equal the first retained witness.
+    """
+    corr=evidence['correlationId'];_corr(corr)
+    if type(receipt_sha256)is not str or re.fullmatch('[0-9a-f]{64}',receipt_sha256) is None:raise ValueError('reboot_end_receipt')
+    record={**evidence,'receiptSha256':receipt_sha256}
+    name=corr+'.gateway-reboot-end.json'
+    if not os.path.lexists(directory.path/name):session._create(directory.path/name,record,parent_fd=directory.fd)
+    held=stack.enter_context(private.Snapshot(directory,name))
+    retained=json.loads(held.body,object_pairs_hook=transport._reject_duplicate_keys)
+    if (type(retained)is not dict or set(retained)!=set(record)
+            or any(retained[key]!=record[key] for key in record if key!='observedGatewayBoot')
+            or type(retained['observedGatewayBoot'])is not str
+            or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',retained['observedGatewayBoot']) is None
+            or retained['observedGatewayBoot']==retained['readyGatewayBoot']):raise ValueError('reboot_end_changed')
+    return held
+
+
+def close_ended(stack,directory,correlation_id,terminal,rebooted,receipt_sha256):
+    """Publish one create-only terminal and, for a cross-boot end, its witness.
+
+    An existing terminal is compared before any witness is created. A channel
+    that already ended on its READY boot keeps that history without a witness;
+    a retained witness is revalidated. Returns the snapshots to guard, or None
+    for a conflicting record.
+    """
+    name=correlation_id+'.terminal.json';witness=correlation_id+'.gateway-reboot-end.json';held=[]
+    # A same-boot end contradicts a retained cross-boot witness: refuse it.
+    if rebooted is None and os.path.lexists(directory.path/witness):return None
+    if os.path.lexists(directory.path/name):
+        current=stack.enter_context(private.Snapshot(directory,name))
+        if json.loads(current.body,object_pairs_hook=transport._reject_duplicate_keys)!=terminal:return None
+        held.append(current)
+        if rebooted is not None and os.path.lexists(directory.path/witness):
+            held.append(retain_gateway_reboot_end(stack,directory,rebooted,receipt_sha256))
+        return held
+    if rebooted is not None:held.append(retain_gateway_reboot_end(stack,directory,rebooted,receipt_sha256))
+    session._create(directory.path/name,terminal,parent_fd=directory.fd)
+    current=stack.enter_context(private.Snapshot(directory,name))
+    if json.loads(current.body,object_pairs_hook=transport._reject_duplicate_keys)!=terminal:return None
+    held.append(current)
+    return held
+
+
+def _canonical(value):
+    return json.dumps(value,sort_keys=True,separators=(',',':'))
+
+
+def same_record_after_local_reboot(recorded,current,anchor_device,old_device=None):
+    """A retained record pin still names this exact, unchanged file.
+
+    Canonically equal pins pass, so bool or float substitutions never match an
+    integer field. Otherwise only st_dev may differ, as when a local reboot
+    remounts the unchanged checkout volume under a new device number: inode,
+    mode, owner, group, link count, size and both nanosecond timestamps must
+    match, every other pin field (digest or custody label) must match
+    canonically, the current device must be the anchoring directory's device,
+    and a given ``old_device`` must be the recorded one. Device and path checks
+    elsewhere stay strict; old records are never rewritten.
+    """
+    if _canonical(recorded)==_canonical(current):return True
+    if (type(recorded)is not dict or type(current)is not dict or set(recorded)!=set(current)
+            or 'generation' not in current or type(anchor_device)is not int
+            or old_device is not None and type(old_device)is not int):return False
+    old=recorded['generation'];new=current['generation']
+    if (type(old)is not list or type(new)is not list or len(old)!=9 or len(new)!=9
+            or any(type(item)is not int for item in old+new)):return False
+    if (old[1:]!=new[1:] or old[0]==new[0] or new[0]!=anchor_device
+            or old_device is not None and old[0]!=old_device):return False
+    return all(_canonical(recorded[key])==_canonical(current[key]) for key in recorded if key!='generation')
+
+
+def same_records_after_local_reboot(pairs):
+    """Every retained pin equals its live pin, or all moved from one old device.
+
+    A local reboot renumbers the whole checkout volume at once, so pins
+    retained together before it all differ only in st_dev, from one common old
+    device. A mix of equal and renumbered pins, or several old devices, refuses.
+    Returns the common old device, None when all pins are equal, or False.
+    """
+    pairs=list(pairs)
+    if not pairs:return False
+    if all(_canonical(recorded)==_canonical(current) for recorded,current,_ in pairs):return None
+    olds=set()
+    for recorded,current,anchor in pairs:
+        if _canonical(recorded)==_canonical(current) or not same_record_after_local_reboot(recorded,current,anchor):return False
+        olds.add(recorded['generation'][0])
+    return olds.pop() if len(olds)==1 else False
+
+
+def directory_device(directory):
+    """Current device of a held private directory, in the pin projection."""
+    return private._generation(os.fstat(directory.fd))[0]
+
+
 def _ended_012_intent(value,current,prior_id):
     if type(value)is not dict:return False
     remote=value.get('remoteSourceSha256')
@@ -661,8 +782,12 @@ def _retained_v2_terminal(stack,directory,held,value,host):
     else:
         ready=stack.enter_context(private.Snapshot(directory,corr+'.ready.json'))
         receipt=json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys)
+        # The receipt pin may differ only by the volume renumbering that also
+        # moved this intent's own retained inventory pin (one old device).
+        inventory_generation=inventory.get('generation')
         if (ended['receiptSha256']!=ready.digest or type(receipt)is not dict or set(receipt)!={'intent','result'}
-                or json.dumps(receipt['intent'],sort_keys=True)!=json.dumps(held.pin(),sort_keys=True)):return None
+                or not same_record_after_local_reboot(receipt['intent'],held.pin(),directory_device(directory),
+                                                      inventory_generation[0])):return None
         prior=receipt['result']
         if (type(prior)is not dict or set(prior)!={'state','correlationId','master','arch','controlPath'}
                 or prior['state']!='ready' or prior['correlationId']!=corr or prior['controlPath']!='/tmp/vpn-channel-'+corr+'/m'
@@ -862,22 +987,32 @@ def _operate(root,host,correlation_id,prepare,_private_capture=None,_private_inv
                 ready_path=journal/(correlation_id+'.ready.json')
                 ready=stack.enter_context(private.Snapshot(channel_dir,ready_path.name)) if os.path.lexists(ready_path) else None
                 prior=json.loads(ready.body,object_pairs_hook=transport._reject_duplicate_keys) if ready else None
+                # A READY channel whose stage vanished with a gateway reboot ended
+                # positively; its terminal keeps the READY boot it ended under.
+                rebooted=None
+                # Only a direct intent reaches here over its exact recorded outer
+                # authority; a non-direct status runs over whatever outer session is
+                # current, so it never proves an end across a gateway reboot. With
+                # actual==expected the inventory pin is equal, so the receipt's
+                # intent pin must be equal too.
+                if direct and type(prior)is dict and original_observation is None:
+                    rebooted=gateway_reboot_end(result,correlation_id,prior.get('result'))
+                    if rebooted is not None and (set(prior)!={'intent','result'}
+                                                 or _canonical(prior['intent'])!=_canonical(held.pin())):return _public()
                 if (set(result)!={'state','correlationId','prior','gatewayBoot'} or result['correlationId']!=correlation_id or
-                        result['prior']!=(prior.get('result') if prior else None) or
+                        (rebooted is None and result['prior']!=(prior.get('result') if prior else None)) or
                         not isinstance(result['gatewayBoot'],str) or re.fullmatch('[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}',result['gatewayBoot']) is None):return _public()
-                if prior and result['gatewayBoot']!=result['prior']['master']['gatewayBoot']:return _public()
+                if prior and rebooted is None and result['gatewayBoot']!=result['prior']['master']['gatewayBoot']:return _public()
                 terminal={'state':'ended','correlationId':correlation_id,'receiptSha256':ready.digest if ready else None,
-                          'intentSha256':held.digest,'gatewayBoot':result['gatewayBoot']}
-                terminal_path=journal/(correlation_id+'.terminal.json')
+                          'intentSha256':held.digest,'gatewayBoot':rebooted['readyGatewayBoot'] if rebooted is not None else result['gatewayBoot']}
                 if original_observation is not None:
                     original_observation[1]();direct_guard.guard();original_observation[1]()
                     original_observation[2][0]=True
-                if not os.path.lexists(terminal_path):session._create(terminal_path,terminal,parent_fd=channel_dir.fd)
-                held_terminal=stack.enter_context(private.Snapshot(channel_dir,terminal_path.name))
-                if json.loads(held_terminal.body,object_pairs_hook=transport._reject_duplicate_keys)!=terminal:return _public()
+                closed=close_ended(stack,channel_dir,correlation_id,terminal,rebooted,ready.digest if ready else None)
+                if closed is None:return _public()
                 guard()
                 if ready:ready.guard()
-                held_terminal.guard()
+                for part in closed:part.guard()
                 return _public('ended',correlationId=correlation_id)
             expected_control='/tmp/vpn-channel-'+correlation_id+'/m'
             if (set(result)!={'state','correlationId','master','arch','controlPath'} or result['state']!='ready' or

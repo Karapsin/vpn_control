@@ -420,8 +420,15 @@ def validate_binding(binding):
     provider=binding['provider'];spec=FreshWindowsVmSpec.parse(binding['spec']);setup=parse_setup(binding['setup']);context=binding['context']
     if provider not in {'raw-qemu-windows','libvirt-windows'}:
         raise ValueError('windows_packet_action')
-    if type(context)is not dict or set(context)!={'hostBootId','pending'} or str(UUID(context['hostBootId']))!=context['hostBootId']:
+    if type(context)is not dict or not {'hostBootId','pending'}<=set(context)<={'hostBootId','pending','image','network'} or str(UUID(context['hostBootId']))!=context['hostBootId']:
         raise ValueError('windows_packet_context')
+    if 'image' in context or 'network' in context:
+        # Clones keep their exact image binding; image sources their network mode.
+        from .windows_vm_image import validate_context_image,validate_context_network
+        try:
+            if 'image' in context:validate_context_image(context['image'])
+            if 'network' in context:validate_context_network(context['network'])
+        except ValueError:raise ValueError('windows_packet_context') from None
     if provider=='libvirt-windows':
         expected_uri='qemu+unix:///session?socket='+quote(str(PurePosixPath(spec.root).parent/'.cache/libvirt/virtqemud-sock'),safe='/')
         if binding['uri']!=expected_uri or binding['domain']!='vc-recovery-libvirt-'+spec.deployment_id[:8] or type(binding['xmlSha256'])is not str or re.fullmatch('[0-9a-f]{64}',binding['xmlSha256'])is None:

@@ -61,7 +61,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-action-acceptance-start": {
@@ -125,7 +125,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-action-acceptance-status": {
@@ -189,7 +189,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-admission-preflight": {
@@ -285,7 +285,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-api35-remaining-proxy-status": {
@@ -359,7 +359,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-cli-stage-collect": {
@@ -455,7 +455,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-acceptance-collect": {
@@ -519,7 +519,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-acceptance-preflight": {
@@ -583,7 +583,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-acceptance-start": {
@@ -647,7 +647,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-acceptance-status": {
@@ -711,7 +711,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-acceptance-collect": {
@@ -778,7 +778,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-acceptance-diagnose": {
@@ -843,7 +843,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-acceptance-reconcile": {
@@ -908,7 +908,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-acceptance-reconcile-diagnose": {
@@ -973,7 +973,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-acceptance-reconcile-status": {
@@ -1038,7 +1038,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-acceptance-start": {
@@ -1105,7 +1105,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-acceptance-status": {
@@ -1172,7 +1172,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-consent-grant-prompt-collect": {
@@ -1237,7 +1237,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-acceptance-collect": {
@@ -1300,7 +1300,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-acceptance-start": {
@@ -1363,7 +1363,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-acceptance-status": {
@@ -1426,7 +1426,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-recovery-collect": {
@@ -1490,7 +1490,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-recovery-finalize": {
@@ -1554,7 +1554,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-recovery-start": {
@@ -1618,7 +1618,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-recovery-status": {
@@ -1682,7 +1682,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-collect": {
@@ -1747,7 +1747,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-recovery-collect": {
@@ -1812,7 +1812,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-recovery-finalize": {
@@ -1877,7 +1877,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-recovery-start": {
@@ -1942,7 +1942,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-recovery-status": {
@@ -2007,7 +2007,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-start": {
@@ -2072,7 +2072,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-status": {
@@ -2137,7 +2137,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-unknown-close": {
@@ -2203,7 +2203,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-document-retry-unknown-diagnose": {
@@ -2269,7 +2269,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-admission-cleanup": {
@@ -2331,7 +2331,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-admission-start": {
@@ -2393,7 +2393,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-admission-status": {
@@ -2455,7 +2455,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-cleanup-mount-diagnostic": {
@@ -2517,7 +2517,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-cleanup-readmission": {
@@ -2579,7 +2579,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-cleanup-readmission-status": {
@@ -2641,7 +2641,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-cleanup-readmitted": {
@@ -2703,7 +2703,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-cleanup-readmitted-status": {
@@ -2765,7 +2765,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-endpoint-mount-diagnostic-collect": {
@@ -2827,7 +2827,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-abort-prelaunch": {
@@ -2889,7 +2889,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-callback-continue": {
@@ -2951,7 +2951,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-callback-handoff-ready": {
@@ -3013,7 +3013,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-callback-status-continue": {
@@ -3075,7 +3075,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-callback-status-handoff-ready": {
@@ -3137,7 +3137,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-dispatch-collect": {
@@ -3199,7 +3199,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-dispatch-start": {
@@ -3261,7 +3261,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-dispatch-status": {
@@ -3323,7 +3323,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-installer-reconcile": {
@@ -3385,7 +3385,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-native-fixture-collect": {
@@ -3447,7 +3447,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-native-fixture-start": {
@@ -3509,7 +3509,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-native-fixture-status": {
@@ -3571,7 +3571,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-native-fixture-stop": {
@@ -3633,7 +3633,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-observe": {
@@ -3708,7 +3708,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-package-install-collect": {
@@ -3770,7 +3770,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-package-install-reconcile": {
@@ -3832,7 +3832,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-package-install-start": {
@@ -3894,7 +3894,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-package-install-status": {
@@ -3956,7 +3956,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-package-install-unknown-proof": {
@@ -4018,7 +4018,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-package-install-unknown-release": {
@@ -4080,7 +4080,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-program-reconcile": {
@@ -4217,7 +4217,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-runtime-acceptance-collect": {
@@ -4283,7 +4283,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-runtime-acceptance-start": {
@@ -4349,7 +4349,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-runtime-acceptance-status": {
@@ -4415,7 +4415,7 @@
         "kind": "host-constant",
         "line": 46,
         "module": "ssh_fresh_nested_channel",
-        "sha256": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898"
+        "sha256": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04"
       }
     },
     "android-vpn-permission-reset-collect": {
@@ -20775,6 +20775,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -20835,6 +20836,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -20895,6 +20897,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -20955,6 +20958,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -21015,6 +21019,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -21075,6 +21080,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -21135,6 +21141,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -21195,6 +21202,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -21255,6 +21263,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -21315,6 +21324,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -21375,6 +21385,7 @@
         "windows_vm_deploy_remote",
         "windows_vm_guest",
         "windows_vm_hardware",
+        "windows_vm_image",
         "windows_vm_instance",
         "windows_vm_lifecycle",
         "windows_vm_media",
@@ -22153,9 +22164,9 @@
     "ssh_connection_recovery": "5937d793033d4478c401e561d7fd52696b63f2b97b23d01e143e60daacf2337f",
     "ssh_connection_session": "dd0273609c7537237c159f82cf318745e27e4952ec784c63d251760b38adb887",
     "ssh_direct_inventory": "41578ce01b919d5e027109d8a6a31a1552b0df142e19aea15ee8cf4779eb5693",
-    "ssh_direct_nested_channel": "0e1aa290112a6555c1c0e1b52cbdb076159dd243c5ac3d97b618a787e8a25d95",
+    "ssh_direct_nested_channel": "6c42f6e5b1b146e76b094b5fe63e71d9db1294f44363ca00e22f575f394cf3ce",
     "ssh_expired_recovery_retirement": "33ad1e2cdf9f95d4c76b4f8e10683c4f99893882c1317ef79ab3a2a1fe2f82fb",
-    "ssh_fresh_nested_channel": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898",
+    "ssh_fresh_nested_channel": "9c566b2cf8178d48d5c5085794dac0dbc27511f5963c5c162b3722124a26df04",
     "ssh_nested_socket_noninteractive_observation": "3ca002e128e0b887db78f39881955de6581d1d01f5dae2d8e34ba0ddbbde08f9",
     "ssh_nested_socket_owned_home_observation": "9e595d01d4cccc319ed573788ced30ba168a49fe69e2217d50668278c5cde91f",
     "ssh_nested_socket_retirement": "356985224da09aa4306e0c018b5afd92a86f018312df34bc68685d7da6188731",
@@ -22255,13 +22266,14 @@
     "windows_update_fixture_stage": "3e37a30445a3ea14057b010d205b92ac9907d278c0a57164fabeb63f49d07bed",
     "windows_update_fixture_stage_recovery": "c0f7577eda5bc86e88506261cbd2d0af26255b79aa23cb6d4cc723c6f7fd1562",
     "windows_update_fixture_workflow": "97fe06df072ff26a32d349393016c182013f6b5321499458a453c9fe7b2b406a",
-    "windows_vm_deploy": "435a988592590b3b0110db550ab4d2e22212999bee5501e9b0cecb273c381d77",
-    "windows_vm_deploy_remote": "aad18f82bbad7617b61035873fa7249afc6c1aa0c54f43cec089f22df49496dd",
+    "windows_vm_deploy": "6c06e7c47365135b1e61a70176262b5e2837e06a0efcd378549f552989e82d01",
+    "windows_vm_deploy_remote": "0c76e3ec351b4be5ff63dacd4bd2f77a1d366be492d2b832f108ac5b5c611453",
     "windows_vm_driver_fetch": "38da7a06dc1a2700508a7440b29eccb94927b28ec38befcededaed34c35a0f2a",
     "windows_vm_fresh_setup": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe",
     "windows_vm_guest": "4ce8abc079e70ac09399a1d934ef7bee0f82571189c6e03597d8bdc170a1ba5e",
     "windows_vm_hardware": "541d9ad4c733b0092254e991915f5f7ae631fe12249b1bd984a0c74002a1d4ad",
-    "windows_vm_instance": "655ff7f04760dc44b0aebd23b5327a419cbc43a2ab0569417ef8b5ac4b86ed3a",
+    "windows_vm_image": "c6502b08149f1127ada09d71c7b4b917906377028ed818df0481ac30bb03fcbd",
+    "windows_vm_instance": "50d624e9e79c3f6111b5b081455beaa3b73d2f0177569a54481e3baa527f548a",
     "windows_vm_lifecycle": "4600ffc45389ca10b7979e015c5847529df137c87c8a4ba46a321bd2e5917b0f",
     "windows_vm_media": "1f3b2e1139a4caf0e2b1bcc6c90daa42af1a2c24032ed341dfa16b7e9503f20c",
     "windows_vm_optical_boot": "600cf4f9194f86a189da351a33bb6979365def9bb72e80b7920b04ea40dd9889",
@@ -22269,7 +22281,7 @@
     "windows_vm_optical_boot_attempt3": "84d99618ffee9d613ccf831db5123b3a91410ea2b9b19620c8cded229caf7edd",
     "windows_vm_optical_current_screen": "d2fb888bacda028f887d5c7bf25324cedeb479b772f3783f522d54bafd3a69b7",
     "windows_vm_optical_post_collect": "61d9026f337d57cb1c89ee38f068e039b304a461191c712fcb85f032d11dc03f",
-    "windows_vm_resources": "2659a18cd8683c8d3b1b5ff749803c052fcf7e17dc1e669d2d57fb67c67396a0",
+    "windows_vm_resources": "7cc0abe35919350e7309e3ec21136892fe68728bdc65259bfc7590c7a32570c7",
     "windows_vm_secureboot_fresh": "996cffbb9af18f0f1e433adf990b7c96f4207a820f37cd9f8458ba82fbb882fd",
     "windows_vm_secureboot_inventory": "cafe80495690a6a306f4964fc0686e5c6f0469cc82396134061d3a0100d1b0da",
     "windows_vm_setup_install_ack": "af0c76bd920cf2be6bc9f21388747e63124b3c7bf78492a6f4cd77f2cf60b93e",

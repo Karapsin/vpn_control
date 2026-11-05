@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Publish complete gateway fixture terminal markers atomically before observation.
+- Clone generalized Windows fixture images, recover agent SSH transport after reboots and name the cause of unverified Windows deploy replies.
 
 ## 2.2.15 - 2026-10-27
 

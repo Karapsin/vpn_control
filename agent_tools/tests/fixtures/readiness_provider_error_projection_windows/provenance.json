@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "kind": "review-extract-beforeimage",
+  "nativeFailureClaimed": true,
+  "failure": "F1-windows-stale-registration-projection",
+  "finding": "vm_workflow readiness-status on the retired Windows fixture alias windows-raw62b489bc-current-v1 returned the generic readiness_admission_unavailable; the direct loader showed ProviderError windows_original_intent_changed. _STALE_REGISTRATION_REFUSALS named only the macOS and Android stale-registration reasons, although agent_tools/README.md documents fixture_registration_stale for any registration whose pinned sources or intent changed.",
+  "baseCommit": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "privateEvidence": ".runtime/tool-recovery/windows-lane-20261103/stale-registration-projection/ (cli-stdout.private, direct-loader.txt, whole mcp_server.py.before.source); never committed",
+  "files": {
+    "mcp_server.windows-stale.before.source": {
+      "path": "agent_tools/mcp_server.py",
+      "wholeFileSha256": "b04dc01019e9328110caf482877dba48dcf58061e1febb40616a7d48bdbb8bd4",
+      "gitBlob": "5c9175ea503a8577a46dd03dded6b7d63ccd3a11",
+      "extractNodes": [
+        "_STALE_REGISTRATION_REFUSALS",
+        "_readiness_provider_refusal"
+      ],
+      "extractSpans": [
+        [
+          "_STALE_REGISTRATION_REFUSALS",
+          3176,
+          3176
+        ],
+        [
+          "_readiness_provider_refusal",
+          3179,
+          3190
+        ]
+      ],
+      "sha256": "6acbc732a7f77703cdbf38058fbcede52f6b2af49888e53f794d24eec235dc9b"
+    }
+  },
+  "nativeEvidenceLimits": [
+    "the extract holds only the stale-registration decision (the fix changes nothing else); the regression compiles it over the current public readiness facade with a raising readiness stub, and the original Windows registration descriptors are not re-read",
+    "the native rerun is the same CLI readiness-status case after the fix"
+  ]
+}

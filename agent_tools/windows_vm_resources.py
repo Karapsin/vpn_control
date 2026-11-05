@@ -1,5 +1,7 @@
 """Finite Linux/KVM resource producer for argument-driven Windows deployment."""
 import ast
+import copy
+import json
 from . import native_host_observation as host
 from . import ssh_tmux_resource_admission as admission
 
@@ -82,3 +84,45 @@ def mcp_measurement(value,deployment_id):
             or value.get('mode')!='host-resources' or value.get('state')!='resources-observed'
             or value.get('nativeActionAllowed')is not False or value.get('replayAllowed')is not False):raise ValueError('resource_mcp_envelope')
     return measurement({key:item for key,item in value.items() if key not in envelope|{'nextAction'}})
+
+
+def _conservative_policy_value(observation, running_mapping):
+    """Policy capacity, never a relabelled native census or claim closure.
+
+    All supplied running claims are added to the unchanged observed native
+    total. This deliberately counts represented claims twice. The generic
+    reservation gate still checks the exact mapping against its locked ledger.
+    """
+    if type(observation)is not dict or observation.get('state')!='resources-observed':
+        raise ValueError('resource_policy_native_observation_required')
+    native=measurement(observation)
+    if type(running_mapping)is not list:raise ValueError('resource_policy_mapping_invalid')
+    claims=[];identities=set()
+    for row in running_mapping:
+        if (type(row)is not dict or set(row)!={'reservationId','memoryBytes'}
+                or type(row['reservationId'])is not str or not row['reservationId']
+                or row['reservationId']in identities or type(row['memoryBytes'])is not int
+                or row['memoryBytes']<=0):raise ValueError('resource_policy_mapping_invalid')
+        identities.add(row['reservationId']);claims.append(dict(row))
+    claims.sort(key=lambda row:row['reservationId'])
+    held=sum(row['memoryBytes']for row in claims)
+    policy=copy.deepcopy(native)
+    policy['runningConfiguredMemoryBytes']=native['runningConfiguredMemoryBytes']+held
+    policy['policyDerivation']={'schemaVersion':1,'kind':'native-plus-all-running-claims',
+        'nativeObservation':copy.deepcopy(observation),'nativeMeasurement':copy.deepcopy(native),
+        'runningAllocationMapping':claims,'addedRunningClaimBytes':held,'deduplicatedBytes':0,
+        'claimStatesChanged':False,'historicalOutcomesChanged':False}
+    return policy
+
+
+def conservative_policy_measurement(observation, running_mapping):
+    return _conservative_policy_value(observation,running_mapping)
+
+
+def validate_conservative_policy_measurement(policy, observation, running_mapping):
+    """Refuse a changed policy field before the reservation writer is called."""
+    expected=_conservative_policy_value(observation,running_mapping)
+    try:
+        same=json.dumps(policy,sort_keys=True,separators=(',',':'),allow_nan=False)==json.dumps(expected,sort_keys=True,separators=(',',':'),allow_nan=False)
+    except (TypeError,ValueError):same=False
+    if not same:raise ValueError('resource_policy_derivation_changed')

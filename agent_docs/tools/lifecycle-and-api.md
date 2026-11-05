@@ -146,6 +146,92 @@ fixture's exact QEMU process and never changes a VM.
 | `windows-vm-deploy-frame` | `deploymentId`, `operationId` | Capture one owned console PNG and return a verified private coordinator file. |
 | `windows-vm-deploy-frame-collect` | Same frame inputs | Return that exact saved frame again, without another capture. |
 
+Reusable generalized images (Python API in `agent_tools/windows_vm_deploy.py`;
+no MCP action yet). `create(root, spec, setup, credentialFile)` lists the
+published images on the spec's host (`images`, read-only) and starts a
+copy-on-write clone of the newest image younger than 30 days whose installer,
+driver and firmware asset pins, disk size, edition and locale all match;
+otherwise it performs a blank start with a restricted network (QEMU user
+networking with `restrict=on`, so the future template never reaches update or
+store services) and returns
+`nextAction: generalize-and-capture-after-qualification`. A qualified original
+becomes the template with `generalize(root, deploymentId, operationId,
+credentialFile[, status_only])`: the guest (SYSTEM, through the guest agent)
+blocks automatic device encryption and decrypts, removes the fixture accounts,
+Windows' temporary OOBE accounts (`defaultuserN`), profiles, autologon, setup
+task and state and cached answer files, arms one automatic logon of the
+built-in Administrator with a random password made in the guest, and restarts.
+Sysprep is never run as SYSTEM: Microsoft does not support it, and on Windows
+11 24H2/25H2 it skips XAML package registration so clones crash Explorer at
+their first sign-in. In that Administrator's elevated interactive session the
+final step clears the logon and replaces the password, removes any remaining
+temporary account, waits for the XAML packages, removes the guest agent and
+serial driver, asserts a built-in-only account and profile baseline and runs
+`sysprep /generalize /oobe /shutdown /mode:vm`. Status-only calls never
+resubmit and report `generalize-running`,
+`generalize-failed` (read-only probe once the restored agent answers) or
+`generalized-stopped` after positive actor absence. A new generalize operation
+retires an earlier attempt only when that guest refused before its first
+modification (`PRE_EFFECT_REFUSALS`); the refused records are kept.
+`capture_image(root, deploymentId, operationId, credentialFile)` refuses a
+template whose recorded QEMU network was not restricted, whose recorded
+generalize result did not arm the Administrator-session sysprep, that a host
+stop ended, or whose guest reported a failure (a probe-reported failure stays
+`generalize-failed`). Before capture, take `disk_logs` of the stopped template
+and require `windows_vm_image.template_evidence_ok`: Sysprep's success tag, no
+failure record, and the final step's context and transcript showing the
+built-in Administrator's elevated interactive session with no fixture or
+temporary profile (capture itself runs without root and cannot mount the disk).
+Capture then moves the
+stopped disk and copies the firmware variables and TPM state into
+`<root parent>/vpn-control-windows-images/<operationId>/` (directory 0500,
+files 0400, `manifest.json` with asset pins, OS facts, template network and
+file identities) and publishes it atomically. Windows does not read a clone's
+removable-media answer file after generalization, so sysprep receives one
+fixed, secret-free image answer file (manifest schema 6, which also records
+the sysprep principal) whose specialize step
+only runs the clone's own seed `clone-specialize.ps1`. That script embeds the
+clone's seed `Autounattend.xml` at `%WINDIR%\Panther\Unattend\Unattend.xml`,
+which Setup discovers at the beginning of the oobeSystem pass, and stages the
+unchanged `initialize.ps1` for `%WINDIR%\Setup\Scripts\SetupComplete.cmd`,
+because Task Scheduler is not running in the specialize pass after
+generalization. `SetupComplete.cmd` runs it as SYSTEM after Setup, then deletes
+the clone answer. It never touches Setup's annotated cached answer in
+`%WINDIR%\Panther` or the `UnattendFile` registry pointer. Every
+`RunSynchronousCommand` `Path` stays within Windows' 259-character limit; a
+longer one makes Setup reject the whole answer file. Older image schemas are
+never listed or cloned. Clones thereby rerun the unchanged blank answer file,
+fixture script and guest-agent installation, so qualification and secure are
+unchanged; a clone start verifies the manifest digest and file identities (no
+per-clone rehash), receives the image's TPM state and firmware variables, and
+boots its disk with normal networking and without the installer key press.
+Images never auto-encrypt. Release a template's own claim only after its
+`generalized-stopped` absence.
+
+Host image maintenance uses the same Python API. `images(root, spec)` lists the
+published images read-only. `retire_images(root, spec, imageIds)` deletes exact
+superseded images and refuses, per image, the current schema or an image whose
+files a running process holds open. `vm_inventory(root, spec)` reports home and
+disk-file sizes and the visible VM processes read-only. Instances execute QEMU
+and swtpm through a pinned `/proc/self/fd/N`, so processes are recognised by
+their executable (`/proc/<pid>/exe`) as well as `argv[0]`.
+`vm_cleanup(root, spec, paths, keep)` deletes an exact approved list of absolute
+paths strictly inside the fixture home, never a kept path. It refuses everything
+while any QEMU, swtpm or emulator process runs, including a descriptor-executed
+process whose executable cannot be read, and refuses each path that a process
+holds open. `libvirtd` alone does not block; `virtqemud` matches `qemu` and
+does. `disk_logs(root, deploymentId,
+credentialFile)` reads Windows setup logs from a stopped original's disk
+read-only.
+
+A deploy reply that the credential-bearing gateway cannot verify stays UNKNOWN
+(exit 3, `source_stage_native_unverified`); nothing is replayed. The private
+`.runtime/windows-vm-deploy/<correlationId>/native-stdout.private` then names one
+closed `reason` token (or `unclassified`) and the custody's closed `capture`
+facts (`complete`, `returnCode`, `timeout`, `refusal`), never stream content.
+Recover with a read-only status of the original and, when it booted, the
+canonical `_mark_running`.
+
 `spec` contains `deploymentId`, configured `host`, absolute new `root`,
 `memoryMiB`, `cpus`, `diskGiB`, `vncPort`, `headroomMiB` and `assets`.
 Assets are exactly `installer`, `drivers`, `firmwareCode`, `firmwareVars`, each

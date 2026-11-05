@@ -106,7 +106,8 @@
         "b214ffb61a3b18854d8a02a116cfd551b4ca6b46830cf55a7efab485050924d6",
         "3d7f548378c9d9ad9a4c157904bf6026bc785decb77072b41075c8c24115ee54",
         "0c15c7fc5157b4fab791480c3f91411a9cd13085622a2758af2fd0433c35dd0b",
-        "b04dc01019e9328110caf482877dba48dcf58061e1febb40616a7d48bdbb8bd4"
+        "b04dc01019e9328110caf482877dba48dcf58061e1febb40616a7d48bdbb8bd4",
+        "f86efd92d75509c17f56980756db89a676b6f95f063223bdd67ca37385272588"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -6090,7 +6091,7 @@
       ]
     },
     "agent_tools/tests/test_readiness_provider_error_projection.py": {
-      "reason": "One exact authenticated whole mcp_server beforeimage exercises the public readiness facade. Only the undecorated _ssh_workflow_impl, _vm_workflow_impl, _vm_workflow_dispatch and _readiness_provider_refusal AST functions and the _STALE_REGISTRATION_REFUSALS assignment are compiled over the current server helpers; finite fixed adapter names resolve to their agent_tools modules and the readiness workflow is a raising stub.",
+      "reason": "One exact authenticated whole mcp_server beforeimage exercises the public readiness facade. Only the undecorated _ssh_workflow_impl, _vm_workflow_impl, _vm_workflow_dispatch and _readiness_provider_refusal AST functions and the _STALE_REGISTRATION_REFUSALS assignment are compiled over the current server helpers; finite fixed adapter names resolve to their agent_tools modules and the readiness workflow is a raising stub. A second, verbatim extract of the 2efd2569 _STALE_REGISTRATION_REFUSALS assignment and _readiness_provider_refusal (whole-file digest in its own provenance) is authenticated and compiled the same way over the current facade.",
       "scopes": [
         "agent_tools/mcp_server.py",
         "agent_tools/readiness.py",
@@ -6099,10 +6100,13 @@
         "agent_tools/readiness_transport.py",
         "agent_tools/readiness_workflow.py",
         "agent_tools/tests/fixtures/readiness_provider_error_projection/mcp_server.before.source",
-        "agent_tools/tests/fixtures/readiness_provider_error_projection/provenance.json"
+        "agent_tools/tests/fixtures/readiness_provider_error_projection/provenance.json",
+        "agent_tools/tests/fixtures/readiness_provider_error_projection_windows/mcp_server.windows-stale.before.source",
+        "agent_tools/tests/fixtures/readiness_provider_error_projection_windows/provenance.json"
       ],
       "sourceSha256": [
-        "f2fc4ed9ad79c453afa778efe5a202740a269f277e3e159d6e7fa37d49b382d3"
+        "f2fc4ed9ad79c453afa778efe5a202740a269f277e3e159d6e7fa37d49b382d3",
+        "65a25dc2bb556ed2e36de4ac64fde524a63638ed6bd9403a82bf13c6d3b06f44"
       ]
     },
     "agent_tools/tests/test_readiness_qemu.py": {
@@ -7242,6 +7246,44 @@
         "be3e80c93eb0c0bb7653331ffefb066b7a360415350eb883913988f678b97143",
         "fcc34697548b0d9901ceb9f6252154e2b9c9aca3f29b97b64f512391aa15e5ff",
         "7dd0c41bc114bc12671f03e457addfa32a79f623f1e526ed0b125cd38abe1150"
+      ]
+    },
+    "agent_tools/tests/test_ssh_gateway_reboot_ended.py": {
+      "reason": "Three literal authenticated whole before modules (route, direct reconcile and fresh channel), or the current bytes as a loader-neutrality control, are executed from an isolated owned copy beside byte-equal copies of every direct catalog source and the membership helper, installed in their sys.modules keys, the package, the transport adapter and the SSH nested-module lookup. Real generated socket callers, an os.stat-level st_dev renumbering, a native-shaped version-2 original and the coordinator journal prove renewal after local and gateway reboots, authority-bound cross-boot ends and the unchanged refusals.",
+      "scopes": [
+        "agent_tools/check_output_retention.py",
+        "agent_tools/mcp_server.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/private_config_custody.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/readiness.py",
+        "agent_tools/readiness_nested_channel.py",
+        "agent_tools/readiness_nested_membership.py",
+        "agent_tools/readiness_transport.py",
+        "agent_tools/ssh_channel_inventory_diagnostics.py",
+        "agent_tools/ssh_channel_selection.py",
+        "agent_tools/ssh_connection_recovery.py",
+        "agent_tools/ssh_connection_session.py",
+        "agent_tools/ssh_direct_inventory.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_fresh_nested_channel.py",
+        "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+        "agent_tools/ssh_nested_socket_owned_home_observation.py",
+        "agent_tools/ssh_nested_socket_retirement.py",
+        "agent_tools/ssh_nested_socket_route_diagnostic.py",
+        "agent_tools/ssh_recovery_adoption.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/ssh_gateway_reboot_ended/provenance.json",
+        "agent_tools/tests/fixtures/ssh_gateway_reboot_ended/readiness_nested_channel.before.source",
+        "agent_tools/tests/fixtures/ssh_gateway_reboot_ended/ssh_direct_nested_channel.before.source",
+        "agent_tools/tests/fixtures/ssh_gateway_reboot_ended/ssh_fresh_nested_channel.before.source",
+        "agent_tools/tests/test_nested_directory_membership.py",
+        "agent_tools/tests/test_ssh_connection_session.py",
+        "agent_tools/tests/test_ssh_direct_nested_channel.py",
+        "agent_tools/tests/test_ssh_fresh_nested_channel.py"
+      ],
+      "sourceSha256": [
+        "48fdd8dd492c71bd8983965471850402e1cd5cbd6bc01f68c31ddc01e2a8e806"
       ]
     },
     "agent_tools/tests/test_ssh_gateway_sanitized_interpreter.py": {
@@ -8412,6 +8454,26 @@
         "5bb08bcd8bf625b2e5e88bbe8aac782ff8dd4d86664368e2fedcb67c1d520067"
       ]
     },
+    "agent_tools/tests/test_windows_conservative_policy.py": {
+      "reason": "Actual current whole reservation callers over owned temporary POSIX journals and the real locked reservation CAS. Native transport and census are finite inert typed seams; writer, capacity, identity and inventory drift checks execute unchanged. Portable cases execute exact pure policy definitions; POSIX caller cases skip before imports on Windows. Explicit preserved whole-before images reproduce all five affected caller boundaries without reverting tracked sources. No native action, inventory mutation or historical source authority is inferred.",
+      "scopes": [
+        "agent_tools/native_environment.py",
+        "agent_tools/native_vm_spec.py",
+        "agent_tools/readiness_resources.py",
+        "agent_tools/tests/fixtures/windows_conservative_policy/provenance.json",
+        "agent_tools/tests/fixtures/windows_conservative_policy/readiness_resources.py.before.source",
+        "agent_tools/tests/fixtures/windows_conservative_policy/windows_vm_deploy.py.before.source",
+        "agent_tools/tests/fixtures/windows_conservative_policy/windows_vm_resources.py.before.source",
+        "agent_tools/tests/test_native_vm_spec.py",
+        "agent_tools/tests/test_readiness_resources.py",
+        "agent_tools/vm_workflow.py",
+        "agent_tools/windows_vm_deploy.py",
+        "agent_tools/windows_vm_resources.py"
+      ],
+      "sourceSha256": [
+        "b0e0b8f7fad7c949551ad0965dfa765dd77b4e8ece2f52ea9547839c41082f79"
+      ]
+    },
     "agent_tools/tests/test_windows_consumed_claim.py": {
       "reason": "Compile the one literal complete preserved deployment caller with its finite canonical helper imports. Original consumed request claim can never be cleared by a new pre-admission refusal; original helper is retained and only observed.",
       "scopes": [
@@ -8595,7 +8657,8 @@
       ],
       "sourceSha256": [
         "097826ef1351938b5e6993063de7259ebf06731d361185a745311646ce25f919",
-        "ce3604fbdcf86082bcc78a650bf89ac77b40fd5ea49580ac3058829807eff750"
+        "ce3604fbdcf86082bcc78a650bf89ac77b40fd5ea49580ac3058829807eff750",
+        "227cad06e06ea266ae2bb524b498a2d544020d60b2d309ac4cc9e82bfc8e31f2"
       ]
     },
     "agent_tools/tests/test_windows_credential_explicit_target.py": {
@@ -9604,6 +9667,9 @@
     "agent_tools/tests/fixtures/runner_stdin_isolation/agent_test_runner.before.source": "5cb3ad7066980985b12000b5d373a7299e23ce75b3d18ef966d0f6c3464d9e1b",
     "agent_tools/tests/fixtures/runner_stdin_isolation/mcp_server.before.source": "075d8726fdc823caeb3293811d512b065d57557cc63d7a1623919e9de7516465",
     "agent_tools/tests/fixtures/ssh_acceptance_preparation/prepare_absolute_epoch.syntax-before.source": "cc24003d0d764807d7250c0a66af29e584e6da7f4bdb6bf8aacfed9e0a61cfc2",
+    "agent_tools/tests/fixtures/ssh_gateway_reboot_ended/readiness_nested_channel.before.source": "dc86319f0af7be503f713b4e1ba7f5602a09cd5d7bb4553c40491061b51c6a4e",
+    "agent_tools/tests/fixtures/ssh_gateway_reboot_ended/ssh_direct_nested_channel.before.source": "0e1aa290112a6555c1c0e1b52cbdb076159dd243c5ac3d97b618a787e8a25d95",
+    "agent_tools/tests/fixtures/ssh_gateway_reboot_ended/ssh_fresh_nested_channel.before.source": "7ee3b0c7586db1c4eea23e0204982b9dfdc566e8f6f1263bb8f923b3ebacc898",
     "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controlled-high-fd.actual.json": "f8938698fa4e93d5d1b3a5af152f89a33b73b3120f2e03fb9ffc26b9640daefd",
     "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/native-select-phase.json": "791c85947eec3550fc3651989f93287cf765c70b453d59349962dfce9544e8b2",
     "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json": "acd3de91861f4dc140ab05b2f7c21adabb4097dbf7092a6079b73cc550609e63",
@@ -9621,6 +9687,10 @@
     "agent_tools/tests/fixtures/windows_compile_followup/parent.fixed.source": "bfa40e47cf66d42f301cdb86e84a63468391ffa6db466220b54c8415ee9d8c30",
     "agent_tools/tests/fixtures/windows_complete_program_transfer/decoder.before.fragment": "278b19f6cb5bdea5b30ea9699960ac209cd029432331bbf6718b98b6c9544a92",
     "agent_tools/tests/fixtures/windows_complete_program_transfer/haderrors.before.fragment": "ae6e4dd8359acc4a8f1ed7d9fa405119694ce59ee50abb80509aad01d4f02629",
+    "agent_tools/tests/fixtures/windows_conservative_policy/provenance.json": "e81cfa7e07788e43fe862417065ce32799dde55d0450f1d4c957cc40dc3c98b8",
+    "agent_tools/tests/fixtures/windows_conservative_policy/readiness_resources.py.before.source": "45cc6144e9f330c288576214d9f92d96641ee615421ab3b0e43c620d420cc05a",
+    "agent_tools/tests/fixtures/windows_conservative_policy/windows_vm_deploy.py.before.source": "435a988592590b3b0110db550ab4d2e22212999bee5501e9b0cecb273c381d77",
+    "agent_tools/tests/fixtures/windows_conservative_policy/windows_vm_resources.py.before.source": "2659a18cd8683c8d3b1b5ff749803c052fcf7e17dc1e669d2d57fb67c67396a0",
     "agent_tools/tests/fixtures/windows_cp117_catalogue_path_context/before.fragment": "f7b72d3ecded96b1c78cbdbe9a016b621a61231af146131edb49dac5a6e9c013",
     "agent_tools/tests/fixtures/windows_cp117_publisher_boundary/publisher_boundary.before.fragment": "86cbb8440a5dc0e34f5172db40428412cb7e4c7dcf6bff176db8ac4538f2974b",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",

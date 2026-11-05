@@ -367,7 +367,8 @@ class ResourceTests(unittest.TestCase):
         with mock.patch.object(resources.environments,'reserve_environment',wraps=environments.reserve_environment)as reserve:
             result=admission.mark_running(self.actor())
         self.assertEqual('running',result['reservation']['allocationState']);request=reserve.call_args.args[1]
-        self.assertEqual(public['runningConfiguredMemoryBytes'],request['measurement']['runningConfiguredMemoryBytes'])
+        self.assertEqual(public['runningConfiguredMemoryBytes'],request['measurement']['policyDerivation']['nativeMeasurement']['runningConfiguredMemoryBytes'])
+        self.assertEqual(public['runningConfiguredMemoryBytes']+sum(row['memoryBytes']for row in request['runningAllocationMapping']),request['measurement']['runningConfiguredMemoryBytes'])
         self.assertEqual(sum(public['otherReservationMemoryBytes'])+2*GIB,sum(row['memoryBytes']for row in request['runningAllocationMapping']))
         after=resources._inventory(self.root)[0]
         self.assertEqual([r for r in prior if r['id']!=identity['reservationId']],[r for r in after if r['id']!=identity['reservationId']])
@@ -519,9 +520,14 @@ class ResourceTests(unittest.TestCase):
         admission.mark_running(self.actor())
         self.rows = []
         self.operation = str(uuid4())
-        with self.assertRaises(environments.NativeEnvironmentError):
-            self.prepare()  # Running mapping cannot be explained by live census.
-        self.assertEqual(1, len(resources._inventory(self.root)[0]))
+        retained=copy.deepcopy(resources._inventory(self.root)[0])
+        following=self.prepare()
+        with following._journal().locked(deadline=following.deadline)as journal:prepared=following._prepared(journal)
+        self.assertEqual(0,prepared['request']['measurement']['policyDerivation']['nativeMeasurement']['runningConfiguredMemoryBytes'])
+        self.assertEqual(2*GIB,prepared['request']['measurement']['runningConfiguredMemoryBytes'])
+        current=resources._inventory(self.root)[0]
+        self.assertEqual(retained,[row for row in current if row['id']==retained[0]['id']])
+        self.assertEqual(2, len(current))
 
     def test_expired_deadline_and_conflicting_request_cannot_dispatch(self):
         with self.assertRaises(TimeoutError):

@@ -1,0 +1,489 @@
+"""Reusable generalized Windows fixture images.
+
+A qualified blank fixture can be generalized once with Windows sysprep and
+published read-only on its host. Later fixtures with the same pinned installer,
+driver and firmware assets start as copy-on-write clones of that image and run
+the exact blank-install specialize/oobeSystem answer file, setup task and guest
+agent installation, so qualification and custody stay unchanged. Without a
+matching image the caller performs a normal blank installation instead.
+
+The template removes its fixture accounts, profiles, setup state, cached answer
+files, guest agent and serial driver before generalizing; nothing that held a
+fixture credential is captured. Images are identified by their manifest digest
+and immutable file identities (not rehashed per clone).
+"""
+import hashlib,json,re,uuid
+
+STORE_NAME='vpn-control-windows-images'
+MAX_IMAGE_AGE_MS=30*24*3600*1000
+FINAL_DELAY_SECONDS=180
+PROBE_AFTER_SECONDS=FINAL_DELAY_SECONDS+900
+# Guest refusals raised before the first guest modification. Only these let a
+# later generalize operation retire a refused attempt; everything else is final.
+PRE_EFFECT_REFUSALS=('FIXTURE_SYSTEM_REQUIRED','FIXTURE_SETUP_INCOMPLETE','TEMPLATE_INPUT','TEMPLATE_FINAL_SOURCE','TEMPLATE_WORK_EXISTS',
+                     'TEMPLATE_TASK_EXISTS','TEMPLATE_REBOOT_PENDING','TEMPLATE_VOLUME_ENCRYPTED','TEMPLATE_VOLUME_PROTECTED')
+MAX_IMAGES=32
+BOOT_BLANK='order=c,once=d,menu=off'
+BOOT_CLONE='order=c,menu=off'
+
+GENERALIZE_FINAL=r'''$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+$work=Join-Path $env:WINDIR 'Temp\VpnControlGeneralize'
+Start-Transcript -Path (Join-Path $work 'final.log') -NoClobber | Out-Null
+$msi=$null;$serial=$null
+try {
+ Unregister-ScheduledTask -TaskName 'VpnControlGeneralize' -Confirm:$false
+ $deadline=[DateTime]::UtcNow.AddMinutes(100)
+ while($true){
+  $volume=$null
+  try{$volume=Get-CimInstance -Namespace 'root\cimv2\Security\MicrosoftVolumeEncryption' -ClassName Win32_EncryptableVolume -Filter "DriveLetter='C:'"}catch{$volume=$null}
+  if($null -eq $volume -or (Invoke-CimMethod -InputObject $volume -MethodName GetConversionStatus).ConversionStatus -eq 0){break}
+  if([DateTime]::UtcNow -ge $deadline){throw 'TEMPLATE_DECRYPTION_TIMEOUT'}
+  Start-Sleep -Seconds 20
+ }
+ $msis=@(Get-Volume | Where-Object DriveLetter | ForEach-Object { Join-Path ($_.DriveLetter+':\') 'guest-agent\qemu-ga-x86_64.msi' } | Where-Object { Test-Path -LiteralPath $_ })
+ if($msis.Count -ne 1){throw 'GUEST_AGENT_MEDIA'}
+ $msi=$msis[0];$serial=Join-Path (Split-Path (Split-Path $msi)) 'vioserial\w11\amd64\vioser.inf'
+ if(-not (Test-Path -LiteralPath $serial)){throw 'GUEST_SERIAL_DRIVER'}
+ $p=Start-Process msiexec.exe -ArgumentList @('/x',('"'+$msi+'"'),'/qn','/norestart','/l*v',(Join-Path $work 'qga-uninstall.log')) -PassThru -Wait
+ if($p.ExitCode -notin @(0,3010)){throw 'TEMPLATE_AGENT_UNINSTALL'}
+ foreach($driver in @(Get-WindowsDriver -Online | Where-Object {(Split-Path $_.OriginalFileName -Leaf) -eq 'vioser.inf'})){
+  & pnputil.exe /delete-driver $driver.Driver /uninstall /force | Out-Null
+  if($LASTEXITCODE -ne 0){throw 'TEMPLATE_SERIAL_REMOVE'}
+ }
+ if(@(Get-WindowsDriver -Online | Where-Object {(Split-Path $_.OriginalFileName -Leaf) -eq 'vioser.inf'}).Count -ne 0){throw 'TEMPLATE_SERIAL_REMAINS'}
+ Remove-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore' -Name AutoDownload -ErrorAction SilentlyContinue
+ $sysprep=Join-Path $env:WINDIR 'System32\Sysprep\sysprep.exe'
+ $log=Join-Path $env:WINDIR 'System32\Sysprep\Panther\setuperr.log'
+ for($attempt=1;$attempt -le 3;$attempt++){
+  # Sysprep powers the machine off only after a successful generalize pass.
+  Start-Process -FilePath $sysprep -ArgumentList @('/generalize','/oobe','/shutdown','/quiet','/mode:vm') -Wait
+  Start-Sleep -Seconds 180
+  $names=@()
+  if(Test-Path -LiteralPath $log){$names=@(Select-String -LiteralPath $log -Pattern 'Package (\S+) was installed for a user, but not provisioned for all users' | ForEach-Object {$_.Matches[0].Groups[1].Value} | Sort-Object -Unique)}
+  if($names.Count -eq 0){break}
+  foreach($name in $names){Remove-AppxPackage -Package $name -AllUsers -ErrorAction Continue}
+ }
+ throw 'TEMPLATE_SYSPREP_REFUSED'
+} catch {
+ @{state='failed';reason=[string]$_.Exception.Message;time=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $work 'failure.json') -Encoding UTF8
+ # Restore observability for the host; the failure record is never success.
+ if($serial){& pnputil.exe /add-driver $serial /install | Out-Null}
+ if($msi){Start-Process msiexec.exe -ArgumentList @('/i',('"'+$msi+'"'),'/qn','/norestart') -Wait}
+ Set-Service -Name QEMU-GA -StartupType Automatic -ErrorAction SilentlyContinue
+ Start-Service -Name QEMU-GA -ErrorAction SilentlyContinue
+}
+'''
+GENERALIZE_FINAL_SHA256=hashlib.sha256(GENERALIZE_FINAL.encode('utf-8')).hexdigest()
+
+GENERALIZE_SETUP=r'''$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18'){throw 'FIXTURE_SYSTEM_REQUIRED'}
+$state=Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\Setup'
+if($state.SystemSetupInProgress -ne 0 -or $state.OOBEInProgress -ne 0){throw 'FIXTURE_SETUP_INCOMPLETE'}
+$data=[Console]::In.ReadToEnd() | ConvertFrom-Json
+if($data.operationId -cne $OperationId -or $data.finalScript -isnot [string]){throw 'TEMPLATE_INPUT'}
+$digest=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($data.finalScript))).Replace('-','').ToLowerInvariant()
+if($digest -cne $FinalSha256){throw 'TEMPLATE_FINAL_SOURCE'}
+$work=Join-Path $env:WINDIR 'Temp\VpnControlGeneralize'
+if(Test-Path -LiteralPath $work){throw 'TEMPLATE_WORK_EXISTS'}
+if(Get-ScheduledTask -TaskName 'VpnControlGeneralize' -ErrorAction SilentlyContinue){throw 'TEMPLATE_TASK_EXISTS'}
+foreach($path in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending','HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')){
+ if(Test-Path -LiteralPath $path){throw 'TEMPLATE_REBOOT_PENDING'}
+}
+# A generalized image cannot carry volume encryption bound to this TPM.
+# Windows 11 enables device encryption by itself; prevent it for every clone
+# and start decryption now. The delayed final step waits for full decryption.
+$bitlocker='HKLM:\SYSTEM\CurrentControlSet\Control\BitLocker'
+if(-not (Test-Path -LiteralPath $bitlocker)){New-Item -Path $bitlocker -Force | Out-Null}
+New-ItemProperty -LiteralPath $bitlocker -Name PreventDeviceEncryption -PropertyType DWord -Value 1 -Force | Out-Null
+$decrypting=$false
+$volume=$null
+try{$volume=Get-CimInstance -Namespace 'root\cimv2\Security\MicrosoftVolumeEncryption' -ClassName Win32_EncryptableVolume -Filter "DriveLetter='C:'"}catch{$volume=$null}
+if($null -ne $volume -and (Invoke-CimMethod -InputObject $volume -MethodName GetConversionStatus).ConversionStatus -ne 0){
+ $started=Invoke-CimMethod -InputObject $volume -MethodName Decrypt
+ if($started.ReturnValue -ne 0){throw 'TEMPLATE_DECRYPTION_REFUSED'}
+ $decrypting=$true
+}
+$store='HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore'
+if(-not (Test-Path -LiteralPath $store)){New-Item -Path $store -Force | Out-Null}
+New-ItemProperty -LiteralPath $store -Name AutoDownload -PropertyType DWord -Value 2 -Force | Out-Null
+$key='HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+Set-ItemProperty -LiteralPath $key -Name AutoAdminLogon -Value '0'
+foreach($name in @('DefaultPassword','AutoLogonCount','DefaultUserName')){
+ if((Get-ItemProperty -LiteralPath $key).PSObject.Properties.Name -contains $name){Remove-ItemProperty -LiteralPath $key -Name $name}
+}
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public static class FixtureSessions {
+ [StructLayout(LayoutKind.Sequential)] struct Info { public int SessionId; public IntPtr Name; public int State; }
+ [DllImport("wtsapi32.dll",SetLastError=true,CharSet=CharSet.Unicode,EntryPoint="WTSEnumerateSessionsW")] static extern bool Enumerate(IntPtr server,int reserved,int version,out IntPtr info,out int count);
+ [DllImport("wtsapi32.dll",SetLastError=true,CharSet=CharSet.Unicode,EntryPoint="WTSQuerySessionInformationW")] static extern bool Query(IntPtr server,int id,int kind,out IntPtr buffer,out int bytes);
+ [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr memory);
+ [DllImport("wtsapi32.dll",SetLastError=true)] public static extern bool WTSLogoffSession(IntPtr server,int id,bool wait);
+ public static int[] Users() {
+  IntPtr info;int count;var result=new List<int>();
+  if(!Enumerate(IntPtr.Zero,0,1,out info,out count)){throw new System.ComponentModel.Win32Exception();}
+  try {
+   int size=Marshal.SizeOf(typeof(Info));
+   for(int i=0;i<count;i++){
+    var row=(Info)Marshal.PtrToStructure(new IntPtr(info.ToInt64()+i*size),typeof(Info));
+    IntPtr buffer;int bytes;
+    if(Query(IntPtr.Zero,row.SessionId,5,out buffer,out bytes)){
+     try {if(!String.IsNullOrEmpty(Marshal.PtrToStringUni(buffer))){result.Add(row.SessionId);}} finally {WTSFreeMemory(buffer);}
+    }
+   }
+  } finally {WTSFreeMemory(info);}
+  return result.ToArray();
+ }
+}
+'@
+foreach($id in [FixtureSessions]::Users()){if(-not [FixtureSessions]::WTSLogoffSession([IntPtr]::Zero,$id,$true)){throw 'TEMPLATE_LOGOFF'}}
+$deadline=[DateTime]::UtcNow.AddSeconds(90)
+while(@([FixtureSessions]::Users()).Count -ne 0){if([DateTime]::UtcNow -ge $deadline){throw 'TEMPLATE_SESSIONS_REMAIN'};Start-Sleep -Seconds 2}
+$removed=@()
+foreach($name in @($ExpectedUser,$ExpectedAdministrator)){
+ $account=Get-LocalUser -Name $name
+ $sid=$account.SID.Value
+ $deadline=[DateTime]::UtcNow.AddSeconds(120)
+ while($true){
+  $profile=Get-CimInstance Win32_UserProfile -Filter ("SID='"+$sid+"'")
+  if($null -eq $profile){break}
+  if(-not $profile.Loaded){try{Remove-CimInstance -InputObject $profile}catch{}}
+  if([DateTime]::UtcNow -ge $deadline){throw 'TEMPLATE_PROFILE_REMAINS'}
+  Start-Sleep -Seconds 2
+ }
+ Remove-LocalUser -SID $account.SID
+ $removed+=$name
+}
+if(@(Get-LocalUser | Where-Object {$_.Name -in @($ExpectedUser,$ExpectedAdministrator)}).Count -ne 0){throw 'TEMPLATE_ACCOUNT_REMAINS'}
+if(Get-ScheduledTask -TaskName 'VpnControlFixtureInitialize' -ErrorAction SilentlyContinue){Unregister-ScheduledTask -TaskName 'VpnControlFixtureInitialize' -Confirm:$false}
+$logs=Join-Path $env:ProgramData 'VpnControlFixture'
+if(Test-Path -LiteralPath $logs){Remove-Item -LiteralPath $logs -Recurse -Force}
+$caches=@((Join-Path $env:WINDIR 'Panther\unattend.xml'),(Join-Path $env:WINDIR 'Panther\autounattend.xml'),(Join-Path $env:WINDIR 'Panther\Unattend\unattend.xml'),(Join-Path $env:WINDIR 'Panther\Unattend\autounattend.xml'),(Join-Path $env:WINDIR 'System32\Sysprep\unattend.xml'))
+foreach($path in $caches){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Force}}
+if(Get-ScheduledTask -TaskName 'VpnControlFixtureInitialize' -ErrorAction SilentlyContinue){throw 'TEMPLATE_SETUP_TASK_REMAINS'}
+if(Test-Path -LiteralPath $logs){throw 'TEMPLATE_SETUP_STATE_REMAINS'}
+if(@($caches | Where-Object {Test-Path -LiteralPath $_}).Count -ne 0){throw 'FIXTURE_SETUP_CACHE_REMAINS'}
+$winlogon=Get-ItemProperty -LiteralPath $key
+if($winlogon.AutoAdminLogon -ne '0' -or $winlogon.PSObject.Properties.Name -contains 'DefaultPassword'){throw 'FIXTURE_AUTOLOGON_REMAINS'}
+New-Item -ItemType Directory $work | Out-Null
+& icacls.exe $work /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' | Out-Null
+if($LASTEXITCODE -ne 0){throw 'TEMPLATE_WORK_ACL'}
+$final=Join-Path $work 'final.ps1'
+[IO.File]::WriteAllText($final,$data.finalScript,[Text.UTF8Encoding]::new($false))
+if((Get-FileHash -LiteralPath $final -Algorithm SHA256).Hash.ToLowerInvariant() -cne $FinalSha256){throw 'TEMPLATE_FINAL_COPY'}
+$at=(Get-Date).AddSeconds($FinalDelaySeconds)
+$action=New-ScheduledTaskAction -Execute (Join-Path $PSHOME 'powershell.exe') -Argument ('-NoProfile -ExecutionPolicy Bypass -File "'+$final+'"')
+$principal=New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
+$settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 150)
+Register-ScheduledTask -TaskName 'VpnControlGeneralize' -Action $action -Trigger (New-ScheduledTaskTrigger -Once -At $at) -Principal $principal -Settings $settings | Out-Null
+[Console]::WriteLine((@{nonce=$OperationId;principal='S-1-5-18';accountsRemoved=$removed;sessionsSignedOut=$true;automaticLogonDisabled=$true;setupStateRemoved=$true;setupCachesRemoved=$true;volumeDecryptionStarted=$decrypting;finalSha256=$digest;finalScheduled=$true} | ConvertTo-Json -Compress))
+'''
+
+GENERALIZE_PROBE=r'''$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$work=Join-Path $env:WINDIR 'Temp\VpnControlGeneralize'
+$failure=$null
+if(Test-Path -LiteralPath (Join-Path $work 'failure.json')){$failure=Get-Content -LiteralPath (Join-Path $work 'failure.json') -Raw | ConvertFrom-Json}
+$errors=@()
+$log=Join-Path $env:WINDIR 'System32\Sysprep\Panther\setuperr.log'
+if(Test-Path -LiteralPath $log){$errors=@(Get-Content -LiteralPath $log -Tail 20 | ForEach-Object {[string]$_})}
+$percent=$null
+try{$volume=Get-CimInstance -Namespace 'root\cimv2\Security\MicrosoftVolumeEncryption' -ClassName Win32_EncryptableVolume -Filter "DriveLetter='C:'";if($null -ne $volume){$percent=(Invoke-CimMethod -InputObject $volume -MethodName GetConversionStatus).EncryptionPercentage}}catch{$percent=$null}
+[Console]::WriteLine((@{nonce=$OperationId;failure=$failure;sysprepErrors=$errors;encryptionPercentage=$percent} | ConvertTo-Json -Depth 4 -Compress))
+'''
+
+
+def generalize_source(setup,operation_id):
+    """Bind the validated account names and nonce; no credential is involved."""
+    from .windows_vm_unattend import parse_setup
+    from .windows_vm_guest import quiet_source
+    setup=parse_setup(setup)
+    if type(operation_id)is not str or str(uuid.UUID(operation_id))!=operation_id:raise ValueError('generalize_identity')
+    return quiet_source('$ExpectedUser='+repr(setup['user'])+'\n$ExpectedAdministrator='+repr(setup['administrator'])+'\n$OperationId='+repr(operation_id)
+                        +'\n$FinalSha256='+repr(GENERALIZE_FINAL_SHA256)+'\n$FinalDelaySeconds='+str(FINAL_DELAY_SECONDS)+'\n'+GENERALIZE_SETUP)
+
+
+def probe_template():
+    """Read-only failure probe; the host binds one fresh nonce per probe."""
+    from .windows_vm_guest import quiet_source
+    return quiet_source("$OperationId='__PROBE_ID__'\n"+GENERALIZE_PROBE)
+
+
+def validate_context_image(value):
+    if type(value)is not dict or set(value)!={'imageId','manifestSha256'}:raise ValueError('deployment_image')
+    if type(value['imageId'])is not str or str(uuid.UUID(value['imageId']))!=value['imageId']:raise ValueError('deployment_image')
+    if type(value['manifestSha256'])is not str or re.fullmatch('[0-9a-f]{64}',value['manifestSha256'])is None:raise ValueError('deployment_image')
+    return dict(value)
+
+
+def refusal_token(terminal):
+    """Fixed refusal token of a failed guest script's first error message, or None."""
+    import base64,re
+    if type(terminal)is not dict or terminal.get('exited')is not True or terminal.get('exitcode')in (0,None):return None
+    err=base64.b64decode(terminal.get('err-data',''),validate=True)[:65536]
+    if err.startswith(b'#< CLIXML'):
+        match=re.search(rb'<S S="Error">(.*?)</S>',err,re.S);first=match.group(1) if match else b''
+        first=re.sub(rb'_x([0-9A-Fa-f]{4})_',lambda m:bytes([int(m.group(1),16)]) if int(m.group(1),16)<128 else b'?',first).split(b'\n',1)[0]
+    else:first=err.split(b'\n',1)[0]
+    tokens=re.findall(rb'\b((?:TEMPLATE|FIXTURE|GUEST)_[A-Z_]{2,48})\b',first)
+    return tokens[0].decode() if tokens else None
+
+
+def generalize_instance(spec,setup,operation_id,status_only,root,read,save,process,owns,instance_intent,closing,observed,birth):
+    """Prepare and generalize one qualified fixture; the guest powers itself off.
+
+    One create-only intent and guest-exec acknowledgement; status never replays
+    them. The guest result must be collected before its agent is removed.
+    """
+    import base64,hashlib,json,os,time,uuid
+    global wire,partial_wire,QGA_PEER_PID,QGA_GUARD
+    def require(value,reason):
+        if not value:raise ValueError(reason)
+    def guard_epoch():
+        with open('/proc/sys/kernel/random/boot_id')as stream:boot=stream.read(128).strip()
+        require(boot==CONTEXT['hostBootId'],'instance_host_epoch');instance_intent();closing()
+    def absent(row):
+        return _actor_absent(row,process,birth)
+    def collect(prefix,script,payload,seconds):
+        """Return a retained terminal, or None while the guest command runs."""
+        global wire,partial_wire,QGA_PEER_PID,QGA_GUARD
+        row=read('qemu-started.json');process(row);owns(row['pid'],root/'qga.sock',True);named=os.lstat(root/'qga.sock')
+        wire=partial_wire=-1
+        try:
+            suffix=os.urandom(12).hex()
+            wire=os.open(root/(prefix+'.'+suffix+'.wire'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            partial_wire=os.open(root/(prefix+'.'+suffix+'.partial-wire'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+            QGA_PEER_PID=row['pid']
+            def guard():
+                process(row);require(os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_changed');guard_epoch()
+            QGA_GUARD=guard
+            if not os.path.lexists(root/(prefix+'.ack.json')):
+                require(script is not None,'instance_guest_exec_ack')
+                arguments={'path':'powershell.exe','arg':['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',base64.b64encode(script.encode('utf-16le')).decode()],'capture-output':True}
+                if payload is not None:arguments['input-data']=base64.b64encode(json.dumps(payload).encode()).decode()
+                ack=call(str(root/'qga.sock'),'guest-exec',arguments)
+                require(type(ack)is dict and set(ack)=={'pid'} and type(ack['pid'])is int and ack['pid']>0,'instance_guest_exec_ack')
+                save(prefix+'.ack.json',{'operationId':operation_id,'ack':ack,'replayAllowed':False})
+            receipt=read(prefix+'.ack.json');require(receipt['operationId']==operation_id and receipt['replayAllowed']is False,'instance_guest_exec_ack')
+            deadline=time.monotonic()+seconds
+            while True:
+                terminal=call(str(root/'qga.sock'),'guest-exec-status',receipt['ack'],_deadline=deadline)
+                if terminal.get('exited')is True:break
+                if time.monotonic()>=deadline:guard();return None
+                time.sleep(.2)
+            save(prefix+'.terminal.json',terminal);guard();return terminal
+        finally:
+            for fd in (wire,partial_wire):
+                if fd>=0:os.close(fd)
+    def output(terminal,bound):
+        out=base64.b64decode(terminal.get('out-data',''),validate=True);err=base64.b64decode(terminal.get('err-data',''),validate=True)
+        if terminal.get('exited')is True and terminal.get('exitcode')!=0:
+            # Project only the script's own fixed refusal token, never free text.
+            token=refusal_token(terminal)
+            require(False,'instance_generalize_'+(token.lower() if token else 'guest_error'))
+        require(terminal.get('exited')is True and terminal.get('exitcode')==0 and not terminal.get('out-truncated',False)
+                and not terminal.get('err-truncated',False) and not err and len(out)<=bound,'instance_generalize_output')
+        return json.loads(out.decode('utf-8-sig'))
+    if not status_only and os.path.lexists(root/'generalize-intent.json'):
+        # A previous attempt may be retired only after the guest positively
+        # refused it before its first modification; its records are kept.
+        prior=read('generalize-intent.json')
+        require(prior['operationId']!=operation_id and os.path.lexists(root/'generalize.terminal.json'),'instance_generalize_original_exists')
+        require(refusal_token(read('generalize.terminal.json'))in PRE_EFFECT_REFUSALS,'instance_generalize_original_exists')
+        retired=root/('generalize-refused-'+prior['operationId']);os.mkdir(retired,0o700)
+        for name in ('generalize-intent.json','generalize.ps1','generalize.ack.json','generalize.terminal.json','generalize-submitted.json'):
+            if os.path.lexists(root/name):os.rename(root/name,retired/name)
+    if not status_only:
+        require(not os.path.lexists(root/'generalize-intent.json'),'instance_generalize_original_exists')
+        check_id=str(uuid.uuid5(uuid.UUID(operation_id),'generalize-setup-admission'))
+        check=qualify_instance(spec,setup,check_id,False,root,read,save,process,owns,instance_intent,closing,observed,GENERALIZE_CHECK_SCRIPT)
+        require(check['state']=='setup-observed' and check['setupReady']is True,'instance_generalize_admission')
+        save('generalize-intent.json',{'operationId':operation_id,'qualificationId':check_id,'os':check['result']['os'],
+                                       'powerShellSha256':hashlib.sha256(GENERALIZE_SCRIPT.encode()).hexdigest(),'finalSha256':GENERALIZE_FINAL_SHA256})
+        save('generalize.ps1',GENERALIZE_SCRIPT.encode())
+    intent=read('generalize-intent.json');require(intent['operationId']==operation_id,'instance_generalize_identity')
+    qemu=read('qemu-started.json');tpm=read('swtpm-started.json')
+    if os.path.lexists(root/'generalize-stopped.json'):
+        stopped=read('generalize-stopped.json');require(stopped['operationId']==operation_id,'instance_generalize_identity')
+        return {'state':'generalized-stopped','operationId':operation_id,'qemu':stopped['qemu'],'swtpm':stopped['swtpm'],'positiveAbsence':True,'productReady':False}
+    if os.path.lexists(root/'generalize.terminal.json'):terminal=read('generalize.terminal.json')
+    else:
+        require(not absent(qemu),'instance_generalize_result_unknown')
+        guard_epoch()
+        terminal=collect('generalize',None if status_only else GENERALIZE_SCRIPT,
+                         None if status_only else {'operationId':operation_id,'finalScript':GENERALIZE_FINAL},40 if status_only else 25)
+        if terminal is None:return {'state':'generalize-pending','operationId':operation_id,'productReady':False}
+        save('generalize-submitted.json',{'operationId':operation_id,'collectedAtUnixMs':time.time_ns()//1_000_000})
+    result=output(terminal,4096)
+    require(type(result)is dict and type(result.get('volumeDecryptionStarted'))is bool and
+            {k:v for k,v in result.items()if k!='volumeDecryptionStarted'}=={'nonce':operation_id,'principal':'S-1-5-18','accountsRemoved':[setup['user'],setup['administrator']],
+            'sessionsSignedOut':True,'automaticLogonDisabled':True,'setupStateRemoved':True,'setupCachesRemoved':True,'finalSha256':GENERALIZE_FINAL_SHA256,'finalScheduled':True},
+            'instance_generalize_result')
+    submitted=read('generalize-submitted.json');require(submitted['operationId']==operation_id,'instance_generalize_identity')
+    if absent(qemu):
+        if not absent(tpm):
+            # QEMU ended; release only the exact original TPM emulator.
+            import signal
+            fd=os.pidfd_open(tpm['pid'],0)
+            try:process(tpm);signal.pidfd_send_signal(fd,signal.SIGTERM,None,0)
+            finally:os.close(fd)
+            deadline=time.monotonic()+5
+            while not absent(tpm):
+                require(time.monotonic()<deadline,'instance_generalize_tpm_running');time.sleep(.05)
+        stopped={'operationId':operation_id,'qemu':{k:qemu[k] for k in ('pid','startTicks')},'swtpm':{k:tpm[k] for k in ('pid','startTicks')},
+                 'observedAtUnixMs':time.time_ns()//1_000_000}
+        save('generalize-stopped.json',stopped)
+        return {'state':'generalized-stopped','operationId':operation_id,'qemu':stopped['qemu'],'swtpm':stopped['swtpm'],'positiveAbsence':True,'productReady':False}
+    if not status_only:return {'state':'generalize-submitted','operationId':operation_id,'productReady':False}
+    guard_epoch();value=observed()
+    elapsed=time.time_ns()//1_000_000-submitted['collectedAtUnixMs']
+    if value['guestAgentReady'] and elapsed>PROBE_AFTER_SECONDS*1000:
+        # The final step restores the agent only after a failure. Read its
+        # bounded record with a fresh read-only probe; nothing is retried.
+        probe=str(uuid.uuid4());saved=collect('generalize-probe-'+probe,GENERALIZE_PROBE_TEMPLATE.replace('__PROBE_ID__',probe),None,25)
+        if saved is not None:
+            report=output(saved,16384);require(type(report)is dict and report.get('nonce')==probe,'instance_generalize_probe')
+            if report.get('failure')is not None:
+                return {'state':'generalize-failed','operationId':operation_id,'failure':report.get('failure'),'sysprepErrors':report.get('sysprepErrors'),'productReady':False}
+    return {'state':'generalize-running','operationId':operation_id,'guestAgentReady':value['guestAgentReady'],'productReady':False}
+
+
+def capture_image_instance(spec,setup,operation_id,root,read,save,process,birth,binaries):
+    """Publish the generalized, stopped disk read-only as one new image."""
+    import hashlib,json,os,pathlib,stat,subprocess,time
+    def require(value,reason):
+        if not value:raise ValueError(reason)
+    def identity(s):return [s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+    def run(arguments,timeout=120,limit=1048576):
+        fd=binaries['qemu-img']
+        p=subprocess.run(['/proc/self/fd/'+str(fd),*arguments],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,
+                         pass_fds=(fd,),env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'})
+        require(p.returncode==0 and len(p.stdout)<=limit and not p.stderr,'instance_capture_command');return p.stdout
+    stopped=read('generalize-stopped.json');intent=read('generalize-intent.json')
+    require(stopped['operationId']==intent['operationId'],'instance_capture_generalize')
+    qemu=read('qemu-started.json');tpm=read('swtpm-started.json')
+    require(_actor_absent(qemu,process,birth) and _actor_absent(tpm,process,birth),'instance_capture_actor_alive')
+    require(not os.path.lexists(root/'capture-intent.json'),'instance_capture_original_exists')
+    mutable=read('mutable-artifacts.json');disk=root/'disk.qcow2';firmware=root/'uefi-vars.fd'
+    for name in ('disk.qcow2','uefi-vars.fd'):
+        s=os.lstat(root/name)
+        require(stat.S_ISREG(s.st_mode) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==0o600 and s.st_nlink==1
+                and [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid]==mutable[name],'instance_capture_mutable_changed')
+    check=json.loads(run(['check','-f','qcow2','--output=json',str(disk)],timeout=50))
+    require(type(check)is dict and check.get('check-errors')==0 and not check.get('corruptions') and not check.get('leaks'),'instance_capture_disk_check')
+    store=root.parent/STORE_NAME
+    if not os.path.lexists(store):os.mkdir(store,0o700)
+    s=os.lstat(store);require(stat.S_ISDIR(s.st_mode) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==0o700,'instance_capture_store')
+    require(s.st_dev==os.lstat(disk).st_dev,'instance_capture_store_filesystem')
+    image_id=operation_id;partial=store/('.'+image_id+'.partial');final=store/image_id
+    require(not os.path.lexists(final),'instance_capture_image_exists')
+    save('capture-intent.json',{'operationId':operation_id,'imageId':image_id,'image':str(final),'diskMovedFrom':str(disk)})
+    os.mkdir(partial,0o700)
+    os.rename(disk,partial/'disk.qcow2')
+    source=os.open(firmware,os.O_RDONLY|os.O_NOFOLLOW);target=os.open(partial/'uefi-vars.fd',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    try:
+        while True:
+            block=os.read(source,1048576)
+            if not block:break
+            view=memoryview(block)
+            while view:view=view[os.write(target,view):]
+        os.fsync(target)
+    finally:os.close(source);os.close(target)
+    info=json.loads(run(['info','--output=json',str(partial/'disk.qcow2')],timeout=30))
+    require(info.get('format')=='qcow2' and info.get('virtual-size')==SPEC['diskGiB']*1024**3 and not info.get('backing-filename'),'instance_capture_disk_format')
+    for name in ('disk.qcow2','uefi-vars.fd'):os.chmod(partial/name,0o400)
+    with open(partial/'uefi-vars.fd','rb')as stream:firmware_raw=stream.read(64*1024**2+1)
+    require(0<len(firmware_raw)<=64*1024**2,'instance_capture_firmware')
+    installer=read('installer-image.json')
+    manifest={'schemaVersion':1,'kind':'windows-generalized-image','imageId':image_id,'createdAtUnixMs':time.time_ns()//1_000_000,
+              'hostBootId':CONTEXT['hostBootId'],'source':{'deploymentId':SPEC['deploymentId'],'generalizeOperationId':intent['operationId'],'captureOperationId':operation_id},
+              'assets':{name:{'sha256':asset['sha256'],'bytes':asset['bytes']} for name,asset in SPEC['assets'].items()},'diskGiB':SPEC['diskGiB'],
+              'setup':{'imageName':SETUP['imageName'],'locale':SETUP['locale']},'installerImage':installer,'os':intent['os'],
+              'files':{'disk.qcow2':{'identity':identity(os.lstat(partial/'disk.qcow2')),'format':'qcow2','virtualSize':info['virtual-size']},
+                       'uefi-vars.fd':{'identity':identity(os.lstat(partial/'uefi-vars.fd')),'sha256':hashlib.sha256(firmware_raw).hexdigest()}}}
+    raw=(json.dumps(manifest,sort_keys=True)+'\n').encode()
+    fd=os.open(partial/'manifest.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o400)
+    try:
+        view=memoryview(raw)
+        while view:view=view[os.write(fd,view):]
+        os.fsync(fd)
+    finally:os.close(fd)
+    os.chmod(partial,0o500);os.rename(partial,final)
+    directory=os.open(store,os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(directory)
+    finally:os.close(directory)
+    digest=hashlib.sha256(raw).hexdigest()
+    save('capture-result.json',{'operationId':operation_id,'imageId':image_id,'image':str(final),'manifestSha256':digest})
+    return {'state':'image-captured','operationId':operation_id,'imageId':image_id,'manifestSha256':digest,'productReady':False}
+
+
+def read_image(store,image_id,expected_sha256=None):
+    """Read one published image manifest and prove its files are unchanged."""
+    import hashlib,json,os,stat
+    def require(value,reason):
+        if not value:raise ValueError(reason)
+    def identity(s):return [s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+    s=os.lstat(store);require(stat.S_ISDIR(s.st_mode) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==0o700,'instance_image_store')
+    directory=store/image_id;s=os.lstat(directory)
+    require(stat.S_ISDIR(s.st_mode) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==0o500,'instance_image_directory')
+    require(sorted(os.listdir(directory))==['disk.qcow2','manifest.json','uefi-vars.fd'],'instance_image_directory')
+    fd=os.open(directory/'manifest.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        info=os.fstat(fd);require(stat.S_ISREG(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o400 and 0<info.st_size<=65536,'instance_image_manifest')
+        raw=os.read(fd,65537);require(len(raw)==info.st_size,'instance_image_manifest')
+    finally:os.close(fd)
+    digest=hashlib.sha256(raw).hexdigest();require(expected_sha256 is None or digest==expected_sha256,'instance_image_manifest_changed')
+    manifest=json.loads(raw)
+    require(type(manifest)is dict and manifest.get('schemaVersion')==1 and manifest.get('kind')=='windows-generalized-image' and manifest.get('imageId')==image_id
+            and type(manifest.get('files'))is dict and set(manifest['files'])=={'disk.qcow2','uefi-vars.fd'},'instance_image_manifest')
+    for name,meta in manifest['files'].items():
+        s=os.lstat(directory/name)
+        require(stat.S_ISREG(s.st_mode) and stat.S_IMODE(s.st_mode)==0o400 and identity(s)==meta.get('identity'),'instance_image_file_changed')
+    return manifest,digest
+
+
+def images_main():
+    """List published images for this host; read-only, no hashing of disks."""
+    import json,os,pathlib,uuid
+    store=pathlib.Path(SPEC['root']).parent/STORE_NAME;rows=[];refused=0
+    if os.path.lexists(store):
+        names=sorted(n for n in os.listdir(store) if not n.startswith('.'))
+        for name in names[:MAX_IMAGES]:
+            try:
+                if str(uuid.UUID(name))!=name:raise ValueError('instance_image_name')
+                manifest,digest=read_image(store,name)
+                rows.append({'imageId':name,'manifestSha256':digest,'manifest':manifest})
+            except (OSError,ValueError,KeyError,TypeError):refused+=1
+        refused+=max(0,len(names)-MAX_IMAGES)
+    print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':'images','state':'images-observed','reason':None,
+                      'images':rows,'refusedImages':refused,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
+
+
+def clone_manifest_matches(manifest,spec,setup,selected_image):
+    """Exact equality between an image and the requested fixture."""
+    return (type(manifest)is dict
+            and manifest.get('assets')=={name:{'sha256':asset['sha256'],'bytes':asset['bytes']} for name,asset in spec['assets'].items()}
+            and manifest.get('diskGiB')==spec['diskGiB']
+            and manifest.get('setup')=={'imageName':setup['imageName'],'locale':setup['locale']}
+            and (selected_image is None or manifest.get('installerImage')=={'installerSha256':spec['assets']['installer']['sha256'],'image':selected_image}))
+
+
+def choose_image(listing,spec,setup,now_ms):
+    """Newest unexpired matching image, or None (then install from scratch)."""
+    if type(listing)is not dict or listing.get('state')!='images-observed' or type(listing.get('images'))is not list:raise ValueError('deployment_images_response')
+    if type(now_ms)is not int or now_ms<=0:raise ValueError('deployment_images_clock')
+    candidates=[]
+    for row in listing['images']:
+        manifest=row.get('manifest') if type(row)is dict else None
+        if type(manifest)is not dict or type(manifest.get('createdAtUnixMs'))is not int:continue
+        age=now_ms-manifest['createdAtUnixMs']
+        if not 0<=age<=MAX_IMAGE_AGE_MS:continue
+        if not clone_manifest_matches(manifest,spec,setup,None):continue
+        candidates.append((manifest['createdAtUnixMs'],row['imageId'],row['manifestSha256']))
+    if not candidates:return None
+    _,image_id,digest=max(candidates)
+    return validate_context_image({'imageId':image_id,'manifestSha256':digest})

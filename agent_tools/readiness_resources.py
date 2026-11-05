@@ -361,8 +361,10 @@ class ResourceAdmission:
                                          'recoveryId': recovery_id, 'dispatchDigest': dispatch_digest,
                                          'census': observation, 'pending': reservations, 'resourceAliases': aliases})
             request = dict(prepared['request'])
-            request.update(measurement=measurement, resourceAliases=aliases, expectedInventorySha256=digest,
-                           observations=[_receipt(prepared['reservation']['identity'], 'unknown')])
+            mapping = [{'reservationId': row['id'], 'memoryBytes': row['requestedMemoryBytes']} for row in same if row['allocationState'] == 'running']
+            request.update(measurement=facts.conservative_policy_measurement(observation,mapping), resourceAliases=aliases, expectedInventorySha256=digest,
+                           runningAllocationMapping=mapping, observations=[_receipt(prepared['reservation']['identity'], 'unknown')])
+            facts.validate_conservative_policy_measurement(request['measurement'],observation,mapping)
             environments.reserve_environment(self.root, request)
             return True
 
@@ -470,9 +472,10 @@ class ResourceAdmission:
             if not any(row['reservationId'] == identity['reservationId'] for row in mapping):
                 mapping.append({'reservationId': identity['reservationId'], 'memoryBytes': prepared['requestedMemoryBytes']})
             request = dict(prepared['request'])
-            request.update(allocationState='running', measurement=measurement, resourceAliases=aliases,
+            request.update(allocationState='running', measurement=facts.conservative_policy_measurement(observation,mapping), resourceAliases=aliases,
                            expectedInventorySha256=digest, runningAllocationMapping=mapping,
                            reservationIdentity=identity, observations=[_receipt(identity, 'active')])
+            facts.validate_conservative_policy_measurement(request['measurement'],observation,mapping)
             return environments.reserve_environment(self.root, request)
 
     def release_stopped(self, proof):
@@ -562,8 +565,9 @@ def prepare_start(root, *, host, machine_uuid, fixture_root, credential_file,
         mapping = [{'reservationId': row['id'], 'memoryBytes': row['requestedMemoryBytes']} for row in same if row['allocationState'] == 'running']
         request = {'hostAlias': host, 'resourceAliases': aliases, 'environment': 'recovery-'+operation_id,
                    'operator': 'readiness-resources', 'requestedMemoryBytes': requested_memory_bytes,
-                   'headroomBytes': headroom_bytes, 'allocationState': 'pending', 'measurement': measurement,
+                   'headroomBytes': headroom_bytes, 'allocationState': 'pending', 'measurement': facts.conservative_policy_measurement(observation,mapping),
                    'runningAllocationMapping': mapping, 'expectedInventorySha256': digest}
+        facts.validate_conservative_policy_measurement(request['measurement'],observation,mapping)
         reservation = environments.reserve_environment(root, request)
         journal.record('prepared', {'version': 1, 'operationId': operation_id, 'machineUuid': machine_uuid,
                                    'target': target.as_dict(), 'hostBootId': observation['hostBootId'],

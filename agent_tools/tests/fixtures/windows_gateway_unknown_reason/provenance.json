@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-beforeimage",
+  "failure": "F6a-start-reply-unverified-vm-booted: a native Windows template start booted its VM, but the credential-bearing gateway answered UNKNOWN with only state, correlationId, errorClass ValueError and metadata-only stream counts; _gateway_main dropped the closed ValueError token and the custody observation facts, so the outer stage reported only source_stage_native_unverified and the cause was undiagnosable",
+  "source": "agent_tools/windows_vm_deploy.py",
+  "beforeSha256": "a3c913796009f96d7c03c5a136b5653204eba16fbd8e40fab8ec03e4016e95d5",
+  "bytes": 47305,
+  "baseCommit": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "nativeFailureClaimed": true,
+  "originalDeploymentId": "470536b3-c24a-4346-929e-34652201d7dc",
+  "originalOperationCorrelationId": "33b89ba2741d46f8a269e2341db2acf8",
+  "gatewayCorrelationId": "a9e1e1ade316488f8af303c78354b8ea",
+  "retainedGatewaySha256": "4d82eb63d2a3009d5cc83124bd32f0ff1f7847be0dbbf482e679439df533a797",
+  "retainedSourceEqualsBeforeimage": "sources/windows_vm_deploy.py of operation 33b89ba2741d46f8a269e2341db2acf8",
+  "nativeEnvelopeKeys": ["_operatorPrivateCapture", "correlationId", "errorClass", "state"],
+  "nativeObservations": {
+    "gatewayEnvelope": "state unknown, errorClass ValueError; metadata-only capture with counts stdout 382 and tty 65, both eof true, credentialSent true; the outer gateway returned 3 after 20.0 s, inside its observe(60) window, and the outer stage raised source_stage_native_unverified",
+    "remoteStdout": "the 382-byte count is consistent with a compact booted-observed start result for the later-observed qemu/swtpm identities; the bytes were not retained and the length is not unique",
+    "originalStatus": "read-only original status 34d9691d: booted-observed, qemuStatus running"
+  },
+  "cause": "unresolved (UNKNOWN): any closed gateway decision taken after the remote program ended fits the evidence, including a remote non-zero exit or custody refusal (program_observation_unknown), the echo or result-shape checks (private_output_refused, private_result_refused) and the post-run route/config guard (config_or_keys_changed or a re-pin token); this change is diagnostic only",
+  "privateEvidence": ".runtime/tool-recovery/windows-lane-20261103/launch-470536b3-start-unverified/ and .runtime/windows-vm-deploy/33b89ba2741d46f8a269e2341db2acf8/; never committed",
+  "nativeEvidenceLimits": [
+    "the F6a trigger stays unresolved; the regression covers the gateway's failure response, not the native trigger",
+    "the SSH peer is a generated socket endpoint behind a fake ssh; a real OpenSSH prompt, sudo and the Windows VM producer are not executed",
+    "route drift is modelled by a new entry in the pinned config parent, not by churn on the real gateway host",
+    "the next native occurrence must be read from the retained native-stdout.private reason and capture fields; recovery stays a read-only original status and never replays the start"
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-beforeimage",
+  "baseCommit": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "sourceState": "agent_tools/windows_vm_image.py was an untracked Windows-lane file at baseCommit; this copy is byte-equal to the private evidence beforeimage and to the module retained by the native vm-inventory caller",
+  "files": {
+    "windows_vm_image.py.before.source": {
+      "path": "agent_tools/windows_vm_image.py",
+      "sha256": "9e22d508c656507234a408e2fac1e7a8f0ddf7deea48d41d84c2383aff967172",
+      "vmProcessesSha256": "75f32afe88a7a461b0ac3c749a8a54fc2ada79b0be039ea137dd37715b465d00",
+      "vmCleanupMainSha256": "68c82626ed4814869c395d5373925dbb4be2ebe6ad779040db24a86623dfc64d"
+    }
+  },
+  "failures": [
+    {
+      "id": "F6b-vm-process-detection-blind-to-fd-exec-qemu",
+      "nativeFailureClaimed": true,
+      "finding": "vm_processes matched VM names only against basename(argv[0]); the instance execs QEMU and swtpm through a pinned /proc/self/fd/N, so argv[0] names a descriptor and comm is a number. vm-inventory reported no VM process while the clone ran, and vm-cleanup's whole-run refusal could not trigger; only its per-file held-open check remained, so unheld files of a running VM (TPM state, instance receipts) were deletable",
+      "nativeObservations": {
+        "status": "clone 246a3304-86f3-4e96-bf47-d53c28f83a27 status booted-observed with qemuStatus running, QEMU pid 3063661 and swtpm pid 3063660",
+        "inventory": "vm-inventory during the same run: state vm-inventory-observed with inventory.processes == []",
+        "privateEvidence": ".runtime/tool-recovery/windows-lane-20261103/f6b-vm-process-detection/ (index.json, clone-status-running.private.json, vm-inventory-while-clone-runs.private.json, vm_processes.before.source, windows_vm_image.py.before.source); never committed",
+        "privateEvidenceSha256": {
+          "clone-status-running.private.json": "fd8c38c6597d837cac0471b25d4f4c0210cf0d0f66d3ef5e7c9a35e8929494b6",
+          "vm-inventory-while-clone-runs.private.json": "b0d678d57c9069f787d29da9d25aecc095ef14b21710f5ccf56e818230504615",
+          "vm_processes.before.source": "75f32afe88a7a461b0ac3c749a8a54fc2ada79b0be039ea137dd37715b465d00"
+        }
+      },
+      "nativeCaller": {
+        "correlationId": "5890aef9de7544e49bc4b4cbde8c98b5",
+        "mode": "vm-inventory",
+        "callerSha256": "c0ada6f988d28fa4430f4a729fe0d15850434c8c3b79ef87f75c85169be5ddc1",
+        "retainedImageSourceSha256": "9e22d508c656507234a408e2fac1e7a8f0ddf7deea48d41d84c2383aff967172",
+        "binding": "windows_vm_deploy_remote.program composes, from this beforeimage and the native request's spec, a vm-inventory program whose sha256 equals callerSha256; the native result equals the private inventory evidence",
+        "privateEvidence": ".runtime/windows-vm-deploy/5890aef9de7544e49bc4b4cbde8c98b5/ (request.json, caller.py, native-result.json, sources/); never committed"
+      }
+    },
+    {
+      "id": "vm-cleanup-home-prefix-without-separator",
+      "nativeFailureClaimed": false,
+      "discoveredBy": "review",
+      "finding": "vm_cleanup_main accepted a path when os.path.dirname(path).startswith(home) held, with no path separator; with home /x/fx a same-uid path /x/fx-old/disk.qcow2 counted as under the fixture home and was deleted. The host-side input check only requires an absolute path without '..'"
+    }
+  ],
+  "nativeEvidenceLimits": [
+    "/proc is a temporary tree reached by rebasing builtins.open, os.listdir, os.readlink and os.stat for exact str paths under /proc, the only forms the shipped functions use; os.scandir, os.lstat, os.open, os.access, os.statvfs and io.open (so pathlib), and any other path type or spelling of /proc, fail the test instead of reading the real /proc; no real process, kernel exe link or descriptor exec is used",
+    "an unreadable /proc/<pid>/exe of another principal is simulated as PermissionError at os.readlink; kernel EACCES timing and the ' (deleted)' suffix after a binary upgrade are not reproduced",
+    "the cleanup-prefix defect has no native occurrence; its regression runs the shipped vm-cleanup program on a same-uid sibling directory of a temporary fixture home",
+    "the native rerun (vm-inventory and a refused vm-cleanup while a clone runs) remains required"
+  ]
+}

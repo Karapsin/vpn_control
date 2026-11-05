@@ -10,6 +10,38 @@ Permissions recorded in that earlier campaign do not authorize terminating this
 task's retained UNKNOWN work or changing the paused checkout. Use the current
 infrastructure ledger and resume guide for those boundaries.
 
+## Windows tool-recovery lane (committed 2026-11-05)
+
+At the user's request the Windows tool-recovery lane was committed locally on
+`dev` on 2026-11-05 (parent `2efd2569`, not pushed). It holds the nested SSH
+transport fix for gateway and local reboots (`test_ssh_gateway_reboot_ended`)
+and reusable generalized Windows fixture images: `windows_vm_image.py` with the
+`create`, `generalize`, `capture_image`, `images`, `retire_images`,
+`disk_logs`, `vm_inventory` and `vm_cleanup` API. Image schema 6 runs sysprep in
+the built-in Administrator's elevated interactive session; clone `246a3304`
+qualified natively and is left running as the Windows fixture. The commit also
+holds routine RED/GREEN regressions for the clone failures F3 to F3e
+(`test_windows_vm_image_failures`), the closed reason of unverified deploy
+replies (F6a), executable-based VM process detection (F6b), the strict
+fixture-home prefix of `vm_cleanup`, the Windows stale-registration projection
+(F1), dispatch review of the shipped image module, the private-output harness
+fixes, and the 2026-10-28 conservative Windows capacity policy that every
+image-round start used. By user decision the creator pre-VM writer `7e8b2dcd`
+keeps its frozen source pins and now refuses `source_epoch_changed`. Failure
+types, regressions and native limits are in the
+[recovery ledger](tool-recovery-ledger.md); original evidence is indexed by
+`.runtime/tool-recovery/windows-lane-20261103/handoff.json`.
+
+Open: push and exact-SHA CI were not requested. Native acceptance is still
+owed: a `vm_inventory` while clone `246a3304` runs must list its QEMU and
+swtpm. The F6a trigger is unresolved; read the next occurrence's `reason` and
+`capture`. The F3d guest-side guard has native evidence only. Follow-ups: the
+deploy policy's `no_tpm` check matches exact executable names, so a replaced
+`swtpm (deleted)` passes it, and Linux, Android and libvirt helpers still
+detect VMs by `argv` or `comm` only. Superseded image `0a762488` (holder
+unknown) and the failed clone roots `vc-rw-f7619b39` and `vc-rw-ee0d45b1`
+wait for `vm_cleanup` or `retire_images` while no VM runs.
+
 ## Recovery delivery follow-up (2026-10-27)
 
 The active recovery checkout is `/Users/karapsin_de/projects/vpn_control_tool_recovery`

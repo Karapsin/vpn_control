@@ -239,6 +239,9 @@ def _peer_main():
     print(json.dumps(value,separators=(',',':')))
 
 
+_INSTANCE_MODES=('start','status','stop','qualify','qualify-status','secure','secure-status','generalize','generalize-status','capture-image')
+
+
 def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None,media_reader=None,operation_id=None)->bytes:
     if mode in ('secure-resolve','secure-continue','secure-continue-status'):
         from . import windows_secure_recovery as recovery
@@ -255,10 +258,43 @@ def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None,media_rea
     if mode=='media':
         body='SPEC='+repr(spec.as_dict())+'\n'+media_body+inspect.getsource(media.media_main)+'\nmedia_main()\n'
         compile(body,'saved installer media observation','exec');return body.encode()
-    if mode in ('start','status','stop','qualify','qualify-status','secure','secure-status'):
+    if mode=='images':
+        from . import windows_vm_image as image
+        body=('SPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nSTORE_NAME='+repr(image.STORE_NAME)+'\nMAX_IMAGES='+repr(image.MAX_IMAGES)
+              +'\nIMAGE_SCHEMA_VERSION='+repr(image.IMAGE_SCHEMA_VERSION)+'\nIMAGE_FILES='+repr(image.IMAGE_FILES)+'\n'
+              +inspect.getsource(image.read_image)+'\n'+inspect.getsource(image.images_main)+'\nimages_main()\n')
+        compile(body,'saved Windows image listing','exec');return body.encode()
+    if mode=='disk-logs':
+        from . import windows_vm_image as image
+        body=('SPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nDISK_LOG_FILES='+repr(image.DISK_LOG_FILES)+'\nDISK_LOG_PRESENCE='+repr(image.DISK_LOG_PRESENCE)
+              +'\nDISK_LOG_FULL='+repr(image.DISK_LOG_FULL)+'\nDISK_LOG_EVENTS='+repr(image.DISK_LOG_EVENTS)+'\nDISK_LOG_REPORTS='+repr(image.DISK_LOG_REPORTS)+'\nDISK_LOG_LISTINGS='+repr(image.DISK_LOG_LISTINGS)+'\nEVTX_PATTERN='+repr(image.EVTX_PATTERN)+'\n'
+              +inspect.getsource(image.open_file_identities)+'\n'+inspect.getsource(image.evtx_records)+'\n'+inspect.getsource(image.list_entries)+'\n'+inspect.getsource(image.disk_logs_main)+'\ndisk_logs_main()\n')
+        compile(body,'saved Windows disk log read','exec');return body.encode()
+    if mode in ('vm-inventory','vm-cleanup'):
+        from . import windows_vm_image as image
+        body=('SPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nVM_PROCESS_NAMES='+repr(image.VM_PROCESS_NAMES)+'\nVM_GUEST_PROCESS_NAMES='+repr(image.VM_GUEST_PROCESS_NAMES)
+              +'\nINVENTORY_DETAIL='+repr(image.INVENTORY_DETAIL)+'\n'+inspect.getsource(image.vm_processes)+'\n')
+        if mode=='vm-inventory':body+=inspect.getsource(image.vm_inventory_main)+'\nvm_inventory_main()\n'
+        else:
+            value=context if type(context)is dict and set(context)=={'paths','keep'} else None
+            if (value is None or any(type(value[k])is not list or not 1<=len(value[k])<=256 for k in ('paths','keep'))
+                    or any(type(p)is not str or not p.startswith('/') or '\0' in p or '..' in p.split('/') for k in ('paths','keep') for p in value[k])):raise ValueError('vm_cleanup_input')
+            body+=('CLEANUP_PATHS='+repr(value['paths'])+'\nCLEANUP_KEEP='+repr(value['keep'])+'\n'+inspect.getsource(image.open_file_identities)+'\n'
+                   +inspect.getsource(image.vm_cleanup_main)+'\nvm_cleanup_main()\n')
+        compile(body,'saved VM storage '+mode,'exec');return body.encode()
+    if mode=='retire-images':
+        from . import windows_vm_image as image
+        import uuid
+        ids=(context or {}).get('imageIds') if type(context)is dict and set(context)=={'imageIds'} else None
+        if type(ids)is not list or not 1<=len(ids)<=image.MAX_IMAGES or len(set(ids))!=len(ids) or any(type(i)is not str or str(uuid.UUID(i))!=i for i in ids):raise ValueError('retire_images_input')
+        body=('SPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nSTORE_NAME='+repr(image.STORE_NAME)+'\nIMAGE_SCHEMA_VERSION='+repr(image.IMAGE_SCHEMA_VERSION)
+              +'\nIMAGE_IDS='+repr(ids)+'\n'+inspect.getsource(image.open_file_identities)+'\n'+inspect.getsource(image.retire_images_main)+'\nretire_images_main()\n')
+        compile(body,'saved Windows image retirement','exec');return body.encode()
+    if mode in _INSTANCE_MODES:
         from . import windows_vm_resources as resources,windows_vm_unattend as unattended,windows_vm_instance as instance,windows_vm_hardware as hardware,windows_vm_lifecycle as lifecycle
+        from . import windows_vm_image as image
         setup=unattended.parse_setup(setup)
-        if mode in ('qualify','qualify-status','secure','secure-status'):
+        if mode in ('qualify','qualify-status','secure','secure-status','generalize','generalize-status'):
             from . import windows_vm_guest as guest
             media_body+='import json,re\nOPERATION_ID='+repr(operation_id)+'\nPS_SCRIPT='+repr(guest.powershell_source(setup,operation_id))+'\n'
             media_body+=guest_rpc_definitions()+'\n'+inspect.getsource(guest.validate_setup_result)+'\n'+inspect.getsource(guest.qualify_instance)+'\n'
@@ -266,9 +302,24 @@ def program(spec:FreshWindowsVmSpec,mode:str,*,setup=None,context=None,media_rea
                 import uuid
                 check_id=str(uuid.uuid5(uuid.UUID(operation_id),'secure-setup-admission'))
                 media_body+='SECURE_SCRIPT='+repr(guest.secure_source(setup,operation_id))+'\nSECURE_CHECK_SCRIPT='+repr(guest.powershell_source(setup,check_id))+'\n'+inspect.getsource(guest.secure_instance)+'\n'
-        if type(context)is not dict or set(context)!={'hostBootId','pending'}:raise ValueError('deployment_context')
+            if mode in ('generalize','generalize-status'):
+                import uuid
+                check_id=str(uuid.uuid5(uuid.UUID(operation_id),'generalize-setup-admission'))
+                media_body+=('GENERALIZE_SCRIPT='+repr(image.generalize_source(setup,operation_id))+'\nGENERALIZE_CHECK_SCRIPT='+repr(guest.powershell_source(setup,check_id))
+                             +'\nGENERALIZE_FINAL='+repr(image.GENERALIZE_FINAL)+'\nGENERALIZE_FINAL_SHA256='+repr(image.GENERALIZE_FINAL_SHA256)
+                             +'\nGENERALIZE_PROBE_TEMPLATE='+repr(image.probe_template())+'\nPROBE_AFTER_SECONDS='+repr(image.PROBE_AFTER_SECONDS)
+                             +'\nPRE_EFFECT_REFUSALS='+repr(image.PRE_EFFECT_REFUSALS)+'\nIMAGE_ANSWER='+repr(image.image_answer_file(setup))+'\n'
+                             +inspect.getsource(image.refusal_token)+'\n'+inspect.getsource(image.generalize_instance)+'\n')
+        if mode=='capture-image':media_body+='OPERATION_ID='+repr(operation_id)+'\n'+inspect.getsource(image.capture_image_instance)+'\n'
+        media_body+=('STORE_NAME='+repr(image.STORE_NAME)+'\nBOOT_BLANK='+repr(image.BOOT_BLANK)+'\nBOOT_CLONE='+repr(image.BOOT_CLONE)
+                     +'\nIMAGE_SCHEMA_VERSION='+repr(image.IMAGE_SCHEMA_VERSION)+'\nIMAGE_FILES='+repr(image.IMAGE_FILES)+'\nCLONE_SPECIALIZE='+repr(image.CLONE_SPECIALIZE)+'\n'
+                     +inspect.getsource(image.read_image)+'\n'+inspect.getsource(image.clone_manifest_matches)+'\n')
+        if type(context)is not dict or not {'hostBootId','pending'}<=set(context)<={'hostBootId','pending','image','network'}:raise ValueError('deployment_context')
         import uuid
         if type(context['hostBootId'])is not str or str(uuid.UUID(context['hostBootId']))!=context['hostBootId'] or type(context['pending'])is not list:raise ValueError('deployment_context')
+        if 'image' in context:image.validate_context_image(context['image'])
+        if 'network' in context:image.validate_context_network(context['network'])
+        if 'image' in context and 'network' in context:raise ValueError('deployment_context')
         body=(media_body+resources.definitions()+'\nfrom xml.etree import ElementTree as ET\n'
               +'\nSPEC='+repr(spec.as_dict())+'\nMODE='+repr(mode)+'\nSETUP='+repr(setup)+'\nCONTEXT='+repr(context)+'\n'
               +'FIELDS='+repr(unattended.FIELDS)+'\nINITIALIZE='+repr(unattended.INITIALIZE)+'\nINSTALL_AGENT='+repr(unattended.INSTALL_AGENT)+'\nREASONS='+repr(tuple(sorted(_REASONS)))+'\n'
@@ -317,9 +368,9 @@ def validate_result(spec,mode,value):
         return dict(value)
     if value['state']=='blocked':
         if set(value)!=base or value['reason'] not in _REASONS:raise ValueError('deployment_response_blocker')
-    elif value['state']=='unknown' and mode in ('start','status','stop','qualify','qualify-status','secure','secure-status'):
+    elif value['state']=='unknown' and mode in _INSTANCE_MODES:
         if (set(value)!=base|{'failurePhase','failureClass','failureCheck'} or value['reason']!='instance_effect_or_observation_unknown'
-                or value['failurePhase'] not in ('resources','principal','preflight','media','credentials','create','firmware','disk','seed','tpm','qemu','first-boot','observation','qualification','secure')
+                or value['failurePhase'] not in ('resources','principal','preflight','media','image','credentials','create','firmware','disk','seed','tpm','qemu','first-boot','observation','qualification','secure','generalize','capture')
                 or value['failureClass'] not in ('OSError','ValueError','KeyError','TypeError','SubprocessError')
                 or value['failureCheck'] is not None and (type(value['failureCheck'])is not str or re.fullmatch('instance_[a-z_]{1,64}',value['failureCheck']) is None)):
             raise ValueError('deployment_instance_unknown')
@@ -346,6 +397,46 @@ def validate_result(spec,mode,value):
                 or value['positiveAbsence']is not True or value['productReady']is not False):raise ValueError('deployment_stop_response')
         for key in ('qemu','swtpm'):
             if type(value[key])is not dict or set(value[key])!={'pid','startTicks'} or any(type(x)is not int or x<=0 for x in value[key].values()):raise ValueError('deployment_stop_process')
+    elif mode in ('generalize','generalize-status') and value['state']in ('generalize-pending','generalize-submitted','generalize-running','generalize-failed','generalized-stopped'):
+        import uuid
+        extra={'operationId','productReady'}|{'generalize-running':{'guestAgentReady'},'generalize-failed':{'failure','sysprepErrors'},
+                                              'generalized-stopped':{'qemu','swtpm','positiveAbsence'}}.get(value['state'],set())
+        if (set(value)!=base|extra or value['reason']is not None or value['productReady']is not False
+                or type(value['operationId'])is not str or str(uuid.UUID(value['operationId']))!=value['operationId']
+                or value['state']=='generalized-stopped' and value['positiveAbsence']is not True
+                or value['state']=='generalize-running' and type(value['guestAgentReady'])is not bool
+                or value['state']=='generalize-failed' and len(json.dumps(value))>65536):raise ValueError('generalize_response')
+        if value['state']=='generalized-stopped':
+            for key in ('qemu','swtpm'):
+                if type(value[key])is not dict or set(value[key])!={'pid','startTicks'} or any(type(x)is not int or x<=0 for x in value[key].values()):raise ValueError('generalize_response')
+    elif mode=='capture-image' and value['state']=='image-captured':
+        import uuid
+        if (set(value)!=base|{'operationId','imageId','manifestSha256','productReady'} or value['reason']is not None or value['productReady']is not False
+                or type(value['operationId'])is not str or str(uuid.UUID(value['operationId']))!=value['operationId'] or value['imageId']!=value['operationId']
+                or type(value['manifestSha256'])is not str or re.fullmatch('[0-9a-f]{64}',value['manifestSha256'])is None):raise ValueError('capture_response')
+    elif mode=='disk-logs' and value['state']in ('disk-logs-observed','disk-logs-refused'):
+        if set(value)!=base|{'logs'} or value['reason']is not None or type(value['logs'])is not dict or len(json.dumps(value))>4*1024**2:raise ValueError('disk_logs_response')
+    elif mode=='vm-inventory' and value['state']=='vm-inventory-observed':
+        if set(value)!=base|{'inventory'} or value['reason']is not None or type(value['inventory'])is not dict or len(json.dumps(value))>4*1024**2:raise ValueError('vm_inventory_response')
+    elif mode=='vm-cleanup' and value['state']in ('vm-cleanup-done','vm-cleanup-refused'):
+        extra={'results','freeBytes'} if value['state']=='vm-cleanup-done' else {'results','processes'}
+        if set(value)!=base|extra or value['reason']is not None or type(value['results'])is not list or len(json.dumps(value))>1024**2:raise ValueError('vm_cleanup_response')
+    elif mode=='retire-images' and value['state']=='images-retired':
+        import uuid
+        if set(value)!=base|{'retired','refused'} or value['reason']is not None or type(value['retired'])is not list or type(value['refused'])is not list:raise ValueError('retire_images_response')
+        for row in value['retired']:
+            if (type(row)is not dict or set(row)!={'imageId','schemaVersion','bytes'} or type(row['bytes'])is not int or row['bytes']<0
+                    or type(row['imageId'])is not str or str(uuid.UUID(row['imageId']))!=row['imageId']):raise ValueError('retire_images_response')
+        for row in value['refused']:
+            if (type(row)is not dict or set(row)!={'imageId','reason'} or type(row['reason'])is not str or len(row['reason'])>80):raise ValueError('retire_images_response')
+    elif mode=='images' and value['state']=='images-observed':
+        from . import windows_vm_image as image
+        if (set(value)!=base|{'images','refusedImages'} or value['reason']is not None or type(value['images'])is not list or len(value['images'])>image.MAX_IMAGES
+                or type(value['refusedImages'])is not int or value['refusedImages']<0 or len(json.dumps(value))>1048576):raise ValueError('images_response')
+        for row in value['images']:
+            if (type(row)is not dict or set(row)!={'imageId','manifestSha256','manifest'} or type(row['manifest'])is not dict
+                    or row['manifest'].get('imageId')!=row['imageId'] or type(row['manifestSha256'])is not str or re.fullmatch('[0-9a-f]{64}',row['manifestSha256'])is None):raise ValueError('images_response')
+            image.validate_context_image({'imageId':row['imageId'],'manifestSha256':row['manifestSha256']})
     elif value['state']=='resources-observed' and mode=='host-resources':
         from . import windows_vm_resources as resources
         resources.measurement(value)

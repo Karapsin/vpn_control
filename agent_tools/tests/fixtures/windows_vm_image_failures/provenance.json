@@ -1,0 +1,388 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "baseCommit": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "module": "agent_tools/windows_vm_image.py",
+  "finding": "clone images of qualified Windows fixtures failed natively five times: schema 1 never delivered the clone answer after generalization (F3); the schema-2 and schema-3 image answers exceeded the 259-character RunSynchronousCommand Path limit, so Setup refused the whole answer file (F3c, also the real cause of the F3b failure); schema 4 ran the fixture setup in the post-generalize specialize pass, where Task Scheduler is not running, so the guest agent was never installed (F3e); schemas 4 and 5 generalized templates with sysprep running as SYSTEM and every host gate accepted, published, listed and selected them (F3d)",
+  "loader": "agent_tools/tests/test_windows_vm_image_failures.py executes each file as an isolated module with __package__ agent_tools after checking its sha256 here; relative imports resolve to agent_tools.windows_vm_unattend and agent_tools.windows_vm_guest",
+  "siblingsShippedByEveryListedOperation": {
+    "windows_vm_unattend.py": "1023536d57f860d40146710f09ad08fae19da1dc8adb7f3cb5d7911b74445d11",
+    "windows_vm_guest.py": "4ce8abc079e70ac09399a1d934ef7bee0f82571189c6e03597d8bdc170a1ba5e"
+  },
+  "privateCopiesCompared": {
+    ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/windows_vm_image.schema4.py.before.source": {
+      "sha256": "c31545ea35e8704a00e0befc8e779de4f55881c021a3d8a7cb454e7652ba4aca",
+      "retainedFor": ".runtime/windows-vm-deploy/0fe84426a71c4c3e80f1eabd2945dbe9 (disk-logs of f7619b39)",
+      "relation": "not the module of any template or clone operation; every top-level definition shared with windows_vm_image.schema4.py.before.source is AST-identical, it only adds the disk-log and vm-inventory/vm-cleanup definitions"
+    },
+    ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/windows_vm_image.schema5.py.before.source": {
+      "sha256": "df74dfcefd6a050f59b0361b798f01fb602acb256b7c8a5ce99e3f97c82c2db3",
+      "retainedFor": ".runtime/windows-vm-deploy/7945366d3f8146ad864930f04f999e18 (disk-logs of ee0d45b1)",
+      "relation": "not the module of any template or clone operation; identical to windows_vm_image.schema5.py.before.source except the later disk-log definitions (DISK_LOG_EVENTS, DISK_LOG_LISTINGS, EVTX_PATTERN, disk_logs_main, evtx_records, list_entries)"
+    }
+  },
+  "greenReference": {
+    "sha256": "9e22d508c656507234a408e2fac1e7a8f0ddf7deea48d41d84c2383aff967172",
+    "imageSchemaVersion": 6,
+    "operations": [
+      {
+        "correlationId": "ae5bdd69da49404eb19e6d11df9ae679",
+        "mode": "generalize",
+        "deploymentId": "470536b3-c24a-4346-929e-34652201d7dc",
+        "operationId": "00401253-7420-4b94-b83e-f963d346ccb5",
+        "retainedSource": ".runtime/windows-vm-deploy/ae5bdd69da49404eb19e6d11df9ae679/sources/windows_vm_image.py",
+        "retainedManifest": ".runtime/windows-vm-deploy/ae5bdd69da49404eb19e6d11df9ae679/sources/manifest.json"
+      },
+      {
+        "correlationId": "9b54da1c33cf414d9c0357dce32d36ec",
+        "mode": "capture-image",
+        "deploymentId": "470536b3-c24a-4346-929e-34652201d7dc",
+        "operationId": "637199a5-2b4d-4996-8a40-1e9a90f0b8e0",
+        "imageId": "637199a5-2b4d-4996-8a40-1e9a90f0b8e0",
+        "manifestSha256": "31e6a8ef139833c467cbf3db9d1d3227b30bcabc1fbd91939f514e404cadaf4c",
+        "retainedSource": ".runtime/windows-vm-deploy/9b54da1c33cf414d9c0357dce32d36ec/sources/windows_vm_image.py",
+        "retainedManifest": ".runtime/windows-vm-deploy/9b54da1c33cf414d9c0357dce32d36ec/sources/manifest.json"
+      },
+      {
+        "correlationId": "eeb379e475d84d31a8b0cfa37a107580",
+        "mode": "start",
+        "deploymentId": "246a3304-86f3-4e96-bf47-d53c28f83a27",
+        "imageId": "637199a5-2b4d-4996-8a40-1e9a90f0b8e0",
+        "retainedSource": ".runtime/windows-vm-deploy/eeb379e475d84d31a8b0cfa37a107580/sources/windows_vm_image.py",
+        "retainedManifest": ".runtime/windows-vm-deploy/eeb379e475d84d31a8b0cfa37a107580/sources/manifest.json"
+      }
+    ],
+    "nativeOutcome": "round 6: clone 246a3304 reached the Windows desktop with its guest agent and qualified setupReady; the routine tests evaluate the live agent_tools/windows_vm_image.py, whose image paths are unchanged from these bytes",
+    "privateEvidence": [
+      ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/round6/",
+      ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3d-round6.json",
+      ".runtime/tool-recovery/windows-lane-20261103/handoff.json"
+    ]
+  },
+  "files": {
+    "windows_vm_image.schema1.py.before.source": {
+      "sha256": "24e00489bb212c09e5508c1acbe075a48e8c1f0dcd05e2b1edb8ba639e32b387",
+      "bytes": 34956,
+      "imageSchemaVersion": 1,
+      "failureTypes": [
+        "F3-clone-oobe-answer-file"
+      ],
+      "operations": [
+        {
+          "correlationId": "b4593256e80841a2b93a76c04eb756ab",
+          "mode": "generalize",
+          "deploymentId": "2b56358e-9f89-4ab2-8075-fb1ec8e16913",
+          "operationId": "20e4721a-c961-4f09-b84c-7acab3a8cb37",
+          "retainedSource": ".runtime/windows-vm-deploy/b4593256e80841a2b93a76c04eb756ab/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/b4593256e80841a2b93a76c04eb756ab/sources/manifest.json"
+        },
+        {
+          "correlationId": "0e58e70f982b4c15ad5ab4e1816a514a",
+          "mode": "capture-image",
+          "deploymentId": "2b56358e-9f89-4ab2-8075-fb1ec8e16913",
+          "operationId": "21b57093-b299-46cb-b911-818434f15a51",
+          "imageId": "21b57093-b299-46cb-b911-818434f15a51",
+          "manifestSha256": "993c21a6c74f8fcb8ee414ba9fa87c0357b2cbcbec13129226f38e0624f5cce3",
+          "retainedSource": ".runtime/windows-vm-deploy/0e58e70f982b4c15ad5ab4e1816a514a/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/0e58e70f982b4c15ad5ab4e1816a514a/sources/manifest.json"
+        },
+        {
+          "correlationId": "523055efe2bc46a69587155c3db9e6e0",
+          "mode": "images",
+          "deploymentId": "d2a8f909-eb91-4598-a9e6-b83ede7fa488",
+          "retainedSource": ".runtime/windows-vm-deploy/523055efe2bc46a69587155c3db9e6e0/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/523055efe2bc46a69587155c3db9e6e0/sources/manifest.json"
+        },
+        {
+          "correlationId": "d21578fde40e4b3b9694f25419c78f4f",
+          "mode": "start",
+          "deploymentId": "d2a8f909-eb91-4598-a9e6-b83ede7fa488",
+          "imageId": "21b57093-b299-46cb-b911-818434f15a51",
+          "retainedSource": ".runtime/windows-vm-deploy/d21578fde40e4b3b9694f25419c78f4f/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/d21578fde40e4b3b9694f25419c78f4f/sources/manifest.json"
+        }
+      ],
+      "roundControllerPins": [
+        ".runtime/tool-recovery/windows-lane-20261103/fresh-2b56358e-generalize-20e4721a-c961-4f09-b84c-7acab3a8cb37/source-pins.json",
+        ".runtime/tool-recovery/windows-lane-20261103/template-2b56358e-capture-21b57093-b299-46cb-b911-818434f15a51/source-pins.json"
+      ],
+      "nativeOutcome": "clone d2a8f909 of schema-1 image 21b57093 stopped at the first interactive OOBE page with no guest agent: the template ran sysprep without an answer file and Windows did not read the clone seed volume Autounattend.xml after generalization",
+      "privateEvidence": [
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/failure.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/clone-oobe-hi-there.frame.png",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green.log",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/generalize-20e4721a.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/capture-21b57093.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/clone-d2a8f909-start.caller.py.before.source"
+      ]
+    },
+    "windows_vm_image.schema2.py.before.source": {
+      "sha256": "fb5abe1b159da886a5874e8ac510e6f018f8afa831f8c2c6e2104ba2f2189fdb",
+      "bytes": 38691,
+      "imageSchemaVersion": 2,
+      "failureTypes": [
+        "F3b-clone-specialize-cached-answer (native failure; its recorded cause was misattributed)",
+        "F3c-image-answer-path-limit"
+      ],
+      "operations": [
+        {
+          "correlationId": "fc0e83f8f5fb425d94ca86900b753d67",
+          "mode": "generalize",
+          "deploymentId": "eead8510-099b-45b8-b576-0adbbe5448f3",
+          "operationId": "d344484a-07a9-43de-9bd5-9d7b5da382da",
+          "retainedSource": ".runtime/windows-vm-deploy/fc0e83f8f5fb425d94ca86900b753d67/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/fc0e83f8f5fb425d94ca86900b753d67/sources/manifest.json"
+        },
+        {
+          "correlationId": "d46e38549f184fa0819aa81fe5858c59",
+          "mode": "capture-image",
+          "deploymentId": "eead8510-099b-45b8-b576-0adbbe5448f3",
+          "operationId": "19d89a6b-099b-4d6a-bd58-d720035c5dc6",
+          "imageId": "19d89a6b-099b-4d6a-bd58-d720035c5dc6",
+          "manifestSha256": "10b6791199255be2d6a6c6e58bd950f70a7959688d0a12e88eb4ae03d8ac9224",
+          "retainedSource": ".runtime/windows-vm-deploy/d46e38549f184fa0819aa81fe5858c59/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/d46e38549f184fa0819aa81fe5858c59/sources/manifest.json"
+        },
+        {
+          "correlationId": "32bad6bc2c0f4737b703deb637ac80c8",
+          "mode": "images",
+          "deploymentId": "f5584e4c-e0e7-4f93-b321-c219c3f42ba7",
+          "retainedSource": ".runtime/windows-vm-deploy/32bad6bc2c0f4737b703deb637ac80c8/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/32bad6bc2c0f4737b703deb637ac80c8/sources/manifest.json"
+        },
+        {
+          "correlationId": "f3e37fd962c24a60ab4cd19a4d1562ca",
+          "mode": "start",
+          "deploymentId": "f5584e4c-e0e7-4f93-b321-c219c3f42ba7",
+          "imageId": "19d89a6b-099b-4d6a-bd58-d720035c5dc6",
+          "retainedSource": ".runtime/windows-vm-deploy/f3e37fd962c24a60ab4cd19a4d1562ca/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/f3e37fd962c24a60ab4cd19a4d1562ca/sources/manifest.json"
+        }
+      ],
+      "roundControllerPins": [
+        ".runtime/tool-recovery/windows-lane-20261103/auto-eead8510-099b-45b8-b576-0adbbe5448f3/generalize-d344484a-07a9-43de-9bd5-9d7b5da382da/source-pins.json",
+        ".runtime/tool-recovery/windows-lane-20261103/auto-eead8510-099b-45b8-b576-0adbbe5448f3/capture-19d89a6b-099b-4d6a-bd58-d720035c5dc6/source-pins.json"
+      ],
+      "nativeOutcome": "clone f5584e4c of schema-2 image 19d89a6b: Windows Setup could not parse or process the answer file for the specialize pass; the executed image answer RunSynchronousCommand Path was 705 characters",
+      "privateEvidence": [
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/failure-f3b.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/clone-f5584e4c-specialize-invalid-answer.frame.png",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3b.log",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3c.log",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/generalize-eead8510.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/start-f5584e4c.caller.py.before.source"
+      ]
+    },
+    "windows_vm_image.schema3.py.before.source": {
+      "sha256": "244a7e62c3ac5ac6bfe18a96bdd169e00762a815c28c134c1b6eab151a828006",
+      "bytes": 38598,
+      "imageSchemaVersion": 3,
+      "failureTypes": [
+        "F3c-image-answer-path-limit"
+      ],
+      "operations": [
+        {
+          "correlationId": "4da25bb9bbe449c0b121f240998df326",
+          "mode": "generalize",
+          "deploymentId": "7ab03529-612c-46b0-ab35-fc3f3438c1a7",
+          "operationId": "b1bdb13f-a20a-4292-995a-f79ab1aa0b45",
+          "retainedSource": ".runtime/windows-vm-deploy/4da25bb9bbe449c0b121f240998df326/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/4da25bb9bbe449c0b121f240998df326/sources/manifest.json"
+        },
+        {
+          "correlationId": "6646058af7114d4b89010f52a21fcb31",
+          "mode": "capture-image",
+          "deploymentId": "7ab03529-612c-46b0-ab35-fc3f3438c1a7",
+          "operationId": "2e5e38fb-48f6-4ddb-a513-d1646217457c",
+          "imageId": "2e5e38fb-48f6-4ddb-a513-d1646217457c",
+          "manifestSha256": "e66c06a4317fb15695141eb5fc814370f72634c2354e586e53c0fb39c92c84df",
+          "retainedSource": ".runtime/windows-vm-deploy/6646058af7114d4b89010f52a21fcb31/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/6646058af7114d4b89010f52a21fcb31/sources/manifest.json"
+        },
+        {
+          "correlationId": "c893358ae3dc466983419f1d309bd361",
+          "mode": "images",
+          "deploymentId": "545113da-cf81-4bda-8e73-42fc39bb2cec",
+          "retainedSource": ".runtime/windows-vm-deploy/c893358ae3dc466983419f1d309bd361/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/c893358ae3dc466983419f1d309bd361/sources/manifest.json"
+        },
+        {
+          "correlationId": "febf3d276e0b49bb86889f9233acaef6",
+          "mode": "start",
+          "deploymentId": "545113da-cf81-4bda-8e73-42fc39bb2cec",
+          "imageId": "2e5e38fb-48f6-4ddb-a513-d1646217457c",
+          "retainedSource": ".runtime/windows-vm-deploy/febf3d276e0b49bb86889f9233acaef6/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/febf3d276e0b49bb86889f9233acaef6/sources/manifest.json"
+        }
+      ],
+      "roundControllerPins": [
+        ".runtime/tool-recovery/windows-lane-20261103/auto-7ab03529-612c-46b0-ab35-fc3f3438c1a7/generalize-b1bdb13f-a20a-4292-995a-f79ab1aa0b45/source-pins.json",
+        ".runtime/tool-recovery/windows-lane-20261103/auto-7ab03529-612c-46b0-ab35-fc3f3438c1a7/capture-2e5e38fb-48f6-4ddb-a513-d1646217457c/source-pins.json"
+      ],
+      "nativeOutcome": "clone 545113da of schema-3 image 2e5e38fb: the same Setup answer-file dialog as F3b although the hook no longer touched the cached answer; the executed image answer RunSynchronousCommand Path was 417 characters",
+      "privateEvidence": [
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/failure-f3c.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/clone-545113da-specialize-invalid-answer.frame.png",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3c.log",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/generalize-7ab03529.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/start-545113da.caller.py.before.source"
+      ]
+    },
+    "windows_vm_image.schema4.py.before.source": {
+      "sha256": "ceb5cf093ed7b96a49ef500d7de6aadea99b2de93219daf334b848b512d8bec3",
+      "bytes": 38528,
+      "imageSchemaVersion": 4,
+      "failureTypes": [
+        "F3e-clone-specialize-no-task-scheduler",
+        "F3d-clone-new-profile-explorer-failfast (round 4)"
+      ],
+      "operations": [
+        {
+          "correlationId": "fab9fa9c41cc4840bea6bec82d24041d",
+          "mode": "start",
+          "deploymentId": "c21b6a04-0b74-4c6b-9aef-00a076b086b9",
+          "retainedSource": ".runtime/windows-vm-deploy/fab9fa9c41cc4840bea6bec82d24041d/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/fab9fa9c41cc4840bea6bec82d24041d/sources/manifest.json"
+        },
+        {
+          "correlationId": "f8632af9403349338f609b8b91ccbab9",
+          "mode": "generalize",
+          "deploymentId": "c21b6a04-0b74-4c6b-9aef-00a076b086b9",
+          "operationId": "a923f8f9-7c6e-4d32-85fc-486a50a3a48e",
+          "retainedSource": ".runtime/windows-vm-deploy/f8632af9403349338f609b8b91ccbab9/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/f8632af9403349338f609b8b91ccbab9/sources/manifest.json"
+        },
+        {
+          "correlationId": "532cba260d55446eafe71ddd6bab8f59",
+          "mode": "capture-image",
+          "deploymentId": "c21b6a04-0b74-4c6b-9aef-00a076b086b9",
+          "operationId": "0a762488-785e-46ee-b55c-3c2430732ff5",
+          "imageId": "0a762488-785e-46ee-b55c-3c2430732ff5",
+          "manifestSha256": "f553a946ce6dd13a3dd0e6eff4daf91e3d4bd7c6e0ffc7277600ec41735802ab",
+          "retainedSource": ".runtime/windows-vm-deploy/532cba260d55446eafe71ddd6bab8f59/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/532cba260d55446eafe71ddd6bab8f59/sources/manifest.json"
+        }
+      ],
+      "cloneOperationsWithEquivalentSource": {
+        "sha256": "f12670ffa4c1d9e021170048b85a7c3c876cd3df4ae513b9dd6b0e6b63a81055",
+        "equivalence": "every top-level definition shared with this file is AST-identical; it only adds open_file_identities, retire_images_main and the vm-inventory/vm-cleanup definitions",
+        "operations": [
+          {
+            "correlationId": "8e76f98e5aef49169501981d36558a00",
+            "mode": "images",
+            "deploymentId": "f7619b39-6e79-4d69-a833-d109cdc2d296",
+            "retainedSource": ".runtime/windows-vm-deploy/8e76f98e5aef49169501981d36558a00/sources/windows_vm_image.py",
+            "retainedManifest": ".runtime/windows-vm-deploy/8e76f98e5aef49169501981d36558a00/sources/manifest.json"
+          },
+          {
+            "correlationId": "2d2093669dc74884aeaeedbcb2d37f06",
+            "mode": "start",
+            "deploymentId": "f7619b39-6e79-4d69-a833-d109cdc2d296",
+            "imageId": "0a762488-785e-46ee-b55c-3c2430732ff5",
+            "retainedSource": ".runtime/windows-vm-deploy/2d2093669dc74884aeaeedbcb2d37f06/sources/windows_vm_image.py",
+            "retainedManifest": ".runtime/windows-vm-deploy/2d2093669dc74884aeaeedbcb2d37f06/sources/manifest.json"
+          }
+        ]
+      },
+      "roundControllerPins": [
+        ".runtime/tool-recovery/windows-lane-20261103/auto-c21b6a04-0b74-4c6b-9aef-00a076b086b9/generalize-a923f8f9-7c6e-4d32-85fc-486a50a3a48e/source-pins.json",
+        ".runtime/tool-recovery/windows-lane-20261103/auto-c21b6a04-0b74-4c6b-9aef-00a076b086b9/capture-0a762488-785e-46ee-b55c-3c2430732ff5/source-pins.json"
+      ],
+      "nativeOutcome": "clone f7619b39 of schema-4 image 0a762488: the hook and the per-clone oobeSystem worked (accounts and automatic logon applied), but initialize.ps1 ran in the post-generalize specialize pass and Register-ScheduledTask failed 0x80041315, so the guest agent was never installed (F3e); the user OOBE exited, Setup resealed to OOBE and Explorer failed fast (F3d) on a template that sysprep had generalized as SYSTEM",
+      "privateEvidence": [
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/failure-f3d.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-f7619b39-disk-logs/",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3d-f3e.preliminary.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3d-f3e.round5.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red_green_f3d_f3e.py",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/beforeimages-f3d-f3e.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/start-c21b6a04-template.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/generalize-c21b6a04.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/capture-c21b6a04.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/start-f7619b39.caller.py.before.source",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/rootcause-wf_bb36f3f2-a7d.json"
+      ]
+    },
+    "windows_vm_image.schema5.py.before.source": {
+      "sha256": "38a6bd6b40fc9cbef6d602a533eb5ed9b3dbca66f975e06c6b165f0506f43f44",
+      "bytes": 55996,
+      "imageSchemaVersion": 5,
+      "failureTypes": [
+        "F3d-clone-new-profile-explorer-failfast (round 5)"
+      ],
+      "operations": [
+        {
+          "correlationId": "5d319a35483946a08c9bae3840f86a47",
+          "mode": "start",
+          "deploymentId": "bd5e459e-10b9-47ff-9c8c-434d4faa810a",
+          "network": "restricted",
+          "retainedSource": ".runtime/windows-vm-deploy/5d319a35483946a08c9bae3840f86a47/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/5d319a35483946a08c9bae3840f86a47/sources/manifest.json"
+        },
+        {
+          "correlationId": "b2da799178094254b1e5cbce4f9905c4",
+          "mode": "generalize",
+          "deploymentId": "bd5e459e-10b9-47ff-9c8c-434d4faa810a",
+          "operationId": "d8bf5906-366d-44ed-b3d7-3addf9b83d68",
+          "retainedSource": ".runtime/windows-vm-deploy/b2da799178094254b1e5cbce4f9905c4/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/b2da799178094254b1e5cbce4f9905c4/sources/manifest.json"
+        },
+        {
+          "correlationId": "b7ab9eef8ce04df0aeecf65dfa9cd2ac",
+          "mode": "capture-image",
+          "deploymentId": "bd5e459e-10b9-47ff-9c8c-434d4faa810a",
+          "operationId": "4f3af408-7b73-42b7-b822-edda360f9016",
+          "imageId": "4f3af408-7b73-42b7-b822-edda360f9016",
+          "manifestSha256": "d558f3b657d163f982e16b3173be11b67c118ea93e485cbdb55df3c6a16b5228",
+          "retainedSource": ".runtime/windows-vm-deploy/b7ab9eef8ce04df0aeecf65dfa9cd2ac/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/b7ab9eef8ce04df0aeecf65dfa9cd2ac/sources/manifest.json"
+        },
+        {
+          "correlationId": "af8611291b0c43639fc16fa5b658c06a",
+          "mode": "images",
+          "deploymentId": "ee0d45b1-07f5-4024-8d83-3f711dad66bd",
+          "retainedSource": ".runtime/windows-vm-deploy/af8611291b0c43639fc16fa5b658c06a/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/af8611291b0c43639fc16fa5b658c06a/sources/manifest.json"
+        },
+        {
+          "correlationId": "e6e346757a1a49718dfe89472448c85f",
+          "mode": "start",
+          "deploymentId": "ee0d45b1-07f5-4024-8d83-3f711dad66bd",
+          "imageId": "4f3af408-7b73-42b7-b822-edda360f9016",
+          "retainedSource": ".runtime/windows-vm-deploy/e6e346757a1a49718dfe89472448c85f/sources/windows_vm_image.py",
+          "retainedManifest": ".runtime/windows-vm-deploy/e6e346757a1a49718dfe89472448c85f/sources/manifest.json"
+        }
+      ],
+      "roundControllerPins": [
+        ".runtime/tool-recovery/windows-lane-20261103/auto-bd5e459e-10b9-47ff-9c8c-434d4faa810a/generalize-d8bf5906-366d-44ed-b3d7-3addf9b83d68/source-pins.json",
+        ".runtime/tool-recovery/windows-lane-20261103/auto-bd5e459e-10b9-47ff-9c8c-434d4faa810a/capture-4f3af408-7b73-42b7-b822-edda360f9016/source-pins.json"
+      ],
+      "nativeOutcome": "clone ee0d45b1 of schema-5 image 4f3af408 (offline template, template TPM state, SetupComplete.cmd agent setup): the guest agent became ready (F3e fixed) but no user session ever appeared and six qualifications stayed setupReady false; the template had again been generalized by sysprep running as SYSTEM from a scheduled task minutes after its own OOBE, capturing defaultuser0",
+      "privateEvidence": [
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3d-round6.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red-green-f3d-round6.preliminary.json",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/red_green_f3d_round6.py",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/round5/",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-ee0d45b1-disk-logs/",
+        ".runtime/tool-recovery/windows-lane-20261103/image-round5.log",
+        ".runtime/tool-recovery/windows-lane-20261103/clone-oobe-failure-evidence/rootcause-wf_bb36f3f2-a7d.json"
+      ]
+    }
+  },
+  "corrections": [
+    "the executed schema-3 image answer RunSynchronousCommand Path is 417 characters (retained module 244a7e62 and caller 4da25bb9), not the 470 recorded in failure-f3c.json and handoff.json discoveredFailureTypes",
+    "F3b has no separate causal regression: the cached-answer overwrite is not shown to have run natively, and the observed failure is fully explained by the 705-character schema-2 Path that Setup refused at parse time, before the hook could run; its native failure is the schema-2 case of the F3c regression, and keeping the cached answer untouched is asserted only on the current module as hardening",
+    "F3d also covers round 4 (schema 4): its template was generalized as SYSTEM through the same unfixed gates"
+  ],
+  "nativeEvidenceLimits": [
+    "Setup refusing a whole answer file whose RunSynchronousCommand Path exceeds 259 characters is documented by Microsoft and was observed natively; the regression models it from the parsed XML and does not run Windows Setup",
+    "that Setup does not read the clone seed volume Autounattend.xml after generalization and discovers %WINDIR%\\Panther\\Unattend\\Unattend.xml at the beginning of oobeSystem is documented and native-only; the regression models where the generated hook and per-clone script place the clone answer",
+    "Setup's handling of its cached %WINDIR%\\Panther\\unattend.xml and of HKLM\\SYSTEM\\Setup UnattendFile is native-only",
+    "Task Scheduler not running in the post-generalize specialize pass (0x80041315) and SetupComplete.cmd running as SYSTEM after Setup are native facts; the regression models which pass runs the fixture setup, whose initialize.ps1 calls Register-ScheduledTask",
+    "XAML AppX package registration skipped by SYSTEM-context sysprep, the defaultuser0 capture, the user OOBE exit and Explorer's first-sign-in fail-fast are native-only; the regression covers the host gates that now refuse such a template (generalize result contract, capture, listing, selection and clone start admission) and the disk-evidence predicate template_evidence_ok, which the coordinator applies to a stopped template's disk logs before capture and which capture does not call",
+    "the PowerShell and cmd interpreters in the test cover only the statements these generated artifacts use and refuse anything else; they do not prove PowerShell or cmd semantics",
+    "the guest-side F3d decision (the setup step arming sysprep for the built-in Administrator's interactive logon and the final step's TEMPLATE_SYSPREP_CONTEXT guard) has native evidence only (round 6); the guest prints its sysprepPrincipal literally, and test_windows_vm_image.SysprepContextTests are source-text guards of it, not reproducers"
+  ],
+  "routineSuite": "agent_tools.tests.test_windows_vm_image_failures (selected through static imports of windows_vm_image and windows_vm_unattend and literal fixture names)"
+}

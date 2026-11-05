@@ -3173,7 +3173,8 @@ def _valid_uuid(value: str) -> bool:
         return False
 
 
-_STALE_REGISTRATION_REFUSALS = frozenset({"macos_custody_source_changed", "android_lifecycle_spec_changed"})
+_STALE_REGISTRATION_REFUSALS = frozenset({"macos_custody_source_changed", "android_lifecycle_spec_changed",
+                                          "windows_original_intent_changed", "windows_registration_changed"})
 
 
 def _readiness_provider_refusal(tool: str, error: BaseException) -> dict[str, Any]:

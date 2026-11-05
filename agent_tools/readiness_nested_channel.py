@@ -47,6 +47,13 @@ class DirectoryMembershipChanged(NestedUnknown):
         self.correlation=correlation;self.receipt=receipt;self.proof=proof;self.records_fingerprint=records_fingerprint
 
 
+class NestedEndedAcrossGatewayReboot(NestedEnded):
+    """The READY original's gateway rebooted: a positive end; history is kept."""
+    def __init__(self,correlation,receipt,evidence,records_fingerprint):
+        super().__init__('nested_original_gateway_reboot')
+        self.correlation=correlation;self.receipt=receipt;self.evidence=evidence;self.records_fingerprint=records_fingerprint
+
+
 def directory(root,host):
     if type(host)is not str or transport._ALIAS_RE.fullmatch(host)is None:raise NestedUnknown('nested_host')
     return Path(root).absolute()/GROUP/host
@@ -77,9 +84,14 @@ def _original_records(root,host,corr,receipt):
         if version==3:
             config=config_pin.load_config(root);target=config.hosts[host]
             if target.transport!='nested' or len(transport._route_hosts(config.hosts,host))!=2:raise NestedUnknown('nested_route')
+        # Retained pins equal the live ones, or all moved together with one
+        # local volume renumbering (see channel.same_records_after_local_reboot).
+        renumbered=channel.same_records_after_local_reboot((
+            (value.get('inventory'),config_pin.pin(),channel.directory_device(base)),
+            (admitted.get('intent'),intent.pin(),channel.directory_device(parent))))
         if (version not in (2,3) or value.get('host')!=host or value.get('correlationId')!=corr
-                or value.get('transportMode')!='direct' or value.get('inventory')!=config_pin.pin()
-                or ready.digest!=receipt or admitted.get('intent')!=intent.pin()):raise NestedUnknown('nested_original_binding')
+                or value.get('transportMode')!='direct' or renumbered is False or ready.digest!=receipt):
+            raise NestedUnknown('nested_original_binding')
         # The complete historical fixed source catalog is retained as data.
         # Never import an old local module or substitute current source bytes.
         from . import ssh_direct_nested_channel as direct
@@ -164,8 +176,26 @@ def _original(root,host,corr,receipt,deadline=None):
                 and actual.get('correlationId')==corr and actual.get('prior')==admitted.get('result')
                 and actual.get('gatewayBoot')==admitted['result']['master']['gatewayBoot']):
             raise NestedEnded('nested_original_ended')
+        rebooted=channel.gateway_reboot_end(actual,corr,admitted.get('result'))
+        if rebooted is not None:
+            # A different boot proves the end only if the answer came over the
+            # original's own authenticated gateway route.
+            if not _original_authority(root,host,value):raise NestedUnknown('nested_original_authority_changed')
+            guard();raise NestedEndedAcrossGatewayReboot(corr,receipt,rebooted,fingerprint)
         if actual!=admitted.get('result'):raise NestedUnknown('nested_original_changed')
         return _metadata(actual,corr,receipt)
+
+
+def _original_authority(root,host,value):
+    """The original's recorded outer route authority still matches the live route."""
+    from . import ssh_direct_nested_channel as direct
+    with private.Directory(Path(root).resolve(strict=True))as base,direct.Guard(root,host,legacy=value.get('version')!=3)as current:
+        recorded=value.get('inventory');new=channel.directory_device(base)
+        generation=recorded.get('generation') if type(recorded)is dict else None
+        old=generation[0] if type(generation)is list and generation and type(generation[0])is int and generation[0]!=new else None
+        matched=direct.recorded_authority_continuity(session,value,current.authority,old,new)
+        current.guard();base.guard()
+        return matched
 
 
 def admit(root,host,corr,receipt):
@@ -363,15 +393,19 @@ def _ended_selection(stack,root,host,current,predecessor):
 def membership_successor(root,host,correlation,receipt,deadline=None):
     """Hold a positively unusable immutable original while creating another.
 
-    Source/custody drift other than the finite directory-membership condition
-    never issues this scope. Closing it invalidates every retained reference.
-    The selection names this original, or a later successor whose exact
-    retained terminal proves it ended; the original itself stays unresolved.
+    Only two finite conditions issue this scope: the directory-membership
+    change, or a positive end across a gateway reboot of the original's READY
+    master. Other source/custody drift never does. Closing it invalidates
+    every retained reference. The selection names this original, or a later
+    successor whose exact retained terminal proves it ended; the original
+    itself stays unresolved and gains no terminal here.
     """
     _guard_binding_source()
     with private.Directory(directory(root,host))as selected,private.Snapshot(selected,'current.json')as pointer,ExitStack()as held_selection:
+        rebooted=None
         try:_original(root,host,correlation,receipt,deadline)
         except DirectoryMembershipChanged as observed:diagnosed_fingerprint=observed.records_fingerprint
+        except NestedEndedAcrossGatewayReboot as observed:diagnosed_fingerprint=observed.records_fingerprint;rebooted=observed.evidence
         else:raise NestedUnknown('nested_successor_original_not_unavailable')
         pointer.guard();selected.guard()
         current=json.loads(pointer.body,object_pairs_hook=transport._reject_duplicate_keys)
@@ -380,8 +414,20 @@ def membership_successor(root,host,correlation,receipt,deadline=None):
             selection_guard=_ended_selection(held_selection,root,host,current,correlation)
         with _original_records(root,host,correlation,receipt)as(_config,_target,_intent,_admitted,_remote,guard,_fingerprint):
             if _fingerprint!=diagnosed_fingerprint:raise NestedUnknown('nested_successor_original_generation_changed')
+            witness=None
+            journal_path=channel._context_journal(root,host,correlation,False,True)
+            if rebooted is not None and not os.path.lexists(journal_path/(correlation+'.terminal.json')):
+                # Keep the observation that authorises this successor. It is a
+                # create-only witness only: the original gains no terminal, and
+                # an original that already ended on its READY boot gains nothing.
+                try:
+                    with private.ownership(Path(root).resolve(strict=True)):
+                        journal=held_selection.enter_context(private.Directory(journal_path))
+                        witness=channel.retain_gateway_reboot_end(held_selection,journal,rebooted,receipt)
+                except ValueError as error:raise NestedUnknown('nested_original_witness_changed') from error
             def held_guard():
                 pointer.guard();selected.guard();selection_guard();guard();_guard_binding_source()
+                if witness is not None:witness.guard()
             proof=_MembershipSuccessor(str(Path(root).resolve(strict=True)),host,correlation,receipt,held_guard)
             held_guard()
             try:yield proof

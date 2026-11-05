@@ -222,6 +222,20 @@ def _vm_main():
             binaries={}
             for name in ('qemu-system-x86_64','qemu-img','swtpm','virt-fw-vars','xorriso'):
                 path=shutil.which(name,path='/usr/bin:/bin');require(path is not None,'instance_binary');binaries[name]=pin(os.path.realpath(path),executable=True)[0]
+            image=CONTEXT.get('image');image_fds={}
+            if image is not None:
+                # A published generalized image replaces only the blank disk and
+                # firmware variables; media, answer file and setup are unchanged.
+                phase='image'
+                store=root.parent/STORE_NAME;manifest,_=read_image(store,image['imageId'],image['manifestSha256'])
+                require(clone_manifest_matches(manifest,SPEC,SETUP,selected_image),'instance_image_mismatch')
+                for name in ('disk.qcow2','uefi-vars.fd','tpm2-00.permall'):
+                    fd=os.open(store/image['imageId']/name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);image_fds[name]=fd;s=os.fstat(fd)
+                    require([s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]==manifest['files'][name]['identity'],'instance_image_file_changed')
+                firmware_raw=os.read(image_fds['uefi-vars.fd'],64*1024**2+1)
+                require(0<len(firmware_raw)<=64*1024**2 and hashlib.sha256(firmware_raw).hexdigest()==manifest['files']['uefi-vars.fd']['sha256'],'instance_image_file_changed')
+                tpm_raw=os.read(image_fds['tpm2-00.permall'],16*1024**2+1)
+                require(0<len(tpm_raw)<=16*1024**2 and hashlib.sha256(tpm_raw).hexdigest()==manifest['files']['tpm2-00.permall']['sha256'],'instance_image_file_changed')
             phase='credentials'
             credentials=json.loads(sys.stdin.buffer.read(4097));answer=answer_file(SETUP,credentials);credentials.clear()
             phase='create'
@@ -232,25 +246,41 @@ def _vm_main():
                               'rootIdentity':list(structure(os.lstat(root))),
                               'assetIdentities':{name:{'set':asset_sets[name],'generation':list(generation(os.fstat(assets[name])))} for name in source_names}})
             save('installer-image.json',{'installerSha256':SPEC['assets']['installer']['sha256'],'image':selected_image})
+            if image is not None:save('clone-image.json',{'imageId':image['imageId'],'manifestSha256':image['manifestSha256'],'backing':str(store/image['imageId']/'disk.qcow2'),'imageCreatedAtUnixMs':manifest['createdAtUnixMs']})
             for name in ('tpm','seed'):os.mkdir(root/name,0o700)
             save('seed/Autounattend.xml',answer);save('seed/initialize.ps1',INITIALIZE.encode('utf-8-sig'))
             save('seed/install-agent.ps1',INSTALL_AGENT.encode('utf-8-sig'));answer=None
+            if image is not None:
+                # The image hook runs this per-clone script; the template TPM
+                # state keeps every TPM-bound fact of the generalized image.
+                save('seed/clone-specialize.ps1',CLONE_SPECIALIZE.encode('utf-8-sig'));save('tpm/tpm2-00.permall',tpm_raw)
             def run(argv,timeout=15,limit=65536):
                 p=subprocess.run(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,pass_fds=tuple(binaries.values())+tuple(assets.values()),env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'})
                 save('command-'+str(len(list(root.glob('command-*.json'))))+'.json',{'argv':argv,'returnCode':p.returncode,'stdout':p.stdout[:limit].decode('utf8','replace'),'stderr':p.stderr[:limit].decode('utf8','replace'),'stdoutBytes':len(p.stdout),'stderrBytes':len(p.stderr)})
                 require(p.returncode==0 and len(p.stdout)<=limit and len(p.stderr)<=limit,'instance_preparation');return p
             def binary(name):return '/proc/self/fd/'+str(binaries[name])
             phase='firmware'
-            run([binary('virt-fw-vars'),'--input','/proc/self/fd/'+str(assets['firmwareVars']),'--output',str(root/'uefi-vars.fd'),'--enroll-microsoft','--microsoft-db','win11','--microsoft-kek','all','--secure-boot'])
+            if image is None:
+                run([binary('virt-fw-vars'),'--input','/proc/self/fd/'+str(assets['firmwareVars']),'--output',str(root/'uefi-vars.fd'),'--enroll-microsoft','--microsoft-db','win11','--microsoft-kek','all','--secure-boot'])
+            else:
+                save('uefi-vars.fd',firmware_raw)
             private(root/'uefi-vars.fd')
             enrolled=json.loads(run([binary('virt-fw-vars'),'--input',str(root/'uefi-vars.fd'),'--output-json','-'],limit=262144).stdout)
             require(enrolled.get('version')==2 and type(enrolled.get('variables'))is list,'instance_firmware')
             variables={v['name']:v['data'] for v in enrolled['variables']}
             require(variables.get('SecureBootEnable')=='01' and variables.get('CustomMode')=='00' and all(variables.get(k) for k in ('PK','KEK','db')),'instance_firmware')
             phase='disk'
-            run([binary('qemu-img'),'create','-f','qcow2',str(root/'disk.qcow2'),str(SPEC['diskGiB'])+'G'])
-            image=json.loads(run([binary('qemu-img'),'info','--output=json',str(root/'disk.qcow2')]).stdout)
-            require(image.get('format')=='qcow2' and image.get('virtual-size')==SPEC['diskGiB']*1024**3 and not image.get('backing-filename'),'instance_blank_disk')
+            if image is None:
+                run([binary('qemu-img'),'create','-f','qcow2',str(root/'disk.qcow2'),str(SPEC['diskGiB'])+'G'])
+                disk_info=json.loads(run([binary('qemu-img'),'info','--output=json',str(root/'disk.qcow2')]).stdout)
+                require(disk_info.get('format')=='qcow2' and disk_info.get('virtual-size')==SPEC['diskGiB']*1024**3 and not disk_info.get('backing-filename'),'instance_blank_disk')
+            else:
+                backing=str(store/image['imageId']/'disk.qcow2')
+                run([binary('qemu-img'),'create','-f','qcow2','-F','qcow2','-b',backing,str(root/'disk.qcow2'),str(SPEC['diskGiB'])+'G'],timeout=60)
+                disk_info=json.loads(run([binary('qemu-img'),'info','--output=json',str(root/'disk.qcow2')]).stdout)
+                require(disk_info.get('format')=='qcow2' and disk_info.get('virtual-size')==SPEC['diskGiB']*1024**3 and disk_info.get('backing-filename')==backing
+                        and disk_info.get('backing-filename-format')=='qcow2','instance_clone_disk')
+                s=os.lstat(backing);require([s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]==manifest['files']['disk.qcow2']['identity'],'instance_image_file_changed')
             private(root/'disk.qcow2')
             save('mutable-artifacts.json',{name:list(structure(private(root/name))) for name in ('disk.qcow2','uefi-vars.fd')})
             phase='seed'
@@ -265,6 +295,14 @@ def _vm_main():
             else:raise ValueError('instance_tpm_socket')
             phase='qemu'
             qargs=qemu_argv(SPEC,binary('qemu-system-x86_64'),asset_sets)
+            if CONTEXT.get('network')=='restricted':
+                # An image source never reaches update or store services before generalization.
+                netdev=[index for index,value in enumerate(qargs) if value=='-netdev']
+                require(len(netdev)==1 and qargs[netdev[0]+1]=='user,id=net0','instance_network_mode');qargs[netdev[0]+1]='user,id=net0,restrict=on'
+            if image is not None:
+                # A generalized image boots its own disk; the installer stays attached.
+                boot=[index for index,value in enumerate(qargs) if value=='-boot']
+                require(len(boot)==1 and qargs[boot[0]+1]==BOOT_BLANK,'instance_clone_boot');qargs[boot[0]+1]=BOOT_CLONE
             for name in source_names:qargs.extend(('-add-fd','fd='+str(assets[name])+',set='+str(asset_sets[name])+',opaque=asset:'+name))
             launch('qemu',qargs,binaries['qemu-system-x86_64'],tuple(assets[name] for name in source_names)+(binaries['qemu-system-x86_64'],))
             for _ in range(40):
@@ -276,7 +314,7 @@ def _vm_main():
             phase='first-boot'
             time.sleep(1)
             qmp('screendump',{'filename':str(root/'boot-before.ppm')})
-            for _ in range(4):
+            for _ in range(4 if image is None else 0):
                 qmp('send-key',{'keys':[{'type':'qcode','data':'spc'}],'hold-time':100});time.sleep(1)
             qmp('screendump',{'filename':str(root/'boot-after.ppm')})
         phase='observation'
@@ -288,6 +326,20 @@ def _vm_main():
             stop_closing()
             print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'state':'stopped-observed','reason':None,
                               **value,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
+            return
+        if MODE in ('generalize','generalize-status'):
+            phase='generalize'
+            value=generalize_instance(SPEC,SETUP,OPERATION_ID,MODE=='generalize-status',root,read,save,process,owns,instance_intent,closing,observed,birth)
+            print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'reason':None,**value,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
+            return
+        if MODE=='capture-image':
+            phase='capture'
+            instance_intent();closing()
+            path=shutil.which('qemu-img',path='/usr/bin:/bin');require(path is not None,'instance_binary')
+            fd,_=pin(os.path.realpath(path),executable=True)
+            value=capture_image_instance(SPEC,SETUP,OPERATION_ID,root,read,save,process,birth,{'qemu-img':fd})
+            closing()
+            print(json.dumps({'schemaVersion':1,'deploymentId':SPEC['deploymentId'],'mode':MODE,'reason':None,**value,'nativeActionAllowed':False,'replayAllowed':False},separators=(',',':')))
             return
         value=observed()
         if MODE in ('secure','secure-status'):
@@ -342,8 +394,14 @@ def inspection_program(request,setup,context,operation_id,*,probe=False,frame=No
     spec=FreshWindowsVmSpec.parse(request);setup=parse_setup(setup)
     if (type(operation_id)is not str or str(uuid.UUID(operation_id))!=operation_id or any(type(v)is not bool for v in (probe,return_frame,read_existing))
             or read_existing and (probe or frame is not None or not return_frame)
-            or type(context)is not dict or set(context)!={'hostBootId','pending'} or type(context['pending'])is not list
+            or type(context)is not dict or not {'hostBootId','pending'}<=set(context)<={'hostBootId','pending','image','network'} or type(context['pending'])is not list
             or type(context['hostBootId'])is not str or str(uuid.UUID(context['hostBootId']))!=context['hostBootId']):raise ValueError('instance_inspection_inputs')
+    if 'image' in context or 'network' in context:
+        from .windows_vm_image import validate_context_image,validate_context_network
+        try:
+            if 'image' in context:validate_context_image(context['image'])
+            if 'network' in context:validate_context_network(context['network'])
+        except ValueError:raise ValueError('instance_inspection_inputs') from None
     if probe and setup['locale']!='en-US':raise ValueError('instance_diagnostic_keyboard_locale')
     if frame is not None and (probe or type(frame)is not dict or set(frame)!={'frame','sha256','bytes'}
             or type(frame['frame'])is not str or re.fullmatch('setup-frame-[0-9a-f]{32}\\.png',frame['frame'])is None

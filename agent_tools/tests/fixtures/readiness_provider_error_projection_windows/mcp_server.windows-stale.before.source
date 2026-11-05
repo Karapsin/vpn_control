@@ -1,0 +1,17 @@
+# Verbatim extract of agent_tools/mcp_server.py at 2efd2569 (whole-file sha256
+# b04dc01019e9328110caf482877dba48dcf58061e1febb40616a7d48bdbb8bd4): the stale-registration decision the readiness facade projects with.
+_STALE_REGISTRATION_REFUSALS = frozenset({"macos_custody_source_changed", "android_lifecycle_spec_changed"})
+
+
+def _readiness_provider_refusal(tool: str, error: BaseException) -> dict[str, Any]:
+    """Project a readiness exception that is not ReadinessBlocked.
+
+    Only the finite provider refusals that mean a source-bound fixture
+    registration went stale are named; every other exception, and any message
+    text, stays the generic admission refusal.
+    """
+    providers = _agent_module("readiness_providers")
+    stale = isinstance(error, providers.ProviderError) and str(error) in _STALE_REGISTRATION_REFUSALS
+    return {"tool": tool, "ok": False, "state": "blocked",
+            "reason": "fixture_registration_stale" if stale else "readiness_admission_unavailable",
+            "replayAllowed": False}

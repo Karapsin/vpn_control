@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-beforeimage",
+  "failure": "test-harness timing defect: the timeout case prefixed the gateway loader with a 100x whole-process monotonic clock, so effective_route's 'ssh -G' (subprocess timeout 5 s) and bounded_envelope(5) had 50 ms of real time; the fake 'ssh -G' took 43-164 ms on this macOS host (CPython 3.12.13 and 3.14.3), so TimeoutExpired could fire before start_fixed, no session connected and the endpoint accept raised TimeoutError; base64 and extra then failed only on the setUp-wide self.errors list that kept that error",
+  "source": "agent_tools/tests/test_windows_deploy_private_output.py",
+  "beforeSha256": "8bd9e9a9a151cadea9c510500f05af4742f31243cfa1ef0e7f39ba771ddc953e",
+  "bytes": 12369,
+  "baseCommit": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "nativeFailureClaimed": false,
+  "originalFailures": [
+    "agent_tools.tests.test_windows_deploy_private_output.PrivateGatewayTests.test_preserved_whole_gateway_echo_red_and_current_finite_failure (case='timeout'|'base64'|'extra')"
+  ],
+  "privateEvidence": ".runtime/tool-recovery/windows-lane-20261103/private-output-harness/; never committed",
+  "evidenceLimits": [
+    "the original failure is a host-latency race that Linux CI usually wins; the regression makes it deterministic with a 0.2 s fake 'ssh -G'",
+    "the preserved harness runs as an isolated module against the preserved 9ef83ed3 producer only"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "beforeSources": {
+    "readiness_resources.py": "45cc6144e9f330c288576214d9f92d96641ee615421ab3b0e43c620d420cc05a",
+    "windows_vm_deploy.py": "435a988592590b3b0110db550ab4d2e22212999bee5501e9b0cecb273c381d77",
+    "windows_vm_resources.py": "2659a18cd8683c8d3b1b5ff749803c052fcf7e17dc1e669d2d57fb67c67396a0"
+  },
+  "discovery": "Raw normal prepare and prepare_start rejected current native12GiB with20GiB retained-running claims. Postlaunch mark_running used the same incompatible native-only mapping and would fail after effect. Running claim absence is never proof of historical completion.",
+  "genericNativeEnvironmentChanged": false,
+  "historicalUnknownsPreserved": true,
+  "nativeAcceptance": false,
+  "originalNativeObservationOperationId": "aa383497-b061-4069-b491-80de6ed6a4c7",
+  "originalNormalGateRefusalPath": ".runtime/tool-recovery/native-followup-20261027/windows/fresh-fixture-plan/e36408e1-8e7a-4066-95a0-c45871966a3e/normal-mapping-refusal.json",
+  "schemaVersion": 1,
+  "sourceOnlyCausalResults": "review-causal-results.json"
+}
