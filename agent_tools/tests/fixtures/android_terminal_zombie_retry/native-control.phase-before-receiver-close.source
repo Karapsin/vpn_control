@@ -1,0 +1,281 @@
+"""One owned Linux kernel phase; compose with immutable helpers and authority.
+
+SOURCE ONLY. This file performs no work on import. Parent must supply/seal
+CAPSULE_SOURCE/SHA, CONTROL_CASE, OPERATION_ID/ROOT/CONFIG, expected BOOT/MACHINE,
+PYTHON_SHA, PREPARE_RECEIVER/DURABLE_SOURCE and the original pin/birth/need/
+control_code helpers. Run one phase per distinct operation so private full
+reports never exceed the protected carrier's response limit. No VM or lease
+action occurs. Child lifecycle is cooperative EOF followed by wait only.
+"""
+
+TERMINAL_CHILD_SOURCE = (
+    "import json,os,sys\n"
+    "os.setgroups([1000]);os.setgid(1000);os.setuid(1000)\n"
+    "print(json.dumps({'kind':'owned-terminal-ready','pid':os.getpid(),"
+    "'uid':os.getuid(),'euid':os.geteuid(),'gid':os.getgid(),'egid':os.getegid(),"
+    "'groups':os.getgroups(),'sid':os.getsid(0)},sort_keys=True),flush=True)\n"
+    "data=sys.stdin.buffer.read()\n"
+    "print(json.dumps({'kind':'owned-terminal-eof','bytes':len(data)},sort_keys=True),flush=True)\n"
+)
+
+
+def terminal_kernel_phase(receiver, context):
+    need(sys.platform.startswith('linux') and os.getuid() == os.geteuid() == 0,
+         'terminal_control_linux_root_required')
+    need(CONTROL_CASE in ('before-terminal', 'current-terminal', 'current-pre-reaped')
+         and hashlib.sha256(CAPSULE_SOURCE).hexdigest() == CAPSULE_SHA,
+         'terminal_control_capsule_or_case_changed')
+    result = {'schema':1, 'kind':'owned-current1e15-terminal-kernel-control',
+              'operationId':OPERATION_ID, 'case':CONTROL_CASE, 'state':'unknown',
+              'capsuleSha256':CAPSULE_SHA, 'nativeKernelAcceptance':False,
+              'nativeVmStart':False, 'leaseMutation':False, 'reportComplete':False}
+    state = {'child':None, 'ready':None, 'interpreterFd':None, 'namespace':None,
+             'lists':0, 'opens':0, 'triggered':False, 'reapedDuringClosing':False,
+             'statProbes':[], 'childStdout':b'', 'childStderr':b'', 'childClosure':None}
+    module = types.ModuleType('owned_terminal_control_' + OPERATION_ID.replace('-', ''))
+    exec(compile(CAPSULE_SOURCE, 'exact-source-owned-terminal-capsule', 'exec'), module.__dict__)
+    module.CURRENT_INTERVAL_STORAGE = dict(context)
+    real = module.os
+    proxy = types.SimpleNamespace(**{name:getattr(real,name) for name in dir(real)})
+
+    def kernel_stat(pid):
+        path = '/proc/' + str(pid) + '/stat'
+        fd = real.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            before = pin(real.fstat(fd))
+            raw = bytearray()
+            while len(raw) <= 16384:
+                chunk = real.read(fd, min(4096, 16385 - len(raw)))
+                if not chunk:break
+                raw.extend(chunk)
+            need(len(raw) <= 16384 and pin(real.fstat(fd)) == before
+                 == pin(real.stat(path, follow_symlinks=False)) and stat.S_ISREG(before[2]),
+                 'terminal_control_stat_changed')
+            tail = bytes(raw).rsplit(b')',1)[1].split()
+            value = {'pid':pid, 'state':tail[0].decode(), 'startTicks':int(tail[19]),
+                     'generation':before, 'bytes':len(raw), 'sha256':hashlib.sha256(raw).hexdigest(),
+                     'rawBase64':base64.b64encode(raw).decode()}
+            state['statProbes'].append(value)
+            return value
+        finally:real.close(fd)
+
+    def spawn():
+        executable = pathlib.Path(sys.executable).resolve(strict=True)
+        fd = real.open(executable, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        state['interpreterFd'] = fd
+        before = pin(real.fstat(fd))
+        digest = hashlib.sha256()
+        while True:
+            chunk = real.read(fd, 1048576)
+            if not chunk:break
+            digest.update(chunk)
+        need(digest.hexdigest() == PYTHON_SHA and before == pin(real.fstat(fd))
+             == pin(executable.lstat()) and before[3:5] == [0,0] and stat.S_ISREG(before[2]),
+             'terminal_control_interpreter_changed')
+        child = subprocess.Popen([str(executable), '-I', '-B', '-c', TERMINAL_CHILD_SOURCE],
+                                 executable='/proc/self/fd/' + str(fd), stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True,
+                                 pass_fds=(fd,), start_new_session=True,
+                                 env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8'})
+        state['child'] = child
+        state['interpreterPin'] = before
+        need(bool(select.select([child.stdout], [], [], 5)[0]), 'terminal_control_ready_unknown')
+        raw = child.stdout.readline(4097)
+        need(len(raw) <= 4096, 'terminal_control_ready_bound')
+        state['childStdout'] += raw
+        ready = json.loads(raw)
+        expected = {'kind':'owned-terminal-ready','pid':child.pid,'uid':1000,'euid':1000,
+                    'gid':1000,'egid':1000,'groups':[1000],'sid':child.pid}
+        need(ready == expected, 'terminal_control_ready_identity_changed')
+        ready['startTicks'] = birth(child.pid)
+        need(type(ready['startTicks']) is int and ready['startTicks'] > 0,
+             'terminal_control_ready_birth_unknown')
+        state['ready'] = ready
+
+    def select_terminal():
+        child = state['child']
+        ready = state['ready']
+        need(birth(child.pid) == ready['startTicks'] and child.stdin is not None,
+             'terminal_control_eof_birth_changed')
+        child.stdin.close()
+        child.stdin = None
+        deadline = time.monotonic() + 2
+        for _ in range(64):
+            need(time.monotonic() <= deadline, 'terminal_control_zombie_deadline')
+            value = kernel_stat(child.pid)
+            need(value['startTicks'] == ready['startTicks'], 'terminal_control_zombie_birth_changed')
+            if value['state'] == 'Z':
+                again = kernel_stat(child.pid)
+                need(again['state'] == 'Z' and again['startTicks'] == ready['startTicks'],
+                     'terminal_control_two_Z_unknown')
+                state['triggered'] = True
+                return
+            time.sleep(.01)
+        raise ValueError('terminal_control_zombie_samples_exhausted')
+
+    def listed(path):
+        namespace = current_namespace(module)
+        if not isinstance(path, int) and pathlib.Path(path) == pathlib.Path('/proc') \
+                and namespace is not None and not state['triggered']:
+            if state['namespace'] is None:state['namespace'] = namespace
+            need(state['namespace'] is namespace, 'terminal_control_scanner_namespace_changed')
+            state['lists'] += 1
+            if state['lists'] == 2:spawn()
+        return real.listdir(path)
+
+    def opened(path, flags, *args, **kwargs):
+        namespace = current_namespace(module)
+        ready = state['ready']
+        if ready is not None and namespace is state['namespace'] \
+                and str(path).startswith('/proc/' + str(ready['pid']) + '/') \
+                and pathlib.Path(path).name in ('cmdline','stat','status'):
+            state['opens'] += 1
+            if state['opens'] == 7:select_terminal()
+        return real.open(path, flags, *args, **kwargs)
+
+    def observed(path, *args, **kwargs):
+        value = real.stat(path, *args, **kwargs)
+        ready = state['ready']
+        if CONTROL_CASE == 'current-pre-reaped' and ready is not None \
+                and current_namespace(module) is state['namespace'] \
+                and str(path) == '/proc/' + str(ready['pid']) + '/stat' \
+                and state['opens'] == 12 and not state['reapedDuringClosing']:
+            # Called only after actual final stat bytes + fstat were obtained.
+            # Return the actual path stat unchanged after reaping our own Z child.
+            first = kernel_stat(ready['pid'])
+            second = kernel_stat(ready['pid'])
+            need(first['state'] == second['state'] == 'Z'
+                 and first['startTicks'] == second['startTicks'] == ready['startTicks'],
+                 'terminal_control_prereap_not_exact_Z')
+            need(state['child'].wait(timeout=5) == 0, 'terminal_control_prereap_exit_unknown')
+            state['reapedDuringClosing'] = True
+        return value
+
+    proxy.listdir, proxy.open, proxy.stat = listed, opened, observed
+    module.os = proxy
+    try:
+        try:
+            host = module.installer_host_preflight()
+        except BaseException as error:
+            result['hostFailure'] = {'type':type(error).__name__, 'code':control_code(error)}
+            host = None
+        result['hostResult'] = host
+        result['intervalReferences'] = list(module.CURRENT_INTERVAL_FAILURES)
+        store = module._interval_open_store()
+        try:
+            intervals = []
+            for reference in module.CURRENT_INTERVAL_FAILURES:
+                name = pathlib.PurePosixPath(reference['path']).name
+                fd = real.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=store['directory'])
+                try:
+                    before = pin(real.fstat(fd))
+                    raw = bytearray()
+                    while len(raw) <= 8388608:
+                        part = real.read(fd, min(65536, 8388609-len(raw)))
+                        if not part:break
+                        raw.extend(part)
+                    need(before == reference['generation'] == pin(real.fstat(fd))
+                         == pin(real.stat(name, dir_fd=store['directory'], follow_symlinks=False))
+                         and len(raw) == reference['bytes'] <= 8388608
+                         and hashlib.sha256(raw).hexdigest() == reference['sha256'],
+                         'terminal_control_interval_changed')
+                    intervals.append({'reference':reference,'report':json.loads(raw)})
+                finally:real.close(fd)
+            module._interval_guard_store(store)
+        finally:module._interval_close_store(store)
+        result['retainedIntervals'] = intervals
+        need(state['triggered'] and len(intervals) == 1, 'terminal_control_boundary_not_exercised')
+        interval = intervals[0]['report']
+        need(interval['unknownInterval'] is True and interval['partialRead'] is None
+             and interval['error'] == {'type':'ValueError','errno':None,'code':'plane_late_identity_changed'}
+             and len(interval['rawRecords']) - interval['closingRawBegin'] == 6,
+             'terminal_control_six_complete_class_unknown')
+        if CONTROL_CASE == 'before-terminal':
+            need(host is None and interval['retryable'] is False
+                 and result['hostFailure']['code'] == 'current_interval_nonretryable',
+                 'terminal_control_before_not_RED')
+        else:
+            need(host is not None and host['state'] == 'admitted' and interval['retryable'] is True
+                 and len(host['evidence']['priorUnknownCurrentIntervals']) == 1,
+                 'terminal_control_current_not_fresh_GREEN')
+            proof = interval['terminalZombieQualification']['closure']
+            need(proof['state'] == 'qualified-for-whole-host-reobservation',
+                 'terminal_control_fresh_closure_unknown')
+            if CONTROL_CASE == 'current-terminal':
+                need(proof['selectedClosure'] == 'two-complete-terminal-identities'
+                     and len(proof['freshIdentities']) == 2,
+                     'terminal_control_terminal_samples_unknown')
+            else:
+                need(state['reapedDuringClosing'] and proof['selectedClosure'] == 'two-positive-directory-ENOENT'
+                     and len(proof['directoryWitnesses']) == 2
+                     and all(row['errno'] == 2 and row['state'] == 'absent'
+                             for row in proof['directoryWitnesses'])
+                     and proof['freshIdentities'] == [], 'terminal_control_directory_samples_unknown')
+        result['state'] = 'qualified'
+        result['nativeKernelAcceptance'] = True
+    except BaseException as error:
+        result['assessmentFailure'] = control_code(error)
+    finally:
+        child = state['child']
+        if child is not None:
+            try:
+                if child.stdin is not None:
+                    child.stdin.close()
+                    child.stdin = None
+                stdout, stderr = child.communicate(timeout=5)
+                state['childStdout'] += stdout
+                state['childStderr'] += stderr
+                need(child.returncode == 0 and len(state['childStdout']) <= 131072
+                     and len(state['childStderr']) <= 131072, 'terminal_control_child_closure_unknown')
+                lines = state['childStdout'].splitlines()
+                need(len(lines) == 2 and json.loads(lines[1]) == {'kind':'owned-terminal-eof','bytes':0}
+                     and state['childStderr'] == b'', 'terminal_control_child_streams_unknown')
+                try:real.stat('/proc/' + str(child.pid), follow_symlinks=False)
+                except FileNotFoundError as absent:
+                    need(absent.errno == 2, 'terminal_control_final_absence_unknown')
+                else:raise ValueError('terminal_control_final_child_present')
+                state['childClosure'] = {'state':'closed','pid':child.pid,'exitCode':0,'streamsComplete':True,
+                                         'stdoutBase64':base64.b64encode(state['childStdout']).decode(),
+                                         'stderrBase64':base64.b64encode(state['childStderr']).decode()}
+            except BaseException as error:
+                state['childClosure'] = {'state':'unknown','pid':child.pid,'error':control_code(error),
+                                         'noSignalSent':True}
+                result['state'] = 'unknown'
+                result['nativeKernelAcceptance'] = False
+        if state['interpreterFd'] is not None:real.close(state['interpreterFd'])
+        result.update(child=state['ready'], interpreterPin=state.get('interpreterPin'),
+                      childClosure=state['childClosure'], statProbes=state['statProbes'],
+                      targetFileOpens=state['opens'], procEnumerations=state['lists'],
+                      kernelBoundaryReached=state['triggered'],
+                      reapedDuringClosing=state['reapedDuringClosing'])
+    result['reportComplete'] = True
+    raw = receiver.canonical(result)
+    need(len(raw) <= 8388608, 'terminal_control_phase_report_bound')
+    name = 'terminal-control-' + CONTROL_CASE + '.json'
+    receiver.create(name, raw)
+    return {'case':CONTROL_CASE, 'state':result['state'], 'nativeKernelAcceptance':result['nativeKernelAcceptance'],
+            'path':CONTROL_ROOT + '/' + name, 'bytes':len(raw), 'sha256':hashlib.sha256(raw).hexdigest(),
+            'generation':pin(real.stat(name, dir_fd=receiver.ROOT_FD, follow_symlinks=False)),
+            'nativeVmStart':False, 'leaseMutation':False}
+
+
+def run_control():
+    receiver = None
+    output = {'schema':1,'kind':'owned-current1e15-terminal-kernel-control-manifest',
+              'operationId':OPERATION_ID,'state':'unknown','nativeVmStart':False,'leaseMutation':False}
+    try:
+        receiver, context, preparation = prepare_control_root()
+        output['preparation'] = preparation
+        output['report'] = terminal_kernel_phase(receiver, context)
+        output['state'] = output['report']['state']
+        receiver.guard_root()
+    except BaseException as error:
+        output['error'] = control_code(error)
+    finally:
+        if receiver is not None:
+            for _, fd, _ in reversed(receiver.PARENTS):os.close(fd)
+            receiver.PARENTS = []
+            receiver.ROOT_FD = None
+    raw = json.dumps(output, sort_keys=True, separators=(',',':')) + '\n'
+    need(len(raw.encode()) <= 65536, 'terminal_control_manifest_bound')
+    print(raw, end='')

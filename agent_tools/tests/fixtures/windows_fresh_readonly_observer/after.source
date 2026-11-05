@@ -1,0 +1,183 @@
+"""One new read-only phase per accepted handle, with durable phase collection."""
+from pathlib import Path
+import ast,base64,datetime,hashlib,inspect,json,os,re,stat,subprocess,sys,time,uuid
+ROOT=Path(__file__).resolve().parents[6]
+sys.path.insert(0,str(ROOT))
+from agent_tools import native_vm_spec,windows_vm_deploy_remote,windows_vm_media,windows_vm_resources,windows_vm_instance,readiness_windows_lifecycle,ssh_transport,ssh_direct_nested_channel,vm_workflow
+from agent_tools.private_credential_file import SecretFile
+from agent_tools.native_review_source_closure import _Held
+PLAN=Path(__file__).parent
+COVERAGE=ROOT/'.runtime/tool-recovery/native-followup-20261027/windows/live-allocation-coverage-6e-942/91d6942c-48c7-4a69-945f-2021f2602907'
+
+def digest(raw):return hashlib.sha256(raw).hexdigest()
+def generation(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+def save(out,name,value):
+    assert re.fullmatch('[A-Za-z0-9_.-]+',name)
+    raw=value if isinstance(value,bytes) else (json.dumps(value,sort_keys=True,indent=2)+'\n').encode()
+    fd=os.open(out/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'wb')as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
+    parent=os.open(out,os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(parent)
+    finally:os.close(parent)
+
+def source_role(label):
+    return 'root' if label in ('capacity','storageCoverage') else 'ordinary'
+
+def phase_wrapper(source,label,operation):
+    raw=("import base64,contextlib,hashlib,io,json,os,pathlib,sys\n"
+        "def principal():return [os.getuid(),os.geteuid(),os.getgid(),os.getegid(),os.getgroups()]\n"
+        "initial=principal();raw=base64.b64decode("+repr(base64.b64encode(source).decode())+");output=io.StringIO();failure=None\n"
+        "try:\n"
+        " with contextlib.redirect_stdout(output):exec(compile(raw,'source-closed-Windows-R0-phase','exec'),{'__name__':'fixed_r0_readonly'})\n"
+        "except BaseException as error:failure={'type':type(error).__name__}\n"
+        "text=output.getvalue();value=None\n"
+        "if failure is None:\n"
+        " try:value=json.loads(text)\n"
+        " except (ValueError,TypeError):failure={'type':'invalid_json'}\n"
+        "print(json.dumps({'operationId':"+repr(operation)+",'phase':"+repr(label)+",'sourceSha256':hashlib.sha256(raw).hexdigest(),'sourceBytes':len(raw),'remotePid':os.getpid(),'remoteStartTicks':int(pathlib.Path('/proc/self/stat').read_text().rsplit(')',1)[1].split()[19]),'hostBootId':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'initialPrincipal':initial,'closingPrincipal':principal(),'stdoutBase64':base64.b64encode(text.encode()).decode(),'failure':failure,'value':value,'vmMutation':False,'claimMutation':False},sort_keys=True))\n").encode()
+    compile(raw,'complete-readonly-phase-wrapper','exec')
+    return raw
+
+def collect_phase(out,label,source,operation,launch):
+    """Persist the complete source/streams/terminal before any next dispatch."""
+    wrapper=phase_wrapper(source,label,operation)
+    save(out,label+'.source',source);save(out,label+'.wrapper.source',wrapper)
+    result=launch(label,wrapper,source_role(label))
+    save(out,label+'.stdout.private',result['stdout']);save(out,label+'.stderr.private',result['stderr'])
+    save(out,label+'.callback.json',{key:value for key,value in result.items()if key not in ('stdout','stderr')})
+    if result['returnCode']!=0 or result['stderr']:raise ValueError('r0_phase_transport_failed_'+label)
+    record=json.loads(result['stdout'])
+    save(out,label+'.result.private.json',record)
+    assert record['operationId']==operation and record['phase']==label and record['sourceSha256']==digest(source)
+    assert record['failure']is None and record['initialPrincipal']==record['closingPrincipal']
+    wanted=0 if source_role(label)=='root' else 1000
+    assert record['initialPrincipal'][:4]==[wanted]*4
+    assert record['vmMutation']is False and record['claimMutation']is False
+    return record
+
+def storage_reader_source():
+    storage=(ROOT/'scripts/native_fixture_storage.py').read_bytes()
+    return ("import base64,hashlib,json,os,pathlib,stat,sys,types\n"
+        "storage=types.ModuleType('fixed_source_storage');sys.modules[storage.__name__]=storage\nexec(compile("+repr(storage)+",'canonical-native-fixture-storage','exec'),storage.__dict__)\n"
+        "def pin(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]\n"
+        "directory=pathlib.Path('/home/kardinal/.cache/vpn-control-fixture-storage');path=directory/'storage-plans.json'\n"
+        "assert os.geteuid()==1000 and directory.resolve()==directory\ninfo=directory.lstat();assert stat.S_ISDIR(info.st_mode)and info.st_uid==1000 and stat.S_IMODE(info.st_mode)==0o700\n"
+        "fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n"
+        "try:\n before=pin(os.fstat(fd));raw=os.read(fd,1048577);state=storage.StoragePlans(str(directory))._read()\n assert len(raw)==before[6]and len(raw)<=1048576 and pin(os.fstat(fd))==before==pin(os.lstat(path)) and json.loads(raw)==state\n"
+        "finally:os.close(fd)\n"
+        "assert directory.lstat().st_ino==info.st_ino and directory.lstat().st_dev==info.st_dev\n"
+        "print(json.dumps({'state':'observed','ledgerPath':str(path),'generation':before,'parentIdentity':[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid],'rawBase64':base64.b64encode(raw).decode(),'sha256':hashlib.sha256(raw).hexdigest(),'ledger':state},sort_keys=True))\n").encode()
+
+def storage_coverage_source(ledger):
+    # The root FD observer consumes a separately authenticated ordinary reader.
+    # It never calls StoragePlans._read as root or substitutes HOME/owner checks.
+    return (windows_vm_resources.definitions()+"\nimport base64,pathlib\nLEDGER="+repr(ledger)+"\n"
+        "def pin(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]\n"
+        +inspect.getsource(readiness_windows_lifecycle._storage_vm_coverage)+"\n"
+        "assert os.geteuid()==0\npath=pathlib.Path(LEDGER['ledgerPath']);parent=path.parent.lstat();assert [parent.st_dev,parent.st_ino,parent.st_mode,parent.st_uid,parent.st_gid]==LEDGER['parentIdentity']and parent.st_uid==1000 and parent.st_mode&0o777==0o700\n"
+        "fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n"
+        "try:\n raw=os.read(fd,1048577);assert pin(os.fstat(fd))==LEDGER['generation']==pin(os.lstat(path))and hashlib.sha256(raw).hexdigest()==LEDGER['sha256']and raw==base64.b64decode(LEDGER['rawBase64'])\n"
+        "finally:os.close(fd)\n"
+        "boot,actors=census();_storage_vm_coverage(LEDGER['ledger'],{'vms':actors},stat);boot2,actors2=census();assert boot==boot2 and actors==actors2\n"
+        "print(json.dumps({'state':'covered','hostBootId':boot,'vms':actors,'ledgerSha256':LEDGER['sha256'],'ledgerGeneration':LEDGER['generation'],'fullRootCensus':True,'ownerReaderUid':1000},sort_keys=True))\n").encode()
+
+
+EXECUTABLE_GENERATION_FIELDS = {
+    'getter': ('dev','ino','mode','uid','gid','nlink','size','mtimeNs','ctimeNs'),
+    'resource': ('dev','ino','mode','uid','gid','size','mtimeNs','ctimeNs','nlink'),
+}
+
+def executable_generation(value,schema):
+    """Known source-owned schemas only; compare every field by its meaning."""
+    if schema not in EXECUTABLE_GENERATION_FIELDS or type(value)is not list or len(value)!=9 or any(type(v)is not int or v<0 for v in value):
+        raise ValueError('r0_executable_generation_schema_invalid')
+    return dict(zip(EXECUTABLE_GENERATION_FIELDS[schema],value))
+
+def verify_executable_source_schemas():
+    raw=windows_vm_resources.admission._REMOTE
+    census=next(n for n in ast.parse(raw).body if isinstance(n,ast.FunctionDef)and n.name=='census')
+    values=[v for n in ast.walk(census)if isinstance(n,ast.Dict)for k,v in zip(n.keys,n.values)if isinstance(k,ast.Constant)and k.value=='executableGeneration']
+    if len(values)!=1 or not isinstance(values[0],ast.List):raise ValueError('r0_executable_source_schema_changed')
+    resource=tuple(n.attr if isinstance(n,ast.Attribute)else None for n in values[0].elts)
+    raw=inspect.getsource(windows_vm_instance._vm_main)
+    nodes=[n for n in ast.walk(ast.parse(raw))if isinstance(n,ast.FunctionDef)and n.name=='generation']
+    if len(nodes)!=1:raise ValueError('r0_executable_source_schema_changed')
+    values=[n.value for n in ast.walk(nodes[0])if isinstance(n,ast.Return)]
+    if len(values)!=1 or not isinstance(values[0],ast.Tuple):raise ValueError('r0_executable_source_schema_changed')
+    getter=tuple(n.attr if isinstance(n,ast.Attribute)else None for n in values[0].elts)
+    expected={'getter':('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns'),
+              'resource':('st_dev','st_ino','st_mode','st_uid','st_gid','st_size','st_mtime_ns','st_ctime_ns','st_nlink')}
+    if {'getter':getter,'resource':resource}!=expected:raise ValueError('r0_executable_source_schema_changed')
+
+def verify_allocation_identity(getter,native):
+    for field in ('pid','startTicks','configuredMemoryBytes','uid','sessionId','commandSha256'):
+        if type(getter[field])is not type(native[field])or getter[field]!=native[field]:raise ValueError('r0_allocation_identity_changed')
+    if executable_generation(getter['executableGeneration'],'getter')!=executable_generation(native['executableGeneration'],'resource'):
+        raise ValueError('r0_executable_generation_changed')
+
+def stable(value):
+    return {key:([{k:v for k,v in row.items()if k!='observedAtUnixMs'}for row in part]if key=='rows'else part)for key,part in value.items()if key!='observedAtUnixMs'}
+
+def main():
+    operation=str(uuid.uuid4());out=PLAN/('r0v2-'+operation);out.mkdir(mode=0o700)
+    verify_executable_source_schemas()
+    plan=json.loads((PLAN/'plan.json').read_text());held=_Held();ledger_fds=[]
+    try:
+        for row in plan['sourcePins']:held.read(str(ROOT/row['path']),row['sha256'],max_bytes=1024**2)
+        for path,pin in json.loads((COVERAGE/'source-before.json').read_text()).items():held.read(path,pin['sha256'],max_bytes=1024**2)
+        for path,pin in json.loads((COVERAGE/'local-input-pins.private.json').read_text()).items():
+            raw=held.read(path,pin['sha256'],max_bytes=4*1024**2);assert generation(os.lstat(path))==pin['generation']
+        authority=[]
+        for path in (ROOT/'.rag_index/native-environments/reservations.json',ROOT.parent/'vpn_control/.rag_index/native-environments/reservations.json'):
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);ledger_fds.append(fd);info=os.fstat(fd);raw=os.read(fd,4*1024**2+1)
+            assert stat.S_ISREG(info.st_mode)and info.st_uid==os.getuid()and stat.S_IMODE(info.st_mode)==0o600 and info.st_nlink==1 and len(raw)==info.st_size
+            authority.append({'path':str(path),'generation':generation(info),'sha256':digest(raw),'rawBase64':base64.b64encode(raw).decode()})
+        save(out,'both-ledger-authority.before.private.json',authority)
+        getter=(COVERAGE/'getter.py').read_bytes();assert digest(getter)=='a2f99c1972d9f72a1641c69b0df5628de513ca18037aecb0e97fd796634e8268'
+        specs=[native_vm_spec.FreshWindowsVmSpec.parse(p['spec'])for p in plan['plans']]
+        getsrc=getter+b'\nprint(json.dumps(get_windows_allocation_coverage(),sort_keys=True))\n'
+        sources={'preflightRaw':windows_vm_deploy_remote.program(specs[0],'preflight'),'preflightLibvirt':windows_vm_deploy_remote.program(specs[1],'preflight'),'media':windows_vm_deploy_remote.program(specs[0],'media'),'storage':storage_reader_source(),'getterBefore':getsrc,'capacity':('SPEC='+repr(specs[0].as_dict())+"\nMODE='host-resources'\n"+windows_vm_resources.definitions()+inspect.getsource(windows_vm_resources._main)+'\n_main()\n').encode(),'getterAfter':getsrc,'storageAfter':storage_reader_source()}
+        with ssh_transport.admitted_transport(ROOT,'archlinux',operation,deadline=time.monotonic()+400)as admitted,ssh_direct_nested_channel.Guard(ROOT,host='archlinux')as guard,SecretFile(str(ROOT/'.codex/arch-sudo.local'))as credential:
+            def check():admitted.revalidate();guard.guard();held.finish();held.final_identity_pass();credential.guard()
+            def launch(label,wrapper,role):
+                command=('python3','-I','-B','-c',"import sys;exec(compile(sys.stdin.buffer.read(),'<source-closed-R0-phase>','exec'))")
+                if role=='root':command=('sudo','-S','-p','','--',*command)
+                argv=ssh_transport.build_ssh_argv(guard.config,'archlinux',60,command=command);check()
+                save(out,label+'.dispatch.json',{'operationId':operation,'phase':label,'role':role,'wrapperSha256':digest(wrapper),'argvSha256':ssh_transport.argv_sha256(argv)})
+                child=ssh_transport.popen_ssh(argv,cwd=ROOT,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                save(out,label+'.local-child.json',{'pid':child.pid,'operationId':operation,'phase':label})
+                payload=(credential.text.encode()+b'\n'if role=='root'else b'')+wrapper
+                started=time.monotonic()
+                try:stdout,stderr=child.communicate(payload,timeout=180)
+                except subprocess.TimeoutExpired:
+                    save(out,label+'.pending.json',{'pid':child.pid,'operationId':operation,'phase':label,'originalOnly':True});stdout,stderr=child.communicate()
+                payload=None
+                if credential.text.encode()in stdout+stderr:raise ValueError('r0_private_input_echo_refused')
+                check();return {'returnCode':child.returncode,'stdout':stdout,'stderr':stderr,'reaped':True,'localPid':child.pid,'elapsedSeconds':time.monotonic()-started}
+            records={}
+            for label in ('preflightRaw','preflightLibvirt','media','storage','getterBefore','capacity','storageCoverage','getterAfter','storageAfter'):
+                if label=='storageCoverage':sources[label]=storage_coverage_source(records['storage']['value'])
+                records[label]=collect_phase(out,label,sources[label],operation,launch)
+            check()
+        for row,fd in zip(authority,ledger_fds):
+            os.lseek(fd,0,0);raw=os.read(fd,4*1024**2+1);assert generation(os.fstat(fd))==row['generation']==generation(os.lstat(row['path']))and digest(raw)==row['sha256']
+        values={key:value['value']for key,value in records.items()}
+        assert values['storage']==values['storageAfter']and values['storageCoverage']['ledgerSha256']==values['storage']['sha256']
+        before,after=values['getterBefore'],values['getterAfter'];assert stable(before)==stable(after)
+        native=values['capacity'];measurement=windows_vm_resources.measurement(native);assert native['hostBootId']==before['hostBootId']==values['storageCoverage']['hostBootId']
+        allrows=[r for a in authority for r in json.loads(base64.b64decode(a['rawBase64']))['reservations']if r['hostAlias']=='archlinux'];covered=0;seen=set()
+        for row in before['rows']:
+            matches=[r for r in native['vms']if (r['pid'],r['startTicks'],r['configuredMemoryBytes'])==(row['pid'],row['startTicks'],row['configuredMemoryBytes'])];assert len(matches)==1
+            verify_allocation_identity(row,matches[0])
+            claims=[r for r in allrows if r['id']==row['reservationId']];assert len(claims)==1 and claims[0]['requestedMemoryBytes']==row['configuredMemoryBytes']and row['reservationId']not in seen
+            seen.add(row['reservationId']);covered+=row['configuredMemoryBytes']
+        held_bytes=sum(r['requestedMemoryBytes']for r in allrows);supplied=dict(measurement,runningConfiguredMemoryBytes=measurement['runningConfiguredMemoryBytes']-covered+held_bytes)
+        capacity=vm_workflow.admit_plan(supplied,requested_memory_bytes=4096*1024**2,headroom_bytes=8192*1024**2,reservations=())
+        for index,label in enumerate(('preflightRaw','preflightLibvirt')):windows_vm_deploy_remote.validate_result(specs[index],'preflight',values[label])
+        windows_vm_deploy_remote.validate_result(specs[0],'media',values['media']);windows_vm_media.select_image(values['media']['images'],plan['plans'][0]['setup'])
+        save(out,'qualification.private.json',{'operationId':operation,'records':records,'capacity':capacity,'heldClaimsBytes':held_bytes,'coveredNativeBytes':covered,'authorityUnchanged':True,'vmMutation':False,'claimMutation':False,'nativeActionAdmission':False})
+        print(json.dumps({'operationId':operation,'evidenceRoot':str(out),'state':'observed','phaseCount':len(records),'heldGiB':held_bytes/1024**3,'coveredNativeGiB':covered/1024**3,'physicalGiB':measurement['physicalMemoryBytes']/1024**3,'capacity':capacity,'storageState':values['storageCoverage']['state'],'nativeActionAdmission':False}))
+    finally:
+        for fd in ledger_fds:os.close(fd)
+        held.close()
+if __name__=='__main__':main()

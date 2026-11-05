@@ -1,0 +1,109 @@
+from pathlib import Path
+import ast,base64,datetime,hashlib,inspect,io,json,os,stat,subprocess,sys,time,uuid
+ROOT=Path(__file__).resolve().parents[6]
+sys.path.insert(0,str(ROOT))
+from agent_tools import native_vm_spec,windows_vm_deploy_remote,windows_vm_media,native_host_observation,ssh_transport,ssh_direct_nested_channel,vm_workflow
+from agent_tools.private_credential_file import SecretFile
+from agent_tools.native_review_source_closure import _Held
+from scripts import fixture_storage_host
+ROOT=Path(__file__).resolve().parents[6]
+PLAN=Path(__file__).parent
+operation=str(uuid.uuid4());OUT=PLAN/('r0-'+operation);OUT.mkdir(mode=0o700)
+def save(name,value):
+ raw=value if isinstance(value,bytes) else (json.dumps(value,sort_keys=True,indent=2)+'\n').encode()
+ fd=os.open(OUT/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def generation(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+plan=json.loads((PLAN/'plan.json').read_text());assert all(sha((ROOT/r['path']).read_bytes())==r['sha256'] for r in plan['sourcePins'])
+ledgers=[ROOT/'.rag_index/native-environments/reservations.json',ROOT.parent/'vpn_control/.rag_index/native-environments/reservations.json'];fds=[];authority=[]
+for path in ledgers:
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);fds.append(fd);s=os.fstat(fd);raw=os.read(fd,4*1024**2+1)
+ assert stat.S_ISREG(s.st_mode)and s.st_uid==os.getuid()and stat.S_IMODE(s.st_mode)==0o600 and s.st_nlink==1 and len(raw)==s.st_size
+ parents={str(q):generation(q.stat()) for q in path.parents}
+ authority.append({'path':str(path),'generation':generation(s),'parents':parents,'sha256':sha(raw),'rawBase64':base64.b64encode(raw).decode()})
+save('both-ledger-authority.before.private.json',authority)
+getter=ROOT/'.runtime/tool-recovery/native-followup-20261027/windows/live-allocation-coverage-6e-942/91d6942c-48c7-4a69-945f-2021f2602907/getter.py';graw=getter.read_bytes();assert sha(graw)=='a2f99c1972d9f72a1641c69b0df5628de513ca18037aecb0e97fd796634e8268'
+preflights=[windows_vm_deploy_remote.program(native_vm_spec.FreshWindowsVmSpec.parse(p['spec']),'preflight') for p in plan['plans']]
+media=windows_vm_deploy_remote.program(native_vm_spec.FreshWindowsVmSpec.parse(plan['plans'][0]['spec']),'media')
+getsrc=graw+b"\nprint(json.dumps(get_windows_allocation_coverage(),sort_keys=True))\n"
+sources={'getterBefore':getsrc,'capacity':native_host_observation._REMOTE_PROGRAM.encode(),'getterAfter':getsrc,'preflightRaw':preflights[0],'preflightLibvirt':preflights[1],'media':media,'storage':fixture_storage_host._program('coverage',[]).encode()}
+for label,raw in sources.items():save(label+'.source',raw)
+remote='''import base64,contextlib,hashlib,io,json,os,pathlib,pwd,subprocess,sys,time
+SOURCES=__SOURCES__
+OP=__OP__
+def principal():return [os.getuid(),os.geteuid(),os.getgid(),os.getegid(),os.getgroups()]
+def birth(pid):return int(pathlib.Path('/proc/'+str(pid)+'/stat').read_text().rsplit(')',1)[1].split()[19])
+def execute(raw,label):
+ output=io.StringIO()
+ with contextlib.redirect_stdout(output):
+  try:exec(compile(raw,'source-closed-r0-'+label,'exec'),{'__name__':'fixed_r0_readonly'})
+  except SystemExit as e:
+   if e.code not in (None,0):raise
+ return json.loads(output.getvalue())
+def drop_identity():os.setgroups([1000]);os.setgid(1000);os.setuid(1000)
+owner=pwd.getpwuid(1000)
+if owner.pw_name!='kardinal' or owner.pw_dir!='/home/kardinal':raise ValueError('r0_ordinary_principal_changed')
+initial=principal();rows={};children=[]
+if initial[:4]!=[0,0,0,0]:raise ValueError('r0_privileged_census_required')
+for label in ('getterBefore','capacity','getterAfter','preflightRaw','preflightLibvirt','media','storage'):
+ raw=base64.b64decode(SOURCES[label])
+ if label in ('capacity','storage'):
+  rows[label]={'sourceSha256':hashlib.sha256(raw).hexdigest(),'value':execute(raw,label),'principal':principal()}
+ else:
+  bootstrap=__BOOTSTRAP__
+  child=subprocess.Popen([sys.executable,'-I','-B','-c',bootstrap],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,preexec_fn=drop_identity,env={'HOME':owner.pw_dir,'USER':owner.pw_name,'LOGNAME':owner.pw_name,'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C'})
+  child_birth=birth(child.pid);stdout,stderr=child.communicate(raw)
+  children.append({'label':label,'pid':child.pid,'startTicks':child_birth,'returncode':child.returncode,'reaped':True,'sourceSha256':hashlib.sha256(raw).hexdigest(),'stdoutBase64':base64.b64encode(stdout).decode(),'stderrBase64':base64.b64encode(stderr).decode()})
+  if child.returncode or stderr:raise ValueError('r0_child_refused_'+label)
+  rows[label]=dict(json.loads(stdout),sourceSha256=hashlib.sha256(raw).hexdigest())
+  if rows[label]['principal']!=[1000,1000,1000,1000,[1000]]:raise ValueError('r0_child_principal_changed')
+ if principal()!=initial:raise ValueError('r0_parent_principal_changed')
+print(json.dumps({'schemaVersion':1,'operationId':OP,'hostBootId':pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'parentPid':os.getpid(),'parentStartTicks':birth(os.getpid()),'parentPrincipal':initial,'closingParentPrincipal':principal(),'rows':rows,'children':children,'vmMutation':False,'claimMutation':False},sort_keys=True))
+'''.replace('__BOOTSTRAP__','"import contextlib,io,json,os,sys\\nraw=sys.stdin.buffer.read();out=io.StringIO();scope={\'__name__\':\'fixed_r0_readonly\'}\\nwith contextlib.redirect_stdout(out):exec(compile(raw,\'source-closed-r0-child\',\'exec\'),scope)\\nprint(json.dumps({\'principal\':[os.getuid(),os.geteuid(),os.getgid(),os.getegid(),os.getgroups()],\'value\':json.loads(out.getvalue())}))\\n"').replace('__SOURCES__',repr({k:base64.b64encode(v).decode() for k,v in sources.items()})).replace('__OP__',repr(operation)).encode()
+compile(remote,'source-closed-r0-program','exec');save('observer.source',remote)
+context={'operationId':operation,'startedUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'sourceSha256':sha(remote),'sourceBytes':len(remote),'effects':'read-only; no VM/claim/credential/source mutation'};save('observer-intent.json',context)
+held=_Held()
+for row in plan['sourcePins']:held.read(str(ROOT/row['path']),row['sha256'],max_bytes=1024**2)
+held.read(str(getter),sha(graw),max_bytes=1024**2)
+with ssh_transport.admitted_transport(ROOT,'archlinux',operation,deadline=time.monotonic()+280)as admitted,ssh_direct_nested_channel.Guard(ROOT,host='archlinux')as guard,SecretFile(str(ROOT/'.codex/arch-sudo.local'))as credential:
+ def check():admitted.revalidate();guard.guard();held.finish();held.final_identity_pass();credential.guard()
+ command=('sudo','-S','-p','','--','python3','-I','-B','-c',"import sys;exec(compile(sys.stdin.buffer.read(),'<source-closed-Windows-R0>','exec'))")
+ argv=ssh_transport.build_ssh_argv(guard.config,'archlinux',60,command=command)
+ check();save('dispatch.json',dict(context,argvSha256=ssh_transport.argv_sha256(argv)))
+ child=ssh_transport.popen_ssh(argv,cwd=ROOT,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ save('local-child.json',{'pid':child.pid,'operationId':operation,'argvSha256':ssh_transport.argv_sha256(argv)})
+ payload=credential.text.encode()+b'\n'+remote
+ try:stdout,stderr=child.communicate(payload,timeout=230)
+ except subprocess.TimeoutExpired:
+  save('observation-pending.json',{'operationId':operation,'localPid':child.pid,'state':'original-observer-pending','noReplay':True});stdout,stderr=child.communicate()
+ payload=None
+ if credential.text.encode()in stdout+stderr:raise ValueError('private_input_echo_refused')
+ save('stdout.private',stdout);save('stderr.private',stderr);save('callback.json',{'returnCode':child.returncode,'stdoutBytes':len(stdout),'stderrBytes':len(stderr),'reaped':True,'elapsedSeconds':time.time()-datetime.datetime.fromisoformat(context['startedUtc']).timestamp()})
+ check();assert child.returncode==0 and not stderr,'R0 observer failed; preserved complete streams'
+ value=json.loads(stdout);save('observer-result.private.json',value)
+for row,fd in zip(authority,fds):
+ os.lseek(fd,0,0);raw=os.read(fd,4*1024**2+1);assert generation(os.fstat(fd))==row['generation']==generation(os.lstat(row['path']))and sha(raw)==row['sha256']
+ assert all(generation(Path(path).stat())==pin for path,pin in row['parents'].items())
+ os.close(fd)
+save('both-ledger-authority.closed.json',{'unchanged':True,'pins':[{'path':r['path'],'sha256':r['sha256'],'generation':r['generation']} for r in authority]})
+held.finish();held.final_identity_pass();held.close()
+rows=value['rows'];before=rows['getterBefore']['value'];after=rows['getterAfter']['value']
+def stable(coverage):return {k:([{x:y for x,y in row.items()if x!='observedAtUnixMs'} for row in v]if k=='rows'else v) for k,v in coverage.items()if k!='observedAtUnixMs'}
+assert stable(before)==stable(after)and value['hostBootId']==before['hostBootId']
+native=rows['capacity']['value'];from agent_tools import native_host_observation as native_module
+# Canonical conversion of the actual four-field native census.
+measurement=native_module._measurement(native)
+covered=0;catalog=native['vms'];seen=set()
+for row in before['rows']:
+ matches=[r for r in catalog if (r['pid'],r['startTicks'],r['configuredMemoryBytes'])==(row['pid'],row['startTicks'],row['configuredMemoryBytes'])]
+ assert len(matches)==1 and row['reservationId']not in seen;seen.add(row['reservationId']);covered+=row['configuredMemoryBytes']
+allrows=[r for a in authority for r in json.loads(base64.b64decode(a['rawBase64']))['reservations'] if r['hostAlias']=='archlinux']
+for row in before['rows']:
+ matches=[r for r in allrows if r['id']==row['reservationId']];assert len(matches)==1 and matches[0]['requestedMemoryBytes']==row['configuredMemoryBytes']
+held_bytes=sum(r['requestedMemoryBytes'] for r in allrows);supplied=dict(measurement,runningConfiguredMemoryBytes=measurement['runningConfiguredMemoryBytes']-covered+held_bytes)
+try:capacity=vm_workflow.admit_plan(supplied,requested_memory_bytes=4096*1024**2,headroom_bytes=8192*1024**2,reservations=());capacity_state='admitted'
+except Exception as e:capacity={'failureType':type(e).__name__,'reason':str(e)};capacity_state='refused'
+summary={'operationId':operation,'state':'observed','hostBootId':value['hostBootId'],'sourceSha256':sha(remote),'capacityState':capacity_state,'capacity':capacity,'heldClaimsBytes':held_bytes,'coveredNativeBytes':covered,'nativeConfiguredBytes':measurement['runningConfiguredMemoryBytes'],'physicalMemoryBytes':measurement['physicalMemoryBytes'],'availableMemoryBytes':measurement['availableMemoryBytes'],'preflightRaw':rows['preflightRaw']['value'],'preflightLibvirt':rows['preflightLibvirt']['value'],'media':rows['media']['value'],'storage':rows['storage']['value'],'allChildrenReaped':all(c['reaped']for c in value['children']),'vmMutation':False,'claimMutation':False,'nativeAdmission':False}
+save('qualification.private.json',summary)
+print(json.dumps({'operationId':operation,'evidenceRoot':str(OUT),'capacityState':capacity_state,'physicalMemoryGiB':measurement['physicalMemoryBytes']/1024**3,'heldGiB':held_bytes/1024**3,'coveredNativeGiB':covered/1024**3,'rawState':summary['preflightRaw'].get('state'),'rawReason':summary['preflightRaw'].get('reason'),'libvirtState':summary['preflightLibvirt'].get('state'),'mediaState':summary['media'].get('state'),'storage':summary['storage'],'childrenReaped':summary['allChildrenReaped']}))

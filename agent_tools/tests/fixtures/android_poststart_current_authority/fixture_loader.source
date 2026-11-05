@@ -1,0 +1,45 @@
+"""Finite captured source loader; no canonical module or bytecode authority."""
+import builtins
+import hashlib
+from pathlib import Path
+import sys
+import types
+
+HERE = Path(__file__).parent
+EXPECTED_RETIREMENT = 'b80edb795461815d1565148dc1eb32966c4de3aa6ad0f4bab1f53a378f537e31'
+EXPECTED_HELPER = '917a9438dc5048d8131e3acb114a0ef117dade453ec028d768a8427fcd580231'
+
+class NoSshAuthority:
+    def __getattr__(self, name):
+        raise AssertionError('owned_control_forbidden_ssh_dependency:' + name)
+
+
+def captured_module(path, expected, importer):
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected:
+        raise ValueError('owned_control_snapshot_changed:' + path.name)
+    module = types.ModuleType('owned_captured_' + path.stem.replace('.', '_'))
+    module.__file__ = str(path)
+    module.__package__ = 'owned_captured_component_control'
+    module.__dict__['__builtins__'] = dict(vars(builtins), __import__=importer)
+    exec(compile(raw, str(path), 'exec', dont_inherit=True), module.__dict__)
+    return module
+
+
+def load_component_helper():
+    original_import = builtins.__import__
+    ssh = NoSshAuthority()
+    retirement = None
+    def fixed_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if level:
+            if level == 1 and name == '' and fromlist == ('ssh_transport',):
+                return types.SimpleNamespace(ssh_transport=ssh)
+            raise ImportError('owned_control_relative_import_refused')
+        if name == 'agent_tools' and fromlist == ('android_installer_failed_check_retirement',) and retirement is not None:
+            return types.SimpleNamespace(android_installer_failed_check_retirement=retirement)
+        if name.split('.')[0] not in sys.stdlib_module_names | {'builtins'}:
+            raise ImportError('owned_control_nonstdlib_import_refused:' + name)
+        return original_import(name, globals, locals, fromlist, level)
+    retirement = captured_module(HERE / 'sources/retirement.source', EXPECTED_RETIREMENT, fixed_import)
+    helper = captured_module(HERE / 'component_test_helper.captured.source', EXPECTED_HELPER, fixed_import)
+    return helper.ComponentTerminalHistoryTest, retirement

@@ -1,0 +1,96 @@
+class CurrentIntervalRefusal(ValueError):
+    pass
+
+def _interval_need(value, reason):
+    if not value:
+        raise CurrentIntervalRefusal(reason)
+
+def _interval_boot():
+    return (PROC / 'sys/kernel/random/boot_id').read_text().strip()
+
+def _interval_trace(error):
+    guard = None
+    host = None
+    attempt = None
+    reader = None
+    position = error.__traceback__
+    while position is not None:
+        frame = position.tb_frame
+        if frame.f_code is _current_host_attempt.__code__:
+            host = dict(frame.f_locals)
+        if frame.f_code in (component_release_current1e15_effect_plane_guard.__code__, component_release_effect_plane_current_guard.__code__):
+            guard = dict(frame.f_locals)
+            guard['isCurrent1e15'] = frame.f_code is component_release_current1e15_effect_plane_guard.__code__
+        elif guard is not None and type(guard.get('n')) is dict:
+            namespace = guard['n']
+            workers = namespace.get('attempt_workers')
+            read = namespace.get('plane_read')
+            if workers is not None and frame.f_code is workers.__code__:
+                attempt = {'line': position.tb_lineno, 'locals': frame.f_locals}
+            elif read is not None and frame.f_code is read.__code__:
+                reader = frame.f_locals
+        position = position.tb_next
+    return (guard, attempt, reader, host)
+
+def _interval_host_snapshot(host):
+    if host is None:
+        return None
+    allowed = ('admissions', 'lease', 'absent', 'actors', 'actor_evidence', 'fixture_record', 'fixture_identity', 'fixture_port', 'planes', 'stable_planes', 'stable', 'evidence')
+    counter = [0]
+
+    def safe(value, depth=0):
+        counter[0] += 1
+        _interval_need(depth <= 32 and counter[0] <= 100000, 'current_interval_host_snapshot_budget')
+        if value is None or type(value) in (str, int, bool):
+            return value
+        if type(value) is list:
+            return [safe(item, depth + 1) for item in value]
+        if type(value) is dict and all((type(key) is str for key in value)):
+            return {key: safe(item, depth + 1) for key, item in value.items()}
+        raise CurrentIntervalRefusal('current_interval_host_snapshot_type')
+    return {key: safe(host[key]) for key in allowed if key in host}
+
+def _interval_capture(error, invocation, number, before_globals):
+    guard, attempt, reader, host = _interval_trace(error)
+    namespace = guard.get('n') if guard is not None else None
+    namespace = namespace if type(namespace) is dict else {}
+    partial = None
+    if reader is not None:
+        raw = reader.get('raw', bytearray())
+        raw = bytes(raw) if type(raw) in (bytes, bytearray) else b''
+        name = reader.get('name')
+        expected = tuple((BASELINE_BASE64.b64decode(namespace['ATTEMPT_BINDING'][key], validate=True) for key in ('expectedRootArgvBase64', 'expectedSudoArgvBase64')))
+        captured = name != 'cmdline' or raw in expected
+        partial = {'pid': reader.get('pid'), 'name': name, 'generation': reader.get('before'), 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(), 'readComplete': False, 'rawCaptured': captured, 'rawBase64': BASELINE_BASE64.b64encode(raw).decode() if captured else None}
+    records = namespace.get('ATTEMPT_PROC_RAW', [])
+    first = attempt['locals'].get('first') if attempt is not None else None
+    initial = attempt['locals'].get('index') if attempt is not None else None
+    payload = {'schema': 1, 'kind': 'android-current1e15-unknown-interval', 'operationId': CURRENT_INTERVAL_STORAGE['operationId'], 'recordId': uuid.uuid4().hex, 'guardInvocationId': invocation, 'attempt': number, 'scannerSourceSha256': CURRENT_INTERVAL_SCANNER_SHA, 'validatorSourceSha256': CURRENT_INTERVAL_VALIDATOR_SHA, 'parentCapsuleSha256': CURRENT_INTERVAL_PARENT_CAPSULE_SHA, 'error': {'type': type(error).__name__, 'errno': getattr(error, 'errno', None), 'code': error.args[0] if type(error) is ValueError and len(error.args) == 1 and (type(error.args[0]) is str) and re.fullmatch('[a-z][a-z0-9_]{0,119}', error.args[0]) else None}, 'unknownInterval': True, 'retryable': False, 'positiveAbsence': [], 'completedCensusPasses': guard.get('scans', []) if guard is not None else [], 'rawRecords': records, 'boundaryPasses': namespace.get('BOUNDARY_PASSES', []), 'boundaryRaw': namespace.get('BOUNDARY_RAW', []), 'partialRead': partial, 'lateIdentity': first, 'closingRawBegin': initial, 'attemptState': {key: attempt['locals'].get(key) for key in ('matches', 'errors', 'resolved', 'names', 'late_identities', 'closing_identities', 'identity_population')} if attempt is not None else None, 'hostAttempt': _interval_host_snapshot(host), 'nativeObservations': {key: globals().get(key, []) if globals().get(key) is not old else [] for key, old in before_globals.items()}, 'capturedAtNs': time.time_ns(), 'outcomesChanged': False, 'nativeAction': False}
+    eligible = type(error) in (FileNotFoundError, ProcessLookupError) and error.errno in (2, 3) and (guard is not None) and (guard.get('isCurrent1e15') is True) and (attempt is not None) and (reader is not None) and (CURRENT_INTERVAL_CLOSING_START <= attempt['line'] <= CURRENT_INTERVAL_CLOSING_END) and (type(first) is dict) and (first.get('role') is None) and (type(first.get('pid')) is int) and (first['pid'] > 0) and (reader.get('pid') == first['pid']) and (reader.get('name') == 'cmdline') and (type(initial) is int) and (initial == len(records)) and (partial is not None) and (partial['bytes'] == 0) and (attempt['locals'].get('matches') == []) and (attempt['locals'].get('errors') == []) and all((type(scan) is dict and scan.get('matches') == [] and (scan.get('errors') == []) and (scan.get('censusComplete') is True) and (scan.get('bootId') == scan.get('closingBootId') == HOST_EXPECTED_BOOT) and (scan.get('unresolvedNewPids') == []) and (scan.get('reappearedPids') == []) for scan in (guard.get('scans', []) if guard is not None else []))) and (hashlib.sha256(guard['fixed']['processSource'].encode()).hexdigest() == CURRENT_INTERVAL_SCANNER_SHA) and (hashlib.sha256(guard['fixed']['validatorSource'].encode()).hexdigest() == CURRENT_INTERVAL_VALIDATOR_SHA) and (first['pid'] in attempt['locals'].get('identity_population', [])) and (first in attempt['locals'].get('late_identities', []))
+    if eligible:
+        payload['bootBefore'] = _interval_boot()
+        payload['otherAbsenceRechecks'] = []
+        for row in attempt['locals'].get('resolved', []):
+            if row.get('state') != 'rechecked-absent':
+                eligible = False
+                continue
+            for _ in range(2):
+                try:
+                    os.stat(namespace['PROC_ROOT'] / str(row['pid']), follow_symlinks=False)
+                except FileNotFoundError as absent:
+                    payload['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': absent.errno, 'state': 'absent'})
+                except OSError as unknown:
+                    payload['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': unknown.errno, 'state': 'unknown'})
+                    eligible = False
+                else:
+                    payload['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': None, 'state': 'present'})
+                    eligible = False
+        for _ in range(2):
+            resolution = namespace['plane_resolve_disappeared'](first['pid'], error)
+            payload['positiveAbsence'].append(resolution)
+            if resolution != {'pid': first['pid'], 'errno': error.errno, 'closingErrno': 2, 'state': 'rechecked-absent'}:
+                eligible = False
+        payload['bootAfter'] = _interval_boot()
+        eligible = eligible and payload['bootBefore'] == payload['bootAfter'] == HOST_EXPECTED_BOOT
+    payload['retryable'] = bool(eligible)
+    return payload

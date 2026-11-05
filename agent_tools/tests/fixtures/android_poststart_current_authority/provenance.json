@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "kind": "android-poststart-current-authority-owned-routine-candidate",
+  "nativeAcceptance": false,
+  "publicPrivateProofIncluded": false,
+  "privateGolden93ffIncluded": false,
+  "nativeInventoryRecordsIncluded": false,
+  "productionOriginalProofConstantUnchanged": true,
+  "productionSourceBinding": null,
+  "wholeSourceBeforeimagesRemainIgnored": true,
+  "sourceSnapshots": {
+    "custody": {
+      "sha256": "a04c3282787e938c32a09ad3ac5a54d8499e60a766977778591ef72ef388dcae",
+      "bytes": 8299,
+      "origin": "captured whole source, byte-exact"
+    },
+    "continuity": {
+      "sha256": "9e7c099de26239ac70711687a512d689e451fb0aca42627fd362e03065784589",
+      "bytes": 43483,
+      "origin": "captured whole source, byte-exact"
+    },
+    "retirement": {
+      "sha256": "b80edb795461815d1565148dc1eb32966c4de3aa6ad0f4bab1f53a378f537e31",
+      "bytes": 155651,
+      "origin": "captured whole source, byte-exact"
+    },
+    "bundle": {
+      "sha256": "e218c1fc862eab2a5668da970b8d642fa3254fb2ff822ab4945f23ae787f4372",
+      "bytes": 137896,
+      "origin": "captured whole source, byte-exact"
+    },
+    "renderer": {
+      "sha256": "334d4b006be08bacecab845137393953462d39632e02b988608d5758e1403b3f",
+      "bytes": 31651,
+      "origin": "captured whole source, byte-exact"
+    },
+    "adapter": {
+      "sha256": "51b3ed12704660b622604ffafefe9bd308c3d4ca013e873eabaee694201f769e",
+      "bytes": 8966,
+      "originSha256": "9edf841d551f43cb4daf9099b85c6ccdb7281299b0f47f514b90bb6d29f8bc4c",
+      "origin": "exact selected definition bodies with explicit inert owned-control preamble",
+      "retainedBodies": {
+        "need": "d0e72104106223e9fe7d2bda6f8d882dbb05a3cc7f361f0c6e5584ab24a524cc",
+        "digest": "aa0210ace4fdb541410909814713738e8261645d1f9f4e166eecc1083c4c42ed",
+        "canonical": "bfbf7a6a91a273d7fe9046956687b51f629977d9812c8d53ad2c5c29cb90b224",
+        "decode": "03c15ce721b9446964db99bd6903c26287859826dbd2605b60849bee41151871",
+        "fd9": "9fa58050cce59a620952ef84122e56bd05958c9d9399d101d6efca3941b0ca51",
+        "sha": "e4bbf77a83eb3fdc865b6064900b91193dce93c4e4b577d355926f73e10c21e1",
+        "pin_record": "4471ec7ff44195c29ff603b337e043cbee22f2b8fe7c9eb159d7621adf5742c6",
+        "input_record": "342a760334cca1ca886e01ee4848d2689305d1e21f3290029d34c782d167f8e9",
+        "HeldInputs": "1a89bd54b37dbd09311beccd64eb5393fe475135d5c2288fb2ce4ee0c0470de8",
+        "current_relation": "205e394b0076d70e103b7b92abf489d3b1eff09b112e8ad8eee1a872b815bb66"
+      },
+      "wholeSourceInIgnoredEvidence": true,
+      "publicNativeRecords": false
+    },
+    "componentTestHelper": {
+      "sha256": "917a9438dc5048d8131e3acb114a0ef117dade453ec028d768a8427fcd580231",
+      "bytes": 111869,
+      "origin": "agent_tools/tests/test_android_installer_failed_check_retirement.py, whole source snapshot; selected release_fixture/control schema only"
+    }
+  },
+  "controlPolicySeams": [
+    "isolated POLICY_KIND owned-control kind",
+    "isolated ORIGINAL_PROOF_SHA real temp admitted proof",
+    "isolated SOURCE_BINDING owned complete capture files",
+    "isolated SOURCE_SHAS adapter exact-body pure projection"
+  ],
+  "promotionDestination": "agent_tools/tests/fixtures/android_poststart_current_authority",
+  "reviewRequiredBeforePromotion": true,
+  "canonicalTemplatePath": "agent_tools/android_poststart_current_authority.py",
+  "canonicalTemplateSha256": "2cb37a86cc2f986aa6bb03652ab3f827bba16e6b3c7061348a451a0f0912d73f",
+  "routineDefaultExecutionAuthority": "actual ROOT/agent_tools/android_poststart_current_authority.py, copied byte-exact into owned temporary source directory before execution",
+  "fixedCurrentFixtureAuthority": "historical checksum/causal snapshot only; never default executed",
+  "sourceMaterialization": "six checksum-verified fixture sources copied into real owned OUT/sources; module __file__ and compile filename are the actual owned source path",
+  "nativeAssembler": "later copies the canonical unsealed template and authenticated sources into a private packet, then seals genuine source-owned binding only after actual successful same-persisted start and review",
+  "publicApiAdded": false,
+  "localClosingRelation": {
+    "requires": [
+      "full original9da/current1e15 guard return objects",
+      "immutable process/projector/boundary source checksums",
+      "unchanged original projectors replay full proc raw records",
+      "two complete zero matching worker passes under expected stable host boot",
+      "exact original priorPass/full boundary raw/hash/path relation",
+      "current9da bounded waves and every-wave positive-absence reappearance refusal",
+      "current9da each-pass cumulative raw bytes <=8MiB",
+      "current physical before/after generation/app/controller with exact root account and host",
+      "repeated complete relation projection in every local guard"
+    ],
+    "unchangedCurrent1e15LateSemantics": true,
+    "labelsOnlyRejected": true,
+    "sourceBinding": null
+  },
+  "planeSourceFiles": {
+    "current1e15-boundarySource.source": {
+      "sha256": "d364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90",
+      "bytes": 1949
+    },
+    "current1e15-processSource.source": {
+      "sha256": "779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f",
+      "bytes": 7029
+    },
+    "current1e15-validatorSource.source": {
+      "sha256": "2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1",
+      "bytes": 10444
+    },
+    "current9da-boundarySource.source": {
+      "sha256": "d364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90",
+      "bytes": 1949
+    },
+    "current9da-processSource.source": {
+      "sha256": "4b1e019705f5fc3d9870136839eb80a3cd97ef899b64944c85f71292d0a8731d",
+      "bytes": 7063
+    },
+    "current9da-validatorSource.source": {
+      "sha256": "23e692586d4f82f4c6dc8a24c0200eb572292c0efc78e68497de33ca0f119670",
+      "bytes": 6828
+    }
+  },
+  "causalBeforeimages": {
+    "dual_authority.before-closing.source": "51766ba14145261f6321667459e55ee4f70c0aed281f64f1d0a0c8c32125f1bc",
+    "dual_authority.before-wave-absence.source": "27bbfd1b6c35f9b62e2a960aa39e6d51e54e09d3c6f6963d7028ae247050b2f8",
+    "dual_authority.before-wave-budget.source": "af43dae1dfe34e17d624b7a3c1a51f6260eb1b005ffe5b7af088d97c6ee11710"
+  },
+  "controlDataLimits": {
+    "positiveProcessObservations": "actual unchanged scanners run only on real owned temporary proc trees",
+    "boundaryPrincipalProjection": "same isolated source-shaped root/remote principal and native path seam as existing component test fixture; real owned lease bytes/inode metadata",
+    "overbudgetControl": "typed protocol record intentionally impossible for a successfully completed original scanner, not an actual native observation",
+    "nativeAuthority": false
+  },
+  "kernelEnvelopeCallerFix": {
+    "beforeSourceSha256": "2e4e05e1986b5494865de209ebefde449bc4d65ce1b32f63bab1c39f9c8c0f9a",
+    "currentSourceSha256": "2cb37a86cc2f986aa6bb03652ab3f827bba16e6b3c7061348a451a0f0912d73f",
+    "delta": [
+      "first authentic poststart_kernel_guard(None) returns complete original_status document",
+      "retain existing child/guest/device generation and app checks",
+      "final authentic poststart_kernel_guard(current) checks whole first document unchanged"
+    ],
+    "authenticTemplateSha256": "0e2a18b93a9d421c4fe6e5478c278ede7af41a87b8605bc4bcd993405142db07",
+    "guardBodyChanged": false,
+    "wrapperAdded": false,
+    "nativeActions": false,
+    "causalControl": "actual authentic guard body and canonical runtime_guard run on owned real root/status/journal/machine files; typed original full envelope mismatch RED before, positive and full-document/first-generation refusal GREEN after"
+  }
+}

@@ -1,0 +1,104 @@
+"""Actual unchanged scanners on owned /proc files; no native guest authority.
+
+Boundary bytes/inodes are owned real lease observations. As in the preexisting
+component schema fixture, native path/root/remote principals are projected only
+for the isolated control, never an execution or native identity assertion.
+"""
+import base64
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import types
+
+HERE = Path(__file__).parent
+SOURCES = {
+    'current9da-processSource.source': '4b1e019705f5fc3d9870136839eb80a3cd97ef899b64944c85f71292d0a8731d',
+    'current9da-validatorSource.source': '23e692586d4f82f4c6dc8a24c0200eb572292c0efc78e68497de33ca0f119670',
+    'current9da-boundarySource.source': 'd364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90',
+    'current1e15-processSource.source': '779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f',
+    'current1e15-validatorSource.source': '2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1',
+    'current1e15-boundarySource.source': 'd364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90',
+}
+
+def held(name):
+    raw = (HERE / 'plane_code' / name).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != SOURCES[name]:
+        raise ValueError('owned_actual_plane_source_changed')
+    return raw.decode()
+
+
+def pin(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def process(root, pid):
+    path = root / str(pid)
+    path.mkdir()
+    (path / 'cmdline').write_bytes(b'owned-normal\0')
+    (path / 'status').write_bytes(b'Uid:\t1000\t1000\t1000\t1000\nGid:\t1000\t1000\t1000\t1000\n')
+    (path / 'stat').write_bytes(f"{pid} (owned-process) S 1 {'0 ' * 17}{pid + 100}\n".encode())
+
+
+def make(root, lease, backend, boot, *, late=False, wave_absent=False):
+    original = '0dd55704-1e80-4d62-8d9d-2f0a123e0c3b'
+    prefix = 'android-native-device-api35-' + original
+    paths = ['android-native-device-api35.lease', 'android-native-device-android-api35.lease',
+             prefix + '.release-intent', 'android-native-device-android-api35-' + original + '.release-intent',
+             prefix + '.component-retirement-fence', prefix + '.component-retirement-quarantine',
+             prefix + '.component-retirement-quarantine/captured-original-lease.json',
+             prefix + '.component-retirement-quarantine/held-original-snapshot.json']
+    parents = {'/': [1, 2, 0o40755, 0, 0], backend: [1, 3, 0o40700, 0, 0]}
+    raw = lease.read_bytes()
+    generation = pin(lease.stat());generation[3:5] = [1000, 1000]
+    prior = [{'path': backend + '/' + paths[0], 'state': 'present', 'generation': generation,
+              'parents': parents, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
+              'rawBase64': base64.b64encode(raw).decode()}]
+    prior.extend({'path': backend + '/' + path, 'state': 'absent', 'parents': parents} for path in paths[1:6])
+    prior.extend({'path': backend + '/' + path, 'state': 'parent-absent', 'parents': parents,
+                  'parentPath': backend + '/' + paths[5]} for path in paths[6:])
+    binding = {'expectedRootArgvBase64': base64.b64encode(b'python\0owned-protected-worker\0').decode(),
+               'expectedSudoArgvBase64': base64.b64encode(b'sudo\0owned-protected-worker\0').decode(),
+               'originalNativePidRetained': True, 'parent': 'owned', 'programmeSha256': '0' * 64,
+               'routing': 'owned', 'sessions': 'owned', 'sourceRoot': '/owned-control'}
+    tables = {}; records = {}
+    for name, tag in [('EFFECT_PLANE_FIXED', 'current9da'), ('CURRENT1E15_EFFECT_PLANE_FIXED', 'current1e15')]:
+        fixed = {key: held(tag + '-' + key + '.source') for key in ('processSource', 'validatorSource', 'boundarySource')}
+        fixed.update(binding=copy.deepcopy(binding), paths=paths, priorPass=copy.deepcopy(prior))
+        proc = root / tag;proc.mkdir()
+        boot_dir = proc / 'sys/kernel/random';boot_dir.mkdir(parents=True)
+        (boot_dir / 'boot_id').write_text(boot + '\n')
+        process(proc, 501)
+        proxy = types.SimpleNamespace(**{key: getattr(os, key) for key in dir(os)})
+        calls = [0]
+        def listed(path, *, _proc=proc, _calls=calls, _tag=tag):
+            if Path(path) == _proc:
+                _calls[0] += 1
+                if ((late and _tag == 'current1e15') or (wave_absent and _tag == 'current9da')) and _calls[0] == 2:
+                    process(_proc, 502)
+            return os.listdir(path)
+        proxy.listdir = listed
+        removed = [False]
+        def opened(path, flags, *args, _proc=proc, _tag=tag, _removed=removed, **kwargs):
+            if wave_absent and _tag == 'current9da' and Path(path) == _proc / '501/cmdline' and not _removed[0]:
+                _removed[0] = True
+                for child in (_proc / '501').iterdir():child.unlink()
+                (_proc / '501').rmdir()
+            return os.open(path, flags, *args, **kwargs)
+        proxy.open = opened
+        scope = {'os': proxy, 'stat': stat, 're': re, 'hashlib': hashlib, 'PROC_ROOT': proc,
+                 'COMPONENT_BUNDLE': types.SimpleNamespace(_pin=pin), 'STAGE_BASE64': base64,
+                 'ATTEMPT_BINDING': fixed['binding'], 'ATTEMPT_PROC_RAW': []}
+        code_path = HERE / 'plane_code' / (tag + '-processSource.source')
+        exec(compile(fixed['processSource'], str(code_path), 'exec', dont_inherit=True), scope)
+        scans = [scope['attempt_workers']() for _ in range(2)]
+        record = {'kind': 'original9da-current-effect-plane' if tag == 'current9da' else 'original1e15-current-effect-plane',
+                  'binding': fixed['binding'], 'passes': [copy.deepcopy(prior), copy.deepcopy(prior)],
+                  'workerPasses': scans, 'procRawRecords': scope['ATTEMPT_PROC_RAW']}
+        if tag == 'current9da':record['censusWaves'] = scope['CURRENT_CENSUS_WAVES']
+        tables[name] = fixed;records[name] = record
+    return tables, records

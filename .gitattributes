@@ -217,3 +217,28 @@ agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.
 
 # Preserve the Windows storage-test failure source across checkout platforms.
 /scripts/tests/fixtures/windows_fixture_storage_capabilities/test_fixture_storage_host.py.before.source -text
+
+# The renderer regression authenticates its preserved static rejection bytes.
+/agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/static-review-rejected.json -text
+
+# Exact native provider response bytes for the Tart known-off regression.
+/agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/*.json -text
+/agent_tools/tests/fixtures/android_component_continuity/provenance.json -text
+/agent_tools/tests/fixtures/android_component_successor/provenance.json -text
+/agent_tools/tests/fixtures/android_current_census/provenance.json -text
+/agent_tools/tests/fixtures/android_local_custody/provenance.json -text
+/agent_tools/tests/fixtures/android_native_observer_control/provenance.json -text
+/agent_tools/tests/fixtures/android_persisted_start/admission-blocked.native.json -text
+/agent_tools/tests/fixtures/android_persisted_start/provenance.json -text
+
+# Current source review and portability probes retain their exact bytes.
+/agent_tools/readiness_vm_dispatch.json -text
+/scripts/check_python_platform_contracts.py -text
+/scripts/test_python_platform_contracts.py -text
+/agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json -text
+/agent_tools/tests/fixtures/windows_conservative_policy/provenance.json -text
+/agent_tools/tests/fixtures/windows_fresh_readonly_observer/executable-schema-native-facts.json -text
+/agent_tools/tests/fixtures/windows_fresh_readonly_observer/provenance.json -text
+/agent_tools/tests/fixtures/android_poststart_current_authority/provenance.json -text
+/agent_tools/tests/fixtures/android_terminal_observer_lifetime/provenance.json -text
+/agent_tools/tests/fixtures/android_terminal_zombie_retry/provenance.json -text

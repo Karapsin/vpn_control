@@ -1,0 +1,18 @@
+{
+  "files": {
+    "adapter.before.source": {
+      "bytes": 11737,
+      "sha256": "1831b5105fd23f45cd047c1cd46af6e427129b7b9089c3f1a9749b211468f955",
+      "source": ".runtime/tool-recovery/android-head-target-1f2025d9-8e2d-4d2d-8919-f9a785bdf7a7/durable-original-closure-201cea86-8999-43f1-9d85-9020e0dad922/local_capture.py",
+      "wholeFile": true
+    },
+    "qualifier.before.source": {
+      "bytes": 11497,
+      "sha256": "c4912f4c4282d8e9a61fdf5acca7233c89448b720227fa32fa47c1a859a4b672",
+      "source": ".runtime/tool-recovery/android-continuity-relocation-e62b06f4-e06f-4305-8944-01848cba42be/native-readonly-aa5db6fe-2568-4d1e-95b8-922e195c761f/qualifier.py",
+      "wholeFile": true
+    }
+  },
+  "kind": "authentic-native-local-adapter-custody-beforeimages",
+  "schemaVersion": 1
+}

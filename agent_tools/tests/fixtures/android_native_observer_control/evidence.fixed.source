@@ -1,0 +1,18 @@
+for source, digest, label in (
+        (ORIGINAL_CAPSULE, '38158a1ed76a5f57b7568b5b7f5867592ceeed44d7643e639fa4b531f443989b', 'before'),
+        (CURRENT_CAPSULE, '3a07a3ce506b4be93faeb1bd3bb291d3c31bd93fb914cdcf33617bdc4eff5429', 'current')):
+    try:
+        phase(source, digest, label)
+    except BaseException as failure:
+        if not PHASES or PHASES[-1]['phase'] != label:
+            PHASES.append({'phase': label, 'state': 'unknown', 'records': []})
+        PHASES[-1]['state'] = 'unknown'
+        PHASES[-1]['unexpectedFailure'] = control_code(failure)
+    if PHASES[-1]['state'] != 'qualified':
+        break
+print(json.dumps({'schema': 1, 'kind': 'native-owned-late-pid-census-red-green',
+                  'operationId': OPERATION_ID,
+                  'state': 'qualified' if len(PHASES) == 2 and all(row['state'] == 'qualified' for row in PHASES) else 'unknown',
+                  'phases': PHASES, 'nativeStartRun': False, 'leaseMutation': False,
+                  'claimsReleased': False, 'priorUnknownsChanged': False, 'replayAllowed': False},
+                 sort_keys=True, separators=(',', ':')), flush=True)

@@ -585,7 +585,8 @@ def component_admission_source(source_raw: bytes, expected_source_sha256: str) -
 def release_component_fenced(lease: Path, expected_pin: dict[str, Any],
                              admitted_proof: dict[str, Any], release_correlation_id: str,
                              current_proof, role: str,
-                             remote_result: dict[str, Any] | None = None) -> dict[str, Any]:
+                             remote_result: dict[str, Any] | None = None, *,
+                             continuity_receipt: dict[str, Any] | None = None) -> dict[str, Any]:
     """Separate component release, invoked only by the sealed direct adapter.
 
     The adapter continuously holds the original device lock, authenticates the
@@ -603,6 +604,8 @@ def release_component_fenced(lease: Path, expected_pin: dict[str, Any],
     if role not in ('remote-original','local-original'):
         raise ValueError('component_release_role_invalid')
     remote=role=='remote-original';uid=1000 if remote else old['principals']['localLeaseUid']
+    if remote and continuity_receipt is not None:
+        raise ValueError('component_remote_continuity_forbidden')
     actor=0 if remote else uid
     actor_gid=0 if remote else os.getgid();lease_gid=1000 if remote else actor_gid
     if os.getuid()!=actor or os.getgid()!=actor_gid:
@@ -642,8 +645,22 @@ def release_component_fenced(lease: Path, expected_pin: dict[str, Any],
         raise ValueError('component_release_parent_invalid')
     old_pin=old['files']['remote-lease.json' if remote else 'local-lease.json']
     projected=generation if old_pin['format']=='descriptor9' else [generation[0],generation[1],generation[6],generation[7],generation[8],stat.S_IMODE(generation[2]),generation[3],generation[5]]
+    continuity_guard=lambda:None
     if old_pin['generation']!=projected or old_pin['sha256']!=expected_pin['sha256']:
-        raise ValueError('component_release_original_lease_changed')
+        if remote or continuity_receipt is None:
+            raise ValueError('component_release_original_lease_changed')
+        # Only this historical local lease can use independently qualified
+        # filesystem continuity. Keep the admitted proof and its original pin
+        # unchanged; the derived receipt retains both identities. The validator
+        # freshly measures the exact named/held inode before every lease read.
+        from agent_tools.android_component_continuity import validate_lease_receipt,validate_relocated_lease_receipt
+        if type(continuity_receipt)is dict and continuity_receipt.get('kind')=='android-component-relocated-api35-lease-custody':
+            continuity_guard=lambda:validate_relocated_lease_receipt(continuity_receipt,str(lease),old_pin,expected_pin)
+        else:
+            continuity_guard=lambda:validate_lease_receipt(continuity_receipt,str(lease),old_pin,expected_pin)
+        continuity_guard()
+    elif continuity_receipt is not None:
+        raise ValueError('component_release_continuity_not_required')
     def fp(info):
         return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
     def ancestry():
@@ -668,6 +685,7 @@ def release_component_fenced(lease: Path, expected_pin: dict[str, Any],
             finally:os.close(other)
         def read_lease():
             guard_parent()
+            continuity_guard()
             fd=os.open(lease.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
             with os.fdopen(fd,'rb') as stream:
                 before=fp(os.fstat(stream.fileno()));raw=stream.read(1025);after=fp(os.fstat(stream.fileno()))

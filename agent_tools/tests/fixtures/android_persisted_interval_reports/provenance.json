@@ -1,0 +1,81 @@
+{
+  "beforeHelperMaterialization": "Verified whole source bytes at truthful owned temporary agent_tools/android_persisted_start.py with three byte-identical canonical policy copies. Never a canonical __file__ alias.",
+  "beforeSources": {
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-b2.before.source": {
+      "bytes": 41054,
+      "sha256": "b2cec75b415152f88c629a56aad01a9db601b54183fa0a786a3e6a4e1fa043c6"
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-d9ef.before.source": {
+      "bytes": 48385,
+      "sha256": "d9ef282e23592746c2c768f68fb3e5b96a858838b35f822de20333fc6bcfe86c"
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-e43.before.source": {
+      "bytes": 41458,
+      "sha256": "e43f0997cfae188c433e5cea86807e36bc247b971093534fecfe88ef38510c86"
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller.fixed.source": {
+      "bytes": 52159,
+      "sha256": "74c60b99426fb73cf3ea5ef9ad69f097d723b30a0fca72796e45935b7e7e8552"
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-53b.before.source": {
+      "bytes": 60823,
+      "sha256": "53b0fca6d7eba6344420c3d83c028aa18be60669f0af9305df8dbbd54c77bd82"
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-57c8.before.source": {
+      "bytes": 82395,
+      "sha256": "57c8b55fd9c6dc78f1352af2f33411c6ed76ada9f27c445df099a7696e08f4d7"
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-734.before.source": {
+      "bytes": 64150,
+      "sha256": "7341b274393541566e05ca526e2608cdcdc00a132e7a9839a9763e3fbf464b18"
+    }
+  },
+  "causalCases": [
+    {
+      "before": [
+        "helper-53b.before.source",
+        "controller-b2.before.source"
+      ],
+      "cause": "observer lacked prepared interval storage",
+      "verification": "actual emission and whole owner RED/GREEN"
+    },
+    {
+      "before": [
+        "helper-734.before.source",
+        "controller-e43.before.source"
+      ],
+      "cause": "failure references and original report bytes unavailable to controller",
+      "verification": "whole owner failure/runtime UNKNOWN/fresh-client controls and emitted reader FD9/SHA/bounds"
+    },
+    {
+      "before": [
+        "helper-57c8.before.source"
+      ],
+      "cause": "invalid emitted regex escape emits stderr warning",
+      "verification": "actual renderer compiler warning RED/GREEN; no fabricated native receipt"
+    },
+    {
+      "before": [
+        "controller-d9ef.before.source"
+      ],
+      "cause": "observation-only Context leaves collection tools unbound",
+      "verification": "actual Context/Custody/frozen durable SourceSession RED/GREEN; only network session/RPC seams owned"
+    },
+    {
+      "before": [
+        "controller-d9ef.before.source"
+      ],
+      "cause": "fresh collector adopts recovered replacement generation",
+      "verification": "authentic old collector after actual guarded constructor qualification queriesgenB; fixed rejects before catalog/data"
+    }
+  ],
+  "fixtureData": "owned inert metadata only; runtime and native source packets excluded",
+  "kind": "source-authenticated-interval-report-regression-fixtures",
+  "nativeAuthorityGranted": false,
+  "policyFiles": [
+    "agent_tools/vm_workflow.py",
+    "agent_tools/native_host_observation.py",
+    "scripts/fixture_environment.py"
+  ],
+  "schema": 1
+}

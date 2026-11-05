@@ -1,0 +1,101 @@
+import base64, hashlib, json, os, sys, time, uuid, subprocess
+from pathlib import Path
+ROOT = Path('/Users/karapsin_de/projects/vpn_control_tool_recovery')
+sys.path.insert(0, str(ROOT))
+from agent_tools import ssh_transport as t, readiness
+from agent_tools.private_credential_file import SecretFile
+OUT = Path(__file__).resolve().parent
+INTENT = json.loads((OUT / 'intent.json').read_text())
+OP = INTENT['operationId']
+REMOTE = INTENT['remoteRoot']
+MACHINE = 'f0f5704a7676fa5b3826511bb04c6bf48895a7afeb318c46a4fa91ce2cea8de8'
+BOOT = '25515f23-b966-4c3a-ae63-d38452375578'
+CRED = ROOT / '.runtime/tool-recovery-qemu/host-credential.secret'
+DESC = ROOT / '.runtime/tool-recovery/native-approvals-20261027/linux-stop/retired-public-aliases/qemu-linux-recovery-0f559886.json'
+
+def save(directory, name, raw):
+    fd = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 384)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(raw)
+        f.flush()
+        os.fsync(f.fileno())
+
+def jsave(directory, name, value):
+    save(directory, name, json.dumps(value, sort_keys=True, indent=2).encode() + b'\n')
+HEADER = 'import base64,hashlib,json,os,pathlib,stat,sys,types\npacket=sys.stdin.buffer.read(10485761)\nif len(packet)>10485760:raise ValueError(\'packet_bound\')\np=json.loads(packet)\nroot=pathlib.Path(p[\'root\'])\nif os.getuid()!=os.geteuid() or os.geteuid()!=0 or os.getegid()!=0:raise ValueError(\'root_required\')\nif str(root)!=__REMOTE__ or pathlib.Path(\'/proc/sys/kernel/random/boot_id\').read_text().strip()!=__BOOT__ or hashlib.sha256(pathlib.Path(\'/etc/machine-id\').read_bytes()).hexdigest()!=__MACHINE__:raise ValueError(\'host_binding_changed\')\ndef create(path,raw):\n fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n with os.fdopen(fd,\'wb\')as f:f.write(raw);f.flush();os.fsync(f.fileno())\nfrom pathlib import Path\nimport re\n_SHA=re.compile(r\'[0-9a-f]{64}\\Z\')\ndef _need(condition: bool, reason: str) -> None:\n    if not condition:\n        raise ValueError(reason)\n\ndef _pin(info) -> list[int]:\n    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,\n            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]\n\ndef _identity(path: Path, *, directory: bool) -> list[int]:\n    info = path.lstat()\n    _need((stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))\n          and info.st_uid == os.geteuid() and info.st_gid == os.getegid()\n          and stat.S_IMODE(info.st_mode) == (0o700 if directory else 0o600)\n          and (directory or info.st_nlink == 1), "successor_private_state_unsafe")\n    _need(path.is_absolute() and path.resolve() == path,\n          "successor_private_path_unsafe")\n    return _pin(info)\n\ndef load_private_module(path: Path, expected_sha256: str, module_name: str):\n    """Load exact held bytes; a normal read changing atime is not replacement."""\n    path = Path(path)\n    _need(type(expected_sha256) is str and _SHA.fullmatch(expected_sha256)\n          and type(module_name) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,95}", module_name),\n          "successor_helper_binding_invalid")\n    before = _identity(path, directory=False)\n    _need(0 < before[6] <= 8 * 1024 * 1024, "successor_helper_bound")\n    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)\n    try:\n        _need(_pin(os.fstat(fd)) == before, "successor_helper_changed")\n        with os.fdopen(fd, "rb", closefd=False) as stream:\n            raw = stream.read(before[6] + 1)\n        _need(_pin(os.fstat(fd)) == before == _identity(path, directory=False)\n              and len(raw) == before[6] and hashlib.sha256(raw).hexdigest() == expected_sha256,\n              "successor_helper_changed")\n    finally:\n        os.close(fd)\n    module = types.ModuleType(module_name)\n    module.__file__ = str(path)\n    sys.modules[module_name] = module\n    exec(compile(raw, str(path), "exec"), module.__dict__)\n    return module\ndef load(name,digest):\n return load_private_module(root/name,digest,\'retained_\'+name.replace(\'.\',\'_\'))\n'.replace('__REMOTE__', repr(REMOTE)).replace('__BOOT__', repr(BOOT)).replace('__MACHINE__', repr(MACHINE))
+
+def transact(label, source, packet, *, once=False):
+    op = str(uuid.uuid4())
+    directory = OUT / (label + '-' + op)
+    directory.mkdir(mode=448)
+    save(directory, 'remote.py', source.encode())
+    jsave(directory, 'intent.json', {'observationId': op, 'originalOperationId': OP, 'phase': label, 'sourceSha256': hashlib.sha256(source.encode()).hexdigest(), 'maxSubmissions': 1, 'replayAllowed': False})
+    if once:
+        jsave(OUT, 'submission-once.json', {'operationId': OP, 'phase': label, 'programSha256': INTENT['programSha256'], 'submittedAtUnix': time.time(), 'replayAllowed': False})
+    with t.admitted_transport(ROOT, 'archlinux', op, deadline=time.monotonic() + 90, requirements=readiness.Requirements({'transport'}, set())) as admission:
+        argv = t.build_ssh_argv(t.load_config(ROOT), 'archlinux', 45, command=('sudo', '-S', '-p', '', '--', 'python3', '-I', '-B', '-c', 'exec(' + repr(source) + ')'))
+        desc = json.loads(DESC.read_text())
+        with SecretFile(str(CRED)) as cred:
+            assert tuple(desc['credential']['generation']) == cred.pin
+            cred.guard()
+            admission.revalidate()
+            secret = cred.text.encode()
+            try:
+                result = t.run_ssh(argv, input=secret + b'\n' + json.dumps(packet, separators=(',', ':')).encode(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45, cwd=ROOT, check=False)
+            except t.SubmittedResultReadinessChanged as error:
+                result = error.take_submitted_result()
+            except BaseException as error:
+                jsave(directory, 'unknown.json', {'state': 'unknown', 'errorClass': type(error).__name__, 'operationId': OP, 'replayAllowed': False})
+                raise RuntimeError('transport_observation_unknown') from None
+            if secret in result.stdout or secret in result.stderr:
+                raise RuntimeError('private_echo_discarded')
+            cred.guard()
+            assert len(result.stdout) + len(result.stderr) <= 7 * 1024 * 1024
+            save(directory, 'stdout.raw', result.stdout)
+            save(directory, 'stderr.raw', result.stderr)
+            jsave(directory, 'capture.json', {'operationId': OP, 'returncode': result.returncode, 'stdoutSha256': hashlib.sha256(result.stdout).hexdigest(), 'stderrSha256': hashlib.sha256(result.stderr).hexdigest(), 'streamsComplete': True, 'replayAllowed': False})
+        answer = json.loads(result.stdout) if result.returncode == 0 and (not result.stderr) else None
+        if answer is None:
+            raise RuntimeError('remote_observation_incomplete')
+        jsave(directory, 'result.json', answer)
+        print('native remote proof retained')
+        return answer
+
+import contextlib,fcntl,importlib.util,io
+EXPECTED_CONTINUITY='9e7c099de26239ac70711687a512d689e451fb0aca42627fd362e03065784589'
+path=ROOT/'agent_tools/android_component_continuity.py';raw=path.read_bytes()
+if hashlib.sha256(raw).hexdigest()!=EXPECTED_CONTINUITY:raise ValueError('qualified_helper_source_changed')
+local_path=ROOT/'.runtime/tool-recovery/android-head-target-1f2025d9-8e2d-4d2d-8919-f9a785bdf7a7/durable-original-closure-201cea86-8999-43f1-9d85-9020e0dad922/local_capture.py'
+spec=importlib.util.spec_from_file_location('original_native_local_probe_adapter',local_path);local=importlib.util.module_from_spec(spec);spec.loader.exec_module(local)
+local.QUALIFIED_LEASE='/Users/karapsin_de/projects/vpn_control/.rag_index/android-native-device-leases/lease-archlinux-api35.json'
+cap_path=ROOT/'.runtime/tool-recovery/android-installer-host-preflight/capsule.py';cap=cap_path.read_bytes();cap_sha='38158a1ed76a5f57b7568b5b7f5867592ceeed44d7643e639fa4b531f443989b'
+if hashlib.sha256(cap).hexdigest()!=cap_sha:raise ValueError('original_host_capsule_changed')
+remote=HEADER+"raw=base64.b64decode(p['capsuleBase64'],validate=True)\nif hashlib.sha256(raw).hexdigest()!=p['capsuleSha256']:raise ValueError('original_host_capsule_changed')\nm=types.ModuleType('relocation_original_host_proof');sys.modules[m.__name__]=m\nexec(compile(raw,'original-installer-host-preflight','exec'),m.__dict__)\nprint(json.dumps(m.installer_host_preflight(),sort_keys=True,separators=(',',':')))\n"
+answer=transact('fresh-original-host-preflight',remote,{'root':REMOTE,'capsuleBase64':base64.b64encode(cap).decode(),'capsuleSha256':cap_sha})
+if answer['state']!='admitted':raise ValueError('original_host_proof_unqualified')
+proof={'kind':'fresh-original-installer-host-preflight','originalOperationId':local.PREDECESSOR,'originalInstallerId':local.ORIGINAL,'capsuleSha256':cap_sha,'hostProofSha256':local.digest(local.canonical(answer)),'hostProof':answer,'observedAtNs':time.time_ns(),'releaseGranted':False,'replayAllowed':False}
+local.jsave(OUT,'remote-observation.json',proof)
+manifest,source,original=local.anchors()
+lock=local.COORDINATOR/'.rag_index/android-native-device-leases/lock-archlinux-api35.json'
+fd=os.open(lock,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+try:
+ pin=_pin(os.fstat(fd))
+ if pin[2:6]!=[0o100600,os.getuid(),os.getgid(),1] or _pin(lock.lstat())!=pin:raise ValueError('original_local_lock_unsafe')
+ fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+ host,filesystem=local.local_native_probes(OUT)
+ fsraw=(OUT/'native-probe-2.raw').read_bytes();filesystem['probeSha256']=hashlib.sha256(fsraw).hexdigest()
+ proofraw=local.canonical(proof)
+ receipt=local.continuity.qualify_relocated_api35_lease(manifest,local.MANIFEST_SHA,source,local.PROGRAM_SHA,host_binding=host,filesystem_binding=filesystem,filesystem_probe_raw=fsraw,remote_proofs=[{'role':'fresh-original-installer-host-preflight','operationId':local.PREDECESSOR,'observedAtNs':proof['observedAtNs'],'sha256':local.digest(proofraw),'raw':proofraw}])
+ local.jsave(OUT,'continuity.json',receipt)
+ saved,savedpin=local.bundle._read(OUT/'continuity.json',True)
+ if local.decode(saved)!=receipt:raise ValueError('persisted_receipt_changed')
+ lease=pathlib.Path(local.QUALIFIED_LEASE);lease_raw,leaf=local.bundle._read(lease,True)
+ expected={'generation':leaf['generation'],'sha256':leaf['sha256'],'parents':[row for name,row in leaf['parents'].items()if name!='/']}
+ validation=local.continuity.validate_relocated_lease_receipt(receipt,str(lease),original['files']['local-lease.json'],expected)
+ local.jsave(OUT,'validation.json',validation)
+ if local.bundle._read(OUT/'continuity.json',True)!=(saved,savedpin) or hashlib.sha256(path.read_bytes()).hexdigest()!=EXPECTED_CONTINUITY or _pin(os.fstat(fd))!=pin or _pin(lock.lstat())!=pin:raise ValueError('closing_source_or_lock_changed')
+ closing={'state':'native-relocated-api35-lease-custody-qualified-readonly','operationId':OP,'originalInstallerId':local.ORIGINAL,'originalOperationId':local.PREDECESSOR,'receiptSha256':receipt['receiptSha256'],'continuitySourceSha256':EXPECTED_CONTINUITY,'sourceInputsSha256':local.MANIFEST_SHA,'originalProgrammeSha256':local.PROGRAM_SHA,'originalPinRetained':True,'currentDirectPath':str(lease),'nativePhysicalAlias':receipt['filesystemAlias']['physicalPath'],'volumeId':filesystem['volumeId'],'fsid':filesystem['fsid'],'leaseReleased':False,'releaseGranted':False,'replayAllowed':False}
+ local.jsave(OUT,'closing.json',closing)
+ print(json.dumps(closing,sort_keys=True))
+finally:
+ fcntl.flock(fd,fcntl.LOCK_UN);os.close(fd)

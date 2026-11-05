@@ -1,0 +1,29 @@
+{
+  "files": {
+    "known_off.before.source": {
+      "bytes": 18946,
+      "sha256": "c1489954ec41c6ff2440abb705c8bcad0f5e65f9ca14a9ea4af9b1fa9a3dd36b"
+    },
+    "native-capture.json": {
+      "bytes": 1217,
+      "sha256": "115e985b2f351ecd0f23831f62a36eafa453675df588d7c4c5a58d888477e789"
+    },
+    "native-get.stdout.json": {
+      "bytes": 184,
+      "sha256": "45a4df483f7c6fea1232e8b4c18e0bec22df096905379df340d49de91287ac2b"
+    },
+    "native-list.stdout.json": {
+      "bytes": 212,
+      "sha256": "e51118b8556336f304d1d9431560ada898e8449c90cabc722f1c35de81d237b0"
+    },
+    "test_known_off.before.source": {
+      "bytes": 14119,
+      "sha256": "385f580ae08b8d064ac7ea3b3ce4045b2e1db8ab73630af980eb37b570007359"
+    }
+  },
+  "limits": "Actual read-only get/list observations only. Controlled regression runs real emitted observers and original durable owners with inert provider responses shaped by these observations; no native known-off admission or capacity qualification claimed.",
+  "nativeStartSubmitted": false,
+  "nativeStopCause": "off_unknown",
+  "originalEvidence": ".runtime/tool-recovery/native-followup-20261027/tart/provider-shape-1793103400915790000",
+  "reason": "Actual Tart2.32.1 get JSON has no Name key; actual list JSON has Name per row. Prior known-off owner assumed get included Name and refused physical OFF."
+}

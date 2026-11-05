@@ -489,7 +489,7 @@ def read_record(path,*,private=True):
  return json.loads(raw)
 def run(plan):
  resource.setrlimit(resource.RLIMIT_CORE,(0,0))
- os.umask(0o077);root=Path(plan['root']);info=root.lstat();require(stat.S_ISDIR(info.st_mode)and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.geteuid()and[info.st_dev,info.st_ino]==plan['rootGeneration'],'run_owner_root_changed')
+ os.umask(0o077);root=Path(plan['root']);info=root.lstat();require(stat.S_ISDIR(info.st_mode)and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.geteuid()and[info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid]==plan['rootGeneration'],'run_owner_root_changed')
  actor={'operationId':plan['operationId'],'pid':os.getpid(),'birth':_birth(os.getpid())};require(actor['birth']is not None,'run_owner_unavailable');publish(root/'actor.json',actor)
  until=time.monotonic()+180
  while not(root/'authority.json').exists():

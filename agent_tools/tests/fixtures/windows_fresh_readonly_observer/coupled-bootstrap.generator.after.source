@@ -1,0 +1,79 @@
+from pathlib import Path
+import ast,base64,contextlib,hashlib,inspect,json,os,subprocess,sys,time,uuid
+ROOT=Path(__file__).resolve().parents[5];sys.path.insert(0,str(ROOT))
+from agent_tools import readiness_windows as windows,windows_vm_resources as facts,ssh_transport as transport,ssh_direct_nested_channel as direct,vm_workflow
+from agent_tools.private_credential_file import SecretFile
+from agent_tools.native_review_source_closure import _Held
+def rebind_child_bootstrap(source, getter):
+    tree=ast.parse(source);read=length=checksum=0
+    for node in ast.walk(tree):
+        if isinstance(node,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='raw'for t in node.targets):
+            if not(isinstance(node.value,ast.Call)and isinstance(node.value.func,ast.Attribute)and node.value.func.attr=='read'and len(node.value.args)==1):raise ValueError('bridge_child_read_schema')
+            node.value.args=[ast.Constant(len(getter)+1)];read+=1
+        if isinstance(node,ast.Compare)and len(node.ops)==len(node.comparators)==1 and isinstance(node.ops[0],ast.NotEq):
+            left=node.left
+            if isinstance(left,ast.Call)and isinstance(left.func,ast.Name)and left.func.id=='len':node.comparators=[ast.Constant(len(getter))];length+=1
+            if isinstance(left,ast.Call)and isinstance(left.func,ast.Attribute)and left.func.attr=='hexdigest':node.comparators=[ast.Constant(hashlib.sha256(getter).hexdigest())];checksum+=1
+    if (read,length,checksum)!=(1,1,1):raise ValueError('bridge_child_digest_schema')
+    return ast.unparse(ast.fix_missing_locations(tree))+'\n'
+
+BASE=Path(__file__).parent;GETTER=BASE/'db1b1608-207e-495b-b22e-a1d720aea07b';OP=str(uuid.uuid4());OUT=BASE/('bridge-'+OP);OUT.mkdir(mode=0o700)
+def digest(raw):return hashlib.sha256(raw).hexdigest()
+def save(name,value):windows._save(OUT/name,value)
+def generation(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+old=ROOT/'.runtime/tool-recovery/android-windows-coverage-bridge-b933ce1b-7c45-4961-ba72-9a430392c871/bridge.py';original=old.read_bytes();assert digest(original)=='efa93dc2592d23c8c43dd0e0d535ec0c6d57f812fdf461917f7da69e1346c1b7';getraw=(GETTER/'getter.py').read_bytes();assert digest(getraw)=='b08a63b11d765e8f9bc1ca67d1f9fe64b3d1c2e4e91b7f411f312af4c5273b27'
+lines=original.decode().splitlines(keepends=True)
+for node in reversed(ast.parse(original).body):
+ if isinstance(node,ast.Assign)and isinstance(node.targets[0],ast.Name)and node.targets[0].id in ('GETTER_SOURCE','GETTER_SHA','CHILD_BOOTSTRAP'):
+  key=node.targets[0].id;value=(getraw if key=='GETTER_SOURCE'else digest(getraw)if key=='GETTER_SHA'else rebind_child_bootstrap(ast.literal_eval(node.value),getraw));lines[node.lineno-1:node.end_lineno]=[key+'='+repr(value)+'\n']
+bridge=''.join(lines).encode();compile(bridge,'current-ordinary-root-bridge','exec');save('bridge.source',bridge)
+spec=json.loads((ROOT/'.runtime/tool-recovery/native-followup-20261027/windows/fresh-fixture-plan/e36408e1-8e7a-4066-95a0-c45871966a3e/rw.draft-spec.json').read_text());capacity=('SPEC='+repr(spec)+"\nMODE='host-resources'\n"+facts.definitions()+inspect.getsource(facts._main)+'\n_main()\n').encode();save('capacity.source',capacity)
+program=("import base64,contextlib,io,json,os,pathlib,sys,time,types\nOP="+repr(OP)+"\nBRIDGE="+repr(bridge)+"\nCAPACITY="+repr(capacity)+"\n"
+ "def principal():return [os.getuid(),os.geteuid(),os.getgid(),os.getegid(),sorted(os.getgroups())]\n"
+ "initial=principal();host=types.ModuleType('current_fixed_ordinary_bridge');sys.modules[host.__name__]=host;exec(compile(BRIDGE,'exact-current-ordinary-bridge','exec'),vars(host));before=after=native=None;failure=None\n"
+ "try:\n before=host.get_windows_allocation_coverage();stream=io.StringIO()\n with contextlib.redirect_stdout(stream):exec(compile(CAPACITY,'canonical-current-full7-census','exec'),{'__name__':'fixed_source_closed_resource'})\n native=json.loads(stream.getvalue());after=host.get_windows_allocation_coverage()\n"
+ "except BaseException as error:failure={'type':type(error).__name__}\n"
+ "print(json.dumps({'operationId':OP,'before':before,'capacity':native,'after':after,'bridgeRecords':host.BRIDGE_RECORDS,'parentPrincipal':initial,'closingParentPrincipal':principal(),'remotePid':os.getpid(),'remoteStartTicks':int(pathlib.Path('/proc/self/stat').read_text().rsplit(')',1)[1].split()[19]),'failure':failure,'vmMutation':False,'claimMutation':False},sort_keys=True))\n").encode();compile(program,'complete-current-bridge-proof','exec');save('observer.source',program)
+inputs=json.loads((GETTER/'local-input-pins.private.json').read_text());sources=json.loads((GETTER/'source-before.json').read_text());authority=[];fds=[];held=_Held()
+try:
+ from agent_tools import readiness_fixture_registry,native_review_source_closure,source_module_loader,ssh_automatic_program
+ for module in (readiness_fixture_registry,native_review_source_closure,source_module_loader,ssh_automatic_program,direct):
+  path=Path(module.__file__).resolve();sources[str(path)]={'sha256':digest(path.read_bytes())}
+ assert len(sources)==40
+ for path,pin in sources.items():held.read(path,pin['sha256'],max_bytes=1048576)
+ for path in (old,Path(__file__),GETTER/'getter.py',OUT/'bridge.source',OUT/'observer.source',OUT/'capacity.source'):held.read(str(path),digest(path.read_bytes()),max_bytes=1048576)
+ for path,pin in inputs.items():held.read(path,pin['sha256'],max_bytes=262144);assert generation(os.lstat(path))==pin['generation']
+ for p in (ROOT/'.rag_index/native-environments/reservations.json',ROOT.parent/'vpn_control/.rag_index/native-environments/reservations.json'):
+  fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW);fds.append(fd);raw=os.read(fd,4*1024**2+1);authority.append({'path':str(p),'generation':generation(os.fstat(fd)),'sha256':digest(raw),'rawBase64':base64.b64encode(raw).decode()})
+ save('both-ledger-authority.before.private.json',authority);save('intent.json',{'operationId':OP,'state':'read-only','programSha256':digest(program),'bridgeSha256':digest(bridge),'getterSha256':digest(getraw),'priorBridgeSha256':digest(original),'sourceCount':len(sources),'inputCount':len(inputs),'vmMutation':False,'claimMutation':False})
+ print(json.dumps({'operationId':OP,'outputDirectory':str(OUT),'programSha256':digest(program),'bridgeSha256':digest(bridge),'state':'about-to-submit-original-readonly'}),flush=True)
+ with transport.admitted_transport(ROOT,'archlinux',OP,deadline=time.monotonic()+120)as admission,direct.Guard(ROOT,host='archlinux')as guard,SecretFile(str(ROOT/'.codex/arch-sudo.local'))as credential:
+  def check():admission.revalidate();guard.guard();held.finish();held.final_identity_pass();credential.guard()
+  argv=transport.build_ssh_argv(guard.config,'archlinux',60,command=('sudo','-S','-p','','--','python3','-I','-B','-c',"import sys;exec(compile(sys.stdin.buffer.read(),'<current-source-Windows-bridge-proof>','exec'))"));check();child=transport.popen_ssh(argv,cwd=ROOT,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE);save('local-child.json',{'operationId':OP,'pid':child.pid,'argvSha256':transport.argv_sha256(argv)})
+  payload=credential.text.encode()+b'\n'+program;start=time.monotonic()
+  try:stdout,stderr=child.communicate(payload,timeout=90)
+  except subprocess.TimeoutExpired:save('pending.json',{'operationId':OP,'pid':child.pid,'originalOnly':True});stdout,stderr=child.communicate()
+  payload=None
+  assert credential.text.encode()not in stdout+stderr
+  save('stdout.private',stdout);save('stderr.private',stderr);save('callback.json',{'returnCode':child.returncode,'stdoutBytes':len(stdout),'stderrBytes':len(stderr),'reaped':True,'elapsedSeconds':time.monotonic()-start});check();assert child.returncode==0 and not stderr
+ value=json.loads(stdout);save('result.private.json',value);assert value['failure']is None and value['parentPrincipal']==value['closingParentPrincipal']==[0,0,0,0,[0]]
+ def stable(v):return {k:([{x:y for x,y in row.items()if x!='observedAtUnixMs'}for row in part]if k=='rows'else part)for k,part in v.items()if k!='observedAtUnixMs'}
+ ordinary=json.loads((GETTER/'result.json').read_text());assert stable(ordinary)==stable(value['before'])==stable(value['after'])
+ measurement=facts.measurement(value['capacity']);rows=[]
+ for a in authority:rows.extend(r for r in json.loads(base64.b64decode(a['rawBase64']))['reservations']if r['hostAlias']=='archlinux')
+ covered=0
+ for row in value['before']['rows']:
+  native=[r for r in value['capacity']['vms']if (r['pid'],r['startTicks'],r['configuredMemoryBytes'])==(row['pid'],row['startTicks'],row['configuredMemoryBytes'])];assert len(native)==1
+  for key in ('uid','sessionId','commandSha256'):assert native[0][key]==row[key]
+  a=row['executableGeneration'];b=native[0]['executableGeneration'];assert a==b[:5]+[b[8]]+b[5:8]
+  claims=[r for r in rows if r['id']==row['reservationId']];assert len(claims)==1 and claims[0]['requestedMemoryBytes']==row['configuredMemoryBytes'];covered+=row['configuredMemoryBytes']
+ assert all(r['complete']is True and r['returncode']==0 and r['childPrincipal']==[1000,1000,1000,1000,[1000]]and r['parentPrincipal']==r['parentClosingPrincipal']==[0,0,0,0,[0]]for r in value['bridgeRecords'])
+ assert len(value['bridgeRecords'])==2
+ for a,fd in zip(authority,fds):
+  os.lseek(fd,0,0);raw=os.read(fd,4*1024**2+1);assert generation(os.fstat(fd))==a['generation']==generation(os.lstat(a['path']))and digest(raw)==a['sha256']
+ held.finish();held.final_identity_pass();total=sum(r['requestedMemoryBytes']for r in rows);supplied=dict(measurement,runningConfiguredMemoryBytes=measurement['runningConfiguredMemoryBytes']-covered+total);plan=vm_workflow.admit_plan(supplied,requested_memory_bytes=4*1024**3,headroom_bytes=8*1024**3,reservations=())
+ result={'schemaVersion':1,'state':'qualified','operationId':OP,'getterSha256':digest(getraw),'bridgeSha256':digest(bridge),'programSha256':digest(program),'hostBootId':value['before']['hostBootId'],'bothLedgerUnchanged':True,'allFullGetterRowsMatchOrdinaryBeforeAfter':True,'ignoredOnlyObservedAtUnixMs':True,'all9ExecutableFieldsMatchedByExplicitLayout':True,'completeCanonicalFull7Census':True,'sourceClosing':True,'allChildrenReaped':True,'heldClaimsBytes':total,'coveredNativeBytes':covered,'nativeConfiguredBytes':measurement['runningConfiguredMemoryBytes'],'globalCapacityPlan':plan,'normalAdmissionStillRequiredAtLaunch':True,'nativeActionAdmission':False,'vmMutation':False,'claimMutation':False}
+ save('closing.json',result);print(json.dumps({'operationId':OP,'state':'qualified','getterSha256':digest(getraw),'bridgeSha256':digest(bridge),'heldGiB':total/1024**3,'coveredNativeGiB':covered/1024**3,'nativeGiB':measurement['runningConfiguredMemoryBytes']/1024**3,'capacityPlan':plan,'outputDirectory':str(OUT)}),flush=True)
+finally:
+ for fd in fds:os.close(fd)
+ held.close()

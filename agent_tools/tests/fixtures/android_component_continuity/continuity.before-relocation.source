@@ -1,0 +1,441 @@
+"""Opt-in custody qualification for one original Android component operation.
+
+This is an internal evidence primitive, not a lease-release API. A trusted
+adapter authenticates the original anchor hashes and native host/filesystem and
+remote observations before calling it. The returned receipt preserves the old
+pins; it never teaches ordinary readers to ignore device numbers. The adapter
+must retain those native probe bytes and revalidate immediately before effects.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import time
+import uuid
+from typing import Any
+
+_SHA = re.compile(r"[0-9a-f]{64}\Z")
+_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}\Z")
+_FILE_LIMIT = 8 * 1024 * 1024
+_TOTAL_LIMIT = 64 * 1024 * 1024
+
+
+def _need(condition: bool, reason: str) -> None:
+    if not condition:
+        raise ValueError(reason)
+
+
+def _canonical(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, allow_nan=False).encode() + b"\n"
+
+
+def _sha(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _digest(value: Any) -> bool:
+    return type(value) is str and _SHA.fullmatch(value) is not None
+
+
+def _token(value: Any) -> bool:
+    return type(value) is str and _TOKEN.fullmatch(value) is not None
+
+
+def _uuid(value: str) -> None:
+    try:
+        _need(type(value) is str and str(uuid.UUID(value)) == value,
+              "continuity_operation_invalid")
+    except (TypeError, AttributeError, ValueError):
+        raise ValueError("continuity_operation_invalid") from None
+
+
+def _absolute(value: Any) -> Path:
+    _need(type(value) is str and "\x00" not in value,
+          "continuity_path_invalid")
+    path = Path(value)
+    _need(path.is_absolute() and str(path) == value and
+          all(part not in (".", "..") for part in path.parts),
+          "continuity_path_invalid")
+    return path
+
+
+def _pin(info: os.stat_result) -> list[int]:
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def _integers(value: Any, length: int) -> bool:
+    return (type(value) is list and len(value) == length and
+            all(type(item) is int and item >= 0 for item in value))
+
+
+def _decode(raw: bytes) -> Any:
+    def unique(items):
+        result = {}
+        for key, value in items:
+            _need(key not in result, "continuity_anchor_duplicate_key")
+            result[key] = value
+        return result
+    try:
+        return json.loads(raw, object_pairs_hook=unique)
+    except (UnicodeError, json.JSONDecodeError):
+        raise ValueError("continuity_anchor_invalid") from None
+
+
+def _anchored(raw: bytes, expected: str, limit: int) -> None:
+    _need(type(raw) is bytes and 0 < len(raw) <= limit and
+          _digest(expected) and _sha(raw) == expected,
+          "continuity_anchor_changed")
+
+
+def _parent_names(path: Path) -> list[str]:
+    names = ["/"]
+    for part in path.parent.parts[1:]:
+        names.append(str(Path(names[-1]) / part))
+    return names
+
+
+def _record(value: Any) -> tuple[Path, dict[str, Any]]:
+    _need(type(value) is dict and set(value) == {"path", "pin"},
+          "continuity_original_record_invalid")
+    path = _absolute(value["path"])
+    pin = value["pin"]
+    _need(type(pin) is dict and set(pin) == {"generation", "parents", "sha256"},
+          "continuity_original_record_invalid")
+    generation = pin["generation"]
+    _need(_integers(generation, 9) and stat.S_ISREG(generation[2]) and
+          generation[0] > 0 and generation[1] > 0 and generation[5] == 1 and
+          generation[6] <= _FILE_LIMIT and _digest(pin["sha256"]),
+          "continuity_original_record_invalid")
+    parents = pin["parents"]
+    _need(type(parents) is dict and set(parents) == set(_parent_names(path)) and
+          all(_integers(row, 5) and row[0] > 0 and row[1] > 0 and
+              stat.S_ISDIR(row[2]) for row in parents.values()),
+          "continuity_original_parents_invalid")
+    return path, pin
+
+
+def _device_only(original: list[int], current: list[int], before: int,
+                 after: int) -> bool:
+    # Other filesystems in the ancestry retain strict equality. This mapping
+    # applies only to the explicitly anchored old device and this qualification.
+    expected_device = after if original[0] == before else original[0]
+    return current[0] == expected_device and current[1:] == original[1:]
+
+
+def _fresh(value: Any, now: int, max_age: int) -> None:
+    _need(type(value) is int and 0 < value <= now and now - value <= max_age,
+          "continuity_observation_stale")
+
+
+def _bindings(host: dict[str, Any], filesystem: dict[str, Any],
+              proofs: list[dict[str, Any]], operation_id: str,
+              now: int, max_age: int) -> list[dict[str, Any]]:
+    _need(type(host) is dict and set(host) == {
+        "machineId", "bootId", "uid", "observedAtNs", "probeSha256"} and
+        _token(host["machineId"]) and _token(host["bootId"]) and
+        type(host["uid"]) is int and host["uid"] == os.getuid() == os.geteuid() and
+        _digest(host["probeSha256"]), "continuity_host_binding_invalid")
+    _fresh(host["observedAtNs"], now, max_age)
+    _need(type(filesystem) is dict and set(filesystem) == {
+        "device", "fsid", "volumeId", "mountPoint", "observedAtNs", "probeSha256"} and
+        type(filesystem["device"]) is int and filesystem["device"] > 0 and
+        type(filesystem["fsid"]) is int and filesystem["fsid"] >= 0 and
+        _token(filesystem["volumeId"]) and _digest(filesystem["probeSha256"]),
+        "continuity_filesystem_binding_invalid")
+    _absolute(filesystem["mountPoint"])
+    _fresh(filesystem["observedAtNs"], now, max_age)
+    _need(type(proofs) is list and 1 <= len(proofs) <= 16,
+          "continuity_remote_proof_missing")
+    result = []
+    roles = set()
+    for proof in proofs:
+        _need(type(proof) is dict and set(proof) == {
+            "role", "operationId", "observedAtNs", "sha256", "raw"} and
+            _token(proof["role"]) and proof["role"] not in roles and
+            proof["operationId"] == operation_id,
+            "continuity_remote_proof_invalid")
+        _fresh(proof["observedAtNs"], now, max_age)
+        _anchored(proof["raw"], proof["sha256"], _FILE_LIMIT)
+        roles.add(proof["role"])
+        result.append({key: value for key, value in proof.items() if key != "raw"})
+    return result
+
+
+def qualify_records(manifest_raw: bytes, manifest_sha256: str,
+                    operation_raw: bytes, operation_sha256: str,
+                    operation_id: str, selected_paths: list[str], *,
+                    host_binding: dict[str, Any],
+                    filesystem_binding: dict[str, Any],
+                    remote_proofs: list[dict[str, Any]],
+                    max_age_ns: int = 120_000_000_000) -> dict[str, Any]:
+    """Measure narrowly selected immutable records and retain both identities.
+
+    Anchor hashes come from authenticated original-operation custody, not a
+    public request. Host/filesystem probe hashes and complete remote proof bytes
+    must already have passed the native adapter's authentication and predicates.
+    This function checks freshness and their exact receipt binding, then measures
+    current file/ancestor descriptors and the live filesystem ID independently.
+    A receipt alone grants neither adoption, replay nor lease-release authority.
+    """
+    _need(os.name == "posix" and hasattr(os, "O_NOFOLLOW") and
+          hasattr(os, "O_DIRECTORY") and hasattr(os, "fstatvfs"),
+          "continuity_posix_descriptors_required")
+    _uuid(operation_id)
+    _anchored(manifest_raw, manifest_sha256, 2 * 1024 * 1024)
+    _anchored(operation_raw, operation_sha256, _FILE_LIMIT)
+    _need(operation_id.encode() in operation_raw,
+          "continuity_operation_anchor_mismatch")
+    _need(type(max_age_ns) is int and 0 < max_age_ns <= 600_000_000_000,
+          "continuity_age_bound_invalid")
+    now = time.time_ns()
+    proofs = _bindings(host_binding, filesystem_binding, remote_proofs,
+                       operation_id, now, max_age_ns)
+    manifest = _decode(manifest_raw)
+    _need(type(manifest) is list and 1 <= len(manifest) <= 4096,
+          "continuity_manifest_invalid")
+    _need(type(selected_paths) is list and 1 <= len(selected_paths) <= 512 and
+          all(type(path) is str for path in selected_paths) and
+          len(set(selected_paths)) == len(selected_paths),
+          "continuity_scope_invalid")
+    selected = set(selected_paths)
+    originals = {}
+    seen = set()
+    for row in manifest:
+        _need(type(row) is dict and type(row.get("path")) is str and
+              row["path"] not in seen, "continuity_manifest_invalid")
+        seen.add(row["path"])
+        if row["path"] in selected:
+            path, pin = _record(row)
+            originals[str(path)] = pin
+    _need(set(originals) == selected, "continuity_scope_not_anchored")
+    old_devices = {pin["generation"][0] for pin in originals.values()}
+    _need(len(old_devices) == 1, "continuity_multiple_original_devices")
+    before = next(iter(old_devices))
+    after = filesystem_binding["device"]
+    _need(before != after, "continuity_device_unchanged")
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    held = []
+    rows = []
+    total = 0
+    try:
+        for name in sorted(originals):
+            path = Path(name)
+            expected = originals[name]
+            _need(filesystem_binding["mountPoint"] in _parent_names(path),
+                  "continuity_mount_scope_changed")
+            chain = []
+            fd = None
+            try:
+                directory = os.open("/", flags | os.O_DIRECTORY)
+                chain.append(("/", directory))
+                for part in path.parent.parts[1:]:
+                    directory = os.open(part, flags | os.O_DIRECTORY,
+                                        dir_fd=chain[-1][1])
+                    chain.append((str(Path(chain[-1][0]) / part), directory))
+                fd = os.open(path.name, flags, dir_fd=chain[-1][1])
+                pin = _pin(os.fstat(fd))
+                _need(_device_only(expected["generation"], pin, before, after),
+                      "continuity_file_metadata_changed")
+                _need(stat.S_ISREG(pin[2]) and pin[5] == 1 and
+                      pin[3] == host_binding["uid"], "continuity_file_unsafe")
+                _need(os.fstatvfs(fd).f_fsid == filesystem_binding["fsid"],
+                      "continuity_filesystem_changed")
+                parents = {parent: _pin(os.fstat(parent_fd))[:5]
+                           for parent, parent_fd in chain}
+                _need(all(_device_only(expected["parents"][parent], actual,
+                                       before, after)
+                          for parent, actual in parents.items()),
+                      "continuity_parent_metadata_changed")
+                chunks = []
+                length = 0
+                while True:
+                    chunk = os.read(fd, min(65536, _FILE_LIMIT + 1 - length))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    length += len(chunk)
+                    _need(length <= _FILE_LIMIT, "continuity_file_bound")
+                raw = b"".join(chunks)
+                total += length
+                _need(total <= _TOTAL_LIMIT and length == pin[6] and
+                      _sha(raw) == expected["sha256"],
+                      "continuity_file_bytes_changed")
+                held.append((path, chain, fd, pin, parents))
+                chain = []
+                fd = None
+                rows.append({"path": name, "originalPin": expected,
+                             "currentPin": {"generation": pin, "parents": parents,
+                                            "sha256": _sha(raw)}})
+            finally:
+                if fd is not None:
+                    os.close(fd)
+                for _, directory in reversed(chain):
+                    os.close(directory)
+        # Retain all descriptors until every read has finished; no later read
+        # can exchange a prior file/parent without this final census noticing.
+        for path, chain, fd, pin, parents in held:
+            _need(_pin(os.fstat(fd)) == pin and
+                  _pin(os.stat(path.name, dir_fd=chain[-1][1],
+                               follow_symlinks=False)) == pin,
+                  "continuity_file_changed")
+            for parent, directory in chain:
+                _need(_pin(os.fstat(directory))[:5] == parents[parent] and
+                      _pin(os.stat(parent, follow_symlinks=False))[:5] == parents[parent],
+                      "continuity_parent_changed")
+        finished = time.time_ns()
+        _bindings(host_binding, filesystem_binding, remote_proofs,
+                  operation_id, finished, max_age_ns)
+        receipt = {"schema": 1, "kind": "android-component-filesystem-continuity",
+                   "originalOperationId": operation_id,
+                   "anchors": {"manifestSha256": manifest_sha256,
+                               "operationSha256": operation_sha256},
+                   "hostBinding": host_binding, "filesystemBinding": filesystem_binding,
+                   "remoteProofs": proofs, "deviceChange": {"original": before, "current": after},
+                   "records": rows, "observedAtNs": finished,
+                   "historicalPinsChanged": False, "adoptionGranted": False,
+                   "releaseGranted": False, "replayAllowed": False}
+        receipt = _decode(_canonical(receipt))
+        return {**receipt, "receiptSha256": _sha(_canonical(receipt))}
+    finally:
+        for _, chain, fd, _, _ in reversed(held):
+            os.close(fd)
+            for _, directory in reversed(chain):
+                os.close(directory)
+
+
+def _measure_alias(path: Path, expected: dict[str, Any], fsid: int) -> dict[str, Any]:
+    """Read one explicit alias without changing any historical identity."""
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    chain = []
+    fd = None
+    try:
+        chain.append(("/", os.open("/", flags | os.O_DIRECTORY)))
+        for part in path.parent.parts[1:]:
+            child = os.open(part, flags | os.O_DIRECTORY, dir_fd=chain[-1][1])
+            chain.append((str(Path(chain[-1][0]) / part), child))
+        fd = os.open(path.name, flags, dir_fd=chain[-1][1])
+        pin = _pin(os.fstat(fd))
+        _need(pin == expected["generation"] and stat.S_ISREG(pin[2]) and
+              pin[5] == 1 and 0 <= pin[6] <= _FILE_LIMIT and
+              pin[3] == os.getuid(), "continuity_alias_file_changed")
+        _need(os.fstatvfs(fd).f_fsid == fsid, "continuity_filesystem_changed")
+        parents = {name: _pin(os.fstat(directory))[:5]
+                   for name, directory in chain}
+        chunks = []
+        length = 0
+        while True:
+            part = os.read(fd, min(65536, _FILE_LIMIT + 1 - length))
+            if not part:
+                break
+            chunks.append(part)
+            length += len(part)
+            _need(length <= _FILE_LIMIT, "continuity_file_bound")
+        digest = _sha(b"".join(chunks))
+        _need(length == pin[6] and digest == expected["sha256"] and
+              _pin(os.fstat(fd)) == pin and
+              _pin(os.stat(path.name, dir_fd=chain[-1][1], follow_symlinks=False)) == pin,
+              "continuity_alias_file_changed")
+        for name, directory in chain:
+            _need(_pin(os.fstat(directory))[:5] == parents[name] and
+                  _pin(os.stat(name, follow_symlinks=False))[:5] == parents[name],
+                  "continuity_parent_changed")
+        return {"generation": pin, "parents": parents, "sha256": digest}
+    finally:
+        if fd is not None:
+            os.close(fd)
+        for _, directory in reversed(chain):
+            os.close(directory)
+
+
+def validate_lease_receipt(receipt: dict[str, Any], lease_path: Path | str,
+                           old_private8: dict[str, Any],
+                           expected_fd9_pin: dict[str, Any], *,
+                           max_age_ns: int = 120_000_000_000) -> dict[str, Any]:
+    """Validate one qualified local lease and freshly measure its explicit alias.
+
+    The sealed caller supplies the unchanged original admitted private8 item and
+    the actual release primitive's current FD9 pin. A different path is allowed
+    only for this same full file generation and content, with both explicit
+    no-follow chains retained. This function does not authorize a remote release.
+    """
+    keys = {"schema", "kind", "originalOperationId", "anchors", "hostBinding",
+            "filesystemBinding", "remoteProofs", "deviceChange", "records",
+            "observedAtNs", "historicalPinsChanged", "adoptionGranted",
+            "releaseGranted", "replayAllowed", "receiptSha256"}
+    _need(type(receipt) is dict and set(receipt) == keys and
+          type(receipt["schema"]) is int and receipt["schema"] == 1 and
+          receipt["kind"] == "android-component-filesystem-continuity" and
+          _digest(receipt["receiptSha256"]), "continuity_receipt_invalid")
+    body = {key: value for key, value in receipt.items() if key != "receiptSha256"}
+    _need(_sha(_canonical(body)) == receipt["receiptSha256"] and
+          all(receipt[key] is False for key in
+              ("historicalPinsChanged", "adoptionGranted", "releaseGranted", "replayAllowed")),
+          "continuity_receipt_changed")
+    _uuid(receipt["originalOperationId"])
+    _need(type(max_age_ns) is int and 0 < max_age_ns <= 600_000_000_000,
+          "continuity_age_bound_invalid")
+    now = time.time_ns()
+    _fresh(receipt["observedAtNs"], now, max_age_ns)
+    host = receipt["hostBinding"]
+    filesystem = receipt["filesystemBinding"]
+    proofs = receipt["remoteProofs"]
+    _need(type(host) is dict and type(filesystem) is dict and
+          type(proofs) is list and 1 <= len(proofs) <= 16,
+          "continuity_receipt_binding_invalid")
+    _need(host.get("uid") == os.getuid() == os.geteuid(),
+          "continuity_host_binding_invalid")
+    for observation in [host, filesystem, *proofs]:
+        _need(type(observation) is dict, "continuity_receipt_binding_invalid")
+        _fresh(observation.get("observedAtNs"), now, max_age_ns)
+    _need(all(proof.get("operationId") == receipt["originalOperationId"] and
+              _digest(proof.get("sha256")) for proof in proofs),
+          "continuity_remote_proof_invalid")
+    rows = receipt["records"]
+    _need(type(rows) is list and len(rows) == 1 and type(rows[0]) is dict and
+          set(rows[0]) == {"path", "originalPin", "currentPin"},
+          "continuity_lease_scope_invalid")
+    row = rows[0]
+    qualified = _absolute(row["path"])
+    release = _absolute(str(lease_path) if isinstance(lease_path, Path) else lease_path)
+    _, original = _record({"path": row["path"], "pin": row["originalPin"]})
+    _, current = _record({"path": row["path"], "pin": row["currentPin"]})
+    mapping = receipt["deviceChange"]
+    _need(type(mapping) is dict and set(mapping) == {"original", "current"} and
+          all(type(value) is int and value > 0 for value in mapping.values()) and
+          mapping["original"] != mapping["current"] and
+          mapping["current"] == filesystem.get("device") and
+          _device_only(original["generation"], current["generation"],
+                       mapping["original"], mapping["current"]) and
+          original["generation"][0] == mapping["original"] and
+          original["sha256"] == current["sha256"] and
+          all(_device_only(original["parents"][name], actual,
+                           mapping["original"], mapping["current"])
+              for name, actual in current["parents"].items()),
+          "continuity_lease_mapping_changed")
+    generation = original["generation"]
+    projected = [generation[0], generation[1], generation[6], generation[7],
+                 generation[8], stat.S_IMODE(generation[2]), generation[3], generation[5]]
+    _need(type(old_private8) is dict and old_private8 == {
+        "principal": "local-lease", "format": "private8",
+        "generation": projected, "sha256": original["sha256"]},
+        "continuity_original_lease_changed")
+    _need(type(expected_fd9_pin) is dict and set(expected_fd9_pin) == {
+        "generation", "parents", "sha256"} and
+        expected_fd9_pin["generation"] == current["generation"] and
+        expected_fd9_pin["sha256"] == current["sha256"],
+        "continuity_current_lease_changed")
+    measured = _measure_alias(qualified, current, filesystem["fsid"])
+    _need(measured == current, "continuity_qualified_path_changed")
+    alias = _measure_alias(release, current, filesystem["fsid"])
+    alias_parents = [alias["parents"][name] for name in _parent_names(release) if name != "/"]
+    _need(alias_parents == expected_fd9_pin["parents"],
+          "continuity_release_parent_changed")
+    return {"receiptSha256": receipt["receiptSha256"],
+            "qualifiedPath": str(qualified), "releasePath": str(release),
+            "originalPin": original, "currentPin": current, "releasePin": alias}

@@ -1,0 +1,525 @@
+"""Internal durable carrier for a separately admitted Android cleanup successor.
+
+The native adapter authenticates its immutable source, original admission and
+fresh target proofs before calling this module. Nothing here releases a lease,
+replays an original operation, or grants a public caller execution authority.
+The existing durable owner controls execution lifetime. This carrier retains
+large private observations separately, leaving only a bounded manifest in the
+owner's stdout. Observation can therefore time out without killing execution.
+"""
+from __future__ import annotations
+
+import ast
+import base64
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import types
+import uuid
+
+MAX_OBSERVATION_BYTES = 256 * 1024 * 1024
+MAX_SLICE_BYTES = 4 * 1024 * 1024
+_SHA = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _need(condition: bool, reason: str) -> None:
+    if not condition:
+        raise ValueError(reason)
+
+
+def _canonical(value) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False).encode() + b"\n"
+
+
+def _pin(info) -> list[int]:
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def _identity(path: Path, *, directory: bool) -> list[int]:
+    info = path.lstat()
+    _need((stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+          and info.st_uid == os.geteuid() and info.st_gid == os.getegid()
+          and stat.S_IMODE(info.st_mode) == (0o700 if directory else 0o600)
+          and (directory or info.st_nlink == 1), "successor_private_state_unsafe")
+    _need(path.is_absolute() and path.resolve() == path,
+          "successor_private_path_unsafe")
+    return _pin(info)
+
+
+def _create(path: Path, raw: bytes) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+
+
+def load_private_module(path: Path, expected_sha256: str, module_name: str):
+    """Load exact held bytes; a normal read changing atime is not replacement."""
+    path = Path(path)
+    _need(type(expected_sha256) is str and _SHA.fullmatch(expected_sha256)
+          and type(module_name) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,95}", module_name),
+          "successor_helper_binding_invalid")
+    before = _identity(path, directory=False)
+    _need(0 < before[6] <= 8 * 1024 * 1024, "successor_helper_bound")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        _need(_pin(os.fstat(fd)) == before, "successor_helper_changed")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(before[6] + 1)
+        _need(_pin(os.fstat(fd)) == before == _identity(path, directory=False)
+              and len(raw) == before[6] and hashlib.sha256(raw).hexdigest() == expected_sha256,
+              "successor_helper_changed")
+    finally:
+        os.close(fd)
+    module = types.ModuleType(module_name)
+    module.__file__ = str(path)
+    sys.modules[module_name] = module
+    exec(compile(raw, str(path), "exec"), module.__dict__)
+    return module
+
+
+def qualify_existing_bundle(bundle, payload: dict, directory: Path,
+                            expected_tree_sha256: str, *, _receiver_root=None) -> dict:
+    """Freshly qualify one existing immutable stage without staging it again.
+
+    The trusted native adapter supplies the original source-closed bundle module
+    and authenticated original transfer payload. These fresh descriptor pins
+    remain explicitly distinct from the historical stage's original receipt.
+    No source file, directory, ownership marker or old pin is changed.
+    """
+    _need(type(payload) is dict and set(payload) == {"schema", "kind", "treeSha256", "files"}
+          and type(payload["schema"]) is int and payload["schema"] == 1
+          and payload["kind"] == "android-installer-component-transfer"
+          and type(payload["files"]) is dict and set(payload["files"]) == set(bundle.FILES)
+          and type(expected_tree_sha256) is str and _SHA.fullmatch(expected_tree_sha256)
+          and payload["treeSha256"] == expected_tree_sha256,
+          "successor_existing_bundle_payload_invalid")
+    directory = Path(directory).absolute()
+    if _receiver_root is not None:
+        _need(directory.parent == Path(_receiver_root).absolute(),
+              "successor_existing_bundle_parent_changed")
+    prefix = "android-installer-component-bundle-"
+    _need(directory.name.startswith(prefix)
+          and str(uuid.UUID(directory.name[len(prefix):])) == directory.name[len(prefix):],
+          "successor_existing_bundle_path_invalid")
+    expected = {}
+    total = 0
+    for name in bundle.FILES:
+        encoded = payload["files"][name]
+        _need(type(encoded) is str and len(encoded) <= 4 * 1024 * 1024,
+              "successor_existing_bundle_payload_invalid")
+        raw = base64.b64decode(encoded, validate=True)
+        total += len(raw)
+        _need(total <= 8 * 1024 * 1024, "successor_existing_bundle_bound")
+        expected[name] = raw
+    files = {name: bundle._read(directory / name, True)
+             for name in (*bundle.FILES, "manifest.json")}
+    _need(all(files[name][0] == expected[name] for name in bundle.FILES),
+          "successor_existing_bundle_source_changed")
+    tree = bundle._tree(files)
+    manifest = bundle._raw(tree)
+    _need(hashlib.sha256(manifest).hexdigest() == expected_tree_sha256
+          and files["manifest.json"][0] == manifest,
+          "successor_existing_bundle_manifest_changed")
+    directories = {"."}
+    for folder, subdirs, _ in os.walk(directory, followlinks=False):
+        directories.update(str((Path(folder) / name).relative_to(directory)) for name in subdirs)
+    receipt = {"schema": 1, "kind": "android-installer-component-bundle",
+               "directory": str(directory), "treeSha256": expected_tree_sha256,
+               "files": {name: pin for name, (_, pin) in files.items()},
+               "directories": {name: bundle._directory(directory / name) for name in sorted(directories)}}
+    _need(bundle.load(receipt) == expected, "successor_existing_bundle_changed")
+    return receipt
+
+
+def execute_retained(source: bytes, source_sha256: str, operation_id: str,
+                     directory: Path, *, namespace=None,
+                     max_bytes: int = MAX_OBSERVATION_BYTES) -> dict:
+    """Execute ONE already-admitted source; retain all output or refuse it.
+
+    The directory is create-only under the durable job's original private root.
+    A failure leaves its evidence for original-only observation; this function
+    has no retry or observation deadline. A trusted adapter may supply fixed
+    carrier globals, but public tool input must never supply that namespace.
+    """
+    _need(type(source) is bytes and 0 < len(source) <= 8 * 1024 * 1024
+          and type(source_sha256) is str and _SHA.fullmatch(source_sha256)
+          and hashlib.sha256(source).hexdigest() == source_sha256,
+          "successor_source_changed")
+    _need(type(operation_id) is str and str(uuid.UUID(operation_id)) == operation_id,
+          "successor_operation_invalid")
+    _need(type(max_bytes) is int and 1 <= max_bytes <= MAX_OBSERVATION_BYTES,
+          "successor_observation_bound_invalid")
+    compile(source, "authenticated-component-successor", "exec")
+    directory = Path(directory)
+    directory.mkdir(mode=0o700)
+    opening = _identity(directory, directory=True)
+    _create(directory / "intent.json", _canonical({
+        "schema": 1, "kind": "android-component-durable-observation",
+        "operationId": operation_id, "sourceSha256": source_sha256,
+        "maxBytes": max_bytes, "replayAllowed": False}))
+
+    # All writes are private, not retained SSH stdout/stderr. The aggregate
+    # bound includes phases and raw records as well as both execution streams.
+    import contextlib
+    import io
+    import time
+    retained = 0
+    records = []
+    began = time.monotonic()
+
+    def record(role, raw):
+        nonlocal retained
+        _need(role in {"phase", "record"} and type(raw) is bytes,
+              "successor_record_invalid")
+        _need(retained + len(raw) <= max_bytes, "successor_observation_overflow")
+        name = "record-%05d.bin" % len(records)
+        _create(directory / name, raw)
+        retained += len(raw)
+        records.append({"name": name, "role": role, "bytes": len(raw),
+                        "sha256": hashlib.sha256(raw).hexdigest(),
+                        "generation": _identity(directory / name, directory=False)})
+
+    def phase(stage):
+        _need(type(stage) is str and re.fullmatch(r"[a-z][a-z0-9-]{0,95}", stage),
+              "successor_phase_invalid")
+        record("phase", _canonical({"schema": 1, "operationId": operation_id,
+               "stage": stage, "elapsedSeconds": time.monotonic() - began,
+               "sourceSha256": source_sha256, "authorityGranted": False}))
+
+    class Stream(io.TextIOBase):
+        def __init__(self, name):
+            self.path = directory / name
+            self.file = os.fdopen(os.open(self.path, os.O_WRONLY | os.O_CREAT |
+                                         os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+        @property
+        def encoding(self):
+            return "utf-8"
+        def write(self, value):
+            nonlocal retained
+            _need(type(value) is str, "successor_stream_invalid")
+            raw = value.encode("utf-8", "strict")
+            _need(retained + len(raw) <= max_bytes, "successor_observation_overflow")
+            self.file.write(raw)
+            retained += len(raw)
+            return len(value)
+        def flush(self):
+            self.file.flush()
+        def finish(self):
+            self.file.flush()
+            os.fsync(self.file.fileno())
+            self.file.close()
+        def close(self):
+            # Contextlib does not close redirected streams; callers own finish.
+            if not self.file.closed:
+                self.finish()
+
+    streams = {name: Stream(name + ".private") for name in ("stdout", "stderr")}
+    context = {"__name__": "__main__", "CARRIER_RECORD_RAW": record,
+               "CARRIER_RECORD_PHASE": phase,
+               "CARRIER_EXISTING_BUNDLE": qualify_existing_bundle}
+    if namespace is not None:
+        _need(type(namespace) is dict and not set(namespace) & set(context),
+              "successor_namespace_invalid")
+        context.update(namespace)
+    try:
+        with contextlib.redirect_stdout(streams["stdout"]), contextlib.redirect_stderr(streams["stderr"]):
+            exec(compile(source, "authenticated-component-successor", "exec"), context)
+    finally:
+        for stream in streams.values():
+            stream.finish()
+    manifests = {}
+    for name, stream in streams.items():
+        raw = stream.path.read_bytes()
+        manifests[name] = {"name": stream.path.name, "bytes": len(raw),
+                           "sha256": hashlib.sha256(raw).hexdigest(),
+                           "generation": _identity(stream.path, directory=False)}
+    _need(_identity(directory, directory=True)[:5] == opening[:5],
+          "successor_directory_changed")
+    result = {"schema": 1, "kind": "android-component-durable-observation-complete",
+              "operationId": operation_id, "sourceSha256": source_sha256,
+              "streams": manifests, "records": records, "totalBytes": retained,
+              "originalOutcome": "unknown", "replayAllowed": False}
+    _create(directory / "complete.json", _canonical(result))
+    return {**{key: result[key] for key in ("schema", "kind", "operationId", "sourceSha256", "streams", "totalBytes", "originalOutcome", "replayAllowed")},
+            "manifestSha256": hashlib.sha256(_canonical(result)).hexdigest(),
+            "manifestGeneration": _identity(directory / "complete.json", directory=False),
+            "recordCount": len(records)}
+
+
+def read_slice(directory: Path, manifest_sha256: str, stream_name: str,
+               offset: int, count: int) -> tuple[dict, bytes]:
+    """Read an authenticated bounded slice, never execute the admitted source."""
+    directory = Path(directory)
+    opening = _identity(directory, directory=True)
+    _need(type(manifest_sha256) is str and _SHA.fullmatch(manifest_sha256),
+          "successor_manifest_invalid")
+    _need(type(stream_name) is str and (stream_name in {"stdout", "stderr", "manifest"}
+          or re.fullmatch(r"record-[0-9]{5}", stream_name))
+          and type(offset) is int and offset >= 0
+          and type(count) is int and 1 <= count <= MAX_SLICE_BYTES,
+          "successor_slice_invalid")
+    path = directory / "complete.json"
+    manifest_pin = _identity(path, directory=False)
+    _need(0 < manifest_pin[6] <= 4 * 1024 * 1024, "successor_manifest_bound")
+    raw = path.read_bytes()
+    _need(hashlib.sha256(raw).hexdigest() == manifest_sha256
+          and _identity(path, directory=False) == manifest_pin,
+          "successor_manifest_changed")
+    result = json.loads(raw)
+    _need(result.get("kind") == "android-component-durable-observation-complete"
+          and result.get("replayAllowed") is False, "successor_manifest_invalid")
+    if stream_name == "manifest":
+        expected = {"generation": manifest_pin, "bytes": len(raw), "sha256": manifest_sha256}
+        path = directory / "complete.json"
+    elif stream_name in {"stdout", "stderr"}:
+        expected = result["streams"][stream_name]
+        path = directory / (stream_name + ".private")
+    else:
+        index = int(stream_name[7:])
+        _need(index < len(result["records"]), "successor_record_unavailable")
+        expected = result["records"][index]
+        _need(expected["name"] == stream_name + ".bin", "successor_record_changed")
+        path = directory / expected["name"]
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        pin = _identity(path, directory=False)
+        _need(pin == expected["generation"] == _pin(os.fstat(fd))
+              and pin[6] == expected["bytes"] and offset <= pin[6],
+              "successor_stream_changed")
+        digest = hashlib.sha256()
+        remaining = pin[6]
+        while remaining:
+            part = os.read(fd, min(65536, remaining))
+            _need(bool(part), "successor_stream_short")
+            digest.update(part)
+            remaining -= len(part)
+        _need(digest.hexdigest() == expected["sha256"], "successor_stream_changed")
+        os.lseek(fd, offset, os.SEEK_SET)
+        selected = os.read(fd, min(count, pin[6] - offset))
+        _need(_pin(os.fstat(fd)) == pin == _identity(path, directory=False),
+              "successor_stream_changed")
+    finally:
+        os.close(fd)
+    _need(_identity(directory, directory=True) == opening
+          and _identity(directory / "complete.json", directory=False) == manifest_pin,
+          "successor_directory_changed")
+    return {"operationId": result["operationId"], "stream": stream_name,
+            "offset": offset, "bytes": len(selected),
+            "sha256": hashlib.sha256(selected).hexdigest(),
+            "streamBytes": expected["bytes"], "streamSha256": expected["sha256"],
+            "manifestSha256": manifest_sha256, "replayAllowed": False}, selected
+
+
+def program_source(source: bytes, source_sha256: str, operation_id: str,
+                   directory: Path) -> bytes:
+    """Render the source-closed carrier for the existing durable job owner."""
+    own = Path(__file__).read_bytes()
+    tree = ast.parse(own)
+    names = {"_need", "_canonical", "_pin", "_identity", "_create",
+             "load_private_module", "qualify_existing_bundle", "execute_retained", "read_slice"}
+    definitions = [ast.get_source_segment(own.decode(), node) for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name in names]
+    _need(len(definitions) == len(names), "successor_execution_closure_changed")
+    prelude = "import ast,base64,hashlib,json,os,re,stat,sys,types,uuid\nfrom pathlib import Path\n"
+    prelude += "MAX_OBSERVATION_BYTES=" + repr(MAX_OBSERVATION_BYTES) + "\nMAX_SLICE_BYTES=" + repr(MAX_SLICE_BYTES) + "\n_SHA=re.compile(r'[0-9a-f]{64}\\Z')\n"
+    rendered = prelude + "\n\n".join(definitions)
+    rendered += "\nprint(json.dumps(execute_retained(base64.b64decode(" + repr(base64.b64encode(source).decode()) + ")," + repr(source_sha256) + "," + repr(operation_id) + ",Path(" + repr(str(directory)) + ")),sort_keys=True,separators=(',',':')),flush=True)\n"
+    return rendered.encode()
+
+
+_INSTALLER_HOST_RUNTIME = r'''
+def CARRIER_RECORD_RAW(role, raw):
+    if role != 'record' or type(raw) is not bytes:
+        raise ValueError('installer_host_raw_record_invalid')
+    HOST_RAW_DIGESTS.append({'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})
+
+def installer_host_preflight():
+    if not sys.platform.startswith('linux') or os.getuid() != 0 or os.geteuid() != 0 or os.getgid() != 0 or os.getegid() != 0:
+        raise ValueError('installer_host_linux_root_required')
+    if Path('/proc/sys/kernel/random/boot_id').read_text().strip() != HOST_EXPECTED_BOOT:
+        raise ValueError('installer_host_boot_changed')
+    global COMPONENT_RETIRE_OBSERVATIONS, COMPONENT_RETIRE_RAW_RECORDS
+    global COMPONENT_RETIRE_RAW_INDEX, CLAIM_OBSERVATIONS, HOST_RAW_DIGESTS
+    COMPONENT_RETIRE_OBSERVATIONS = []
+    COMPONENT_RETIRE_RAW_RECORDS = []
+    COMPONENT_RETIRE_RAW_INDEX = {}
+    CLAIM_OBSERVATIONS = []
+    HOST_RAW_DIGESTS = []
+    admissions = {}
+    for role, expected in HOST_ADMISSION_PINS.items():
+        row = component_retirement_capture_record(Path(expected['path']), 2097152)
+        actual = {key: value for key, value in row.items() if key != 'rawBase64'}
+        if actual != expected or row['generation'][2:6] != [0o100600, 0, 0, 1]:
+            raise ValueError('installer_host_original_admission_changed')
+        admissions[role] = actual
+    lease = component_retirement_capture_record(ROOT / 'android-native-device-api35.lease', 1024)
+    if lease['state'] != 'present' or lease['generation'] != HOST_LEASE_PIN['generation'] or lease['sha256'] != HOST_LEASE_PIN['sha256'] or lease['parents'] != HOST_LEASE_PARENTS:
+        raise ValueError('installer_host_original_lease_changed')
+    exact = {'owner':'android-installer','host':'archlinux','device':'api35','correlationId':CLAIM_ORIGINAL}
+    if BASELINE_BASE64.b64decode(lease['rawBase64'], validate=True) != json.dumps(exact, sort_keys=True, separators=(',', ':')).encode() + b'\n':
+        raise ValueError('installer_host_original_lease_body_changed')
+    absent = {}
+    for name in HOST_ABSENT_NAMES:
+        row = component_retirement_capture_record(ROOT / name, 4096)
+        if row['state'] != 'absent':
+            raise ValueError('installer_host_release_or_alias_present')
+        absent[name] = row
+    actors = {}
+    actor_evidence = {}
+    for role, original in HOST_ORIGINAL_ACTORS.items():
+        row = readiness_process(original)
+        actor_evidence[role] = row
+        if row['state'] not in ('absent', 'pid-reused'):
+            raise ValueError('installer_host_original_actor_present')
+        actors[role] = {key: value for key, value in row.items() if key != 'rawBase64'}
+    fixture_record = component_retirement_capture_record(Path(HOST_FIXTURE_RECORD_PATH), 4096)
+    if fixture_record['state'] != 'present' or fixture_record['generation'] != HOST_FIXTURE_RECORD_PIN['generation'] or fixture_record['sha256'] != HOST_FIXTURE_RECORD_PIN['sha256']:
+        raise ValueError('installer_host_original_fixture_record_changed')
+    fixture_identity = json.loads(BASELINE_BASE64.b64decode(fixture_record['rawBase64'], validate=True))
+    if set(fixture_identity) != {'correlationId', 'pid', 'startTicks', 'port'} or fixture_identity['correlationId'] != CLAIM_ORIGINAL or any(fixture_identity[key] != HOST_ORIGINAL_ACTORS['fixture'][key] for key in ('pid', 'startTicks')) or type(fixture_identity['port']) is not int or not 1 <= fixture_identity['port'] <= 65535:
+        raise ValueError('installer_host_original_fixture_identity_changed')
+    fixture_port = fixture_identity['port']
+    try:
+        connection = socket.create_connection(('127.0.0.1', fixture_port), timeout=.5)
+    except ConnectionRefusedError:
+        pass
+    except OSError:
+        raise ValueError('installer_host_original_fixture_port_unknown') from None
+    else:
+        connection.close()
+        raise ValueError('installer_host_original_fixture_listener_present')
+    planes = [component_release_effect_plane_current_guard(), component_release_current1e15_effect_plane_guard()]
+    stable_planes = [{'kind': row['kind'], 'binding': row['binding'],
+                      'passesSha256': hashlib.sha256(json.dumps(row['passes'], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                      'workers': [{key: item[key] for key in ('matches', 'bootId', 'closingBootId', 'censusComplete', 'processAdopted')}
+                                  for item in row['workerPasses']]}
+                     for row in planes]
+    stable = {'originalSourceSha256': HOST_ORIGINAL_SOURCE_SHA, 'hostBootId': HOST_EXPECTED_BOOT,
+              'admissions': admissions, 'lease': {key: value for key, value in lease.items() if key != 'rawBase64'},
+              'absentReleaseAndAliases': absent, 'originalActors': actors,
+              'originalFixtureRecord': {key: value for key, value in fixture_record.items() if key != 'rawBase64'},
+              'originalFixturePortRefused': fixture_port, 'effectPlanes': stable_planes}
+    evidence = {'rawRecords': COMPONENT_RETIRE_RAW_RECORDS, 'rawRecordDigests': HOST_RAW_DIGESTS,
+                'actorObservations': actor_evidence, 'effectPlanes': planes,
+                'rawReferences': CLAIM_OBSERVATIONS}
+    if len(json.dumps(evidence, sort_keys=True, separators=(',', ':')).encode()) > 3145728:
+        raise ValueError('installer_host_evidence_overflow')
+    return {'state': 'admitted', 'stableBinding': stable, 'evidence': evidence}
+'''
+
+
+def installer_host_preflight_capsule(original_source: bytes, original_sha256: str) -> dict:
+    """Close the original installer host fences before a separately owned start.
+
+    This source factory has no native effects. Its caller supplies authenticated
+    original programme bytes, never public assertions or replacement callbacks.
+    The resulting guard observes the same original workers, lease, consumed
+    admission and both historical effect planes; it changes no outcome or pin.
+    """
+    _need(type(original_source) is bytes and 0 < len(original_source) <= 8 * 1024 * 1024
+          and type(original_sha256) is str and _SHA.fullmatch(original_sha256)
+          and hashlib.sha256(original_source).hexdigest() == original_sha256,
+          "installer_host_original_source_changed")
+    text = original_source.decode()
+    tree = ast.parse(text)
+
+    def literal(name):
+        nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+                 and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                 and node.targets[0].id == name]
+        _need(len(nodes) == 1, "installer_host_original_literal_changed")
+        return ast.literal_eval(nodes[0].value)
+
+    proof = literal("COMPONENT_RELEASE_ADMITTED_PROOF")
+    _need(proof["originalCorrelationId"] == "0dd55704-1e80-4d62-8d9d-2f0a123e0c3b"
+          and proof["retirementCorrelationId"] == "6b616c2f-6c36-4ac0-836e-4465c78bfc92"
+          and hashlib.sha256(_canonical(proof)).hexdigest() == "93ff56ef99d2496aef690ea1ae44e0e7ff4136386e6718fa81e8f0ff21e2e6ed",
+          "installer_host_original_admission_changed")
+    metadata = literal("COMPONENT_RELEASE_METADATA")
+    _need(set(metadata) == {"global-admission-intent", "admitted-proof", "admitted-result"},
+          "installer_host_original_metadata_changed")
+    pins = {role: {key: value for key, value in row.items() if key != "rawBase64"}
+            for role, row in metadata.items()}
+    root = "/home/kardinal/.vpn-control-mcp-fixtures"
+    _need(metadata["admitted-proof"]["sha256"] == "93ff56ef99d2496aef690ea1ae44e0e7ff4136386e6718fa81e8f0ff21e2e6ed"
+          and all(row["path"].startswith(root + "/") for row in metadata.values()),
+          "installer_host_original_metadata_changed")
+    parents = metadata["global-admission-intent"]["parents"]
+    lease_parents = {name: row for name, row in parents.items()
+                     if name == "/" or name == root or root.startswith(name.rstrip("/") + "/")}
+    _need(root in lease_parents and lease_parents[root][2:] == [0o40700, 1000, 1000],
+          "installer_host_original_root_changed")
+    # The complete consumed module is a literal in the authenticated programme;
+    # execute its immutable readers, not the named staged file or a live import.
+    modules = []
+    for node in tree.body:
+        if (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name) and node.value.func.id == "exec"
+                and node.value.args and isinstance(node.value.args[0], ast.Call)
+                and isinstance(node.value.args[0].func, ast.Name)
+                and node.value.args[0].func.id == "compile"):
+            candidate = node.value.args[0].args[0]
+            if isinstance(candidate, ast.Constant) and type(candidate.value) is bytes:
+                raw = candidate.value
+                if b"def _parents(" in raw and b"def stage_payload(" in raw:
+                    modules.append(raw)
+    _need(len(modules) == 1, "installer_host_original_bundle_changed")
+    bundle_source = modules[0]
+    names = ("claim_record", "component_retirement_record_raw", "component_retirement_capture_record",
+             "readiness_process", "component_release_effect_plane_current_guard",
+             "component_release_current1e15_effect_plane_guard")
+    definitions = []
+    source_pins = {"original-programme": original_sha256,
+                   "original-bundle-readers": hashlib.sha256(bundle_source).hexdigest(),
+                   "host-preflight-runtime": hashlib.sha256(_INSTALLER_HOST_RUNTIME.encode()).hexdigest()}
+    for name in names:
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
+        _need(bool(nodes) and not any(node.decorator_list for node in nodes),
+              "installer_host_original_definition_changed")
+        definition = ast.get_source_segment(text, nodes[-1])
+        definitions.append(definition)
+        source_pins[name] = hashlib.sha256(definition.encode()).hexdigest()
+    fixed = literal("EFFECT_PLANE_FIXED")
+    current = literal("CURRENT1E15_EFFECT_PLANE_FIXED")
+    for name, value in (("EFFECT_PLANE_FIXED", fixed), ("CURRENT1E15_EFFECT_PLANE_FIXED", current)):
+        source_pins[name] = hashlib.sha256(_canonical(value)).hexdigest()
+    original = proof["originalCorrelationId"]
+    absent_names = ["android-native-device-api35-" + original + suffix
+                    for suffix in (".release-intent", ".component-retirement-fence", ".component-retirement-quarantine")]
+    absent_names += ["android-native-device-android-api35.lease",
+                     "android-native-device-android-api35-" + original + ".release-intent"]
+    source = ("import base64,hashlib,json,os,pathlib,re,socket,stat,sys,types\nfrom pathlib import Path\n"
+              "ROOT=Path(" + repr(root) + ")\nPROC=Path('/proc')\nBASELINE_BASE64=base64\n"
+              "COMPONENT_BUNDLE=types.ModuleType('original_installer_host_readers')\n"
+              "COMPONENT_BUNDLE.__file__=str(ROOT/'android-installer-component-bundle-7310f227-aaed-4f3b-878a-1b7bf0b49215'/'agent_tools/android_installer_component_bundle.py')\n"
+              "exec(compile(" + repr(bundle_source) + ",'original-installer-host-readers','exec'),COMPONENT_BUNDLE.__dict__)\n")
+    values = {"CLAIM_ORIGINAL": original, "HOST_ORIGINAL_SOURCE_SHA": original_sha256,
+              "HOST_EXPECTED_BOOT": literal("LAUNCH")["observation"]["bootId"],
+              "HOST_ADMISSION_PINS": pins, "HOST_LEASE_PIN": proof["files"]["remote-lease.json"],
+              "HOST_LEASE_PARENTS": lease_parents,
+              "HOST_ORIGINAL_ACTORS": {role: {key: proof[role][key] for key in ("pid", "startTicks")}
+                                       for role in ("worker", "fixture")},
+              "HOST_FIXTURE_RECORD_PATH": root + "/android-installer-" + original + "/output/fixture-identity.json",
+              "HOST_FIXTURE_RECORD_PIN": proof["files"]["output/fixture-identity.json"],
+              "HOST_ABSENT_NAMES": absent_names,
+              "EFFECT_PLANE_FIXED": fixed, "CURRENT1E15_EFFECT_PLANE_FIXED": current}
+    source += "\n".join(name + "=" + repr(value) for name, value in values.items()) + "\n"
+    source += "\n\n".join(definitions) + "\n" + _INSTALLER_HOST_RUNTIME
+    compile(source, "original-installer-host-preflight", "exec")
+    raw = source.encode()
+    _need(len(raw) <= 2 * 1024 * 1024, "installer_host_capsule_bound")
+    return {"source": raw, "sha256": hashlib.sha256(raw).hexdigest(),
+            "originalSourceSha256": original_sha256, "sourcePins": source_pins}

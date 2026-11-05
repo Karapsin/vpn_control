@@ -1,0 +1,313 @@
+"""Reviewed fixed native receiver; the start programme travels through stdin."""
+import base64, hashlib, json, os, pathlib, re, stat, sys, time, types
+
+RC = __REMOTE_CONFIG__
+BOUND = 8 * 1024 ** 2
+
+def need(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode() + b"\n"
+
+def unique(rows):
+    value = {}
+    for key, item in rows:
+        need(key not in value, "receiver_duplicate_key")
+        value[key] = item
+    return value
+
+def parse(raw):
+    return json.loads(raw, object_pairs_hook=unique)
+
+def pin(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+def structure(info):
+    return pin(info)[:5]
+
+def birth(pid):
+    try:
+        row = pathlib.Path("/proc", str(pid), "stat").read_text().rsplit(")", 1)[1].split()
+        return None if row[0] == "Z" else int(row[19])
+    except FileNotFoundError:
+        return None
+
+def host_guard():
+    need(os.getuid() == os.geteuid() == 0 and os.getgid() == os.getegid() == 0, "receiver_root_required")
+    need(pathlib.Path("/proc/sys/kernel/random/boot_id").read_text().strip() == RC["binding"]["boot"]
+         and hashlib.sha256(pathlib.Path("/etc/machine-id").read_bytes()).hexdigest() == RC["binding"]["machine"],
+         "receiver_host_changed")
+
+def sync(fd):
+    os.fsync(fd)
+
+def create(name, raw):
+    need(re.fullmatch(r"[A-Za-z0-9_.-]{1,96}", name) is not None, "receiver_name_invalid")
+    guard_root()
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=ROOT_FD)
+    try:
+        count = 0
+        while count < len(raw):
+            count += os.write(fd, raw[count:])
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    sync(ROOT_FD)
+    guard_root()
+
+def record(name, value):
+    create(name, canonical(value))
+
+def read(name, limit=BOUND):
+    guard_root()
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=ROOT_FD)
+    try:
+        info = os.fstat(fd)
+        before = pin(info)
+        need(stat.S_ISREG(info.st_mode) and info.st_uid == info.st_gid == 0
+             and stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1
+             and 0 <= info.st_size <= limit, "receiver_private_state_unsafe")
+        raw = bytearray()
+        while len(raw) <= limit:
+            chunk = os.read(fd, min(65536, limit + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+        need(len(raw) == info.st_size and pin(os.fstat(fd)) == before
+             and pin(os.stat(name, dir_fd=ROOT_FD, follow_symlinks=False)) == before,
+             "receiver_private_state_changed")
+        guard_root()
+        return bytes(raw)
+    finally:
+        os.close(fd)
+
+def exists(name):
+    guard_root()
+    try:
+        os.stat(name, dir_fd=ROOT_FD, follow_symlinks=False)
+        return True
+    except FileNotFoundError:
+        return False
+
+def guard_root():
+    host_guard()
+    for fd, parent, name, identity in PARENTS:
+        named = os.lstat("/") if parent is None else os.stat(name, dir_fd=parent, follow_symlinks=False)
+        need(structure(os.fstat(fd)) == identity == structure(named), "receiver_parent_changed")
+    named = os.stat(ROOT.name, dir_fd=PARENTS[-1][0], follow_symlinks=False)
+    need(structure(os.fstat(ROOT_FD)) == ROOT_ID == structure(named), "receiver_root_changed")
+
+def open_root(*, prepare=False):
+    global ROOT, ROOT_FD, ROOT_ID, PARENTS
+    host_guard()
+    ROOT = pathlib.Path(RC["root"])
+    need(ROOT.parent == pathlib.Path("/var/tmp") and ROOT.name == "vc-android-persisted-" + RC["operationId"],
+         "receiver_external_root_invalid")
+    PARENTS = []
+    parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    PARENTS.append((parent, None, None, structure(os.fstat(parent))))
+    for name in ROOT.parts[1:-1]:
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        info = os.fstat(fd)
+        need(stat.S_ISDIR(info.st_mode) and info.st_uid == 0, "receiver_parent_unsafe")
+        PARENTS.append((fd, parent, name, structure(info)))
+        parent = fd
+    if prepare:
+        os.mkdir(ROOT.name, mode=0o700, dir_fd=parent)
+        sync(parent)
+    ROOT_FD = os.open(ROOT.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+    info = os.fstat(ROOT_FD)
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == info.st_gid == 0
+         and stat.S_IMODE(info.st_mode) == 0o700, "receiver_root_unsafe")
+    ROOT_ID = structure(info)
+    if HEADER.get("rootGeneration") is not None:
+        need(ROOT_ID[:2] == HEADER["rootGeneration"], "receiver_root_generation_changed")
+    guard_root()
+
+def module(name, filename, digest):
+    raw = read(filename)
+    need(hashlib.sha256(raw).hexdigest() == digest, "receiver_helper_changed")
+    value = types.ModuleType(name)
+    value.__file__ = str(ROOT / filename)
+    sys.modules[name] = value
+    exec(compile(raw, value.__file__, "exec"), value.__dict__)
+    guard_root()
+    return value
+
+def prepared():
+    value = parse(read("preparation.json", 16384))
+    need(value == {"schema": 1, "operationId": RC["operationId"], "rootGeneration": ROOT_ID[:2],
+                   "rootIdentity": ROOT_ID, "binding": RC["binding"],
+                   "controllerConfigSha256": RC["controllerConfigSha256"],
+                   "durableSha256": RC["durableSha256"], "receiverSha256": HEADER["receiverSha256"]},
+         "receiver_preparation_changed")
+    return value
+
+def durable():
+    value = module("retained_persisted_start_durable", "durable.py", RC["durableSha256"])
+    return value, value.MachineBinding.from_dict(RC["binding"])
+
+def original_observation():
+    pre = prepared()
+    d, binding = durable()
+    status = d.observe(ROOT, RC["operationId"], binding, generation=tuple(ROOT_ID[:2]))
+    answer = {"schema": 1, "operationId": RC["operationId"], "state": "unknown",
+              "preparation": pre, "durable": status, "replayAllowed": False,
+              "originalOutcomesChanged": False, "stopCause": "off_unknown"}
+    claimed = parse(read("receiver-claimed.json", 16384)) if exists("receiver-claimed.json") else None
+    called = parse(read("remote-submit-call.once.json", 16384)) if exists("remote-submit-call.once.json") else None
+    receiver = {"claimed": claimed, "call": called, "originalAlive": False}
+    if claimed is not None:
+        need(set(claimed) == {'schema','operationId','pid','startTicks','rootGeneration','receiverSha256','controllerConfigSha256','payloadSha256','programSha256'}
+             and claimed['schema'] == 1 and type(claimed['pid']) is int and claimed['pid'] > 0
+             and type(claimed['startTicks']) is int and claimed['startTicks'] > 0
+             and re.fullmatch(r'[0-9a-f]{64}', claimed['payloadSha256']) is not None
+             and re.fullmatch(r'[0-9a-f]{64}', claimed['programSha256']) is not None
+             and claimed["operationId"] == RC["operationId"]
+             and claimed["receiverSha256"] == HEADER["receiverSha256"]
+             and claimed["controllerConfigSha256"] == RC["controllerConfigSha256"]
+             and claimed["rootGeneration"] == ROOT_ID[:2], "receiver_claim_changed")
+        receiver["originalAlive"] = birth(claimed["pid"]) == claimed["startTicks"]
+    answer["receiver"] = receiver
+    if exists("submission-context.json"):
+        context = parse(read("submission-context.json", 131072))
+        need(context["operationId"] == RC["operationId"] and context["rootGeneration"] == ROOT_ID[:2]
+             and context["controllerConfigSha256"] == RC["controllerConfigSha256"], "receiver_context_changed")
+        answer["context"] = context
+        if status["state"] in ("running", "terminal"):
+            intent = d._intent(ROOT / RC["operationId"], RC["operationId"], binding)
+            need(intent["programSha256"] == context["programSha256"], "receiver_original_program_changed")
+    else:
+        context = None
+    if status["state"] == "unsubmitted" and claimed is not None and not receiver["originalAlive"] and called is None:
+        # The create-only receiver claim precedes the packet read; the call
+        # fence precedes d.submit. No later receiver may pass the same claim.
+        need(birth(claimed["pid"]) != claimed["startTicks"] and not exists("remote-submit-call.once.json"),
+             "receiver_prefork_closure_changed")
+        answer.update(state="prefork-failure-closed", reason="original_receiver_absent_before_durable_call")
+        return answer
+    if status["state"] == "terminal" and context is not None:
+        journal = ROOT / RC["operationId"] / "coldboot"
+        try:
+            jfd = os.open(journal, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            jfd = None
+        attempt = False
+        try:
+            if jfd is not None:
+                info = os.fstat(jfd)
+                need(stat.S_IMODE(info.st_mode) == 0o700 and info.st_uid == info.st_gid == 0,
+                     "receiver_journal_unsafe")
+                try:
+                    os.stat("attempt.json", dir_fd=jfd, follow_symlinks=False)
+                    attempt = True
+                except FileNotFoundError:
+                    pass
+        finally:
+            if jfd is not None:
+                os.close(jfd)
+        if not attempt:
+            answer.update(state="prefork-failure-closed", reason="original_durable_terminal_before_fork_fence")
+            return answer
+    if status["state"] == "running" and context is not None and called is not None:
+        quick = module("retained_persisted_start_quick", "quick-observer.py", context["quickObserverSha256"])
+        try:
+            proof = quick.quick_proof()
+        except (OSError, ValueError, UnicodeError):
+            proof = {"state": "unknown", "reason": "original_qemu_proof_not_available"}
+        second = d.observe(ROOT, RC["operationId"], binding, generation=tuple(ROOT_ID[:2]))
+        if proof.get("state") == "qemu-generation-qualified" and second["state"] == "running" and second["owner"] == status["owner"]:
+            answer.update(state="qemu-generation-qualified", proof=proof,
+                          quickObserverSha256=context["quickObserverSha256"])
+    guard_root()
+    return answer
+
+def main():
+    global HEADER
+    os.umask(0o077)
+    line = sys.stdin.buffer.readline(16385)
+    need(0 < len(line) <= 16384 and line.endswith(b"\n"), "receiver_header_bound")
+    HEADER = parse(line)
+    need(HEADER.get("operationId") == RC["operationId"]
+         and HEADER.get("controllerConfigSha256") == RC["controllerConfigSha256"]
+         and re.fullmatch(r"[0-9a-f]{64}", HEADER.get("receiverSha256", "")) is not None,
+         "receiver_header_changed")
+    action = HEADER.get("action")
+    need(action in ("prepare", "recover-prepare", "admit", "submit-once", "observe"), "receiver_action_invalid")
+    open_root(prepare=action == "prepare")
+    claimed = None
+    duplicate = False
+    if action == "submit-once":
+        prepared()
+        claimed = {"schema": 1, "operationId": RC["operationId"], "pid": os.getpid(),
+                   "startTicks": birth(os.getpid()), "rootGeneration": ROOT_ID[:2],
+                   "receiverSha256": HEADER["receiverSha256"],
+                   "controllerConfigSha256": RC["controllerConfigSha256"],
+                   "payloadSha256": HEADER.get("payloadSha256"), "programSha256": HEADER.get("programSha256")}
+        need(type(claimed["startTicks"]) is int, "receiver_birth_unknown")
+        try:
+            record("receiver-claimed.json", claimed)
+        except FileExistsError:
+            duplicate = True
+    raw = sys.stdin.buffer.read(BOUND + 1)
+    need(0 < len(raw) <= BOUND and hashlib.sha256(raw).hexdigest() == HEADER.get("payloadSha256"),
+         "receiver_payload_bound_or_changed")
+    payload = parse(raw)
+    if duplicate:
+        answer = original_observation()
+    elif action == "prepare":
+        for filename, key, digest in (("durable.py", "durableBase64", RC["durableSha256"]),
+                                     ("receiver.py", "receiverBase64", HEADER["receiverSha256"])):
+            source = base64.b64decode(payload[key], validate=True)
+            need(0 < len(source) <= BOUND and hashlib.sha256(source).hexdigest() == digest, "receiver_source_changed")
+            create(filename, source)
+        value = {"schema": 1, "operationId": RC["operationId"], "rootGeneration": ROOT_ID[:2],
+                 "rootIdentity": ROOT_ID, "binding": RC["binding"],
+                 "controllerConfigSha256": RC["controllerConfigSha256"],
+                 "durableSha256": RC["durableSha256"], "receiverSha256": HEADER["receiverSha256"]}
+        record("preparation.json", value)
+        answer = {"state": "prepared-not-submitted", "preparation": value, "replayAllowed": False}
+    elif action == "recover-prepare":
+        answer = {"state": "prepared-not-submitted", "preparation": prepared(), "replayAllowed": False}
+    elif action == "admit":
+        prepared()
+        source = base64.b64decode(payload["observerBase64"], validate=True)
+        need(hashlib.sha256(source).hexdigest() == payload["observerSha256"], "receiver_observer_changed")
+        guard_root()
+        exec(compile(source, "sealed-native-admission-observer", "exec"), {"__name__": "__native_admission__"})
+        guard_root()
+        return
+    elif action == "submit-once":
+        source = base64.b64decode(payload["programBase64"], validate=True)
+        quick = base64.b64decode(payload["quickObserverBase64"], validate=True)
+        context = payload["context"]
+        need(claimed is not None and context["operationId"] == RC["operationId"]
+             and context["controllerConfigSha256"] == RC["controllerConfigSha256"]
+             and context["rootGeneration"] == ROOT_ID[:2]
+             and hashlib.sha256(source).hexdigest() == context["programSha256"] == HEADER["programSha256"]
+             and hashlib.sha256(quick).hexdigest() == context["quickObserverSha256"], "receiver_program_changed")
+        create("sealed-start-program.py", source)
+        create("quick-observer.py", quick)
+        record("submission-context.json", context)
+        d, binding = durable()
+        guard_root()
+        record("remote-submit-call.once.json", context)
+        result = d.submit(ROOT, RC["operationId"], binding,
+                          d.Program("android-same-persisted-start", source, 65536), generation=tuple(ROOT_ID[:2]))
+        record("receiver-result.json", {"schema": 1, "operationId": RC["operationId"], "result": result,
+                                        "programSha256": context["programSha256"], "replayAllowed": False})
+        answer = original_observation()
+    else:
+        answer = original_observation()
+    print(json.dumps(answer, sort_keys=True, separators=(",", ":")), flush=True)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BaseException as error:
+        reason = error.args[0] if type(error) is ValueError and len(error.args) == 1 and type(error.args[0]) is str and re.fullmatch(r"[a-z][a-z0-9_]{0,95}", error.args[0]) else "native_receiver_unknown"
+        print(json.dumps({"state": "unknown", "reason": reason, "operationId": RC["operationId"], "replayAllowed": False}), flush=True)
+        raise SystemExit(70)

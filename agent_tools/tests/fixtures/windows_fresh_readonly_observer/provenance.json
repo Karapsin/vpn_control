@@ -1,0 +1,118 @@
+{
+  "afterMeaning": "Complete corrected controller snapshot07945, used by tests for actual helper bodies/generator source. Its historical plan/getter source pins are not refreshed or treated as current after policy edits. A future native run uses newly qualified source and getter IDs.",
+  "beforeImages": {
+    "r0-readonly.before-bootstrap-quoting.source": "299b88b572c6bac3446fcf943fed1abf4b3908e51cc84dc8c0a9aade4ef5d498",
+    "r0-readonly.before-executable-schema.source": "84a6aabca486982c0d3647d028a31f800c05db8d2612b186619d4d412a25e81c",
+    "r0-readonly.before-import-path.source": "c242e088ee19553769e2dbe250ba31d197d388d7d8ce8200e1e829601e4788a3",
+    "r0-readonly.before-ledger-role-and-publication.source": "eefacbf3bdba7e5541b474177ae91d60be2ded0bbdb35c0b6dcfdd59650e8208",
+    "test_r0.before-portable-import.source": "7b5cadea1a22e0ea80998633f3a3a593c199a55eb723fdec0458f2526aa3de19"
+  },
+  "booleanScope": "Top-level claimMutation, vmMutation and nativeCredentialInput false describe the routine control execution only. Linked original native results below are retained separately and accurately describe their protected input or display effects.",
+  "claimMutation": false,
+  "coupledChildBootstrap": {
+    "beforeBootstrapSha256": "472434cc4971ae63b2ca46152e2d3fcce4f25e2bcf11906f6f267143682bcacb",
+    "beforeWholeBridgeSha256": "6fac99beb2e16fd1cef8b3c1365b2046cd29f5539710a72e879395f640bff9d4",
+    "fixedBootstrapSha256": "4f5dcbceb33b7906c7516948d5f3b055684e81b4566ac516b32f2faf5443c9c7",
+    "nativeMeaning": "Ordinary UID1000 child and root-parent full before/after census proven read-only in a distinct original. No VM/claim/guest effects, no old UNKNOWN closure.",
+    "nativeRefusalBeforeGetter": "ordinary_coverage_source_changed",
+    "nativeRefusalOriginal": "8cc41ae9-0c47-4365-ac1b-78a2d87ec294",
+    "newGetterSha256": "b08a63b11d765e8f9bc1ca67d1f9fe64b3d1c2e4e91b7f411f312af4c5273b27",
+    "positiveDistinctOriginal": "12932a24-eba4-49ef-8536-30277258018b",
+    "sourceOnlyAfterGeneratorSha256": "f2ecbeed5ccbd897b8db087db0cdae93ce2f542a71f6159e701d34bed033b77b",
+    "testMeaning": "Whole native-refused outer source supplies actual getter bytes and unchanged before child bootstrap. Actual stdin byte read, byte count, SHA, principal checks and full generator run; provider-body exec alone is an explicit terminal marker seam. Bad bytes, truncated, oversized input, wrong principal and unknown source-check shapes refuse."
+  },
+  "currentSourceNativeAdmission": false,
+  "failureFamilies": [
+    "deep direct-entrypoint import root absent",
+    "nested generated bootstrap quoting SyntaxError",
+    "root role selected the ordinary storage ledger reader",
+    "later phase exception erased earlier complete aggregate observations",
+    "two source-owned executable generation layouts put nlink in different positions",
+    "outer getter changed but protected ordinary-child length/SHA bindings remained coupled to the old getter",
+    "builder importlib loader executed timestamp-valid foreign pyc despite unchanged held source",
+    "pinned storage ledger raw/generation A was not joined to later canonical parsed B before locked reserve",
+    "storage registration once fence and beforeimage file fsync omitted their evidence directory and root parent durability",
+    "secure caller rehashed current custody review/setup/original intent instead of binding reviewed bytes and full original generation before final-admin open",
+    "secure caller did not compare freshly qualified full reviewed recipient before final-admin credential open",
+    "wake caller read competingSessions from exact raw WTS schema where only canonical validate_session returns that derived authority"
+  ],
+  "heldBuilderLoader": {
+    "afterActual": "Captured Held.read bytes compiled/executed; same valid foreign pyc ignored. Truthful module file/identity, duplicate namespace and digest drift refuse.",
+    "beforeActual": "Equal-size timestamp-valid foreign marker pyc executed while retained legitimate source and complete named/FD generations stayed exact.",
+    "initialRoutineFixtureFailureRetained": "First macOS routine fixture used uncanonical tempfile path under /var and correctly received NotADirectoryError before loader execution. Whole initial test and log retained privately; actual current routine exercises the same path using actual resolve(strict=True), not a guard waiver.",
+    "nativeMeaning": "Pre-dispatch source-only review found this defect; no new native acceptance is inferred. The actual distinct launch remains required.",
+    "testBoundary": "POSIX _Held/regularfile/ancestor identity, exact owned temporary source and timestamp pyc; inert22B marker only. Temporary path is resolved to its actual canonical directory before opening retained source, matching custody primitive and working with macOS /var symlink.",
+    "wholeAfterControllerSha256": "8e6cff44798c8381e195753c0ae239e7c002c304e92a1a8ec724b5c087b60619",
+    "wholeBeforeControllerSha256": "784eb8f14f936a66201aca650301b737c2279ba53a8177cad57113cc1a591805"
+  },
+  "historicalFactsUnchanged": true,
+  "nativeCredentialInput": false,
+  "originalOperations": [
+    "270f003d-c8b0-4113-97fc-27653852bae7",
+    "aa383497-b061-4069-b491-80de6ed6a4c7",
+    "8cc41ae9-0c47-4365-ac1b-78a2d87ec294",
+    "12932a24-eba4-49ef-8536-30277258018b"
+  ],
+  "portabilityBeforeTestSha256": "7b5cadea1a22e0ea80998633f3a3a593c199a55eb723fdec0458f2526aa3de19",
+  "routineTest": "Defaults to current actual producer schema text for both layouts; fixture controller helpers execute unchanged. All9 fields preserved; per-field, unknown-shape, wrong-order and source-layout drift refuse. Actual fsynced phase receipts tested before a later failure.",
+  "schemaVersion": 1,
+  "scope": "Native Windows-tool harness/caller causal corpus; marker, UID, proc and native IO seams in routine tests are inert and grant no native acceptance.",
+  "secureReviewedCustody": {
+    "actualRecipientControl": "Actual preserved caller entry sequence invokes an inert fixture SecretFile boundary only after fresh canonical-qualify result projection. Correct recipient opens once; wrong user/admin SID, name, roles, computer, guest boot or pending state legacy opens once and fixed opens zero/refuses.",
+    "actualReviewedArtifactControl": "Actual before current-hash loop versus after load_reviewed_inputs executes retained byte/generation custody on real owned files. Changed review bytes refuse before JSON parse; expected setup SHA, original SHA and full9 generation refuse before protected-input path.",
+    "afterWholeControllerSha256": "6cf7a5230d52c21301b6bffb0b7185a7538e69f1d33bc6a1b2ea46a91d660115",
+    "beforeWholeControllerSha256": "d34d06035a11940e88b0867a07a8b079f79795cd7ac93362ed3d4a26f8828525",
+    "credentialPrivacy": "Tracked fixtures contain controller source and inert non-secret marker values only, no real credential contents, credential digest or native private setup result.",
+    "nativeAcceptanceLimitation": "No product/VPN/UI, ordinary login, all-seven idle, reboot, stopped-start or other historical-unknown success inferred.",
+    "nativeClosing": {
+      "bytes": 1051,
+      "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-secure-d546cbd2-b89a-410f-8154-0910ede3befb/secure-positive-closing.json",
+      "sha256": "91bcf7a99ceb721461c6f2a06e02b2a8f839582167ffc18a1629e4d4ead9bd35"
+    },
+    "nativeFullClosure": {
+      "bytes": 8011,
+      "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-secure-d546cbd2-b89a-410f-8154-0910ede3befb/full-closure.receipt.json",
+      "sha256": "d46f46e58f00733a75aec49cc35c726b06baaea51628279a718006e2aa701289"
+    },
+    "nativeOriginalOperationId": "d546cbd2-b89a-410f-8154-0910ede3befb",
+    "nativeOutcome": "Distinct original canonical secure completed positively: final-admin verification, autologon/task/cache cleanup and seed ejection, terminal0 and retained full transport receipt metadata. This is fixture setup security only, not ordinary protected sign-in or complete lifecycle acceptance.",
+    "nativeRecipientQualifier": "c764f4ee-b751-57ef-9039-8ac7fb30cd77",
+    "nativeSecureCorrelation": "5cdcdbd92ad7473c98581c76bfec540d"
+  },
+  "storageRegistrationCausal": {
+    "afterWholeChildSha256": "45ef2ca34364f7bc4bf46e2a9e3bddba1d86d52db516f1490bf66cf03a39f87c",
+    "beforeWholeChildSha256": "b34b0784f2ce66fae95a979bc1438dafa0e54330fd34ead90e7e64783c6e36ef",
+    "causalDurability": "Actual save/fsync/mkdir prefix with delegated real OS recorder; legacy only filefsync, fixed root/evidence dirfsync before the next canonical register statement.",
+    "causalRaw": "Actual canonical current StoragePlans lock/read/reserve/save over owned real files: legacy admits different raw or same raw/new inode while pinned A differs; fixed rejects before save, preserving raw bytes. Legitimate joined A still admits one new claim and preserves old plans.",
+    "fixtureSeams": "Only production UID1000 literal projects to actual fixture owner for private file/dir metadata; free space is a module-local300GiB value. Real FD9, locks, files, mkdir and fsync. No remote/VM authority from fixtures.",
+    "frozenHistoricalSourcesUnchanged": true,
+    "nativeClosingPath": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-storage-d22709df-93b1-4a98-868b-0363df71fe53/closing.json",
+    "nativeOriginalOperationId": "d22709df-93b1-4a98-868b-0363df71fe53",
+    "nativeOutcome": "Exact new Windows62 storage claim closed positive; ordinary1000 child0/reaped/fullstreams, root principal/full7 unchanged, old storage plans and both RAM46 ledgers unchanged; storage coverage complete.",
+    "newActualSourceReader": "scripts/native_fixture_storage.py",
+    "reviewDiscovery": "Both defects found before native writer dispatch; original source proposals retained. Native was run once only after review and actual causal controls."
+  },
+  "vmMutation": false,
+  "wakeValidatedSession": {
+    "actualControl": "Current canonical WTS validator and actual WindowsBackend.observe definition consume exact raw schema. Actual before/fixed wake caller entry executes with explicit inert native IO only. A valid second active session legacy reaches one motion boundary but fixed refuses zero motion; valid single console reaches one in both.",
+    "actualSourceReaders": [
+      "agent_tools/readiness_windows.py",
+      "agent_tools/readiness_windows_guest.py",
+      "agent_tools/readiness_windows_display.py"
+    ],
+    "afterWholeControllerSha256": "47406867a699192fe9b4627d7d3aac5ebb6b92a1cbda928e5e2a342d40e33cd2",
+    "beforeWholeControllerSha256": "6a767db23c749117f176e56beb7f2127ee51b8714118a6db8fd40ea6632c926f",
+    "nativeAcceptanceLimitation": "No broad lifecycle or protected ordinary-input qualification inferred; all public recovery qualifications remain empty.",
+    "nativeAfterObservation": "461bcbe6-e401-425a-b233-242b4db9048e",
+    "nativeBeforeObservation": "5cd1d341-dd11-4879-82a6-1853eae4ba19",
+    "nativeClosing": {
+      "bytes": 465,
+      "path": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-wake-4e64ac8c-5903-4856-9266-f18f65734e29/closing.json",
+      "sha256": "96a76f97bd50dec15e36daa0f8c1b9349f61e4107b297909f6b73792b6729729"
+    },
+    "nativeOriginalOperationId": "4e64ac8c-5903-4856-9266-f18f65734e29",
+    "nativeOutcome": "Distinct original canonical wake_display submitted exactly one pointer-motion primitive (query-mice plus input-send-event; no click/key/text), sleeping to ready with same machine, boot, recipient and session.",
+    "noPublishedCapability": true
+  },
+  "windowsBoundary": "Exact principal bootstrap and private ledger/held/SecretFile/fsync controls are POSIX. Deep import, pure actual schema definitions, generator rebinding and canonical WTS/wake value controls remain portable; no POSIX graph is imported for pure controls."
+}

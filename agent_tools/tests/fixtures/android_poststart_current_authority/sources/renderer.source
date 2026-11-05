@@ -1,0 +1,536 @@
+"""Private SOURCE-ONLY candidate. This module never dispatches or executes guests.
+
+Rendered definitions have no entry point. Their capture, sealing, and actual
+native acceptance remain separate gates owned by the Android coordinator.
+"""
+from __future__ import annotations
+
+import ast
+import copy
+import hashlib
+import json
+from pathlib import PurePosixPath
+import re
+import uuid
+
+ORIGINAL_SHA = '982dd6db1743fa2b14a5bc79dc575551eab10a880db0db27860d0fafb34f94da'
+PAYLOAD_SHA = 'f7eaa0a260a4eeb8479913c5491d1a8446784e7e40070d089a9206b647eff842'
+BUNDLE_SHA = '6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85'
+RETIREMENT_SHA = 'b80edb795461815d1565148dc1eb32966c4de3aa6ad0f4bab1f53a378f537e31'
+REMOTE_RETIREMENT_SHA = '80b650b15982a9f2bb1a8f8432180bbcf89edd0f994716d6591b14dc83270b4e'
+CURRENT_CAPSULE_SHA = '3a07a3ce506b4be93faeb1bd3bb291d3c31bd93fb914cdcf33617bdc4eff5429'
+OLD_BOOT = 'd177ded3-526f-486d-bd19-3042d1836d9a'
+BASE_SHA = '352af218242311884a355f789c0d1c45b736c35270b096f41408de55e2c4ed33'
+FORBIDDEN_IDS = {'e3e97a65-b14a-4c32-8954-a441ac28ec47',
+                 '0dd55704-1e80-4d62-8d9d-2f0a123e0c3b',
+                 '6b616c2f-6c36-4ac0-836e-4465c78bfc92',
+                 '7310f227-aaed-4f3b-878a-1b7bf0b49215',
+                 '201cea86-8999-43f1-9d85-9020e0dad922'}
+READERS = ('fp', 'parent_fds', 'close_parents', 'guard_parents', 'read_fixed',
+           'facts', 'tree_facts', 'ticks', 'process_census', 'ports', 'boot',
+           'child_identity', 'qemu_fact', 'session_guest', 'guest_probe',
+           'original_status', 'journal_read')
+PUBLIC_READERS = ('getter_binary', 'getter_bounded', 'getter_stage', 'getter_adb',
+                  'getter_apk', 'external_file', 'external_jdk',
+                  'external_jdk_guard', 'public_cli_environment',
+                  'component_cli', 'getter_envelope', 'command_host_identity',
+                  'command_host_guard', 'command_request', 'command_binary',
+                  'command_bounded', 'component_command', 'stage_read',
+                  'current_process_rows', 'current_process_stat',
+                  'owner_admission_package_uid')
+
+
+def need(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'),
+                      allow_nan=False).encode() + b'\n'
+
+
+def source(raw, expected):
+    need(type(raw) is bytes and 0 < len(raw) <= 8 * 1024 ** 2 and
+         digest(raw) == expected, 'poststart_source_changed')
+    return raw.decode('utf-8', 'strict'), ast.parse(raw)
+
+
+def definition(tree, name, kind=ast.FunctionDef):
+    nodes = [node for node in tree.body if isinstance(node, kind) and node.name == name]
+    need(len(nodes) == 1, 'poststart_definition_changed:' + name)
+    return nodes[0]
+
+
+def literal(tree, name):
+    nodes = [node for node in tree.body if isinstance(node, ast.Assign) and
+             len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and
+             node.targets[0].id == name]
+    need(len(nodes) == 1, 'poststart_literal_changed:' + name)
+    return ast.literal_eval(nodes[0].value)
+
+
+def ast_sha(node):
+    return digest(ast.dump(node, annotate_fields=True, include_attributes=False).encode())
+
+
+def checked_uuid(value):
+    need(type(value) is str and str(uuid.UUID(value)) == value and
+         value not in FORBIDDEN_IDS, 'poststart_new_operation_required')
+    return value
+
+
+def qualification_definitions(original_raw, payload_raw, plan, admission_raw,
+                              root_identity, template_raw):
+    """Return inert source definitions and a closed source contract.
+
+    plan is the REAL 53b start_plan result, including exact programme bytes.
+    admission_raw is the actual raw admission consumed by that plan. The
+    caller must separately authenticate its transport/custody before sealing.
+    root_identity is the genuine prepared root structural5 identity.
+    No synthetic current boot, child, guest, app, owner, or certificate input
+    exists in this API; those values are measured by the emitted definitions.
+    """
+    old_text, old_tree = source(original_raw, ORIGINAL_SHA)
+    text, tree = source(payload_raw, PAYLOAD_SHA)
+    need(type(plan) is dict and plan.get('kind') == 'android-persisted-start-sealed-plan' and
+         plan.get('originalSourceSha256') == ORIGINAL_SHA and
+         type(plan.get('program')) is bytes and
+         digest(plan['program']) == plan.get('programSha256'), 'poststart_sealed_plan_required')
+    op = checked_uuid(plan.get('operationId'))
+    old_launch = literal(old_tree, 'LAUNCH')
+    old_getter = literal(old_tree, 'GETTER')
+    launch = plan.get('launch')
+    need(type(launch) is dict and launch.get('correlationId') == op and
+         launch.get('intent', {}).get('correlationId') == op and
+         launch['intent'].get('kind') == 'android-same-persisted-administrative-start' and
+         launch['intent'].get('originalColdbootOperationId') == old_launch['correlationId'] and
+         launch['intent'].get('originalSourceSha256') == ORIGINAL_SHA and
+         launch['intent'].get('historicalUnknownsPreserved') is True and
+         launch['intent'].get('historicalStopCause') == 'off_unknown' and
+         digest(canonical(launch['intent'])) == launch.get('intentSha256'),
+         'poststart_plan_launch_changed')
+    need(all(launch.get(key) == old_launch[key] for key in
+             ('device', 'avd', 'port', 'argv', 'environment', 'adbPath', 'adbFacts',
+              'qemuPath', 'emulatorGeneration')), 'poststart_same_persisted_binding_required')
+    journal = PurePosixPath(plan.get('journalDirectory', ''))
+    root = PurePosixPath('/var/tmp/vc-android-persisted-' + op)
+    need(journal == root / op / 'coldboot', 'poststart_external_journal_required')
+    need(type(root_identity) is list and len(root_identity) == 5 and
+         all(type(value) is int and value >= 0 for value in root_identity) and
+         min(root_identity[:2]) > 0 and root_identity[2:] == [16832, 0, 0],
+         'poststart_prepared_root_identity_required')
+    need(type(admission_raw) is bytes and digest(admission_raw) == plan['admissionSha256'],
+         'poststart_consumed_admission_changed')
+    admission = json.loads(admission_raw)
+    need(admission.get('kind') == 'android-persisted-start-native-admission' and
+         admission.get('operationId') == op and
+         type(admission.get('observations')) is list and len(admission['observations']) == 2,
+         'poststart_consumed_admission_required')
+    need(admission['observations'][0]['avd'] == admission['observations'][1]['avd'],
+         'poststart_prestart_disk_authority_unstable')
+    for name in READERS + PUBLIC_READERS:
+        need(ast_sha(definition(old_tree, name)) == ast_sha(definition(tree, name)),
+             'poststart_original_reader_changed:' + name)
+    expected_host = admission['observations'][-1]['host']
+    need(expected_host['bootId'] == old_launch['observation']['bootId'] and
+         expected_host['uid'] == expected_host['gid'] == 0,
+         'poststart_original_host_required')
+    getter = literal(tree, 'GETTER')
+    need(getter['packageSha256'] == BASE_SHA and
+         old_getter['generation']['device']['guestBootId'] == OLD_BOOT,
+         'poststart_original_base_required')
+    binding = {
+        'schema': 1, 'kind': 'android-poststart-readonly-source-contract',
+        'operationId': op, 'originalSourceSha256': ORIGINAL_SHA,
+        'payloadSourceSha256': PAYLOAD_SHA, 'startProgramSha256': plan['programSha256'],
+        'admissionSha256': plan['admissionSha256'], 'intentSha256': launch['intentSha256'],
+        'journalDirectory': str(journal), 'rootDirectory': str(root),
+        'rootIdentity': root_identity, 'oldGeneration': old_getter['generation'],
+        'host': expected_host, 'prestartAvd': admission['observations'][-1]['avd'],
+        'expectedAppUid': 10209, 'baseSha256': BASE_SHA,
+        'sourcePins': launch['intent']['source'],
+        'readOnly': True, 'releaseGranted': False, 'replayAllowed': False,
+    }
+    imports = ('import os,sys,stat,pathlib,hashlib,json,re,subprocess,time,ctypes,fcntl,signal,select,shutil,copy,base64\n'
+               'from pathlib import Path\nPROC=pathlib.Path("/proc")\n')
+    pieces = [imports, '']
+    # ROOT is copied from its authentic literal expression, never inferred.
+    root_node = next(n for n in tree.body if isinstance(n, ast.Assign) and
+                     any(isinstance(x, ast.Name) and x.id == 'ROOT' for x in n.targets))
+    pieces[-1] = ast.get_source_segment(text, root_node) + '\n'
+    for name, value in [('LAUNCH', launch), ('GETTER', getter),
+                        ('EXTERNAL', literal(tree, 'EXTERNAL')),
+                        ('COMMAND_SOURCE_SHA', literal(tree, 'COMMAND_SOURCE_SHA')),
+                        ('POSTSTART_CONTRACT', binding)]:
+        pieces.append(name + '=' + repr(value) + '\n')
+    pieces.append('GETTER_RECORDS={}\nGETTER_APK_PASS="Poststart"\nSTAGE_COMMANDS=[]\nSTAGE_COPY=copy\n')
+    pieces += [ast.get_source_segment(text, definition(tree, name)) + '\n\n'
+               for name in READERS + PUBLIC_READERS]
+    pieces.append(template_raw.decode('utf-8', 'strict'))
+    result = '\n'.join(pieces).encode()
+    compile(result, '<poststart-inert-readonly-definitions>', 'exec', dont_inherit=True)
+    audit = {'schema': 1, 'kind': 'android-poststart-inert-reader-assembly',
+             'definitionSha256': digest(result), 'contractSha256': digest(canonical(binding)),
+             'readerAst': {name: ast_sha(definition(tree, name)) for name in READERS + PUBLIC_READERS},
+             'pinnedBackendBodiesUnchanged': {name: ast_sha(definition(tree, name)) for name in
+                                             ('child_identity', 'session_guest', 'qemu_fact', 'getter_stage')},
+             'entryPointPresent': False, 'nativeEffectsAttempted': False,
+             'releaseGranted': False, 'replayAllowed': False}
+    return {'definitions': result, 'contract': binding, 'audit': audit}
+
+
+def current_validator_source(retirement_raw, new_boot, expected_sha=RETIREMENT_SHA):
+    """Derive ONLY a second current namespace; never replace the legacy one."""
+    need(expected_sha in (RETIREMENT_SHA, REMOTE_RETIREMENT_SHA),
+         'poststart_original_retirement_source_required')
+    text, tree = source(retirement_raw, expected_sha)
+    need(type(new_boot) is str and str(uuid.UUID(new_boot)) == new_boot and
+         new_boot != OLD_BOOT, 'poststart_actual_new_boot_required')
+    node = definition(tree, 'validate_component_certificate')
+    changed = copy.deepcopy(tree)
+    target = definition(changed, 'validate_component_certificate')
+    matches = [item for item in ast.walk(target) if isinstance(item, ast.Constant) and item.value == OLD_BOOT]
+    need(len(matches) == 1, 'poststart_certificate_boot_literal_scope_changed')
+    matches[0].value = new_boot
+    inverse = copy.deepcopy(changed)
+    reverse = [item for item in ast.walk(definition(inverse, 'validate_component_certificate'))
+               if isinstance(item, ast.Constant) and item.value == new_boot]
+    need(len(reverse) == 1, 'poststart_certificate_boot_inverse_changed')
+    reverse[0].value = OLD_BOOT
+    need(ast.dump(inverse, include_attributes=False) == ast.dump(tree, include_attributes=False),
+         'poststart_certificate_unexpected_ast_change')
+    raw = (ast.unparse(changed) + '\n').encode()
+    return {'source': raw, 'sha256': digest(raw), 'audit': {
+        'kind': 'android-poststart-current-certificate-validator-derivation',
+        'originalSourceSha256': expected_sha, 'oldGuestBootId': OLD_BOOT,
+        'newGuestBootId': new_boot, 'originalCertificateAstSha256': ast_sha(node),
+        'currentCertificateAstSha256': ast_sha(target), 'inverseAstEqual': True,
+        'retainedProofBodyUnchanged': ast_sha(definition(tree, 'validate_component_retained_proof')) ==
+                                     ast_sha(definition(changed, 'validate_component_retained_proof')),
+        'legacyNamespaceMustRemainSeparate': True, 'releaseGranted': False,
+        'requiresGenuinePoststartAuthority': True}}
+
+
+def output_constructor_delta(payload_raw):
+    """Return exact output-only constructor nodes; no staged module is modified.
+
+    A final current source closes these nodes into explicitly named DERIVED
+    classes and a private routing-create clone. It must retain authentic load,
+    modules, _selected_modules, _guard_backend and all underlying staged bytes.
+    """
+    text, otree = source(payload_raw, PAYLOAD_SHA)
+    matches = [node.value for node in ast.walk(otree) if isinstance(node, ast.Constant)
+               and type(node.value) is bytes and digest(node.value) == BUNDLE_SHA]
+    need(len(matches) == 1, 'poststart_original_bundle_source_required')
+    _, btree = source(matches[0], BUNDLE_SHA)
+    bclass = definition(btree, 'BaselineGuard', ast.ClassDef)
+    oclass = definition(otree, 'OwnerAdmissionGuard', ast.ClassDef)
+    changes = []
+    replacements = {}
+    for label, klass, expected, replacement in [
+        ('baseline', bclass, "root = Path(backend['ROOT'])",
+         "root = POSTSTART_PROOF_PARENT(request['correlationId'])"),
+        ('owner', oclass,
+         "output = Path(backend['ROOT']) / ('android-installer-component-baseline-' + request['correlationId'])",
+         "output = POSTSTART_PROOF_DIRECTORY(request['correlationId'])"),
+    ]:
+        original = definition(klass, '__init__')
+        changed = copy.deepcopy(original)
+        old_statement = ast.parse(expected).body[0]
+        new_statement = ast.parse(replacement).body[0]
+        found = [i for i, value in enumerate(changed.body) if ast.dump(value, include_attributes=False) ==
+                 ast.dump(old_statement, include_attributes=False)]
+        need(len(found) == 1, 'poststart_output_constructor_scope_changed:' + label)
+        changed.body[found[0]] = new_statement
+        if label == 'owner':
+            old_receiver = ast.parse("b._new_directory(output, receiver_root=Path(backend['ROOT']))").body[0]
+            new_receiver = ast.parse("b._new_directory(output, receiver_root=POSTSTART_PROOF_PARENT(request['correlationId']))").body[0]
+            receiver = [i for i, value in enumerate(changed.body) if ast.dump(value, include_attributes=False) ==
+                        ast.dump(old_receiver, include_attributes=False)]
+            need(len(receiver) == 1, 'poststart_owner_output_parent_scope_changed')
+            changed.body[receiver[0]] = new_receiver
+        inverse = copy.deepcopy(changed)
+        inverse.body[found[0]] = old_statement
+        if label == 'owner':
+            inverse.body[receiver[0]] = old_receiver
+        need(ast.dump(inverse, include_attributes=False) == ast.dump(original, include_attributes=False),
+             'poststart_output_constructor_inverse_changed:' + label)
+        replacements[label] = (ast.unparse(changed) + '\n').encode()
+        changes.append({'class': klass.name, 'method': '__init__',
+                        'oldAstSha256': ast_sha(original), 'newAstSha256': ast_sha(changed),
+                        'inverseAstEqual': True, 'outputOnly': True})
+    return {'definitions': replacements, 'audit': changes, 'stagedFilesModified': False,
+            'backendRootUnchanged': True, 'releaseGranted': False}
+
+
+def current_binding_delta(payload_raw, plan, qualification):
+    """Prepare declarations/function deltas, NOT an executable release payload.
+
+    qualification MUST first be authenticated by the closed durable capture
+    chain and independently reviewed. This pure function cannot establish that
+    provenance; its output is explicitly unsealed and grants no action.
+    """
+    _, tree = source(payload_raw, PAYLOAD_SHA)
+    need(type(qualification) is dict and qualification.get('kind') ==
+         'android-poststart-readonly-current-authority-candidate' and
+         qualification.get('state') == 'qualified' and
+         qualification.get('releaseGranted') is False,
+         'poststart_genuine_captured_qualification_required')
+    contract = qualification['contract']
+    op = checked_uuid(contract['operationId'])
+    need(plan['operationId'] == op and plan['programSha256'] == contract['startProgramSha256'] and
+         plan['admissionSha256'] == contract['admissionSha256'] and
+         plan['launch']['intentSha256'] == contract['intentSha256'] and
+         plan['journalDirectory'] == contract['journalDirectory'],
+         'poststart_qualification_start_binding_changed')
+    generation = qualification['generation']
+    boot_id = generation['device']['guestBootId']
+    need(str(uuid.UUID(boot_id)) == boot_id and boot_id != OLD_BOOT and
+         generation['device']['shellUid'] == '2000' and generation['device']['sdk'] == '35' and
+         generation['device']['abi'] == 'x86_64', 'poststart_qualified_new_generation_required')
+    app = qualification['appProcess']
+    need(app['guestBootId'] == boot_id and app['uid'] == 10209 and
+         app['name'] == 'com.kardinal.vpncontrol' and
+         all(type(app.get(key)) is int and app[key] > 0 for key in ('pid', 'startTicks')) and
+         qualification['baseSha256'] == BASE_SHA and qualification['configurationRevision'] == 0,
+         'poststart_qualified_current_app_required')
+    old_getter = literal(tree, 'GETTER')
+    getter = copy.deepcopy(old_getter)
+    getter['generation'] = copy.deepcopy(generation)
+    old_stage = definition(tree, 'stage_physical')
+    stage = copy.deepcopy(old_stage)
+    substitutions = {1802: app['pid'], 13396416: app['startTicks'],
+                     '/proc/1802/stat': '/proc/' + str(app['pid']) + '/stat'}
+    counts = {}
+    for old, new in substitutions.items():
+        nodes = [node for node in ast.walk(stage) if isinstance(node, ast.Constant) and
+                 type(node.value) is type(old) and node.value == old]
+        need(len(nodes) == 1, 'poststart_stage_app_literal_scope_changed')
+        nodes[0].value = new
+        counts[str(old)] = len(nodes)
+    inverse = copy.deepcopy(stage)
+    for old, new in substitutions.items():
+        nodes = [node for node in ast.walk(inverse) if isinstance(node, ast.Constant) and
+                 type(node.value) is type(new) and node.value == new]
+        need(len(nodes) == 1, 'poststart_stage_app_inverse_scope_changed')
+        nodes[0].value = old
+    need(ast.dump(inverse, include_attributes=False) == ast.dump(old_stage, include_attributes=False),
+         'poststart_stage_unexpected_ast_change')
+    unchanged = {name: ast_sha(definition(tree, name)) for name in
+                 ('child_identity', 'session_guest', 'qemu_fact', 'getter_stage', 'certificate_app')}
+    declarations = {
+        'POSTSTART_ORIGINAL_LAUNCH': literal(tree, 'LAUNCH'),
+        'POSTSTART_ORIGINAL_GETTER': old_getter,
+        'POSTSTART_ORIGINAL_EXPECTED_APP': literal(tree, 'COMPONENT_RELEASE_EXPECTED_APP'),
+        'POSTSTART_CURRENT_AUTHORITY_CANDIDATE': qualification,
+        'LAUNCH': copy.deepcopy(plan['launch']), 'GETTER': getter,
+        'COMPONENT_RELEASE_EXPECTED_APP': copy.deepcopy(app),
+    }
+    return {'schema': 1, 'kind': 'android-poststart-unsealed-current-binding-delta',
+            'declarations': declarations, 'stagePhysicalDefinition': (ast.unparse(stage) + '\n').encode(),
+            'journalAliasDefinition': journal_alias_source(op, plan['journalDirectory']),
+            'audit': {'originalPayloadSha256': PAYLOAD_SHA,
+                      'qualificationDocumentSha256': digest(canonical(qualification)),
+                      'oldStageAstSha256': ast_sha(old_stage), 'newStageAstSha256': ast_sha(stage),
+                      'stageLiteralSubstitutionCounts': counts, 'stageInverseAstEqual': True,
+                      'pinnedBackendBodiesUnchanged': unchanged,
+                      'certificateAppBodyUnchanged': True, 'backendRootUnchanged': True},
+            'executablePayload': False, 'releaseGranted': False, 'replayAllowed': False}
+
+
+def journal_alias_source(operation_id, journal_directory):
+    """One synthetic coldboot alias only; whole original journal reader retained."""
+    op = checked_uuid(operation_id)
+    expected = '/var/tmp/vc-android-persisted-' + op + '/' + op + '/coldboot'
+    need(journal_directory == expected, 'poststart_external_journal_required')
+    return ("POSTSTART_ORIGINAL_JOURNAL_READ=journal_read\n"
+            "def journal_read(directory,name):\n"
+            "    source=pathlib.Path(directory)\n"
+            "    synthetic=ROOT/('android-avd-coldboot-'+" + repr(op) + ")\n"
+            "    if source==synthetic:\n"
+            "        poststart_authority_guard()\n"
+            "        source=pathlib.Path(" + repr(expected) + ")\n"
+            "    return POSTSTART_ORIGINAL_JOURNAL_READ(source,name)\n").encode()
+
+
+def collector_path_delta(payload_raw):
+    """Map ONLY source-authenticated fresh component proof path expressions."""
+    _, tree = source(payload_raw, PAYLOAD_SHA)
+    original = definition(tree, 'component_release_inventory')
+    selected = copy.deepcopy(original)
+    changes = []
+
+    class Map(ast.NodeTransformer):
+        def visit_BinOp(self, node):
+            if (isinstance(node.op, ast.Div) and isinstance(node.left, ast.Name) and
+                    node.left.id == 'ROOT' and isinstance(node.right, ast.BinOp) and
+                    isinstance(node.right.op, ast.Add) and isinstance(node.right.left, ast.Constant) and
+                    node.right.left.value == 'android-installer-component-baseline-'):
+                expression = ast.unparse(node.right.right)
+                need(expression in ("request['correlationId']",
+                                    "COMPONENT_SESSION_REQUEST['correlationId']",
+                                    "COMPONENT_BACKUP_REQUEST['correlationId']"),
+                     'poststart_unexpected_collector_path_expression')
+                changes.append({'original': ast.unparse(node), 'correlation': expression})
+                return ast.copy_location(ast.Call(func=ast.Name(id='POSTSTART_PROOF_DIRECTORY', ctx=ast.Load()),
+                                                 args=[copy.deepcopy(node.right.right)], keywords=[]), node)
+            return self.generic_visit(node)
+
+    selected = Map().visit(selected)
+    need(len(changes) == 4, 'poststart_collector_path_scope_changed')
+
+    class Inverse(ast.NodeTransformer):
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Name) and node.func.id == 'POSTSTART_PROOF_DIRECTORY':
+                need(len(node.args) == 1 and not node.keywords, 'poststart_output_inverse_invalid')
+                return ast.BinOp(left=ast.Name(id='ROOT', ctx=ast.Load()), op=ast.Div(),
+                                 right=ast.BinOp(left=ast.Constant('android-installer-component-baseline-'),
+                                                 op=ast.Add(), right=copy.deepcopy(node.args[0])))
+            return self.generic_visit(node)
+
+    inverse = Inverse().visit(copy.deepcopy(selected))
+    need(ast.dump(inverse, include_attributes=False) == ast.dump(original, include_attributes=False),
+         'poststart_collector_unexpected_ast_change')
+    return {'definition': (ast.unparse(selected) + '\n').encode(),
+            'audit': {'function': original.name, 'pathChanges': changes,
+                      'originalAstSha256': ast_sha(original), 'currentAstSha256': ast_sha(selected),
+                      'inverseAstEqual': True, 'originalJobAndLeasePathsUnchanged': True},
+            'executablePayload': False, 'releaseGranted': False}
+
+
+def routing_create_delta(payload_raw):
+    """Keep staged routing module checks; explicitly call a derived create clone.
+
+    The unchanged stage module and original bundle are never mutated. A NEW
+    clone uses exactly module.create.__code__ with the one declared global
+    `bundle` rebound to the explicit derived component runtime. This is a new
+    current-authority boundary, not acceptance under the old module contract.
+    """
+    _, tree = source(payload_raw, PAYLOAD_SHA)
+    raw = next(node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and
+               type(node.value) is bytes and digest(node.value) == BUNDLE_SHA)
+    original = definition(ast.parse(raw), 'routing_backup')
+    changed = copy.deepcopy(original)
+    expected = ast.parse('result = module.create(receipt, backend, request)').body[0]
+    replacement = ast.parse('result = POSTSTART_ROUTING_CREATE(module, receipt, backend, request)').body[0]
+    found = [i for i, node in enumerate(changed.body) if ast.dump(node, include_attributes=False) ==
+             ast.dump(expected, include_attributes=False)]
+    need(len(found) == 1, 'poststart_routing_create_scope_changed')
+    changed.body[found[0]] = replacement
+    inverse = copy.deepcopy(changed)
+    inverse.body[found[0]] = expected
+    need(ast.dump(inverse, include_attributes=False) == ast.dump(original, include_attributes=False),
+         'poststart_routing_unexpected_ast_change')
+    return {'definition': (ast.unparse(changed) + '\n').encode(),
+            'audit': {'function': 'routing_backup', 'originalAstSha256': ast_sha(original),
+                      'currentAstSha256': ast_sha(changed), 'inverseAstEqual': True,
+                      'stagedModuleCodeChecksUnchanged': True,
+                      'routingCreateCodeUnchanged': True,
+                      'routingCreateGlobalsDelta': {'bundle': 'explicit-in-memory-poststart-component-runtime'},
+                      'originalModuleNotMutated': True},
+            'executablePayload': False, 'releaseGranted': False}
+
+
+def proof_output_definitions(output_contract):
+    """Inert helpers; prepare called once only after sealing current authority.
+
+    poststart_authority_guard is a closed source-owned current physical check,
+    not a caller callback. The new parent is under the authenticated new root;
+    its structural identity is then held and compared at every proof lookup.
+    """
+    need(type(output_contract) is dict and output_contract.get('kind') ==
+         'android-poststart-external-proof-output-contract' and
+         output_contract.get('sharedRootChildCreationAllowed') is False,
+         'poststart_output_contract_required')
+    expected = operation_contract(output_contract['startOperationId'],
+                                  output_contract['releaseOperationId'],
+                                  output_contract['rootDirectory'])
+    need(canonical(output_contract) == canonical(expected), 'poststart_output_contract_changed')
+    return ('POSTSTART_OUTPUT_CONTRACT=' + repr(expected) + '\n' + '''
+POSTSTART_PROOF_PARENT_PIN=None
+def poststart_prepare_proof_parent():
+    global POSTSTART_PROOF_PARENT_PIN
+    if POSTSTART_PROOF_PARENT_PIN is not None:
+        raise ValueError('poststart_proof_parent_already_prepared')
+    poststart_authority_guard()
+    parent=Path(POSTSTART_OUTPUT_CONTRACT['rootDirectory'])/POSTSTART_OUTPUT_CONTRACT['relativeProofParent']
+    POSTSTART_AUTHENTIC_COMPONENT_BUNDLE._new_directory(parent)
+    POSTSTART_PROOF_PARENT_PIN=POSTSTART_AUTHENTIC_COMPONENT_BUNDLE._directory(parent)
+    poststart_authority_guard()
+def POSTSTART_PROOF_PARENT(correlation):
+    if type(correlation) is not str or correlation not in POSTSTART_OUTPUT_CONTRACT['correlations'].values():
+        raise ValueError('poststart_proof_correlation_unqualified')
+    if POSTSTART_PROOF_PARENT_PIN is None:
+        raise ValueError('poststart_proof_parent_unprepared')
+    poststart_authority_guard()
+    parent=Path(POSTSTART_OUTPUT_CONTRACT['rootDirectory'])/POSTSTART_OUTPUT_CONTRACT['relativeProofParent']
+    if POSTSTART_AUTHENTIC_COMPONENT_BUNDLE._directory(parent)!=POSTSTART_PROOF_PARENT_PIN:
+        raise ValueError('poststart_proof_parent_changed')
+    return parent
+def POSTSTART_PROOF_DIRECTORY(correlation):
+    return POSTSTART_PROOF_PARENT(correlation)/('android-installer-component-baseline-'+correlation)
+''').encode()
+
+
+def effect_plane_delta(payload_raw, capsule_raw):
+    """Consume ONLY the two previously reviewed3a first9da substitutions."""
+    _, original = source(payload_raw, PAYLOAD_SHA)
+    text, current = source(capsule_raw, CURRENT_CAPSULE_SHA)
+    old = literal(original, 'EFFECT_PLANE_FIXED')
+    new = literal(current, 'EFFECT_PLANE_FIXED')
+    need(set(old) == set(new) == {'binding', 'boundarySource', 'paths', 'priorPass',
+                                  'processSource', 'validatorSource'},
+         'poststart_effect_plane_fixed_scope_changed')
+    need(all(old[key] == new[key] for key in old if key != 'processSource'),
+         'poststart_effect_plane_original_binding_changed')
+    need(digest(old['processSource'].encode()) ==
+         '26df14113106aae8a76fed795e1d562726f1b43e9be8763c736315fac350e28e' and
+         digest(new['processSource'].encode()) ==
+         '4b1e019705f5fc3d9870136839eb80a3cd97ef899b64944c85f71292d0a8731d',
+         'poststart_reviewed_census_source_required')
+    one = 'component_release_current1e15_effect_plane_guard'
+    need(literal(original, 'CURRENT1E15_EFFECT_PLANE_FIXED') ==
+         literal(current, 'CURRENT1E15_EFFECT_PLANE_FIXED') and
+         ast_sha(definition(original, one)) == ast_sha(definition(current, one)),
+         'poststart_current1e15_changed')
+    first = 'component_release_effect_plane_current_guard'
+    return {'declaration': {'POSTSTART_ORIGINAL_EFFECT_PLANE_FIXED': old,
+                            'EFFECT_PLANE_FIXED': new},
+            'guardDefinition': (ast.get_source_segment(text, definition(current, first)) + '\n').encode(),
+            'audit': {'originalPayloadSha256': PAYLOAD_SHA,
+                      'currentCapsuleSha256': CURRENT_CAPSULE_SHA,
+                      'oldProcessSourceSha256': digest(old['processSource'].encode()),
+                      'currentProcessSourceSha256': digest(new['processSource'].encode()),
+                      'oldGuardAstSha256': ast_sha(definition(original, first)),
+                      'currentGuardAstSha256': ast_sha(definition(current, first)),
+                      'otherFiveFixedFieldsEqual': True,
+                      'current1e15LiteralAndGuardUnchanged': True,
+                      'poststartNativeRequalificationRequired': True},
+            'executablePayload': False, 'releaseGranted': False}
+
+
+def operation_contract(start_operation, release_operation, proof_root):
+    """All fresh proof IDs derive from the NEW release ID, never old0dd/7310 IDs."""
+    start = checked_uuid(start_operation)
+    release = checked_uuid(release_operation)
+    need(start != release, 'poststart_distinct_release_required')
+    expected = '/var/tmp/vc-android-persisted-' + start
+    need(proof_root == expected, 'poststart_output_parent_required')
+    ids = {name: str(uuid.uuid5(uuid.UUID(release), tag)) for name, tag in
+           [('owner', 'fresh-poststart-current-owner'),
+            ('baseline', 'fresh-poststart-current-baseline'),
+            ('sessions', 'fresh-poststart-current-sessions'),
+            ('routing', 'fresh-poststart-current-routing')]}
+    need(len(set(ids.values())) == 4 and not (set(ids.values()) & FORBIDDEN_IDS),
+         'poststart_unique_proof_ids_required')
+    return {'schema': 1, 'kind': 'android-poststart-external-proof-output-contract',
+            'startOperationId': start, 'releaseOperationId': release,
+            'rootDirectory': expected, 'relativeProofParent': 'poststart-proof-' + release,
+            'correlations': ids, 'backendRootUnchanged': True,
+            'sharedRootChildCreationAllowed': False, 'releaseGranted': False,
+            'replayAllowed': False}

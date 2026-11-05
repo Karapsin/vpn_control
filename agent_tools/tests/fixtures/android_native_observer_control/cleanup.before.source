@@ -1,0 +1,17 @@
+child = state['child']
+if child is not None:
+    try:
+        if state['ready'] is not None and birth(child.pid) != state['ready']['startTicks']:
+            raise ValueError('control_child_birth_changed')
+        child.stdin.write(b'x')
+        child.stdin.close()
+        child.stdin = None
+        output, error = child.communicate(timeout=10)
+        state['childStdout'] += output
+        state['childStderr'] += error
+        closed = {'exitCode': child.returncode, 'stdoutBase64': base64.b64encode(state['childStdout']).decode(), 'stderrBase64': base64.b64encode(state['childStderr']).decode(), 'stdoutSha256': hashlib.sha256(state['childStdout']).hexdigest(), 'stderrSha256': hashlib.sha256(state['childStderr']).hexdigest()}
+    finally:
+        if child.stdin is not None:
+            child.stdin.close()
+if state['pythonFd'] is not None:
+    os.close(state['pythonFd'])

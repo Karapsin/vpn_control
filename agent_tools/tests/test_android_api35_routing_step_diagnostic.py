@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from unittest import mock
@@ -60,12 +61,62 @@ class RoutingTests(unittest.TestCase):
         record=env['GETTER_RECORDS']['routingPartial'];self.assertEqual(b'notice\xff',base64.b64decode(record['stderrBase64']))
         measurement=env['GETTER_RECORDS']['routingMeasurement'];self.assertEqual('child_live_at_outer_deadline',measurement['classification']);self.assertIsNone(measurement['exitCode']);self.assertFalse(measurement['stdoutEof'])
 
-    def test_exited_parent_with_descendant_held_pipe_is_distinct(self):
+    def test_exited_parent_with_inherited_pipe_holder_is_distinct(self):
         env=scope();env['ROUTING_OUTER_SECONDS']=.05
-        # A harmless short-lived descendant holds stdout; no persistent job.
-        code="import subprocess,sys;subprocess.Popen([sys.executable,'-I','-c','import time;time.sleep(.12)'])"
-        with mock.patch.object(subprocess,'Popen',side_effect=self.launch(code)),self.assertRaises(ValueError):env['getter_bounded'](self.argv(),1,{})
-        self.assertEqual('child_exited_pipe_open',env['GETTER_RECORDS']['routingMeasurement']['classification'])
+        # Both processes are direct children of this test. The descriptor
+        # inheritance seam models a descendant-held stdout without an orphan.
+        # Parent termination and holder readiness precede the capture deadline.
+        popen=subprocess.Popen;reader=writer=None;parent=holder=None;closing=None;captured=b''
+        with tempfile.TemporaryDirectory(prefix='routing-pipe-') as directory:
+            ready=Path(directory)/'ready'
+            holder_code=("# routing_pipe_holder\nfrom pathlib import Path\nimport sys\n"
+                         "sys.stdout.buffer.write(b'held\\n');sys.stdout.flush()\n"
+                         "Path(sys.argv[1]).write_text('ready')\n"
+                         "sys.stdin.buffer.read(1)\n"
+                         "sys.stderr.buffer.write(b'released\\n');sys.stderr.flush()\n")
+            try:
+                reader,writer=os.pipe()
+                holder=popen([sys.executable,'-I','-c',holder_code,str(ready)],stdin=subprocess.PIPE,stdout=writer,stderr=subprocess.PIPE)
+                until=time.monotonic()+5
+                while not ready.exists():
+                    self.assertIsNone(holder.poll(),'pipe holder exited before readiness')
+                    self.assertLess(time.monotonic(),until,'pipe holder did not acknowledge readiness')
+                    time.sleep(.005)
+                self.assertEqual('ready',ready.read_text())
+                parent=popen([sys.executable,'-I','-c','pass # routing_measured_parent'],stdin=subprocess.DEVNULL,stdout=writer,stderr=subprocess.PIPE)
+                parent.stdout=os.fdopen(reader,'rb');reader=None
+                os.close(writer);writer=None
+                closing=os.fdopen(os.dup(parent.stdout.fileno()),'rb')
+                self.assertEqual(0,parent.wait(timeout=5))
+                self.assertIsNone(holder.poll())
+                with mock.patch.object(subprocess,'Popen',return_value=parent),self.assertRaisesRegex(ValueError,'getter_command_timeout'):
+                    env['getter_bounded'](self.argv(),1,{})
+                measurement=env['GETTER_RECORDS']['routingMeasurement']
+                self.assertEqual('child_exited_pipe_open',measurement['classification'])
+                self.assertEqual(0,measurement['exitCode']);self.assertFalse(measurement['stdoutEof'])
+                captured=base64.b64decode(env['GETTER_RECORDS']['routingPartial']['stdoutBase64'])
+                self.assertIsNone(holder.poll(),'holder must await explicit release')
+            finally:
+                if reader is not None:os.close(reader)
+                if writer is not None:os.close(writer)
+                if parent is not None:
+                    if parent.poll() is None:parent.kill()
+                    parent.wait(timeout=5)
+                    for stream in (parent.stdin,parent.stdout,parent.stderr):
+                        if stream is not None and not stream.closed:stream.close()
+                if holder is not None:
+                    try:
+                        output,error=holder.communicate(input=b'R',timeout=5)
+                    except BaseException:
+                        if holder.poll() is None:holder.kill()
+                        holder.communicate(timeout=5)
+                        raise
+                    self.assertIsNone(output);self.assertEqual(b'released\n',error);self.assertEqual(0,holder.returncode)
+                if closing is not None:
+                    try:
+                        self.assertEqual(b'held\n',captured+closing.read())
+                        self.assertEqual(b'',closing.read(1),'all inherited stdout writers must close')
+                    finally:closing.close()
 
     def test_routing_source_serial_owner_or_timeout_change_before_process(self):
         for index,value in ((0,'/foreign'),(4,'old-serial'),(6,'45'),(8,'foreign')):

@@ -1,0 +1,55 @@
+from pathlib import Path
+from contextlib import closing
+import hashlib,inspect,json,os,sys,uuid
+ROOT=Path('/Users/karapsin_de/projects/vpn_control_tool_recovery');sys.path.insert(0,str(ROOT))
+from agent_tools import readiness_windows as windows,windows_vm_deploy as deploy,readiness_windows_managed_admission as admission
+from agent_tools.native_review_source_closure import _Held
+from agent_tools.private_credential_file import SecretFile
+OUT=Path(__file__).parent;OP='d546cbd2-b89a-410f-8154-0910ede3befb';DEPLOYMENT='62b489bc-81d5-4d3a-b87a-94fa2b90c57d'
+def save(name,value):windows._save(OUT/name,value)
+def load_reviewed_inputs(held,path,expected_sha):
+ raw=held.read(str(path),expected_sha,max_bytes=1048576)
+ review=json.loads(raw)
+ held.read(review['setupProof']['path'],review['setupProof']['sha256'],max_bytes=1048576)
+ original=review['originalIntentPin']
+ held.read(review['originalIntentPath'],original['sha256'],tuple(original['generation']),max_bytes=1048576)
+ return review
+def require_reviewed_recipient(check,review):
+ expected=review['recipient'];actual=check.get('result',{})
+ if (check.get('state')!='setup-observed'or check.get('setupReady')is not True or check.get('imageMatchesRequest')is not True
+     or actual.get('administrator')!=expected['administrator']
+     or actual.get('user')!=expected['ordinaryUser']
+     or actual.get('computer')!=expected['computer']
+     or actual.get('os',{}).get('bootTime')!=expected['os']['bootTime']
+     or actual.get('fixturePrincipal')!=expected['fixturePrincipal']):
+  raise ValueError('fresh_secure_reviewed_recipient_changed')
+ return True
+class QualifiedSecretFile(SecretFile):
+ def __init__(self,path):
+  held.finish();held.final_identity_pass()
+  expected=review['credentialsMetadataOnly'].get(path)
+  if expected is None or list(admission.credential_metadata(path))!=expected:raise ValueError('fresh_secure_credential_generation_changed')
+  super().__init__(path)
+  if list(self.pin)!=expected:self.close();raise ValueError('fresh_secure_credential_generation_changed')
+with closing(_Held())as held:
+ review=load_reviewed_inputs(held,OUT/'custody-review.json','fd7ddf9ccc56599e1abd7db7e0a1b6c2b05ead24f6bb49e6e9b3769b2321db44')
+ if os.path.lexists(ROOT/'.rag_index/windows-vm-deploy-secure'/(DEPLOYMENT+'.intent.json')):raise ValueError('fresh_secure_original_exists_observe_only')
+ for path,pin in review['sourcePins'].items():held.read(path,pin['sha256'],tuple(pin['generation'])if 'generation'in pin else None,max_bytes=1048576)
+ held.read(str(Path(__file__)),hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),max_bytes=1048576)
+ for path,pin in review['credentialsMetadataOnly'].items():
+  if list(admission.credential_metadata(path))!=pin:raise ValueError('fresh_secure_credential_generation_changed')
+ actual=inspect.getsource(deploy.secure);assert hashlib.sha256(actual.encode()).hexdigest()==review['canonicalSecureFunctionSha256']
+ namespace=dict(vars(deploy));namespace['SecretFile']=QualifiedSecretFile;exec(compile(actual,'actual-canonical-secure-with-stricter-credential-pin','exec',dont_inherit=True),namespace)
+ save('dispatch.intent.json',{'operationId':OP,'deploymentId':DEPLOYMENT,'privateInput':True,'expectedAdministratorSid':review['recipient']['administrator']['sid'],'pid':os.getpid(),'replayAllowed':False});held.finish();held.final_identity_pass()
+ print(json.dumps({'operationId':OP,'pid':os.getpid(),'out':str(OUT),'phase':'accepted-one-original-secure'}),flush=True)
+ recipient_operation=str(uuid.uuid5(uuid.UUID(OP),'reviewed-recipient-admission'))
+ save('recipient-admission.intent.json',{'operationId':recipient_operation,'secureOperationId':OP,'purpose':'fresh-source-owned-SID-equality-before-final-secret-open','readOnly':True})
+ print(json.dumps({'operationId':recipient_operation,'secureOperationId':OP,'phase':'fresh-readonly-reviewed-recipient-before-private-input'}),flush=True)
+ check=deploy.qualify(ROOT,DEPLOYMENT,recipient_operation,review['hostSudoInput']);save('recipient-admission.result.private.json',check)
+ require_reviewed_recipient(check,review);held.finish();held.final_identity_pass()
+ save('recipient-admission.closed.json',{'operationId':recipient_operation,'state':'reviewed-SIDs-match-fresh-canonical-qualifier','sourceClosing':True,'finalCredentialOpened':False})
+ result=namespace['secure'](ROOT,DEPLOYMENT,OP,review['hostSudoInput']);save('result.private.json',result)
+ for path,pin in review['credentialsMetadataOnly'].items():
+  if list(admission.credential_metadata(path))!=pin:raise ValueError('fresh_secure_credential_generation_changed')
+ held.finish();held.final_identity_pass();save('closing.json',{'operationId':OP,'state':'original-secure-closed','sourceClosing':True,'credentialGenerationUnchanged':True,'resultState':result['state'],'credentialBytesWrittenByController':False,'productAcceptance':False})
+ print(json.dumps({'operationId':OP,'state':result['state'],'setupSecured':result.get('setupSecured'),'out':str(OUT)}),flush=True)

@@ -1,0 +1,213 @@
+# SOURCE-ONLY definitions. No call or native entry point is included.
+# All names without a poststart prefix above are byte-authenticated982d readers.
+
+def poststart_need(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+def poststart_raw(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode() + b'\n'
+
+
+def poststart_fp5(value):
+    return [value[0], value[1], value[5], value[6], value[7]]
+
+
+def poststart_kernel_guard(expected=None):
+    """The SAME unmodified original_status reader sees only the new journal."""
+    chain = POSTSTART_ROOT_CHAIN
+    guard_parents(chain)
+    root = pathlib.Path(POSTSTART_CONTRACT['rootDirectory'])
+    info = os.stat(root, follow_symlinks=False)
+    poststart_need([info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid] ==
+                   POSTSTART_CONTRACT['rootIdentity'], 'poststart_private_root_changed')
+    poststart_need(COMMAND_HOST == {'uid': 0, 'euid': 0, 'gid': 0, 'egid': 0, 'groups': [0]},
+                   'poststart_measurement_principal_changed')
+    command_host_guard()
+    current = original_status(pathlib.Path(POSTSTART_CONTRACT['journalDirectory']))
+    poststart_need(current.get('state') == 'guest-generation-admitted' and
+                   current.get('guestAdmitted') is True and
+                   current.get('correlationId') == POSTSTART_CONTRACT['operationId'],
+                   'poststart_new_original_guest_unqualified')
+    device = current['device']
+    poststart_need(device['guestBootId'] != POSTSTART_CONTRACT['oldGeneration']['device']['guestBootId'] and
+                   device['sdk'] == '35' and device['abi'] == 'x86_64' and
+                   device['shellUid'] == '2000' and device['bootCompleted'] == '1' and
+                   device['matched'] is True and
+                   LAUNCH['avd'] in (device['bootAvd'], device['kernelAvd']) and
+                   all(value in ('', LAUNCH['avd']) for value in
+                       (device['bootAvd'], device['kernelAvd'])), 'poststart_new_guest_binding_changed')
+    poststart_need(current['child'] != POSTSTART_CONTRACT['oldGeneration']['child'] and
+                   current['guest'] != POSTSTART_CONTRACT['oldGeneration']['guest'] and
+                   current['child']['bootId'] == current['guest']['hostBootId'] ==
+                   POSTSTART_CONTRACT['host']['bootId'], 'poststart_host_or_actor_generation_changed')
+    raw_machine = read_fixed(pathlib.Path('/etc/machine-id'), 256)
+    poststart_need(raw_machine['hashScope'] == 'full' and
+                   raw_machine['sha256'] == POSTSTART_CONTRACT['host']['machineSha256'],
+                   'poststart_machine_changed')
+    observed = journal_read(pathlib.Path(POSTSTART_CONTRACT['journalDirectory']), 'qemu-observed.json')
+    poststart_need(observed == {'schema': 1, 'correlationId': LAUNCH['correlationId'],
+                   'supervisor': current['child'], 'guest': current['guest'],
+                   'source': LAUNCH['intent']['source'], 'intentSha256': LAUNCH['intentSha256']},
+                   'poststart_positive_qemu_closure_unproven')
+    if expected is not None:
+        poststart_need(current == expected, 'poststart_current_generation_changed')
+    guard_parents(chain)
+    return current
+
+
+def poststart_journal_evidence():
+    result = {}
+    directory = pathlib.Path(POSTSTART_CONTRACT['journalDirectory'])
+    for name in ('intent.json', 'attempt.json', 'ready.json', 'child.json',
+                 'exec-released.json', 'submitted.json', 'qemu-observed.json'):
+        item = read_fixed(directory / name, 131072)
+        raw = item.pop('raw')
+        poststart_need(item['hashScope'] == 'full' and item['generation'][6:9] == [0, 0, 1] and
+                       stat.S_IMODE(item['generation'][5]) == 384,
+                       'poststart_journal_record_unsafe')
+        result[name] = {**item, 'rawBase64': base64.b64encode(raw).decode()}
+    poststart_need(json.loads(base64.b64decode(result['intent.json']['rawBase64'], validate=True)) ==
+                   LAUNCH['intent'], 'poststart_original_intent_changed')
+    return result
+
+
+def poststart_app():
+    package = stage_read(['shell', '-T', 'dumpsys', 'package', 'com.kardinal.vpncontrol'])
+    poststart_need(owner_admission_package_uid(package, 10209) == 10209 and
+                   'versionName=2.2.2' in package and 'versionCode=16840' in package and
+                   'DEBUGGABLE' not in package, 'poststart_original_installed_package_changed')
+    table = stage_read(['shell', '-T', 'ps', '-A', '-o', 'PID,UID,NAME'])
+    rows = current_process_rows(table, GETTER['generation']['device']['guestBootId'])
+    apps = [row for row in rows if row['name'] == 'com.kardinal.vpncontrol']
+    poststart_need(len(apps) == 1 and apps[0]['uid'] == 10209,
+                   'poststart_app_process_unqualified')
+    app = current_process_stat(stage_read(['shell', '-T', 'cat', '/proc/' + str(apps[0]['pid']) + '/stat']), apps[0])
+    poststart_need(type(app['startTicks']) is int and app['startTicks'] > 0,
+                   'poststart_app_birth_unqualified')
+    return app
+
+
+def poststart_avd(current):
+    """Retain every generation; allow writes only to explicitly named disk files."""
+    before = POSTSTART_CONTRACT['prestartAvd']
+    directory = pathlib.Path(before['directory'])
+    after = {'directory': str(directory), 'tree': tree_facts(directory),
+             'ini': facts(directory.parent / (LAUNCH['avd'] + '.ini'), 65536, True),
+             'config': facts(directory / 'config.ini', 65536, True)}
+    for name in ('ini', 'config'):
+        poststart_need(after[name] == before[name], 'poststart_config_full_metadata_changed')
+    poststart_need(poststart_fp5(after['tree']['.']['generation']) ==
+                   poststart_fp5(before['tree']['.']['generation']),
+                   'poststart_avd_directory_identity_changed')
+    core = ('userdata-qemu.img', 'userdata-qemu.img.qcow2',
+            'cache.img', 'cache.img.qcow2', 'encryptionkey.img', 'encryptionkey.img.qcow2')
+    continuity = {}
+    identities = {}
+    for name in core:
+        old = before['tree'].get(name)
+        new = after['tree'].get(name)
+        poststart_need(type(old) is dict and type(new) is dict and
+                       old.get('kind') == new.get('kind') == 'regular',
+                       'poststart_persisted_disk_absent_or_replaced')
+        oldgen, newgen = old['generation'], new['generation']
+        # Original reader format: dev,ino,size,mtime,ctime,mode,uid,gid,nlink.
+        poststart_need(oldgen[:2] + oldgen[5:] == newgen[:2] + newgen[5:] and
+                       newgen[6:9] == [1000, 1000, 1], 'poststart_persisted_disk_identity_changed')
+        continuity[name] = {'before': old, 'after': new,
+                            'mutableFields': ['size', 'mtime_ns', 'ctime_ns', 'prefixSha256'],
+                            'retainedIdentityFields': ['device', 'inode', 'mode', 'uid', 'gid', 'nlink']}
+        identities.setdefault(tuple(newgen[:2]), []).append(name)
+    census = process_census(identities)
+    poststart_need(census['complete'] is True and census['unreadableProcessCount'] == 0,
+                   'poststart_disk_holder_visibility_unknown')
+    expected = current['guest']
+    holders = census['holders']
+    poststart_need(len(holders) == 1 and holders[0]['pid'] == expected['pid'] and
+                   holders[0]['startTicks'] == expected['startTicks'] and
+                   all(name in holders[0]['files'] for name in
+                       ('userdata-qemu.img.qcow2', 'cache.img.qcow2', 'encryptionkey.img.qcow2')),
+                   'poststart_same_disk_open_fd_unproven')
+    poststart_kernel_guard(current)
+    return {'prestartAvd': before, 'poststartAvd': after,
+            'persistedDiskContinuity': continuity, 'holderCensus': census}
+
+
+def poststart_readonly_qualification():
+    """Invoke only through a separately sealed bounded durable proof carrier.
+
+    This definition performs canonical read-only guest and CLI calls when
+    invoked later. It does not create an installer admission or release any
+    lease. Complete private raw child captures remain GETTER_RECORDS and
+    STAGE_COMMANDS, for the carrier to spool and collect in bounded slices.
+    """
+    global COMMAND_HOST, POSTSTART_ROOT_CHAIN, GETTER_RECORDS, GETTER_APK_PASS, STAGE_COMMANDS
+    COMMAND_HOST = command_host_identity()
+    POSTSTART_ROOT_CHAIN, unused = parent_fds(pathlib.Path(POSTSTART_CONTRACT['journalDirectory']) / '__identity_guard__')
+    GETTER_RECORDS = {}
+    STAGE_COMMANDS = []
+    try:
+        physical = poststart_kernel_guard()
+        opening_journal = poststart_journal_evidence()
+        GETTER['generation'] = {name: physical[name] for name in ('child', 'guest', 'device')}
+        GETTER_APK_PASS = 'PoststartBefore'
+        poststart_need(getter_apk() == POSTSTART_CONTRACT['baseSha256'], 'poststart_base_apk_changed')
+        stage = getter_stage()
+        first = component_cli(['status'])
+        envelope = getter_envelope(first)
+        poststart_need(envelope is not None and envelope['configurationRevision'] == 0,
+                       'poststart_public_owner_unqualified')
+        owner, revision = envelope['controllerId'], envelope['configurationRevision']
+        # Canonical status may open the provider. No am/start/force-stop or
+        # app-data command is allowed. Capture the actual stable app afterwards.
+        app = poststart_app()
+        public = {'statusBefore': envelope}
+        command_notes = []
+
+        def guard():
+            poststart_kernel_guard(physical)
+            poststart_need(poststart_app() == app, 'poststart_app_birth_changed')
+
+        def capture(record):
+            command_notes.append({key: record[key] for key in ('phase', 'owner', 'revision', 'words', 'returncode')})
+
+        guard()
+        for key, words in (('operations', ['operations', 'list']),
+                           ('settings', ['settings', 'show']),
+                           ('routing', ['routing', 'show']),
+                           ('operationsAfter', ['operations', 'list']),
+                           ('statusAfter', ['status'])):
+            result = component_command(words, owner, revision, 'baseline', guard, capture)
+            reply = getter_envelope(result, owner, revision)
+            poststart_need(reply is not None, 'poststart_public_read_failed')
+            public[key] = reply
+        poststart_need(public['statusBefore']['data'] == public['statusAfter']['data'] and
+                       public['statusAfter']['data'].get('runtimeRunning') is False and
+                       public['statusAfter']['data'].get('runtimeObservation') == 'stopped' and
+                       public['operations']['data'] == public['operationsAfter']['data'] and
+                       type(public['operations']['data'].get('operations')) is list and
+                       all(type(row) is dict and row.get('final') is True
+                           for row in public['operations']['data']['operations']),
+                       'poststart_public_baseline_unstable')
+        GETTER_APK_PASS = 'PoststartAfter'
+        poststart_need(getter_apk() == POSTSTART_CONTRACT['baseSha256'] and
+                       getter_stage() == stage, 'poststart_base_or_cli_stage_changed')
+        guard()
+        disks = poststart_avd(physical)
+        closing_journal = poststart_journal_evidence()
+        poststart_need(opening_journal == closing_journal, 'poststart_original_journal_changed')
+        guard()
+        return {'schema': 1, 'kind': 'android-poststart-readonly-current-authority-candidate',
+                'state': 'qualified', 'contract': POSTSTART_CONTRACT,
+                'generation': GETTER['generation'], 'appProcess': app,
+                'controllerId': owner, 'configurationRevision': revision,
+                'baseSha256': POSTSTART_CONTRACT['baseSha256'], 'cliStage': stage,
+                'journal': opening_journal, 'diskContinuity': disks,
+                'publicReads': public, 'commandNotes': command_notes,
+                'captureRecords': GETTER_RECORDS, 'stageCommands': STAGE_COMMANDS,
+                'readOnly': True, 'installerLeaseGranted': False,
+                'guestMutationPerformed': False, 'acceptanceComplete': False,
+                'originalOutcomesChanged': False, 'releaseGranted': False, 'replayAllowed': False}
+    finally:
+        close_parents(POSTSTART_ROOT_CHAIN)

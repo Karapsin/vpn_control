@@ -1,0 +1,68 @@
+import base64
+import hashlib
+import os
+
+
+def finish_owned_child(state, birth):
+    """Close only this Popen stdin and observe its original child; never signal."""
+    issues = []
+    child = state.get('child')
+    output = error = b''
+    complete = False
+    result = {'state': 'not-started', 'streamsComplete': False, 'interpreterClosed': False}
+    try:
+        if child is not None:
+            try:
+                ready = state.get('ready')
+                if ready is not None and birth(child.pid) != ready['startTicks']:
+                    issues.append('child_birth_changed')
+            except BaseException as failure:
+                issues.append('child_birth_observation_' + type(failure).__name__)
+            stdin = child.stdin
+            if stdin is not None:
+                try:
+                    stdin.write(b'x')
+                except BaseException as failure:
+                    issues.append('cooperative_input_' + type(failure).__name__)
+                finally:
+                    try:
+                        stdin.close()
+                    except BaseException as failure:
+                        issues.append('cooperative_close_' + type(failure).__name__)
+                    child.stdin = None
+            # Both attempts only observe this same Popen after its input closes.
+            # A failure must not skip collection, reaping or interpreter closure.
+            for attempt in range(2):
+                try:
+                    output, error = child.communicate(timeout=10 if attempt == 0 else 3)
+                    complete = True
+                    break
+                except BaseException as failure:
+                    issues.append('child_collection_' + type(failure).__name__)
+                    partial = getattr(failure, 'output', None)
+                    partial_error = getattr(failure, 'stderr', None)
+                    if type(partial) is bytes:
+                        output = partial
+                    if type(partial_error) is bytes:
+                        error = partial_error
+            result = {'state': 'closed' if complete and child.returncode is not None else 'unknown',
+                      'streamsComplete': complete, 'exitCode': child.returncode,
+                      'stdoutBase64': base64.b64encode(state.get('childStdout', b'') + output).decode(),
+                      'stderrBase64': base64.b64encode(state.get('childStderr', b'') + error).decode(),
+                      'stdoutSha256': hashlib.sha256(state.get('childStdout', b'') + output).hexdigest(),
+                      'stderrSha256': hashlib.sha256(state.get('childStderr', b'') + error).hexdigest(),
+                      'interpreterClosed': False}
+    finally:
+        fd = state.get('pythonFd')
+        if fd is not None:
+            try:
+                os.close(fd)
+                result['interpreterClosed'] = True
+            except BaseException as failure:
+                issues.append('interpreter_close_' + type(failure).__name__)
+                result['state'] = 'unknown'
+            state['pythonFd'] = None
+        else:
+            result['interpreterClosed'] = True
+        result['issues'] = issues
+    return result

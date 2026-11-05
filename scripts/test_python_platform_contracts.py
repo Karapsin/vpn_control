@@ -303,6 +303,96 @@ class VisualProbeInterpreterSuggestionTest(unittest.TestCase):
         self.assertEqual((1, 0, 0, sources), (new.testsRun, len(new.failures), len(new.errors), new_calls), details())
 
 
+# Proposed additive class for scripts/test_python_platform_contracts.py.
+# Uses its existing ast, hashlib, json, Path, unittest and subject imports.
+class AndroidPersistedStartCapabilityProbeTest(unittest.TestCase):
+    BEFORE_SOURCE = subject.ROOT / "agent_tools/tests/fixtures/android_persisted_start/test-portability.before.source"
+    CURRENT_SOURCE_OVERRIDE = None
+
+    def current_source(self):
+        if self.CURRENT_SOURCE_OVERRIDE is not None:
+            return self.CURRENT_SOURCE_OVERRIDE
+        return (subject.ROOT / "agent_tools/tests/test_android_persisted_start.py").read_text(encoding="utf-8")
+
+    @staticmethod
+    def without_guard(source, class_name, method_name=None):
+        """Retain the real suite and bodies while removing the named boundary."""
+        tree = ast.parse(source)
+        owner = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name)
+        selected = owner if method_name is None else next(node for node in owner.body
+            if isinstance(node, ast.FunctionDef) and node.name == method_name)
+        if not selected.decorator_list:
+            raise AssertionError("The causal control must remove a real platform boundary")
+        selected.decorator_list = []
+        return ast.unparse(tree)
+
+    def failed_probe(self, source):
+        result = subject.probe_windows_android_persisted_start_test_suite(source)
+        self.assertNotEqual(0, result.returncode, result.stdout + result.stderr)
+        return json.loads(result.stdout.splitlines()[-1])
+
+    def test_preserved_whole_beforeimage_cannot_discover_without_pwd(self):
+        raw = self.BEFORE_SOURCE.read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),
+            "e2f01038406d5169d4c7903643d240328effb4f1ec76db5d53cab935ae9d12c3")
+        result = subject.probe_windows_android_persisted_start_test_suite(raw.decode("utf-8"))
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("No module named 'pwd'", result.stderr)
+
+    def test_missing_controller_guard_reaches_actual_whole_source_fcntl_import(self):
+        source = self.without_guard(self.current_source(), "AdmissionSamplingTests")
+        summary = self.failed_probe(source)
+        self.assertEqual("ModuleNotFoundError: No module named 'fcntl'",
+            summary["errors"]["AdmissionSamplingTests.test_actual_one_shot_then_sampled_owner_reaches_real_final_validation"])
+
+    def test_missing_socket_guard_reaches_real_lazy_pwd_import(self):
+        source = self.without_guard(self.current_source(), "PrivilegedCompositionTests")
+        summary = self.failed_probe(source)
+        self.assertEqual("ModuleNotFoundError: No module named 'pwd'",
+            summary["errors"]["PrivilegedCompositionTests.test_actual_owned_fixture_setup_avoids_unix_socket_path_overflow"])
+
+    def test_missing_reader_guard_reaches_actual_emitted_fcntl_import(self):
+        method = "test_original_absent_sdk_template_is_preserved_by_actual_emitted_observer"
+        source = self.without_guard(self.current_source(), "PersistedStartTests", method)
+        summary = self.failed_probe(source)
+        self.assertEqual("ModuleNotFoundError: No module named 'fcntl'",
+            summary["errors"]["PersistedStartTests." + method])
+
+    def test_missing_renderer_guards_reaches_real_windows_path_refusal(self):
+        source = self.current_source()
+        methods = (
+            ("AllocationCoverageTests", "test_real_renderer_seals_qualified_coverage_and_validates_receipts"),
+            ("PersistedStartTests", "test_plan_preserves_exact_argv_originals_and_external_journal"),
+        )
+        for owner, method in methods:
+            source = self.without_guard(source, owner, method)
+        summary = self.failed_probe(source)
+        for owner, method in methods:
+            self.assertEqual("ValueError: persisted_start_external_job_root_required",
+                summary["errors"][owner + "." + method])
+
+    def test_posix_authority_fixture_refuses_real_windows_record_validation(self):
+        source = self.current_source()
+        original = '"path": str(LOCAL_AUTHORITY_ROOT / "reservations.json")'
+        self.assertEqual(source.count(original), 1)
+        source = source.replace(original, '"path": "/owned/reservations.json"')
+        summary = self.failed_probe(source)
+        self.assertEqual("ValueError: persisted_start_reservation_record_invalid",
+            summary["errors"]["PersistedStartTests.test_all_matching_claims_are_counted_without_guessing_retirement"])
+
+    def test_actual_suite_keeps_exact_windows_methods_and_platform_boundaries(self):
+        result = subject.probe_windows_android_persisted_start_test_suite(self.CURRENT_SOURCE_OVERRIDE)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        summary = json.loads(result.stdout.splitlines()[-1])
+        expected_skips = set(subject.ANDROID_PERSISTED_POSIX_METHODS) | set(subject.ANDROID_PERSISTED_LINUX_METHODS)
+        self.assertEqual(36, summary["testsRun"])
+        self.assertEqual(18, summary["passed"])
+        self.assertEqual(expected_skips, set(summary["skipped"]))
+        self.assertEqual(set(subject.ANDROID_PERSISTED_WINDOWS_METHODS), set(summary["portablePassed"]))
+        self.assertEqual({}, summary["errors"])
+        self.assertEqual({}, summary["failures"])
+
+
 class ManifestTest(unittest.TestCase):
     def test_all_explicit_contracts_pass(self):
         self.assertEqual([], subject.check_contracts())

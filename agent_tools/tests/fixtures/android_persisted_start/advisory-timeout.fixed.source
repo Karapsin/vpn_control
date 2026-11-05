@@ -1,0 +1,210 @@
+"""One finite read-only admission, with current original claim/input custody."""
+import base64, dataclasses, hashlib, json, os, pathlib, re, stat, subprocess, sys, time, types, uuid
+
+ROOT = pathlib.Path('/Users/karapsin_de/projects/vpn_control_tool_recovery')
+OLD = pathlib.Path('/Users/karapsin_de/projects/vpn_control')
+OUT = ROOT / '.runtime/tool-recovery/android-persisted-advisory-b7ebbcd4-1019-4312-bbbb-a35e5bb48d3e'
+OP = 'b7ebbcd4-1019-4312-bbbb-a35e5bb48d3e'
+ORIGINAL_SHA = '982dd6db1743fa2b14a5bc79dc575551eab10a880db0db27860d0fafb34f94da'
+HELPER_SHA = '53b0fca6d7eba6344420c3d83c028aa18be60669f0af9305df8dbbd54c77bd82'
+CUSTODY_PATH = ROOT / '.runtime/tool-recovery/android-persisted-controller-preparation-552e59eb-bdcd-4255-b3a2-cf21cccca76d/controller.template.py'
+CUSTODY_SHA = 'f71178076d5df505a19ad9775133665e54b3f0f656b19471659a54b8c271a4ac'
+BOOT = '25515f23-b966-4c3a-ae63-d38452375578'
+MACHINE = 'f0f5704a7676fa5b3826511bb04c6bf48895a7afeb318c46a4fa91ce2cea8de8'
+CAPSULE_PATH = ROOT / '.runtime/tool-recovery/android-windows-coverage-bridge-b933ce1b-7c45-4961-ba72-9a430392c871/allocation-coverage.json'
+CAPSULE_SHA = 'bc0a9dc20d705a02f57cbe1400741eef1c14ffdfdde814c1bf468d1bf6f510e5'
+CRED = ROOT / '.runtime/tool-recovery-qemu/host-credential.secret'
+DESC = ROOT / '.runtime/tool-recovery/native-approvals-20261027/linux-stop/retired-public-aliases/qemu-linux-recovery-0f559886.json'
+
+def bootstrap(raw_path, digest, name, *, substitute=False):
+    fd = os.open(raw_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    generation = lambda s: [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+    try:
+        info = os.fstat(fd); before = generation(info)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1 or not 0 < info.st_size <= 1024 ** 2:
+            raise ValueError('advisory_bootstrap_unsafe')
+        raw = os.read(fd, 1024 ** 2 + 1)
+        if len(raw) != info.st_size or hashlib.sha256(raw).hexdigest() != digest or generation(os.fstat(fd)) != before or generation(raw_path.lstat()) != before:
+            raise ValueError('advisory_bootstrap_changed')
+        module = types.ModuleType(name); module.__file__ = str(raw_path); sys.modules[name] = module
+        source = raw.replace(b'__CONTROLLER_SEAL__', b'{}') if substitute else raw
+        exec(compile(source, str(raw_path), 'exec', dont_inherit=True), module.__dict__)
+        if generation(os.fstat(fd)) != before or generation(raw_path.lstat()) != before or os.pread(fd, 1024 ** 2 + 1, 0) != raw:
+            raise ValueError('advisory_bootstrap_changed')
+        return module, raw
+    finally:
+        os.close(fd)
+
+def main():
+    os.umask(0o077)
+    primitives, custody_raw = bootstrap(CUSTODY_PATH, CUSTODY_SHA, 'advisory_custody_snapshot_' + uuid.uuid4().hex, substitute=True)
+    c = primitives.Custody(); session = None; dispatched = False; summary = None
+    save, jsave, sha, decode = primitives.save, primitives.jsave, primitives.sha, primitives.decode
+    try:
+        c.add(CUSTODY_PATH, private=True)
+        c.add(OUT / 'advisory.py', private=True)
+        save(OUT, 'custody.snapshot.py', custody_raw)
+        locks = [ROOT / '.rag_index/native-environments/lock', OLD / '.rag_index/native-environments/lock',
+                 OLD / '.rag_index/android-native-device-leases/lock-archlinux-api35.json']
+        recovery_lock = ROOT / '.rag_index/android-native-device-leases/lock-archlinux-api35.json'
+        absence = None
+        if recovery_lock.exists() or recovery_lock.is_symlink():
+            locks.append(recovery_lock)
+        else:
+            missing = recovery_lock
+            while not missing.parent.exists(): missing = missing.parent
+            c.directory(missing.parent)
+            absence = {'path': str(recovery_lock), 'parent': str(missing.parent), 'missingName': missing.name,
+                       'parents': {path: pin for path, (_, pin) in c.parents.items()
+                                   if path == '/' or missing.parent.is_relative_to(pathlib.Path(path))}}
+        lock_rows = []
+        for path in sorted(locks):
+            c.add(path, private=True, allow_empty=True, write=True)
+            lock_rows.append({'path': str(path), 'pin': c.files[str(path)]['pin']})
+        c.acquire(lock_rows)
+        def absent_guard():
+            if absence is not None:
+                parent = c.directory(absence['parent'])
+                try: os.stat(absence['missingName'], dir_fd=parent, follow_symlinks=False)
+                except FileNotFoundError: pass
+                else: raise ValueError('advisory_recovery_device_lock_appeared')
+                for name, expected in absence['parents'].items():
+                    if c.parents[name][1] != expected: raise ValueError('advisory_recovery_lock_parent_changed')
+            c.guard()
+        absent_guard()
+        authority = {'hostAlias': 'archlinux', 'capturedAtNs': time.time_ns(), 'records': []}
+        for path in (ROOT / '.rag_index/native-environments/reservations.json', OLD / '.rag_index/native-environments/reservations.json'):
+            raw = c.add(path, private=True)
+            authority['records'].append({'path': str(path), 'pin': c.files[str(path)]['pin'], 'rawBase64': base64.b64encode(raw).decode()})
+        jsave(OUT, 'reservation-authority.json', authority)
+        raw = c.add(CAPSULE_PATH, private=True)
+        if sha(raw) != CAPSULE_SHA: raise ValueError('advisory_capsule_changed')
+        envelope = decode(raw)
+        qualification_raw = base64.b64decode(envelope['qualificationRawBase64'], validate=True)
+        bridge_proof_raw = base64.b64decode(envelope['bridgeProofRawBase64'], validate=True)
+        qualification = decode(qualification_raw)
+        for path, expected in list(envelope['sourcePins'].items()) + list(qualification['localInputPins'].items()):
+            expected = {'sha256': expected} if type(expected) is str else expected
+            private = 'generation' in expected and expected['generation'][2] & 0o777 == 0o600
+            c.add(path, private=private)
+            actual = c.files[path]['pin']
+            for key in ('generation', 'parents', 'sha256'):
+                if key in expected and actual[key] != expected[key]: raise ValueError('advisory_coverage_authority_changed')
+        bridge_source = c.add(envelope['sourcePath'], private=True)
+        capsule = {key: envelope[key] for key in ('sha256','sourcePins','qualificationSha256','bridgeProofSha256')}
+        capsule.update(source=bridge_source, qualificationRaw=qualification_raw, bridgeProofRaw=bridge_proof_raw)
+        original_dir = OLD / '.runtime/parity-evidence/android-current-original-lease-retirement-7310f227-aaed-4f3b-878a-1b7bf0b49215'
+        original = b''.join(c.add(original_dir / ('original-release-programme-' + str(index) + '.private'), private=True)
+                            for index in range(9))
+        if sha(original) != ORIGINAL_SHA: raise ValueError('advisory_original_changed')
+        installer_dir = ROOT / '.runtime/tool-recovery/android-installer-host-preflight'
+        installer = decode(c.add(installer_dir / 'capsule.json', private=True))
+        installer['source'] = c.add(installer_dir / 'capsule.py', private=True)
+        descriptor = decode(c.add(DESC, private=True))
+        if descriptor['credential']['path'] != str(CRED): raise ValueError('advisory_credential_path_changed')
+        c.add(ROOT / '.vm-hosts.local.json', private=True)
+        expected_sources = {}
+        for area in ('agent_tools', 'scripts'):
+            for path in sorted((ROOT / area).rglob('*.py')):
+                if any(part in ('tests','__pycache__','build','.venv') for part in path.relative_to(ROOT).parts): continue
+                source = c.add(path)
+                expected_sources[str(path)] = sha(source)
+        if expected_sources[str(ROOT / 'agent_tools/android_persisted_start.py')] != HELPER_SHA:
+            raise ValueError('advisory_helper_changed')
+        loader_path = ROOT / 'agent_tools/source_module_loader.py'
+        loader, loader_raw = bootstrap(loader_path, expected_sources[str(loader_path)], 'advisory_source_loader_' + uuid.uuid4().hex)
+        session = loader.SourceSession(ROOT / 'agent_tools', 'ssh_transport', expected_sources=expected_sources)
+        t = session.module; a = session.load('android_persisted_start'); readiness = session.load('readiness')
+        credentials = session.load('private_credential_file')
+        contract = a._allocation_contract(capsule, authority, BOOT)
+        observer = a.observation_program(original, ORIGINAL_SHA, OP, authority, installer_guard=installer, allocation_coverage=capsule).encode()
+        save(OUT, 'observer.py', observer)
+        save(OUT, 'adapter.snapshot.py', c.files[str(ROOT / 'agent_tools/android_persisted_start.py')]['raw'])
+        save(OUT, 'bridge.snapshot.py', bridge_source)
+        save(OUT, 'qualification.raw', qualification_raw); save(OUT, 'bridge-proof.raw', bridge_proof_raw)
+        jsave(OUT, 'intent.json', {'schema':1, 'operationId':OP, 'kind':'read-only-native-advisory-admission',
+              'helperSha256':HELPER_SHA, 'observerSha256':sha(observer), 'originalSourceSha256':ORIGINAL_SHA,
+              'allocationEnvelopeSha256':CAPSULE_SHA, 'bridgeSha256':capsule['sha256'],
+              'sourcePins':len(capsule['sourcePins']), 'privateInputPins':len(qualification['localInputPins']),
+              'heldReservationBytes':a.reservation_bytes(authority), 'lockFiles':lock_rows, 'recoveryDeviceLockAbsence':absence,
+              'noNativePreparation':True, 'noStart':True, 'noStop':True, 'noLeaseMutation':True, 'replayAllowed':False})
+        bootstrap_source = '''import base64,hashlib,json,os,pathlib,sys
+raw=sys.stdin.buffer.read(2097153)
+if len(raw)>2097152:raise ValueError('advisory_packet_bound')
+p=json.loads(raw)
+if os.getuid()!=0 or os.geteuid()!=0 or os.getgid()!=0 or os.getegid()!=0:raise ValueError('advisory_root_required')
+if pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()!=p['boot'] or hashlib.sha256(pathlib.Path('/etc/machine-id').read_bytes()).hexdigest()!=p['machine']:raise ValueError('advisory_host_changed')
+source=base64.b64decode(p['sourceBase64'],validate=True)
+if hashlib.sha256(source).hexdigest()!=p['sourceSha256']:raise ValueError('advisory_source_changed')
+exec(compile(source,'source-held-readonly-android-advisory','exec'),{'__name__':'source_held_readonly_android_advisory'})
+'''
+        packet = primitives.canonical({'boot':BOOT, 'machine':MACHINE, 'operationId':OP,
+                                      'sourceSha256':sha(observer), 'sourceBase64':base64.b64encode(observer).decode()})
+        if len(packet) > 2 * 1024 ** 2: raise ValueError('advisory_packet_bound')
+        save(OUT, 'receiver.py', bootstrap_source.encode())
+        absent_guard(); session.guard()
+        with t.admitted_transport(ROOT, 'archlinux', OP, deadline=time.monotonic()+180,
+             requirements=readiness.Requirements({'transport'}, set())) as admission:
+            argv = t.build_ssh_argv(t.load_config(ROOT), 'archlinux', 45,
+                     command=('sudo','-S','-p','','--','python3','-I','-B','-c','exec('+repr(bootstrap_source)+')'))
+            with credentials.SecretFile(str(CRED)) as credential:
+                if list(credential.pin) != descriptor['credential']['generation']: raise ValueError('advisory_credential_generation_changed')
+                absent_guard(); session.guard(); credential.guard(); admission.revalidate()
+                jsave(OUT, 'dispatch-once.json', {'schema':1, 'operationId':OP, 'observerSha256':sha(observer),
+                      'dispatchedAtNs':time.time_ns(), 'readOnly':True, 'replayAllowed':False})
+                dispatched = True; secret = credential.text.encode()
+                try:
+                    result = t.run_ssh(argv, input=secret+b'\n'+packet, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       timeout=120, cwd=ROOT, check=False)
+                except t.SubmittedResultReadinessChanged as error:
+                    result = error.take_submitted_result()
+                except BaseException as error:
+                    raise ValueError('advisory_transport_observation_unknown') from None
+                if secret in result.stdout or secret in result.stderr:
+                    raise ValueError('advisory_private_echo_discarded')
+                credential.guard()
+                if len(result.stdout)+len(result.stderr)>7*1024**2: raise ValueError('advisory_complete_capture_bound')
+                save(OUT, 'stdout.raw', result.stdout); save(OUT, 'stderr.raw', result.stderr)
+                capture={'schema':1, 'operationId':OP, 'returncode':result.returncode,
+                         'stdoutBytes':len(result.stdout), 'stderrBytes':len(result.stderr),
+                         'stdoutSha256':sha(result.stdout), 'stderrSha256':sha(result.stderr),
+                         'streamsComplete':True, 'replayAllowed':False}
+                jsave(OUT, 'capture.json', capture)
+                if result.returncode != 0 or result.stderr: raise ValueError('advisory_native_report_incomplete')
+                native = decode(result.stdout)
+                jsave(OUT, 'result.json', native)
+                absent_guard(); session.guard()
+                _, literals = a._source(original, ORIGINAL_SHA)
+                summary={'schema':1, 'operationId':OP, 'dispatched':True, 'nativeStartRun':False,
+                         'nativeState':native.get('state'), 'nativeReason':native.get('reason'), 'capture':capture,
+                         'helperSha256':HELPER_SHA, 'observerSha256':sha(observer),
+                         'heldReservationBytesUnchanged':a.reservation_bytes(authority),
+                         'localAuthorityUnchanged':True, 'sourceClosing':True, 'lockFiles':len(lock_rows),
+                         'recoveryDeviceLockPresent':absence is None, 'replayAllowed':False}
+                if native.get('observations') is not None:
+                    validated = a.validate_admission(native, OP, ORIGINAL_SHA, authority, literals, allocation_coverage=capsule)
+                    summary['nativeState']='admission-qualified'
+                    summary['reservationAuthoritySha256']=validated['reservationAuthoritySha256']
+                    summary['installerGuardSha256']=validated['installerGuardSha256']
+                    summary['allocationCoverageContract']=validated['allocationCoverageContract']
+                    summary['capacity']=[{key:row['resources'].get(key) for key in ('availableMemoryBytes','pendingReservationBytes','requestedMemoryBytes','headroomBytes','freeDiskBytes','minDiskBytes','canonicalPlan','reservationAccounting')} | {'coveredNativeBytes':row['resources']['allocationCoverage']['coveredNativeBytes'], 'nativeConfiguredBytes':row['resources']['nativeObservation']['measurement']['runningConfiguredMemoryBytes'],'vms':row['resources']['nativeObservation']['vms']} for row in validated['observations']]
+                else:
+                    summary['capacityObservation']=native.get('capacityObservation')
+                jsave(OUT, 'closing.json', summary)
+                jsave(OUT, 'current-input-pins.json', {path:row['pin'] for path,row in c.files.items()})
+                jsave(OUT, 'consumed-source-pins.json', {path:sha(raw) for path,raw in session.cache.values()})
+    except BaseException as error:
+        reason=getattr(error,'reason',None)
+        if type(reason)is not str or re.fullmatch(r'[a-z][a-z0-9_]{0,95}',reason)is None:reason=primitives.finite(error)
+        summary={'schema':1,'operationId':OP,'state':'unknown','reason':reason,'dispatched':dispatched,
+                 'nativeStartRun':False,'replayAllowed':False,'errorClass':type(error).__name__,
+                 'frames':[{'file':frame.filename,'line':frame.lineno,'function':frame.name}for frame in __import__('traceback').extract_tb(error.__traceback__)]}
+        if not (OUT/'unknown.json').exists():jsave(OUT,'unknown.json',summary)
+        try: c.guard()
+        except BaseException: summary['localAuthorityUnchanged']=False
+    finally:
+        if session is not None:session.close()
+        c.close()
+    print(json.dumps({key:value for key,value in summary.items() if key not in ('allocationCoverageContract','capacityObservation')},sort_keys=True),flush=True)
+
+if __name__=='__main__':main()

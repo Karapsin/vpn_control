@@ -1,0 +1,35 @@
+{
+  "controllerBefore": {
+    "path": "agent_tools/tests/fixtures/android_terminal_observer_lifetime/controller-74c.before.source",
+    "sha256": "74c60b99426fb73cf3ea5ef9ad69f097d723b30a0fca72796e45935b7e7e8552"
+  },
+  "controllerFixed": {
+    "path": "agent_tools/tests/fixtures/android_terminal_observer_lifetime/controller.fixed.source",
+    "sha256": "ab09df502d6f8096cc7af753f8eedc0404d60fe25e144c8c48db92bd18168243"
+  },
+  "failureType": "local observer retains Context and three local serialization locks after correlated original remote execution terminal while receiver VM outcome stays UNKNOWN",
+  "kind": "owned-observer-lifetime-regression-fixtures",
+  "nativeAuthorityGranted": false,
+  "nativeLimits": "No SSH, VM, ADB, credentials, provider recovery, runtime interruption, guest admission, original action replay, or claim release. Original failed Android operation remains UNKNOWN in independent ignored historical evidence.",
+  "negativeCoverage": [
+    "foreign operation/preparation/context/claim/binding/owner/program",
+    "running or missing terminal",
+    "open/overflow/partial streams and invalid digest",
+    "boolean exit code",
+    "replay or changed outcome metadata",
+    "publication and interval collection failures"
+  ],
+  "posixSplit": "4 pure projection/validation tests portable; 5 actual owner/lock and 2 actual constructor tests skip before controller fcntl/source imports on non-POSIX hosts",
+  "remoteFixture": {
+    "authority": "deterministic inert metadata only; correlated-terminal execution and receiver VM UNKNOWN shape retained",
+    "path": "agent_tools/tests/fixtures/android_terminal_observer_lifetime/remote-terminal-owned.source",
+    "projection": "All operation/process/boot/machine/root/digest metadata replaced with owned constants; states and exact field relations preserved. No native receipt is enrolled as a CI fixture.",
+    "sha256": "afd06ca4bdd584587a7e4ab05954be902b35508c18acb42de8e616d065939725"
+  },
+  "schema": 1,
+  "sourceSeams": [
+    "Whole actual owner_main with explicit owned Context, transport, renderer/preflight and interval collection boundaries",
+    "Real POSIX child, actual Custody and three independent kernel locks",
+    "Fresh actual Context/Custody/frozen durable SourceSession via existing ActualContextFixture; only network SourceSession/RPC seams owned"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "beforeimageRelation": "exact AST of outer phase() finally body from whole fe3 observer retained privately; private capsules are excluded from repository fixtures",
+  "files": {
+    "cleanup.before.source": {
+      "bytes": 881,
+      "sha256": "2e9e4246276b5a7b8df548c0f3e1d2fddea94c1454433eba8e24d7cb7da20230"
+    },
+    "cleanup.fixed.source": {
+      "bytes": 3194,
+      "sha256": "4444a6aa9c821c7648f33633bc0760887ace2c247e0c689f4ea1ec16f0cf39c4"
+    },
+    "evidence.before.source": {
+      "bytes": 536,
+      "sha256": "78fb716a74fd6459071e19138686aab8f1fac9c1eedd0f2cb853ea154068ea43"
+    },
+    "evidence.fixed.source": {
+      "bytes": 1133,
+      "sha256": "13ee6695447f332e6ffc42b2cbd23307ffac4616ee84ce01158580075ecb92a8"
+    }
+  },
+  "kind": "authentic-owned-control-cleanup-beforeimage",
+  "schema": 1,
+  "wholePrivateAdapterSha256": "c9aade80b673bdcdaf3e87acb3c9bc181e5f882357d6d71c6182b2e547cfc4cd",
+  "wholePrivateObserverSha256": "fe3ced9a0fc74b05f246aaaa96d6d84234d0326c84e71d9313d995145ecac019"
+}

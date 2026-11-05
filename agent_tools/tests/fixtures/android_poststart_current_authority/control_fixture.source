@@ -1,0 +1,275 @@
+"""Explicit owned control data. Never a native start/current-authority issuer."""
+import base64
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+import types
+import time
+import uuid
+
+HERE = Path(__file__).parent
+LOADER_SHA = '1ae5894c53245d84b24ae12472041841b5ba79e0b76e25216b436f8f6469e70b'
+_raw = (HERE / 'fixture_loader.source').read_bytes()
+if hashlib.sha256(_raw).hexdigest() != LOADER_SHA:
+    raise ValueError('owned_control_fixture_loader_changed')
+_loader = types.ModuleType('owned_captured_component_fixture_loader')
+_loader.__file__ = str(HERE / 'fixture_loader.source')
+exec(compile(_raw, _loader.__file__, 'exec', dont_inherit=True), _loader.__dict__)
+ComponentTerminalHistoryTest, CAPTURED_RETIREMENT = _loader.load_component_helper()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode() + b'\n'
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def write(path, raw):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'wb') as stream:
+        stream.write(raw)
+
+
+def pin(path):
+    s = path.stat()
+    generation = [s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid, s.st_nlink,
+                  s.st_size, s.st_mtime_ns, s.st_ctime_ns]
+    parents = {}
+    for p in reversed([path.parent, *path.parent.parents]):
+        s = p.stat()
+        parents[str(p)] = [s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid]
+    return {'generation': generation, 'parents': parents, 'sha256': sha(path.read_bytes())}
+
+
+RUNTIME = '''from pathlib import Path
+import json
+ROOT=Path('/home/kardinal/.vpn-control-mcp-fixtures')
+EFFECT_PLANE_FIXED={'source':'owned-control-current9da','wholeCensus':True}
+CURRENT1E15_EFFECT_PLANE_FIXED={'source':'owned-control-current1e15','wholeCensus':True}
+def control():
+    value=json.loads(CONTROL_FILE.read_bytes())
+    if value['complete'] is not True:raise ValueError('owned_control_visibility_unknown')
+    return value
+def poststart_kernel_guard(expected=None):
+    value=control()['generation']
+    result={'state':'guest-generation-admitted','guestAdmitted':True,
+            'correlationId':LAUNCH['correlationId'],**value}
+    if expected is not None and result!=expected:raise ValueError('owned_control_generation_changed')
+    return result
+def poststart_app():
+    return control()['appProcess']
+def component_release_effect_plane_current_guard():
+    if control()['planes'][0]!='current9da-full':raise ValueError('owned_control_plane_unknown')
+def component_release_current1e15_effect_plane_guard():
+    if control()['planes'][1]!='current1e15-full':raise ValueError('owned_control_plane_unknown')
+def poststart_prepare_proof_parent():
+    if control()['outputsKnown'] is not True:raise ValueError('owned_control_output_unknown')
+def POSTSTART_PROOF_PARENT(correlation):
+    if correlation not in POSTSTART_OUTPUT_CONTRACT['correlations'].values():raise ValueError('owned_control_correlation_unknown')
+    return Path(POSTSTART_OUTPUT_CONTRACT['rootDirectory'])/POSTSTART_OUTPUT_CONTRACT['relativeProofParent']
+def POSTSTART_PROOF_DIRECTORY(correlation):
+    return POSTSTART_PROOF_PARENT(correlation)/('android-installer-component-baseline-'+correlation)
+class OwnerAdmissionGuard:
+    def __init__(self, correlation):
+        self.output=POSTSTART_PROOF_DIRECTORY(correlation)
+class RuntimeBundle:
+    class BaselineGuard:
+        def __init__(self, correlation):
+            self.root=POSTSTART_PROOF_PARENT(correlation)
+class AuthenticBundle:
+    @staticmethod
+    def _guard_backend():
+        if control()['backendUntouched'] is not True:raise ValueError('owned_control_backend_changed')
+POSTSTART_CURRENT_COMPONENT_RUNTIME=RuntimeBundle()
+POSTSTART_AUTHENTIC_COMPONENT_BUNDLE=AuthenticBundle()
+bundle=POSTSTART_CURRENT_COMPONENT_RUNTIME
+def POSTSTART_ROUTING_CREATE():
+    return bundle.BaselineGuard
+'''
+
+
+class Case:
+    def __init__(self, core, root):
+        self.core = core
+        self.root = root
+        self.utility = ComponentTerminalHistoryTest()
+        self.scope, self.lease, self.lease_pin, self.original, self.correlation, self.remote, _ = self.utility.release_fixture(root)
+        self.start = str(uuid.uuid4())
+        self.release = self.correlation
+        self.boot = str(uuid.uuid4())
+        self.owner = str(uuid.uuid4())
+        self.map = core.load_parts()[3].operation_contract(self.start, self.release,
+            '/var/tmp/vc-android-persisted-' + self.start)
+        self.current = copy.deepcopy(self.original)
+        producer = self.current['componentProducer']
+        row = next(row for row in producer['rows'] if row['name'] == 'admission.json')
+        certificate = json.loads(base64.b64decode(row['rawBase64']))
+        certificate['facts']['guestBootId'] = self.boot
+        self.app = {**certificate['appProcess'], 'guestBootId': self.boot, 'pid': 21802, 'startTicks': 23396416}
+        certificate['appProcess'] = self.app
+        certificate['controllerId'] = self.owner
+        certificate['request']['correlationId'] = self.map['correlations']['owner']
+        producer['request'] = copy.deepcopy(certificate['request'])
+        producer['result']['controllerId'] = self.owner
+        directory = self.map['rootDirectory'] + '/' + self.map['relativeProofParent'] + \
+            '/android-installer-component-baseline-' + self.map['correlations']['owner'] + '/current-owner-admission'
+        producer['result']['certificatePath'] = directory + '/admission.json'
+        raw = canonical(certificate)
+        certificate_path = root / 'owned-current-certificate.json'
+        write(certificate_path, raw)
+        # Existing component fixtures project the protected ROOT principal.
+        # Bytes/hash and file inode/time are real; this control grants no native
+        # root, guest, VM, certificate, or original-resource authority.
+        certificate_pin = pin(certificate_path)
+        certificate_pin['generation'][3:5] = [0, 0]
+        certificate_pin['parents'] = {'/': [1, 2, 0o40755, 0, 0], directory: [1, 3, 0o40700, 0, 0]}
+        row.update(pin=certificate_pin, sha256=sha(raw), bytes=len(raw), rawBase64=base64.b64encode(raw).decode())
+        producer['result']['certificatePin'] = copy.deepcopy(certificate_pin)
+        self.current['componentCertificatePin'] = copy.deepcopy(certificate_pin)
+        self.current['files']['component-admission.json'].update(generation=certificate_pin['generation'], sha256=sha(raw))
+        for item in self.current['snapshots']:
+            item['owner'] = self.owner
+        self.host = {'uid': 0, 'gid': 0, 'bootId': '25515f23-b966-4c3a-ae63-d38452375578',
+                     'machineSha256': 'f' * 64}
+        self.generation = {'child': {'pid': 42420, 'startTicks': 123450, 'bootId': self.host['bootId']},
+            'guest': {'pid': 42421, 'startTicks': 123451, 'hostBootId': self.host['bootId']},
+            'device': {'guestBootId': self.boot, 'sdk': '35', 'abi': 'x86_64', 'shellUid': '2000',
+                       'bootCompleted': '1', 'matched': True, 'bootAvd': 'vpn-control-parity113-api35', 'kernelAvd': ''}}
+        intent = {'kind': 'android-same-persisted-administrative-start', 'correlationId': self.start,
+                  'source': {'captured-original-control': core.ORIGINAL_SOURCE_SHA},
+                  'historicalUnknownsPreserved': True, 'historicalStopCause': 'off_unknown'}
+        self.plan = {'kind': 'android-persisted-start-sealed-plan', 'operationId': self.start,
+                     'originalSourceSha256': core.ORIGINAL_SOURCE_SHA, 'programSha256': 'a' * 64,
+                     'admissionSha256': 'b' * 64,
+                     'launch': {'intent': intent, 'intentSha256': sha(canonical(intent)),
+                                'observation': {'bootId': self.host['bootId']}, 'correlationId': self.start},
+                     'journalDirectory': self.map['rootDirectory'] + '/' + self.start + '/coldboot'}
+        prestart = {'directory': '/owned-control/avd', 'ini': {'bytes': 'owned-ini'},
+                    'config': {'bytes': 'owned-config'}, 'tree': {}}
+        poststart = copy.deepcopy(prestart)
+        continuity = {}
+        core_disks = ('userdata-qemu.img', 'userdata-qemu.img.qcow2', 'cache.img', 'cache.img.qcow2',
+                      'encryptionkey.img', 'encryptionkey.img.qcow2')
+        for index, name in enumerate(core_disks):
+            before = {'kind': 'regular', 'generation': [1, 100 + index, 512, 10, 10, 0o100644, 1000, 1000, 1]}
+            after = {'kind': 'regular', 'generation': [1, 100 + index, 1024, 20, 20, 0o100644, 1000, 1000, 1]}
+            prestart['tree'][name] = before
+            poststart['tree'][name] = after
+            continuity[name] = {'before': before, 'after': after}
+        contract = {'operationId': self.start, 'originalSourceSha256': core.ORIGINAL_SOURCE_SHA,
+                    'startProgramSha256': self.plan['programSha256'], 'admissionSha256': self.plan['admissionSha256'],
+                    'intentSha256': self.plan['launch']['intentSha256'], 'journalDirectory': self.plan['journalDirectory'],
+                    'host': self.host, 'oldGeneration': {'device': {'guestBootId': core.OLD_BOOT},
+                        'child': {'pid': 1420710}, 'guest': {'pid': 1420715}},
+                    'baseSha256': core.BASE_SHA, 'prestartAvd': prestart}
+        observed = {'schema': 1, 'correlationId': self.start, 'supervisor': self.generation['child'],
+                    'guest': self.generation['guest'], 'source': intent['source'],
+                    'intentSha256': self.plan['launch']['intentSha256']}
+        journal = {}
+        for name in ('intent.json', 'attempt.json', 'ready.json', 'child.json', 'exec-released.json',
+                     'submitted.json', 'qemu-observed.json'):
+            body = intent if name == 'intent.json' else observed if name == 'qemu-observed.json' else {'correlationId': self.start}
+            value = canonical(body)
+            journal[name] = {'rawBase64': base64.b64encode(value).decode(), 'sha256': sha(value),
+                             'hashScope': 'full', 'bytesRead': len(value),
+                             'generation': [1, 2, len(value), 10, 10, 0o100600, 0, 0, 1]}
+        def envelope(data):
+            return {'ok': True, 'final': True, 'code': 'OK', 'controllerId': self.owner,
+                    'configurationRevision': 0, 'data': data}
+        public = {'statusBefore': envelope({'runtimeRunning': False, 'runtimeObservation': 'stopped'}),
+                  'statusAfter': envelope({'runtimeRunning': False, 'runtimeObservation': 'stopped'}),
+                  'operations': envelope({'operations': []}), 'operationsAfter': envelope({'operations': []}),
+                  'settings': envelope({'fixture': True}), 'routing': envelope({'fixture': True})}
+        self.candidate = {'kind': 'android-poststart-readonly-current-authority-candidate', 'state': 'qualified',
+            'contract': contract, 'generation': self.generation, 'appProcess': self.app, 'baseSha256': core.BASE_SHA,
+            'controllerId': self.owner, 'configurationRevision': 0, 'journal': journal,
+            'diskContinuity': {'prestartAvd': prestart, 'poststartAvd': poststart,
+                'persistedDiskContinuity': continuity, 'holderCensus': {'complete': True,
+                'unreadableProcessCount': 0, 'holders': [{'pid': 42421, 'startTicks': 123451,
+                    'files': list(core_disks)}]}}, 'publicReads': public,
+            'readOnly': True, 'installerLeaseGranted': False, 'guestMutationPerformed': False,
+            'acceptanceComplete': False, 'originalOutcomesChanged': False, 'releaseGranted': False,
+            'replayAllowed': False}
+        self.status = {'state': 'guest-generation-admitted', 'guestAdmitted': True, 'correlationId': self.start,
+                       **self.generation}
+        plane_raw = (HERE / 'plane_fixture.source').read_bytes()
+        if sha(plane_raw) != 'f363fcaccad19e3cd4010adc41696edd72afa339b43ebe5104ef7addf0264c8d':
+            raise ValueError('owned_plane_fixture_changed')
+        plane_module = types.ModuleType('owned_actual_plane_fixture')
+        plane_module.__file__ = str(HERE / 'plane_fixture.source')
+        exec(compile(plane_raw, plane_module.__file__, 'exec', dont_inherit=True), plane_module.__dict__)
+        self.plane_module = plane_module
+        self.tables, self.plane_records = plane_module.make(root, self.lease, core.BACKEND_ROOT, self.host['bootId'])
+        self.runtime_text = RUNTIME.replace("EFFECT_PLANE_FIXED={'source':'owned-control-current9da','wholeCensus':True}",
+                                           'EFFECT_PLANE_FIXED=' + repr(self.tables['EFFECT_PLANE_FIXED'])).replace(
+            "CURRENT1E15_EFFECT_PLANE_FIXED={'source':'owned-control-current1e15','wholeCensus':True}",
+            'CURRENT1E15_EFFECT_PLANE_FIXED=' + repr(self.tables['CURRENT1E15_EFFECT_PLANE_FIXED']))
+        self.runtime_path = root / 'owned-runtime.source'
+        write(self.runtime_path, self.runtime_text.encode())
+        self.refs = {}
+        for name in core.REQUIRED_RUNTIME_REFS:
+            qualname = name.replace('POSTSTART_CURRENT_COMPONENT_RUNTIME.', 'RuntimeBundle.').replace(
+                'POSTSTART_AUTHENTIC_COMPONENT_BUNDLE.', 'AuthenticBundle.')
+            self.refs[name] = {'sourceRole': 'runtime', 'qualname': qualname}
+        codes = {name: core.source_code(self.runtime_text.encode(), row['qualname']) for name, row in self.refs.items()}
+        tables = {name: core.digest(core.canonical(value)) for name, value in self.tables.items()}
+        self.closing = {'kind': 'android-poststart-current-guard-closing', 'releaseOperationId': self.release,
+            'startOperationId': self.start, 'generation': self.generation, 'appProcess': self.app,
+            'controllerId': self.owner, 'configurationRevision': 0, 'runtimeCodeSignatures': codes,
+            'effectPlaneTableSha256': tables, 'effectPlanes': ['current9da-full', 'current1e15-full'],
+            'outputContract': self.map, 'originalProofSha256': sha(canonical(self.original)),
+            'releaseGranted': False, 'replayAllowed': False}
+        current_frame = {'generation': self.generation, 'appProcess': self.app,
+                         'controllerId': self.owner, 'configurationRevision': 0}
+        self.closing['effectPlaneResults'] = copy.deepcopy(self.plane_records)
+        self.closing['physical'] = {'account': {'uid': 0, 'euid': 0, 'gid': 0, 'egid': 0, 'groups': [0]},
+            'hostBootId': self.host['bootId'], 'machineSha256': self.host['machineSha256'],
+            'before': copy.deepcopy(current_frame), 'after': copy.deepcopy(current_frame)}
+        self.control = root / 'owned-physical-control.json'
+        write(self.control, canonical({'complete': True, 'generation': self.generation, 'appProcess': self.app,
+                                      'planes': self.closing['effectPlanes'], 'outputsKnown': True, 'backendUntouched': True}))
+        self.binding = {'schema': 1, 'kind': core.POLICY_KIND, 'mode': 'local-closing',
+            'evidenceRoot': str(root), 'originalProofSha256': sha(canonical(self.original)),
+            'startOperationId': self.start, 'releaseOperationId': self.release,
+            'outputContract': self.map, 'backendRoot': core.BACKEND_ROOT, 'host': self.host,
+            'startProgramSha256': self.plan['programSha256'], 'runtimeRefs': self.refs,
+            'runtimeStateSourceRole': 'runtime', 'runtimeSources': {'runtime': {'path': str(self.runtime_path), 'pin': pin(self.runtime_path)}},
+            'captures': {}}
+        for name, document in [('plan', self.plan), ('status', self.status), ('qualification', self.candidate), ('closing', self.closing)]:
+            self.binding['captures'][name] = self.capture(name, document)
+
+    def replace_closing(self, document):
+        for name in ('closing.stdout', 'closing.capture.json'):
+            (self.root / name).unlink()
+        self.closing = copy.deepcopy(document)
+        self.binding['captures']['closing'] = self.capture('closing', self.closing)
+
+    def capture(self, name, document):
+        raw = canonical(document)
+        path = self.root / (name + '.stdout')
+        write(path, raw)
+        producer = sha(('owned non-native control source ' + name).encode())
+        operation = str(uuid.uuid4())
+        now = time.time_ns()
+        header = {'schema': 1, 'kind': 'android-poststart-complete-source-capture', 'operationId': operation,
+            'producerSourceSha256': producer, 'returncode': 0, 'streamsComplete': True,
+            'startedAtNs': now, 'finishedAtNs': now, 'streams': {
+                'stdout': {'bytes': len(raw), 'sha256': sha(raw), 'slices': [{'offset': 0, 'bytes': len(raw),
+                    'input': {'path': str(path), 'pin': pin(path)}}]},
+                'stderr': {'bytes': 0, 'sha256': sha(b''), 'slices': []}}}
+        header_path = self.root / (name + '.capture.json')
+        write(header_path, canonical(header))
+        return {'header': {'path': str(header_path), 'pin': pin(header_path)},
+                'producerSourceSha256': producer, 'operationId': operation}
+
+    def runtime(self):
+        namespace = {'CONTROL_FILE': self.control}
+        exec(compile(self.runtime_text, str(self.runtime_path), 'exec'), namespace)
+        namespace['LAUNCH'] = copy.deepcopy(self.plan['launch'])
+        namespace['GETTER'] = {'generation': copy.deepcopy(self.generation), 'packageSha256': self.core.BASE_SHA}
+        namespace['POSTSTART_OUTPUT_CONTRACT'] = copy.deepcopy(self.map)
+        return namespace

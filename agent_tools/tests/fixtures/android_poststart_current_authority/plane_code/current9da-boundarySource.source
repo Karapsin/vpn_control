@@ -1,0 +1,29 @@
+def boundary_directory(path):
+ chain,parents=COMPONENT_BUNDLE._parents(path.parent)
+ try:
+  try:info=os.stat(path.name,dir_fd=chain[-1][1],follow_symlinks=False)
+  except FileNotFoundError:
+   try:os.stat(path.name,dir_fd=chain[-1][1],follow_symlinks=False)
+   except FileNotFoundError:row={'path':str(path),'state':'absent','parents':parents};BOUNDARY_CURRENT.append(row);return row
+   raise ValueError('boundary_absence_changed')
+  row={'path':str(path),'state':'present','generation':COMPONENT_BUNDLE._pin(info),'parents':parents,'entries':None};BOUNDARY_CURRENT.append(row)
+  if not stat.S_ISDIR(info.st_mode)or info.st_uid!=0 or info.st_gid!=0 or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('boundary_directory_unsafe')
+  pin=COMPONENT_BUNDLE._directory(path);names=sorted(os.listdir(path));row['entries']=names;row['directoryPin']=pin
+  if len(names)>8 or any(type(name)is not str or len(name)>128 for name in names):raise ValueError('boundary_inventory_limit')
+  if COMPONENT_BUNDLE._directory(path)!=pin or sorted(os.listdir(path))!=names:raise ValueError('boundary_directory_changed')
+  return row
+ finally:
+  try:
+   for name,fd in chain:
+    if COMPONENT_BUNDLE._pin(os.fstat(fd))[:5]!=parents[name]or COMPONENT_BUNDLE._pin(os.stat(name,follow_symlinks=False))[:5]!=parents[name]:raise ValueError('boundary_parent_changed')
+  finally:COMPONENT_BUNDLE._close(chain)
+def boundary_pass():
+ global BOUNDARY_CURRENT
+ BOUNDARY_CURRENT=[];BOUNDARY_PASSES.append(BOUNDARY_CURRENT)
+ for relative in BOUNDARY_PATHS[:5]:
+  row=claim_record(ROOT/relative,4096);BOUNDARY_CURRENT.append(row)
+ directory=boundary_directory(ROOT/BOUNDARY_PATHS[5])
+ for relative in BOUNDARY_PATHS[6:]:
+  if directory['state']=='absent':BOUNDARY_CURRENT.append({'path':str(ROOT/relative),'state':'parent-absent','parentPath':directory['path'],'parents':directory['parents']})
+  else:BOUNDARY_CURRENT.append(claim_record(ROOT/relative,4096))
+ return BOUNDARY_CURRENT

@@ -1,0 +1,43 @@
+{
+  "observedUtc": "2026-10-27T12:16:40.916557+00:00",
+  "beforeSourceSha256": "088ce8570e492e87b577d877684a35d07e397ee0a2eade79399b192233255f87",
+  "noStart": true,
+  "noLedgerChange": true,
+  "responses": {
+    "get": {
+      "argv": [
+        "/opt/homebrew/Cellar/tart/2.32.1/libexec/tart.app/Contents/MacOS/tart",
+        "get",
+        "vpn-tool-recovery-tart-macos-7686d4aa",
+        "--format",
+        "json"
+      ],
+      "exitCode": 0,
+      "stdoutSha256": "45a4df483f7c6fea1232e8b4c18e0bec22df096905379df340d49de91287ac2b",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "keys": [
+        "Memory",
+        "Running",
+        "DiskFormat",
+        "Display",
+        "CPU",
+        "Disk",
+        "Size",
+        "OS",
+        "State"
+      ]
+    },
+    "list": {
+      "argv": [
+        "/opt/homebrew/Cellar/tart/2.32.1/libexec/tart.app/Contents/MacOS/tart",
+        "list",
+        "--format",
+        "json"
+      ],
+      "exitCode": 0,
+      "stdoutSha256": "e51118b8556336f304d1d9431560ada898e8449c90cabc722f1c35de81d237b0",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "keys": null
+    }
+  }
+}

@@ -155,9 +155,11 @@ def _observe(plan,owner_source):
         binary=pathlib.Path(plan['provider']);i=binary.lstat()
         actual=[i.st_dev,i.st_ino,i.st_mode,i.st_uid,i.st_gid,i.st_nlink,i.st_size,i.st_mtime_ns,i.st_ctime_ns]
         need(actual==plan['providerPin']and hashlib.sha256(binary.read_bytes()).hexdigest()==plan['providerSha256'])
-        response=subprocess.run([str(binary),'get',root.name,'--format','json'],stdin=subprocess.DEVNULL,capture_output=True,timeout=5)
+        response=subprocess.run([str(binary),'list','--format','json'],stdin=subprocess.DEVNULL,capture_output=True,timeout=5)
         need(response.returncode==0 and not response.stderr and 0<len(response.stdout)<=65536)
-        provider=json.loads(response.stdout);need(type(provider)is dict and provider.get('Name')==root.name and provider.get('State')=='stopped'and provider.get('Running')is False)
+        rows=json.loads(response.stdout);need(type(rows)is list and all(type(row)is dict for row in rows))
+        selected=[row for row in rows if row.get('Name')==root.name]
+        need(len(selected)==1 and selected[0].get('State')=='stopped'and selected[0].get('Running')is False)
         lock=os.open('config.json',os.O_RDWR|os.O_NOFOLLOW,dir_fd=fd)
         need(pin(root/'config.json')==plan['artifacts']['config.json']);fcntl.lockf(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         # Supported Tart provider owns the same per-VM fcntl lock at actual run.

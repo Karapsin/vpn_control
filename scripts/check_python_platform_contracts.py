@@ -555,6 +555,192 @@ def _failure(name: str, result: subprocess.CompletedProcess[str]) -> str:
     return f"{name} failed with exit {result.returncode}: {output[-1000:]}"
 
 
+# Proposed additive definitions for scripts/check_python_platform_contracts.py.
+# Reuses that module's ROOT, json, subprocess and _run; no test-module meta-probe.
+ANDROID_PERSISTED_POSIX_METHODS = (
+    'AdmissionSamplingTests.test_actual_one_shot_then_sampled_owner_reaches_real_final_validation',
+    'AdmissionSamplingTests.test_admit_typed_readiness_change_retains_original_but_refuses_retry_data',
+    'AdmissionSamplingTests.test_fifth_fresh_admission_uses_only_last_fully_validated_receipt',
+    'AdmissionSamplingTests.test_final_candidate_still_requires_actual_renderer_validation',
+    'AdmissionSamplingTests.test_five_unknown_replies_exhaust_without_plan_or_submit',
+    'AdmissionSamplingTests.test_other_block_or_untyped_context_never_samples_again',
+    'AdmissionSamplingTests.test_other_typed_readiness_results_keep_original_collection_behavior',
+    'AdmissionSamplingTests.test_partial_drift_and_malformed_raw_stop_without_plan_or_submit',
+    'AllocationCoverageTests.test_real_renderer_seals_qualified_coverage_and_validates_receipts',
+    'PersistedStartTests.test_newly_absent_sdk_file_still_blocks_actual_emitted_observer',
+    'PersistedStartTests.test_observer_executes_complete_namespace_and_refuses_coordinator',
+    'PersistedStartTests.test_original_absent_sdk_template_is_preserved_by_actual_emitted_observer',
+    'PersistedStartTests.test_plan_preserves_exact_argv_originals_and_external_journal',
+    'PersistedStartTests.test_start_runtime_refuses_unqualified_installer_before_avd_reads',
+    'PersistedStartTests.test_supervisor_preflight_reopens_names_after_inherited_fds_close',
+    'PrivilegedCompositionTests.test_actual_final_caller_keeps_header_body_through_privileged_modes',
+    'PrivilegedCompositionTests.test_actual_owned_fixture_setup_avoids_unix_socket_path_overflow',
+)
+
+ANDROID_PERSISTED_LINUX_METHODS = (
+    'PersistedStartTests.test_unchanged_supervisor_waits_for_forked_launcher_descendant',
+)
+
+ANDROID_PERSISTED_WINDOWS_METHODS = (
+    'AllocationCoverageTests.test_changed_or_ambiguous_bracket_and_catalog_refuse',
+    'AllocationCoverageTests.test_complete_bridge_streams_remain_required',
+    'AllocationCoverageTests.test_coverage_is_optional_and_conservative_without_a_capsule',
+    'AllocationCoverageTests.test_failed_probe_keeps_both_complete_bridge_streams',
+    'AllocationCoverageTests.test_qualified_same_generation_capacity_keeps_every_held_claim',
+    'AllocationCoverageTests.test_unrepresented_native_allocation_is_charged_in_full',
+    'AllocationCoverageTests.test_wrong_claim_or_local_chain_never_mints_coverage',
+    'NativeAdvisoryHarnessTests.test_actual_advisory_call_uses_supported_route_timeout',
+    'PersistedStartTests.test_all_matching_claims_are_counted_without_guessing_retirement',
+    'PersistedStartTests.test_canonical_capacity_refuses_unknown_pressure_and_swap_out',
+    'PersistedStartTests.test_canonical_capacity_retains_claims_and_avoids_available_double_count',
+    'PersistedStartTests.test_missing_installer_capsule_cannot_create_a_start_plan',
+    'PersistedStartTests.test_native_capacity_refusal_is_preserved',
+    'PersistedStartTests.test_native_original_actor_absence_is_not_inferred_from_new_uuid',
+    'PersistedStartTests.test_native_probe_clean_unknown_exit_is_retained_and_blocks',
+    'PersistedStartTests.test_same_path_does_not_qualify_different_avd_configuration',
+    'PersistedStartTests.test_tampered_reservation_bytes_refuse',
+    'PersistedStartTests.test_unknown_or_incomplete_visibility_never_produces_start_plan',
+)
+
+def probe_windows_android_persisted_start_test_suite(
+    source_override: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Discover the whole source; execute portable methods under missing POSIX capabilities.
+
+    The source override admits retained whole beforeimages to the same actual
+    probe. No synthetic replacement tests, POSIX host monkeypatch or recursion.
+    """
+    payload = {"root": str(ROOT), "source": source_override,
+        "posix": ANDROID_PERSISTED_POSIX_METHODS,
+        "linux": ANDROID_PERSISTED_LINUX_METHODS,
+        "portable": ANDROID_PERSISTED_WINDOWS_METHODS}
+    return _run(r'''
+import builtins
+from contextlib import ExitStack, redirect_stdout
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+from types import ModuleType
+import tempfile
+import unittest
+from unittest.mock import patch
+
+payload = json.load(sys.stdin)
+root = Path(payload["root"])
+sys.path.insert(0, str(root))
+path = root / "agent_tools/tests/test_android_persisted_start.py"
+source = path.read_text(encoding="utf-8") if payload["source"] is None else payload["source"]
+original_import = builtins.__import__
+unavailable = {"pwd", "fcntl"}
+def guarded_import(name, *args, **kwargs):
+    if name.split(".", 1)[0] in unavailable:
+        raise ModuleNotFoundError("No module named " + repr(name))
+    return original_import(name, *args, **kwargs)
+
+# Only the test module sees missing Windows APIs. Global pathlib and tempfile
+# continue to operate on the actual host filesystem.
+surface = ModuleType("os")
+vars(surface).update(vars(os))
+for name in ("getuid", "geteuid", "getgid", "getegid", "getgroups", "setuid",
+             "setgid", "setgroups", "fork", "getsid", "setsid", "killpg",
+             "O_DIRECTORY", "O_NOFOLLOW", "fstatvfs", "fchmod", "chown"):
+    vars(surface).pop(name, None)
+surface.name = "nt"
+windows_sys = ModuleType("sys")
+vars(windows_sys).update(vars(sys))
+windows_sys.platform = "win32"
+def local_import(name, *args, **kwargs):
+    if name == "os": return surface
+    if name == "sys": return windows_sys
+    return guarded_import(name, *args, **kwargs)
+
+original_tempdir = tempfile.TemporaryDirectory
+def windows_tempdir(*args, **kwargs):
+    if kwargs.get("dir") == "/tmp":
+        raise FileNotFoundError(2, "Windows capability model has no literal /tmp", "/tmp")
+    return original_tempdir(*args, **kwargs)
+
+original_run = subprocess.run
+def child_run(command, *args, **kwargs):
+    # Preserve the absent modules in actual emitted Python child programs, too.
+    # Otherwise a removed guard could accidentally borrow this POSIX host's fcntl.
+    if (isinstance(command, (list, tuple)) and "-c" in command
+            and Path(command[0]).resolve() == Path(sys.executable).resolve()):
+        index = command.index("-c") + 1
+        emitted = command[index]
+        wrapper = ("import builtins\n_original=__import__\n"
+            "def _blocked(name,*args,**kwargs):\n"
+            " if name.split('.',1)[0] in {'pwd','fcntl'}:\n"
+            "  raise ModuleNotFoundError('No module named '+repr(name))\n"
+            " return _original(name,*args,**kwargs)\n"
+            "builtins.__import__=_blocked\n"
+            "exec(compile(" + repr(emitted) + ",'<exact-emitted-child-source>','exec'),"
+            "{'__name__':'__main__'})\n")
+        command = list(command); command[index] = wrapper
+    return original_run(command, *args, **kwargs)
+
+builtins.__import__ = guarded_import
+name = "agent_tools.tests._android_persisted_platform_probe"
+module = ModuleType(name)
+module.__file__ = str(path)
+module.__package__ = "agent_tools.tests"
+module.__dict__["__builtins__"] = dict(vars(builtins), __import__=local_import)
+sys.modules[name] = module
+# Only this production module's Path binding is projected. Exact source-file
+# reads retain the host filesystem; authority, localInputPins and remote job
+# paths receive real Windows lexical semantics instead of borrowing PosixPath.
+from pathlib import PureWindowsPath
+from agent_tools import android_persisted_start as production_start
+host_path = production_start.Path
+source_file = production_start.__file__
+def windows_semantic_path(value):
+    if value == source_file: return host_path(value)
+    return PureWindowsPath(value)
+production_start.Path = windows_semantic_path
+assert not PureWindowsPath("/owned/reservations.json").is_absolute()
+assert PureWindowsPath("C:/vpn-control-owned-inert/reservations.json").is_absolute()
+
+# Discovery executes the complete supplied test source before any selection.
+exec(compile(source, str(path), "exec", dont_inherit=True), vars(module))
+assert module.os.name == "nt" and module.sys.platform == "win32"
+suite = unittest.TestLoader().loadTestsFromModule(module)
+
+def short_id(test): return test.id().removeprefix(name + ".")
+class Result(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs); self.passed = set()
+    def addSuccess(self, test):
+        self.passed.add(short_id(test)); super().addSuccess(test)
+
+def final_line(trace):
+    lines = [line.strip() for line in trace.splitlines() if line.strip()]
+    return lines[-1][-500:]
+
+with ExitStack() as stack:
+    stack.enter_context(patch.object(tempfile, "TemporaryDirectory", windows_tempdir))
+    stack.enter_context(patch.object(subprocess, "run", child_run))
+    stack.enter_context(redirect_stdout(io.StringIO()))
+    result = unittest.TextTestRunner(stream=io.StringIO(), resultclass=Result).run(suite)
+skipped = {short_id(test) for test, _ in result.skipped}
+portable = set(payload["portable"])
+required_skips = set(payload["posix"]) | set(payload["linux"])
+summary = {"testsRun": result.testsRun, "passed": len(result.passed),
+    "sourceSha256": hashlib.sha256(source.encode()).hexdigest(),
+    "skipped": sorted(skipped), "portablePassed": sorted(result.passed),
+    "errors": {short_id(test): final_line(trace) for test, trace in result.errors},
+    "failures": {short_id(test): final_line(trace) for test, trace in result.failures}}
+print(json.dumps(summary, sort_keys=True))
+assert skipped == required_skips, "Persisted-start POSIX/Linux skips changed or portable coverage was skipped"
+assert result.passed == portable, "Persisted-start portable Windows methods changed or failed"
+assert result.testsRun == len(portable | required_skips), "Persisted-start discovery coverage changed"
+raise SystemExit(not result.wasSuccessful())
+''', input_text=json.dumps(payload))
+
+
 def check_contracts(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     for probe in IMPORT_PROBES:
@@ -572,7 +758,8 @@ def check_contracts(root: Path = ROOT) -> list[str]:
                         ("windows-android-installer", probe_windows_android_installer_boundary),
                         ("windows-android-test-suites", probe_windows_android_test_suites),
                         ("windows-visual-test-suites", probe_windows_visual_test_suites),
-                        ("windows-fixture-storage-test-suite", probe_windows_fixture_storage_test_suite)):
+                        ("windows-fixture-storage-test-suite", probe_windows_fixture_storage_test_suite),
+                        ("windows-android-persisted-start-test-suite", probe_windows_android_persisted_start_test_suite)):
         result = probe()
         if result.returncode:
             errors.append(_failure(name, result))
@@ -585,7 +772,7 @@ def main() -> int:
         print("Python platform contract check failed:", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 6} capability probes)")
+    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 7} capability probes)")
     return 0
 
 

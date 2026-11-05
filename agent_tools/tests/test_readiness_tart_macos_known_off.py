@@ -19,7 +19,7 @@ if os.environ.get('VPN_CONTROL_KNOWN_OFF_LOCK_BEFORE')=='1':
 @unittest.skipUnless(os.name=='posix'and getattr(os,'geteuid',lambda:0)()!=0,'actual ordinary POSIX private owners and fcntl locks')
 class KnownOffTests(unittest.TestCase):
     @contextmanager
-    def fixture(self,*,live=False,expired=False,missing_idle=False):
+    def fixture(self,*,live=False,expired=False,missing_idle=False,native_provider_shape=False):
         with tempfile.TemporaryDirectory(dir=Path('/tmp').resolve())as temporary:
             root=Path(temporary);root.chmod(0o700);vm=root/'selected-vm';vm.mkdir(mode=0o700)
             for name in ('config.json','disk.img','nvram.bin'):
@@ -39,7 +39,7 @@ class KnownOffTests(unittest.TestCase):
                         if c.recv(100)==('get '+vm.name).encode():c.sendall(json.dumps(state).encode())
             thread=threading.Thread(target=serve);thread.start()
             provider=root/'provider'
-            provider_source='#!'+sys.executable+'\nimport fcntl,json,socket,sys\nassert sys.argv[1:]==["get",'+repr(vm.name)+',"--format","json"]\ns=socket.socket(socket.AF_UNIX);s.connect('+repr(str(socket_path))+');s.sendall('+repr(('get '+vm.name).encode())+');body=json.loads(s.recv(65536));s.close()\nf=open('+repr(str(vm/'config.json'))+',"r+")\ntry:fcntl.lockf(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError:body.update(State="running",Running=True)\nf.close();print(json.dumps(body))\n'
+            provider_source='#!'+sys.executable+'\nimport fcntl,json,socket,sys\nassert sys.argv[1:] in (["get",'+repr(vm.name)+',"--format","json"],["list","--format","json"])\ns=socket.socket(socket.AF_UNIX);s.connect('+repr(str(socket_path))+');s.sendall('+repr(('get '+vm.name).encode())+');body=json.loads(s.recv(65536));s.close()\nf=open('+repr(str(vm/'config.json'))+',"r+")\ntry:fcntl.lockf(f,fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError:body.update(State="running",Running=True)\nf.close()\nif sys.argv[1]=="list":body=[body]\nelif '+repr(native_provider_shape)+':body.pop("Name",None)\nprint(json.dumps(body))\n'
             provider.write_text(provider_source);provider.chmod(0o700)
             def owner(op,purpose,value):
                 program=jobs.Program(purpose,('import json\nprint(json.dumps('+repr(value)+'))\n').encode(),262144)

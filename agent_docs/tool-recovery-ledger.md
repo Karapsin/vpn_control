@@ -1,5 +1,136 @@
 # Automatic tool readiness and recovery ledger
 
+## Native follow-up checkpoint (2026-10-28)
+
+This task remains incomplete on verified `dev` baseline
+`2efd2569ce39d86a991b32f68d8e89419360ac5c`. The new source is uncommitted.
+The prior baseline passed all five required development workflows; that result
+is not a receipt for the current edits. The user resumed this follow-up and
+explicitly included Windows tool verification. The latest user steering now
+calls for fresh remote Windows fixtures to complete positive scenarios; prepare
+those with normal clean-asset/source/capacity admission and preserve all old
+fixtures and UNKNOWNs. The earlier no-new-Windows-VM restriction is superseded
+for this bounded fixture work. Earlier explanation-only and
+pending-approval notes below are historical. No release is authorized.
+
+Full VPN Control product acceptance, VPN connectivity/reconnect acceptance,
+product UI/visual review and the wider installer matrix are **skipped by user
+instruction**. The single Android update remains required for installer tooling.
+Its existing target APK remains version 2.2.15/code 17100, SHA256
+`c162f7fa505537ad1f0106b3558e7cfb4fa89637dbb32934a180191ee256f2e7`,
+with original source SHA `2efd2569`. No additional target APK has been built.
+
+| Lane | Reconciled current result | Remaining gate |
+| --- | --- | --- |
+| Android carrier | A separate durable control survived caller timeout, retained one original execution and all 9 MiB of stdout in three bounded slices. The distinct closing-reader control `6caaeb65` and the actual fixed helper's fresh collector gate passed with complete hashed output and owned child closure. New observer `ab09df50` has actual whole-before RED/GREEN, three real locks and fresh-context coverage. Original `7310f227` and admission `6b616c2f` remain immutable. Successors `4214cb69` and `201cea86` are complete pre-release refusals. | Recover the same persisted AVD with fresh admission, then complete remote release, fresh closing and local capture in that order. The one real PackageInstaller update and MCP/CLI collection remain required. |
+| Android current target | Original API35 supervisor `1420710` and QEMU `1420715` are positively absent. The original coldboot retained no terminal receipt; its cause/outcome remain unknown. Starts `0e75d7ee` and `0ed4b592` failed before the VM fork fence; their local owners are closed and all claims retained. Explicit terminal-observation factory `1c732a53`, collector `2668bda9` and unsealed current-authority template `2cb37a86` are promoted. Three owned Linux controls `7ee98f8a`, `1f32c7b0`, `502c92be` proved the old refusal and narrowly qualified fresh whole-host observations, with full reports, child closure and unchanged source/ledgers. | Finalize fresh source/input/capacity/absence admission for the new boot-only program. No emulator has restarted. Release additionally needs a phase guard for the primitive's exact owned transitions, genuine new-boot evidence and captured closing execution. |
+| Local lease custody | Strict device-only readers still refuse changed ancestors. A separate fixed-original relocation/APFS derivation preserves the original leaf pin, old path/parent facts, exact moved inode and 0777-to-0755 tightening, the historical symlink itself, and both direct/Data-volume held paths. Captured-source native proof `7fcdbd24` closes ordinary-import/cache ambiguity. | Final source/lock validation and successful remote-release/fresh-closing evidence before local capture. No historical pin is rewritten or globally relaxed. |
+| Tart macOS | Five-field rendered-owner identity and native nameless-`get` response defects are fixed with causal tests. Original terminal streams, actor absence, full disk/NVRAM metadata and public share were checked. Only the positively absent old reservation was reconciled; the same persisted VM remains stopped with cause `off_unknown`. Rejected owner `0ca15dbb` was never submitted. | Actual normal memory, available-memory/headroom, storage and one-local-VM admission; then same-instance start and remaining DIRECT/MCP/CLI recovery, idle, lease and interruption scenarios. Disk capacity passes, memory admission still refuses. |
+| Raw/libvirt Windows | Fresh raw fixture `62b489bc` started once under controller `8e6cff44`, with positive terminal/source closure. Its own 4 GiB claim is running; all old 42 GiB claims are retained. QEMU `1133839` and TPM `1133838` are positively identified. Windows installation, guest agent and ordinary-user session passed qualification. Exact storage registration `d22709df`, fresh allocation epoch `4970a759`, protected administrator setup `d546cbd2` and canonical display wake passed. Leases expired/cancelled with restoration and terminal owners; original counter `ee9a19ba` reached 80 steps with one execution. The two old guests remain unchanged; their S3 refusal and historical input blocks remain. | Complete ordinary protected sign-in/unlock, the corrected complete lease/counter flow, full idle and lifecycle. Guest unknown roles, original inspection reconciliation and reservation-observer source/schema/policy qualification remain blocking. Create the fresh libvirt fixture only after the first guest's positively proved stop and fresh capacity admission. |
+| SSH | Historical direct/nested four-fault receipts remain intact. Eight consumed sources changed; current-source acceptance cannot reuse those passes. A source-only successor generator is prepared. | Freeze final source, version and metadata, then execute fresh dedicated controls, accelerated expiry/cancellation and fresh MCP/CLI comparison. Preserve shared connection `3ec9cdaeb` and gateway. |
+
+All original 42 GiB of remote reservations remain held; the fresh raw fixture adds
+one separately owned 4 GiB running claim. Qualified live-allocation coverage
+joins exact provider/kernel actor, start ticks, memory and original claim identity;
+it is bracketed around each actual census. Uncovered allocations count fully.
+Current absence alone never retires a claim or creates a historical terminal result.
+`575c610c`, `8042e683`, `7310f227`, `b9e349f8` and other original UNKNOWNs remain
+unreplayed. Retired Linux is not restarted, and PID 25339 is untouched.
+
+The user-requested cleanup reclaimed 5.4 GiB: unused ignored build output and two
+closed, unmounted, non-VM test images only. Exact file hashes/metadata, original
+and cleanup terminal streams, actor absence and detached-image/open-holder checks
+were verified. Their two storage claims alone were retired. Evidence, beforeimages,
+credentials, VM disks, original journals and unrelated claims remain preserved.
+Receipts are under ignored `native-followup-20261027/cleanup-unused/`.
+
+Current private evidence remains in `.runtime/tool-recovery/`: original approvals,
+`android-head-target-1f2025d9-8e2d-4d2d-8919-f9a785bdf7a7`, native follow-up lanes,
+`android-continuity-relocation-e62b06f4-e06f-4305-8944-01848cba42be`, and the
+source-bound regression packets. Every new source defect keeps authentic
+beforeimages and actual same-test RED/GREEN. Routine selector and exact-byte
+resource enrollment are being finalized; no current pre-push/commit/push receipt
+exists yet. Windows limitations and source hashes are in its private `handoff.json`.
+
+The same-persisted Android attempt `0e75d7ee-9aef-464f-98c9-62fce9d8294f`
+consumed one reviewed authority and ended with exit 1 **before the VM fork fence**.
+No emulator started. Local owner `1946418b` ended with exit 0; complete streams
+and unchanged ledgers/claims are retained. Its exact 977-byte stderr
+`c2aa33db49c60d211093df546bb5bdc143a620f00ccb2072aa373a0ebabf9203`
+identifies `ProcessLookupError` in the unchanged current1e15 closing census read.
+The separate bounded observation correction is now promoted. It retains each
+failed interval, requires positive absence and unchanged original guards, and
+allows only a bounded fresh observation before any fork. Original scanners,
+validators and operation outcomes remain immutable. The original failed
+operation's partial-data extent remains UNKNOWN.
+
+Native control `6caaeb65` used two real owned Linux children and preserved the
+actual kernel disappearance. The before/fixed phase files were reconstructed
+from three bounded pages: 5,981,918 bytes, SHA256
+`acf6124adaae3cfc89b4db770a12ec0c408676772c9774ee2846780e3d8bea01`.
+Both children and all original streams closed; claims and source guards remained
+unchanged. Fresh collector gate `a3383cc8` then used the actual fixed helper for
+discover/slice/discover and recovered the complete original 1,921,023-byte failed
+interval with identical catalogs, no stderr and unchanged root generation.
+Independent review accepted these narrow causal and collection proofs. They do
+not establish VM startup, lease release or installer acceptance.
+
+The first managed focused pass completed both groups: 4,508 and 4,509 tests,
+with 158 and 142 platform skips. It found two failures and one error: an
+unsynchronized inherited-pipe fixture, stale public dispatch source hashes, and
+a historical whole-file equality check that also covered unrelated credential
+admission code. Their whole beforeimages and complete original logs were kept.
+The recorded failed-first rerun passed all three modules after narrow fixes.
+The updated executable Windows capability/path probe suite passed 24 tests;
+process-ordering and actual Git conversion checks passed 18 tests. Current
+affected selection resolves 803 of 901 modules. The latest collector-focused
+run passed 80 tests with one Linux-only skip. These are iteration results,
+not a final pre-push receipt or native acceptance.
+
+The pipe fixture's same regression is RED on the preserved source and GREEN
+with explicit process barriers, the unchanged diagnostic deadline, and both
+real children reaped. The original scheduling delay's cause remains unproven.
+Windows probe RED/GREEN covers missing POSIX imports/APIs and real Windows path
+semantics; 18 portable methods remain runnable, while 17 genuine POSIX cases
+and one Linux-only case are explicitly skipped in the Windows model. Historical
+Windows protected-flow source, native facts and receipts were not relabelled: all
+eight consumed flow definitions remain byte-bound to their original afterimage,
+with negative mutations for each. Full current Windows native input remains open.
+
+Public dispatch metadata now names the reviewed retirement and login sources
+and the new continuity dependency. This renews static source review only;
+private fixture qualifications and historical operation pins are unchanged.
+The latest Tart check after the host tests closed passed storage and the local
+VM census. Both pressure samples were normal, but available memory was 5,790 MiB
+against a 6,144 MiB requirement; the full sampled headroom gate also refused.
+No Tart start or memory-policy waiver occurred.
+
+The Android current-authority closing predicate now validates full original
+raw/projector, boundary and physical relations at construction and every local
+guard. Actual RED controls preserved the labels-only, intermediate-reappearance
+and cumulative-byte-budget defects. A further actual-renderer regression fixed
+the caller's subset/full-status mismatch without changing the authentic guard;
+all 25 current controls pass. The public
+canonical template remains unsealed. Its focused cohort plus real Git byte
+checks passed. A later assembly check found the pre-release footprint cannot be
+reused after the primitive creates its own fence and intent. A narrowly scoped
+phase guard is being implemented privately; no lease effect has occurred. This
+does not block the independent boot-only phase.
+
+Windows caller-focused checks passed 41 tests and related consumers passed 63.
+The five earlier read-only harness causes have authentic RED/GREEN and routine
+coverage; its public cohort plus Git checks passed 23 tests. A later bridge
+correctly refused a stale child bootstrap digest before getter execution.
+Coherent child/outer source binding then passed under the distinct original
+`12932a24`; the refused `8cc41ae9` remains unchanged. The held-source builder
+loader also has actual foreign-bytecode RED and captured-source GREEN. Both
+causes are enrolled in routine checks and were rerun natively. The combined
+kernel, read-only harness and Git byte cohort passed 50 tests.
+
+The sections below retain earlier checkpoint history and source-bound results.
+Use this checkpoint and the current continuation for present native state;
+historical lane descriptions do not override later terminal receipts.
+
 ## Scope and custody
 
 This infrastructure task started on 2026-10-20 in the independent clone

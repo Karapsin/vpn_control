@@ -1,0 +1,138 @@
+{
+  "adapterBefore": {
+    "nativeExecutionAuthority": false,
+    "sha256": "a7056498c100b5d3fe831fbd4d45aa962fcead5a6d11fd912b7a62fbcf9817e4",
+    "sourceRole": "unfixed SDK/capacity and inherited-lock descriptor draft"
+  },
+  "admissionSampling": {
+    "admitReadinessBeforeFixture": "controller-sampling.fixed.source",
+    "admitReadinessBeforeSha256": "33477e449a4151f9543fb722dc1fb36b640ea14a28caf2054d6fa0f59608d699",
+    "beforeControllerSha256": "f71178076d5df505a19ad9775133665e54b3f0f656b19471659a54b8c271a4ac",
+    "finalControllerFixture": "controller-sampling.final.source",
+    "finalControllerSha256": "b2cec75b415152f88c629a56aad01a9db601b54183fa0a786a3e6a4e1fa043c6",
+    "fixedControllerBytes": 40723,
+    "fixedControllerSha256": "33477e449a4151f9543fb722dc1fb36b640ea14a28caf2054d6fa0f59608d699",
+    "historicalUnknownsPreserved": true,
+    "maximumReadonlySamples": 5,
+    "nativeBlockedContainsPrivateInventory": false,
+    "nativeBlockedOperationId": "b7ebbcd4-1019-4312-bbbb-a35e5bb48d3e",
+    "nativeBlockedRawBytes": 370,
+    "nativeBlockedRawSha256": "88c0c699d367a9bb62b87f6e2e0abdca0dabdee897cfb17820216fba760e4072",
+    "nativeExecutionAuthority": false,
+    "onlyRetryableReason": "effect_plane_current_interval_unknown",
+    "receiverAndTransportUnchanged": true,
+    "schema": 1,
+    "sourceRole": "Actual whole before/fixed owner_main execute with owned fake Context/transport/lock/machine seams. Positive candidate uses complete owned inert native admission/control capsules and REAL current renderer.start_plan, never a forced-success validator. Distinct start-authority barrier is not granted and all submit/GO hooks forbid execution. Native blocked raw fixture stays byte-identical; only in inert unit context its operationId is explicitly projected to owned test UUID. Actual original UNKNOWN remains unchanged.",
+    "typedReadinessException": "agent_tools.ssh_transport.SubmittedResultReadinessChanged",
+    "typedReadinessPolicy": "Complete original raw streams/result retained before admit-only refusal; other phases unchanged"
+  },
+  "advisoryTimeout": {
+    "actualFailureOperationId": "f03a9f40-3e92-440d-86cf-dad8e2ef752f",
+    "actualFixedReadonlyOperationId": "b7ebbcd4-1019-4312-bbbb-a35e5bb48d3e",
+    "fixturePins": {
+      "advisory-timeout.before.source": {
+        "bytes": 16462,
+        "containsCredentialValues": false,
+        "containsEmbeddedPrivateInventory": false,
+        "sha256": "f294f0abe6945d2cd6a37f92a27eddc7258044570164dd1ed7ff74f170b69238",
+        "sourceExecution": "only the actual build_ssh_argv call expression and literal bootstrap string are selected by AST; all full harness imports/top-level/native code remain inert",
+        "sourceOnlyPathReferences": true
+      },
+      "advisory-timeout.fixed.source": {
+        "bytes": 16461,
+        "containsCredentialValues": false,
+        "containsEmbeddedPrivateInventory": false,
+        "sha256": "316ecbfa63bdda696035b545e09777cff33ee67da0c03da8ab8befa19c835ad1",
+        "sourceExecution": "only the actual build_ssh_argv call expression and literal bootstrap string are selected by AST; all full harness imports/top-level/native code remain inert",
+        "sourceOnlyPathReferences": true
+      }
+    },
+    "nativeProbeDispatchedForFailure": false,
+    "originalFailureOwner": "agent_tools/ssh_transport.py:_build_ssh_argv:912",
+    "originalFailureType": "SshConfigError",
+    "schema": 1,
+    "sharedTransportUnchanged": true
+  },
+  "allocationCoverageBefore": {
+    "bytes": 42416,
+    "failure": "persisted_start_native_capacity_refused",
+    "heldBytes": 45097156608,
+    "nativeConfiguredBytes": 12884901888,
+    "nativeExecutionAuthority": false,
+    "nativeFailure": "persisted_start_native_capacity_refused",
+    "nativeObservationSha256": "041f837d4c8755eb9fac5558c98bc63cba8a7f50366e4947fba34798d69b9f00",
+    "nativeOperationId": "3e1c1622-885f-4cdc-b3c2-d1b02fa77d30",
+    "nativeOperationPrefix": "3e1c",
+    "nativePhysicalBytes": 64823275520,
+    "nativeResultSha256": "8e07d8fb5373dbde93d4235a46fe729037ce83f6b56c3dd27c6b5b325764c61e",
+    "sha256": "4c703f4b2bc654ec9e882789529a9913b73e00df702c7aedea0aa6c9d4bf4e62",
+    "sourceRole": "whole authentic conservative all-held-plus-all-native before qualified allocation coverage"
+  },
+  "containsPrivateLiterals": false,
+  "functions": {
+    "boot": "11baa5ecb1cc0c6cea7ffc30a2e5409f7e273ed9936dd09e77c2ebb29d9b987a",
+    "child_identity": "3a806004298f73dc436e42e4b4b5a886eb74c60c3e5d7c428e81361c200dc21a",
+    "close_parents": "2083bfd186628f4b4911d5b99c6b315f5efd5e3486c6aca4554515ad8d172fb5",
+    "facts": "4bd18b23a2a71ae81bda230de116977e7a86ecbe0d5ab04b8f9bd1252135dc3d",
+    "fp": "a2645c833ece1cc2991b6bd11c767c7237923021c0c32dc0daa11fa0bb11e4b9",
+    "guard_parents": "d51c1a0b39fd0d3135194fc932489a0286c09e92a211b446de0599ad6ecb395f",
+    "guest_probe": "5aaf967524d6272262166123065559baee4fd1e88251bc59b5070f712919b376",
+    "original_status": "d8a39172776048ff956adf5b0835e48ea9e3b81b644d3be051dcb1dcc3895c6a",
+    "parent_fds": "19023f914731acbfd323882c17a9c29baefbb169613cfed5cdbf6124090bebc8",
+    "ports": "46b8a4dd76c231ff5637623d551f978b51b53aa531a0c37326a4a960a2c780be",
+    "process_census": "7f301c726f38cef965b487708d40005d7cc4d61cbca5d3151415b379b4b20b05",
+    "qemu_fact": "33685698e87d0645955381ceac98101e9dec9a316de4ccd151f2ac1a4db70a5e",
+    "read_fixed": "bc69b4a0d46e6da6b26a93b5a79f07ab2fa81630c1c36092c6c3a2c2746100e8",
+    "session_guest": "db6d68206601d2e94cbadddc76f35cb3cdf158cdb0eb0f163358e1704ba4370a",
+    "ticks": "b9b7080ad5fe672b251ac35c8c68a32041d0b52cffa2b1e429acb079529faef4",
+    "tree_facts": "c09c7ba45d69a9ea5cb1d2eb49acc9dfb61908eedf75d8176032eb6fe687c01d"
+  },
+  "kind": "nonsecret-exact-original-function-closure",
+  "nativeExecutionAuthority": false,
+  "nativeObserverBefore": {
+    "bytes": 14411,
+    "containsPrivateLiterals": false,
+    "failure": "persisted_start_sdk_missing",
+    "operationId": "12fa5056-6c3e-44b3-a7ce-405afb1b1955",
+    "originalOptionalTemplateAlreadyAbsent": true,
+    "sha256": "8a2d81e09f1c22d1668aa300618a398651e4f74fa40c21b4895d8ef1ec3a4da1"
+  },
+  "originalProgrammeSha256": "982dd6db1743fa2b14a5bc79dc575551eab10a880db0db27860d0fafb34f94da",
+  "privilegedComposition": {
+    "actualFixtureSetupFailure": "OSError: AF_UNIX path too long before listener bind",
+    "actualPipeline": "build_ssh_argv forces password PlannedArgv; run_ssh enters automatic_submission; existing privileged root loader strips optional cached credential before original receiver code",
+    "externalNetworkRun": false,
+    "fixedFixtureSetup": "short explicit /tmp disposable root, no production transport change",
+    "fixturePins": {
+      "composition-setup.before.source": {
+        "bytes": 6911,
+        "containsActualCredentialOrInventoryValues": false,
+        "publicInertFixtureSecretMarkerOnly": true,
+        "sha256": "be791c61ab945026307de0855340902bcb2ad2f873b8be87ab06ad50850a098c"
+      },
+      "composition-setup.fixed.source": {
+        "bytes": 6899,
+        "containsActualCredentialOrInventoryValues": false,
+        "publicInertFixtureSecretMarkerOnly": true,
+        "sha256": "54bb2624170dc101ed645918bae863d3047d2193fc81ad9dfc001a585b031183"
+      },
+      "controller-composition.source": {
+        "bytes": 37330,
+        "containsActualCredentialOrInventoryValues": false,
+        "publicInertFixtureSecretMarkerOnly": false,
+        "sha256": "f71178076d5df505a19ad9775133665e54b3f0f656b19471659a54b8c271a4ac"
+      },
+      "receiver-composition.source": {
+        "bytes": 15452,
+        "containsActualCredentialOrInventoryValues": false,
+        "sha256": "3d291375895a9e84bf31516fbe43aa5476a90ef8f605b8e70b9ce8381823cafb"
+      }
+    },
+    "nativeHostRun": false,
+    "reviewConcern": "A direct secret+header call bypasses the mandatory existing public-frame privileged wrapper",
+    "reviewConcernRuledOut": true,
+    "schema": 1
+  },
+  "schema": 1,
+  "sourceSha256": "106193c91deb9ba1b54c6cb1dee6b3821e47165f61c317ae6d8e553536d20b8c"
+}

@@ -1,0 +1,268 @@
+def prepare_control_root():
+    value = types.ModuleType('exact_owned_control_receiver')
+    value.__file__ = CONTROL_ROOT + '/receiver.py'
+    exec(compile(PREPARE_RECEIVER, value.__file__, 'exec'), value.__dict__)
+    payload = value.canonical({'durableBase64':base64.b64encode(DURABLE_SOURCE).decode(),
+                               'receiverBase64':base64.b64encode(PREPARE_RECEIVER).decode()})
+    header = {'operationId':OPERATION_ID, 'controllerConfigSha256':CONTROL_CONFIG_SHA,
+              'receiverSha256':hashlib.sha256(PREPARE_RECEIVER).hexdigest(),
+              'action':'prepare', 'payloadSha256':hashlib.sha256(payload).hexdigest()}
+    incoming = io.TextIOWrapper(io.BytesIO(value.canonical(header) + payload), encoding='utf-8')
+    output = io.StringIO()
+    original = sys.stdin
+    try:
+        sys.stdin = incoming
+        with contextlib.redirect_stdout(output): value.main()
+    finally:
+        sys.stdin = original
+        incoming.close()
+    raw = output.getvalue().encode()
+    answer = json.loads(raw)
+    need(answer.get('state') == 'prepared-not-submitted' and answer.get('replayAllowed') is False,
+         'control_external_preparation_unknown')
+    value.prepared()
+    context = {'schema':1, 'operationId':OPERATION_ID, 'root':CONTROL_ROOT,
+               'rootGeneration':value.ROOT_ID[:2], 'hostBootId':BOOT,
+               'machineSha256':MACHINE, 'account':'0'}
+    return value, context, {'rawBase64':base64.b64encode(raw).decode(),
+                            'sha256':hashlib.sha256(raw).hexdigest(), 'bytes':len(raw),
+                            'context':context, 'rootIdentity':value.ROOT_ID}
+
+
+def current_namespace(module):
+    frame = sys._getframe(1)
+    caller = frame
+    while frame is not None:
+        if frame.f_code is module.component_release_current1e15_effect_plane_guard.__code__:
+            namespace = frame.f_locals.get('n')
+            if type(namespace) is not dict or caller.f_globals is not namespace:
+                raise ValueError('control_scanner_namespace_unknown')
+            return namespace
+        if frame.f_code is module.component_release_effect_plane_current_guard.__code__:
+            return None
+        caller = frame
+        frame = frame.f_back
+    return None
+
+
+def phase(raw, expected_sha, label, receiver, context):
+    report = {'phase':label, 'state':'unknown', 'capsuleSha256':expected_sha,
+              'nativeVmStart':False, 'leaseMutation':False, 'reportComplete':False}
+    PHASES.append(report)
+    state = {'child':None, 'ready':None, 'pythonFd':None, 'childStdout':b'', 'childStderr':b'',
+             'namespace':None, 'lists':0, 'cmdlineOpens':0, 'closed':None, 'closingFd':None,
+             'actualReadError':None, 'injected':False}
+    module = None
+    result = None
+    failure = None
+    try:
+        need(hashlib.sha256(raw).hexdigest() == expected_sha, 'control_capsule_changed')
+        module = types.ModuleType('owned_current1e15_kernel_' + label)
+        exec(compile(raw, 'exact-owned-'+label+'-capsule', 'exec'), module.__dict__)
+        original_host = module.installer_host_preflight
+        module.CURRENT_INTERVAL_STORAGE = dict(context)
+        if label == 'before':
+            # Inspection only: the original parent host body and both guards
+            # execute unchanged. These captured helper definitions only preserve
+            # its actual traceback locals after its unhandled kernel failure.
+            module._current_host_attempt = original_host
+            for name in ('CURRENT_INTERVAL_PARENT_CAPSULE_SHA','CURRENT_INTERVAL_SCANNER_SHA',
+                         'CURRENT_INTERVAL_VALIDATOR_SHA','CURRENT_INTERVAL_CLOSING_START',
+                         'CURRENT_INTERVAL_CLOSING_END'):
+                module.__dict__[name] = CURRENT_CONSTANTS[name]
+            exec(compile(CAPTURE_ONLY, 'held-evidence-only-after-original-failure', 'exec'), module.__dict__)
+        real = module.os
+        proxy = types.SimpleNamespace(**{name:getattr(real,name) for name in dir(real)})
+        def spawn_child():
+            exe = pathlib.Path(sys.executable).resolve(strict=True)
+            fd = os.open(exe, os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            state['pythonFd'] = fd
+            before = pin(os.fstat(fd)); digest = hashlib.sha256()
+            while True:
+                chunk = os.read(fd,1048576)
+                if not chunk: break
+                digest.update(chunk)
+            need(digest.hexdigest() == PYTHON_SHA and pin(os.fstat(fd)) == before
+                 and pin(exe.lstat()) == before and before[3:5] == [0,0]
+                 and stat.S_ISREG(before[2]), 'control_interpreter_changed')
+            child = subprocess.Popen([str(exe),'-I','-B','-c',CHILD_SOURCE], executable='/proc/self/fd/'+str(fd),
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     close_fds=True, pass_fds=(fd,), start_new_session=True,
+                                     env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8'})
+            state['child'] = child; state['pythonPin'] = before
+            need(bool(select.select([child.stdout],[],[],5)[0]), 'control_child_ready_unknown')
+            ready_raw = child.stdout.readline(4097); state['childStdout'] += ready_raw
+            ready = json.loads(ready_raw)
+            need(ready == {'kind':'owned-late-pid-ready','pid':child.pid,'startTicks':birth(child.pid),
+                           'uid':0,'euid':0,'sid':child.pid}, 'control_child_identity_changed')
+            state['ready'] = ready
+        def listdir(path):
+            namespace = current_namespace(module)
+            if not isinstance(path,int) and pathlib.Path(path) == pathlib.Path('/proc') and namespace is not None and not state['injected']:
+                if state['namespace'] is None: state['namespace'] = namespace
+                need(state['namespace'] is namespace, 'control_first_scanner_namespace_changed')
+                state['lists'] += 1
+                if state['lists'] == 2: spawn_child()
+            return real.listdir(path)
+        def opened(path, flags, *args, **kwargs):
+            namespace = current_namespace(module)
+            ready = state['ready']
+            if ready is not None and namespace is state['namespace'] and str(path) == '/proc/'+str(ready['pid'])+'/cmdline':
+                state['cmdlineOpens'] += 1
+                if state['cmdlineOpens'] == 3:
+                    fd = real.open(path,flags,*args,**kwargs)
+                    try:
+                        need(birth(ready['pid']) == ready['startTicks'], 'control_closing_birth_changed')
+                        state['closed'] = finish_owned_child(state,birth)
+                        need(state['closed']['state'] == 'closed' and state['closed']['exitCode'] == 0,
+                             'control_cooperative_exit_unknown')
+                        try: os.stat('/proc/'+str(ready['pid']),follow_symlinks=False)
+                        except FileNotFoundError as absent:
+                            need(absent.errno == 2, 'control_child_absence_unknown')
+                        else: raise ValueError('control_child_still_present')
+                        state['injected'] = True; state['closingFd'] = fd
+                        return fd
+                    except BaseException:
+                        os.close(fd)
+                        raise
+            return real.open(path,flags,*args,**kwargs)
+        def read(fd, limit):
+            try: return real.read(fd,limit)
+            except OSError as error:
+                if fd == state['closingFd']:
+                    state['actualReadError'] = {'type':type(error).__name__, 'errno':error.errno,
+                                                'pid':state['ready']['pid'], 'limit':limit,
+                                                'syntheticError':False}
+                raise
+        proxy.listdir, proxy.open, proxy.read = listdir, opened, read
+        module.os = proxy
+        before_globals = {name:module.__dict__.get(name) for name in
+                          ('COMPONENT_RETIRE_OBSERVATIONS','COMPONENT_RETIRE_RAW_RECORDS','CLAIM_OBSERVATIONS','HOST_RAW_DIGESTS')}
+        try:
+            result = original_host()
+        except BaseException as error:
+            failure = {'type':type(error).__name__, 'errno':getattr(error,'errno',None),
+                       'code':control_code(error)}
+            if label == 'before':
+                report['failedInterval'] = module._interval_capture(error,OPERATION_ID.replace('-',''),0,before_globals)
+            else:
+                report['failureReferences'] = module.CURRENT_INTERVAL_FAILURES
+        if result is not None:
+            report['hostResult'] = result
+        if label == 'current':
+            reports = []
+            store = module._interval_open_store()
+            try:
+                for reference in module.CURRENT_INTERVAL_FAILURES:
+                    name = pathlib.PurePosixPath(reference['path']).name
+                    fd = os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=store['directory'])
+                    try:
+                        before = pin(os.fstat(fd)); data = bytearray()
+                        while len(data) <= 8388608:
+                            part = os.read(fd,min(65536,8388609-len(data)))
+                            if not part: break
+                            data.extend(part)
+                        need(before == reference['generation'] == pin(os.fstat(fd))
+                             == pin(os.stat(name,dir_fd=store['directory'],follow_symlinks=False))
+                             and len(data) == reference['bytes'] <= 8388608
+                             and hashlib.sha256(data).hexdigest() == reference['sha256'], 'control_failed_report_changed')
+                        reports.append({'reference':reference, 'report':json.loads(data)})
+                    finally: os.close(fd)
+                module._interval_guard_store(store)
+            finally: module._interval_close_store(store)
+            report['retainedIntervals'] = reports
+        report['hostFailure'] = failure
+    except BaseException as error:
+        report['phaseFailure'] = control_code(error)
+    finally:
+        if state['closed'] is None: state['closed'] = finish_owned_child(state,birth)
+        report.update(child=state['ready'],pythonPin=state.get('pythonPin'),childClosure=state['closed'],
+                      procEnumerations=state['lists'],childCmdlineOpens=state['cmdlineOpens'],
+                      actualReadError=state['actualReadError'],kernelBoundaryReached=state['injected'])
+    try:
+        closed = state['closed']
+        need(not report.get('phaseFailure') and state['ready'] is not None and state['injected']
+             and state['actualReadError'] == {'type':'ProcessLookupError','errno':3,'pid':state['ready']['pid'],
+                                               'limit':state['actualReadError']['limit'],'syntheticError':False},
+             'control_actual_kernel_esrch_not_qualified')
+        need(closed['state'] == 'closed' and closed['exitCode'] == 0 and closed['streamsComplete']
+             and closed['interpreterClosed'] and closed['issues'] == []
+             and base64.b64decode(closed['stderrBase64'],validate=True) == b'', 'control_child_closure_unknown')
+        lines = base64.b64decode(closed['stdoutBase64'],validate=True).splitlines()
+        need(len(lines) == 2 and json.loads(lines[0]) == state['ready']
+             and json.loads(lines[1]) == {'kind':'owned-late-pid-closed','received':True,'eof':False},
+             'control_child_protocol_unknown')
+        if label == 'before':
+            need(failure['type'] == 'ProcessLookupError' and failure['errno'] == 3 and result is None
+                 and report['failedInterval']['retryable'] is True
+                 and report['failedInterval']['partialRead']['bytes'] == 0,
+                 'control_original_boundary_not_exercised')
+            report['result'] = 'authentic-original-host-unknown'
+        else:
+            need(failure is None and result['state'] == 'admitted' and len(report['retainedIntervals']) == 1,
+                 'control_current_host_not_complete')
+            interval = report['retainedIntervals'][0]['report']
+            need(interval['unknownInterval'] is True and interval['retryable'] is True
+                 and interval['partialRead']['bytes'] == 0 and interval['error']['type'] == 'ProcessLookupError'
+                 and all(row['state'] == 'rechecked-absent' for row in interval['positiveAbsence'])
+                 and len(interval['positiveAbsence']) == 2
+                 and len(result['evidence']['priorUnknownCurrentIntervals']) == 1,
+                 'control_current_failed_interval_not_preserved')
+            report['result'] = 'fresh-complete-whole-host-after-retained-unknown'
+        report['state'] = 'qualified'
+    except BaseException as error:
+        report['assessmentFailure'] = control_code(error)
+    report['reportComplete'] = True
+    raw_report = receiver.canonical(report)
+    need(len(raw_report) <= 8388608,'control_phase_report_bound')
+    receiver.create('control-'+label+'.json',raw_report)
+    report['retainedReport'] = {'path':CONTROL_ROOT+'/control-'+label+'.json', 'bytes':len(raw_report),
+                               'sha256':hashlib.sha256(raw_report).hexdigest(),
+                               'generation':pin(os.stat('control-'+label+'.json',dir_fd=receiver.ROOT_FD,follow_symlinks=False))}
+    return report
+
+
+def run_control():
+    receiver = None
+    prepared = None
+    failure = None
+    try:
+        receiver, context, prepared = prepare_control_root()
+        for raw, digest, label in ((ORIGINAL_CAPSULE, ORIGINAL_CAPSULE_SHA,'before'),
+                                   (CURRENT_CAPSULE, CURRENT_CAPSULE_SHA,'current')):
+            try: phase(raw,digest,label,receiver,context)
+            except BaseException as error:
+                if not PHASES or PHASES[-1]['phase'] != label:
+                    PHASES.append({'phase':label,'state':'unknown','reportComplete':False})
+                PHASES[-1]['unexpectedFailure'] = control_code(error)
+            if PHASES[-1]['state'] != 'qualified': break
+        receiver.guard_root()
+    except BaseException as error:
+        failure = control_code(error)
+    finally:
+        if receiver is not None:
+            try:
+                if getattr(receiver,'ROOT_FD',None) is not None: os.close(receiver.ROOT_FD)
+            finally:
+                for fd,_,_,_ in reversed(getattr(receiver,'PARENTS',[])): os.close(fd)
+    result = {'schema':1,'kind':'native-owned-current1e15-closing-kernel-red-green',
+              'operationId':OPERATION_ID, 'state':'qualified' if failure is None and len(PHASES) == 2
+              and all(row['state'] == 'qualified' for row in PHASES) else 'unknown',
+              'preparation':prepared,'phases':PHASES,'controlFailure':failure,
+              'nativeStartRun':False,'leaseMutation':False,'claimsReleased':False,
+              'priorUnknownsChanged':False,'replayAllowed':False,'streamsProjected':False}
+    raw = (json.dumps(result,sort_keys=True,separators=(',',':'))+'\n').encode()
+    if len(raw) > 5*1024**2:
+        result['streamsProjected'] = True
+        result['unprojectedBytes'] = len(raw)
+        result['unprojectedSha256'] = hashlib.sha256(raw).hexdigest()
+        result['state'] = 'kernel-control-awaiting-complete-evidence-collection'
+        result['phases'] = [{key:row.get(key) for key in ('phase','state','result','child','childClosure',
+                           'actualReadError','phaseFailure','assessmentFailure','unexpectedFailure','retainedReport')}
+                            for row in PHASES]
+        raw = (json.dumps(result,sort_keys=True,separators=(',',':'))+'\n').encode()
+    need(len(raw) <= 5*1024**2,'control_summary_bound')
+    sys.stdout.buffer.write(raw); sys.stdout.buffer.flush()
+
+
+run_control()

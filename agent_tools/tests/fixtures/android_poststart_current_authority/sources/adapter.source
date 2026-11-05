@@ -1,0 +1,188 @@
+"""Owned control projection of exact 92f pure definitions.
+
+No native adapter entry, native paths, host pins or private records. Complete
+whole source remains in ignored evidence; each retained body is byte-exact.
+The isolated test module substitutes this source checksum only for its owned
+control namespace, alongside its owned temporary admitted-proof checksum.
+"""
+import copy
+import hashlib
+import json
+import os
+import pathlib
+import re
+from agent_tools import android_installer_failed_check_retirement as retirement
+from agent_tools import android_installer_component_bundle as bundle
+EVIDENCE_ROOT = pathlib.Path('/owned-control/no-native-input')
+LEASE = EVIDENCE_ROOT / 'lease-archlinux-api35.json'
+ORIGINAL = '0dd55704-1e80-4d62-8d9d-2f0a123e0c3b'
+LEASE_SHA = '44f2b1d325cbd0dedda6d6af5b1bf856792edf327accad99475e8cde6e4e865a'
+
+
+def need(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+                      allow_nan=False).encode() + b'\n'
+
+def decode(raw):
+    def unique(rows):
+        value = {}
+        for key, item in rows:
+            need(key not in value, 'local_capture_duplicate_json_key')
+            value[key] = item
+        return value
+    return json.loads(raw, object_pairs_hook=unique)
+
+def fd9(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+def sha(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+def pin_record(pin):
+    need(type(pin) is dict and set(pin) == {'generation', 'parents', 'sha256'} and
+         type(pin['generation']) is list and len(pin['generation']) == 9 and
+         all(type(value) is int and value >= 0 for value in pin['generation']) and
+         type(pin['parents']) is dict and pin['parents'] and sha(pin['sha256']),
+         'local_capture_pin_schema')
+
+def input_record(value):
+    need(type(value) is dict and set(value) == {'path', 'pin'}, 'local_capture_input_schema')
+    path = pathlib.Path(value['path'])
+    need(type(value['path']) is str and path.is_absolute() and str(path) == value['path'] and
+         '..' not in path.parts and EVIDENCE_ROOT in path.parents, 'local_capture_input_path')
+    pin_record(value['pin'])
+
+class HeldInputs:
+    """Keep original descriptors and metadata through the entire local phase."""
+    def __init__(self):
+        self.files = {}
+        self.parents = {}
+
+    def read(self, path, limit, expected=None):
+        path = pathlib.Path(path)
+        if path in self.files:
+            record = self.files[path]
+            need(expected is None or expected == record['pin'], 'local_capture_input_pin_changed')
+            self.guard()
+            return record['raw'], copy.deepcopy(record['pin'])
+        chain, parents = bundle._parents(path.parent)
+        fd = None
+        try:
+            # Share ancestor descriptors across chunks/slices. Retaining twelve
+            # copies per file would exceed the host's finite FD allowance.
+            while chain:
+                name, directory = chain.pop(0)
+                try:
+                    if name in self.parents:
+                        need(self.parents[name]['pin'] == parents[name], 'local_capture_held_parent_changed')
+                    else:
+                        self.parents[name] = {'fd': directory, 'pin': parents[name]}
+                        directory = None
+                finally:
+                    if directory is not None:
+                        os.close(directory)
+            parent = self.parents[str(path.parent)]['fd']
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            generation = fd9(os.fstat(fd))
+            need(generation[2:6] == [0o100600, os.getuid(), os.getgid(), 1] and
+                 0 <= generation[6] <= limit <= 8 * 1024 * 1024, 'local_capture_input_unsafe')
+            chunks = []
+            count = 0
+            while True:
+                part = os.read(fd, min(65536, limit + 1 - count))
+                if not part:
+                    break
+                count += len(part)
+                need(count <= limit, 'local_capture_input_bound')
+                chunks.append(part)
+            raw = b''.join(chunks)
+            pin = {'generation': generation, 'parents': parents, 'sha256': digest(raw)}
+            need(len(raw) == generation[6] and (expected is None or pin == expected),
+                 'local_capture_input_changed')
+            self.files[path] = {'raw': raw, 'pin': pin, 'fd': fd, 'parent': parent}
+            fd = None
+            chain = []
+            self.guard()
+            return raw, copy.deepcopy(pin)
+        finally:
+            if fd is not None:
+                os.close(fd)
+            bundle._close(chain)
+
+    def bound(self, record, limit):
+        input_record(record)
+        return self.read(record['path'], limit, record['pin'])[0]
+
+    def guard(self):
+        for path, record in self.files.items():
+            pin = record['pin']
+            need(fd9(os.fstat(record['fd'])) == pin['generation'] and
+                 fd9(os.stat(path.name, dir_fd=record['parent'], follow_symlinks=False)) == pin['generation'],
+                 'local_capture_held_input_changed')
+        for name, record in self.parents.items():
+            need(fd9(os.fstat(record['fd']))[:5] == record['pin'] and
+                 fd9(os.stat(name, follow_symlinks=False))[:5] == record['pin'],
+                 'local_capture_held_parent_changed')
+
+    def captured(self, result):
+        """Move only this positively captured lease to its retained observation."""
+        evidence = result['retiredEvidence']
+        expected = LEASE.parent / ('component-retirement-' + ORIGINAL + '.quarantine') / 'captured-original-lease.json'
+        need(result['schema'] == 1 and result['kind'] == 'android-installer-component-local-lease-released' and
+             result['originalCorrelationId'] == ORIGINAL and result['leaseReleased'] is True and
+             result['originalOutcome'] == 'unknown' and result['replayAllowed'] is False and
+             evidence['path'] == str(expected) and evidence['sha256'] == LEASE_SHA and
+             evidence['leaseCapturedNotDeleted'] is True, 'local_capture_transition_unproven')
+        original = self.files[LEASE]
+        before = original['pin']
+        after = fd9(os.fstat(original['fd']))
+        need(after == evidence['generation'] and after[:8] == before['generation'][:8] and
+             after[8] >= before['generation'][8] and digest(original['raw']) == LEASE_SHA,
+             'local_capture_transition_inode_changed')
+        try:
+            os.stat(LEASE.name, dir_fd=original['parent'], follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError('local_capture_original_name_not_absent')
+        # Retain the original before-pin in the transition receipt. Its sole
+        # known rename does not relax guards on any other input or ancestor.
+        del self.files[LEASE]
+        try:
+            raw, current = self.read(expected, 1024)
+            need(current['generation'] == after and current['sha256'] == LEASE_SHA and
+                 [pin for name, pin in current['parents'].items() if name != '/'] == evidence['parents'] and
+                 raw == original['raw'], 'local_capture_retained_transition_changed')
+            return {'originalPath': str(LEASE), 'originalPin': before,
+                    'capturedPath': str(expected), 'capturedPin': current,
+                    'historicalPinChanged': False}
+        finally:
+            os.close(original['fd'])
+
+    def close(self):
+        for record in reversed(list(self.files.values())):
+            os.close(record['fd'])
+        self.files.clear()
+        for record in reversed(list(self.parents.values())):
+            os.close(record['fd'])
+        self.parents.clear()
+
+def current_relation(original, current):
+    measured = retirement.validate_component_retained_proof(current)
+    for key in ('originalCorrelationId', 'retirementCorrelationId', 'sourceSha', 'toolBundleId',
+                'intentSha256', 'lifecycleSha256', 'phaseCheckSha256', 'opening', 'principals'):
+        need(canonical(measured[key]) == canonical(original[key]), 'local_capture_current_binding_changed')
+    for key in ('packageSha256', 'routingSha256', 'settingsSha256', 'terminalHistorySha256', 'latestPublicReceipt'):
+        need(canonical(measured['snapshots'][0][key]) == canonical(original['snapshots'][0][key]),
+             'local_capture_current_baseline_changed')
+    for name in ('remote-lease.json', 'local-lease.json'):
+        need(measured['files'][name] == original['files'][name], 'local_capture_original_lease_pin_changed')
+    return measured

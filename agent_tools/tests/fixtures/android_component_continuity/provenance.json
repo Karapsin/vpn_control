@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "originalSource": "agent_tools/android_installer_component_bundle.py",
+  "originalSha256": "e218c1fc862eab2a5668da970b8d642fa3254fb2ff822ab4945f23ae787f4372",
+  "sourceSha": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "originalNativeEvidence": ".runtime/tool-recovery/android-head-target-1f2025d9-8e2d-4d2d-8919-f9a785bdf7a7/original-7310-effect-boundary.json",
+  "nativeBoundary": "Original local records retained bytes/inode/security/size/timestamps; only filesystem device number changed. Existing closure rejects old pin. New qualification is opt-in and keeps original identities.",
+  "testSeam": "Only the historical device number is projected in an original pin. Every file/ancestor read, byte hash and current metadata observation uses real OS descriptors. No native release authority.",
+  "retirementSource": "agent_tools/android_installer_failed_check_retirement.py",
+  "retirementSha256": "6ed4605ca3723ed55d398a22ae975492937988c1c58f98132c0ea92079670a54",
+  "continuityBeforeRelocationSha256": "536f558fe7dfbd3f0b7645bdce6d658c6c7020762f34c6416d5eff4722bf82db",
+  "relocationNativeEvidence": ".runtime/tool-recovery/android-continuity-relocation-e62b06f4-e06f-4305-8944-01848cba42be/observation.json",
+  "relocationTestSeams": "Owned source-scope trust roots and synthetic authenticated probe bytes; actual directory rename0777-to0755 and old-name symlink, all reads via real descriptors. The physical/logical fixture prefixes are the same real path. Actual APFS firmlink alias remains native-only.",
+  "retirementBeforeRelocationSha256": "074c59e49ab9b9ebb8ad87a94d5c52505f8bbf276c4d30b0816d194909f7cb4f"
+}

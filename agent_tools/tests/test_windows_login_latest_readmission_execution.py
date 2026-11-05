@@ -1,4 +1,9 @@
-"""Whole protected-flow causal readmission tests; only public marker input."""
+"""Protected-flow causal readmission tests with controlled public-marker input.
+
+Historical native facts and whole-source provenance remain unchanged. Linkage
+covers only the definitions this cohort actually compiles; it does not qualify
+the current complete producer, execute() admission or native credential input.
+"""
 import ast
 import copy
 import hashlib
@@ -11,14 +16,38 @@ import unittest
 
 FIXTURE = Path(__file__).parent / 'fixtures/windows_login_latest_readmission'
 
+CONSUMED_PROTECTED_DEFINITIONS = (
+    'PrivateInputUnknown', 'private_keys', 'enter_private', 'ppm', 'screen_gate',
+    'wait_known_field', 'prepare_screen', '_login_flow',
+)
+
+
+def protected_nodes(raw):
+    tree = ast.parse(raw)
+    selected = []
+    for name in CONSUMED_PROTECTED_DEFINITIONS:
+        matches = [row for row in tree.body
+                   if isinstance(row, (ast.FunctionDef, ast.ClassDef)) and row.name == name]
+        if len(matches) != 1:
+            raise ValueError('Protected definition missing or duplicated: ' + name)
+        selected.append(matches[0])
+    return selected
+
+
+def protected_definition_sources(raw):
+    """Exact consumed definitions, including decorators, headers and bodies."""
+    lines = raw.splitlines(keepends=True)
+    selected = {}
+    for node in protected_nodes(raw):
+        first = min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)])
+        selected[node.name] = b''.join(lines[first - 1:node.end_lineno])
+    return selected
+
 
 def load(name, facts):
     raw = (FIXTURE / name).read_bytes()
-    tree = ast.parse(raw)
     ns = {'hashlib': hashlib, 'json': json, 're': re, 'os': os}
-    for name in ('PrivateInputUnknown', 'private_keys', 'enter_private', 'ppm', 'screen_gate',
-                 'wait_known_field', 'prepare_screen', '_login_flow'):
-        node = next(row for row in tree.body if isinstance(row, (ast.FunctionDef, ast.ClassDef)) and row.name == name)
+    for node in protected_nodes(raw):
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(FIXTURE / name), 'exec'), ns)
     pixels = bytes((240, 240, 240)) * (320 * 200)
     ns.update(LOGIN_MODE='login-submit', LOGIN_EXPECTED=copy.deepcopy(facts['expected']),
@@ -105,9 +134,36 @@ class LatestReadmissionExecution(unittest.TestCase):
     def test_latest_session_state_changed_before_any_input(self):
         self.causal(lambda current: current['session'].update(State=4), 'instance_login_session_changed')
 
-    def test_current_source_matches_the_qualified_afterimage(self):
+    def assert_protected_linkage(self, current):
+        after = (FIXTURE / 'after.source').read_bytes()
+        self.assertEqual(hashlib.sha256(after).hexdigest(), self.provenance['afterSourceSha256'])
+        self.assertEqual(protected_definition_sources(current), protected_definition_sources(after))
+
+    def test_current_consumed_protected_definitions_match_historical_afterimage(self):
         production = Path(__file__).parents[1] / 'readiness_windows_login.py'
-        self.assertEqual(production.read_bytes(), (FIXTURE / 'after.source').read_bytes())
+        self.assert_protected_linkage(production.read_bytes())
+
+    def test_every_consumed_definition_change_breaks_historical_linkage(self):
+        production = Path(__file__).parents[1] / 'readiness_windows_login.py'
+        current = production.read_bytes()
+        current_definitions = protected_definition_sources(current)
+        for node in protected_nodes(current):
+            with self.subTest(definition=node.name):
+                lines = current.splitlines(keepends=True)
+                # Alter only this actual protected definition. The current
+                # whole source and all other consumed definitions stay intact.
+                first = node.body[0]
+                insertion = first.end_lineno if (isinstance(first, ast.Expr)
+                    and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str)) else first.lineno - 1
+                mutation = (b"    changed_protected_fixture_marker = True\n" if isinstance(node, ast.ClassDef)
+                    else b"    raise RuntimeError('controlled protected-definition mutation')\n")
+                lines.insert(insertion, mutation)
+                changed = b''.join(lines)
+                differences = {name for name, raw in protected_definition_sources(changed).items()
+                    if raw != current_definitions[name]}
+                self.assertEqual(differences, {node.name})
+                with self.assertRaises(AssertionError):
+                    self.assert_protected_linkage(changed)
 
 
 if __name__ == '__main__':

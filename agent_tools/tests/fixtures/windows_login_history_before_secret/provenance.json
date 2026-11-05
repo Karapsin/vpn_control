@@ -1,0 +1,6 @@
+{
+  "failure": "prior canonical source admission occurs after credential file read",
+  "nativeFailureClaimed": false,
+  "preservedNativeRefusal": "ignored task evidence retains canonical selected-owner prior-source/legacy-phase refusals; this regression concerns independent local admission order",
+  "sourceSha256": "e130b5736149be8a7ba04e681d977c237cc2db2996529605731dcd004d8e308e"
+}

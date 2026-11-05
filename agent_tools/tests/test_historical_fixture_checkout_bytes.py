@@ -431,6 +431,79 @@ PARSE_ONLY_MANIFESTS = (
     'agent_tools/tests/fixtures/ssh_acceptance_owner_readiness/provenance.json',
 )
 
+TART_RENDERER_BYTE_FIXTURES = (
+    ("agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/static-review-rejected.json",
+     "35dc19b51666f4dd74e4bdef9b285f1f33bea4d167f9e63337eeaeb382fb51a1", None),
+)
+
+
+TART_PROVIDER_SHAPE_BYTE_FIXTURES = (
+    ('agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/native-capture.json',
+     '115e985b2f351ecd0f23831f62a36eafa453675df588d7c4c5a58d888477e789', None),
+    ('agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/native-get.stdout.json',
+     '45a4df483f7c6fea1232e8b4c18e0bec22df096905379df340d49de91287ac2b', None),
+    ('agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/native-list.stdout.json',
+     'e51118b8556336f304d1d9431560ada898e8449c90cabc722f1c35de81d237b0', None),
+)
+
+
+ANDROID_RECOVERY_BYTE_FIXTURES = (
+    ('agent_tools/tests/fixtures/android_component_continuity/provenance.json',
+     '7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29', None),
+    ('agent_tools/tests/fixtures/android_component_successor/provenance.json',
+     '7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324', None),
+    ('agent_tools/tests/fixtures/android_current_census/provenance.json',
+     '1f7f0d67d3767dfc885c9a0d8b90dbe6403bcb784806161c885d255644d9c0ab', None),
+    ('agent_tools/tests/fixtures/android_local_custody/provenance.json',
+     'bfe885e2173a00294c133d5b55c18031a7a641ca70c757a68f131523be6dcdee', None),
+    ('agent_tools/tests/fixtures/android_native_observer_control/provenance.json',
+     '03d10a383130ccf518067c2e4e2ab3663dd485ba126c252f6c2193da285726e4', None),
+)
+
+
+ANDROID_PERSISTED_BYTE_FIXTURES = (
+    ('agent_tools/tests/fixtures/android_persisted_start/admission-blocked.native.json',
+     '88c0c699d367a9bb62b87f6e2e0abdca0dabdee897cfb17820216fba760e4072', None),
+    ('agent_tools/tests/fixtures/android_persisted_start/provenance.json',
+     'd2542034ae24e1dc5f0b3d481a9fd645c8f904100c2e4c16f3c49c13f3cd7a9f', None),
+    ('agent_tools/tests/fixtures/android_persisted_start/test-portability.before.source',
+     'e2f01038406d5169d4c7903643d240328effb4f1ec76db5d53cab935ae9d12c3', None),
+    ('agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json',
+     'fdf4c224396ce55f9ffa6c7ce67d6d62bf29b23bd779e340999c53beb665bff9', None),
+    ('agent_tools/tests/fixtures/android_terminal_observer_lifetime/provenance.json',
+     'd76e86e5ac42ccb64af062e5d648237e33f290d9ac5ed60e26ec6d7008c6256e', None),
+    ('agent_tools/tests/fixtures/android_terminal_zombie_retry/provenance.json',
+     'fe92697de3c00fac3c52447d819b34b9c9019a698e56a1d6255e29fb8a615cbe', None),
+    ('agent_tools/tests/fixtures/android_terminal_zombie_retry/test.default-selector.before.source',
+     'ba2c2649559a66369f2c0b385cc29175d34d40b18a91fe4da5a34bf6d2a0b164', None),
+)
+
+
+RECOVERY_POLICY_BYTE_FIXTURES = (
+    ('agent_tools/tests/fixtures/android_poststart_current_authority/provenance.json',
+     '3437d31655ef424966eba481d156b0968efede04995209eeeebdc22dcadb1109', None),
+    ('agent_tools/tests/fixtures/windows_conservative_policy/provenance.json',
+     'e81cfa7e07788e43fe862417065ce32799dde55d0450f1d4c957cc40dc3c98b8', None),
+    ('agent_tools/tests/fixtures/windows_fresh_readonly_observer/executable-schema-native-facts.json',
+     '68e7ba12cc1c735ec9115e29c6cbd4040e2a7ddfc739d736c08fb4138dedc875', None),
+    ('agent_tools/tests/fixtures/windows_fresh_readonly_observer/provenance.json',
+     '653a9b5fa410e79684cf5033f12516ac2e5f40254d58aa7800f1baedef3d10d5', None),
+)
+
+
+# Mutable public review inputs use their current bytes as the Git roundtrip
+# oracle. This tests conversion only; it grants no source or native authority.
+CURRENT_REVIEW_INPUT_PATHS = (
+    "agent_tools/readiness_vm_dispatch.json",
+    "scripts/check_python_platform_contracts.py",
+    "scripts/test_python_platform_contracts.py",
+)
+CURRENT_REVIEW_INPUT_BYTE_FIXTURES = tuple(
+    (name, hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), None)
+    for name in CURRENT_REVIEW_INPUT_PATHS
+)
+
+
 class HistoricalFixtureCheckoutBytesTest(unittest.TestCase):
     def _verify_checkout(self, attributes, corrupted=(), extra_files=(), required_unset=(), required_unspecified=()):
         fixtures = [(name, expected, None) for name, expected in FIXTURES]
@@ -505,10 +578,31 @@ class HistoricalFixtureCheckoutBytesTest(unittest.TestCase):
                                                                          list(PUBLIC_FRAME_BYTE_FIXTURES) + list(SOURCE_DEPENDENCY_BYTE_FIXTURES) +
                                                                          list(LEASE_POLICY_BYTE_FIXTURES) + list(AUDITED_RAW_BYTE_FIXTURES) +
                                                                          list(ARCHIVE_NESTED_BYTE_FIXTURES) + list(VISUAL_AVAILABILITY_BYTE_FIXTURES) +
-                                                                         list(WINDOWS_ACL_CREATION_BYTE_FIXTURES) + list(SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES)),
+                                                                         list(WINDOWS_ACL_CREATION_BYTE_FIXTURES) + list(SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES) +
+                                                                         list(TART_RENDERER_BYTE_FIXTURES) + list(TART_PROVIDER_SHAPE_BYTE_FIXTURES) +
+                                                                         list(ANDROID_RECOVERY_BYTE_FIXTURES) + list(ANDROID_PERSISTED_BYTE_FIXTURES) +
+                                                                         list(CURRENT_REVIEW_INPUT_BYTE_FIXTURES) + list(RECOVERY_POLICY_BYTE_FIXTURES)),
                               required_unset={name for name, _, _ in
-                                              PUBLIC_FRAME_BYTE_FIXTURES + SOURCE_DEPENDENCY_BYTE_FIXTURES + LEASE_POLICY_BYTE_FIXTURES + AUDITED_RAW_BYTE_FIXTURES + ARCHIVE_NESTED_BYTE_FIXTURES + VISUAL_AVAILABILITY_BYTE_FIXTURES + WINDOWS_ACL_CREATION_BYTE_FIXTURES + SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES},
+                                              PUBLIC_FRAME_BYTE_FIXTURES + SOURCE_DEPENDENCY_BYTE_FIXTURES + LEASE_POLICY_BYTE_FIXTURES + AUDITED_RAW_BYTE_FIXTURES + ARCHIVE_NESTED_BYTE_FIXTURES + VISUAL_AVAILABILITY_BYTE_FIXTURES + WINDOWS_ACL_CREATION_BYTE_FIXTURES + SSH_PROXY_DESCRIPTOR_BYTE_FIXTURES + TART_RENDERER_BYTE_FIXTURES + TART_PROVIDER_SHAPE_BYTE_FIXTURES + ANDROID_RECOVERY_BYTE_FIXTURES + ANDROID_PERSISTED_BYTE_FIXTURES + CURRENT_REVIEW_INPUT_BYTE_FIXTURES + RECOVERY_POLICY_BYTE_FIXTURES},
                               required_unspecified=PARSE_ONLY_MANIFESTS)
+
+    def test_original_policy_converts_recovery_policy_provenance(self):
+        before = (ROOT / "agent_tools/tests/fixtures/native_review_input_bytes/attributes.before.source").read_bytes()
+        self.assertEqual(hashlib.sha256(before).hexdigest(),
+                         "99ef961a6b1ef27fe7340f2b9a9c2fb5ffad7dd88501215076b6b8b0f12db7ed")
+        names = {name for name, _, _ in RECOVERY_POLICY_BYTE_FIXTURES}
+        self._verify_checkout(before, corrupted=names,
+                              extra_files=RECOVERY_POLICY_BYTE_FIXTURES,
+                              required_unspecified=names)
+
+    def test_original_policy_converts_current_source_review_inputs(self):
+        before = (ROOT / "agent_tools/tests/fixtures/native_review_input_bytes/attributes.before.source").read_bytes()
+        self.assertEqual(hashlib.sha256(before).hexdigest(),
+                         "99ef961a6b1ef27fe7340f2b9a9c2fb5ffad7dd88501215076b6b8b0f12db7ed")
+        names = set(CURRENT_REVIEW_INPUT_PATHS)
+        self._verify_checkout(before, corrupted=names,
+                              extra_files=CURRENT_REVIEW_INPUT_BYTE_FIXTURES,
+                              required_unspecified=names)
 
     def extended_files(self):
         result = []

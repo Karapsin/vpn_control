@@ -883,6 +883,10 @@ def execute(backend,operation,profile,expected,credential_file,deadline,*,status
             else:barrier=launch._load(launch._public_file(directory/'credential.launch-barrier.json',held,131072))
         label=mode+'-'+__import__('uuid').uuid4().hex;path=directory/(label+'.py');_retain(directory,path.name,source)
         held.read(str(path),hashlib.sha256(source).hexdigest(),max_bytes=1048576)
+        # Prior source admission is independent of the new credential. Refuse
+        # untrusted history before opening any private file for this attempt.
+        approved=_approved_predecessors(backend,operation,held)if mode=='login-submit'else{}
+        backend._guard();held.finish();held.final_identity_pass()
         # Passwords are opened only after the immutable local credential fence.
         if mode=='login-submit':
             try:
@@ -896,7 +900,6 @@ def execute(backend,operation,profile,expected,credential_file,deadline,*,status
         from contextlib import contextmanager
         from . import ssh_dispatch_retry,ssh_dispatch_admission
         command=['python3','-I','-B','-c','import base64;exec(base64.b64decode('+repr(base64.b64encode(source).decode())+'))',hashlib.sha256(source).hexdigest(),intended['callerSha256']if mode=='login-submit'else original['callerSha256']]
-        approved=_approved_predecessors(backend,operation,held)if mode=='login-submit'else{}
         original_intent_raw=(json.dumps(intended,sort_keys=True)+'\n').encode()
         original_intent_sha=hashlib.sha256(original_intent_raw).hexdigest()
         if mode=='login-submit':held.read(str(intent),original_intent_sha,max_bytes=65536)

@@ -1,0 +1,6 @@
+def load(name,digest):
+ path=root/name;s=path.lstat()
+ if not stat.S_ISREG(s.st_mode) or s.st_uid!=0 or s.st_gid!=0 or stat.S_IMODE(s.st_mode)!=0o600 or s.st_nlink!=1:raise ValueError('helper_unsafe')
+ raw=path.read_bytes()
+ if hashlib.sha256(raw).hexdigest()!=digest or path.lstat()!=s:raise ValueError('helper_changed')
+ m=types.ModuleType('retained_'+name.replace('.','_'));m.__file__=str(path);sys.modules[m.__name__]=m;exec(compile(raw,str(path),'exec'),m.__dict__);return m

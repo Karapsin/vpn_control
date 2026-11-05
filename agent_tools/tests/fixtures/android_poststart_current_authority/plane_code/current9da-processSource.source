@@ -1,0 +1,91 @@
+
+def plane_boot():
+ path=PROC_ROOT/'sys/kernel/random/boot_id';fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  before=COMPONENT_BUNDLE._pin(os.fstat(fd));raw=os.read(fd,129)
+  record={'pid':0,'name':'boot_id','generation':before,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'readComplete':True,'rawCaptured':True,'rawBase64':STAGE_BASE64.b64encode(raw).decode()};ATTEMPT_PROC_RAW.append(record)
+  if not stat.S_ISREG(before[2])or COMPONENT_BUNDLE._pin(os.fstat(fd))!=before or COMPONENT_BUNDLE._pin(os.stat(path,follow_symlinks=False))!=before or re.fullmatch(rb'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\n',raw)is None:raise ValueError('plane_boot_unknown')
+  return raw.decode().strip()
+ finally:os.close(fd)
+def plane_read(pid,name,limit):
+ if type(pid)is not int or pid<=0 or name not in('cmdline','stat','status'):raise ValueError('plane_process_unknown')
+ path=PROC_ROOT/str(pid)/name;fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  before=COMPONENT_BUNDLE._pin(os.fstat(fd));raw=bytearray();complete=True
+  match_limit=max(len(STAGE_BASE64.b64decode(ATTEMPT_BINDING[k],validate=True))for k in('expectedRootArgvBase64','expectedSudoArgvBase64'))if name=='cmdline'else None
+  read_limit=min(limit,match_limit+1)if match_limit is not None else limit
+  if not stat.S_ISREG(before[2]):raise ValueError('plane_process_unknown')
+  while True:
+   part=os.read(fd,min(65536,read_limit+1-len(raw)))
+   if not part:break
+   raw.extend(part)
+   if match_limit is not None and len(raw)>match_limit:complete=False;break
+   if len(raw)>limit:raise ValueError('plane_process_limit')
+  known=name!='cmdline'or bytes(raw)in tuple(STAGE_BASE64.b64decode(ATTEMPT_BINDING[k],validate=True)for k in('expectedRootArgvBase64','expectedSudoArgvBase64'))
+  ATTEMPT_PROC_RAW.append({'pid':pid,'name':name,'generation':before,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'readComplete':complete,'rawCaptured':known,'rawBase64':STAGE_BASE64.b64encode(raw).decode()if known else None})
+  if COMPONENT_BUNDLE._pin(os.fstat(fd))!=before or COMPONENT_BUNDLE._pin(os.stat(path,follow_symlinks=False))!=before:raise ValueError('plane_identity_changed')
+  return bytes(raw)
+ finally:os.close(fd)
+def plane_identity(pid,cmd,boot):
+ status=plane_read(pid,'status',16384);raw=plane_read(pid,'stat',16384);again=plane_read(pid,'cmdline',65536);status2=plane_read(pid,'status',16384);raw2=plane_read(pid,'stat',16384)
+ def parsed(value):
+  m=re.fullmatch(rb'([1-9][0-9]*) \(([^\n]*)\) ([RSDZTWXxKPI]) (.*)\n?',value)
+  if m is None or int(m[1])!=pid or len(m[4].split())<19:raise ValueError('plane_process_unknown')
+  fields=m[4].split();ppid=int(fields[0]);ticks=int(fields[18])
+  if ppid<0 or ticks<=0:raise ValueError('plane_process_unknown')
+  return (ticks,ppid,m[3].decode())
+ first=parsed(raw);last=parsed(raw2)
+ def ids(tag,value):
+  found=re.findall(rb'^'+tag+rb':\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+([0-9]+)\s*$',value,re.M)
+  if len(found)!=1:raise ValueError('plane_process_unknown')
+  return [int(n)for n in found[0]]
+ uid=ids(b'Uid',status);gid=ids(b'Gid',status)
+ if again!=cmd or first[:2]!=last[:2]or uid!=ids(b'Uid',status2)or gid!=ids(b'Gid',status2):raise ValueError('plane_identity_changed')
+ return {'pid':pid,'startTicks':first[0],'ppid':first[1],'processState':last[2],'bootId':boot,'uid4':uid,'gid4':gid,'cmdSha256':hashlib.sha256(cmd).hexdigest(),'processAdopted':False}
+def plane_resolve_disappeared(pid,error):
+ # Do not reuse a PID after a race. Only current positive ENOENT resolves it.
+ try:os.stat(PROC_ROOT/str(pid),follow_symlinks=False)
+ except FileNotFoundError as closing:return {'pid':pid,'errno':error.errno,'closingErrno':closing.errno,'state':'rechecked-absent'}
+ except OSError as closing:return {'pid':pid,'errno':error.errno,'closingErrno':closing.errno,'state':'unknown'}
+ return {'pid':pid,'errno':error.errno,'closingErrno':None,'state':'unknown'}
+def attempt_workers():
+ import time as census_time
+ started=census_time.monotonic();boot=plane_boot()
+ opening=sorted(int(n)for n in os.listdir(PROC_ROOT)if n.isdecimal())
+ if len(opening)>8192:raise ValueError('plane_process_limit')
+ expected={role:STAGE_BASE64.b64decode(ATTEMPT_BINDING[key],validate=True)for role,key in(('python','expectedRootArgvBase64'),('sudo','expectedSudoArgvBase64'))}
+ matches=[];errors=[];resolved=[];read=0;enumerated=set();pending=opening
+ waves=[];evidence={'openingPids':opening,'waves':waves,'matches':matches,'errors':errors,'resolved':resolved,'state':'scanning'}
+ globals().setdefault('CURRENT_CENSUS_WAVES',[]).append(evidence)
+ raw_bytes=sum(row['bytes']for row in ATTEMPT_PROC_RAW)
+ try:
+  for number in range(8):
+   wave={'number':number,'pendingPids':pending[:],'readPids':[],'rawBegin':len(ATTEMPT_PROC_RAW)};waves.append(wave)
+   for pid in pending:
+    if census_time.monotonic()-started>2 or len(enumerated)>=8192 or len(ATTEMPT_PROC_RAW)>=16480 or raw_bytes>8388608:raise ValueError('plane_process_limit')
+    enumerated.add(pid);raw_begin=len(ATTEMPT_PROC_RAW)
+    try:
+     cmd=plane_read(pid,'cmdline',65536);read+=1;wave['readPids'].append(pid)
+     if cmd in expected.values():
+      identity=plane_identity(pid,cmd,boot);identity['role']=next(k for k,v in expected.items()if v==cmd);matches.append(identity)
+    except (FileNotFoundError,ProcessLookupError)as error:
+     row=plane_resolve_disappeared(pid,error);resolved.append(row)
+     if row['state']!='rechecked-absent':errors.append(row)
+    except PermissionError as error:errors.append({'pid':pid,'errno':error.errno,'closingErrno':None,'state':'unknown'})
+    finally:raw_bytes+=sum(row['bytes']for row in ATTEMPT_PROC_RAW[raw_begin:])
+   final=sorted(int(n)for n in os.listdir(PROC_ROOT)if n.isdecimal())
+   pending=sorted(set(final)-enumerated)
+   wave.update(closingPids=final,newPids=pending[:],enumeratedPids=sorted(enumerated),rawEnd=len(ATTEMPT_PROC_RAW))
+   if any(row['state']=='rechecked-absent'and row['pid']in final for row in resolved):raise ValueError('plane_identity_changed')
+   if census_time.monotonic()-started>2 or raw_bytes>8388608 or len(ATTEMPT_PROC_RAW)>16480:raise ValueError('plane_process_limit')
+   if not pending:break
+  else:raise ValueError('plane_process_limit')
+  closing_begin=len(ATTEMPT_PROC_RAW)
+  try:closing=plane_boot()
+  finally:raw_bytes+=sum(row['bytes']for row in ATTEMPT_PROC_RAW[closing_begin:])
+  if census_time.monotonic()-started>2 or raw_bytes>8388608 or len(ATTEMPT_PROC_RAW)>16480:raise ValueError('plane_process_limit')
+  evidence.update(state='complete'if not errors and boot==closing else'incomplete',bootId=boot,closingBootId=closing,rawBytes=raw_bytes)
+  return {'matches':matches,'errors':errors,'resolved':resolved,'enumeratedPids':sorted(enumerated),'closingPids':final,'newPids':pending,'enumeratedCount':len(enumerated),'readCount':read,'bootId':boot,'closingBootId':closing,'censusComplete':not errors and not pending and boot==closing,'processAdopted':False}
+ except BaseException:
+  evidence.update(state='incomplete',rawBytes=raw_bytes)
+  raise

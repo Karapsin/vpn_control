@@ -1,0 +1,40 @@
+{
+  "files": {
+    "harness.before.source": {
+      "bytes": 16531,
+      "sha256": "0eb18322c78a01716cbb64759915f4b1eddedd00e6aeccf3ad423eb921643251"
+    },
+    "process-current1e15.before.source": {
+      "bytes": 7029,
+      "sha256": "779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f"
+    },
+    "process.before.source": {
+      "bytes": 5264,
+      "sha256": "26df14113106aae8a76fed795e1d562726f1b43e9be8763c736315fac350e28e"
+    },
+    "successor.before-closing-budget.source": {
+      "bytes": 37532,
+      "sha256": "d78bea20bfa16abfc0dc30ff397f5c4b6fb20a92b2fab56463b82c61981c21f0"
+    },
+    "successor.before-distinct-source.source": {
+      "bytes": 37613,
+      "sha256": "5f083c01001907eb7c6112e3de026236699cc040612a99841f05cebb393a819f"
+    },
+    "successor.whole-before.source": {
+      "bytes": 29476,
+      "sha256": "e661cacfa9c3d50b9ac7d78d2da1bd9609dee38ef2a577850485afaf333e6d54"
+    },
+    "validator-current1e15.original.source": {
+      "bytes": 10444,
+      "sha256": "2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1"
+    },
+    "validator.original.source": {
+      "bytes": 6828,
+      "sha256": "23e692586d4f82f4c6dc8a24c0200eb572292c0efc78e68497de33ca0f119670"
+    }
+  },
+  "kind": "authentic-current-effect-plane-census-beforeimages",
+  "originalCapsuleSha256": "38158a1ed76a5f57b7568b5b7f5867592ceeed44d7643e639fa4b531f443989b",
+  "originalProgramSha256": "982dd6db1743fa2b14a5bc79dc575551eab10a880db0db27860d0fafb34f94da",
+  "schema": 1
+}

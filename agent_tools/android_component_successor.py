@@ -1,0 +1,764 @@
+"""Internal durable carrier for a separately admitted Android cleanup successor.
+
+The native adapter authenticates its immutable source, original admission and
+fresh target proofs before calling this module. Nothing here releases a lease,
+replays an original operation, or grants a public caller execution authority.
+The existing durable owner controls execution lifetime. This carrier retains
+large private observations separately, leaving only a bounded manifest in the
+owner's stdout. Observation can therefore time out without killing execution.
+"""
+from __future__ import annotations
+
+import ast
+import base64
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import types
+import uuid
+
+MAX_OBSERVATION_BYTES = 256 * 1024 * 1024
+MAX_SLICE_BYTES = 4 * 1024 * 1024
+_SHA = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _need(condition: bool, reason: str) -> None:
+    if not condition:
+        raise ValueError(reason)
+
+
+def _canonical(value) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False).encode() + b"\n"
+
+
+def _pin(info) -> list[int]:
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def _identity(path: Path, *, directory: bool) -> list[int]:
+    info = path.lstat()
+    _need((stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode))
+          and info.st_uid == os.geteuid() and info.st_gid == os.getegid()
+          and stat.S_IMODE(info.st_mode) == (0o700 if directory else 0o600)
+          and (directory or info.st_nlink == 1), "successor_private_state_unsafe")
+    _need(path.is_absolute() and path.resolve() == path,
+          "successor_private_path_unsafe")
+    return _pin(info)
+
+
+def _create(path: Path, raw: bytes) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+
+
+def load_private_module(path: Path, expected_sha256: str, module_name: str):
+    """Load exact held bytes; a normal read changing atime is not replacement."""
+    path = Path(path)
+    _need(type(expected_sha256) is str and _SHA.fullmatch(expected_sha256)
+          and type(module_name) is str and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,95}", module_name),
+          "successor_helper_binding_invalid")
+    before = _identity(path, directory=False)
+    _need(0 < before[6] <= 8 * 1024 * 1024, "successor_helper_bound")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        _need(_pin(os.fstat(fd)) == before, "successor_helper_changed")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(before[6] + 1)
+        _need(_pin(os.fstat(fd)) == before == _identity(path, directory=False)
+              and len(raw) == before[6] and hashlib.sha256(raw).hexdigest() == expected_sha256,
+              "successor_helper_changed")
+    finally:
+        os.close(fd)
+    module = types.ModuleType(module_name)
+    module.__file__ = str(path)
+    sys.modules[module_name] = module
+    exec(compile(raw, str(path), "exec"), module.__dict__)
+    return module
+
+
+def qualify_existing_bundle(bundle, payload: dict, directory: Path,
+                            expected_tree_sha256: str, *, _receiver_root=None) -> dict:
+    """Freshly qualify one existing immutable stage without staging it again.
+
+    The trusted native adapter supplies the original source-closed bundle module
+    and authenticated original transfer payload. These fresh descriptor pins
+    remain explicitly distinct from the historical stage's original receipt.
+    No source file, directory, ownership marker or old pin is changed.
+    """
+    _need(type(payload) is dict and set(payload) == {"schema", "kind", "treeSha256", "files"}
+          and type(payload["schema"]) is int and payload["schema"] == 1
+          and payload["kind"] == "android-installer-component-transfer"
+          and type(payload["files"]) is dict and set(payload["files"]) == set(bundle.FILES)
+          and type(expected_tree_sha256) is str and _SHA.fullmatch(expected_tree_sha256)
+          and payload["treeSha256"] == expected_tree_sha256,
+          "successor_existing_bundle_payload_invalid")
+    directory = Path(directory).absolute()
+    if _receiver_root is not None:
+        _need(directory.parent == Path(_receiver_root).absolute(),
+              "successor_existing_bundle_parent_changed")
+    prefix = "android-installer-component-bundle-"
+    _need(directory.name.startswith(prefix)
+          and str(uuid.UUID(directory.name[len(prefix):])) == directory.name[len(prefix):],
+          "successor_existing_bundle_path_invalid")
+    expected = {}
+    total = 0
+    for name in bundle.FILES:
+        encoded = payload["files"][name]
+        _need(type(encoded) is str and len(encoded) <= 4 * 1024 * 1024,
+              "successor_existing_bundle_payload_invalid")
+        raw = base64.b64decode(encoded, validate=True)
+        total += len(raw)
+        _need(total <= 8 * 1024 * 1024, "successor_existing_bundle_bound")
+        expected[name] = raw
+    files = {name: bundle._read(directory / name, True)
+             for name in (*bundle.FILES, "manifest.json")}
+    _need(all(files[name][0] == expected[name] for name in bundle.FILES),
+          "successor_existing_bundle_source_changed")
+    tree = bundle._tree(files)
+    manifest = bundle._raw(tree)
+    _need(hashlib.sha256(manifest).hexdigest() == expected_tree_sha256
+          and files["manifest.json"][0] == manifest,
+          "successor_existing_bundle_manifest_changed")
+    directories = {"."}
+    for folder, subdirs, _ in os.walk(directory, followlinks=False):
+        directories.update(str((Path(folder) / name).relative_to(directory)) for name in subdirs)
+    receipt = {"schema": 1, "kind": "android-installer-component-bundle",
+               "directory": str(directory), "treeSha256": expected_tree_sha256,
+               "files": {name: pin for name, (_, pin) in files.items()},
+               "directories": {name: bundle._directory(directory / name) for name in sorted(directories)}}
+    _need(bundle.load(receipt) == expected, "successor_existing_bundle_changed")
+    return receipt
+
+
+def execute_retained(source: bytes, source_sha256: str, operation_id: str,
+                     directory: Path, *, namespace=None,
+                     max_bytes: int = MAX_OBSERVATION_BYTES) -> dict:
+    """Execute ONE already-admitted source; retain all output or refuse it.
+
+    The directory is create-only under the durable job's original private root.
+    A failure leaves its evidence for original-only observation; this function
+    has no retry or observation deadline. A trusted adapter may supply fixed
+    carrier globals, but public tool input must never supply that namespace.
+    """
+    _need(type(source) is bytes and 0 < len(source) <= 8 * 1024 * 1024
+          and type(source_sha256) is str and _SHA.fullmatch(source_sha256)
+          and hashlib.sha256(source).hexdigest() == source_sha256,
+          "successor_source_changed")
+    _need(type(operation_id) is str and str(uuid.UUID(operation_id)) == operation_id,
+          "successor_operation_invalid")
+    _need(type(max_bytes) is int and 1 <= max_bytes <= MAX_OBSERVATION_BYTES,
+          "successor_observation_bound_invalid")
+    compile(source, "authenticated-component-successor", "exec")
+    directory = Path(directory)
+    directory.mkdir(mode=0o700)
+    opening = _identity(directory, directory=True)
+    _create(directory / "intent.json", _canonical({
+        "schema": 1, "kind": "android-component-durable-observation",
+        "operationId": operation_id, "sourceSha256": source_sha256,
+        "maxBytes": max_bytes, "replayAllowed": False}))
+
+    # All writes are private, not retained SSH stdout/stderr. The aggregate
+    # bound includes phases and raw records as well as both execution streams.
+    import contextlib
+    import io
+    import time
+    retained = 0
+    records = []
+    began = time.monotonic()
+
+    def record(role, raw):
+        nonlocal retained
+        _need(role in {"phase", "record"} and type(raw) is bytes,
+              "successor_record_invalid")
+        _need(retained + len(raw) <= max_bytes, "successor_observation_overflow")
+        name = "record-%05d.bin" % len(records)
+        _create(directory / name, raw)
+        retained += len(raw)
+        records.append({"name": name, "role": role, "bytes": len(raw),
+                        "sha256": hashlib.sha256(raw).hexdigest(),
+                        "generation": _identity(directory / name, directory=False)})
+
+    def phase(stage):
+        _need(type(stage) is str and re.fullmatch(r"[a-z][a-z0-9-]{0,95}", stage),
+              "successor_phase_invalid")
+        record("phase", _canonical({"schema": 1, "operationId": operation_id,
+               "stage": stage, "elapsedSeconds": time.monotonic() - began,
+               "sourceSha256": source_sha256, "authorityGranted": False}))
+
+    class Stream(io.TextIOBase):
+        def __init__(self, name):
+            self.path = directory / name
+            self.file = os.fdopen(os.open(self.path, os.O_WRONLY | os.O_CREAT |
+                                         os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+        @property
+        def encoding(self):
+            return "utf-8"
+        def write(self, value):
+            nonlocal retained
+            _need(type(value) is str, "successor_stream_invalid")
+            raw = value.encode("utf-8", "strict")
+            _need(retained + len(raw) <= max_bytes, "successor_observation_overflow")
+            self.file.write(raw)
+            retained += len(raw)
+            return len(value)
+        def flush(self):
+            self.file.flush()
+        def finish(self):
+            self.file.flush()
+            os.fsync(self.file.fileno())
+            self.file.close()
+        def close(self):
+            # Contextlib does not close redirected streams; callers own finish.
+            if not self.file.closed:
+                self.finish()
+
+    streams = {name: Stream(name + ".private") for name in ("stdout", "stderr")}
+    context = {"__name__": "__main__", "CARRIER_RECORD_RAW": record,
+               "CARRIER_RECORD_PHASE": phase,
+               "CARRIER_EXISTING_BUNDLE": qualify_existing_bundle}
+    if namespace is not None:
+        _need(type(namespace) is dict and not set(namespace) & set(context),
+              "successor_namespace_invalid")
+        context.update(namespace)
+    try:
+        with contextlib.redirect_stdout(streams["stdout"]), contextlib.redirect_stderr(streams["stderr"]):
+            exec(compile(source, "authenticated-component-successor", "exec"), context)
+    finally:
+        for stream in streams.values():
+            stream.finish()
+    manifests = {}
+    for name, stream in streams.items():
+        raw = stream.path.read_bytes()
+        manifests[name] = {"name": stream.path.name, "bytes": len(raw),
+                           "sha256": hashlib.sha256(raw).hexdigest(),
+                           "generation": _identity(stream.path, directory=False)}
+    _need(_identity(directory, directory=True)[:5] == opening[:5],
+          "successor_directory_changed")
+    result = {"schema": 1, "kind": "android-component-durable-observation-complete",
+              "operationId": operation_id, "sourceSha256": source_sha256,
+              "streams": manifests, "records": records, "totalBytes": retained,
+              "originalOutcome": "unknown", "replayAllowed": False}
+    _create(directory / "complete.json", _canonical(result))
+    return {**{key: result[key] for key in ("schema", "kind", "operationId", "sourceSha256", "streams", "totalBytes", "originalOutcome", "replayAllowed")},
+            "manifestSha256": hashlib.sha256(_canonical(result)).hexdigest(),
+            "manifestGeneration": _identity(directory / "complete.json", directory=False),
+            "recordCount": len(records)}
+
+
+def read_slice(directory: Path, manifest_sha256: str, stream_name: str,
+               offset: int, count: int) -> tuple[dict, bytes]:
+    """Read an authenticated bounded slice, never execute the admitted source."""
+    directory = Path(directory)
+    opening = _identity(directory, directory=True)
+    _need(type(manifest_sha256) is str and _SHA.fullmatch(manifest_sha256),
+          "successor_manifest_invalid")
+    _need(type(stream_name) is str and (stream_name in {"stdout", "stderr", "manifest"}
+          or re.fullmatch(r"record-[0-9]{5}", stream_name))
+          and type(offset) is int and offset >= 0
+          and type(count) is int and 1 <= count <= MAX_SLICE_BYTES,
+          "successor_slice_invalid")
+    path = directory / "complete.json"
+    manifest_pin = _identity(path, directory=False)
+    _need(0 < manifest_pin[6] <= 4 * 1024 * 1024, "successor_manifest_bound")
+    raw = path.read_bytes()
+    _need(hashlib.sha256(raw).hexdigest() == manifest_sha256
+          and _identity(path, directory=False) == manifest_pin,
+          "successor_manifest_changed")
+    result = json.loads(raw)
+    _need(result.get("kind") == "android-component-durable-observation-complete"
+          and result.get("replayAllowed") is False, "successor_manifest_invalid")
+    if stream_name == "manifest":
+        expected = {"generation": manifest_pin, "bytes": len(raw), "sha256": manifest_sha256}
+        path = directory / "complete.json"
+    elif stream_name in {"stdout", "stderr"}:
+        expected = result["streams"][stream_name]
+        path = directory / (stream_name + ".private")
+    else:
+        index = int(stream_name[7:])
+        _need(index < len(result["records"]), "successor_record_unavailable")
+        expected = result["records"][index]
+        _need(expected["name"] == stream_name + ".bin", "successor_record_changed")
+        path = directory / expected["name"]
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        pin = _identity(path, directory=False)
+        _need(pin == expected["generation"] == _pin(os.fstat(fd))
+              and pin[6] == expected["bytes"] and offset <= pin[6],
+              "successor_stream_changed")
+        digest = hashlib.sha256()
+        remaining = pin[6]
+        while remaining:
+            part = os.read(fd, min(65536, remaining))
+            _need(bool(part), "successor_stream_short")
+            digest.update(part)
+            remaining -= len(part)
+        _need(digest.hexdigest() == expected["sha256"], "successor_stream_changed")
+        os.lseek(fd, offset, os.SEEK_SET)
+        selected = os.read(fd, min(count, pin[6] - offset))
+        _need(_pin(os.fstat(fd)) == pin == _identity(path, directory=False),
+              "successor_stream_changed")
+    finally:
+        os.close(fd)
+    _need(_identity(directory, directory=True) == opening
+          and _identity(directory / "complete.json", directory=False) == manifest_pin,
+          "successor_directory_changed")
+    return {"operationId": result["operationId"], "stream": stream_name,
+            "offset": offset, "bytes": len(selected),
+            "sha256": hashlib.sha256(selected).hexdigest(),
+            "streamBytes": expected["bytes"], "streamSha256": expected["sha256"],
+            "manifestSha256": manifest_sha256, "replayAllowed": False}, selected
+
+
+def program_source(source: bytes, source_sha256: str, operation_id: str,
+                   directory: Path) -> bytes:
+    """Render the source-closed carrier for the existing durable job owner."""
+    own = Path(__file__).read_bytes()
+    tree = ast.parse(own)
+    names = {"_need", "_canonical", "_pin", "_identity", "_create",
+             "load_private_module", "qualify_existing_bundle", "execute_retained", "read_slice"}
+    definitions = [ast.get_source_segment(own.decode(), node) for node in tree.body
+                   if isinstance(node, ast.FunctionDef) and node.name in names]
+    _need(len(definitions) == len(names), "successor_execution_closure_changed")
+    prelude = "import ast,base64,hashlib,json,os,re,stat,sys,types,uuid\nfrom pathlib import Path\n"
+    prelude += "MAX_OBSERVATION_BYTES=" + repr(MAX_OBSERVATION_BYTES) + "\nMAX_SLICE_BYTES=" + repr(MAX_SLICE_BYTES) + "\n_SHA=re.compile(r'[0-9a-f]{64}\\Z')\n"
+    rendered = prelude + "\n\n".join(definitions)
+    rendered += "\nprint(json.dumps(execute_retained(base64.b64decode(" + repr(base64.b64encode(source).decode()) + ")," + repr(source_sha256) + "," + repr(operation_id) + ",Path(" + repr(str(directory)) + ")),sort_keys=True,separators=(',',':')),flush=True)\n"
+    return rendered.encode()
+
+
+_INSTALLER_HOST_RUNTIME = r'''
+def CARRIER_RECORD_RAW(role, raw):
+    if role != 'record' or type(raw) is not bytes:
+        raise ValueError('installer_host_raw_record_invalid')
+    HOST_RAW_DIGESTS.append({'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()})
+
+def installer_host_preflight():
+    if not sys.platform.startswith('linux') or os.getuid() != 0 or os.geteuid() != 0 or os.getgid() != 0 or os.getegid() != 0:
+        raise ValueError('installer_host_linux_root_required')
+    if Path('/proc/sys/kernel/random/boot_id').read_text().strip() != HOST_EXPECTED_BOOT:
+        raise ValueError('installer_host_boot_changed')
+    global COMPONENT_RETIRE_OBSERVATIONS, COMPONENT_RETIRE_RAW_RECORDS
+    global COMPONENT_RETIRE_RAW_INDEX, CLAIM_OBSERVATIONS, HOST_RAW_DIGESTS
+    COMPONENT_RETIRE_OBSERVATIONS = []
+    COMPONENT_RETIRE_RAW_RECORDS = []
+    COMPONENT_RETIRE_RAW_INDEX = {}
+    CLAIM_OBSERVATIONS = []
+    HOST_RAW_DIGESTS = []
+    admissions = {}
+    for role, expected in HOST_ADMISSION_PINS.items():
+        row = component_retirement_capture_record(Path(expected['path']), 2097152)
+        actual = {key: value for key, value in row.items() if key != 'rawBase64'}
+        if actual != expected or row['generation'][2:6] != [0o100600, 0, 0, 1]:
+            raise ValueError('installer_host_original_admission_changed')
+        admissions[role] = actual
+    lease = component_retirement_capture_record(ROOT / 'android-native-device-api35.lease', 1024)
+    if lease['state'] != 'present' or lease['generation'] != HOST_LEASE_PIN['generation'] or lease['sha256'] != HOST_LEASE_PIN['sha256'] or lease['parents'] != HOST_LEASE_PARENTS:
+        raise ValueError('installer_host_original_lease_changed')
+    exact = {'owner':'android-installer','host':'archlinux','device':'api35','correlationId':CLAIM_ORIGINAL}
+    if BASELINE_BASE64.b64decode(lease['rawBase64'], validate=True) != json.dumps(exact, sort_keys=True, separators=(',', ':')).encode() + b'\n':
+        raise ValueError('installer_host_original_lease_body_changed')
+    absent = {}
+    for name in HOST_ABSENT_NAMES:
+        row = component_retirement_capture_record(ROOT / name, 4096)
+        if row['state'] != 'absent':
+            raise ValueError('installer_host_release_or_alias_present')
+        absent[name] = row
+    actors = {}
+    actor_evidence = {}
+    for role, original in HOST_ORIGINAL_ACTORS.items():
+        row = readiness_process(original)
+        actor_evidence[role] = row
+        if row['state'] not in ('absent', 'pid-reused'):
+            raise ValueError('installer_host_original_actor_present')
+        actors[role] = {key: value for key, value in row.items() if key != 'rawBase64'}
+    fixture_record = component_retirement_capture_record(Path(HOST_FIXTURE_RECORD_PATH), 4096)
+    if fixture_record['state'] != 'present' or fixture_record['generation'] != HOST_FIXTURE_RECORD_PIN['generation'] or fixture_record['sha256'] != HOST_FIXTURE_RECORD_PIN['sha256']:
+        raise ValueError('installer_host_original_fixture_record_changed')
+    fixture_identity = json.loads(BASELINE_BASE64.b64decode(fixture_record['rawBase64'], validate=True))
+    if set(fixture_identity) != {'correlationId', 'pid', 'startTicks', 'port'} or fixture_identity['correlationId'] != CLAIM_ORIGINAL or any(fixture_identity[key] != HOST_ORIGINAL_ACTORS['fixture'][key] for key in ('pid', 'startTicks')) or type(fixture_identity['port']) is not int or not 1 <= fixture_identity['port'] <= 65535:
+        raise ValueError('installer_host_original_fixture_identity_changed')
+    fixture_port = fixture_identity['port']
+    try:
+        connection = socket.create_connection(('127.0.0.1', fixture_port), timeout=.5)
+    except ConnectionRefusedError:
+        pass
+    except OSError:
+        raise ValueError('installer_host_original_fixture_port_unknown') from None
+    else:
+        connection.close()
+        raise ValueError('installer_host_original_fixture_listener_present')
+    planes = [component_release_effect_plane_current_guard(), component_release_current1e15_effect_plane_guard()]
+    stable_planes = [{'kind': row['kind'], 'binding': row['binding'],
+                      'passesSha256': hashlib.sha256(json.dumps(row['passes'], sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                      'workers': [{key: item[key] for key in ('matches', 'bootId', 'closingBootId', 'censusComplete', 'processAdopted')}
+                                  for item in row['workerPasses']]}
+                     for row in planes]
+    stable = {'originalSourceSha256': HOST_ORIGINAL_SOURCE_SHA, 'hostBootId': HOST_EXPECTED_BOOT,
+              'admissions': admissions, 'lease': {key: value for key, value in lease.items() if key != 'rawBase64'},
+              'absentReleaseAndAliases': absent, 'originalActors': actors,
+              'originalFixtureRecord': {key: value for key, value in fixture_record.items() if key != 'rawBase64'},
+              'originalFixturePortRefused': fixture_port, 'effectPlanes': stable_planes}
+    evidence = {'rawRecords': COMPONENT_RETIRE_RAW_RECORDS, 'rawRecordDigests': HOST_RAW_DIGESTS,
+                'actorObservations': actor_evidence, 'effectPlanes': planes,
+                'rawReferences': CLAIM_OBSERVATIONS}
+    if len(json.dumps(evidence, sort_keys=True, separators=(',', ':')).encode()) > 3145728:
+        raise ValueError('installer_host_evidence_overflow')
+    return {'state': 'admitted', 'stableBinding': stable, 'evidence': evidence}
+'''
+
+
+def installer_host_preflight_capsule(original_source: bytes, original_sha256: str) -> dict:
+    """Close the original installer host fences before a separately owned start.
+
+    This source factory has no native effects. Its caller supplies authenticated
+    original programme bytes, never public assertions or replacement callbacks.
+    The resulting guard observes the same original workers, lease, consumed
+    admission and both historical effect planes; it changes no outcome or pin.
+    """
+    _need(type(original_source) is bytes and 0 < len(original_source) <= 8 * 1024 * 1024
+          and type(original_sha256) is str and _SHA.fullmatch(original_sha256)
+          and hashlib.sha256(original_source).hexdigest() == original_sha256,
+          "installer_host_original_source_changed")
+    text = original_source.decode()
+    tree = ast.parse(text)
+
+    def literal(name):
+        nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+                 and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                 and node.targets[0].id == name]
+        _need(len(nodes) == 1, "installer_host_original_literal_changed")
+        return ast.literal_eval(nodes[0].value)
+
+    proof = literal("COMPONENT_RELEASE_ADMITTED_PROOF")
+    _need(proof["originalCorrelationId"] == "0dd55704-1e80-4d62-8d9d-2f0a123e0c3b"
+          and proof["retirementCorrelationId"] == "6b616c2f-6c36-4ac0-836e-4465c78bfc92"
+          and hashlib.sha256(_canonical(proof)).hexdigest() == "93ff56ef99d2496aef690ea1ae44e0e7ff4136386e6718fa81e8f0ff21e2e6ed",
+          "installer_host_original_admission_changed")
+    metadata = literal("COMPONENT_RELEASE_METADATA")
+    _need(set(metadata) == {"global-admission-intent", "admitted-proof", "admitted-result"},
+          "installer_host_original_metadata_changed")
+    pins = {role: {key: value for key, value in row.items() if key != "rawBase64"}
+            for role, row in metadata.items()}
+    root = "/home/kardinal/.vpn-control-mcp-fixtures"
+    _need(metadata["admitted-proof"]["sha256"] == "93ff56ef99d2496aef690ea1ae44e0e7ff4136386e6718fa81e8f0ff21e2e6ed"
+          and all(row["path"].startswith(root + "/") for row in metadata.values()),
+          "installer_host_original_metadata_changed")
+    parents = metadata["global-admission-intent"]["parents"]
+    lease_parents = {name: row for name, row in parents.items()
+                     if name == "/" or name == root or root.startswith(name.rstrip("/") + "/")}
+    _need(root in lease_parents and lease_parents[root][2:] == [0o40700, 1000, 1000],
+          "installer_host_original_root_changed")
+    # The complete consumed module is a literal in the authenticated programme;
+    # execute its immutable readers, not the named staged file or a live import.
+    modules = []
+    for node in tree.body:
+        if (isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name) and node.value.func.id == "exec"
+                and node.value.args and isinstance(node.value.args[0], ast.Call)
+                and isinstance(node.value.args[0].func, ast.Name)
+                and node.value.args[0].func.id == "compile"):
+            candidate = node.value.args[0].args[0]
+            if isinstance(candidate, ast.Constant) and type(candidate.value) is bytes:
+                raw = candidate.value
+                if b"def _parents(" in raw and b"def stage_payload(" in raw:
+                    modules.append(raw)
+    _need(len(modules) == 1, "installer_host_original_bundle_changed")
+    bundle_source = modules[0]
+    names = ("claim_record", "component_retirement_record_raw", "component_retirement_capture_record",
+             "readiness_process", "component_release_effect_plane_current_guard",
+             "component_release_current1e15_effect_plane_guard")
+    definitions = []
+    source_pins = {"original-programme": original_sha256,
+                   "original-bundle-readers": hashlib.sha256(bundle_source).hexdigest(),
+                   "host-preflight-runtime": hashlib.sha256(_INSTALLER_HOST_RUNTIME.encode()).hexdigest()}
+    for name in names:
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
+        _need(bool(nodes) and not any(node.decorator_list for node in nodes),
+              "installer_host_original_definition_changed")
+        definition = ast.get_source_segment(text, nodes[-1])
+        definitions.append(definition)
+        source_pins[name] = hashlib.sha256(definition.encode()).hexdigest()
+    fixed = literal("EFFECT_PLANE_FIXED")
+    current = literal("CURRENT1E15_EFFECT_PLANE_FIXED")
+    for name, value in (("EFFECT_PLANE_FIXED", fixed), ("CURRENT1E15_EFFECT_PLANE_FIXED", current)):
+        source_pins[name] = hashlib.sha256(_canonical(value)).hexdigest()
+    original = proof["originalCorrelationId"]
+    absent_names = ["android-native-device-api35-" + original + suffix
+                    for suffix in (".release-intent", ".component-retirement-fence", ".component-retirement-quarantine")]
+    absent_names += ["android-native-device-android-api35.lease",
+                     "android-native-device-android-api35-" + original + ".release-intent"]
+    source = ("import base64,hashlib,json,os,pathlib,re,socket,stat,sys,types\nfrom pathlib import Path\n"
+              "ROOT=Path(" + repr(root) + ")\nPROC=Path('/proc')\nBASELINE_BASE64=base64\n"
+              "COMPONENT_BUNDLE=types.ModuleType('original_installer_host_readers')\n"
+              "COMPONENT_BUNDLE.__file__=str(ROOT/'android-installer-component-bundle-7310f227-aaed-4f3b-878a-1b7bf0b49215'/'agent_tools/android_installer_component_bundle.py')\n"
+              "exec(compile(" + repr(bundle_source) + ",'original-installer-host-readers','exec'),COMPONENT_BUNDLE.__dict__)\n")
+    values = {"CLAIM_ORIGINAL": original, "HOST_ORIGINAL_SOURCE_SHA": original_sha256,
+              "HOST_EXPECTED_BOOT": literal("LAUNCH")["observation"]["bootId"],
+              "HOST_ADMISSION_PINS": pins, "HOST_LEASE_PIN": proof["files"]["remote-lease.json"],
+              "HOST_LEASE_PARENTS": lease_parents,
+              "HOST_ORIGINAL_ACTORS": {role: {key: proof[role][key] for key in ("pid", "startTicks")}
+                                       for role in ("worker", "fixture")},
+              "HOST_FIXTURE_RECORD_PATH": root + "/android-installer-" + original + "/output/fixture-identity.json",
+              "HOST_FIXTURE_RECORD_PIN": proof["files"]["output/fixture-identity.json"],
+              "HOST_ABSENT_NAMES": absent_names,
+              "EFFECT_PLANE_FIXED": fixed, "CURRENT1E15_EFFECT_PLANE_FIXED": current}
+    source += "\n".join(name + "=" + repr(value) for name, value in values.items()) + "\n"
+    source += "\n\n".join(definitions) + "\n" + _INSTALLER_HOST_RUNTIME
+    compile(source, "original-installer-host-preflight", "exec")
+    raw = source.encode()
+    _need(len(raw) <= 2 * 1024 * 1024, "installer_host_capsule_bound")
+    return {"source": raw, "sha256": hashlib.sha256(raw).hexdigest(),
+            "originalSourceSha256": original_sha256, "sourcePins": source_pins}
+
+
+_CURRENT_CENSUS_ORIGINAL_SHA = "26df14113106aae8a76fed795e1d562726f1b43e9be8763c736315fac350e28e"
+_CURRENT_CENSUS_RUNTIME = '''def attempt_workers():
+ import time as census_time
+ started=census_time.monotonic();boot=plane_boot()
+ opening=sorted(int(n)for n in os.listdir(PROC_ROOT)if n.isdecimal())
+ if len(opening)>8192:raise ValueError('plane_process_limit')
+ expected={role:STAGE_BASE64.b64decode(ATTEMPT_BINDING[key],validate=True)for role,key in(('python','expectedRootArgvBase64'),('sudo','expectedSudoArgvBase64'))}
+ matches=[];errors=[];resolved=[];read=0;enumerated=set();pending=opening
+ waves=[];evidence={'openingPids':opening,'waves':waves,'matches':matches,'errors':errors,'resolved':resolved,'state':'scanning'}
+ globals().setdefault('CURRENT_CENSUS_WAVES',[]).append(evidence)
+ raw_bytes=sum(row['bytes']for row in ATTEMPT_PROC_RAW)
+ try:
+  for number in range(8):
+   wave={'number':number,'pendingPids':pending[:],'readPids':[],'rawBegin':len(ATTEMPT_PROC_RAW)};waves.append(wave)
+   for pid in pending:
+    if census_time.monotonic()-started>2 or len(enumerated)>=8192 or len(ATTEMPT_PROC_RAW)>=16480 or raw_bytes>8388608:raise ValueError('plane_process_limit')
+    enumerated.add(pid);raw_begin=len(ATTEMPT_PROC_RAW)
+    try:
+     cmd=plane_read(pid,'cmdline',65536);read+=1;wave['readPids'].append(pid)
+     if cmd in expected.values():
+      identity=plane_identity(pid,cmd,boot);identity['role']=next(k for k,v in expected.items()if v==cmd);matches.append(identity)
+    except (FileNotFoundError,ProcessLookupError)as error:
+     row=plane_resolve_disappeared(pid,error);resolved.append(row)
+     if row['state']!='rechecked-absent':errors.append(row)
+    except PermissionError as error:errors.append({'pid':pid,'errno':error.errno,'closingErrno':None,'state':'unknown'})
+    finally:raw_bytes+=sum(row['bytes']for row in ATTEMPT_PROC_RAW[raw_begin:])
+   final=sorted(int(n)for n in os.listdir(PROC_ROOT)if n.isdecimal())
+   pending=sorted(set(final)-enumerated)
+   wave.update(closingPids=final,newPids=pending[:],enumeratedPids=sorted(enumerated),rawEnd=len(ATTEMPT_PROC_RAW))
+   if any(row['state']=='rechecked-absent'and row['pid']in final for row in resolved):raise ValueError('plane_identity_changed')
+   if census_time.monotonic()-started>2 or raw_bytes>8388608 or len(ATTEMPT_PROC_RAW)>16480:raise ValueError('plane_process_limit')
+   if not pending:break
+  else:raise ValueError('plane_process_limit')
+  closing_begin=len(ATTEMPT_PROC_RAW)
+  try:closing=plane_boot()
+  finally:raw_bytes+=sum(row['bytes']for row in ATTEMPT_PROC_RAW[closing_begin:])
+  if census_time.monotonic()-started>2 or raw_bytes>8388608 or len(ATTEMPT_PROC_RAW)>16480:raise ValueError('plane_process_limit')
+  evidence.update(state='complete'if not errors and boot==closing else'incomplete',bootId=boot,closingBootId=closing,rawBytes=raw_bytes)
+  return {'matches':matches,'errors':errors,'resolved':resolved,'enumeratedPids':sorted(enumerated),'closingPids':final,'newPids':pending,'enumeratedCount':len(enumerated),'readCount':read,'bootId':boot,'closingBootId':closing,'censusComplete':not errors and not pending and boot==closing,'processAdopted':False}
+ except BaseException:
+  evidence.update(state='incomplete',rawBytes=raw_bytes)
+  raise
+'''
+
+
+def _current_process_source(original: str) -> str:
+    """Read every late PID; retain the authentic readers and projector ABI."""
+    _need(type(original) is str and hashlib.sha256(original.encode()).hexdigest()
+          == _CURRENT_CENSUS_ORIGINAL_SHA, "current_census_original_source_changed")
+    tree = ast.parse(original)
+    nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "attempt_workers"]
+    _need(len(nodes) == 1 and not nodes[0].decorator_list, "current_census_original_definition_changed")
+    node = nodes[0]
+    lines = original.splitlines(keepends=True)
+    derived = "".join(lines[:node.lineno - 1]) + _CURRENT_CENSUS_RUNTIME + "".join(lines[node.end_lineno:])
+    compile(derived, "derived-current-process-census", "exec")
+    return derived
+
+
+def installer_current_host_preflight_capsule(original_source: bytes, original_sha256: str) -> dict:
+    """Derive current visibility without changing any historical admission.
+
+    The original9da current observation acquires bounded draining. Every late
+    PID is read with its original reader and unchanged projector. The distinct
+    current1e15 census retains its existing late-identity protocol unchanged.
+    No PID, error, or UNKNOWN is skipped.
+    """
+    original = installer_host_preflight_capsule(original_source, original_sha256)
+    text = original["source"].decode()
+    tree = ast.parse(text)
+    process = None
+    replacements = 0
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "EFFECT_PLANE_FIXED"):
+            value = ast.literal_eval(node.value)
+            source = value["processSource"]
+            process = source
+            value["processSource"] = _current_process_source(source)
+            node.value = ast.parse(repr(value), mode="eval").body
+            replacements += 1
+    _need(replacements == 1 and process is not None, "current_census_original_tables_changed")
+    guards = ("component_release_effect_plane_current_guard",)
+    for name in guards:
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
+        _need(len(nodes) == 1, "current_census_original_guard_changed")
+        function = nodes[0]
+        loops = [(index, node) for index, node in enumerate(function.body) if isinstance(node, ast.For)]
+        _need(len(loops) == 1, "current_census_original_guard_changed")
+        index, loop = loops[0]
+        handler = ast.parse("""try:
+ pass
+except BaseException:
+ COMPONENT_RETIRE_OBSERVATIONS.append({'kind':'derived-current-census-incomplete','censusWaves':n.get('CURRENT_CENSUS_WAVES',[]),'procRawRecords':n['ATTEMPT_PROC_RAW']})
+ raise
+""").body[0]
+        handler.body = [loop]
+        function.body[index] = handler
+        records = [node for node in function.body if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "record" for target in node.targets)]
+        _need(len(records) == 1 and isinstance(records[0].value, ast.Dict), "current_census_original_record_changed")
+        records[0].value.keys.append(ast.Constant("censusWaves"))
+        records[0].value.values.append(ast.parse("n.get('CURRENT_CENSUS_WAVES',[])", mode="eval").body)
+    derivation = {"schema": 1, "kind": "bounded-current-process-census", "scope": "original9da-current-observation-only",
+                  "originalCapsuleSha256": original["sha256"],
+                  "originalProcessSourceSha256": _CURRENT_CENSUS_ORIGINAL_SHA,
+                  "currentProcessSourceSha256": hashlib.sha256(_current_process_source(process).encode()).hexdigest(),
+                  "maxRounds": 8, "maxSeconds": 2, "maxPids": 8192, "maxRawRecords": 16480,
+                  "maxRawBytes": 8388608, "historicalAdmissionsChanged": False, "ignoredPids": False}
+    tree.body += ast.parse("CURRENT_CENSUS_ORIGINAL_SOURCE=" + repr(process) + "\nCURRENT_CENSUS_DERIVATION=" + repr(derivation)).body
+    ast.fix_missing_locations(tree)
+    source = (ast.unparse(tree) + "\n").encode()
+    compile(source, "derived-current-installer-host-preflight", "exec")
+    _need(len(source) <= 2 * 1024 * 1024, "installer_host_capsule_bound")
+    pins = dict(original["sourcePins"])
+    pins.update({"original-host-preflight-capsule": original["sha256"],
+                 "original-current-process-source": _CURRENT_CENSUS_ORIGINAL_SHA,
+                 "derived-current-process-source": derivation["currentProcessSourceSha256"],
+                 "current-census-runtime": hashlib.sha256(_CURRENT_CENSUS_RUNTIME.encode()).hexdigest(),
+                 "current-census-derivation": hashlib.sha256(_canonical(derivation)).hexdigest(),
+                 "current-host-census-factory-source": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
+    return {"source": source, "sha256": hashlib.sha256(source).hexdigest(),
+            "originalSourceSha256": original_sha256, "sourcePins": pins}
+
+
+CURRENT_INTERVAL_ORIGINAL_VALIDATOR_SHA='2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1'
+_CURRENT_INTERVAL_RUNTIME="import fcntl\nimport time\nimport uuid\n\n\nclass CurrentIntervalRefusal(ValueError):\n    pass\n\n\ndef _interval_need(value, reason):\n    if not value:\n        raise CurrentIntervalRefusal(reason)\n\n\ndef _interval_pin(info):\n    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,\n            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]\n\n\ndef _interval_canonical(value):\n    return (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\\n').encode()\n\n\ndef _interval_machine():\n    return hashlib.sha256(pathlib.Path('/etc/machine-id').read_bytes()).hexdigest()\n\n\ndef _interval_boot():\n    return (PROC / 'sys/kernel/random/boot_id').read_text().strip()\n\n\ndef _interval_guard_store(store):\n    context = store['context']\n    for name, fd, identity in store['chain']:\n        _interval_need(_interval_pin(os.fstat(fd))[:5] == identity\n                       and _interval_pin(os.stat(name, follow_symlinks=False))[:5] == identity,\n                       'current_interval_parent_changed')\n    root = store['chain'][-1][2]\n    _interval_need(root[:2] == context['rootGeneration'] and root[2:] == [0o40700, 0, 0]\n                   and _interval_pin(os.fstat(store['directory']))[:5] == store['directoryIdentity']\n                   and _interval_pin(os.stat('current-intervals', dir_fd=store['chain'][-1][1], follow_symlinks=False))[:5] == store['directoryIdentity'],\n                   'current_interval_store_changed')\n    _interval_need(os.getuid() == os.geteuid() == os.getgid() == os.getegid() == 0\n                   and _interval_boot() == context['hostBootId'] == HOST_EXPECTED_BOOT\n                   and _interval_machine() == context['machineSha256'],\n                   'current_interval_host_changed')\n\n\ndef _interval_close_store(store):\n    if store is None:\n        return\n    directory = store.get('directory')\n    try:\n        if directory is not None:\n            fcntl.flock(directory, fcntl.LOCK_UN)\n    finally:\n        if directory is not None:\n            os.close(directory)\n            store['directory'] = None\n        for _, fd, _ in reversed(store['chain']):\n            os.close(fd)\n        store['chain'] = []\n\n\ndef _interval_open_store():\n    value = CURRENT_INTERVAL_STORAGE\n    fields = {'schema', 'operationId', 'root', 'rootGeneration', 'hostBootId', 'machineSha256', 'account'}\n    _interval_need(type(value) is dict and set(value) == fields and type(value['schema']) is int\n                   and value['schema'] == 1 and type(value['operationId']) is str\n                   and str(uuid.UUID(value['operationId'])) == value['operationId']\n                   and value['root'] == '/var/tmp/vc-android-persisted-' + value['operationId']\n                   and type(value['rootGeneration']) is list and len(value['rootGeneration']) == 2\n                   and all(type(item) is int and item > 0 for item in value['rootGeneration'])\n                   and value['account'] == '0' and value['hostBootId'] == HOST_EXPECTED_BOOT\n                   and type(value['machineSha256']) is str and re.fullmatch('[0-9a-f]{64}', value['machineSha256']),\n                   'current_interval_storage_required')\n    store = {'context': dict(value), 'chain': [], 'directory': None}\n    try:\n        _interval_need(os.getuid() == os.geteuid() == os.getgid() == os.getegid() == 0\n                       and _interval_boot() == value['hostBootId'] == HOST_EXPECTED_BOOT\n                       and _interval_machine() == value['machineSha256'], 'current_interval_host_changed')\n        path = pathlib.PurePosixPath(value['root'])\n        fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)\n        store['chain'].append(('/', fd, _interval_pin(os.fstat(fd))[:5]))\n        current = ''\n        for name in path.parts[1:]:\n            current += '/' + name\n            fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=store['chain'][-1][1])\n            identity = _interval_pin(os.fstat(fd))[:5]\n            store['chain'].append((current, fd, identity))\n            _interval_need(identity[3:] == [0, 0] and stat.S_ISDIR(identity[2])\n                           and (not identity[2] & 0o022 or identity[2] & stat.S_ISVTX),\n                           'current_interval_parent_unsafe')\n        _interval_need(store['chain'][-1][2] == value['rootGeneration'] + [0o40700, 0, 0],\n                       'current_interval_root_changed')\n        try:\n            os.mkdir('current-intervals', 0o700, dir_fd=store['chain'][-1][1])\n        except FileExistsError:\n            pass\n        directory = os.open('current-intervals', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,\n                            dir_fd=store['chain'][-1][1])\n        store['directory'] = directory\n        identity = _interval_pin(os.fstat(directory))[:5]\n        _interval_need(identity[2:] == [0o40700, 0, 0], 'current_interval_store_unsafe')\n        store['directoryIdentity'] = identity\n        try:\n            fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)\n        except BlockingIOError as busy:\n            raise CurrentIntervalRefusal('current_interval_store_busy') from busy\n        _interval_guard_store(store)\n        names = sorted(os.listdir(directory))\n        _interval_need(len(names) < 32, 'current_interval_record_budget')\n        total = 0\n        for name in names:\n            _interval_need(re.fullmatch(r'interval-[0-9a-f]{32}\\.json', name),\n                           'current_interval_unpublished_or_foreign_record')\n            entry = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)\n            try:\n                before = _interval_pin(os.fstat(entry))\n                _interval_need(before[2:6] == [0o100600, 0, 0, 1] and 0 < before[6] <= 8388608,\n                               'current_interval_record_unsafe')\n                data = bytearray()\n                while len(data) <= before[6]:\n                    part = os.read(entry, min(65536, before[6] + 1 - len(data)))\n                    if not part:\n                        break\n                    data.extend(part)\n                _interval_need(len(data) == before[6]\n                               and _interval_pin(os.fstat(entry)) == before\n                               and _interval_pin(os.stat(name, dir_fd=directory, follow_symlinks=False)) == before,\n                               'current_interval_record_changed')\n                document = json.loads(data)\n                _interval_need(type(document) is dict and document.get('kind') == 'android-current1e15-unknown-interval'\n                               and document.get('operationId') == value['operationId']\n                               and document.get('recordId') == name[9:-5]\n                               and document.get('scannerSourceSha256') == CURRENT_INTERVAL_SCANNER_SHA\n                               and document.get('validatorSourceSha256') == CURRENT_INTERVAL_VALIDATOR_SHA,\n                               'current_interval_record_foreign')\n                total += before[6]\n            finally:\n                os.close(entry)\n        # Reserve the full allowed report before executing a read-only attempt.\n        # The same directory lock accounts for admission and parent/child gates.\n        _interval_need(total + 8388608 <= 25165824, 'current_interval_operation_budget')\n        store['previousBytes'] = total\n        _interval_guard_store(store)\n        return store\n    except BaseException:\n        _interval_close_store(store)\n        raise\n\n\ndef _interval_trace(error):\n    guard = None\n    host = None\n    attempt = None\n    reader = None\n    position = error.__traceback__\n    while position is not None:\n        frame = position.tb_frame\n        if frame.f_code is _current_host_attempt.__code__:\n            host = dict(frame.f_locals)\n        if frame.f_code in (component_release_current1e15_effect_plane_guard.__code__,\n                            component_release_effect_plane_current_guard.__code__):\n            guard = dict(frame.f_locals)\n            guard['isCurrent1e15'] = frame.f_code is component_release_current1e15_effect_plane_guard.__code__\n        elif guard is not None and type(guard.get('n')) is dict:\n            namespace = guard['n']\n            workers = namespace.get('attempt_workers')\n            read = namespace.get('plane_read')\n            if workers is not None and frame.f_code is workers.__code__:\n                attempt = {'line': position.tb_lineno, 'locals': frame.f_locals}\n            elif read is not None and frame.f_code is read.__code__:\n                reader = frame.f_locals\n        position = position.tb_next\n    return guard, attempt, reader, host\n\n\ndef _interval_host_snapshot(host):\n    if host is None:\n        return None\n    allowed = ('admissions', 'lease', 'absent', 'actors', 'actor_evidence',\n               'fixture_record', 'fixture_identity', 'fixture_port',\n               'planes', 'stable_planes', 'stable', 'evidence')\n    counter = [0]\n    def safe(value, depth=0):\n        counter[0] += 1\n        _interval_need(depth <= 32 and counter[0] <= 100000, 'current_interval_host_snapshot_budget')\n        if value is None or type(value) in (str, int, bool):\n            return value\n        if type(value) is list:\n            return [safe(item, depth + 1) for item in value]\n        if type(value) is dict and all(type(key) is str for key in value):\n            return {key: safe(item, depth + 1) for key, item in value.items()}\n        raise CurrentIntervalRefusal('current_interval_host_snapshot_type')\n    return {key: safe(host[key]) for key in allowed if key in host}\n\n\ndef _interval_capture(error, invocation, number, before_globals):\n    guard, attempt, reader, host = _interval_trace(error)\n    namespace = guard.get('n') if guard is not None else None\n    namespace = namespace if type(namespace) is dict else {}\n    partial = None\n    if reader is not None:\n        raw = reader.get('raw', bytearray())\n        raw = bytes(raw) if type(raw) in (bytes, bytearray) else b''\n        name = reader.get('name')\n        expected = tuple(BASELINE_BASE64.b64decode(namespace['ATTEMPT_BINDING'][key], validate=True)\n                         for key in ('expectedRootArgvBase64', 'expectedSudoArgvBase64'))\n        captured = name != 'cmdline' or raw in expected\n        partial = {'pid': reader.get('pid'), 'name': name, 'generation': reader.get('before'),\n                   'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),\n                   'readComplete': False, 'rawCaptured': captured,\n                   'rawBase64': BASELINE_BASE64.b64encode(raw).decode() if captured else None}\n    records = namespace.get('ATTEMPT_PROC_RAW', [])\n    first = attempt['locals'].get('first') if attempt is not None else None\n    initial = attempt['locals'].get('index') if attempt is not None else None\n    payload = {'schema': 1, 'kind': 'android-current1e15-unknown-interval',\n               'operationId': CURRENT_INTERVAL_STORAGE['operationId'], 'recordId': uuid.uuid4().hex,\n               'guardInvocationId': invocation, 'attempt': number,\n               'scannerSourceSha256': CURRENT_INTERVAL_SCANNER_SHA,\n               'validatorSourceSha256': CURRENT_INTERVAL_VALIDATOR_SHA,\n               'parentCapsuleSha256': CURRENT_INTERVAL_PARENT_CAPSULE_SHA,\n               'error': {'type': type(error).__name__, 'errno': getattr(error, 'errno', None),\n                         'code': error.args[0] if type(error) is ValueError and len(error.args) == 1\n                         and type(error.args[0]) is str and re.fullmatch('[a-z][a-z0-9_]{0,119}', error.args[0]) else None},\n               'unknownInterval': True, 'retryable': False, 'positiveAbsence': [],\n               'completedCensusPasses': guard.get('scans', []) if guard is not None else [],\n               'rawRecords': records, 'boundaryPasses': namespace.get('BOUNDARY_PASSES', []),\n               'boundaryRaw': namespace.get('BOUNDARY_RAW', []), 'partialRead': partial,\n               'lateIdentity': first, 'closingRawBegin': initial,\n               'attemptState': {key: attempt['locals'].get(key) for key in\n                                ('matches', 'errors', 'resolved', 'names', 'late_identities', 'closing_identities', 'identity_population')}\n               if attempt is not None else None,\n               'hostAttempt': _interval_host_snapshot(host),\n               'nativeObservations': {key: globals().get(key, []) if globals().get(key) is not old else []\n                                      for key, old in before_globals.items()},\n               'capturedAtNs': time.time_ns(), 'outcomesChanged': False, 'nativeAction': False}\n    eligible = (type(error) in (FileNotFoundError, ProcessLookupError) and error.errno in (2, 3)\n                and guard is not None and guard.get('isCurrent1e15') is True\n                and attempt is not None and reader is not None\n                and CURRENT_INTERVAL_CLOSING_START <= attempt['line'] <= CURRENT_INTERVAL_CLOSING_END\n                and type(first) is dict and first.get('role') is None\n                and type(first.get('pid')) is int and first['pid'] > 0\n                and reader.get('pid') == first['pid'] and reader.get('name') == 'cmdline'\n                and type(initial) is int and initial == len(records)\n                and partial is not None and partial['bytes'] == 0\n                and attempt['locals'].get('matches') == [] and attempt['locals'].get('errors') == []\n                and all(type(scan) is dict and scan.get('matches') == [] and scan.get('errors') == []\n                        and scan.get('censusComplete') is True\n                        and scan.get('bootId') == scan.get('closingBootId') == HOST_EXPECTED_BOOT\n                        and scan.get('unresolvedNewPids') == [] and scan.get('reappearedPids') == []\n                        for scan in (guard.get('scans', []) if guard is not None else []))\n                and hashlib.sha256(guard['fixed']['processSource'].encode()).hexdigest() == CURRENT_INTERVAL_SCANNER_SHA\n                and hashlib.sha256(guard['fixed']['validatorSource'].encode()).hexdigest() == CURRENT_INTERVAL_VALIDATOR_SHA\n                and first['pid'] in attempt['locals'].get('identity_population', [])\n                and first in attempt['locals'].get('late_identities', []))\n    if eligible:\n        payload['bootBefore'] = _interval_boot()\n        payload['otherAbsenceRechecks'] = []\n        for row in attempt['locals'].get('resolved', []):\n            if row.get('state') != 'rechecked-absent':\n                eligible = False\n                continue\n            for _ in range(2):\n                try:\n                    os.stat(namespace['PROC_ROOT'] / str(row['pid']), follow_symlinks=False)\n                except FileNotFoundError as absent:\n                    payload['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': absent.errno, 'state': 'absent'})\n                except OSError as unknown:\n                    payload['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': unknown.errno, 'state': 'unknown'})\n                    eligible = False\n                else:\n                    payload['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': None, 'state': 'present'})\n                    eligible = False\n        for _ in range(2):\n            resolution = namespace['plane_resolve_disappeared'](first['pid'], error)\n            payload['positiveAbsence'].append(resolution)\n            if resolution != {'pid': first['pid'], 'errno': error.errno, 'closingErrno': 2, 'state': 'rechecked-absent'}:\n                eligible = False\n        payload['bootAfter'] = _interval_boot()\n        eligible = eligible and payload['bootBefore'] == payload['bootAfter'] == HOST_EXPECTED_BOOT\n    payload['retryable'] = bool(eligible)\n    return payload\n\n\ndef _interval_publish(store, payload):\n    _interval_guard_store(store)\n    data = _interval_canonical(payload)\n    _interval_need(0 < len(data) <= 8388608 and store['previousBytes'] + len(data) <= 25165824,\n                   'current_interval_report_budget')\n    directory = store['directory']\n    pending = '.pending-' + payload['recordId']\n    final = 'interval-' + payload['recordId'] + '.json'\n    fd = os.open(pending, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)\n    try:\n        view = memoryview(data)\n        while view:\n            try:\n                count = os.write(fd, view[:65536])\n            except InterruptedError:\n                continue\n            _interval_need(count > 0, 'current_interval_short_write')\n            view = view[count:]\n        view.release()\n        os.fsync(fd)\n        before = _interval_pin(os.fstat(fd))\n        _interval_need(before[2:6] == [0o100600, 0, 0, 1] and before[6] == len(data)\n                       and os.pread(fd, len(data) + 1, 0) == data\n                       and _interval_pin(os.stat(pending, dir_fd=directory, follow_symlinks=False)) == before,\n                       'current_interval_pending_changed')\n        _interval_guard_store(store)\n        os.link(pending, final, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)\n        os.unlink(pending, dir_fd=directory)\n        pin = _interval_pin(os.fstat(fd))\n        _interval_need(pin[5] == 1 and pin[6] == len(data)\n                       and _interval_pin(os.stat(final, dir_fd=directory, follow_symlinks=False)) == pin,\n                       'current_interval_publication_changed')\n        os.fsync(directory)\n        _interval_guard_store(store)\n        return {'schema': 1, 'kind': 'android-current1e15-unknown-interval-reference',\n                'operationId': payload['operationId'], 'recordId': payload['recordId'],\n                'guardInvocationId': payload['guardInvocationId'], 'attempt': payload['attempt'],\n                'root': store['context']['root'], 'rootGeneration': store['context']['rootGeneration'],\n                'directoryIdentity': store['directoryIdentity'],\n                'path': store['context']['root'] + '/current-intervals/' + final,\n                'generation': pin, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),\n                'retryable': payload['retryable'], 'unknownInterval': True}\n    finally:\n        os.close(fd)\n\n\ndef installer_host_preflight():\n    references = []\n    invocation = uuid.uuid4().hex\n    deadline = time.monotonic() + 5\n    names = ('COMPONENT_RETIRE_OBSERVATIONS', 'COMPONENT_RETIRE_RAW_RECORDS', 'CLAIM_OBSERVATIONS', 'HOST_RAW_DIGESTS')\n    for number in range(3):\n        _interval_need(time.monotonic() <= deadline, 'current_interval_time_budget')\n        store = _interval_open_store()\n        try:\n            _interval_need(time.monotonic() <= deadline, 'current_interval_time_budget')\n            before_globals = {name: globals().get(name) for name in names}\n            try:\n                result = _current_host_attempt()\n            except BaseException as error:\n                payload = _interval_capture(error, invocation, number, before_globals)\n                reference = _interval_publish(store, payload)\n                references.append(reference)\n                CURRENT_INTERVAL_FAILURES.append(reference)\n                if not payload['retryable']:\n                    raise CurrentIntervalRefusal('current_interval_nonretryable') from error\n                _interval_guard_store(store)\n                if number == 2:\n                    raise CurrentIntervalRefusal('current_interval_samples_exhausted') from error\n                continue\n            _interval_guard_store(store)\n            _interval_need(time.monotonic() <= deadline, 'current_interval_time_budget')\n            result['evidence']['priorUnknownCurrentIntervals'] = references\n            return result\n        finally:\n            _interval_close_store(store)\n    raise CurrentIntervalRefusal('current_interval_samples_exhausted')\n"
+
+
+def installer_bounded_host_preflight_capsule(original_source: bytes, original_sha256: str) -> dict:
+    """Retain an unknown interval, then re-observe all original host fences.
+
+    Both process scanners and strict projectors remain immutable. Only a proved
+    zero-data disappearance in the current1e15 late closing read may sample
+    again; every other failure and every exhausted bound refuses before fork.
+    """
+    parent = installer_current_host_preflight_capsule(original_source, original_sha256)
+    tree = ast.parse(parent['source'])
+    host = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'installer_host_preflight']
+    _need(len(host) == 1, 'current_interval_original_host_definition_changed')
+    host[0].name = '_current_host_attempt'
+    tables = [node for node in tree.body if isinstance(node, ast.Assign) and len(node.targets) == 1
+              and isinstance(node.targets[0], ast.Name) and node.targets[0].id == 'CURRENT1E15_EFFECT_PLANE_FIXED']
+    _need(len(tables) == 1, 'current_interval_original_table_changed')
+    fixed = ast.literal_eval(tables[0].value)
+    scanner = fixed['processSource']; validator = fixed['validatorSource']
+    _need(hashlib.sha256(scanner.encode()).hexdigest() == '779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f', 'current_interval_original_scanner_changed')
+    _need(hashlib.sha256(validator.encode()).hexdigest() == CURRENT_INTERVAL_ORIGINAL_VALIDATOR_SHA, 'current_interval_original_validator_changed')
+    worker = [node for node in ast.parse(scanner).body if isinstance(node, ast.FunctionDef) and node.name == 'attempt_workers']
+    _need(len(worker) == 1, 'current_interval_original_worker_changed')
+    closing = [node for node in worker[0].body if isinstance(node, ast.For)
+               and isinstance(node.target, ast.Name) and node.target.id == 'first']
+    _need(len(closing) == 1, 'current_interval_original_closing_changed')
+    values = {'CURRENT_INTERVAL_STORAGE_REQUIRED': True, 'CURRENT_INTERVAL_STORAGE': None,
+              'CURRENT_INTERVAL_FAILURES': [], 'CURRENT_INTERVAL_PARENT_CAPSULE_SHA': parent['sha256'],
+              'CURRENT_INTERVAL_SCANNER_SHA': hashlib.sha256(scanner.encode()).hexdigest(),
+              'CURRENT_INTERVAL_VALIDATOR_SHA': hashlib.sha256(validator.encode()).hexdigest(),
+              'CURRENT_INTERVAL_CLOSING_START': closing[0].lineno,
+              'CURRENT_INTERVAL_CLOSING_END': closing[0].end_lineno}
+    tree.body += ast.parse('\n'.join(name + '=' + repr(value) for name, value in values.items()) + '\n').body
+    tree.body += ast.parse(_CURRENT_INTERVAL_RUNTIME).body
+    ast.fix_missing_locations(tree)
+    raw = (ast.unparse(tree) + '\n').encode()
+    compile(raw, 'bounded-current-host-preflight', 'exec')
+    _need(len(raw) <= 2 * 1024 * 1024, 'installer_host_capsule_bound')
+    pins = dict(parent['sourcePins'])
+    pins.update({'parent-current-host-capsule': parent['sha256'],
+                 'unchanged-current1e15-process-source': hashlib.sha256(scanner.encode()).hexdigest(),
+                 'unchanged-current1e15-projector-source': hashlib.sha256(validator.encode()).hexdigest(),
+                 'bounded-current-interval-runtime': hashlib.sha256(_CURRENT_INTERVAL_RUNTIME.encode()).hexdigest(),
+                 'bounded-current-interval-factory-source': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
+    return {'source': raw, 'sha256': hashlib.sha256(raw).hexdigest(),
+            'originalSourceSha256': original_sha256, 'sourcePins': pins}
+
+
+_TERMINAL_ZOMBIE_RUNTIME="def _terminal_need(value, reason):\n    _interval_need(value, 'terminal_zombie_' + reason)\n\n\ndef _terminal_equal(left, right):\n    return _interval_canonical(left) == _interval_canonical(right)\n\n\ndef _terminal_codes(source, filename):\n    return {item.co_name: item for item in compile(source, filename, 'exec').co_consts\n            if isinstance(item, types.CodeType)}\n\n\ndef _terminal_projectors(guard, namespace):\n    fixed = guard['fixed']\n    _terminal_need(hashlib.sha256(fixed['processSource'].encode()).hexdigest()\n                   == TERMINAL_ZOMBIE_SCANNER_SHA\n                   and hashlib.sha256(fixed['validatorSource'].encode()).hexdigest()\n                   == TERMINAL_ZOMBIE_VALIDATOR_SHA, 'source_changed')\n    codes = _terminal_codes(fixed['processSource'], '<held-original9da-process-readers>')\n    for name in ('attempt_workers', 'plane_read', 'plane_identity', 'plane_boot',\n                 'plane_resolve_disappeared'):\n        value = namespace.get(name)\n        _terminal_need(isinstance(value, types.FunctionType)\n                       and value.__globals__ is namespace and value.__code__ == codes[name],\n                       'reader_code_changed')\n    validator = guard.get('v')\n    _terminal_need(type(validator) is dict\n                   and validator.get('PROCESS_SOURCE') == fixed['processSource'],\n                   'validator_namespace_changed')\n    function = validator.get('validate_workers')\n    expected_code = _terminal_codes(fixed['validatorSource'], '<held-original9da-process-projector>')\n    _terminal_need(isinstance(function, types.FunctionType)\n                   and function.__globals__ is validator\n                   and function.__code__ == expected_code['validate_workers'],\n                   'validator_code_changed')\n    parser = validator['ast']\n    tree = parser.parse(fixed['validatorSource'])\n    _terminal_need(len(tree.body) == 1 and isinstance(tree.body[0], parser.FunctionDef)\n                   and tree.body[0].name == 'validate_workers', 'projector_abi_changed')\n    original = tree.body[0]\n    nested = [node for node in parser.walk(original)\n              if isinstance(node, parser.FunctionDef) and node.name == 'identity_value']\n    _terminal_need(len(original.body) == 9 and len(nested) == 1\n                   and isinstance(original.body[0], parser.If)\n                   and isinstance(original.body[1], parser.Assign)\n                   and isinstance(original.body[2], parser.Assign)\n                   and isinstance(original.body[3], parser.For)\n                   and isinstance(original.body[3].iter, parser.Name)\n                   and original.body[3].iter.id == 'raw', 'projector_abi_changed')\n    head = parser.FunctionDef(name='_terminal_original_rows', args=original.args,\n                              body=original.body[:4] + [parser.Return(value=parser.Tuple(\n                                  elts=[parser.Name(id='parsed', ctx=parser.Load()),\n                                        parser.Name(id='expected', ctx=parser.Load())], ctx=parser.Load()))],\n                              decorator_list=[])\n    module = parser.Module(body=[head, nested[0]], type_ignores=[])\n    parser.fix_missing_locations(module)\n    extraction = {'rawLoopAstSha256': hashlib.sha256(parser.dump(\n                      parser.Module(body=original.body[:4], type_ignores=[]),\n                      include_attributes=False).encode()).hexdigest(),\n                  'identityValueAstSha256': hashlib.sha256(parser.dump(\n                      nested[0], include_attributes=False).encode()).hexdigest(),\n                  'validatorSourceSha256': TERMINAL_ZOMBIE_VALIDATOR_SHA}\n    scope = dict(validator)\n    exec(compile(module, '<exact2215-raw-and-identity-projection>', 'exec'), scope)\n    _terminal_need(namespace['ATTEMPT_BINDING'] == fixed['binding'], 'binding_changed')\n    return scope, extraction\n\n\ndef _terminal_rows(scope, records, binding, boot):\n    parsed, expected = scope['_terminal_original_rows'](records, [], binding)\n    scope['expected'] = expected\n    scope['scan'] = {'bootId': boot}\n    return parsed, expected\n\n\ndef _terminal_identity(scope, parsed):\n    _terminal_need(len(parsed) == 6\n                   and [row['name'] for row, value in parsed]\n                   == ['cmdline', 'status', 'stat', 'cmdline', 'status', 'stat']\n                   and all(row['readComplete'] is True for row, value in parsed),\n                   'identity_rows_incomplete')\n    row, command = parsed[0]\n    identity = scope['identity_value'](row, command, parsed[1:])\n    identity.update(role=next((key for key, value in scope['expected'].items()\n                              if command == value), None), argvComplete=row['readComplete'])\n    return identity\n\n\ndef _terminal_pids(value, maximum=8192):\n    _terminal_need(type(value) is list and len(value) <= maximum\n                   and all(type(item) is int and item > 0 for item in value)\n                   and value == sorted(set(value)), 'population_unknown')\n    return set(value)\n\n\ndef _terminal_prefix(error, guard, attempt, reader, records):\n    _terminal_need(type(error) is ValueError and error.args == ('plane_late_identity_changed',)\n                   and guard is not None and guard.get('isCurrent1e15') is True\n                   and attempt is not None and attempt['line'] == TERMINAL_ZOMBIE_LATE_CHANGE_LINE\n                   and reader is None, 'failure_class_changed')\n    namespace = guard['n']\n    local = attempt['locals']\n    scope, extraction = _terminal_projectors(guard, namespace)\n    _terminal_need(namespace['ATTEMPT_PROC_RAW'] is records, 'raw_owner_changed')\n    scans = guard.get('scans')\n    _terminal_need(type(scans) is list and len(scans) <= 1\n                   and all(type(scan) is dict and scan.get('matches') == []\n                           and scan.get('errors') == [] and scan.get('censusComplete') is True\n                           and scan.get('bootId') == scan.get('closingBootId') == HOST_EXPECTED_BOOT\n                           and scan.get('unresolvedNewPids') == [] and scan.get('reappearedPids') == []\n                           for scan in scans)\n                   and local.get('matches') == [] and local.get('errors') == []\n                   and local.get('boot') == HOST_EXPECTED_BOOT\n                   and namespace['BOUNDARY_PASSES'] == [guard['fixed']['priorPass']] * (len(scans) + 1),\n                   'prior_interval_unknown')\n    parsed, expected = _terminal_rows(scope, records, guard['fixed']['binding'], HOST_EXPECTED_BOOT)\n    boots = [index for index, (row, value) in enumerate(parsed) if row['name'] == 'boot_id']\n    _terminal_need(len(boots) == 2 * len(scans) + 1 and boots[0] == 0,\n                   'raw_pass_order_changed')\n    start = boots[-1]\n    counts = guard['v']['validate_workers'](records[:start], scans, guard['fixed']['binding'])\n    _terminal_need(len(counts) == len(scans)\n                   and all(all(value == 0 for value in row.values()) for row in counts),\n                   'prior_pass_not_empty')\n    _terminal_need(parsed[start][1] == (HOST_EXPECTED_BOOT + '\\n').encode(), 'current_boot_changed')\n    names = _terminal_pids(local.get('names'))\n    rounds = local.get('rounds')\n    late_rounds = local.get('late_rounds')\n    _terminal_need(type(rounds) is list and 1 <= len(rounds) <= 3\n                   and type(late_rounds) is list and len(rounds) == len(late_rounds) + 1,\n                   'rounds_changed')\n    for value in rounds:\n        _terminal_pids(value)\n    observed = set(names)\n    planned_late = []\n    for index, value in enumerate(late_rounds):\n        pending = _terminal_pids(value, 32)\n        _terminal_need(value and value == sorted(set(rounds[index]) - observed), 'late_order_changed')\n        observed.update(pending)\n        planned_late.extend(value)\n    population = _terminal_pids(local.get('identity_population'))\n    _terminal_need(local['identity_population'] == rounds[-1]\n                   and type(local.get('observed')) is set and local['observed'] == observed\n                   and not population - observed, 'unresolved_population')\n    resolved = local.get('resolved')\n    _terminal_need(type(resolved) is list and len(resolved) <= 8192, 'resolved_unknown')\n    resolved_pids = set()\n    for value in resolved:\n        _terminal_need(type(value) is dict and set(value) == {'pid', 'errno', 'closingErrno', 'state'}\n                       and type(value['pid']) is int and value['pid'] in observed\n                       and type(value['errno']) is int and value['errno'] in (2, 3)\n                       and type(value['closingErrno']) is int and value['closingErrno'] == 2\n                       and value['state'] == 'rechecked-absent' and value['pid'] not in resolved_pids,\n                       'resolved_unknown')\n        resolved_pids.add(value['pid'])\n    _terminal_need(not resolved_pids & population, 'prior_reappeared')\n    cursor = start + 1\n    initial_seen = sorted(names - resolved_pids)\n    _terminal_need(type(local.get('read')) is int and local['read'] == len(initial_seen),\n                   'initial_count_changed')\n    for pid in initial_seen:\n        _terminal_need(cursor < len(parsed), 'initial_rows_missing')\n        row, value = parsed[cursor]\n        _terminal_need(row['pid'] == pid and row['name'] == 'cmdline' and value is None,\n                       'initial_protected_or_order_changed')\n        cursor += 1\n    late = local.get('late_identities')\n    _terminal_need(type(late) is list\n                   and [value['pid'] for value in late] == [pid for pid in planned_late if pid not in resolved_pids]\n                   and type(local.get('late_read')) is int and local['late_read'] == len(late),\n                   'late_count_changed')\n    for value in late:\n        identity = _terminal_identity(scope, parsed[cursor:cursor + 6])\n        _terminal_need(_terminal_equal(identity, value), 'late_raw_identity_changed')\n        cursor += 6\n    eligible = [value for value in late if value['pid'] in population]\n    completed = local.get('closing_identities')\n    _terminal_need(type(completed) is list and len(completed) < len(eligible), 'closing_prefix_unknown')\n    identity_fields = ('pid', 'startTicks', 'ppid', 'bootId', 'uid4', 'gid4',\n                       'cmdSha256', 'role', 'argvComplete')\n    for index, value in enumerate(completed):\n        identity = _terminal_identity(scope, parsed[cursor:cursor + 6])\n        _terminal_need(_terminal_equal(identity, value)\n                       and all(_terminal_equal(eligible[index][key], value[key]) for key in identity_fields),\n                       'completed_closing_prefix_changed')\n        cursor += 6\n    first = local.get('first')\n    last = local.get('last')\n    begin = local.get('index')\n    _terminal_need(first is eligible[len(completed)] and type(begin) is int\n                   and cursor == begin and len(records) == begin + 6, 'closing_target_changed')\n    identity = _terminal_identity(scope, parsed[begin:])\n    _terminal_need(_terminal_equal(identity, last), 'closing_raw_identity_changed')\n    _terminal_need(first['role'] is None and last['role'] is None\n                   and first['argvComplete'] is True and last['argvComplete'] is True\n                   and first['processAdopted'] is False and last['processAdopted'] is False\n                   and first['processState'] in ('R', 'S') and last['processState'] == 'Z'\n                   and first['uid4'] == last['uid4'] == [1000, 1000, 1000, 1000]\n                   and first['gid4'] == last['gid4'] == [1000, 1000, 1000, 1000]\n                   and first['bootId'] == last['bootId'] == HOST_EXPECTED_BOOT\n                   and re.fullmatch('[0-9a-f]{64}', first['cmdSha256']) is not None\n                   and first['cmdSha256'] != hashlib.sha256(b'').hexdigest()\n                   and last['cmdSha256'] == hashlib.sha256(b'').hexdigest()\n                   and all(_terminal_equal(first[key], last[key])\n                           for key in identity_fields if key != 'cmdSha256')\n                   and parsed[begin][0]['bytes'] == parsed[begin + 3][0]['bytes'] == 0,\n                   'terminal_transition_not_proved')\n    return namespace, scope, extraction, first, last, resolved\n\n\ndef _terminal_partial(error, namespace):\n    position = error.__traceback__\n    while position is not None:\n        frame = position.tb_frame\n        if frame.f_code is namespace['plane_read'].__code__:\n            local = frame.f_locals\n            raw = local.get('raw', bytearray())\n            raw = bytes(raw) if type(raw) in (bytes, bytearray) else b''\n            name = local.get('name')\n            captured = name != 'cmdline' or raw in tuple(BASELINE_BASE64.b64decode(\n                namespace['ATTEMPT_BINDING'][key], validate=True)\n                for key in ('expectedRootArgvBase64', 'expectedSudoArgvBase64'))\n            return {'pid': local.get('pid'), 'name': name, 'generation': local.get('before'),\n                    'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),\n                    'readComplete': False, 'rawCaptured': captured,\n                    'rawBase64': BASELINE_BASE64.b64encode(raw).decode() if captured else None}\n        position = position.tb_next\n    return None\n\n\ndef _terminal_closure(namespace, scope, first, last, resolved):\n    proof = {'state': 'unknown', 'directoryWitnesses': [], 'freshRaw': [],\n             'freshIdentities': [], 'otherAbsenceRechecks': [], 'partialRead': None}\n    original = namespace['ATTEMPT_PROC_RAW']\n    fresh = []\n    namespace['ATTEMPT_PROC_RAW'] = fresh\n    try:\n        proof['bootBefore'] = namespace['plane_boot']()\n        _terminal_need(proof['bootBefore'] == _interval_boot() == HOST_EXPECTED_BOOT,\n                       'fresh_boot_changed')\n        pid = first['pid']\n        path = namespace['PROC_ROOT'] / str(pid)\n        selected_absence = False\n        for number in range(2):\n            try:\n                value = os.stat(path, follow_symlinks=False)\n            except FileNotFoundError as absent:\n                _terminal_need(absent.errno == 2, 'directory_absence_unknown')\n                proof['directoryWitnesses'].append({'pid': pid, 'errno': absent.errno,\n                                                     'state': 'absent', 'sample': number})\n                selected_absence = True\n            else:\n                proof['directoryWitnesses'].append({'pid': pid, 'errno': None,\n                                                     'state': 'present', 'sample': number,\n                                                     'generation': _interval_pin(value)})\n                _terminal_need(number == 0 and not selected_absence and stat.S_ISDIR(value.st_mode),\n                               'directory_reappeared')\n                break\n        if selected_absence:\n            _terminal_need(len(proof['directoryWitnesses']) == 2\n                           and all(value['state'] == 'absent' for value in proof['directoryWitnesses']),\n                           'directory_absence_unknown')\n            proof['selectedClosure'] = 'two-positive-directory-ENOENT'\n        else:\n            proof['selectedClosure'] = 'two-complete-terminal-identities'\n            for _ in range(2):\n                begin = len(fresh)\n                command = namespace['plane_read'](pid, 'cmdline', 65536)\n                _terminal_need(command == b'', 'fresh_command_not_empty')\n                identity = namespace['plane_identity'](pid, command, proof['bootBefore'])\n                identity.update(role=next((key for key, value in scope['expected'].items()\n                                          if command == value), None),\n                                argvComplete=fresh[begin]['readComplete'])\n                parsed, expected = _terminal_rows(scope, fresh[begin:], namespace['ATTEMPT_BINDING'],\n                                                  proof['bootBefore'])\n                replayed = _terminal_identity(scope, parsed)\n                _terminal_need(_terminal_equal(replayed, identity) and _terminal_equal(identity, last)\n                               and all(parsed[index][1].rsplit(b')', 1)[1].split()[0] == b'Z'\n                                       for index in (2, 5)), 'fresh_terminal_identity_changed')\n                proof['freshIdentities'].append(identity)\n                _terminal_need(_interval_boot() == HOST_EXPECTED_BOOT, 'fresh_boot_changed')\n        for row in resolved:\n            for sample in range(2):\n                try:\n                    os.stat(namespace['PROC_ROOT'] / str(row['pid']), follow_symlinks=False)\n                except FileNotFoundError as absent:\n                    proof['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': absent.errno,\n                                                          'state': 'absent', 'sample': sample})\n                    _terminal_need(absent.errno == 2, 'other_absence_unknown')\n                else:\n                    proof['otherAbsenceRechecks'].append({'pid': row['pid'], 'errno': None,\n                                                          'state': 'present', 'sample': sample})\n                    raise CurrentIntervalRefusal('terminal_zombie_other_absence_reappeared')\n        proof['bootAfter'] = namespace['plane_boot']()\n        _terminal_need(proof['bootAfter'] == _interval_boot() == proof['bootBefore'] == HOST_EXPECTED_BOOT,\n                       'fresh_boot_changed')\n        proof['state'] = 'qualified-for-whole-host-reobservation'\n    except BaseException as error:\n        proof['error'] = {'type': type(error).__name__, 'errno': getattr(error, 'errno', None),\n                          'code': error.args[0] if type(error) in (ValueError, CurrentIntervalRefusal)\n                          and len(error.args) == 1 and type(error.args[0]) is str\n                          and re.fullmatch('[a-z][a-z0-9_]{0,119}', error.args[0]) else None}\n        proof['partialRead'] = _terminal_partial(error, namespace)\n    finally:\n        proof['freshRaw'] = list(fresh)\n        owned = namespace['ATTEMPT_PROC_RAW'] is fresh\n        namespace['ATTEMPT_PROC_RAW'] = original\n        proof['originalRawOwnerRestored'] = namespace['ATTEMPT_PROC_RAW'] is original\n        proof['rawOwnership'] = 'unchanged' if owned else 'changed'\n        if not owned:\n            proof['state'] = 'unknown'\n            if 'error' in proof:\n                proof['priorError'] = proof['error']\n            proof['error'] = {'type': 'CurrentIntervalRefusal', 'errno': None,\n                              'code': 'terminal_zombie_fresh_raw_owner_changed'}\n    return proof\n\n\ndef _interval_capture(error, invocation, number, before_globals):\n    payload = _interval_capture_before_terminal_zombie(error, invocation, number, before_globals)\n    if payload['retryable']:\n        return payload\n    if type(error) is not ValueError or error.args != ('plane_late_identity_changed',):\n        return payload\n    guard, attempt, reader, host = _interval_trace(error)\n    records = payload['rawRecords']\n    # Freeze the failed interval before any separately owned, read-only witness.\n    payload['rawRecords'] = list(records)\n    try:\n        namespace, scope, extraction, first, last, resolved = _terminal_prefix(\n            error, guard, attempt, reader, records)\n        payload['terminalZombieQualification'] = {'scope': TERMINAL_ZOMBIE_SCOPE,\n                                                  'projectorExtraction': extraction,\n                                                  'originalLateClosingIdentity': dict(last)}\n        closure = _terminal_closure(namespace, scope, first, last, resolved)\n        payload['terminalZombieQualification']['closure'] = closure\n        payload['retryable'] = closure['state'] == 'qualified-for-whole-host-reobservation'\n    except BaseException as refusal:\n        payload['terminalZombieQualification'] = {'scope': TERMINAL_ZOMBIE_SCOPE, 'state': 'refused',\n                                                  'error': {'type': type(refusal).__name__,\n                                                            'code': refusal.args[0] if len(refusal.args) == 1\n                                                            and type(refusal.args[0]) is str\n                                                            and re.fullmatch('[a-z][a-z0-9_]{0,119}', refusal.args[0])\n                                                            else None}}\n        payload['retryable'] = False\n    return payload\n"
+
+def installer_terminal_zombie_host_preflight_capsule(original_source: bytes, original_sha256: str) -> dict:
+    """Derive the explicit terminal-zombie retry scope from the immutable carrier.
+
+    The old factory and runtime remain available unchanged. This factory only
+    permits a new whole-host observation after an exact unknown closing class
+    gains fresh terminal or preselected directory-ENOENT witnesses.
+    """
+    parent = installer_bounded_host_preflight_capsule(original_source, original_sha256)
+    tree = ast.parse(parent['source'])
+    captures = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                and node.name == '_interval_capture']
+    original = [node for node in ast.parse(_CURRENT_INTERVAL_RUNTIME).body
+                if isinstance(node, ast.FunctionDef) and node.name == '_interval_capture']
+    _need(len(captures) == len(original) == 1
+          and ast.dump(captures[0], include_attributes=False)
+          == ast.dump(original[0], include_attributes=False), 'terminal_zombie_legacy_capture_changed')
+    tables = [node for node in tree.body if isinstance(node, ast.Assign) and len(node.targets) == 1
+              and isinstance(node.targets[0], ast.Name) and node.targets[0].id == 'CURRENT1E15_EFFECT_PLANE_FIXED']
+    _need(len(tables) == 1, 'terminal_zombie_original_table_changed')
+    fixed = ast.literal_eval(tables[0].value)
+    scanner = fixed['processSource']
+    validator = fixed['validatorSource']
+    scanner_sha = hashlib.sha256(scanner.encode()).hexdigest()
+    validator_sha = hashlib.sha256(validator.encode()).hexdigest()
+    _need(scanner_sha == '779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f'
+          and validator_sha == '2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1',
+          'terminal_zombie_original_sources_changed')
+    workers = [node for node in ast.parse(scanner).body
+               if isinstance(node, ast.FunctionDef) and node.name == 'attempt_workers']
+    _need(len(workers) == 1, 'terminal_zombie_worker_abi_changed')
+    changes = [node for node in ast.walk(workers[0]) if isinstance(node, ast.Raise)
+               and isinstance(node.exc, ast.Call) and isinstance(node.exc.func, ast.Name)
+               and node.exc.func.id == 'ValueError' and len(node.exc.args) == 1
+               and isinstance(node.exc.args[0], ast.Constant)
+               and node.exc.args[0].value == 'plane_late_identity_changed']
+    _need(len(changes) == 1 and changes[0].lineno == 85, 'terminal_zombie_failure_line_changed')
+    values = {'TERMINAL_ZOMBIE_SCOPE': 'current1e15-successful-six-read-terminal-zombie-v1',
+              'TERMINAL_ZOMBIE_SCANNER_SHA': scanner_sha,
+              'TERMINAL_ZOMBIE_VALIDATOR_SHA': validator_sha,
+              'TERMINAL_ZOMBIE_LATE_CHANGE_LINE': changes[0].lineno}
+    extra = ast.parse('\n'.join(name + '=' + repr(value) for name, value in values.items()) + '\n')
+    extra.body += ast.parse(_TERMINAL_ZOMBIE_RUNTIME).body
+    old_names = {node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+    new_names = {node.name for node in extra.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+    _need(old_names & new_names == {'_interval_capture'}
+          and '_interval_capture_before_terminal_zombie' not in old_names,
+          'terminal_zombie_namespace_collision')
+    captures[0].name = '_interval_capture_before_terminal_zombie'
+    tree.body += extra.body
+    ast.fix_missing_locations(tree)
+    raw = (ast.unparse(tree) + '\n').encode()
+    compile(raw, 'terminal-zombie-host-preflight', 'exec')
+    _need(len(raw) <= 2 * 1024 * 1024, 'installer_host_capsule_bound')
+    pins = dict(parent['sourcePins'])
+    pins.update({'parent-bounded-current-host-capsule': parent['sha256'],
+                 'terminal-zombie-runtime': hashlib.sha256(_TERMINAL_ZOMBIE_RUNTIME.encode()).hexdigest(),
+                 'terminal-zombie-explicit-factory-source': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()})
+    return {'source': raw, 'sha256': hashlib.sha256(raw).hexdigest(),
+            'originalSourceSha256': original_sha256, 'sourcePins': pins}

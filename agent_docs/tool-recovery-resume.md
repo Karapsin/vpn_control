@@ -1,142 +1,169 @@
-# Tool recovery implementation handoff
+# Native tool recovery continuation
 
-This task is incomplete. Continue implementation, native acceptance and delivery.
-Passing component tests do not establish provider acceptance. Preserve original
-receipts and failure evidence in the private runtime directories; the detailed
-history is in [the infrastructure ledger](tool-recovery-ledger.md).
+This follow-up remains incomplete. Work in
+`/Users/karapsin_de/projects/vpn_control_tool_recovery`, branch `dev`. The
+verified baseline `2efd2569ce39d86a991b32f68d8e89419360ac5c` passed all five
+development workflows. On 2026-11-05 the user moved `dev` off it with two local,
+unpushed commits, the Windows tool-recovery lane and then a work-in-progress
+checkpoint of every other uncommitted lane, so the worktree is clean; see the
+handoff in [work in progress](work-in-progress.md). No workflow receipt covers
+those commits, and the single existing Android APK update must be re-qualified
+against the new HEAD before it is collected.
+The [recovery ledger](tool-recovery-ledger.md) retains historical native outcomes;
+ignored `.runtime/tool-recovery/CONTINUATION.md` records exact active handles.
 
-## Workspace and authority
+## Workspace and scope
 
-Work only in `/Users/karapsin_de/projects/vpn_control_tool_recovery`, based on
-`d24c19047ec15689948404ede40f50c5ec284e77` from `origin/dev`. Preparation, routed
-documentation and impact review were completed in this clone. Recheck actual
-remote state before delivery. The installed project MCP points at the paused
-checkout; use this clone's `agent_tools/mcp_tool.sh` or a fresh SDK client against
-this clone. A source-change refusal requires fresh admission, not a bypass.
+Call this checkout's `prepare_start`, read its returned instructions, and use
+its local docs/impact tools. The connected project MCP points to the paused
+checkout; use recovery `agent_tools/mcp_tool.sh` or fresh SDK clients. Start shell
+commands with `unset DYLD_INSERT_LIBRARIES`. Preserve unrelated work and the
+paused `/Users/karapsin_de/projects/vpn_control` checkout. Private inventory,
+credentials, journals, source captures and generated artifacts stay uncommitted.
 
-Keep `/Users/karapsin_de/projects/vpn_control` untouched. Windows product parity
-is paused. Provider-host local/SSH parity was explicitly deferred: finish the
-existing modes, Android/Tart local and raw QEMU/libvirt through SSH. No release,
-coordinator reboot, VPN interruption, force reset, rebuild or disk restore is
-authorized. VM effects must bind an explicit input target or its retained
-original identity. Never infer a default or hardcode a public fixture target.
+The user authorized original Android lease closure and one real PackageInstaller
+update, the same persisted Tart macOS restart, and the existing raw QEMU/libvirt
+Windows protected-input, idle and lifecycle verification. Full VPN Control
+product acceptance, VPN connectivity/reconnect, UI/visual review and the wider
+installer matrix are **skipped by user instruction**. The latest user steering
+asks why fresh Windows VMs cannot be used; proceed with separately owned fresh
+remote Windows fixtures after normal source, clean-asset and capacity admission.
+Preserve old fixtures and UNKNOWN histories. Coordinate host effects with Android
+and use one fresh Windows fixture at a time. No additional target APK, main merge,
+tag, publish or release is authorized.
 
-The user authorized transport-only inventory copying, separate owned fixtures
-and removal of local VM assets. This does not authorize interrupting UNKNOWN
-work. Credentials, private profiles, evidence, disks and generated programs stay
-ignored and uncommitted. Production SSH persistence remains 18,000 seconds;
-use accelerated expiry tests. The user explicitly removed the five-hour dwell.
+Never stop the user's VPN/gateway or unrelated Virtualization.framework PID
+25339. Run at most one actual local test VM. Do not replay UNKNOWN operations,
+including `575c610c`, `8042e683`, `7310f227` and `b9e349f8`. A missing process
+does not provide a historical terminal receipt. Preserve disks and original pins.
 
-## Operation and safety invariants
+## Current native state
 
-Establish readiness before command generation and revalidate immediately before
-dispatch or input. Background work must not unnecessarily wake or log in. Honor
-intentional disconnected, locked, sleeping, suspended and stopped test states.
-Local status/collection remain observation-only. Transport recovery must not
-wake a VM solely to reconcile an original job.
+- Android: durable carrier control `5f779f3f` retained one execution across caller
+  timeout and all 9 MiB of stdout in bounded slices. Native census control
+  `d1b1a14f` proved the first scanner's correction with real late processes and
+  complete child closure. Same-persisted start `0e75d7ee` subsequently consumed
+  its authority once but ended before the fork fence; no VM started. Its exact
+  stderr shows a disappeared process in the distinct current1e15 closing reader.
+  The separate bounded observation correction and storage/collector helper are
+  now promoted. Actual kernel control `6caaeb65` and fixed-helper collector gate
+  `a3383cc8` passed with complete output and child closure. Preserve the original
+  scanner/projector and the failed operation's UNKNOWN partial extent. All original
+  42 GiB of remote claims remain held; a fresh Windows guest now adds 4 GiB.
+  Only exact qualified live Windows allocations are counted
+  as covered; no historical claim is retired by inference.
+  A distinct start `0ed4b592` also failed before any VM fork: an ordinary process
+  changed from a nonempty command to a terminal zombie during the closing census.
+  Full failure/journal evidence proves no child launch. Its original receiver
+  retains UNKNOWN; do not replay it. Separate local cleanup reaped its observer
+  and released all three coordinator locks. New factory `1c732a53` passed the
+  actual owned Linux before/current/prereaped controls `7ee98f8a`, `1f32c7b0`,
+  `502c92be`; complete reports and child/source/ledger closure are retained.
+  Observer `ab09df50` is covered by actual whole-before and real-lock/fresh-context
+  regressions. Preserve original UNKNOWNs. A new boot-only source recipe is
+  prepared, with all fresh admission fields still unbound.
+- Original Android installer `0dd55704` remains UNKNOWN. Cleanup `7310f227` is
+  immutable and failed before release. Successors `4214cb69` and `201cea86` are
+  fully collected pre-release refusals. Original API35 supervisor/QEMU are
+  positively absent with cause `off_unknown`. Start only the same persisted
+  `vpn-control-parity113-api35`, port 5682, 2048 MiB, under fresh source/capacity/
+  storage/identity admission. After a real boot, qualify a distinct current-boot
+  authority; never alter the old admission or ignore its boot check.
+- Closure order is remote release, fresh closing validation, then local capture.
+  No new child under the shared fixture-transfer root before that closure.
+  Scoped APFS relocation proof preserves both filesystem identities and the
+  exact original lease leaf. Generic device-number and path checks stay strict.
+  The current local capture adapter still requires actual release/closing proof.
+- Reuse the frozen target APK 2.2.15/code 17100, SHA256
+  `c162f7fa505537ad1f0106b3558e7cfb4fa89637dbb32934a180191ee256f2e7`,
+  and authentic base 2.2.2. Register the base, mint current fixture TLS shortly
+  before use, stage the verified matching-source CLI, obtain fresh receipts and
+  use real PackageInstaller. Use one clean linked baseline worktree through
+  `sourceRoot`; private coordinator inventory/journals stay in place.
+- Tart: five-field renderer and actual provider-shape defects have causal
+  RED/GREEN coverage. The same persisted macOS VM remains off after independent
+  administrative stop `d5573cc7`; prior graceful completion is unproved. Disk,
+  configuration, NVRAM and streams are retained. Full memory admission still
+  refuses: the latest check reported normal pressure and 5,790 MiB available
+  against 6,144 MiB required. Both available-memory and full sampled headroom
+  gates failed. Disk and the empty local test-VM census pass.
+  The lane is stopped after that check; requalify actual capacity and all
+  persisted metadata/source before any start.
+- Windows: raw `942cca12` and libvirt `6e848ad1` remain running, signed out and
+  display sleeping, with QGA. Native S3 is unsupported. UNKNOWN histories, missing
+  owner/lock/terminal anchors and protected work block input/lifecycle. Native
+  refusals, exact endpoint custody, idle observations and fresh MCP/CLI status
+  equivalence are retained; no credentials or power were submitted. Linux
+  synthetic owner/socket tests do not establish Windows protected acceptance.
+  Fresh raw fixture `62b489bc` has now started once with positive terminal and
+  source closure. Its 4 GiB claim and original QEMU/TPM identities are retained;
+  Windows installation, guest agent and ordinary-user session are qualified. Old
+  histories are preserved rather than adopted.
+  Plans use separate blank installations and pinned cached media. Read-only
+  preflight `aa383497` closed all nine phases without claims or VM effects.
+  The normal caller capacity fix is promoted: preserve the 12 GiB raw census,
+  add all held-running claims for policy and retain the generic exact mapping.
+  Current getter `b08a63b1` and bridge `d3ef0734` passed source/input closure,
+  ordinary/root identity, full census and both-ledger checks under distinct
+  operations `db1b1608` and `12932a24`. Old observations and source pins retain
+  their original identities. Exact new-actor storage registration `d22709df` and
+  fresh post-running-transition 46 GiB envelope `1fccd6b1` passed. Old 42 GiB
+  pins cannot authorize the new state. Protected administrator setup `d546cbd2`
+  passed with exact reviewed input/account/boot checks, credential verification,
+  full source closure and setup cleanup. Ordinary protected sign-in/unlock,
+  idle and lifecycle remain open. Libvirt creation remains pending.
+  Canonical display wake, lease expiry/restoration, cancellation/restoration and
+  original counter `ee9a19ba` (80 steps, one execution) now have native evidence.
+  Caller ACK-pending/uncertain-result handling is being corrected through
+  original-only status. Full idle still refuses on guest unknown jobs, completed
+  inspection classification and reservation-observer schema/policy gates. Preserve
+  all claims and original UNKNOWNs; do not bypass those refusals.
+- SSH: normal transport recovered under `25bbb600` with unchanged host boot,
+  account and gateway. Authority pointers were recaptured. Final dedicated
+  direct/nested fault campaigns await final source/version/metadata freeze.
+  Preserve shared connection `3ec9cdaeb`; production persistence stays 18,000
+  seconds and expiry tests use authorized accelerated intervals.
+- Raw Linux remains independently stopped under `c846027c`, aliases archived,
+  disk and old memory claim retained. The identified local Android emulator is
+  stopped under `ce7833fc`; exact absent claim removed, disks/shared ADB retained.
 
-Keep connection identity separate from durable job identity. Reconcile the same
-original job after connection, client or server loss. Retry preparation only
-with authenticated non-submission proof. UNKNOWN never authorizes a replacement,
-credential replay or power action. Source aliases must freshly qualify identical
-non-source custody; they cannot relabel old receipts or adopt unrelated actors.
-Seven positive idle categories and a source-bound one-reboot journal are needed
-for graceful reboot. Missing visibility blocks it.
+## Verification and next actions
 
-Preserve original UNKNOWN operation `820e102a-12a9-4e5d-9a9d-f8071b729cc0`
-and its helper. Other retained UNKNOWN histories include Android `b9e349f8`,
-Windows `3be5067e`, `d82c6b3b`, compiler `8e6c74d8`, diagnostic `7c3cffa6`,
-and old SSH foreground jobs. Use full UUIDs from their private original records.
-A missing process or QGA record does not supply a historical terminal result.
+The first managed focused pass completed 4,508 and 4,509 tests. Two failures and
+one error exposed a process-fixture ordering race, stale public source-review
+pins and an overbroad historical whole-source assertion. Complete original logs
+and beforeimages are preserved. All three modules passed the managed failed-first
+rerun after narrow fixes; no unresolved managed failure set remains. The platform
+contract suite passed 24 tests and the process/Git byte suite passed 18. Current
+affected selection resolves 803 of 901 modules. The latest collector-focused
+run passed 80 tests with one Linux-only skip. These are iteration results only.
 
-## Current implementation checkpoint
+The new current-authority template `2cb37a86` is promoted with 25 passing causal
+controls and complete original closing-data validation. The canonical source
+remains unsealed; genuine successful new-boot and captured native execution
+evidence are still required. A phase guard for exact owned fence/intent/quarantine
+transitions remains private; the independent boot-only phase can proceed after
+fresh admission. The combined kernel, Windows harness and Git cohort passed 50.
 
-This task remains incomplete. The current dependency manifest is `d7267986`;
-attributes are `ecbb6c32`. No native source set is held. Submitted packets and original receipts remain immutable.
-Capture current sources for a new admission; never relabel an old source epoch.
+The Windows test capability/path probe preserves 18 portable cases and explicitly
+skips 17 actual POSIX cases plus one Linux-only case in the Windows model.
+Historical protected-flow facts/provenance remain unchanged; current linkage
+checks all eight consumed function/class definitions and rejects mutations.
+Static dispatch source renewal grants no native credential availability.
 
-- Direct SSH original `8a468b28`/`e8cd093d` passed all four faults, one execution,
-  all 1,600 values, exact retained streams, fresh SDK/CLI equivalence and lost
-  terminal acknowledgement. Closure `328ab017` proves source and actor closure.
-  Nested original `63e0bf1f`/`f99584f3` passed the same cases; closure `083d0f33`
-  proves all 1,397 source bindings, 32 recorded local actor absences, eight client
-  stream pairs closed, and both owned test channels ended. Shared correlation
-  `3ec9cdaeb1314b44851e0304eb0b3908` was never signalled. Earlier failed campaigns
-  remain preserved. A fresh-client temporary-root provenance mismatch remains
-  under correction; exact original-environment cleanup succeeded without replay.
-- The strict nested dead-socket check now accepts exact LF or CRLF messages.
-  Thirteen actual generated-caller/socket causal controls pass, alongside ten
-  polling/final-audit controls. The corrected original twelve-module SSH fixture
-  cohort passed all 116 tests with full retained streams, source closure and
-  owned process/session cleanup (`15617149`). Prior unexplained late-readiness
-  failure causes remain unproven; the new pass does not rewrite their history.
-- Raw Windows `942cca12` remains signed out, with original UNKNOWN jobs blocking
-  idle/reboot. QGA capability operation `fa2a01ce` passed but supplies no input
-  authority. Windows VNC, listener custody and endpoint issuer are source-only;
-  actual fixed-cadence WTS, keyboard/profile and protected material admission are
-  pending. UIA/pipe/cross-session launcher work is parked. Separate new libvirt
-  fixture preparation uses supported 4 GiB RAM / 8 GiB headroom, normal capacity
-  admission and a blank installation; production defaults remain unchanged.
-  The HOME correction and four causal environment checks are integrated.
-- Mac `3bd29e00`/`10e1be2b` completed a known-session wake and public account-region
-  diagnostic, with lease cancellation/restoration and source/actor closure
-  (`77427d5e`). Exact white account glyphs match despite background differences.
-  A source-owned label profile and per-event recipient guard are under final
-  review; the empty-field guard is unchanged and native stability is unproven.
-  No ordinary credential was entered. The prior sleeping-screen refusal and
-  precredential mismatch remain preserved. Actual unlock/sign-in, current source
-  alias, helper publication/installation, complete idle and lifecycle acceptance
-  remain required.
-- Mac active-work, installer and lease-deadline candidates are still ignored,
-  with controlled checks passing. Merge one coherent reviewed overlay before
-  publication or native admission; partial publication cannot authorize new work.
-- The 2026-10-24 source integration (see the ledger checkpoint) adds the CP117
-  re-pin, exact literal action routes, pure request fences before readiness,
-  test-isolation and managed-runner stdin fixes, the Android staged update
-  substitution and the stage-1 creator pre-VM closure. All are component-verified
-  only; none of them ran natively.
-- Windows creator original `7e8b2dcd` stays immutable. Its reviewed closure
-  (`readiness_windows_creator_prevm_recovery`, root rulings and native runbook under
-  `.runtime/tool-recovery/windows-creator-prevm-recovery/`) runs only after the
-  landed SHA passes CI, including the new real Linux root-census step. Then: two
-  identical read-only proofs, root review, exactly one direct close, a resume only
-  with an approved authorization digest, and linked attempt 2 for fixture
-  `a3aec884`. Freeze the writer, reader and 16 pinned sources from the first proof
-  until custody is verified.
-- Linux retirement `8042e683` remains UNKNOWN. Guest SSH acknowledged queuing
-  poweroff; the same QEMU is still running. No completed shutdown, claim release,
-  replacement or replay is authorized. An exact original-only read-only serial
-  marker diagnostic is being used to investigate the stall.
+The user-requested cleanup reclaimed 5.4 GiB from seven ignored build directories
+and two positively closed non-VM test images. Exactly those two storage claims
+were retired; all other evidence, resources and disks were retained.
 
-Earlier Android, Tart Linux and QEMU provider results remain in the ledger in
-exact source epochs. They do not waive the remaining current-source matrix.
-Windows product parity remains paused; provider-host local/SSH parity is deferred.
-
-## Verification and delivery
-
-The reviewed 43-path promotion and finite metadata/byte-policy union are
-integrated; its six modules passed 46 tests with one Windows-only compiler skip,
-whose exact native method is wired into Windows CI. The later 23 SSH controls
-and four creator environment controls also pass. The affected selector now
-resolves 805 of 855 modules. The TEST-006 frozen full audit executed all 855
-modules (9,657 tests); its failures were fixed and the failed-first rerun through
-the actual runner passed. The managed pre-push tier remains open. Extend the prepared
-133-path raw-byte inventory for later promotions, then run the actual aggregate
-Git roundtrip with a converting text control. Final version bump, commit, push
-and exact-SHA five-workflow verification remain open.
-
-For each encountered native failure preserve original evidence and authentic
-whole beforeimages, then prove causal RED/GREEN and rerun the original native
-scenario. Mocked evidence cannot substitute for missing provider acceptance.
-
-Finish the remaining native matrix, update the ledger and this guide, then:
-
-1. Run `workflow_status` and review changed paths against the authorized scope.
-2. Apply `version_bump` after final content edits.
-3. Run affected checks and a fresh managed `run_checks(level="prepush")`.
-4. Commit explicit reviewed paths and push development work to `origin/dev`.
-5. Verify Fast Checks, Android Release APK, Linux Desktop Package, Windows
-   Desktop Package and macOS Desktop Package for that exact pushed SHA.
-
-No version bump, final pre-push receipt, commit, push or exact-SHA workflow
-verification has been completed yet. Do not report this task complete early.
+Finish coherent source promotions and fresh allocation qualification, the
+same-persisted Android boot/closure/update, and positive fresh Windows scenarios.
+Complete any admitted Tart scenarios and preserve genuine capacity refusals.
+For every causal defect keep actual RED/GREEN, routine coverage and the original
+native rerun. Then update evidence docs and freeze version/consumed metadata
+before final SSH campaigns. Run `workflow_status`, the required concise
+`version_bump`, affected checks and a fresh full `run_checks(level="prepush")`
+under `caffeinate -is` after checking disk/AC. Any content change invalidates that
+receipt. Run `prepare_start`/status again, commit explicit reviewed source/test/
+doc/version paths through `git_workflow`, push only `origin/dev`, and verify the
+exact pushed SHA until Fast Checks and all four package workflows succeed.
+Do not report full completion while required native or exact-SHA gates are open.

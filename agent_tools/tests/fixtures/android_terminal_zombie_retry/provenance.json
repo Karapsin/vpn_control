@@ -1,0 +1,67 @@
+{
+  "defaultSelectorCausal": {
+    "capturedUnknownSha256": "212380c43e18d958da7e19d7a08833e02baf8d1d2a3f04bf9c9199be49f1cc6d",
+    "cause": "One primary regression defaulted to historical before while the shared helper defaulted to the canonical candidate; an outer after environment masked it. Actual default is now tested with the selector absent.",
+    "productionChanged": false,
+    "wholeTestBeforeSha256": "ba2c2649559a66369f2c0b385cc29175d34d40b18a91fe4da5a34bf6d2a0b164"
+  },
+  "finalCanonicalProducerSha256": "1c732a53ac4f26eed9087246399236466b6c2e5c87aa715c5ae3903cbf7ffbf9",
+  "fixtures": {
+    "interval-harness.before.source": {
+      "bytes": 32859,
+      "sha256": "3d811294386c8327d02ba6bee104eb5eaf5c698100e4fae48dff3c549bc2de68"
+    },
+    "native-control.control-code.source": {
+      "bytes": 244,
+      "sha256": "857157269d0b519bbe4913b142d7d44eb91f38449d8d40163f3f92a29ee9858d"
+    },
+    "native-control.phase-before-fixed-refusal.source": {
+      "bytes": 16682,
+      "sha256": "71cc0b3014c4a7e0e8331f2354b5ef3a2b65185e0c3c21c400947cc7fd6764ee"
+    },
+    "native-control.phase-before-receiver-close.source": {
+      "bytes": 15829,
+      "sha256": "d7e73381a014384f6a9037433e59a3c5ad23fe61051639f4f3fc9377c9691462"
+    },
+    "native-control.phase.py": {
+      "bytes": 16998,
+      "sha256": "0b4359edf0a5ae10c03b46f47bb97a4af66430edff9e0ffb880af26ed57ff7d7"
+    },
+    "successor.before.source": {
+      "bytes": 61797,
+      "sha256": "41ecdd45dbcb4738e2d8ab93a027e5276ceb697d7dc5600685cd6fc406574790"
+    },
+    "successor.owner-before.source": {
+      "bytes": 86436,
+      "sha256": "f23eff4d0923b40d654587c6deda33f44a450b41041f6825be5bd6f992a5cf9f"
+    },
+    "test.default-selector.before.source": {
+      "bytes": 27893,
+      "sha256": "ba2c2649559a66369f2c0b385cc29175d34d40b18a91fe4da5a34bf6d2a0b164"
+    }
+  },
+  "kind": "source-only-terminal-zombie-causal-fixtures",
+  "nativeCausalProof": {
+    "allThreeOriginalsComplete": true,
+    "beforeReportSha256": "c836649b74079410fcdd8f2f92d5f4bca800994c0ee3270b3ec721f0abe4c556",
+    "originalUnknownsChanged": false,
+    "packetSha256": "49404f03861c3c600a3eca3f0dd40afc0acf42c0b8ea017af18d22bc147edf1d",
+    "preReapedReportSha256": "4d7af2b2841d7211fa9fb8923bef570f13039204ad3464b38368107d11c28076",
+    "realAndroidAcceptance": false,
+    "summarySha256": "bd10332af60561a01d6f5e097d27142005e8f9d202161223bc7c2bef0ce4d24b",
+    "terminalReportSha256": "938cbdcf04d8f35ec4e6dbc859b8dad9d91152349609d874de3ab7447e53aeb3"
+  },
+  "nativeKernelAcceptance": false,
+  "note": "Beforeimages are whole code files or exact source functions without actual inventory, credential, lease bytes or native configurations. Proc input is explicitly simulated on routine hosts; real kernel proof remains a separate native gate.",
+  "originalPrivateFailure": {
+    "intervalSha256": "9625f70601e3a0a4eb1561907ef9bc7fc3ea94aa9aeffe553f3d0df0ef15c7ea",
+    "operationId": "0ed4b592-5ac6-413a-b66e-20acc123d374",
+    "stderrSha256": "c71c6755230650e589108cecee06e9def85c21e60ed9a7c1c64749fe445eb152"
+  },
+  "ownerRetentionCausal": {
+    "failure": "fresh raw-owner drift dropped UNKNOWN witness details while refusing retry",
+    "wholeBeforeSha256": "f23eff4d0923b40d654587c6deda33f44a450b41041f6825be5bd6f992a5cf9f"
+  },
+  "privateMetadataEmbedded": false,
+  "schema": 1
+}

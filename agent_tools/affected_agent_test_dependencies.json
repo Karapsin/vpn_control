@@ -24,6 +24,17 @@
         "a3b772780fd871bb884df3d68db3cc985d71d7dc8736ee3e5f5c5a40259aaf19"
       ]
     },
+    "agent_tools/android_component_successor.py": {
+      "reason": "Internal pure source factories extract authenticated supplied original definitions and fixed explicit current process-census replacement. Native/execution code is emitted, never submitted by the factory; self-source pin reads only its held __file__. Original carrier execution closure and original381 factory remain unchanged. Rebuild exact native capsule from original982d and frozen source before native use. Existing pure authenticated-source capsule factories plus bounded whole-host observation retry. Original carrier/default381/current3a factories remain byte-exact prefix. New runtime is closed stdlib-only embedded source; self-file hash read is the only repository dependency. Both779c and2215 unchanged; native6caa causal proof48c136 recorded privately. Explicit terminal-zombie retry-only factory preserves whole41ec/defaultdf07/scanners779c/2215; exact current1c and bd74 source-qualified by owned Linux49404 causal before/current/prereaped originals, full reports c836649b/938cbdcf/4d7af2b2 and native summarybd103. FailedUNKNOWN never accepted; fresh complete whole-HOST observation required. No VM/lease or effect retry authority.",
+      "scopes": [
+        "agent_tools/android_component_successor.py"
+      ],
+      "sourceSha256": [
+        "1c732a53ac4f26eed9087246399236466b6c2e5c87aa715c5ae3903cbf7ffbf9",
+        "41db35629811610f220de5ed815ba3e739966ba4b17c50b6d1cd229984f378ab",
+        "41ecdd45dbcb4738e2d8ab93a027e5276ceb697d7dc5600685cd6fc406574790"
+      ]
+    },
     "agent_tools/android_installer_component_bundle.py": {
       "reason": "The existing held-byte importer accepts only the exact literal FILES registry and standard-library roots. New reviewed closure adds exactly readiness.py/private_inventory_lock.py; no arbitrary repository package, global module fallback or importer relaxation.",
       "scopes": [
@@ -32,6 +43,55 @@
       "sourceSha256": [
         "e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a",
         "e218c1fc862eab2a5668da970b8d642fa3254fb2ff822ab4945f23ae787f4372"
+      ]
+    },
+    "agent_tools/android_local_custody.py": {
+      "reason": "Internal four-role captured-byte loader: exact continuity/bundle modules, actual component_release_source factory extracted from one whole retirement snapshot, and one fixed native local adapter. Repository imports resolve only the three captured objects; no named import/cache fallback. In tests, adapter code is only the authenticated three-import AST entrypoint plus an owned assertion. Runtime private snapshots are invocation data, never public source overrides.",
+      "scopes": [
+        "agent_tools/android_component_continuity.py",
+        "agent_tools/android_installer_failed_check_retirement.py",
+        "agent_tools/android_installer_component_bundle.py",
+        "agent_tools/tests/fixtures/android_local_custody/adapter.before.source"
+      ],
+      "sourceSha256": [
+        "a04c3282787e938c32a09ad3ac5a54d8499e60a766977778591ef72ef388dcae"
+      ]
+    },
+    "agent_tools/android_persisted_start.py": {
+      "reason": "Internal adapter takes explicit authenticated original/coldboot/durable/installer/coverage bytes and renders fixed native code; no user source override or repository discovery. Only _capacity_sources reads repository paths: these exact three policy/probe files. Original reader/producer/bridge bytes are explicit custody parameters; routine test supplies the separately declared inert/authentic fixtures. Native literal paths/pins are runtime authority and never a repository-module search. Internal pure closed-source renderers. Existing finite canonical capacity policy and new stdlib-only read-only interval reader/projection. Only repository reads are truthful __file__ and exactly three canonical policy files. Native source is emitted; no renderer dispatches it. Preserve existing declaration hashes/scopes when merging2668.",
+      "scopes": [
+        "agent_tools/native_host_observation.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "2668bda9cd94f1f6b96805a3f55fd58514d0e5487bb10875a8c42dc3e3be4bef",
+        "53b0fca6d7eba6344420c3d83c028aa18be60669f0af9305df8dbbd54c77bd82"
+      ]
+    },
+    "agent_tools/android_poststart_current_authority.py": {
+      "reason": "Internal unsealed current-authority template SOURCE_BINDING=None refuses before any source/private read. The trusted native operator later materializes canonical bytes plus six authenticated captured sources into private OUT/sources and seals genuine same-persisted start/status/qualification/closing input pins. The distinct current branch leaves original b80/93ff validation and scanners unchanged; closing replays exact fixed projector source against full raw observations and authentic boundary/physical frames. No canonical import/cache fallback, public source override or native action at import. Routine execution materializes actual canonical bytes with finite fixtures only. Execution-only deadline/FD/syscall facts require genuine reviewed source-bound producer and native verification. The actual334 kernel reader returns a full status document: first call uses None, the existing generation/app relation is checked, and the closing call passes the full first document unchanged. No wrapper or authentic guard edit.",
+      "scopes": [
+        "agent_tools/android_component_continuity.py",
+        "agent_tools/android_installer_component_bundle.py",
+        "agent_tools/android_installer_failed_check_retirement.py",
+        "agent_tools/android_local_custody.py",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-boundarySource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-processSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-validatorSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-boundarySource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-processSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-validatorSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/adapter.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/bundle.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/continuity.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/custody.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/renderer.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/retirement.source"
+      ],
+      "sourceSha256": [
+        "2cb37a86cc2f986aa6bb03652ab3f827bba16e6b3c7061348a451a0f0912d73f",
+        "2e4e05e1986b5494865de209ebefde449bc4d65ce1b32f63bab1c39f9c8c0f9a"
       ]
     },
     "agent_tools/linux_deb_arch_guest_prepare_remote.py": {
@@ -175,6 +235,27 @@
         "72826e036d075bed3d5791ee84222d0f2ca47b594f873e868281b01f0df73b32"
       ]
     },
+    "agent_tools/tests/android_interval_fixture_support.py": {
+      "reason": "Finite literal fixtures and verified before-helper sources. Materializes authentic53b/734/57c8 bytes under owned temporary agent_tools with the three exact canonical policy bytes, then loads only that real path. __file__ and ownSHA remain truthful; no current canonical alias, arbitrary repository root or private source inventory.",
+      "scopes": [
+        "agent_tools/native_host_observation.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-b2.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-d9ef.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-e43.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller.fixed.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-53b.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-57c8.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-734.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "11c67a918b44c6950d66055ed8b0bfa51858424f424f00ef8813281e64f94402"
+      ]
+    },
     "agent_tools/tests/connected_input_peer_causal.py": {
       "reason": "Compile only actual complete RPC/peer functions and immutable before RPC. Real Linux Unix sockets prove wrong PID/UID rejection before any protocol send and matching-peer success.",
       "scopes": [
@@ -287,6 +368,32 @@
         "41634e7851ee26fbb982bc970480b085f2ce14bceba6d367fb43ff770c7e9601"
       ]
     },
+    "agent_tools/tests/fixtures/android_component_continuity/bundle.before.source": {
+      "reason": "Authentic whole original component bundle is loaded only by the finite continuity causal test. Its held-byte importer remains restricted to its exact literal FILES table and original source guards; preserving this original loader permits no current public source substitution.",
+      "scopes": [
+        "@files:FILES"
+      ],
+      "sourceSha256": [
+        "e218c1fc862eab2a5668da970b8d642fa3254fb2ff822ab4945f23ae787f4372"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_component_continuity/continuity.before-relocation.source": {
+      "reason": "Authentic whole536f strict device-only helper executes in the finite current-path/APFS counterfactual over real owned temp paths, with only explicit synthetic trust-root/path metadata seams. Imports are stdlib; no native lease or remote operation executes.",
+      "scopes": [],
+      "sourceSha256": [
+        "536f558fe7dfbd3f0b7645bdce6d658c6c7020762f34c6416d5eff4722bf82db"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_component_continuity/retirement.before-relocation.source": {
+      "reason": "Authentic whole074c retirement module is loaded with __package__ agent_tools, preserving its real relative ssh_transport import. Only its existing source factory and generated exact local release primitive execute over owned temp leases; canonical current validator rejects the distinct receipt before the fence in RED. No original remote operation executes.",
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/android_component_continuity.py"
+      ],
+      "sourceSha256": [
+        "074c59e49ab9b9ebb8ad87a94d5c52505f8bbf276c4d30b0816d194909f7cb4f"
+      ]
+    },
     "agent_tools/tests/fixtures/android_component_readiness_closure/android_installer_component_bundle.py.before.source": {
       "reason": "Authentic whole component importer beforeimage, with the same literal FILES-only source authority and fixed package/stdlib namespace boundary as the current source. Its own41-file historical registry is read exactly; no widened package scope.",
       "scopes": [
@@ -294,6 +401,178 @@
       ],
       "sourceSha256": [
         "e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_component_successor/bundle.before.source": {
+      "reason": "Complete immutable component bundle consumed by the first durable successor. The regression exercises its unchanged create-only staging and existing held-byte receipt readers; its original importer remains restricted to its literal FILES table. No original source pin or dynamic import authority is altered.",
+      "scopes": [
+        "@files:FILES"
+      ],
+      "sourceSha256": [
+        "6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source": {
+      "reason": "Six exact function definitions from authentic982d installer source. The actual current factory closes them with the whole original bundle and owned synthetic tables; unit call stops at unsupported-platform guard before any remote/native/file observation. Functions use stdlib/fixed provided namespace; no arbitrary repository source path.",
+      "scopes": [],
+      "sourceSha256": [
+        "d38b367cf00a0429b53a3b9b24f461847a8f6a92f94644269f994239f9ebfbdd"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/harness.before.source": {
+      "reason": "Whole authentic unfixed test harness; executes one owned temporary-proc regression and verifies its original missing BASELINE_BASE64 NameError. Its imports are the two explicitly scoped repository modules/tests; no native effects.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/test_android_installer_host_preflight.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/harness.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process.before.source",
+        "agent_tools/tests/fixtures/android_current_census/successor.before-closing-budget.source",
+        "agent_tools/tests/fixtures/android_current_census/successor.before-distinct-source.source",
+        "agent_tools/tests/fixtures/android_current_census/successor.whole-before.source",
+        "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source",
+        "agent_tools/tests/fixtures/android_current_census/validator.original.source"
+      ],
+      "sourceSha256": [
+        "0eb18322c78a01716cbb64759915f4b1eddedd00e6aeccf3ad423eb921643251"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source": {
+      "reason": "Authentic processor/projector source from original982d fixed tables; actual code executes with owned proc files and explicit original fixed namespace only; no repository imports.",
+      "scopes": [],
+      "sourceSha256": [
+        "779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/process.before.source": {
+      "reason": "Authentic processor/projector source from original982d fixed tables; actual code executes with owned proc files and explicit original fixed namespace only; no repository imports.",
+      "scopes": [],
+      "sourceSha256": [
+        "26df14113106aae8a76fed795e1d562726f1b43e9be8763c736315fac350e28e"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/successor.before-closing-budget.source": {
+      "reason": "Authentic whole unfixed successor source; only pure capsule factory invoked with owned proof fixture. Its __file__ names this exact held fixture so source pin matches executed bytes. No remote execution.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_current_census/successor.before-closing-budget.source"
+      ],
+      "sourceSha256": [
+        "d78bea20bfa16abfc0dc30ff397f5c4b6fb20a92b2fab56463b82c61981c21f0"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/successor.before-distinct-source.source": {
+      "reason": "Authentic whole unfixed successor source; only pure capsule factory invoked with owned proof fixture. Its __file__ names this exact held fixture so source pin matches executed bytes. No remote execution.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_current_census/successor.before-distinct-source.source"
+      ],
+      "sourceSha256": [
+        "5f083c01001907eb7c6112e3de026236699cc040612a99841f05cebb393a819f"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/successor.whole-before.source": {
+      "reason": "Authentic whole unfixed successor source; only pure capsule factory invoked with owned proof fixture. Its __file__ names this exact held fixture so source pin matches executed bytes. No remote execution.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_current_census/successor.whole-before.source"
+      ],
+      "sourceSha256": [
+        "e661cacfa9c3d50b9ac7d78d2da1bd9609dee38ef2a577850485afaf333e6d54"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source": {
+      "reason": "Authentic processor/projector source from original982d fixed tables; actual code executes with owned proc files and explicit original fixed namespace only; no repository imports.",
+      "scopes": [],
+      "sourceSha256": [
+        "2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_census/validator.original.source": {
+      "reason": "Authentic processor/projector source from original982d fixed tables; actual code executes with owned proc files and explicit original fixed namespace only; no repository imports.",
+      "scopes": [],
+      "sourceSha256": [
+        "23e692586d4f82f4c6dc8a24c0200eb572292c0efc78e68497de33ca0f119670"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.before.source": {
+      "reason": "Exact source-closed native-control/evidence before or fixed body. Routine tests compile authentic AST definitions/tail with explicit inert preparation/publication seams; capture-only helpers receive actual owned factory namespaces. No repository imports, native calls or user private metadata are present in fixture.",
+      "scopes": [],
+      "sourceSha256": [
+        "4859dea6f90419bb5c2b761595e73182938d1e1e7122283cf8b93ffc3e437250"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.fixed.source": {
+      "reason": "Exact source-closed native-control/evidence before or fixed body. Routine tests compile authentic AST definitions/tail with explicit inert preparation/publication seams; capture-only helpers receive actual owned factory namespaces. No repository imports, native calls or user private metadata are present in fixture.",
+      "scopes": [],
+      "sourceSha256": [
+        "a412c4c3cc74fbd38ae3ffb1dd5a1ee4f1010a1d0caa08af945d71b647b73e56"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/control-body.before.source": {
+      "reason": "Exact source-closed native-control/evidence before or fixed body. Routine tests compile authentic AST definitions/tail with explicit inert preparation/publication seams; capture-only helpers receive actual owned factory namespaces. No repository imports, native calls or user private metadata are present in fixture.",
+      "scopes": [],
+      "sourceSha256": [
+        "1ed08a26194ee2122a37921cc7f7fb0e52f64a03f24a4b138994efcac5ab5bba"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/control-body.fixed.source": {
+      "reason": "Exact source-closed native-control/evidence before or fixed body. Routine tests compile authentic AST definitions/tail with explicit inert preparation/publication seams; capture-only helpers receive actual owned factory namespaces. No repository imports, native calls or user private metadata are present in fixture.",
+      "scopes": [],
+      "sourceSha256": [
+        "f71c2f9d2e973c0c2d991bbb0468303c48c150c53f0803e318b35ceea5456c72"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/control-body.publication-fixed.source": {
+      "reason": "Exact source-closed native-control/evidence before or fixed body. Routine tests compile authentic AST definitions/tail with explicit inert preparation/publication seams; capture-only helpers receive actual owned factory namespaces. No repository imports, native calls or user private metadata are present in fixture.",
+      "scopes": [],
+      "sourceSha256": [
+        "45e706b66884715716376bce7541cb230cae3018ee1ab7d2eaaa6aa6baede0a5"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/successor.draft-before.source": {
+      "reason": "Whole authentic unfixed source; only pure capsule factory invoked against owned proof fixture, truthful __file__ names exact beforeimage for own-source SHA. No native execution.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.draft-before.source"
+      ],
+      "sourceSha256": [
+        "23cd89fb035d18021b7b6ba3b00deec27bc31870f2127b67c86f8afad68d230c"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/successor.whole-before.source": {
+      "reason": "Whole authentic unfixed source; only pure capsule factory invoked against owned proof fixture, truthful __file__ names exact beforeimage for own-source SHA. No native execution.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.whole-before.source"
+      ],
+      "sourceSha256": [
+        "41db35629811610f220de5ed815ba3e739966ba4b17c50b6d1cd229984f378ab"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_current_interval_retry/test.unconditional-posix.before.source": {
+      "reason": "Whole authentic test-module beforeimage for actual missing-fcntl discovery regression, compiled under isolated builtins import refusal. No tests/effects are executed during this discovery probe; finite referenced test/factory resources declared.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process.before.source",
+        "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source",
+        "agent_tools/tests/fixtures/android_current_census/validator.original.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.publication-fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.draft-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.whole-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/test.unconditional-posix.before.source",
+        "agent_tools/tests/test_android_current_interval_retry.py",
+        "agent_tools/tests/test_android_installer_host_preflight.py"
+      ],
+      "sourceSha256": [
+        "7150f450be1061a0df33d8d15b8f30c36497685afc56b2383213ca50d677702a"
       ]
     },
     "agent_tools/tests/fixtures/android_current_owner_epoch/bundle.source": {
@@ -314,12 +593,438 @@
         "4dbc607a372b2c5189ad555540ab16683319046142ce48bd60b6950a75eddbf5"
       ]
     },
+    "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source": {
+      "reason": "Authentic original7d coldboot producer bytes are hash-checked and only its literal _BOOT and named unchanged function definitions are AST-selected. Whole producer module imports/top-level are never executed by this routine consumer. The emitted supervisor runs only fixed owned inert executable controls; Linux subreaper control is explicitly skipped on Darwin. Native runtime parameter paths are not repository discovery.",
+      "scopes": [],
+      "sourceSha256": [
+        "7d90c06070ffad1439e613c9ad5d63f979d43b738944f0630b2b15187f09fec6"
+      ]
+    },
     "agent_tools/tests/fixtures/android_installer_hermetic/component-bundle.source": {
       "scopes": [
         "@files:FILES"
       ],
       "sourceSha256": [
         "6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_local_custody/adapter.before.source": {
+      "reason": "Authentic complete local adapter1831. Causal test extracts/executes exactly its three real agent_tools ImportFrom nodes, then observes a synthetic immutable identity field; private root/intent reads and main/release code are not compiled or executed by that causal entrypoint. The fixed loader is separately exercised over current captured helper bytes.",
+      "scopes": [
+        "agent_tools/android_component_continuity.py",
+        "agent_tools/android_installer_failed_check_retirement.py",
+        "agent_tools/android_installer_component_bundle.py"
+      ],
+      "sourceSha256": [
+        "1831b5105fd23f45cd047c1cd46af6e427129b7b9089c3f1a9749b211468f955"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_local_custody/qualifier.before.source": {
+      "reason": "Authentic complete unfixed native qualifier c491. Causal test compiles only actual local _pin guard statements and actual pathlib assignment, with real owned FD/path environmental seams; surrounding imports, transport, original anchors, and native main are not executed. Python source authority remains explicit rather than opaque.",
+      "scopes": [],
+      "sourceSha256": [
+        "c4912f4c4282d8e9a61fdf5acca7233c89448b720227fa32fa47c1a859a4b672"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_native_observer_control/cleanup.before.source": {
+      "reason": "Fixed finite nativecontrol fixture source; only stdlib/explicitowned Popen/state/birth/phase namespaces. No repository imports or source discovery. Beforeasset is exact actualfe3 AST; fixedasset is exact native emitted compiled helper/orchestration. No new child or signal from cleanup source.",
+      "scopes": [],
+      "sourceSha256": [
+        "2e9e4246276b5a7b8df548c0f3e1d2fddea94c1454433eba8e24d7cb7da20230"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_native_observer_control/cleanup.fixed.source": {
+      "reason": "Fixed finite nativecontrol fixture source; only stdlib/explicitowned Popen/state/birth/phase namespaces. No repository imports or source discovery. Beforeasset is exact actualfe3 AST; fixedasset is exact native emitted compiled helper/orchestration. No new child or signal from cleanup source.",
+      "scopes": [],
+      "sourceSha256": [
+        "4444a6aa9c821c7648f33633bc0760887ace2c247e0c689f4ea1ec16f0cf39c4"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_native_observer_control/evidence.before.source": {
+      "reason": "Fixed finite nativecontrol fixture source; only stdlib/explicitowned Popen/state/birth/phase namespaces. No repository imports or source discovery. Beforeasset is exact actualfe3 AST; fixedasset is exact native emitted compiled helper/orchestration. No new child or signal from cleanup source.",
+      "scopes": [],
+      "sourceSha256": [
+        "78fb716a74fd6459071e19138686aab8f1fac9c1eedd0f2cb853ea154068ea43"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_native_observer_control/evidence.fixed.source": {
+      "reason": "Fixed finite nativecontrol fixture source; only stdlib/explicitowned Popen/state/birth/phase namespaces. No repository imports or source discovery. Beforeasset is exact actualfe3 AST; fixedasset is exact native emitted compiled helper/orchestration. No new child or signal from cleanup source.",
+      "scopes": [],
+      "sourceSha256": [
+        "13ee6695447f332e6ffc42b2cbd23307ffac4616ee84ce01158580075ecb92a8"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-b2.before.source": {
+      "reason": "Whole authentic owner source, or actual fixed74 template. Controller functions and real Context/Custody/frozen durable session execute only under explicit owned fixture source/transport/identity/effect seams. Snapshot sources copy exactly the three declared bootstrap modules; collection network session/RPC are owned. Anonymous runtime paths in inactive transport implementation grant no repository source discovery; source hashes and causal whole-body inverses retained.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/android_interval_fixture_support.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/tests/test_android_interval_report_context.py",
+        "agent_tools/tests/test_android_interval_report_schema.py",
+        "agent_tools/tests/test_android_interval_reports.py",
+        "agent_tools/tests/test_android_persisted_interval_storage.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "b2cec75b415152f88c629a56aad01a9db601b54183fa0a786a3e6a4e1fa043c6"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-d9ef.before.source": {
+      "reason": "Whole authentic owner source, or actual fixed74 template. Controller functions and real Context/Custody/frozen durable session execute only under explicit owned fixture source/transport/identity/effect seams. Snapshot sources copy exactly the three declared bootstrap modules; collection network session/RPC are owned. Anonymous runtime paths in inactive transport implementation grant no repository source discovery; source hashes and causal whole-body inverses retained.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/android_interval_fixture_support.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/tests/test_android_interval_report_context.py",
+        "agent_tools/tests/test_android_interval_report_schema.py",
+        "agent_tools/tests/test_android_interval_reports.py",
+        "agent_tools/tests/test_android_persisted_interval_storage.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "d9ef282e23592746c2c768f68fb3e5b96a858838b35f822de20333fc6bcfe86c"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-e43.before.source": {
+      "reason": "Whole authentic owner source, or actual fixed74 template. Controller functions and real Context/Custody/frozen durable session execute only under explicit owned fixture source/transport/identity/effect seams. Snapshot sources copy exactly the three declared bootstrap modules; collection network session/RPC are owned. Anonymous runtime paths in inactive transport implementation grant no repository source discovery; source hashes and causal whole-body inverses retained.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/android_interval_fixture_support.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/tests/test_android_interval_report_context.py",
+        "agent_tools/tests/test_android_interval_report_schema.py",
+        "agent_tools/tests/test_android_interval_reports.py",
+        "agent_tools/tests/test_android_persisted_interval_storage.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "e43f0997cfae188c433e5cea86807e36bc247b971093534fecfe88ef38510c86"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller.fixed.source": {
+      "reason": "Whole authentic owner source, or actual fixed74 template. Controller functions and real Context/Custody/frozen durable session execute only under explicit owned fixture source/transport/identity/effect seams. Snapshot sources copy exactly the three declared bootstrap modules; collection network session/RPC are owned. Anonymous runtime paths in inactive transport implementation grant no repository source discovery; source hashes and causal whole-body inverses retained.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/android_interval_fixture_support.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/tests/test_android_interval_report_context.py",
+        "agent_tools/tests/test_android_interval_report_schema.py",
+        "agent_tools/tests/test_android_interval_reports.py",
+        "agent_tools/tests/test_android_persisted_interval_storage.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "74c60b99426fb73cf3ea5ef9ad69f097d723b30a0fca72796e45935b7e7e8552"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-53b.before.source": {
+      "reason": "Authentic whole helper beforeimage, byte-checked and materialized under truthful owned temporary agent_tools with exactly three canonical policy copies. Only selected source-renderer/validator code runs; native programs remain inert except explicit owned OS/host boundaries. No private inventory or credentials embedded.",
+      "scopes": [
+        "agent_tools/native_host_observation.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "53b0fca6d7eba6344420c3d83c028aa18be60669f0af9305df8dbbd54c77bd82"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-57c8.before.source": {
+      "reason": "Authentic whole helper beforeimage, byte-checked and materialized under truthful owned temporary agent_tools with exactly three canonical policy copies. Only selected source-renderer/validator code runs; native programs remain inert except explicit owned OS/host boundaries. No private inventory or credentials embedded.",
+      "scopes": [
+        "agent_tools/native_host_observation.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "57c8b55fd9c6dc78f1352af2f33411c6ed76ada9f27c445df099a7696e08f4d7"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-734.before.source": {
+      "reason": "Authentic whole helper beforeimage, byte-checked and materialized under truthful owned temporary agent_tools with exactly three canonical policy copies. Only selected source-renderer/validator code runs; native programs remain inert except explicit owned OS/host boundaries. No private inventory or credentials embedded.",
+      "scopes": [
+        "agent_tools/native_host_observation.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "7341b274393541566e05ca526e2608cdcdc00a132e7a9839a9763e3fbf464b18"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/adapter.before.source": {
+      "reason": "Authentic exact whole internal adapter or original function closure. Routine caller supplies fixed authenticated reader/launch literals and owned filesystem/proc seams; imports are stdlib, native actions remain inert. Only allocation beforeimage invokes _capacity_sources, with its explicit current-public-file root seam resolving exactly the three declared unchanged policy files. No broader repository or runtime source discovery.",
+      "scopes": [],
+      "sourceSha256": [
+        "a7056498c100b5d3fe831fbd4d45aa962fcead5a6d11fd912b7a62fbcf9817e4"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/advisory-timeout.before.source": {
+      "reason": "WHOLE authentic native advisory harness, checked for no embedded private inventory/token/credential values. Only AST-selected actual build_ssh_argv expression and literal bootstrap source execute in routine control. Its real load_config call is supplied an inert owned config; actual current builder validates/quotes but is never submitted. All other imports/top-level/main/native/credential paths remain inert; these source bodies grant no transport or filesystem source discovery.",
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json"
+      ],
+      "sourceSha256": [
+        "f294f0abe6945d2cd6a37f92a27eddc7258044570164dd1ed7ff74f170b69238"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/advisory-timeout.fixed.source": {
+      "reason": "WHOLE authentic native advisory harness, checked for no embedded private inventory/token/credential values. Only AST-selected actual build_ssh_argv expression and literal bootstrap source execute in routine control. Its real load_config call is supplied an inert owned config; actual current builder validates/quotes but is never submitted. All other imports/top-level/main/native/credential paths remain inert; these source bodies grant no transport or filesystem source discovery.",
+      "scopes": [
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json"
+      ],
+      "sourceSha256": [
+        "316ecbfa63bdda696035b545e09777cff33ee67da0c03da8ab8befa19c835ad1"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/allocation-coverage.before.source": {
+      "reason": "Authentic exact whole internal adapter or original function closure. Routine caller supplies fixed authenticated reader/launch literals and owned filesystem/proc seams; imports are stdlib, native actions remain inert. Only allocation beforeimage invokes _capacity_sources, with its explicit current-public-file root seam resolving exactly the three declared unchanged policy files. No broader repository or runtime source discovery.",
+      "scopes": [
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py",
+        "agent_tools/native_host_observation.py"
+      ],
+      "sourceSha256": [
+        "4c703f4b2bc654ec9e882789529a9913b73e00df702c7aedea0aa6c9d4bf4e62"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/composition-setup.before.source": {
+      "reason": "WHOLE authentic failed/fixed local composition-control source. ONLY the exact TemporaryDirectory call is AST-selected and evaluated; all original imports/top-level/source reads/transport calls remain inert. The actual existing SocketGuest constructor then performs a real owned AF_UNIX bind under the explicit controlled TMPDIR, testing the observed path overflow and short explicit /tmp correction.",
+      "scopes": [
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_privileged_program.py",
+        "agent_tools/tests/test_ssh_privileged_program.py",
+        "agent_tools/tests/test_ssh_automatic_program.py"
+      ],
+      "sourceSha256": [
+        "be791c61ab945026307de0855340902bcb2ad2f873b8be87ab06ad50850a098c"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/composition-setup.fixed.source": {
+      "reason": "WHOLE authentic failed/fixed local composition-control source. ONLY the exact TemporaryDirectory call is AST-selected and evaluated; all original imports/top-level/source reads/transport calls remain inert. The actual existing SocketGuest constructor then performs a real owned AF_UNIX bind under the explicit controlled TMPDIR, testing the observed path overflow and short explicit /tmp correction.",
+      "scopes": [
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_privileged_program.py",
+        "agent_tools/tests/test_ssh_privileged_program.py",
+        "agent_tools/tests/test_ssh_automatic_program.py"
+      ],
+      "sourceSha256": [
+        "54bb2624170dc101ed645918bae863d3047d2193fc81ad9dfc001a585b031183"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/controller-composition.source": {
+      "reason": "Authentic WHOLE controller source executes imports/definitions in isolated namespace and actual owner_main with owned fake Context for local source/locks/transport/machine only. Observer/start programmes render through REAL current helper and remain inert; REAL start_plan validates final complete owned control data. Distinct start-authority gate never granted; every submit/GO hook forbids execution. Actual Context.transaction also runs with genuine typed returned-result exception and owned transport/credential seams; no real credential/network/native calls. Historical/anonymous runtime paths in inactive Context implementation grant no repository source discovery.",
+      "scopes": [
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json"
+      ],
+      "sourceSha256": [
+        "f71178076d5df505a19ad9775133665e54b3f0f656b19471659a54b8c271a4ac"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/controller-sampling.final.source": {
+      "reason": "Authentic WHOLE controller source executes imports/definitions in isolated namespace and actual owner_main with owned fake Context for local source/locks/transport/machine only. Observer/start programmes render through REAL current helper and remain inert; REAL start_plan validates final complete owned control data. Distinct start-authority gate never granted; every submit/GO hook forbids execution. Actual Context.transaction also runs with genuine typed returned-result exception and owned transport/credential seams; no real credential/network/native calls. Historical/anonymous runtime paths in inactive Context implementation grant no repository source discovery.",
+      "scopes": [
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json"
+      ],
+      "sourceSha256": [
+        "b2cec75b415152f88c629a56aad01a9db601b54183fa0a786a3e6a4e1fa043c6"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/controller-sampling.fixed.source": {
+      "reason": "Authentic WHOLE controller source executes imports/definitions in isolated namespace and actual owner_main with owned fake Context for local source/locks/transport/machine only. Observer/start programmes render through REAL current helper and remain inert; REAL start_plan validates final complete owned control data. Distinct start-authority gate never granted; every submit/GO hook forbids execution. Actual Context.transaction also runs with genuine typed returned-result exception and owned transport/credential seams; no real credential/network/native calls. Historical/anonymous runtime paths in inactive Context implementation grant no repository source discovery.",
+      "scopes": [
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json"
+      ],
+      "sourceSha256": [
+        "33477e449a4151f9543fb722dc1fb36b640ea14a28caf2054d6fa0f59608d699"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/native-observer.before.source": {
+      "reason": "Authentic exact whole internal adapter or original function closure. Routine caller supplies fixed authenticated reader/launch literals and owned filesystem/proc seams; imports are stdlib, native actions remain inert. Only allocation beforeimage invokes _capacity_sources, with its explicit current-public-file root seam resolving exactly the three declared unchanged policy files. No broader repository or runtime source discovery.",
+      "scopes": [],
+      "sourceSha256": [
+        "8a2d81e09f1c22d1668aa300618a398651e4f74fa40c21b4895d8ef1ec3a4da1"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/original-readers.source": {
+      "reason": "Authentic exact whole internal adapter or original function closure. Routine caller supplies fixed authenticated reader/launch literals and owned filesystem/proc seams; imports are stdlib, native actions remain inert. Only allocation beforeimage invokes _capacity_sources, with its explicit current-public-file root seam resolving exactly the three declared unchanged policy files. No broader repository or runtime source discovery.",
+      "scopes": [],
+      "sourceSha256": [
+        "106193c91deb9ba1b54c6cb1dee6b3821e47165f61c317ae6d8e553536d20b8c"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_persisted_start/receiver-composition.source": {
+      "reason": "WHOLE authentic current receiver template, rendered only with a fixed owned RC literal. Imports and definitions execute in isolated ModuleType; main parses exact real header/body after mandatory privileged wrapper. The native root/observation business boundary is the sole declared projection, so no real root/VM/lease paths run. No new receiver protocol is introduced.",
+      "scopes": [
+        "agent_tools/tests/test_android_persisted_start.py",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_privileged_program.py",
+        "agent_tools/tests/test_ssh_privileged_program.py",
+        "agent_tools/tests/test_ssh_automatic_program.py"
+      ],
+      "sourceSha256": [
+        "3d291375895a9e84bf31516fbe43aa5476a90ef8f605b8e70b9ce8381823cafb"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/interval-harness.before.source": {
+      "reason": "Authentic whole3d811 renderer harness; only actualcapsule function ASTselected with exactly one factory-name replacement and actualowned source root. Other module code inert; runtime globals from canonical owned fixture. No native calls.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process.before.source",
+        "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source",
+        "agent_tools/tests/fixtures/android_current_census/validator.original.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.publication-fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.draft-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.whole-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/test.unconditional-posix.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.owner-before.source",
+        "agent_tools/tests/test_android_current_interval_retry.py",
+        "agent_tools/tests/test_android_installer_host_preflight.py"
+      ],
+      "sourceSha256": [
+        "3d811294386c8327d02ba6bee104eb5eaf5c698100e4fae48dff3c549bc2de68"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.control-code.source": {
+      "reason": "Exact source-only native control phase/error producer before or fixed code. Routine tests compile actual definitions with inert explicit OS/protocol/child seams. No repository imports, private inventory/credential/native configuration or actual native execution.",
+      "scopes": [],
+      "sourceSha256": [
+        "857157269d0b519bbe4913b142d7d44eb91f38449d8d40163f3f92a29ee9858d"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-fixed-refusal.source": {
+      "reason": "Exact source-only native control phase/error producer before or fixed code. Routine tests compile actual definitions with inert explicit OS/protocol/child seams. No repository imports, private inventory/credential/native configuration or actual native execution.",
+      "scopes": [],
+      "sourceSha256": [
+        "71cc0b3014c4a7e0e8331f2354b5ef3a2b65185e0c3c21c400947cc7fd6764ee"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-receiver-close.source": {
+      "reason": "Exact source-only native control phase/error producer before or fixed code. Routine tests compile actual definitions with inert explicit OS/protocol/child seams. No repository imports, private inventory/credential/native configuration or actual native execution.",
+      "scopes": [],
+      "sourceSha256": [
+        "d7e73381a014384f6a9037433e59a3c5ad23fe61051639f4f3fc9377c9691462"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase.py": {
+      "reason": "Exact source-only native control phase/error producer before or fixed code. Routine tests compile actual definitions with inert explicit OS/protocol/child seams. No repository imports, private inventory/credential/native configuration or actual native execution.",
+      "scopes": [],
+      "sourceSha256": [
+        "0b4359edf0a5ae10c03b46f47bb97a4af66430edff9e0ffb880af26ed57ff7d7"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.before.source": {
+      "reason": "Authentic whole beforeimage41ec orf23, byte-authenticated and materialized under truthful owned temporary agent_tools/__file__. Only actual pure capsule factory runs against owned proof; standalone stdlib source, no repository policy imports or native/credential access.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.before.source"
+      ],
+      "sourceSha256": [
+        "41ecdd45dbcb4738e2d8ab93a027e5276ceb697d7dc5600685cd6fc406574790"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.owner-before.source": {
+      "reason": "Authentic whole beforeimage41ec orf23, byte-authenticated and materialized under truthful owned temporary agent_tools/__file__. Only actual pure capsule factory runs against owned proof; standalone stdlib source, no repository policy imports or native/credential access.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.owner-before.source"
+      ],
+      "sourceSha256": [
+        "f23eff4d0923b40d654587c6deda33f44a450b41041f6825be5bd6f992a5cf9f"
+      ]
+    },
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/test.default-selector.before.source": {
+      "reason": "Authentic wholeba2 test-module beforeimage for actual missing-selector failure. Only actual primary test is invoked in owned truthful temp checkout with full exact candidate producer; repository fixtures copied, current canonical owned reader/harness imports reused. Explicit proc/OS fixture only; no network/credentials/native VM or lease actions. __file__ matches held complete beforeimage bytes.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process.before.source",
+        "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source",
+        "agent_tools/tests/fixtures/android_current_census/validator.original.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.publication-fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.draft-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.whole-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/test.unconditional-posix.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/interval-harness.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.control-code.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-fixed-refusal.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-receiver-close.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase.py",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/provenance.json",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.owner-before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/test.default-selector.before.source",
+        "agent_tools/tests/test_android_current_interval_retry.py",
+        "agent_tools/tests/test_android_installer_host_preflight.py",
+        "agent_tools/tests/test_android_terminal_zombie_retry.py"
+      ],
+      "sourceSha256": [
+        "ba2c2649559a66369f2c0b385cc29175d34d40b18a91fe4da5a34bf6d2a0b164"
       ]
     },
     "agent_tools/tests/fixtures/clang_driver_plan_retention/owner.before.source": {
@@ -4787,6 +5492,42 @@
         "0111981958e2675d1082125a45741c4c57de37fc15f1268854d446517e0b9c8a"
       ]
     },
+    "agent_tools/tests/test_android_component_continuity.py": {
+      "reason": "The finite before_namespace caller executes exactly the two SHA-checked complete preserved modules listed here, then invokes their descriptor closure or original local release primitive against owned temporary files. Actual current continuity qualification retains all non-device metadata and native probe receipt bindings; the tests supply only synthetic observation payloads, never native authority. Finite before_namespace executes only explicitly SHA/provenance checked complete preserved helpers. Native syscall facts come from owned temporary files, actual rename/chmod/symlink and exact inode capture; synthetic probe/path mappings never supply native authority. Existing strict qualification remains unchanged; local generated primitive is the same tested entrypoint.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_component_continuity/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_continuity/retirement.before.source",
+        "agent_tools/tests/fixtures/android_component_continuity/provenance.json",
+        "agent_tools/android_installer_failed_check_retirement.py",
+        "agent_tools/android_installer_component_bundle.py",
+        "agent_tools/tests/fixtures/android_component_continuity/continuity.before-relocation.source",
+        "agent_tools/tests/fixtures/android_component_continuity/retirement.before-relocation.source",
+        "agent_tools/android_component_continuity.py"
+      ],
+      "sourceSha256": [
+        "0ad1b072bbe37a455fb5a4daa4ecc3b839b6499d6cfb3e5a912338df026e57a1",
+        "005b609c83c02a6312353a4c46751f5b894334a8c22a749d7ba247b3187c4309"
+      ]
+    },
+    "agent_tools/tests/test_android_component_existing_bundle.py": {
+      "reason": "Loads exactly the SHA-checked whole consumed bundle fixture, stages harmless explicit literal-registry bytes once in an owned temporary directory, and compares the original create-only failure with read-only existing-bundle qualification. No native operation, private input or inventory is accessed.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source"
+      ],
+      "sourceSha256": [
+        "8c9f144c24bd0b04d4ec02167661f5b1dec14e76ee7e499a85b1e93132b5df9e"
+      ]
+    },
+    "agent_tools/tests/test_android_component_helper_snapshot.py": {
+      "reason": "Executes only the SHA-checked complete original collector load function against an owned private inert module, then compares the current held-byte loader. The causal seam forces an actual atime update while every retained FD9 identity field and content hash stays unchanged; no private native helper or original operation is executed.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_component_successor/helper.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json"
+      ],
+      "sourceSha256": [
+        "6ada78b2042b9030cc875b7f750032aabec9837b9650ffe66f9b7cfe6e82fa26"
+      ]
+    },
     "agent_tools/tests/test_android_component_readiness_closure.py": {
       "reason": "Executes only the six literal authenticated whole beforeimages from this closure family and stages only the literal43-file component source registry. Current and preserved factories run through explicit disposable namespace/child/socket seams, including exact original test source-relative fixture dependencies. No repository-wide reader or source path from caller input is admitted.",
       "scopes": [
@@ -4852,6 +5593,54 @@
         "2997ecd7e8119a33defebb8afe5a7e0e796d825da62b8c532065405fac6cf69f"
       ]
     },
+    "agent_tools/tests/test_android_current_census.py": {
+      "reason": "Runs actual factory after the same two owned fixture proof checksum substitutions; authentic original9da/current1e15 scanners/projectors and whole beforeimages, actual generated guard, real temporary proc files. Only /proc and explicit owned visibility/clock seams vary; late PIDs are actually read. No native/remote/credential/VM/lease operation runs in tests.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/test_android_installer_host_preflight.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/harness.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process.before.source",
+        "agent_tools/tests/fixtures/android_current_census/successor.before-closing-budget.source",
+        "agent_tools/tests/fixtures/android_current_census/successor.before-distinct-source.source",
+        "agent_tools/tests/fixtures/android_current_census/successor.whole-before.source",
+        "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source",
+        "agent_tools/tests/fixtures/android_current_census/validator.original.source"
+      ],
+      "sourceSha256": [
+        "a6884b9539416b3a3cecc1435dda9e60b6e099fdb06ea5ceea667e6a1f869a68"
+      ]
+    },
+    "agent_tools/tests/test_android_current_interval_retry.py": {
+      "reason": "Actual factory, original process/projector and full-host function execution with owned proc/FD/lock/deadline seams; original beforeimages selected explicitly for causal RED. Whole control evidence fragments execute only inert preparation/publication OS seams. Module self-discovery executes exact test source with only missing-fcntl import override; no network/credentials/VM/effects.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process.before.source",
+        "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source",
+        "agent_tools/tests/fixtures/android_current_census/validator.original.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.publication-fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.draft-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.whole-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/test.unconditional-posix.before.source",
+        "agent_tools/tests/test_android_current_interval_retry.py",
+        "agent_tools/tests/test_android_installer_host_preflight.py"
+      ],
+      "sourceSha256": [
+        "3d811294386c8327d02ba6bee104eb5eaf5c698100e4fae48dff3c549bc2de68"
+      ]
+    },
     "agent_tools/tests/test_android_current_owner_epoch.py": {
       "reason": "Reviewed named-source reader: finite literal callsites, pinned fixture maps/provenance, or imported keeper NAMES. Absolute/unbounded names require this exact source review; temporary runtime outputs are not repository source consumers.",
       "scopes": [
@@ -4885,6 +5674,18 @@
         "c210c10c1ffe90b752f668ea153c4d8ba8bd54fcf975bb21299d3b4ebbb941ea",
         "1b538a0f7795a1407e92158e04c7b66dde6f3a344c49113dbf509599ef6e7856",
         "c3018930afe6947d6f912c28cb18d90990ee5095e1ba4097b848654a8aa5e9bb"
+      ]
+    },
+    "agent_tools/tests/test_android_installer_host_preflight.py": {
+      "reason": "Actual renderer runs after an explicit synthetic proof trust-root substitution of only two checksum constants. Complete consumed bundle and exact reader functions remain real; emitted namespace is exercised at the platform refusal. Production renderer rejects caller-authored proof. No private source/proof or native action runs in CI.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json"
+      ],
+      "sourceSha256": [
+        "cf624e896e1ec61d41fe882fb09fa98f5e684a207c16b96578985f39605e20df"
       ]
     },
     "agent_tools/tests/test_android_installer_jdk_source_context.py": {
@@ -4921,6 +5722,82 @@
       ],
       "sourceSha256": [
         "6089032587b2275b9dcde33cf8f46526b7c578e6ad805607e6dd766b94a4a0c3"
+      ]
+    },
+    "agent_tools/tests/test_android_interval_report_context.py": {
+      "reason": "Authentic whole d9ef/current controller actual Context and Custody, actual frozen SourceSession and real owned durable terminal/stream files. Only network SourceSession/RPC are owned seams. Guards bind tools separately; source drift never prevents frozen status/collection. Saved create-only original preparation must exact-equal recovery before any catalog/data. No sent/acquire/prepare/submit mutation. All POSIX constructor cases individually gated.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/android_interval_fixture_support.py",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-b2.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-d9ef.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-e43.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller.fixed.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-53b.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-57c8.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-734.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/test_android_interval_reports.py"
+      ],
+      "sourceSha256": [
+        "6ace773b9d3c030999444c3db9276114adfba328b138b8786c025d718949cc47"
+      ]
+    },
+    "agent_tools/tests/test_android_interval_reports.py": {
+      "reason": "Actual emitted bounded reader over owned temporary filesystem: only OS boundary maps rootUID/path to fixture. Full original FD9/hash/header/parser/slice code executes. Whole owner missing-collection/runtime UNKNOWN controls preserve one owned effect boundary and original-only observation; zero network/VM effects or replay. Before734/e43 byte-authenticated; maximum24MiB collected in six4MiB data replies. All actual POSIX/tmp/UID/fcntl cases individually gated.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/android_interval_fixture_support.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-b2.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-d9ef.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-e43.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller.fixed.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-53b.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-57c8.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-734.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/tests/test_android_persisted_interval_storage.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "38eb174551656bef9985fc93603f0fdd8b750914d44e7802747056aef470245e"
+      ]
+    },
+    "agent_tools/tests/test_android_local_custody.py": {
+      "reason": "Whole authenticated c491 qualifier is parsed; actual emitted local prelude, original first FD guard statements and exact pathlib assignment execute only over a newly owned temp FD/path. Whole1831 adapter contributes exactly its three real repository ImportFrom nodes; these execute against an explicitly poisoned canonical module versus captured bytes. No transport, original path, private inventory, original main, or native action executes. Current retirement factory/current bundle/current continuity are finite captured source inputs.",
+      "scopes": [
+        "agent_tools/android_component_continuity.py",
+        "agent_tools/android_installer_failed_check_retirement.py",
+        "agent_tools/android_installer_component_bundle.py",
+        "agent_tools/tests/fixtures/android_local_custody/qualifier.before.source",
+        "agent_tools/tests/fixtures/android_local_custody/adapter.before.source",
+        "agent_tools/tests/fixtures/android_local_custody/provenance.json"
+      ],
+      "sourceSha256": [
+        "bfd793197721b4fa8d8551af4ccf3770e9baa939f57081288d876afa06c985ba"
+      ]
+    },
+    "agent_tools/tests/test_android_native_observer_control.py": {
+      "reason": "Actual extracted before finally/top-orchestration ASTs from wholeprivatefe3 control, pinned by publicprovenance. Fixed cleanup/evidence are identical byteassets embedded into reviewed nativecontrolba1543. Tests use real owned Popen pipe/EOF plus explicit birth/write/collection observer faults, and inert phase callbacks. No signals/native target/credential/VM/lease action in CI; unknown closure remains unknown.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_native_observer_control/cleanup.before.source",
+        "agent_tools/tests/fixtures/android_native_observer_control/cleanup.fixed.source",
+        "agent_tools/tests/fixtures/android_native_observer_control/evidence.before.source",
+        "agent_tools/tests/fixtures/android_native_observer_control/evidence.fixed.source",
+        "agent_tools/tests/fixtures/android_native_observer_control/provenance.json"
+      ],
+      "sourceSha256": [
+        "8fce8601aa880e83492c6798ce8e98ea30764a74c07e684d9b2f83d24812ccda"
       ]
     },
     "agent_tools/tests/test_android_native_sdk_receipts.py": {
@@ -4971,6 +5848,103 @@
         "1caa3d1a9bb474ca874f282be7df2de3836debc533f233b4b2e1520c64b433c1"
       ]
     },
+    "agent_tools/tests/test_android_persisted_interval_storage.py": {
+      "reason": "Actual whole storage owner and emitted-program causal controls. Host measurement/transport/machine/effect are owned inert seams; real current start_plan validates typed final data. Distinct start barrier is retained and no native effect is dispatched. POSIX-only emitted/controller cases individually gated; pure context/marker/policy cases portable.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/tests/android_interval_fixture_support.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-b2.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-d9ef.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-e43.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/controller.fixed.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-53b.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-57c8.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-734.before.source",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "41af037278ddcfdeb141bd38d79b29d2c29ac6358acac3eee4c37be190507901"
+      ]
+    },
+    "agent_tools/tests/test_android_persisted_start.py": {
+      "reason": "Finite fixture execution: authentic whole beforeimages are byte-checked. allocation_runtime executes exact4c7 module definitions then only its _capacity_sources/_CAPACITY; the current public __file__ is used solely to resolve the same three unchanged canonical policy files. SDK/supervisor before tests select exact original observer/START definitions. New native timeout control parses authenticated WHOLE f03/b7 harnesses, executes ONLY their actual build_ssh_argv call with original literal bootstrap string, and supplies inert config through the sole load_config seam; all harness top-level code, imports, main, credentials, transport and VM paths stay inert. Rendered ordinary bridge/getter controls and saved supervisor executables are fixed test-owned code, not configurable repository inputs. Final composition invariant executes the exact authenticated f711 caller builder expression through mandatory password PlannedArgv/automatic_submission and the existing actual privileged root loader over owned UNIX sockets in consumed/cached/echo modes; whole3d receiver main runs with only native-root/observation business seams projected. No direct-reader credential bypass is asserted or invented as RED. Whole be79/54bb fixture-setup sources supply only their exact TemporaryDirectory call; real kernel AF_UNIX bind proves the actual verbose-prefix failure and standard short /tmp correction inside owned controls. Sampling controls execute actual WHOLE f711/b2 controller owner_main with only owned fake Context/transport/lock/machine seams. Final candidate invokes REAL current start_plan over complete owned inert admissions/capsules, never a forced-success validator. All submit/GO hooks forbid effects and distinct start authority is not granted. Real typed ssh.SubmittedResultReadinessChanged is raised at actual Context.transaction: full original stdout/stderr/result retained before admit-only refusal; other actions retain original-only collection. Native blocked370B data remains authentic; operationId projection is explicitly unit-only, never relabelled native authority. POSIX-only controllers, readers, Linux remote journal renderers and real sockets are explicitly capability-gated; SocketGuest imports are lazy. Coordinator-local inert authorities follow host-native absolute syntax. The eighteen portable method bodies remain selected under the separate executable Windows API/path probe.",
+      "scopes": [
+        "agent_tools/android_persisted_start.py",
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_host_observation.py",
+        "agent_tools/ssh_automatic_program.py",
+        "agent_tools/ssh_privileged_program.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source",
+        "agent_tools/tests/fixtures/android_persisted_start/adapter.before.source",
+        "agent_tools/tests/fixtures/android_persisted_start/admission-blocked.native.json",
+        "agent_tools/tests/fixtures/android_persisted_start/advisory-timeout.before.source",
+        "agent_tools/tests/fixtures/android_persisted_start/advisory-timeout.fixed.source",
+        "agent_tools/tests/fixtures/android_persisted_start/allocation-coverage.before.source",
+        "agent_tools/tests/fixtures/android_persisted_start/composition-setup.before.source",
+        "agent_tools/tests/fixtures/android_persisted_start/composition-setup.fixed.source",
+        "agent_tools/tests/fixtures/android_persisted_start/controller-composition.source",
+        "agent_tools/tests/fixtures/android_persisted_start/controller-sampling.final.source",
+        "agent_tools/tests/fixtures/android_persisted_start/controller-sampling.fixed.source",
+        "agent_tools/tests/fixtures/android_persisted_start/native-observer.before.source",
+        "agent_tools/tests/fixtures/android_persisted_start/original-readers.source",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/receiver-composition.source",
+        "agent_tools/tests/test_ssh_automatic_program.py",
+        "agent_tools/tests/test_ssh_privileged_program.py",
+        "agent_tools/vm_workflow.py",
+        "scripts/fixture_environment.py"
+      ],
+      "sourceSha256": [
+        "e2f01038406d5169d4c7903643d240328effb4f1ec76db5d53cab935ae9d12c3",
+        "fcdd63ed18a67612e8a89f916403f58591ca7564761a09ab688bb1941e0a6355"
+      ]
+    },
+    "agent_tools/tests/test_android_poststart_current_authority.py": {
+      "reason": "Default reads and checks actual canonical template from ROOT, materializes exact bytes plus six verified sources in an owned temporary directory and executes its truthful __file__. Fixed current snapshot is historical only. Captured b80/helper snapshots use finite stdlib hook and refusing SSH sentinel. Exact full processor/projector/boundary fixtures run actual scanners only on temporary proc trees; native path/root principals are explicitly projected as in prior owned schema fixture. New impossible overbudget protocol control is labelled as such. Actual51766/27bb/af43 whole beforeimages reproduce closing/wave/budget gaps, then fixed canonical source refuses;21 POSIX cases skip individually before captured imports on non-POSIX. No original93ff/native inventory records enter CI. Actual334 kernel body/canonical caller controls use owned real status/root/journal/machine files, proving prior subset/full-envelope failure and whole-document closing drift refusal. The fixture protocol is aligned with the authentic full reply; no native authority is claimed.",
+      "scopes": [
+        "agent_tools/android_component_continuity.py",
+        "agent_tools/android_installer_component_bundle.py",
+        "agent_tools/android_installer_failed_check_retirement.py",
+        "agent_tools/android_local_custody.py",
+        "agent_tools/android_poststart_current_authority.py",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/component_test_helper.captured.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/control_fixture.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-closing.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-kernel-envelope.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-slice.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-wave-absence.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-wave-budget.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.current.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/fixture_loader.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/kernel_fixture.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-boundarySource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-processSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-validatorSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-boundarySource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-processSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-validatorSource.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/plane_fixture.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/provenance.json",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/qualification-template.authentic.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/adapter.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/bundle.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/continuity.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/custody.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/renderer.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/sources/retirement.source",
+        "agent_tools/tests/test_android_installer_failed_check_retirement.py"
+      ],
+      "sourceSha256": [
+        "912880e54f60ed11811bc0ebe7ddc99e4246a2d5876c9f3fa6195dbaef92c702",
+        "abaac329a1b3cf874eddc28eb06fd027cc2102f4e069dfaad21df9e76c7943bf"
+      ]
+    },
     "agent_tools/tests/test_android_reset_explicit_target.py": {
       "reason": "Four exact authenticated original reset/MCP/dispatch source and JSON inputs are the sole prior versions. The complete emitted reset caller uses two controlled socket routes; AST-selected whole dispatch methods use only controlled explicit globals. Existing current reset/MCP/dispatch/Mac getter dependencies are finite; no configured target or arbitrary source path is consulted.",
       "scopes": [
@@ -4998,6 +5972,71 @@
       ],
       "sourceSha256": [
         "d5fec7fc4e4d3fcdb29a9ea386f3c75d3e5f721f43cdc17830e637d65044cbb2"
+      ]
+    },
+    "agent_tools/tests/test_android_terminal_observer_lifetime.py": {
+      "reason": "Finite literal controller74c/ab09 and owned terminal metadata fixtures only. Source selector refuses every path outside BEFORE/FIXED and pins both whole source SHA256s before execution. Actual owner_main/Custody runs in one cooperative owned POSIX child with three independent real flock checks; no signal, SSH, VM, credential or remote effect. Fresh guarded Context/frozen durable SourceSession reuse the existing ActualContextFixture, with only its RESOURCES path changed and network/RPC seams owned. Four portable parser/projection tests run on Windows; seven actual POSIX tests skip before controller/fixture imports.",
+      "scopes": [
+        "agent_tools/durable_remote_job.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/source_module_loader.py",
+        "agent_tools/tests/fixtures/android_terminal_observer_lifetime/controller-74c.before.source",
+        "agent_tools/tests/fixtures/android_terminal_observer_lifetime/controller.fixed.source",
+        "agent_tools/tests/fixtures/android_terminal_observer_lifetime/provenance.json",
+        "agent_tools/tests/fixtures/android_terminal_observer_lifetime/remote-terminal-owned.source",
+        "agent_tools/tests/test_android_interval_report_context.py"
+      ],
+      "sourceSha256": [
+        "75efae2d1e68ba3668e81a81f5753e5a5ece4b83ed3898b54fa65a8f0d2fdb60"
+      ]
+    },
+    "agent_tools/tests/test_android_terminal_zombie_control.py": {
+      "reason": "Actual whole controlled kernel-phase source definitions/AST boundaries compile against explicit inert OS/child/protocol seams only, never full phase execution. Real owned receiverFD closure alone needsPOSIX. Authentic typed CurrentIntervalRefusal and original857 error producer drive RED/GREEN. UID1000 EOF/drop/no-poll and same-birth prereap assertions are pure.",
+      "scopes": [
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase.py",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-receiver-close.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-fixed-refusal.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.control-code.source"
+      ],
+      "sourceSha256": [
+        "ef8b21f8cb4dd4e02151620dd5c8477db3c8e4bb69a8c83cf1fa28c634d1a9a1"
+      ]
+    },
+    "agent_tools/tests/test_android_terminal_zombie_retry.py": {
+      "reason": "Actual canonical producer and whole authentic41ec/f23 beforeimages execute only pure capsule factories and owned proc-shaped FD/flock/clock/identity seams. Beforeimages materialized with truthful temporary __file__ and no external policy dependencies. Exact2215 fragments, prior-full/prefix/source/code-object relations, partial/denied/birth/UID/protected/boot/no-fallback controls and early+late raw-owner UNKNOWN witness retention. Every FD/Linux fixture POSIX-gated; source/provenance pure cases portable. No network, credential or native VM/lease action. Actual primary default-selection regression is executed from current whole test module or authentic wholeba2 test beforeimage in a truthful temporary checkout with exact current producer copy; selector is explicitly absent despite an outer after environment. Nested UNKNOWN is captured before teardown. No source-order assumptions, native calls or production mutations.",
+      "scopes": [
+        "agent_tools/android_component_successor.py",
+        "agent_tools/tests/fixtures/android_component_successor/bundle.before.source",
+        "agent_tools/tests/fixtures/android_component_successor/installer-host-readers.source",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/process-current1e15.before.source",
+        "agent_tools/tests/fixtures/android_current_census/process.before.source",
+        "agent_tools/tests/fixtures/android_current_census/validator-current1e15.original.source",
+        "agent_tools/tests/fixtures/android_current_census/validator.original.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/capture-only.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/control-body.publication-fixed.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.draft-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/successor.whole-before.source",
+        "agent_tools/tests/fixtures/android_current_interval_retry/test.unconditional-posix.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/interval-harness.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.control-code.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-fixed-refusal.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-receiver-close.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase.py",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/provenance.json",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.owner-before.source",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/test.default-selector.before.source",
+        "agent_tools/tests/test_android_current_interval_retry.py",
+        "agent_tools/tests/test_android_installer_host_preflight.py",
+        "agent_tools/tests/test_android_terminal_zombie_retry.py"
+      ],
+      "sourceSha256": [
+        "8983f838f2f4615fdd749c9743eddb787f4658a26a120e61ef29cf9ee4635346",
+        "ba2c2649559a66369f2c0b385cc29175d34d40b18a91fe4da5a34bf6d2a0b164"
       ]
     },
     "agent_tools/tests/test_android_update_staged_readiness.py": {
@@ -5233,55 +6272,128 @@
       ]
     },
     "agent_tools/tests/test_historical_fixture_checkout_bytes.py": {
-      "reason": "All prior finite raw byte families remain, with exactly nineteen newly reviewed script-seam, host-phase and public-frame paths from the literal authenticated tuple registries. Real Git original-attributes RED/current byte-preserving GREEN cases cover each family; no executable source permission or extension-wide classification is added. Owner-expanded host-phase provenance and its one bounded endpoint-native-failure.json receipt are exact literal inputs; the same existing family byte policy remains unchanged. The complete old attributes still demonstrate actual corruption of the now eleven current phase payloads. Four further exact literal raw failure receipts are protected by actual Git old-attributes RED/current byte preservation, with no new provenance execution or historical byte change. Four exact raw policy/runtime/context-seam payloads use actual original-attributes Git RED/current preservation GREEN; fixture source and parsed-only provenance authority are unchanged. Twenty additional exact literal AUDITED_RAW_BYTE_FIXTURES retain original byte digests through real Git core.autocrlf old-policy corruption/current-policy preservation. Three PARSE_ONLY_MANIFESTS are attribute-name queries only; no raw-content exemption or extra byte-preservation rule is granted. Four exact ARCHIVE_NESTED_BYTE_FIXTURES are authenticated raw JSON evidence and covered by actual Git old-attributes corruption/current preservation; parsed-only provenance path remains attribute-name query only, no content exemption or historical digest refresh. Three exact proxy diagnostic JSON receipts use authenticated original6a policy RED and current-policy Git byte preservation GREEN; their historical bytes and parsed-only metadata authority remain unchanged. The Spotlight public-frame digest is the privacy-redacted frame, which Git's binary heuristic still keeps intact under the old attributes.",
+      "reason": "All prior finite raw byte families remain, with exactly nineteen newly reviewed script-seam, host-phase and public-frame paths from the literal authenticated tuple registries. Real Git original-attributes RED/current byte-preserving GREEN cases cover each family; no executable source permission or extension-wide classification is added. Owner-expanded host-phase provenance and its one bounded endpoint-native-failure.json receipt are exact literal inputs; the same existing family byte policy remains unchanged. The complete old attributes still demonstrate actual corruption of the now eleven current phase payloads. Four further exact literal raw failure receipts are protected by actual Git old-attributes RED/current byte preservation, with no new provenance execution or historical byte change. Four exact raw policy/runtime/context-seam payloads use actual original-attributes Git RED/current preservation GREEN; fixture source and parsed-only provenance authority are unchanged. Twenty additional exact literal AUDITED_RAW_BYTE_FIXTURES retain original byte digests through real Git core.autocrlf old-policy corruption/current-policy preservation. Three PARSE_ONLY_MANIFESTS are attribute-name queries only; no raw-content exemption or extra byte-preservation rule is granted. Four exact ARCHIVE_NESTED_BYTE_FIXTURES are authenticated raw JSON evidence and covered by actual Git old-attributes corruption/current preservation; parsed-only provenance path remains attribute-name query only, no content exemption or historical digest refresh. Three exact proxy diagnostic JSON receipts use authenticated original6a policy RED and current-policy Git byte preservation GREEN; their historical bytes and parsed-only metadata authority remain unchanged. The Spotlight public-frame digest is the privacy-redacted frame, which Git's binary heuristic still keeps intact under the old attributes. The fixed Windows Git roundtrip also consumes the exact SHA-checked Tart renderer rejection JSON; its added exact byte rule grants no native execution authority. Three exact Tart provider response/capture JSON files also retain their native SHA identities in the fixed real Windows Git roundtrip. Five exact Android recovery provenance JSON files used as hash-bound selector resources retain their bytes in the real Windows Git roundtrip; no executable or runtime custody authority is changed. The exact persisted-Android native refusal and provenance JSON resources also retain their byte identities in the fixed Windows Git roundtrip. The three literal current public review/checker inputs use their current-byte oracle solely for real Git conversion; the exact complete preceding attributes prove corruption and current policy preserves bytes. The new Android test whole beforeimage retains its authentic e2f identity. No current-byte digest grants execution or native authority. Exact persisted interval-report provenance JSON retains its authenticated bytes through actual Git Windows conversion; all report beforeimages remain protected by existing .source policy. Exact conservative policy provenance bytes are covered by complete original-attributes conversion RED and current Git preservation GREEN; no native or execution authority is granted. The two exact R0 schema/provenance raw JSON inputs retain original native bytes; original complete attribute conversion and current policy preservation cover them. Exact current-authority provenance preserves original SHA bytes through actual Git conversion controls; source policy remains unsealed. One new exact Android terminal-observer provenance retains its raw authenticated byte identity under real Git original-attributes conversion RED/current preservation GREEN; all prior74c/fdf4 pins remain unchanged. One exact terminal-zombie retry provenance retains its authenticated bytes through actual Git original-attributes conversion RED/current preservation GREEN; original scanner and operation facts remain unchanged. Authentic wholeba2 default-selector test beforeimage retains its bytes under actual Git Windows conversion; existing provenance pin renewals preserve prior complete JSON beforeimages and operation facts.",
       "scopes": [
         ".gitattributes",
-        "agent_tools/tests/fixtures/windows_cp117_recovery/short_socket_51538dad.source",
-        "agent_tools/tests/fixtures/android_proxy_os_history/retirement_3eed5a2e.source",
-        "agent_tools/tests/fixtures/android_component_legacy/provenance.json",
-        "scripts/testdata/windows-persistent-ready-parser/",
-        "scripts/testdata/windows-persistent-taskroot/",
-        "agent_tools/tests/fixtures/windows_readiness_workflow_before/windows-desktop.yml",
-        "agent_tools/tests/fixtures/recovery_fixture_checkout_bytes/attributes.before",
-        "agent_tools/tests/fixtures/recovery_fixture_checkout_bytes/provenance.json",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/provenance.json",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/start.before.source",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/status.before.source",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/child.before.source",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.before.source",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.fixed.source",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.causal.ps1",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/native-failure.json",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/conversion.before.source",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.causal-before-v2.source",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/native-conversion-failure.json",
-        "agent_tools/tests/fixtures/windows_jobs_reflection/native-green.json",
-        "agent_tools/tests/fixtures/android_adb_jobs/sdk_harness.provenance.json",
+        "agent_tools/readiness_vm_dispatch.json",
+        "agent_tools/tests/fixtures/agent_test_session_observer/actual-failure.json",
+        "agent_tools/tests/fixtures/android_adb_jobs/sdk_client.native.json",
         "agent_tools/tests/fixtures/android_adb_jobs/sdk_counts.before.source",
         "agent_tools/tests/fixtures/android_adb_jobs/sdk_flag.before.source",
         "agent_tools/tests/fixtures/android_adb_jobs/sdk_harness.fixed.source",
-        "agent_tools/tests/fixtures/android_adb_jobs/sdk_client.native.json",
+        "agent_tools/tests/fixtures/android_adb_jobs/sdk_harness.provenance.json",
         "agent_tools/tests/fixtures/android_adb_jobs/sdk_healthy.native.json",
         "agent_tools/tests/fixtures/android_adb_jobs/sdk_server.native.json",
+        "agent_tools/tests/fixtures/android_component_continuity/provenance.json",
+        "agent_tools/tests/fixtures/android_component_legacy/provenance.json",
+        "agent_tools/tests/fixtures/android_component_successor/provenance.json",
+        "agent_tools/tests/fixtures/android_current_census/provenance.json",
+        "agent_tools/tests/fixtures/android_local_custody/provenance.json",
+        "agent_tools/tests/fixtures/android_native_observer_control/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/admission-blocked.native.json",
+        "agent_tools/tests/fixtures/android_persisted_start/provenance.json",
+        "agent_tools/tests/fixtures/android_persisted_start/test-portability.before.source",
+        "agent_tools/tests/fixtures/android_poststart_current_authority/provenance.json",
+        "agent_tools/tests/fixtures/android_proxy_os_history/retirement_3eed5a2e.source",
+        "agent_tools/tests/fixtures/android_terminal_observer_lifetime/provenance.json",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/provenance.json",
+        "agent_tools/tests/fixtures/android_terminal_zombie_retry/test.default-selector.before.source",
+        "agent_tools/tests/fixtures/archive_directory_identity/native-failure.json",
+        "agent_tools/tests/fixtures/confinement_attach_selector/attach-2gib.plist",
+        "agent_tools/tests/fixtures/confinement_attach_selector/attach-64mib.plist",
+        "agent_tools/tests/fixtures/confinement_attach_selector/hdi-2gib-info.plist",
+        "agent_tools/tests/fixtures/credential_capture_retention/provenance.json",
+        "agent_tools/tests/fixtures/inventory_fd_baseline/native-failure.txt",
+        "agent_tools/tests/fixtures/inventory_fd_baseline/provenance.json",
+        "agent_tools/tests/fixtures/lease_provider_policy/actual-mismatch.json",
+        "agent_tools/tests/fixtures/lease_provider_policy/policy.before.json",
+        "agent_tools/tests/fixtures/lease_provider_policy_runtime/actual-mismatch.json",
+        "agent_tools/tests/fixtures/linux_tpm_native_enrollment/provenance.json",
+        "agent_tools/tests/fixtures/native_context_dynamic_catalogue/actual-failure.txt",
+        "agent_tools/tests/fixtures/native_context_helper_fixture/actual-failure.txt",
+        "agent_tools/tests/fixtures/native_engineering_transport_seam/actual-failure.txt",
+        "agent_tools/tests/fixtures/native_mcp_environment_seam/actual-failure.txt",
+        "agent_tools/tests/fixtures/native_mcp_environment_seam/bypassed-admission-failure.txt",
+        "agent_tools/tests/fixtures/native_preflight_run_boundary/native-failure.txt",
+        "agent_tools/tests/fixtures/native_preflight_run_boundary/provenance.json",
+        "agent_tools/tests/fixtures/native_review_input_bytes/attributes.before.source",
+        "agent_tools/tests/fixtures/readiness_portable_import/original-failure.log",
+        "agent_tools/tests/fixtures/readiness_portable_import/provenance.json",
         "agent_tools/tests/fixtures/recovery_checkout_extended/attributes.before",
         "agent_tools/tests/fixtures/recovery_checkout_extended/provenance.json",
-        "agent_tools/tests/fixtures/windows_jobs_default_owner/provenance.json",
-        "agent_tools/tests/fixtures/windows_jobs_default_owner/before.source",
-        "agent_tools/tests/fixtures/windows_jobs_default_owner/native-failure.json",
-        "agent_tools/tests/fixtures/windows_jobs_default_owner/native-owner-diagnostic.json",
-        "agent_tools/tests/fixtures/windows_desktop_background_roles/provenance.json",
+        "agent_tools/tests/fixtures/recovery_fixture_checkout_bytes/attributes.before",
+        "agent_tools/tests/fixtures/recovery_fixture_checkout_bytes/provenance.json",
+        "agent_tools/tests/fixtures/resource_running_actor_before/provenance.json",
+        "agent_tools/tests/fixtures/resource_running_actor_before/public-measurement.json",
+        "agent_tools/tests/fixtures/ssh_acceptance_owner_readiness/original61bd.failure-provenance.json",
+        "agent_tools/tests/fixtures/ssh_acceptance_owner_readiness/original61bd.failure.txt",
+        "agent_tools/tests/fixtures/ssh_adapter_context/native-failures.txt",
+        "agent_tools/tests/fixtures/ssh_adapter_context/provenance.json",
+        "agent_tools/tests/fixtures/ssh_close_import_dependency/actual-failure.txt",
+        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/provenance.json",
+        "agent_tools/tests/fixtures/ssh_direct_inventory_epoch/native-errors.txt",
+        "agent_tools/tests/fixtures/ssh_direct_inventory_epoch/provenance.json",
+        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controlled-high-fd.actual.json",
+        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/native-select-phase.json",
+        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json",
+        "agent_tools/tests/fixtures/ssh_unit_readiness/native-failures.txt",
+        "agent_tools/tests/fixtures/ssh_unit_readiness/provenance.json",
+        "agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/native-capture.json",
+        "agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/native-get.stdout.json",
+        "agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/native-list.stdout.json",
+        "agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/static-review-rejected.json",
+        "agent_tools/tests/fixtures/tart_macos_parent_caller/dependencies/plan.json",
+        "agent_tools/tests/fixtures/tart_public_recipient_guard/public-crops.png",
+        "agent_tools/tests/fixtures/tart_public_recipient_guard/public-header-mask.json",
+        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/bootstrap-continuation.sh",
+        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/bootstrap.before.sh",
+        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/native-public-evidence.json",
+        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/provenance.json",
+        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/public-share-manifest.before.json",
+        "agent_tools/tests/fixtures/tmux_private_reply_projection/provenance.json",
+        "agent_tools/tests/fixtures/vm_dispatch_context_test_seam/actual-failure.txt",
+        "agent_tools/tests/fixtures/windows_bootstrap_dispatch/provenance.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_durable/carrier-argv-native-failure.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_durable/carrier-failure.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_durable/carrier.provenance.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_durable/provenance.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_integration/provenance.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_nested_closure/native-failure.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_nested_closure/provenance.json",
+        "agent_tools/tests/fixtures/windows_bootstrap_nested_closure/run-owned-input-failure.json",
+        "agent_tools/tests/fixtures/windows_compile_acl_creation/create-c9dad.fixed.ps1",
+        "agent_tools/tests/fixtures/windows_compile_acl_creation/parent-665b.before.ps1",
+        "agent_tools/tests/fixtures/windows_conservative_policy/provenance.json",
+        "agent_tools/tests/fixtures/windows_cp117_recovery/short_socket_51538dad.source",
+        "agent_tools/tests/fixtures/windows_credential_explicit_target/probe-test-failure.json",
+        "agent_tools/tests/fixtures/windows_defender_installed_service/idle.before.source",
+        "agent_tools/tests/fixtures/windows_defender_installed_service/native-before.json",
+        "agent_tools/tests/fixtures/windows_defender_installed_service/processes.before.source",
+        "agent_tools/tests/fixtures/windows_defender_installed_service/provenance.json",
         "agent_tools/tests/fixtures/windows_desktop_background_roles/idle.before.source",
         "agent_tools/tests/fixtures/windows_desktop_background_roles/native-before.json",
         "agent_tools/tests/fixtures/windows_desktop_background_roles/processes.before.source",
-        "scripts/tests/fixtures/visual_target_before/provenance.json",
-        "scripts/tests/fixtures/visual_target_before/visual_platform.py.source",
-        "scripts/tests/fixtures/visual_target_before/bootstrap_windows_visual_vm.sh.source",
-        "scripts/tests/fixtures/visual_target_before/start_windows_visual_vm.sh.source",
-        "scripts/tests/fixtures/visual_target_before/mark_windows_visual_vm_ready.sh.source",
-        "scripts/tests/fixtures/visual_target_before/visual-regression.yml.source",
-        "scripts/tests/fixtures/visual_target_before/visual_target.py.source",
-        "agent_tools/tests/fixtures/resource_running_actor_before/public-measurement.json",
-        "agent_tools/tests/fixtures/resource_running_actor_before/provenance.json",
+        "agent_tools/tests/fixtures/windows_desktop_background_roles/provenance.json",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/executable-schema-native-facts.json",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/provenance.json",
+        "agent_tools/tests/fixtures/windows_host_phase_integration/endpoint-native-failure.json",
+        "agent_tools/tests/fixtures/windows_host_phase_integration/native-before.json",
+        "agent_tools/tests/fixtures/windows_host_phase_integration/provenance.json",
+        "agent_tools/tests/fixtures/windows_host_work/define.capture.json",
+        "agent_tools/tests/fixtures/windows_host_work/define.closing.json",
+        "agent_tools/tests/fixtures/windows_host_work/documents.callback.json",
+        "agent_tools/tests/fixtures/windows_host_work/documents.result.json",
+        "agent_tools/tests/fixtures/windows_host_work/native-failure.json",
+        "agent_tools/tests/fixtures/windows_host_work/provenance.json",
+        "agent_tools/tests/fixtures/windows_host_work/start.capture.json",
+        "agent_tools/tests/fixtures/windows_host_work/start.closing.json",
+        "agent_tools/tests/fixtures/windows_host_work_acceptance/actual-failure.txt",
+        "agent_tools/tests/fixtures/windows_host_work_acceptance/provenance.json",
+        "agent_tools/tests/fixtures/windows_jobs_default_owner/before.source",
+        "agent_tools/tests/fixtures/windows_jobs_default_owner/native-failure.json",
+        "agent_tools/tests/fixtures/windows_jobs_default_owner/native-owner-diagnostic.json",
+        "agent_tools/tests/fixtures/windows_jobs_default_owner/provenance.json",
         "agent_tools/tests/fixtures/windows_jobs_preexec/149ac1ef9d25ba29d3275f997e2df36bf1f0a9d3c25ddb544e3f322bd7da369b.source",
         "agent_tools/tests/fixtures/windows_jobs_preexec/22255d9ec2261e929a8d6c4df1f46f148bdce742762c4e79bfff661675164120.source",
         "agent_tools/tests/fixtures/windows_jobs_preexec/3292818c1b963d63747d542b96e2eb0c4eefbade7b2bc6407d728d07d5c7affc.source",
@@ -5298,114 +6410,77 @@
         "agent_tools/tests/fixtures/windows_jobs_preexec/feecc21d4691b2afa47cbf7a02d428ae472cf4c7e44519ef6a5e9e22ae8d1823.source",
         "agent_tools/tests/fixtures/windows_jobs_preexec/proof.json",
         "agent_tools/tests/fixtures/windows_jobs_preexec/provenance.json",
-        "agent_tools/tests/fixtures/windows_defender_installed_service/provenance.json",
-        "agent_tools/tests/fixtures/windows_defender_installed_service/idle.before.source",
-        "agent_tools/tests/fixtures/windows_defender_installed_service/native-before.json",
-        "agent_tools/tests/fixtures/windows_defender_installed_service/processes.before.source",
-        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/provenance.json",
-        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/bootstrap.before.sh",
-        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/bootstrap-continuation.sh",
-        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/public-share-manifest.before.json",
-        "agent_tools/tests/fixtures/tart_virtiofs_python_copy/native-public-evidence.json",
-        "agent_tools/tests/fixtures/native_preflight_run_boundary/native-failure.txt",
-        "agent_tools/tests/fixtures/native_preflight_run_boundary/provenance.json",
-        "agent_tools/tests/fixtures/ssh_direct_inventory_epoch/native-errors.txt",
-        "agent_tools/tests/fixtures/ssh_direct_inventory_epoch/provenance.json",
-        "agent_tools/tests/fixtures/readiness_portable_import/original-failure.log",
-        "agent_tools/tests/fixtures/readiness_portable_import/provenance.json",
-        "agent_tools/tests/fixtures/inventory_fd_baseline/native-failure.txt",
-        "agent_tools/tests/fixtures/inventory_fd_baseline/provenance.json",
-        "agent_tools/tests/fixtures/ssh_direct_ended_v1/reviewed_optimizer/provenance.json",
-        "agent_tools/tests/fixtures/tmux_private_reply_projection/provenance.json",
-        "agent_tools/tests/fixtures/linux_tpm_native_enrollment/provenance.json",
-        "agent_tools/tests/fixtures/credential_capture_retention/provenance.json",
-        "agent_tools/tests/fixtures/ssh_adapter_context/native-failures.txt",
-        "agent_tools/tests/fixtures/ssh_adapter_context/provenance.json",
-        "agent_tools/tests/fixtures/ssh_unit_readiness/native-failures.txt",
-        "agent_tools/tests/fixtures/ssh_unit_readiness/provenance.json",
-        "agent_tools/tests/fixtures/windows_host_work_acceptance/actual-failure.txt",
-        "agent_tools/tests/fixtures/windows_host_work_acceptance/provenance.json",
-        "scripts/tests/fixtures/readiness_test_seams/actual-failures.txt",
-        "scripts/tests/fixtures/readiness_test_seams/provenance.json",
-        "scripts/tests/fixtures/readiness_test_seams/test_android_installer_lifecycle.py.before.source",
-        "scripts/tests/fixtures/readiness_test_seams/test_native_jvm_tests.py.before.source",
-        "agent_tools/tests/fixtures/windows_host_phase_integration/native-before.json",
-        "agent_tools/tests/fixtures/windows_host_phase_integration/provenance.json",
-        "agent_tools/tests/fixtures/windows_host_work/define.capture.json",
-        "agent_tools/tests/fixtures/windows_host_work/define.closing.json",
-        "agent_tools/tests/fixtures/windows_host_work/documents.callback.json",
-        "agent_tools/tests/fixtures/windows_host_work/documents.result.json",
-        "agent_tools/tests/fixtures/windows_host_work/native-failure.json",
-        "agent_tools/tests/fixtures/windows_host_work/provenance.json",
-        "agent_tools/tests/fixtures/windows_host_work/start.capture.json",
-        "agent_tools/tests/fixtures/windows_host_work/start.closing.json",
-        "agent_tools/tests/fixtures/tart_public_recipient_guard/public-crops.png",
-        "agent_tools/tests/fixtures/tart_public_recipient_guard/public-header-mask.json",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/child.before.source",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/conversion.before.source",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/native-conversion-failure.json",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/native-failure.json",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/native-green.json",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/provenance.json",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.before.source",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.causal-before-v2.source",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.causal.ps1",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/reflection.fixed.source",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/start.before.source",
+        "agent_tools/tests/fixtures/windows_jobs_reflection/status.before.source",
         "agent_tools/tests/fixtures/windows_login_caret_profile/native-empty-field.ppm.zlib",
         "agent_tools/tests/fixtures/windows_login_selected_tile/native-refused-field.ppm.zlib",
         "agent_tools/tests/fixtures/windows_login_spotlight_profile/native-before-return.ppm.zlib",
-        "agent_tools/tests/fixtures/windows_host_phase_integration/endpoint-native-failure.json",
-        "agent_tools/tests/fixtures/native_context_dynamic_catalogue/actual-failure.txt",
-        "agent_tools/tests/fixtures/ssh_close_import_dependency/actual-failure.txt",
-        "agent_tools/tests/fixtures/native_engineering_transport_seam/actual-failure.txt",
-        "agent_tools/tests/fixtures/native_context_helper_fixture/actual-failure.txt",
-        "agent_tools/tests/fixtures/lease_provider_policy/actual-mismatch.json",
-        "agent_tools/tests/fixtures/lease_provider_policy/policy.before.json",
-        "agent_tools/tests/fixtures/lease_provider_policy_runtime/actual-mismatch.json",
-        "agent_tools/tests/fixtures/vm_dispatch_context_test_seam/actual-failure.txt",
-        "agent_tools/tests/fixtures/agent_test_session_observer/actual-failure.json",
-        "agent_tools/tests/fixtures/confinement_attach_selector/attach-2gib.plist",
-        "agent_tools/tests/fixtures/confinement_attach_selector/attach-64mib.plist",
-        "agent_tools/tests/fixtures/confinement_attach_selector/hdi-2gib-info.plist",
-        "agent_tools/tests/fixtures/native_mcp_environment_seam/actual-failure.txt",
-        "agent_tools/tests/fixtures/native_mcp_environment_seam/bypassed-admission-failure.txt",
-        "agent_tools/tests/fixtures/ssh_acceptance_owner_readiness/original61bd.failure-provenance.json",
-        "agent_tools/tests/fixtures/ssh_acceptance_owner_readiness/original61bd.failure.txt",
-        "agent_tools/tests/fixtures/tart_macos_parent_caller/dependencies/plan.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_dispatch/provenance.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_durable/carrier-argv-native-failure.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_durable/carrier-failure.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_durable/carrier.provenance.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_durable/provenance.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_integration/provenance.json",
-        "agent_tools/tests/fixtures/windows_credential_explicit_target/probe-test-failure.json",
         "agent_tools/tests/fixtures/windows_managed_admission/graph-local-failure.json",
         "agent_tools/tests/fixtures/windows_managed_admission/provenance.json",
         "agent_tools/tests/fixtures/windows_managed_admission/runtime-id-final-type.provenance.json",
         "agent_tools/tests/fixtures/windows_managed_admission/runtime-id.provenance.json",
-        "agent_tools/tests/fixtures/archive_directory_identity/native-failure.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_nested_closure/native-failure.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_nested_closure/provenance.json",
-        "agent_tools/tests/fixtures/windows_bootstrap_nested_closure/run-owned-input-failure.json",
+        "agent_tools/tests/fixtures/windows_readiness_workflow_before/windows-desktop.yml",
+        "scripts/check_python_platform_contracts.py",
+        "scripts/test_python_platform_contracts.py",
+        "scripts/testdata/windows-persistent-ready-parser/",
+        "scripts/testdata/windows-persistent-taskroot/",
+        "scripts/tests/fixtures/readiness_test_seams/actual-failures.txt",
+        "scripts/tests/fixtures/readiness_test_seams/provenance.json",
+        "scripts/tests/fixtures/readiness_test_seams/test_android_installer_lifecycle.py.before.source",
+        "scripts/tests/fixtures/readiness_test_seams/test_native_jvm_tests.py.before.source",
         "scripts/tests/fixtures/visual_availability_qualification/visual_platform.before.source",
-        "agent_tools/tests/fixtures/windows_compile_acl_creation/parent-665b.before.ps1",
-        "agent_tools/tests/fixtures/windows_compile_acl_creation/create-c9dad.fixed.ps1",
-        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/provenance.json",
-        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/native-select-phase.json",
-        "agent_tools/tests/fixtures/ssh_proxy_high_descriptors/controlled-high-fd.actual.json"
+        "scripts/tests/fixtures/visual_target_before/bootstrap_windows_visual_vm.sh.source",
+        "scripts/tests/fixtures/visual_target_before/mark_windows_visual_vm_ready.sh.source",
+        "scripts/tests/fixtures/visual_target_before/provenance.json",
+        "scripts/tests/fixtures/visual_target_before/start_windows_visual_vm.sh.source",
+        "scripts/tests/fixtures/visual_target_before/visual-regression.yml.source",
+        "scripts/tests/fixtures/visual_target_before/visual_platform.py.source",
+        "scripts/tests/fixtures/visual_target_before/visual_target.py.source"
       ],
       "sourceSha256": [
-        "6dc373a2812f2e5bef0e1a30dcaea88c2aec294afd330d79dcf9a4a969bf3ffd",
-        "d332ae56b692c7064093d0465c9e8f31e0f0b490f3b171b1ae2dce908e50aed5",
-        "b9a801d1068c4831102901851610fc57dcf5aa2d122957eb307543599e67c241",
-        "a366836cb9988e6d63e2bb0a09399e8107319ea5f1f4b9e3a7b6104e21411349",
-        "6c8963c7a0ea896a860045bea1204ab76d844b0709a595969122058bcd276519",
-        "bf5e21acb6496e644d9e2f41e66061e6519f247b57ff1904e9f3f540ca0ab373",
         "1673d65dba49395c7bdcdc1deac8c190d287ea339636b4568e0154ed987097e8",
-        "88bfd8e0a66bbaef37351a4b590fd8f0a27517c6ea9c58d3bb22108594efd3ce",
-        "2ccaa632f621f03b1f8b1bd362c54adcc68fb6dac9140a54a7abbbf384d8506e",
-        "6e8d998b315f2d0456f8cd411acd42e1c619bf78a03e92d16aa82156881b9d38",
-        "3d38fe0c1af61eb4552f978201bf3fca8686ae7833b38b3c9d37e75529a2c3aa",
-        "e98c9d989944940ada42c2b5865d7b0d7d67c6bb155c9d3612f5091367f8ea88",
-        "732cc218506deb90f58d5fc8bb724c228d552760f5dbe0df68e36bb6060617b6",
+        "171c7abe48fd5a29bf89ad80aa358b5b58035044bb0af6316e7002163ab041ea",
         "29022ed7a30a0cc2f3d654fdd1c7ebdb748190708ba9d22af568c41a61539a04",
-        "7f0d66366b63808f3a38fb63358e8899a717a16c9c12ac5c9970fa2e68007b6c",
+        "295fb0dde2363148729439da89559b4cfbe9734b10c3be3141ac9bf6eaac8d27",
+        "2ccaa632f621f03b1f8b1bd362c54adcc68fb6dac9140a54a7abbbf384d8506e",
+        "3d38fe0c1af61eb4552f978201bf3fca8686ae7833b38b3c9d37e75529a2c3aa",
+        "5bfaebd3f5b516046053f6865c1c14ba99ee37bfaba326125570dc3170303f2e",
+        "6767ef2052eb9f816899bcc9aa7c21bf5110cdc346599c87e9632460d29c19a6",
+        "6b31e18c1dc218d5d441062c68ae527601f7781068b960b576731585fb74782d",
+        "6bf3b08d561e00c9387e419f2184101ea6373b7a3db0fb7d01bef2dcf6f831ba",
+        "6c8963c7a0ea896a860045bea1204ab76d844b0709a595969122058bcd276519",
+        "6dc373a2812f2e5bef0e1a30dcaea88c2aec294afd330d79dcf9a4a969bf3ffd",
+        "6e8d998b315f2d0456f8cd411acd42e1c619bf78a03e92d16aa82156881b9d38",
+        "732cc218506deb90f58d5fc8bb724c228d552760f5dbe0df68e36bb6060617b6",
         "73b473d467e8dffb389e90f748ceae9fbb578e617e550f3669749b0416ac2931",
-        "d3f7d82793cd9f832273f12170bc5f49671e56aa2b71a16e14bfc68c53556d1a",
         "7b0bc5f45490e926d84b7abddb82c46c2abfb8ed94d766bcee98c03c70972e97",
-        "d85b565ea5e16fd645b0486d1b335eeb71f8e03619237ffce6785a9d3b069dd5",
+        "7cb923e717409d5c46c51a6e088953fd22675ce6bf45dd854dcdd99465836cba",
+        "7f0d66366b63808f3a38fb63358e8899a717a16c9c12ac5c9970fa2e68007b6c",
+        "88bfd8e0a66bbaef37351a4b590fd8f0a27517c6ea9c58d3bb22108594efd3ce",
+        "a366836cb9988e6d63e2bb0a09399e8107319ea5f1f4b9e3a7b6104e21411349",
+        "b360e005813545ca39d538bdc3debc9c60add610db46ed68df2844db566112ae",
+        "b9a801d1068c4831102901851610fc57dcf5aa2d122957eb307543599e67c241",
+        "bf5e21acb6496e644d9e2f41e66061e6519f247b57ff1904e9f3f540ca0ab373",
         "c1c7f2aaf4d7e669fc351e3e31b63a745684ede523afa14a56240d52c0298d50",
-        "295fb0dde2363148729439da89559b4cfbe9734b10c3be3141ac9bf6eaac8d27"
+        "d332ae56b692c7064093d0465c9e8f31e0f0b490f3b171b1ae2dce908e50aed5",
+        "d352bcfa798726b9797a9692dec2c83b5ce42993189ce5419129648dec25e7f7",
+        "d3f7d82793cd9f832273f12170bc5f49671e56aa2b71a16e14bfc68c53556d1a",
+        "d85b565ea5e16fd645b0486d1b335eeb71f8e03619237ffce6785a9d3b069dd5",
+        "e84af88eb730cd5ef8618c1227828aeb129ee90c7eb4db766269ea8f8c2d8b55",
+        "e98c9d989944940ada42c2b5865d7b0d7d67c6bb155c9d3612f5091367f8ea88",
+        "f55602be9fc97612a5d553f0b8206aabf005823498a3341565fedd6ca1438160",
+        "fa69b58105564cd5f1fe81590ee38bf9e377f8206e678a954f33c41b2737035c",
+        "fba56fc2cfc2c3cee5c693662f9138ae35fd7102f28196c57fb1b1eef8e6924a"
       ]
     },
     "agent_tools/tests/test_inventory_fd_baseline.py": {
@@ -7854,6 +8929,15 @@
         "68ee7c9a99ced7b309e85c575487fb6e177bef9ae98dbdbc03a1fa8507813dbd"
       ]
     },
+    "agent_tools/tests/test_tart_macos_known_off_provider_shape.py": {
+      "reason": "The causal test loads only the SHA-checked whole original known-off observer module and executes the current owned durable-owner fixture with its actual native get/list response shapes. All original source and public native observation fixtures are confined to this directory; no real Tart power, source adoption or public capability admission occurs.",
+      "scopes": [
+        "agent_tools/tests/fixtures/tart_macos_known_off_provider_shape/"
+      ],
+      "sourceSha256": [
+        "0cd1bc7b9b60b0205dc04ff9778127329a88c30cfc72cbcbf5cc4f806a007619"
+      ]
+    },
     "agent_tools/tests/test_tart_macos_label_profile.py": {
       "reason": "Finite whole three current U/Q/material modules execute only imports/definitions via module(); whole before U and owner-admission Q fixture imports/definitions execute. Test invokes actual geometry, opaque guards, strict privateFS original proof parser under explicit transport/custody/source seams, material selected load/try/finally AST, fixed canonical wrapper in actual local durable job and owned temporary output. Embedded native driver is parsed/compiled only; its native body never executes. PUBLIC callback-cost procedure is a finite definition-only fixture and controlled objects invoke it; no input/native/private reader. Bound test binding/identity helper path explicit. Three active-work source scopes are reserved finite transitive overlay dependencies for the coordinated registry batch, not generic dynamic exemptions.",
       "scopes": [
@@ -7917,6 +9001,19 @@
       ],
       "sourceSha256": [
         "0bf4a03729cf49837c11520effc219b53aca0dffa287d9a33189ef9e59428114"
+      ]
+    },
+    "agent_tools/tests/test_tart_macos_lifecycle_root_identity.py": {
+      "reason": "The causal test loads only the SHA-checked complete lifecycle beforeimage with its original source guard. Both before and current real start_program render the unchanged owner, executed by an isolated child against owned inert files; only the host boot probe is supplied by the fixed launch adapter. Finite fixture helpers and provenance are explicit inputs. No native Tart VM, inventory, credentials or public capability admission is exercised.",
+      "scopes": [
+        "agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/lifecycle.before.source",
+        "agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/launch_adapter.py",
+        "agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/inert_tart.py",
+        "agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/provenance.json",
+        "agent_tools/tests/fixtures/tart_macos_lifecycle_root_identity/static-review-rejected.json"
+      ],
+      "sourceSha256": [
+        "1646e29962937c77e93734b9259fb8ce45ca9675c5eda60bd9d26503e2a9e3ff"
       ]
     },
     "agent_tools/tests/test_tart_macos_observer_high_fd.py": {
@@ -8775,6 +9872,53 @@
         "d9287e405d1d6270741d84827a677f303107c43ab640f861fcc224e94566ee0b"
       ]
     },
+    "agent_tools/tests/test_windows_fresh_readonly_harness.py": {
+      "reason": "Five authentic whole-before harness families execute exact owned entrypoint/import, actual generated bootstrap, role routing with the real private ledger reader, fsynced per-phase publication, and all-nine-field native executable schema joins. Native process/UID/transport are explicit inert seams; schema-only cases read actual producer source without importing its POSIX dependency graph. Fixed07945 source remains a historical fixture with no refreshed native authority. Only finite fixture inputs and the named canonical imports/source readers execute; genuine POSIX cases skip before native imports on Windows. Two further exact cases cover coupled protected child source length/hash rebinding and actual timestamp-valid foreign pyc under held legitimate source. Only named assignments/one named function execute from the finite whole source fixtures; real owned Held and py_compile/importlib prove source-only execution. Current native original12932 and RAW62 remain separately recorded, no unit native authority. Two exact storage wrapper controls execute the current canonical locked writer: pinned raw bytes and full generation must join the canonical state under its flock; original beforeimage and one-effect fence require file and directory fsync before writer entry. Whole beforeimage yields actual raw/generation/durability RED and nine-case GREEN. Source fixtures grant no native authority. Four exact secure/wake source fixtures add reviewed-artifact-before-parse and full recipient-before-inert-secret-open controls, plus actual canonical validator/Backend.observe competing-session projection. Whole d34 and6a7 yield four proof, seven recipient and one competing-session REDs; 6cf7a523/47406867 fixes yield full12GREEN. Only named helper/statement AST executes with explicit inert fixtures; current readiness_windows/guest/display source readers and readiness import are finite. Four portable/eight genuine POSIX cases preserve no native authority.",
+      "scopes": [
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/native_vm_spec.py",
+        "agent_tools/private_credential_file.py",
+        "agent_tools/readiness.py",
+        "agent_tools/readiness_windows.py",
+        "agent_tools/readiness_windows_display.py",
+        "agent_tools/readiness_windows_guest.py",
+        "agent_tools/readiness_windows_lifecycle.py",
+        "agent_tools/ssh_direct_nested_channel.py",
+        "agent_tools/ssh_tmux_resource_admission.py",
+        "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/after.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/coupled-bootstrap.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/coupled-bootstrap.generator.after.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/executable-schema-native-facts.json",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/held-builder.after.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/held-builder.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/import.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/native.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/provenance.json",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/quoting.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/schema.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/secure-custody.after.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/secure-custody.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/storage-claim.after.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/storage-claim.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/test-import.before.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/wake-operators.after.source",
+        "agent_tools/tests/fixtures/windows_fresh_readonly_observer/wake-operators.before.source",
+        "agent_tools/vm_workflow.py",
+        "agent_tools/windows_vm_deploy_remote.py",
+        "agent_tools/windows_vm_instance.py",
+        "agent_tools/windows_vm_media.py",
+        "agent_tools/windows_vm_resources.py",
+        "scripts/native_fixture_storage.py"
+      ],
+      "sourceSha256": [
+        "2f3e1a7ada9b00a781b6ee3556c175ed44842bc8e1e8aa2e44ae1f42125fb0b7",
+        "81cea7a061e82eda2c91545b45d2ba23b9f8809501ad19f25ba0fbd5a001cb1f",
+        "9f3106ac1e5218bb16796336da5a56e74a4602864f4c3ef7e01b9f9435dd4ba2",
+        "9f33fd4958d96ad2cad5ee25b2ca5dab4c9aa5e5c55b732a92dd919f8125d867",
+        "db9deb0a607dcd5b1e48519485188382aa0c56455bad0e1cd165873ce31a38bd"
+      ]
+    },
     "agent_tools/tests/test_windows_guest_input.py": {
       "reason": "Complete input/collector protocol tests now pass an explicit filtered-administrator policy; configured standard-user policy is separately covered without changing source or native authority seams. Reviewed e167 baseline imports/resources remain supported for the mandatory old/current dependency union; static edges are retained alongside this finite current map.",
       "scopes": [
@@ -8893,16 +10037,31 @@
         "ffac93eb68a3460a48be107a2a4168ab29943a3b49d9caa07a1c6fe4641c7486"
       ]
     },
-    "agent_tools/tests/test_windows_login_latest_readmission_execution.py": {
-      "reason": "Only exact authenticated before/after protected-flow source and retained public precredential evidence are read. The named complete screen/readmission functions execute with explicit public marker/session/pixel boundary globals; no credential or remote input is submitted, and no arbitrary path is accepted.",
+    "agent_tools/tests/test_windows_login_history_before_secret.py": {
+      "reason": "Loads exactly the SHA-authenticated whole prior login implementation under a registered module identity so real inspect/source guards run. The existing real local Unix-socket transport fixture and controlled launch-absence observer exercise the same execute path; actual synthetic private-file opens establish RED before prior-source admission and GREEN after ordering, without a Windows guest or real credential.",
       "scopes": [
-        "agent_tools/tests/fixtures/windows_login_latest_readmission/before.source",
+        "agent_tools/tests/fixtures/windows_login_history_before_secret/before.source",
+        "agent_tools/tests/fixtures/windows_login_history_before_secret/provenance.json",
+        "agent_tools/tests/test_readiness_windows_login.py",
+        "agent_tools/readiness_windows_login.py",
+        "agent_tools/readiness_windows_login_continuation.py"
+      ],
+      "sourceSha256": [
+        "e795fa394629c898080a60b074f79af0bad7bbabfe71b8a1bed823d7001dd045"
+      ]
+    },
+    "agent_tools/tests/test_windows_login_latest_readmission_execution.py": {
+      "reason": "Only exact authenticated before/after protected-flow source and retained public precredential evidence are read. The named complete screen/readmission functions execute with explicit public marker/session/pixel boundary globals; no credential or remote input is submitted, and no arbitrary path is accepted. Current linkage compares every actual consumed protected-flow definition, including its decorators/header/body, against unchanged historical afterimage; execute-only changes are outside that component claim. Negative mutations of all eight consumed definitions must fail. Historical source/provenance/native facts remain unchanged; no full current native qualification is asserted.",
+      "scopes": [
+        "agent_tools/readiness_windows_login.py",
         "agent_tools/tests/fixtures/windows_login_latest_readmission/after.source",
+        "agent_tools/tests/fixtures/windows_login_latest_readmission/before.source",
         "agent_tools/tests/fixtures/windows_login_latest_readmission/positive-native-facts.json",
         "agent_tools/tests/fixtures/windows_login_latest_readmission/provenance.json"
       ],
       "sourceSha256": [
-        "513b6a59b07208b69e87b2b3237daf4a33777c8a899476fe112cb1cac99634a2"
+        "513b6a59b07208b69e87b2b3237daf4a33777c8a899476fe112cb1cac99634a2",
+        "cf98d9986b6fd22918e99fd803b3468dcf4bc79de67a48a6a1ce55a13a1ea8fe"
       ]
     },
     "agent_tools/tests/test_windows_login_spotlight_profile_execution.py": {
@@ -9641,9 +10800,79 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "56b3d5fcf7a1e13cc8f60c5524c55f40e8ff9e6655f3eac2e46083616fba2b1c",
+    "agent_tools/readiness_vm_dispatch.json": "20ab2c21374ef94f24be39b52c4882b0c647482b08ab69d3e5d52898eb1144dc",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
+    "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
+    "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",
+    "agent_tools/tests/fixtures/android_current_census/provenance.json": "1f7f0d67d3767dfc885c9a0d8b90dbe6403bcb784806161c885d255644d9c0ab",
+    "agent_tools/tests/fixtures/android_existing_readonly/coldboot_producer.source": "7d90c06070ffad1439e613c9ad5d63f979d43b738944f0630b2b15187f09fec6",
     "agent_tools/tests/fixtures/android_installer_hermetic/ssh_transport.closure-compatible.source": "16cbcfc396ba33e660d2550f4bb70b30a39367f1b823fd57eeee2281f844a367",
+    "agent_tools/tests/fixtures/android_local_custody/provenance.json": "bfe885e2173a00294c133d5b55c18031a7a641ca70c757a68f131523be6dcdee",
+    "agent_tools/tests/fixtures/android_native_observer_control/cleanup.before.source": "2e9e4246276b5a7b8df548c0f3e1d2fddea94c1454433eba8e24d7cb7da20230",
+    "agent_tools/tests/fixtures/android_native_observer_control/cleanup.fixed.source": "4444a6aa9c821c7648f33633bc0760887ace2c247e0c689f4ea1ec16f0cf39c4",
+    "agent_tools/tests/fixtures/android_native_observer_control/evidence.before.source": "78fb716a74fd6459071e19138686aab8f1fac9c1eedd0f2cb853ea154068ea43",
+    "agent_tools/tests/fixtures/android_native_observer_control/evidence.fixed.source": "13ee6695447f332e6ffc42b2cbd23307ffac4616ee84ce01158580075ecb92a8",
+    "agent_tools/tests/fixtures/android_native_observer_control/provenance.json": "03d10a383130ccf518067c2e4e2ab3663dd485ba126c252f6c2193da285726e4",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-b2.before.source": "b2cec75b415152f88c629a56aad01a9db601b54183fa0a786a3e6a4e1fa043c6",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-d9ef.before.source": "d9ef282e23592746c2c768f68fb3e5b96a858838b35f822de20333fc6bcfe86c",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller-e43.before.source": "e43f0997cfae188c433e5cea86807e36bc247b971093534fecfe88ef38510c86",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/controller.fixed.source": "74c60b99426fb73cf3ea5ef9ad69f097d723b30a0fca72796e45935b7e7e8552",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-53b.before.source": "53b0fca6d7eba6344420c3d83c028aa18be60669f0af9305df8dbbd54c77bd82",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-57c8.before.source": "57c8b55fd9c6dc78f1352af2f33411c6ed76ada9f27c445df099a7696e08f4d7",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/helper-734.before.source": "7341b274393541566e05ca526e2608cdcdc00a132e7a9839a9763e3fbf464b18",
+    "agent_tools/tests/fixtures/android_persisted_interval_reports/provenance.json": "fdf4c224396ce55f9ffa6c7ce67d6d62bf29b23bd779e340999c53beb665bff9",
+    "agent_tools/tests/fixtures/android_persisted_start/adapter.before.source": "a7056498c100b5d3fe831fbd4d45aa962fcead5a6d11fd912b7a62fbcf9817e4",
+    "agent_tools/tests/fixtures/android_persisted_start/admission-blocked.native.json": "88c0c699d367a9bb62b87f6e2e0abdca0dabdee897cfb17820216fba760e4072",
+    "agent_tools/tests/fixtures/android_persisted_start/advisory-timeout.before.source": "f294f0abe6945d2cd6a37f92a27eddc7258044570164dd1ed7ff74f170b69238",
+    "agent_tools/tests/fixtures/android_persisted_start/advisory-timeout.fixed.source": "316ecbfa63bdda696035b545e09777cff33ee67da0c03da8ab8befa19c835ad1",
+    "agent_tools/tests/fixtures/android_persisted_start/allocation-coverage.before.source": "4c703f4b2bc654ec9e882789529a9913b73e00df702c7aedea0aa6c9d4bf4e62",
+    "agent_tools/tests/fixtures/android_persisted_start/composition-setup.before.source": "be791c61ab945026307de0855340902bcb2ad2f873b8be87ab06ad50850a098c",
+    "agent_tools/tests/fixtures/android_persisted_start/composition-setup.fixed.source": "54bb2624170dc101ed645918bae863d3047d2193fc81ad9dfc001a585b031183",
+    "agent_tools/tests/fixtures/android_persisted_start/controller-composition.source": "f71178076d5df505a19ad9775133665e54b3f0f656b19471659a54b8c271a4ac",
+    "agent_tools/tests/fixtures/android_persisted_start/controller-sampling.final.source": "b2cec75b415152f88c629a56aad01a9db601b54183fa0a786a3e6a4e1fa043c6",
+    "agent_tools/tests/fixtures/android_persisted_start/controller-sampling.fixed.source": "33477e449a4151f9543fb722dc1fb36b640ea14a28caf2054d6fa0f59608d699",
+    "agent_tools/tests/fixtures/android_persisted_start/native-observer.before.source": "8a2d81e09f1c22d1668aa300618a398651e4f74fa40c21b4895d8ef1ec3a4da1",
+    "agent_tools/tests/fixtures/android_persisted_start/original-readers.source": "106193c91deb9ba1b54c6cb1dee6b3821e47165f61c317ae6d8e553536d20b8c",
+    "agent_tools/tests/fixtures/android_persisted_start/provenance.json": "d2542034ae24e1dc5f0b3d481a9fd645c8f904100c2e4c16f3c49c13f3cd7a9f",
+    "agent_tools/tests/fixtures/android_persisted_start/receiver-composition.source": "3d291375895a9e84bf31516fbe43aa5476a90ef8f605b8e70b9ce8381823cafb",
+    "agent_tools/tests/fixtures/android_persisted_start/test-portability.before.source": "e2f01038406d5169d4c7903643d240328effb4f1ec76db5d53cab935ae9d12c3",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/component_test_helper.captured.source": "917a9438dc5048d8131e3acb114a0ef117dade453ec028d768a8427fcd580231",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/control_fixture.source": "2813cb6a54ac9beb74d2016a2387f31d2323e4a80b7d2f480d5ee83870942e38",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-closing.source": "51766ba14145261f6321667459e55ee4f70c0aed281f64f1d0a0c8c32125f1bc",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-kernel-envelope.source": "2e4e05e1986b5494865de209ebefde449bc4d65ce1b32f63bab1c39f9c8c0f9a",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-slice.source": "9c7336b56de1e16187336cb9e0939980b0b48dae8a3bc49235d929314b25b2ff",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-wave-absence.source": "27bbfd1b6c35f9b62e2a960aa39e6d51e54e09d3c6f6963d7028ae247050b2f8",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.before-wave-budget.source": "af43dae1dfe34e17d624b7a3c1a51f6260eb1b005ffe5b7af088d97c6ee11710",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/dual_authority.current.source": "51766ba14145261f6321667459e55ee4f70c0aed281f64f1d0a0c8c32125f1bc",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/fixture_loader.source": "1ae5894c53245d84b24ae12472041841b5ba79e0b76e25216b436f8f6469e70b",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/kernel_fixture.source": "9bd781eba5877d4ff8e7802aeee5ab01ac99dd09ca7d02b087e3303fa737d296",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-boundarySource.source": "d364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-processSource.source": "779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current1e15-validatorSource.source": "2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-boundarySource.source": "d364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-processSource.source": "4b1e019705f5fc3d9870136839eb80a3cd97ef899b64944c85f71292d0a8731d",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/plane_code/current9da-validatorSource.source": "23e692586d4f82f4c6dc8a24c0200eb572292c0efc78e68497de33ca0f119670",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/plane_fixture.source": "f363fcaccad19e3cd4010adc41696edd72afa339b43ebe5104ef7addf0264c8d",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/provenance.json": "3437d31655ef424966eba481d156b0968efede04995209eeeebdc22dcadb1109",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/qualification-template.authentic.source": "0e2a18b93a9d421c4fe6e5478c278ede7af41a87b8605bc4bcd993405142db07",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/sources/adapter.source": "51b3ed12704660b622604ffafefe9bd308c3d4ca013e873eabaee694201f769e",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/sources/bundle.source": "e218c1fc862eab2a5668da970b8d642fa3254fb2ff822ab4945f23ae787f4372",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/sources/continuity.source": "9e7c099de26239ac70711687a512d689e451fb0aca42627fd362e03065784589",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/sources/custody.source": "a04c3282787e938c32a09ad3ac5a54d8499e60a766977778591ef72ef388dcae",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/sources/renderer.source": "334d4b006be08bacecab845137393953462d39632e02b988608d5758e1403b3f",
+    "agent_tools/tests/fixtures/android_poststart_current_authority/sources/retirement.source": "b80edb795461815d1565148dc1eb32966c4de3aa6ad0f4bab1f53a378f537e31",
+    "agent_tools/tests/fixtures/android_terminal_observer_lifetime/controller-74c.before.source": "74c60b99426fb73cf3ea5ef9ad69f097d723b30a0fca72796e45935b7e7e8552",
+    "agent_tools/tests/fixtures/android_terminal_observer_lifetime/controller.fixed.source": "ab09df502d6f8096cc7af753f8eedc0404d60fe25e144c8c48db92bd18168243",
+    "agent_tools/tests/fixtures/android_terminal_observer_lifetime/provenance.json": "d76e86e5ac42ccb64af062e5d648237e33f290d9ac5ed60e26ec6d7008c6256e",
+    "agent_tools/tests/fixtures/android_terminal_observer_lifetime/remote-terminal-owned.source": "afd06ca4bdd584587a7e4ab05954be902b35508c18acb42de8e616d065939725",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/interval-harness.before.source": "3d811294386c8327d02ba6bee104eb5eaf5c698100e4fae48dff3c549bc2de68",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.control-code.source": "857157269d0b519bbe4913b142d7d44eb91f38449d8d40163f3f92a29ee9858d",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-fixed-refusal.source": "71cc0b3014c4a7e0e8331f2354b5ef3a2b65185e0c3c21c400947cc7fd6764ee",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/native-control.phase-before-receiver-close.source": "d7e73381a014384f6a9037433e59a3c5ad23fe61051639f4f3fc9377c9691462",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/provenance.json": "fe92697de3c00fac3c52447d819b34b9c9019a698e56a1d6255e29fb8a615cbe",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.before.source": "41ecdd45dbcb4738e2d8ab93a027e5276ceb697d7dc5600685cd6fc406574790",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/successor.owner-before.source": "f23eff4d0923b40d654587c6deda33f44a450b41041f6825be5bd6f992a5cf9f",
+    "agent_tools/tests/fixtures/android_terminal_zombie_retry/test.default-selector.before.source": "ba2c2649559a66369f2c0b385cc29175d34d40b18a91fe4da5a34bf6d2a0b164",
     "agent_tools/tests/fixtures/android_update_staged_readiness/android_installer_outer_transport.before.source": "ba264b61b51cd848c802ca9c06af479d2c4c52b45c8b7c0e9a807aa1ab47cfc9",
     "agent_tools/tests/fixtures/cp117_fixture_context_portability/geometry-imports.before.fragment": "48cca7e905f2a806671694d51bf9f5dd7a66ff5ecfa63173b70c75891d6ea0ac",
     "agent_tools/tests/fixtures/cp117_fixture_context_portability/windowless-imports.before.fragment": "f981b5c22f951cc236bf0fac120d1fb9c440cbc325cb48bc8328e51005bb146d",
@@ -9657,6 +10886,7 @@
     "agent_tools/tests/fixtures/macos_active_work_integration/qualification-dependencies/configuration.source": "89f51e320bcac1ec6549d6ea892ae87a773d9513d48efbe1ca85d30074ee0fa5",
     "agent_tools/tests/fixtures/macos_active_work_integration/qualification-pins.json": "bf412f06eca0a46c47a70a34edc604c17574f42e899046edbb35ba6bce05e2ce",
     "agent_tools/tests/fixtures/msi_qga_fixture_bounds/receive.before.fragment": "142b4f66c31007ee273bbd1f04781c52c21302aeaa40638e747dd9359c41aa75",
+    "agent_tools/tests/fixtures/native_review_input_bytes/attributes.before.source": "99ef961a6b1ef27fe7340f2b9a9c2fb5ffad7dd88501215076b6b8b0f12db7ed",
     "agent_tools/tests/fixtures/program_mcp_follow_deadline_before/ssh_program_mcp_client.py.source": "f8a083e3f9b6462d9b4c4c4a89bf16c9ac4272658f7aa3a1c901d3518cefd469",
     "agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment": "beab62becfbb8b2e9947243ba5d2ec7c848bb91998480e6f1ef21d2c7d7cbad6",
     "agent_tools/tests/fixtures/readiness_identity_refusal/mcp_server.before.source": "d1620c0e27b48721bc20f099eac6e6d4c2ed3a0922788e7874df0411133b1c34",
@@ -9696,6 +10926,24 @@
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-loss.source": "24001dcaed1e666438e18497abde4594b6f3121b28c339a569b11955da0d3a21",
     "agent_tools/tests/fixtures/windows_cp117_server_preflight/finally-restored.source": "dc4ea223703ea8b16faa07d1b6d231d45b30d078f09e4e1e4954241a3be9efa6",
     "agent_tools/tests/fixtures/windows_credential_explicit_target/mcp_server.before.source": "f0648edeaafecdfc7f35d52b3e17430726a74ed5ce0f9bea841faa4171a7cf66",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/after.source": "07945a68b93748f01c890b11ed0f8dc17f6d0a07e5039e88ac64bcc30857645a",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/coupled-bootstrap.before.source": "6fac99beb2e16fd1cef8b3c1365b2046cd29f5539710a72e879395f640bff9d4",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/coupled-bootstrap.generator.after.source": "f2ecbeed5ccbd897b8db087db0cdae93ce2f542a71f6159e701d34bed033b77b",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/executable-schema-native-facts.json": "68e7ba12cc1c735ec9115e29c6cbd4040e2a7ddfc739d736c08fb4138dedc875",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/held-builder.after.source": "8e6cff44798c8381e195753c0ae239e7c002c304e92a1a8ec724b5c087b60619",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/held-builder.before.source": "784eb8f14f936a66201aca650301b737c2279ba53a8177cad57113cc1a591805",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/import.before.source": "c242e088ee19553769e2dbe250ba31d197d388d7d8ce8200e1e829601e4788a3",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/native.before.source": "eefacbf3bdba7e5541b474177ae91d60be2ded0bbdb35c0b6dcfdd59650e8208",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/provenance.json": "653a9b5fa410e79684cf5033f12516ac2e5f40254d58aa7800f1baedef3d10d5",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/quoting.before.source": "299b88b572c6bac3446fcf943fed1abf4b3908e51cc84dc8c0a9aade4ef5d498",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/schema.before.source": "84a6aabca486982c0d3647d028a31f800c05db8d2612b186619d4d412a25e81c",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/secure-custody.after.source": "6cf7a5230d52c21301b6bffb0b7185a7538e69f1d33bc6a1b2ea46a91d660115",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/secure-custody.before.source": "d34d06035a11940e88b0867a07a8b079f79795cd7ac93362ed3d4a26f8828525",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/storage-claim.after.source": "45ef2ca34364f7bc4bf46e2a9e3bddba1d86d52db516f1490bf66cf03a39f87c",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/storage-claim.before.source": "b34b0784f2ce66fae95a979bc1438dafa0e54330fd34ead90e7e64783c6e36ef",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/test-import.before.source": "7b5cadea1a22e0ea80998633f3a3a593c199a55eb723fdec0458f2526aa3de19",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/wake-operators.after.source": "47406867a699192fe9b4627d7d3aac5ebb6b92a1cbda928e5e2a342d40e33cd2",
+    "agent_tools/tests/fixtures/windows_fresh_readonly_observer/wake-operators.before.source": "6a767db23c749117f176e56beb7f2127ee51b8714118a6db8fd40ea6632c926f",
     "agent_tools/tests/fixtures/windows_host_work/documents.stdout.source": "21224eabd44969681155b5cb0928c2db9f303a99f5cf3f7c3f23bddcacc04868",
     "agent_tools/tests/fixtures/windows_jobs_observer_framing/status.before.source": "2cb14cc4df9a5cd19665f14a4fe1573ba142e67759adb215fa6b270f49e52ce0",
     "agent_tools/tests/fixtures/windows_jobs_observer_framing/status.fixed.source": "785a96e54780d7e5dfd7509a31f9eb55e1bc8e4cb3e3ea4a85e002eb40c002f7",

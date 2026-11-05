@@ -1,0 +1,663 @@
+"""Source-closed admission for one separately owned persisted Android start.
+
+This is an internal native adapter, not a public target or source override.
+The coordinator authenticates the original source and local reservation records,
+freezes their pins, and revalidates them immediately before native dispatch.
+Old operations and their pins are never changed. Native measurements remain
+required; a rendered program or a caller-authored observation is not admission.
+"""
+from __future__ import annotations
+
+import ast
+import base64
+import copy
+import hashlib
+import json
+from pathlib import Path
+import re
+import uuid
+
+_SHA = re.compile(r"[0-9a-f]{64}\Z")
+MEMORY_BYTES = 2 * 1024 ** 3
+HEADROOM_BYTES = 8 * 1024 ** 3
+MIN_DISK_BYTES = 20 * 1024 ** 3
+_READERS = ("fp", "parent_fds", "close_parents", "guard_parents", "read_fixed",
+            "facts", "tree_facts", "ticks", "process_census", "ports", "boot",
+            "child_identity", "qemu_fact", "session_guest", "guest_probe", "original_status")
+_LAUNCHERS = ("open_emulator", "admit_once", "emulator_exec",
+              "close_supervisor_inherited", "child_exec", "launch_once")
+
+
+def _need(condition, reason):
+    if not condition:
+        raise ValueError(reason)
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False, ensure_ascii=False).encode() + b"\n"
+
+
+def _uuid(value):
+    _need(type(value) is str and str(uuid.UUID(value)) == value,
+          "persisted_start_operation_invalid")
+
+
+def _source(raw, digest):
+    _need(type(raw) is bytes and 0 < len(raw) <= 8 * 1024 ** 2
+          and type(digest) is str and _SHA.fullmatch(digest)
+          and hashlib.sha256(raw).hexdigest() == digest,
+          "persisted_start_source_changed")
+    text = raw.decode("utf-8", "strict")
+    tree = ast.parse(text)
+    functions = {}
+    for name in _READERS:
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name == name]
+        _need(len(nodes) == 1 and not nodes[0].decorator_list,
+              "persisted_start_source_definition_changed")
+        functions[name] = ast.get_source_segment(text, nodes[0])
+    literals = {}
+    for name in ("CFG", "LAUNCH", "GETTER"):
+        nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+                 and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                 and node.targets[0].id == name]
+        _need(len(nodes) == 1, "persisted_start_source_binding_changed")
+        literals[name] = ast.literal_eval(nodes[0].value)
+    root_nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+                  and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                  and node.targets[0].id == "ROOT"]
+    _need(len(root_nodes) == 1 and isinstance(root_nodes[0].value, ast.Call)
+          and len(root_nodes[0].value.args) == 1
+          and isinstance(root_nodes[0].value.args[0], ast.Constant)
+          and type(root_nodes[0].value.args[0].value) is str,
+          "persisted_start_original_root_invalid")
+    literals["ROOT"] = root_nodes[0].value.args[0].value
+    launch = literals["LAUNCH"]
+    _need(launch["device"] == "api35" and launch["port"] == 5682
+          and launch["argv"][launch["argv"].index("-avd") + 1] == launch["avd"]
+          and launch["argv"][launch["argv"].index("-port") + 1] == str(launch["port"])
+          and launch["argv"][launch["argv"].index("-memory") + 1] == "2048"
+          and all(flag not in launch["argv"] for flag in ("-wipe-data", "-snapshot", "-read-only"))
+          and all(flag in launch["argv"] for flag in ("-no-snapshot-load", "-no-snapshot-save")),
+          "persisted_start_original_target_invalid")
+    return functions, literals
+
+
+def reservation_bytes(authority):
+    """Sum every matching claim, including historical, inactive and duplicate rows.
+
+    The coordinator retains and revalidates these exact local FD9/parent pins;
+    a Linux guest cannot independently read the Mac's private journal files.
+    No native result prints the raw ledger, tokens or private row contents.
+    """
+    _need(type(authority) is dict and set(authority) == {"hostAlias", "capturedAtNs", "records"}
+          and authority["hostAlias"] == "archlinux"
+          and type(authority["capturedAtNs"]) is int and authority["capturedAtNs"] > 0
+          and type(authority["records"]) is list and 1 <= len(authority["records"]) <= 4,
+          "persisted_start_reservation_authority_invalid")
+    total = 0
+    paths = set()
+    for record in authority["records"]:
+        _need(type(record) is dict and set(record) == {"path", "pin", "rawBase64"}
+              and type(record["path"]) is str and Path(record["path"]).is_absolute()
+              and record["path"] not in paths and type(record["pin"]) is dict
+              and set(record["pin"]) == {"generation", "parents", "sha256"},
+              "persisted_start_reservation_record_invalid")
+        paths.add(record["path"])
+        pin = record["pin"]
+        _need(type(pin["generation"]) is list and len(pin["generation"]) == 9
+              and all(type(item) is int and item >= 0 for item in pin["generation"])
+              and pin["generation"][2] == 0o100600 and pin["generation"][5] == 1
+              and type(pin["parents"]) is dict and bool(pin["parents"])
+              and type(pin["sha256"]) is str and _SHA.fullmatch(pin["sha256"])
+              and type(record["rawBase64"]) is str and len(record["rawBase64"]) <= 8 * 1024 ** 2,
+              "persisted_start_reservation_record_invalid")
+        raw = base64.b64decode(record["rawBase64"], validate=True)
+        _need(len(raw) == pin["generation"][6] and len(raw) <= 4 * 1024 ** 2
+              and hashlib.sha256(raw).hexdigest() == pin["sha256"],
+              "persisted_start_reservation_record_changed")
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                _need(key not in result, "persisted_start_reservation_duplicate_key")
+                result[key] = value
+            return result
+        value = json.loads(raw, object_pairs_hook=unique)
+        _need(type(value) is dict and set(value) == {"version", "reservations"}
+              and type(value["version"]) is int and value["version"] == 1
+              and type(value["reservations"]) is list and len(value["reservations"]) <= 4096,
+              "persisted_start_reservation_ledger_invalid")
+        for row in value["reservations"]:
+            _need(type(row) is dict and type(row.get("hostAlias")) is str
+                  and type(row.get("requestedMemoryBytes")) is int
+                  and 0 <= row["requestedMemoryBytes"] <= 1024 ** 4,
+                  "persisted_start_reservation_claim_invalid")
+            if row["hostAlias"] == authority["hostAlias"]:
+                total += row["requestedMemoryBytes"]
+    _need(total <= 1024 ** 4, "persisted_start_reservation_total_invalid")
+    return total
+
+
+def _capacity_sources():
+    """Capture the existing canonical Linux policy and its real native probe."""
+    root = Path(__file__).resolve().parent.parent
+    paths = ("agent_tools/vm_workflow.py", "scripts/fixture_environment.py",
+             "agent_tools/native_host_observation.py")
+    files = {name: (root / name).read_bytes() for name in paths}
+    texts = {name: raw.decode("utf-8", "strict") for name, raw in files.items()}
+    trees = {name: ast.parse(text) for name, text in texts.items()}
+    def definition(path, name):
+        nodes = [node for node in trees[path].body if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name == name]
+        _need(len(nodes) == 1, "persisted_start_capacity_definition_changed")
+        return ast.get_source_segment(texts[path], nodes[0])
+    def assignment(path, name):
+        nodes = [node for node in trees[path].body if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+        _need(len(nodes) == 1, "persisted_start_capacity_constant_changed")
+        return ast.get_source_segment(texts[path], nodes[0])
+    vm, fixture, native = paths
+    source = "import math,io,contextlib\nfrom typing import Any,Mapping,Sequence\n"
+    names = ("_MIB", "_LINUX_SAMPLE_COUNT", "_LINUX_MAX_SAMPLE_WINDOW_MS", "_LINUX_MAX_SAMPLE_AGE_MS",
+             "_DARWIN_SAMPLE_COUNT", "_DARWIN_MAX_SAMPLE_WINDOW_MS", "_DARWIN_MAX_SAMPLE_AGE_MS", "_SAFE_RESERVATION_ID")
+    source += "\n".join(assignment(vm, name) for name in names) + "\n"
+    source += definition(fixture, "vm_admission_reason") + "\n"
+    source += "\n\n".join(definition(vm, name) for name in
+        ("VmWorkflowError", "_positive_int", "_nonnegative_int", "_ceil_mib", "_linux_samples", "_darwin_samples", "admit_plan")) + "\n"
+    source += definition(native, "_unknown") + "\n" + definition(native, "_measurement") + "\n"
+    source += assignment(native, "_REMOTE_PROGRAM").replace("_REMOTE_PROGRAM", "NATIVE_RESOURCE_PROGRAM", 1) + "\n"
+    pins = {name: hashlib.sha256(raw).hexdigest() for name, raw in files.items()}
+    source += "CAPACITY_SOURCE_PINS=" + repr(pins) + "\n"
+    return source, pins
+
+
+_CAPACITY = r'''
+def canonical_capacity(measurement,held):
+ # Without a separately qualified owner-to-claim mapping, count every native
+ # configured allocation in addition to all held claims. Never guess dedup.
+ configured=_nonnegative_int(measurement.get('runningConfiguredMemoryBytes'),'running configured memory')+_nonnegative_int(held,'held configured memory')
+ supplied=dict(measurement,runningConfiguredMemoryBytes=configured)
+ return admit_plan(supplied,requested_memory_bytes=MEMORY_BYTES,headroom_bytes=HEADROOM_BYTES,reservations=())
+def native_capacity():
+ output=io.StringIO()
+ with contextlib.redirect_stdout(output):
+  try:exec(compile(NATIVE_RESOURCE_PROGRAM,'source-closed-linux-resource-probe','exec'),{'__name__':'source_closed_resource_probe'})
+  except SystemExit as error:
+   if error.code not in (None,0):raise ValueError('persisted_start_native_capacity_probe_exit')from None
+ raw=output.getvalue()
+ if not 0<len(raw.encode())<=32768:raise ValueError('persisted_start_native_capacity_probe_bound')
+ observed=_measurement(json.loads(raw),time.time_ns()//1000000,None,30)
+ globals()['LAST_CAPACITY_OBSERVATION']=observed
+ if observed.get('state')!='OBSERVED' or observed.get('measurementAvailability')!='complete' or observed.get('measurement')is None:raise ValueError('persisted_start_native_capacity_visibility')
+ try:plan=canonical_capacity(observed['measurement'],PENDING_BYTES)
+ except VmWorkflowError as error:
+  globals()['LAST_CAPACITY_FAILURE']=str(error)[:512]
+  raise ValueError('persisted_start_native_capacity_refused')from None
+ return observed,plan
+'''
+
+
+def capacity_plan(measurement: dict, held_bytes: int) -> dict:
+    """Execute the same captured canonical pure policy for deterministic controls."""
+    _need(type(measurement) is dict and type(held_bytes) is int and held_bytes >= 0,
+          "persisted_start_capacity_input_invalid")
+    source, _ = _capacity_sources()
+    namespace = {"json": json, "time": __import__("time"), "re": re,
+                 "MEMORY_BYTES": MEMORY_BYTES, "HEADROOM_BYTES": HEADROOM_BYTES}
+    exec(compile(source + _CAPACITY, "source-closed-native-capacity", "exec"), namespace)
+    return namespace["canonical_capacity"](measurement, held_bytes)
+
+
+def _installer_capsule(capsule, original_sha256):
+    if capsule is None:
+        return ("INSTALLER_GUARD_SHA=None\nINSTALLER_GUARD_SOURCE_PINS={}\n"
+                "def installer_host_preflight():return {'state':'unqualified','stableBinding':{},'evidence':{}}\n")
+    _need(type(capsule) is dict and set(capsule) == {"source", "sha256", "originalSourceSha256", "sourcePins"}
+          and capsule["originalSourceSha256"] == original_sha256
+          and type(capsule["source"]) is bytes and 0 < len(capsule["source"]) <= 8 * 1024 ** 2
+          and hashlib.sha256(capsule["source"]).hexdigest() == capsule["sha256"]
+          and type(capsule["sourcePins"]) is dict and 1 <= len(capsule["sourcePins"]) <= 64
+          and all(type(name) is str and 0 < len(name) <= 256 and type(pin) is str and _SHA.fullmatch(pin)
+                  for name, pin in capsule["sourcePins"].items()), "persisted_start_installer_capsule_changed")
+    tree = ast.parse(capsule["source"])
+    nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "installer_host_preflight"]
+    _need(len(nodes) == 1 and not nodes[0].decorator_list and not nodes[0].args.args
+          and nodes[0].args.vararg is None and nodes[0].args.kwarg is None,
+          "persisted_start_installer_capsule_interface")
+    return ("import types\n_INSTALLER_HOST=types.ModuleType('persisted_start_installer_host_snapshot');sys.modules[_INSTALLER_HOST.__name__]=_INSTALLER_HOST\n"
+            + "exec(compile(" + repr(capsule["source"]) + ",'source-closed-installer-host-preflight','exec'),_INSTALLER_HOST.__dict__)\n"
+            + "installer_host_preflight=_INSTALLER_HOST.installer_host_preflight\nINSTALLER_GUARD_SHA=" + repr(capsule["sha256"])
+            + "\nINSTALLER_GUARD_SOURCE_PINS=" + repr(capsule["sourcePins"]) + "\n")
+
+
+_OBSERVE = r'''
+def machine():
+ value=read_fixed(pathlib.Path('/etc/machine-id'),4096)
+ if value['hashScope']!='full' or not value['raw'].strip():raise ValueError('persisted_start_machine_unknown')
+ return hashlib.sha256(value['raw']).hexdigest()
+def original_absence():
+ rows=[]
+ for role in ('child','guest'):
+  old=ORIGINAL_GENERATION[role]
+  try:current=ticks(PROC/str(old['pid']))
+  except FileNotFoundError:current=None
+  if current==old['startTicks']:raise ValueError('persisted_start_original_actor_live')
+  rows.append({'role':role,'originalPid':old['pid'],'originalStartTicks':old['startTicks'],'currentStartTicks':current,'originalAbsent':True})
+ return rows
+def target_actors(emulators):
+ found=[]
+ for row in emulators:
+  proc=PROC/str(row['pid'])
+  start=ticks(proc);raw=(proc/'cmdline').read_bytes()
+  if len(raw)>65536:raise ValueError('persisted_start_target_command_bound')
+  args=raw.split(bytes([0]));name=LAUNCH['avd'].encode();port=str(LAUNCH['port']).encode()
+  selected=name in args or any(args[index:index+2]==[b'-port',port] for index in range(len(args)))
+  unknown_android=args and args[0] in (LAUNCH['argv'][0].encode(),LAUNCH['qemuPath'].encode()) and b'-avd' not in args
+  if ticks(proc)!=start or start!=row['startTicks']:raise ValueError('persisted_start_target_actor_changed')
+  if selected or unknown_android:found.append({'pid':row['pid'],'startTicks':start,'commandSha256':hashlib.sha256(raw).hexdigest(),'ambiguousAndroidActor':bool(unknown_android)})
+ return found
+def measured():
+ if not sys.platform.startswith('linux') or os.getuid()!=0 or os.geteuid()!=0 or os.getgid()!=0 or os.getegid()!=0:raise ValueError('persisted_start_linux_root_required')
+ if boot()!=ORIGINAL_BOOT:raise ValueError('persisted_start_host_boot_changed')
+ installer=installer_host_preflight()
+ if type(installer)is not dict or installer.get('state')not in ('admitted','unqualified') or type(installer.get('stableBinding'))is not dict or type(installer.get('evidence'))is not dict:raise ValueError('persisted_start_installer_host_proof_invalid')
+ if REQUIRE_INSTALLER_HOST_GUARD and installer['state']!='admitted':raise ValueError('persisted_start_installer_host_guard_required')
+ directory=pathlib.Path(SELECTED_DIRECTORY)
+ tree=tree_facts(directory)
+ ini=facts(directory.parent/(LAUNCH['avd']+'.ini'),65536,True)
+ config=facts(directory/'config.ini',65536,True)
+ if not ini.get('present') or not config.get('present') or ini.get('hashScope')!='full' or config.get('hashScope')!='full':raise ValueError('persisted_start_config_unknown')
+ identities={}
+ for name,item in tree.items():
+  if item['kind']=='regular':identities.setdefault(tuple(item['generation'][:2]),[]).append('api35/'+name)
+ census=process_census(identities)
+ if not census['complete'] or census['holders']:raise ValueError('persisted_start_disk_holder_unknown')
+ actors=target_actors(census['emulators'])
+ if actors:raise ValueError('persisted_start_target_actor_present')
+ occupied=[row for row in ports() if row['port'] in (LAUNCH['port'],LAUNCH['port']+1)]
+ if occupied:raise ValueError('persisted_start_target_port_occupied')
+ absent=original_absence()
+ locks={name:facts(pathlib.Path(path),4096) for name,path in LOCK_PATHS.items()}
+ if any(not row.get('present') or row['hashScope']!='full' or row['generation'][6] not in (0,1000) or row['generation'][8]!=1 or stat.S_IMODE(row['generation'][5])!=0o600 for row in locks.values()):raise ValueError('persisted_start_existing_lock_unknown')
+ sdk={name:facts(pathlib.Path(name),16777216,name.endswith('/package.xml')) for name in SELECTED_SDK}
+ if sdk!=ORIGINAL_SDK_FACTS:raise ValueError('persisted_start_sdk_changed')
+ emulator=facts(pathlib.Path(LAUNCH['argv'][0]),268435456)
+ if not emulator.get('present') or emulator.get('hashScope')!='full' or emulator['generation'][6:9]!=[1000,1000,1] or not emulator['generation'][5]&0o111:raise ValueError('persisted_start_emulator_unknown')
+ qemu=qemu_fact()
+ resource_observation,capacity=native_capacity()
+ measurement=resource_observation['measurement'];available=measurement['availableMemoryBytes']
+ disk=os.statvfs(directory);free=disk.f_bavail*disk.f_frsize
+ if free<MIN_DISK_BYTES:raise ValueError('persisted_start_disk_capacity')
+ return {'host':{'bootId':boot(),'machineSha256':machine(),'uid':os.getuid(),'gid':os.getgid()},'installerHost':installer,
+  'avd':{'directory':SELECTED_DIRECTORY,'tree':tree,'ini':ini,'config':config},'locks':locks,'sdkFiles':sdk,'emulatorFact':emulator,'qemuFact':qemu,
+  'originalAbsence':absent,'holderCensus':{'complete':True,'holders':[],'unreadableProcessCount':0},'protectedEmulators':census['emulators'],'targetActors':[],
+  'targetPorts':[],'resources':{'availableMemoryBytes':available,'pendingReservationBytes':PENDING_BYTES,'requestedMemoryBytes':MEMORY_BYTES,'headroomBytes':HEADROOM_BYTES,'freeDiskBytes':free,'minDiskBytes':MIN_DISK_BYTES,'nativeObservation':resource_observation,'canonicalPlan':capacity,'capacitySourcePins':CAPACITY_SOURCE_PINS,'reservationAccounting':'all-held-configured-plus-all-native-no-dedup'}}
+def stable(value):
+ return {key:({'state':part['state'],'stableBinding':part['stableBinding']} if key=='installerHost' else part) for key,part in value.items() if key!='resources'}
+def observations():
+ first=measured();second=measured()
+ if stable(first)!=stable(second):raise ValueError('persisted_start_observation_unstable')
+ return {'schema':1,'kind':'android-persisted-start-native-admission','operationId':OPERATION_ID,'originalSourceSha256':ORIGINAL_SOURCE_SHA,
+  'originalColdbootOperationId':ORIGINAL_COLD_BOOT,'observations':[first,second],'reservationAuthoritySha256':RESERVATION_AUTHORITY_SHA,
+  'installerGuardSha256':INSTALLER_GUARD_SHA,'installerGuardSourcePins':INSTALLER_GUARD_SOURCE_PINS,
+  'stopCause':'off_unknown','startPerformed':False,'originalOutcomesChanged':False,'replayAllowed':False}
+'''
+
+
+def _base(original_source, original_sha256, operation_id, authority, installer_guard=None):
+    _uuid(operation_id)
+    functions, literals = _source(original_source, original_sha256)
+    pending = reservation_bytes(authority)
+    launch = literals["LAUNCH"]
+    _need(operation_id != launch["correlationId"], "persisted_start_requires_new_operation")
+    chosen = launch["observation"]["avds"]["api35"]
+    source = "import os,sys,stat,pathlib,hashlib,json,re,subprocess,time,ctypes,fcntl,signal\n"
+    source += "PROC=pathlib.Path('/proc')\nLAUNCH=" + repr(launch) + "\n"
+    constants = {"OPERATION_ID": operation_id, "ORIGINAL_SOURCE_SHA": original_sha256,
+                 "ORIGINAL_COLD_BOOT": launch["correlationId"],
+                 "ORIGINAL_BOOT": launch["observation"]["bootId"],
+                 "ORIGINAL_GENERATION": literals["GETTER"]["generation"],
+                 "SELECTED_DIRECTORY": chosen["directory"]["path"],
+                 "LOCK_PATHS": {"coldboot": str(Path(literals["ROOT"]) / "android-avd-coldboot-api35.lock"),
+                                "device": str(Path(literals["ROOT"]) / "android-native-device-api35.lock")},
+                 "SELECTED_SDK": sorted(chosen["sdkFiles"]),
+                 "PENDING_BYTES": pending, "MEMORY_BYTES": MEMORY_BYTES,
+                 "HEADROOM_BYTES": HEADROOM_BYTES, "MIN_DISK_BYTES": MIN_DISK_BYTES,
+                 "RESERVATION_AUTHORITY_SHA": hashlib.sha256(_canonical(authority)).hexdigest()}
+    source += "\n".join(name + "=" + repr(value) for name, value in constants.items()) + "\n"
+    source += "REQUIRE_INSTALLER_HOST_GUARD=False\n" + _installer_capsule(installer_guard, original_sha256)
+    source += "ORIGINAL_SDK_FACTS=" + repr(chosen["sdkFiles"]) + "\n"
+    capacity_source, _ = _capacity_sources()
+    source += capacity_source + _CAPACITY
+    source += "\n\n".join(functions[name] for name in _READERS) + "\n" + _OBSERVE
+    return source, functions, literals
+
+
+def observation_program(original_source: bytes, original_sha256: str,
+                        operation_id: str, reservation_authority: dict, *, installer_guard=None) -> str:
+    """Render a no-write, no-launch root probe; preserve its complete private JSON."""
+    source, _, _ = _base(original_source, original_sha256, operation_id, reservation_authority, installer_guard)
+    source += r'''
+try:
+ result=observations()
+except Exception as error:
+ reason=error.args[0] if type(error)is ValueError and len(error.args)==1 and type(error.args[0])is str and re.fullmatch('[a-z][a-z0-9_]{0,95}',error.args[0]) else 'native_observation_unavailable'
+ result={'schema':1,'kind':'android-persisted-start-native-admission','operationId':OPERATION_ID,'state':'blocked','reason':reason,'failureType':type(error).__name__,'capacityReason':globals().get('LAST_CAPACITY_FAILURE'),'capacityObservation':globals().get('LAST_CAPACITY_OBSERVATION'),'startPerformed':False,'originalOutcomesChanged':False,'replayAllowed':False}
+print(json.dumps(result,sort_keys=True,separators=(',',':')),flush=True)
+'''
+    compile(source, "android-persisted-start-observation", "exec")
+    return source
+
+
+def _launchers(raw: bytes, expected_sha256: str):
+    _need(type(raw) is bytes and 0 < len(raw) <= 2 * 1024 ** 2
+          and hashlib.sha256(raw).hexdigest() == expected_sha256,
+          "persisted_start_coldboot_source_changed")
+    tree = ast.parse(raw)
+    nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+             and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+             and node.targets[0].id == "_BOOT"]
+    _need(len(nodes) == 1, "persisted_start_coldboot_template_changed")
+    template = ast.literal_eval(nodes[0].value)
+    native = ast.parse(template)
+    definitions = {}
+    for name in ("journal_read", "journal_write", *_LAUNCHERS):
+        found = [node for node in native.body if isinstance(node, ast.FunctionDef)
+                 and node.name == name]
+        _need(len(found) == 1 and not found[0].decorator_list,
+              "persisted_start_coldboot_definition_changed")
+        definitions[name] = ast.get_source_segment(template, found[0])
+    return definitions
+
+
+def _decode(raw):
+    def unique(items):
+        result = {}
+        for key, value in items:
+            _need(key not in result, "persisted_start_admission_duplicate_key")
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=unique)
+
+
+def validate_admission(value: dict, operation_id: str, original_sha256: str,
+                       authority: dict, literals: dict) -> dict:
+    """Validate typed measurements; their native collection is the caller's gate."""
+    _need(type(value) is dict and value.get("schema") == 1
+          and value.get("kind") == "android-persisted-start-native-admission"
+          and value.get("operationId") == operation_id
+          and value.get("originalSourceSha256") == original_sha256
+          and value.get("originalColdbootOperationId") == literals["LAUNCH"]["correlationId"]
+          and value.get("reservationAuthoritySha256") == hashlib.sha256(_canonical(authority)).hexdigest()
+          and type(value.get("installerGuardSha256")) is str and _SHA.fullmatch(value["installerGuardSha256"])
+          and type(value.get("installerGuardSourcePins")) is dict and bool(value["installerGuardSourcePins"])
+          and value.get("stopCause") == "off_unknown"
+          and all(value.get(key) is False for key in ("startPerformed", "originalOutcomesChanged", "replayAllowed")),
+          "persisted_start_native_admission_required")
+    rows = value.get("observations")
+    _need(type(rows) is list and len(rows) == 2 and all(type(row) is dict for row in rows),
+          "persisted_start_two_native_observations_required")
+    for row in rows:
+        _need(all(type(row.get(name)) is dict for name in
+                  ("host", "installerHost", "avd", "locks", "sdkFiles", "emulatorFact", "qemuFact", "holderCensus", "resources"))
+              and row["installerHost"].get("state") == "admitted"
+              and type(row["installerHost"].get("stableBinding")) is dict,
+              "persisted_start_positive_visibility_required")
+    stable = lambda row: {key: ({"state": part["state"], "stableBinding": part["stableBinding"]}
+                              if key == "installerHost" else part)
+                          for key, part in row.items() if key != "resources"}
+    _need(stable(rows[0]) == stable(rows[1]), "persisted_start_native_admission_unstable")
+    pending = reservation_bytes(authority)
+    for row in rows:
+        _need(set(row) == {"host", "installerHost", "avd", "locks", "sdkFiles", "emulatorFact", "qemuFact",
+                           "originalAbsence", "holderCensus", "protectedEmulators", "targetActors", "targetPorts", "resources"}
+              and row["host"].get("bootId") == literals["LAUNCH"]["observation"]["bootId"]
+              and row["host"].get("uid") == row["host"].get("gid") == 0
+              and type(row["host"].get("machineSha256")) is str and _SHA.fullmatch(row["host"]["machineSha256"])
+              and row["avd"].get("directory") == literals["LAUNCH"]["observation"]["avds"]["api35"]["directory"]["path"]
+              and type(row["avd"].get("tree")) is dict and bool(row["avd"]["tree"])
+              and row["holderCensus"] == {"complete": True, "holders": [], "unreadableProcessCount": 0}
+              and row["targetActors"] == [] and row["targetPorts"] == [],
+              "persisted_start_positive_visibility_required")
+        _need(type(row["installerHost"]) is dict and row["installerHost"].get("state") == "admitted"
+              and type(row["installerHost"].get("stableBinding")) is dict and bool(row["installerHost"]["stableBinding"])
+              and type(row["installerHost"].get("evidence")) is dict,
+              "persisted_start_installer_host_guard_required")
+        _need(type(row["originalAbsence"]) is list and len(row["originalAbsence"]) == 2,
+              "persisted_start_original_absence_required")
+        for absence, role in zip(row["originalAbsence"], ("child", "guest")):
+            old = literals["GETTER"]["generation"][role]
+            _need(type(absence) is dict and absence == {
+                "role": role, "originalPid": old["pid"], "originalStartTicks": old["startTicks"],
+                "currentStartTicks": absence.get("currentStartTicks"), "originalAbsent": True}
+                and absence["currentStartTicks"] != old["startTicks"],
+                "persisted_start_original_absence_required")
+        resources = row["resources"]
+        _need(type(resources) is dict
+              and resources.get("pendingReservationBytes") == pending
+              and resources.get("requestedMemoryBytes") == MEMORY_BYTES
+              and resources.get("headroomBytes") == HEADROOM_BYTES
+              and resources.get("minDiskBytes") == MIN_DISK_BYTES
+              and type(resources.get("availableMemoryBytes")) is int
+              and resources["availableMemoryBytes"] >= MEMORY_BYTES + HEADROOM_BYTES
+              and type(resources.get("freeDiskBytes")) is int
+              and resources["freeDiskBytes"] >= MIN_DISK_BYTES,
+              "persisted_start_native_capacity_required")
+        native = resources.get("nativeObservation")
+        _need(type(native) is dict and native.get("state") == "OBSERVED"
+              and native.get("measurementAvailability") == "complete"
+              and type(native.get("measurement")) is dict,
+              "persisted_start_native_capacity_visibility")
+        try:
+            wanted_capacity = capacity_plan(native["measurement"], pending)
+        except ValueError:
+            raise ValueError("persisted_start_native_capacity_required") from None
+        _need(resources.get("canonicalPlan") == wanted_capacity
+              and resources.get("capacitySourcePins") == _capacity_sources()[1]
+              and resources["availableMemoryBytes"] == native["measurement"]["availableMemoryBytes"],
+              "persisted_start_native_capacity_required")
+        _need(type(row["locks"]) is dict and set(row["locks"]) == {"coldboot", "device"},
+              "persisted_start_existing_locks_required")
+        original_avd = literals["LAUNCH"]["observation"]["avds"]["api35"]
+        for role in ("ini", "config"):
+            original = original_avd[role]
+            current = row["avd"].get(role)
+            _need(type(current) is dict and current.get("present") is True
+                  and current.get("hashScope") == "full"
+                  and current.get("sha256") == original["sha256"]
+                  and current.get("text") == original.get("text"),
+                  "persisted_start_original_config_bytes_changed")
+        _need(type(row["sdkFiles"]) is dict and set(row["sdkFiles"]) == set(original_avd["sdkFiles"]),
+              "persisted_start_sdk_scope_changed")
+    return _decode(_canonical(value))
+
+
+_START = r'''
+def scoped_journal_lock(directory,exclusive):
+ if pathlib.Path(directory)!=JOURNAL_DIRECTORY:raise ValueError('persisted_start_journal_scope_changed')
+ fd=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:
+  fcntl.flock(fd,fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+  opened=os.fstat(fd);named=directory.lstat()
+  if fp(opened)!=fp(named) or not stat.S_ISDIR(opened.st_mode) or opened.st_uid!=0 or opened.st_gid!=0 or stat.S_IMODE(opened.st_mode)!=0o700:raise ValueError('persisted_start_journal_changed')
+  return fd
+ except BaseException:os.close(fd);raise
+def journal_read(directory,name):
+ fd=scoped_journal_lock(directory,False)
+ try:return ORIGINAL_JOURNAL_READ(directory,name)
+ finally:os.close(fd)
+def journal_write(directory,name,value):
+ fd=scoped_journal_lock(directory,True)
+ try:return ORIGINAL_JOURNAL_WRITE(directory,name,value)
+ finally:os.close(fd)
+def selected_preflight():
+ current=measured()
+ if stable(current)!=stable(ADMISSION['observations'][-1]):raise ValueError('persisted_start_frozen_metadata_changed')
+ if os.getpid()==LOCK_OWNER_PID:
+  for name,fd,chain,leaf in HELD_LOCKS:
+   guard_parents(chain)
+   if fp(os.fstat(fd))!=ADMISSION['observations'][-1]['locks'][name]['generation'] or fp(os.stat(leaf,dir_fd=chain[-1]['fd'],follow_symlinks=False))!=fp(os.fstat(fd)):raise ValueError('persisted_start_existing_lock_changed')
+ else:
+  # The unchanged supervisor deliberately closes inherited proof/lock FDs.
+  # Authenticate the actual kernel fork relationship and live parent birth;
+  # measured() has independently reopened and checked every exact named pin.
+  if os.getppid()!=LOCK_OWNER_PID or ticks(PROC/str(LOCK_OWNER_PID))!=LOCK_OWNER_BIRTH or os.getsid(0)!=os.getpid():raise ValueError('persisted_start_supervisor_parent_changed')
+ return current['resources']
+def acquire_existing_locks():
+ for name in ('coldboot','device'):
+  path=pathlib.Path(LOCK_PATHS[name]);chain,leaf=parent_fds(path);fd=None
+  try:
+   fd=os.open(leaf,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=chain[-1]['fd'])
+   expected=ADMISSION['observations'][-1]['locks'][name]
+   if fp(os.fstat(fd))!=expected['generation'] or facts(path,4096)!=expected:raise ValueError('persisted_start_existing_lock_changed')
+   fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);guard_parents(chain)
+   HELD_LOCKS.append((name,fd,chain,leaf));fd=None;chain=None
+  finally:
+   if fd is not None:os.close(fd)
+   if chain is not None:close_parents(chain)
+def release_existing_locks():
+ while HELD_LOCKS:
+  _,fd,chain,_=HELD_LOCKS.pop()
+  try:fcntl.flock(fd,fcntl.LOCK_UN)
+  finally:os.close(fd);close_parents(chain)
+def owned_session_actors(child):
+ rows=[];pids=sorted((path for path in PROC.iterdir() if path.name.isdecimal()),key=lambda path:int(path.name))
+ if len(pids)>32768:raise ValueError('persisted_start_session_census_bound')
+ for proc in pids:
+  try:
+   before=ticks(proc);raw=(proc/'stat').read_text()
+   if len(raw)>8192:raise ValueError('persisted_start_session_stat_bound')
+   tail=raw.rsplit(')',1)[1].split()
+   if ticks(proc)!=before:raise ValueError('persisted_start_session_actor_changed')
+   if int(tail[3])==child['pid'] and tail[0]!='Z':rows.append({'pid':int(proc.name),'startTicks':before,'state':tail[0]})
+  except FileNotFoundError:continue
+ return rows
+def run_start():
+ global LOCK_OWNER_PID,LOCK_OWNER_BIRTH
+ LOCK_OWNER_PID=os.getpid();LOCK_OWNER_BIRTH=ticks(PROC/str(LOCK_OWNER_PID))
+ acquire_existing_locks()
+ child=None;waited=None
+ try:
+  selected_preflight()
+  directory=JOURNAL_DIRECTORY
+  directory.mkdir(mode=0o700)
+  journal_write(directory,'intent.json',LAUNCH['intent'])
+  admit_once(directory)
+  submitted=launch_once(directory)
+  if submitted.get('state')!='submitted':raise ValueError('persisted_start_admission_consumed')
+  child=submitted['child']
+  journal_write(directory,'submitted.json',dict(submitted,originalOutcomesChanged=False,stopCause='off_unknown'))
+  ready=journal_read(directory,'ready.json')
+  # Keep the original device locks until a positively bound QEMU actor makes
+  # the ordinary target/disk/port census itself exclude a competing start.
+  while True:
+   pid,status=os.waitpid(child['pid'],os.WNOHANG)
+   if pid:
+    waited=status
+    while owned_session_actors(child):time.sleep(.05)
+    break
+   guest=session_guest(child,ready)
+   if guest is not None:
+    journal_write(directory,'qemu-observed.json',{'schema':1,'correlationId':LAUNCH['correlationId'],'supervisor':child,'guest':guest,'source':CFG['source'],'intentSha256':LAUNCH['intentSha256']})
+    break
+   time.sleep(.05)
+ finally:release_existing_locks()
+ # The durable owner remains alive across caller loss and reaps this exact
+ # unchanged Linux subreaper supervisor. No timeout sends any signal.
+ if waited is None:
+  while True:
+   try:pid,waited=os.waitpid(child['pid'],0);break
+   except InterruptedError:continue
+  if pid!=child['pid']:raise ValueError('persisted_start_wait_identity_changed')
+ remaining=owned_session_actors(child)
+ journal_write(JOURNAL_DIRECTORY,'supervisor-terminal.json',{'schema':1,'correlationId':LAUNCH['correlationId'],'identity':child,'waitStatus':waited,'exitCode':os.waitstatus_to_exitcode(waited),'remainingSessionActors':remaining,'resourcesClosed':not remaining,'source':CFG['source'],'intentSha256':LAUNCH['intentSha256'],'historicalStopCause':'off_unknown','originalOutcomesChanged':False})
+ if os.waitstatus_to_exitcode(waited)!=0 or remaining:raise ValueError('persisted_start_supervisor_terminal_unhealthy')
+'''
+
+
+def start_plan(original_source: bytes, original_sha256: str, operation_id: str,
+               reservation_authority: dict, observation_raw: bytes,
+               observation_sha256: str, *, job_root: str,
+               host_binding: dict, root_generation: list[int],
+               coldboot_source: bytes, durable_source: bytes, installer_guard=None) -> dict:
+    """Seal one program for the existing durable owner; do not submit it here."""
+    _need(installer_guard is not None, "persisted_start_installer_host_guard_required")
+    base, _, literals = _base(original_source, original_sha256, operation_id, reservation_authority, installer_guard)
+    _need(type(observation_raw) is bytes and 0 < len(observation_raw) <= 8 * 1024 ** 2
+          and hashlib.sha256(observation_raw).hexdigest() == observation_sha256,
+          "persisted_start_observation_changed")
+    admission = validate_admission(_decode(observation_raw), operation_id, original_sha256,
+                                   reservation_authority, literals)
+    _need(admission["installerGuardSha256"] == installer_guard["sha256"]
+          and admission["installerGuardSourcePins"] == installer_guard["sourcePins"],
+          "persisted_start_installer_capsule_changed")
+    _need(type(job_root) is str and Path(job_root).is_absolute() and ".." not in Path(job_root).parts
+          and not Path(job_root).is_relative_to(Path(literals["ROOT"]))
+          and type(root_generation) is list and len(root_generation) == 2
+          and all(type(value) is int and value > 0 for value in root_generation),
+          "persisted_start_external_job_root_required")
+    host = admission["observations"][-1]["host"]
+    _need(type(host_binding) is dict and set(host_binding) == {"target", "machine", "boot", "account"}
+          and host_binding["boot"] == host["bootId"] and host_binding["machine"] == host["machineSha256"]
+          and host_binding["account"] == "0", "persisted_start_durable_host_binding_changed")
+    pinned = literals["LAUNCH"]["intent"]["source"]["agent_tools/android_avd_coldboot.py"]
+    launchers = _launchers(coldboot_source, pinned)
+    _need(type(durable_source) is bytes and 0 < len(durable_source) <= 1024 ** 2,
+          "persisted_start_durable_source_invalid")
+    own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    source_pins = dict(literals["LAUNCH"]["intent"]["source"])
+    source_pins.update({"agent_tools/android_persisted_start.py": own_sha,
+                        "agent_tools/durable_remote_job.py": hashlib.sha256(durable_source).hexdigest()})
+    launch = copy.deepcopy(literals["LAUNCH"])
+    intent = {"schema": 1, "kind": "android-same-persisted-administrative-start",
+              "correlationId": operation_id, "device": launch["device"],
+              "source": source_pins, "reservation": launch["intent"]["reservation"],
+              "originalColdbootOperationId": launch["correlationId"],
+              "originalSourceSha256": original_sha256, "admissionSha256": observation_sha256,
+              "reservationAuthoritySha256": admission["reservationAuthoritySha256"],
+              "argv": launch["argv"], "environment": launch["environment"],
+              "historicalUnknownsPreserved": True, "historicalStopCause": "off_unknown"}
+    launch.update(correlationId=operation_id, action="launch", intent=intent,
+                  intentSha256=hashlib.sha256(_canonical(intent)).hexdigest(),
+                  emulatorGeneration=admission["observations"][-1]["emulatorFact"]["generation"],
+                  adbFacts=admission["observations"][-1]["sdkFiles"][launch["adbPath"]])
+    journal = Path(job_root) / operation_id / "coldboot"
+    source = base + "\nREQUIRE_INSTALLER_HOST_GUARD=True\nLAUNCH=" + repr(launch) + "\nCFG=" + repr({"source": source_pins}) + "\n"
+    source += "ADMISSION=" + repr(admission) + "\nJOURNAL_DIRECTORY=pathlib.Path(" + repr(str(journal)) + ")\nHELD_LOCKS=[]\n"
+    source += "\n\n".join(launchers.values()) + "\nORIGINAL_JOURNAL_READ=journal_read\nORIGINAL_JOURNAL_WRITE=journal_write\n" + _START
+    source += "\nimport types\n_D=types.ModuleType('persisted_start_durable_snapshot');sys.modules[_D.__name__]=_D\n"
+    source += "exec(compile(" + repr(durable_source) + ",'persisted-start-durable-snapshot','exec'),_D.__dict__)\n"
+    source += "_binding=_D.MachineBinding.from_dict(" + repr(host_binding) + ")\n"
+    source += "_D._binding_live(_binding)\n_D._root(" + repr(job_root) + "," + repr(tuple(root_generation)) + ")\n"
+    source += "_intent=_D._intent(pathlib.Path(" + repr(str(Path(job_root) / operation_id)) + ")," + repr(operation_id) + ",_binding)\nrun_start()\n"
+    compile(source, "android-persisted-start-owner", "exec")
+    return {"schema": 1, "kind": "android-persisted-start-sealed-plan",
+            "operationId": operation_id, "program": source.encode(),
+            "programSha256": hashlib.sha256(source.encode()).hexdigest(),
+            "launch": launch, "journalDirectory": str(journal),
+            "admissionSha256": observation_sha256, "coldbootSourceSha256": pinned,
+            "adapterSourceSha256": own_sha, "durableSourceSha256": hashlib.sha256(durable_source).hexdigest(),
+            "reservationAuthoritySha256": admission["reservationAuthoritySha256"],
+            "installerGuardSha256": admission["installerGuardSha256"],
+            "installerGuardSourcePins": admission["installerGuardSourcePins"],
+            "originalSourceSha256": original_sha256, "stopCause": "off_unknown",
+            "submitted": False, "originalOutcomesChanged": False, "replayAllowed": False}
+
+
+def status_program(original_source: bytes, original_sha256: str,
+                   plan: dict, coldboot_source: bytes) -> str:
+    """Observe the original new owner via the unchanged coldboot journal ABI."""
+    functions, literals = _source(original_source, original_sha256)
+    _need(type(plan) is dict and plan.get("kind") == "android-persisted-start-sealed-plan"
+          and plan.get("originalSourceSha256") == original_sha256
+          and plan.get("operationId") == plan.get("launch", {}).get("correlationId"),
+          "persisted_start_original_plan_required")
+    pinned = literals["LAUNCH"]["intent"]["source"]["agent_tools/android_avd_coldboot.py"]
+    launchers = _launchers(coldboot_source, pinned)
+    source = "import os,sys,stat,pathlib,hashlib,json,re,subprocess,time,ctypes,fcntl,signal\nPROC=pathlib.Path('/proc')\n"
+    source += "LAUNCH=" + repr(plan["launch"]) + "\n"
+    source += "\n\n".join(functions[name] for name in _READERS)
+    source += "\n" + launchers["journal_read"] + "\n"
+    source += "print(json.dumps(original_status(pathlib.Path(" + repr(plan["journalDirectory"]) + ")),sort_keys=True,separators=(',',':')),flush=True)\n"
+    compile(source, "android-persisted-start-original-status", "exec")
+    return source

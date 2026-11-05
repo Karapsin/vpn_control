@@ -1,0 +1,552 @@
+"""Authentic renderer/census with an explicit simulated Linux /proc surface.
+
+This runs on Darwin and is NOT native Linux kernel acceptance. No process is
+adopted, signalled or started by the owned-file fixture. Parent-owned Linux
+cooperative EOF/zombie controls remain a separate gate.
+"""
+import ast
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import time
+import tempfile
+import types
+import unittest
+from unittest import mock
+
+from agent_tools.tests import test_android_current_interval_retry as existing
+
+ROOT = Path(__file__).resolve().parents[2]
+PACKET = Path(__file__).parent / 'fixtures/android_terminal_zombie_retry'
+BEFORE_SHA = '41ecdd45dbcb4738e2d8ab93a027e5276ceb697d7dc5600685cd6fc406574790'
+
+
+class SimulatedZombieControl(existing.Control):
+    def __init__(self, case='zombie', source='before', repeats=False):
+        self.source_temp = None
+        root = ROOT
+        if source in ('before', 'owner-before'):
+            fixture = 'successor.before.source' if source == 'before' else 'successor.owner-before.source'
+            raw = (PACKET / fixture).read_bytes()
+            expected = BEFORE_SHA if source == 'before' else 'f23eff4d0923b40d654587c6deda33f44a450b41041f6825be5bd6f992a5cf9f'
+            if hashlib.sha256(raw).hexdigest() != expected:
+                raise ValueError('whole-beforeimage-changed')
+            # The standalone factory reads only its exact __file__. No policy
+            # modules are consumed; this truthful beforefile needs no aliases.
+            self.source_temp = tempfile.TemporaryDirectory(prefix='terminal-whole-before-')
+            root = Path(self.source_temp.name)
+            path = root / 'agent_tools/android_component_successor.py'
+            path.parent.mkdir()
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(raw)
+        renderer = existing.capsule
+        if source in ('after', 'owner-before'):
+            if source == 'owner-before' and hashlib.sha256(path.read_bytes()).hexdigest() != \
+                    'f23eff4d0923b40d654587c6deda33f44a450b41041f6825be5bd6f992a5cf9f':
+                raise ValueError('whole-owner-retention-beforeimage-changed')
+            held = (PACKET / 'interval-harness.before.source').read_bytes()
+            if hashlib.sha256(held).hexdigest() != '3d811294386c8327d02ba6bee104eb5eaf5c698100e4fae48dff3c549bc2de68':
+                raise ValueError('authentic-renderer-harness-changed')
+            function = next(node for node in ast.parse(held).body
+                            if isinstance(node, ast.FunctionDef) and node.name == 'capsule')
+            changed = 0
+            for node in ast.walk(function):
+                if isinstance(node, ast.Constant) and node.value == 'installer_bounded_host_preflight_capsule':
+                    node.value = 'installer_terminal_zombie_host_preflight_capsule'
+                    changed += 1
+            if changed != 1:
+                raise ValueError('fixture-factory-selection-abi-changed')
+            namespace = dict(vars(existing), ROOT=root)
+            exec(compile(ast.Module(body=[function], type_ignores=[]),
+                         'owned-exact-renderer-harness-factory-selector', 'exec'), namespace)
+            renderer = namespace['capsule']
+        self.renderer = renderer
+        with mock.patch.object(existing, 'ROOT', root), mock.patch.object(existing, 'capsule', renderer):
+            super().__init__(case=case)
+        self.simulated_reads = 0
+        self.target = 503 if case.startswith('prefix_') else 502
+        self.repeats = repeats
+        self.directory_checks = 0
+        self.fresh_fault_fd = None
+        self.fresh_partial_started = False
+        self.raw_owner_drift = False
+        self.expected_raw_owner = None
+        self.closure_namespace = None
+        original_open = self.module.os.open
+        original_stat = self.module.os.stat
+        original_listdir = self.module.os.listdir
+        original_read = self.module.os.read
+        actual_open = os.open
+
+        def worker_namespace():
+            frame = sys._getframe()
+            while frame is not None:
+                if frame.f_code.co_name == 'attempt_workers':
+                    return frame.f_globals, frame.f_locals
+                frame = frame.f_back
+            raise AssertionError('owned fixture needs actual worker frame')
+
+        def listed(path):
+            if not isinstance(path, int) and Path(path) == self.proc:
+                if repeats and self.calls > 1 and self.lists == 0 and self.failed:
+                    shutil.rmtree(self.proc / str(self.target))
+                    self.failed = False
+                    self.simulated_reads = 0
+                value = original_listdir(path)
+                if self.target == 503 and self.lists == 2 and not (self.proc / '503').exists():
+                    self.make_process(503)
+                    value = os.listdir(self.proc)
+                return value
+            return original_listdir(path)
+
+        def opened(path, flags, *args, **kwargs):
+            def drift_raw_owner():
+                frame = sys._getframe()
+                while frame is not None and frame.f_code is not self.module._terminal_closure.__code__:
+                    frame = frame.f_back
+                if frame is None:
+                    raise AssertionError('owned source-bound closure frame missing')
+                namespace = frame.f_locals['namespace']
+                self.expected_raw_owner = frame.f_locals['original']
+                self.closure_namespace = namespace
+                namespace['ATTEMPT_PROC_RAW'] = []
+                self.raw_owner_drift = True
+            if case == 'fresh_owner_drift_late' and not self.raw_owner_drift \
+                    and self.simulated_reads == 24 and str(path) == str(self.proc / 'sys/kernel/random/boot_id'):
+                drift_raw_owner()
+            if self.target == 503 and str(path).startswith(str(self.proc / '502') + '/'):
+                # The retained base fixture has a separate PID502 disappearance
+                # fault. The prefix actor is positively stable in this control.
+                return actual_open(path, flags, *args, **kwargs)
+            if str(path).startswith(str(self.proc / str(self.target)) + '/'):
+                self.simulated_reads += 1
+                if self.simulated_reads == 7:
+                    self.failed = True
+                    command = b'changed-live-command\0' if case == 'live_command' else b''
+                    (self.proc / str(self.target) / 'cmdline').write_bytes(command)
+                    if case == 'birth':
+                        self.stat_file(self.target, 'R', ticks=self.target + 101)
+                    if case == 'ppid':
+                        self.stat_file(self.target, 'R', ppid=2)
+                    if case == 'uid':
+                        self.status_file(self.target, 'R', uid=2000)
+                    if case == 'gid':
+                        self.status_file(self.target, 'R', gid=2000)
+                    if case == 'foreign_reader':
+                        namespace, local = worker_namespace()
+                        namespace['_owned_original_identity'] = namespace['plane_identity']
+                        exec('def plane_identity(*a, **k): return _owned_original_identity(*a, **k)', namespace)
+                if self.simulated_reads == 12:
+                    state = 'R' if case in ('live_empty', 'live_command') else 'Z'
+                    self.stat_file(self.target, state,
+                                   ticks=self.target + (101 if case == 'birth' else 100),
+                                   ppid=2 if case == 'ppid' else 1)
+                    self.status_file(self.target, state,
+                                     uid=2000 if case == 'uid' else 1000,
+                                     gid=2000 if case == 'gid' else 1000)
+                    if case in ('prefix_identity_drift', 'prefix_raw_drift', 'prefix_fd_drift',
+                                'source_drift', 'worker_drift'):
+                        namespace, local = worker_namespace()
+                        if case == 'prefix_identity_drift':
+                            local['closing_identities'][0]['uid4'] = [2000] * 4
+                        elif case == 'prefix_raw_drift':
+                            namespace['ATTEMPT_PROC_RAW'][-7]['sha256'] = '0' * 64
+                        elif case == 'prefix_fd_drift':
+                            namespace['ATTEMPT_PROC_RAW'][-7]['generation'] = [1, 2]
+                        elif case == 'source_drift':
+                            frame = sys._getframe()
+                            while frame is not None and frame.f_code.co_name != 'component_release_current1e15_effect_plane_guard':
+                                frame = frame.f_back
+                            frame.f_locals['fixed']['processSource'] += '\n'
+                        else:
+                            exec('def attempt_workers(): return None', namespace)
+                if self.simulated_reads == 13:
+                    if case == 'fresh_denied':
+                        raise PermissionError(13, 'owned fresh visibility seam')
+                    if case in ('fresh_birth', 'fresh_ppid', 'fresh_live'):
+                        self.stat_file(self.target, 'R' if case == 'fresh_live' else 'Z',
+                                       ticks=self.target + (101 if case == 'fresh_birth' else 100),
+                                       ppid=2 if case == 'fresh_ppid' else 1)
+                    if case == 'fresh_uid':
+                        self.status_file(self.target, 'Z', uid=2000)
+                    if case == 'fresh_gid':
+                        self.status_file(self.target, 'Z', gid=2000)
+                    if case == 'fresh_command':
+                        (self.proc / str(self.target) / 'cmdline').write_bytes(b'new-live\0')
+                if self.simulated_reads == 18 and case == 'fresh_stat_live':
+                    self.stat_file(self.target, 'R')
+                if self.simulated_reads == 19 and case == 'fresh_owner_drift':
+                    drift_raw_owner()
+                fd = actual_open(path, flags, *args, **kwargs)
+                if self.simulated_reads == 14 and case == 'fresh_partial':
+                    self.fresh_fault_fd = fd
+                if self.simulated_reads == 12 and case == 'closing_partial':
+                    self.fresh_fault_fd = fd
+                return fd
+            return original_open(path, flags, *args, **kwargs)
+
+        def observed(path, *args, **kwargs):
+            text = str(path)
+            if text == str(self.proc / str(self.target)) and self.simulated_reads >= 12:
+                self.directory_checks += 1
+                if case == 'absence_esrch':
+                    raise ProcessLookupError(3, 'owned unqualified directory ESRCH')
+                if case == 'absence_denied':
+                    raise PermissionError(13, 'owned directory visibility seam')
+                if case == 'absence_reappeared' and self.directory_checks == 2:
+                    self.make_process(self.target)
+            value = original_stat(path, *args, **kwargs)
+            if text == str(self.proc / str(self.target) / 'stat') and self.simulated_reads == 12:
+                if case in ('absent', 'absence_reappeared'):
+                    shutil.rmtree(self.proc / str(self.target))
+                if case == 'boot':
+                    (self.proc / 'sys/kernel/random/boot_id').write_text(
+                        '00000000-0000-4000-8000-000000000002\n')
+            return value
+
+        def read(fd, limit):
+            if fd == self.fresh_fault_fd:
+                if not self.fresh_partial_started:
+                    self.fresh_partial_started = True
+                    return os.read(fd, limit)
+                self.fresh_fault_fd = None
+                shutil.rmtree(self.proc / str(self.target))
+                raise ProcessLookupError(3, 'owned partial then reaped fixture')
+            return original_read(fd, limit)
+
+        self.module.os.open, self.module.os.stat = opened, observed
+        self.module.os.read, self.module.os.listdir = read, listed
+
+    def close(self):
+        try:
+            super().close()
+        finally:
+            if self.source_temp is not None:
+                self.source_temp.cleanup()
+                self.source_temp = None
+
+    def status_file(self, pid, state, uid=1000, gid=1000):
+        (self.proc / str(pid) / 'status').write_text(
+            'State:\t' + state + '\nPPid:\t1\n'
+            'Uid:\t' + '\t'.join([str(uid)] * 4) + '\n'
+            'Gid:\t' + '\t'.join([str(gid)] * 4) + '\n')
+
+    def stat_file(self, pid, state, ticks=None, ppid=1):
+        (self.proc / str(pid) / 'stat').write_text(
+            str(pid) + ' (owned-process) ' + state + ' ' + str(ppid) + ' '
+            + '0 ' * 17 + str(pid + 100 if ticks is None else ticks) + '\n')
+
+    def make_process(self, pid, protected=False):
+        super().make_process(pid, protected)
+        self.status_file(pid, 'R', uid=2000 if getattr(self, 'case', None) == 'foreign_uid' else 1000)
+        self.stat_file(pid, 'R')
+        if getattr(self, 'case', None) == 'truncated_initial' and pid == 502:
+            (self.proc / str(pid) / 'cmdline').write_bytes(b'x' * 100)
+
+
+@unittest.skipUnless(os.name == 'posix', 'owned FD/flock surface requires POSIX')
+class TerminalZombieTests(unittest.TestCase):
+    def control(self, case='zombie', **kwargs):
+        value = SimulatedZombieControl(case=case,
+                                       source=os.environ.get('TERMINAL_ZOMBIE_SOURCE', 'after'), **kwargs)
+        self.addCleanup(value.close)
+        return value
+
+    def test_complete_terminal_transition_reobserves_the_whole_host(self):
+        value = self.control()
+        result = value.invoke()
+        self.assertEqual(result['state'], 'admitted')
+        self.assertEqual(value.calls, 2)
+        reports = value.reports()
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]['error'], {'type': 'ValueError', 'errno': None,
+                                              'code': 'plane_late_identity_changed'})
+        self.assertTrue(reports[0]['unknownInterval'])
+        self.assertTrue(reports[0]['retryable'])
+        self.assertIsNone(reports[0]['partialRead'])
+        self.assertEqual(len(result['evidence']['priorUnknownCurrentIntervals']), 1)
+
+    def test_fresh_terminal_samples_have_two_Z_stats_each_and_separate_raw(self):
+        value = self.control()
+        value.invoke()
+        report = value.reports()[0]
+        proof = report['terminalZombieQualification']['closure']
+        self.assertEqual(proof['selectedClosure'], 'two-complete-terminal-identities')
+        self.assertEqual(len(proof['freshIdentities']), 2)
+        self.assertEqual(len(proof['freshRaw']), 14)
+        for row in proof['freshRaw']:
+            if row['name'] == 'stat':
+                raw = existing.base64.b64decode(row['rawBase64'], validate=True)
+                self.assertEqual(raw.rsplit(b')', 1)[1].split()[0], b'Z')
+        self.assertEqual(len(report['rawRecords']) - report['closingRawBegin'], 6)
+        self.assertIsNone(report['partialRead'])
+        self.assertIsNone(proof['partialRead'])
+        self.assertEqual(report['lateIdentity']['processState'], 'R')
+
+    def test_preselected_two_directory_ENOENT_reobserves_without_identity_reads(self):
+        value = self.control('absent')
+        result = value.invoke()
+        proof = value.reports()[0]['terminalZombieQualification']['closure']
+        self.assertEqual(result['state'], 'admitted')
+        self.assertEqual(value.calls, 2)
+        self.assertEqual(value.simulated_reads, 12)
+        self.assertEqual(proof['selectedClosure'], 'two-positive-directory-ENOENT')
+        self.assertEqual([row['errno'] for row in proof['directoryWitnesses']], [2, 2])
+        self.assertEqual(proof['freshIdentities'], [])
+        self.assertEqual([row['name'] for row in proof['freshRaw']], ['boot_id', 'boot_id'])
+
+    def test_stable_completed_prefix_and_prior_whole_pass_replay(self):
+        for case in ('prefix_stable', 'prior_complete'):
+            with self.subTest(case=case):
+                value = self.control(case)
+                result = value.invoke()
+                self.assertEqual(result['state'], 'admitted')
+                self.assertEqual(value.calls, 2)
+                report = value.reports()[0]
+                self.assertTrue(report['retryable'])
+                if case == 'prefix_stable':
+                    self.assertEqual(len(report['attemptState']['closing_identities']), 1)
+                else:
+                    self.assertEqual(len(report['completedCensusPasses']), 1)
+
+    def test_live_identity_fields_protection_source_and_prefix_drift_never_retry(self):
+        for case in ('live_command', 'live_empty', 'birth', 'ppid', 'uid', 'gid',
+                     'foreign_uid', 'protected', 'truncated_initial', 'foreign_reader',
+                     'source_drift', 'worker_drift', 'prefix_identity_drift', 'prefix_raw_drift',
+                     'prefix_fd_drift', 'prior_unresolved', 'prior_reappeared', 'closing_partial'):
+            with self.subTest(case=case):
+                value = self.control(case)
+                with self.assertRaises(value.module.CurrentIntervalRefusal):
+                    value.invoke()
+                self.assertEqual(value.calls, 1)
+                report = value.reports()[0]
+                self.assertFalse(report['retryable'])
+                self.assertLessEqual(value.simulated_reads, 12)
+
+    def test_present_branch_drift_denied_partial_never_falls_back_to_absence(self):
+        for case in ('fresh_denied', 'fresh_partial', 'fresh_birth', 'fresh_ppid', 'fresh_uid',
+                     'fresh_gid', 'fresh_live', 'fresh_stat_live', 'fresh_command'):
+            with self.subTest(case=case):
+                value = self.control(case)
+                with self.assertRaises(value.module.CurrentIntervalRefusal):
+                    value.invoke()
+                self.assertEqual(value.calls, 1)
+                report = value.reports()[0]
+                self.assertFalse(report['retryable'])
+                proof = report['terminalZombieQualification']['closure']
+                self.assertEqual(proof['state'], 'unknown')
+                self.assertEqual(len(proof['directoryWitnesses']), 1)
+                self.assertEqual(proof['directoryWitnesses'][0]['state'], 'present')
+                if case == 'fresh_partial':
+                    self.assertGreater(proof['partialRead']['bytes'], 0)
+                    self.assertFalse((value.proc / str(value.target)).exists())
+                    self.assertEqual(value.directory_checks, 1)
+
+    def test_reaped_branch_reappearance_denied_and_directory_ESRCH_never_retry(self):
+        for case in ('absence_reappeared', 'absence_denied', 'absence_esrch'):
+            with self.subTest(case=case):
+                value = self.control(case)
+                with self.assertRaises(value.module.CurrentIntervalRefusal):
+                    value.invoke()
+                self.assertEqual(value.calls, 1)
+                report = value.reports()[0]
+                self.assertFalse(report['retryable'])
+                self.assertEqual(value.simulated_reads, 12)
+
+    def test_fresh_raw_owner_drift_retains_unknown_witnesses_and_restores_original(self):
+        source = 'owner-before' if os.environ.get('TERMINAL_ZOMBIE_OWNER_BEFORE') == '1' else 'after'
+        for case in ('fresh_owner_drift', 'fresh_owner_drift_late'):
+            with self.subTest(case=case):
+                value = SimulatedZombieControl(case=case, source=source)
+                self.addCleanup(value.close)
+                with self.assertRaises(value.module.CurrentIntervalRefusal):
+                    value.invoke()
+                self.assertTrue(value.raw_owner_drift)
+                self.assertEqual(value.calls, 1)
+                self.assertIs(value.closure_namespace['ATTEMPT_PROC_RAW'], value.expected_raw_owner)
+                report = value.reports()[0]
+                self.assertFalse(report['retryable'])
+                self.assertTrue(report['unknownInterval'])
+                self.assertEqual(len(report['rawRecords']) - report['closingRawBegin'], 6)
+                proof = report['terminalZombieQualification'].get('closure')
+                self.assertIsInstance(proof, dict, 'UNKNOWN must retain fresh closure witnesses')
+                self.assertEqual(proof['state'], 'unknown')
+                self.assertEqual(proof['rawOwnership'], 'changed')
+                self.assertTrue(proof['originalRawOwnerRestored'])
+                self.assertEqual(proof['error']['code'], 'terminal_zombie_fresh_raw_owner_changed')
+                self.assertEqual(proof['directoryWitnesses'][0]['state'], 'present')
+                self.assertEqual(len(proof['freshRaw']), 7 if case == 'fresh_owner_drift' else 13)
+                self.assertEqual(len(proof['freshIdentities']), 1 if case == 'fresh_owner_drift' else 2)
+
+    def test_boot_drift_refuses_without_second_host_call(self):
+        value = self.control('boot')
+        with self.assertRaises(value.module.CurrentIntervalRefusal):
+            value.invoke()
+        self.assertEqual(value.calls, 1)
+
+    def test_three_unknowns_exhaust_without_fourth_host_attempt(self):
+        value = self.control(repeats=True)
+        with self.assertRaisesRegex(value.module.CurrentIntervalRefusal, 'samples_exhausted'):
+            value.invoke()
+        self.assertEqual(value.calls, 3)
+        self.assertEqual(len(value.reports()), 3)
+        self.assertTrue(all(report['unknownInterval'] for report in value.reports()))
+
+    def test_existing_zero_data_branch_is_delegated_without_terminal_authority(self):
+        selected = self.control()
+        with mock.patch.object(existing, 'ROOT', ROOT), \
+                mock.patch.object(existing, 'capsule', selected.renderer):
+            value = existing.Control()
+        self.addCleanup(value.close)
+        result = value.invoke()
+        self.assertEqual(result['state'], 'admitted')
+        self.assertEqual(value.calls, 2)
+        report = value.reports()[0]
+        self.assertEqual(report['error']['type'], 'ProcessLookupError')
+        self.assertTrue(report['retryable'])
+        self.assertNotIn('terminalZombieQualification', report)
+
+    def test_deadline_and_storage_budgets_remain_original(self):
+        value = self.control()
+        clock = types.SimpleNamespace(now=0)
+        value.module.time = types.SimpleNamespace(monotonic=lambda: clock.now, time_ns=time.time_ns)
+        original = value.module._terminal_closure
+        def delayed(*args):
+            result = original(*args)
+            clock.now = 6
+            return result
+        value.module._terminal_closure = delayed
+        with self.assertRaisesRegex(value.module.CurrentIntervalRefusal, 'time_budget'):
+            value.invoke()
+        self.assertEqual(value.calls, 1)
+        self.assertEqual(len(value.reports()), 1)
+        full = self.control()
+        directory = full.actual / 'current-intervals'
+        directory.mkdir(mode=0o700)
+        for _ in range(3):
+            key = existing.uuid.uuid4().hex
+            document = {'schema': 1, 'kind': 'android-current1e15-unknown-interval',
+                        'operationId': full.operation, 'recordId': key,
+                        'scannerSourceSha256': full.module.CURRENT_INTERVAL_SCANNER_SHA,
+                        'validatorSourceSha256': full.module.CURRENT_INTERVAL_VALIDATOR_SHA,
+                        'padding': 'x' * (6 * 1024 * 1024)}
+            path = directory / ('interval-' + key + '.json')
+            path.write_text(json.dumps(document))
+            path.chmod(0o600)
+        with self.assertRaisesRegex(full.module.CurrentIntervalRefusal, 'operation_budget'):
+            full.invoke()
+        self.assertEqual(full.calls, 0)
+
+
+@unittest.skipUnless(os.name == 'posix', 'actual default renderer uses owned POSIX files and flock')
+class DefaultSelectionTests(unittest.TestCase):
+    def test_actual_primary_uses_candidate_with_selector_absent(self):
+        before = os.environ.get('TERMINAL_ZOMBIE_DEFAULT_BEFORE') == '1'
+        path = PACKET / 'test.default-selector.before.source' if before else Path(__file__)
+        raw = path.read_bytes()
+        if before:
+            self.assertEqual(hashlib.sha256(raw).hexdigest(),
+                             'ba2c2649559a66369f2c0b385cc29175d34d40b18a91fe4da5a34bf6d2a0b164')
+        with tempfile.TemporaryDirectory(prefix='terminal-default-test-') as temporary:
+            root = Path(temporary)
+            test_path = root / 'agent_tools/tests/test_android_terminal_zombie_retry.py'
+            test_path.parent.mkdir(parents=True)
+            test_path.write_bytes(raw)
+            producer = root / 'agent_tools/android_component_successor.py'
+            producer.write_bytes((ROOT / 'agent_tools/android_component_successor.py').read_bytes())
+            shutil.copytree(PACKET, test_path.parent / 'fixtures/android_terminal_zombie_retry')
+            name = 'owned_actual_terminal_default_' + existing.uuid.uuid4().hex
+            module = types.ModuleType(name)
+            module.__file__ = str(test_path)
+            sys.modules[name] = module
+            try:
+                exec(compile(raw, str(test_path), 'exec'), module.__dict__)
+                class Capture(unittest.TestResult):
+                    def addError(self, test, error):
+                        self.unknown = []
+                        for callback, args, kwargs in test._cleanups:
+                            control = getattr(callback, '__self__', None)
+                            if isinstance(control, module.SimulatedZombieControl):
+                                self.unknown.append({'sourcePins': control.result['sourcePins'],
+                                                     'reports': control.reports(),
+                                                     'capturedBeforeCleanup': control.base.exists()})
+                        super().addError(test, error)
+                result = Capture()
+                # The original validation's outer after-selector masked this
+                # defect. Test the actual default even inside that environment.
+                with mock.patch.dict(os.environ, {'TERMINAL_ZOMBIE_SOURCE': 'after'}):
+                    with mock.patch.dict(os.environ):
+                        os.environ.pop('TERMINAL_ZOMBIE_SOURCE', None)
+                        module.TerminalZombieTests(
+                            'test_complete_terminal_transition_reobserves_the_whole_host').run(result)
+                self.assertEqual(result.testsRun, 1)
+                self.assertTrue(result.wasSuccessful(),
+                                'Actual primary default failed; captured UNKNOWN before cleanup: '
+                                + repr(getattr(result, 'unknown', [])))
+            finally:
+                sys.modules.pop(name, None)
+
+
+class SourceInverseTests(unittest.TestCase):
+    def test_finite_public_fixture_bytes_match_provenance(self):
+        document = json.loads((PACKET / 'provenance.json').read_bytes())
+        self.assertEqual(set(document['fixtures']), {
+            'successor.before.source', 'successor.owner-before.source', 'interval-harness.before.source',
+            'native-control.phase.py', 'native-control.phase-before-receiver-close.source',
+            'native-control.phase-before-fixed-refusal.source', 'native-control.control-code.source',
+            'test.default-selector.before.source'})
+        self.assertIs(document['privateMetadataEmbedded'], False)
+        self.assertIs(document['nativeKernelAcceptance'], False)
+        for name, expected in document['fixtures'].items():
+            raw = (PACKET / name).read_bytes()
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), expected['sha256'])
+            self.assertEqual(len(raw), expected['bytes'])
+
+    def test_whole_41ec_factories_runtime_and_readers_are_an_exact_prefix(self):
+        before = (PACKET / 'successor.before.source').read_bytes()
+        after = (ROOT / 'agent_tools/android_component_successor.py').read_bytes()
+        self.assertEqual(hashlib.sha256(before).hexdigest(), BEFORE_SHA)
+        self.assertEqual(after[:len(before)], before)
+        before_tree, after_tree = ast.parse(before), ast.parse(after)
+        self.assertEqual(ast.dump(ast.Module(body=after_tree.body[:len(before_tree.body)], type_ignores=[]),
+                                  include_attributes=False), ast.dump(before_tree, include_attributes=False))
+
+    @unittest.skipUnless(os.name == 'posix', 'actual emitted private store uses POSIX')
+    def test_capsule_inverse_changes_one_legacy_capture_name_and_appends_scope_only(self):
+        before = SimulatedZombieControl(source='before')
+        after = SimulatedZombieControl(source='after')
+        self.addCleanup(before.close)
+        self.addCleanup(after.close)
+        original = ast.parse(before.result['source'])
+        derived = ast.parse(after.result['source'])
+        prefix = derived.body[:len(original.body)]
+        changed = 0
+        for node in prefix:
+            if isinstance(node, ast.FunctionDef) and node.name == '_interval_capture_before_terminal_zombie':
+                node.name = '_interval_capture'
+                changed += 1
+        self.assertEqual(changed, 1)
+        self.assertEqual(ast.dump(ast.Module(body=prefix, type_ignores=[]), include_attributes=False),
+                         ast.dump(original, include_attributes=False))
+        scopes = [node for node in derived.body[len(original.body):] if isinstance(node, ast.Assign)]
+        self.assertEqual({node.targets[0].id for node in scopes},
+                         {'TERMINAL_ZOMBIE_SCOPE', 'TERMINAL_ZOMBIE_SCANNER_SHA',
+                          'TERMINAL_ZOMBIE_VALIDATOR_SHA', 'TERMINAL_ZOMBIE_LATE_CHANGE_LINE'})
+        for result in (before.result, after.result):
+            tree = ast.parse(result['source'])
+            table = next(node for node in tree.body if isinstance(node, ast.Assign)
+                         and isinstance(node.targets[0], ast.Name)
+                         and node.targets[0].id == 'CURRENT1E15_EFFECT_PLANE_FIXED')
+            fixed = ast.literal_eval(table.value)
+            self.assertEqual(hashlib.sha256(fixed['processSource'].encode()).hexdigest(),
+                             '779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f')
+            self.assertEqual(hashlib.sha256(fixed['validatorSource'].encode()).hexdigest(),
+                             '2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1')
+
+
+if __name__ == '__main__':
+    unittest.main()

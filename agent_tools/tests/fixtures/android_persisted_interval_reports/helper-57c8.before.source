@@ -1,0 +1,1100 @@
+"""Source-closed admission for one separately owned persisted Android start.
+
+This is an internal native adapter, not a public target or source override.
+The coordinator authenticates the original source and local reservation records,
+freezes their pins, and revalidates them immediately before native dispatch.
+Old operations and their pins are never changed. Native measurements remain
+required; a rendered program or a caller-authored observation is not admission.
+"""
+from __future__ import annotations
+
+import ast
+import base64
+import copy
+import hashlib
+import json
+from pathlib import Path
+import re
+import uuid
+
+_SHA = re.compile(r"[0-9a-f]{64}\Z")
+MEMORY_BYTES = 2 * 1024 ** 3
+HEADROOM_BYTES = 8 * 1024 ** 3
+MIN_DISK_BYTES = 20 * 1024 ** 3
+_READERS = ("fp", "parent_fds", "close_parents", "guard_parents", "read_fixed",
+            "facts", "tree_facts", "ticks", "process_census", "ports", "boot",
+            "child_identity", "qemu_fact", "session_guest", "guest_probe", "original_status")
+_LAUNCHERS = ("open_emulator", "admit_once", "emulator_exec",
+              "close_supervisor_inherited", "child_exec", "launch_once")
+
+
+def _need(condition, reason):
+    if not condition:
+        raise ValueError(reason)
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False, ensure_ascii=False).encode() + b"\n"
+
+
+def _uuid(value):
+    _need(type(value) is str and str(uuid.UUID(value)) == value,
+          "persisted_start_operation_invalid")
+
+
+def _source(raw, digest):
+    _need(type(raw) is bytes and 0 < len(raw) <= 8 * 1024 ** 2
+          and type(digest) is str and _SHA.fullmatch(digest)
+          and hashlib.sha256(raw).hexdigest() == digest,
+          "persisted_start_source_changed")
+    text = raw.decode("utf-8", "strict")
+    tree = ast.parse(text)
+    functions = {}
+    for name in _READERS:
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name == name]
+        _need(len(nodes) == 1 and not nodes[0].decorator_list,
+              "persisted_start_source_definition_changed")
+        functions[name] = ast.get_source_segment(text, nodes[0])
+    literals = {}
+    for name in ("CFG", "LAUNCH", "GETTER"):
+        nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+                 and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                 and node.targets[0].id == name]
+        _need(len(nodes) == 1, "persisted_start_source_binding_changed")
+        literals[name] = ast.literal_eval(nodes[0].value)
+    root_nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+                  and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                  and node.targets[0].id == "ROOT"]
+    _need(len(root_nodes) == 1 and isinstance(root_nodes[0].value, ast.Call)
+          and len(root_nodes[0].value.args) == 1
+          and isinstance(root_nodes[0].value.args[0], ast.Constant)
+          and type(root_nodes[0].value.args[0].value) is str,
+          "persisted_start_original_root_invalid")
+    literals["ROOT"] = root_nodes[0].value.args[0].value
+    launch = literals["LAUNCH"]
+    _need(launch["device"] == "api35" and launch["port"] == 5682
+          and launch["argv"][launch["argv"].index("-avd") + 1] == launch["avd"]
+          and launch["argv"][launch["argv"].index("-port") + 1] == str(launch["port"])
+          and launch["argv"][launch["argv"].index("-memory") + 1] == "2048"
+          and all(flag not in launch["argv"] for flag in ("-wipe-data", "-snapshot", "-read-only"))
+          and all(flag in launch["argv"] for flag in ("-no-snapshot-load", "-no-snapshot-save")),
+          "persisted_start_original_target_invalid")
+    return functions, literals
+
+
+def reservation_bytes(authority):
+    """Sum every matching claim, including historical, inactive and duplicate rows.
+
+    The coordinator retains and revalidates these exact local FD9/parent pins;
+    a Linux guest cannot independently read the Mac's private journal files.
+    No native result prints the raw ledger, tokens or private row contents.
+    """
+    _need(type(authority) is dict and set(authority) == {"hostAlias", "capturedAtNs", "records"}
+          and authority["hostAlias"] == "archlinux"
+          and type(authority["capturedAtNs"]) is int and authority["capturedAtNs"] > 0
+          and type(authority["records"]) is list and 1 <= len(authority["records"]) <= 4,
+          "persisted_start_reservation_authority_invalid")
+    total = 0
+    paths = set()
+    for record in authority["records"]:
+        _need(type(record) is dict and set(record) == {"path", "pin", "rawBase64"}
+              and type(record["path"]) is str and Path(record["path"]).is_absolute()
+              and record["path"] not in paths and type(record["pin"]) is dict
+              and set(record["pin"]) == {"generation", "parents", "sha256"},
+              "persisted_start_reservation_record_invalid")
+        paths.add(record["path"])
+        pin = record["pin"]
+        _need(type(pin["generation"]) is list and len(pin["generation"]) == 9
+              and all(type(item) is int and item >= 0 for item in pin["generation"])
+              and pin["generation"][2] == 0o100600 and pin["generation"][5] == 1
+              and type(pin["parents"]) is dict and bool(pin["parents"])
+              and type(pin["sha256"]) is str and _SHA.fullmatch(pin["sha256"])
+              and type(record["rawBase64"]) is str and len(record["rawBase64"]) <= 8 * 1024 ** 2,
+              "persisted_start_reservation_record_invalid")
+        raw = base64.b64decode(record["rawBase64"], validate=True)
+        _need(len(raw) == pin["generation"][6] and len(raw) <= 4 * 1024 ** 2
+              and hashlib.sha256(raw).hexdigest() == pin["sha256"],
+              "persisted_start_reservation_record_changed")
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                _need(key not in result, "persisted_start_reservation_duplicate_key")
+                result[key] = value
+            return result
+        value = json.loads(raw, object_pairs_hook=unique)
+        _need(type(value) is dict and set(value) == {"version", "reservations"}
+              and type(value["version"]) is int and value["version"] == 1
+              and type(value["reservations"]) is list and len(value["reservations"]) <= 4096,
+              "persisted_start_reservation_ledger_invalid")
+        for row in value["reservations"]:
+            _need(type(row) is dict and type(row.get("hostAlias")) is str
+                  and type(row.get("requestedMemoryBytes")) is int
+                  and 0 <= row["requestedMemoryBytes"] <= 1024 ** 4,
+                  "persisted_start_reservation_claim_invalid")
+            if row["hostAlias"] == authority["hostAlias"]:
+                total += row["requestedMemoryBytes"]
+    _need(total <= 1024 ** 4, "persisted_start_reservation_total_invalid")
+    return total
+
+
+def _capacity_sources():
+    """Capture the existing canonical Linux policy and its real native probe."""
+    root = Path(__file__).resolve().parent.parent
+    paths = ("agent_tools/vm_workflow.py", "scripts/fixture_environment.py",
+             "agent_tools/native_host_observation.py")
+    files = {name: (root / name).read_bytes() for name in paths}
+    texts = {name: raw.decode("utf-8", "strict") for name, raw in files.items()}
+    trees = {name: ast.parse(text) for name, text in texts.items()}
+    def definition(path, name):
+        nodes = [node for node in trees[path].body if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name == name]
+        _need(len(nodes) == 1, "persisted_start_capacity_definition_changed")
+        return ast.get_source_segment(texts[path], nodes[0])
+    def assignment(path, name):
+        nodes = [node for node in trees[path].body if isinstance(node, ast.Assign)
+                 and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+        _need(len(nodes) == 1, "persisted_start_capacity_constant_changed")
+        return ast.get_source_segment(texts[path], nodes[0])
+    vm, fixture, native = paths
+    source = "import math,io,contextlib\nfrom typing import Any,Mapping,Sequence\n"
+    names = ("_MIB", "_LINUX_SAMPLE_COUNT", "_LINUX_MAX_SAMPLE_WINDOW_MS", "_LINUX_MAX_SAMPLE_AGE_MS",
+             "_DARWIN_SAMPLE_COUNT", "_DARWIN_MAX_SAMPLE_WINDOW_MS", "_DARWIN_MAX_SAMPLE_AGE_MS", "_SAFE_RESERVATION_ID")
+    source += "\n".join(assignment(vm, name) for name in names) + "\n"
+    source += definition(fixture, "vm_admission_reason") + "\n"
+    source += "\n\n".join(definition(vm, name) for name in
+        ("VmWorkflowError", "_positive_int", "_nonnegative_int", "_ceil_mib", "_linux_samples", "_darwin_samples", "admit_plan")) + "\n"
+    source += definition(native, "_unknown") + "\n" + definition(native, "_measurement") + "\n"
+    source += assignment(native, "_REMOTE_PROGRAM").replace("_REMOTE_PROGRAM", "NATIVE_RESOURCE_PROGRAM", 1) + "\n"
+    pins = {name: hashlib.sha256(raw).hexdigest() for name, raw in files.items()}
+    source += "CAPACITY_SOURCE_PINS=" + repr(pins) + "\n"
+    return source, pins
+
+
+_CAPACITY = r'''
+def canonical_capacity(measurement,held,covered_native_bytes=0):
+ # Without a separately qualified owner-to-claim mapping, count every native
+ # configured allocation in addition to all held claims. Never guess dedup.
+ native=_nonnegative_int(measurement.get('runningConfiguredMemoryBytes'),'running configured memory')
+ covered=_nonnegative_int(covered_native_bytes,'qualified covered native memory')
+ if covered>native:raise ValueError('persisted_start_coverage_exceeds_native')
+ configured=native-covered+_nonnegative_int(held,'held configured memory')
+ supplied=dict(measurement,runningConfiguredMemoryBytes=configured)
+ return admit_plan(supplied,requested_memory_bytes=MEMORY_BYTES,headroom_bytes=HEADROOM_BYTES,reservations=())
+def native_capacity():
+ contract=globals().get('COVERAGE_CONTRACT')
+ before=after=None;record_start=0
+ if contract is not None:
+  record_start=len(_ALLOCATION_HOST.BRIDGE_RECORDS)
+  try:before=_ALLOCATION_HOST.get_windows_allocation_coverage()
+  finally:globals()['LAST_ALLOCATION_EVIDENCE']={'state':'unknown','contract':contract,'before':before,'after':after,'bridgeRecords':copy.deepcopy(_ALLOCATION_HOST.BRIDGE_RECORDS[record_start:])}
+ output=io.StringIO()
+ try:
+  with contextlib.redirect_stdout(output):
+   try:exec(compile(NATIVE_RESOURCE_PROGRAM,'source-closed-linux-resource-probe','exec'),{'__name__':'source_closed_resource_probe'})
+   except SystemExit as error:
+    if error.code not in (None,0):raise ValueError('persisted_start_native_capacity_probe_exit')from None
+ finally:
+  if contract is not None:
+   try:after=_ALLOCATION_HOST.get_windows_allocation_coverage()
+   finally:globals()['LAST_ALLOCATION_EVIDENCE']={'state':'unknown','contract':contract,'before':before,'after':after,'bridgeRecords':copy.deepcopy(_ALLOCATION_HOST.BRIDGE_RECORDS[record_start:])}
+ raw=output.getvalue()
+ if not 0<len(raw.encode())<=32768:raise ValueError('persisted_start_native_capacity_probe_bound')
+ observed=_measurement(json.loads(raw),time.time_ns()//1000000,None,30)
+ globals()['LAST_CAPACITY_OBSERVATION']=observed
+ if observed.get('state')!='OBSERVED' or observed.get('measurementAvailability')!='complete' or observed.get('measurement')is None:raise ValueError('persisted_start_native_capacity_visibility')
+ overlap=0
+ if contract is not None:
+  if boot()!=contract['hostBootId']:raise ValueError('persisted_start_coverage_host_changed')
+  overlap=allocation_overlap(observed,before,after,contract)
+  allocation_records(globals()['LAST_ALLOCATION_EVIDENCE']['bridgeRecords'],before,after,contract)
+  globals()['LAST_ALLOCATION_EVIDENCE'].update(state='qualified',coveredNativeBytes=overlap)
+ try:plan=canonical_capacity(observed['measurement'],PENDING_BYTES,overlap)
+ except VmWorkflowError as error:
+  globals()['LAST_CAPACITY_FAILURE']=str(error)[:512]
+  raise ValueError('persisted_start_native_capacity_refused')from None
+ return observed,plan
+'''
+
+
+def capacity_plan(measurement: dict, held_bytes: int, *, covered_native_bytes: int = 0) -> dict:
+    """Execute the same captured canonical pure policy for deterministic controls."""
+    _need(type(measurement) is dict and type(held_bytes) is int and held_bytes >= 0,
+          "persisted_start_capacity_input_invalid")
+    source, _ = _capacity_sources()
+    namespace = {"json": json, "time": __import__("time"), "re": re,
+                 "MEMORY_BYTES": MEMORY_BYTES, "HEADROOM_BYTES": HEADROOM_BYTES}
+    exec(compile(source + _CAPACITY, "source-closed-native-capacity", "exec"), namespace)
+    return namespace["canonical_capacity"](measurement, held_bytes, covered_native_bytes)
+
+
+_ALLOCATION_SHARED = r'''
+def allocation_need(value,reason):
+ if not value:raise ValueError(reason)
+def allocation_same(first,second):
+ return json.dumps(first,sort_keys=True,separators=(',',':'),allow_nan=False)==json.dumps(second,sort_keys=True,separators=(',',':'),allow_nan=False)
+def allocation_positive(value):return type(value)is int and value>0
+def allocation_view(value,contract):
+ allocation_need(type(value)is dict and set(value)=={'schemaVersion','state','hostBootId','rows','sourcePins','observedAtUnixMs','guestRpc','vmMutation','claimMutation'} and type(value['schemaVersion'])is int and value['schemaVersion']==1 and value['state']=='qualified' and value['hostBootId']==contract['hostBootId'] and allocation_positive(value['observedAtUnixMs']) and allocation_same(value['sourcePins'],contract['outputSourcePins']) and all(value[key]is False for key in ('guestRpc','vmMutation','claimMutation')),'persisted_start_coverage_unqualified')
+ allocation_need(type(value['rows'])is list and len(value['rows'])==len(contract['claims']),'persisted_start_coverage_scope_changed')
+ expected={row['reservationId']:row for row in contract['claims']};rows={};actors=set()
+ fields={'schemaVersion','state','reservationId','machine','provider','root','hostBootId','pid','startTicks','sessionId','uid','commandSha256','executableGeneration','configuredMemoryBytes','controlConnection','observedAtUnixMs','guestRpc','vmMutation','claimMutation'}
+ for row in value['rows']:
+  allocation_need(type(row)is dict and set(row)==fields and row.get('reservationId')in expected and row['reservationId']not in rows,'persisted_start_coverage_duplicate_or_extra')
+  claim=expected[row['reservationId']]
+  allocation_need(type(row['schemaVersion'])is int and row['schemaVersion']==1 and row['state']=='qualified' and all(type(row[key])is str and row[key]==claim[key] for key in ('reservationId','machine','provider','root','hostBootId')) and type(row['uid'])is int and row['uid']==1000 and all(allocation_positive(row[key])for key in ('pid','startTicks','sessionId','configuredMemoryBytes','observedAtUnixMs')) and row['configuredMemoryBytes']==claim['configuredMemoryBytes'] and type(row['commandSha256'])is str and re.fullmatch('[0-9a-f]{64}',row['commandSha256']) and type(row['controlConnection'])is str and 0<len(row['controlConnection'])<=4096 and '\x00'not in row['controlConnection'] and type(row['executableGeneration'])is list and len(row['executableGeneration'])==9 and all(type(item)is int and item>=0 for item in row['executableGeneration']) and all(row[key]is False for key in ('guestRpc','vmMutation','claimMutation')),'persisted_start_coverage_identity_changed')
+  actor=(row['pid'],row['startTicks'])
+  allocation_need(actor not in actors and all(row['pid']!=other[0]for other in actors),'persisted_start_coverage_duplicate_actor')
+  actors.add(actor);rows[row['reservationId']]={key:part for key,part in row.items()if key!='observedAtUnixMs'}
+ result={key:part for key,part in value.items()if key not in ('observedAtUnixMs','rows')};result['rows']=[rows[key]for key in sorted(rows)]
+ return result
+def allocation_overlap(observed,before,after,contract):
+ first=allocation_view(before,contract);second=allocation_view(after,contract)
+ allocation_need(allocation_same(first,second),'persisted_start_coverage_bracket_changed')
+ allocation_need(type(observed)is dict and observed.get('state')=='OBSERVED' and observed.get('measurementAvailability')=='complete' and type(observed.get('measurement'))is dict and type(observed.get('vms'))is list,'persisted_start_coverage_catalog_unknown')
+ catalog={};pids=set();total=0
+ for row in observed['vms']:
+  allocation_need(type(row)is dict and set(row)=={'pid','startTicks','configuredMemoryBytes','qemuExecutable'} and all(allocation_positive(row[key])for key in ('pid','startTicks','configuredMemoryBytes')) and type(row['qemuExecutable'])is str and re.fullmatch('qemu-system-[A-Za-z0-9_.-]+',row['qemuExecutable']),'persisted_start_coverage_catalog_unknown')
+  actor=(row['pid'],row['startTicks'])
+  allocation_need(actor not in catalog and row['pid']not in pids,'persisted_start_coverage_catalog_ambiguous')
+  catalog[actor]=row;pids.add(row['pid']);total+=row['configuredMemoryBytes']
+ allocation_need(type(observed['measurement'].get('runningConfiguredMemoryBytes'))is int and observed['measurement']['runningConfiguredMemoryBytes']==total,'persisted_start_coverage_catalog_total_changed')
+ covered=0
+ for row in first['rows']:
+  native=catalog.get((row['pid'],row['startTicks']))
+  allocation_need(native is not None and native['configuredMemoryBytes']==row['configuredMemoryBytes'],'persisted_start_coverage_catalog_join_changed')
+  covered+=native['configuredMemoryBytes']
+ return covered
+def allocation_records(records,before,after,contract):
+ allocation_need(type(records)is list and len(records)==2,'persisted_start_coverage_bridge_records_required')
+ for record,coverage in zip(records,(before,after)):
+  allocation_need(type(record)is dict and record.get('complete')is True and type(record.get('returncode'))is int and record['returncode']==0 and record.get('kind')=='ordinary-windows-coverage-child' and record.get('sourceSha256')==contract['getterSha256'] and record.get('pythonSha256')==contract['pythonSha256'] and allocation_same(record.get('parentPrincipal'),contract['parentPrincipal']) and allocation_same(record.get('parentClosingPrincipal'),contract['parentPrincipal']) and allocation_same(record.get('childPrincipal'),[1000,1000,1000,1000,[1000]]) and all(record.get(key)is False for key in ('vmMutation','claimMutation')),'persisted_start_coverage_bridge_unqualified')
+  output=base64.b64decode(record['stdoutBase64'],validate=True);errors=base64.b64decode(record['stderrBase64'],validate=True)
+  allocation_need(0<len(output)<=262144 and not errors and hashlib.sha256(output).hexdigest()==record['stdoutSha256'] and hashlib.sha256(errors).hexdigest()==record['stderrSha256'],'persisted_start_coverage_bridge_stream_changed')
+  def unique(pairs):
+   value={}
+   for key,item in pairs:
+    allocation_need(key not in value,'persisted_start_coverage_bridge_duplicate_key');value[key]=item
+   return value
+  child=json.loads(output,object_pairs_hook=unique)
+  allocation_need(type(child)is dict and set(child)=={'principal','coverage'} and child['principal']==[1000,1000,1000,1000,[1000]] and allocation_same(child['coverage'],coverage),'persisted_start_coverage_bridge_reply_changed')
+'''
+
+
+def _allocation_namespace():
+    namespace = {"json": json, "re": re, "base64": base64, "hashlib": hashlib}
+    exec(compile(_ALLOCATION_SHARED, "source-closed-allocation-join", "exec"), namespace)
+    return namespace
+
+
+def _allocation_contract(capsule, authority, host_boot):
+    """Authenticate local chain receipts; emit no token or private ledger bytes."""
+    if capsule is None:
+        return None
+    _need(type(capsule) is dict and set(capsule) == {"source", "sha256", "sourcePins", "qualificationRaw", "qualificationSha256", "bridgeProofRaw", "bridgeProofSha256"}, "persisted_start_coverage_capsule_invalid")
+    for raw_key, sha_key, bound in (("source", "sha256", 1024 ** 2), ("qualificationRaw", "qualificationSha256", 1024 ** 2), ("bridgeProofRaw", "bridgeProofSha256", 65536)):
+        _need(type(capsule[raw_key]) is bytes and 0 < len(capsule[raw_key]) <= bound and type(capsule[sha_key]) is str and _SHA.fullmatch(capsule[sha_key]) and hashlib.sha256(capsule[raw_key]).hexdigest() == capsule[sha_key], "persisted_start_coverage_capsule_changed")
+    qualification = _decode(capsule["qualificationRaw"])
+    proof = _decode(capsule["bridgeProofRaw"])
+    _need(type(qualification) is dict and qualification.get("state") == "qualified" and qualification.get("sourceClosing") is True and all(qualification.get(key) is False for key in ("guestRpc", "vmMutation", "claimMutation", "ledgerTokenPrinted")) and type(qualification.get("publicChain")) is list and len(qualification["publicChain"]) == 2 and type(qualification.get("sourcePins")) is dict and type(qualification.get("localInputPins")) is dict and 1 <= len(qualification["localInputPins"]) <= 64, "persisted_start_coverage_qualification_required")
+    for path, item in qualification["localInputPins"].items():
+        _need(type(path) is str and Path(path).is_absolute() and ".." not in Path(path).parts
+              and type(item) is dict and set(item) == {"generation", "sha256"}
+              and type(item["generation"]) is list and len(item["generation"]) == 9
+              and all(type(part) is int and part >= 0 for part in item["generation"])
+              and item["generation"][2] == 0o100600 and item["generation"][5] == 1
+              and item["generation"][6] > 0 and type(item["sha256"]) is str and _SHA.fullmatch(item["sha256"]),
+              "persisted_start_coverage_local_pin_invalid")
+    def source_pins(value):
+        _need(type(value) is dict and 1 <= len(value) <= 128, "persisted_start_coverage_source_pins_invalid")
+        result = {}
+        for name, item in value.items():
+            digest = item.get("sha256") if type(item) is dict else item
+            _need(type(name) is str and 0 < len(name) <= 4096 and type(digest) is str and _SHA.fullmatch(digest), "persisted_start_coverage_source_pins_invalid")
+            result[name] = digest
+        return result
+    local_sources = source_pins(capsule["sourcePins"])
+    output_sources = source_pins(qualification["sourcePins"])
+    _need(all(local_sources.get(name) == digest for name, digest in output_sources.items()), "persisted_start_coverage_source_pins_changed")
+    tree = ast.parse(capsule["source"])
+    def literal(name):
+        nodes = [node for node in tree.body if type(node) is ast.Assign and len(node.targets) == 1 and type(node.targets[0]) is ast.Name and node.targets[0].id == name]
+        _need(len(nodes) == 1, "persisted_start_coverage_bridge_source_changed")
+        return ast.literal_eval(nodes[0].value)
+    getter = literal("GETTER_SOURCE")
+    getter_sha = literal("GETTER_SHA")
+    python_sha = literal("PYTHON_SHA")
+    _need(type(getter_sha) is str and _SHA.fullmatch(getter_sha)
+          and type(python_sha) is str and _SHA.fullmatch(python_sha), "persisted_start_coverage_bridge_source_changed")
+    _need(type(getter) is bytes and 0 < len(getter) <= 1024 ** 2 and hashlib.sha256(getter).hexdigest() == getter_sha == qualification.get("getterSha256") and qualification.get("getterBytes") == len(getter) and literal("EXPECTED_BOOT") == host_boot, "persisted_start_coverage_getter_changed")
+    getter_tree = ast.parse(getter)
+    pinned = [node for node in getter_tree.body if type(node) is ast.Assign and any(type(target) is ast.Name and target.id == "_COVERAGE_SOURCE_PINS" for target in node.targets)]
+    _need(len(pinned) == 1 and ast.literal_eval(pinned[0].value) == output_sources, "persisted_start_coverage_getter_sources_changed")
+    methods = [node for node in tree.body if type(node) is ast.FunctionDef and node.name == "get_windows_allocation_coverage"]
+    _need(len(methods) == 1 and not methods[0].decorator_list and not methods[0].args.args and methods[0].args.vararg is None and methods[0].args.kwarg is None, "persisted_start_coverage_bridge_interface")
+    _need(type(proof) is dict and proof.get("schema") == 1 and type(proof["schema"]) is int and proof.get("kind") == "native-source-closed-ordinary-windows-coverage-bridge-proof" and proof.get("bridgeSha256") == capsule["sha256"] and proof.get("getterSha256") == getter_sha and proof.get("pythonSha256") == python_sha and _canonical(proof.get("childPrincipal")) == _canonical([1000, 1000, 1000, 1000, [1000]]) and _canonical(proof.get("parentPrincipal")) == _canonical([0, 0, 0, 0, [0]]) and all(proof.get(key) is True for key in ("parentPrincipalUnchanged", "coverageFullRowsAndSourcesMatchOrdinaryProof", "ignoredOnlyObservationTimestamp", "sourceClosing")) and all(proof.get(key) is False for key in ("vmMutation", "claimMutation")) and proof.get("completeChildStderrSha256") == hashlib.sha256(b"").hexdigest(), "persisted_start_coverage_native_bridge_proof_required")
+    reservation_bytes(authority)
+    matching = []
+    for record in authority["records"]:
+        old = qualification["localInputPins"].get(record["path"])
+        if type(old) is dict and old.get("generation") == record["pin"]["generation"] and old.get("sha256") == record["pin"]["sha256"]:
+            matching.append(record)
+    _need(len(matching) == 1, "persisted_start_coverage_included_ledger_changed")
+    ledger = _decode(base64.b64decode(matching[0]["rawBase64"], validate=True))
+    claims = []
+    ids = set()
+    fields = {"reservationId", "environment", "fixtureId", "host", "hostBootId", "machine", "operator", "provider", "root", "configuredMemoryBytes"}
+    for claim in qualification["publicChain"]:
+        _need(type(claim) is dict and set(claim) == fields and all(type(claim[key]) is str and bool(claim[key]) for key in fields - {"configuredMemoryBytes"}) and claim["reservationId"] not in ids and claim["host"] == "archlinux" and claim["hostBootId"] == host_boot and claim["operator"] == "windows-vm-deploy" and claim["environment"] == "windows-" + claim["machine"] and claim["provider"] in ("raw-qemu-windows", "libvirt-windows") and type(claim["configuredMemoryBytes"]) is int and 0 < claim["configuredMemoryBytes"] <= 1024 ** 4, "persisted_start_coverage_claim_invalid")
+        ids.add(claim["reservationId"])
+        rows = [row for row in ledger["reservations"] if row.get("id") == claim["reservationId"]]
+        _need(len(rows) == 1 and rows[0].get("hostAlias") == claim["host"] and rows[0].get("environment") == claim["environment"] and rows[0].get("operator") == claim["operator"] and rows[0].get("allocationState") == "running" and type(rows[0].get("requestedMemoryBytes")) is int and rows[0]["requestedMemoryBytes"] == claim["configuredMemoryBytes"], "persisted_start_coverage_claim_ledger_changed")
+        claims.append(dict(claim))
+    _need({row["provider"] for row in claims} == {"raw-qemu-windows", "libvirt-windows"}, "persisted_start_coverage_provider_scope_changed")
+    return {"schema": 1, "bridgeSha256": capsule["sha256"], "getterSha256": getter_sha, "pythonSha256": python_sha,
+            "hostBootId": host_boot, "parentPrincipal": proof["parentPrincipal"], "claims": sorted(claims, key=lambda row: row["reservationId"]),
+            "sourcePins": local_sources, "outputSourcePins": output_sources, "qualificationSha256": capsule["qualificationSha256"], "bridgeProofSha256": capsule["bridgeProofSha256"]}
+
+
+def _allocation_runtime(capsule, authority, host_boot):
+    contract = _allocation_contract(capsule, authority, host_boot)
+    source = "import base64,copy\nCOVERAGE_CONTRACT=" + repr(contract) + "\n" + _ALLOCATION_SHARED
+    if contract is not None:
+        source += "\nimport types\n_ALLOCATION_HOST=types.ModuleType('persisted_start_allocation_bridge');sys.modules[_ALLOCATION_HOST.__name__]=_ALLOCATION_HOST\n"
+        source += "exec(compile(" + repr(capsule["source"]) + ",'source-closed-ordinary-allocation-bridge','exec'),_ALLOCATION_HOST.__dict__)\n"
+    return source
+
+
+def _installer_capsule(capsule, original_sha256):
+    if capsule is None:
+        return ("INSTALLER_GUARD_SHA=None\nINSTALLER_GUARD_SOURCE_PINS={}\n"
+                "def installer_host_preflight():return {'state':'unqualified','stableBinding':{},'evidence':{}}\n")
+    _need(type(capsule) is dict and set(capsule) == {"source", "sha256", "originalSourceSha256", "sourcePins"}
+          and capsule["originalSourceSha256"] == original_sha256
+          and type(capsule["source"]) is bytes and 0 < len(capsule["source"]) <= 8 * 1024 ** 2
+          and hashlib.sha256(capsule["source"]).hexdigest() == capsule["sha256"]
+          and type(capsule["sourcePins"]) is dict and 1 <= len(capsule["sourcePins"]) <= 64
+          and all(type(name) is str and 0 < len(name) <= 256 and type(pin) is str and _SHA.fullmatch(pin)
+                  for name, pin in capsule["sourcePins"].items()), "persisted_start_installer_capsule_changed")
+    tree = ast.parse(capsule["source"])
+    nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "installer_host_preflight"]
+    _need(len(nodes) == 1 and not nodes[0].decorator_list and not nodes[0].args.args
+          and nodes[0].args.vararg is None and nodes[0].args.kwarg is None,
+          "persisted_start_installer_capsule_interface")
+    return ("import types\n_INSTALLER_HOST=types.ModuleType('persisted_start_installer_host_snapshot');sys.modules[_INSTALLER_HOST.__name__]=_INSTALLER_HOST\n"
+            + "exec(compile(" + repr(capsule["source"]) + ",'source-closed-installer-host-preflight','exec'),_INSTALLER_HOST.__dict__)\n"
+            + "installer_host_preflight=_INSTALLER_HOST.installer_host_preflight\nINSTALLER_GUARD_SHA=" + repr(capsule["sha256"])
+            + "\nINSTALLER_GUARD_SOURCE_PINS=" + repr(capsule["sourcePins"]) + "\n")
+
+
+_OBSERVE = r'''
+def machine():
+ value=read_fixed(pathlib.Path('/etc/machine-id'),4096)
+ if value['hashScope']!='full' or not value['raw'].strip():raise ValueError('persisted_start_machine_unknown')
+ return hashlib.sha256(value['raw']).hexdigest()
+def original_absence():
+ rows=[]
+ for role in ('child','guest'):
+  old=ORIGINAL_GENERATION[role]
+  try:current=ticks(PROC/str(old['pid']))
+  except FileNotFoundError:current=None
+  if current==old['startTicks']:raise ValueError('persisted_start_original_actor_live')
+  rows.append({'role':role,'originalPid':old['pid'],'originalStartTicks':old['startTicks'],'currentStartTicks':current,'originalAbsent':True})
+ return rows
+def target_actors(emulators):
+ found=[]
+ for row in emulators:
+  proc=PROC/str(row['pid'])
+  start=ticks(proc);raw=(proc/'cmdline').read_bytes()
+  if len(raw)>65536:raise ValueError('persisted_start_target_command_bound')
+  args=raw.split(bytes([0]));name=LAUNCH['avd'].encode();port=str(LAUNCH['port']).encode()
+  selected=name in args or any(args[index:index+2]==[b'-port',port] for index in range(len(args)))
+  unknown_android=args and args[0] in (LAUNCH['argv'][0].encode(),LAUNCH['qemuPath'].encode()) and b'-avd' not in args
+  if ticks(proc)!=start or start!=row['startTicks']:raise ValueError('persisted_start_target_actor_changed')
+  if selected or unknown_android:found.append({'pid':row['pid'],'startTicks':start,'commandSha256':hashlib.sha256(raw).hexdigest(),'ambiguousAndroidActor':bool(unknown_android)})
+ return found
+def measured():
+ if not sys.platform.startswith('linux') or os.getuid()!=0 or os.geteuid()!=0 or os.getgid()!=0 or os.getegid()!=0:raise ValueError('persisted_start_linux_root_required')
+ if boot()!=ORIGINAL_BOOT:raise ValueError('persisted_start_host_boot_changed')
+ installer=installer_host_preflight()
+ if type(installer)is not dict or installer.get('state')not in ('admitted','unqualified') or type(installer.get('stableBinding'))is not dict or type(installer.get('evidence'))is not dict:raise ValueError('persisted_start_installer_host_proof_invalid')
+ if REQUIRE_INSTALLER_HOST_GUARD and installer['state']!='admitted':raise ValueError('persisted_start_installer_host_guard_required')
+ directory=pathlib.Path(SELECTED_DIRECTORY)
+ tree=tree_facts(directory)
+ ini=facts(directory.parent/(LAUNCH['avd']+'.ini'),65536,True)
+ config=facts(directory/'config.ini',65536,True)
+ if not ini.get('present') or not config.get('present') or ini.get('hashScope')!='full' or config.get('hashScope')!='full':raise ValueError('persisted_start_config_unknown')
+ identities={}
+ for name,item in tree.items():
+  if item['kind']=='regular':identities.setdefault(tuple(item['generation'][:2]),[]).append('api35/'+name)
+ census=process_census(identities)
+ if not census['complete'] or census['holders']:raise ValueError('persisted_start_disk_holder_unknown')
+ actors=target_actors(census['emulators'])
+ if actors:raise ValueError('persisted_start_target_actor_present')
+ occupied=[row for row in ports() if row['port'] in (LAUNCH['port'],LAUNCH['port']+1)]
+ if occupied:raise ValueError('persisted_start_target_port_occupied')
+ absent=original_absence()
+ locks={name:facts(pathlib.Path(path),4096) for name,path in LOCK_PATHS.items()}
+ if any(not row.get('present') or row['hashScope']!='full' or row['generation'][6] not in (0,1000) or row['generation'][8]!=1 or stat.S_IMODE(row['generation'][5])!=0o600 for row in locks.values()):raise ValueError('persisted_start_existing_lock_unknown')
+ sdk={name:facts(pathlib.Path(name),16777216,name.endswith('/package.xml')) for name in SELECTED_SDK}
+ if sdk!=ORIGINAL_SDK_FACTS:raise ValueError('persisted_start_sdk_changed')
+ emulator=facts(pathlib.Path(LAUNCH['argv'][0]),268435456)
+ if not emulator.get('present') or emulator.get('hashScope')!='full' or emulator['generation'][6:9]!=[1000,1000,1] or not emulator['generation'][5]&0o111:raise ValueError('persisted_start_emulator_unknown')
+ qemu=qemu_fact()
+ resource_observation,capacity=native_capacity()
+ measurement=resource_observation['measurement'];available=measurement['availableMemoryBytes']
+ disk=os.statvfs(directory);free=disk.f_bavail*disk.f_frsize
+ if free<MIN_DISK_BYTES:raise ValueError('persisted_start_disk_capacity')
+ return {'host':{'bootId':boot(),'machineSha256':machine(),'uid':os.getuid(),'gid':os.getgid()},'installerHost':installer,
+  'avd':{'directory':SELECTED_DIRECTORY,'tree':tree,'ini':ini,'config':config},'locks':locks,'sdkFiles':sdk,'emulatorFact':emulator,'qemuFact':qemu,
+  'originalAbsence':absent,'holderCensus':{'complete':True,'holders':[],'unreadableProcessCount':0},'protectedEmulators':census['emulators'],'targetActors':[],
+  'targetPorts':[],'resources':{'availableMemoryBytes':available,'pendingReservationBytes':PENDING_BYTES,'requestedMemoryBytes':MEMORY_BYTES,'headroomBytes':HEADROOM_BYTES,'freeDiskBytes':free,'minDiskBytes':MIN_DISK_BYTES,'nativeObservation':resource_observation,'canonicalPlan':capacity,'capacitySourcePins':CAPACITY_SOURCE_PINS,'allocationCoverage':globals().get('LAST_ALLOCATION_EVIDENCE'),'reservationAccounting':'all-held-configured-plus-qualified-uncovered-native' if COVERAGE_CONTRACT is not None else 'all-held-configured-plus-all-native-no-dedup'}}
+def stable(value):
+ return {key:({'state':part['state'],'stableBinding':part['stableBinding']} if key=='installerHost' else part) for key,part in value.items() if key!='resources'}
+def observations():
+ first=measured();second=measured()
+ if stable(first)!=stable(second):raise ValueError('persisted_start_observation_unstable')
+ return {'schema':1,'kind':'android-persisted-start-native-admission','operationId':OPERATION_ID,'originalSourceSha256':ORIGINAL_SOURCE_SHA,
+  'originalColdbootOperationId':ORIGINAL_COLD_BOOT,'observations':[first,second],'reservationAuthoritySha256':RESERVATION_AUTHORITY_SHA,
+  'installerGuardSha256':INSTALLER_GUARD_SHA,'installerGuardSourcePins':INSTALLER_GUARD_SOURCE_PINS,'allocationCoverageContract':COVERAGE_CONTRACT,
+  'stopCause':'off_unknown','startPerformed':False,'originalOutcomesChanged':False,'replayAllowed':False}
+'''
+
+
+def _interval_storage_required(capsule):
+    """Recognize only the capsule's single explicit top-level boolean marker."""
+    if capsule is None:
+        return False
+    _need(type(capsule) is dict and type(capsule.get('source')) is bytes and
+          0 < len(capsule['source']) <= 8 * 1024 ** 2 and
+          hashlib.sha256(capsule['source']).hexdigest() == capsule.get('sha256'),
+          'persisted_start_installer_capsule_changed')
+    tree = ast.parse(capsule['source'])
+    stores = [node for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign)) and
+              any(isinstance(target, ast.Name) and target.id == 'CURRENT_INTERVAL_STORAGE_REQUIRED'
+                  for target in (node.targets if isinstance(node, ast.Assign) else [node.target]))]
+    if not stores:
+        return False
+    _need(len(stores) == 1 and isinstance(stores[0], ast.Assign) and
+          len(stores[0].targets) == 1 and isinstance(stores[0].value, ast.Constant) and
+          type(stores[0].value.value) is bool, 'persisted_start_interval_storage_marker_invalid')
+    return stores[0].value.value
+
+
+def _interval_storage_source(capsule, operation_id, launch, storage):
+    required = _interval_storage_required(capsule)
+    if storage is None:
+        _need(not required, 'persisted_start_interval_storage_required')
+        return ''
+    _need(capsule is not None and type(storage) is dict and
+          set(storage) == {'schema', 'operationId', 'root', 'rootGeneration',
+                           'hostBootId', 'machineSha256', 'account'} and
+          type(storage['schema']) is int and storage['schema'] == 1 and
+          type(storage['operationId']) is str and storage['operationId'] == operation_id and type(storage['root']) is str and
+          storage['root'] == '/var/tmp/vc-android-persisted-' + operation_id and
+          type(storage['rootGeneration']) is list and len(storage['rootGeneration']) == 2 and
+          all(type(value) is int and value > 0 for value in storage['rootGeneration']) and
+          type(storage['hostBootId']) is str and storage['hostBootId'] == launch['observation']['bootId'] and
+          type(storage['machineSha256']) is str and _SHA.fullmatch(storage['machineSha256']) and
+          type(storage['account']) is str and storage['account'] == '0', 'persisted_start_interval_storage_invalid')
+    return '_INSTALLER_HOST.CURRENT_INTERVAL_STORAGE=' + repr(copy.deepcopy(storage)) + '\n'
+
+
+def _interval_storage_plan(capsule, operation_id, job_root, root_generation, host_binding):
+    if not _interval_storage_required(capsule):
+        return None
+    _need(type(host_binding) is dict and set(host_binding) == {'target', 'machine', 'boot', 'account'},
+          'persisted_start_durable_host_binding_changed')
+    return {'schema': 1, 'operationId': operation_id, 'root': job_root,
+            'rootGeneration': root_generation, 'hostBootId': host_binding['boot'],
+            'machineSha256': host_binding['machine'], 'account': host_binding['account']}
+
+
+def _base(original_source, original_sha256, operation_id, authority, installer_guard=None, allocation_coverage=None, *, interval_storage=None):
+    _uuid(operation_id)
+    functions, literals = _source(original_source, original_sha256)
+    pending = reservation_bytes(authority)
+    launch = literals["LAUNCH"]
+    _need(operation_id != launch["correlationId"], "persisted_start_requires_new_operation")
+    chosen = launch["observation"]["avds"]["api35"]
+    source = "import os,sys,stat,pathlib,hashlib,json,re,subprocess,time,ctypes,fcntl,signal\n"
+    source += "PROC=pathlib.Path('/proc')\nLAUNCH=" + repr(launch) + "\n"
+    constants = {"OPERATION_ID": operation_id, "ORIGINAL_SOURCE_SHA": original_sha256,
+                 "ORIGINAL_COLD_BOOT": launch["correlationId"],
+                 "ORIGINAL_BOOT": launch["observation"]["bootId"],
+                 "ORIGINAL_GENERATION": literals["GETTER"]["generation"],
+                 "SELECTED_DIRECTORY": chosen["directory"]["path"],
+                 "LOCK_PATHS": {"coldboot": str(Path(literals["ROOT"]) / "android-avd-coldboot-api35.lock"),
+                                "device": str(Path(literals["ROOT"]) / "android-native-device-api35.lock")},
+                 "SELECTED_SDK": sorted(chosen["sdkFiles"]),
+                 "PENDING_BYTES": pending, "MEMORY_BYTES": MEMORY_BYTES,
+                 "HEADROOM_BYTES": HEADROOM_BYTES, "MIN_DISK_BYTES": MIN_DISK_BYTES,
+                 "RESERVATION_AUTHORITY_SHA": hashlib.sha256(_canonical(authority)).hexdigest()}
+    source += "\n".join(name + "=" + repr(value) for name, value in constants.items()) + "\n"
+    source += "REQUIRE_INSTALLER_HOST_GUARD=False\n" + _installer_capsule(installer_guard, original_sha256)
+    source += _interval_storage_source(installer_guard, operation_id, launch, interval_storage)
+    if _interval_storage_required(installer_guard):
+        source += 'INTERVAL_REPORT_CONTEXT=' + repr(copy.deepcopy(interval_storage)) + '\n' + _INTERVAL_REPORT_SHARED
+    source += _allocation_runtime(allocation_coverage, authority, launch["observation"]["bootId"])
+    source += "ORIGINAL_SDK_FACTS=" + repr(chosen["sdkFiles"]) + "\n"
+    capacity_source, _ = _capacity_sources()
+    source += capacity_source + _CAPACITY
+    source += "\n\n".join(functions[name] for name in _READERS) + "\n" + _OBSERVE
+    return source, functions, literals
+
+
+def observation_program(original_source: bytes, original_sha256: str,
+                        operation_id: str, reservation_authority: dict, *, installer_guard=None, allocation_coverage=None, interval_storage=None) -> str:
+    """Render a no-launch root probe; retain complete private measurements."""
+    source, _, _ = _base(original_source, original_sha256, operation_id, reservation_authority, installer_guard, allocation_coverage, interval_storage=interval_storage)
+    source += r'''
+try:
+ result=observations()
+except Exception as error:
+ reason=error.args[0] if type(error)is ValueError and len(error.args)==1 and type(error.args[0])is str and re.fullmatch('[a-z][a-z0-9_]{0,95}',error.args[0]) else 'native_observation_unavailable'
+ result={'schema':1,'kind':'android-persisted-start-native-admission','operationId':OPERATION_ID,'state':'blocked','reason':reason,'failureType':type(error).__name__,'capacityReason':globals().get('LAST_CAPACITY_FAILURE'),'capacityObservation':globals().get('LAST_CAPACITY_OBSERVATION'),'allocationCoverageEvidence':globals().get('LAST_ALLOCATION_EVIDENCE'),'startPerformed':False,'originalOutcomesChanged':False,'replayAllowed':False}
+'''
+    if _interval_storage_required(installer_guard):
+        source += r'''
+if result.get('state')=='blocked':
+ try:
+  projected=interval_references(getattr(_INSTALLER_HOST,'CURRENT_INTERVAL_FAILURES',[]),INTERVAL_REPORT_CONTEXT)
+  if projected:result['currentIntervalFailures']=projected
+ except Exception:
+  result['currentIntervalFailureProjection']='interval_reference_projection_invalid'
+'''
+    source += "print(json.dumps(result,sort_keys=True,separators=(',',':')),flush=True)\n"
+    compile(source, "android-persisted-start-observation", "exec")
+    return source
+
+
+def _launchers(raw: bytes, expected_sha256: str):
+    _need(type(raw) is bytes and 0 < len(raw) <= 2 * 1024 ** 2
+          and hashlib.sha256(raw).hexdigest() == expected_sha256,
+          "persisted_start_coldboot_source_changed")
+    tree = ast.parse(raw)
+    nodes = [node for node in tree.body if isinstance(node, ast.Assign)
+             and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+             and node.targets[0].id == "_BOOT"]
+    _need(len(nodes) == 1, "persisted_start_coldboot_template_changed")
+    template = ast.literal_eval(nodes[0].value)
+    native = ast.parse(template)
+    definitions = {}
+    for name in ("journal_read", "journal_write", *_LAUNCHERS):
+        found = [node for node in native.body if isinstance(node, ast.FunctionDef)
+                 and node.name == name]
+        _need(len(found) == 1 and not found[0].decorator_list,
+              "persisted_start_coldboot_definition_changed")
+        definitions[name] = ast.get_source_segment(template, found[0])
+    return definitions
+
+
+def _decode(raw):
+    def unique(items):
+        result = {}
+        for key, value in items:
+            _need(key not in result, "persisted_start_admission_duplicate_key")
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=unique)
+
+
+def validate_admission(value: dict, operation_id: str, original_sha256: str,
+                       authority: dict, literals: dict, *, allocation_coverage=None) -> dict:
+    """Validate typed measurements; their native collection is the caller's gate."""
+    _need(type(value) is dict and value.get("schema") == 1
+          and value.get("kind") == "android-persisted-start-native-admission"
+          and value.get("operationId") == operation_id
+          and value.get("originalSourceSha256") == original_sha256
+          and value.get("originalColdbootOperationId") == literals["LAUNCH"]["correlationId"]
+          and value.get("reservationAuthoritySha256") == hashlib.sha256(_canonical(authority)).hexdigest()
+          and type(value.get("installerGuardSha256")) is str and _SHA.fullmatch(value["installerGuardSha256"])
+          and type(value.get("installerGuardSourcePins")) is dict and bool(value["installerGuardSourcePins"])
+          and value.get("stopCause") == "off_unknown"
+          and all(value.get(key) is False for key in ("startPerformed", "originalOutcomesChanged", "replayAllowed")),
+          "persisted_start_native_admission_required")
+    contract = _allocation_contract(allocation_coverage, authority, literals["LAUNCH"]["observation"]["bootId"])
+    _need(_canonical(value.get("allocationCoverageContract")) == _canonical(contract), "persisted_start_coverage_admission_changed")
+    rows = value.get("observations")
+    _need(type(rows) is list and len(rows) == 2 and all(type(row) is dict for row in rows),
+          "persisted_start_two_native_observations_required")
+    for row in rows:
+        _need(all(type(row.get(name)) is dict for name in
+                  ("host", "installerHost", "avd", "locks", "sdkFiles", "emulatorFact", "qemuFact", "holderCensus", "resources"))
+              and row["installerHost"].get("state") == "admitted"
+              and type(row["installerHost"].get("stableBinding")) is dict,
+              "persisted_start_positive_visibility_required")
+    stable = lambda row: {key: ({"state": part["state"], "stableBinding": part["stableBinding"]}
+                              if key == "installerHost" else part)
+                          for key, part in row.items() if key != "resources"}
+    _need(stable(rows[0]) == stable(rows[1]), "persisted_start_native_admission_unstable")
+    pending = reservation_bytes(authority)
+    for row in rows:
+        _need(set(row) == {"host", "installerHost", "avd", "locks", "sdkFiles", "emulatorFact", "qemuFact",
+                           "originalAbsence", "holderCensus", "protectedEmulators", "targetActors", "targetPorts", "resources"}
+              and row["host"].get("bootId") == literals["LAUNCH"]["observation"]["bootId"]
+              and row["host"].get("uid") == row["host"].get("gid") == 0
+              and type(row["host"].get("machineSha256")) is str and _SHA.fullmatch(row["host"]["machineSha256"])
+              and row["avd"].get("directory") == literals["LAUNCH"]["observation"]["avds"]["api35"]["directory"]["path"]
+              and type(row["avd"].get("tree")) is dict and bool(row["avd"]["tree"])
+              and row["holderCensus"] == {"complete": True, "holders": [], "unreadableProcessCount": 0}
+              and row["targetActors"] == [] and row["targetPorts"] == [],
+              "persisted_start_positive_visibility_required")
+        _need(type(row["installerHost"]) is dict and row["installerHost"].get("state") == "admitted"
+              and type(row["installerHost"].get("stableBinding")) is dict and bool(row["installerHost"]["stableBinding"])
+              and type(row["installerHost"].get("evidence")) is dict,
+              "persisted_start_installer_host_guard_required")
+        _need(type(row["originalAbsence"]) is list and len(row["originalAbsence"]) == 2,
+              "persisted_start_original_absence_required")
+        for absence, role in zip(row["originalAbsence"], ("child", "guest")):
+            old = literals["GETTER"]["generation"][role]
+            _need(type(absence) is dict and absence == {
+                "role": role, "originalPid": old["pid"], "originalStartTicks": old["startTicks"],
+                "currentStartTicks": absence.get("currentStartTicks"), "originalAbsent": True}
+                and absence["currentStartTicks"] != old["startTicks"],
+                "persisted_start_original_absence_required")
+        resources = row["resources"]
+        _need(type(resources) is dict
+              and resources.get("pendingReservationBytes") == pending
+              and resources.get("requestedMemoryBytes") == MEMORY_BYTES
+              and resources.get("headroomBytes") == HEADROOM_BYTES
+              and resources.get("minDiskBytes") == MIN_DISK_BYTES
+              and type(resources.get("availableMemoryBytes")) is int
+              and resources["availableMemoryBytes"] >= MEMORY_BYTES + HEADROOM_BYTES
+              and type(resources.get("freeDiskBytes")) is int
+              and resources["freeDiskBytes"] >= MIN_DISK_BYTES,
+              "persisted_start_native_capacity_required")
+        native = resources.get("nativeObservation")
+        _need(type(native) is dict and native.get("state") == "OBSERVED"
+              and native.get("measurementAvailability") == "complete"
+              and type(native.get("measurement")) is dict,
+              "persisted_start_native_capacity_visibility")
+        overlap = 0
+        evidence = resources.get("allocationCoverage")
+        if contract is not None:
+            _need(type(evidence) is dict and evidence.get("state") == "qualified"
+                  and _canonical(evidence.get("contract")) == _canonical(contract), "persisted_start_coverage_evidence_required")
+            native_join = _allocation_namespace()
+            overlap = native_join["allocation_overlap"](native, evidence.get("before"), evidence.get("after"), contract)
+            native_join["allocation_records"](evidence.get("bridgeRecords"), evidence["before"], evidence["after"], contract)
+            _need(type(evidence.get("coveredNativeBytes")) is int and evidence["coveredNativeBytes"] == overlap,
+                  "persisted_start_coverage_evidence_changed")
+        else:
+            _need(evidence is None, "persisted_start_coverage_unadmitted")
+        try:
+            wanted_capacity = capacity_plan(native["measurement"], pending, covered_native_bytes=overlap)
+        except ValueError:
+            raise ValueError("persisted_start_native_capacity_required") from None
+        _need(resources.get("canonicalPlan") == wanted_capacity
+              and resources.get("capacitySourcePins") == _capacity_sources()[1]
+              and resources["availableMemoryBytes"] == native["measurement"]["availableMemoryBytes"],
+              "persisted_start_native_capacity_required")
+        _need(type(row["locks"]) is dict and set(row["locks"]) == {"coldboot", "device"},
+              "persisted_start_existing_locks_required")
+        original_avd = literals["LAUNCH"]["observation"]["avds"]["api35"]
+        for role in ("ini", "config"):
+            original = original_avd[role]
+            current = row["avd"].get(role)
+            _need(type(current) is dict and current.get("present") is True
+                  and current.get("hashScope") == "full"
+                  and current.get("sha256") == original["sha256"]
+                  and current.get("text") == original.get("text"),
+                  "persisted_start_original_config_bytes_changed")
+        _need(type(row["sdkFiles"]) is dict and set(row["sdkFiles"]) == set(original_avd["sdkFiles"]),
+              "persisted_start_sdk_scope_changed")
+    return _decode(_canonical(value))
+
+
+_START = r'''
+def scoped_journal_lock(directory,exclusive):
+ if pathlib.Path(directory)!=JOURNAL_DIRECTORY:raise ValueError('persisted_start_journal_scope_changed')
+ fd=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:
+  fcntl.flock(fd,fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+  opened=os.fstat(fd);named=directory.lstat()
+  if fp(opened)!=fp(named) or not stat.S_ISDIR(opened.st_mode) or opened.st_uid!=0 or opened.st_gid!=0 or stat.S_IMODE(opened.st_mode)!=0o700:raise ValueError('persisted_start_journal_changed')
+  return fd
+ except BaseException:os.close(fd);raise
+def journal_read(directory,name):
+ fd=scoped_journal_lock(directory,False)
+ try:return ORIGINAL_JOURNAL_READ(directory,name)
+ finally:os.close(fd)
+def journal_write(directory,name,value):
+ fd=scoped_journal_lock(directory,True)
+ try:return ORIGINAL_JOURNAL_WRITE(directory,name,value)
+ finally:os.close(fd)
+def selected_preflight():
+ current=measured()
+ if stable(current)!=stable(ADMISSION['observations'][-1]):raise ValueError('persisted_start_frozen_metadata_changed')
+ if os.getpid()==LOCK_OWNER_PID:
+  for name,fd,chain,leaf in HELD_LOCKS:
+   guard_parents(chain)
+   if fp(os.fstat(fd))!=ADMISSION['observations'][-1]['locks'][name]['generation'] or fp(os.stat(leaf,dir_fd=chain[-1]['fd'],follow_symlinks=False))!=fp(os.fstat(fd)):raise ValueError('persisted_start_existing_lock_changed')
+ else:
+  # The unchanged supervisor deliberately closes inherited proof/lock FDs.
+  # Authenticate the actual kernel fork relationship and live parent birth;
+  # measured() has independently reopened and checked every exact named pin.
+  if os.getppid()!=LOCK_OWNER_PID or ticks(PROC/str(LOCK_OWNER_PID))!=LOCK_OWNER_BIRTH or os.getsid(0)!=os.getpid():raise ValueError('persisted_start_supervisor_parent_changed')
+ return current['resources']
+def acquire_existing_locks():
+ for name in ('coldboot','device'):
+  path=pathlib.Path(LOCK_PATHS[name]);chain,leaf=parent_fds(path);fd=None
+  try:
+   fd=os.open(leaf,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=chain[-1]['fd'])
+   expected=ADMISSION['observations'][-1]['locks'][name]
+   if fp(os.fstat(fd))!=expected['generation'] or facts(path,4096)!=expected:raise ValueError('persisted_start_existing_lock_changed')
+   fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);guard_parents(chain)
+   HELD_LOCKS.append((name,fd,chain,leaf));fd=None;chain=None
+  finally:
+   if fd is not None:os.close(fd)
+   if chain is not None:close_parents(chain)
+def release_existing_locks():
+ while HELD_LOCKS:
+  _,fd,chain,_=HELD_LOCKS.pop()
+  try:fcntl.flock(fd,fcntl.LOCK_UN)
+  finally:os.close(fd);close_parents(chain)
+def owned_session_actors(child):
+ rows=[];pids=sorted((path for path in PROC.iterdir() if path.name.isdecimal()),key=lambda path:int(path.name))
+ if len(pids)>32768:raise ValueError('persisted_start_session_census_bound')
+ for proc in pids:
+  try:
+   before=ticks(proc);raw=(proc/'stat').read_text()
+   if len(raw)>8192:raise ValueError('persisted_start_session_stat_bound')
+   tail=raw.rsplit(')',1)[1].split()
+   if ticks(proc)!=before:raise ValueError('persisted_start_session_actor_changed')
+   if int(tail[3])==child['pid'] and tail[0]!='Z':rows.append({'pid':int(proc.name),'startTicks':before,'state':tail[0]})
+  except FileNotFoundError:continue
+ return rows
+def run_start():
+ global LOCK_OWNER_PID,LOCK_OWNER_BIRTH
+ LOCK_OWNER_PID=os.getpid();LOCK_OWNER_BIRTH=ticks(PROC/str(LOCK_OWNER_PID))
+ acquire_existing_locks()
+ child=None;waited=None
+ try:
+  selected_preflight()
+  directory=JOURNAL_DIRECTORY
+  directory.mkdir(mode=0o700)
+  journal_write(directory,'intent.json',LAUNCH['intent'])
+  admit_once(directory)
+  submitted=launch_once(directory)
+  if submitted.get('state')!='submitted':raise ValueError('persisted_start_admission_consumed')
+  child=submitted['child']
+  journal_write(directory,'submitted.json',dict(submitted,originalOutcomesChanged=False,stopCause='off_unknown'))
+  ready=journal_read(directory,'ready.json')
+  # Keep the original device locks until a positively bound QEMU actor makes
+  # the ordinary target/disk/port census itself exclude a competing start.
+  while True:
+   pid,status=os.waitpid(child['pid'],os.WNOHANG)
+   if pid:
+    waited=status
+    while owned_session_actors(child):time.sleep(.05)
+    break
+   guest=session_guest(child,ready)
+   if guest is not None:
+    journal_write(directory,'qemu-observed.json',{'schema':1,'correlationId':LAUNCH['correlationId'],'supervisor':child,'guest':guest,'source':CFG['source'],'intentSha256':LAUNCH['intentSha256']})
+    break
+   time.sleep(.05)
+ finally:release_existing_locks()
+ # The durable owner remains alive across caller loss and reaps this exact
+ # unchanged Linux subreaper supervisor. No timeout sends any signal.
+ if waited is None:
+  while True:
+   try:pid,waited=os.waitpid(child['pid'],0);break
+   except InterruptedError:continue
+  if pid!=child['pid']:raise ValueError('persisted_start_wait_identity_changed')
+ remaining=owned_session_actors(child)
+ journal_write(JOURNAL_DIRECTORY,'supervisor-terminal.json',{'schema':1,'correlationId':LAUNCH['correlationId'],'identity':child,'waitStatus':waited,'exitCode':os.waitstatus_to_exitcode(waited),'remainingSessionActors':remaining,'resourcesClosed':not remaining,'source':CFG['source'],'intentSha256':LAUNCH['intentSha256'],'historicalStopCause':'off_unknown','originalOutcomesChanged':False})
+ if os.waitstatus_to_exitcode(waited)!=0 or remaining:raise ValueError('persisted_start_supervisor_terminal_unhealthy')
+'''
+
+
+def start_plan(original_source: bytes, original_sha256: str, operation_id: str,
+               reservation_authority: dict, observation_raw: bytes,
+               observation_sha256: str, *, job_root: str,
+               host_binding: dict, root_generation: list[int],
+               coldboot_source: bytes, durable_source: bytes, installer_guard=None, allocation_coverage=None) -> dict:
+    """Seal one program for the existing durable owner; do not submit it here."""
+    _need(installer_guard is not None, "persisted_start_installer_host_guard_required")
+    interval_storage = _interval_storage_plan(installer_guard, operation_id, job_root, root_generation, host_binding)
+    base, _, literals = _base(original_source, original_sha256, operation_id, reservation_authority, installer_guard, allocation_coverage, interval_storage=interval_storage)
+    _need(type(observation_raw) is bytes and 0 < len(observation_raw) <= 8 * 1024 ** 2
+          and hashlib.sha256(observation_raw).hexdigest() == observation_sha256,
+          "persisted_start_observation_changed")
+    admission = validate_admission(_decode(observation_raw), operation_id, original_sha256,
+                                   reservation_authority, literals, allocation_coverage=allocation_coverage)
+    _need(admission["installerGuardSha256"] == installer_guard["sha256"]
+          and admission["installerGuardSourcePins"] == installer_guard["sourcePins"],
+          "persisted_start_installer_capsule_changed")
+    _need(type(job_root) is str and Path(job_root).is_absolute() and ".." not in Path(job_root).parts
+          and not Path(job_root).is_relative_to(Path(literals["ROOT"]))
+          and type(root_generation) is list and len(root_generation) == 2
+          and all(type(value) is int and value > 0 for value in root_generation),
+          "persisted_start_external_job_root_required")
+    host = admission["observations"][-1]["host"]
+    _need(type(host_binding) is dict and set(host_binding) == {"target", "machine", "boot", "account"}
+          and host_binding["boot"] == host["bootId"] and host_binding["machine"] == host["machineSha256"]
+          and host_binding["account"] == "0", "persisted_start_durable_host_binding_changed")
+    pinned = literals["LAUNCH"]["intent"]["source"]["agent_tools/android_avd_coldboot.py"]
+    launchers = _launchers(coldboot_source, pinned)
+    _need(type(durable_source) is bytes and 0 < len(durable_source) <= 1024 ** 2,
+          "persisted_start_durable_source_invalid")
+    own_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    source_pins = dict(literals["LAUNCH"]["intent"]["source"])
+    source_pins.update({"agent_tools/android_persisted_start.py": own_sha,
+                        "agent_tools/durable_remote_job.py": hashlib.sha256(durable_source).hexdigest()})
+    launch = copy.deepcopy(literals["LAUNCH"])
+    intent = {"schema": 1, "kind": "android-same-persisted-administrative-start",
+              "correlationId": operation_id, "device": launch["device"],
+              "source": source_pins, "reservation": launch["intent"]["reservation"],
+              "originalColdbootOperationId": launch["correlationId"],
+              "originalSourceSha256": original_sha256, "admissionSha256": observation_sha256,
+              "reservationAuthoritySha256": admission["reservationAuthoritySha256"],
+              "allocationCoverageContract": admission.get("allocationCoverageContract"),
+              "argv": launch["argv"], "environment": launch["environment"],
+              "historicalUnknownsPreserved": True, "historicalStopCause": "off_unknown"}
+    launch.update(correlationId=operation_id, action="launch", intent=intent,
+                  intentSha256=hashlib.sha256(_canonical(intent)).hexdigest(),
+                  emulatorGeneration=admission["observations"][-1]["emulatorFact"]["generation"],
+                  adbFacts=admission["observations"][-1]["sdkFiles"][launch["adbPath"]])
+    journal = Path(job_root) / operation_id / "coldboot"
+    source = base + "\nREQUIRE_INSTALLER_HOST_GUARD=True\nLAUNCH=" + repr(launch) + "\nCFG=" + repr({"source": source_pins}) + "\n"
+    source += "ADMISSION=" + repr(admission) + "\nJOURNAL_DIRECTORY=pathlib.Path(" + repr(str(journal)) + ")\nHELD_LOCKS=[]\n"
+    source += "\n\n".join(launchers.values()) + "\nORIGINAL_JOURNAL_READ=journal_read\nORIGINAL_JOURNAL_WRITE=journal_write\n" + _START
+    source += "\nimport types\n_D=types.ModuleType('persisted_start_durable_snapshot');sys.modules[_D.__name__]=_D\n"
+    source += "exec(compile(" + repr(durable_source) + ",'persisted-start-durable-snapshot','exec'),_D.__dict__)\n"
+    source += "_binding=_D.MachineBinding.from_dict(" + repr(host_binding) + ")\n"
+    source += "_D._binding_live(_binding)\n_D._root(" + repr(job_root) + "," + repr(tuple(root_generation)) + ")\n"
+    source += "_intent=_D._intent(pathlib.Path(" + repr(str(Path(job_root) / operation_id)) + ")," + repr(operation_id) + ",_binding)\nrun_start()\n"
+    compile(source, "android-persisted-start-owner", "exec")
+    return {"schema": 1, "kind": "android-persisted-start-sealed-plan",
+            "operationId": operation_id, "program": source.encode(),
+            "programSha256": hashlib.sha256(source.encode()).hexdigest(),
+            "launch": launch, "journalDirectory": str(journal),
+            "admissionSha256": observation_sha256, "coldbootSourceSha256": pinned,
+            "adapterSourceSha256": own_sha, "durableSourceSha256": hashlib.sha256(durable_source).hexdigest(),
+            "reservationAuthoritySha256": admission["reservationAuthoritySha256"],
+            "installerGuardSha256": admission["installerGuardSha256"],
+            "installerGuardSourcePins": admission["installerGuardSourcePins"],
+            "allocationCoverageContract": admission.get("allocationCoverageContract"),
+            "originalSourceSha256": original_sha256, "stopCause": "off_unknown",
+            "submitted": False, "originalOutcomesChanged": False, "replayAllowed": False}
+
+
+def status_program(original_source: bytes, original_sha256: str,
+                   plan: dict, coldboot_source: bytes) -> str:
+    """Observe the original new owner via the unchanged coldboot journal ABI."""
+    functions, literals = _source(original_source, original_sha256)
+    _need(type(plan) is dict and plan.get("kind") == "android-persisted-start-sealed-plan"
+          and plan.get("originalSourceSha256") == original_sha256
+          and plan.get("operationId") == plan.get("launch", {}).get("correlationId"),
+          "persisted_start_original_plan_required")
+    pinned = literals["LAUNCH"]["intent"]["source"]["agent_tools/android_avd_coldboot.py"]
+    launchers = _launchers(coldboot_source, pinned)
+    source = "import os,sys,stat,pathlib,hashlib,json,re,subprocess,time,ctypes,fcntl,signal\nPROC=pathlib.Path('/proc')\n"
+    source += "LAUNCH=" + repr(plan["launch"]) + "\n"
+    source += "\n\n".join(functions[name] for name in _READERS)
+    source += "\n" + launchers["journal_read"] + "\n"
+    source += "print(json.dumps(original_status(pathlib.Path(" + repr(plan["journalDirectory"]) + ")),sort_keys=True,separators=(',',':')),flush=True)\n"
+    compile(source, "android-persisted-start-original-status", "exec")
+    return source
+
+
+_INTERVAL_REPORT_SHARED = r'''
+INTERVAL_REPORT_FILE_MAX=8*1024**2
+INTERVAL_REPORT_TOTAL_MAX=24*1024**2
+INTERVAL_REPORT_SLICE_MAX=4*1024**2
+INTERVAL_REPORT_COUNT_MAX=32
+INTERVAL_REPORT_HEADERS={'scannerSourceSha256':'779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f','validatorSourceSha256':'2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1','parentCapsuleSha256':'3a07a3ce506b4be93faeb1bd3bb291d3c31bd93fb914cdcf33617bdc4eff5429'}
+def interval_need(value,reason):
+ if not value:raise ValueError(reason)
+def interval_context(value):
+ fields={'schema','operationId','root','rootGeneration','hostBootId','machineSha256','account'}
+ interval_need(type(value)is dict and set(value)==fields,'interval_collection_context_invalid')
+ interval_need(type(value['schema'])is int and value['schema']==1 and type(value['operationId'])is str and re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',value['operationId']) and type(value['root'])is str and value['root']=='/var/tmp/vc-android-persisted-'+value['operationId'] and type(value['rootGeneration'])is list and len(value['rootGeneration'])==2 and all(type(v)is int and v>0 for v in value['rootGeneration']) and type(value['hostBootId'])is str and re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',value['hostBootId']) and type(value['machineSha256'])is str and re.fullmatch('[0-9a-f]{64}',value['machineSha256']) and type(value['account'])is str and value['account']=='0','interval_collection_context_invalid')
+ return value
+def interval_reference(value,context):
+ interval_context(context)
+ fields={'schema','kind','operationId','recordId','guardInvocationId','attempt','root','rootGeneration','directoryIdentity','path','generation','bytes','sha256','retryable','unknownInterval'}
+ interval_need(type(value)is dict and set(value)==fields,'interval_reference_invalid')
+ interval_need(type(value['schema'])is int and value['schema']==1 and value['kind']=='android-current1e15-unknown-interval-reference' and value['operationId']==context['operationId'] and type(value['recordId'])is str and re.fullmatch('[0-9a-f]{32}',value['recordId']) and type(value['guardInvocationId'])is str and re.fullmatch('[0-9a-f]{32}',value['guardInvocationId']) and type(value['attempt'])is int and 0<=value['attempt']<=2 and value['root']==context['root'] and value['rootGeneration']==context['rootGeneration'] and type(value['rootGeneration'])is list and type(value['directoryIdentity'])is list and len(value['directoryIdentity'])==5 and all(type(v)is int and v>=0 for v in value['directoryIdentity']) and min(value['directoryIdentity'][:2])>0 and value['directoryIdentity'][2:]==[16832,0,0] and value['path']==context['root']+'/current-intervals/interval-'+value['recordId']+'.json','interval_reference_binding_invalid')
+ generation=value['generation']
+ interval_need(type(generation)is list and len(generation)==9 and all(type(v)is int and v>=0 for v in generation) and min(generation[:2]+generation[7:])>0 and generation[2:6]==[33152,0,0,1] and type(value['bytes'])is int and 0<value['bytes']<=INTERVAL_REPORT_FILE_MAX and generation[6]==value['bytes'] and type(value['sha256'])is str and re.fullmatch('[0-9a-f]{64}',value['sha256']) and type(value['retryable'])is bool and value['unknownInterval']is True,'interval_reference_pin_invalid')
+ return value
+def interval_references(values,context):
+ interval_need(type(values)is list and len(values)<=INTERVAL_REPORT_COUNT_MAX,'interval_reference_count_invalid')
+ seen=set();total=0
+ for value in values:
+  interval_reference(value,context)
+  interval_need(value['recordId']not in seen,'interval_reference_duplicate')
+  seen.add(value['recordId']);total+=value['bytes']
+ interval_need(total<=INTERVAL_REPORT_TOTAL_MAX,'interval_reference_aggregate_invalid')
+ return values
+def interval_catalog(value,context):
+ fields={'schema','kind','state','operationId','context','directoryIdentity','references','aggregateBytes','complete','readOnly','replayAllowed'}
+ interval_need(type(value)is dict and set(value)==fields and type(value['schema'])is int and value['schema']==1 and value['kind']=='android-current1e15-report-catalog' and value['state']in('observed','absent') and value['operationId']==context['operationId'] and value['context']==context and value['complete']is True and value['readOnly']is True and value['replayAllowed']is False,'interval_catalog_invalid')
+ rows=interval_references(value['references'],context)
+ interval_need(type(value['aggregateBytes'])is int and value['aggregateBytes']==sum(v['bytes']for v in rows),'interval_catalog_aggregate_invalid')
+ if value['state']=='absent':interval_need(not rows and value['directoryIdentity']is None,'interval_catalog_absence_invalid')
+ else:
+  identity=value['directoryIdentity'];interval_need(type(identity)is list and len(identity)==5 and all(type(v)is int and v>=0 for v in identity) and min(identity[:2])>0 and identity[2:]==[16832,0,0] and all(v['directoryIdentity']==identity for v in rows),'interval_catalog_directory_invalid')
+ return value
+'''
+
+
+_INTERVAL_REPORT_READER = r'''
+INTERVAL_REPORT_DEADLINE=time.monotonic()+20
+def interval_deadline():
+ interval_need(time.monotonic()<=INTERVAL_REPORT_DEADLINE,'interval_collection_deadline')
+def interval_unique(rows):
+ result={}
+ for key,value in rows:
+  interval_need(key not in result,'interval_collection_duplicate_json_key');result[key]=value
+ return result
+def interval_pin(info):
+ return [info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns]
+def interval_fixed(path,limit):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  before=interval_pin(os.fstat(fd));interval_need(stat.S_ISREG(before[2]) and before[5]==1 and before[6]<=limit,'interval_host_file_invalid')
+  raw=os.read(fd,limit+1)
+  interval_need(0<len(raw)<=limit and (before[6]==0 or len(raw)==before[6]) and interval_pin(os.fstat(fd))==before and interval_pin(os.stat(path,follow_symlinks=False))==before,'interval_host_file_changed')
+  return raw
+ finally:os.close(fd)
+def interval_host_guard():
+ interval_deadline()
+ c=INTERVAL_REPORT_CONTEXT
+ interval_need(os.getuid()==os.geteuid()==os.getgid()==os.getegid()==0,'interval_collection_account_changed')
+ interval_need(interval_fixed('/proc/sys/kernel/random/boot_id',256).decode().strip()==c['hostBootId'] and hashlib.sha256(interval_fixed('/etc/machine-id',256)).hexdigest()==c['machineSha256'],'interval_collection_host_changed')
+def interval_chain_guard(chain):
+ for path,fd,identity in chain:
+  interval_need(interval_pin(os.fstat(fd))[:5]==identity and interval_pin(os.stat(path,follow_symlinks=False))[:5]==identity,'interval_collection_parent_changed')
+ interval_need(chain[-1][2]==INTERVAL_REPORT_CONTEXT['rootGeneration']+[16832,0,0],'interval_collection_root_changed')
+ interval_host_guard()
+def interval_open_root():
+ interval_context(INTERVAL_REPORT_CONTEXT);interval_host_guard();chain=[]
+ try:
+  fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);chain.append(('/',fd,interval_pin(os.fstat(fd))[:5]));current=''
+  for name in pathlib.PurePosixPath(INTERVAL_REPORT_CONTEXT['root']).parts[1:]:
+   current+='/'+name;fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=chain[-1][1]);identity=interval_pin(os.fstat(fd))[:5];chain.append((current,fd,identity))
+   interval_need(identity[3:]==[0,0] and stat.S_ISDIR(identity[2]) and (not identity[2]&18 or identity[2]&stat.S_ISVTX),'interval_collection_parent_unsafe')
+  interval_chain_guard(chain);return chain
+ except BaseException:
+  for unused,fd,unused2 in reversed(chain):os.close(fd)
+  raise
+def interval_read_report(directory,name,identity):
+ interval_need(re.fullmatch('interval-[0-9a-f]{32}\.json',name),'interval_collection_foreign_name')
+ fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+ try:
+  generation=interval_pin(os.fstat(fd));interval_need(generation[2:6]==[33152,0,0,1] and 0<generation[6]<=INTERVAL_REPORT_FILE_MAX,'interval_collection_file_bound_or_principal')
+  data=bytearray()
+  while len(data)<=generation[6]:
+   interval_deadline()
+   part=os.read(fd,min(65536,generation[6]+1-len(data)))
+   if not part:break
+   data.extend(part)
+  raw=bytes(data)
+  interval_need(len(raw)==generation[6] and interval_pin(os.fstat(fd))==generation and interval_pin(os.stat(name,dir_fd=directory,follow_symlinks=False))==generation,'interval_collection_report_changed')
+  document=json.loads(raw,object_pairs_hook=interval_unique)
+  interval_need(type(document)is dict and type(document.get('schema'))is int and document['schema']==1 and document.get('kind')=='android-current1e15-unknown-interval' and document.get('operationId')==INTERVAL_REPORT_CONTEXT['operationId'] and document.get('recordId')==name[9:-5] and type(document.get('guardInvocationId'))is str and re.fullmatch('[0-9a-f]{32}',document['guardInvocationId']) and type(document.get('attempt'))is int and 0<=document['attempt']<=2 and type(document.get('retryable'))is bool and document.get('unknownInterval')is True and document.get('outcomesChanged')is False and document.get('nativeAction')is False and all(document.get(key)==expected for key,expected in INTERVAL_REPORT_HEADERS.items()),'interval_collection_foreign_report')
+  ref={'schema':1,'kind':'android-current1e15-unknown-interval-reference','operationId':document['operationId'],'recordId':document['recordId'],'guardInvocationId':document['guardInvocationId'],'attempt':document['attempt'],'root':INTERVAL_REPORT_CONTEXT['root'],'rootGeneration':INTERVAL_REPORT_CONTEXT['rootGeneration'],'directoryIdentity':identity,'path':INTERVAL_REPORT_CONTEXT['root']+'/current-intervals/'+name,'generation':generation,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'retryable':document['retryable'],'unknownInterval':True}
+  interval_reference(ref,INTERVAL_REPORT_CONTEXT);return ref,raw
+ finally:os.close(fd)
+def interval_read_catalog():
+ chain=interval_open_root();directory=None
+ try:
+  try:directory=os.open('current-intervals',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=chain[-1][1])
+  except FileNotFoundError:
+   interval_chain_guard(chain)
+   try:os.stat('current-intervals',dir_fd=chain[-1][1],follow_symlinks=False)
+   except FileNotFoundError:return None,[],{}
+   raise ValueError('interval_collection_directory_changed')
+  full_identity=interval_pin(os.fstat(directory));identity=full_identity[:5]
+  interval_need(identity[2:]==[16832,0,0],'interval_collection_directory_unsafe')
+  names=sorted(os.listdir(directory));interval_need(len(names)<=INTERVAL_REPORT_COUNT_MAX,'interval_collection_report_count')
+  total=0
+  for name in names:
+   interval_need(re.fullmatch('interval-[0-9a-f]{32}\.json',name),'interval_collection_foreign_name')
+   info=os.stat(name,dir_fd=directory,follow_symlinks=False);interval_need(0<info.st_size<=INTERVAL_REPORT_FILE_MAX,'interval_collection_file_bound_or_principal');total+=info.st_size
+  interval_need(total<=INTERVAL_REPORT_TOTAL_MAX,'interval_collection_aggregate_bound')
+  refs=[];raws={}
+  for name in names:
+   reference,raw=interval_read_report(directory,name,identity);refs.append(reference);raws[reference['recordId']]=raw
+  interval_references(refs,INTERVAL_REPORT_CONTEXT);interval_chain_guard(chain)
+  interval_need(sorted(os.listdir(directory))==names and interval_pin(os.fstat(directory))==full_identity and interval_pin(os.stat('current-intervals',dir_fd=chain[-1][1],follow_symlinks=False))==full_identity,'interval_collection_directory_changed')
+  return identity,refs,raws
+ finally:
+  if directory is not None:os.close(directory)
+  for unused,fd,unused2 in reversed(chain):os.close(fd)
+def interval_report_main():
+ request=INTERVAL_REPORT_REQUEST
+ interval_need(type(request)is dict and request.get('action')in('discover','slice'),'interval_collection_request_invalid')
+ if request['action']=='discover':interval_need(set(request)=={'action'},'interval_collection_request_invalid')
+ else:
+  interval_need(set(request)=={'action','slices'} and type(request['slices'])is list and 1<=len(request['slices'])<=INTERVAL_REPORT_COUNT_MAX,'interval_collection_request_invalid')
+  total=0;seen=set()
+  for item in request['slices']:
+   interval_need(type(item)is dict and set(item)=={'reference','offset','length'},'interval_collection_slice_invalid');ref=interval_reference(item['reference'],INTERVAL_REPORT_CONTEXT)
+   interval_need(type(item['offset'])is int and type(item['length'])is int and 0<=item['offset']<ref['bytes'] and 0<item['length']<=INTERVAL_REPORT_SLICE_MAX and item['offset']+item['length']<=ref['bytes'] and ref['recordId']not in seen,'interval_collection_slice_invalid');seen.add(ref['recordId']);total+=item['length']
+  interval_need(total<=INTERVAL_REPORT_SLICE_MAX,'interval_collection_slice_bound')
+ identity,refs,raws=interval_read_catalog()
+ if request['action']=='discover':
+  result={'schema':1,'kind':'android-current1e15-report-catalog','state':'absent'if identity is None else'observed','operationId':INTERVAL_REPORT_CONTEXT['operationId'],'context':INTERVAL_REPORT_CONTEXT,'directoryIdentity':identity,'references':refs,'aggregateBytes':sum(ref['bytes']for ref in refs),'complete':True,'readOnly':True,'replayAllowed':False};interval_catalog(result,INTERVAL_REPORT_CONTEXT);return result
+ indexed={ref['recordId']:ref for ref in refs};parts=[]
+ for item in request['slices']:
+  ref=item['reference'];interval_need(indexed.get(ref['recordId'])==ref,'interval_collection_requested_pin_changed');data=raws[ref['recordId']][item['offset']:item['offset']+item['length']]
+  parts.append({'reference':ref,'offset':item['offset'],'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'dataBase64':base64.b64encode(data).decode()})
+ return {'schema':1,'kind':'android-current1e15-report-slices','operationId':INTERVAL_REPORT_CONTEXT['operationId'],'context':INTERVAL_REPORT_CONTEXT,'parts':parts,'aggregateBytes':sum(part['bytes']for part in parts),'complete':True,'readOnly':True,'replayAllowed':False}
+try:INTERVAL_REPORT_RESULT=interval_report_main()
+except Exception as error:
+ reason=error.args[0]if type(error)is ValueError and len(error.args)==1 and type(error.args[0])is str and re.fullmatch('[a-z][a-z0-9_]{0,95}',error.args[0])else'interval_collection_read_failed'
+ INTERVAL_REPORT_RESULT={'schema':1,'kind':'android-current1e15-report-read-unknown','operationId':INTERVAL_REPORT_CONTEXT['operationId'],'context':INTERVAL_REPORT_CONTEXT,'state':'unknown','reason':reason,'failureType':type(error).__name__,'complete':False,'readOnly':True,'replayAllowed':False}
+print(json.dumps(INTERVAL_REPORT_RESULT,sort_keys=True,separators=(',',':')),flush=True)
+'''
+
+
+def _interval_report_namespace():
+    namespace = {'re': re}
+    exec(compile(_INTERVAL_REPORT_SHARED, '<closed-interval-report-validator>', 'exec'), namespace)
+    return namespace
+
+
+def interval_report_program(interval_storage, request):
+    """Render only original report discovery/slices under the prepared root."""
+    namespace = _interval_report_namespace()
+    namespace['interval_context'](interval_storage)
+    _need(type(request) is dict and len(_canonical(request)) <= 128 * 1024,
+          'interval_collection_request_invalid')
+    source = 'import os,stat,pathlib,json,hashlib,re,base64,time\n'
+    source += 'INTERVAL_REPORT_CONTEXT=' + repr(copy.deepcopy(interval_storage)) + '\n'
+    source += 'INTERVAL_REPORT_REQUEST=' + repr(copy.deepcopy(request)) + '\n'
+    source += _INTERVAL_REPORT_SHARED + _INTERVAL_REPORT_READER
+    compile(source, '<closed-original-interval-report-reader>', 'exec')
+    return source
+
+
+def validate_interval_report_catalog(value, interval_storage):
+    return copy.deepcopy(_interval_report_namespace()['interval_catalog'](value, interval_storage))
+
+
+def validate_interval_report_slices(value, interval_storage, requested):
+    namespace = _interval_report_namespace()
+    namespace['interval_context'](interval_storage)
+    fields = {'schema', 'kind', 'operationId', 'context', 'parts', 'aggregateBytes', 'complete', 'readOnly', 'replayAllowed'}
+    _need(type(value) is dict and set(value) == fields and type(value['schema']) is int and value['schema'] == 1 and
+          value['kind'] == 'android-current1e15-report-slices' and value['operationId'] == interval_storage['operationId'] and
+          value['context'] == interval_storage and value['complete'] is True and value['readOnly'] is True and
+          value['replayAllowed'] is False and type(value['parts']) is list and len(value['parts']) == len(requested),
+          'interval_collection_slices_invalid')
+    parts = []
+    for item, expected in zip(value['parts'], requested):
+        _need(type(item) is dict and set(item) == {'reference', 'offset', 'bytes', 'sha256', 'dataBase64'} and
+              item['reference'] == expected['reference'] and type(item['offset']) is int and item['offset'] == expected['offset'] and
+              type(item['bytes']) is int and item['bytes'] == expected['length'] and type(item['dataBase64']) is str,
+              'interval_collection_slice_changed')
+        namespace['interval_reference'](item['reference'], interval_storage)
+        raw = base64.b64decode(item['dataBase64'], validate=True)
+        _need(len(raw) == item['bytes'] and hashlib.sha256(raw).hexdigest() == item['sha256'], 'interval_collection_slice_changed')
+        parts.append((item['reference'], item['offset'], raw))
+    _need(type(value['aggregateBytes']) is int and value['aggregateBytes'] == sum(len(raw) for _, _, raw in parts) and
+          0 < value['aggregateBytes'] <= 4 * 1024 ** 2, 'interval_collection_slice_bound')
+    return parts

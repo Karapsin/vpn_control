@@ -1,0 +1,63 @@
+from pathlib import Path
+from contextlib import closing
+from dataclasses import asdict
+import hashlib,json,os,sys,time
+ROOT=Path('/Users/karapsin_de/projects/vpn_control_tool_recovery');sys.path.insert(0,str(ROOT))
+from agent_tools import readiness,readiness_windows as windows,readiness_fixture_registry as registry,readiness_windows_guest as session_module
+from agent_tools.native_review_source_closure import _Held
+OUT=Path(__file__).parent;OP='4e64ac8c-5903-4856-9266-f18f65734e29';BASE=OUT.parent
+REVIEW=BASE/'raw62-secure-d546cbd2-b89a-410f-8154-0910ede3befb/custody-review.json'
+def save(name,value):windows._save(OUT/name,value)
+def plain(value):
+ if isinstance(value,dict):return {k:plain(v)for k,v in value.items()}
+ if isinstance(value,(tuple,list,set,frozenset)):return [plain(v)for v in value]
+ return value
+with closing(_Held())as held:
+ reviewed=held.read(str(REVIEW),'fd7ddf9ccc56599e1abd7db7e0a1b6c2b05ead24f6bb49e6e9b3769b2321db44',max_bytes=1048576);review=json.loads(reviewed)
+ original_pin=review['originalIntentPin'];original=json.loads(held.read(review['originalIntentPath'],original_pin['sha256'],tuple(original_pin['generation']),max_bytes=1048576))
+ sources=json.loads((BASE/'postmark46-coverage-0e03fa6a-0053-43c7-8efe-52bb26f2bb76/source-before.json').read_text())
+ for path,pin in sources.items():held.read(path,pin['sha256'],tuple(pin['generation'])if 'generation'in pin else None,max_bytes=1048576)
+ held.read(str(Path(__file__)),hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),max_bytes=1048576)
+ binding={'provider':'raw-qemu-windows','spec':original['spec'],'setup':original['setup'],'context':original['context'],'uri':None,'domain':None,'xmlSha256':None}
+ expected_sid=review['recipient']['ordinaryUser']['sid']
+ def guard():
+  held.finish();held.final_identity_pass()
+  if windows._source_pins()!=review['sourcePins']:raise ValueError('fresh_readiness_sources_changed')
+  if registry._json(Path(review['originalIntentPath']))[1]!=original_pin:raise ValueError('fresh_readiness_original_changed')
+ class LoggedBackend(windows.WindowsBackend):
+  def _run(self,mode,operation,deadline,**options):
+   save('phase-'+operation+'-'+mode+'.intent.json',{'operationId':operation,'mode':mode,'pid':os.getpid(),'privateInput':False,'powerEffect':False})
+   print(json.dumps({'phase':'accepted-finite-native-phase','operationId':operation,'mode':mode,'controllerPid':os.getpid()}),flush=True)
+   return super()._run(mode,operation,deadline,**options)
+ backend=LoggedBackend(ROOT,binding,expected_sid,capabilities=frozenset(),guard=guard,lease_root_generation=None,credential_file=None)
+ save('dispatch.intent.json',{'operationId':OP,'purpose':'direct-canonical-pointer-motion-wake-only','controllerPid':os.getpid(),'publishedRecoveries':[],'privateInput':False,'powerEffect':False,'oldFixturesUnchanged':True})
+ guard();print(json.dumps({'phase':'accepted-direct-wake-controller','operationId':OP,'pid':os.getpid(),'out':str(OUT),'sourceCount':len(sources)}),flush=True)
+ try:
+  deadline=time.monotonic()+240
+  before=backend.observe(readiness.Requirements(frozenset({'transport','guest','guest_agent','ordinary_session','interactive_desktop'})),deadline)
+  save('before-observation.private.json',plain(asdict(before)));save('before-facts.private.json',backend.last_facts)
+  session_authority=session_module.validate_session(backend.last_facts['sessionFacts'],expected_sid,binding['setup']['user'],backend.machine)
+  save('before-session-authority.private.json',session_authority)
+  known=(before.transport=='ready'and before.guest=='running'and before.guest_agent is True and before.ordinary_session=='ready'and before.owned and before.trusted and before.integrity and session_authority['ordinary_session']=='ready'and not session_authority['competingSessions'])
+  if not known:raise ValueError('direct_wake_current_recipient_not_ready')
+  submitted=False;recovery_id=None
+  if before.display=='ready':
+   state='already-awake-no-input-submitted'
+   after=before
+  elif before.display=='sleeping':
+   expected=backend.last_facts
+   recovery_id=hashlib.sha256(json.dumps({'action':'wake_display','operationId':OP,'machine':backend.machine,'actor':expected['actor'],'hostBoot':expected['hostBoot'],'controlConnection':expected['controlConnection'],'sessionFacts':expected['sessionFacts']},sort_keys=True).encode()).hexdigest()
+   save('wake.intent.json',{'operationId':OP,'recoveryId':recovery_id,'binding':binding,'expected':expected,'publishedRecoveries':[],'inputKind':'canonicalquery-mice-onepointermotion','privateInput':False,'powerEffect':False,'replayAllowed':False})
+   guard()
+   value,_=backend._run('wake_display',OP,deadline,expected=expected,recovery_id=recovery_id)
+   save('wake.result.private.json',value)
+   if value.get('state')!='submitted'or value.get('wakeInputSubmitted')is not True:raise ValueError('direct_wake_original_outcome_unresolved')
+   submitted=True
+   after=backend.observe(readiness.Requirements(frozenset({'transport','guest','guest_agent','ordinary_session','interactive_desktop'})),deadline)
+   save('after-observation.private.json',plain(asdict(after)));save('after-facts.private.json',backend.last_facts)
+   if after.machine!=before.machine or after.boot!=before.boot or after.account!=before.account or after.session!=before.session or after.display!='ready':raise ValueError('direct_wake_after_observation_not_qualified')
+   state='direct-canonical-pointer-wake-positive'
+  else:raise ValueError('direct_wake_display_unrecognized')
+  guard();save('closing.json',{'operationId':OP,'state':state,'sourceClosing':True,'sourceCount':len(sources),'publishedRecoveries':[],'beforeDisplay':before.display,'afterDisplay':after.display,'ordinarySession':after.ordinary_session,'wakeSubmitted':submitted,'recoveryId':recovery_id,'privateInput':False,'powerEffect':False,'enrollmentEffect':False,'oldFixturesUnchanged':True})
+  print(json.dumps({'operationId':OP,'state':state,'beforeDisplay':before.display,'afterDisplay':after.display,'ordinarySession':after.ordinary_session,'out':str(OUT)}),flush=True)
+ finally:backend.close()

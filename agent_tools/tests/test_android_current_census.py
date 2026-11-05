@@ -1,0 +1,340 @@
+"""Exercise actual historical readers and current draining on owned /proc files."""
+import ast
+import base64
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import tempfile
+import types
+import unittest
+from unittest import mock
+
+from agent_tools import android_component_successor as successor
+from agent_tools.tests import test_android_installer_host_preflight as host_fixture
+
+FIXTURES = Path(__file__).parent / "fixtures/android_current_census"
+PROCESS_SHA = "26df14113106aae8a76fed795e1d562726f1b43e9be8763c736315fac350e28e"
+BEFORE_SHA = "e661cacfa9c3d50b9ac7d78d2da1bd9609dee38ef2a577850485afaf333e6d54"
+BOOT = "00000000-0000-4000-8000-000000000001"
+
+
+def held(name):
+    raw = (FIXTURES / name).read_bytes()
+    provenance = json.loads((FIXTURES / "provenance.json").read_bytes())
+    expected = provenance["files"][name]
+    if len(raw) != expected["bytes"] or hashlib.sha256(raw).hexdigest() != expected["sha256"]:
+        raise ValueError("current-census-authentic-fixture-changed")
+    return raw
+
+
+def pin(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+class CurrentCensusTests(unittest.TestCase):
+    def renderer(self, *, before=False):
+        distinct_before = os.environ.get("VPN_CONTROL_CURRENT_CENSUS_DISTINCT_BEFORE") == "1"
+        budget_before = os.environ.get("VPN_CONTROL_CURRENT_CENSUS_BUDGET_BEFORE") == "1"
+        name = ("successor.whole-before.source" if before else
+                "successor.before-distinct-source.source" if distinct_before else
+                "successor.before-closing-budget.source" if budget_before else None)
+        source_path = FIXTURES / name if name else Path(successor.__file__)
+        raw = held(name) if name else source_path.read_bytes()
+        if before:
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), BEFORE_SHA)
+        original, proof_sha = host_fixture.InstallerHostPreflightTests().fixture()
+        tree = ast.parse(original)
+        binding = {key: base64.b64encode(value).decode() for key, value in
+                   (("expectedRootArgvBase64", b"python\0owned-protected-worker\0"),
+                    ("expectedSudoArgvBase64", b"sudo\0owned-protected-worker\0"))}
+        for node in tree.body:
+            if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id in ("EFFECT_PLANE_FIXED", "CURRENT1E15_EFFECT_PLANE_FIXED")):
+                value = ast.literal_eval(node.value)
+                current = node.targets[0].id == "CURRENT1E15_EFFECT_PLANE_FIXED"
+                value.update(binding=binding,
+                             processSource=held("process-current1e15.before.source" if current else "process.before.source").decode(),
+                             validatorSource=held("validator-current1e15.original.source" if current else "validator.original.source").decode())
+                node.value = ast.parse(repr(value), mode="eval").body
+        ast.fix_missing_locations(tree)
+        original = (ast.unparse(tree) + "\n").encode()
+        source_tree = ast.parse(raw)
+        count = 0
+        for node in ast.walk(source_tree):
+            if isinstance(node, ast.Constant) and node.value == "93ff56ef99d2496aef690ea1ae44e0e7ff4136386e6718fa81e8f0ff21e2e6ed":
+                node.value = proof_sha
+                count += 1
+        self.assertEqual(count, 2)
+        ast.fix_missing_locations(source_tree)
+        scope = {"__name__": "owned_actual_current_census_factory", "__file__": str(source_path)}
+        exec(compile(source_tree, "owned-actual-current-census-factory", "exec"), scope)
+        name = "installer_host_preflight_capsule" if before else "installer_current_host_preflight_capsule"
+        capsule = scope[name](original, hashlib.sha256(original).hexdigest())
+        namespace = {"__name__": "owned_actual_current_census_capsule"}
+        exec(compile(capsule["source"], "owned-actual-current-census-capsule", "exec"), namespace)
+        return capsule, namespace, binding
+
+    def process(self, root, pid, command=b"ordinary\0", *, uid=1000):
+        path = root / str(pid)
+        path.mkdir()
+        (path / "cmdline").write_bytes(command)
+        (path / "status").write_bytes(f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}\nGid:\t{uid}\t{uid}\t{uid}\t{uid}\n".encode())
+        (path / "stat").write_bytes(f"{pid} (owned-process) S 1 {'0 ' * 17}{pid + 100}\n".encode())
+        return path
+
+    def control(self, root, *, before=False, closing=None, open_fault=None):
+        capsule, generated, binding = self.renderer(before=before)
+        boot = root / "sys/kernel/random"
+        boot.mkdir(parents=True)
+        (boot / "boot_id").write_text(BOOT + "\n")
+        self.process(root, 501)
+        proxy = types.SimpleNamespace(**{name: getattr(os, name) for name in dir(os)})
+        calls = [0]
+        def listdir(path):
+            if Path(path) == root:
+                calls[0] += 1
+                if closing is not None:
+                    closing(calls[0], root)
+            return os.listdir(path)
+        proxy.listdir = listdir
+        if open_fault is not None:
+            def opened(path, flags, *args, **kwargs):
+                open_fault(path)
+                return os.open(path, flags, *args, **kwargs)
+            proxy.open = opened
+        scope = {"os": proxy, "stat": stat, "re": re, "hashlib": hashlib,
+                 "PROC_ROOT": root, "STAGE_BASE64": base64, "ATTEMPT_BINDING": binding,
+                 "ATTEMPT_PROC_RAW": [], "COMPONENT_BUNDLE": types.SimpleNamespace(_pin=pin)}
+        process = generated["EFFECT_PLANE_FIXED"]["processSource"]
+        exec(compile(process, "actual-current-process-readers", "exec"), scope)
+        validator = {"ast": ast, "base64": base64, "hashlib": hashlib, "json": json,
+                     "re": re, "stat": stat, "PROCESS_SOURCE": held("process.before.source").decode(),
+                     "bundle": types.SimpleNamespace(_raw=lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")).encode())}
+        exec(compile(held("validator.original.source"), "unchanged-original-process-projector", "exec"), validator)
+        def project(scan):
+            return validator["validate_workers"](scope["ATTEMPT_PROC_RAW"], [scan], binding)
+        return scope, project, generated, capsule, calls
+
+    def test_late_pid_is_actually_read_before_current_census_can_admit(self):
+        before = os.environ.get("VPN_CONTROL_CURRENT_CENSUS_BEFORE") == "1"
+        def arrive(call, root):
+            if call == 2:
+                self.process(root, 502)
+        with tempfile.TemporaryDirectory() as temp:
+            scope, project, _, _, _ = self.control(Path(temp), before=before, closing=arrive)
+            scan = scope["attempt_workers"]()
+            self.assertTrue(scan["censusComplete"], "late PID remains unread in the authentic one-shot census")
+            self.assertEqual(scan["enumeratedPids"], [501, 502])
+            self.assertEqual(project(scan), [{"python": 0, "sudo": 0}])
+            self.assertEqual([row["pid"] for row in scope["ATTEMPT_PROC_RAW"] if row["name"] == "cmdline"], [501, 502])
+            self.assertEqual(len(scope["CURRENT_CENSUS_WAVES"][0]["waves"]), 2)
+
+    def test_protected_worker_arriving_late_is_read_and_still_blocks(self):
+        def arrive(call, root):
+            if call == 2:
+                self.process(root, 502, b"python\0owned-protected-worker\0", uid=0)
+        with tempfile.TemporaryDirectory() as temp:
+            scope, project, _, _, _ = self.control(Path(temp), closing=arrive)
+            scan = scope["attempt_workers"]()
+            self.assertTrue(scan["censusComplete"])
+            self.assertEqual(project(scan), [{"python": 1, "sudo": 0}])
+            self.assertEqual(scan["matches"][0]["pid"], 502)
+
+    def test_permission_failure_is_not_ignored(self):
+        def arrive(call, root):
+            if call == 2:
+                self.process(root, 502)
+        def denied(path):
+            if str(path).endswith("/502/cmdline"):
+                raise PermissionError(13, "owned visibility seam")
+        with tempfile.TemporaryDirectory() as temp:
+            scope, project, _, _, _ = self.control(Path(temp), closing=arrive, open_fault=denied)
+            scan = scope["attempt_workers"]()
+            self.assertFalse(scan["censusComplete"])
+            self.assertEqual(scan["errors"], [{"pid": 502, "errno": 13, "closingErrno": None, "state": "unknown"}])
+            self.assertEqual(project(scan), [{"python": 0, "sudo": 0}])
+
+    def test_missing_visibility_with_present_process_stays_unknown(self):
+        def arrive(call, root):
+            if call == 2:
+                self.process(root, 502)
+                (root / "502/cmdline").unlink()
+        with tempfile.TemporaryDirectory() as temp:
+            scope, project, _, _, _ = self.control(Path(temp), closing=arrive)
+            scan = scope["attempt_workers"]()
+            self.assertFalse(scan["censusComplete"])
+            self.assertEqual(scan["resolved"][0]["state"], "unknown")
+            self.assertEqual(project(scan), [{"python": 0, "sudo": 0}])
+
+    def test_positive_disappearance_is_rechecked_and_projected(self):
+        def arrive(call, root):
+            if call == 2:
+                self.process(root, 502)
+        deleted = [False]
+        def vanish(path):
+            if str(path).endswith("/502/cmdline") and not deleted[0]:
+                deleted[0] = True
+                for child in Path(path).parent.iterdir():
+                    child.unlink()
+                Path(path).parent.rmdir()
+        with tempfile.TemporaryDirectory() as temp:
+            scope, project, _, _, _ = self.control(Path(temp), closing=arrive, open_fault=vanish)
+            scan = scope["attempt_workers"]()
+            self.assertTrue(scan["censusComplete"])
+            self.assertEqual(scan["resolved"][0]["state"], "rechecked-absent")
+            self.assertEqual(project(scan), [{"python": 0, "sudo": 0}])
+
+    def test_infinite_churn_exhausts_fixed_round_budget(self):
+        def churn(call, root):
+            if call >= 2:
+                self.process(root, 501 + call)
+        with tempfile.TemporaryDirectory() as temp:
+            scope, _, _, _, _ = self.control(Path(temp), closing=churn)
+            with self.assertRaisesRegex(ValueError, "plane_process_limit"):
+                scope["attempt_workers"]()
+            evidence = scope["CURRENT_CENSUS_WAVES"][0]
+            self.assertEqual(evidence["state"], "incomplete")
+            self.assertEqual(len(evidence["waves"]), 8)
+            self.assertTrue(evidence["waves"][-1]["newPids"])
+
+    def test_resolved_pid_reappearing_is_not_reused(self):
+        def arrive(call, root):
+            if call in (2, 3):
+                self.process(root, 502)
+        deleted = [False]
+        def vanish(path):
+            if str(path).endswith("/502/cmdline") and not deleted[0]:
+                deleted[0] = True
+                for child in Path(path).parent.iterdir():
+                    child.unlink()
+                Path(path).parent.rmdir()
+        with tempfile.TemporaryDirectory() as temp:
+            scope, _, _, _, _ = self.control(Path(temp), closing=arrive, open_fault=vanish)
+            with self.assertRaisesRegex(ValueError, "plane_identity_changed"):
+                scope["attempt_workers"]()
+            self.assertEqual(scope["CURRENT_CENSUS_WAVES"][0]["state"], "incomplete")
+
+    def test_generated_guard_preserves_incomplete_waves_and_raw_reads(self):
+        def churn(call, root):
+            if call >= 2:
+                self.process(root, 501 + call)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            scope, _, generated, capsule, _ = self.control(root, closing=churn)
+            fixed = copy.deepcopy(generated["EFFECT_PLANE_FIXED"])
+            fixed["boundarySource"] = "def boundary_pass(): BOUNDARY_PASSES.append([])\n"
+            tree = ast.parse(capsule["source"])
+            node = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                        and n.name == "component_release_effect_plane_current_guard")
+            # Only the OS surface is redirected to the owned files; the actual
+            # generated guard, readers, error handling and projector run intact.
+            changed = 0
+            for part in ast.walk(node):
+                if isinstance(part, ast.Constant) and part.value == "/proc":
+                    part.value = str(root)
+                    changed += 1
+            self.assertEqual(changed, 1)
+            ast.fix_missing_locations(node)
+            scope.update(ROOT=root, EFFECT_PLANE_FIXED=fixed, COMPONENT_RETIRE_OBSERVATIONS=[],
+                         BASELINE_BASE64=base64, json=json,
+                         claim_record=lambda *args: self.fail("unexpected filesystem claim read"))
+            exec(compile(ast.Module(body=[node], type_ignores=[]), "actual-generated-current-guard", "exec"), scope)
+            with self.assertRaisesRegex(ValueError, "plane_process_limit"):
+                scope["component_release_effect_plane_current_guard"]()
+            records = scope["COMPONENT_RETIRE_OBSERVATIONS"]
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["kind"], "derived-current-census-incomplete")
+            self.assertEqual(len(records[0]["censusWaves"][0]["waves"]), 8)
+            self.assertTrue(records[0]["procRawRecords"])
+
+    def test_actual_harness_beforeimage_exposes_missing_guard_namespace(self):
+        namespace = {"__name__": "owned_current_census_harness_before", "__file__": __file__}
+        exec(compile(held("harness.before.source"), "held-whole-current-census-harness-before", "exec"), namespace)
+        suite = unittest.TestSuite([namespace["CurrentCensusTests"]("test_generated_guard_preserves_incomplete_waves_and_raw_reads")])
+        result = unittest.TestResult()
+        suite.run(result)
+        self.assertFalse(result.failures)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("NameError: name 'BASELINE_BASE64' is not defined", result.errors[0][1])
+
+    def test_deadline_exhaustion_refuses_without_reading_a_pid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            scope, _, _, _, _ = self.control(Path(temp))
+            imported = __import__
+            moments = iter([0.0, 3.0])
+            clock = types.SimpleNamespace(monotonic=lambda: next(moments, 3.0))
+            def import_clock(name, *args, **kwargs):
+                return clock if name == "time" else imported(name, *args, **kwargs)
+            with mock.patch("builtins.__import__", side_effect=import_clock):
+                with self.assertRaisesRegex(ValueError, "plane_process_limit"):
+                    scope["attempt_workers"]()
+            self.assertFalse(any(row["name"] == "cmdline" for row in scope["ATTEMPT_PROC_RAW"]))
+
+    def test_boot_change_blocks_complete_visibility(self):
+        def change(call, root):
+            if call == 2:
+                (root / "sys/kernel/random/boot_id").write_text("00000000-0000-4000-8000-000000000002\n")
+        with tempfile.TemporaryDirectory() as temp:
+            scope, project, _, _, _ = self.control(Path(temp), closing=change)
+            scan = scope["attempt_workers"]()
+            self.assertFalse(scan["censusComplete"])
+            self.assertEqual(project(scan), [{"python": 0, "sudo": 0}])
+
+    def test_capsule_derivation_changes_only_current_census_and_evidence(self):
+        before, old, _ = self.renderer(before=True)
+        after, new, _ = self.renderer()
+        self.assertEqual(new["CURRENT_CENSUS_ORIGINAL_SOURCE"], held("process.before.source").decode())
+        self.assertEqual(new["CURRENT_CENSUS_DERIVATION"]["originalCapsuleSha256"], before["sha256"])
+        for name in ("EFFECT_PLANE_FIXED", "CURRENT1E15_EFFECT_PLANE_FIXED"):
+            self.assertEqual(new[name]["validatorSource"], old[name]["validatorSource"])
+            self.assertEqual(new[name]["binding"], old[name]["binding"])
+        original_tree, derived_tree = ast.parse(before["source"]), ast.parse(after["source"])
+        guards = {"component_release_effect_plane_current_guard"}
+        old_nodes = {node.name: node for node in original_tree.body if isinstance(node, ast.FunctionDef) and node.name in guards}
+        restored = []
+        for node in derived_tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name in guards:
+                node = copy.deepcopy(old_nodes[node.name])
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                name = node.targets[0].id
+                if name in ("CURRENT_CENSUS_ORIGINAL_SOURCE", "CURRENT_CENSUS_DERIVATION"):
+                    continue
+                if name == "EFFECT_PLANE_FIXED":
+                    value = ast.literal_eval(node.value)
+                    value["processSource"] = held("process.before.source").decode()
+                    node.value = ast.parse(repr(value), mode="eval").body
+            restored.append(node)
+        derived_tree.body = restored
+        self.assertEqual(ast.dump(derived_tree, include_attributes=False), ast.dump(original_tree, include_attributes=False))
+        self.assertEqual(after["sourcePins"]["original-current-process-source"], PROCESS_SHA)
+
+    def test_capsule_preserves_distinct_authenticated_current1e15_source(self):
+        _, old, _ = self.renderer(before=True)
+        _, new, _ = self.renderer()
+        self.assertEqual(new["CURRENT1E15_EFFECT_PLANE_FIXED"], old["CURRENT1E15_EFFECT_PLANE_FIXED"])
+        self.assertEqual(new["CURRENT1E15_EFFECT_PLANE_FIXED"]["processSource"], held("process-current1e15.before.source").decode())
+        self.assertNotEqual(new["CURRENT1E15_EFFECT_PLANE_FIXED"]["processSource"], new["EFFECT_PLANE_FIXED"]["processSource"])
+
+    def test_changed_historical_process_source_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "current_census_original_source_changed"):
+            successor._current_process_source(held("process.before.source").decode() + "\n")
+
+    def test_closing_boot_read_is_included_in_raw_byte_and_record_budget(self):
+        with tempfile.TemporaryDirectory() as temp:
+            scope, project, _, _, _ = self.control(Path(temp))
+            scan = scope["attempt_workers"]()
+            self.assertTrue(scan["censusComplete"])
+            self.assertEqual(project(scan), [{"python": 0, "sudo": 0}])
+            self.assertEqual(scope["CURRENT_CENSUS_WAVES"][0]["rawBytes"],
+                             sum(row["bytes"] for row in scope["ATTEMPT_PROC_RAW"]))
+            self.assertEqual(scope["ATTEMPT_PROC_RAW"][-1]["name"], "boot_id")
+
+
+if __name__ == "__main__":
+    unittest.main()

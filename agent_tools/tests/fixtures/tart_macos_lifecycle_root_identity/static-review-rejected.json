@@ -1,0 +1,9 @@
+{
+  "actualNativeFailure": false,
+  "beforeimages": "/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/native-approvals-20261027/tart-successor-prepared/root-generation-before",
+  "finding": "renderer puts five-field private._directory_identity in rootGeneration but generated run compares only device and inode; deterministic refusal before actor publication",
+  "followup": "Compare all five directory identity fields in renderer; preserve full nine disk/NVRAM fields in private off guard before rerendering",
+  "nativeOwnerSubmitted": false,
+  "programSha256": "0ca15dbb025a030968ab270fdd7702b6555201dde9a5fbd020a9b0a6b613f0e7",
+  "submissionForbidden": true
+}

@@ -1,0 +1,317 @@
+def fp(i):
+    return [i.st_dev, i.st_ino, i.st_size, i.st_mtime_ns, i.st_ctime_ns, i.st_mode, i.st_uid, i.st_gid, i.st_nlink]
+
+def parent_fds(path):
+    path = pathlib.Path(path)
+    if not path.is_absolute() or any((part in ('..', '.') for part in path.parts[1:])):
+        raise ValueError('census_ancestry_invalid')
+    chain = []
+    try:
+        fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        chain.append({'fd': fd, 'name': '/', 'pin': fp(os.fstat(fd))})
+        for name in path.parts[1:-1]:
+            fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=chain[-1]['fd'])
+            chain.append({'fd': fd, 'name': name, 'pin': fp(os.fstat(fd))})
+        guard_parents(chain)
+        return (chain, path.name)
+    except BaseException:
+        close_parents(chain)
+        raise
+
+def close_parents(chain):
+    for item in reversed(chain):
+        os.close(item['fd'])
+
+def guard_parents(chain):
+    for number, item in enumerate(chain):
+        try:
+            named = os.stat('/', follow_symlinks=False) if number == 0 else os.stat(item['name'], dir_fd=chain[number - 1]['fd'], follow_symlinks=False)
+            if fp(os.fstat(item['fd'])) != item['pin'] or fp(named) != item['pin']:
+                raise ValueError('census_ancestry_changed')
+        except FileNotFoundError:
+            raise ValueError('census_ancestry_changed') from None
+
+def read_fixed(path, limit):
+    chain, name = parent_fds(path)
+    fd = None
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=chain[-1]['fd'])
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ValueError('census_file_type')
+        count = min(before.st_size, limit)
+        raw = bytearray()
+        while len(raw) < count:
+            part = os.read(fd, min(count - len(raw), 65536))
+            if not part:
+                break
+            raw.extend(part)
+        raw = bytes(raw)
+        if len(raw) != count or fp(before) != fp(os.fstat(fd)) or fp(before) != fp(os.stat(name, dir_fd=chain[-1]['fd'], follow_symlinks=False)):
+            raise ValueError('census_file_changed')
+        guard_parents(chain)
+        return {'generation': fp(before), 'bytesRead': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(), 'hashScope': 'full' if len(raw) == before.st_size else 'prefix', 'raw': raw}
+    finally:
+        if fd is not None:
+            os.close(fd)
+        close_parents(chain)
+
+def facts(path, limit=65536, text=False):
+    try:
+        value = read_fixed(path, limit)
+        raw = value.pop('raw')
+        if text:
+            if value['hashScope'] != 'full':
+                raise ValueError('census_metadata_limit')
+            value['text'] = raw.decode('utf-8', 'strict')
+        return {'present': True, 'kind': 'regular', **value}
+    except FileNotFoundError:
+        return {'present': False}
+
+def tree_facts(root):
+    result = {}
+    pending = [root]
+    seen = 0
+    while pending:
+        directory = pending.pop()
+        chain, unused = parent_fds(directory / '__census_directory_descriptor__')
+        try:
+            directory_fd = chain[-1]['fd']
+            before = os.fstat(directory_fd)
+            if not stat.S_ISDIR(before.st_mode) or before.st_uid != 1000:
+                raise ValueError('census_tree_type')
+            result[str(directory.relative_to(root))] = {'kind': 'directory', 'generation': fp(before)}
+            names = sorted(os.listdir(directory_fd))
+            for name in names:
+                seen += 1
+                if seen > 4096 or not re.fullmatch('[A-Za-z0-9_.-]+', name):
+                    raise ValueError('census_tree_limit')
+                path = directory / name
+                info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                relative = str(path.relative_to(root))
+                if stat.S_ISDIR(info.st_mode):
+                    pending.append(path)
+                elif stat.S_ISREG(info.st_mode):
+                    if info.st_uid != 1000:
+                        raise ValueError('census_tree_owner')
+                    result[relative] = {'kind': 'regular', **facts(path)}
+                else:
+                    raise ValueError('census_tree_type')
+            guard_parents(chain)
+        finally:
+            close_parents(chain)
+    return result
+
+def ticks(proc):
+    with (proc / 'stat').open('r') as stream:
+        raw = stream.read(8193)
+    if len(raw) > 8192:
+        raise ValueError('census_process_stat_limit')
+    return int(raw.rsplit(')', 1)[1].split()[19])
+
+def process_census(identities):
+    pids = sorted((p for p in PROC.iterdir() if p.name.isdecimal()), key=lambda p: int(p.name))
+    if len(pids) > 32768:
+        raise ValueError('census_process_limit')
+    denied = 0
+    vanished = 0
+    found = []
+    emulators = []
+    for proc in pids:
+        try:
+            start = ticks(proc)
+            with (proc / 'cmdline').open('rb') as stream:
+                cmd = stream.read(65537)
+            if len(cmd) > 65536:
+                raise ValueError('census_process_command_limit')
+            try:
+                exe = os.readlink(proc / 'exe').rsplit('/', 1)[-1]
+            except FileNotFoundError:
+                exe = ''
+            args = cmd.split(b'\x00')
+            name = args[0].rsplit(b'/', 1)[-1]
+            if exe.startswith('qemu-system-') or exe == 'emulator' or name.startswith(b'qemu-system-') or (name == b'emulator'):
+                emulators.append({'pid': int(proc.name), 'startTicks': start, 'executableName': exe})
+            fds = list((proc / 'fd').iterdir())
+            if len(fds) > 65536:
+                raise ValueError('census_fd_limit')
+            matches = []
+            for fd in fds:
+                try:
+                    i = fd.stat()
+                except FileNotFoundError:
+                    continue
+                matches.extend(identities.get((i.st_dev, i.st_ino), []))
+            if ticks(proc) != start:
+                raise ValueError('census_pid_reused')
+            if matches:
+                found.append({'pid': int(proc.name), 'startTicks': start, 'files': sorted(set(matches))})
+        except FileNotFoundError:
+            vanished += 1
+        except PermissionError:
+            denied += 1
+    return {'complete': denied == 0, 'unreadableProcessCount': denied, 'vanishedProcessCount': vanished, 'holders': found, 'emulators': emulators}
+
+def ports():
+    found = []
+    for family in ('tcp', 'tcp6'):
+        for row in (PROC / 'net' / family).read_text().splitlines()[1:]:
+            fields = row.split()
+            if len(fields) < 10:
+                raise ValueError('census_ports_unknown')
+            number = int(fields[1].rsplit(':', 1)[1], 16)
+            if number in (5682, 5683, 5684, 5685):
+                found.append({'family': family, 'port': number, 'state': fields[3], 'inode': fields[9]})
+    return sorted(found, key=lambda v: (v['family'], v['port'], v['inode']))
+
+def boot():
+    raw = (PROC / 'sys/kernel/random/boot_id').read_text().strip()
+    if not re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', raw):
+        raise ValueError('census_boot_unknown')
+    return raw
+
+def child_identity(pid):
+    proc = PROC / str(pid)
+    before = ticks(proc)
+    link = os.readlink(proc / 'exe')
+    command = (proc / 'cmdline').read_bytes()
+    if len(command) > 262144 or ticks(proc) != before:
+        raise ValueError('coldboot_child_changed')
+    return {'pid': pid, 'startTicks': before, 'bootId': boot(), 'exe': link, 'exeGeneration': fp((proc / 'exe').stat()), 'commandSha256': hashlib.sha256(command).hexdigest()}
+
+def qemu_fact():
+    path = pathlib.Path(LAUNCH['qemuPath'])
+    chain, name = parent_fds(path)
+    fd = None
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=chain[-1]['fd'])
+        info = os.fstat(fd)
+        generation = fp(info)
+        if not stat.S_ISREG(info.st_mode) or generation[2] > 268435456 or generation[6:9] != [1000, 1000, 1] or (not generation[5] & 73):
+            raise ValueError('coldboot_qemu_unadmitted')
+        digest = hashlib.sha256()
+        count = 0
+        while count < info.st_size:
+            part = os.read(fd, min(65536, info.st_size - count))
+            if not part:
+                break
+            digest.update(part)
+            count += len(part)
+        if count != info.st_size or fp(os.fstat(fd)) != generation or fp(os.stat(name, dir_fd=chain[-1]['fd'], follow_symlinks=False)) != generation:
+            raise ValueError('coldboot_qemu_changed')
+        guard_parents(chain)
+        return {'generation': generation, 'bytesRead': count, 'sha256': digest.hexdigest(), 'hashScope': 'full'}
+    finally:
+        if fd is not None:
+            os.close(fd)
+        close_parents(chain)
+
+def session_guest(saved, ready):
+    candidates = []
+    denied = 0
+    for proc in PROC.iterdir():
+        if not proc.name.isdecimal():
+            continue
+        try:
+            before = ticks(proc)
+            raw = (proc / 'stat').read_text()
+            if len(raw) > 8192:
+                raise ValueError('coldboot_process_stat_limit')
+            fields = raw.rsplit(')', 1)[1].split()
+            if int(fields[3]) != saved['pid']:
+                continue
+            command = (proc / 'cmdline').read_bytes()
+            if len(command) > 262144:
+                raise ValueError('coldboot_command_limit')
+            args = [part.decode('utf-8', 'strict') for part in command.split(b'\x00') if part]
+            if not args or args[0] != LAUNCH['qemuPath']:
+                continue
+            if args.count('-avd') != 1 or args.count('-port') != 1 or args[args.index('-avd') + 1] != LAUNCH['avd'] or (args[args.index('-port') + 1] != str(LAUNCH['port'])):
+                raise ValueError('coldboot_guest_arguments_changed')
+            executable = fp((proc / 'exe').stat())
+            uid_lines = [row for row in (proc / 'status').read_text().splitlines() if row.startswith('Uid:')]
+            if len(uid_lines) != 1 or uid_lines[0].split()[1:] != ['1000'] * 4 or executable != ready['qemuFact']['generation'] or (ticks(proc) != before):
+                raise ValueError('coldboot_guest_generation_changed')
+            candidates.append({'pid': int(proc.name), 'startTicks': before, 'hostBootId': saved['bootId'], 'sessionId': saved['pid'], 'exeGeneration': executable, 'commandSha256': hashlib.sha256(command).hexdigest()})
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            denied += 1
+    if denied or len(candidates) != 1:
+        return None
+    return candidates[0]
+
+def guest_probe(guest):
+    path = pathlib.Path(LAUNCH['adbPath'])
+    chain, name = parent_fds(path)
+    fd = None
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=chain[-1]['fd'])
+        if fp(os.fstat(fd)) != LAUNCH['adbFacts']['generation']:
+            raise ValueError('coldboot_adb_changed')
+
+        def invoke(args):
+            guard_parents(chain)
+            if fp(os.fstat(fd)) != LAUNCH['adbFacts']['generation']:
+                raise ValueError('coldboot_adb_changed')
+
+            def drop_identity():
+                os.setgroups([1000])
+                os.setgid(1000)
+                os.setuid(1000)
+            result = subprocess.run([LAUNCH['adbPath'], '-s', 'emulator-' + str(LAUNCH['port']), *args], executable='/proc/self/fd/' + str(fd), pass_fds=(fd,), env=LAUNCH['environment'], preexec_fn=drop_identity, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15, check=False)
+            if len(result.stdout) > 2048 or len(result.stderr) > 2048 or result.returncode != 0:
+                raise ValueError('coldboot_guest_read_unknown')
+            guard_parents(chain)
+            if fp(os.fstat(fd)) != LAUNCH['adbFacts']['generation']:
+                raise ValueError('coldboot_adb_changed')
+            return result.stdout.decode('utf-8', 'strict').strip()
+        values = {key: invoke(['shell', 'getprop', prop]) for key, prop in (('sdk', 'ro.build.version.sdk'), ('abi', 'ro.product.cpu.abi'), ('kernelAvd', 'ro.kernel.qemu.avd_name'), ('bootAvd', 'ro.boot.qemu.avd_name'), ('bootCompleted', 'sys.boot_completed'))}
+        values['shellUid'] = invoke(['shell', 'id', '-u'])
+        values['guestBootId'] = invoke(['shell', 'cat', '/proc/sys/kernel/random/boot_id'])
+        expected_api = '29' if LAUNCH['device'] == 'api29' else '35'
+        values['matched'] = values['sdk'] == expected_api and values['abi'] == 'x86_64' and (values['shellUid'] == '2000') and (values['bootCompleted'] == '1') and (LAUNCH['avd'] in (values['kernelAvd'], values['bootAvd'])) and all((v in ('', LAUNCH['avd']) for v in (values['kernelAvd'], values['bootAvd']))) and (re.fullmatch('[0-9a-f-]{36}', values['guestBootId']) is not None)
+        return values
+    finally:
+        if fd is not None:
+            os.close(fd)
+        close_parents(chain)
+
+def original_status(directory):
+    attempt = journal_read(directory, 'attempt.json')
+    if attempt['intentSha256'] != LAUNCH['intentSha256']:
+        raise ValueError('coldboot_attempt_changed')
+    try:
+        record = journal_read(directory, 'child.json')
+    except FileNotFoundError:
+        return {'state': 'unknown', 'reason': 'coldboot_child_unrecorded_no_replay'}
+    if record['source'] != LAUNCH['intent']['source'] or record['argv'] != LAUNCH['argv'] or record['emulatorGeneration'] != LAUNCH['emulatorGeneration'] or (record['intentSha256'] != LAUNCH['intentSha256']):
+        raise ValueError('coldboot_child_record_changed')
+    saved = record['identity']
+    if boot() != saved['bootId']:
+        return {'state': 'unknown', 'reason': 'coldboot_host_generation_changed'}
+    try:
+        current = child_identity(saved['pid'])
+    except FileNotFoundError:
+        return {'state': 'unknown', 'reason': 'coldboot_original_child_absent'}
+    if current['startTicks'] != saved['startTicks']:
+        return {'state': 'unknown', 'reason': 'coldboot_original_pid_reused'}
+    if current['exeGeneration'] != saved['exeGeneration'] or current['commandSha256'] != saved['commandSha256'] or os.getsid(saved['pid']) != saved['pid']:
+        raise ValueError('coldboot_supervisor_changed')
+    try:
+        released = journal_read(directory, 'exec-released.json')
+    except FileNotFoundError:
+        return {'state': 'unknown', 'reason': 'coldboot_exec_release_unrecorded', 'child': current}
+    ready = journal_read(directory, 'ready.json')
+    if ready['source'] != LAUNCH['intent']['source'] or ready['intentSha256'] != LAUNCH['intentSha256'] or qemu_fact() != ready['qemuFact']:
+        raise ValueError('coldboot_ready_changed')
+    guest = session_guest(saved, ready)
+    if guest is None:
+        return {'state': 'original-supervisor-observed', 'correlationId': LAUNCH['correlationId'], 'child': current, 'guestAdmitted': False, 'productAdmitted': False}
+    try:
+        device = guest_probe(guest)
+    except (OSError, ValueError, UnicodeError, subprocess.TimeoutExpired):
+        return {'state': 'guest-not-yet-admitted', 'correlationId': LAUNCH['correlationId'], 'child': current, 'guest': guest, 'guestAdmitted': False, 'productAdmitted': False}
+    if child_identity(saved['pid']) != current or session_guest(saved, ready) != guest:
+        raise ValueError('coldboot_guest_changed_during_probe')
+    return {'state': 'guest-generation-admitted' if device['matched'] else 'guest-not-yet-admitted', 'correlationId': LAUNCH['correlationId'], 'child': current, 'guest': guest, 'device': device, 'guestAdmitted': device['matched'], 'productAdmitted': False}

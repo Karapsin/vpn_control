@@ -1,0 +1,80 @@
+"""Sealed local phase; no remote execution and no release until every proof exists."""
+import ast,base64,copy,hashlib,json,os,pathlib,plistlib,re,subprocess,sys,time,uuid
+ROOT=pathlib.Path('/Users/karapsin_de/projects/vpn_control_tool_recovery');sys.path.insert(0,str(ROOT))
+from agent_tools import android_component_continuity as continuity
+from agent_tools import android_installer_failed_check_retirement as retirement
+from agent_tools import android_installer_component_bundle as bundle
+OUT=pathlib.Path(__file__).resolve().parent
+INTENT=json.loads((OUT/'intent.json').read_text());OP=INTENT['operationId']
+ORIGINAL='0dd55704-1e80-4d62-8d9d-2f0a123e0c3b';PREDECESSOR='7310f227-aaed-4f3b-878a-1b7bf0b49215'
+ORIGIN=pathlib.Path('/Users/karapsin_de/projects/vpn_control/.runtime/parity-evidence/android-current-original-lease-retirement-7310f227-aaed-4f3b-878a-1b7bf0b49215')
+MANIFEST_SHA='30ead6e10e0cc5c6fef027a2cab984cd28bb52ae7fedeb5e68d59552ece6bbe8';PROGRAM_SHA='982dd6db1743fa2b14a5bc79dc575551eab10a880db0db27860d0fafb34f94da';ADMISSION_SHA='93ff56ef99d2496aef690ea1ae44e0e7ff4136386e6718fa81e8f0ff21e2e6ed'
+QUALIFIED_LEASE='/Users/karapsin_de/Nextcloud/projects/vpn_control/.rag_index/android-native-device-leases/lease-archlinux-api35.json'
+COORDINATOR=pathlib.Path('/Users/karapsin_de/projects/vpn_control')
+def need(value,code):
+ if not value:raise ValueError(code)
+def digest(raw):return hashlib.sha256(raw).hexdigest()
+def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False,ensure_ascii=False).encode()+b'\n'
+def unique(pairs):
+ result={}
+ for k,v in pairs:need(k not in result,'duplicate_json_key');result[k]=v
+ return result
+def decode(raw):return json.loads(raw,object_pairs_hook=unique)
+def save(directory,name,raw):
+ fd=os.open(directory/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+ parent=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:os.fsync(parent)
+ finally:os.close(parent)
+def jsave(directory,name,value):save(directory,name,canonical(value))
+def anchors():
+ manifest=(ORIGIN/'original-release-source-inputs.json').read_bytes();source=b''.join((ORIGIN/('original-release-programme-%d.private'%i)).read_bytes()for i in range(9))
+ need(digest(manifest)==MANIFEST_SHA and digest(source)==PROGRAM_SHA,'original_anchor_changed')
+ tree=ast.parse(source);node=next(n for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)and n.targets[0].id=='COMPONENT_RELEASE_ADMITTED_PROOF');proof=ast.literal_eval(node.value)
+ need(digest(canonical(proof))==ADMISSION_SHA,'original_admission_changed');retirement.validate_component_retained_proof(proof)
+ return manifest,source,proof
+def validate_collected_remote():
+ intent=decode((OUT/'intent.json').read_bytes());collected=decode((OUT/'collected.json').read_bytes());status=collected['status'];terminal=status['terminal']
+ need(status['state']=='terminal' and status['operationId']==OP and terminal['operationId']==OP and terminal['programSha256']==intent['programSha256']and terminal['exitCode']==0 and terminal['streamsClosed']is True,'original_successor_not_terminal_success')
+ need(terminal['binding']['boot']=='25515f23-b966-4c3a-ae63-d38452375578'and terminal['binding']['machine']=='f0f5704a7676fa5b3826511bb04c6bf48895a7afeb318c46a4fa91ce2cea8de8'and terminal['binding']['account']=='0','original_successor_binding_changed')
+ output=base64.b64decode(collected['stdoutBase64'],validate=True);error=base64.b64decode(collected['stderrBase64'],validate=True)
+ need(not error and digest(output)==terminal['stdout']['sha256']and len(output)==terminal['stdout']['totalBytes']==terminal['stdout']['retainedBytes'],'durable_original_streams_incomplete')
+ retained=decode(output);need(retained['operationId']==OP and retained['sourceSha256']==intent['payloadSha256']and retained['replayAllowed']is False,'retained_original_source_changed')
+ length=retained['streams']['stdout']['bytes'];raw=b''.join((OUT/('stdout-'+str(offset)+'.slice')).read_bytes()for offset in range(0,length,4194304));need(len(raw)==length and digest(raw)==retained['streams']['stdout']['sha256'],'original_native_document_incomplete')
+ document=decode(raw);need(raw==json.dumps(document,sort_keys=True,separators=(',',':'),allow_nan=False).encode()+b'\n','original_native_document_not_canonical')
+ need(document['kind']=='android-component-original-lease-remote-phase'and document['releaseCorrelationId']==OP and document['primaryFailure']is None and document['originalOutcome']=='unknown'and document['replayAllowed']is False,'original_remote_release_not_complete')
+ result=document['result'];need(result['state']=='component-original-remote-lease-captured'and result['originalOutcomeChanged']is False and result['acceptanceComplete']is False and result['claimGranted']is False,'original_remote_release_result_changed')
+ remote=result['remoteResult'];need(remote==document['capturedResult']and remote['leaseReleased']is True and remote['originalCorrelationId']==ORIGINAL and remote['admissionCorrelationId']=='6b616c2f-6c36-4ac0-836e-4465c78bfc92'and remote['releaseCorrelationId']==OP and remote['admittedProofSha256']==ADMISSION_SHA,'original_remote_release_binding_changed')
+ closing=retirement.validate_component_retained_proof(result['closingCurrentProof']);opening=retirement.validate_component_retained_proof(result['openingCurrentProof']);need(closing['originalCorrelationId']==opening['originalCorrelationId']==ORIGINAL,'closing_original_changed')
+ need(opening['snapshots']==closing['snapshots']and opening['files']==closing['files'],'closing_snapshot_changed')
+ return remote,closing,retained,digest(raw)
+def validate_remote():
+ remote,closing,retained,native_document_sha=validate_collected_remote()
+ fresh=decode((OUT/'fresh-closed-proof.json').read_bytes());need(fresh['operationId']==OP and fresh['originalCorrelationId']==ORIGINAL and fresh['admittedProofSha256']==ADMISSION_SHA and fresh['remoteResultSha256']==digest(canonical(remote))and fresh['state']=='exact-original-capture-validated'and fresh['namedLeaseAbsent']is True,'fresh_remote_closing_unproven')
+ need(time.time_ns()-fresh['observedAtNs']<=120000000000 and fresh['observedAtNs']<=time.time_ns(),'fresh_remote_closing_stale')
+ return remote,closing,fresh,retained,native_document_sha
+def local_native_probes(directory):
+ stamp=time.time_ns();commands=[('/usr/sbin/ioreg','-rd1','-c','IOPlatformExpertDevice'),('/usr/sbin/sysctl','-n','kern.bootsessionuuid'),('/usr/sbin/diskutil','info','-plist','/System/Volumes/Data')];raws=[]
+ for index,argv in enumerate(commands):
+  result=subprocess.run(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,check=False);need(result.returncode==0 and not result.stderr and 0<len(result.stdout)<=1048576,'local_native_identity_probe_failed');save(directory,'native-probe-'+str(index)+'.raw',result.stdout);raws.append(result.stdout)
+ match=re.search(rb'"IOPlatformUUID"\s*=\s*"([A-Fa-f0-9-]{36})"',raws[0]);need(match is not None,'local_machine_identity_unavailable');machine=str(uuid.UUID(match.group(1).decode()));boot=str(uuid.UUID(raws[1].decode().strip()));disk=plistlib.loads(raws[2]);need(disk['FilesystemType']=='apfs'and disk['MountPoint']=='/System/Volumes/Data','local_filesystem_identity_unavailable');volume=str(uuid.UUID(disk['VolumeUUID']));s=os.stat(QUALIFIED_LEASE,follow_symlinks=False);fsid=os.statvfs(QUALIFIED_LEASE).f_fsid;need(os.statvfs('/System/Volumes/Data').f_fsid==fsid,'local_filesystem_fsid_changed')
+ hostraw=canonical({'nativeProbeSha256':[digest(raws[0]),digest(raws[1])],'machineId':machine,'bootId':boot,'uid':os.getuid(),'observedAtNs':stamp});fsraw=canonical({'nativeProbeSha256':digest(raws[2]),'device':s.st_dev,'fsid':fsid,'volumeId':volume,'mountPoint':disk['MountPoint'],'observedAtNs':stamp});save(directory,'host-identity.raw',hostraw);save(directory,'filesystem-identity.raw',fsraw)
+ host={'machineId':machine,'bootId':boot,'uid':os.getuid(),'observedAtNs':stamp,'probeSha256':digest(hostraw)};filesystem={'device':s.st_dev,'fsid':fsid,'volumeId':volume,'mountPoint':disk['MountPoint'],'observedAtNs':stamp,'probeSha256':digest(fsraw)};return host,filesystem
+def main():
+ phase=sys.argv[1];need(phase in('qualify','capture'),'local_phase_invalid');manifest,source,original=anchors();remote,closing,fresh,retained,native_document_sha=validate_remote();op=str(uuid.uuid4());directory=OUT/('local-'+phase+'-'+op);directory.mkdir(mode=0o700)
+ jsave(directory,'phase-intent.json',{'phase':phase,'operationId':OP,'localObservationId':op,'originalInstaller':ORIGINAL,'predecessor':PREDECESSOR,'nativeDocumentSha256':native_document_sha,'admittedProofSha256':ADMISSION_SHA,'replayAllowed':False})
+ with retirement._local_lock(COORDINATOR,'archlinux','api35')as(lease,lock_guard):
+  lock_guard();need(decode(lease.read_bytes())=={'owner':'android-installer','host':'archlinux','device':'api35','correlationId':ORIGINAL},'exact_local_original_lease_changed');host,filesystem=local_native_probes(directory)
+  proofraw=canonical(fresh);continuity_receipt=continuity.qualify_records(manifest,MANIFEST_SHA,source,PROGRAM_SHA,PREDECESSOR,[QUALIFIED_LEASE],host_binding=host,filesystem_binding=filesystem,remote_proofs=[{'role':'fresh-original-remote-capture-and-closing','operationId':PREDECESSOR,'observedAtNs':fresh['observedAtNs'],'sha256':digest(proofraw),'raw':proofraw}],max_age_ns=120000000000)
+  jsave(directory,'continuity.json',continuity_receipt);receipt_raw,receipt_pin=bundle._read(directory/'continuity.json',True);need(decode(receipt_raw)==continuity_receipt,'persisted_continuity_receipt_changed');raw,pin=bundle._read(lease,True);expected_pin={'generation':pin['generation'],'sha256':pin['sha256'],'parents':[v for k,v in pin['parents'].items()if k!='/']};validation=continuity.validate_lease_receipt(continuity_receipt,str(lease),original['files']['local-lease.json'],expected_pin);jsave(directory,'local-capture-validation.json',validation)
+  lock_guard();anchors();need(bundle._read(directory/'continuity.json',True)==(receipt_raw,receipt_pin),'persisted_continuity_receipt_changed')
+  if phase=='capture':
+   need(not(OUT/'local-capture-once.json').exists(),'local_capture_consumed');jsave(OUT,'local-capture-once.json',{'operationId':OP,'phase':'local-exact-original-lease-capture','continuityReceiptSha256':continuity_receipt['receiptSha256'],'replayAllowed':False})
+   def current_proof():
+    lock_guard();anchors();need(bundle._read(directory/'continuity.json',True)==(receipt_raw,receipt_pin),'persisted_continuity_receipt_changed');validate_remote();return copy.deepcopy(closing)
+   result=retirement.release_component_fenced(lease,expected_pin,original,OP,current_proof,'local-original',remote,continuity_receipt=continuity_receipt);lock_guard();jsave(directory,'captured.json',result)
+   need(result['leaseReleased']is True and result['originalOutcome']=='unknown'and result['replayAllowed']is False and not lease.exists(),'local_capture_unproven')
+   jsave(OUT,'closure.json',{'state':'original-leases-captured','operationId':OP,'originalInstaller':ORIGINAL,'predecessor':PREDECESSOR,'originalOutcome':'unknown','replayAllowed':False,'remoteResult':remote,'localResult':result,'continuityReceiptSha256':continuity_receipt['receiptSha256'],'continuityPath':str(directory/'continuity.json'),'nativeDocumentSha256':native_document_sha,'acceptanceComplete':False})
+  else:result={'state':'local-continuity-qualified-no-release','receiptSha256':continuity_receipt['receiptSha256']}
+ print(json.dumps({'directory':str(directory),'phase':phase,'operationId':OP,'result':result},sort_keys=True))
+if __name__=='__main__':main()

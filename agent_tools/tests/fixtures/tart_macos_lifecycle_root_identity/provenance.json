@@ -1,0 +1,20 @@
+{
+  "actualNativeFailure": false,
+  "baselineHead": "2efd2569ce39d86a991b32f68d8e89419360ac5c",
+  "failureType": "renderer_root_identity_shape_mismatch",
+  "files": {
+    "lifecycle.before.source": {
+      "bytes": 31829,
+      "sha256": "b1bfc8ea5f71d978597825306aa3abb19546d531dc5a200996c1835f82ccae02"
+    },
+    "static-review-rejected.json": {
+      "bytes": 690,
+      "sha256": "35dc19b51666f4dd74e4bdef9b285f1f33bea4d167f9e63337eeaeb382fb51a1"
+    }
+  },
+  "nativeLimits": "Static pre-submission rejection. Regression executes the real renderer and its unchanged owner against owned inert files and a local Tart adapter. No VM, native Tart operation, resource admission, inventory update or public recovery qualification is claimed.",
+  "nativeOwnerSubmitted": false,
+  "originalBeforeimage": "tart-successor-prepared/root-generation-before/readiness_tart_macos_lifecycle.py",
+  "originalEvidence": "tart-successor-prepared/static-review-rejected.json",
+  "rejectedProgramSha256": "0ca15dbb025a030968ab270fdd7702b6555201dde9a5fbd020a9b0a6b613f0e7"
+}

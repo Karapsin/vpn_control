@@ -1,0 +1,95 @@
+def validate_workers(raw,passes,binding):
+ if type(raw)is not list or len(raw)>16480 or type(passes)is not list or len(passes)>2:raise ValueError('plane_reply_unknown')
+ expected={role:base64.b64decode(binding[key],validate=True)for role,key in(('python','expectedRootArgvBase64'),('sudo','expectedSudoArgvBase64'))}
+ parsed=[]
+ for row in raw:
+  if type(row)is not dict or set(row)!={'pid','name','generation','bytes','sha256','readComplete','rawCaptured','rawBase64'}or type(row['pid'])is not int or row['pid']<0 or row['name']not in('boot_id','cmdline','stat','status')or type(row['bytes'])is not int or row['bytes']<0 or type(row['readComplete'])is not bool or type(row['rawCaptured'])is not bool or type(row['generation'])is not list or len(row['generation'])!=9 or any(type(n)is not int or n<0 for n in row['generation'])or not stat.S_ISREG(row['generation'][2])or re.fullmatch('[0-9a-f]{64}',row['sha256'])is None:raise ValueError('plane_raw_unknown')
+  if row['name']=='boot_id'and row['pid']!=0 or row['name']!='boot_id'and row['pid']==0:raise ValueError('plane_raw_unknown')
+  value=base64.b64decode(row['rawBase64'],validate=True)if row['rawCaptured']else None
+  cap=129 if row['name']=='boot_id'else 65536 if row['name']=='cmdline'else 16384
+  if row['readComplete']is False and(row['name']!='cmdline'or row['rawCaptured']is not False or row['bytes']<=max(map(len,expected.values()))or row['bytes']>max(map(len,expected.values()))+2):raise ValueError('plane_prefix_unknown')
+  if row['name']=='cmdline'and row['readComplete']is True and row['bytes']>max(map(len,expected.values())):raise ValueError('plane_prefix_unknown')
+  if row['bytes']>cap or (value is not None and(len(value)!=row['bytes']or hashlib.sha256(value).hexdigest()!=row['sha256']))or(value is None and(row['name']!='cmdline'or row['rawBase64']is not None))or(row['name']=='cmdline'and row['rawCaptured']!=(row['sha256']in tuple(hashlib.sha256(v).hexdigest()for v in expected.values()))):raise ValueError('plane_raw_unknown')
+  parsed.append((row,value))
+
+ cursor=0;counts=[]
+ for scan in passes:
+  keys={'matches','errors','resolved','enumeratedPids','closingPids','newPids','enumeratedCount','readCount','bootId','closingBootId','censusComplete','processAdopted','closingRounds','lateRounds','lateReadCount','lateIdentities','unresolvedNewPids','reappearedPids','identityClosingPids','lateClosingIdentities'}
+  if type(scan)is not dict or set(scan)!=keys or scan['processAdopted']is not False or type(scan['censusComplete'])is not bool:raise ValueError('plane_scan_unknown')
+  def pids(value,limit=8192):
+   if type(value)is not list or len(value)>limit or any(type(n)is not int or n<=0 for n in value)or value!=sorted(set(value)):raise ValueError('plane_scan_unknown')
+   return set(value)
+  for name in('enumeratedPids','closingPids','newPids','unresolvedNewPids','reappearedPids','identityClosingPids'):pids(scan[name])
+  if type(scan['closingRounds'])is not list or not 1<=len(scan['closingRounds'])<=3 or type(scan['lateRounds'])is not list or len(scan['closingRounds'])!=len(scan['lateRounds'])+1:raise ValueError('plane_late_round_unknown')
+  for value in scan['closingRounds']:pids(value)
+  observed=set(scan['enumeratedPids']);late=[]
+  for index,value in enumerate(scan['lateRounds']):
+   pids(value,32)
+   if not value or value!=sorted(set(scan['closingRounds'][index])-observed)or len(observed|set(value))>8192:raise ValueError('plane_late_round_unknown')
+   late.extend(value);observed.update(value)
+  if scan['identityClosingPids']!=scan['closingRounds'][-1]or scan['unresolvedNewPids']!=sorted(set(scan['closingPids'])-observed)or scan['newPids']!=sorted(set(scan['closingPids'])-set(scan['enumeratedPids'])):raise ValueError('plane_late_round_unknown')
+  if type(scan['enumeratedCount'])is not int or scan['enumeratedCount']!=len(scan['enumeratedPids'])or type(scan['readCount'])is not int or not 0<=scan['readCount']<=scan['enumeratedCount']or type(scan['lateReadCount'])is not int or not 0<=scan['lateReadCount']<=len(late):raise ValueError('plane_scan_unknown')
+  if cursor>=len(parsed)or parsed[cursor][0]['name']!='boot_id':raise ValueError('plane_raw_unknown')
+  boot=parsed[cursor][1];cursor+=1
+  if re.fullmatch(rb'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\n',boot)is None or boot.decode().strip()!=scan['bootId']:raise ValueError('plane_boot_unknown')
+  matches=[];seen=[];initial_seen=[];late_seen=[];late_identities=[];closing_identities=[];closing_seen=[];closing_started=False
+  def identity_value(row,cmd,sequence):
+   if len(sequence)!=5 or [r['name']for r,v in sequence]!=['status','stat','cmdline','status','stat']or any(r['pid']!=row['pid']for r,v in sequence):raise ValueError('plane_raw_unknown')
+   again,again_cmd=sequence[2]
+   if any(v is None for index,(r,v)in enumerate(sequence)if index!=2)or(row['sha256'],row['bytes'],row['readComplete'],row['rawCaptured'])!=(again['sha256'],again['bytes'],again['readComplete'],again['rawCaptured']):raise ValueError('plane_identity_changed')
+   queue=[v for r,v in sequence]
+   if cmd is None:
+    # Private nonmatching argv remains hash/prefix-only. The full SHA/size/
+    # completeness relation is checked above; only stat/status parsing is replayed.
+    token=b'private-nonmatching-prefix-authenticated-by-full-sha-size';queue[2]=token;input_cmd=token
+   else:
+    if cmd not in expected.values()or again_cmd!=cmd:raise ValueError('plane_identity_changed')
+    input_cmd=cmd
+   scope={'re':re,'hashlib':hashlib};node=next(n for n in ast.parse(PROCESS_SOURCE).body if isinstance(n,ast.FunctionDef)and n.name=='plane_identity');exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual-source-plane-identity-projector>','exec'),scope)
+   scope['plane_read']=lambda pid,name,limit:queue.pop(0)
+   identity=scope['plane_identity'](row['pid'],input_cmd,scan['bootId']);identity['cmdSha256']=row['sha256']
+   return identity
+  while cursor<len(parsed)and parsed[cursor][0]['name']!='boot_id':
+   row,cmd=parsed[cursor];cursor+=1;pid=row['pid']
+   if row['name']!='cmdline'or pid not in observed:raise ValueError('plane_raw_unknown')
+   if pid in seen:
+    closing_started=True
+    if pid not in late_seen or pid in closing_seen or pid not in scan['identityClosingPids']:raise ValueError('plane_late_identity_unknown')
+    identity=identity_value(row,cmd,parsed[cursor:cursor+5]);cursor+=5;identity.update(role=next((k for k,v in expected.items()if cmd==v),None),argvComplete=row['readComplete']);closing_identities.append(identity);closing_seen.append(pid)
+    first=next(x for x in late_identities if x['pid']==pid)
+    if any(first[key]!=identity[key]for key in('pid','startTicks','ppid','bootId','uid4','gid4','cmdSha256','role','argvComplete')):raise ValueError('plane_late_identity_changed')
+    continue
+   if closing_started:raise ValueError('plane_late_identity_unknown')
+   seen.append(pid)
+   if pid in scan['enumeratedPids']:
+    initial_seen.append(pid)
+    if cmd is None:continue
+   else:late_seen.append(pid)
+   identity=identity_value(row,cmd,parsed[cursor:cursor+5]);cursor+=5;role=next((k for k,v in expected.items()if cmd==v),None)
+   if role is not None:matches.append(dict(identity,role=role))
+   if pid in late:late_identities.append(dict(identity,role=role,argvComplete=row['readComplete']))
+  if initial_seen!=sorted(initial_seen)or late_seen!=[pid for pid in late if pid in late_seen]or len(initial_seen)!=scan['readCount']or len(late_seen)!=scan['lateReadCount']:raise ValueError('plane_late_count_unknown')
+  if closing_seen!=[r['pid']for r in late_identities if r['pid']in scan['identityClosingPids']]:raise ValueError('plane_late_identity_unknown')
+  if bundle._raw(matches)!=bundle._raw(scan['matches'])or bundle._raw(late_identities)!=bundle._raw(scan['lateIdentities'])or bundle._raw(closing_identities)!=bundle._raw(scan['lateClosingIdentities']):raise ValueError('plane_matches_unknown')
+  if cursor>=len(parsed)or parsed[cursor][0]['name']!='boot_id'or parsed[cursor][1].decode().strip()!=scan['closingBootId']:raise ValueError('plane_boot_unknown')
+  cursor+=1
+  for key in('errors','resolved'):
+   if type(scan[key])is not list or len(scan[key])>8192:raise ValueError('plane_scan_unknown')
+   for row in scan[key]:
+    if type(row)is not dict or set(row)!={'pid','errno','closingErrno','state'}or type(row['pid'])is not int or row['pid']not in observed or row['state']not in('unknown','rechecked-absent')or type(row['errno'])is not int or row['errno']not in(2,3,13)or(row['closingErrno']is not None and type(row['closingErrno'])is not int):raise ValueError('plane_scan_unknown')
+    if key=='resolved'and row['errno']not in(2,3):raise ValueError('plane_error_relation_unknown')
+    if row['state']=='rechecked-absent'and row['closingErrno']!=2:raise ValueError('plane_absence_unknown')
+  if len({r['pid']for r in scan['resolved']})!=len(scan['resolved'])or len({r['pid']for r in scan['errors']})!=len(scan['errors']):raise ValueError('plane_error_relation_unknown')
+  error_rows={r['pid']:r for r in scan['errors']};resolved_rows={r['pid']:r for r in scan['resolved']}
+  if set(error_rows)&set(seen)or any(r['state']=='rechecked-absent'and(r['pid']in seen or r['pid']in error_rows)for r in scan['resolved']):raise ValueError('plane_error_relation_unknown')
+  if any(r['state']=='unknown'and(r['pid']not in error_rows or bundle._raw(r)!=bundle._raw(error_rows[r['pid']]))for r in scan['resolved']):raise ValueError('plane_error_relation_unknown')
+  if any((r['pid']not in resolved_rows and(r['errno']!=13 or r['closingErrno']is not None or r['state']!='unknown'))or(r['pid']in resolved_rows and bundle._raw(r)!=bundle._raw(resolved_rows[r['pid']]))for r in scan['errors']):raise ValueError('plane_error_relation_unknown')
+  resolved=[r['pid']for r in scan['resolved']if r['state']=='rechecked-absent']
+  if scan['reappearedPids']!=sorted(set(resolved)&set(scan['closingPids'])):raise ValueError('plane_late_identity_unknown')
+  covered=set(seen)|set(resolved)|set(error_rows)
+  if covered!=observed:raise ValueError('plane_late_coverage_unknown')
+  complete=not scan['errors']and not scan['unresolvedNewPids']and not scan['reappearedPids']and scan['bootId']==scan['closingBootId']
+  if scan['censusComplete']is not complete:raise ValueError('plane_complete_unknown')
+  counts.append({role:sum(m['role']==role for m in matches)for role in expected})
+ if cursor!=len(parsed):raise ValueError('plane_raw_unknown')
+ return counts

@@ -1,14 +1,20 @@
-# Current MCP repair work; Windows parity deferred
+# Native tool recovery and retained parity history
 
-The independent 2026-10-20 automatic readiness/recovery implementation is tracked
-in [its infrastructure ledger](tool-recovery-ledger.md). It runs in a separate
-clone; Windows product parity and its original remote operations remain paused.
-The ledger records task ownership, isolated fixtures, original job identities,
-causal regressions and the incomplete provider acceptance matrix. It does not
-supersede the retained parity history below.
-Permissions recorded in that earlier campaign do not authorize terminating this
-task's retained UNKNOWN work or changing the paused checkout. Use the current
-infrastructure ledger and resume guide for those boundaries.
+## Handoff (2026-11-05)
+
+`dev` in this checkout is clean. The Windows lane commit described next is
+followed by a local work-in-progress checkpoint commit of every other lane that
+was uncommitted on 2026-11-05: Android, Tart macOS, Windows sign-in, idle and
+sleep tools, scripts, fixtures and test enrollment. Neither commit is pushed.
+The checkpoint was committed as found, without separate review or native
+qualification, so its lanes keep the open items recorded below. The next task
+continues the Windows sleep and related tools:
+`agent_tools/windows_sleep_capability.py` (a conservative projection of an
+English `powercfg /a` observation) with its test, the
+`windows_fresh_readonly_observer` wake-operator fixtures, and the Windows idle
+and lifecycle notes under the native tool follow-up below. The paused
+`/Users/karapsin_de/projects/vpn_control` checkout is still dirty and diverged
+(unpushed `a9aed701`) and was left untouched.
 
 ## Windows tool-recovery lane (committed 2026-11-05)
 
@@ -41,6 +47,98 @@ deploy policy's `no_tpm` check matches exact executable names, so a replaced
 detect VMs by `argv` or `comm` only. Superseded image `0a762488` (holder
 unknown) and the failed clone roots `vc-rw-f7619b39` and `vc-rw-ee0d45b1`
 wait for `vm_cleanup` or `retire_images` while no VM runs.
+
+## Native tool follow-up (2026-10-28, active)
+
+Continue in `/Users/karapsin_de/projects/vpn_control_tool_recovery` on `dev`.
+On 2026-11-05 the user moved `dev` off the verified checkpoint
+`2efd2569ce39d86a991b32f68d8e89419360ac5c` with the two local commits above, so
+the single already-built Android target APK update must be re-qualified against
+the new HEAD before it is collected. The user explicitly
+authorized the original Android lease closure and one real PackageInstaller update,
+the same persisted Tart macOS restart, and the existing raw QEMU and libvirt Windows
+protected sign-in, idle and lifecycle tool verification. Earlier "Windows explanation
+only" and pending-approval notes are historical and superseded by this scope.
+
+Intentional source buckets are Android-scoped durable successor/qualified filesystem
+continuity and installer orchestration, the Tart renderer and provider qualification,
+Windows qualified protected-input/idle/lifecycle adapters, causal regression fixtures,
+portable checks under `scripts/`, and affected-test/byte-custody enrollment. Each subsystem has one implementation
+owner; the coordinator owns enrollment, documentation, checks and delivery. Shared
+source changes require renewed source qualification of affected native scenarios.
+
+Full VPN Control product acceptance, VPN connectivity/reconnect acceptance, product
+UI/visual review and the wider installer matrix are **skipped by user instruction**.
+The Android update remains required to verify installer orchestration. Mandatory
+managed pre-push checks and all five exact-SHA development workflows remain required.
+Do not replay UNKNOWN operations, stop the user's VPN/gateway, restart retired Linux,
+alter unrelated Virtualization.framework PID 25339, or reuse an old UNKNOWN history for a new effect.
+Run at most one actual local test VM. Tart starts only after actual disk, memory and
+reservation admission passes; its prior stop cause remains `off_unknown`.
+Following the user's latest fresh-VM steering, prepare new remote Windows
+fixtures for the positive tool scenarios while preserving the old fixtures and
+UNKNOWN histories. Qualify trusted clean assets, account/custody and normal
+capacity first; coordinate host mutations with the Android owner and use one
+fresh Windows fixture at a time. Full product acceptance remains deferred.
+
+Current original-operation receipts and finite progress are kept under ignored
+`.runtime/tool-recovery/native-followup-20261027/`; original evidence remains at
+`.runtime/tool-recovery/native-approvals-20261027/` and the single APK's original
+`android-head-target-1f2025d9-8e2d-4d2d-8919-f9a785bdf7a7` directory. The
+[infrastructure ledger](tool-recovery-ledger.md) retains historical outcome limits.
+
+Android starts `0e75d7ee` and `0ed4b592` are positively closed before any VM fork. The
+distinct current1e15 closing-reader correction and original-root collector are
+promoted: actual Linux child control `6caaeb65` and fixed-helper collection gate
+`a3383cc8` passed with complete original output and child closure. Same-AVD boot,
+lease closure and the update remain open. The distinct current-authority template
+is promoted after full closing-predicate review and 25 causal controls; it remains
+unsealed pending genuine new-boot/native evidence. The latter start refused an
+ordinary process's transition to an empty-command zombie. Its failed interval
+and original UNKNOWN result remain immutable. A separately reviewed local cleanup
+reaped its observer and released all three coordinator locks. Explicit factory
+`1c732a53` is promoted after three real owned Linux controls: the old refusal,
+two complete terminal identities, and two directory-absence witnesses. Each
+retains its original UNKNOWN interval and requires a new whole-host observation.
+Observer `ab09df50` has routine real-lock and fresh-context coverage. A test's
+incorrect default selector was separately reproduced and fixed with actual
+unset-environment RED/GREEN; final combined checks are being refreshed. The
+new boot-only recipe remains unbound pending fresh admission. Tart remains off:
+latest available memory is 5,790 MiB against 6,144 required despite normal pressure.
+Fresh Windows blank-install plans and read-only media/capacity preflights are
+prepared under the latest steering. The normal caller capacity mismatch is fixed
+while preserving the raw census, every held claim and all old UNKNOWNs. New
+source-qualified allocation getter and ordinary/root bridge proofs passed. Fresh
+raw Windows fixture `62b489bc` has started once under positive source/terminal
+closure, retaining all old claims plus its own 4 GiB. Windows installation,
+guest-agent readiness and the ordinary-user session are positively qualified.
+Exact new-actor storage registration and a fresh 46 GiB allocation proof passed.
+Protected administrator setup `d546cbd2` passed with fresh exact account/boot
+checks, protected credential verification, source closure and setup cleanup.
+Canonical display wake, lease expiry/restoration and cancellation/restoration
+passed. Counter `ee9a19ba` reached terminal with 80 steps and one execution.
+Ordinary protected sign-in/unlock, full idle and lifecycle remain open.
+Idle refusal evidence identifies unclassified guest jobs, an unreconciled
+completed inspection, and a nine-field producer-order mismatch. All remain
+blocking pending qualified corrections; historical reservations are retained.
+Android lease release still needs an exact owned-transition guard; that source
+work remains private while boot-only preparation continues.
+The first 9,017-test focused pass exposed three integration
+issues; all three recorded modules passed the managed failed-first rerun after
+narrow fixes. The Windows capability/path and Git/process regression suites also
+pass. The current-authority, Windows harness and Git-byte cohort passed 52 tests;
+release hygiene passed. Final native scenarios, source freeze, version note, managed prepush, push
+and five exact-SHA workflows remain open.
+
+The independent 2026-10-20 automatic readiness/recovery implementation is tracked
+in [its infrastructure ledger](tool-recovery-ledger.md). It runs in a separate
+clone; Windows product parity and its original remote operations remain paused.
+The ledger records task ownership, isolated fixtures, original job identities,
+causal regressions and the incomplete provider acceptance matrix. It does not
+supersede the retained parity history below.
+Permissions recorded in that earlier campaign do not authorize terminating this
+task's retained UNKNOWN work or changing the paused checkout. Use the current
+infrastructure ledger and resume guide for those boundaries.
 
 ## Recovery delivery follow-up (2026-10-27)
 

@@ -1,0 +1,662 @@
+"""Private source candidate: separate original and qualified current validators.
+
+No native entry point or effect exists here. The native source binding remains
+None until actual successful next-start/status/qualification/closing captures
+and the complete derived runtime sources are available and reviewed. Public
+callers cannot provide a proof-authority callback or an unchecked DTO branch.
+"""
+import ast
+import base64
+import copy
+import hashlib
+import json
+import os
+import re
+import stat
+from pathlib import Path
+import time
+import types
+import uuid
+
+OUT = Path(__file__).parent
+SOURCE_BINDING = None
+POLICY_KIND = 'android-poststart-current-native-source-policy'
+ORIGINAL_PROOF_SHA = '93ff56ef99d2496aef690ea1ae44e0e7ff4136386e6718fa81e8f0ff21e2e6ed'
+ORIGINAL_SOURCE_SHA = '982dd6db1743fa2b14a5bc79dc575551eab10a880db0db27860d0fafb34f94da'
+RETIREMENT_SHA = 'b80edb795461815d1565148dc1eb32966c4de3aa6ad0f4bab1f53a378f537e31'
+OLD_BOOT = 'd177ded3-526f-486d-bd19-3042d1836d9a'
+BASE_SHA = '352af218242311884a355f789c0d1c45b736c35270b096f41408de55e2c4ed33'
+PRODUCT_SHA = 'd32f719a08db57e5d40ce2bf77e0d7c5b42de557'
+BACKEND_ROOT = '/home/kardinal/.vpn-control-mcp-fixtures'
+AUTHORITY_FIELD = 'poststartCurrentAuthority'
+MAX_AGE_NS = 120_000_000_000
+FAILED_START = '0e75d7ee-9aef-464f-98c9-62fce9d8294f'
+FAILED_SOURCE_SHAS = {
+    'e96f14b5f541b6230a76838919fd0f7971a631f2d69e42749059fce1aef67c18',
+    'b7e6bf12e4ec0662ba66826d3d06934c827272bccad36453de03e23a9b0e908f',
+}
+SOURCE_SHAS = {
+    'custody': 'a04c3282787e938c32a09ad3ac5a54d8499e60a766977778591ef72ef388dcae',
+    'retirement': RETIREMENT_SHA,
+    'continuity': '9e7c099de26239ac70711687a512d689e451fb0aca42627fd362e03065784589',
+    'bundle': 'e218c1fc862eab2a5668da970b8d642fa3254fb2ff822ab4945f23ae787f4372',
+    'adapter': '9edf841d551f43cb4daf9099b85c6ccdb7281299b0f47f514b90bb6d29f8bc4c',
+    'renderer': '334d4b006be08bacecab845137393953462d39632e02b988608d5758e1403b3f',
+}
+REQUIRED_RUNTIME_REFS = frozenset({
+    'poststart_kernel_guard', 'poststart_app',
+    'component_release_effect_plane_current_guard',
+    'component_release_current1e15_effect_plane_guard',
+    'poststart_prepare_proof_parent', 'POSTSTART_PROOF_PARENT', 'POSTSTART_PROOF_DIRECTORY',
+    'OwnerAdmissionGuard.__init__',
+    'POSTSTART_CURRENT_COMPONENT_RUNTIME.BaselineGuard.__init__',
+    'POSTSTART_ROUTING_CREATE', 'POSTSTART_AUTHENTIC_COMPONENT_BUNDLE._guard_backend',
+})
+
+
+def need(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+                      allow_nan=False).encode() + b'\n'
+
+
+def decode(raw):
+    def unique(rows):
+        result = {}
+        for key, value in rows:
+            need(key not in result, 'current_authority_duplicate_json_key')
+            result[key] = value
+        return result
+    return json.loads(raw, object_pairs_hook=unique)
+
+
+def canonical_uuid(value):
+    try:
+        need(type(value) is str and str(uuid.UUID(value)) == value, 'current_authority_uuid_invalid')
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError('current_authority_uuid_invalid') from None
+
+
+def fresh(stamp):
+    now = time.time_ns()
+    need(type(stamp) is int and 0 < stamp <= now and now - stamp <= MAX_AGE_NS,
+         'current_authority_capture_stale')
+
+
+def load_parts():
+    """Load only captured, hash-authenticated bytes. No canonical repo import."""
+    raw = {}
+    for role, expected in SOURCE_SHAS.items():
+        value = (OUT / 'sources' / (role + '.source')).read_bytes()
+        need(digest(value) == expected, 'current_authority_source_changed:' + role)
+        raw[role] = value
+    custody = types.ModuleType('private_captured_custody_a04')
+    exec(compile(raw['custody'], 'captured-custody-a04', 'exec', dont_inherit=True), custody.__dict__)
+    adapter, provenance = custody.load_local_adapter(
+        {role: {'source': raw[role], 'sha256': SOURCE_SHAS[role]}
+         for role in ('adapter', 'retirement', 'continuity', 'bundle')}, OUT / 'captured-adapter.py')
+    renderer = types.ModuleType('private_captured_poststart_renderer')
+    exec(compile(raw['renderer'], 'captured-poststart-renderer', 'exec', dont_inherit=True), renderer.__dict__)
+    return raw, custody, adapter, renderer, provenance
+
+
+def code_signature(code):
+    def constant(value):
+        if isinstance(value, types.CodeType):
+            return {'code': code_signature(value)}
+        if type(value) is bytes:
+            return {'bytes': value.hex()}
+        if type(value) is tuple:
+            return {'tuple': [constant(item) for item in value]}
+        if type(value) is slice:
+            return {'slice': [constant(value.start), constant(value.stop), constant(value.step)]}
+        if isinstance(value, frozenset):
+            return {'frozenset': sorted([constant(item) for item in value], key=repr)}
+        if value is Ellipsis:
+            return {'ellipsis': True}
+        need(value is None or type(value) in (str, int, float, complex, bool),
+             'current_authority_code_constant_unsupported')
+        return {'type': type(value).__name__, 'value': str(value) if type(value) is complex else value}
+    value = {'args': [code.co_argcount, code.co_posonlyargcount, code.co_kwonlyargcount],
+             'flags': code.co_flags, 'code': code.co_code.hex(),
+             'constants': [constant(item) for item in code.co_consts],
+             'names': code.co_names, 'variables': code.co_varnames,
+             'free': code.co_freevars, 'cells': code.co_cellvars,
+             'exceptions': code.co_exceptiontable.hex()}
+    return digest(canonical(value))
+
+
+def source_code(raw, qualname):
+    """Compile without executing the supplied source or any native entrypoint."""
+    root = compile(raw, 'qualified-current-runtime-reference', 'exec', dont_inherit=True)
+    matches = []
+    def visit(code):
+        if getattr(code, 'co_qualname', code.co_name) == qualname:
+            matches.append(code)
+        for value in code.co_consts:
+            if isinstance(value, types.CodeType):
+                visit(value)
+    visit(root)
+    need(len(matches) == 1, 'current_authority_runtime_reference_missing:' + qualname)
+    return code_signature(matches[0])
+
+
+def attribute(namespace, name):
+    parts = name.split('.')
+    value = namespace[parts[0]]
+    for part in parts[1:]:
+        value = getattr(value, part)
+    return value
+
+
+def clone_one_global(function, name, replacement, identity):
+    original = function.__globals__
+    need(name in original and function.__closure__ is None, 'current_authority_clone_shape')
+    scope = dict(original)
+    scope[name] = replacement
+    need(set(scope) == set(original) and all(scope[key] is original[key] for key in original if key != name),
+         'current_authority_clone_unexpected_global_delta')
+    clone = types.FunctionType(function.__code__, scope, identity, function.__defaults__, function.__closure__)
+    clone.__kwdefaults__ = copy.copy(function.__kwdefaults__)
+    clone.__module__ = 'private_qualified_poststart_clones'
+    need(clone.__code__ is function.__code__, 'current_authority_clone_body_changed')
+    return clone, {'kind': 'source-qualified-function-clone', 'identity': identity,
+                   'codeSignature': code_signature(function.__code__), 'codeBodyUnchanged': True,
+                   'globalsDelta': [name], 'allOtherGlobalsSameObjects': True}
+
+
+class Evidence:
+    def __init__(self, adapter, binding):
+        self.inputs = adapter.HeldInputs()
+        self.root = Path(binding['evidenceRoot'])
+        need(self.root.is_absolute() and '..' not in self.root.parts, 'current_authority_evidence_root_invalid')
+        self.captures = {}
+
+    def record(self, record, limit):
+        need(type(record) is dict and set(record) == {'path', 'pin'}, 'current_authority_record_schema')
+        path = Path(record['path'])
+        need(path.is_absolute() and '..' not in path.parts and self.root in path.parents,
+             'current_authority_record_outside_scope')
+        return self.inputs.read(path, limit, record['pin'])[0]
+
+    def capture(self, name, record):
+        need(type(record) is dict and set(record) == {'header', 'operationId', 'producerSourceSha256'},
+             'current_authority_capture_schema')
+        header_raw = self.record(record['header'], 65536)
+        header = decode(header_raw)
+        need(header['kind'] == 'android-poststart-complete-source-capture' and header['schema'] == 1 and
+             header['operationId'] == record['operationId'] and
+             header['producerSourceSha256'] == record['producerSourceSha256'] and
+             header['producerSourceSha256'] not in FAILED_SOURCE_SHAS and header['returncode'] == 0 and
+             header['streamsComplete'] is True and 0 < header['startedAtNs'] <= header['finishedAtNs'],
+             'current_authority_capture_incomplete')
+        fresh(header['finishedAtNs'])
+        streams = {}
+        for role in ('stdout', 'stderr'):
+            stream = header['streams'][role]
+            need(type(stream['slices']) is list and len(stream['slices']) <= 32,
+                 'current_authority_stream_inventory')
+            parts = []
+            offset = 0
+            for item in stream['slices']:
+                need(set(item) == {'offset', 'bytes', 'input'} and item['offset'] == offset and
+                     type(item['bytes']) is int and 0 < item['bytes'] <= 4 * 1024 * 1024,
+                     'current_authority_stream_inventory')
+                raw = self.record(item['input'], 4 * 1024 * 1024)
+                need(len(raw) == item['bytes'], 'current_authority_stream_truncated')
+                offset += len(raw)
+                parts.append(raw)
+            raw = b''.join(parts)
+            need(offset <= 128 * 1024 * 1024 and len(raw) == stream['bytes'] and
+                 digest(raw) == stream['sha256'], 'current_authority_stream_truncated')
+            streams[role] = raw
+        need(not streams['stderr'], 'current_authority_capture_stderr')
+        self.inputs.guard()
+        self.captures[name] = {'headerSha256': digest(header_raw), 'documentSha256': digest(streams['stdout']),
+                               'producerSourceSha256': record['producerSourceSha256'],
+                               'operationId': record['operationId'], 'finishedAtNs': header['finishedAtNs']}
+        return decode(streams['stdout'])
+
+    def guard(self):
+        self.inputs.guard()
+        for capture in self.captures.values():
+            fresh(capture['finishedAtNs'])
+
+    def close(self):
+        self.inputs.close()
+
+
+def validate_candidate(plan, status, candidate, binding, renderer):
+    start = binding['startOperationId']
+    release = binding['releaseOperationId']
+    canonical_uuid(start)
+    canonical_uuid(release)
+    need(start != FAILED_START and start != release, 'current_authority_failed_or_shared_start')
+    expected_map = renderer.operation_contract(start, release, '/var/tmp/vc-android-persisted-' + start)
+    need(binding['outputContract'] == expected_map and binding['backendRoot'] == BACKEND_ROOT,
+         'current_authority_output_map_unqualified')
+    contract = candidate['contract']
+    need(plan['kind'] == 'android-persisted-start-sealed-plan' and plan['operationId'] == start and
+         plan['originalSourceSha256'] == ORIGINAL_SOURCE_SHA and
+         contract['operationId'] == start and contract['originalSourceSha256'] == ORIGINAL_SOURCE_SHA and
+         plan['programSha256'] == contract['startProgramSha256'] == binding['startProgramSha256'] and
+         plan['admissionSha256'] == contract['admissionSha256'] and
+         plan['launch']['intentSha256'] == contract['intentSha256'] and
+         plan['journalDirectory'] == contract['journalDirectory'] ==
+         '/var/tmp/vc-android-persisted-' + start + '/' + start + '/coldboot',
+         'current_authority_start_chain_changed')
+    need(contract['host'] == binding['host'] and contract['host']['uid'] == contract['host']['gid'] == 0 and
+         plan['launch']['observation']['bootId'] == contract['host']['bootId'],
+         'current_authority_host_account_changed')
+    need(candidate['kind'] == 'android-poststart-readonly-current-authority-candidate' and
+         candidate['state'] == 'qualified' and candidate['readOnly'] is True and
+         all(candidate[key] is False for key in ('installerLeaseGranted', 'guestMutationPerformed',
+             'acceptanceComplete', 'originalOutcomesChanged', 'releaseGranted', 'replayAllowed')),
+         'current_authority_candidate_scope')
+    generation = candidate['generation']
+    need(status['state'] == 'guest-generation-admitted' and status['guestAdmitted'] is True and
+         status['correlationId'] == start and
+         all(status[key] == generation[key] for key in ('child', 'guest', 'device')),
+         'current_authority_positive_qemu_closure_missing')
+    boot = generation['device']['guestBootId']
+    canonical_uuid(boot)
+    need(boot != OLD_BOOT and contract['oldGeneration']['device']['guestBootId'] == OLD_BOOT and
+         generation['device']['sdk'] == '35' and generation['device']['abi'] == 'x86_64' and
+         generation['device']['shellUid'] == '2000' and generation['device']['bootCompleted'] == '1' and
+         generation['device']['matched'] is True and
+         generation['child'] != contract['oldGeneration']['child'] and
+         generation['guest'] != contract['oldGeneration']['guest'] and
+         generation['child']['bootId'] == generation['guest']['hostBootId'] == contract['host']['bootId'],
+         'current_authority_new_guest_unqualified')
+    app = candidate['appProcess']
+    need(app['guestBootId'] == boot and app['name'] == 'com.kardinal.vpncontrol' and app['uid'] == 10209 and
+         all(type(app[key]) is int and app[key] > 0 for key in ('pid', 'startTicks')) and
+         candidate['baseSha256'] == contract['baseSha256'] == BASE_SHA and
+         candidate['configurationRevision'] == 0, 'current_authority_app_unqualified')
+    canonical_uuid(candidate['controllerId'])
+    journal = {}
+    for name in ('intent.json', 'attempt.json', 'ready.json', 'child.json', 'exec-released.json',
+                 'submitted.json', 'qemu-observed.json'):
+        row = candidate['journal'][name]
+        raw = base64.b64decode(row['rawBase64'], validate=True)
+        need(row['hashScope'] == 'full' and row['bytesRead'] == len(raw) == row['generation'][2] and
+             row['sha256'] == digest(raw) and row['generation'][5:] == [0o100600, 0, 0, 1],
+             'current_authority_journal_bytes_changed')
+        journal[name] = decode(raw)
+    need(journal['intent.json'] == plan['launch']['intent'] and
+         journal['qemu-observed.json'] == {'schema': 1, 'correlationId': start,
+            'supervisor': generation['child'], 'guest': generation['guest'],
+            'source': plan['launch']['intent']['source'], 'intentSha256': plan['launch']['intentSha256']},
+         'current_authority_journal_closure_changed')
+    disks = candidate['diskContinuity']
+    before = disks['prestartAvd']
+    after = disks['poststartAvd']
+    need(before == contract['prestartAvd'] and after['directory'] == before['directory'] and
+         after['ini'] == before['ini'] and after['config'] == before['config'],
+         'current_authority_persisted_config_changed')
+    for name in ('userdata-qemu.img', 'userdata-qemu.img.qcow2', 'cache.img', 'cache.img.qcow2',
+                 'encryptionkey.img', 'encryptionkey.img.qcow2'):
+        row = disks['persistedDiskContinuity'][name]
+        old = before['tree'][name]
+        new = after['tree'][name]
+        need(row['before'] == old and row['after'] == new and old['kind'] == new['kind'] == 'regular' and
+             old['generation'][:2] + old['generation'][5:] == new['generation'][:2] + new['generation'][5:] and
+             new['generation'][6:] == [1000, 1000, 1], 'current_authority_persisted_disk_replaced')
+    census = disks['holderCensus']
+    need(census['complete'] is True and census['unreadableProcessCount'] == 0 and len(census['holders']) == 1 and
+         census['holders'][0]['pid'] == generation['guest']['pid'] and
+         census['holders'][0]['startTicks'] == generation['guest']['startTicks'] and
+         all(name in census['holders'][0]['files'] for name in
+             ('userdata-qemu.img.qcow2', 'cache.img.qcow2', 'encryptionkey.img.qcow2')),
+         'current_authority_disk_holder_unknown')
+    public = candidate['publicReads']
+    for envelope in public.values():
+        need(envelope['ok'] is True and envelope['final'] is True and envelope['code'] == 'OK' and
+             envelope['controllerId'] == candidate['controllerId'] and
+             envelope['configurationRevision'] == candidate['configurationRevision'],
+             'current_authority_public_recipient_changed')
+    need(public['statusBefore']['data'] == public['statusAfter']['data'] and
+         public['statusAfter']['data']['runtimeRunning'] is False and
+         public['statusAfter']['data']['runtimeObservation'] == 'stopped' and
+         public['operations']['data'] == public['operationsAfter']['data'] and
+         all(row['final'] is True for row in public['operations']['data']['operations']),
+         'current_authority_public_work_pending')
+    return expected_map
+
+
+PLANE_SOURCES = {
+    'EFFECT_PLANE_FIXED': {
+        'kind': 'original9da-current-effect-plane',
+        'processSource': '4b1e019705f5fc3d9870136839eb80a3cd97ef899b64944c85f71292d0a8731d',
+        'validatorSource': '23e692586d4f82f4c6dc8a24c0200eb572292c0efc78e68497de33ca0f119670',
+        'boundarySource': 'd364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90',
+    },
+    'CURRENT1E15_EFFECT_PLANE_FIXED': {
+        'kind': 'original1e15-current-effect-plane',
+        'processSource': '779c7bcea4e3d6b88d2d4bd508b045e834dec567a373fd9a5134d6da9b183f8f',
+        'validatorSource': '2215ed6c0571b93c0795359fda7976a68a99e1407fd0b85195e69dba29853ed1',
+        'boundarySource': 'd364e9802e0b1bce9c6a24c64a19d0879b55683f04b5f2aa0247c6962c717a90',
+    },
+}
+
+
+def validate_plane_boundary(fixed, record):
+    """Replay the original guard's complete two-pass boundary relation."""
+    paths = fixed['paths']
+    prior = fixed['priorPass']
+    need(type(paths) is list and len(paths) == 8 and len(set(paths)) == 8 and
+         all(type(path) is str and path and not Path(path).is_absolute() and
+             '..' not in Path(path).parts for path in paths) and
+         type(prior) is list and len(prior) == len(paths) and
+         type(record['passes']) is list and len(record['passes']) == 2 and
+         canonical(record['passes']) == canonical([prior, prior]),
+         'current_authority_plane_boundary_changed')
+    for index, (relative, row) in enumerate(zip(paths, prior)):
+        need(type(row) is dict and row.get('path') == BACKEND_ROOT + '/' + relative and
+             type(row.get('parents')) is dict and row['parents'],
+             'current_authority_plane_boundary_raw_invalid')
+        for path, pin in row['parents'].items():
+            need(type(path) is str and Path(path).is_absolute() and '..' not in Path(path).parts and
+                 type(pin) is list and len(pin) == 5 and
+                 all(type(value) is int and value >= 0 for value in pin) and stat.S_ISDIR(pin[2]),
+                 'current_authority_plane_boundary_raw_invalid')
+        if index == 0:
+            need(set(row) == {'path', 'state', 'parents', 'generation', 'bytes', 'sha256', 'rawBase64'} and
+                 row['state'] == 'present' and type(row['generation']) is list and len(row['generation']) == 9 and
+                 all(type(value) is int and value >= 0 for value in row['generation']) and
+                 row['generation'][2:6] == [0o100600, 1000, 1000, 1] and
+                 type(row['bytes']) is int and row['bytes'] == row['generation'][6] == 121,
+                 'current_authority_plane_boundary_raw_invalid')
+            raw = base64.b64decode(row['rawBase64'], validate=True)
+            need(len(raw) == row['bytes'] and digest(raw) == row['sha256'] ==
+                 '44f2b1d325cbd0dedda6d6af5b1bf856792edf327accad99475e8cde6e4e865a' and
+                 raw == canonical({'owner': 'android-installer', 'host': 'archlinux', 'device': 'api35',
+                                   'correlationId': '0dd55704-1e80-4d62-8d9d-2f0a123e0c3b'}),
+                 'current_authority_plane_boundary_raw_invalid')
+        elif index <= 5:
+            need(set(row) == {'path', 'state', 'parents'} and row['state'] == 'absent',
+                 'current_authority_plane_boundary_raw_invalid')
+        else:
+            need(set(row) == {'path', 'state', 'parents', 'parentPath'} and
+                 row['state'] == 'parent-absent' and row['parentPath'] == BACKEND_ROOT + '/' + paths[5] and
+                 row['parents'] == prior[5]['parents'], 'current_authority_plane_boundary_raw_invalid')
+
+
+def validate_current9da_waves(record, boot):
+    """Bind the derived scanner's bounded wave audit to the projected raw scans."""
+    raw = record['procRawRecords']
+    scans = record['workerPasses']
+    waves = record['censusWaves']
+    positions = [index for index, row in enumerate(raw) if row['name'] == 'boot_id']
+    need(type(waves) is list and len(waves) == 2 and len(positions) == 4,
+         'current_authority_plane_waves_invalid')
+    for number, (scan, evidence) in enumerate(zip(scans, waves)):
+        opening, closing = positions[2 * number:2 * number + 2]
+        need(type(evidence) is dict and set(evidence) ==
+             {'openingPids', 'waves', 'matches', 'errors', 'resolved', 'state', 'bootId', 'closingBootId', 'rawBytes'} and
+             evidence['state'] == 'complete' and evidence['bootId'] == evidence['closingBootId'] == boot and
+             all(evidence[key] == scan[key] for key in ('matches', 'errors', 'resolved')) and
+             type(evidence['rawBytes']) is int and 0 <= evidence['rawBytes'] <= 8 * 1024 * 1024 and
+             evidence['rawBytes'] == sum(row['bytes'] for row in raw[:closing + 1]) and
+             type(evidence['waves']) is list and 1 <= len(evidence['waves']) <= 8,
+             'current_authority_plane_waves_invalid')
+        pending = evidence['openingPids']
+        observed = set()
+        cursor = opening + 1
+        for index, wave in enumerate(evidence['waves']):
+            need(type(pending) is list and pending == sorted(set(pending)) and
+                 all(type(pid) is int and pid > 0 for pid in pending) and
+                 type(wave) is dict and set(wave) == {'number', 'pendingPids', 'readPids', 'rawBegin', 'rawEnd',
+                                                     'closingPids', 'newPids', 'enumeratedPids'} and
+                 type(wave['number']) is int and wave['number'] == index and wave['pendingPids'] == pending and
+                 type(wave['rawBegin']) is int and wave['rawBegin'] == cursor and
+                 type(wave['rawEnd']) is int and cursor <= wave['rawEnd'] <= closing,
+                 'current_authority_plane_waves_invalid')
+            observed.update(pending)
+            read = list(dict.fromkeys(row['pid'] for row in raw[cursor:wave['rawEnd']] if row['name'] == 'cmdline'))
+            need(wave['readPids'] == read and read == [pid for pid in pending if pid in read] and
+                 wave['enumeratedPids'] == sorted(observed) and
+                 type(wave['closingPids']) is list and wave['closingPids'] == sorted(set(wave['closingPids'])) and
+                 all(type(pid) is int and pid > 0 for pid in wave['closingPids']) and
+                 wave['newPids'] == sorted(set(wave['closingPids']) - observed) and
+                 not any(row['state'] == 'rechecked-absent' and row['pid'] in observed and
+                         row['pid'] in wave['closingPids'] for row in scan['resolved']),
+                 'current_authority_plane_waves_invalid')
+            pending = wave['newPids']
+            cursor = wave['rawEnd']
+        need(not pending and cursor == closing and sorted(observed) == scan['enumeratedPids'] and
+             evidence['waves'][-1]['closingPids'] == scan['closingPids'],
+             'current_authority_plane_waves_invalid')
+
+
+def validate_effect_plane(name, fixed, record, boot, bundle):
+    """Pure replay of unchanged authenticated projectors; no process/FS reads."""
+    spec = PLANE_SOURCES[name]
+    need(type(fixed) is dict and set(fixed) == {'processSource', 'validatorSource', 'boundarySource',
+                                               'binding', 'paths', 'priorPass'} and
+         all(type(fixed[key]) is str and digest(fixed[key].encode()) == spec[key]
+             for key in ('processSource', 'validatorSource', 'boundarySource')),
+         'current_authority_plane_source_changed')
+    fields = {'kind', 'binding', 'passes', 'workerPasses', 'procRawRecords'}
+    if name == 'EFFECT_PLANE_FIXED':
+        fields.add('censusWaves')
+    need(type(record) is dict and set(record) == fields and record['kind'] == spec['kind'] and
+         record['binding'] == fixed['binding'] and type(record['workerPasses']) is list and
+         len(record['workerPasses']) == 2 and type(record['procRawRecords']) is list and
+         len(canonical(record)) <= 16 * 1024 * 1024,
+         'current_authority_plane_record_invalid')
+    validate_plane_boundary(fixed, record)
+    scope = {'ast': ast, 'base64': base64, 'hashlib': hashlib, 'json': json,
+             're': re, 'stat': stat, 'bundle': bundle, 'PROCESS_SOURCE': fixed['processSource']}
+    try:
+        exec(compile(fixed['validatorSource'], '<unchanged-authenticated-plane-projector>', 'exec', dont_inherit=True), scope)
+        counts = scope['validate_workers'](record['procRawRecords'], record['workerPasses'], fixed['binding'])
+    except Exception as error:
+        raise ValueError('current_authority_plane_projection_invalid:' + name) from error
+    need(type(counts) is list and len(counts) == 2 and
+         all(type(row) is dict and set(row) == {'python', 'sudo'} and
+             all(type(value) is int and value == 0 for value in row.values()) for row in counts) and
+         all(scan['censusComplete'] is True and scan['processAdopted'] is False and
+             scan['bootId'] == scan['closingBootId'] == boot for scan in record['workerPasses']),
+         'current_authority_plane_current_interval_unknown')
+    if name == 'EFFECT_PLANE_FIXED':
+        validate_current9da_waves(record, boot)
+    # No generic zero-new/zero-late rule: unchanged2215 projects valid stable
+    # late identities and positive resolved absence under its original policy.
+    return {'kind': spec['kind'], 'recordSha256': digest(canonical(record)),
+            'fixedTableSha256': digest(canonical(fixed)), 'projectedCounts': counts,
+            'hostBootId': boot, 'boundaryPassesSha256': digest(canonical(record['passes'])),
+            'sources': {key: spec[key] for key in ('processSource', 'validatorSource', 'boundarySource')}}
+
+
+def validate_closing_relations(closing, fixed_tables, candidate, host, bundle):
+    """Bind actual full guard results to their current physical closing frame."""
+    need(type(closing) is dict and type(closing.get('effectPlaneResults')) is dict and
+         set(closing['effectPlaneResults']) == set(PLANE_SOURCES) and
+         type(closing.get('physical')) is dict,
+         'current_authority_full_closing_required')
+    current = {'generation': candidate['generation'], 'appProcess': candidate['appProcess'],
+               'controllerId': candidate['controllerId'], 'configurationRevision': candidate['configurationRevision']}
+    expected = {'account': {'uid': 0, 'euid': 0, 'gid': 0, 'egid': 0, 'groups': [0]},
+                'hostBootId': host['bootId'], 'machineSha256': host['machineSha256'],
+                'before': current, 'after': current}
+    need(canonical(closing['physical']) == canonical(expected), 'current_authority_closing_physical_changed')
+    planes = {name: validate_effect_plane(name, fixed_tables[name], closing['effectPlaneResults'][name],
+                                         host['bootId'], bundle) for name in PLANE_SOURCES}
+    return {'physicalSha256': digest(canonical(closing['physical'])), 'planes': planes}
+
+
+class CurrentContext:
+    def __init__(self, binding, native_namespace=None):
+        need(type(binding) is dict and binding['kind'] == POLICY_KIND and binding['schema'] == 1 and
+             binding['mode'] in ('local-closing', 'remote-live') and
+             binding['originalProofSha256'] == ORIGINAL_PROOF_SHA,
+             'current_authority_source_policy_unqualified')
+        self.binding = copy.deepcopy(binding)
+        self.raw, self.custody, self.adapter, self.renderer, self.source_provenance = load_parts()
+        self.evidence = Evidence(self.adapter, binding)
+        self.native = native_namespace
+        try:
+            self.plan = self.evidence.capture('plan', binding['captures']['plan'])
+            self.status = self.evidence.capture('status', binding['captures']['status'])
+            self.candidate = self.evidence.capture('qualification', binding['captures']['qualification'])
+            self.output_map = validate_candidate(self.plan, self.status, self.candidate, binding, self.renderer)
+            need(set(binding['runtimeRefs']) == REQUIRED_RUNTIME_REFS, 'current_authority_runtime_scope_incomplete')
+            self.runtime_codes = {}
+            self.runtime_sources = {}
+            for role, record in binding['runtimeSources'].items():
+                raw = self.evidence.record(record, 8 * 1024 * 1024)
+                self.runtime_sources[role] = raw
+            for name, reference in binding['runtimeRefs'].items():
+                need(set(reference) == {'sourceRole', 'qualname'}, 'current_authority_runtime_reference_schema')
+                self.runtime_codes[name] = source_code(self.runtime_sources[reference['sourceRole']], reference['qualname'])
+            state_tree = ast.parse(self.runtime_sources[binding['runtimeStateSourceRole']])
+            self.effect_fixed = {name: self.renderer.literal(state_tree, name) for name in PLANE_SOURCES}
+            self.effect_tables = {name: digest(canonical(value)) for name, value in self.effect_fixed.items()}
+            self.identity = {'schema': 1, 'kind': 'android-poststart-qualified-current-authority',
+                'startOperationId': binding['startOperationId'], 'releaseOperationId': binding['releaseOperationId'],
+                'originalProofSha256': ORIGINAL_PROOF_SHA, 'originalSourceSha256': ORIGINAL_SOURCE_SHA,
+                'retirementSourceSha256': RETIREMENT_SHA, 'oldGuestBootId': OLD_BOOT,
+                'newGuestBootId': self.candidate['generation']['device']['guestBootId'],
+                'generation': self.candidate['generation'], 'appProcess': self.candidate['appProcess'],
+                'controllerId': self.candidate['controllerId'], 'configurationRevision': self.candidate['configurationRevision'],
+                'baseSha256': BASE_SHA, 'productSourceSha': PRODUCT_SHA, 'backendRoot': BACKEND_ROOT,
+                'outputContract': self.output_map, 'runtimeCodeSignatures': self.runtime_codes,
+                'effectPlaneTableSha256': self.effect_tables,
+                'captureDigests': copy.deepcopy(self.evidence.captures), 'releaseGranted': False,
+                'historicalOriginalProofChanged': False, 'replayAllowed': False}
+            self.identity['authoritySha256'] = digest(canonical(self.identity))
+            self.legacy = self.adapter.retirement
+            self.original_validator = self.legacy.validate_component_retained_proof
+            derived = self.renderer.current_validator_source(self.raw['retirement'], self.identity['newGuestBootId'])
+            need(derived['audit']['inverseAstEqual'] is True and derived['audit']['retainedProofBodyUnchanged'] is True,
+                 'current_authority_validator_derivation_unqualified')
+            closed = self.custody._retirement_definitions(derived['source'], derived['sha256'])
+            self.current = types.ModuleType('private_source_qualified_current_retirement')
+            exec(compile(closed, 'qualified-current-retirement-definitions', 'exec', dont_inherit=True), self.current.__dict__)
+            self.derivation = derived['audit']
+            self.primitive, self.primitive_audit = clone_one_global(self.legacy.release_component_fenced,
+                'validate_component_retained_proof', self.validate, 'qualified_poststart_release_component_fenced')
+            view = types.SimpleNamespace(validate_component_retained_proof=self.validate)
+            self.current_relation, self.adapter_audit = clone_one_global(self.adapter.current_relation,
+                'retirement', view, 'qualified_poststart_current_relation')
+            self.closing = None
+            if binding['mode'] == 'local-closing':
+                self.closing = self.evidence.capture('closing', binding['captures']['closing'])
+                need(self.closing['kind'] == 'android-poststart-current-guard-closing' and
+                     self.closing['releaseOperationId'] == binding['releaseOperationId'] and
+                     self.closing['startOperationId'] == binding['startOperationId'] and
+                     self.closing['generation'] == self.candidate['generation'] and
+                     self.closing['appProcess'] == self.candidate['appProcess'] and
+                     self.closing['controllerId'] == self.candidate['controllerId'] and
+                     self.closing['configurationRevision'] == self.candidate['configurationRevision'] and
+                     self.closing['runtimeCodeSignatures'] == self.runtime_codes and
+                     self.closing['effectPlaneTableSha256'] == self.effect_tables and
+                     self.closing['effectPlanes'] == ['current9da-full', 'current1e15-full'] and
+                     self.closing['outputContract'] == self.output_map and
+                     self.closing['originalProofSha256'] == ORIGINAL_PROOF_SHA and
+                     self.closing['releaseGranted'] is False and self.closing['replayAllowed'] is False,
+                     'current_authority_remote_closing_unqualified')
+                self.closing_projection = validate_closing_relations(self.closing, self.effect_fixed, self.candidate,
+                                                                     self.binding['host'], self.adapter.bundle)
+                self.closing_projection_sha256 = digest(canonical(self.closing_projection))
+            self.guard()
+        except BaseException:
+            self.evidence.close()
+            raise
+
+    def runtime_guard(self):
+        namespace = self.native
+        need(type(namespace) is dict and str(namespace['ROOT']) == BACKEND_ROOT and
+             namespace['LAUNCH'] == self.plan['launch'] and
+             namespace['GETTER']['generation'] == self.candidate['generation'] and
+             namespace['GETTER']['packageSha256'] == BASE_SHA and
+             namespace['POSTSTART_OUTPUT_CONTRACT'] == self.output_map,
+             'current_authority_runtime_globals_changed')
+        for name, expected in self.runtime_codes.items():
+            function = attribute(namespace, name)
+            need(isinstance(function, types.FunctionType) and code_signature(function.__code__) == expected,
+                 'current_authority_runtime_code_changed:' + name)
+            if 'ROOT' in function.__globals__:
+                need(str(function.__globals__['ROOT']) == BACKEND_ROOT, 'current_authority_backend_root_alias')
+        for name, expected in self.effect_tables.items():
+            need(digest(canonical(namespace[name])) == expected, 'current_authority_effect_plane_table_changed')
+        routing = namespace['POSTSTART_ROUTING_CREATE']
+        need(routing.__globals__.get('bundle') is namespace['POSTSTART_CURRENT_COMPONENT_RUNTIME'],
+             'current_authority_routing_runtime_substituted')
+        for name in ('OwnerAdmissionGuard.__init__', 'POSTSTART_CURRENT_COMPONENT_RUNTIME.BaselineGuard.__init__'):
+            constructor = attribute(namespace, name)
+            for dependency in ('POSTSTART_PROOF_PARENT', 'POSTSTART_PROOF_DIRECTORY'):
+                if dependency in constructor.__code__.co_names:
+                    need(constructor.__globals__.get(dependency) is namespace[dependency],
+                         'current_authority_constructor_output_consumer_changed')
+        current = namespace['poststart_kernel_guard'](None)
+        need(all(current[name] == self.candidate['generation'][name] for name in ('child', 'guest', 'device')) and
+             namespace['poststart_app']() == self.candidate['appProcess'],
+             'current_authority_current_physical_changed')
+        namespace['component_release_effect_plane_current_guard']()
+        namespace['component_release_current1e15_effect_plane_guard']()
+        namespace['poststart_kernel_guard'](current)
+
+    def guard(self):
+        self.evidence.guard()
+        if self.binding['mode'] == 'remote-live':
+            self.runtime_guard()
+        else:
+            projected = validate_closing_relations(self.closing, self.effect_fixed, self.candidate,
+                                                   self.binding['host'], self.adapter.bundle)
+            need(digest(canonical(projected)) == self.closing_projection_sha256,
+                 'current_authority_closing_projection_changed')
+
+    def validate(self, proof):
+        if type(proof) is dict and AUTHORITY_FIELD not in proof:
+            return self.original_validator(proof)
+        need(type(proof) is dict and proof.get(AUTHORITY_FIELD) == self.identity,
+             'current_authority_missing_unknown_or_changed')
+        self.guard()
+        measured = self.current.validate_component_retained_proof(proof)
+        certificate = self.current.validate_component_certificate(measured['componentProducer'], measured['componentCertificatePin'])
+        app = certificate['appProcess']
+        expected_app = self.candidate['appProcess']
+        need(all(app[key] == expected_app[key] for key in ('name', 'uid', 'pid', 'startTicks', 'guestBootId')) and
+             certificate['controllerId'] == self.candidate['controllerId'] and
+             certificate['configurationRevision'] == self.candidate['configurationRevision'],
+             'current_authority_certificate_recipient_changed')
+        owner = self.output_map['correlations']['owner']
+        directory = self.output_map['rootDirectory'] + '/' + self.output_map['relativeProofParent'] + \
+                    '/android-installer-component-baseline-' + owner + '/current-owner-admission'
+        producer = measured['componentProducer']
+        need(certificate['request']['correlationId'] == owner and
+             producer['result']['certificatePath'] == directory + '/admission.json',
+             'current_authority_certificate_output_map_changed')
+        for row in producer['rows']:
+            need(directory in row['pin']['parents'] and
+                 row['pin']['parents'][directory][2:] == [0o40700, 0, 0] and
+                 not any(name.startswith(BACKEND_ROOT + '/android-installer-component-baseline-')
+                         for name in row['pin']['parents']), 'current_authority_shared_proof_output_forbidden')
+        self.guard()
+        return measured
+
+    def attach(self, proof):
+        need(type(proof) is dict and AUTHORITY_FIELD not in proof, 'current_authority_already_attached')
+        candidate = copy.deepcopy(proof)
+        candidate[AUTHORITY_FIELD] = copy.deepcopy(self.identity)
+        return self.validate(candidate)
+
+    def close(self):
+        self.evidence.close()
+
+
+def build_context(native_namespace=None):
+    # None is the sole prepared production value. Failed old0e75/e96/b7e6
+    # artifacts cannot be used to populate a new authority accidentally.
+    need(type(SOURCE_BINDING) is dict, 'current_authority_source_binding_unsealed')
+    return CurrentContext(SOURCE_BINDING, native_namespace)

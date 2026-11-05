@@ -1,0 +1,858 @@
+"""Private once-only local owner. No implicit native action at import time."""
+import ast, base64, contextlib, fcntl, hashlib, json, os, pathlib, re, stat, subprocess, sys, time, types, uuid
+
+ROOT = pathlib.Path('/Users/karapsin_de/projects/vpn_control_tool_recovery')
+OUT = pathlib.Path('/Users/karapsin_de/projects/vpn_control_tool_recovery/.runtime/tool-recovery/android-persisted-controller-preparation-25839f1c-7254-4bc1-a7cb-0148b8259973')
+SEAL = __CONTROLLER_SEAL__
+LOADED_CODE = sys._getframe().f_code
+MAX_PACKET = 8 * 1024 ** 2
+MAX_CAPTURE = 7 * 1024 ** 2
+MAX_RECORDINGS = 512
+MAX_CAPTURE_TOTAL = 64 * 1024 ** 2
+
+def need(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode() + b'\n'
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+def unique(rows):
+    result = {}
+    for key, value in rows:
+        need(key not in result, 'controller_duplicate_key')
+        result[key] = value
+    return result
+
+def decode(raw):
+    return json.loads(raw, object_pairs_hook=unique)
+
+def pin(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+def structure(info):
+    return pin(info)[:5]
+
+def save(directory, name, raw):
+    need(re.fullmatch(r'[A-Za-z0-9_.-]{1,128}', name) is not None, 'controller_record_name')
+    fd = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        count = 0
+        while count < len(raw):
+            count += os.write(fd, raw[count:])
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+def jsave(directory, name, value):
+    save(directory, name, canonical(value))
+
+def finite(error):
+    value = error.args[0] if type(error) is ValueError and len(error.args) == 1 else None
+    return value if type(value) is str and re.fullmatch(r'[a-z][a-z0-9_]{0,95}', value) else 'controller_observation_unknown'
+
+class Custody:
+    """FD9 files, structural-five ancestry; atime is deliberately unpinned."""
+    def __init__(self):
+        self.parents = {}
+        self.files = {}
+        self.locks = []
+
+    def directory(self, path):
+        path = str(pathlib.Path(path))
+        if path in self.parents:
+            return self.parents[path][0]
+        parent, name = os.path.split(path)
+        fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW) if path == '/' else os.open(
+            name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.directory(parent or '/'))
+        info = os.fstat(fd)
+        need(stat.S_ISDIR(info.st_mode), 'controller_parent_type')
+        self.parents[path] = (fd, structure(info))
+        return fd
+
+    def add(self, path, expected=None, *, private=False, allow_empty=False, write=False, limit=MAX_PACKET):
+        path = pathlib.Path(path)
+        need(path.is_absolute() and '..' not in path.parts and path == pathlib.Path(os.path.normpath(str(path))),
+             'controller_path_invalid')
+        key = str(path)
+        if key in self.files:
+            result = self.files[key]
+            if expected is not None:
+                need(result['pin'] == expected, 'controller_conflicting_pin')
+            need((not private or result['pin']['generation'][2] & 0o777 == 0o600)
+                 and (allow_empty or result['raw']) and len(result['raw']) <= limit, 'controller_existing_file_policy_changed')
+            self.guard(only=key)
+            return result['raw']
+        parent = self.directory(path.parent)
+        fd = os.open(path.name, (os.O_RDWR if write else os.O_RDONLY) | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            info = os.fstat(fd)
+            parent_info = os.fstat(parent)
+            need(not private or (parent_info.st_uid == os.geteuid() and parent_info.st_mode & 0o022 == 0), 'controller_private_parent_unsafe')
+            generation = pin(info)
+            need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+                 and info.st_mode & 0o022 == 0 and (not private or stat.S_IMODE(info.st_mode) == 0o600)
+                 and (0 if allow_empty else 1) <= info.st_size <= limit, 'controller_file_unsafe')
+            raw = os.pread(fd, limit + 1, 0)
+            need(len(raw) == info.st_size, 'controller_file_partial')
+            parents = {name: row[1] for name, row in self.parents.items()
+                       if name == '/' or path.is_relative_to(pathlib.Path(name))}
+            actual = {'generation': generation, 'parents': parents, 'sha256': sha(raw)}
+            if expected is not None:
+                need(actual == expected, 'controller_file_pin_changed')
+            self.files[key] = {'fd': fd, 'pin': actual, 'raw': raw, 'limit': limit}
+            fd = None
+            self.guard(only=key)
+            return raw
+        finally:
+            if fd is not None:
+                os.close(fd)
+
+    def guard(self, *, only=None):
+        for path, (fd, identity) in self.parents.items():
+            parent, name = os.path.split(path)
+            named = os.lstat('/') if path == '/' else os.stat(name, dir_fd=self.parents[parent or '/'][0], follow_symlinks=False)
+            need(structure(os.fstat(fd)) == identity == structure(named), 'controller_parent_changed')
+        for path, row in self.files.items():
+            if only is not None and path != only:
+                continue
+            parent, name = os.path.split(path)
+            need(pin(os.fstat(row['fd'])) == row['pin']['generation']
+                 == pin(os.stat(name, dir_fd=self.parents[parent][0], follow_symlinks=False))
+                 and os.pread(row['fd'], row['limit'] + 1, 0) == row['raw'], 'controller_held_file_changed')
+
+    def acquire(self, rows):
+        # Every lock already exists. There is deliberately no O_CREAT/chmod.
+        try:
+            for row in sorted(rows, key=lambda item: item['path']):
+                self.add(row['path'], row['pin'], private=True, allow_empty=True, write=True, limit=1024 * 1024)
+                fd = self.files[row['path']]['fd']
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.locks.append(fd)
+            self.guard()
+        except BaseException:
+            self.release_locks()
+            raise
+
+    def release_locks(self):
+        while self.locks:
+            fcntl.flock(self.locks.pop(), fcntl.LOCK_UN)
+
+    def close(self):
+        self.release_locks()
+        for row in reversed(list(self.files.values())):
+            os.close(row['fd'])
+        self.files.clear()
+        for fd, _ in reversed(list(self.parents.values())):
+            os.close(fd)
+        self.parents.clear()
+
+def machine():
+    need(sys.platform == 'darwin', 'controller_darwin_required')
+    result = subprocess.run(['/usr/sbin/ioreg', '-rd1', '-c', 'IOPlatformExpertDevice'],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+    matches = re.findall(rb'"IOPlatformUUID"\s*=\s*"([0-9A-Fa-f-]{36})"', result.stdout)
+    need(result.returncode == 0 and not result.stderr and len(matches) == 1, 'controller_machine_unknown')
+    return sha(matches[0].lower())
+
+def load_source(path, expected_sha256, name):
+    custody = Custody()
+    raw = custody.add(path, private=True)
+    need(sha(raw) == expected_sha256, 'controller_loader_changed')
+    value = types.ModuleType(name)
+    value.__file__ = str(path)
+    sys.modules[name] = value
+    custody.guard()
+    exec(compile(raw, str(path), 'exec'), value.__dict__)
+    custody.guard()
+    return value, custody
+
+class Context:
+    def __init__(self, *, need_sources=True, observation_only=False):
+        self.inputs = Custody()
+        self.sources = Custody()
+        self.snapshot = Custody()
+        self.loader_custody = None
+        self.session = None
+        self.collection_session = None
+        self.collection_loader_custody = None
+        self.collection_sources = None
+        self.sent = False
+        controller_raw = self.snapshot.add(OUT / 'controller.py', private=True)
+        owner_raw = self.snapshot.add(OUT / 'local-owner-program.py', private=True)
+        need(owner_raw == b'DURABLE_OWNER=True\n' + controller_raw, 'controller_owner_source_relation_changed')
+        active_raw = owner_raw if globals().get('DURABLE_OWNER') is True else controller_raw
+        need(LOADED_CODE == compile(active_raw, LOADED_CODE.co_filename, 'exec', dont_inherit=True, optimize=sys.flags.optimize), 'controller_loaded_source_changed')
+        programme_raw = self.snapshot.add(OUT / 'programme-seal.json', private=True)
+        self.programme = decode(programme_raw)
+        need(self.programme == {'controllerSha256': sha(controller_raw), 'ownerProgramSha256': sha(owner_raw),
+             'ownerProgramPin': self.snapshot.files[str(OUT / 'local-owner-program.py')]['pin']}, 'controller_programme_seal_changed')
+        self.recordings = 0
+        self.recording_bytes = 0
+        self.observation_only = observation_only
+        raw = self.snapshot.add(OUT / 'config.json', SEAL['configPin'], private=True)
+        need(sha(raw) == SEAL['configSha256'], 'controller_config_changed')
+        self.config = decode(raw)
+        raw = self.snapshot.add(OUT / 'source-manifest.json', SEAL['sourceManifestPin'], private=True)
+        need(sha(raw) == SEAL['sourceManifestSha256'], 'controller_source_manifest_changed')
+        self.manifest = decode(raw)
+        self.by_snapshot = {row['snapshotPath']: row for row in self.manifest['sources']}
+        self.by_original = {row['path']: row for row in self.manifest['sources']}
+        for row in self.config['inputFiles'].values():
+            if not observation_only:
+                self.inputs.add(row['path'], row['pin'], private=row['private'], allow_empty=row['allowEmpty'])
+            self.snapshot.add(row['snapshotPath'], row['snapshotPin'], private=True, allow_empty=row['allowEmpty'])
+        if not observation_only:
+            for row in self.config['localAuthorityFiles']:
+                self.inputs.add(row['path'], row['pin'], private=row['private'], allow_empty=row.get('allowEmpty', False))
+        self.credential_descriptor = decode(self.input('credentialDescriptor'))
+        need(self.credential_descriptor['credential']['path'] == self.config['credentialPath'], 'controller_credential_path_changed')
+        if need_sources:
+            loader_path = OUT / 'snapshot' / 'agent_tools' / 'source_module_loader.py'
+            loader_row = self.by_snapshot[str(loader_path)]
+            loader, self.loader_custody = load_source(loader_path, loader_row['pin']['sha256'], 'persisted_start_frozen_loader_' + uuid.uuid4().hex)
+            expected = {row['snapshotPath']: row['pin']['sha256'] for row in self.manifest['sources']
+                        if pathlib.Path(row['snapshotPath']).suffix == '.py'}
+            self.session = loader.SourceSession(OUT / 'snapshot' / 'agent_tools', 'durable_remote_job' if observation_only else 'ssh_transport', expected_sources=expected)
+            self.durable = self.session.module if observation_only else self.session.load('durable_remote_job')
+            if not observation_only:
+                self.transport = self.session.module
+                self.readiness = self.session.load('readiness')
+                self.credentials = self.session.load('private_credential_file')
+                self.renderer = self.session.load('android_persisted_start')
+                self.sync_sources()
+
+    def bind_interval_collection(self):
+        """Guard a separate read-only tool session; keep frozen observation intact."""
+        if not self.observation_only:
+            return
+        if self.collection_session is not None:
+            self.sync_sources()
+            return
+        sources = Custody()
+        loader_custody = None
+        session = None
+        try:
+            need(self.session is not None, 'controller_source_session_required')
+            self.snapshot.guard()
+            self.session.guard()
+            self.loader_custody.guard()
+            for row in self.manifest['sources']:
+                sources.add(row['path'], row['pin'], private=False)
+            for path in self.config['explicitSourcePaths']:
+                row = self.by_original[path]
+                sources.add(path, row['pin'], private=False)
+            loader_path = OUT / 'snapshot' / 'agent_tools' / 'source_module_loader.py'
+            loader_row = self.by_snapshot[str(loader_path)]
+            loader, loader_custody = load_source(loader_path, loader_row['pin']['sha256'],
+                                               'persisted_start_collection_loader_' + uuid.uuid4().hex)
+            expected = {row['snapshotPath']: row['pin']['sha256'] for row in self.manifest['sources']
+                        if pathlib.Path(row['snapshotPath']).suffix == '.py'}
+            session = loader.SourceSession(OUT / 'snapshot' / 'agent_tools', 'ssh_transport', expected_sources=expected)
+            transport = session.module
+            readiness = session.load('readiness')
+            credentials = session.load('private_credential_file')
+            renderer = session.load('android_persisted_start')
+            session.guard()
+            sources.guard()
+            loader_custody.guard()
+            self.snapshot.guard()
+        except BaseException:
+            if session is not None:
+                session.close()
+            if loader_custody is not None:
+                loader_custody.close()
+            sources.close()
+            raise
+        self.collection_session = session
+        self.collection_loader_custody = loader_custody
+        self.collection_sources = sources
+        self.transport, self.readiness, self.credentials, self.renderer = transport, readiness, credentials, renderer
+
+    def input(self, label):
+        row = self.config['inputFiles'][label]
+        return self.snapshot.files[row['snapshotPath']]['raw']
+
+    def sync_sources(self):
+        if self.observation_only:
+            need(self.collection_session is not None and self.collection_sources is not None and
+                 self.collection_loader_custody is not None, 'controller_collection_session_required')
+            self.collection_session.guard()
+            self.collection_sources.guard()
+            self.collection_loader_custody.guard()
+            return
+        need(self.session is not None, 'controller_source_session_required')
+        # The complete bounded source snapshot is the explicit review closure.
+        # Hold its original names too until the once dispatch; this also covers
+        # imports first reached inside admitted transport callbacks.
+        for row in self.manifest['sources']:
+            self.sources.add(row['path'], row['pin'], private=False)
+        for path in self.config['explicitSourcePaths']:
+            row = self.by_original[path]
+            self.sources.add(path, row['pin'], private=False)
+        self.session.guard()
+        self.sources.guard()
+        self.loader_custody.guard()
+
+    def guard(self, *, preeffect):
+        if not self.observation_only:
+            for absence in self.config.get('lockAbsences', []):
+                parent = self.inputs.directory(absence['parent'])
+                for name, identity in absence['parents'].items():
+                    self.inputs.directory(name)
+                    need(self.inputs.parents[name][1] == identity, 'controller_optional_lock_parent_changed')
+                try:
+                    os.stat(absence['missingName'], dir_fd=parent, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise ValueError('controller_new_recovery_device_lock_requires_reseal')
+        self.inputs.guard()
+        self.snapshot.guard()
+        if self.session is not None:
+            self.session.guard()
+            self.loader_custody.guard()
+        if preeffect:
+            self.sync_sources()
+
+    def capsule(self, prefix):
+        value = decode(self.input(prefix + 'Metadata'))
+        raw = self.input(prefix + 'Source')
+        need(value.get('sha256') == sha(raw), 'controller_capsule_source_changed')
+        if prefix == 'coverage':
+            qualification = self.input('coverageQualification')
+            bridge_proof = self.input('coverageBridgeQualification')
+            need(value.get('sourcePath', self.config['inputFiles']['coverageSource']['path']) == self.config['inputFiles']['coverageSource']['path'], 'controller_coverage_source_path_changed')
+            for key, retained in (('qualificationRawBase64', qualification), ('bridgeProofRawBase64', bridge_proof)):
+                if key in value:
+                    need(base64.b64decode(value[key], validate=True) == retained, 'controller_coverage_envelope_raw_changed')
+            value = {key: value[key] for key in ('sha256', 'sourcePins', 'qualificationSha256', 'bridgeProofSha256')}
+            value.update(source=raw, qualificationRaw=qualification, bridgeProofRaw=bridge_proof)
+            need(value['qualificationSha256'] == sha(qualification)
+                 and value['bridgeProofSha256'] == sha(bridge_proof), 'controller_coverage_qualification_changed')
+        else:
+            value['source'] = raw
+            value.pop('sourceBase64', None)
+        return value
+
+    def original(self):
+        raw = b''.join(self.input(label) for label in self.config['originalPartLabels'])
+        need(sha(raw) == self.config['originalSourceSha256'], 'controller_original_source_changed')
+        return raw
+
+    def authority(self):
+        value = decode(self.input('reservationAuthority'))
+        self.renderer.reservation_bytes(value)
+        need({row['path'] for row in value['records']} == set(self.config['reservationLedgerPaths']),
+             'controller_both_ledger_authority_required')
+        for row in value['records']:
+            held = self.inputs.files[row['path']]
+            need(row['pin'] == held['pin'] and base64.b64decode(row['rawBase64'], validate=True) == held['raw'],
+                 'controller_reservation_raw_changed')
+        return value
+
+    def review(self, name, expected):
+        path = OUT / name
+        raw = self.inputs.add(path, private=True, limit=16384)
+        value = decode(raw)
+        need(value == expected, 'controller_review_receipt_mismatch')
+        return value
+
+    def transaction(self, action, payload, prepared=None, *, once=False):
+        need(self.recordings < MAX_RECORDINGS and self.recording_bytes + MAX_CAPTURE + 65536 <= MAX_CAPTURE_TOTAL, 'controller_recording_bound_reached')
+        self.recordings += 1
+        observation = str(uuid.uuid4())
+        directory = OUT / ('capture-' + str(self.recordings).zfill(4) + '-' + action + '-' + observation)
+        directory.mkdir(mode=0o700)
+        receiver = self.snapshot.add(OUT / 'remote_receiver.py', SEAL['receiverPin'], private=True)
+        body = canonical(payload)
+        need(len(body) <= MAX_PACKET, 'controller_stdin_packet_bound')
+        header = {'schema': 1, 'action': action, 'operationId': self.config['operationId'],
+                  'controllerConfigSha256': SEAL['configSha256'], 'receiverSha256': sha(receiver),
+                  'payloadSha256': sha(body), 'rootGeneration': None if prepared is None else prepared['rootGeneration']}
+        if action == 'submit-once':
+            header['programSha256'] = payload['context']['programSha256']
+        line = canonical(header)
+        need(len(line) <= 16384 and len(line) + len(body) + 513 <= MAX_PACKET, 'controller_header_bound')
+        jsave(directory, 'intent.json', {'schema': 1, 'observationId': observation,
+              'operationId': self.config['operationId'], 'action': action, 'header': header,
+              'inputBytes': len(line) + len(body), 'replayAllowed': False})
+        save(directory, 'receiver.py', receiver)
+        self.guard(preeffect=not self.sent)
+        t = self.transport
+        with t.admitted_transport(ROOT, 'archlinux', observation, deadline=time.monotonic() + 90,
+             requirements=self.readiness.Requirements({'transport'}, set())) as admission:
+            # The fixed control receiver is small. All native programme bytes
+            # and capsules are a base64 stdin packet, never an argv payload.
+            argv = t.build_ssh_argv(t.load_config(ROOT), 'archlinux', 45,
+                    command=('sudo', '-S', '-p', '', '--', 'python3', '-I', '-B', '-c',
+                             'exec(compile(' + repr(receiver) + ',"sealed-native-receiver","exec"))'))
+            self.sync_sources() if not self.sent else self.session.guard()
+            with self.credentials.SecretFile(self.config['credentialPath']) as credential:
+                need(list(credential.pin) == self.credential_descriptor['credential']['generation'], 'controller_credential_generation_changed')
+                credential.guard()
+                self.guard(preeffect=not self.sent)
+                admission.revalidate()
+                if once:
+                    jsave(OUT, 'remote-submission.once.json', {'schema': 1, 'operationId': self.config['operationId'],
+                          'header': header, 'context': payload['context'], 'observationId': observation,
+                          'replayAllowed': False})
+                    # Set before the transport call. Any exception afterwards
+                    # keeps custody alive and switches only to observation.
+                    self.sent = True
+                secret = credential.text.encode()
+                transport_readiness_changed = False
+                try:
+                    result = t.run_ssh(argv, input=secret + b'\n' + line + body,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45, cwd=ROOT, check=False)
+                except t.SubmittedResultReadinessChanged as error:
+                    result = error.take_submitted_result()
+                    transport_readiness_changed = True
+                except BaseException as error:
+                    jsave(directory, 'unknown.json', {'state': 'unknown', 'reason': 'transport_observation_unknown',
+                          'errorClass': type(error).__name__, 'operationId': self.config['operationId'], 'replayAllowed': False})
+                    raise ValueError('transport_observation_unknown') from None
+                need(secret not in result.stdout and secret not in result.stderr, 'controller_private_echo_discarded')
+                credential.guard()
+                need(len(result.stdout) + len(result.stderr) <= MAX_CAPTURE, 'controller_capture_bound')
+                self.recording_bytes += len(result.stdout) + len(result.stderr) + len(receiver) + len(line) + 4096
+                need(self.recording_bytes <= MAX_CAPTURE_TOTAL, 'controller_capture_total_bound')
+                save(directory, 'stdout.raw', result.stdout)
+                save(directory, 'stderr.raw', result.stderr)
+                jsave(directory, 'capture.json', {'returncode': result.returncode,
+                      'stdoutBytes': len(result.stdout), 'stderrBytes': len(result.stderr),
+                      'stdoutSha256': sha(result.stdout), 'stderrSha256': sha(result.stderr),
+                      'streamsComplete': True, 'transportReadinessChanged': transport_readiness_changed,
+                      'operationId': self.config['operationId'], 'replayAllowed': False})
+                need(result.returncode == 0 and not result.stderr, 'controller_remote_observation_incomplete')
+                answer = decode(result.stdout)
+                need(type(answer) is dict, 'controller_remote_shape_invalid')
+                jsave(directory, 'result.json', answer)
+                self.guard(preeffect=not self.sent)
+                need(action != 'admit' or not transport_readiness_changed,
+                     'controller_admit_transport_readiness_changed')
+                return answer, result.stdout, directory
+
+    def close(self):
+        if self.collection_session is not None:
+            self.collection_session.close()
+        if self.collection_loader_custody is not None:
+            self.collection_loader_custody.close()
+        if self.collection_sources is not None:
+            self.collection_sources.close()
+        if self.session is not None:
+            self.session.close()
+        if self.loader_custody is not None:
+            self.loader_custody.close()
+        self.sources.close()
+        self.snapshot.close()
+        self.inputs.close()
+
+def quick_source(renderer, original, original_sha, plan, coldboot):
+    """Use authentic kernel readers; deliberately omit guest_probe/ADB."""
+    readers, literals = renderer._source(original, original_sha)
+    pinned = literals['LAUNCH']['intent']['source']['agent_tools/android_avd_coldboot.py']
+    launchers = renderer._launchers(coldboot, pinned)
+    source = 'import os,sys,stat,pathlib,hashlib,json,re,subprocess,time,ctypes,fcntl,signal\nPROC=pathlib.Path("/proc")\n'
+    source += 'LAUNCH=' + repr(plan['launch']) + '\nJOURNAL=pathlib.Path(' + repr(plan['journalDirectory']) + ')\n'
+    for name in ('fp', 'parent_fds', 'close_parents', 'guard_parents', 'read_fixed', 'ticks', 'boot', 'child_identity', 'qemu_fact', 'session_guest'):
+        source += readers[name] + '\n\n'
+    source += launchers['journal_read'] + '\n'
+    source += '''
+def quick_proof():
+ fd=os.open(JOURNAL,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:
+  fcntl.flock(fd,fcntl.LOCK_SH)
+  before=os.fstat(fd);named=JOURNAL.lstat()
+  if fp(before)!=fp(named) or not stat.S_ISDIR(before.st_mode) or before.st_uid!=0 or before.st_gid!=0 or stat.S_IMODE(before.st_mode)!=0o700:raise ValueError('quick_journal_changed')
+  intent=journal_read(JOURNAL,'intent.json');attempt=journal_read(JOURNAL,'attempt.json');record=journal_read(JOURNAL,'child.json');released=journal_read(JOURNAL,'exec-released.json');ready=journal_read(JOURNAL,'ready.json');observed=journal_read(JOURNAL,'qemu-observed.json')
+  if intent!=LAUNCH['intent'] or hashlib.sha256((json.dumps(intent,sort_keys=True,separators=(',',':'),ensure_ascii=False)+'\\n').encode()).hexdigest()!=LAUNCH['intentSha256']:raise ValueError('quick_intent_changed')
+  if attempt['correlationId']!=LAUNCH['correlationId'] or attempt['intentSha256']!=LAUNCH['intentSha256'] or attempt['source']!=intent['source']:raise ValueError('quick_attempt_changed')
+  if record['correlationId']!=LAUNCH['correlationId'] or record['source']!=intent['source'] or record['argv']!=LAUNCH['argv'] or record['emulatorGeneration']!=LAUNCH['emulatorGeneration'] or record['intentSha256']!=LAUNCH['intentSha256']:raise ValueError('quick_child_changed')
+  saved=record['identity'];current=child_identity(saved['pid'])
+  if current!=saved or boot()!=saved['bootId'] or os.getsid(saved['pid'])!=saved['pid']:raise ValueError('quick_kernel_child_changed')
+  if released!={'schema':1,'correlationId':LAUNCH['correlationId'],'pid':saved['pid'],'startTicks':saved['startTicks'],'bootId':saved['bootId']}:raise ValueError('quick_exec_release_changed')
+  if ready['source']!=intent['source'] or ready['intentSha256']!=LAUNCH['intentSha256'] or qemu_fact()!=ready['qemuFact']:raise ValueError('quick_ready_changed')
+  guest=session_guest(saved,ready)
+  if guest is None:raise ValueError('quick_qemu_unqualified')
+  if observed!={'schema':1,'correlationId':LAUNCH['correlationId'],'supervisor':saved,'guest':guest,'source':intent['source'],'intentSha256':LAUNCH['intentSha256']}:raise ValueError('quick_producer_proof_changed')
+  if child_identity(saved['pid'])!=current or session_guest(saved,ready)!=guest or fp(os.fstat(fd))!=fp(before) or fp(JOURNAL.lstat())!=fp(before):raise ValueError('quick_proof_changed')
+  return {'state':'qemu-generation-qualified','operationId':LAUNCH['correlationId'],'intentSha256':LAUNCH['intentSha256'],'supervisor':current,'guest':guest,'producerReceiptSha256':hashlib.sha256((json.dumps(observed,sort_keys=True,separators=(',',':'))+'\\n').encode()).hexdigest(),'guestAdmitted':False,'productAdmitted':False,'replayAllowed':False}
+ finally:os.close(fd)
+'''
+    compile(source, 'sealed-no-adb-qemu-observer', 'exec')
+    return source.encode()
+
+def prepare_review(c):
+    return {'schema': 1, 'state': 'approved', 'scope': 'prepare-only', 'operationId': c.config['operationId'],
+            'controllerSha256': c.programme['controllerSha256'], 'ownerProgramSha256': c.programme['ownerProgramSha256'],
+            'configSha256': SEAL['configSha256'], 'sourceManifestSha256': SEAL['sourceManifestSha256'],
+            'receiverSha256': SEAL['receiverSha256'], 'replayAllowed': False}
+
+def sample_admission(c, observer, prepared):
+    """Repeat only complete typed read-only interval refusals, at most five."""
+    maximum = 5
+    jsave(OUT, 'admission-sampling.once.json', {'schema': 1, 'operationId': c.config['operationId'],
+          'observerSha256': sha(observer), 'rootGeneration': prepared['rootGeneration'],
+          'maximumSamples': maximum, 'readOnly': True, 'nativeStartRun': False, 'replayAllowed': False})
+    payload = {'observerBase64': base64.b64encode(observer).decode(), 'observerSha256': sha(observer)}
+    blocked_keys = {'schema', 'kind', 'operationId', 'state', 'reason', 'failureType',
+                    'capacityReason', 'capacityObservation', 'allocationCoverageEvidence',
+                    'startPerformed', 'originalOutcomesChanged', 'replayAllowed'}
+    for index in range(1, maximum + 1):
+        c.guard(preeffect=True)
+        value, raw, directory = c.transaction('admit', payload, prepared)
+        need(type(raw) is bytes and 0 < len(raw) <= MAX_CAPTURE, 'controller_admission_raw_bound')
+        decoded = decode(raw)
+        need(type(value) is dict and type(decoded) is dict and canonical(value) == canonical(decoded),
+             'controller_admission_raw_mismatch')
+        need(type(value.get('schema')) is int and value['schema'] == 1
+             and value.get('kind') == 'android-persisted-start-native-admission'
+             and value.get('operationId') == c.config['operationId']
+             and all(value.get(key) is False for key in ('startPerformed', 'originalOutcomesChanged', 'replayAllowed')),
+             'controller_admission_context_changed')
+        c.guard(preeffect=True)
+        blocked = value.get('state') == 'blocked'
+        jsave(OUT, 'admission-sample-' + str(index).zfill(2) + '.json', {
+              'schema': 1, 'operationId': c.config['operationId'], 'sample': index,
+              'captureDirectory': str(directory), 'rawBytes': len(raw), 'rawSha256': sha(raw),
+              'state': 'blocked-unknown' if blocked else 'unvalidated-final-candidate',
+              'reason': value.get('reason'), 'completeReplyRetained': True, 'sourceClosing': True,
+              'nativeStartRun': False, 'replayAllowed': False})
+        if not blocked:
+            need('state' not in value and type(value.get('observations')) is list
+                 and len(value['observations']) == 2, 'controller_admission_candidate_invalid')
+            # Only the existing real renderer.start_plan may validate this
+            # final candidate. No earlier/partial reply becomes authority.
+            return value, raw
+        need(set(value) == blocked_keys and value.get('reason') == 'effect_plane_current_interval_unknown'
+             and value.get('failureType') == 'ValueError' and value.get('capacityReason') is None
+             and (value['capacityObservation'] is None or type(value['capacityObservation']) is dict)
+             and (value['allocationCoverageEvidence'] is None or type(value['allocationCoverageEvidence']) is dict),
+             'controller_admission_not_retryable')
+    raise ValueError('controller_admission_samples_exhausted')
+
+def collect_interval_reports(c, prepared, phase):
+    """Read original private reports; any failure preserves the effect outcome."""
+    directory = None
+    captured = []
+    try:
+        need(phase in ('prefork-refusal', 'runtime-unknown', 'terminal', 'owner-unknown', 'fresh-client'),
+             'controller_interval_phase_invalid')
+        c.bind_interval_collection()
+        c.guard(preeffect=not c.sent)
+        installer = c.capsule('installer')
+        if not c.renderer._interval_storage_required(installer):
+            return None
+        directory = OUT / ('interval-reports-' + phase + ('-' + str(uuid.uuid4()) if phase == 'fresh-client' else ''))
+        if directory.exists():
+            return {'state': 'original-collection-already-attempted', 'directory': str(directory), 'replayAllowed': False}
+        directory.mkdir(mode=0o700)
+        jsave(directory, 'collection.once.json', {'schema': 1, 'operationId': c.config['operationId'],
+              'phase': phase, 'readOnly': True, 'replayAllowed': False})
+        if prepared is None:
+            saved_raw = c.snapshot.add(OUT / 'prepared.json', private=True)
+            saved = decode(saved_raw)
+            need(type(saved) is dict and saved.get('operationId') == c.config['operationId'] and
+                 type(saved.get('rootGeneration')) is list and len(saved['rootGeneration']) == 2 and
+                 all(type(value) is int and value > 0 for value in saved['rootGeneration']),
+                 'controller_interval_original_preparation_invalid')
+            recovered, _, _ = c.transaction('recover-prepare', {})
+            need(recovered.get('state') == 'prepared-not-submitted', 'controller_interval_preparation_unknown')
+            need(canonical(recovered['preparation']) == canonical(saved), 'controller_interval_original_preparation_changed')
+            c.snapshot.guard()
+            prepared = saved
+        need(prepared['operationId'] == c.config['operationId'], 'controller_interval_preparation_changed')
+        context = {'schema': 1, 'operationId': c.config['operationId'], 'root': c.config['remoteRoot'],
+                   'rootGeneration': prepared['rootGeneration'], 'hostBootId': c.config['binding']['boot'],
+                   'machineSha256': c.config['binding']['machine'], 'account': c.config['binding']['account']}
+        jsave(directory, 'context.json', context)
+        query_count = 0
+
+        def query(request):
+            nonlocal query_count
+            query_count += 1
+            need(query_count <= 8, 'controller_interval_query_bound')
+            name = 'query-' + str(query_count).zfill(2)
+            source = c.renderer.interval_report_program(context, request).encode()
+            save(directory, name + '.py', source)
+            jsave(directory, name + '.json', {'request': request, 'sourceSha256': sha(source),
+                  'operationId': c.config['operationId'], 'readOnly': True, 'replayAllowed': False})
+            c.guard(preeffect=not c.sent)
+            value, raw, original_capture = c.transaction('admit', {'observerBase64': base64.b64encode(source).decode(),
+                                                       'observerSha256': sha(source)}, prepared)
+            need(type(raw) is bytes and 0 < len(raw) <= MAX_CAPTURE, 'controller_interval_response_bound')
+            save(directory, name + '.raw', raw)
+            jsave(directory, name + '.capture.json', {'rawBytes': len(raw), 'rawSha256': sha(raw),
+                  'originalCaptureDirectory': str(original_capture), 'operationId': c.config['operationId'],
+                  'readOnly': True, 'replayAllowed': False})
+            need(canonical(decode(raw)) == canonical(value), 'controller_interval_response_changed')
+            c.guard(preeffect=not c.sent)
+            return value
+
+        catalog = c.renderer.validate_interval_report_catalog(query({'action': 'discover'}), context)
+        jsave(directory, 'opening-catalog.json', catalog)
+        pages, current, remaining = [], [], 4 * 1024 ** 2
+        for reference in catalog['references']:
+            offset = 0
+            while offset < reference['bytes']:
+                length = min(reference['bytes'] - offset, remaining)
+                current.append({'reference': reference, 'offset': offset, 'length': length})
+                offset += length
+                remaining -= length
+                if remaining == 0:
+                    pages.append(current)
+                    current, remaining = [], 4 * 1024 ** 2
+        if current:
+            pages.append(current)
+        need(len(pages) <= 6, 'controller_interval_page_bound')
+        chunks = {reference['recordId']: [] for reference in catalog['references']}
+        for page in pages:
+            result = query({'action': 'slice', 'slices': page})
+            parts = c.renderer.validate_interval_report_slices(result, context, page)
+            for reference, offset, raw in parts:
+                name = 'interval-' + reference['recordId'] + '-offset-' + str(offset) + '.raw'
+                save(directory, name, raw)
+                chunks[reference['recordId']].append((offset, raw))
+        for reference in catalog['references']:
+            parts = sorted(chunks[reference['recordId']])
+            offset, raw = 0, bytearray()
+            for position, data in parts:
+                need(position == offset, 'controller_interval_slice_gap')
+                raw.extend(data)
+                offset += len(data)
+            raw = bytes(raw)
+            need(len(raw) == reference['bytes'] and sha(raw) == reference['sha256'], 'controller_interval_report_changed')
+            path = directory / ('interval-' + reference['recordId'] + '.json')
+            save(directory, path.name, raw)
+            captured.append({'reference': reference, 'localPath': str(path), 'localGeneration': pin(path.stat()),
+                             'bytes': len(raw), 'sha256': sha(raw)})
+        closing = c.renderer.validate_interval_report_catalog(query({'action': 'discover'}), context)
+        jsave(directory, 'closing-catalog.json', closing)
+        need(canonical(catalog) == canonical(closing), 'controller_interval_catalog_changed')
+        result = {'schema': 1, 'state': 'original-interval-reports-collected', 'operationId': c.config['operationId'],
+                  'context': context, 'directory': str(directory), 'files': captured, 'queries': query_count,
+                  'aggregateBytes': catalog['aggregateBytes'], 'complete': True, 'readOnly': True,
+                  'originalOutcomeChanged': False, 'replayAllowed': False}
+        jsave(directory, 'collected.json', result)
+        return result
+    except BaseException as error:
+        result = {'schema': 1, 'state': 'original-interval-report-collection-unknown',
+                  'operationId': c.config['operationId'], 'reason': finite(error), 'files': captured,
+                  'complete': False, 'readOnly': True, 'originalOutcomeChanged': False, 'replayAllowed': False}
+        if directory is not None:
+            try:
+                jsave(directory, 'unknown.json', result)
+            except BaseException:
+                pass
+        return result
+
+
+def owner_main():
+    os.umask(0o077)
+    c = None
+    prepared = None
+    try:
+        c = Context()
+        need(machine() == c.config['localBinding']['machine'] and str(os.geteuid()) == c.config['localBinding']['account'],
+             'controller_local_host_changed')
+        c.durable._binding_live(c.durable.MachineBinding.from_dict(c.config['localBinding']))
+        c.review('prepare-authority.json', prepare_review(c))
+        # No transport occurs before all the existing shared claim/device locks
+        # are held and both captured ledgers/private authority files rechecked.
+        while True:
+            try:
+                c.inputs.acquire(c.config['lockFiles'])
+                break
+            except BlockingIOError:
+                c.guard(preeffect=True)
+                time.sleep(2)
+        c.guard(preeffect=True)
+        authority = c.authority()
+        original = c.original()
+        installer = c.capsule('installer')
+        coverage = c.capsule('coverage')
+        need(c.config['coverageBridgeQualified'] is True, 'controller_qualified_coverage_bridge_required')
+        c.input('coverageBridgeQualification')
+        durable = c.input('durableSource')
+        coldboot = c.input('coldbootSource')
+        prepare_payload = {'durableBase64': base64.b64encode(durable).decode(),
+                           'receiverBase64': base64.b64encode((OUT / 'remote_receiver.py').read_bytes()).decode()}
+        jsave(OUT, 'native-preparation.once.json', {'operationId': c.config['operationId'],
+              'receiverSha256': SEAL['receiverSha256'], 'replayAllowed': False})
+        try:
+            result, _, _ = c.transaction('prepare', prepare_payload)
+        except BaseException:
+            # Root preparation itself has no VM effect. Recover only its
+            # authenticated create-only receipt; never repeat mkdir/preparation.
+            result, _, _ = c.transaction('recover-prepare', {})
+        prepared = result['preparation']
+        need(result['state'] == 'prepared-not-submitted', 'controller_native_preparation_unknown')
+        jsave(OUT, 'prepared.json', prepared)
+        interval_storage = {'schema': 1, 'operationId': c.config['operationId'], 'root': c.config['remoteRoot'],
+                            'rootGeneration': prepared['rootGeneration'], 'hostBootId': c.config['binding']['boot'],
+                            'machineSha256': c.config['binding']['machine'], 'account': c.config['binding']['account']}
+        observer = c.renderer.observation_program(original, c.config['originalSourceSha256'],
+                   c.config['operationId'], authority, installer_guard=installer, allocation_coverage=coverage,
+                   interval_storage=interval_storage).encode()
+        save(OUT, 'native-admission-observer.py', observer)
+        admission, admission_raw = sample_admission(c, observer, prepared)
+        save(OUT, 'native-admission.json', admission_raw)
+        plan = c.renderer.start_plan(original, c.config['originalSourceSha256'], c.config['operationId'],
+                   authority, admission_raw, sha(admission_raw), job_root=c.config['remoteRoot'],
+                   host_binding=c.config['binding'], root_generation=prepared['rootGeneration'],
+                   coldboot_source=coldboot, durable_source=durable, installer_guard=installer, allocation_coverage=coverage)
+        program = plan.pop('program')
+        need(sha(program) == plan['programSha256'], 'controller_rendered_program_changed')
+        jsave(OUT, 'admission-sampling-accepted.json', {'schema': 1, 'operationId': c.config['operationId'],
+              'admissionSha256': sha(admission_raw), 'programSha256': plan['programSha256'],
+              'fullyValidatedByRealRenderer': True, 'priorUnknownRepliesRetained': True,
+              'startAuthorityStillRequired': True, 'nativeStartRun': False, 'replayAllowed': False})
+        quick = quick_source(c.renderer, original, c.config['originalSourceSha256'], plan, coldboot)
+        save(OUT, 'sealed-start-program.py', program)
+        save(OUT, 'quick-observer.py', quick)
+        jsave(OUT, 'sealed-plan.json', plan)
+        ready = {'schema': 1, 'state': 'ready-for-native-start-review', 'operationId': c.config['operationId'],
+                 'configSha256': SEAL['configSha256'], 'controllerSha256': c.programme['controllerSha256'],
+                 'sourceManifestSha256': SEAL['sourceManifestSha256'], 'programSha256': sha(program),
+                 'planSha256': sha(canonical(plan)), 'admissionSha256': sha(admission_raw),
+                 'quickObserverSha256': sha(quick), 'rootGeneration': prepared['rootGeneration'],
+                 'installerGuardSha256': installer['sha256'], 'allocationCoverageSha256': coverage['sha256'],
+                 'replayAllowed': False, 'originalOutcomesChanged': False}
+        jsave(OUT, 'ready-for-review.json', ready)
+        expected = {'schema': 1, 'state': 'approved', 'scope': 'one-same-persisted-start',
+                    'operationId': c.config['operationId'], 'readySha256': sha(canonical(ready)),
+                    'programSha256': sha(program), 'rootGeneration': prepared['rootGeneration'], 'replayAllowed': False}
+        jsave(OUT, 'expected-start-authority.json', expected)
+        while not (OUT / 'start-authority.json').exists():
+            c.guard(preeffect=True)
+            time.sleep(2)
+        c.review('start-authority.json', expected)
+        c.guard(preeffect=True)
+        context = {'schema': 1, 'operationId': c.config['operationId'], 'rootGeneration': prepared['rootGeneration'],
+                   'controllerConfigSha256': SEAL['configSha256'], 'programSha256': sha(program),
+                   'quickObserverSha256': sha(quick), 'intentSha256': plan['launch']['intentSha256'],
+                   'admissionSha256': sha(admission_raw), 'readySha256': sha(canonical(ready)), 'replayAllowed': False}
+        payload = {'context': context, 'programBase64': base64.b64encode(program).decode(),
+                   'quickObserverBase64': base64.b64encode(quick).decode()}
+        try:
+            result, _, _ = c.transaction('submit-once', payload, prepared, once=True)
+        except BaseException:
+            if not c.sent:
+                raise
+            result = None
+        # No failure after the once fence can unwind shared lock custody. Every
+        # subsequent request is read-only and observes this original operation.
+        while True:
+            if type(result) is dict and result.get('state') in ('qemu-generation-qualified', 'prefork-failure-closed'):
+                need(result.get('operationId') == c.config['operationId']
+                     and result.get('preparation') == prepared, 'controller_closing_original_changed')
+                claimed = result.get('receiver', {}).get('claimed')
+                need(type(claimed) is dict and claimed.get('programSha256') == context['programSha256']
+                     and claimed.get('payloadSha256') == sha(canonical(payload)), 'controller_closing_receiver_changed')
+                if result['state'] == 'qemu-generation-qualified':
+                    need(result.get('quickObserverSha256') == sha(quick)
+                         and result.get('context') == context
+                         and result.get('proof', {}).get('operationId') == c.config['operationId']
+                         and result['proof'].get('intentSha256') == plan['launch']['intentSha256'],
+                         'controller_qemu_closing_changed')
+                c.guard(preeffect=False)
+                collect_interval_reports(c, prepared, 'terminal')
+                jsave(OUT, 'local-claim-serialization-closed.json', {'schema': 1, 'state': result['state'],
+                      'operationId': c.config['operationId'], 'context': context, 'remoteResult': result,
+                      'localAuthorityUnchanged': True, 'bothLedgersUnmodified': True,
+                      'claimsReleased': False, 'localLocksMayClose': True, 'replayAllowed': False,
+                      'productAdmitted': False, 'guestAdmitted': False, 'historicalStopCause': 'off_unknown'})
+                c.close()
+                c = None
+                return
+            try:
+                c.guard(preeffect=False)
+                result, _, _ = c.transaction('observe', {}, prepared)
+            except BaseException as error:
+                result = None
+                # Retain bounded immutable evidence, then keep the durable owner
+                # and locks alive after the recording cap. There is no timeout
+                # termination, replay, signal, or automatic claim release.
+                if not (OUT / 'post-submit-unknown.json').exists():
+                    jsave(OUT, 'post-submit-unknown.json', {'state': 'unknown', 'reason': finite(error),
+                          'operationId': c.config['operationId'], 'replayAllowed': False, 'locksRetained': True})
+                collect_interval_reports(c, prepared, 'runtime-unknown')
+            time.sleep(5)
+    except BaseException as error:
+        if c is not None and c.sent:
+            collect_interval_reports(c, prepared, 'owner-unknown')
+            if not (OUT / 'owner-unexpected-unknown.json').exists():
+                jsave(OUT, 'owner-unexpected-unknown.json', {'state': 'unknown', 'reason': finite(error),
+                      'operationId': c.config['operationId'], 'replayAllowed': False, 'locksRetained': True})
+            while True:
+                time.sleep(5)
+        if c is not None:
+            collect_interval_reports(c, prepared, 'prefork-refusal')
+            if not (OUT / 'local-prefork-refusal.json').exists():
+                jsave(OUT, 'local-prefork-refusal.json', {'state': 'local-prefork-refused', 'reason': finite(error),
+                      'operationId': c.config['operationId'], 'nativeStartCalled': False, 'replayAllowed': False})
+            c.close()
+        raise SystemExit(65) from None
+
+def main(args):
+    need(len(args) == 1 and args[0] in ('expected-prepare-authority', 'local-submit-once', 'local-status', 'local-collect'),
+         'controller_action_required')
+    c = Context(observation_only=args[0] in ('local-status', 'local-collect') or (args[0] == 'local-submit-once' and (OUT / 'local-submission.once.json').exists()))
+    try:
+        action = args[0]
+        if action == 'expected-prepare-authority':
+            # Print hashes and reviewed scope only; never authority/raw inputs.
+            print(json.dumps(prepare_review(c), sort_keys=True))
+            return
+        d = c.durable
+        binding = d.MachineBinding.from_dict(c.config['localBinding'])
+        local_root = OUT / 'local-owner'
+        generation = tuple(c.config['localRootGeneration'])
+        if action == 'local-submit-once' and (OUT / 'local-submission.once.json').exists():
+            result = d.observe(local_root, c.config['localOperationId'], binding, generation=generation)
+        elif action == 'local-submit-once':
+            c.review('prepare-authority.json', prepare_review(c))
+            need(machine() == binding.machine, 'controller_local_machine_changed')
+            raw = c.snapshot.add(OUT / 'local-owner-program.py', c.programme['ownerProgramPin'], private=True)
+            need(sha(raw) == c.programme['ownerProgramSha256'], 'controller_local_program_changed')
+            c.guard(preeffect=True)
+            jsave(OUT, 'local-submission.once.json', {'operationId': c.config['localOperationId'],
+                  'nativeOperationId': c.config['operationId'], 'programSha256': sha(raw), 'replayAllowed': False})
+            result = d.submit(local_root, c.config['localOperationId'], binding,
+                              d.Program('android-persisted-local-claim-owner', raw, 65536), generation=generation)
+        elif action == 'local-status':
+            result = d.observe(local_root, c.config['localOperationId'], binding, generation=generation)
+        else:
+            result, stdout, stderr = d.collect(local_root, c.config['localOperationId'], binding, generation=generation)
+            directory = OUT / ('local-collection-' + str(uuid.uuid4()))
+            directory.mkdir(mode=0o700)
+            save(directory, 'stdout.raw', stdout)
+            save(directory, 'stderr.raw', stderr)
+            jsave(directory, 'terminal.json', result)
+            result = dict(result, collectionDirectory=str(directory))
+            result = dict(result, intervalReports=collect_interval_reports(c, None, 'fresh-client'))
+        print(json.dumps(result, sort_keys=True))
+    finally:
+        c.close()
+
+if __name__ == '__main__':
+    if globals().get('DURABLE_OWNER') is True:
+        owner_main()
+    else:
+        try:
+            main(sys.argv[1:])
+        except BaseException as error:
+            if type(error) is SystemExit:
+                raise
+            print(json.dumps({'state': 'unknown', 'reason': finite(error), 'replayAllowed': False}), file=sys.stderr)
+            raise SystemExit(70) from None

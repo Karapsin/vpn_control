@@ -1,0 +1,90 @@
+def claim_record(path,limit=4194304):
+ chain,parents=COMPONENT_BUNDLE._parents(path.parent);fd=None
+ try:
+  parent=os.fstat(chain[-1][1])
+  if parent.st_uid not in (0,1000) or parent.st_gid not in (0,1000) or stat.S_IMODE(parent.st_mode)!=0o700:raise ValueError('claim_parent_unsafe')
+  try:fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=chain[-1][1])
+  except FileNotFoundError:
+   # Positive named absence is checked twice under the same held parent.
+   try:os.stat(path.name,dir_fd=chain[-1][1],follow_symlinks=False)
+   except FileNotFoundError:return {'path':str(path),'state':'absent','parents':parents}
+   raise ValueError('claim_absence_changed')
+  before=COMPONENT_BUNDLE._pin(os.fstat(fd));raw=bytearray()
+  if not stat.S_ISREG(before[2]) or before[3] not in (0,1000) or before[4] not in (0,1000) or before[5]!=1 or stat.S_IMODE(before[2])!=0o600 or not 0<before[6]<=limit:raise ValueError('claim_record_unsafe')
+  while True:
+   part=os.read(fd,min(65536,limit+1-len(raw)))
+   if not part:break
+   raw.extend(part)
+   if len(raw)>limit:raise ValueError('claim_record_limit')
+  record={'path':str(path),'state':'present','generation':before,'parents':parents,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'rawBase64':BASELINE_BASE64.b64encode(raw).decode()}
+  component_retirement_record_raw(record)
+  if len(raw)!=before[6] or COMPONENT_BUNDLE._pin(os.fstat(fd))!=before or COMPONENT_BUNDLE._pin(os.stat(path.name,dir_fd=chain[-1][1],follow_symlinks=False))!=before:raise ValueError('claim_record_changed')
+  return record
+ finally:
+  if fd is not None:os.close(fd)
+  try:
+   for name,parent_fd in chain:
+    if COMPONENT_BUNDLE._pin(os.fstat(parent_fd))[:5]!=parents[name] or COMPONENT_BUNDLE._pin(os.stat(name,follow_symlinks=False))[:5]!=parents[name]:raise ValueError('claim_parent_changed')
+  finally:COMPONENT_BUNDLE._close(chain)
+
+def component_retirement_record_raw(record):
+ # Called at the original producer's raw-before-parse point. Re-reading the
+ # same immutable full record retains its original raw bytes once and emits
+ # a typed reference. Any changed bytes/generation/ancestry are retained as a
+ # NEW full record before subsequent checks can reject them.
+ key=(record['path'],tuple(record['generation']),record['sha256'],record['bytes'],json.dumps(record['parents'],sort_keys=True))
+ index=COMPONENT_RETIRE_RAW_INDEX.get(key)
+ if index is None or COMPONENT_RETIRE_RAW_RECORDS[index]!=record:
+  if len(COMPONENT_RETIRE_RAW_RECORDS)>=512:raise ValueError('component_retirement_raw_inventory_limit')
+  index=len(COMPONENT_RETIRE_RAW_RECORDS);COMPONENT_RETIRE_RAW_RECORDS.append(record);COMPONENT_RETIRE_RAW_INDEX[key]=index;CARRIER_RECORD_RAW('record',json.dumps(record,sort_keys=True,separators=(',',':')).encode('utf-8'))
+ CLAIM_OBSERVATIONS.append({'rawRecordReference':index,'path':record['path'],'generation':record['generation'],'sha256':record['sha256'],'bytes':record['bytes']})
+
+def component_retirement_capture_record(path,limit=4194304):
+ record=claim_record(path,limit)
+ return record
+
+def readiness_process(identity):
+ if type(identity)is not dict or type(identity.get('pid'))is not int or type(identity.get('startTicks'))is not int or identity['pid']<1 or identity['startTicks']<1:raise ValueError('readiness_identity_unknown')
+ path=Path('/proc')/str(identity['pid'])/'stat'
+ try:
+  fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+  try:raw=os.read(fd,4097)
+  finally:os.close(fd)
+ except FileNotFoundError:return {'state':'absent','original':identity}
+ if len(raw)>4096:raise ValueError('readiness_identity_unknown')
+ ticks=int(raw.rsplit(b')',1)[1].split()[19])
+ return {'state':'same-birth-present'if ticks==identity['startTicks']else'pid-reused','original':identity,'currentStartTicks':ticks,'rawBase64':BASELINE_BASE64.b64encode(raw).decode()}
+
+def component_release_effect_plane_current_guard():
+ fixed=EFFECT_PLANE_FIXED
+ n={'os':os,'stat':stat,'re':re,'hashlib':hashlib,'PROC_ROOT':ROOT.__class__('/proc'),'COMPONENT_BUNDLE':COMPONENT_BUNDLE,'STAGE_BASE64':BASELINE_BASE64,'ATTEMPT_BINDING':fixed['binding'],'ATTEMPT_PROC_RAW':[],'ROOT':ROOT,'BOUNDARY_PATHS':fixed['paths'],'BOUNDARY_PASSES':[],'BOUNDARY_RAW':[],'BOUNDARY_CURRENT':None,'claim_record':claim_record}
+ exec(compile(fixed['processSource'],'<held-original9da-process-readers>','exec'),n)
+ exec(compile(fixed['boundarySource'],'<held-original0dd-boundary-readers>','exec'),n)
+ v={'ast':__import__('ast'),'base64':BASELINE_BASE64,'hashlib':hashlib,'json':json,'re':re,'stat':stat,'bundle':COMPONENT_BUNDLE,'PROCESS_SOURCE':fixed['processSource']}
+ exec(compile(fixed['validatorSource'],'<held-original9da-process-projector>','exec'),v)
+ scans=[]
+ for _ in range(2):
+  n['boundary_pass']();scans.append(n['attempt_workers']())
+ counts=v['validate_workers'](n['ATTEMPT_PROC_RAW'],scans,fixed['binding'])
+ record={'kind':'original9da-current-effect-plane','binding':fixed['binding'],'passes':n['BOUNDARY_PASSES'],'workerPasses':scans,'procRawRecords':n['ATTEMPT_PROC_RAW']}
+ COMPONENT_RETIRE_OBSERVATIONS.append(record)
+ if len(counts)!=2 or any(any(value!=0 for value in row.values())for row in counts)or any(scan['censusComplete']is not True for scan in scans)or len({scan['bootId']for scan in scans})!=1:raise ValueError('effect_plane_current_interval_unknown')
+ if n['BOUNDARY_PASSES']!=[fixed['priorPass'],fixed['priorPass']]:raise ValueError('effect_plane_footprint_changed')
+ return record
+
+def component_release_current1e15_effect_plane_guard():
+ fixed=CURRENT1E15_EFFECT_PLANE_FIXED
+ n={'os':os,'stat':stat,'re':re,'hashlib':hashlib,'PROC_ROOT':ROOT.__class__('/proc'),'COMPONENT_BUNDLE':COMPONENT_BUNDLE,'STAGE_BASE64':BASELINE_BASE64,'ATTEMPT_BINDING':fixed['binding'],'ATTEMPT_PROC_RAW':[],'ROOT':ROOT,'BOUNDARY_PATHS':fixed['paths'],'BOUNDARY_PASSES':[],'BOUNDARY_RAW':[],'BOUNDARY_CURRENT':None,'claim_record':claim_record}
+ exec(compile(fixed['processSource'],'<held-original9da-process-readers>','exec'),n)
+ exec(compile(fixed['boundarySource'],'<held-original0dd-boundary-readers>','exec'),n)
+ v={'ast':__import__('ast'),'base64':BASELINE_BASE64,'hashlib':hashlib,'json':json,'re':re,'stat':stat,'bundle':COMPONENT_BUNDLE,'PROCESS_SOURCE':fixed['processSource']}
+ exec(compile(fixed['validatorSource'],'<held-original9da-process-projector>','exec'),v)
+ scans=[]
+ for _ in range(2):
+  n['boundary_pass']();scans.append(n['attempt_workers']())
+ counts=v['validate_workers'](n['ATTEMPT_PROC_RAW'],scans,fixed['binding'])
+ record={'kind':'original1e15-current-effect-plane','binding':fixed['binding'],'passes':n['BOUNDARY_PASSES'],'workerPasses':scans,'procRawRecords':n['ATTEMPT_PROC_RAW']}
+ COMPONENT_RETIRE_OBSERVATIONS.append(record)
+ if len(counts)!=2 or any(any(value!=0 for value in row.values())for row in counts)or any(scan['censusComplete']is not True for scan in scans)or len({scan['bootId']for scan in scans})!=1:raise ValueError('effect_plane_current_interval_unknown')
+ if n['BOUNDARY_PASSES']!=[fixed['priorPass'],fixed['priorPass']]:raise ValueError('effect_plane_footprint_changed')
+ return record

@@ -1,0 +1,92 @@
+"""Actual final caller through canonical sudo transport; owned UNIX fixture only."""
+import ast, base64, contextlib, copy, hashlib, io, json, os, pathlib, shutil, sys, tempfile, uuid
+
+ROOT = pathlib.Path('/Users/karapsin_de/projects/vpn_control_tool_recovery')
+OUT = ROOT / '.runtime/tool-recovery/android-persisted-privileged-composition-b01a0ea2-fff1-4f8b-b06e-56ba02b0a6e7'
+sys.path.insert(0, str(ROOT))
+from agent_tools import ssh_automatic_program as automatic, ssh_transport as transport
+from agent_tools.tests.test_ssh_privileged_program import SocketGuest
+
+PACKET = ROOT / '.runtime/tool-recovery/android-persisted-controller-preparation-552e59eb-bdcd-4255-b3a2-cf21cccca76d'
+CALLER_SHA = 'f71178076d5df505a19ad9775133665e54b3f0f656b19471659a54b8c271a4ac'
+RECEIVER_SHA = '3d291375895a9e84bf31516fbe43aa5476a90ef8f605b8e70b9ce8381823cafb'
+
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def canonical(value):return json.dumps(value, sort_keys=True, separators=(',', ':')).encode() + b'\n'
+def save(name, raw):
+    fd=os.open(OUT/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'wb')as f:f.write(raw);f.flush();os.fsync(f.fileno())
+
+caller=(PACKET/'controller.template.py').read_bytes(); receiver_template=(PACKET/'remote_receiver.template.py').read_bytes()
+assert sha(caller)==CALLER_SHA and sha(receiver_template)==RECEIVER_SHA
+tree=ast.parse(caller)
+context=next(node for node in tree.body if type(node)is ast.ClassDef and node.name=='Context')
+transaction=next(node for node in context.body if type(node)is ast.FunctionDef and node.name=='transaction')
+calls=[node for node in ast.walk(transaction) if type(node)is ast.Call and type(node.func)is ast.Attribute and node.func.attr=='build_ssh_argv']
+assert len(calls)==1
+expression=compile(ast.Expression(copy.deepcopy(calls[0])),str(PACKET/'controller.template.py'),'eval',dont_inherit=True)
+operation=str(uuid.uuid4()); config_sha='c'*64
+remote_config={'operationId':operation,'root':'/var/tmp/vc-android-persisted-'+operation,
+               'controllerConfigSha256':config_sha,'durableSha256':'d'*64,
+               'binding':{'target':'owned-fixture','machine':'a'*64,'boot':'11111111-1111-1111-1111-111111111111','account':'0'}}
+receiver=receiver_template.replace(b'__REMOTE_CONFIG__',repr(remote_config).encode())
+body=canonical({'ownedFixture':True})
+header={'schema':1,'action':'observe','operationId':operation,'controllerConfigSha256':config_sha,
+        'receiverSha256':sha(receiver),'payloadSha256':sha(body),'rootGeneration':[1,2]}
+payload=canonical(header)+body
+projected=('import base64,hashlib,json,sys,types\n'
+           'receiver='+repr(receiver)+'\n'
+           'm=types.ModuleType("owned_whole_receiver");m.__name__="owned_whole_receiver"\n'
+           'exec(compile(receiver,"exact-whole-final-receiver","exec"),m.__dict__)\n'
+           'class Recorder:\n'
+           ' def __init__(self,stream):self.stream=stream;self.raw=bytearray()\n'
+           ' def readline(self,n):raw=self.stream.readline(n);self.raw.extend(raw);return raw\n'
+           ' def read(self,n):raw=self.stream.read(n);self.raw.extend(raw);return raw\n'
+           'record=Recorder(sys.stdin.buffer)\n'
+           'm.sys=types.SimpleNamespace(stdin=types.SimpleNamespace(buffer=record))\n'
+           '# Sole business seam: local fixture has no native target root.\n'
+           'm.open_root=lambda **kw:None\n'
+           'm.original_observation=lambda:{"state":"owned-fixture-observed","receivedBase64":base64.b64encode(bytes(record.raw)).decode(),"receivedSha256":hashlib.sha256(record.raw).hexdigest()}\n'
+           'm.main()\n').encode()
+proof={'schema':1,'kind':'actual-final-controller-canonical-privileged-composition','callerSha256':CALLER_SHA,
+       'receiverTemplateSha256':RECEIVER_SHA,'renderedReceiverSha256':sha(receiver),'payloadSha256':sha(payload),
+       'payloadBytes':len(payload),'modes':{},'reviewConcern':'direct secret+header bypasses mandatory privileged wrapper',
+       'externalNetworkRun':False,'actualCredentialRead':False,'nativeHostRun':False,'vmAction':False}
+with tempfile.TemporaryDirectory(prefix='vc-pc-',dir='/tmp')as temporary:
+    root=pathlib.Path(temporary).resolve();root.chmod(0o700);peer=SocketGuest(root)
+    try:
+        peer.base.hosts={'archlinux':peer.base.hosts['explicit-peer']};peer.base.write_config()
+        # Only the SSH executable boundary is substituted; the actual caller
+        # expression still uses its exact default binary/host/timeout/command.
+        shutil.copyfile(peer.base.binary,root/'ssh');(root/'ssh').chmod(0o700)
+        config=transport.load_config(root)
+        with peer.environment():
+            exact=eval(expression,{'t':transport,'ROOT':root,'receiver':receiver})
+            assert isinstance(exact,automatic.PlannedArgv)
+            assert automatic.password_carrier(exact.command)
+            assert exact.command[:8]==('sudo','-S','-p','','--','python3','-I','-B')
+            assert exact.command[-1]=='exec(compile('+repr(receiver)+',"sealed-native-receiver","exec"))'
+            proof['exactCommandPlannedArgv']=True;proof['passwordCarrierMandatory']=True
+            exact.close()
+            for mode in ('consumed','cached','echo'):
+                peer.mode.write_text(mode)
+                argv=eval(expression,{'t':transport,'ROOT':root,'receiver':projected})
+                assert isinstance(argv,automatic.PlannedArgv) and automatic.password_carrier(argv.command)
+                secret=b'PRIVATE-fixture-password-42'
+                result=transport.run_ssh(argv,input=secret+b'\n'+payload,capture_output=True,timeout=15)
+                assert result.returncode==0,(mode,result.stderr)
+                assert secret not in result.stdout+result.stderr
+                value=json.loads(result.stdout.replace(b'[REDACTED]\n',b''))
+                received=base64.b64decode(value['receivedBase64'],validate=True)
+                assert received==payload and value['receivedSha256']==sha(payload)
+                assert value['state']=='owned-fixture-observed'
+                assert not peer.failures,peer.failures
+                for path in (root/'.rag_index').rglob('*'):
+                    if path.is_file():assert secret not in path.read_bytes()
+                save(mode+'.stdout',result.stdout);save(mode+'.stderr',result.stderr)
+                proof['modes'][mode]={'returncode':result.returncode,'stdoutSha256':sha(result.stdout),'stderrSha256':sha(result.stderr),'receivedPayloadSha256':sha(received),'credentialAbsent':True,'receiverMainExecuted':True}
+            assert all(row['commandBytes']<=60000 for row in peer.events)
+            proof['fixtureCommands']={'count':len(peer.events),'maxBytes':max(row['commandBytes']for row in peer.events)}
+    finally:peer.close()
+save('proof.json',json.dumps(proof,sort_keys=True,indent=2).encode()+b'\n')
+print(json.dumps(proof,sort_keys=True))

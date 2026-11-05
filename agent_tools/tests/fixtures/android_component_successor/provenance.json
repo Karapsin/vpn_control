@@ -1,0 +1,43 @@
+{
+  "beforeTrigger": "VPN_CONTROL_TEST_LEGACY_STAGE=1",
+  "causalGreen": "same existing stage freshly qualified with exact payload and private descriptor census; no filesystem writes",
+  "causalRed": "FileExistsError existing owned immutable stage",
+  "consumedBundleSha256": "6d2ff26ae551d1d7c3b2b7ba7428b02fdd1e28e91beb760a4a4ee12de7738a85",
+  "failedProgrammeSha256": "f8c7bc97e3741dfc7f4a01bbf827e92445aa9749a54edd6731370042bdcb548c",
+  "failedSuccessorOperationId": "4214cb69-760e-45ba-bb85-c95ae06f1099",
+  "failure": "FileExistsError in _stage before owner-admission or release",
+  "fixtureSource": "complete emitted COMPONENT_BUNDLE module from original programme AST line1156",
+  "helperCollection": {
+    "beforeTrigger": "VPN_CONTROL_TEST_LEGACY_HELPER=1",
+    "causalGreen": "held FD nine-field metadata + byte hash authenticates exact source; atime is not identity",
+    "causalRed": "helper_changed after first ordinary read updates access time",
+    "fixture": "helper.before.source",
+    "nativeControl": "independent owned source file read on archlinux: atime0\u21921793104650527268341, all nine stable custody fields unchanged",
+    "nativeFailure": "helper_changed on first source-closed slice collection of201cea86",
+    "nativeGreen": "same original201cea86 stdout slice collected complete1121B sha a4f5e960024024a2a2c7cabd501e3155608f70bc50edce24f419d9a7590f0b1b; no execution replay",
+    "regression": "test_android_component_helper_snapshot.ComponentHelperSnapshotTests.test_first_read_atime_change_does_not_reject_authentic_helper",
+    "sha256": "0944c7f4f02f5c9fbe835351c3bf54b5fdc731e85c2be74192a38743a4f9a526",
+    "source": "complete load() from preserved native successor observer controller0c424064b17bf6d61713823204600e3df8e1dded2665816c8d66e1238b46253e"
+  },
+  "installerHostReaders": {
+    "functions": {
+      "claim_record": "7ec5eece08e8fc07dd4114725264cae80e4763ed0fc2dbcd4532ab948e42a5cf",
+      "component_release_current1e15_effect_plane_guard": "66c605d3cc9d6832c93aa32401bb08ad2b0d8846387d5b40d4b238b0ee38c1b0",
+      "component_release_effect_plane_current_guard": "b8548d1a280350054e509bfb334be4c4fa82aa28991704c1c2cb2d2bc7d7dcce",
+      "component_retirement_capture_record": "20fe3cc4556e76fe32bc2b615517dcfebf486f876e5d881abaa1beb1096bbcc5",
+      "component_retirement_record_raw": "f1503b6c7726b6e0a48aaf524fd0d961e4c6ad0f10bc668ac555d0c73a79a0f5",
+      "readiness_process": "85504da49fafbdc8e5e46f3ba38da1fb0f084c69dd0174db5e9b1eb3f9ccdb83"
+    },
+    "path": "installer-host-readers.source",
+    "runtimeAuthority": "none; test proof digest substitutes an explicit fixture-only checksum root",
+    "sha256": "d38b367cf00a0429b53a3b9b24f461847a8f6a92f94644269f994239f9ebfbdd",
+    "source": "definitions only from authenticated original982d programme; no runtime data or credentials"
+  },
+  "originalOperationId": "7310f227-aaed-4f3b-878a-1b7bf0b49215",
+  "originalProgrammeSha256": "982dd6db1743fa2b14a5bc79dc575551eab10a880db0db27860d0fafb34f94da",
+  "regression": "test_android_component_existing_bundle.ExistingComponentBundleTests.test_existing_original_stage_is_qualified_without_another_create",
+  "schema": 1,
+  "scope": "original7310 existing-stage qualification regression; no native authority",
+  "testSeam": "transferred module bytes replaced with inert source; actual complete stage/load/readers/inventory code executes",
+  "testSourceSha256": "8c9f144c24bd0b04d4ec02167661f5b1dec14e76ee7e499a85b1e93132b5df9e"
+}

@@ -233,7 +233,12 @@ class GeneratedOwnerTests(unittest.TestCase):
                 memory=base/'memory.json';storage=base/'storage.json'
                 operation='11111111-1111-4111-8111-111111111111'
                 hostboot=subprocess.check_output(['/usr/sbin/sysctl','-n','kern.bootsessionuuid']).decode().strip()
-                plan={'root':str(run),'rootGeneration':[run.stat().st_dev,run.stat().st_ino],
+                # These retained old owners consumed the original two-field
+                # plan. The current owner consumes private.Directory identity;
+                # the renderer round trip has its own causal regression.
+                root_generation=list(private._directory_identity(run.lstat()))
+                if body!=lifecycle._START_BODY:root_generation=root_generation[:2]
+                plan={'root':str(run),'rootGeneration':root_generation,
                       'operationId':operation,'tart':str(binary),'fixtureDirectory':str(vm),'fixtureName':'owned-fixture',
                       'binaryGeneration':gen(binary),'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),
                       'diskGeneration':gen(disk),'configGeneration':gen(config),'configSha256':hashlib.sha256(config.read_bytes()).hexdigest(),
