@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <URI>\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-21-4099058025-2437077614-260217637-1001</UserId>
+      <LogonType>InteractiveToken</LogonType>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <IdleSettings>
+      <Duration>PT10M</Duration>
+      <WaitTimeout>PT1H</WaitTimeout>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
+  </Settings>
+  <Triggers />
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</Command>
+      <Arguments>-NoProfile -NonInteractive -ExecutionPolicy Bypass -File C:\ProgramData\VpnControlOrdinaryTask-d907f7a0-725b-40f1-8bf8-d9c76439e33a\ordinary.ps1 -ExpectedSourceSha256 4753579339552216c22b8e5ca3a5af34659f0fd679c5bc16379766ffda382795</Arguments>
+      <WorkingDirectory>C:\Users\winparityUser\AppData\Local\VpnInstallerPreflight32-d907f7a0-725b-40f1-8bf8-d9c76439e33a</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

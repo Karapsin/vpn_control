@@ -1,0 +1,117 @@
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+@@INTAKE@@
+@@EXACT_CANONICAL_NATIVE_HELPER@@
+@@EXACT_CANONICAL_PIN_ASSERTIONS@@
+$script:fieldBytes=0;$script:rows=0
+$pins=[Collections.Generic.List[object]]::new()
+$outFile=$null;$wi=$null;$db=$null;$si=$null
+function Read-Rows([object]$Database,[string]$Query,[int]$Fields) {
+$view=$null;$record=$null;$rows=[Collections.Generic.List[object]]::new()
+try{
+$view=$Database.OpenView($Query);$view.Execute()
+while($null -ne ($record=$view.Fetch())){
+$script:rows++;if($script:rows -gt 8192){throw 'MSI_AGGREGATE_ROW_BOUND'}
+$values=[Collections.Generic.List[string]]::new()
+for($i=1;$i -le $Fields;$i++){
+$value=[string]$record.StringData($i)
+if($value.Length -gt 16384){throw 'MSI_FIELD_BOUND'}
+$script:fieldBytes+=[Text.Encoding]::UTF8.GetByteCount($value)
+if($script:fieldBytes -gt 262144){throw 'MSI_AGGREGATE_BYTE_BOUND'}
+$values.Add($value)
+}
+$rows.Add(@($values.ToArray()))
+[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record);$record=$null
+}
+return ,@($rows.ToArray())
+}finally{
+if($null -ne $record){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record)}
+if($null -ne $view){$view.Close();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view)}
+}
+}
+function Read-Optional([object]$Database,[object]$Names,[string]$Name,[string]$Query,[int]$Fields) {
+if(-not $Names.Contains($Name)){return [ordered]@{present=$false;rows=@()}}
+return [ordered]@{present=$true;rows=Read-Rows $Database $Query $Fields}
+}
+function Assert-Context {
+$token=[OrdinaryNativeFacts]::Token()
+if($token[0] -cne 'S-1-5-18' -or $token[1] -cne '0' -or $token[2] -cne '1' -or $token[3] -notin @('1','2')){throw 'MSI_METADATA_SYSTEM_TOKEN'}
+if(($token -join '|') -cne ($m.systemToken -join '|')){throw 'MSI_METADATA_SYSTEM_TOKEN_CHANGED'}
+if([OrdinaryNativeFacts]::BootIdentifier() -cne $m.kernelBootIdentifier){throw 'MSI_METADATA_KERNEL_BOOT'}
+foreach($pin in $pins){Assert-Pin $pin}
+}
+function Get-RawHash([IO.Stream]$Stream) {
+$Stream.Position=0;$h=[Security.Cryptography.SHA256]::Create()
+try{return ([BitConverter]::ToString($h.ComputeHash($Stream))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}
+}
+try{
+Assert-Context
+foreach($record in $m.directoryPins){
+$pin=@{record=$record;directory=$true;handle=[OrdinaryNativeFacts]::OpenDirectory($record.path)}
+$pins.Add($pin);Assert-Pin $pin
+}
+$mp=@{record=$m.msiPin;directory=$false;stream=[OrdinaryNativeFacts]::OpenHeld($m.msiPin.path)}
+$pins.Add($mp);[void](Get-PinHash $mp);Assert-Context
+$wi=New-Object -ComObject WindowsInstaller.Installer
+$db=$wi.OpenDatabase($m.msiPin.path,0)
+$si=$db.SummaryInformation(0)
+$names=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach($row in (Read-Rows $db 'SELECT `Name` FROM `_Tables`' 1)){[void]$names.Add([string]$row[0])}
+foreach($required in @('Property','Directory','Component','File','Media')){if(-not $names.Contains($required)){throw 'MSI_REQUIRED_TABLE_MISSING'}}
+$t=[ordered]@{
+property=Read-Rows $db 'SELECT `Property`,`Value` FROM `Property`' 2
+directory=Read-Rows $db 'SELECT `Directory`,`Directory_Parent`,`DefaultDir` FROM `Directory`' 3
+component=Read-Rows $db 'SELECT `Component`,`ComponentId`,`Directory_`,`Attributes`,`Condition`,`KeyPath` FROM `Component`' 6
+file=Read-Rows $db 'SELECT `File`,`Component_`,`FileName`,`FileSize`,`Version`,`Language`,`Attributes`,`Sequence` FROM `File`' 8
+media=Read-Rows $db 'SELECT `DiskId`,`LastSequence`,`DiskPrompt`,`Cabinet`,`VolumeLabel`,`Source` FROM `Media`' 6
+customAction=Read-Optional $db $names 'CustomAction' 'SELECT `Action`,`Type`,`Source`,`Target` FROM `CustomAction`' 4
+adminExecuteSequence=Read-Optional $db $names 'AdminExecuteSequence' 'SELECT `Action`,`Condition`,`Sequence` FROM `AdminExecuteSequence`' 3
+installExecuteSequence=Read-Optional $db $names 'InstallExecuteSequence' 'SELECT `Action`,`Condition`,`Sequence` FROM `InstallExecuteSequence`' 3
+}
+$sig=Get-AuthenticodeSignature -LiteralPath $m.msiPin.path
+$certSha=$null
+if($null -ne $sig.SignerCertificate){
+$h=[Security.Cryptography.SHA256]::Create()
+try{$certSha=([BitConverter]::ToString($h.ComputeHash($sig.SignerCertificate.RawData))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}
+}
+[void](Get-PinHash $mp);Assert-Context
+$result=[ordered]@{
+schemaVersion=1;state='metadata-observed';databaseOpenMode=0;readOnlyMsi=$true;nativeAdmissionComplete=$false
+operationId=$m.operationId;route=$m.route;transferReceiptSha256=$m.transferReceiptSha256
+msi=[ordered]@{path=$m.msiPin.path;sizeBytes=$mp.stream.Length;sha256=$m.msiPin.sha256;nativeIdentity=[OrdinaryNativeFacts]::Identity($mp.stream.SafeFileHandle,$false);security=[OrdinaryNativeFacts]::Security($mp.stream.SafeFileHandle);summary=[ordered]@{template=[string]$si.Property(7);revision=[string]$si.Property(9);pageCount=[string]$si.Property(14);wordCount=[string]$si.Property(15)};signature=[ordered]@{status=[string]$sig.Status;signerCertificateSha256=$certSha};tables=$t}
+bounds=[ordered]@{aggregateRows=$script:rows;aggregateFieldUtf8Bytes=$script:fieldBytes;maxRawBytes=2097152}
+}
+$raw=[Text.UTF8Encoding]::new($false).GetBytes(($result|ConvertTo-Json -Depth 24 -Compress))
+if($raw.Length -lt 1 -or $raw.Length -gt 2097152){throw 'MSI_METADATA_RAW_BOUND'}
+Assert-Context
+$outFile=[IO.File]::Open($m.outputPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+$outputAcl=Get-Acl -LiteralPath $m.outputPath;$originalOwner=$outputAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+$outputAcl.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-18'));[IO.File]::SetAccessControl($m.outputPath,$outputAcl)
+$os=[OrdinaryNativeFacts]::Security($outFile.SafeFileHandle)
+if($os[0] -cne $m.outputFileSecurity.ownerSid -or $os[1] -cne $m.outputFileSecurity.sddl){throw 'MSI_METADATA_OUTPUT_ACL'}
+$outFile.Write($raw,0,$raw.Length);$outFile.Flush($true)
+$oi=[OrdinaryNativeFacts]::Identity($outFile.SafeFileHandle,$false);$outputHash=Get-RawHash $outFile
+$expectedId=$oi|ConvertTo-Json -Compress|ConvertFrom-Json
+$named=[IO.File]::Open($m.outputPath,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+try{
+foreach($file in @($outFile,$named)){
+Assert-NativeIdentity ([OrdinaryNativeFacts]::Identity($file.SafeFileHandle,$false)) $expectedId
+$s=[OrdinaryNativeFacts]::Security($file.SafeFileHandle)
+if($s[0] -cne $m.outputFileSecurity.ownerSid -or $s[1] -cne $m.outputFileSecurity.sddl){throw 'MSI_OUTPUT_SECURITY'}
+}
+if((Get-RawHash $outFile) -cne $outputHash){throw 'MSI_OUTPUT_HASH'}
+}finally{$named.Dispose()}
+[void](Get-PinHash $mp);Assert-Context
+$r=[ordered]@{
+schemaVersion=1;state='metadata-saved';operationId=$m.operationId;route=$m.route
+msiPath=$m.msiPin.path;msiSha256=$m.msiPin.sha256;msiIdentityClosing=$true;msiAclClosing=$true
+output=[ordered]@{path=$m.outputPath;bytes=$outFile.Length;sha256=$outputHash;nativeIdentity=$oi;security=$m.outputFileSecurity;createNew=$true;originalOwnerSid=$originalOwner;identityClosing=$true;aclClosing=$true;namedIdentityClosing=$true}
+readOnlyMsi=$true;evidenceFileEffect=$true;nativeAdmissionComplete=$false;productOperation=$false;taskOperation=$false
+}
+$receiptBytes=[Text.Encoding]::UTF8.GetByteCount(($r|ConvertTo-Json -Depth 8 -Compress))
+if($receiptBytes -gt 8192){throw 'MSI_METADATA_SMALL_RECEIPT_BOUND'}
+[Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))
+}finally{
+foreach($object in @($si,$db,$wi)){if($null -ne $object){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($object)}}
+if($null -ne $outFile){$outFile.Dispose()}
+foreach($pin in $pins){if($pin.directory){$pin.handle.Dispose()}else{$pin.stream.Dispose()}}
+}

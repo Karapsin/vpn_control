@@ -1,0 +1,86 @@
+{
+  "currentProducer": {
+    "authority": "render_metadata_disposition_caller() returns the exact original complete current source",
+    "bytes": 89251,
+    "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/msi-metadata7820-host-disposition-preparation-v1/disposition-caller.py",
+    "sha256": "1132d6870e9d05da5b12e35f45e53200409f18f0bc66df13ed83e042c41fb5db"
+  },
+  "files": {
+    "metadata_disposition/caller.before.source": {
+      "bytes": 89250,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/msi-metadata7820-host-disposition-preparation-v1/route03ad.before-state-literal.source",
+      "sha256": "03ad7964d97e6166e22959c33fde336b9d06c9a14874187b795a302ca2333ee7"
+    },
+    "metadata_disposition/emitter.source": {
+      "bytes": 44601,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/windows_artifact_transfer.py",
+      "sha256": "2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8"
+    },
+    "metadata_disposition/models.source": {
+      "authenticOriginalBytes": 10044,
+      "authenticOriginalSha256": "c91d83aa993597e9d0ba055784537ce576ccb7acbbc55a8e41549554a7fd6918",
+      "bytes": 10043,
+      "classification": "CONTROLLED_PEER_DERIVATIVE",
+      "derivation": {
+        "allFunctionAndClassAstsIdentical": true,
+        "completeModuleAstIncludingLocationsIdentical": true,
+        "notAFailedTarget": true,
+        "operation": "Remove only the one extra final LF byte from the authentic peer helper; do not modify failed caller targets or positive oracle beforeimages.",
+        "removedBytes": 1,
+        "removedFinalByteHex": "0a"
+      },
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/host-actor-abandonment-private-preparation-v1/qualification_models_actual.py",
+      "sha256": "2f9be3c367f53a50c2177b23c0253d67f50185cca327e36668c3797452ac09ad"
+    },
+    "metadata_disposition/observer.caller.source": {
+      "bytes": 83387,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-observer-disposition-preparation-v1/disposition-caller.v2.py",
+      "sha256": "5dd39aacbcd7b7133c7d4933134497864e852a75a580aa02972e9c8d15d34af7"
+    },
+    "metadata_disposition/observer.qualifier.source": {
+      "bytes": 10096,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-observer-disposition-preparation-v1/qualify_current.py",
+      "sha256": "1ecb98aae0fa90fca558ae67f61b42c2e6a6c399bb05c20debede155cd2e318a"
+    },
+    "metadata_disposition/positive.before.qualifier.source": {
+      "bytes": 12155,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/msi-metadata7820-host-disposition-preparation-v1/qualification-state-literal-before-red-v1/qualify_current.py",
+      "sha256": "202b5b5cf8fcc46f73fa3ce61a4b480b7ffbf6bb3ec09c75025e97054e81f109"
+    },
+    "metadata_disposition/positive.current.qualifier.source": {
+      "bytes": 12155,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/msi-metadata7820-host-disposition-preparation-v1/qualification-single-positive-v2/qualify_current.py",
+      "sha256": "7816b125e34e07156a4f0d3d41947873222bf18d4158dcd7a8b60d39223f516c"
+    },
+    "metadata_disposition/rpc18.raw.bin": {
+      "bytes": 1034,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/msi-metadata7820-host-identity-preparation-v1/qualification-inert-v1/outputs/rpc18.raw.reconstructed",
+      "sha256": "f51560e89a674093e6fae622903492e2990088c09d29e095c81257c2c6951fc6"
+    },
+    "metadata_disposition/rpc18.request.source": {
+      "bytes": 57,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/msi-metadata7820-host-identity-preparation-v1/qualification-inert-v1/outputs/rpc18.request.reconstructed.json",
+      "sha256": "a8a83d3c31260f9a6afb070ce36e84d28e2b67aecc9fca0ece0d2fbbcc5dfcc3"
+    },
+    "namespace_timestamps/inputs/03-qualify_collector.py.source": {
+      "bytes": 14787,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/03-qualify_collector.py.source",
+      "reusedExistingFixture": true,
+      "sha256": "fd420b83e273de49755d3bc3058731e1bf22485f21002011e3ac79194943a42b"
+    },
+    "namespace_timestamps/inputs/04-harness.py.source": {
+      "bytes": 20601,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/04-harness.py.source",
+      "reusedExistingFixture": true,
+      "sha256": "ea82b43ee0d687a503a415360bec27acd1826fced11e18caf617d7e2062c4390"
+    },
+    "namespace_timestamps/inputs/07-windows_qga_transfer.candidate.py.source": {
+      "bytes": 28116,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/07-windows_qga_transfer.candidate.py.source",
+      "reusedExistingFixture": true,
+      "sha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022"
+    }
+  },
+  "schemaVersion": 1,
+  "scope": "Authentic complete report-only metadata-disposition callers and original complete inert positive oracle/models; reused exact existing namespace fixtures. No native authority."
+}

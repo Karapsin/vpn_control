@@ -59,7 +59,12 @@ class BundleTests(unittest.TestCase):
             raw=history_raw if name=='agent_tools/tests/test_android_api35_large_routing_observation.py' else bundle._read(ROOT/name)[0]
             bundle._write(path,raw)
         self.receipt=bundle.prepare(self.source_root,self.root/'stage',bundle.reviewed_tree(self.source_root)['treeSha256'])
-    def tearDown(self):self.tmp.cleanup()
+    def tearDown(self):
+        if getattr(self,'actual_batch_preserved',False):
+            self.tmp._finalizer.detach()
+        else:self.tmp.cleanup()
+        failures=getattr(self,'actual_batch_custody_failures',[])
+        if failures:self.fail('actual batch custody failed; retained root '+str(self.root)+': '+repr(failures))
 
     def test_physical_epoch_uses_one_real_adb_carrier(self):
         selected,backend,args,_,log,_,_=self.fixture()
@@ -197,18 +202,18 @@ class BundleTests(unittest.TestCase):
         guard,_,_=self.batch_finally_fault(False,closing_failure=True)
         self.assertEqual(['closing'],[row['phase'] for row in guard.batch_failures])
 
-    @unittest.skipUnless(os.name=='posix','actual shell descriptor wrapper requires POSIX')
-    def test_actual_generated_batch_shell_exclusive_capture_and_cleanup(self):
-        guest=self.root/'guest';guest.mkdir(mode=0o700)
-        helpers=self.root/'guest-bin';helpers.mkdir(mode=0o700)
-        apk=self.root/'guest-base.apk';apk.write_bytes(b'actual inert package bytes')
-        boot=self.root/'guest-boot';boot.write_text('28b8f9af-efbb-44da-9836-0237cb714df9\n')
-        mksh=self.root/'guest-shell';shutil.copyfile('/bin/sh',mksh);mksh.chmod(0o755)
+    def actual_generated_batch_fixture(self,name,producer=None):
+        base=self.root/name;base.mkdir(mode=0o700)
+        guest=base/'guest';guest.mkdir(mode=0o700)
+        helpers=base/'guest-bin';helpers.mkdir(mode=0o700)
+        apk=base/'guest-base.apk';apk.write_bytes(b'actual inert package bytes')
+        boot=base/'guest-boot';boot.write_text('28b8f9af-efbb-44da-9836-0237cb714df9\n')
+        mksh=base/'guest-shell';shutil.copyfile('/bin/sh',mksh);mksh.chmod(0o755)
         # The complete generated shell executes unchanged. Only fixed Android
         # utility protocols, system paths and UID/GID observations are mapped;
         # private directory/file syscalls, descriptor generations, watchdog,
         # stdout/stderr, capture, guards and cleanup execute on real TempFS.
-        actor='''import sys,os,stat,hashlib,base64,subprocess,pathlib,shutil
+        actor=r'''import sys,os,stat,hashlib,base64,subprocess,pathlib,shutil
 a=sys.argv[1:];op=a.pop(0)
 if op=='stat':
  follow=False
@@ -232,6 +237,21 @@ elif op in ('mkdir','find','wc','rm','rmdir'):
 elif op=='base64':
  assert a[:2]==['-w','0'];p=pathlib.Path(a[2]);sys.stdout.buffer.write(base64.b64encode(p.read_bytes()));sys.stdout.buffer.flush()
  if p.name=='1.o' and os.environ.get('DRIFT')=='file':p.chmod(0o644)
+ if ((p.name=='1.o' and os.environ.get('DRIFT')=='generation-early')or(p.name=='10.e' and os.environ.get('DRIFT')=='generation-late')):
+  import time,json
+  target=pathlib.Path('1.o')
+  def pin(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]
+  before=target.stat();old=target.read_bytes();assert old
+  time.sleep(0.002)
+  with target.open('r+b')as stream:
+   held_before=pin(os.fstat(stream.fileno()));stream.write(bytes([old[0]^1])+old[1:]);stream.flush();os.fsync(stream.fileno());held_after=pin(os.fstat(stream.fileno()))
+  after=target.stat();new=target.read_bytes()
+  facts={'trigger':p.name,'before':pin(before),'heldBefore':held_before,'heldAfter':held_after,'after':pin(after),'beforeBase64':base64.b64encode(old).decode(),'afterBase64':base64.b64encode(new).decode()}
+  raw=(json.dumps(facts,sort_keys=True)+'\n').encode();assert len(raw)<4096
+  fd=os.open(str(pathlib.Path(TOY).parent.parent/'generation-mutation.json'),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+  try:assert os.write(fd,raw)==len(raw)
+  finally:os.close(fd)
+
  if p.name=='1.o' and os.environ.get('DRIFT')=='parent':
   cwd=pathlib.Path.cwd();cwd.rename(cwd.with_name(cwd.name+'-retained'));cwd.mkdir(mode=0o700)
 elif op=='timeout':
@@ -239,7 +259,9 @@ elif op=='timeout':
  for fd in (4,5):
   try:os.fstat(fd);fds.append(fd)
   except OSError:pass
- try:r=subprocess.run(a[3:],timeout=seconds,pass_fds=fds);raise SystemExit(r.returncode)
+ try:
+  argv=([sys.executable,'-c',"import os,sys,time,json,pathlib\nroot=pathlib.Path(os.environ['COMMAND_DELAY_DIRECTORY'])\ndef record(phase):\n pins={}\n for fd in (4,5):\n  s=os.fstat(fd);pins[str(fd)]=[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]\n row={'phase':phase,'monotonicNs':time.monotonic_ns(),'pid':os.getpid(),'argv':sys.argv[1:],'fdPins':pins}\n raw=(json.dumps(row,sort_keys=True)+'\\n').encode();assert len(raw)<4096\n fd=os.open(str(root/(str(os.getpid())+'-'+phase+'.json')),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)\n try:assert os.write(fd,raw)==len(raw)\n finally:os.close(fd)\nrecord('start')\ntime.sleep(3.2)\nrecord('pre-exec')\nos.execv(sys.argv[1],sys.argv[1:])\n",*a[3:]] if os.environ.get('COMMAND_DELAY_DIRECTORY') else a[3:])
+  r=subprocess.run(argv,timeout=seconds,pass_fds=fds);raise SystemExit(r.returncode)
  except subprocess.TimeoutExpired:raise SystemExit(124)
 else:raise SystemExit(94)
 '''
@@ -264,20 +286,346 @@ else:raise SystemExit(94)
         abi_raw=abi_raw.replace('SHELL-HASH '+'a'*64,'SHELL-HASH '+shell_sha).replace('TOYBOX-HASH '+'a'*64,'TOYBOX-HASH '+toy_sha)
         abi_raw=abi_raw.replace('FD4 '+'a'*64,'FD4 '+toy_sha).replace('FD5 '+'a'*64,'FD5 '+toy_sha)
         abi=bundle._physical_abi_parse(abi_raw,CORRELATION,boot.read_text().strip())
-        source=bundle._physical_batch_source(CORRELATION,abi)
+        source=(producer or bundle._physical_batch_source)(CORRELATION,abi)
         # Mechanical host fixture spellings only, explicitly not native ABI.
         source=source.replace('/system/bin/toybox',str(toy)).replace('/system/bin/mksh',str(mksh)).replace('/system/bin/sh',str(mksh)).replace('/system/bin/getprop',str(helpers/'getprop')).replace('/system/bin/pm',str(helpers/'pm')).replace('/data/local/tmp',str(guest)).replace('/proc/sys/kernel/random/boot_id',str(boot))
         if not Path('/proc/self/fd').exists():
             source=source.replace('/proc/$$/fd/','/dev/fd/')
         env={'PATH':str(helpers)+':'+os.defpath}
-        child=subprocess.run([str(mksh),'-c',source],env=env,capture_output=True,timeout=30)
+        return guest,apk,mksh,source,env,abi
+
+    def actual_batch_outer_budget(self,abi):
+        # Finite catalogue: ten unchanged native 20s watchdogs plus 52s of
+        # housekeeping, ceil(2 * retained 25.997205625s normal boundary observation).
+        self.assertEqual(20,abi['stepSeconds'])
+        budget=10*abi['stepSeconds']+52
+        self.assertEqual(252,budget)
+        return budget
+
+    def authentic_batch_producer(self):
+        directory=ROOT/'agent_tools/tests/fixtures/android_installer_hermetic'
+        raw=bundle._read(directory/'physical-batch-source.before.source')[0]
+        provenance=json.loads(bundle._read(directory/'physical-batch-source.provenance.json')[0])
+        self.assertEqual('8b56c4d644324206dd37aafdb761f004223835535990f99e568b260f2839716c',hashlib.sha256(raw).hexdigest())
+        self.assertEqual(6024,len(raw));self.assertEqual(hashlib.sha256(raw).hexdigest(),provenance['fragmentSha256'])
+        self.assertEqual('e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a',provenance['sourceModuleSha256'])
+        self.assertEqual('agent_tools/android_installer_component_bundle.py',provenance['sourcePath'])
+        self.assertEqual('_physical_batch_source',provenance['function'])
+        tree=ast.parse(raw)
+        self.assertEqual(1,len(tree.body));self.assertIsInstance(tree.body[0],ast.FunctionDef)
+        self.assertEqual(provenance['function'],tree.body[0].name)
+        scope=dict(bundle.__dict__)
+        exec(compile(raw,str(directory/'physical-batch-source.before.source'),'exec'),scope)
+        return scope['_physical_batch_source']
+
+    def authentic_batch_test(self):
+        directory=ROOT/'agent_tools/tests/fixtures/android_installer_hermetic'
+        raw=bundle._read(directory/'physical-batch-test.before.source')[0]
+        provenance=json.loads(bundle._read(directory/'physical-batch-source.provenance.json')[0])['authenticTestMethod']
+        self.assertEqual('c2ce4b523bfea95bff788b1102ca56b17a486a711c355c42c6c4829503a85846',hashlib.sha256(raw).hexdigest())
+        self.assertEqual(6646,len(raw));self.assertEqual(hashlib.sha256(raw).hexdigest(),provenance['fixtureSha256'])
+        self.assertEqual('1b538a0f7795a1407e92158e04c7b66dde6f3a344c49113dbf509599ef6e7856',provenance['sourceModuleSha256'])
+        self.assertEqual('agent_tools/tests/test_android_installer_component_bundle.py',provenance['sourcePath'])
+        self.assertEqual([200,201,287],[provenance[k]for k in ('sourceLineStart','defLine','sourceLineEnd')])
+        # The original method contains column-zero multiline actor bytes; keep
+        # them unchanged and add only a separate enclosing class namespace.
+        wrapped='class _AuthenticBatchBefore:\n'+raw.decode()
+        tree=ast.parse(wrapped)
+        self.assertEqual(1,len(tree.body));self.assertIsInstance(tree.body[0],ast.ClassDef)
+        self.assertEqual('_AuthenticBatchBefore',tree.body[0].name)
+        self.assertEqual(1,len(tree.body[0].body));self.assertIsInstance(tree.body[0].body[0],ast.FunctionDef)
+        self.assertEqual(provenance['method'],tree.body[0].body[0].name)
+        scope=dict(globals());historical_bundle=types.SimpleNamespace(**bundle.__dict__)
+        historical_bundle._physical_batch_source=self.authentic_batch_producer();scope['bundle']=historical_bundle
+        historical_subprocess=types.SimpleNamespace(**subprocess.__dict__)
+        historical_subprocess.run=self.actual_batch_run;scope['subprocess']=historical_subprocess
+        exec(compile(wrapped,str(directory/'physical-batch-test.before.source'),'exec'),scope)
+        return scope['_AuthenticBatchBefore'].__dict__[provenance['method']]
+
+    def run_actual_batch_normal(self,fixture,env=None):
+        guest,apk,mksh,source,normal_env,abi=fixture
+        child=self.actual_batch_run([str(mksh),'-c',source],env=normal_env if env is None else env,capture_output=True,timeout=self.actual_batch_outer_budget(abi))
+        self.assert_actual_batch_normal(child,guest,apk)
+        return child
+
+    def assert_actual_batch_normal(self,child,guest,apk):
+        self.assertEqual(0,child.returncode,child.stderr.decode()[-6000:])
+        rows=bundle._physical_batch_parse(child.stdout.decode(),CORRELATION)
+        self.assertEqual(list(range(1,11)),[row['ordinal']for row in rows])
+        self.assertEqual('35\n',rows[0]['stdoutRaw'])
+        self.assertEqual(hashlib.sha256(apk.read_bytes()).hexdigest()+'  /data/app/owned/base.apk\n',rows[-1]['stdoutRaw'])
+        self.assertTrue(child.stdout.endswith(('EOF '+CORRELATION+' CLEANED\n').encode()))
+        self.assertEqual([],list(guest.iterdir()))
+
+    def actual_batch_preserve(self,record,reason):
+        # Preserve the whole owned TempFS generation through both explicit
+        # tearDown and TemporaryDirectory's automatic finalizer.
+        self.actual_batch_preserved=True;self.tmp._finalizer.detach()
+        note='retained actual batch root '+str(self.root)+'; custody '+str(record['directory'])+'; '+reason
+        record['preservedNote']=note
+        return note
+
+    def actual_batch_drain_duplicate_readers(self,record):
+        # No duplicate is read before the authentic run returns or raises.
+        # These raw tail channels are separate from its original raw prefix.
+        readers=record['readers'];primary=None;close_failures=[]
+        try:
+            if record['captureFailure']is not None:
+                raise RuntimeError('actual batch duplicate-reader capture failed')from record['captureFailure']
+            self.assertEqual({'stdout','stderr'},set(readers))
+            deadline=time.monotonic()+22;limit=2*bundle._PHYSICAL_BATCH_LIMIT
+            pending=dict(readers)
+            while pending:
+                remaining=deadline-time.monotonic()
+                if remaining<=0:raise TimeoutError('actual batch duplicate tail did not reach both EOFs')
+                ready,_,_=select.select(list(pending.values()),[],[],remaining)
+                if not ready:raise TimeoutError('actual batch duplicate tail did not reach both EOFs')
+                for channel,fd in list(pending.items()):
+                    if fd not in ready:continue
+                    used=sum(len(raw)for raw in record['tailRaw'].values())
+                    raw=os.read(fd,min(4096,limit-used+1))
+                    if raw:
+                        record['tailRaw'][channel]+=raw
+                        if sum(len(value)for value in record['tailRaw'].values())>limit:
+                            raise ValueError('actual batch duplicate tail byte limit exceeded')
+                    else:
+                        record['tailEOF'][channel]=True;del pending[channel]
+            self.assertEqual({'stdout':True,'stderr':True},record['tailEOF'])
+        except BaseException as exc:
+            primary=exc;raise
+        finally:
+            for channel,fd in list(readers.items()):
+                try:os.close(fd)
+                except BaseException as exc:close_failures.append((channel,exc))
+                finally:del readers[channel]
+            if close_failures:
+                if primary is None:raise RuntimeError('actual batch duplicate-reader close failed: '+repr(close_failures))
+                primary.add_note('duplicate-reader close also failed: '+repr(close_failures))
+
+    def actual_batch_wait_owned_cohort_closed(self,record):
+        process=record['process']
+        self.assertIsNotNone(process.poll())
+        self.assertTrue(process.stdout.closed);self.assertTrue(process.stderr.closed)
+        deadline=time.monotonic()+22
+        while True:
+            table=subprocess.run(['/bin/ps','-axo','pid=,pgid=,stat='],capture_output=True,timeout=3,check=True)
+            rows=[line for line in table.stdout.decode().splitlines()if len(line.split())==3 and line.split()[1]==str(process.pid)]
+            record['cohortRows']=rows
+            if not rows:
+                record['cohortClosed']=True;return
+            if time.monotonic()>=deadline:raise TimeoutError('owned inert cohort did not close: '+repr(rows))
+            time.sleep(0.1)
+
+    def actual_batch_save_custody(self,record):
+        files={}
+        for phase,channels in (('original',record['originalRaw']),('tail',record['tailRaw'])):
+            files[phase]={}
+            for channel,raw in channels.items():
+                if raw is None:files[phase][channel]={'present':False};continue
+                self.assertIsInstance(raw,bytes)
+                name=phase+'-'+channel+'.bin';bundle._write(record['directory']/name,raw)
+                files[phase][channel]={'present':True,'file':name,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+        value={'pid':record['process'].pid,'timeout':record['timeout'],'terminal':record['terminal'],
+            'returncode':record['process'].returncode,'raw':files,'tailEOF':record['tailEOF'],
+            'cohortClosed':record['cohortClosed'],'cohortRows':record['cohortRows'],
+            'captureFailure':repr(record['captureFailure'])if record['captureFailure']is not None else None,
+            'cleanupFailures':record['cleanupFailures'],'clean':record['clean']}
+        bundle._write(record['directory']/'custody.json',(json.dumps(value,sort_keys=True)+'\n').encode())
+
+    def actual_batch_run(self,*popenargs,**kwargs):
+        # A single wrapper serves authenticated historical and current actual
+        # shell callers. Only session isolation and duplicate readers are added;
+        # subprocess.run's deadlines, kill/wait behavior and raw prefix stay real.
+        self.assertEqual(True,kwargs.get('capture_output'));self.assertIn(kwargs.get('timeout'),(30,252))
+        runs=getattr(self,'actual_batch_runs',None)
+        if runs is None:self.actual_batch_runs=[];runs=self.actual_batch_runs
+        owned=[];real_popen=subprocess.Popen;real_run=subprocess.run;primary=None
+        def start(*args,**options):
+            self.assertNotIn('start_new_session',options)
+            process=real_popen(*args,**options,start_new_session=True)
+            record={'process':process,'readers':{},'captureFailure':None,'timeout':kwargs['timeout'],
+                'terminal':False,'originalRaw':{'stdout':None,'stderr':None},
+                'tailRaw':{'stdout':b'','stderr':b''},'tailEOF':{'stdout':False,'stderr':False},
+                'cohortClosed':False,'cohortRows':[],'cleanupFailures':[],'clean':False,
+                'directory':self.root/('actual-batch-custody-'+str(len(runs)+1).zfill(4))}
+            # Register the real process before mkdir/capture or either os.dup.
+            owned.append(record);runs.append(record)
+            try:
+                record['directory'].mkdir(mode=0o700)
+                for channel,stream in (('stdout',process.stdout),('stderr',process.stderr)):
+                    fd=os.dup(stream.fileno());record['readers'][channel]=fd
+                    os.set_inheritable(fd,False)
+            except BaseException as exc:
+                # Return the registered process so the authentic run still owns
+                # its normal deadline/wait. Partial readers close in finalization.
+                record['captureFailure']=exc
+            return process
+        try:
+            with mock.patch.object(subprocess,'Popen',start):
+                result=real_run(*popenargs,**kwargs)
+            for record in owned:
+                record['terminal']=True;record['originalRaw']={'stdout':result.stdout,'stderr':result.stderr}
+            return result
+        except BaseException as exc:
+            primary=exc
+            for record in owned:
+                record['terminal']=True
+                if isinstance(exc,subprocess.TimeoutExpired):
+                    record['originalRaw']={'stdout':exc.stdout,'stderr':exc.stderr}
+                    # Retain the exact timeout prefix before either finite tail
+                    # drain or cohort observation. None and empty stay distinct.
+                    try:
+                        prefix={}
+                        for channel,raw in record['originalRaw'].items():
+                            prefix[channel]={'present':raw is not None}
+                            if raw is not None:
+                                self.assertIsInstance(raw,bytes)
+                                name='timeout-prefix-'+channel+'.bin';bundle._write(record['directory']/name,raw)
+                                prefix[channel].update({'file':name,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()})
+                        bundle._write(record['directory']/'timeout-prefix.json',(json.dumps(prefix,sort_keys=True)+'\n').encode())
+                    except BaseException as capture:
+                        record['cleanupFailures'].append('timeoutPrefix: '+repr(capture))
+                    if kwargs['timeout']!=30:
+                        exc.add_note(self.actual_batch_preserve(record,'unexpected actual timeout'))
+            raise
+        finally:
+            failures=[]
+            for record in owned:
+                for name,close in (('duplicateEOF',self.actual_batch_drain_duplicate_readers),('cohort',self.actual_batch_wait_owned_cohort_closed)):
+                    try:close(record)
+                    except BaseException as exc:record['cleanupFailures'].append(name+': '+repr(exc))
+                record['clean']=(record['captureFailure']is None and not record['cleanupFailures']and
+                    record['tailEOF']=={'stdout':True,'stderr':True}and record['cohortClosed'])
+                if not record['clean']:
+                    failures.append(self.actual_batch_preserve(record,'capture/EOF/cohort custody failed'))
+                try:self.actual_batch_save_custody(record)
+                except BaseException as exc:
+                    record['clean']=False;record['cleanupFailures'].append('evidence: '+repr(exc))
+                    failures.append(self.actual_batch_preserve(record,'custody evidence capture failed'))
+            if len(owned)!=1:failures.append('expected one actual top shell, observed '+str(len(owned)))
+            if failures:
+                previous=getattr(self,'actual_batch_custody_failures',[])
+                self.actual_batch_custody_failures=previous+failures
+                if primary is None:raise AssertionError('actual batch custody failure: '+repr(failures))
+                for failure in failures:primary.add_note(failure)
+
+    def test_authentic_batch_method_keeps_multiline_actor_bytes(self):
+        historical=self.authentic_batch_test()
+        self.assertIsInstance(historical,types.FunctionType)
+        self.assertEqual('test_actual_generated_batch_shell_exclusive_capture_and_cleanup',historical.__name__)
+        actors=[value for value in historical.__code__.co_consts if isinstance(value,str)and value.startswith('import sys,os,stat,hashlib,base64,subprocess,pathlib,shutil\n')]
+        self.assertEqual(1,len(actors))
+        self.assertEqual('e226759b3a2791b67cd4d398ba8521f0edac0e5a22c0605f90b61e64cf62e1c5',hashlib.sha256(actors[0].encode()).hexdigest())
+        self.assertIs(self,historical.__globals__['subprocess'].run.__self__)
+        self.assertIs(self.actual_batch_run.__func__,historical.__globals__['subprocess'].run.__func__)
+
+    def test_actual_batch_outer_budget_survives_ten_real_delayed_commands(self):
+        # Execute the authenticated old method unchanged: first normal call must
+        # actually raise TimeoutExpired(30). The write seam adds real child entry
+        # latency under its existing 20s watchdog, preserving argv and FD4/5.
+        for before in (True,False):
+            with self.subTest(before=before):
+                if before:
+                    historical=self.authentic_batch_test()
+                    mksh=self.root/'guest-shell';events=self.root/'command-delay-events'
+                    delay="import os,sys,time,json,pathlib\nroot=pathlib.Path(os.environ['COMMAND_DELAY_DIRECTORY'])\ndef record(phase):\n pins={}\n for fd in (4,5):\n  s=os.fstat(fd);pins[str(fd)]=[s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns]\n row={'phase':phase,'monotonicNs':time.monotonic_ns(),'pid':os.getpid(),'argv':sys.argv[1:],'fdPins':pins}\n raw=(json.dumps(row,sort_keys=True)+'\\n').encode();assert len(raw)<4096\n fd=os.open(str(root/(str(os.getpid())+'-'+phase+'.json')),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)\n try:assert os.write(fd,raw)==len(raw)\n finally:os.close(fd)\nrecord('start')\ntime.sleep(3.2)\nrecord('pre-exec')\nos.execv(sys.argv[1],sys.argv[1:])\n".replace("root=pathlib.Path(os.environ['COMMAND_DELAY_DIRECTORY'])","root=pathlib.Path("+repr(str(events))+")")
+                else:
+                    fixture=self.actual_generated_batch_fixture('latency-current')
+                    guest,apk,mksh,source,env,abi=fixture
+                    self.assertIn('timeout -s KILL 20 "$@"',source)
+                    events=mksh.parent/'command-delay-events'
+                events.mkdir(mode=0o700)
+                real_write_text=Path.write_text;injected=[]
+                def inject(path,data,*args,**kwargs):
+                    if path==self.root/'guest-bin/toybox':
+                        needle=" try:r=subprocess.run(a[3:],timeout=seconds,pass_fds=fds);raise SystemExit(r.returncode)"
+                        self.assertEqual(1,data.count(needle))
+                        replacement=" try:r=subprocess.run([sys.executable,'-c',"+repr(delay)+",*a[3:]],timeout=seconds,pass_fds=fds);raise SystemExit(r.returncode)"
+                        data=data.replace(needle,replacement);injected.append(path)
+                    return real_write_text(path,data,*args,**kwargs)
+                before_runs=len(getattr(self,'actual_batch_runs',[]))
+                if before:
+                    with mock.patch.object(Path,'write_text',inject):
+                        with self.assertRaises(subprocess.TimeoutExpired)as failure:historical(self)
+                    self.assertEqual(30,failure.exception.timeout)
+                    self.assertEqual([self.root/'guest-bin/toybox'],injected)
+                    self.assertIsInstance(failure.exception.stdout,bytes)
+                    self.assertTrue(failure.exception.stdout.startswith(('PHYSICAL-1 '+CORRELATION+'\n').encode()))
+                    self.assertNotIn(b' CLEANED\n',failure.exception.stdout)
+                else:self.run_actual_batch_normal(fixture,{**env,'COMMAND_DELAY_DIRECTORY':str(events)})
+                self.assertEqual(before_runs+1,len(self.actual_batch_runs))
+                custody=self.actual_batch_runs[-1]
+                # Expected Timeout30 may never hide a failed duplicate capture,
+                # tail EOF, closure, or evidence write after assertRaises catches it.
+                self.assertTrue(custody['clean'],repr(custody['cleanupFailures']))
+                self.assertEqual({'stdout':True,'stderr':True},custody['tailEOF'])
+                if before:
+                    self.assertIs(failure.exception.stdout,custody['originalRaw']['stdout'])
+                    self.assertIs(failure.exception.stderr,custody['originalRaw']['stderr'])
+                records=[json.loads(path.read_bytes())for path in events.glob('*.json')]
+                starts={row['pid']:row for row in records if row['phase']=='start'}
+                ends={row['pid']:row for row in records if row['phase']=='pre-exec'}
+                self.assertEqual(set(starts),set(ends))
+                self.assertEqual(len(starts)*2,len(records))
+                if not before:self.assertEqual(10,len(starts))
+                else:self.assertGreater(len(starts),0)
+                for pid,row in starts.items():
+                    self.assertGreaterEqual(ends[pid]['monotonicNs']-row['monotonicNs'],3_200_000_000)
+                    self.assertLess(ends[pid]['monotonicNs']-row['monotonicNs'],20_000_000_000)
+                    self.assertEqual(row['argv'],ends[pid]['argv'])
+                    self.assertEqual({'4','5'},set(row['fdPins']))
+                    self.assertEqual(row['fdPins'],ends[pid]['fdPins'])
+
+    def assert_actual_batch_generation_drift(self,when):
+        old=self.authentic_batch_producer()
+        for before in (True,False):
+            with self.subTest(before=before,when=when):
+                name='generation-'+when+('-before'if before else'-current')
+                guest,apk,mksh,source,env,abi=self.actual_generated_batch_fixture(name,old if before else None)
+                child=self.actual_batch_run([str(mksh),'-c',source],env={**env,'DRIFT':'generation-'+when},capture_output=True,timeout=self.actual_batch_outer_budget(abi))
+                facts=json.loads((mksh.parent/'generation-mutation.json').read_bytes())
+                self.assertEqual('1.o'if when=='early'else'10.e',facts['trigger'])
+                self.assertEqual(facts['before'][:7],facts['after'][:7])
+                self.assertEqual(facts['before'][:7],facts['heldBefore'][:7])
+                self.assertEqual(facts['heldAfter'],facts['after'])
+                self.assertEqual(0o600,stat.S_IMODE(facts['before'][2]));self.assertEqual(1,facts['before'][5])
+                self.assertNotEqual(base64.b64decode(facts['beforeBase64']),base64.b64decode(facts['afterBase64']))
+                self.assertNotEqual(facts['before'][7],facts['after'][7])
+                self.assertNotEqual(facts['before'][8],facts['after'][8])
+                frames=[int(n)for n in re.findall(rb'^FRAME\t([0-9]+)\t',child.stdout,re.M)]
+                if before:
+                    # Authentic causal RED is the unfixed producer's concrete
+                    # false acceptance, never a fixture/import/timeout error.
+                    self.assert_actual_batch_normal(child,guest,apk)
+                    self.assertEqual(list(range(1,11)),frames)
+                else:
+                    self.assertEqual(1,child.returncode,child.stderr.decode()[-6000:])
+                    self.assertNotIn(b'EOF ',child.stdout);self.assertNotIn(b' CLEANED\n',child.stdout)
+                    with self.assertRaises(ValueError):bundle._physical_batch_parse(child.stdout.decode(),CORRELATION)
+                    self.assertEqual([1]if when=='early'else list(range(1,11)),frames)
+                    retained=list(guest.iterdir());self.assertEqual(1,len(retained))
+                    self.assertEqual('vpn-control-physical-'+CORRELATION,retained[0].name)
+                    self.assertEqual({str(n)+suffix for n in (range(1,2)if when=='early'else range(1,11))for suffix in ('.o','.e')},{path.name for path in retained[0].iterdir()})
+                    self.assertEqual(base64.b64decode(facts['afterBase64']),(retained[0]/'1.o').read_bytes())
+
+    def test_actual_batch_post_capture_generation_drift_refuses_before_frame_two(self):
+        self.assert_actual_batch_generation_drift('early')
+
+    def test_actual_batch_final_generation_drift_refuses_before_cleanup(self):
+        self.assert_actual_batch_generation_drift('late')
+
+    @unittest.skipUnless(os.name=='posix','actual shell descriptor wrapper requires POSIX')
+    def test_actual_generated_batch_shell_exclusive_capture_and_cleanup(self):
+        guest,apk,mksh,source,env,abi=self.actual_generated_batch_fixture('exclusive')
+        budget=self.actual_batch_outer_budget(abi)
+        child=self.run_actual_batch_normal((guest,apk,mksh,source,env,abi))
         self.assertEqual(0,child.returncode,child.stderr.decode()[-6000:])
         rows=bundle._physical_batch_parse(child.stdout.decode(),CORRELATION)
         self.assertEqual(10,len(rows));self.assertEqual('35\n',rows[0]['stdoutRaw'])
         self.assertEqual(hashlib.sha256(apk.read_bytes()).hexdigest()+'  /data/app/owned/base.apk\n',rows[-1]['stdoutRaw'])
         self.assertEqual([],list(guest.iterdir()))
         for drift in ('file','parent'):
-            child=subprocess.run([str(mksh),'-c',source],env={**env,'DRIFT':drift},capture_output=True,timeout=30)
+            child=self.actual_batch_run([str(mksh),'-c',source],env={**env,'DRIFT':drift},capture_output=True,timeout=budget)
             self.assertNotEqual(0,child.returncode)
             self.assertIn(b'FRAME\t1\t',child.stdout)
             self.assertNotIn(b' CLEANED\n',child.stdout)

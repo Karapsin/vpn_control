@@ -101,6 +101,37 @@ class NativeAcceptanceMatrixTest(unittest.TestCase):
             root = Path(temporary); artifact = self.artifact(root); matrix.matrix_record(root, self.observation(root, artifact, scope="component"))
             row = self.row(root); self.assertEqual("open", row["status"]); self.assertEqual(self.SCENARIOS, row["missingScenarios"])
 
+    def shared_observation(self, root, artifacts, scenarios, scope, suffix):
+        value = self.observation(root, artifacts[0], scenarios=scenarios, scope=scope, suffix=suffix)
+        value.update(requirementId="document-persistence-transfer", platform="cross-platform", immutableArtifactIDs=artifacts, environment="windows-clone")
+        return value
+
+    @unittest.skipIf(os.name == "nt", "private registry writes require POSIX")
+    def test_limited_single_platform_receipt_records_on_a_shared_row_without_closing_it(self):
+        # A shared requirement's Windows proof is a recorded partial, never a pass:
+        # only full-native evidence over every platform's artifacts can close a scenario.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); windows = self.artifact(root, platform="windows", name="windows")
+            shared = matrix.load_requirements()["document-persistence-transfer"]["requiredScenarios"]
+            proved = [scenario for scenario in shared if scenario != "android-48m-heap"]
+            scenarios = {scenario: "passed" for scenario in proved}
+            with self.assertRaisesRegex(matrix.NativeAcceptanceMatrixError, "do not cover"):
+                matrix.matrix_record(root, self.shared_observation(root, [windows], scenarios, "full-native", "full"))
+            with self.assertRaisesRegex(matrix.NativeAcceptanceMatrixError, "do not cover"):
+                matrix.matrix_record(root, self.shared_observation(root, [windows], scenarios, "component", "component"))
+            matrix.matrix_record(root, self.shared_observation(root, [windows], scenarios, "limited", "limited"))
+            row = next(row for row in matrix.matrix_status(root, self.SHA)["requirements"] if row["requirementId"] == "document-persistence-transfer")
+            self.assertEqual("open", row["status"]); self.assertEqual(shared, row["missingScenarios"])
+            self.assertEqual(proved, row["limitedPassedScenarios"]); self.assertEqual(1, row["partialReceiptCount"])
+            self.assertEqual([], row["verificationFailures"])
+
+    @unittest.skipIf(os.name == "nt", "private registry writes require POSIX")
+    def test_limited_receipt_on_a_single_platform_row_keeps_its_exact_platform(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); windows = self.artifact(root, platform="windows", name="windows")
+            with self.assertRaisesRegex(matrix.NativeAcceptanceMatrixError, "do not cover"):
+                matrix.matrix_record(root, self.observation(root, windows, scope="limited"))
+
     @unittest.skipIf(os.name == "nt", "private registry writes require POSIX")
     def test_duplicate_and_unsafe_path_are_rejected_and_receipts_are_private(self):
         with tempfile.TemporaryDirectory() as temporary:

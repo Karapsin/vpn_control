@@ -1,0 +1,54 @@
+"""Finite same-oracle controls on exact preserved sources; declared peers only."""
+from __future__ import annotations
+import argparse
+import hashlib
+import importlib.util
+from pathlib import Path
+import sys
+import unittest
+B = _fixture_root
+
+def module(name, path, sha=None):
+    return _load_source(path, sha)
+
+A = module('_collector_causal_current_fixture', _fixture_root / 'current_collector_body.py')
+SOURCE='current'
+CAUSE='duplicate-raw-save'
+
+class Controls(unittest.TestCase):
+    def test_known_original_close_is_not_lost_by_raw_or_policy_boundary(self):
+        if CAUSE=='duplicate-raw-save':
+            before=_fixture_root/'before/duplicate-child-raw-save/collector_wrapper.py'
+            W=A.W if SOURCE=='current' else module('_preserved_duplicate_raw_wrapper',before,'41c427cc2eecb38218e219a84a82e6562daad49ff766c2bc532b5f03b95799de')
+            r,p,g=A.inputs();peer=A.ParentPeer(r,g)
+            obj=W.RetainedSystemCollector.__new__(W.RetainedSystemCollector)
+            obj.n=peer.n;obj.request=r;obj.request_pin=p;obj.proof=A.child_proof(r,p);obj.child_raw={}
+            obj.validate_child();completed=True
+            try:obj.validate_child()
+            except FileExistsError:completed=False
+            self.assertTrue(completed,'revalidate exact original raw without a second create-only save')
+        elif CAUSE=='ready-read-sharing':
+            from unittest.mock import patch
+            before=_fixture_root/'before/ready-read-sharing/system_collector_worker.py'
+            K=A.K if SOURCE=='current' else module('_preserved_ready_sharing_worker',before,'052bf280609d72d269d855f26ddd2116d33ccedc54ce5bb077e3f80b24d801cf')
+            owner,modules,log=A.WorkerReadyBarrierTests().peer(missing=True,read_error=32)
+            completed=True
+            try:
+                with patch.object(K.os,'getppid',lambda:909),patch.object(K.time,'sleep',lambda _:None):
+                    K.wait_caller_ready(owner,modules)
+            except OSError:completed=False
+            self.assertTrue(completed,'a no-handle sharing refusal is only an original read retry')
+        else:
+            if SOURCE=='current':fixture=A
+            else:fixture=module('_preserved_v2_file_policy_fixture',_fixture_root/'before/v2/collector_body.py')
+            r,p,g=fixture.inputs();p['security']={'ownerSid':'S-1-5-18','sddl':'O:SYD:AI(A;ID;FA;;;SY)'}
+            rejected=False
+            try:fixture.W.render_source(r,p,bytes(bytearray(fixture.CONTRACT)),fixture.TEMPLATE,fixture.E,g)
+            except ValueError as error:rejected='machine-writer-file-policy' in str(error)
+            self.assertTrue(rejected,'reject inherited request file before launching strict protected-file consumer')
+
+if __name__=='__main__':
+    p=argparse.ArgumentParser();p.add_argument('--source',choices=('before','current'),required=True)
+    p.add_argument('--cause',choices=('duplicate-raw-save','protected-file-policy','ready-read-sharing'),required=True)
+    a=p.parse_args();SOURCE=a.source;CAUSE=a.cause
+    unittest.main(argv=[sys.argv[0]])

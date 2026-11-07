@@ -1,0 +1,737 @@
+"""Portable controls; all guest/native/review/QMP peers are declared fixtures.
+
+Only owned temporary files and the optional real PowerShell parser run locally.
+These controls provide no Windows, SSH, QMP, credential or screenshot admission.
+"""
+from __future__ import annotations
+import copy
+import ast
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+import uuid
+import types
+import hashlib
+import base64
+from unittest.mock import patch
+
+HERE = Path(__file__).resolve().parent
+HISTORY = HERE.parent / "windows-main-input-bridge-preparation-v1"
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path, loader=__import__("importlib.machinery",fromlist=["SourceFileLoader"]).SourceFileLoader(name, str(path)))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+b_source = HERE / "main_input_bridge.py"
+s_source = HERE / "secure_observer.py"
+if os.environ.get("VPN_MAIN_INPUT_BRIDGE_BEFORE") == "1":
+    b_source = HISTORY / "initial-local-control-failure-v1/main_input_bridge.py.before.source"
+if os.environ.get("VPN_MAIN_INPUT_PARTIAL_BEFORE") == "1":
+    b_source = HISTORY / "qmp-partial-custody-cause-v1/main_input_bridge.py.before.source"
+if os.environ.get("VPN_MAIN_INPUT_PRIVATE_UNKNOWN_BEFORE") == "1":
+    b_source = HISTORY / "private-qmp-unknown-cause-v1/main_input_bridge.py.before.source"
+if os.environ.get("VPN_MAIN_INPUT_FRAME_BEFORE") == "1":
+    b_source = HISTORY / "frame-conversion-custody-cause-v1/main_input_bridge.py.before.source"
+if os.environ.get("VPN_MAIN_INPUT_OBSERVER_BEFORE") == "1":
+    s_source = HISTORY / "canonical-envelope-limit-cause-v1/secure_observer.py.before.source"
+if os.environ.get("VPN_MAIN_INPUT_CAPTURE_BEFORE") == "1":
+    s_source = HISTORY / "capture-scope-cause-v1/secure_observer.py.before.source"
+if os.environ.get("VPN_MAIN_INPUT_REVIEW_BEFORE") == "1":
+    b_source = HERE / "before-frozen-v1/main_input_bridge.py"
+if os.environ.get("VPN_MAIN_INPUT_OBSERVER_REVIEW_BEFORE") == "1":
+    s_source = HERE / "before-frozen-v1/secure_observer.py"
+b = load("private_main_input_bridge_controls", b_source)
+s = load("private_secure_observer_controls", s_source)
+backend_module = load("private_main_input_canonical_backend_controls", HERE / "canonical_observer_backend.py")
+pending_module = load("private_main_input_pending_join_controls", HERE / "pending_join.py")
+U = [str(uuid.UUID(int=i)) for i in range(1, 10)]
+SID = "S-1-5-21-1-2-3-1001"
+ADMIN = "S-1-5-21-1-2-3-1000"
+
+
+def specimen():
+    birth = 134369000000000000
+    actors = []
+    for role, pid, parent, image in [("ordinaryOwner", 10, 9, r"C:\Users\u\Python\python.exe"),
+            ("serve", 11, 10, r"C:\Users\u\VPN\vpn-control-cli.exe"),
+            ("gui", 12, 10, r"C:\Users\u\VPN\vpn-control.exe")]:
+        actors.append(dict(role=role, pid=pid, parentPid=parent, creationFileTime=birth + pid,
+            image=image, sha256="a" * 64, sid=SID, sessionId=2, elevation=0, elevationType=1,
+            administratorMember=False, administratorEnabled=False))
+    binding = dict(zip(("ordinaryTaskOperationId", "productOperationId", "originRequestId", "controllerId"), U))
+    pending = dict(path="C:\\Users\\u\\input\\" + U[4] + "\\request.json", sha256="b" * 64,
+                   sizeBytes=200, jobId=U[4], ownerPid=11, ownerStartedAtEpochMillis=(birth+11)//10000-11644473600000,
+                   principalSid=SID, launcher=actors[2]["image"],nativeIdentity="00000001:0000000000000002",
+                   security=dict(ownerSid=SID,sddl="O:"+SID+"D:P(A;;FA;;;"+SID+")"))
+    correlation_path,correlation_record=pending_module.correlation_path_and_record(r"C:\Users\u\workspace",binding,U[4])
+    correlation=dict(path=correlation_path,sha256="5"*64,sizeBytes=300,record=correlation_record,
+        resolvedWorkspace=r"C:\Users\u\workspace",nativeIdentity="00000001:0000000000000003",security=pending["security"])
+    package=dict(path=r"C:\Users\u\input"+"\\"+U[4]+r"\package.msi",sha256="6"*64,sizeBytes=131228020,
+        nativeIdentity="00000001:0000000000000004",security=pending["security"])
+    qemu = dict(deployment_id=b.DEPLOYMENT,host_boot_id=U[8],pid=99,parent_pid=98,start_ticks=97,uid=1000,
+        argv_sha256="9"*64,qmp_socket="/home/kardinal/vc-win-d493a3731d2c/qmp.sock",qga_socket="/home/kardinal/vc-win-d493a3731d2c/qga.sock")
+    expected = {"taskBinding": binding, "qemuIdentity": qemu,
+                "guestBootIdentifier": U[5], "ordinaryActors": actors, "pendingRequest": pending,
+                "machineGuid":U[6],
+                "ordinarySid": SID, "approvingAdminSid": ADMIN, "approvingAdminAccount": "TestAdmin",
+                "correlationRecord":correlation,"packageFile":package}
+    row = {"schemaVersion": 1, **{k: expected[k] for k in ("taskBinding", "qemuIdentity", "guestBootIdentifier", "ordinaryActors", "pendingRequest","correlationRecord","packageFile")},
+        "consentActor": dict(pid=50, parentPid=49, creationFileTime=birth+50,
+            image=r"C:\Windows\System32\consent.exe", sha256="c"*64, sid="S-1-5-18", sessionId=2,
+            signatureStatus="Valid", signerName="Microsoft Windows"),
+        "secureDesktop": dict(windowStation="WinSta0", desktop="Winlogon", keyboardLayout="0000000004090409",
+            focusOwnerPid=50, focusThreadId=51, passwordFocused=True, passwordLengthObserved=0,
+            selectedAccountName="TestAdmin", selectedAccountSid=ADMIN, passwordControlRuntimeId=[1, 2],
+            selectedAccountRelation=dict(kind="uia-selected-item-containing-password",selectedItemRuntimeId=[3,4],
+                selectionContainerRuntimeId=[5,6],passwordRuntimeId=[1,2],accountLabelRuntimeId=[7,8])),
+        "observer": dict(pid=60, parentPid=59, creationFileTime=birth+60, sid="S-1-5-18", sessionId=2,
+            sourceSha256="d"*64, launcherSourceSha256="e"*64, nativeRecordSha256="f"*64)}
+    render = {"schemaVersion": 1, **expected, "machineGuid": U[6], "powershellSha256": "1"*64}
+    return expected, row, render
+
+
+class NativeFixture:
+    admission_artifact_id = "fixture-only-not-admission"
+    def __init__(self, row):
+        self.row = row
+        self.calls = 0
+    def source_guard(self):
+        pass
+    def observe_original(self):
+        self.calls += 1
+        return copy.deepcopy(self.row)
+    def validate_original_custody(self, row):
+        # Explicit fixture seam. Production must join original child/source/raw
+        # terminal/EOF handles; this method is never used by a real input route.
+        pass
+
+
+class QmpFixture:
+    def __init__(self):
+        self.frame = "2"*64
+        self.inputs = []
+        self.fail_after_send = False
+        self.before_input = lambda: None
+    def guard(self):
+        pass
+    def context_record(self):
+        return specimen()[0]["qemuIdentity"]
+    def validate_private_sequence(self, password):
+        b.need(all(33 <= x <= 126 for x in password), "fixture-ascii")
+    def capture(self):
+        return dict(sha256=self.frame, pngSha256="3"*64, pngPath="fixture-not-real.png",pngBytes=1,pngBase64="AA==")
+    def cancel(self):
+        self.before_input()
+        self.inputs.append("escape")
+        if self.fail_after_send:
+            raise TimeoutError()
+        return {"commandId": 7, "reply": {}}
+    def credential_submit(self, password, *, guard):
+        self.before_input()
+        self.inputs.append("private-sequence")
+        for i in range(len(password)+1):
+            guard(i)
+        return {"privateSequenceAcknowledged": True, "uiSuccess": False}
+
+
+class ReviewFixture:
+    def __init__(self):
+        self.valid = True
+    def verify_original_opened_frame(self, challenge, decision):
+        b.need(self.valid and decision["openedFrameArtifactId"] == "fixture-opened", "opened-frame-custody")
+
+
+class CredentialFixture:
+    def __init__(self):
+        self.password = bytearray(b"Fixture!A1")
+    def read_private_original(self, sid):
+        return self.password
+
+
+class BridgeControls(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        task_root = Path(self.tmp.name)
+        task_root.chmod(0o700)
+        self.directory = task_root / "main-input-intents"
+        self.directory.mkdir(mode=0o700)
+        root_patch=patch.object(b,"ARCH_ROOT",task_root)
+        root_patch.start();self.addCleanup(root_patch.stop)
+        self.expected, self.row, self.render_input = specimen()
+        self.native = NativeFixture(self.row)
+        self.qmp = QmpFixture()
+        self.review = ReviewFixture()
+        self.credential = CredentialFixture()
+        self.time = 100.
+        self.bridge = self.make()
+    def make(self):
+        return b.MainInputBridge(self.expected, self.native, self.qmp, b.DurableIntent(self.directory),
+                                 self.review, self.credential, clock=lambda: self.time)
+    def decision(self, action="deny"):
+        c = self.bridge.challenge()
+        return {k: c[k] for k in ("schemaVersion", "productOperationId", "stage", "nonce", "frameId", "frameSha256")} | {
+            "action": action, "openedFrameArtifactId": "fixture-opened"}
+    def test_current_sibling_topology_renders_and_old_chain_refuses(self):
+        packet = s.render(self.render_input, U[7], "4"*64)
+        self.assertIn('uint session=2', packet["parent"])
+        self.assertIn('WinSta0\\Winlogon', packet["parent"])
+        self.assertNotIn('CP117', packet["parent"])
+        self.assertNotIn('send-key', packet["parent"])
+        self.assertIn('-File', packet["parent"])
+        self.assertIn('ResumeThread', packet["parent"])
+        self.assertIn('held-suspended-system-session-two-child', packet["parent"])
+        old = copy.deepcopy(self.render_input)
+        old["ordinaryActors"][2]["parentPid"] = 11
+        with self.assertRaisesRegex(ValueError, "sibling-topology"):
+            s.render(old, U[7], "4"*64)
+    def test_parser_actual_when_explicitly_available(self):
+        pwsh = os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+        if not pwsh:
+            self.skipTest("Explicit real PowerShell parser not supplied")
+        packets = [s.render(self.render_input, U[7], "4"*64),
+                   s.render_discovery({k:v for k,v in self.render_input.items() if k in s.COMMON_NAMES}, U[7], "4"*64)]
+        for index,packet in enumerate(packets):
+            for key in ("parent", "child", "program"):
+                path = self.directory / (str(index)+key + ".ps1")
+                path.write_text(packet[key])
+                parser = self.directory / "parse-only.ps1"
+                parser.write_text("param([string]$InputPath)\n$t=$null;$e=$null;[Management.Automation.Language.Parser]::ParseFile($InputPath,[ref]$t,[ref]$e)|Out-Null;if($e.Count){$e|ForEach-Object{$_.ToString()};exit 1}")
+                run = subprocess.run([pwsh, "-NoProfile", "-NonInteractive", "-File", str(parser), str(path)], capture_output=True, timeout=20)
+                self.assertEqual(run.returncode, 0, run.stdout.decode()+run.stderr.decode())
+    def test_read_only_discovery_has_no_installer_fiction_and_cannot_authorize_input(self):
+        expected={k:v for k,v in self.render_input.items() if k in s.COMMON_NAMES}
+        packet=s.render_discovery(expected,U[7],"4"*64)
+        self.assertIn("CURRENT_SECURE_PROMPT_OBSERVATION_ONLY",packet["child"])
+        self.assertIn("inputCapability=$null;productTargetAuthority=$null",packet["child"])
+        self.assertNotIn("$pending=",packet["child"])
+        self.assertNotIn("ValuePattern",packet["child"])
+        self.assertNotIn("PasswordLength(",packet["child"])
+        self.assertNotIn("send-key",packet["child"])
+        # Even a perfect copy of all strict actor/frame facts cannot turn the
+        # distinct observation-only result schema into input authorization.
+        row=copy.deepcopy(self.row);row["schemaVersion"]=2
+        row.update(state="CURRENT_SECURE_PROMPT_OBSERVATION_ONLY",inputCapability=None,productTargetAuthority=None)
+        with self.assertRaises(b.Refused):b.validate_observation(row,self.expected)
+        with self.assertRaisesRegex(ValueError,"observer-schema"):
+            s.render(expected,U[7],"4"*64)
+    def test_actual_powershell_literal_bytes_match_child_and_native_hashes(self):
+        pwsh=os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+        if not pwsh:self.skipTest("Explicit real PowerShell parser not supplied")
+        packet=s.render(self.render_input,U[7],"4"*64)
+        parent=self.directory/"literal-parent.ps1";parent.write_text(packet["parent"])
+        verifier=self.directory/"literal-hashes-only.ps1"
+        verifier.write_text("param([string]$InputPath,[string]$NativeHash,[string]$ChildHash)\n$t=$null;$e=$null;$a=[Management.Automation.Language.Parser]::ParseFile($InputPath,[ref]$t,[ref]$e);if($e.Count){exit 2};$values=$a.FindAll({param($n) $n-is[Management.Automation.Language.StringConstantExpressionAst]-and$n.StringConstantType-eq'SingleQuotedHereString'},$true);$hashes=@($values|ForEach-Object{$h=[Security.Cryptography.SHA256]::Create();try{([BitConverter]::ToString($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($_.Value)))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}});if($NativeHash-notin$hashes-or$ChildHash-notin$hashes){exit 3}\n")
+        result=subprocess.run([pwsh,"-NoProfile","-NonInteractive","-File",str(verifier),str(parent),
+            hashlib.sha256(s.NATIVE.encode()).hexdigest(),packet["childUtf8Sha256"]],capture_output=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stdout.decode()+result.stderr.decode())
+    def test_real_powershell_parent_capture_uses_own_scope(self):
+        pwsh=os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+        if not pwsh:self.skipTest("Explicit real PowerShell runtime not supplied")
+        function=next(line for line in s.PARENT.splitlines() if line.startswith("function ReadCapture("))
+        raw=b"owned capture exact bytes\x00\x01";(self.directory/"child.stdout.bin").write_bytes(raw)
+        script=self.directory/"capture-function-only.ps1"
+        # Execute the real PS function with actual files, byte reads, SHA256 and
+        # bounded base64. Native handle identity + Windows ACL are explicit peers.
+        script.write_text("param([string]$CaptureDir)\n$ErrorActionPreference='Stop';$dir=$CaptureDir\nfunction Need($v,$c){if(-not$v){throw $c}}\nAdd-Type -TypeDefinition 'using System;public static class MainSecureRead{public static string FileIdentity(IntPtr h,bool d){return \"fixture-id\";}}'\nfunction Get-Acl {param($LiteralPath) $a=[pscustomobject]@{};$a|Add-Member ScriptMethod GetOwner {param($t) [pscustomobject]@{Value='S-1-5-18'}};$a|Add-Member ScriptMethod GetAccessRules {param($x,$y,$t) [pscustomobject]@{IdentityReference=[pscustomobject]@{Value='S-1-5-18'};AccessControlType='Allow';FileSystemRights=2032127}};$a|Add-Member ScriptMethod GetSecurityDescriptorSddlForm {param($x) 'O:SYD:(A;;FA;;;SY)'};return $a}\n"+function+"\nReadCapture 'child.stdout.bin'|ConvertTo-Json -Depth 8 -Compress\n")
+        result=subprocess.run([pwsh,"-NoProfile","-NonInteractive","-File",str(script),str(self.directory)],capture_output=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stdout.decode()+result.stderr.decode())
+        record=json.loads(result.stdout)
+        self.assertEqual(base64.b64decode(record["base64"]),raw)
+        self.assertEqual(record["sha256"],hashlib.sha256(raw).hexdigest())
+        self.assertEqual(record["bytes"],len(raw))
+    def test_real_powershell_native_guard_refusal_preserves_finite_code(self):
+        pwsh=os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+        if not pwsh:self.skipTest("Explicit real PowerShell runtime not supplied")
+        function=next(line for line in s.PARENT.splitlines() if line.startswith("function Need("))
+        script=self.directory/"guard-finite-code-only.ps1"
+        script.write_text("$ErrorActionPreference='Stop'\n"+function+"\ntry{Need $false 'ORIGINAL_FINITE_GUARD_CODE';exit 2}catch{if($_.Exception.Message-ceq'ORIGINAL_FINITE_GUARD_CODE'){exit 0};[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n")
+        result=subprocess.run([pwsh,"-NoProfile","-NonInteractive","-File",str(script)],capture_output=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stdout.decode()+result.stderr.decode())
+    def test_deny_burn_is_durable_before_first_key_and_ack_is_not_outcome(self):
+        d = self.decision()
+        def before():
+            files = list(self.directory.glob("input-once-*.json"))
+            self.assertEqual(len(files), 1)
+            self.assertEqual(json.loads(files[0].read_bytes())["nonce"], d["nonce"])
+        self.qmp.before_input = before
+        result = self.bridge.cancel(d)
+        self.assertEqual(self.qmp.inputs, ["escape"])
+        self.assertFalse(result["approvalSucceeded"])
+        self.assertFalse(result["productOutcomeProved"])
+        with self.assertRaises(b.Refused):
+            self.bridge.cancel(d)
+    def test_new_nonce_new_owner_cannot_replay_same_operation(self):
+        self.bridge.cancel(self.decision())
+        self.bridge = self.make()
+        fresh = self.decision()
+        with self.assertRaises(b.Unknown):
+            self.bridge.cancel(fresh)
+        self.assertEqual(self.qmp.inputs, ["escape"])
+    def test_fixed_intent_root_cannot_be_reset_by_second_private_folder(self):
+        record={"ordinaryTaskOperationId":U[0],"productOperationId":U[1],"machineGuid":U[6],
+                "guestBootIdentifier":U[5],"pendingJobId":U[4]}
+        b.DurableIntent(self.directory).burn(record)
+        other=self.directory.parent/"fresh-owner-folder";other.mkdir(mode=0o700)
+        with self.assertRaises(b.Refused):b.DurableIntent(other).burn(record)
+        changed={**record,"ordinaryTaskOperationId":U[7],"productOperationId":U[8],"nonce":U[3]}
+        with self.assertRaises(FileExistsError):b.DurableIntent(self.directory).burn(changed)
+    def test_strict_consent_requires_actual_system_sid(self):
+        row=copy.deepcopy(self.row);row["consentActor"]["sid"]=SID
+        row["secureDesktop"].pop("selectedAccountRelation",None)
+        with self.assertRaisesRegex(b.Refused,"consent-native-identity"):
+            b.validate_observation(row,self.expected)
+    def test_visible_admin_label_is_not_selected_account_authority(self):
+        row=copy.deepcopy(self.row);row["secureDesktop"].pop("selectedAccountRelation",None)
+        with self.assertRaises(b.Refused):b.validate_observation(row,self.expected)
+    def selection_segment(self):
+        body=s.CHILD
+        marker=" $relations=@();" if " $relations=@();" in body else " Need($accounts.Count-eq1)"
+        return body[body.index(marker):body.index(" $rid=@($edit.GetRuntimeId())")]
+    def test_real_powershell_providerless_account_label_refuses(self):
+        pwsh=os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+        if not pwsh:self.skipTest("Explicit real PowerShell runtime not supplied")
+        script=self.directory/"providerless-account-only.ps1"
+        # Real unchanged PS selection segment; UIA census and local account are
+        # explicit peers with one label and no selection provider, never native.
+        script.write_text("$ErrorActionPreference='Stop'\nfunction Need($v,$c){if(-not$v){throw $c}}\n$e=[pscustomobject]@{approvingAdminAccount='TestAdmin';approvingAdminSid='"+ADMIN+"'};$accounts=@([pscustomobject]@{Name='TestAdmin'});$nodes=@()\nfunction Get-CimInstance {param($ClassName,$Filter,$OperationTimeoutSec) [pscustomobject]@{SID='"+ADMIN+"';Disabled=$false;Lockout=$false}}\ntry{\n"+self.selection_segment()+"\nexit 2}catch{if($_.Exception.Message-ceq'selected-account-password-relation'){exit 0};[Console]::Error.WriteLine($_.Exception.Message);exit 1}\n")
+        run=subprocess.run([pwsh,"-NoProfile","-NonInteractive","-File",str(script)],capture_output=True,timeout=20)
+        self.assertEqual(run.returncode,0,run.stdout.decode()+run.stderr.decode())
+    def test_real_powershell_selection_provider_binds_same_password_subtree(self):
+        pwsh=os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+        if not pwsh:self.skipTest("Explicit real PowerShell runtime not supplied")
+        helpers="\n".join(line for line in s.CHILD.splitlines() if line.startswith(" function Rid(") or line.startswith(" function Within("))
+        script=self.directory/"selected-provider-explicit-peer.ps1"
+        native_peer=r'''using System;namespace Windows.Automation{public static class SelectionItemPattern{public static string Pattern="item";}public static class SelectionPattern{public static string Pattern="selection";}public sealed class MockWalker{public object GetParent(PeerNode node){return node.Parent;}}public static class TreeWalker{public static MockWalker RawViewWalker=new MockWalker();}}public sealed class PeerNode{public object Current,ItemPattern,SelectionPattern;public PeerNode Parent;public int[] Id;public int[] GetRuntimeId(){return Id;}public bool TryGetCurrentPattern(string tag,out object pattern){pattern=tag=="item"?ItemPattern:SelectionPattern;return pattern!=null;}}'''
+        fixture=r'''param([string]$Variant)
+$ErrorActionPreference='Stop'
+function Need($v,$c){if(-not$v){throw $c}}
+Add-Type -TypeDefinition @'
+__PEER__
+'@
+function Node($id){$n=[PeerNode]::new();$n.Id=$id;$n.Current=[pscustomobject]@{ProcessId=50};return $n}
+$consent=[pscustomobject]@{pid=50};$container=Node @(5,6);$item=Node @(3,4);$edit=Node @(1,2);$label=Node @(7,8);$item.Parent=$container;$edit.Parent=$item;$label.Parent=$item
+$selection=[pscustomobject]@{CanSelectMultiple=$false};$selection|Add-Member ScriptMethod GetSelection {return @($script:item)}
+$container.SelectionPattern=[pscustomobject]@{Current=$selection};$item.ItemPattern=[pscustomobject]@{Current=[pscustomobject]@{IsSelected=$true;SelectionContainer=$container}}
+if($Variant-ceq'wrong-subtree'){$edit.Parent=$container}
+$nodes=@($container,$item,$edit,$label);$accounts=@($label);$e=[pscustomobject]@{approvingAdminAccount='TestAdmin';approvingAdminSid='__SID__'}
+function Get-CimInstance {param($ClassName,$Filter,$OperationTimeoutSec) [pscustomobject]@{SID='__SID__';Disabled=$false;Lockout=$false}}
+__HELPERS__
+try{
+__SEGMENT__
+Need($Variant-ceq'valid' -and $relation.kind-ceq'uia-selected-item-containing-password' -and $relation.passwordRuntimeId.Count-eq2)'unexpected-provider-acceptance';exit 0
+}catch{if($Variant-ceq'wrong-subtree' -and $_.Exception.Message-ceq'selected-account-password-relation'){exit 0};[Console]::Error.WriteLine($_.Exception.Message);exit 1}
+'''
+        script.write_text(fixture.replace("__PEER__",native_peer).replace("__SID__",ADMIN).replace("__HELPERS__",helpers).replace("__SEGMENT__",self.selection_segment()))
+        for variant in ("valid","wrong-subtree"):
+            run=subprocess.run([pwsh,"-NoProfile","-NonInteractive","-File",str(script),variant],capture_output=True,timeout=20)
+            self.assertEqual(run.returncode,0,variant+run.stdout.decode()+run.stderr.decode())
+    def test_lost_reply_is_unknown_and_same_original_cannot_replay(self):
+        d = self.decision()
+        self.qmp.fail_after_send = True
+        with self.assertRaises(b.Unknown):
+            self.bridge.cancel(d)
+        with self.assertRaises(b.Refused):
+            self.bridge.cancel(d)
+        self.assertEqual(self.qmp.inputs, ["escape"])
+    def test_changed_frame_rejects_before_burn(self):
+        d = self.decision()
+        self.qmp.frame = "5"*64
+        with self.assertRaisesRegex(b.Refused, "current-reviewed-prompt"):
+            self.bridge.cancel(d)
+        self.assertFalse(self.qmp.inputs)
+        self.assertFalse(list(self.directory.glob("input-once*")))
+    def test_changed_consent_rejects_same_pixels(self):
+        d = self.decision()
+        self.row["consentActor"]["creationFileTime"] += 1
+        with self.assertRaisesRegex(b.Refused, "current-reviewed-prompt"):
+            self.bridge.cancel(d)
+        self.assertFalse(self.qmp.inputs)
+    def test_wrong_operation_and_unopened_frame_refuse(self):
+        d = self.decision()
+        wrong = dict(d, productOperationId=U[8])
+        with self.assertRaises(b.Refused):
+            self.bridge.cancel(wrong)
+        self.review.valid = False
+        with self.assertRaises(b.Refused):
+            self.bridge.cancel(d)
+        self.assertFalse(self.qmp.inputs)
+    def test_stale_or_future_challenge_refuses(self):
+        d = self.decision()
+        for now in (99, 116, float("nan")):
+            self.time = now
+            with self.assertRaisesRegex(b.Refused, "fresh-challenge"):
+                self.bridge.cancel(d)
+        self.assertFalse(self.qmp.inputs)
+    def test_session_zero_is_not_secure_desktop_admission(self):
+        self.row["observer"]["sessionId"] = 0
+        with self.assertRaisesRegex(b.Refused, "actual-session-reader"):
+            self.bridge.challenge()
+        self.assertFalse(self.qmp.inputs)
+    def test_grant_refuses_wrong_selected_admin_and_nonempty_password(self):
+        for key, value in (("selectedAccountSid", SID), ("passwordFocused", False), ("passwordLengthObserved", 1)):
+            with self.subTest(key=key):
+                self.row["secureDesktop"][key] = value
+                d = self.decision("grant")
+                with self.assertRaisesRegex(b.Refused, "actual-selected-admin-password-focus"):
+                    self.bridge.approve(d)
+                self.row["secureDesktop"] = specimen()[1]["secureDesktop"]
+        self.assertFalse(self.qmp.inputs)
+    def test_private_guard_checks_each_character_and_zeroes_secret(self):
+        d = self.decision("grant")
+        def credential_submit(password, *, guard):
+            self.qmp.before_input()
+            self.qmp.inputs.append("private-sequence")
+            for i in range(len(password)+1):
+                self.row["secureDesktop"]["passwordLengthObserved"] = i
+                guard(i)
+            return {"privateSequenceAcknowledged": True, "uiSuccess": False}
+        self.qmp.credential_submit = credential_submit
+        result = self.bridge.approve(d)
+        self.assertEqual(self.credential.password, bytearray(len(b"Fixture!A1")))
+        serialized = json.dumps(result) + "".join(p.read_text() for p in self.directory.glob("*.json"))
+        self.assertNotIn("Fixture!A1", serialized)
+        self.assertNotIn("private-sequence", serialized)
+        self.assertFalse(result["approvalSucceeded"])
+    def test_private_focus_loss_parks_after_single_sequence_start(self):
+        d = self.decision("grant")
+        def submit(password, *, guard):
+            self.qmp.inputs.append("private-sequence")
+            self.row["secureDesktop"]["focusThreadId"] += 1
+            guard(0)
+        self.qmp.credential_submit = submit
+        with self.assertRaises(b.Unknown):
+            self.bridge.approve(d)
+        self.assertEqual(self.qmp.inputs, ["private-sequence"])
+        self.assertEqual(set(self.credential.password), {0})
+    def test_proc_stat_spaces_and_parentheses_keep_exact_birth(self):
+        tail = [b"S", b"41"] + [b"0"]*17 + [b"98765"] + [b"0"]*3
+        self.assertEqual(b.parse_stat(b"42 (qemu (guest) main) " + b" ".join(tail)), (42, 41, 98765))
+    def test_current_actual_canonical_producer_keeps_both_limits(self):
+        root = next(p for p in HERE.parents if (p / "agent_tools/windows_artifact_transfer.py").is_file())
+        canonical = load("private_actual_canonical_transfer_controls", root / "agent_tools/windows_artifact_transfer.py")
+        render_input=self.render_input
+        if os.environ.get("VPN_MAIN_INPUT_OBSERVER_BEFORE") == "1":
+            # Preserve the unfixed factory's exact historical input schema.
+            # Same task/actor/target facts; later guard-only metadata is outside
+            # that schema and cannot make its oversized body shorter.
+            render_input={k:v for k,v in self.render_input.items() if k not in {"correlationRecord","packageFile"}}
+            render_input["pendingRequest"]={k:v for k,v in render_input["pendingRequest"].items()
+                                            if k not in {"nativeIdentity","security"}}
+        packet = s.render(render_input, U[7], "4"*64)
+        context = dict(deploymentId=b.DEPLOYMENT, ordinarySid=SID,
+            powerShellPath=canonical.POWERSHELL_PATH,
+            sourceWorkspace="C:\\ProgramData\\VpnControlOrdinaryTask-"+U[0],
+            boot=dict(lastBootUpTimeFileTimeUtc="134369000000000000", machineGuid=U[5], hardwareUuid=U[6]))
+        body = canonical._boot_bound(packet.get("program", packet["parent"]), context).encode("utf-8-sig")
+        plan = canonical.build_guest_exec(body, guest_context=context, phase_id=U[8])
+        self.assertEqual(plan["transport"], "saved-source")
+        self.assertLessEqual(plan["bounds"]["serializedRequestBytes"], 60000)
+        self.assertLessEqual(plan["bounds"]["commandUtf16UnitsIncludingNul"]+1024, 32767)
+        self.assertEqual(canonical.QGA_HELPER_HEADROOM_UTF16, 1024)
+    def test_source_helper_boundary_uses_explicit_fixed_planner(self):
+        # Exercise the actual original decide body with the SAME declared local
+        # observation fixture for both sources. Native validation is covered by
+        # the separate refusal controls; no actual admission is fabricated here.
+        row=copy.deepcopy(self.row);frame=self.qmp.capture()
+        c=dict(schemaVersion=1,productOperationId=row["taskBinding"]["productOperationId"],stage=b.STAGE,
+               nonce=U[6],frameId=U[7],frameSha256=frame["sha256"],observedAtMonotonic=self.time,
+               consentActor=row["consentActor"])
+        self.bridge.challenge_row=c;self.bridge.challenge_native=row
+        self.bridge.observe=lambda:dict(native=copy.deepcopy(row),frame=dict(frame))
+        self.qmp.credential_submit=lambda password,guard:dict(privateSequenceAcknowledged=True,uiSuccess=False)
+        decision={k:c[k] for k in ("schemaVersion","productOperationId","stage","nonce","frameId","frameSha256")}
+        decision.update(action="grant",openedFrameArtifactId="fixture-opened")
+        result=self.bridge.approve(decision)
+        self.assertFalse(result["approvalSucceeded"])
+        self.assertEqual(set(self.credential.password),{0})
+    def test_observer_unknown_parks_same_peer_without_second_backend_call(self):
+        class Lease:
+            def verify_current_original_sources(self):
+                pass
+        class LostOriginal:
+            calls = 0
+            def run_current_main_read_only_observer_once(self, packet):
+                self.calls += 1
+                raise TimeoutError()
+        backend = LostOriginal()
+        peer = b.RetainedObserverPeer(self.expected, self.render_input, "4"*64, "fixture-only",
+                                     Lease(), backend, s.render)
+        with self.assertRaises(b.Unknown):
+            peer.observe_original()
+        with self.assertRaises(b.Refused):
+            peer.observe_original()
+        self.assertEqual(backend.calls, 1)
+    def test_actual_qmp_reply_parser_retains_interleaved_raw_bytes(self):
+        raw = b'{"event":"STOP"}\n{"return":{},"id":7}\n'
+        class ExplicitMemoryQmp:
+            def __init__(self, data):
+                self.data = bytearray(data)
+            def settimeout(self, remaining):
+                self.remaining = remaining
+            def recv(self, count):
+                if not self.data:
+                    return b""
+                value = bytes(self.data[:count])
+                del self.data[:count]
+                return value
+        peer = object.__new__(b.QmpPeer)
+        path = self.directory / "raw-qmp-fixture.bin"
+        peer.wire = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        self.addCleanup(lambda: os.close(peer.wire))
+        peer.wire_bytes = 0
+        peer.socket = ExplicitMemoryQmp(raw)
+        self.assertEqual(peer._reply(7), {})
+        self.assertEqual(path.read_bytes(), raw)
+        peer.socket = ExplicitMemoryQmp(b'{"error":{"class":"GenericError"},"id":8}\n')
+        with self.assertRaisesRegex(b.Refused, "qmp-reply-refused"):
+            peer._reply(8)
+    def test_capture_returns_exact_bounded_png_bytes_for_original_local_open(self):
+        root=next(p for p in HERE.parents if (p/"scripts/capture_visual_windows_qemu.py").is_file())
+        converter=load("private_actual_existing_ppm_converter",root/"scripts/capture_visual_windows_qemu.py")
+        peer=object.__new__(b.QmpPeer);peer.directory=self.directory;peer.next_id=1
+        peer.context=types.SimpleNamespace(uid=os.getuid());peer.guard=lambda:None
+        peer.ppm_reader=converter.read_ppm;peer.png_converter=converter.convert_ppm_to_png
+        def capture(name,args):
+            self.assertEqual(name,"screendump")
+            Path(args["filename"]).write_bytes(b"P6\n2 1\n255\n\x01\x02\x03\x04\x05\x06")
+            return {"commandId":1,"reply":{}}
+        peer._command=capture
+        frame=peer.capture();raw=base64.b64decode(frame["pngBase64"],validate=True)
+        self.assertEqual(raw,Path(frame["pngPath"]).read_bytes())
+        self.assertEqual(frame["pngBytes"],len(raw))
+        self.assertEqual(frame["pngSha256"],hashlib.sha256(raw).hexdigest())
+        self.assertTrue(raw.startswith(b"\x89PNG\r\n\x1a\n"))
+    def test_actual_ppm_conversion_rejects_changed_original_frame(self):
+        root=next(p for p in HERE.parents if (p/"scripts/capture_visual_windows_qemu.py").is_file())
+        converter=load("private_actual_changed_ppm_converter",root/"scripts/capture_visual_windows_qemu.py")
+        peer=object.__new__(b.QmpPeer);peer.directory=self.directory;peer.next_id=1
+        peer.context=types.SimpleNamespace(uid=os.getuid());peer.guard=lambda:None
+        peer.ppm_reader=converter.read_ppm
+        def change_frame_then_convert(path,png):
+            path.write_bytes(b"P6\n2 1\n255\n\x07\x08\x09\x0a\x0b\x0c")
+            converter.convert_ppm_to_png(path,png)
+        peer.png_converter=change_frame_then_convert
+        def capture(name,args):
+            Path(args["filename"]).write_bytes(b"P6\n2 1\n255\n\x01\x02\x03\x04\x05\x06")
+            return {"commandId":1,"reply":{}}
+        peer._command=capture
+        with self.assertRaisesRegex(b.Refused,"frame-conversion-generation"):
+            peer.capture()
+    def test_reused_private_ascii_and_no_log_error_boundary(self):
+        root = next(p for p in HERE.parents if (p / "agent_tools/windows_source_fixture_login.py").is_file())
+        text = (root / "agent_tools/windows_source_fixture_login.py").read_text()
+        tree = ast.parse(text)
+        names = {"private_key_requests", "private_qmp_command"}
+        code = "\n\n".join(ast.get_source_segment(text, node) for node in tree.body
+                           if isinstance(node, ast.FunctionDef) and node.name in names)
+        import re, time
+        ns = {"PrivateLoginUnknown": b.Unknown, "json": json, "re": re, "time": time}
+        exec(compile(code, "<held-existing-private-key-boundary>", "exec"), ns)
+        planned = ns["private_key_requests"](b"!")
+        self.assertEqual(planned, [{"keys": [{"type": "qcode", "data": "shift"},
+                                  {"type": "qcode", "data": "1"}], "hold-time": 80}])
+        with self.assertRaises(b.Unknown):
+            ns["private_key_requests"](b"A\n")
+        class ExplicitMemoryPrivateQmp:
+            data = bytearray(b'{"id":"fixture-private","error":{"desc":"FixtureSecret"}}\n')
+            def sendall(self, raw):
+                self.sent = raw
+            def settimeout(self, value):
+                pass
+            def recv(self, count):
+                data = bytes(self.data[:count]);del self.data[:count];return data
+        with self.assertRaises(b.Unknown) as caught:
+            ns["private_qmp_command"](ExplicitMemoryPrivateQmp(), "send-key", planned[0],
+                                     "fixture-private", time.monotonic()+3)
+        self.assertNotIn("FixtureSecret", str(caught.exception))
+        self.assertFalse(list(self.directory.iterdir()))
+    def test_partial_qmp_reply_is_retained_and_same_original_can_finish_without_resend(self):
+        class ExplicitMemoryQmp:
+            def __init__(self):
+                self.data = bytearray(b'{"return":')
+            def settimeout(self, value):
+                pass
+            def recv(self, count):
+                if not self.data:
+                    raise TimeoutError("declared fixture timeout")
+                result=bytes(self.data[:count]);del self.data[:count];return result
+        peer = object.__new__(b.QmpPeer)
+        path = self.directory / "partial-reply.bin"
+        peer.wire = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        self.addCleanup(lambda: os.close(peer.wire))
+        peer.wire_bytes = 0
+        peer.socket = ExplicitMemoryQmp()
+        with self.assertRaises(TimeoutError):
+            peer._reply(7)
+        self.assertEqual(path.read_bytes(), b'{"return":')
+        peer.socket.data.extend(b'{},"id":7}\n')
+        self.assertEqual(peer._reply(7), {})
+        self.assertEqual(path.read_bytes(), b'{"return":{},"id":7}\n')
+    def test_private_qmp_unknown_locks_shared_peer_before_another_sequence(self):
+        peer=b.QmpPeer.__new__(b.QmpPeer);peer.failed=False;peer.pending=None;peer.next_id=1
+        peer.guard=lambda:None;peer.ascii_planner=lambda value:[{"fixture":"character"}]
+        peer.socket=object();sent=[]
+        def private_send(*args):
+            sent.append(args[2]);raise TimeoutError("explicit private native-peer timeout fixture")
+        peer.private_qmp_command=private_send
+        with self.assertRaises(BaseException):peer.credential_submit(bytearray(b"x"),guard=lambda n:None)
+        self.assertEqual(len(sent),1)
+        self.assertTrue(peer.failed,"unknown private send must park the shared original QMP peer")
+        with self.assertRaises(b.Refused):peer.credential_submit(bytearray(b"x"),guard=lambda n:None)
+        self.assertEqual(len(sent),1,"a new input bridge cannot replay through the retained failed peer")
+    def backend_fixture(self):
+        root = next(p for p in HERE.parents if (p / "agent_tools/windows_artifact_transfer.py").is_file())
+        canonical = load("private_actual_canonical_backend_transfer", root / "agent_tools/windows_artifact_transfer.py")
+        context = dict(deploymentId=b.DEPLOYMENT, ordinarySid=SID, powerShellPath=canonical.POWERSHELL_PATH,
+            sourceWorkspace="C:\\ProgramData\\VpnControlOrdinaryTask-"+U[0],
+            boot=dict(lastBootUpTimeFileTimeUtc="134369000000000000",machineGuid=U[6],hardwareUuid=U[5]))
+        class Lease:
+            def verify_current_original_sources(self):
+                pass
+        class QgaFixture:
+            prefix = "explicit-fixture"
+            peer_pid = 99
+            root = Path("/home/kardinal/vc-win-d493a3731d2c")
+            failed = False
+            parked = False
+            calls = 0
+            parks = 0
+            journals = []
+            def guard(self):
+                pass
+            def safe_journal(self, name, record):
+                self.journals.append((name,record))
+                return True
+            def call(self, command, args, deadline):
+                self.calls += 1
+                self.failed = True
+                raise TimeoutError("declared fixture loss")
+            def park_original(self, receipt, error):
+                self.parks += 1
+                raise b.Unknown("declared fixture park, not real infinite owner")
+        qga = QgaFixture()
+        obj = backend_module.CanonicalObserverBackend(canonical,qga,context,Lease(),s.render,self.render_input,"4"*64)
+        return obj,qga
+    def test_backend_rederives_fixed_program_before_any_rpc(self):
+        obj,qga = self.backend_fixture()
+        packet = s.render(self.render_input,U[7],"4"*64)
+        packet["program"] += "\nWrite-Output 'foreign'\n"
+        packet["programUtf8Sha256"] = b.sha(packet["program"].encode())
+        with self.assertRaisesRegex(ValueError,"exact-fixed-rendered-observer-only"):
+            obj.run_current_main_read_only_observer_once(packet)
+        self.assertEqual(qga.calls,0)
+        self.assertFalse(qga.journals)
+    def test_backend_unknown_parks_original_once_and_preserves_run(self):
+        obj,qga = self.backend_fixture()
+        packet = s.render(self.render_input,U[7],"4"*64)
+        with self.assertRaises(b.Unknown):
+            obj.run_current_main_read_only_observer_once(packet)
+        self.assertEqual(qga.calls,1)
+        self.assertEqual(qga.parks,1)
+        self.assertEqual(len(obj.runs),1)
+        self.assertIsNone(obj.runs[0].guest_pid)
+        self.assertIsNone(obj.runs[0].result)
+        with self.assertRaisesRegex(ValueError,"backend-state"):
+            obj.run_current_main_read_only_observer_once(packet)
+        self.assertEqual(qga.calls,1)
+    def public_envelope(self, rows=None):
+        return dict(schemaVersion=1,controllerId=U[3],requestId=U[8],ok=True,code="OK",message="OK",
+            messageKey=None,messageArgs={},final=True,operationId=None,configurationRevision=1,restartRequired=False,
+            data=dict(operations=rows or []),warnings=[])
+    def test_public_inspection_request_is_distinct_from_pending_origin(self):
+        row=dict(controllerId=U[3],id=U[1],requestId=U[2],operation="updates.install",phase="running",
+                 final=False,code="ACCEPTED",cancellable=True,jobId=None,handoffReady=False)
+        envelope,rows=pending_module.parse_list(json.dumps(self.public_envelope([row])),U[3])
+        self.assertEqual(envelope["requestId"],U[8])
+        self.assertEqual(rows[0]["requestId"],U[2])
+    def test_public_list_wrong_controller_and_duplicate_ids_refuse(self):
+        row=dict(controllerId=U[3],id=U[1],requestId=U[2])
+        with self.assertRaises(ValueError):
+            pending_module.parse_list(json.dumps(self.public_envelope([row])),U[4])
+        with self.assertRaisesRegex(ValueError,"duplicate-operation"):
+            pending_module.parse_list(json.dumps(self.public_envelope([row,row])),U[3])
+    def test_correlation_filename_uses_exact_kotlin_key_order_and_real_path_bytes(self):
+        binding=self.expected["taskBinding"]
+        path,record=pending_module.correlation_path_and_record(r"C:\Users\u\workspace",binding,U[4])
+        raw=('{'+'"controllerId":"'+U[3]+'","operationId":"'+U[1]+'"}').encode()
+        self.assertTrue(path.endswith(".install-correlation-"+hashlib.sha256(raw).hexdigest()+".json"))
+        self.assertEqual(record["requestId"],U[2])
+        _,changed=pending_module.correlation_path_and_record(r"c:\Users\u\workspace",binding,U[4])
+        self.assertNotEqual(record["workspaceKey"],changed["workspaceKey"])
+    def test_installer_native_file_observer_with_real_files_and_declared_win32_peer(self):
+        # Native identity, DACL and GetFinalPathNameByHandle are explicit Win32
+        # fixtures. Byte reading, hashing, descriptor ownership and closes use
+        # actual owned temporary files. This is not Windows admission.
+        from pathlib import PureWindowsPath
+        workspace=r"C:\Users\u\workspace";local=r"C:\Users\u\AppData\Local"
+        binding=self.expected["taskBinding"];job=U[4]
+        cpath,record=pending_module.correlation_path_and_record(workspace,binding,job)
+        root=PureWindowsPath(local)/"vpn-control-install-inputs"/job
+        package=b"owned finite fixture MSI bytes"
+        target=dict(sha256=hashlib.sha256(package).hexdigest(),sizeBytes=len(package),
+                    launcher=r"C:\Users\u\VPN\vpn-control.exe",frontendPid=12,frontendStartedAtEpochMillis=3)
+        birth="134369000000000011"
+        request=dict(version=1,jobId=job,principalSid=SID,ownerPid=11,
+            ownerStartedAtEpochMillis=int(birth)//10000-11644473600000,launcher=target["launcher"],
+            packageFile=str(root/"package.msi"),packageSha256=target["sha256"],packageSize=len(package),
+            stateDirectory=workspace,frontendPid=12,frontendStartedAtEpochMillis=3)
+        mapping={};handles={};closed=[]
+        def mapped(name):
+            name=str(name)
+            if name not in mapping:
+                mapping[name]=self.directory/("path-"+hashlib.sha256(name.encode()).hexdigest())
+            return mapping[name]
+        for name,raw in ((cpath,json.dumps(record,separators=(",",":")).encode()),
+                         (str(root/"request.json"),json.dumps(request).encode()),(str(root/"package.msi"),package)):
+            mapped(name).write_bytes(raw)
+        for path in [workspace,*[str(p) for p in PureWindowsPath(cpath).parents],*[str(p) for p in root.parents],str(root)]:
+            mapped(path).mkdir(exist_ok=True)
+        def create(name,access,share,security,creation,flags,template):
+            path=mapped(name);fd=os.open(path,os.O_RDONLY);handles[fd]=str(name);return fd
+        def final(fd,buffer,size,flags):
+            buffer.value="\\\\?\\"+handles[fd];return len(buffer.value)
+        def close(fd):
+            os.close(fd);closed.append(fd);return 1
+        api=types.SimpleNamespace(CreateFileW=create,GetFinalPathNameByHandleW=final,CloseHandle=close)
+        class NativePeer:
+            k=api
+            def birth(self,handle):return birth
+            def identity(self,handle,directory=False):
+                st=os.fstat(handle)
+                result=dict(volumeSerial=st.st_dev,fileIndex=st.st_ino,attributes=16 if directory else 128)
+                if not directory:result.update(sizeBytes=st.st_size,links=st.st_nlink,creationFileTime=str(st.st_ctime_ns),lastWriteFileTime=str(st.st_mtime_ns))
+                return result
+            def security(self,handle):return dict(ownerSid=SID,sddl="O:"+SID+"D:P(A;;FA;;;"+SID+")")
+            def read_blocks(self,handle):
+                os.lseek(handle,0,os.SEEK_SET)
+                while True:
+                    block=os.read(handle,7)
+                    if not block:return
+                    yield block
+        class Owner:
+            request=dict(cliPath="fixture-cli",context=dict(ordinarySid=SID,localAppData=local))
+            native=NativePeer()
+            children=[]
+            def guard(self):pass
+            def event(self,kind,value):self.observed=(kind,value)
+            def park(self,code):raise AssertionError(code)
+        owner=Owner();serve=types.SimpleNamespace(owner=owner,pid=11,birth=birth,
+            process=types.SimpleNamespace(_handle=1,poll=lambda:None));owner.children=[serve]
+        observed=pending_module.observe_installer_files(owner,binding,workspace,serve,target)
+        self.assertEqual(observed["correlationRecord"]["record"],record)
+        self.assertEqual(observed["packageFile"]["sha256"],target["sha256"])
+        self.assertEqual(observed["pendingRequest"]["ownerPid"],11)
+        self.assertTrue(owner.pending_installer_read_leases[0]["closed"])
+        self.assertEqual(len(closed),len(handles))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

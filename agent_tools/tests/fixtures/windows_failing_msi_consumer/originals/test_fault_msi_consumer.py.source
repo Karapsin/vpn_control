@@ -1,0 +1,156 @@
+"""Whole finite semantic consumer bodies; declared native peers, real TempFS.
+
+No Windows DLL, MSI mutation/install, guest, socket, network or process runs.
+The preserved whole V2 collector is selected only by the causal --before path.
+"""
+from __future__ import annotations
+import copy
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+import types
+import unittest
+from unittest.mock import patch
+
+B=Path(__file__).parent;BASE=B.parent.parent
+
+def module(name,path,expected=None):
+    raw=path.read_bytes()
+    if expected is not None and hashlib.sha256(raw).hexdigest()!=expected:raise ValueError('source-drift')
+    spec=importlib.util.spec_from_file_location(name,path);value=importlib.util.module_from_spec(spec)
+    sys.modules[name]=value;spec.loader.exec_module(value);return value
+
+H=module('_fault_consumer_current',B/'fault_msi_consumer.py')
+N=module('_fault_collector_current',B/'native_collector.py')
+C=module('_fault_updater_current',B/'update_cases.py')
+FTEST=module('_fault_declared_msi_fixture',BASE/'windows-failing-msi-private-preparation-v1/test_private_failing_msi.py',
+    '15f38d0d7bac088a03bc8bfbd04b90e55904ff52bc590eeb73a7000d17b5f799')
+BEFORE=False
+
+class SemanticConsumerTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture=FTEST.FixtureTests('test_complete_tempfs_derivation_keeps_parent_and_every_other_table_stream')
+        self.fixture.setUp();self.owner=self.fixture.owner;self.native=self.fixture.native
+        self.result=self.fixture.derive();self.receipt,_,_=self.fixture.read_outputs(self.result)
+        for path in self.result['paths'].values():self.owner.add(path)
+        self.owner.add(B/'fault_msi_consumer.py')
+        self.fault={'kind':'native-install-failed','originalPairRequest':copy.deepcopy(self.fixture.request),
+            'derivationBinding':{'kind':'windows-native-install-failed-msi',
+                'derivationReceiptPath':self.result['paths']['derivationReceipt'],
+                'beforeSnapshotPath':self.result['paths']['beforeSnapshot'],
+                'afterSnapshotPath':self.result['paths']['afterSnapshot'],
+                'faultMsiPath':self.result['outputPin']['path']},
+            'derivedFixtureReceiptPath':self.result['paths']['derivedFixtureReceipt']}
+        self.asset=FTEST.f.fault_asset(self.receipt)
+        self.loads=[]
+        def held_module(path,name):
+            self.loads.append(path);value=module(name,Path(path))
+            if Path(path)==FTEST.PATH:
+                # Only the fixed native-call boundary is declared. The complete
+                # authentic _validate_served_fault and derivation body run.
+                value.validate_served_fault=lambda owner,request,binding,asset:value._validate_served_fault(owner,request,binding,asset,self.native)
+            return value
+        self.owner.module=held_module
+        self.owner.request={'modules':{
+            'faultConsumer':{'path':str(B/'fault_msi_consumer.py'),'sha256':hashlib.sha256((B/'fault_msi_consumer.py').read_bytes()).hexdigest()},
+            'failingMsi':{'path':str(FTEST.PATH),'sha256':H.PRODUCER_SHA}}}
+        self.producer=H.source(self.owner,str(FTEST.PATH),H.PRODUCER_SHA,'_actual_fault_producer_peer_'+str(id(self)))
+
+    def tearDown(self):self.fixture.tearDown()
+
+    def test_actual_same_source_parent_fault_tables_streams_fixture_and_asset_join(self):
+        before=len(self.native.calls)
+        result=H.validate_served(self.owner,self.fault,self.asset,self.producer,self.fixture.request['sourceSha'],self.fixture.request['sourceFingerprint'])
+        self.assertEqual(result['faultMsiArtifactId'],'sha256-'+self.asset['sha256']);self.assertIsNone(result['nativeAcceptance'])
+        self.assertEqual([x[0] for x in self.native.calls[before:]],['inspect','inspect','signature','signature'])
+
+    def test_system_fault_ready_executes_semantics_instead_of_metadata_hash(self):
+        request={'faultBinding':self.fault,'ordinaryTaskOperationId':self.owner.operation,
+            'sourceSha':self.fixture.request['sourceSha']}
+        result=N._fault_observation(request,self.owner,None,None,None)
+        self.assertEqual(result['kind'],'native-install-failed');self.assertNotIn('failingMsiMetadata',result)
+        self.assertEqual(result['failingMsiSemantics']['faultMsiArtifactId'],'sha256-'+self.asset['sha256'])
+
+    def test_rejects_hash_only_metadata_even_when_file_hash_matches(self):
+        path=self.fixture.root/'not-an-msi.json';path.write_bytes(b'{"authorSaysFailure":true}');pin=self.owner.add(path)
+        binding={'kind':'native-install-failed','admittedFailingMsiMetadata':{
+            'path':str(path),'sha256':pin.record['sha256'],'sizeBytes':len(path.read_bytes())}}
+        request={'faultBinding':binding,'ordinaryTaskOperationId':self.owner.operation,'sourceSha':self.fixture.request['sourceSha']}
+        class Observation:
+            def __init__(me,owner,path):
+                me.pin=owner.by_path[path.casefold()];me.opening={k:v for k,v in me.pin.record.items() if k!='sha256'}
+            def read(me,maximum):return me.pin.digest(True,maximum)
+            def close(me):pass
+        collector=N if not BEFORE else module('_authentic_v2_hash_only_collector',BASE/'windows-update-private-preparation-v2/native_collector.py',
+            '246bb5e7110fe5fdad986e3cf082683934070195098730bf79ab86e0fd0296b2')
+        rejected=False
+        try:collector._fault_observation(request,self.owner,types.SimpleNamespace(FileObservation=Observation),None,None)
+        except ValueError:rejected=True
+        self.assertTrue(rejected,'a hash of authored metadata cannot admit a failing MSI')
+
+    def test_foreign_source_fixture_asset_or_binding_refuses_before_authorization(self):
+        for change in ('source','asset','binding','fixture'):
+            fault=copy.deepcopy(self.fault);asset=copy.deepcopy(self.asset);source=self.fixture.request['sourceSha']
+            if change=='source':source='2'*40
+            elif change=='asset':asset['downloadUrl']='https://example.invalid/unrelated.msi'
+            elif change=='binding':fault['derivationBinding']['extra']='authority'
+            else:fault['derivedFixtureReceiptPath']=self.fixture.request['fixtureReceiptPath']
+            with self.subTest(change=change),self.assertRaises(ValueError):
+                H.validate_served(self.owner,fault,asset,self.producer,source,self.fixture.request['sourceFingerprint'])
+
+    def test_actual_native_snapshot_or_signature_mismatch_is_not_hidden_by_metadata(self):
+        original=self.native.inspect
+        def changed(path):
+            value=original(path)
+            if str(path)==self.fault['derivationBinding']['faultMsiPath']:
+                value['tables']['_Streams']['rows'][0][1]['sha256']='f'*64
+            return value
+        with patch.object(self.native,'inspect',changed),self.assertRaisesRegex(ValueError,'actual-native-msi-snapshot'):
+            H.validate_served(self.owner,self.fault,self.asset,self.producer,self.fixture.request['sourceSha'],self.fixture.request['sourceFingerprint'])
+        self.native.signature_status='Valid'
+        with self.assertRaisesRegex(ValueError,'actual-native-msi-signature'):
+            H.validate_served(self.owner,self.fault,self.asset,self.producer,self.fixture.request['sourceSha'],self.fixture.request['sourceFingerprint'])
+
+    def test_fixed_producer_source_is_a_real_held_input_not_a_callable_claim(self):
+        with self.assertRaisesRegex(ValueError,'fixed-source-bytes'):
+            H.source(self.owner,str(FTEST.PATH),'0'*64,'_foreign_source_peer')
+
+    def test_real_download_body_hash_and_native_identity_are_joined(self):
+        path=self.fixture.root/'downloaded.msi';path.write_bytes(Path(self.fault['derivationBinding']['faultMsiPath']).read_bytes())
+        pin=self.owner.add(path);virtual='C:\\OrdinaryWork\\updates\\'+self.asset['fileName']
+        class Observation:
+            def __init__(me,owner,requested):
+                if requested!=virtual:raise ValueError('wrong-actual-download-path')
+                me.handle=pin.handle;me.opening={'path':virtual,'nativeIdentity':{'sizeBytes':len(path.read_bytes())}}
+            def describe(me):return me.opening
+            def _canonical(me):pass
+            def close(me):pass
+        receipts=types.SimpleNamespace(FileObservation=Observation)
+        observed=C.verify_downloaded_asset(self.owner,'C:\\OrdinaryWork',self.asset,receipts,checksum_matches=True)
+        self.assertEqual(H.verify_download(observed,self.asset,'C:\\OrdinaryWork')['sha256'],self.asset['sha256'])
+        bad=copy.deepcopy(observed);bad['sha256']='0'*64
+        with self.assertRaisesRegex(ValueError,'actual-downloaded-msi'):H.verify_download(bad,self.asset,'C:\\OrdinaryWork')
+
+    def test_precise_capture_join_precedes_authorization_event_and_never_relaunches(self):
+        old=types.SimpleNamespace(controller='old-controller',rows=[]);current=types.SimpleNamespace(rows=[{'id':'new','operation':'updates.install'}])
+        child=types.SimpleNamespace(process=types.SimpleNamespace(poll=lambda:None));calls=[]
+        binding={'actual':'public-operation-join'}
+        files={'packageFile':{'sha256':self.asset['sha256'],'sizeBytes':self.asset['sizeBytes']},
+            'pendingRequest':{'jobId':'actual-job'},'correlationRecord':{'record':{'jobId':'actual-job'}}}
+        pending=types.SimpleNamespace(observe_list=lambda *a:calls.append('readonly-list') or current,
+            select_original_pending=lambda *a:calls.append('original-child') or binding,
+            observe_installer_files=lambda *a:calls.append('actual-files') or files)
+        self.owner.request['cliPath']='C:\\Installed\\vpn-control.exe'
+        result=H.capture_before_authorization(self.owner,pending,old,child,object(),'C:\\Work',self.asset)
+        self.assertEqual(calls,['readonly-list','original-child','actual-files']);self.assertEqual(result['taskBinding'],binding)
+        self.assertFalse(self.owner.events[-1][1]['authorizationPerformed'])
+        files['packageFile']['sha256']='0'*64
+        with self.assertRaisesRegex(ValueError,'actual-captured-msi'):
+            H.capture_before_authorization(self.owner,pending,old,child,object(),'C:\\Work',self.asset)
+
+if __name__=='__main__':
+    if '--before' in sys.argv:sys.argv.remove('--before');BEFORE=True
+    unittest.main()

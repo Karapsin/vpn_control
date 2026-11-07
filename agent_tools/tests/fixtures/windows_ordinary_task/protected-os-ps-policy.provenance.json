@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "kind": "Authentic complete d631 before plus declared API/typed-descriptor and finite 38-control fixtures. No actual SDDL parser or Windows API is substituted inside production code in a native claim.",
+  "sourceBefore": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-protected-os-pin-policy-preparation-v1/ps-routine/fixtures/protected-os-ps-owner.before.source",
+    "sizeBytes": 24729,
+    "sha256": "d6317f066f4a679e37f0a6aa5c30c229a2c6115ae2968aed568bec91d07362b2"
+  },
+  "peerFixture": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-protected-os-pin-policy-preparation-v1/ps-routine/fixtures/protected-os-api-peers.cs.source",
+    "sizeBytes": 2761,
+    "sha256": "49cd0db3cd9c045bb7e08adb8990275705a1611b94e7ff6cf7183e341254ef95"
+  },
+  "controlFixture": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-protected-os-pin-policy-preparation-v1/ps-routine/fixtures/protected-os-38-controls.ps1.source",
+    "sizeBytes": 7849,
+    "sha256": "cffcf76aa26c622a7e1b141ac9af0b89985204b27c1fb1ae3fd5eaa26958af05"
+  },
+  "originPortableProof": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-protected-os-pin-policy-preparation-v1/ps-tests/qualification.private.json",
+    "sizeBytes": 9319,
+    "sha256": "ae94a72b00261be29c20f6bdcf21f4ebdb07fa833dece59d1af8c5b46acbe83a"
+  },
+  "sourceInputs": [
+    {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-protected-os-pin-policy-preparation-v1/before/agent_tools/windows_ordinary_task_owner.ps1",
+      "sizeBytes": 24729,
+      "sha256": "d6317f066f4a679e37f0a6aa5c30c229a2c6115ae2968aed568bec91d07362b2"
+    },
+    {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-protected-os-pin-policy-preparation-v1/candidate/agent_tools/windows_ordinary_task_owner.ps1",
+      "sizeBytes": 26247,
+      "sha256": "ba9afe8db7e35b18c380327534a884f3e284a11ff5f7bffb660685dc4dca86b6"
+    }
+  ],
+  "extraction": "Routine reads the live current PS owner and preserves exact complete physical lines for Identity/PinIdentity/PinInfo/ProtectedOsSecurity/OsPath/OsOwner/FI and exact Assert-NativeIdentity span. It compiles complete live C# with default runtime references but never calls its native methods. Only declared boundary classes evaluate the extracted production decisions.",
+  "causal": "The byte-authenticated complete d631 before compiles definitions only; its exact Identity method runs against declared FI links=2 and must reject before the fixed role accepts both paths. Original uncaught RED output remains pinned in the origin proof.",
+  "limitations": [
+    "Portable closest decision-boundary controls only.",
+    "Typed descriptor peer supplies observed owner/flags/ACE fields; it does not parse SDDL.",
+    "Actual WinPS5 original initial intake/native custody remains required."
+  ],
+  "nativeQualified": false
+}

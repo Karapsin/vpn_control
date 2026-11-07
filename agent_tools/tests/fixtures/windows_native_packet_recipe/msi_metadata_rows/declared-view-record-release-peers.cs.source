@@ -1,0 +1,36 @@
+using System;
+using System.Collections.Generic;
+public interface IDeclaredRelease { string ReleaseKey {get;} }
+public static class ReadRowsPeer {
+ public static List<string> Events=new List<string>();
+ public static Dictionary<string,int> Releases=new Dictionary<string,int>();
+ public static int ExecuteCalls,CloseCalls,FetchCalls,FieldCalls;
+ public static string ExecuteKind,CloseKind;
+ public static void Reset(){Events.Clear();Releases.Clear();ExecuteCalls=CloseCalls=FetchCalls=FieldCalls=0;}
+ public static object Value(string kind){if(kind=="null")return null;if(kind=="zero")return 0;if(kind=="integer")return 97;if(kind=="string")return "COM_METHOD_SENTINEL";throw new Exception("PEER_RETURN_KIND");}
+}
+public static class DeclaredMarshal {
+ public static int FinalReleaseComObject(object value){
+  var p=value as IDeclaredRelease;if(p==null)throw new Exception("PEER_NON_OWNED_RELEASE");
+  int n;ReadRowsPeer.Releases.TryGetValue(p.ReleaseKey,out n);if(n!=0)throw new Exception("PEER_DOUBLE_RELEASE");
+  ReadRowsPeer.Releases[p.ReleaseKey]=n+1;ReadRowsPeer.Events.Add("release:"+p.ReleaseKey);return 0;
+ }
+}
+public class ReadRowsRecord:IDeclaredRelease {
+ public int Number;public object[] Fields;public string ReleaseKey {get{return "record-"+Number;}}
+ public object StringData(int index){ReadRowsPeer.FieldCalls++;ReadRowsPeer.Events.Add("field:"+Number+":"+index);return Fields[index-1];}
+}
+public class ReadRowsViewBase:IDeclaredRelease {
+ public string ReleaseKey {get{return "view";}} public object[][] Rows;private int cursor;
+ public object Fetch(){ReadRowsPeer.FetchCalls++;ReadRowsPeer.Events.Add("fetch:"+cursor);if(cursor>=Rows.Length)return null;var row=new ReadRowsRecord{Number=cursor,Fields=Rows[cursor]};cursor++;return row;}
+ protected void Executed(){ReadRowsPeer.ExecuteCalls++;ReadRowsPeer.Events.Add("execute");}
+ protected void Closed(){ReadRowsPeer.CloseCalls++;ReadRowsPeer.Events.Add("close");}
+}
+public class ReadRowsViewOO:ReadRowsViewBase {public object Execute(){Executed();return ReadRowsPeer.Value(ReadRowsPeer.ExecuteKind);}public object Close(){Closed();return ReadRowsPeer.Value(ReadRowsPeer.CloseKind);}}
+public class ReadRowsViewOV:ReadRowsViewBase {public object Execute(){Executed();return ReadRowsPeer.Value(ReadRowsPeer.ExecuteKind);}public void Close(){Closed();}}
+public class ReadRowsViewVO:ReadRowsViewBase {public void Execute(){Executed();}public object Close(){Closed();return ReadRowsPeer.Value(ReadRowsPeer.CloseKind);}}
+public class ReadRowsViewVV:ReadRowsViewBase {public void Execute(){Executed();}public void Close(){Closed();}}
+public class ReadRowsDatabase {
+ public ReadRowsViewBase View;
+ public object OpenView(string query){if(query!="SELECT `Name` FROM `_Tables`")throw new Exception("PEER_QUERY_CHANGED");ReadRowsPeer.Events.Add("open");return View;}
+}

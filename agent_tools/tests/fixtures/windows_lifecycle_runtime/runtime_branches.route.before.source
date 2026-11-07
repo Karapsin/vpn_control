@@ -1,0 +1,281 @@
+"""Finite private Windows config/recovery/sibling cases; no import-time effects.
+
+Only the already admitted ordinary Owner may run these isolated proxy fixtures.
+All installed/source/runtime/native inputs must be bound. No TUN, input bridge,
+SYSTEM wrapper, autostart, host VPN or VM control is performed by this module.
+"""
+from __future__ import annotations
+import ctypes
+from ctypes import wintypes as W
+import hashlib
+import json
+import ntpath
+import os
+from pathlib import Path
+import re
+import socket
+import time
+import uuid
+
+MAX_CONFIG=8*1024*1024
+SIBLING_EXIT=0xE0421002
+
+
+def require(value,reason):
+    if not value:raise AssertionError(reason)
+
+
+def encoded(value):return (json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()
+
+
+def read_json(path):
+    with Path(path).open('rb') as stream:raw=stream.read(MAX_CONFIG+1)
+    require(0<len(raw)<=MAX_CONFIG,'owned-runtime-config-bound')
+    return json.loads(raw),raw
+
+
+def custom_config(socks_port,variant):
+    require(type(socks_port) is int and 1<=socks_port<=65535
+            and variant in {'custom','large','prepare-failure','commit-readiness-failure','sibling'},
+            'finite-custom-config-variant')
+    domains=[f'owned-{index:05d}.never-resolve.invalid' for index in range(4096 if variant=='large' else 2)]
+    inbounds=[]
+    if variant=='prepare-failure':
+        inbounds=[{'type':'owned-unsupported-inbound','tag':'owned-invalid-preparation'}]
+    elif variant=='commit-readiness-failure':
+        # Actual owned fixture keeps this listener bound. Product preflight only
+        # checks its separately allocated management port; sing-box check must
+        # independently succeed while this collision remains held before test.
+        inbounds=[{'type':'mixed','tag':'owned-conflict','listen':'127.0.0.1','listen_port':socks_port}]
+    return {'log':{'level':'error'},'inbounds':inbounds,
+        'outbounds':[{'type':'socks','tag':'owned-upstream','server':'127.0.0.1','server_port':socks_port,'version':'5'}],
+        'route':{'rules':[{'domain_suffix':domains,'action':'route','outbound':'owned-upstream'}],
+                 'final':'owned-upstream'}}
+
+
+def profile_document(config,name):
+    require(name in {'Owned CUSTOM','Owned large CUSTOM','Owned prepare failure','Owned commit failure'},
+            'finite-custom-profile-name')
+    return {'type':'custom','remarks':name,'custom_config_json':json.dumps(config,separators=(',',':'))}
+
+
+def custom_semantics(original,actual):
+    """Only the product's allowed management/direct-probe transformations pass."""
+    for key,value in original.items():
+        if key not in {'inbounds','outbounds','route'}:require(actual.get(key)==value,'custom-top-level-meaning-changed')
+    require(set(actual)==set(original),'custom-unknown-top-level-added-or-removed')
+    old_in,old_out=original['inbounds'],original['outbounds']
+    require(actual['inbounds'][:len(old_in)]==old_in and len(actual['inbounds'])==len(old_in)+1,
+            'custom-original-inbounds-changed')
+    management=actual['inbounds'][-1]
+    require(set(management)=={'type','tag','listen','listen_port'} and management['type']=='mixed'
+            and management['tag']=='vpn-control-management' and management['listen']=='127.0.0.1'
+            and type(management['listen_port']) is int and 1<=management['listen_port']<=65535,
+            'custom-management-inbound-not-owned-loopback')
+    require(actual['outbounds'][:len(old_out)]==old_out
+            and actual['outbounds'][len(old_out):] in ([],[{'type':'direct','tag':'vpn-control-direct-probe'}]),
+            'custom-original-outbounds-changed')
+    route=actual['route'];old_route=original['route'];old_rules=old_route['rules']
+    for key,value in old_route.items():
+        if key!='rules':require(route.get(key)==value,'custom-original-route-field-changed')
+    require(set(route)-set(old_route)<= {'auto_detect_interface'} and route['rules'][-len(old_rules):]==old_rules,
+            'custom-original-route-rules-changed')
+    prefix=route['rules'][:-len(old_rules)]
+    require(len(prefix)>=2 and prefix[0]=={'inbound':['vpn-control-management'],'action':'sniff'}
+            and prefix[1]=={'inbound':['vpn-control-management'],'outbound':old_route['final']},
+            'custom-management-route-prefix-changed')
+    for rule in prefix[2:]:
+        require(rule.get('outbound')=='vpn-control-direct-probe' and 'inbound' not in rule
+                and set(rule)<= {'ip_cidr','domain','domain_suffix','outbound'},
+                'custom-unrecognized-direct-probe-transformation')
+    return management['listen_port']
+
+
+class FixtureFile:
+    """Large immutable self-created fixture; never a product runtime/config pin."""
+    def __init__(self,owner,path,digest):
+        self.owner,self.path,self.digest,self.handle=owner,path,digest,None
+        if not hasattr(owner,'runtime_case_fixture_files'):owner.runtime_case_fixture_files=[]
+        owner.runtime_case_fixture_files.append(self)
+        self.handle=owner.native.k.CreateFileW(str(path),0x80020000,1,None,3,0x02200000,None)
+        require(self.handle!=ctypes.c_void_p(-1).value,'owned-large-fixture-open')
+        self.identity=owner.native.identity(self.handle);self.security=owner.native.security(self.handle)
+        require(self.security['ownerSid']==owner.request['context']['ordinarySid'],'owned-large-fixture-principal')
+        self.current()
+    def current(self):
+        owner=self.owner;owner.guard();require(self.handle is not None,'owned-large-fixture-closed')
+        native=owner.native;digest=hashlib.sha256();total=0
+        for block in native.read_blocks(self.handle):
+            total+=len(block);require(total<=MAX_CONFIG,'owned-large-fixture-byte-bound');digest.update(block)
+        require(native.identity(self.handle)==self.identity and native.security(self.handle)==self.security
+                and total==self.identity['sizeBytes'] and digest.hexdigest()==self.digest,'owned-large-fixture-original-generation')
+        named=native.k.CreateFileW(str(self.path),0x20080,1,None,3,0x02200000,None)
+        require(named!=ctypes.c_void_p(-1).value,'owned-large-fixture-named-open')
+        try:require(native.identity(named)==self.identity and native.security(named)==self.security,'owned-large-fixture-named-generation')
+        finally:require(bool(native.k.CloseHandle(named)),'owned-large-fixture-named-close')
+    def close(self):
+        self.current();require(bool(self.owner.native.k.CloseHandle(self.handle)),'owned-large-fixture-close');self.handle=None
+
+
+def publish_fixture(owner,leaf,raw):
+    require(os.name=='nt' and re.fullmatch(r'owned-[a-z0-9-]+\.json',leaf)
+            and type(raw) is bytes and 0<len(raw)<=MAX_CONFIG,'owned-large-fixture-publication-scope')
+    owner.guard();path=owner.root/leaf;require(not path.exists(),'owned-fixture-never-overwrite')
+    temporary=owner.root/('owned-write-'+uuid.uuid4().hex+'.tmp')
+    with temporary.open('xb',buffering=0) as stream:
+        offset=0
+        while offset<len(raw):
+            count=stream.write(raw[offset:]);require(count is not None and count>0,'owned-large-fixture-write');offset+=count
+        os.fsync(stream.fileno())
+    owner.event('owned-config-file-publication-intent',{'path':str(path),'sizeBytes':len(raw),
+        'sha256':hashlib.sha256(raw).hexdigest(),'replayAllowed':False})
+    os.rename(temporary,path) # Windows atomic, refuses an existing destination.
+    lease=FixtureFile(owner,path,hashlib.sha256(raw).hexdigest())
+    return path,lease
+
+
+def inputs_guard(owner,state,inputs):
+    fields={'schemaVersion','fixtureRuntimeToolPath','runtimeSha256','listenerScriptPath','powerShellPath',
+        'trafficWorkerPath','trafficInputPath','installedAdmissionArtifactId','ordinaryContextArtifactId'}
+    require(type(inputs) is dict and set(inputs)==fields and inputs['schemaVersion']==1
+            and all(value is not None for value in inputs.values()),'runtime-branch-native-inputs-pending')
+    require(str(state['workspace'])==owner.request['workspace'] and state['serve'] in owner.children
+            and state['serve'].process.poll() is None,'runtime-branch-original-serve-scope')
+    for key in ('fixtureRuntimeToolPath','listenerScriptPath','powerShellPath','trafficWorkerPath','trafficInputPath'):
+        require(str(Path(inputs[key])).casefold() in owner.by_path,'runtime-branch-initial-held-program-input')
+    require(owner.by_path[str(Path(inputs['fixtureRuntimeToolPath'])).casefold()].record['sha256']
+            ==inputs['runtimeSha256']==state['inputs']['runtimeSha256'], 'owned-runtime-tool-to-installed-bundled-hash')
+    require(owner.raw_limit>=MAX_CONFIG,'runtime-branch-full-large-result-capture-required')
+    owner.guard()
+
+
+def guarded(owner,state,runtime,*tail):
+    before=runtime.result(owner,state['workspace'],state['identity'],'status')
+    return runtime.result(owner,state['workspace'],state['identity'],'--if-revision',str(before['configurationRevision']),*tail)
+
+
+def probe(owner,state,inputs,port,label):
+    require(type(port) is int and 1<=port<=65535 and port!=state['ready']['advertisedSocksPort'],'distinct-product-traffic-role')
+    child=owner.child('runtime-branch-traffic-'+label,[owner.request['pythonRuntime']['interpreterPath'],'-I','-B',
+        inputs['trafficWorkerPath'],'--input',inputs['trafficInputPath'],'--mixed-port',str(port)])
+    output=child.completed();require(output.returncode==0 and output.stderr=='','runtime-branch-actual-traffic-terminal')
+    rows=[json.loads(line) for line in output.stdout.splitlines()]
+    require(len(rows)>=5 and rows[-1]['kind']=='terminal' and rows[-1]['allSamplesSucceeded'] is True
+            and all(row['kind']=='sample' and row['succeeded'] is True and row['mixedPort']==port for row in rows[:-1]),
+            'runtime-branch-complete-successful-traffic')
+    owner.event('runtime-branch-traffic-observed',{'label':label,'child':child.ordinal,'port':port,
+        'sampleCount':len(rows)-1,'zeroUnsampledLossClaimed':False})
+    return rows
+
+
+def current_actor(owner,state,inputs,runtime,observer):
+    native=observer.WindowsNative()
+    return runtime.capture_proxy_actors(owner,state['serve'],native,state['inputs']['runtimeImagePath'],inputs['runtimeSha256'])
+
+
+def config_case(owner,state,inputs,runtime,cases,observer,variant):
+    """Actual generated/CUSTOM/large import, pending change, restart and traffic."""
+    inputs_guard(owner,state,inputs)
+    require(variant in {'generated','custom','large'},'finite-configuration-case')
+    before=runtime.result(owner,state['workspace'],state['identity'],'status');opening=cases.active(before)
+    require(opening['activeMode']=='proxy-only','owned-proxy-config-case-only')
+    old_config=cases.LiveConfig(owner,state['workspace'],str(state['workspace']/'runtime-config.json'))
+    if variant=='generated':
+        name='Owned generated';document={'type':'socks','remarks':name,'server':'127.0.0.1',
+            'server_port':state['ready']['advertisedSocksPort']}
+        original=None
+    else:
+        name='Owned large CUSTOM' if variant=='large' else 'Owned CUSTOM'
+        original=custom_config(state['ready']['advertisedSocksPort'],variant)
+        document=profile_document(original,name)
+    raw=encoded(document);require(variant!='large' or len(raw)>60000,'large-fixture-must-exceed-inline-limit')
+    path,lease=publish_fixture(owner,'owned-profile-'+variant+'.json',raw)
+    guarded(owner,state,runtime,'locations','add','--input',str(path))
+    shown=runtime.result(owner,state['workspace'],state['identity'],'locations','show',name)
+    decoded=json.loads(shown['data']['configuration'])
+    if original is not None:require(decoded==original,'custom-public-configuration-readback')
+    else:require(decoded['server']=='127.0.0.1' and decoded['server_port']==state['ready']['advertisedSocksPort'],
+                 'generated-public-profile-readback')
+    guarded(owner,state,runtime,'locations','select',name)
+    pending=runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(cases.active(pending)==opening and pending['restartRequired'] is True
+            and old_config.snapshot()==old_config.initial,'config-commit-implicitly-replaced-active-a')
+    cases.exact_actor(observer.WindowsNative(),state['actors']['runtime'],elevated=False)
+    old_config.close() # Intentional restart owns config replacement/deletion.
+    runtime.result(owner,state['workspace'],state['identity'],'restart')
+    after=runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(after['data']['runtimeRunning'] is True and after['data']['activeMode']=='proxy-only'
+            and after['data']['activeLocationId']==after['data']['selectedLocationId'] and after['restartRequired'] is False,
+            'config-explicit-restart-not-committed')
+    actual,actual_raw=read_json(state['workspace']/'runtime-config.json')
+    if original is not None:port=custom_semantics(original,actual)
+    else:port=cases.product_traffic_port(str(state['workspace']/'runtime-config.json'),state['ready']['advertisedSocksPort'])
+    actors=current_actor(owner,state,inputs,runtime,observer);state['actors']=actors
+    samples=probe(owner,state,inputs,port,variant);lease.current()
+    owner.event('runtime-configuration-case-observed',{'variant':variant,'before':before,'pending':pending,'after':after,
+        'inputBytes':len(raw),'actualRuntimeConfigBytes':len(actual_raw),'actualRuntimeConfigSha256':hashlib.sha256(actual_raw).hexdigest(),
+        'actors':actors,'trafficSamples':len(samples)-1,'tunAcceptanceProven':False})
+    return {'before':before,'pending':pending,'after':after,'input':path,'actors':actors}
+
+
+def failure_oracle(branch,before,after,old_config,new_config,old_actor,new_actor):
+    keys=('runtimeRunning','activeLocationId','activeMode')
+    require(all(after['data'][key]==before['data'][key] for key in keys) and after['restartRequired'] is True,
+            'failed-b-did-not-preserve-active-a-and-pending-b')
+    require(old_config==new_config,'failed-b-changed-active-a-config')
+    if branch=='prepare-failure':
+        require(all(after['data'][key]==before['data'][key] for key in ('runtimeId','runtimeStartedAt'))
+                and old_actor==new_actor,'preparation-failure-replaced-original-a')
+    else:
+        require(after['data']['runtimeId']!=before['data']['runtimeId']
+                and (old_actor['pid'],old_actor['creationFileTime'])!=(new_actor['pid'],new_actor['creationFileTime']),
+                'post-prepare-recovery-not-actually-observed')
+
+
+def failure_case(owner,state,inputs,runtime,cases,observer,branch):
+    """Preflight failure versus real commit/readiness failure and A recovery.
+
+    This is proxy-only. It does not substitute for privileged helper commit or
+    mutable resource recovery. No fault hook modifies product code.
+    """
+    inputs_guard(owner,state,inputs)
+    require(branch in {'prepare-failure','commit-readiness-failure'},'finite-failure-branch')
+    before=runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(before['data']['runtimeRunning'] is True and before['data']['activeMode']=='proxy-only',
+            'failure-case-active-proxy-a')
+    before_json,before_raw=read_json(state['workspace']/'runtime-config.json')
+    beforeimage,beforelease=publish_fixture(owner,'owned-active-a-'+branch+'.json',before_raw)
+    old_actor=current_actor(owner,state,inputs,runtime,observer)['runtime']
+    config=custom_config(state['ready']['advertisedSocksPort'],branch)
+    path,configlease=publish_fixture(owner,'owned-fault-config-'+branch+'.json',encoded(config))
+    # This actual finite check runs while the ORIGINAL fixture listener is held.
+    # Success for collision proves the input passed syntax preflight; failure
+    # for unsupported inbound establishes the preparation branch before action.
+    check=owner.child('owned-singbox-check-'+branch,[inputs['fixtureRuntimeToolPath'],'check','-c',str(path)]).completed()
+    require((check.returncode==0)==(branch=='commit-readiness-failure'), 'actual-check-did-not-admit-intended-fault-branch')
+    name='Owned prepare failure' if branch=='prepare-failure' else 'Owned commit failure'
+    profile,profilelease=publish_fixture(owner,'owned-fault-profile-'+branch+'.json',encoded(profile_document(config,name)))
+    guarded(owner,state,runtime,'locations','add','--input',str(profile));guarded(owner,state,runtime,'locations','select',name)
+    pending=runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(cases.active(pending)==cases.active(before) and pending['restartRequired'] is True,
+            'fault-fixture-selection-mutated-a-before-restart')
+    accepted=runtime.result(owner,state['workspace'],state['identity'],'--async','restart',final=False,codes=('ACCEPTED',))
+    terminal=runtime.finish_operation(owner,state,accepted,{'RUNTIME_FAILED'})
+    after=runtime.result(owner,state['workspace'],state['identity'],'status')
+    actual,new_raw=read_json(state['workspace']/'runtime-config.json')
+    actors=current_actor(owner,state,inputs,runtime,observer)
+    failure_oracle(branch,before,after,before_json,actual,old_actor,actors['runtime'])
+    if branch=='commit-readiness-failure':
+        gone=observer.observe_exit([old_actor],observer.WindowsNative())
+        require(gone[0]['originalAbsent'] is True,'old-a-child-not-proven-retired-before-recovery')
+    state['actors']=actors
+    port=cases.product_traffic_port(str(state['workspace']/'runtime-config.json'),state['ready']['advertisedSocksPort']) \
+        if any(row.get('tag')=='mixed-in' for row in actual['inbounds']) else next(
+            row['listen_port'] for row in actual['inbounds'] if row.get('tag')=='vpn-control-management')
+    probe(owner,state,inputs,port,branch+'-after')
+    for lease in (beforelease,configlease,profilelease):lease.current()
+    owner.event('runtime-failure-branch-observed',{'branch':branch,'before':before,'pending':pending,'accepted':accepted,
+        'terminal':terminal,'after':after,'beforeimagePath':str(beforeimage),'oldActor':old_actor,'actors':actors,
+        'actualCheckExitCode':check.returncode,'fixtureListenerMustRemainOriginal':state['fixture'].ordinal,
+        'privilegedCommitRecoveryProven':False})
+    return {'before':before,'after':after,'terminal':terminal,'actors':actors}

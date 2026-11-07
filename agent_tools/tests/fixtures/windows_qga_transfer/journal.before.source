@@ -1,0 +1,7 @@
+def save(name,value):
+        fd=os.open(root/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        try:
+            raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode();offset=0
+            while offset<len(raw):offset+=os.write(fd,raw[offset:])
+            os.fsync(fd)
+        finally:os.close(fd)

@@ -1,0 +1,87 @@
+"""Two finite whole-caller controls using the existing QGA protocol boundary."""
+from pathlib import Path
+import base64
+import hashlib
+import importlib.util
+import json
+import re
+import sys
+
+ROOT=Path('/Users/karapsin_de/projects/vpn_control')
+HERE=Path(__file__).resolve().parent
+N=HERE/'native-preparation-v4'
+Q=N/'whole-caller-qualification';Q.mkdir(mode=0o700)
+B=ROOT/'.runtime/windows-parity-20261019/windows-fixture'
+T=B/'post-program-adoption-prerequisite-preparation-v1/qualification'
+sha=lambda raw:hashlib.sha256(raw).hexdigest()
+commonraw=(T/'qualify_current.py').read_text().replace('B=N.parent','B=Path('+repr(str(B))+')',1).replace('297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479','2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8')
+(Q/'existing_whole_boundary.py').write_text(commonraw)
+(Q/'producer_peers.py').write_bytes((T/'producer_peers.py').read_bytes())
+spec=importlib.util.spec_from_file_location('_initial_system_existing_boundary',Q/'existing_whole_boundary.py')
+common=importlib.util.module_from_spec(spec);sys.modules[spec.name]=common;spec.loader.exec_module(common)
+
+class IntakeReply(common.peer.ProtocolWorld):
+ def rpc_reply(self,request):
+  if request['execute']!='guest-exec':return super().rpc_reply(request)
+  args=request['arguments'];self.record('guest-exec',args)
+  launch=base64.b64decode(args['arg'][-1],validate=True).decode('utf-16le')
+  payload=base64.b64decode(args['input-data'],validate=True)
+  assert payload==self.declarations['INTAKE_SOURCE']
+  script=payload.decode('utf-8-sig')
+  assert "state='initial-system-observed'"in script and "[OrdinaryNativeFacts]::OpenHeld"in script
+  m=re.search(r"\$path='([^']+)';\$parent='([^']+)';\$length=([0-9]+);\$expected='([0-9a-f]{64})';\$phase='([^']+)'",launch)
+  assert m;path,workspace,length,digest,phase=m.groups()
+  assert int(length)==len(payload) and digest==sha(payload) and phase==self.declarations['NATIVE_PHASE_IDS']['intake']
+  assert path==workspace+'\\infra-'+phase+'.ps1' and workspace==self.declarations['GUEST_CONTEXT']['sourceWorkspace']
+  expected=self.declarations['INTAKE_INPUT'];pid=9000
+  def identity(id2,directory,size=0):
+   volume,index=id2.split(':');v=dict(volumeSerial=int(volume,16),fileIndex=int(index,16),attributes=16 if directory else 32)
+   if not directory:v.update(sizeBytes=size,links=1,creationFileTime='134369000000000000',lastWriteFileTime='134369000000000000')
+   return v
+  dirs=[];files=[];observations=[];acls=[]
+  security=dict(ownerSid='S-1-5-18',sddl='O:SYG:SYD:(A;;FA;;;SY)')
+  for i,path in enumerate(expected['directoryPaths']):
+   asset=next((a for a in expected['assets']if a['root']==path),None)
+   id2=asset['rootIdentity']if asset else '0cbd6c77:'+format(0x900+i,'016x')
+   dirs.append(dict(path=path,nativeIdentity=identity(id2,True),security=dict(security)))
+   full={k:asset['rootAcl'][k]for k in ('ownerSid','sddl')}if asset else dict(security)
+   acls.append(dict(path=path,security=full))
+  for a in expected['assets']:
+   files.append(dict(path=a['path'],nativeIdentity=identity(a['fileIdentity'],False,a['bytes']),security=dict(security),sha256=a['sha256']))
+   acls.append(dict(path=a['path'],security={k:a['fileAcl'][k]for k in ('ownerSid','sddl')}))
+   observations.append(dict(key=a['key'],transferId=a['transferId'],rootPath=a['root'],filePath=a['path'],rootIdentity=a['rootIdentity'],fileIdentity=a['fileIdentity'],rootAcl=a['rootAcl'],fileAcl=a['fileAcl'],endpointReceiptSha256=a['endpointReceiptSha256'],transferReceiptSha256=a['transferReceiptSha256'],signature=dict(observationOnly=True,status='Valid',signerCertificateSha256='a'*64,signerSubject='declared inert observation',signerAdmissionComplete=False),heldPhysicalRead=True,identityClosing=True,namedIdentityClosing=True,aclClosing=True))
+  for i,path in enumerate(expected['systemFiles']):
+   files.append(dict(path=path,nativeIdentity=identity('0cbd6c77:'+format(0xa00+i,'016x'),False,200000),security=dict(security),sha256='b'*64))
+   acls.append(dict(path=path,security=dict(security)))
+  result=dict(schemaVersion=1,state='initial-system-observed',operationId=expected['operationId'],route=expected['route'],systemToken=['S-1-5-18','0','1','1','True','False'],kernelBootIdentifier='71b057dc-cbc9-11f1-8859-a65f36bf1d50',directoryPins=dirs,filePins=files,assetObservations=observations,fullAclObservations=acls,pinSecuritySections=5,tokenClosing=True,kernelBootClosing=True,allHeldAndNamedPinsClosing=True,allFullAclClosing=True,nativeAdmissionComplete=False,signerAdmissionComplete=False,productInstalled=False,productOperation=False,taskOperation=False,**self.actor_fields(pid))
+  actor=self.actor_fields(pid)
+  held=dict(phaseId=phase,path=path,identity='11223344:00000000abcdef01',bytes=len(payload),sha256=digest,ownerSid='S-1-5-18',sddl=common.peer.NATIVE_SOURCE_SDDL,createNew=True,heldReadOnly=True,writeOpenError=32,deleteOpenError=32,parserErrors=0,bootstrapOpening=actor['bootstrapOpening'],launch='held-saved-file-scriptblock',originalOwnerSid='S-1-5-32-544',explicitOwnerGreen=True,productOperation=False,sourceClosing=True,finalSourceSha256=digest)
+  # The loop variable above is intentionally not the saved-source path.
+  held['path']=m.group(1)
+  proof=dict(state='protocol-completed',protocolResult=result,heldSource=held,sourceClosing=True,bootstrapOpening=actor['bootstrapOpening'],bootstrapClosing=actor['bootstrapClosing'])
+  raw=json.dumps(proof).encode()
+  terminal=dict(exited=True,exitcode=0,**{'out-data':base64.b64encode(raw).decode(),'err-data':''})
+  self.executions.append(dict(pid=pid,arguments=args,result=terminal));return dict(pid=pid)
+
+class World(common.BoundaryMixin,IntakeReply):pass
+caller=N/'intake-caller.py';raw=caller.read_bytes();declarations=common.peer.literals(raw.decode());results=[]
+for label,mode in [('known-terminal',None),('lost-exec-ack','deadline')]:
+ destination=Q/label;destination.mkdir(mode=0o700)
+ world=World(declarations,destination,fault='python-c',seed_endpoint_receipt=False);world.prepare(mode,'guest-exec')
+ try:
+  receipt=common.peer.execute(caller,world,'whole-namespace')
+  assert receipt['initialGlobals']==['__name__','__builtins__']and receipt['pythonCWithoutFile']and receipt['sourceUnmodified']and receipt['canonicalQgaRegistered']and receipt['canonicalModuleRegistered']and not receipt['postExecFunctionReplacement']
+  assert len(world.executions)==1 and not any(row['command'].startswith('guest-file-')for row in world.rpc)
+  if mode is None:
+   assert receipt['error']is None,receipt['error'];value=json.loads(receipt['stdout'])
+   assert value['query']=='initial-system-intake'and len(value['result']['filePins'])==4 and len(value['result']['directoryPins'])==9
+   assert value['sourceClosing']and not receipt['retainedOriginalHostDescriptors']
+  else:
+   assert 'retained_rpc_deadline'in receipt['originalFailure']['message']
+   assert receipt['retainedOriginalHostDescriptors']and receipt['outboundFrames']==receipt['outboundFramesAtUnknown']and len(world.park_snapshots)==3
+   assert not any(row['command']=='guest-exec-status'for row in world.rpc)
+  results.append(dict(label=label,sourceUnmodified=True,error=receipt['originalFailure'],guestExecCount=len(world.executions),sourceClosing=mode is None,unknownRetainsOriginalSourceAndWire=mode is not None,actualBounds=world.argument_bounds,receiptSha256=sha((destination/'whole-namespace-receipt.json').read_bytes())))
+ finally:world.harness_cleanup()
+summary=dict(state='qualified',caseCount=2,cases=results,callerSha256=sha(raw),fullBf05And2938NamespacesExecuted=True,postExecutionFunctionReplacement=False,nativePowerShell51AbiAndSignatureSemantics='UNRUN; declared native observations only',nativeActions=False)
+out=(json.dumps(summary,indent=2,sort_keys=True)+'\n').encode();(Q/'summary.private.json').write_bytes(out)
+print(json.dumps(dict(path=str(Q/'summary.private.json'),sha256=sha(out),cases=2)))

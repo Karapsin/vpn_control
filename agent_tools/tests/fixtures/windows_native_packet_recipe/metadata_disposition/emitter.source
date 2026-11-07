@@ -1,0 +1,235 @@
+"""Finite Windows artifact protocol producers; importing/rendering performs no I/O.
+
+The owner engine retains these exact module bytes and emitted source bytes before
+QGA submission. This module owns only infrastructure programs; supplied user
+PowerShell is outside this API and its output preferences are not changed here.
+"""
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import re
+import subprocess
+import uuid
+
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+POWERSHELL_PATH = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+# Supported QGA transport envelope for its GLib helper executable and arguments.
+# This reservation is separate from the Windows limit; it is not a bound on
+# arbitrary helper paths resolved through PATH. Choose saved source before launch.
+QGA_HELPER_HEADROOM_UTF16 = 1024
+ARTIFACT_LEAVES = frozenset(("vpn-control-2.2.13.msi", "vpn-control-2.2.14.msi", "python-3.13.15-amd64.exe"))
+ACTOR_FIELDS = frozenset(("bootstrapOpening", "bootstrapClosing", "guestBootClosing", "bootstrapActorClosing"))
+ENDPOINT_FIELDS = frozenset(("schemaVersion", "state", "transferId", "deploymentId", "rootPath", "filePath", "rootIdentity", "rootIdentityClosing", "fileIdentity", "rootAcl", "fileAcl", "originalFileOwnerSid", "bytes", "sha256", "rootCreateNew", "fileCreateNew", "parentChainNoReparse", "creatorPid", "creatorBirthFileTimeUtc", "creatorSessionId", "principalSid", "productOperation")) | ACTOR_FIELDS
+VERIFIER_FIELDS = frozenset(("schemaVersion", "state", "transferId", "deploymentId", "rootPath", "filePath", "rootIdentity", "rootIdentityClosing", "fileIdentity", "bytes", "sha256", "rootAcl", "fileAcl", "heldPhysicalRead", "identityClosing", "aclClosing", "namedIdentityClosing", "sharingProofRequired", "writeOpenError", "deleteOpenError", "parentChainNoReparse", "principalSid", "productOperation")) | ACTOR_FIELDS
+
+
+def _require(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+def _uuid(value):
+    _require(type(value) is str, "transfer_uuid")
+    _require(str(uuid.UUID(value)) == value, "transfer_uuid")
+    return value
+
+
+def _literal(value):
+    _require(type(value) is str and value and not any(c in value for c in "'\x00\r\n"), "transfer_literal")
+    return "'" + value + "'"
+
+
+def _target(target):
+    _require(type(target) is dict and set(target) == {"deploymentId", "transferId", "name", "bytes", "sha256"}, "transfer_target_fields")
+    _uuid(target["deploymentId"]); _uuid(target["transferId"])
+    _require(type(target["name"]) is str and target["name"] in ARTIFACT_LEAVES, "transfer_artifact_leaf")
+    _require(type(target["bytes"]) is int and target["bytes"] > 0, "transfer_artifact_bytes")
+    _require(type(target["sha256"]) is str and re.fullmatch("[0-9a-f]{64}", target["sha256"]) is not None, "transfer_artifact_hash")
+    return dict(target, rootPrefix=r"C:\ProgramData\VpnControlArtifact-", name=target["name"])
+
+
+def _context(context, deployment_id):
+    fields = {"deploymentId", "boot", "ordinarySid", "powerShellPath", "sourceWorkspace"}
+    _require(type(context) is dict and set(context) == fields, "transfer_guest_context_fields")
+    _require(context["deploymentId"] == deployment_id, "transfer_guest_deployment")
+    _require(type(context["ordinarySid"]) is str and re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", context["ordinarySid"]) is not None, "transfer_ordinary_sid")
+    _require(context["powerShellPath"] == POWERSHELL_PATH, "transfer_powershell_path")
+    workspace = context["sourceWorkspace"]
+    _require(type(workspace) is str and re.fullmatch(r"C:\\ProgramData\\VpnControlOrdinaryTask-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", workspace) is not None, "transfer_source_workspace")
+    boot = context["boot"]
+    _require(type(boot) is dict and set(boot) == {"lastBootUpTimeFileTimeUtc", "machineGuid", "hardwareUuid"}, "transfer_boot_fields")
+    _require(type(boot["lastBootUpTimeFileTimeUtc"]) is str and re.fullmatch("[1-9][0-9]{16,19}", boot["lastBootUpTimeFileTimeUtc"]) is not None, "transfer_boot_string")
+    for key in ("machineGuid", "hardwareUuid"):
+        value = boot[key]; _literal(value)
+        _require(str(uuid.UUID(value)).casefold() == value.casefold(), "transfer_machine_identity")
+    return context
+
+
+def _probe(probe_id, context):
+    _require(type(context) is dict and type(context.get("deploymentId")) is str, "transfer_probe_context")
+    return {"deploymentId": _uuid(context["deploymentId"]), "transferId": _uuid(probe_id), "name": "probe.bin", "bytes": 0, "sha256": EMPTY_SHA256, "rootPrefix": r"C:\ProgramData\VpnControlTransferProbe-"}
+
+
+def _bind(template, substitutions):
+    found = set(re.findall(r"@@([A-Z_]+)@@", template))
+    _require(found == set(substitutions), "transfer_template_fields")
+    for key, value in substitutions.items():
+        _require(type(value) is str and template.count("@@" + key + "@@") == 1, "transfer_template_once")
+        _require(not any(c in value for c in "'\x00\r\n"), "transfer_template_literal")
+        template = template.replace("@@" + key + "@@", value)
+    _require("@@" not in template, "transfer_template_unbound")
+    return template
+
+
+def _render(template, target, context, extra):
+    context = _context(context, target["deploymentId"])
+    root = target["rootPrefix"] + target["transferId"]
+    substitutions = {"TRANSFER": target["transferId"], "ROOT": root, "PATH": root + "\\" + target["name"], "SID": context["ordinarySid"], "DEPLOYMENT": target["deploymentId"], "ROOT_PREFIX": target["rootPrefix"], "LEAF": target["name"], **extra}
+    source = _bind(template, substitutions)
+    return _boot_bound(source, context).encode("utf-8-sig")
+
+
+def render_endpoint(target, guest_context):
+    """Emit one create-only real-artifact endpoint; the caller owns execution."""
+    return _render(_ENDPOINT, _target(target), guest_context, {})
+
+
+def render_verifier(target, guest_context, expected_identity, expected_bytes, expected_sha256, expect_open):
+    target = _target(target)
+    _require(type(expected_identity) is str and re.fullmatch("[0-9a-f]{8}:[0-9a-f]{16}", expected_identity) is not None, "transfer_file_identity")
+    _require(type(expected_bytes) is int and expected_bytes in (0, target["bytes"]), "transfer_verify_bytes")
+    _require(type(expected_sha256) is str and expected_sha256 == (EMPTY_SHA256 if expected_bytes == 0 else target["sha256"]), "transfer_verify_hash")
+    _require(type(expect_open) is bool, "transfer_verify_open")
+    return _render(_VERIFIER, target, guest_context, {"IDENTITY": expected_identity, "BYTES": str(expected_bytes), "SHA": expected_sha256, "OPEN_EXPECTED": "$true" if expect_open else "$false"})
+
+
+def render_probe_endpoint(probe_id, guest_context):
+    """Emit the same endpoint mechanism for a distinct empty probe.bin scope."""
+    return _render(_ENDPOINT, _probe(probe_id, guest_context), guest_context, {})
+
+
+def render_probe_verifier(probe_id, guest_context, expected_identity):
+    _require(type(expected_identity) is str and re.fullmatch("[0-9a-f]{8}:[0-9a-f]{16}", expected_identity) is not None, "transfer_file_identity")
+    return _render(_VERIFIER, _probe(probe_id, guest_context), guest_context, {"IDENTITY": expected_identity, "BYTES": "0", "SHA": EMPTY_SHA256, "OPEN_EXPECTED": "$false"})
+
+
+def _command(launch_source, payload_source, input_bytes=None):
+    text = launch_source.decode("utf-8-sig", "strict")
+    _require("\x00" not in text, "transfer_source_nul")
+    args = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", base64.b64encode(text.encode("utf-16le")).decode("ascii")]
+    command = subprocess.list2cmdline([POWERSHELL_PATH, *args])
+    units = len(command.encode("utf-16le")) // 2 + 1
+    _require(units <= 32767, "transfer_windows_command_chars")
+    _require(units + QGA_HELPER_HEADROOM_UTF16 <= 32767, "transfer_windows_qga_command_chars")
+    arguments = {"path": POWERSHELL_PATH, "arg": args, "capture-output": True}
+    if input_bytes is not None:
+        _require(type(input_bytes) is bytes and len(input_bytes) <= 32768, "transfer_windows_input_bytes")
+        arguments["input-data"] = base64.b64encode(input_bytes).decode("ascii")
+    request = (json.dumps({"execute": "guest-exec", "arguments": arguments}, separators=(",", ":")) + "\n").encode()
+    _require(len(request) <= 60000, "transfer_windows_transport_bytes")
+    return {"arguments": arguments, "launchSource": launch_source, "bounds": {"commandUtf16UnitsIncludingNul": units, "serializedRequestBytes": len(request), "sourceBytes": len(launch_source), "sourceSha256": hashlib.sha256(launch_source).hexdigest(), "payloadBytes": len(payload_source), "payloadSha256": hashlib.sha256(payload_source).hexdigest(), "commandSha256Utf16le": hashlib.sha256(command.encode("utf-16le")).hexdigest()}}
+
+
+def build_guest_exec(source, *, guest_context=None, phase_id=None):
+    """Choose transport before launch; UNKNOWN never invokes this as a retry."""
+    _require(type(source) is bytes and source.startswith(b"\xef\xbb\xbf"), "transfer_source_bom")
+    text = source.decode("utf-8-sig", "strict")
+    inline = ("$protocolResult= & {\n" + text + "\n};[Console]::WriteLine(($protocolResult|ConvertTo-Json -Depth 12 -Compress))\n").encode("utf-8-sig")
+    try:
+        plan = _command(inline, source)
+    except ValueError as error:
+        if str(error) not in ("transfer_windows_command_chars", "transfer_windows_qga_command_chars", "transfer_windows_transport_bytes"):
+            raise
+        _require(type(guest_context) is dict and phase_id is not None, "transfer_saved_context_required")
+        context = _context(guest_context, guest_context["deploymentId"])
+        phase_id = _uuid(phase_id)
+        path = context["sourceWorkspace"] + "\\infra-" + phase_id + ".ps1"
+        parent_sddl = "O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;" + context["ordinarySid"] + ")"
+        body = _bind(_HELD_BODY, {"PATH": path, "WORKSPACE": context["sourceWorkspace"], "LENGTH": str(len(source)), "SHA": hashlib.sha256(source).hexdigest(), "PHASE": phase_id, "PARENT_SDDL": parent_sddl, "SID": context["ordinarySid"]})
+        opening = _opening(context).replace("VpnArtifactToken", "VpnHeldToken")
+        closing = _BOOT_CLOSE.replace("VpnArtifactToken", "VpnHeldToken")
+        envelope = "\n$receipt.sourceClosing=$true;$receipt.finalSourceSha256=$closing;[Console]::WriteLine((@{state='protocol-completed';protocolResult=$programResult;heldSource=$receipt;sourceClosing=$true;bootstrapOpening=$bootstrapOpening;bootstrapClosing=$bootstrapClosing}|ConvertTo-Json -Depth 14 -Compress))\n"
+        _require(body.count("__OWNED_CLOSING__") == 1, "transfer_saved_closing")
+        body = body.replace("__OWNED_CLOSING__", closing + envelope)
+        launch = ("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n" + opening + body).encode("utf-8-sig")
+        plan = _command(launch, source, source)
+        plan.update(transport="saved-source", savedSource={"phaseId": phase_id, "path": path, "workspace": context["sourceWorkspace"], "bytes": len(source), "sha256": hashlib.sha256(source).hexdigest()})
+        return plan
+    plan.update(transport="inline", savedSource=None)
+    return plan
+
+
+def _opening(context):
+    boot = context["boot"]
+    return _BOOT_OBSERVE + "$expectedBoot=" + _literal(boot["lastBootUpTimeFileTimeUtc"]) + ";$expectedMachine=" + _literal(boot["machineGuid"]) + ";$expectedHardware=" + _literal(boot["hardwareUuid"]) + ";$expectedPowerShell=" + _literal(context["powerShellPath"]) + "\n" + _BOOT_OPEN
+
+
+def _actor_pair(value, context, original_pid):
+    fields = {"pid", "birthFileTimeUtc", "sessionId", "path", "principalSid", "is64BitProcess", "powerShellMajor", "powerShellEdition", "boot", "tokenElevation", "tokenElevationType"}
+    _require(type(original_pid) is int and original_pid > 0, "transfer_original_pid")
+    for name in ("bootstrapOpening", "bootstrapClosing"):
+        actor = value.get(name)
+        _require(type(actor) is dict and set(actor) == fields, "transfer_actor_fields")
+        _require(type(actor["pid"]) is int and actor["pid"] == original_pid, "transfer_actor_pid")
+        _require(type(actor["birthFileTimeUtc"]) is str and re.fullmatch("[1-9][0-9]{16,19}", actor["birthFileTimeUtc"]) is not None, "transfer_actor_birth")
+        _require(type(actor["sessionId"]) is int and actor["sessionId"] == 0 and actor["path"] == context["powerShellPath"] and actor["principalSid"] == "S-1-5-18", "transfer_actor_identity")
+        _require(actor["is64BitProcess"] is True and type(actor["powerShellMajor"]) is int and actor["powerShellMajor"] == 5 and actor["powerShellEdition"] == "Desktop", "transfer_actor_powershell")
+        _require(type(actor["tokenElevation"]) is int and actor["tokenElevation"] == 1 and type(actor["tokenElevationType"]) is int and actor["tokenElevationType"] in (1, 2), "transfer_actor_token")
+        _require(actor["boot"] == context["boot"], "transfer_actor_boot")
+    _require(value["bootstrapOpening"] == value["bootstrapClosing"], "transfer_actor_closing")
+
+
+def decode_guest_result(plan, value, guest_context, original_pid):
+    """Validate source/actor custody, then expose the finite protocol receipt."""
+    context = _context(guest_context, guest_context["deploymentId"])
+    _require(type(value) is dict, "transfer_protocol_result")
+    if plan["transport"] == "saved-source":
+        fields = {"state", "protocolResult", "heldSource", "sourceClosing", "bootstrapOpening", "bootstrapClosing"}
+        _require(set(value) == fields and value["state"] == "protocol-completed" and value["sourceClosing"] is True, "transfer_saved_envelope")
+        _actor_pair(value, context, original_pid)
+        proof = value["heldSource"]
+        proof_fields = {"phaseId", "path", "identity", "bytes", "sha256", "ownerSid", "sddl", "createNew", "heldReadOnly", "writeOpenError", "deleteOpenError", "parserErrors", "bootstrapOpening", "launch", "originalOwnerSid", "explicitOwnerGreen", "productOperation", "sourceClosing", "finalSourceSha256"}
+        _require(type(proof) is dict and set(proof) == proof_fields, "transfer_saved_proof_fields")
+        expected = plan["savedSource"]
+        _require(proof["phaseId"] == expected["phaseId"] and proof["path"] == expected["path"] and type(proof["bytes"]) is int and proof["bytes"] == expected["bytes"] and proof["sha256"] == expected["sha256"] and proof["finalSourceSha256"] == expected["sha256"], "transfer_saved_proof_source")
+        _require(type(proof["identity"]) is str and re.fullmatch("[0-9a-f]{8}:[0-9a-f]{16}", proof["identity"]) is not None, "transfer_saved_proof_identity")
+        sddl = "O:SYG:SYD:AI(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;0x1200a9;;;" + context["ordinarySid"] + ")"
+        _require(proof["ownerSid"] == "S-1-5-18" and proof["sddl"] == sddl and proof["originalOwnerSid"] in ("S-1-5-18", "S-1-5-32-544"), "transfer_saved_proof_acl")
+        _require(proof["createNew"] is True and proof["heldReadOnly"] is True and proof["explicitOwnerGreen"] is True and proof["sourceClosing"] is True and proof["productOperation"] is False and proof["launch"] == "held-saved-file-scriptblock", "transfer_saved_proof_capability")
+        _require(type(proof["writeOpenError"]) is int and proof["writeOpenError"] == 32 and type(proof["deleteOpenError"]) is int and proof["deleteOpenError"] == 32 and type(proof["parserErrors"]) is int and proof["parserErrors"] == 0, "transfer_saved_proof_native")
+        _require(proof["bootstrapOpening"] == value["bootstrapOpening"], "transfer_saved_proof_actor")
+        protocol = value["protocolResult"]
+        _require(type(protocol) is dict and protocol.get("bootstrapOpening") == value["bootstrapOpening"] and protocol.get("bootstrapClosing") == value["bootstrapClosing"], "transfer_saved_protocol_actor")
+        value = protocol
+    else:
+        _require(plan["transport"] == "inline", "transfer_protocol_transport")
+    _require(type(value) is dict and value.get("guestBootClosing") is True and value.get("bootstrapActorClosing") is True, "transfer_protocol_closing")
+    _actor_pair(value, context, original_pid)
+    return value
+
+
+def _boot_bound(source, context):
+    _require("Read-ProgramBootstrap" not in source and "$ProgressPreference='SilentlyContinue'" in source.splitlines()[0], "transfer_protocol_prelude")
+    boot = context["boot"]
+    opening = _opening(context)
+    marker = "[Console]::WriteLine(($result|ConvertTo-Json -Depth 8 -Compress))" if "state='created'" in source else "[Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))"
+    _require(source.count(marker) == 1, "transfer_protocol_output")
+    var = "$result" if "state='created'" in source else "$r"
+    closing = _BOOT_CLOSE + ";".join(var + "." + key + "=" + value for key, value in (("bootstrapOpening", "$bootstrapOpening"), ("bootstrapClosing", "$bootstrapClosing"), ("guestBootClosing", "$true"), ("bootstrapActorClosing", "$true"))) + "\n"
+    lines = source.splitlines(keepends=True)
+    return (lines[0] + opening + "".join(lines[1:])).replace(marker, closing + "[pscustomobject]" + var, 1)
+
+
+_BOOT_OBSERVE = "\nfunction Read-ProgramBootstrap {\n $os=Get-CimInstance Win32_OperatingSystem;$self=Get-Process -Id $PID;$machine=(Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography' -Name MachineGuid).MachineGuid;$hardware=(Get-CimInstance Win32_ComputerSystemProduct).UUID;$identity=[Security.Principal.WindowsIdentity]::GetCurrent()\n try{return [ordered]@{pid=$PID;birthFileTimeUtc=$self.StartTime.ToUniversalTime().ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture);sessionId=$self.SessionId;path=$self.Path;principalSid=$identity.User.Value;is64BitProcess=[Environment]::Is64BitProcess;powerShellMajor=$PSVersionTable.PSVersion.Major;powerShellEdition=$PSVersionTable.PSEdition;boot=[ordered]@{lastBootUpTimeFileTimeUtc=$os.LastBootUpTime.ToUniversalTime().ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture);machineGuid=[string]$machine;hardwareUuid=[string]$hardware}}}finally{$identity.Dispose()}\n}\n"
+
+_BOOT_OPEN = '\n$bootstrapOpening=Read-ProgramBootstrap\nif($bootstrapOpening.boot.lastBootUpTimeFileTimeUtc -cne $expectedBoot -or $bootstrapOpening.boot.machineGuid -cne $expectedMachine -or $bootstrapOpening.boot.hardwareUuid -cne $expectedHardware -or $bootstrapOpening.path -cne $expectedPowerShell -or $bootstrapOpening.sessionId -ne 0 -or $bootstrapOpening.principalSid -cne \'S-1-5-18\' -or -not $bootstrapOpening.is64BitProcess -or $bootstrapOpening.powerShellMajor -ne 5 -or $bootstrapOpening.powerShellEdition -cne \'Desktop\'){[Console]::WriteLine((@{state=\'refused-before-file-effects\';code=\'GUEST_BOOT_OR_ACTOR_MISMATCH\';fileEffects=$false;bootstrapOpening=$bootstrapOpening;expectedBoot=$expectedBoot;productOperation=$false;taskOperation=$false}|ConvertTo-Json -Depth 8 -Compress));exit 3}\nAdd-Type -TypeDefinition @\'\nusing System;using System.ComponentModel;using System.Runtime.InteropServices;\npublic static class VpnArtifactToken {\n [DllImport("advapi32.dll",SetLastError=true)]static extern bool GetTokenInformation(IntPtr token,int kind,out int value,int size,out int used);\n static int Value(IntPtr token,int kind){int value,used;if(!GetTokenInformation(token,kind,out value,4,out used))throw new Win32Exception(Marshal.GetLastWin32Error());if(used!=4)throw new InvalidOperationException("token-information-size");return value;}\n public static int[] Read(IntPtr token){return new int[]{Value(token,20),Value(token,18)};}\n}\n\'@ -ReferencedAssemblies @(\'System\',\'System.Core\')\n$tokenIdentity=[Security.Principal.WindowsIdentity]::GetCurrent();try{$tokenOpening=[VpnArtifactToken]::Read($tokenIdentity.Token)}finally{$tokenIdentity.Dispose()};if($tokenOpening[0] -ne 1 -or $tokenOpening[1] -notin @(1,2)){throw \'ARTIFACT_SYSTEM_ELEVATION\'};$bootstrapOpening.tokenElevation=$tokenOpening[0];$bootstrapOpening.tokenElevationType=$tokenOpening[1]\n'
+
+_BOOT_CLOSE = "\n$bootstrapClosing=Read-ProgramBootstrap;$tokenIdentity=[Security.Principal.WindowsIdentity]::GetCurrent();try{$tokenClosing=[VpnArtifactToken]::Read($tokenIdentity.Token)}finally{$tokenIdentity.Dispose()};$bootstrapClosing.tokenElevation=$tokenClosing[0];$bootstrapClosing.tokenElevationType=$tokenClosing[1]\nif($bootstrapClosing.pid -ne $bootstrapOpening.pid -or $bootstrapClosing.birthFileTimeUtc -cne $bootstrapOpening.birthFileTimeUtc -or $bootstrapClosing.sessionId -ne $bootstrapOpening.sessionId -or $bootstrapClosing.path -cne $bootstrapOpening.path -or $bootstrapClosing.principalSid -cne 'S-1-5-18' -or $bootstrapClosing.tokenElevation -ne 1 -or $bootstrapClosing.tokenElevationType -ne $bootstrapOpening.tokenElevationType -or -not $bootstrapClosing.is64BitProcess -or $bootstrapClosing.powerShellMajor -ne 5 -or $bootstrapClosing.powerShellEdition -cne 'Desktop' -or $bootstrapClosing.boot.lastBootUpTimeFileTimeUtc -cne $expectedBoot -or $bootstrapClosing.boot.machineGuid -cne $expectedMachine -or $bootstrapClosing.boot.hardwareUuid -cne $expectedHardware){throw 'BOOTSTRAP_ACTOR_OR_BOOT_CLOSING'}\n"
+
+_ENDPOINT = '$ErrorActionPreference=\'Stop\';$ProgressPreference=\'SilentlyContinue\';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\nif([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -cne \'S-1-5-18\' -or (Get-Process -Id $PID).SessionId -ne 0 -or -not [Environment]::Is64BitProcess -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSEdition -cne \'Desktop\'){throw \'ARTIFACT_SYSTEM_CONTEXT\'}\n$transfer=\'@@TRANSFER@@\';$root=\'@@ROOT@@\';$path=\'@@PATH@@\';$sid=\'@@SID@@\'\nif($transfer -cnotmatch \'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\' -or $root -cne (\'@@ROOT_PREFIX@@\'+$transfer) -or [IO.Path]::GetFileName($path) -cne \'@@LEAF@@\'){throw \'ARTIFACT_ASSIGNED_SCOPE\'}\nif([IO.Path]::GetDirectoryName($root) -cne \'C:\\ProgramData\' -or [IO.Path]::GetDirectoryName($path) -cne $root){throw \'ARTIFACT_EXACT_PATH\'}\nforeach($name in @(\'C:\\ProgramData\',\'C:\\\')){if(((Get-Item -LiteralPath $name -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw \'ARTIFACT_PARENT_REPARSE\'}}\nfunction Read-ArtifactAcl([string]$Path,[bool]$Directory){\n $item=Get-Item -LiteralPath $Path -Force;if($item.PSIsContainer -ne $Directory -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw \'ARTIFACT_FILE_KIND\'}\n $a=Get-Acl -LiteralPath $Path;$owner=$a.GetOwner([Security.Principal.SecurityIdentifier]).Value;$rules=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));if($owner -cne \'S-1-5-18\' -or $rules.Count -ne 3 -or ($Directory -and -not $a.AreAccessRulesProtected)){throw \'ARTIFACT_ACL_OWNER\'}\n $seen=@{};foreach($r in $rules){$id=$r.IdentityReference.Value;if($seen.ContainsKey($id) -or $r.AccessControlType -ne \'Allow\' -or $r.IsInherited -eq $Directory){throw \'ARTIFACT_ACL_RULE\'};$seen[$id]=$true;$rights=if($id -ceq \'S-1-5-18\' -or $id -ceq \'S-1-5-32-544\'){0x1f01ff}elseif($id -ceq $sid){0x1200a9}else{throw \'ARTIFACT_ACL_SID\'};if([int]$r.FileSystemRights -ne $rights){throw \'ARTIFACT_ACL_RIGHTS\'};$inheritance=if($Directory){3}else{0};if([int]$r.InheritanceFlags -ne $inheritance -or [int]$r.PropagationFlags -ne 0){throw \'ARTIFACT_ACL_INHERITANCE\'}}\n return [ordered]@{ownerSid=$owner;sddl=$a.Sddl;rules=3;protected=$a.AreAccessRulesProtected}\n}\nfunction Held-ArtifactSha([IO.FileStream]$File){$File.Position=0;$h=[Security.Cryptography.SHA256]::Create();try{return ([BitConverter]::ToString($h.ComputeHash($File))).Replace(\'-\',\'\').ToLowerInvariant()}finally{$h.Dispose()}}\nAdd-Type -TypeDefinition @\'\nusing System;using System.ComponentModel;using System.Runtime.InteropServices;using Microsoft.Win32.SafeHandles;\npublic static class VpnArtifactHandle {\n [StructLayout(LayoutKind.Sequential)]struct Info { public uint Attributes,CreationLow,CreationHigh,AccessLow,AccessHigh,WriteLow,WriteHigh,Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow; }\n [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();\n [DllImport("kernel32.dll",SetLastError=true)]static extern bool DuplicateHandle(IntPtr process,SafeFileHandle source,IntPtr target,out SafeFileHandle result,uint access,bool inherit,uint options);\n [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(SafeFileHandle source,out Info result);\n [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern SafeFileHandle CreateFile(string path,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);\n\n public static SafeFileHandle HoldDirectory(string path){SafeFileHandle h=CreateFile(path,0x20080,3,IntPtr.Zero,3,0x2200000,IntPtr.Zero);if(h.IsInvalid){int error=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(error);}return h;}\n public static string DirectoryIdentity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if((r.Attributes&0x10)==0||(r.Attributes&0x400)!=0||r.Links<1)throw new InvalidOperationException("artifact-root-kind");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}\n public static void DirectoryUnchanged(SafeFileHandle source,string path,string identity){if(DirectoryIdentity(source)!=identity)throw new InvalidOperationException("artifact-held-root-changed");using(SafeFileHandle named=HoldDirectory(path)){if(DirectoryIdentity(named)!=identity)throw new InvalidOperationException("artifact-named-root-changed");}}\n public static SafeFileHandle ReadOnly(SafeFileHandle source){SafeFileHandle result;if(!DuplicateHandle(GetCurrentProcess(),source,GetCurrentProcess(),out result,0x120089,false,0))throw new Win32Exception(Marshal.GetLastWin32Error());return result;}\n public static string Identity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if(r.Links!=1)throw new InvalidOperationException("program-link-count");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}\n public static int Refusal(string path,uint access){using(SafeFileHandle h=CreateFile(path,access,7,IntPtr.Zero,3,128,IntPtr.Zero)){return h.IsInvalid?Marshal.GetLastWin32Error():0;}}\n}\n\'@ -ReferencedAssemblies @(\'System\',\'System.Core\')\n\nAdd-Type -TypeDefinition @\'\nusing System;using System.ComponentModel;using System.Runtime.InteropServices;\npublic static class VpnCreateArtifactDirectory {\n [StructLayout(LayoutKind.Sequential)]struct Attributes {public int Length;public IntPtr Descriptor;[MarshalAs(UnmanagedType.Bool)]public bool Inherit;}\n [DllImport("advapi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(string text,uint revision,out IntPtr descriptor,out uint size);\n [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectory(string path,ref Attributes attributes);\n [DllImport("kernel32.dll")]static extern IntPtr LocalFree(IntPtr memory);\n public static void CreateExclusive(string path,string sddl){IntPtr descriptor;uint size;if(!ConvertStringSecurityDescriptorToSecurityDescriptor(sddl,1,out descriptor,out size))throw new Win32Exception(Marshal.GetLastWin32Error());try{Attributes a=new Attributes();a.Length=Marshal.SizeOf(typeof(Attributes));a.Descriptor=descriptor;a.Inherit=false;if(!CreateDirectory(path,ref a))throw new Win32Exception(Marshal.GetLastWin32Error());}finally{LocalFree(descriptor);}}\n}\n\'@ -ReferencedAssemblies @(\'System\',\'System.Core\')\n$sddl=\'O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;\'+$sid+\')\'\nif(Test-Path -LiteralPath $root){throw \'ARTIFACT_ROOT_EXISTS\'}\n[VpnCreateArtifactDirectory]::CreateExclusive($root,$sddl);$rootHeld=[VpnArtifactHandle]::HoldDirectory($root)\ntry{\n $rootIdentity=[VpnArtifactHandle]::DirectoryIdentity($rootHeld);$rootAcl=Read-ArtifactAcl $root $true\n$f=[IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)\ntry{\n $security=Get-Acl -LiteralPath $path;$originalOwner=$security.GetOwner([Security.Principal.SecurityIdentifier]).Value;$security.SetOwner([Security.Principal.SecurityIdentifier]::new(\'S-1-5-18\'));[IO.File]::SetAccessControl($path,$security);$fileAcl=Read-ArtifactAcl $path $false\n $f.Flush($true);$identity=[VpnArtifactHandle]::Identity($f.SafeFileHandle);$hash=Held-ArtifactSha $f;if($f.Length -ne 0 -or $hash -cne \'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\'){throw \'ARTIFACT_EMPTY_FILE\'}\n [VpnArtifactHandle]::DirectoryUnchanged($rootHeld,$root,$rootIdentity);$rootClosing=Read-ArtifactAcl $root $true;$fileClosing=Read-ArtifactAcl $path $false;if($rootClosing.sddl -cne $rootAcl.sddl -or $fileClosing.sddl -cne $fileAcl.sddl -or [VpnArtifactHandle]::Identity($f.SafeFileHandle) -cne $identity -or (Held-ArtifactSha $f) -cne $hash){throw \'ARTIFACT_ENDPOINT_CLOSING\'}\n $self=Get-Process -Id $PID;$result=[ordered]@{schemaVersion=1;state=\'created\';transferId=$transfer;deploymentId=\'@@DEPLOYMENT@@\';rootPath=$root;filePath=$path;rootIdentity=$rootIdentity;rootIdentityClosing=$true;fileIdentity=$identity;rootAcl=$rootAcl;fileAcl=$fileAcl;originalFileOwnerSid=$originalOwner;bytes=0;sha256=$hash;rootCreateNew=$true;fileCreateNew=$true;parentChainNoReparse=$true;creatorPid=$PID;creatorBirthFileTimeUtc=$self.StartTime.ToUniversalTime().ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture);creatorSessionId=$self.SessionId;principalSid=\'S-1-5-18\';productOperation=$false}\n [Console]::WriteLine(($result|ConvertTo-Json -Depth 8 -Compress))\n}finally{$f.Dispose()}\n}finally{$rootHeld.Dispose()}\n'
+
+_VERIFIER = '$ErrorActionPreference=\'Stop\';$ProgressPreference=\'SilentlyContinue\';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\nif([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -cne \'S-1-5-18\' -or (Get-Process -Id $PID).SessionId -ne 0 -or -not [Environment]::Is64BitProcess -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSEdition -cne \'Desktop\'){throw \'ARTIFACT_SYSTEM_CONTEXT\'}\n$transfer=\'@@TRANSFER@@\';$root=\'@@ROOT@@\';$path=\'@@PATH@@\';$sid=\'@@SID@@\'\nif($transfer -cnotmatch \'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\' -or $root -cne (\'@@ROOT_PREFIX@@\'+$transfer) -or [IO.Path]::GetFileName($path) -cne \'@@LEAF@@\'){throw \'ARTIFACT_ASSIGNED_SCOPE\'}\nif([IO.Path]::GetDirectoryName($root) -cne \'C:\\ProgramData\' -or [IO.Path]::GetDirectoryName($path) -cne $root){throw \'ARTIFACT_EXACT_PATH\'}\nforeach($name in @(\'C:\\ProgramData\',\'C:\\\')){if(((Get-Item -LiteralPath $name -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw \'ARTIFACT_PARENT_REPARSE\'}}\nfunction Read-ArtifactAcl([string]$Path,[bool]$Directory){\n $item=Get-Item -LiteralPath $Path -Force;if($item.PSIsContainer -ne $Directory -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw \'ARTIFACT_FILE_KIND\'}\n $a=Get-Acl -LiteralPath $Path;$owner=$a.GetOwner([Security.Principal.SecurityIdentifier]).Value;$rules=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));if($owner -cne \'S-1-5-18\' -or $rules.Count -ne 3 -or ($Directory -and -not $a.AreAccessRulesProtected)){throw \'ARTIFACT_ACL_OWNER\'}\n $seen=@{};foreach($r in $rules){$id=$r.IdentityReference.Value;if($seen.ContainsKey($id) -or $r.AccessControlType -ne \'Allow\' -or $r.IsInherited -eq $Directory){throw \'ARTIFACT_ACL_RULE\'};$seen[$id]=$true;$rights=if($id -ceq \'S-1-5-18\' -or $id -ceq \'S-1-5-32-544\'){0x1f01ff}elseif($id -ceq $sid){0x1200a9}else{throw \'ARTIFACT_ACL_SID\'};if([int]$r.FileSystemRights -ne $rights){throw \'ARTIFACT_ACL_RIGHTS\'};$inheritance=if($Directory){3}else{0};if([int]$r.InheritanceFlags -ne $inheritance -or [int]$r.PropagationFlags -ne 0){throw \'ARTIFACT_ACL_INHERITANCE\'}}\n return [ordered]@{ownerSid=$owner;sddl=$a.Sddl;rules=3;protected=$a.AreAccessRulesProtected}\n}\nfunction Held-ArtifactSha([IO.FileStream]$File){$File.Position=0;$h=[Security.Cryptography.SHA256]::Create();try{return ([BitConverter]::ToString($h.ComputeHash($File))).Replace(\'-\',\'\').ToLowerInvariant()}finally{$h.Dispose()}}\nAdd-Type -TypeDefinition @\'\nusing System;using System.ComponentModel;using System.Runtime.InteropServices;using Microsoft.Win32.SafeHandles;\npublic static class VpnArtifactHandle {\n [StructLayout(LayoutKind.Sequential)]struct Info { public uint Attributes,CreationLow,CreationHigh,AccessLow,AccessHigh,WriteLow,WriteHigh,Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow; }\n [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();\n [DllImport("kernel32.dll",SetLastError=true)]static extern bool DuplicateHandle(IntPtr process,SafeFileHandle source,IntPtr target,out SafeFileHandle result,uint access,bool inherit,uint options);\n [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(SafeFileHandle source,out Info result);\n [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern SafeFileHandle CreateFile(string path,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);\n\n public static SafeFileHandle HoldDirectory(string path){SafeFileHandle h=CreateFile(path,0x20080,3,IntPtr.Zero,3,0x2200000,IntPtr.Zero);if(h.IsInvalid){int error=Marshal.GetLastWin32Error();h.Dispose();throw new Win32Exception(error);}return h;}\n public static string DirectoryIdentity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if((r.Attributes&0x10)==0||(r.Attributes&0x400)!=0||r.Links<1)throw new InvalidOperationException("artifact-root-kind");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}\n public static void DirectoryUnchanged(SafeFileHandle source,string path,string identity){if(DirectoryIdentity(source)!=identity)throw new InvalidOperationException("artifact-held-root-changed");using(SafeFileHandle named=HoldDirectory(path)){if(DirectoryIdentity(named)!=identity)throw new InvalidOperationException("artifact-named-root-changed");}}\n public static SafeFileHandle ReadOnly(SafeFileHandle source){SafeFileHandle result;if(!DuplicateHandle(GetCurrentProcess(),source,GetCurrentProcess(),out result,0x120089,false,0))throw new Win32Exception(Marshal.GetLastWin32Error());return result;}\n public static string Identity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if(r.Links!=1)throw new InvalidOperationException("program-link-count");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}\n public static int Refusal(string path,uint access){using(SafeFileHandle h=CreateFile(path,access,7,IntPtr.Zero,3,128,IntPtr.Zero)){return h.IsInvalid?Marshal.GetLastWin32Error():0;}}\n}\n\'@ -ReferencedAssemblies @(\'System\',\'System.Core\')\n\n$expectedIdentity=\'@@IDENTITY@@\';$expectedBytes=@@BYTES@@;$expectedHash=\'@@SHA@@\';$openExpected=@@OPEN_EXPECTED@@\nif($expectedIdentity -cnotmatch \'^[0-9a-f]{8}:[0-9a-f]{16}$\' -or $expectedHash -cnotmatch \'^[0-9a-f]{64}$\' -or $expectedBytes -lt 0){throw \'ARTIFACT_EXPECTED_FIELDS\'}\n$writeRefusal=$null;$deleteRefusal=$null;if($openExpected){$writeRefusal=[VpnArtifactHandle]::Refusal($path,0x40000000);$deleteRefusal=[VpnArtifactHandle]::Refusal($path,0x10000);if($writeRefusal -ne 32 -or $deleteRefusal -ne 32){throw \'ARTIFACT_ORIGINAL_QGA_SHARING\'}}\n$rootHeld=[VpnArtifactHandle]::HoldDirectory($root)\ntry{\n$rootIdentity=[VpnArtifactHandle]::DirectoryIdentity($rootHeld);$rootAcl=Read-ArtifactAcl $root $true;$fileAcl=Read-ArtifactAcl $path $false\n# ReadWrite sharing accommodates the original QGA writer; no Delete sharing.\n$f=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)\ntry{$id=[VpnArtifactHandle]::Identity($f.SafeFileHandle);if($id -cne $expectedIdentity -or $f.Length -ne $expectedBytes){throw \'ARTIFACT_IDENTITY_OR_SIZE\'};$hash=Held-ArtifactSha $f;if($hash -cne $expectedHash -or [VpnArtifactHandle]::Identity($f.SafeFileHandle) -cne $id -or $f.Length -ne $expectedBytes){throw \'ARTIFACT_PHYSICAL_HASH\'};foreach($name in @(\'C:\\ProgramData\',\'C:\\\')){if(((Get-Item -LiteralPath $name -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw \'ARTIFACT_FINAL_PARENT_REPARSE\'}};$rootClosing=Read-ArtifactAcl $root $true;$fileClosing=Read-ArtifactAcl $path $false;if($rootClosing.sddl -cne $rootAcl.sddl -or $fileClosing.sddl -cne $fileAcl.sddl){throw \'ARTIFACT_ACL_CLOSING\'};$named=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite);try{if([VpnArtifactHandle]::Identity($named.SafeFileHandle) -cne $id){throw \'ARTIFACT_NAMED_IDENTITY_CLOSING\'}}finally{$named.Dispose()};[VpnArtifactHandle]::DirectoryUnchanged($rootHeld,$root,$rootIdentity);$r=[ordered]@{schemaVersion=1;state=\'verified\';transferId=$transfer;deploymentId=\'@@DEPLOYMENT@@\';rootPath=$root;filePath=$path;rootIdentity=$rootIdentity;rootIdentityClosing=$true;fileIdentity=$id;bytes=$f.Length;sha256=$hash;rootAcl=$rootAcl;fileAcl=$fileAcl;heldPhysicalRead=$true;identityClosing=$true;aclClosing=$true;namedIdentityClosing=$true;sharingProofRequired=$openExpected;writeOpenError=$writeRefusal;deleteOpenError=$deleteRefusal;parentChainNoReparse=$true;principalSid=\'S-1-5-18\';productOperation=$false};[Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))}finally{$f.Dispose()}\n}finally{$rootHeld.Dispose()}\n'
+
+_HELD_BODY = '$path=\'@@PATH@@\';$parent=\'@@WORKSPACE@@\';$length=@@LENGTH@@;$expected=\'@@SHA@@\';$phase=\'@@PHASE@@\'\nif([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -cne \'S-1-5-18\'){throw \'TOKEN_STAGE_SYSTEM\'}\n$item=Get-Item -LiteralPath $parent -Force;for($part=$item;$null -ne $part;$part=$part.Parent){if(($part.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw \'TOKEN_STAGE_PARENT_REPARSE\'}}\nif((Get-Acl -LiteralPath $parent).Sddl -cne \'@@PARENT_SDDL@@\'){throw \'TOKEN_STAGE_PARENT_ACL\'}\nif(Test-Path -LiteralPath $path){throw \'TOKEN_STAGE_ALREADY_EXISTS\'}\nAdd-Type -TypeDefinition @\'\nusing System;using System.ComponentModel;using System.Runtime.InteropServices;using Microsoft.Win32.SafeHandles;\npublic static class VpnHeldProgram {\n [StructLayout(LayoutKind.Sequential)]struct Info { public uint Attributes,CreationLow,CreationHigh,AccessLow,AccessHigh,WriteLow,WriteHigh,Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow; }\n [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();\n [DllImport("kernel32.dll",SetLastError=true)]static extern bool DuplicateHandle(IntPtr process,SafeFileHandle source,IntPtr target,out SafeFileHandle result,uint access,bool inherit,uint options);\n [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(SafeFileHandle source,out Info result);\n [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern SafeFileHandle CreateFile(string path,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);\n public static SafeFileHandle ReadOnly(SafeFileHandle source){SafeFileHandle result;if(!DuplicateHandle(GetCurrentProcess(),source,GetCurrentProcess(),out result,0x120089,false,0))throw new Win32Exception(Marshal.GetLastWin32Error());return result;}\n public static string Identity(SafeFileHandle source){Info r;if(!GetFileInformationByHandle(source,out r))throw new Win32Exception(Marshal.GetLastWin32Error());if(r.Links!=1)throw new InvalidOperationException("program-link-count");return r.Volume.ToString("x8")+":"+r.IndexHigh.ToString("x8")+r.IndexLow.ToString("x8");}\n public static int Refusal(string path,uint access){using(SafeFileHandle h=CreateFile(path,access,7,IntPtr.Zero,3,128,IntPtr.Zero)){return h.IsInvalid?Marshal.GetLastWin32Error():0;}}\n}\n\'@ -ReferencedAssemblies @(\'System\',\'System.Core\')\n$inputStream=[Console]::OpenStandardInput();$buffer=New-Object byte[] 6144;$writer=$null;$reader=$null;$duplicate=$null\ntry{\n $writer=[IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read);$total=0\n while($total -lt $length){$count=$inputStream.Read($buffer,0,[Math]::Min($buffer.Length,$length-$total));if($count -le 0){throw \'TOKEN_STAGE_TRUNCATED\'};$writer.Write($buffer,0,$count);$total+=$count};if($inputStream.ReadByte() -ne -1){throw \'TOKEN_STAGE_TRAILING\'};$writer.Flush($true)\n $security=Get-Acl -LiteralPath $path;$beforeOwner=$security.GetOwner([Security.Principal.SecurityIdentifier]).Value;$security.SetOwner([Security.Principal.SecurityIdentifier]::new(\'S-1-5-18\'));[IO.File]::SetAccessControl($path,$security)\n $id=[VpnHeldProgram]::Identity($writer.SafeFileHandle);$duplicate=[VpnHeldProgram]::ReadOnly($writer.SafeFileHandle);$writer.Dispose();$writer=$null\n $reader=[IO.FileStream]::new($duplicate,[IO.FileAccess]::Read,6144,$false);$duplicate=$null\n if(-not $reader.CanRead -or $reader.CanWrite -or $reader.Length -ne $length -or [VpnHeldProgram]::Identity($reader.SafeFileHandle) -cne $id){throw \'TOKEN_SOURCE_CAPABILITY\'}\n $reader.Position=0;$bytes=New-Object byte[] $length;$offset=0;while($offset -lt $length){$count=$reader.Read($bytes,$offset,$length-$offset);if($count -le 0){throw \'TOKEN_SOURCE_READ\'};$offset+=$count};$h=[Security.Cryptography.SHA256]::Create();try{$actual=([BitConverter]::ToString($h.ComputeHash($bytes))).Replace(\'-\',\'\').ToLowerInvariant()}finally{$h.Dispose()};if($actual -cne $expected){throw \'TOKEN_SOURCE_HASH\'}\n $writeRefusal=[VpnHeldProgram]::Refusal($path,0x40000000);$deleteRefusal=[VpnHeldProgram]::Refusal($path,0x10000);if($writeRefusal -ne 32 -or $deleteRefusal -ne 32){throw \'TOKEN_SOURCE_SHARING_REFUSAL\'}\n $acl=Get-Acl -LiteralPath $path;$owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value;$rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));if($owner -cne \'S-1-5-18\' -or $rules.Count -ne 3){throw \'TOKEN_SOURCE_ACL\'}\n $seen=@{};foreach($rule in $rules){$sid=$rule.IdentityReference.Value;if($seen.ContainsKey($sid) -or $rule.AccessControlType -ne \'Allow\' -or -not $rule.IsInherited){throw \'TOKEN_SOURCE_RULE\'};$seen[$sid]=$true;$rights=if($sid -ceq \'S-1-5-18\' -or $sid -ceq \'S-1-5-32-544\'){0x1f01ff}elseif($sid -ceq \'@@SID@@\'){0x1200a9}else{throw \'TOKEN_SOURCE_RULE_SID\'};if([int]$rule.FileSystemRights -ne $rights){throw \'TOKEN_SOURCE_RULE_RIGHTS\'}}\n if($bytes[0] -ne 239 -or $bytes[1] -ne 187 -or $bytes[2] -ne 191){throw \'TOKEN_SOURCE_BOM\'};$text=[Text.UTF8Encoding]::new($false,$true).GetString($bytes,3,$bytes.Length-3);$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseInput($text,[ref]$tokens,[ref]$errors);if(@($errors).Count -ne 0){throw \'TOKEN_SOURCE_PARSE\'};$program=[scriptblock]::Create($text)\n $receipt=[ordered]@{phaseId=$phase;path=$path;identity=$id;bytes=$length;sha256=$actual;ownerSid=$owner;sddl=$acl.Sddl;createNew=$true;heldReadOnly=$true;writeOpenError=$writeRefusal;deleteOpenError=$deleteRefusal;parserErrors=@($errors).Count;bootstrapOpening=$bootstrapOpening;launch=\'held-saved-file-scriptblock\';originalOwnerSid=$beforeOwner;explicitOwnerGreen=($owner -ceq \'S-1-5-18\');productOperation=$false};$raw=[Text.UTF8Encoding]::new($false).GetBytes(($receipt|ConvertTo-Json -Depth 8 -Compress));$r=[IO.File]::Open((Join-Path $parent (\'held-source-\'+$phase+\'.json\')),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read);try{$r.Write($raw,0,$raw.Length);$r.Flush($true)}finally{$r.Dispose()}\n $programResult= & $program;if($programResult -isnot [Management.Automation.PSCustomObject]){throw \'ARTIFACT_PROTOCOL_RESULT_TYPE\'}\n if([VpnHeldProgram]::Identity($reader.SafeFileHandle) -cne $id){throw \'TOKEN_SOURCE_FINAL_IDENTITY\'};$reader.Position=0;$h=[Security.Cryptography.SHA256]::Create();try{$closing=([BitConverter]::ToString($h.ComputeHash($reader))).Replace(\'-\',\'\').ToLowerInvariant()}finally{$h.Dispose()};if($closing -cne $expected){throw \'TOKEN_SOURCE_FINAL_HASH\'}\n\n__OWNED_CLOSING__\n\n}finally{foreach($owned in @($writer,$reader,$duplicate)){if($null -ne $owned){$owned.Dispose()}}}\n'

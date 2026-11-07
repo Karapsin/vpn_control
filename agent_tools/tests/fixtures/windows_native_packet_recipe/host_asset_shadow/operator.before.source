@@ -1,0 +1,99 @@
+"""Execute one bounded host-only two-asset hash request once through normal DIRECT.
+
+Preparation of this caller is not authority to run it before the coordinator's
+fresh selected-channel/source window. No retry, signal, timeout reset or cleanup.
+"""
+from pathlib import Path
+import hashlib,json,os,re,stat,sys,time
+ROOT=Path('/Users/karapsin_de/projects/vpn_control');sys.path.insert(0,str(ROOT))
+from agent_tools import source_module_loader
+BASE=Path(__file__).resolve().parent
+if len(sys.argv)!=3 or re.fullmatch('[0-9a-f]{64}',sys.argv[2])is None:raise ValueError('reviewed_manifest_sha256_required')
+label,manifest_name=sys.argv[1].split('@',1)
+if label!='direct-baseline-two-host-revalidation' or not Path(manifest_name).is_absolute():raise ValueError('explicit_absolute_readonly_manifest_required')
+manifest_path=Path(manifest_name)
+manifest=None;pin=None
+out=manifest_path.parent/(label+'-original-operator');out.mkdir(mode=0o700)
+held=[]
+def generation(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def hold(path,expected,max_bytes=8*1024*1024):
+ path=Path(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);held.append((fd,path,generation(os.fstat(fd))));row=held[-1][2]
+ if not stat.S_ISREG(row[2])or row[3]!=os.getuid()or row[5]!=1:raise ValueError('operator_source_identity')
+ raw=b''
+ while True:
+  chunk=os.read(fd,65536)
+  if not chunk:break
+  raw+=chunk
+  if len(raw)>max_bytes:raise ValueError('operator_source_bound')
+ if hashlib.sha256(raw).hexdigest()!=expected:raise ValueError('operator_source_hash')
+ guard();return raw
+def guard():
+ for fd,path,row in held:
+  if generation(os.fstat(fd))!=row or generation(os.stat(path,follow_symlinks=False))!=row:raise ValueError('operator_source_changed')
+def save(name,value):
+ raw=value if type(value)is bytes else(json.dumps(value,sort_keys=True,ensure_ascii=False)+'\n').encode();fd=os.open(out/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ try:
+  at=0
+  while at<len(raw):
+   count=os.write(fd,raw[at:])
+   if count<=0:raise OSError('operator_receipt_write')
+   at+=count
+  os.fsync(fd)
+ finally:os.close(fd)
+started=False;terminal=None
+try:
+ manifest=json.loads(hold(manifest_path,sys.argv[2]));hold(Path(__file__).resolve(),manifest['operatorSourceSha256']);pin=next(p for p in manifest['requests']if p['label']==label)
+ request=json.loads(hold(pin['requestPath'],pin['requestSha256']));source=hold(pin['sourcePath'],pin['sourceSha256'])
+ for source_pin in pin.get('sourcePins',[]):hold(source_pin['path'],source_pin['sha256'])
+ if request['program']['source'].encode()!=source or request['operationId']!=pin['operationId']:raise ValueError('operator_request_source_join')
+ save('intent.private.json',{'request':request,'requestPin':pin,'collectorId':pin['collectorId'],'sourceHold':[(str(path),list(row))for fd,path,row in held],'sourceClosing':False,'newOperationStartOnce':True,'productOperation':False})
+ with source_module_loader.request_scope(ROOT/'agent_tools'):
+  owner=source_module_loader.adapter(ROOT/'agent_tools','ssh_program_execution');guard()
+  admission=owner.admit_start(ROOT,'archlinux',request);save('admission.json',admission)
+  if admission!={'ok':True}:raise ValueError('original_admission_refused')
+  save('start-call-intent.json',{'operationId':request['operationId'],'sourceSha256':pin['sourceSha256'],'noReplay':True})
+  started=True;initial=owner.start(ROOT,'archlinux',request,source_context=owner._session);save('initial.json',initial)
+  identity={'operationId':request['operationId']};deadline=time.monotonic()+180;sequence=0
+  while time.monotonic()<deadline:
+   guard();value=owner.collect(ROOT,'archlinux',identity);sequence+=1;save('observation-'+str(sequence).zfill(5)+'.json',value)
+   if value.get('state')in ('unknown','refused'):raise ValueError('original_operation_'+value['state'])
+   if value.get('state')=='terminal':terminal=value;break
+   time.sleep(.3)
+  if terminal is None:raise TimeoutError('original_operation_observation_pending_no_replay')
+  if terminal.get('exitCode')!=0 or terminal.get('capture',{}).get('complete')is not True or terminal['capture'].get('eof')!={'stdout':True,'stderr':True}:raise ValueError('original_outer_terminal_not_success')
+  directory=ROOT/'.rag_index/ssh-program-execution'/request['operationId'];stdout=hold(directory/'stdout.private',terminal['streams']['stdout']['retainedSha256'],131072);stderr=hold(directory/'stderr.private',terminal['streams']['stderr']['retainedSha256'],65536);save('stdout.private',stdout);save('stderr.private',stderr)
+  for name,raw in [('stdout',stdout),('stderr',stderr)]:
+   stream=terminal['streams'][name]
+   if hashlib.sha256(raw).hexdigest()!=stream['retainedSha256']or hashlib.sha256(raw).hexdigest()!=stream['receivedSha256']or len(raw)!=stream['bytes']or len(raw)!=stream['receivedBytes']:raise ValueError('original_raw_stream_join')
+  if stderr:raise ValueError('original_outer_stderr_nonempty')
+  result=json.loads(stdout.decode('utf-8-sig'))
+  if result.get('state')!='qualified' or result.get('collectorId')!=pin['collectorId'] or result.get('fileClosing')is not True:raise ValueError('original_collector_result_not_qualified')
+  if result.get('scope')!='exact-two-baseline-host-assets' or result.get('qgaConnectOrRead')is not False or result.get('processInspectionOrSignal')is not False or result.get('guestProgramSubmitted')is not False:raise ValueError('original_collector_scope')
+  expected=manifest['expectedFiles']
+  if len(result.get('files',[]))!=2:raise ValueError('original_collector_file_count')
+  if result.get('root')!=manifest['expectedRoot'] or result.get('binaryContentsReturned')is not False or result.get('ancestorClosing')is not True or result.get('bothAssetFileDescriptorsHeldAcrossCollection')is not True:raise ValueError('original_collector_host_asset_scope')
+  root_structure=result.get('sourceRootStructure')
+  if type(root_structure)is not list or len(root_structure)!=5 or any(type(v)is not int for v in root_structure):raise ValueError('original_root_structure')
+  for item,wanted in zip(result['files'],expected):
+   if set(item)!={'path','bytes','expectedSha256','openingGeneration','sha256','closingGeneration','heldAndNamedClosing'}:raise ValueError('original_collector_file_schema')
+   if item['path']!=wanted['path'] or item['bytes']!=wanted['bytes'] or item['expectedSha256']!=wanted['sha256'] or item['sha256']!=wanted['sha256'] or item['heldAndNamedClosing']is not True or item['openingGeneration']!=item['closingGeneration']:raise ValueError('original_collector_file_join')
+   generation=item['openingGeneration']
+   if type(generation)is not list or len(generation)!=9 or any(type(v)is not int for v in generation) or generation[6]!=wanted['bytes']:raise ValueError('original_file_generation')
+  ancestors=result.get('ancestors')
+  if type(ancestors)is not list or [a.get('path')for a in ancestors]!=['/','/home','/home/kardinal',manifest['expectedRoot']]:raise ValueError('original_ancestor_paths')
+  for item in ancestors:
+   if set(item)!={'path','structure','heldAndNamedClosing'} or type(item['structure'])is not list or len(item['structure'])!=5 or any(type(v)is not int for v in item['structure']) or item['heldAndNamedClosing']is not True:raise ValueError('original_ancestor_closing')
+  if ancestors[-1]['structure']!=root_structure or result.get('actorOpening')!=result.get('actorClosing'):raise ValueError('original_actor_root_closing')
+  for field,expected in pin.get('resultJoins',{}).items():
+   if result.get(field)!=expected:raise ValueError('original_inner_result_extra_source_join')
+  terminal_raw=(directory/'terminal.json').read_bytes();hold(directory/'terminal.json',hashlib.sha256(terminal_raw).hexdigest(),131072)
+  if json.loads(terminal_raw)!=terminal:raise ValueError('original_terminal_file_join')
+  closed_raw=(directory/'owner-closed.json').read_bytes();hold(directory/'owner-closed.json',hashlib.sha256(closed_raw).hexdigest(),131072);closed=json.loads(closed_raw);save('owner-closed.json',closed)
+  if closed!={'operationId':request['operationId'],'terminalSha256':hashlib.sha256(terminal_raw).hexdigest(),'sourceClosing':True}:raise ValueError('original_owner_source_not_closed')
+  guard();save('qualified.json',{'state':'qualified','label':label,'operationId':request['operationId'],'sourceSha256':pin['sourceSha256'],'collectorId':pin['collectorId'],'terminal':terminal,'innerResult':result,'ownerClosing':closed,'sourceClosing':True,'productOperation':False})
+  print(json.dumps({'state':'qualified','label':label,'operationId':request['operationId'],'exitCode':0,'sourceClosing':True},sort_keys=True))
+except BaseException as error:
+ save('original-failure.json',{'state':'unknown'if started else'refused-before-start','errorClass':type(error).__name__,'error':str(error),'operationId':None if pin is None else pin['operationId'],'startedOnce':started,'terminalObserved':terminal is not None,'replayAllowed':False,'automaticCleanup':False})
+ raise
+finally:
+ for fd,path,row in reversed(held):os.close(fd)

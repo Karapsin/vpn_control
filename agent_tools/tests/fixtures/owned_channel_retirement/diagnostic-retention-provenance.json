@@ -1,0 +1,93 @@
+{
+  "canonicalCaptureDependency": {
+    "maintenance": "Current v4 reader explicitly binds the physical current helper. Historical before/v2/v3 retain their authentic whole49 helper; changed current helpers require reviewed finite renewal.",
+    "path": "agent_tools/ssh_owned_channel_retirement.py",
+    "sha256": "25837b16e30dfc2df788281e2513e6817557848fb730d3c18bb29ecbe1f93cc4"
+  },
+  "currentReaderDerivation": {
+    "currentCaptureSha256": "25837b16e30dfc2df788281e2513e6817557848fb730d3c18bb29ecbe1f93cc4",
+    "oldCaptureSha256": "49a9fa2858217008e876792414e96cb9788a5aba1c4cd8b668f766de61a47b24",
+    "provenanceBeforeSha256": "45bf62e9d6b689519646f3159b8e4349dc15fcbcd3d982e720188a548ed0d0ab",
+    "renderedBytes": 8987,
+    "renderedSha256": "e8f7af97f04f92e971a06840a4d8ba4a1bbaef07fa6717f450267baf5982c80b",
+    "replacementCount": 2,
+    "savedEntry": "diagnostic-entry.py",
+    "scope": "Whole authentic v4 source; exactly two SHA-token replacements. Saved create-only; complete saved held bytes compile with actual saved __file__, descriptor/name/hash/full-generation closing. Historical entry sources unchanged.",
+    "template": "diagnostic-retention-v4.source",
+    "templateSha256": "7853c19077f845bcadd1096c0888c37c1d196ce9d1981d4b7b7eaedd7203202e",
+    "version": "v4"
+  },
+  "entrySources": {
+    "diagnostic-retention-before.source": {
+      "bytes": 6116,
+      "sha256": "56b9ac4f46d3cb8e636c2151005502da79174d405c2b4599b7cebf9770d0f29d"
+    },
+    "diagnostic-retention-v2.source": {
+      "bytes": 8552,
+      "sha256": "39b839d776bb988abb11c5c10fd78388e400b6b2cf8b4f6fb4d2e6c568c14a53"
+    },
+    "diagnostic-retention-v3.source": {
+      "bytes": 8812,
+      "sha256": "6f749ecdb21b4337ef361dd4275ad5094b216d44baf0a200d0699e7a35c0e0bd"
+    },
+    "diagnostic-retention-v4.source": {
+      "bytes": 8987,
+      "sha256": "7853c19077f845bcadd1096c0888c37c1d196ce9d1981d4b7b7eaedd7203202e"
+    }
+  },
+  "historicalCaptureDependency": {
+    "bytes": 79329,
+    "fixture": "267-helper.before.source",
+    "sha256": "49a9fa2858217008e876792414e96cb9788a5aba1c4cd8b668f766de61a47b24",
+    "versions": [
+      "before",
+      "v2",
+      "v3"
+    ]
+  },
+  "nativeLimit": "Actual readonly diagnostic2 build succeeded without executing argv; originalc79 cause and diagnostic1 lost outcome remain unresolved.",
+  "originQualifierSha256": "f93ec3e3c64dbdf4862ed2e9a3aa57e5da28674e59aef2f9ca3dac1800ea38af",
+  "privateCausalHandoffSha256": "4ba329a1ace321624a528eb1a008dfcf64531aeb736d6e453725efbe998eb2c1",
+  "schemaVersion": 1,
+  "scope": "Complete immutable entry bytes with own physical source/config/request/trust layout, explicit inert read-only admission peer and actual canonical writer/Guard/Held/Directory/Snapshot. No original runtime/user credentials or argv execution.",
+  "sourceFiles": [
+    "agent_tools/affected_agent_test_dependencies.json",
+    "agent_tools/android_original_host_status.py",
+    "agent_tools/android_qualified_cli_observation.py",
+    "agent_tools/check_output_retention.py",
+    "agent_tools/durable_remote_job.py",
+    "agent_tools/mcp_server.py",
+    "agent_tools/native_review_source_closure.py",
+    "agent_tools/private_config_custody.py",
+    "agent_tools/private_inventory_lock.py",
+    "agent_tools/readiness.py",
+    "agent_tools/readiness_nested_channel.py",
+    "agent_tools/readiness_nested_membership.py",
+    "agent_tools/readiness_ssh_master.py",
+    "agent_tools/readiness_transport.py",
+    "agent_tools/source_module_loader.py",
+    "agent_tools/ssh_automatic_program.py",
+    "agent_tools/ssh_channel_inventory_diagnostics.py",
+    "agent_tools/ssh_channel_keeper.py",
+    "agent_tools/ssh_channel_keeper_entry.py",
+    "agent_tools/ssh_channel_selection.py",
+    "agent_tools/ssh_connection_recovery.py",
+    "agent_tools/ssh_connection_session.py",
+    "agent_tools/ssh_direct_inventory.py",
+    "agent_tools/ssh_direct_nested_channel.py",
+    "agent_tools/ssh_fresh_nested_channel.py",
+    "agent_tools/ssh_nested_socket_noninteractive_observation.py",
+    "agent_tools/ssh_nested_socket_owned_home_observation.py",
+    "agent_tools/ssh_nested_socket_retirement.py",
+    "agent_tools/ssh_nested_socket_route_diagnostic.py",
+    "agent_tools/ssh_program_execution.py",
+    "agent_tools/ssh_program_execution_remote.py",
+    "agent_tools/ssh_recovery_adoption.py",
+    "agent_tools/ssh_source_file_gateway.source",
+    "agent_tools/ssh_source_file_stage.py",
+    "agent_tools/ssh_source_file_stage_direct.py",
+    "agent_tools/ssh_transport.py",
+    "agent_tools/windows_artifact_transfer.py",
+    "agent_tools/windows_qga_transfer.py"
+  ]
+}

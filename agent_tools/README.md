@@ -68,8 +68,11 @@ The managed agent stage runs the SSH-close gate alone first, then the two halves
 of the hosted CI partition without it (each half is the hosted shards of one
 index parity), each as its own command with the 50-minute bound; a failed
 gate stops what follows. A timed-out command receives SIGTERM, so the agent test
-runner stops its worker sessions before the next command starts; SIGKILL follows
-only after a 30-second grace, and only the original timeout is reported.
+runner stops its worker sessions before the next command starts. Private POSIX
+runner commands go through `managed_agent_check`: one SIGTERM, a 10-second cleanup
+window, then observation to end of output with no SIGKILL, and a real return code
+with `managedAgent` metadata. Every other check gets SIGKILL only after a 30-second
+grace and reports only the original timeout.
 `run_checks(level="failed")` reruns a timed-out, unparsed or import-failed agent
 command once without removed modules: the gate alone if recorded, then the rest
 by index parity in the sorted union of the current selection and those modules.

@@ -1,0 +1,273 @@
+"""Local deterministic guard/byte tests only. No native APIs or network are used."""
+from __future__ import annotations
+
+import copy
+import ctypes
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
+import unittest
+
+
+ROOT = Path(__file__).resolve().parent
+
+
+def load(name):
+    spec = importlib.util.spec_from_file_location("_local_lifecycle_" + name, ROOT / (name + ".py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+cases, traffic = load("lifecycle_cases"), load("traffic_worker")
+CONFIG = {"schemaVersion": 1, "mixedPort": 23456, "expectedBodyHex": b"owned-proof".hex(),
+          "sampleCount": 4, "intervalSeconds": 0.02, "ioTimeoutSeconds": 1}
+
+
+class BytePeer:
+    def __init__(self, payload):
+        self.incoming = bytearray(payload)
+        self.sent = bytearray()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
+
+    def settimeout(self, value):
+        self.timeout = value
+
+    def sendall(self, value):
+        self.sent.extend(value)
+
+    def recv(self, count):
+        # Fragment every read, exercising exact-frame accumulation.
+        result = bytes(self.incoming[:min(count, 2)])
+        del self.incoming[:len(result)]
+        return result
+
+
+class TrafficTests(unittest.TestCase):
+    def test_real_socks_and_http_byte_parser_with_fragmented_peer(self):
+        body = bytes.fromhex(CONFIG["expectedBodyHex"])
+        peer = BytePeer(b"\x05\x00\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00"
+                        + b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n" + body)
+        calls = []
+        def connect(address, timeout):
+            calls.append((address, timeout))
+            return peer
+        result = traffic.probe(CONFIG, connect)
+        self.assertEqual(calls, [(("127.0.0.1", 23456), 1)])
+        self.assertEqual(result["responseBytes"], 11)
+        self.assertEqual(peer.sent[:13], b"\x05\x01\x00\x05\x01\x00\x01\xc6\x12\x00\x01\x00\x50")
+        self.assertIn(b"GET /probe HTTP/1.1\r\nHost: 198.18.0.1\r\n", peer.sent)
+
+    def test_wrong_response_and_malformed_http_refuse(self):
+        for raw in (b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\nxx",
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\ncontent-length: 1\r\n\r\nx",
+                    b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx",
+                    b"HTTP/1.1 503 Nope\r\nContent-Length: 1\r\n\r\nx"):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                traffic.parse_http(raw)
+        peer = BytePeer(b"\x05\x00\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\nx")
+        with self.assertRaisesRegex(ValueError, "fixture-response-bytes"):
+            traffic.probe(CONFIG, lambda *_args, **_options: peer)
+
+    def test_finite_input_refuses_unbound_or_unbounded(self):
+        for key, value in (("mixedPort", True), ("sampleCount", 1801),
+                           ("intervalSeconds", float("nan")), ("ioTimeoutSeconds", float("inf")),
+                           ("expectedBodyHex", "")):
+            candidate = {**CONFIG, key: value}
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                traffic.validate(candidate)
+
+    def test_failed_middle_sample_is_not_discarded(self):
+        rows, count = [], 0
+        def sample(value):
+            nonlocal count
+            count += 1
+            if count == 2:
+                raise OSError("owned-peer-unavailable")
+            return {"responseBytes": 11, "responseSha256": "a" * 64}
+        clock = iter(range(100, 200))
+        code = traffic.collect(CONFIG, rows.append, now=lambda: next(clock),
+                               monotonic=lambda: next(clock), sleep=lambda _: None, sample=sample)
+        self.assertEqual(code, 1)
+        self.assertEqual([row["ordinal"] for row in rows[:-1]], [0, 1, 2, 3])
+        self.assertFalse(rows[1]["succeeded"])
+        self.assertFalse(rows[-1]["allSamplesSucceeded"])
+        self.assertEqual(rows[-1]["sampleCount"], 4)
+
+    def test_measured_action_overlap_and_gaps_and_omissions(self):
+        rows = [{"kind": "sample", "ordinal": n, "startedAt": float(n),
+                 "finishedAt": n + 0.5, "succeeded": True, "gapBeforeSeconds": 0.5}
+                for n in range(4)]
+        rows.append({"kind": "terminal", "sampleCount": 4, "allSamplesSucceeded": True})
+        encode = lambda values: "".join(json.dumps(row) + "\n" for row in values)
+        action = [{"action": "hide", "startedAt": 1.2, "finishedAt": 1.4}]
+        result = cases.traffic_window(encode(rows), action)
+        self.assertEqual(result["coverage"][0], {"action": "hide", "beforeSamples": 1,
+                         "duringSamples": 1, "afterSamples": 2})
+        self.assertEqual(result["maxGapBeforeSeconds"], 0.5)
+        self.assertFalse(result["continuousBytesOrZeroUnsampledLossProven"])
+        broken = copy.deepcopy(rows)
+        broken[1]["succeeded"] = False
+        with self.assertRaisesRegex(AssertionError, "failed-sample"):
+            cases.traffic_window(encode(broken), action)
+        with self.assertRaisesRegex(AssertionError, "terminal-stream"):
+            cases.traffic_window(encode(rows[:-1]), action)
+        with self.assertRaisesRegex(AssertionError, "cover-native-action"):
+            cases.traffic_window(encode(rows), [{"action": "late", "startedAt": 9, "finishedAt": 10}])
+
+
+class CallbackTests(unittest.TestCase):
+    def test_retained_scheduled_callback_pins_owner_and_never_uses_timeout_to_kill(self):
+        calls, events = [], []
+        class Owner:
+            by_path = {str(Path("/fixture/ca.pem")).casefold(): object()}
+            def child(self, label, argv):
+                calls.append((label, argv))
+                return SimpleNamespace(completed=lambda: subprocess.CompletedProcess(argv, 0, "{}", ""))
+            def event(self, label, value):
+                events.append((label, value))
+        run = cases.retained_run(Owner(), "/app/cli.exe", "/os/curl.exe", "/fixture/state", "cid")
+        options = dict(capture_output=True, text=True, timeout=0.01)
+        run(["/app/cli.exe", "--state-dir", "/fixture/state", "--json", "operations", "list"], **options)
+        self.assertEqual(calls[-1][1][-4:], ["--controller-id", "cid", "operations", "list"])
+        self.assertEqual(events[-1][1]["observerTimeoutNoticeOnly"], 0.01)
+        curl = ["/os/curl.exe", "--silent", "--show-error", "--fail", "--max-time", "3",
+                "--noproxy", "", "--proxy", "socks5h://127.0.0.1:23456", "--cacert",
+                "/fixture/ca.pem", "https://localhost:24443/subscription"]
+        run(curl, **options)
+        self.assertEqual(calls[-1][1], curl)
+        before = len(calls)
+        for argv in (["/app/cli.exe", "--state-dir", "/fixture/state", "--json", "off"],
+                     [*curl[:-1], "https://example.test/subscription"],
+                     [*curl[:11], "/foreign/ca.pem", curl[-1]]):
+            with self.assertRaises(AssertionError):
+                run(argv, **options)
+        self.assertEqual(len(calls), before)
+
+    def test_unbound_gui_inputs_refuse_before_owner_or_native_access(self):
+        names = {"schemaVersion", "stateDir", "controllerId", "guiPath", "observerPath",
+            "trafficWorkerPath", "trafficInputPath", "runtimeConfigPath", "ownerActor", "runtimeActor",
+            "installedAdmissionArtifactId", "fixtureAdmissionArtifactId", "sourceArtifactId",
+            "frontendCrashScenario", "fixtureSocksPort", "trayAdmissionArtifactId", "runtimeArtifact"}
+        value = {name: None for name in names}
+        value["schemaVersion"] = 1
+        with self.assertRaisesRegex(AssertionError, "inputs-pending"):
+            cases.gui_continuity(object(), "/owned/state", "cid", value)
+
+
+class ExactEffectTests(unittest.TestCase):
+    def setUp(self):
+        self.events, self.effects = [], []
+        self.actor = {"image": "/app/gui.exe", "sha256": "a" * 64, "creationFileTime": 789,
+                      "token": {"sid": "ordinary-sid", "sessionId": 2, "elevated": 0}}
+        actor = self.actor
+        class Process:
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def describe(self): return actor
+            def wait(self): return 258
+        self.child = SimpleNamespace(label="lifecycle-gui", pid=123, birth="789",
+            argv=("/app/gui.exe", "--state-dir", "/owned/state"),
+            process=SimpleNamespace(pid=123, _handle=456, poll=lambda: None),
+            wait=lambda: {"exitCode": cases.CRASH_EXIT, "eof": {"stdout": True, "stderr": True}})
+        self.owner = SimpleNamespace(children=[self.child],
+            native=SimpleNamespace(birth=lambda _: "789"),
+            by_path={str(Path("/app/gui.exe")).casefold(): SimpleNamespace(record={"sha256": "a" * 64})},
+            request={"context": {"ordinarySid": "ordinary-sid", "ordinarySessionId": 2}},
+            guard=lambda: None, event=lambda kind, value: self.events.append((kind, value)),
+            park=lambda reason: self.fail(reason))
+        def api(_library, name, _result, _arguments):
+            self.assertEqual(name, "TerminateProcess")
+            def terminate(handle, code):
+                self.assertEqual(self.events[-1][0], "lifecycle-frontend-crash-intent")
+                self.effects.append((handle, code))
+                return True
+            return terminate
+        self.native = SimpleNamespace(open_process=lambda *_: Process(), api=api, k=object())
+
+    def test_exact_retained_original_handle_once_and_terminal_eof(self):
+        result = cases.crash_frontend(self.owner, self.child, self.native)
+        self.assertTrue(all(result["eof"].values()))
+        self.assertEqual(self.effects, [(456, cases.CRASH_EXIT)])
+        with self.assertRaisesRegex(AssertionError, "already-attempted"):
+            cases.crash_frontend(self.owner, self.child, self.native)
+        self.assertEqual(len(self.effects), 1)
+
+    def test_wrong_original_handle_birth_or_token_has_zero_effects(self):
+        self.owner.native.birth = lambda _: 790
+        with self.assertRaisesRegex(AssertionError, "original-gui-child-handle"):
+            cases.crash_frontend(self.owner, self.child, self.native)
+        self.assertEqual(self.effects, [])
+        self.owner.native.birth = lambda _: "789"
+        self.actor["token"]["sid"] = "foreign-sid"
+        with self.assertRaisesRegex(AssertionError, "generation-token-image"):
+            cases.crash_frontend(self.owner, self.child, self.native)
+        self.assertEqual(self.effects, [])
+
+    def test_exact_wm_close_once_and_no_detach_claim(self):
+        windows = SimpleNamespace(windows=lambda pid: [{"hwnd": 88, "pid": pid,
+                    "visible": True, "width": 1280, "height": 800}],
+                    close=lambda hwnd, pid: self.effects.append((hwnd, pid)))
+        cases.close_window(self.owner, self.child, 88, self.native, windows)
+        self.assertEqual(self.effects, [(88, 123)])
+        self.assertEqual(self.events[-1][0], "lifecycle-wm-close-intent")
+        with self.assertRaisesRegex(AssertionError, "already-attempted"):
+            cases.close_window(self.owner, self.child, 88, self.native, windows)
+        self.assertEqual(len(self.effects), 1)
+
+
+class LiveConfigTests(unittest.TestCase):
+    def owner(self):
+        calls, closed = [], []
+        identity = {"volumeSerial": 12, "fileIndex": 34, "attributes": 32,
+                    "sizeBytes": 4, "links": 1, "creationFileTime": "56", "lastWriteFileTime": "78"}
+        class Native:
+            changed = False
+            def __init__(self):
+                def create(*arguments):
+                    calls.append(arguments)
+                    return 500 if len(calls) == 1 else 500 + len(calls)
+                self.k = SimpleNamespace(CreateFileW=create,
+                    CloseHandle=lambda handle: closed.append(handle) or True)
+            def identity(self, handle):
+                return {**identity, "fileIndex": 99 if self.changed and handle != 500 else 34}
+            def security(self, handle):
+                return {"ownerSid": "ordinary", "sddl": "owned-private"}
+            def read_blocks(self, handle):
+                yield b"body"
+        owner = SimpleNamespace(native=Native(), by_path={}, request={"context": {"ordinarySid": "ordinary"}})
+        return owner, calls, closed
+
+    def test_live_config_uses_share_read_write_delete_and_closes_on_known_success(self):
+        owner, calls, closed = self.owner()
+        config = cases.LiveConfig(owner, "/owned/state", "/owned/state/runtime-config.json")
+        self.assertEqual(config.initial["sizeBytes"], 4)
+        self.assertEqual(config.snapshot(), config.initial)
+        config.close()
+        self.assertIsNone(config.handle)
+        self.assertTrue(all(arguments[2] == 7 for arguments in calls))
+        self.assertIn(500, closed)
+
+    def test_named_generation_change_refuses_and_retains_original_observer(self):
+        owner, _calls, closed = self.owner()
+        config = cases.LiveConfig(owner, "/owned/state", "/owned/state/runtime-config.json")
+        owner.native.changed = True
+        with self.assertRaisesRegex(AssertionError, "held-named-closing"):
+            config.snapshot()
+        self.assertEqual(config.handle, 500)
+        self.assertIs(owner.lifecycle_config_observations[0], config)
+        self.assertNotIn(500, closed)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

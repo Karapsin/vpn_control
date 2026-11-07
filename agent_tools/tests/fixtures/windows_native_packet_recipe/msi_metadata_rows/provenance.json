@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "scope": "Portable whole Read-Rows cause witness only; complete getter body remains native producer input. Actual Windows COM return ABI and native metadata success remain separate.",
+  "beforeCompleteBodySha256": "4eab4f008f2d23a87196f9893e8b35df96646201d852c6638448ba7523732de8",
+  "currentGetterOutputSha256": "8b912c9c61edbaa39d52004fc467bc4595272f46a4226c1ed33d08add76a4618",
+  "historicalFailure": "Original b37 SYSTEM metadata guest7820 knownexit1/statusconsumed; first foreach index0 NullArray. This routine does not replay or query it.",
+  "originalFailureEvidenceIndexSha256": "3570e68414eeaf88d1c17709e19373bfd1ff7203182b059161d16dd1ed142b7b",
+  "localCausalProofSha256": "5c35c712ce4efce91fde2235f13f9c779188efd991303a3342d5ed40b8176f0f",
+  "declaredPeers": "C# view/record methods return null/zero/integer/string/true-void; exact-name Marshal type accelerator only records release of these owned peers. No COM or native calls.",
+  "caseInventory": "28 cases each whole before/current function: zero/one/multiple/null-field rows x7 Execute/Close result combinations. Same actual first foreach $row[0] positive oracle.",
+  "expected": "before24 natural positive-oracle failures+4 true-void positives, current28 positives; both process outputs captured to EOF.",
+  "files": [
+    {
+      "path": "metadata-body.before.source",
+      "bytes": 7741,
+      "sha256": "4eab4f008f2d23a87196f9893e8b35df96646201d852c6638448ba7523732de8"
+    },
+    {
+      "path": "declared-view-record-release-peers.cs.source",
+      "bytes": 2827,
+      "sha256": "f5c3e461e2a5ded53330abc5f1085bbd1480b6746c89782edd31fc6a77c81e31"
+    },
+    {
+      "path": "rows-oracle.ps1.source",
+      "bytes": 3319,
+      "sha256": "df6a131b3026ccde92c4fb2e9454304eec2fde16b963fde0834ea6f000242f42"
+    }
+  ]
+}

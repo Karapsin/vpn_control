@@ -1,0 +1,307 @@
+{
+  "authority": "Routine stages live canonical source bytes read from their proper current repository owners. Captured canonical snapshots are historical inventory only, never routine authority. Private historical sources are whole pinned fixtures. Renderer consumes authenticated operator.before.source with explicit finite replacements only.",
+  "finalOperatorPending": false,
+  "fixtureStorage": "Flattened private input source locations only; original stagePath topology remains modeled-world data and is preserved exactly.",
+  "kind": "private-single-authentic-UAC-terminal-routing-oracle-inputs",
+  "liveCanonicalSourcePaths": [
+    "agent_tools/windows_vm_instance.py",
+    "agent_tools/windows_vm_guest.py",
+    "agent_tools/windows_visual_fixture.py",
+    "scripts/integration/windows_prompt_observation.py",
+    "scripts/capture_visual_windows_qemu.py",
+    "agent_tools/windows_qga_transfer.py",
+    "agent_tools/windows_vm_unattend.py",
+    "agent_tools/ssh_program_mcp_client.py",
+    "agent_tools/mcp_server.py",
+    "agent_tools/ssh_program_execution_remote.py",
+    "agent_tools/tests/test_windows_vm_guest.py",
+    "agent_tools/tests/__init__.py",
+    "agent_tools/tests/fixtures/windows_powershell_environment.py"
+  ],
+  "liveRepositoryDependencies": [
+    "agent_tools.ssh_program_execution_remote.validate",
+    "agent_tools.tests.test_windows_vm_guest.GuestQualificationTests.setUp (declared socket IO peer; whole original fixture setup)"
+  ],
+  "scope": "Whole unchanged saved qualifier, imports, source objects, one DIRECT positive oracle only. Owned physical files and declared inert IO peers; no remote or native Windows actions.",
+  "sourceRoot": "Owned temporary replica of finite original relative paths; no reads from original runtime tree during causal execution.",
+  "sources": [
+    {
+      "bytes": 9707,
+      "fixture": "inputs/private/qualify_fresh_binding.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/qualify_fresh_binding.py",
+      "sha256": "9b91f8916d37e001c0ffc967507ecd08790b4280e6a514f52cf3decbace34cdb",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/qualify_fresh_binding.py"
+    },
+    {
+      "bytes": 16099,
+      "fixture": "inputs/private/qualify_inert.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/qualify_inert.py",
+      "sha256": "5c04ebdc3e603323de75751d729399da64259cc2499b966a51c1dcc4c4818473",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/qualify_inert.py"
+    },
+    {
+      "bytes": 12228,
+      "fixture": "inputs/private/uac_program_template.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/uac_program_template.py",
+      "sha256": "48ef16a497b024bb517405361d48f9a671463610aa0e2091b40705697e7c6808",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/uac_program_template.py"
+    },
+    {
+      "bytes": 20098,
+      "fixture": "inputs/private/uac_owner_runtime.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/uac_owner_runtime.py",
+      "sha256": "6b0c796569911b97933e405be2148f993aaec7a3cc5687b6989e520460cb0630",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/uac_owner_runtime.py"
+    },
+    {
+      "bytes": 6710,
+      "fixture": "inputs/private/fresh_visual_qualification.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/fresh_visual_qualification.py",
+      "sha256": "7d72c116db9e0efe820e19dad4fe58a057ab59240ca0c24c2a620adbdca16791",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/fresh_visual_qualification.py"
+    },
+    {
+      "bytes": 19318,
+      "fixture": "inputs/private/qualify_outer_entry.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/qualify_outer_entry.py",
+      "sha256": "ec500429b601e5485f19c4e3eed8e31e237a24117e0036546654d4bd4a060c8e",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/qualify_outer_entry.py"
+    },
+    {
+      "bytes": 2792,
+      "fixture": "inputs/private/inert_control_peer.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/inert_control_peer.py",
+      "sha256": "49163959a12520ec5eded04ee4b7bd11a8eb4fab2ee21adf51e9aee7f46dbad1",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/inert_control_peer.py"
+    },
+    {
+      "bytes": 14049,
+      "fixture": "inputs/private/pending_prefix.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending_prefix.py",
+      "sha256": "b1092da71d6688aa4cb90ed910a62ed3dad1572888db30f357fb4f373f46a279",
+      "stagePath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending_prefix.py"
+    },
+    {
+      "bytes": 32864,
+      "fixture": "inputs/agent_tools/windows_vm_instance.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/windows_vm_instance.py",
+      "sha256": "655ff7f04760dc44b0aebd23b5327a419cbc43a2ab0569417ef8b5ac4b86ed3a",
+      "stagePath": "agent_tools/windows_vm_instance.py"
+    },
+    {
+      "bytes": 19178,
+      "fixture": "inputs/agent_tools/windows_vm_guest.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/windows_vm_guest.py",
+      "sha256": "4ce8abc079e70ac09399a1d934ef7bee0f82571189c6e03597d8bdc170a1ba5e",
+      "stagePath": "agent_tools/windows_vm_guest.py"
+    },
+    {
+      "bytes": 12538,
+      "fixture": "inputs/agent_tools/windows_visual_fixture.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/windows_visual_fixture.py",
+      "sha256": "20c1ab47a21de0b57a776b904e7a4b9cb62420d5b92ada64c3741d168a054cd9",
+      "stagePath": "agent_tools/windows_visual_fixture.py"
+    },
+    {
+      "bytes": 7450,
+      "fixture": "inputs/scripts/integration/windows_prompt_observation.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/scripts/integration/windows_prompt_observation.py",
+      "sha256": "8ecf00b819f3679c8a3bebae534107091f4e2d01a8580b924bce5497d3f2d1d3",
+      "stagePath": "scripts/integration/windows_prompt_observation.py"
+    },
+    {
+      "bytes": 13074,
+      "fixture": "inputs/scripts/capture_visual_windows_qemu.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/scripts/capture_visual_windows_qemu.py",
+      "sha256": "75c909247fc08ca5fdd7b1b29ea9c82773a4d527c69f0bd450f82c6200b90854",
+      "stagePath": "scripts/capture_visual_windows_qemu.py"
+    },
+    {
+      "bytes": 28116,
+      "fixture": "inputs/agent_tools/windows_qga_transfer.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/windows_qga_transfer.py",
+      "sha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022",
+      "stagePath": "agent_tools/windows_qga_transfer.py"
+    },
+    {
+      "bytes": 9460,
+      "fixture": "inputs/agent_tools/windows_vm_unattend.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/windows_vm_unattend.py",
+      "sha256": "ecf9f1fc5dda3b08654ea9a5ed8091e5d47c7d5933e6bdc06d595e4b499ebe54",
+      "stagePath": "agent_tools/windows_vm_unattend.py"
+    },
+    {
+      "bytes": 7522,
+      "fixture": "inputs/agent_tools/ssh_program_mcp_client.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/ssh_program_mcp_client.py",
+      "sha256": "a32f318ababd1562afadced8401c3a51b2f5f75be247f9b2c70b01ed1c98cabb",
+      "stagePath": "agent_tools/ssh_program_mcp_client.py"
+    },
+    {
+      "bytes": 666318,
+      "fixture": "inputs/agent_tools/mcp_server.py",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/agent_tools/mcp_server.py",
+      "sha256": "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3",
+      "stagePath": "agent_tools/mcp_server.py"
+    },
+    {
+      "bytes": 15852,
+      "fixture": "inputs/private/mcp_io_peer.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/outer-qualification/mcp_io_peer.py",
+      "sha256": "b20f80a89b8e1d26ad10a65d9c7785fa7e2fdf48fca42877acddb92f98608238",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/outer-qualification/mcp_io_peer.py"
+    },
+    {
+      "bytes": 1900,
+      "fixture": "inputs/private/retained-api-operator-held-loader-closing.py.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/retained-api-operator-held-loader-closing.py",
+      "sha256": "d03ff48f0e0411266755e393b171b5377450c6a582aa4fbcde02cdd77a59e837",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/retained-api-operator-held-loader-closing.py"
+    },
+    {
+      "bytes": 20307,
+      "fixture": "inputs/private/private-recipe-enrollment-handoff.private.json.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/private-recipe-enrollment-handoff.private.json",
+      "sha256": "e02d63eb1e32898179ba5a7b87ba4668f0742e403333a1c7a645cb5362fc3f8d",
+      "stagePath": ".runtime/windows-parity-20261019/windows-fixture/current-bf05-seven-preparation-v1/private-recipe-enrollment-handoff.private.json"
+    },
+    {
+      "bytes": 16312,
+      "fixture": "operator.before.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/uac_outer_operator.terminal-before.py",
+      "sha256": "5611366787f5dc4f69f586ac9c1f6da7978cb76ab11005fdec08f9ed27f99b87"
+    },
+    {
+      "bytes": 18189,
+      "fixture": "operator.provisional.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/uac_outer_operator.py",
+      "sha256": "7434e64bc639dcaefb79d25cabc2f6ab1a4e1a9b31735b7cc2b13b116c5a4945"
+    },
+    {
+      "bytes": 2114,
+      "fixture": "qualify-terminal-routing-causal.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/qualify_terminal_routing_causal.py",
+      "sha256": "1a05909ebd05dc2a792597083b95f9ea813b136fcb90f3a51d76a9a695daeb35"
+    },
+    {
+      "bytes": 673,
+      "fixture": "evidence/original-before/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-causal-v1/qualification-summary.json",
+      "sha256": "19cc9be1613df7826b1db045540dd9c298946ce4847813c4fe11561f7fc3584b"
+    },
+    {
+      "bytes": 1552,
+      "fixture": "evidence/original-before/direct-success.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-causal-v1/direct-success.json",
+      "sha256": "faf024aae6476f1a21a01f1b46d3ac443f35bcfa7dfacf0bf7a623bc498d82ec"
+    },
+    {
+      "bytes": 658,
+      "fixture": "evidence/original-current/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-causal-v1/qualification-summary.json",
+      "sha256": "ac545eba428fbb01bbe1410faf68d219975ae49a7db1f127648afbc1d25db95b"
+    },
+    {
+      "bytes": 7157,
+      "fixture": "evidence/original-current/direct-success.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-causal-v1/direct-success.json",
+      "sha256": "cb84731d944fb6bd0a91cb6d8e3812111fd8bf8e088dbdda531eddb4d6250f2e"
+    },
+    {
+      "bytes": 18189,
+      "fixture": "operator.current.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/uac_outer_operator.py",
+      "sha256": "7434e64bc639dcaefb79d25cabc2f6ab1a4e1a9b31735b7cc2b13b116c5a4945"
+    },
+    {
+      "bytes": 18040,
+      "fixture": "operator.eof-before.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/uac_outer_operator.closure-before.py",
+      "sha256": "5a19d3381c800ac4fd4fcafda0dfa3bc094afcf7250143025d70e95d3ba69db8"
+    },
+    {
+      "bytes": 2114,
+      "fixture": "qualify-terminal-routing-final.source",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/qualify_terminal_routing_causal.py",
+      "sha256": "1a05909ebd05dc2a792597083b95f9ea813b136fcb90f3a51d76a9a695daeb35"
+    },
+    {
+      "bytes": 3333,
+      "fixture": "evidence/desktop-final-six-outcomes.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/receipt-routing-final-six-outcomes.json",
+      "sha256": "964d13b43968fd40d47059d7dc64c5fd8e75cd5015e6f8c810b016bdd43d18d2"
+    },
+    {
+      "bytes": 696,
+      "fixture": "evidence/final-before-normal/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-normal-causal-v2/qualification-summary.json",
+      "sha256": "28d98a3e18e22e41c7a9cc5655f43e1f0c8652f98aed3bc51cc76bc98d221ede"
+    },
+    {
+      "bytes": 1555,
+      "fixture": "evidence/final-before-normal/direct-success.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-normal-causal-v2/direct-success.json",
+      "sha256": "5ed749a34a3260e7fec296f25f84be83655568e6c6d1d77744b7093d44a5c864"
+    },
+    {
+      "bytes": 689,
+      "fixture": "evidence/final-before-stdout-eof/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-stdout-eof-causal-v2/qualification-summary.json",
+      "sha256": "55570fede51f7cf9468b86e3fedbc365674a57d7dfe701c23d0fe0fd11c13d80"
+    },
+    {
+      "bytes": 1571,
+      "fixture": "evidence/final-before-stdout-eof/direct-pending-stdout-eof.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-stdout-eof-causal-v2/direct-pending-stdout-eof.json",
+      "sha256": "04e159cfe0ac65892d5091ebb79b3dd8e00d6c11d2425bf81fca51b1ca83f349"
+    },
+    {
+      "bytes": 685,
+      "fixture": "evidence/final-before-dual-eof/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-dual-eof-causal-v2/qualification-summary.json",
+      "sha256": "9173d7baf576ac36c487ab23f0b25ce217019e846875fec4d62e0e833a51a6cc"
+    },
+    {
+      "bytes": 1569,
+      "fixture": "evidence/final-before-dual-eof/direct-pending-both-eof.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-before-dual-eof-causal-v2/direct-pending-both-eof.json",
+      "sha256": "706859319fe0245803d64cba39a2c55f8c891435f957c453afdd2f6449104214"
+    },
+    {
+      "bytes": 681,
+      "fixture": "evidence/final-current-normal/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-normal-causal-v2/qualification-summary.json",
+      "sha256": "83efe70ef18aaf597479c486c39aae0f07ea93446d3a816be81547a2103a2909"
+    },
+    {
+      "bytes": 7237,
+      "fixture": "evidence/final-current-normal/direct-success.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-normal-causal-v2/direct-success.json",
+      "sha256": "7f7430118b54537975ec1f1b2c27f7706fa023bfdbe63eb993b394ee90a8d1e4"
+    },
+    {
+      "bytes": 675,
+      "fixture": "evidence/final-current-stdout-eof/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-stdout-eof-causal-v2/qualification-summary.json",
+      "sha256": "bba08aa931a63a053af3eea2096cc88988523d109f3dd325c041c686bfe5fff9"
+    },
+    {
+      "bytes": 7253,
+      "fixture": "evidence/final-current-stdout-eof/direct-pending-stdout-eof.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-stdout-eof-causal-v2/direct-pending-stdout-eof.json",
+      "sha256": "da58c8bc9ef4f009c3057f0d55a8e51454f32f673c8f6684e0a95d2dfa633bd8"
+    },
+    {
+      "bytes": 671,
+      "fixture": "evidence/final-current-dual-eof/qualification-summary.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-dual-eof-causal-v2/qualification-summary.json",
+      "sha256": "9cc49dbf53c5dee5e17071bf916b7aa186898690a007073c8f7f5ab65eca80e3"
+    },
+    {
+      "bytes": 7251,
+      "fixture": "evidence/final-current-dual-eof/direct-pending-both-eof.json",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/terminal-routing-current-dual-eof-causal-v2/direct-pending-both-eof.json",
+      "sha256": "35fe3a1ffca8b29975fb2a8fc51d237fdeb1b680fc9e827ba0274753c17d7459"
+    }
+  ]
+}

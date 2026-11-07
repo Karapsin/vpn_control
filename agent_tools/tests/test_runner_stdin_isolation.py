@@ -1,7 +1,7 @@
 """Whole-before RED/GREEN: managed check/test children never inherit stdin.
 
-The unfixed MCP check launcher (`_run`), unittest-runner worker Popen and
-selector run loop let every child inherit the launching process's stdin: the
+The unfixed MCP check launcher (`_run`), managed private-runner launcher,
+unittest-runner worker Popen and selector run loop let every child inherit the launching process's stdin: the
 MCP stdio JSON-RPC stream, an interactive terminal or a sweep's piped input. A
 selected test whose fixture peer read stdin to EOF then blocked on, or consumed,
 that stream. Each real seam runs in a fresh parent whose stdin is a pipe holding
@@ -23,7 +23,8 @@ TOOLS = ROOT / 'agent_tools'
 FIXTURES = Path(__file__).parent / 'fixtures/runner_stdin_isolation'
 BEFORE = {'mcp_server.py': 'mcp_server.before.source',
           'agent_test_runner.py': 'agent_test_runner.before.source',
-          'affected_agent_tests.py': 'affected_agent_tests.before.source'}
+          'affected_agent_tests.py': 'affected_agent_tests.before.source',
+          'managed_agent_check.py': 'managed_agent_check.before.source'}
 # The selector dispatches its fixed first safety-gate command verbatim, so the
 # inert probe takes that module name inside each private generated root.
 GATE = 'agent_tools.tests.test_ssh_connection_session_close'
@@ -44,6 +45,11 @@ if seam=='selector':
     plan=selector.Selection('0'*40,(),(gate,),1)
     with mock.patch.object(selector,'snapshot',return_value='a'*64),mock.patch.object(selector,'select',return_value=plan):
         value={'code':selector.main(['--root',str(root),'--run'])}
+elif seam=='managed':
+    spec=importlib.util.spec_from_file_location('stdin_isolation_managed',source)
+    managed=sys.modules[spec.name]=importlib.util.module_from_spec(spec);spec.loader.exec_module(managed)
+    outcome=managed.run([sys.executable,'-B','-m','unittest',gate],cwd=root,env=dict(os.environ),timeout=60)
+    value={'ok':outcome.completed.returncode==0,'returncode':outcome.completed.returncode}
 else:
     sys.path.insert(0,repository)
     from agent_tools import check_output_retention,local_build_environment
@@ -133,6 +139,11 @@ class RunnerStdinIsolationTests(unittest.TestCase):
         self.assertEqual({'ok': True, 'returncode': 0}, value)
         return left, read
 
+    def managed(self, before):
+        value, left, read = self.driver('managed', 'managed_agent_check.py', before)
+        self.assertEqual({'ok': True, 'returncode': 0}, value)
+        return left, read
+
     def assert_isolated(self, seam):
         for before in (True, False):
             with self.subTest(seam=seam, before=before):
@@ -149,6 +160,9 @@ class RunnerStdinIsolationTests(unittest.TestCase):
 
     def test_whole_before_mcp_check_launcher_consumed_stdio_current_child_gets_eof(self):
         self.assert_isolated('server')
+
+    def test_whole_before_managed_runner_launcher_consumed_stdio_current_child_gets_eof(self):
+        self.assert_isolated('managed')
 
 
 if __name__ == '__main__':

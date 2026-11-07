@@ -1,0 +1,108 @@
+"""Local, inert qualification for the private raw artifact caller."""
+from pathlib import Path
+import base64,hashlib,importlib.util,json,os,pwd,shlex,stat,subprocess,sys,tempfile,time,uuid
+
+HERE=Path(__file__).resolve().parent
+spec=importlib.util.spec_from_file_location('private_raw_stage',HERE/'raw_stage.py');stage=importlib.util.module_from_spec(spec);spec.loader.exec_module(stage)
+session=HERE/('qualification-'+uuid.uuid4().hex);session.mkdir(mode=0o700)
+rows=[]
+def write(path,raw):
+    path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    with path.open('xb')as f:f.write(raw)
+    path.chmod(0o600)
+def digest(raw):return hashlib.sha256(raw).hexdigest()
+def record(name,ok,**facts):
+    assert ok,name
+    rows.append({'case':name,**facts})
+def receiver(label,data,actual=None,expect=0):
+    root=session/label
+    binding={'hostRoot':str(root),'hostUser':pwd.getpwuid(os.getuid()).pw_name,'fileName':'vpn-control-2.2.13.msi','sizeBytes':len(data),'sha256':digest(data),'sourceSha':'d24c19047ec15689948404ede40f50c5ec284e77','correlationId':uuid.uuid4().hex}
+    caller=session/(label+'.receiver.py');raw=stage.render_receiver(binding);write(caller,raw)
+    command=[sys.executable,'-I','-B','-c',stage.source_stage.LOADER,str(caller),digest(raw),str(len(raw))]
+    result=subprocess.run(command,input=data if actual is None else actual,capture_output=True,timeout=10)
+    stage.retain(session,label+'-stdout.raw',result.stdout);stage.retain(session,label+'-stderr.raw',result.stderr)
+    stage.retain(session,label+'-exit.json',{'argv':command,'exitCode':result.returncode})
+    assert result.returncode==expect,(label,result.returncode,result.stderr)
+    return binding,caller,result,command
+
+tiny=b'plain\x00binary\xff\n'+bytes(range(256))*7
+binding,caller,result,command=receiver('tiny-success',tiny)
+value=json.loads(result.stdout);p=Path(value['path'])
+record('tiny receiver physical bytes',p.read_bytes()==tiny and p.stat().st_nlink==1 and stat.S_IMODE(p.stat().st_mode)==0o600 and not result.stderr,stdoutBytes=len(result.stdout),sourceSha256=digest(caller.read_bytes()))
+before=p.read_bytes();r=subprocess.run(command,input=tiny,capture_output=True,timeout=10)
+stage.retain(session,'existing-root-stdout.raw',r.stdout);stage.retain(session,'existing-root-stderr.raw',r.stderr)
+record('create-only existing root refuses',r.returncode==64 and p.read_bytes()==before and not r.stdout)
+receiver('wrong-hash',tiny,actual=b'x'*len(tiny),expect=64)
+record('wrong hash preserves original failure',json.loads((session/'wrong-hash/failure.json').read_bytes())['reason']=='stream_hash')
+receiver('short-stream',tiny,actual=tiny[:-1],expect=64)
+record('short stream preserves partial',json.loads((session/'short-stream/failure.json').read_bytes())['reason']=='stream_truncated'and(session/'short-stream/vpn-control-2.2.13.msi').stat().st_size==len(tiny)-1)
+receiver('trailing-stream',tiny,actual=tiny+b'x',expect=64)
+record('trailing data refuses',json.loads((session/'trailing-stream/failure.json').read_bytes())['reason']=='stream_trailing')
+held_path=session/'held-input';write(held_path,tiny)
+with stage.HeldFile(held_path,len(tiny),digest(tiny))as held:
+    with held_path.open('r+b')as f:f.write(b'x')
+    try:held.guard(rehash=True)
+    except ValueError as error:record('held source drift refuses',str(error)=='input_generation_changed')
+    else:raise AssertionError('mutated source accepted')
+linked=session/'hardlink-input';os.link(held_path,linked)
+try:stage.HeldFile(linked)
+except ValueError as error:record('single-link source admission',str(error)=='input_metadata')
+else:raise AssertionError('hardlink accepted')
+target=session/'link-parent-real';target.mkdir(mode=0o700);link=session/'link-parent';link.symlink_to(target)
+spec_link={**binding,'hostRoot':str(link/'child'),'correlationId':uuid.uuid4().hex};raw=stage.render_receiver(spec_link);script=session/'link.receiver.py';write(script,raw)
+r=subprocess.run([sys.executable,'-I','-B','-c',stage.source_stage.LOADER,str(script),digest(raw),str(len(raw))],input=tiny,capture_output=True,timeout=10)
+stage.retain(session,'symlink-parent-stderr.raw',r.stderr)
+record('nofollow parent refuses',r.returncode==64 and not(target/'child').exists())
+
+# Exercise the complete saved gateway, actual PTY prompt parser, framed stdin,
+# source loader, argv quoting, and original-child collector through inert SSH.
+route=session/'route';route.mkdir(mode=0o700);config=route/'fixture-config';key=route/'fixture-key';trust=route/'fixture-known-hosts';write(config,b'Host inert\n  User inert\n');write(key,b'inert key bytes only\n');write(trust,b'inert host trust bytes\n')
+bindir=session/'bin';bindir.mkdir(mode=0o700)
+shim='#!'+sys.executable+'\n'+'''import os,shlex,sys
+if '-G' in sys.argv:
+ print('user '+@USER@);print('identityfile '+@KEY@);print('userknownhostsfile '+@TRUST@);print('globalknownhostsfile none');sys.exit(0)
+tty=os.open('/dev/tty',os.O_RDWR)
+os.write(tty,("Enter passphrase for key '"+@KEY@+"': ").encode())
+secret=b''
+while not secret.endswith(b'\\n'):secret+=os.read(tty,1)
+os.close(tty)
+if secret!=b'fixture-inert-passphrase\\n':sys.exit(87)
+argv=shlex.split(sys.argv[-1]);os.execvp(argv[0],argv)
+'''.replace('@USER@',repr(pwd.getpwuid(os.getuid()).pw_name)).replace('@KEY@',repr(str(key))).replace('@TRUST@',repr(str(trust)))
+ssh=bindir/'ssh';write(ssh,shim.encode());ssh.chmod(0o700)
+pkg=session/'gateway-input';write(pkg,tiny)
+gateway_spec={**binding,'hostRoot':str(session/'whole gateway space ü'),'correlationId':uuid.uuid4().hex}
+raw=stage.render_receiver(gateway_spec);receiver_file=session/'saved receiver ü.py';write(receiver_file,raw)
+receipt={'path':str(receiver_file),'sha256':digest(raw),'bytes':len(raw)}
+gateway=stage.render_gateway(gateway_spec,receipt);gateway_file=session/'saved gateway ü.py';write(gateway_file,gateway)
+argv=[sys.executable,'-I','-B','-c',stage.source_stage.LOADER,str(gateway_file),digest(gateway),str(len(gateway)),gateway_spec['correlationId'],str(config),'inert',digest(gateway)]
+old_path=os.environ['PATH'];os.environ['PATH']=str(bindir)+os.pathsep+old_path
+try:
+    envelope=json.dumps({'passphrase':'fixture-inert-passphrase'}).encode();header=len(envelope).to_bytes(4,'big')+envelope
+    evidence=session/'whole-evidence';evidence.mkdir(mode=0o700)
+    with stage.HeldFile(pkg,len(tiny),digest(tiny))as held:value=stage.collect_stream(evidence,argv,header,held,'whole')
+finally:os.environ['PATH']=old_path
+record('whole saved gateway tiny stream',value['state']=='observed'and Path(value['artifact']['path']).read_bytes()==tiny and value['capture']['complete']and value['capture']['credentialSent']and value['capture']['returnCode']==0,commandBytes=sum(len(x.encode())+1 for x in argv),gatewaySha256=digest(gateway))
+wire=(evidence/'whole-stdout.raw').read_bytes()+(evidence/'whole-stderr.raw').read_bytes()
+record('credential absent from retained raw',b'fixture-inert-passphrase'not in wire)
+
+# Use the original baseline file descriptor and real 131228020-byte stream in
+# the same receiver body and saved-loader path, changing only the local fixture
+# path/user/correlation data. This performs no host connection or native launch.
+baseline=HERE.parent/'extracted/vpn-control-2.2.13.msi'
+actual_size=131228020;actual_sha='8167212cb412c0e0d1c3ad1d60f12fdbc5477043725fd35484bdf6b46db25fb6'
+baseline_spec={**binding,'hostRoot':str(session/'actual-msi-local'),'sizeBytes':actual_size,'sha256':actual_sha,'correlationId':uuid.uuid4().hex}
+actual_receiver=stage.render_receiver(baseline_spec);actual_file=session/'actual-byte.receiver.py';write(actual_file,actual_receiver)
+actual_argv=[sys.executable,'-I','-B','-c',stage.source_stage.LOADER,str(actual_file),digest(actual_receiver),str(len(actual_receiver))]
+actual_evidence=session/'actual-byte-evidence';actual_evidence.mkdir(mode=0o700)
+with stage.HeldFile(baseline,actual_size,actual_sha)as held:
+    with os.fdopen(os.dup(held.fd),'rb')as original:
+        result=subprocess.run(actual_argv,stdin=original,capture_output=True,timeout=60)
+    held.guard(rehash=True)
+stage.retain(actual_evidence,'stdout.raw',result.stdout);stage.retain(actual_evidence,'stderr.raw',result.stderr);stage.retain(actual_evidence,'terminal.json',{'argv':actual_argv,'exitCode':result.returncode})
+actual=json.loads(result.stdout)
+record('actual baseline bytes same receiver body',result.returncode==0 and not result.stderr and actual['sizeBytes']==actual_size and actual['sha256']==actual_sha and (Path(actual['path']).stat().st_size==actual_size),receiverBodySha256=digest(stage.inspect.getsource(stage.receiver_main).encode()),actualReceiverSha256=digest(actual_receiver))
+
+report={'schemaVersion':1,'sourcePath':str(HERE/'raw_stage.py'),'sourceSha256':digest((HERE/'raw_stage.py').read_bytes()),'qualificationSourceSha256':digest(Path(__file__).read_bytes()),'localOnly':True,'hostSubmitted':False,'guestActionAllowed':False,'evidenceDirectory':str(session),'cases':rows,'actualInput':{'sizeBytes':actual_size,'sha256':actual_sha},'replayAllowed':False}
+stage.retain(session,'qualification.json',report)
+print(json.dumps(report,sort_keys=True),flush=True)

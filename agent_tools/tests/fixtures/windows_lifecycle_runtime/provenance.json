@@ -1,0 +1,199 @@
+{
+  "baselineInputs": {
+    "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactory.kt": {
+      "bytes": 10375,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactory.kt",
+      "sha256": "cce73372c2aae2acccd975efd4b380e790583056e609b846f3ea71fdeb461572"
+    },
+    "scripts/integration/desktop_scheduled_refresh_fixture.py": {
+      "bytes": 17769,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/scripts/integration/desktop_scheduled_refresh_fixture.py",
+      "sha256": "65be608719e8c8fbee08b72c2af99b3f60499d40d85df740698bc5ab87a1c672"
+    },
+    "scripts/integration/https_subscription_relay_fixture.py": {
+      "bytes": 9474,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/scripts/integration/https_subscription_relay_fixture.py",
+      "sha256": "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"
+    },
+    "scripts/integration/socks_http_fixture.py": {
+      "bytes": 13675,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/scripts/integration/socks_http_fixture.py",
+      "sha256": "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"
+    },
+    "shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilder.kt": {
+      "bytes": 12404,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilder.kt",
+      "sha256": "38e200a4855625816875f44123760fadd387dbf2af0db68b8a461d3713d87a2a"
+    }
+  },
+  "fixtures": {
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/boundary.py": {
+      "bytes": 16752,
+      "originalPath": "finite RTN-001 successor of b2e0a2a4",
+      "sha256": "fb32054db2be5b496bfad1c33c0b6b1dcf7faa9c2ba60cc40a5070ff422867b5"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/branches/controls.source": {
+      "bytes": 17719,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/qualify_branches.py",
+      "sha256": "3fbf4258a4b82c381ebb6799f92baab4f6af2f5172ab296bcc547ca13e1a3e54"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/capability_probe.py": {
+      "bytes": 4985,
+      "originalPath": "new finite capability probe, no product authority",
+      "sha256": "fbe02e156310cd5bb44827556f83721e3946128943246fc70fbe3001cf5391b3"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/capability_probe.windows-rename.before.source": {
+      "bytes": 4149,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-routine-promotion-preparation-v1/capability_probe.windows-rename.before.source",
+      "sha256": "cb12afbbfeab80a1999819f3face0dd853865d68397e7bc79df82b38f1f23895"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/closing/controls.source": {
+      "bytes": 3860,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/qualify_probe_closing.py",
+      "sha256": "15089da029c3d7bd6b5768d35fc098fa84238c90c9d21831fc0c5a6fead0e430"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/context/controls.source": {
+      "bytes": 6024,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/qualify_context_join.py",
+      "sha256": "79f650f62c2c0358297c1dfc56def8d7ec8463f43a50dd590f95eaeadb9b91d9"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/kotlin_data_boundary.before.source": {
+      "bytes": 16478,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-routine-promotion-preparation-v1/candidate/agent_tools/tests/fixtures/windows_lifecycle_runtime/boundary.py",
+      "sha256": "b2e0a2a4fe211a9e46da5eeaaf5dbc4bba670e45b7189cadff5a6d0b8857c127"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/ledger/controls.source": {
+      "bytes": 3732,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/ledger_pair.py",
+      "sha256": "d23ec1d0f2e46231a83a5733a0fa2ad5af4ff990839c696f07875ec8d65d7b1c"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/lifecycle_cases.v1.before.source": {
+      "bytes": 38627,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v1/lifecycle_cases.py",
+      "sha256": "71af208957e1c30bde6194af0a7a60b0b00438b2fa658858ef9e2f4f181cbfe1"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/local/controls.source": {
+      "bytes": 13656,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/qualify_local.py",
+      "sha256": "42574169462bb32a568649f1701c88efe67dc7dc33c82da9a140544edf9d5bc7"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/original-failure-ledger.json": {
+      "bytes": 33953,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-routine-promotion-preparation-v1/ledger-audit/failure-ledger.private.json",
+      "sha256": "60b90af56a87d8c37d78aecfa54f574cba31ba8aa43b76c291986957d04ae905"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/parse_only.ps1": {
+      "bytes": 371,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/parse_only.ps1",
+      "sha256": "408311facb60928d1b432be83644232bf2c14f0276dbd99fab40621284702431"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/review/controls.source": {
+      "bytes": 7257,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/causal_review_pairs.py",
+      "sha256": "a879a6137619cb841578660fca9009d0a95cc44bf51dd7b4a57224e2968cea9b"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/runtime_branches.closing.before.source": {
+      "bytes": 34485,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/runtime_branch_cases.before.source",
+      "sha256": "4fc8b394e4da7af9c654aa1d9cfb7a5a124417444d544a555dba29433087d269"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/runtime_branches.direct.before.source": {
+      "bytes": 33566,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/runtime_branch_cases.direct-probe.before.source",
+      "sha256": "ca255102b5dff3f68f5f1137d405c3ea3ce8a085eddc1773de58b0c6c6d066c3"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/runtime_branches.fixture.before.source": {
+      "bytes": 32311,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/runtime_branch_cases.fixture-liveness.before.source",
+      "sha256": "ec8d9b9b9be79114dddcbf18d6da16b9ed5c0cccbfd498a1a9b507c702b4ebaa"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/runtime_branches.route.before.source": {
+      "bytes": 18360,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/runtime_branch_cases.route-shape.before.source",
+      "sha256": "7029620da881405393194b6bbc614096a9e423ae799dfdca6cd26f80a1a4b813"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/runtime_stages.operation.before.source": {
+      "bytes": 19090,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/before-local-operation-correlation.runtime_stages.py",
+      "sha256": "4122d83f0df53a6c7ea0a097fac849bbce3ca072b19971ab89dd9e64905b0438"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/scheduled_fixture_worker.v1.before.source": {
+      "bytes": 5662,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v1/scheduled_fixture_worker.py",
+      "sha256": "e6f318b6b346fcb8d6932b26dabf28bbc0f1d3f5fcf71bd0ab425626ac3b24f1"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/stages/controls.source": {
+      "bytes": 18117,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/qualify_stages.py",
+      "sha256": "897638264d70518a412fb822301e885c5d271e6a472ef625db69ca43e9190054"
+    },
+    "agent_tools/tests/fixtures/windows_lifecycle_runtime/tun_stages.context.before.source": {
+      "bytes": 14775,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.before.source",
+      "sha256": "339c7b0fcaf9b5a1e0b61c3654d423f395a5e4b6779c32f6a57c56e2104935c8"
+    }
+  },
+  "legacyDecisionHelperIsNotInputAuthority": true,
+  "production": {
+    "agent_tools/windows_lifecycle_cases.py": {
+      "bytes": 41291,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/lifecycle_cases.py",
+      "sha256": "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b"
+    },
+    "agent_tools/windows_lifecycle_runtime_fixture_worker.py": {
+      "bytes": 8779,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/runtime_fixture_worker.py",
+      "sha256": "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a"
+    },
+    "agent_tools/windows_lifecycle_runtime_stages.py": {
+      "bytes": 25377,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/runtime_stages.py",
+      "sha256": "147f2114b0ce554e85669b770b836d7927f775f6009795ceb308b6e57bc5fbd9"
+    },
+    "agent_tools/windows_lifecycle_scheduled_fixture_worker.py": {
+      "bytes": 5883,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/scheduled_fixture_worker.py",
+      "sha256": "25cfe5dc170f40e811139bb2ebe96ac7d00af73a7f76b474d4542b2663f74978"
+    },
+    "agent_tools/windows_lifecycle_socks_fixture_worker.py": {
+      "bytes": 4080,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/socks_fixture_worker.py",
+      "sha256": "61d9726ff9d84594100932be6c6246ce77f5941040b7c306e273aa43feba5235"
+    },
+    "agent_tools/windows_lifecycle_traffic_worker.py": {
+      "bytes": 6091,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/traffic_worker.py",
+      "sha256": "c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d"
+    },
+    "agent_tools/windows_no_tray_desktop.py": {
+      "bytes": 22565,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-owned-desktop-preparation-v1/candidate/agent_tools/windows_no_tray_desktop.py",
+      "sha256": "a95e3724e73c0f3a11e462bb0ad6321eaf493f8553e5fd90806be61a224dec19"
+    },
+    "agent_tools/windows_runtime_branch_cases.py": {
+      "bytes": 34698,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/runtime_branch_cases.py",
+      "sha256": "0b90fef622d8f0511aaf391209096db987a1d696e376283d056388c5c6493cb0"
+    },
+    "agent_tools/windows_runtime_tcp_listeners.ps1": {
+      "bytes": 1095,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/tcp_listeners.ps1",
+      "sha256": "1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928"
+    },
+    "agent_tools/windows_tun_native_observer.py": {
+      "bytes": 12819,
+      "currentRoleAdjustment": "Remove exactly one extra EOF newline from the canonical current observer role; complete AST unchanged. originalPath/originalSourceSha256 retain the source-exact historical origin.",
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/tun_native_observer.py",
+      "originalSourceBytes": 12820,
+      "originalSourceSha256": "ec5256d42208585695e1566df5697c8c4c010631258876e08a1ea61874172de1",
+      "sha256": "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"
+    },
+    "agent_tools/windows_tun_stages.py": {
+      "bytes": 15407,
+      "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
+      "sha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a"
+    }
+  },
+  "schemaVersion": 1,
+  "scope": "private exact source copies; original source packets immutable; no native admission"
+}

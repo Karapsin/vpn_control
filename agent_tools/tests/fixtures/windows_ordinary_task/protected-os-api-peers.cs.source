@@ -1,0 +1,36 @@
+using System;using System.Collections.Generic;using System.Runtime.InteropServices;using Microsoft.Win32.SafeHandles;using S=DeclaredSecurity;
+
+// DECLARED portable API peers. These types do not parse SDDL or call Win32.
+namespace DeclaredSecurity {
+ [System.Flags] public enum ControlFlags { None=0, DiscretionaryAclProtected=0x1000 }
+ public enum AceQualifier { AccessAllowed=0, AccessDenied=1, SystemAudit=2 }
+ public class Sid { public string Value; public Sid(string value){Value=value;} }
+ public class GenericAce {}
+ public class CommonAce:GenericAce {public bool IsCallback;public AceQualifier AceQualifier;public Sid SecurityIdentifier;public int AccessMask;}
+ public class ObjectAce:GenericAce {}
+ public class RawAcl:System.Collections.Generic.List<GenericAce> {}
+ public class RawSecurityDescriptor {
+  public Sid Owner; public ControlFlags ControlFlags;public RawAcl DiscretionaryAcl;
+  public static RawSecurityDescriptor Declared;
+  public RawSecurityDescriptor(){}
+  public RawSecurityDescriptor(string text){if(Declared==null)throw new System.InvalidOperationException("peer-descriptor-unbound");Owner=Declared.Owner;ControlFlags=Declared.ControlFlags;DiscretionaryAcl=Declared.DiscretionaryAcl;}
+ }
+}
+
+public static class BeforeDecisionBoundary {
+@@BEFORE_FI@@
+ static FI declared; static string[] declaredSecurity;
+ public static void Declare(uint attributes,uint links,uint volume,uint indexHi,uint indexLo,uint sizeHi,uint sizeLo,long creation,long write,string owner,string sddl){declared=new FI{attr=attributes,links=links,volume=volume,indexHi=indexHi,indexLo=indexLo,sizeHi=sizeHi,sizeLo=sizeLo,creation=creation,write=write};declaredSecurity=new string[]{owner,sddl};}
+ static bool GetFileInformationByHandle(SafeFileHandle unused,out FI value){value=declared;return true;}
+ static string[] Security(SafeFileHandle unused){return declaredSecurity;}
+ static void Win(bool ok){if(!ok)throw new InvalidOperationException("peer-api-failed");}
+@@BEFORE_IDENTITY@@}
+
+public static class CandidateDecisionBoundary {
+@@CANDIDATE_FI@@
+ static FI declared; static string[] declaredSecurity;
+ public static void Declare(uint attributes,uint links,uint volume,uint indexHi,uint indexLo,uint sizeHi,uint sizeLo,long creation,long write,string owner,string sddl){declared=new FI{attr=attributes,links=links,volume=volume,indexHi=indexHi,indexLo=indexLo,sizeHi=sizeHi,sizeLo=sizeLo,creation=creation,write=write};declaredSecurity=new string[]{owner,sddl};}
+ static bool GetFileInformationByHandle(SafeFileHandle unused,out FI value){value=declared;return true;}
+ static string[] Security(SafeFileHandle unused){return declaredSecurity;}
+ static void Win(bool ok){if(!ok)throw new InvalidOperationException("peer-api-failed");}
+@@CANDIDATE_METHODS@@}

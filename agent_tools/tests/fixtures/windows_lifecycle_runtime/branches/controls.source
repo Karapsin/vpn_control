@@ -1,0 +1,287 @@
+"""Actual private decisions with inert native/process/socket peers; no network."""
+from __future__ import annotations
+import argparse
+import copy
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+from types import SimpleNamespace as N
+import sys
+import unittest
+import uuid
+
+HERE=Path(__file__).resolve().parent
+ROOT=HERE.parents[3]
+
+
+def load(before=False):
+    path=HERE/('runtime_branch_cases.route-shape.before.source' if before else 'runtime_branch_cases.py')
+    name='_branch_'+uuid.uuid4().hex;loader=importlib.machinery.SourceFileLoader(name,str(path))
+    spec=importlib.util.spec_from_loader(name,loader);m=importlib.util.module_from_spec(spec)
+    sys.modules[name]=m;loader.exec_module(m);return m
+
+
+def actual_shape(module):
+    source=(ROOT/'shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilder.kt').read_text()
+    assert 'inboundTag?.let { put("inbound", it) }' in source and 'put("timeout", "1s")' in source
+    assert 'put("inbound", inboundTag)' in source and 'put("action", "route")' in source
+    original=module.custom_config(23456,'custom');actual=copy.deepcopy(original)
+    actual['inbounds'].append({'type':'mixed','tag':'vpn-control-management','listen':'127.0.0.1','listen_port':12345})
+    actual['route']['rules']=[{'inbound':'vpn-control-management','action':'sniff','timeout':'1s'},
+        {'inbound':'vpn-control-management','action':'route','outbound':'owned-upstream'},*actual['route']['rules']]
+    return original,actual
+
+
+def route_pair(before):
+    module=load(before);original,actual=actual_shape(module)
+    port=module.custom_semantics(original,actual)
+    print(json.dumps({'actualManagementPort':port,'canonicalRouteShapeSourceChecked':True,'nativeExecuted':False}),flush=True)
+    assert port==12345
+
+
+
+
+def direct_probe_pair(before):
+    path=HERE/('runtime_branch_cases.direct-probe.before.source' if before else 'runtime_branch_cases.py')
+    name='_direct_'+uuid.uuid4().hex;loader=importlib.machinery.SourceFileLoader(name,str(path))
+    spec=importlib.util.spec_from_loader(name,loader);module=importlib.util.module_from_spec(spec)
+    sys.modules[name]=module;loader.exec_module(module)
+    source=(ROOT/'desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactory.kt').read_text()
+    assert 'put("process_name", processNames.asJsonArray())' in source
+    assert 'put("process_path", processPaths.asJsonArray())' in source and 'put("action", "route")' in source
+    original,actual=actual_shape(module)
+    actual['outbounds'].append({'type':'direct','tag':'vpn-control-direct-probe'})
+    actual['route']['auto_detect_interface']=True
+    rules=[{'process_name':['vpn-control-probe-sing-box','vpn-control-probe-sing-box.exe'],
+            'action':'route','outbound':'vpn-control-direct-probe'},
+        {'process_path':['C:\\Owned\\workspace\\validation\\vpn-control-probe-sing-box.exe'],
+            'action':'route','outbound':'vpn-control-direct-probe'}]
+    actual['route']['rules'][2:2]=rules
+    assert module.custom_semantics(original,actual)==12345
+    print(json.dumps({'actualDirectProbeSourceShapeAccepted':True,'nativeExecuted':False}),flush=True)
+
+
+def fixture_values(module,exited=False):
+    root=Path('C:/Owned');tool='C:/Tool/sing-box.exe';sha='a'*64
+    inputs={'schemaVersion':1,'fixtureRuntimeToolPath':tool,'runtimeSha256':sha,
+        'listenerScriptPath':'listener.ps1','powerShellPath':'powershell.exe',
+        'trafficWorkerPath':'traffic.py','trafficInputPath':'traffic.json',
+        'installedAdmissionArtifactId':'installed','ordinaryContextArtifactId':'ordinary'}
+    serve=N(process=N(poll=lambda:None))
+    fixture=N(label='owned-runtime-fixture',argv=('python.exe','-I','-B','fixture.py','--input',str(root/'runtime-fixture-input.json')),
+        process=N(poll=lambda:1 if exited else None,pid=20,_handle=40),pid=20,birth='100')
+    owner=N(root=root,request={'workspace':'C:/Owned/workspace','pythonRuntime':{'interpreterPath':'python.exe'}},
+        children=[serve,fixture],raw_limit=module.MAX_CONFIG,guard=lambda:None,native=N(birth=lambda _:'100'))
+    owner.by_path={str(Path(inputs[key])).casefold():N(record={'sha256':sha}) for key in
+        ('fixtureRuntimeToolPath','listenerScriptPath','powerShellPath','trafficWorkerPath','trafficInputPath')}
+    state={'workspace':'C:/Owned/workspace','serve':serve,'fixture':fixture,
+        'ready':{'advertisedSocksPort':23456},'inputs':{'runtimeSha256':sha,'fixtureBody':'owned','fixtureWorkerPath':'fixture.py'}}
+    module.read_json=lambda _:({'expectedBodyHex':b'owned'.hex()},b'')
+    return owner,state,inputs
+
+
+def fixture_pair(before):
+    path=HERE/('runtime_branch_cases.fixture-liveness.before.source' if before else 'runtime_branch_cases.py')
+    name='_fixture_'+uuid.uuid4().hex;loader=importlib.machinery.SourceFileLoader(name,str(path))
+    spec=importlib.util.spec_from_loader(name,loader);module=importlib.util.module_from_spec(spec)
+    sys.modules[name]=module;loader.exec_module(module)
+    owner,state,inputs=fixture_values(module,exited=True);rejected=False
+    try:module.inputs_guard(owner,state,inputs)
+    except AssertionError as error:
+        if str(error)!='original-owned-fixture-process-handle':raise
+        rejected=True
+    assert rejected,'exited-original-fixture-was-admitted'
+    print(json.dumps({'exitedOriginalFixtureRejected':True,'nativeExecuted':False}),flush=True)
+
+
+m=load()
+
+
+class ConfigTests(unittest.TestCase):
+    def test_large_valid_owned_payload_exceeds_inline_command_limit(self):
+        config=m.custom_config(23456,'large');payload=m.encoded(m.profile_document(config,'Owned large CUSTOM'))
+        self.assertGreater(len(payload),60000);self.assertLess(len(payload),m.MAX_CONFIG)
+        self.assertEqual(len(config['route']['rules'][0]['domain_suffix']),4096)
+        self.assertEqual(json.loads(json.loads(payload)['custom_config_json']),config)
+        self.assertTrue(all(row['server']=='127.0.0.1' for row in config['outbounds']))
+    def test_actual_product_management_route_shape_is_accepted(self):route_pair(False)
+    def test_actual_direct_probe_source_shape_is_accepted(self):direct_probe_pair(False)
+    def test_custom_semantics_refuses_changed_user_meaning(self):
+        original,actual=actual_shape(m)
+        mutations=[lambda x:x['outbounds'][0].update(server='8.8.8.8'),
+            lambda x:x['route']['rules'].pop(),lambda x:x['inbounds'][-1].update(listen='0.0.0.0'),
+            lambda x:x.update(dns={'servers':[]}),lambda x:x['route'].update(final='different')]
+        for mutation in mutations:
+            changed=copy.deepcopy(actual);mutation(changed)
+            with self.assertRaises(AssertionError):m.custom_semantics(original,changed)
+    def test_unknown_variants_ports_and_profile_names_refuse(self):
+        for port in (True,0,65536):
+            with self.assertRaises(AssertionError):m.custom_config(port,'custom')
+        with self.assertRaises(AssertionError):m.custom_config(1234,'arbitrary')
+        with self.assertRaises(AssertionError):m.profile_document({},'arbitrary')
+    def test_unbound_cases_refuse_before_effects(self):
+        with self.assertRaisesRegex(AssertionError,'native-inputs-pending'):
+            m.config_case(N(),{}, {},N(),N(),N(),'custom')
+        with self.assertRaisesRegex(AssertionError,'native-inputs-pending'):
+            m.failure_case(N(),{}, {},N(),N(),N(),'prepare-failure')
+        with self.assertRaisesRegex(AssertionError,'native-inputs-pending'):
+            m.start_sibling(N(),{}, {},N(),N())
+
+
+class FixtureOriginTests(unittest.TestCase):
+    def test_exact_original_fixture_is_live_before_any_branch_action(self):
+        owner,state,inputs=fixture_values(m);m.inputs_guard(owner,state,inputs)
+        fixture_pair(False)
+        state['fixture'].birth='101'
+        with self.assertRaisesRegex(AssertionError,'original-owned-fixture-process-handle'):
+            m.inputs_guard(owner,state,inputs)
+    def test_owned_fixture_listener_must_remain_original_at_both_check_edges(self):
+        owner,state,inputs=fixture_values(m);calls=[]
+        original=m.listeners
+        try:
+            m.listeners=lambda _owner,_inputs,actor:calls.append(actor) or [{'address':'127.0.0.1','port':23456,'pid':20}]
+            self.assertEqual(m.original_fixture_listener(owner,state,inputs),{'pid':20,'creationFileTime':100})
+            m.listeners=lambda *_:[{'address':'127.0.0.1','port':23456,'pid':99}]
+            with self.assertRaisesRegex(AssertionError,'listener-not-held-at-check'):
+                m.original_fixture_listener(owner,state,inputs)
+        finally:m.listeners=original
+        self.assertEqual(calls,[{'pid':20,'creationFileTime':100}])
+
+
+class RecoveryTests(unittest.TestCase):
+    def values(self):
+        before={'data':{'runtimeRunning':True,'activeLocationId':'a','activeMode':'proxy-only',
+                       'runtimeId':'generation-a','runtimeStartedAt':100},'restartRequired':False}
+        after=copy.deepcopy(before);after['restartRequired']=True
+        actor={'pid':10,'creationFileTime':1000};return before,after,{'owned':'A'},actor
+    def test_prepare_failure_requires_original_generation_and_config(self):
+        before,after,config,actor=self.values()
+        m.failure_oracle('prepare-failure',before,after,config,config,actor,actor)
+        after['data']['runtimeId']='restarted-a'
+        with self.assertRaisesRegex(AssertionError,'preparation-failure-replaced-original-a'):
+            m.failure_oracle('prepare-failure',before,after,config,config,actor,actor)
+    def test_commit_failure_requires_actual_recovered_generation_not_only_same_location(self):
+        before,after,config,actor=self.values()
+        with self.assertRaisesRegex(AssertionError,'not-actually-observed'):
+            m.failure_oracle('commit-readiness-failure',before,after,config,config,actor,actor)
+        after['data']['runtimeId']='recovered-a'
+        m.failure_oracle('commit-readiness-failure',before,after,config,config,actor,{'pid':11,'creationFileTime':2000})
+    def test_failed_b_cannot_commit_b_or_restore_from_pending_config(self):
+        before,after,config,actor=self.values();after['data']['activeLocationId']='b'
+        with self.assertRaises(AssertionError):m.failure_oracle('prepare-failure',before,after,config,config,actor,actor)
+        after['data']['activeLocationId']='a'
+        with self.assertRaisesRegex(AssertionError,'changed-active-a-config'):
+            m.failure_oracle('prepare-failure',before,after,config,{'owned':'B'},actor,actor)
+
+
+class CensusTests(unittest.TestCase):
+    def values(self,extra=False,changed=False,denied=False):
+        sid='S-1-5-21-1-2-3-1001'
+        def actor(pid,image):return {'pid':pid,'creationFileTime':100+pid,'image':image,'sha256':'a'*64,'sid':sid,'sessionId':2}
+        expected={'owner':actor(10,'C:\\App\\vpn-control-cli.exe'),'productRuntime':actor(20,'C:\\Owned\\sing-box.exe'),
+                  'siblingRuntime':actor(21,'C:\\Tool\\sing-box.exe')}
+        actors=list(expected.values())
+        if extra:actors.append(actor(99,'C:\\Foreign\\sing-box.exe'))
+        opened=[]
+        class Process:
+            def __init__(self,value):self.value=value;self.closed=False
+            def describe(self):return {'creationFileTime':self.value['creationFileTime'],'image':self.value['image'],
+                'sha256':self.value['sha256'],'token':{'sid':sid,'sessionId':2,'elevated':0}}
+            def wait(self):return 258
+            def __exit__(self,*_):self.closed=True
+        def open_process(pid,_):
+            if denied and pid==20:raise PermissionError('inert access denied')
+            result=Process(next(value for value in actors if value['pid']==pid));opened.append(result);return result
+        iterations=[0]
+        def processes():
+            iterations[0]+=1
+            values=[{'pid':value['pid'],'parentPid':1,'name':value['image'].split('\\')[-1]} for value in actors]
+            if changed and iterations[0]>1:values=values[:-1]
+            return values
+        native=N(open_process=open_process,processes=processes)
+        def match(actual,expected):
+            assert actual['creationFileTime']==expected['creationFileTime'] and actual['image']==expected['image']
+            assert actual['sha256']==expected['sha256'] and actual['token']['sid']==expected['sid']
+        owner=N(guard=lambda:None,event=lambda *_:None);observer=N(WindowsNative=lambda:native,require_identity=match)
+        return owner,observer,expected,opened
+    def test_complete_exact_roles_and_original_handles_close_known_observation(self):
+        owner,observer,expected,opened=self.values();record=m.census(owner,observer,expected)
+        self.assertTrue(record['twoEdgesStable']);self.assertTrue(all(process.closed for process in opened))
+    def test_extra_runtime_changing_snapshot_or_access_denial_never_certifies_absence(self):
+        for options in ({'extra':True},{'changed':True},{'denied':True}):
+            owner,observer,expected,opened=self.values(**options)
+            with self.assertRaises((AssertionError,PermissionError)):m.census(owner,observer,expected)
+            self.assertFalse(owner.runtime_case_censuses[0]['closed'])
+            self.assertTrue(all(not process.closed for process in opened))
+
+
+class LargeLeaseTests(unittest.TestCase):
+    def test_native_lease_reads_full_large_bytes_and_keeps_original_on_named_change(self):
+        raw=b'x'*200000;identity={'sizeBytes':len(raw),'fileIndex':123};security={'ownerSid':'ordinary'}
+        class Native:
+            def __init__(self):
+                self.next=0;self.changed=False;self.closed=[]
+                self.k=N(CreateFileW=self.open,CloseHandle=lambda handle:self.closed.append(handle) or True)
+            def open(self,*_):self.next+=1;return self.next
+            def identity(self,handle):return {**identity,'fileIndex':999} if self.changed and handle!=1 else identity
+            def security(self,handle):return security
+            def read_blocks(self,handle):return (raw[:131072],raw[131072:])
+        native=Native();owner=N(native=native,request={'context':{'ordinarySid':'ordinary'}},guard=lambda:None)
+        lease=m.FixtureFile(owner,Path('C:\\Owned\\owned-large.json'),hashlib.sha256(raw).hexdigest())
+        self.assertEqual(lease.identity['sizeBytes'],200000);native.changed=True
+        with self.assertRaisesRegex(AssertionError,'named-generation'):lease.current()
+        self.assertEqual(lease.handle,1);self.assertNotIn(1,native.closed)
+
+
+class ExactOffTests(unittest.TestCase):
+    def test_off_observer_uses_original_handle_and_never_reopens_pid(self):
+        owner,observer,expected,opened=CensusTests().values()
+        custody=m.OriginalRuntimeExit(owner,observer,expected['productRuntime'])
+        self.assertEqual(len(opened),1)
+        opened[0].times=lambda:{'creationFileTime':expected['productRuntime']['creationFileTime']}
+        with self.assertRaisesRegex(AssertionError,'not-signaled'):custody.after_public_off()
+        self.assertFalse(custody.closed);self.assertFalse(opened[0].closed)
+        opened[0].wait=lambda:0
+        terminal=custody.after_public_off()
+        self.assertTrue(terminal['originalHandleSignaled']);self.assertFalse(terminal['pidReopened'])
+        self.assertEqual(len(opened),1);self.assertTrue(opened[0].closed)
+
+    def test_different_child_role_refuses_before_native_process_access(self):
+        child=N(label='public-cli')
+        owner=N(children=[child],root=Path('C:\\Owned'))
+        with self.assertRaisesRegex(AssertionError,'original-sibling-process-handle'):
+            m.actor_of_child(owner,child,{},N())
+
+    def test_product_not_off_refuses_sibling_cleanup_before_native_effect(self):
+        sibling={'stopAttempted':False};owner=N(runtime_case_sibling=sibling)
+        runtime=N(result=lambda *_:{'data':{'runtimeRunning':True}})
+        with self.assertRaisesRegex(AssertionError,'product-off-before-sibling'):
+            m.close_sibling(owner,{'workspace':'owned','identity':'controller'},{},runtime,N(),sibling)
+        self.assertFalse(sibling['stopAttempted'])
+
+
+class ProbeTests(unittest.TestCase):
+    def rows(self):
+        return [{'kind':'sample','ordinal':i,'succeeded':True,'mixedPort':12345} for i in range(4)]+[
+            {'kind':'terminal','allSamplesSucceeded':True,'sampleCount':4}]
+    def test_complete_samples_and_product_port_join(self):
+        raw=''.join(json.dumps(row)+'\n' for row in self.rows());self.assertEqual(len(m.probe_stream(raw,12345)),5)
+    def test_middle_failure_wrong_port_duplicate_or_incomplete_stream_refuses(self):
+        for mutate in (lambda rows:rows[2].update(succeeded=False),lambda rows:rows[2].update(mixedPort=23456),
+                       lambda rows:rows[2].update(ordinal=1),lambda rows:rows[-1].update(sampleCount=3)):
+            rows=self.rows();mutate(rows)
+            with self.assertRaises(AssertionError):m.probe_stream(''.join(json.dumps(row)+'\n' for row in rows),12345)
+        with self.assertRaises(AssertionError):m.probe_stream(json.dumps(self.rows()[0]),12345)
+
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--route-source',choices=('before','after'))
+    parser.add_argument('--fixture-source',choices=('before','after'))
+    parser.add_argument('--direct-probe-source',choices=('before','after'))
+    args=parser.parse_args()
+    if args.route_source:route_pair(args.route_source=='before')
+    elif args.fixture_source:fixture_pair(args.fixture_source=='before')
+    elif args.direct_probe_source:direct_probe_pair(args.direct_probe_source=='before')
+    else:unittest.main(argv=[sys.argv[0]],verbosity=2)

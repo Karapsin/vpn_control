@@ -26,10 +26,10 @@ def _gateway_private_capture(custody):
 _GATEWAY_REASONS=('config_or_keys_changed','duplicate','effective_home_changed','effective_home_foreign','effective_home_unknown',
                   'effective_key_not_literal','effective_key_unavailable','effective_key_unknown','effective_route_unknown',
                   'effective_user_unknown','inner_capture_cap','input_cap','input_deadline','live_child_custody','payload_bound',
-                  'payload_shape','private_output_refused','private_result_refused','program_observation_unknown','request_shape',
+                  'payload_shape','private_output_refused','private_result_refused','program_observation_unknown','program_reply_bound','request_shape',
                   'route_file_changed','route_file_unbounded','route_file_unsafe','route_identity','route_parent_changed',
                   'route_parent_unsafe','secret_shape','source_binding','sudo_shape')
-_GATEWAY_REFUSALS=('capture_overflow','capture_read','credential_write','echo_enabled','extra_prompt','foreign_prompt','secret_shape')
+_GATEWAY_REFUSALS=('capture_overflow','capture_read','capture_select','capture_setup','credential_write','echo_enabled','extra_prompt','foreign_prompt','secret_shape')
 
 
 def _gateway_unknown_facts(error,custody):
@@ -37,7 +37,7 @@ def _gateway_unknown_facts(error,custody):
     # one closed token (never exception text, stream bytes or secrets) plus the
     # custody's own closed facts as last observed.
     reason=str(error) if type(error)is ValueError and str(error)in GATEWAY_REASONS else 'unclassified'
-    if custody is None:return {'reason':reason,'capture':None}
+    if custody is None or custody.child is None:return {'reason':reason,'capture':None}
     code=custody.child.returncode;refusal=custody.refusal
     return {'reason':reason,'capture':{'complete':code is not None and all(custody.eof.values()),'returnCode':code,
             'timeout':custody.timeout,'refusal':refusal if refusal is None or refusal in GATEWAY_REFUSALS else 'unclassified'}}
@@ -130,7 +130,8 @@ def _gateway_main():
             if file_pin(spec['configFile'],body=True)!=config_pin or effective_route(spec)!=route_pin:raise ValueError('config_or_keys_changed')
         guard()
         argv=['ssh','-T','-F',spec['configFile'],'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,COMMAND]
-        secret_bytes=secret.encode();protected.append(secret_bytes);custody=start_fixed(argv,secret_bytes,route_pin['keyMetadata']);secret=None
+        secret_bytes=secret.encode();protected.append(secret_bytes);custody=Custody()
+        start_fixed(argv,secret_bytes,route_pin['keyMetadata'],custody=custody);secret=None
         if PRIVILEGED:
             sudo=request.pop('sudo')
             if type(sudo)is not str or not 0<len(sudo.encode())<=512 or any(c in sudo for c in ('\r','\n','\0')):raise ValueError('sudo_shape')
@@ -145,17 +146,36 @@ def _gateway_main():
             if not 0<len(raw)<=4096:raise ValueError('payload_bound')
             custody.child.stdin.write(raw);custody.child.stdin.flush();payload=None;raw=None
         custody.child.stdin.close();capture=custody.observe(60)
-        if not capture['complete'] or capture['refusal'] or capture['returnCode']!=0:raise ValueError('program_observation_unknown')
+        if not capture['complete'] or capture['timeout'] or capture['refusal'] or capture.get('captureErrors') or capture['returnCode']!=0:raise ValueError('program_observation_unknown')
         value=_gateway_echo_free(bytes(custody.raw['stdout']),protected)
         _gateway_echo_free(json.dumps({'tty':bytes(custody.raw['tty']).decode('utf8','replace')}).encode(),protected)
         if INPUT_PAYLOAD:value=_gateway_payload_result(value,RESPONSE)
         guard()
-        print(json.dumps({'state':'observed','correlationId':corr,'result':value,'capture':capture,'_operatorPrivateCapture':_gateway_private_capture(custody)},sort_keys=True),flush=True)
+        reply={'state':'observed','correlationId':corr,'result':value,'capture':capture,'_operatorPrivateCapture':_gateway_private_capture(custody)}
+        parts=[];wire_bytes=1  # print adds one UTF-8 newline.
+        for part in json.JSONEncoder(sort_keys=True).iterencode(reply):
+            wire_bytes+=len(part.encode('utf-8'))
+            if wire_bytes>16*1024**2:raise ValueError('program_reply_bound')
+            parts.append(part)
+        print(''.join(parts),flush=True)
         return 0
     except BaseException as error:
-        print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(error).__name__,**_gateway_unknown_facts(error,custody),
-                          '_operatorPrivateCapture':_gateway_private_capture(custody) if custody else None},sort_keys=True),flush=True)
-        if custody is not None and not custody.closed:custody.finish_naturally()
+        # The closed reason and capture are the facts when the error happened. The
+        # reply follows the drain, so finalCapture and credentialSent stay true. The
+        # drain still answers the original child's prompt, as dev always has: refusing
+        # would leave that prompt waiting forever, and UNKNOWN already means the
+        # effect may still happen.
+        facts=_gateway_unknown_facts(error,custody);final=None
+        try:
+            if custody is not None and not custody.closed:
+                try:
+                    if custody.child is not None and not custody.child.stdin.closed:custody.child.stdin.close()
+                except OSError:pass
+                custody.finish_naturally()
+            final=custody.snapshot() if custody else None
+        finally:
+            print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(error).__name__,**facts,'finalCapture':final,
+                              '_operatorPrivateCapture':_gateway_private_capture(custody) if custody else None},sort_keys=True),flush=True)
         return 3
     finally:
         protected.clear()
@@ -297,6 +317,7 @@ def _execute_admitted(root,spec,mode,*,credential_file,setup,context,payload,bef
         if mode in ('images','retire-images','vm-inventory','vm-cleanup','disk-logs'):paths.append(Path(__file__).with_name('windows_vm_image.py'))
         if mode in ('secure-resolve','secure-continue','secure-continue-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_secure_recovery','windows_vm_guest','windows_guest_input','windows_vm_instance'))
         if mode in ('qualify','qualify-status','secure','secure-status','generalize','generalize-status'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_guest','windows_guest_input'))
+        if mode in ('qualify','qualify-status','secure','secure-status','generalize','generalize-status') and setup.get('purpose')=='windowsUacVisual':paths.append(Path(__file__).with_name('windows_visual_fixture.py'))
         if mode in ('frame','frame-collect'):paths.extend(Path(__file__).with_name(name+'.py') for name in ('windows_vm_instance','windows_vm_unattend'))
         if media_rows:paths.append(Path(media.__file__))
         for path in paths:

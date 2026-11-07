@@ -1,0 +1,130 @@
+def exact_int(value,minimum=0):return type(value)is int and value>=minimum
+def held_hash(fd,length):
+ os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256();total=0
+ while True:
+  data=os.read(fd,262144)
+  if not data:break
+  total+=len(data);require(total<=length,'transfer_source_size');h.update(data)
+ require(total==length,'transfer_source_size');return h.hexdigest()
+def hold_generated_bytes(name,data):
+ require(type(data)is bytes and len(data)<=262144,'transfer_generated_source_bound');save(name,data);path=root/name;fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);info=os.fstat(fd);actual=os.read(fd,262145)
+ require(actual==data,'transfer_native_source_changed');pins.append((fd,path,generation(info)));saved_sources.append((fd,len(data),hashlib.sha256(data).hexdigest()));return hashlib.sha256(data).hexdigest()
+def hold_generated_source(label,data):return hold_generated_bytes(prefix+'.'+label+'.ps1',data)
+def generated_sources_closing():
+ for fd,length,digest in saved_sources:require(held_hash(fd,length)==digest,'transfer_native_source_closing')
+ closing()
+def valid_acl(acl,directory):
+ require(type(acl)is dict and set(acl)=={'ownerSid','sddl','rules','protected'} and acl['ownerSid']=='S-1-5-18' and type(acl['sddl'])is str and 0<len(acl['sddl'])<=4096 and acl['rules']==3 and type(acl['rules'])is int and type(acl['protected'])is bool and acl['protected']is directory,'transfer_endpoint_acl')
+def validate_endpoint(value):
+ expected_fields=EMITTER_MODULE.ENDPOINT_FIELDS
+ require(type(value)is dict and set(value)==expected_fields and value['schemaVersion']==1 and type(value['schemaVersion'])is int and value['state']=='created','transfer_endpoint_fields')
+ require(value['transferId']==ARTIFACT['transferId'] and value['deploymentId']==SPEC['deploymentId'] and value['rootPath']==ARTIFACT['guestRoot'] and value['filePath']==ARTIFACT['guestPath'],'transfer_endpoint_scope')
+ require(type(value['fileIdentity'])is str and re.fullmatch('[0-9a-f]{8}:[0-9a-f]{16}',value['fileIdentity'])is not None,'transfer_endpoint_file_identity')
+ require(value['bytes']==0 and type(value['bytes'])is int and value['sha256']==EMPTY_SHA and value['rootCreateNew']is True and value['fileCreateNew']is True and value['parentChainNoReparse']is True,'transfer_endpoint_empty')
+ require(exact_int(value['creatorPid'],1) and type(value['creatorBirthFileTimeUtc'])is str and value['creatorBirthFileTimeUtc']==value['bootstrapOpening']['birthFileTimeUtc'] and type(value['creatorSessionId'])is int and value['creatorSessionId']==0 and value['principalSid']=='S-1-5-18' and value['productOperation']is False and type(value['originalFileOwnerSid'])is str,'transfer_endpoint_creator')
+ valid_acl(value['rootAcl'],True);valid_acl(value['fileAcl'],False);validate_boot_actor(value)
+ require(type(value['rootIdentity'])is str and re.fullmatch('[0-9a-f]{8}:[0-9a-f]{16}',value['rootIdentity'])is not None and value['rootIdentityClosing']is True,'transfer_endpoint_root_identity')
+ require(value['creatorPid']==value['bootstrapOpening']['pid'] and value['creatorSessionId']==value['bootstrapOpening']['sessionId'],'transfer_endpoint_actor')
+def pin_receipt(name):
+ path=root/name;private(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);info=os.fstat(fd);require(info.st_size<=65536,'transfer_receipt_bound');raw=os.read(fd,65537)
+ require(len(raw)==info.st_size and generation(os.fstat(fd))==generation(info) and generation(os.lstat(path))==generation(info),'transfer_receipt_changed');pins.append((fd,path,generation(info)));return json.loads(raw),hashlib.sha256(raw).hexdigest()
+# Finite native-component probe. This namespace never opens a QGA file handle.
+EMPTY_SHA=hashlib.sha256(b'').hexdigest()
+wire=partial_wire=-1
+saved_sources=[]
+HOST_ADMITTED=False
+overall_deadline=time.monotonic()+240
+original_failure=None
+prefix='artifact-probe-'+PROBE_ID
+state={'schemaVersion':1,'state':'preparing','probeId':PROBE_ID,'transferId':ARTIFACT['transferId'],'deploymentId':SPEC['deploymentId'],'pending':None,'originalGuestProcesses':{},'productOperation':False}
+
+def run_probe_phase(label,source):
+ require(time.monotonic()<overall_deadline,'probe_deadline')
+ plan,source_sha=build_native_command(label,source)
+ deadline=min(time.monotonic()+115,overall_deadline)
+ state['pending']={'kind':'guest-exec','label':label,'phaseId':NATIVE_PHASE_IDS[label],'sourceSha256':source_sha}
+ save(prefix+'.'+label+'.intent.json',dict(state))
+ ack=retained_call('guest-exec',plan['arguments'],_deadline=deadline)
+ save(prefix+'.'+label+'.ack.json',ack)
+ require(type(ack)is dict and set(ack)=={'pid'} and exact_int(ack['pid'],1),'probe_ack')
+ state['originalGuestProcesses'][label]=dict(ack)
+ state['pending']['kind']='guest-exec-status';state['pending']['originalGuestPid']=ack['pid']
+ while True:
+  terminal=retained_call('guest-exec-status',ack,_deadline=deadline)
+  require(type(terminal)is dict,'probe_terminal_fields')
+  if terminal.get('exited')is True:break
+  require(time.monotonic()<deadline,'probe_pending');time.sleep(.1)
+ save(prefix+'.'+label+'.terminal.json',terminal)
+ out=base64.b64decode(terminal.get('out-data',''),validate=True)
+ err=base64.b64decode(terminal.get('err-data',''),validate=True)
+ require(terminal.get('exited')is True and type(terminal.get('exitcode'))is int and terminal['exitcode']==0 and terminal.get('out-truncated',False)is False and terminal.get('err-truncated',False)is False and not err and len(out)<=32768,'probe_output')
+ rawvalue=json.loads(out.decode('utf-8-sig'))
+ proof=EMITTER_MODULE.decode_guest_result(plan,rawvalue,GUEST_CONTEXT,ack['pid'])
+ validate_boot_actor(proof)
+ require(proof['bootstrapOpening']['pid']==ack['pid'],'probe_actor_pid')
+ return proof
+
+def validate_probe_verifier(proof,endpoint):
+ require(type(proof)is dict and set(proof)==EMITTER_MODULE.VERIFIER_FIELDS and type(proof['schemaVersion'])is int and proof['schemaVersion']==1 and proof['state']=='verified','probe_verify_fields')
+ for name in ('transferId','deploymentId','rootPath','filePath','rootIdentity','fileIdentity','rootAcl','fileAcl'):
+  require(proof[name]==endpoint[name],'probe_verify_identity_or_acl')
+ valid_acl(proof['rootAcl'],True);valid_acl(proof['fileAcl'],False)
+ require(type(proof['bytes'])is int and proof['bytes']==0 and proof['sha256']==EMPTY_SHA,'probe_verify_empty')
+ for name in ('heldPhysicalRead','identityClosing','rootIdentityClosing','aclClosing','namedIdentityClosing','parentChainNoReparse'):
+  require(proof[name]is True,'probe_verify_closing')
+ require(proof['sharingProofRequired']is False and proof['writeOpenError']is None and proof['deleteOpenError']is None,'probe_verify_no_open_handle')
+ require(proof['principalSid']=='S-1-5-18' and proof['productOperation']is False,'probe_verify_principal')
+ validate_boot_actor(proof)
+
+initialize_qga_owner(JOINED_CONTEXT['qemu']['pid'])
+state['canonicalQga']=QGA_MODULE_RECORD
+try:
+ chain();instance_intent();closing();HOST_ADMITTED=True
+ initialize_emitter();pin_qga_source();pin_emitter_source();setup_qga_owner();guard=QGA_GUARD
+ require(ARTIFACT['transferId']==PROBE_ID and ARTIFACT['deploymentId']==SPEC['deploymentId'] and ARTIFACT['guestRoot']==r'C:\ProgramData\VpnControlTransferProbe-'+PROBE_ID and ARTIFACT['guestPath']==ARTIFACT['guestRoot']+'\\probe.bin' and ARTIFACT['name']=='probe.bin' and type(ARTIFACT['bytes'])is int and ARTIFACT['bytes']==0 and ARTIFACT['sha256']==EMPTY_SHA,'probe_scope')
+ require(type(TARGET)is dict and set(TARGET)=={'deploymentId','transferId','name','bytes','sha256'} and TARGET=={name:ARTIFACT[name]for name in TARGET} and type(TARGET['bytes'])is int,'probe_target')
+ require(type(NATIVE_PHASE_IDS)is dict and set(NATIVE_PHASE_IDS)=={'create','verify'} and NATIVE_PHASE_IDS['create']!=NATIVE_PHASE_IDS['verify'],'probe_phase_scope')
+ for name in ('render_probe_endpoint','render_probe_verifier'):
+  function=getattr(EMITTER_MODULE,name)
+  require(function.__module__==EMITTER_MODULE.__name__ and function.__globals__ is EMITTER_MODULE.__dict__,'probe_emitter_function_owner')
+ initial=observed()
+ require(initial['guestAgentReady'] and initial['ordinarySessionObserved'],'probe_guest_not_ready')
+ require(initial['qemu']==JOINED_CONTEXT['qemu'] and initial['swtpm']==JOINED_CONTEXT['swtpm'],'probe_context_actor')
+ require(JOINED_CONTEXT['ordinaryTokenQualified']is True and JOINED_CONTEXT['packageInstalled']is False and JOINED_CONTEXT['deploymentId']==SPEC['deploymentId'] and JOINED_CONTEXT['hostBootId']==CONTEXT['hostBootId'],'probe_joined_context')
+ instance_intent();closing()
+ save(prefix+'.intent.json',{'schemaVersion':1,'probeId':PROBE_ID,'artifact':ARTIFACT,'joinedContextSha256':JOINED_CONTEXT_SHA,'guestContextSha256':GUEST_CONTEXT_SHA256,'nativePhaseIds':NATIVE_PHASE_IDS,'before':initial,'productOperation':False})
+ endpoint=run_probe_phase('create',EMITTER_MODULE.render_probe_endpoint(PROBE_ID,GUEST_CONTEXT))
+ validate_endpoint(endpoint);generated_sources_closing();guard()
+ endpoint_name=prefix+'.endpoint.json';save(endpoint_name,endpoint)
+ pinned_endpoint,endpoint_sha=pin_receipt(endpoint_name)
+ require(pinned_endpoint==endpoint,'probe_endpoint_receipt_changed')
+ validate_endpoint(pinned_endpoint);endpoint=pinned_endpoint
+ state['endpointReceiptPath']=str(root/endpoint_name);state['endpointReceiptSha256']=endpoint_sha
+ state['pending']=None;save(prefix+'.create.proof.json',endpoint)
+ proof=run_probe_phase('verify',EMITTER_MODULE.render_probe_verifier(PROBE_ID,GUEST_CONTEXT,endpoint['fileIdentity']))
+ validate_probe_verifier(proof,endpoint);generated_sources_closing();guard()
+ save(prefix+'.verify.proof.json',proof)
+ require(time.monotonic()<overall_deadline,'probe_deadline')
+ finalize_rpc_success()
+ state['state']='qualified';state['pending']=None;state['sourceClosing']=True
+ save(prefix+'.complete.json',dict(state))
+ print(json.dumps({'state':'qualified','probeId':PROBE_ID,'endpoint':endpoint,'verification':proof,'endpointReceiptSha256':endpoint_sha,'canonicalEmitter':EMITTER_RECORD,'canonicalEmitterSha256':EMITTER_SHA256,'canonicalQgaSha256':QGA_MODULE_SHA,'sourceClosing':True,'productOperation':False},sort_keys=True))
+except BaseException as error:
+ original_failure=error
+ state['state']='unknown';state['errorClass']=type(error).__name__;state['error']=str(error)
+ state['automaticRetry']=False;state['automaticClose']=False;state['automaticMutationResume']=False
+ state['hostAdmitted']=HOST_ADMITTED;state['hostDescriptorDisposition']='retained-in-original-namespace'
+ state['retainedHostDescriptors']=list(held)+[fd for fd in (wire,partial_wire)if fd>=0]
+ state['originalRpc']=None if CURRENT_RPC is None else CURRENT_RPC.snapshot()
+ state['programParked']=True;state['keeperBindingRequired']=True
+ state['canonicalEmitter']=EMITTER_RECORD;state['reportingFailures']=REPORTING_FAILURES
+ try:generated_sources_closing()
+ except BaseException as checkpoint_error:
+  state['sourceCheckpoint']={'state':'unverified','errorClass':type(checkpoint_error).__name__,'error':str(checkpoint_error)}
+ safe_journal(prefix+'.unknown.json',dict(state));safe_report({'state':'unknown','probeId':PROBE_ID,'originalState':state,'productOperation':False})
+ park_original(state,error)
+finally:
+ if original_failure is None:
+  for fd in (wire,partial_wire):
+   if fd>=0:os.close(fd)
+  for fd in reversed(held):os.close(fd)

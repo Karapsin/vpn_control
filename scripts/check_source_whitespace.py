@@ -8,6 +8,8 @@ import sys
 # These are authenticated historical bytes, not editable source. Every other
 # path, and any changed byte at these paths, remains subject to normal checks.
 HISTORICAL_BYTE_ARCHIVES = {
+    "agent_tools/tests/fixtures/windows_artifact_transfer/qga-helper-length.failed.ps1.source":
+        "e00783a9b9ca9d9d711901703edb387ac7689c070084a06be671cc5ee6ad8ecc",
     "agent_tools/tests/fixtures/windows_cp117_historical_factory/provider_f54029cf.source":
         "f54029cf3259011d71df93c51f15b3c2b7a886470008427cf85c8e127c567a72",
     "agent_tools/tests/fixtures/android_api35_historical_arm.source":

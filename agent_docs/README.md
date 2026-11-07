@@ -54,7 +54,7 @@ Use the smallest row that covers the change. If a patch crosses rows, run the un
 | `macos-release.md` | macOS signing and notarization setup. |
 | `visual-regression.md` | Agent-owned scene capture, local VM/hosted fallback, baseline, review, receipt, and release-gate operations. |
 | `work-in-progress.md` | Current intentional multi-bucket work: owners, verified checkpoint, next actions and remaining gates. |
-| `parity-solo-plan.md` | Deferred parity brief; active MCP-only repair allows subagents and keeps prior environments closed. |
+| `parity-solo-plan.md` | Resumed Windows parity; other native/visual platforms deferred, prior environments remain closed. |
 | `parity-continuation-plan.md` | Superseded-brief pointer; September 28 instructions remain preserved in the archive. |
 | `parity-failure-regressions.md` | Compact active failure-to-test index, unresolved enrollment and links to complete causal records. |
 | `parity-history.md` | Historical GUI/CLI parity evidence and design notes; superseded snapshots, not current completion claims. |

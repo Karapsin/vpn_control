@@ -1,0 +1,110 @@
+$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+Add-Type -TypeDefinition ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'decision-boundary.cs')))
+. (Join-Path $PSScriptRoot 'Assert-NativeIdentity.fragment.ps1')
+$script:Owner='S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464'
+$script:PowerShell='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+$script:MsiExec='C:\Windows\System32\msiexec.exe'
+$script:Handle=[Microsoft.Win32.SafeHandles.SafeFileHandle]::new([IntPtr]123,$false)
+$script:Results=[Collections.Generic.List[object]]::new()
+
+function Root-Exception($e) {
+ while($null -ne $e.InnerException){$e=$e.InnerException}
+ return $e
+}
+function Declare-Case([hashtable]$Override=@{}) {
+ $c=@{attributes=[uint32]32;links=[uint32]2;volume=[uint32]17;indexHi=[uint32]2;indexLo=[uint32]43;sizeHi=[uint32]0;sizeLo=[uint32]511;creation=[long]133000000000000001;write=[long]133000000000000002;owner=$script:Owner;descriptorOwner=$script:Owner;protected=$true;dacl='common';ace='allow';trustee='S-1-5-32-545';mask=[int]0x1200a9;callback=$false}
+ foreach($k in $Override.Keys){$c[$k]=$Override[$k]}
+ $d=[DeclaredSecurity.RawSecurityDescriptor]::new()
+ if($null -ne $c.descriptorOwner){$d.Owner=[DeclaredSecurity.Sid]::new($c.descriptorOwner)}
+ if($c.protected){$d.ControlFlags=[DeclaredSecurity.ControlFlags]::DiscretionaryAclProtected}
+ if($c.dacl -ne 'null'){
+  $d.DiscretionaryAcl=[DeclaredSecurity.RawAcl]::new()
+  if($c.dacl -ne 'empty'){
+   if($c.ace -eq 'object'){$a=[DeclaredSecurity.ObjectAce]::new()}
+   else{
+    $a=[DeclaredSecurity.CommonAce]::new()
+    $a.IsCallback=$c.callback
+    $a.AceQualifier=if($c.ace -eq 'deny'){[DeclaredSecurity.AceQualifier]::AccessDenied}elseif($c.ace -eq 'audit'){[DeclaredSecurity.AceQualifier]::SystemAudit}else{[DeclaredSecurity.AceQualifier]::AccessAllowed}
+    $a.SecurityIdentifier=[DeclaredSecurity.Sid]::new($c.trustee)
+    $a.AccessMask=$c.mask
+   }
+   $d.DiscretionaryAcl.Add($a)
+  }
+ }
+ [DeclaredSecurity.RawSecurityDescriptor]::Declared=$d
+ # Security text is an explicitly declared boundary value, not parsed by the peer.
+ $sddl='O:'+$script:Owner+'D:P(A;;0x1200a9;;;BU)'
+ [BeforeDecisionBoundary]::Declare($c.attributes,$c.links,$c.volume,$c.indexHi,$c.indexLo,$c.sizeHi,$c.sizeLo,$c.creation,$c.write,$c.owner,$sddl)
+ [CandidateDecisionBoundary]::Declare($c.attributes,$c.links,$c.volume,$c.indexHi,$c.indexLo,$c.sizeHi,$c.sizeLo,$c.creation,$c.write,$c.owner,$sddl)
+}
+function Expect-Rejection([string]$Name,[scriptblock]$Action,[string]$Message) {
+ $caught=$null
+ try{$null=&$Action}catch{$caught=Root-Exception $_.Exception}
+ if($null -eq $caught){throw ('Expected rejection: '+$Name)}
+ if($caught.Message -cne $Message){throw ('Wrong rejection '+$Name+': '+$caught.Message)}
+ $script:Results.Add([ordered]@{name=$Name;expected='rejected';observed='rejected';exceptionType=$caught.GetType().FullName;message=$caught.Message;pass=$true})
+}
+function Expect-Identity([string]$Name,[string]$Path) {
+ $value=[CandidateDecisionBoundary]::PinIdentity($script:Handle,$Path,$false)
+ Assert-NativeIdentity $value $script:Expected
+ $script:Results.Add([ordered]@{name=$Name;expected='accepted exact full identity';observed=$value;pass=$true})
+}
+$script:Expected=[pscustomobject]@{attributes=[uint32]32;volumeSerial=[uint32]17;fileIndex=[uint64]8589934635;sizeBytes=[uint64]511;links=[uint32]2;creationFileTime='133000000000000001';lastWriteFileTime='133000000000000002'}
+
+Declare-Case
+Expect-Rejection 'causal-before-real-Identity-links2-RED' { [BeforeDecisionBoundary]::Identity($script:Handle,$false) } 'file-type-reparse-link'
+Expect-Identity 'causal-fixed-real-PinIdentity-powershell-links2-GREEN' $script:PowerShell
+Expect-Identity 'causal-fixed-real-PinIdentity-msiexec-links2-GREEN' $script:MsiExec
+Expect-Rejection 'fixed-generic-Identity-links2-refuses' { [CandidateDecisionBoundary]::Identity($script:Handle,$false) } 'file-type-reparse-link'
+foreach($path in @('C:\ProgramData\VpnControlArtifact-87079087-ae56-43c9-b504-842d2f300e12\vpn-control-2.2.13.msi','C:\Users\fixture\AppData\Local\Programs\Python313\python.exe','C:\Windows\System32\WindowsPowerShell\v1.0\POWERSHELL.EXE','C:\Windows\System32\cmd.exe')){
+ $script:CurrentPath=$path
+ Expect-Rejection ('unadmitted-path-links2:'+ $path) { [CandidateDecisionBoundary]::PinIdentity($script:Handle,$script:CurrentPath,$false) } 'file-type-reparse-link'
+}
+$negative=@(
+ @{name='wrong-owner-field';change=@{owner='S-1-5-18'};message='os-owner'},
+ @{name='wrong-descriptor-owner';change=@{descriptorOwner='S-1-5-18'};message='os-dacl'},
+ @{name='null-descriptor-owner';change=@{descriptorOwner=$null};message='os-dacl'},
+ @{name='unprotected-dacl';change=@{protected=$false};message='os-dacl'},
+ @{name='null-dacl';change=@{dacl='null'};message='os-dacl'},
+ @{name='empty-dacl';change=@{dacl='empty'};message='os-dacl'},
+ @{name='object-ace';change=@{ace='object'};message='os-ace'},
+ @{name='callback-ace';change=@{callback=$true};message='os-ace'},
+ @{name='audit-ace';change=@{ace='audit'};message='os-ace'},
+ @{name='ordinary-write';change=@{mask=[int]0x120116};message='os-writer'},
+ @{name='ordinary-generic-all';change=@{mask=[int]0x10000000};message='os-writer'},
+ @{name='ordinary-unknown-rights-bit';change=@{mask=[int]0x1200ab};message='os-writer'},
+ @{name='reparse-file';change=@{attributes=[uint32]0x420};message='file-type-reparse-link'},
+ @{name='directory-in-file-role';change=@{attributes=[uint32]0x30};message='file-type-reparse-link'},
+ @{name='zero-links';change=@{links=[uint32]0};message='file-type-reparse-link'}
+)
+foreach($case in $negative){
+ Declare-Case $case.change
+ Expect-Rejection $case.name { [CandidateDecisionBoundary]::PinIdentity($script:Handle,$script:PowerShell,$false) } $case.message
+}
+foreach($sid in @($script:Owner,'S-1-5-18','S-1-5-32-544')){
+ Declare-Case @{trustee=$sid;mask=[int]0x10000000}
+ Expect-Identity ('permitted-machine-writer:'+ $sid) $script:PowerShell
+}
+Declare-Case @{ace='deny';mask=[int]0x10000000}
+Expect-Identity 'deny-write-does-not-grant-write' $script:PowerShell
+Declare-Case @{ace='deny';mask=[int]0x1f01ff}
+Expect-Identity 'ordinary-denied-FA-does-not-grant-write' $script:PowerShell
+Declare-Case @{trustee='S-1-5-21-1-2-3-1001'}
+Expect-Identity 'equivalent-protected-acl-different-read-only-sid' $script:PowerShell
+$mask=[BitConverter]::ToInt32([BitConverter]::GetBytes([uint32]::Parse('A01200A9',[Globalization.NumberStyles]::HexNumber)),0)
+Declare-Case @{mask=$mask}
+Expect-Identity 'non-machine-exact-read-mask' $script:PowerShell
+$drifts=@{
+ attributes=@{attributes=[uint32]33};volumeSerial=@{volume=[uint32]18};fileIndex=@{indexLo=[uint32]44};sizeBytes=@{sizeLo=[uint32]512};links=@{links=[uint32]3};creationFileTime=@{creation=[long]133000000000000003};lastWriteFileTime=@{write=[long]133000000000000003}
+}
+foreach($field in @('attributes','volumeSerial','fileIndex','sizeBytes','links','creationFileTime','lastWriteFileTime')){
+ Declare-Case $drifts[$field]
+ Expect-Rejection ('full-native-identity-drift:'+ $field) { Assert-NativeIdentity ([CandidateDecisionBoundary]::PinIdentity($script:Handle,$script:PowerShell,$false)) $script:Expected } 'TASK_NATIVE_IDENTITY_CHANGED'
+}
+Declare-Case @{links=[uint32]1}
+$generic=[CandidateDecisionBoundary]::Identity($script:Handle,$false)
+if($generic['links'] -ne 1){throw 'generic one-link invariant'}
+$script:Results.Add([ordered]@{name='generic-one-link-still-accepted';expected='accepted';observed='accepted';pass=$true})
+$r=[ordered]@{state='portable-exact-body-controls-passed';count=$script:Results.Count;results=@($script:Results.ToArray());nativeCalls=0;nativeQualified=$false;boundary='FI and Security API peers plus typed descriptor/ACE peers; no SDDL parser, Win32, or Windows PowerShell qualification'}
+[Console]::WriteLine(($r|ConvertTo-Json -Depth 12 -Compress))

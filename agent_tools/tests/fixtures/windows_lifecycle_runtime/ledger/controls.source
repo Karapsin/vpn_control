@@ -1,0 +1,76 @@
+"""Actual existing/new handler ledger pair against one unchanged attribution oracle.
+
+The HTTP handler methods execute with an in-memory HTTP peer; no listener or
+socket is created. `before` is deliberately RED, `after` must be GREEN.
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import io
+import json
+from pathlib import Path
+import sys
+import tempfile
+import threading
+import time
+from types import MethodType, SimpleNamespace
+
+
+HERE = Path(__file__).resolve().parent
+REPO = next(parent for parent in HERE.parents if (parent / "scripts/integration").is_dir())
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def exercise(mode):
+    load("socks_http_fixture", REPO / "scripts/integration/socks_http_fixture.py")
+    source = load("_pair_original_https", REPO / "scripts/integration/https_subscription_relay_fixture.py")
+    collector = load("_pair_original_collector", REPO / "scripts/integration/desktop_scheduled_refresh_fixture.py")
+    adapter = load("_pair_private_ledger_adapter", HERE / "scheduled_fixture_worker.py")
+    with tempfile.TemporaryDirectory(prefix="owned-ledger-pair-", dir=HERE) as temporary:
+        root = Path(temporary)
+        ledger, ready = root / "ledger.jsonl", root / "ready.json"
+        ledger.touch()
+        server = SimpleNamespace(_request_lock=threading.Lock(), _subscription_requests=0,
+            request_log=ledger if mode == "before" else None,
+            subscription_path="/subscription", subscription_body="socks://127.0.0.1:23456\n")
+        server.record_subscription_request = MethodType(source._TlsThreadingHTTPServer.record_subscription_request, server)
+        handler_type = source._SubscriptionHandler
+        if mode == "after":
+            fixture = adapter.fixture_type(source)(root / "cert", root / "key", ready,
+                                                    "owned-proof", ledger=ledger)
+            fixture.https_server = server
+            fixture._publish_readiness({"httpsHost": "localhost", "httpsPort": 24443})
+            handler_type = server.RequestHandlerClass
+        started = time.time() - 1
+        for user_agent in (collector.PRODUCT_USER_AGENT, "curl/8.15.0"):
+            handler = handler_type.__new__(handler_type)
+            handler.server, handler.path = server, "/subscription"
+            handler.headers, handler.wfile = {"User-Agent": user_agent}, io.BytesIO()
+            handler.send_response = lambda code: None
+            handler.send_header = lambda key, value: None
+            handler.end_headers = lambda: None
+            handler.do_GET()
+            assert handler.wfile.getvalue() == server.subscription_body.encode()
+        finished = time.time() + 1
+        samples = [{"returncode": 0, "startedAt": started, "finishedAt": finished}]
+        rows = collector.ledger_rows(ledger)
+        intersection = collector.ledger_intersection(rows, started, finished, samples)
+        print(json.dumps({"mode": mode, "rows": rows, "attribution": intersection,
+                          "nativeOrNetworkExecuted": False}), flush=True)
+        # Same oracle for both complete original and subclass handler methods.
+        assert len(intersection["scheduled"]) == 1, "scheduled request lacks timestamp/path/userAgent attribution"
+        assert len(intersection["traffic"]) == 1, "traffic request lacks timestamp/path/userAgent attribution"
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=("before", "after"), required=True)
+    exercise(parser.parse_args().mode)

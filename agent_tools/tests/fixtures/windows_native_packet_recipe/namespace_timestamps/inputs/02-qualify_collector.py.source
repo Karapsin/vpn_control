@@ -1,0 +1,191 @@
+"""Whole frozen RPC83 collector with reused complete c9/PeerWorld boundaries.
+
+Only owned output files and in-memory host metadata are mutable. No actual
+/proc, socket, API, guest, signal, subprocess, or source replacement is used.
+"""
+from pathlib import Path
+import argparse,base64,builtins,collections,contextlib,hashlib,importlib.util,io,json,os,re,stat,sys,traceback,types
+
+HERE=Path(__file__).resolve().parent
+B=HERE.parents[1];REPO=HERE.parents[4]
+CURRENT_SHA='81f3957f0985c49bb7d9752e63008e0a31c6bdb7be49e4eef29f10b4dbe9be20'
+BEFORE_SHA='9aa7af7c6b3b1e7f8903c0afec2111974ae30f1f1f1438a93dce798b926bc965'
+OLD_QUALIFIER=B/'owned-host-readonly-preparation-v1/qualify_collector.py'
+OLD_QUALIFIER_SHA='fd420b83e273de49755d3bc3058731e1bf22485f21002011e3ac79194943a42b'
+HARNESS=B/'inert-caller-qualification/harness.py'
+HARNESS_SHA='ea82b43ee0d687a503a415360bec27acd1826fced11e18caf617d7e2062c4390'
+def digest(raw):return hashlib.sha256(raw).hexdigest()
+assert digest(OLD_QUALIFIER.read_bytes())==OLD_QUALIFIER_SHA
+assert digest(HARNESS.read_bytes())==HARNESS_SHA
+spec=importlib.util.spec_from_file_location('_rpc83_complete_old_collector_boundary',OLD_QUALIFIER)
+old=importlib.util.module_from_spec(spec);sys.modules[spec.name]=old;spec.loader.exec_module(old)
+assert old.CollectorWorld.__module__==old.__name__ and sys.modules[old.__name__]is old
+assert Path(old.PeerWorld.__init__.__code__.co_filename).resolve()==HARNESS.resolve()
+
+REQUEST_PATH=HERE.parent/'host-rpc83-readonly-preparation-v1/native-run-v1/rpc83.request.json'
+RAW_PATH=REQUEST_PATH.with_name('rpc83.raw')
+QGA_PATH=B/'qga-recv-poll-private-preparation-v1/windows_qga_transfer.candidate.py'
+EMITTER_PATH=REPO/'agent_tools/windows_artifact_transfer.py'
+INPUTS={REQUEST_PATH:('8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81',32805),RAW_PATH:('639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4',214),QGA_PATH:('bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022',28116),EMITTER_PATH:('297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479',44195)}
+DATA={path:path.read_bytes()for path in INPUTS}
+assert all(digest(DATA[path])==pin[0]and len(DATA[path])==pin[1]for path,pin in INPUTS.items())
+def clone_info(value):return types.SimpleNamespace(**vars(value))
+
+class CollectorWorld(old.CollectorWorld):
+ def __init__(self,declarations,fault=None,drift=True):
+  self.declarations=declarations;self.fault=fault;self.drift=drift
+  self.original_pid=54321;self.own_pid=33333;self.status_reads=collections.Counter();self.closing_phase=False
+  self.fd_targets={};self.metadata_reads=[];self.forbidden_attempts=[];self.native_generations={};self.actor_calls=0
+  old.PeerWorld.__init__(self,declarations,[])
+  self.prefix=declarations['ORIGINAL_PREFIX'];self._original_files();self._actor(self.original_pid);self._actor(self.own_pid)
+  if fault=='ambiguity':self._actor(54322)
+  if fault=='missing-fd':del self.links[f'/proc/{self.original_pid}/fd/103']
+  if fault=='wrong-uid':self.nodes[f'/proc/{self.original_pid}']['uid']=1001
+  if fault=='canonical-hash':self.nodes[self.root+'/'+self.prefix+'.canonical-qga.py']['data'][0]^=1
+  if fault=='nonce-mismatch':
+   value=json.loads(bytes(self.nodes[self.intent_path]['data']));value['nonce']-=1;self.jnode(self.intent_path,value)
+  if fault=='file-bound':self.node(self.intent_path,b'{}',size=declarations['MAX_FILE']+1)
+  if fault=='aggregate-bound':
+   value=bytes(self.nodes[self.intent_path]['data']);self.node(self.intent_path,value+b' '*(declarations['MAX_FILE']-len(value)))
+  if fault=='symlink-file':self.node(self.intent_path,b'{}',mode=stat.S_IFLNK|0o777)
+  if fault=='required-absence':del self.nodes[self.root+'/'+self.prefix+'.rpc-000083.raw']
+  if fault=='extra-prefix':self.node(self.root+'/'+self.prefix+'.unselected-not-in-five-files',b'inert unselected file')
+  self.os.listdir=self.listdir;self.os.getpid=lambda:self.own_pid;self.os.lseek=self.lseek;self.os.SEEK_SET=os.SEEK_SET
+  self.os.kill=self.trap;self.os.unlink=self.trap;self.os.remove=self.trap;self.os.rename=self.trap;self.socket.socket=self.trap
+  self.os.readlink=self.resolve_link
+  self.os.fstat=self.fstat
+  self.initial_nodes=self.node_snapshot();self.initial_links=dict(self.links)
+
+ def _original_files(self):
+  self.intent_path=self.root+'/'+self.prefix+'.rpc-000083.intent.json'
+  files={'.canonical-qga.py':DATA[QGA_PATH],'.canonical-emitter.py':DATA[EMITTER_PATH],'.rpc-000083.request.json':DATA[REQUEST_PATH],'.rpc-000083.raw':DATA[RAW_PATH]}
+  for suffix,raw in files.items():
+   path=self.root+'/'+self.prefix+suffix;self.node(path,raw)
+   wanted=self.declarations['EXACT_PINS'][self.prefix+suffix]
+   assert len(raw)==wanted['bytes']and digest(raw)==wanted['sha256']
+   if 'generation'in wanted:self.native_generations[path]=list(wanted['generation'])
+  self.jnode(self.intent_path,{'sequence':83,'nonce':8220859838733921813,'command':'guest-exec','requestPath':self.root+'/'+self.prefix+'.rpc-000083.request.json','rawPath':self.root+'/'+self.prefix+'.rpc-000083.raw','requestBytes':32805,'requestSha256':INPUTS[REQUEST_PATH][0]})
+
+ def _actor(self,pid):
+  base=f'/proc/{pid}';self.node(base,mode=stat.S_IFDIR|0o555)
+  self.node(base+'/stat',(str(pid)+' (inert collector actor) '+' '.join(['S']+['0']*18+['1234567'])).encode())
+  self.node(base+'/status',b'Name:\tpython3\nUid:\t1000\t1000\t1000\t1000\nNSpid:\t'+str(pid).encode()+b'\nvoluntary_ctxt_switches:\t10\nVmRSS:\t2048 kB\n')
+  self.node(base+'/cmdline',b'/usr/bin/python3.14\0-I\0-B\0-c\0INERT ORIGINAL ACTOR\0')
+  self.node(base+'/exe',b'inert actor executable',mode=stat.S_IFREG|0o755);self.links[base+'/exe']='/usr/bin/python3.14'
+  for number,suffix in enumerate(('.rpc-000083.request.json','.rpc-000083.raw','.canonical-qga.py','.canonical-emitter.py'),100):
+   path=base+'/fd/'+str(number);target=self.root+'/'+self.prefix+suffix;self.links[path]=target;self.fd_targets[path]=target
+  path=base+'/fd/104';self.links[path]='socket:['+str(900000+pid)+']';self.node(path,mode=stat.S_IFSOCK|0o600)
+  self.node(base+'/ns',mode=stat.S_IFDIR|0o555)
+  for index,name in enumerate(('ipc','mnt','net','pid','user','uts')):
+   path=base+'/ns/'+name;self.links[path]=name+':['+str(4026532000+index)+']';self.node(path,b'',mode=stat.S_IFREG|0o444,ino=5000+index)
+  self.links[base+'/root']='/';self.nodes[base+'/root']=self.nodes['/']
+
+ def listdir(self,path):
+  path=str(path)
+  if re.fullmatch(r'/proc/[0-9]+/ns',path):return sorted(p[len(path)+1:]for p in self.links if p.startswith(path+'/'))
+  return super().listdir(path)
+
+ def info(self,path):
+  path=str(path)
+  if path in self.fd_targets:
+   self.metadata_reads.append(path);value=self.info(self.fd_targets[path])
+   if self.closing_phase and self.fault=='fd-generation'and path==f'/proc/{self.original_pid}/fd/100':value.st_ino+=1
+   return value
+  if path in self.native_generations:
+   if path not in self.nodes:raise FileNotFoundError(path)
+   value=types.SimpleNamespace(**dict(zip(('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns'),self.native_generations[path])))
+  else:value=old.PeerWorld.info(self,path)
+  if self.closing_phase:
+   if self.fault=='executable-generation'and path==f'/proc/{self.original_pid}/exe':value.st_ino+=1
+   if self.fault=='socket-generation'and path==f'/proc/{self.original_pid}/fd/104':value.st_ino+=1
+   if self.fault=='file-generation'and path==self.intent_path:value.st_mtime_ns+=1
+   if self.fault=='namespace-generation'and path==f'/proc/{self.original_pid}/ns/mnt':value.st_ino+=1
+   if self.fault=='process-root-generation'and path==f'/proc/{self.original_pid}/root':value.st_ino+=1
+   if self.fault=='collector-root-replacement'and path==self.root:value.st_ino+=1;value.st_mode=stat.S_IFLNK|0o777
+  return value
+
+ def fstat(self,fd):
+  row=self.fds[fd]
+  if 'held_root_info'in row:return clone_info(row['held_root_info'])
+  return self.info(row['path'])
+
+ def open_fd(self,path,flags,mode=0o777,*,dir_fd=None):
+  absolute=self.resolve(path,dir_fd);fd=super().open_fd(path,flags,mode,dir_fd=dir_fd)
+  if absolute==self.root and flags&os.O_DIRECTORY:self.fds[fd]['held_root_info']=clone_info(self.info(absolute))
+  return fd
+
+ def builtin_open(self,path,mode='r',*args,**kwargs):
+  path=self.resolve(path)
+  if re.match(r'/proc/[0-9]+/fd(?:/|$)',path):self.forbidden_attempts.append({'procFdRead':path});raise AssertionError('proc fd payload read forbidden')
+  result=old.PeerWorld.builtin_open(self,path,mode,*args,**kwargs);raw=result.getvalue()
+  match=re.fullmatch(r'/proc/([0-9]+)/(status|stat)',path)
+  if match:
+   pid=int(match.group(1));kind=match.group(2)
+   if kind=='status':
+    self.status_reads[pid]+=1
+    if self.fault=='wrong-status-uid'and pid==self.original_pid:raw=raw.replace(b'1000\t1000\t1000\t1000',b'1000\t1001\t1000\t1000')
+    if self.drift and self.status_reads[pid]>1:raw=raw.replace(b'switches:\t10',b'switches:\t11').replace(b'2048 kB',b'2052 kB')
+   elif self.closing_phase and self.fault=='start-changed'and pid==self.original_pid:raw=raw.replace('1234567','1234568')if isinstance(raw,str)else raw.replace(b'1234567',b'1234568')
+  return io.BytesIO(raw)if'rb'==mode else io.StringIO(raw)
+
+def qualify(path,destination,label,expected_state,expected_error=None,fault=None,drift=True,causal_red=False):
+ source=path.read_bytes();world=CollectorWorld(old.literals(source.decode()),fault,drift)
+ normal=dict(vars(builtins));normal['__import__']=world.import_peer;normal['open']=world.builtin_open
+ namespace={'__name__':'__main__','__builtins__':normal};output=io.StringIO();stderr=io.StringIO();caught=None;calls=collections.Counter();lines=set()
+ def trace(frame,event,arg):
+  if frame.f_code.co_filename==str(path):
+   if event=='call':
+    calls[frame.f_code.co_name]+=1
+    if frame.f_code.co_name=='actor_snapshot'and frame.f_locals.get('pid')==world.original_pid:
+     world.actor_calls+=1;world.closing_phase=world.actor_calls>=2
+   elif event=='line':lines.add(frame.f_lineno)
+  return trace
+ prior=sys.gettrace()
+ try:
+  with contextlib.redirect_stdout(output),contextlib.redirect_stderr(stderr):
+   sys.settrace(trace);exec(compile(source,str(path),'exec'),namespace,namespace)
+ except BaseException as error:caught={'class':type(error).__name__,'message':str(error),'traceback':traceback.format_exc()}
+ finally:sys.settrace(prior)
+ assert caught is None,(label,caught)
+ result=json.loads(output.getvalue());assert result['state']==expected_state,(label,result.get('error'),expected_state)
+ if expected_error:assert expected_error==result.get('error'),(label,result.get('error'),expected_error)
+ assert world.node_snapshot()==world.initial_nodes and world.links==world.initial_links,'uncontrolled node or link mutation'
+ assert not world.fds and not world.forbidden_attempts and not world.rpc and not world.sockets,'side effect or leaked collector handle'
+ assert all(event[0]not in('write','fsync')for event in world.events)
+ for flag in ('guestQueries','newSocketOperations','signals','originalHandleClose','productOperation','taskOperation'):assert result[flag]is False
+ if expected_state=='qualified':
+  assert result['actorOpening']['pid']==world.original_pid and result['actorCandidateCount']==1
+  assert result['socketObservation']=={'currentPeerRelation':'not-observed-by-readonly-proc-metadata','anonymousSocketIsNotFreshQgaPeerProof':True,'newProtocolQueries':False,'socketPayloadRead':False}
+  assert result['actorOpening']['statusBase64']!=result['actorClosing']['statusBase64']if drift else True
+  assert result['sourceClosing']is True and result['allFileBytesComplete']is True and result['allFileBytesReadAndHashesComplete']is True
+  assert result['scope']=='exact-original-rpc83-host-actor-identity'and result['originalFileBytePayloadEmitted']is False
+  assert result['selectedFileNames']==sorted(world.declarations['EXPECTED_NAMES'])and result['prefixInventoryObserved']is False
+  assert all('base64'not in row for row in result['files'].values())and len(result['files'])==5
+  assert result['historicalWireJoin']['rpcSequence']==83 and result['historicalWireJoin']['nonce']==8220859838733921813
+  assert result['historicalWireJoin']['originalRpcOutcome']=='UNKNOWN'and result['historicalWireJoin']['guestChildAbsenceClaimed']is False and result['historicalWireJoin']['guestReplayAllowed']is False
+  if not causal_red:assert result['rootNamedHeldClosing']is True and result['rootStructureOpening']==result['rootStructureClosing']
+ assert source==path.read_bytes(),'collector source changed'
+ case=destination/label;case.mkdir(mode=0o700);(case/'caller.py').write_bytes(source)
+ receipt={'schemaVersion':1,'label':label,'source':str(path),'sourceSha256':digest(source),'sourceUnmodified':True,'partialNamespaceExecution':False,'postExecFunctionReplacement':False,'initialGlobals':['__name__','__builtins__'],'fault':fault,'expectedState':expected_state,'expectedError':expected_error,'expectedRejectionOracleRed':causal_red,'irrelevantStatusDrift':drift,'imports':world.imports,'functions':dict(calls),'coveredLines':sorted(lines),'phaseBoundary':'Trace observes original actor_snapshot call entry and changes inert metadata before second snapshot only; no source/global/function replacement.','procFdMetadataOnly':world.metadata_reads,'forbiddenAttempts':world.forbidden_attempts,'allUncontrolledNodesAndLinksUnchanged':True,'allOwnReadonlyDescriptorsClosed':True,'guestOrNetworkOperations':False,'nativeAcceptance':False,'actualRequestRawAndModuleBytesUsed':True,'actualRequestRawGenerationPinsModeled':True,'namespaceRootAndActorIdentitiesInert':True,'stdout':output.getvalue(),'stderr':stderr.getvalue(),'result':result}
+ raw=(json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode();(case/'receipt.json').write_bytes(raw)
+ return {'label':label,'passed':True,'state':result['state'],'error':result.get('error'),'sourceSha256':digest(source),'receiptSha256':digest(raw),'stdoutBytes':len(output.getvalue().encode()),'expectedRejectionOracleRed':causal_red}
+
+def main():
+ parser=argparse.ArgumentParser();parser.add_argument('--output',default='qualification-inert-v1');args=parser.parse_args()
+ assert Path(args.output).name==args.output and args.output.startswith('qualification-')
+ destination=HERE/args.output;destination.mkdir(mode=0o700,exist_ok=False)
+ current=HERE/'collector-v3.py';before=HERE/'collector-v2.py'
+ assert digest(current.read_bytes())==CURRENT_SHA and digest(before.read_bytes())==BEFORE_SHA
+ cases=[]
+ def run(label,**kwargs):cases.append(qualify(current,destination,label,**kwargs))
+ run('success-status-drift',expected_state='qualified')
+ run('success-unselected-prefix-ignored',expected_state='qualified',fault='extra-prefix')
+ controls={'ambiguity':'collector_actor_not_unique','missing-fd':'collector_actor_not_unique','wrong-uid':'collector_actor_not_unique','wrong-status-uid':'collector_actor_uid_status','start-changed':'collector_actor_closing_changed','executable-generation':'collector_actor_closing_changed','executable-link':'collector_actor_python','fd-generation':'collector_actor_original_fd_identity','socket-generation':'collector_actor_closing_changed','socket-link':'collector_actor_closing_changed','file-generation':'collector_file_generation_closing','canonical-hash':'collector_exact_original_bytes','nonce-mismatch':'collector_original_rpc_intent_join','file-bound':'collector_file_or_aggregate_bound','aggregate-bound':'collector_file_or_aggregate_bound','symlink-file':'collector_file_private','required-absence':'collector_required_original_file_absent','namespace-generation':'collector_actor_closing_changed','process-root-generation':'collector_actor_closing_changed'}
+ for fault,reason in controls.items():run('refuse-'+fault,expected_state='refused',expected_error=reason,fault=fault)
+ run('refuse-held-root-replacement',expected_state='refused',expected_error='instance_parent_changed',fault='collector-root-replacement')
+ cases.append(qualify(before,destination,'causal-red-v2-held-root-replacement',expected_state='qualified',fault='collector-root-replacement',causal_red=True))
+ summary={'schemaVersion':1,'allPassed':True,'cases':cases,'caseCount':len(cases),'currentSourceSha256':CURRENT_SHA,'qualifierSha256':digest(Path(__file__).read_bytes()),'reusedWholeQualifier':{'path':str(OLD_QUALIFIER),'sha256':OLD_QUALIFIER_SHA,'completeNormallyRegisteredNamespace':True},'reusedPeerWorld':{'path':str(HARNESS),'sha256':HARNESS_SHA},'exactByteFixtures':[{'path':str(path),'bytes':len(raw),'sha256':digest(raw)}for path,raw in DATA.items()],'retiredBeforeProofsPreservedNotRerun':['draft-before-stable-status-projection','draft-before-inert-review'],'completeNamespaces':True,'pythonCInitialGlobalsOnly':True,'noFunctionReplacement':True,'noActualProcReadsOrProcessActions':True,'originalFilesProcessesSocketsUntouched':True,'nativeAcceptance':False,'guestOrNetworkOperations':False,'ownedOutputsOnly':str(destination)}
+ (destination/'summary.json').write_text(json.dumps(summary,sort_keys=True,indent=2)+'\n')
+ print(json.dumps({'summaryPath':str(destination/'summary.json'),'summarySha256':digest((destination/'summary.json').read_bytes()),'qualifierSha256':summary['qualifierSha256'],'caseCount':len(cases),'allPassed':True},sort_keys=True))
+
+if __name__=='__main__':main()

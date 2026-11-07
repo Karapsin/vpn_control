@@ -261,6 +261,10 @@ raise SystemExit(status)
             self.assertTrue(all(len(c.args)==1 and not c.keywords and isinstance(c.args[0],ast.Constant)and type(c.args[0].value)is str for c in raised))
             refusals={c.value for n in ast.walk(tree)if isinstance(n,ast.Assign)and any(isinstance(t,ast.Attribute)and t.attr=='refusal'for t in n.targets)
                       for c in ast.walk(n.value)if isinstance(c,ast.Constant)and type(c.value)is str}
+            # The template composes each capture refusal as 'capture_'+phase from its _unknown calls.
+            phases={c.args[0].value for c in ast.walk(tree)if isinstance(c,ast.Call)and isinstance(c.func,ast.Attribute)and c.func.attr=='_unknown'and isinstance(c.args[0],ast.Constant)}
+            self.assertIn('capture_',refusals)
+            refusals=(refusals-{'capture_'})|{'capture_'+phase for phase in phases}
             namespace={'__name__':'saved_gateway_definitions'};exec(compile(source,'complete saved gateway','exec'),namespace)
             self.assertEqual({c.args[0].value for c in raised},set(namespace['GATEWAY_REASONS']))
             self.assertEqual(refusals,set(namespace['GATEWAY_REFUSALS']))

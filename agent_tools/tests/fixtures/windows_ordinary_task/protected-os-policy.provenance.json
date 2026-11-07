@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "Complete authentic actual canonical Python beforeimages at local baselinea9; no generated native observations",
+  "files": {
+    "protected-os-owner.before.source": {
+      "sha256": "ee28050bd0e33166956cc4f4ac68ca10cc89c30c01ae93468379895fee268a18",
+      "sizeBytes": 33439
+    },
+    "protected-os-planner.before.source": {
+      "sha256": "52d75b323d0a6cb867277e5d75f9c218860d2b7bc826f51ad81a2b89f177853c",
+      "sizeBytes": 31381
+    }
+  },
+  "originalNativeEvidenceReferences": [
+    {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-system-os-raw-info-preparation-v1/native-preparation-v1/direct-canonical-original-operator/qualified.json",
+      "sizeBytes": 12039,
+      "sha256": "7383cd8b7d1a3a7ab544ece01a8d05d021b5acb089037c0a76759a4ceb92adcc"
+    },
+    {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-system-os-raw-info-preparation-v1/native-preparation-v1/native-run-v1/original-exec-completion.private.json",
+      "sizeBytes": 2150,
+      "sha256": "518fdbeabea461334422c238fac1c0e267b6ffa037f75f405edece0d4aab7be7"
+    },
+    {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-initial-system-intake-preparation-v1/native-preparation-v4/native-run-v1/preservation-v1/index.private.json",
+      "sizeBytes": 397974,
+      "sha256": "344c5b8ebb8e49aec3dd4d55bd6281e1aa19cfe831cd3b59791bf57d9b5d29b9"
+    }
+  ],
+  "originalFailure": "Guest 152 initial SYSTEM intake PS systemFiles loop refused file-type-reparse-link; original raw OS observations report links=2 for the two fixed protected OS files.",
+  "localReproduction": "Unmodified preserved Python Native.identity and Pin.current reject real ctypes Info.links=2 populated by declared Win32 API peers; preserved planner rejects the same expected record. This is the corresponding Python application policy, not the original PS failure replay.",
+  "nativeQualification": false,
+  "canonicalMinimalBeforeimages": true,
+  "canonicalBaselineCommit": "a9aed70190cff5af2b7123981a976dc9091f7eb1",
+  "canonicalSourceLineage": "Actual unchanged canonical ee2805/52d75 bytes; relevant Native/Pin/validate_pin AST equal the author private-before contexts. New RED/GREEN qualification is required and not inferred from private1f/799 receipts."
+}

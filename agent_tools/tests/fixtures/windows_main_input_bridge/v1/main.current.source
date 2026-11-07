@@ -1,0 +1,602 @@
+"""PRIVATE current-main-VM input bridge. No effects occur on import.
+
+Run only inside the retained, source-qualified Arch owner. The native peer is
+the fixed read-only SYSTEM/session-2 observer, never a caller-supplied verdict.
+No public MCP route or configurable command, VM, key, coordinate or source exists.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+import base64
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import secrets
+import socket
+import stat
+import struct
+import time
+import uuid
+
+DEPLOYMENT = "d493a373-1d2c-4ab0-bfd4-e93575019dce"
+ARCH_ROOT = Path("/home/kardinal/vc-win-d493a3731d2c")
+MAX_FRAME = 16 * 1024 * 1024
+MAX_WIRE = 2 * 1024 * 1024
+STAGE = "current-product-credential-uac"
+
+
+class Refused(ValueError):
+    pass
+
+
+class Unknown(RuntimeError):
+    """The original may have received input; no replay or fresh owner adoption."""
+
+
+def need(value, code):
+    if not value:
+        raise Refused(code)
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("ascii")
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def uuid_value(value):
+    need(type(value) is str and str(uuid.UUID(value)) == value, "uuid")
+    return value
+
+
+def hash_value(value):
+    need(type(value) is str and re.fullmatch("[0-9a-f]{64}", value) is not None, "hash")
+    return value
+
+
+def identity(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid, info.st_nlink]
+
+
+def generation(info):
+    return identity(info) + [info.st_size, info.st_mtime_ns, info.st_ctime_ns]
+
+
+def parse_stat(raw):
+    # Linux comm may contain spaces and parentheses. Fields after its final ')'
+    # begin with field 3 (state); starttime is field 22, hence tail index 19.
+    end = raw.rfind(b")")
+    need(end > 1 and raw[end + 1:end + 2] == b" ", "proc-stat")
+    tail = raw[end + 2:].split()
+    need(len(tail) >= 20, "proc-stat")
+    return int(raw[:raw.find(b" ")]), int(tail[1]), int(tail[19])
+
+
+@dataclass(frozen=True)
+class QemuContext:
+    deployment_id: str
+    host_boot_id: str
+    pid: int
+    parent_pid: int
+    start_ticks: int
+    uid: int
+    argv_sha256: str
+    qmp_socket: str
+    qga_socket: str
+
+    def validate(self):
+        need(self.deployment_id == DEPLOYMENT, "fixed-main-vm")
+        uuid_value(self.host_boot_id)
+        for name in ("pid", "parent_pid", "start_ticks", "uid"):
+            need(type(getattr(self, name)) is int and getattr(self, name) > 0, "qemu-integer")
+        hash_value(self.argv_sha256)
+        need(self.qmp_socket == str(ARCH_ROOT / "qmp.sock")
+             and self.qga_socket == str(ARCH_ROOT / "qga.sock"), "fixed-main-sockets")
+
+
+class QmpPeer:
+    """Concrete retained QMP peer with exact process/socket and raw reply custody.
+
+    Public methods expose only capture, Escape and the fixed credential submit.
+    Credential QMP replies use the existing no-log private boundary because an
+    error description may echo key requests. They are NOT claimed as raw custody.
+    """
+    def __init__(self, context, evidence, *, source_guard, private_qmp_command,
+                 ascii_planner, ppm_reader, png_converter):
+        context.validate()
+        self.context, self.source_guard = context, source_guard
+        self.private_qmp_command = private_qmp_command
+        self.ascii_planner, self.ppm_reader, self.png_converter = ascii_planner, ppm_reader, png_converter
+        self.directory = Path(evidence)
+        need(self.directory.parent == ARCH_ROOT and self.directory.name.startswith("main-input-"), "fixed-evidence-root")
+        info = self.directory.lstat()
+        need(stat.S_ISDIR(info.st_mode) and info.st_uid == context.uid
+             and stat.S_IMODE(info.st_mode) == 0o700, "private-evidence")
+        self.directory_identity = identity(info)
+        self.wire = os.open(self.directory / "qmp-replies.private.bin",
+                            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        self.wire_bytes, self.next_id = 0, 1
+        self.partial_line = b""
+        self.pending, self.failed = None, False
+        self.socket = None
+        self.guard()
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.socket.settimeout(10)
+        self.socket.connect(context.qmp_socket)
+        actual = struct.unpack("3i", self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        need(actual[:2] == (context.pid, context.uid), "qmp-connected-peer")
+        self.guard()
+        self._reply(None)
+        self._command("qmp_capabilities")
+
+    def context_record(self):
+        self.context.validate()
+        return asdict(self.context)
+
+    def guard(self):
+        self.source_guard()
+        c = self.context
+        need(identity(self.directory.lstat()) == self.directory_identity, "evidence-replaced")
+        need(Path("/proc/sys/kernel/random/boot_id").read_text().strip() == c.host_boot_id, "host-boot")
+        proc = Path("/proc") / str(c.pid)
+        need(parse_stat((proc / "stat").read_bytes()) == (c.pid, c.parent_pid, c.start_ticks), "qemu-generation")
+        need(proc.stat().st_uid == c.uid and Path(os.readlink(proc / "exe")).name == "qemu-system-x86_64", "qemu-owner-image")
+        argv = (proc / "cmdline").read_bytes()
+        need(sha(argv) == c.argv_sha256 and os.fsencode(c.qmp_socket) in argv
+             and os.fsencode(c.qga_socket) in argv, "qemu-argv")
+        inodes = set()
+        for fd in (proc / "fd").iterdir():
+            try:
+                link = os.readlink(fd)
+                if link.startswith("socket:[") and link.endswith("]"):
+                    inodes.add(link[8:-1].encode())
+            except FileNotFoundError:
+                pass
+        unix = [row.split() for row in Path("/proc/net/unix").read_bytes().splitlines()[1:]]
+        for path in (c.qmp_socket, c.qga_socket):
+            need(stat.S_ISSOCK(os.lstat(path).st_mode) and any(len(row) == 8
+                 and row[6] in inodes and row[7] == os.fsencode(path) for row in unix), "qemu-socket-owner")
+        if self.socket is not None:
+            need(struct.unpack("3i", self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[:2]
+                 == (c.pid, c.uid), "qmp-peer-changed")
+
+    def _reply(self, wanted):
+        deadline = time.monotonic() + 20
+        for _ in range(32):
+            raw = bytearray(getattr(self, "partial_line", b""))
+            recorded = len(raw)
+            try:
+                while not raw.endswith(b"\n"):
+                    remaining = deadline - time.monotonic()
+                    need(remaining > 0, "qmp-reply-deadline")
+                    self.socket.settimeout(remaining)
+                    piece = self.socket.recv(1)
+                    need(bool(piece), "qmp-eof")
+                    raw.extend(piece)
+                    need(len(raw) <= 32768, "qmp-line-bound")
+            except BaseException:
+                self.partial_line = bytes(raw)
+                self._retain_wire(raw[recorded:])
+                raise
+            self._retain_wire(raw[recorded:])
+            self.partial_line = b""
+            value = json.loads(raw)
+            need(type(value) is dict, "qmp-reply-schema")
+            if wanted is None:
+                need("QMP" in value, "qmp-greeting")
+                return value
+            if value.get("id") == wanted:
+                need(set(value) == {"id", "return"} and type(value["return"]) is dict, "qmp-reply-refused")
+                return value["return"]
+            need("event" in value, "qmp-unrelated-reply")
+        raise Refused("qmp-event-bound")
+
+    def _retain_wire(self, raw):
+        self.wire_bytes += len(raw)
+        need(self.wire_bytes <= MAX_WIRE, "qmp-wire-bound")
+        view = memoryview(raw)
+        while view:
+            size = os.write(self.wire, view)
+            need(size > 0, "qmp-custody-write")
+            view = view[size:]
+        os.fsync(self.wire)
+
+    def _command(self, name, arguments=None):
+        need(name in {"qmp_capabilities", "screendump", "input-send-event"}, "fixed-qmp-command")
+        need(not self.failed and self.pending is None, "original-qmp-command-unknown-no-replay")
+        self.guard()
+        token = self.next_id
+        self.next_id += 1
+        row = {"execute": name, "id": token}
+        if arguments is not None:
+            row["arguments"] = arguments
+        self.pending = {"commandId": token, "command": name}
+        try:
+            self.socket.sendall(canonical(row) + b"\n")
+            result = self._reply(token)
+            self.guard()
+            self.pending = None
+            return {"commandId": token, "reply": result}
+        except BaseException:
+            self.failed = True
+            raise Unknown("original-qmp-command-unknown-no-replay") from None
+
+    def collect_original_reply(self):
+        """Read only the retained pending command ID; never resubmit a packet."""
+        need(self.failed and self.pending is not None
+             and self.pending["command"] in {"qmp_capabilities", "screendump", "input-send-event"},
+             "original-public-qmp-pending-required")
+        self.guard()
+        token = self.pending["commandId"]
+        reply = self._reply(token)
+        self.guard()
+        self.pending = None
+        # failed remains True: recovered transport evidence grants no new input.
+        return {"commandId": token, "reply": reply, "replayAllowed": False, "uiSuccess": False}
+
+    def capture(self):
+        path = self.directory / ("frame-" + str(self.next_id) + ".ppm")
+        need(not os.path.lexists(path), "frame-already-exists")
+        reply = self._command("screendump", {"filename": str(path)})
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            before = os.fstat(fd)
+            need(stat.S_ISREG(before.st_mode) and before.st_uid == self.context.uid
+                 and before.st_nlink == 1 and 0 < before.st_size < MAX_FRAME, "frame-file")
+            raw = os.read(fd, before.st_size + 1)
+            need(len(raw) == before.st_size and generation(os.fstat(fd)) == generation(before)
+                 == generation(path.lstat()), "frame-generation")
+            # Keep the original native file open across the source-bound
+            # converter's path reads and reject any replaced/changed frame.
+            width, height, pixels = self.ppm_reader(path)
+            need(0 < width <= 4096 and 0 < height <= 4096 and len(pixels) < MAX_FRAME, "frame-dimensions")
+            png = path.with_suffix(".png")
+            need(not os.path.lexists(png), "png-already-exists")
+            self.png_converter(path, png)
+            need(generation(os.fstat(fd)) == generation(before) == generation(path.lstat()),
+                 "frame-conversion-generation")
+            png_fd = os.open(png, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                png_before = os.fstat(png_fd)
+                need(stat.S_ISREG(png_before.st_mode) and png_before.st_uid == self.context.uid
+                     and png_before.st_nlink == 1 and 0 < png_before.st_size <= 3 * 1024 * 1024,
+                     "png-file-bound")
+                os.fchmod(png_fd, 0o600)
+                png_before = os.fstat(png_fd)
+                png_bytes = os.read(png_fd, png_before.st_size + 1)
+                need(len(png_bytes) == png_before.st_size and generation(os.fstat(png_fd))
+                     == generation(png_before) == generation(png.lstat()), "png-generation")
+            finally:
+                os.close(png_fd)
+            need(generation(os.fstat(fd)) == generation(before) == generation(path.lstat()),
+                 "frame-conversion-generation")
+        finally:
+            os.close(fd)
+        self.guard()
+        return {"ppmPath": str(path), "sha256": sha(raw), "bytes": len(raw), "width": width,
+                "height": height, "pngPath": str(png), "pngSha256": sha(png_bytes),
+                "pngBytes": len(png_bytes), "pngBase64": base64.b64encode(png_bytes).decode(), "reply": reply}
+
+    def cancel(self):
+        events = [{"type": "key", "data": {"down": down,
+                  "key": {"type": "qcode", "data": "esc"}}} for down in (True, False)]
+        return self._command("input-send-event", {"events": events})
+
+    def validate_private_sequence(self, password):
+        return self.ascii_planner(bytes(password))
+
+    def credential_submit(self, password, *, guard):
+        # Reuse the reviewed complete ASCII planner, including ! and all other
+        # supported punctuation. Neither requests nor secret-derived hashes log.
+        need(not self.failed and self.pending is None, "original-qmp-command-unknown-no-replay")
+        requests = self.validate_private_sequence(password)
+        token = self.next_id
+        self.next_id += 1
+        self.pending = {"commandId": token, "command": "fixed-private-credential-sequence"}
+        try:
+            for index, arguments in enumerate(requests):
+                guard(index)
+                self.guard()
+                self.private_qmp_command(self.socket, "send-key", arguments,
+                    "current-private-" + str(token) + "-" + str(index), time.monotonic() + 3)
+            guard(len(requests))
+            self.guard()
+            self.private_qmp_command(self.socket, "send-key",
+                {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 80},
+                "current-submit-" + str(token), time.monotonic() + 3)
+            self.guard()
+            self.pending = None
+        except BaseException:
+            self.failed = True
+            raise Unknown("original-private-qmp-sequence-unknown-no-replay") from None
+        return {"privateSequenceAcknowledged": True, "rawCredentialRepliesRetained": False,
+                "uiSuccess": False, "approvalSucceeded": False}
+
+
+class DurableIntent:
+    """One fixed operation burn, created and directory-fsynced before any key."""
+    def __init__(self, directory):
+        self.path = Path(directory)
+        info = self.path.lstat()
+        need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+             and stat.S_IMODE(info.st_mode) == 0o700, "intent-directory")
+        self.fd = os.open(self.path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        self.identity = identity(os.fstat(self.fd))
+
+    def burn(self, record):
+        # Scope is the original ordinary task + product operation, NOT the nonce.
+        # A fresh challenge/input owner therefore cannot replay an uncertain key.
+        need(identity(os.fstat(self.fd)) == self.identity == identity(self.path.lstat()), "intent-directory-replaced")
+        name = "input-once-" + uuid_value(record["ordinaryTaskOperationId"]) + "-" + uuid_value(record["productOperationId"]) + ".json"
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=self.fd)
+        raw = canonical(record)
+        try:
+            view = memoryview(raw)
+            while view:
+                size = os.write(fd, view)
+                need(size > 0, "intent-write")
+                view = view[size:]
+            os.fsync(fd)
+            os.fsync(self.fd)
+        finally:
+            os.close(fd)
+        return {"path": str(self.path / name), "sha256": sha(raw), "bytes": len(raw)}
+
+
+class ProtectedCredential:
+    """Configured private credential file. No password digest or key journal."""
+    def __init__(self, path, expected_generation, account, sid, source_guard, private_reader):
+        self.path, self.expected = Path(path), expected_generation
+        self.account, self.sid, self.source_guard = account, sid, source_guard
+        self.private_reader = private_reader
+
+    def read_private_original(self, expected_sid):
+        self.source_guard()
+        need(expected_sid == self.sid, "credential-principal")
+        # Existing configured private-reader checks absolute path, symlink
+        # parents, owner, 0600 mode and bounded bytes. Retain generation too.
+        before = self.path.lstat()
+        need(generation(before) == self.expected and before.st_nlink == 1, "credential-generation")
+        raw = self.private_reader(self.path)
+        need(generation(self.path.lstat()) == self.expected, "credential-closing")
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                need(key not in result, "credential-schema")
+                result[key] = value
+            return result
+        try:
+            value = json.loads(raw, object_pairs_hook=unique)
+            need(type(value) is dict and set(value) == {"accountName", "password"}
+                 and value["accountName"] == self.account and type(value["password"]) is str, "credential-schema")
+            password = bytearray(value["password"], "ascii")
+            need(0 < len(password) <= 64 and all(33 <= item <= 126 for item in password), "credential-supported")
+            self.source_guard()
+            return password
+        except BaseException:
+            raise Refused("private-credential-unavailable") from None
+
+
+class RetainedObserverPeer:
+    """Finite binding to the sole operator's existing original QGA owner.
+
+    The backend owns actual2938 emit/decode and bf05 retained transport. It must
+    retain original handles, source opening/closing, raw streams/EOF and guest
+    terminal, and implement validate_original_read_only_observer against those
+    live objects. A JSON receipt or caller flag cannot implement that authority.
+    No public selector chooses backend, source, command, guest or session.
+    """
+    def __init__(self, expected, expected_observer, native_record_sha256,
+                 admission_artifact_id, source_lease, original_qga_owner, renderer):
+        self.expected, self.expected_observer = expected, expected_observer
+        self.native_record_sha256 = hash_value(native_record_sha256)
+        self.admission_artifact_id = admission_artifact_id
+        self.lease, self.owner, self.renderer = source_lease, original_qga_owner, renderer
+        self.calls = 0
+        self.latest = None
+        self.failed = False
+
+    def source_guard(self):
+        self.lease.verify_current_original_sources()
+
+    def observe_original(self):
+        need(not self.failed and self.calls < 80, "read-only-observer-budget-or-unknown")
+        self.source_guard()
+        packet = self.renderer(self.expected_observer, str(uuid.uuid4()), self.native_record_sha256)
+        self.calls += 1
+        try:
+            # One private finite backend operation, implemented using the same
+            # retained transport owner as native acceptance. Loss never retries.
+            original = self.owner.run_current_main_read_only_observer_once(packet)
+            self.owner.validate_original_read_only_observer(original, packet)
+            row = original.protocol_result["observation"]
+            need(row["observer"]["sourceSha256"] == packet["childUtf8Sha256"]
+                 and row["observer"]["launcherSourceSha256"] == packet["launcherTemplateSha256"]
+                 and row["observer"]["nativeRecordSha256"] == self.native_record_sha256,
+                 "observed-original-reader-source")
+            self.source_guard()
+            self.latest = (row, original, packet)
+            return row
+        except BaseException:
+            self.failed = True
+            raise Unknown("original-read-only-observer-unknown-no-replay") from None
+
+    def validate_original_custody(self, row):
+        need(self.latest is not None and self.latest[0] is row, "same-original-observer-object")
+        _, original, packet = self.latest
+        self.owner.validate_original_read_only_observer(original, packet)
+        self.source_guard()
+
+
+def validate_observation(row, expected):
+    # Genuine native producer must emit these observed facts, not verdict flags.
+    names = {"schemaVersion", "taskBinding", "qemuIdentity", "guestBootIdentifier",
+             "ordinaryActors", "consentActor", "secureDesktop", "pendingRequest", "correlationRecord", "packageFile", "observer"}
+    need(type(row) is dict and set(row) == names and row["schemaVersion"] == 1, "native-observation-schema")
+    need(row["taskBinding"] == expected["taskBinding"] and row["qemuIdentity"] == expected["qemuIdentity"]
+         and row["guestBootIdentifier"] == expected["guestBootIdentifier"]
+         and row["ordinaryActors"] == expected["ordinaryActors"]
+         and row["pendingRequest"] == expected["pendingRequest"]
+         and row["correlationRecord"] == expected["correlationRecord"]
+         and row["packageFile"] == expected["packageFile"], "current-native-binding")
+    task = row["taskBinding"]
+    need(set(task) == {"ordinaryTaskOperationId", "productOperationId", "originRequestId", "controllerId"}, "task-binding-schema")
+    for value in task.values():
+        uuid_value(value)
+    actor = row["consentActor"]
+    need(type(actor) is dict and set(actor) == {"pid", "parentPid", "creationFileTime", "image", "sha256", "sid", "sessionId", "signatureStatus", "signerName"}, "consent-schema")
+    need(type(actor["pid"]) is int and actor["pid"] > 0 and type(actor["creationFileTime"]) is int
+         and actor["creationFileTime"] > 0 and actor["sessionId"] == 2
+         and actor["image"].casefold() == r"c:\windows\system32\consent.exe"
+         and actor["signatureStatus"] == "Valid" and actor["signerName"] == "Microsoft Windows", "consent-native-identity")
+    hash_value(actor["sha256"])
+    desktop = row["secureDesktop"]
+    need(type(desktop) is dict and set(desktop) == {"windowStation", "desktop", "keyboardLayout", "focusOwnerPid", "focusThreadId", "passwordFocused", "passwordLengthObserved", "selectedAccountName", "selectedAccountSid", "passwordControlRuntimeId"}, "secure-desktop-schema")
+    need(desktop["windowStation"] == "WinSta0" and desktop["desktop"] == "Winlogon"
+         and desktop["keyboardLayout"] == "0000000004090409"
+         and desktop["focusOwnerPid"] == actor["pid"] and type(desktop["focusThreadId"]) is int
+         and desktop["focusThreadId"] > 0
+         and type(desktop["passwordLengthObserved"]) is int
+         and 0 <= desktop["passwordLengthObserved"] <= 64, "secure-desktop-native-facts")
+    reader = row["observer"]
+    need(type(reader) is dict and set(reader) == {"pid", "parentPid", "creationFileTime", "sid", "sessionId", "sourceSha256", "launcherSourceSha256", "nativeRecordSha256"}
+         and reader["sid"] == "S-1-5-18" and reader["sessionId"] == 2
+         and type(reader["pid"]) is int and reader["pid"] > 0
+         and type(reader["creationFileTime"]) is int and reader["creationFileTime"] > 0, "actual-session-reader")
+    for key in ("sourceSha256", "launcherSourceSha256", "nativeRecordSha256"):
+        hash_value(reader[key])
+    # Native peer validates exact body/source/terminal+EOF against held handles;
+    # an artifact ID or this data validator alone cannot establish that custody.
+    return row
+
+
+class MainInputBridge:
+    def __init__(self, expected, native_peer, qmp_peer, intent, review_peer, credential_peer, *, clock=time.monotonic):
+        self.expected, self.native = expected, native_peer
+        self.qmp, self.intent, self.review = qmp_peer, intent, review_peer
+        need(expected["qemuIdentity"] == self.qmp.context_record(), "native-qmp-same-current-actor")
+        self.credential, self.clock = credential_peer, clock
+        self.challenge_row = None
+        self.dispatched = False
+        self.unknown = False
+
+    def _native(self):
+        self.native.source_guard()
+        row = validate_observation(self.native.observe_original(), self.expected)
+        self.native.validate_original_custody(row)
+        return row
+
+    def observe(self):
+        need(not self.unknown, "original-unknown-no-replay")
+        before = self._native()
+        frame = self.qmp.capture()
+        after = self._native()
+        # Each read-only observer has its own PID/birth. Compare native authority
+        # facts, excluding only that reader's separate custody-bearing identity.
+        need({k: v for k, v in before.items() if k != "observer"}
+             == {k: v for k, v in after.items() if k != "observer"}, "native-frame-window-drift")
+        return {"native": after, "frame": frame}
+
+    def challenge(self):
+        need(not self.dispatched and not self.unknown, "one-original-input")
+        observed = self.observe()
+        binding = observed["native"]["taskBinding"]
+        self.challenge_row = {"schemaVersion": 1, **binding,
+            "bootIdentifier": observed["native"]["guestBootIdentifier"],
+            "inputAdmissionArtifactId": self.native.admission_artifact_id,
+            "qemuIdentity": observed["native"]["qemuIdentity"],
+            "consentActor": observed["native"]["consentActor"], "stage": STAGE,
+            "nonce": str(uuid.uuid4()), "frameId": str(uuid.uuid4()),
+            "frameSha256": observed["frame"]["sha256"], "pngSha256": observed["frame"]["pngSha256"],
+            "pngPath": observed["frame"]["pngPath"], "pngBytes": observed["frame"]["pngBytes"],
+            "pngBase64": observed["frame"]["pngBase64"], "observedAtMonotonic": self.clock(),
+            "expectedApprovingAdminSid": self.expected["approvingAdminSid"]}
+        self.challenge_native = observed["native"]
+        return dict(self.challenge_row)
+
+    def decide(self, decision):
+        need(not self.dispatched and not self.unknown and self.challenge_row is not None, "one-original-input")
+        c = self.challenge_row
+        names = {"schemaVersion", "productOperationId", "stage", "nonce", "frameId", "frameSha256", "action", "openedFrameArtifactId"}
+        need(type(decision) is dict and set(decision) == names and decision["schemaVersion"] == 1
+             and decision["action"] in {"grant", "deny"}, "closed-decision")
+        need(all(decision[name] == c[name] for name in ("productOperationId", "stage", "nonce", "frameId", "frameSha256")), "exact-challenge-decision")
+        age = self.clock() - c["observedAtMonotonic"]
+        need(math.isfinite(age) and 0 <= age <= 15, "fresh-challenge")
+        # This peer verifies the actual opened PNG artifact bytes and retained
+        # review receipt for this exact task, prompt details, frame and decision.
+        self.review.verify_original_opened_frame(c, decision)
+        observed = self.observe()
+        need(observed["frame"]["sha256"] == c["frameSha256"]
+             and observed["native"]["consentActor"] == c["consentActor"]
+             and {k: v for k, v in observed["native"].items() if k != "observer"}
+             == {k: v for k, v in self.challenge_native.items() if k != "observer"}, "current-reviewed-prompt")
+        password = None
+        if decision["action"] == "grant":
+            desktop = observed["native"]["secureDesktop"]
+            need(desktop["passwordFocused"] is True
+                 and desktop["passwordLengthObserved"] == 0
+                 and desktop["selectedAccountSid"] == self.expected["approvingAdminSid"]
+                 and desktop["selectedAccountName"] == self.expected["approvingAdminAccount"]
+                 and desktop["selectedAccountSid"] != self.expected["ordinarySid"]
+                 and type(desktop["passwordControlRuntimeId"]) is list
+                 and 0 < len(desktop["passwordControlRuntimeId"]) <= 32, "actual-selected-admin-password-focus")
+            password = self.credential.read_private_original(self.expected["approvingAdminSid"])
+            need(type(password) is bytearray and 0 < len(password) <= 64, "private-credential-shape")
+            try:
+                self.qmp.validate_private_sequence(password)  # ENTIRE sequence before the burn.
+            except BaseException:
+                password[:] = b"\0" * len(password)
+                raise Refused("private-credential-unsupported") from None
+        record = {"schemaVersion": 1, **observed["native"]["taskBinding"],
+            "stage": STAGE, "nonce": c["nonce"], "frameId": c["frameId"],
+            "frameSha256": c["frameSha256"], "action": decision["action"],
+            "openedFrameArtifactId": decision["openedFrameArtifactId"],
+            "consentActor": c["consentActor"], "replayAllowed": False}
+        try:
+            proof = self.intent.burn(record)
+            self.dispatched = True
+            self.native.source_guard()
+            self.qmp.guard()
+            if decision["action"] == "deny":
+                result = self.qmp.cancel()
+            else:
+                # Re-observe native facts before EVERY private character. Field
+                # focus/account/layout/consent must remain exactly the same;
+                # no screenshot is retained after private entry starts.
+                def private_guard(expected_length):
+                    actual = self._native()
+                    need(actual["secureDesktop"]["passwordLengthObserved"] == expected_length, "private-length-drift")
+                    def public_facts(row):
+                        result = {k: v for k, v in row.items() if k != "observer"}
+                        result["secureDesktop"] = {k: v for k, v in result["secureDesktop"].items()
+                                                   if k != "passwordLengthObserved"}
+                        return result
+                    need(public_facts(actual) == public_facts(observed["native"]), "private-focus-drift")
+                result = self.qmp.credential_submit(password, guard=private_guard)
+            self.native.source_guard()
+            self.qmp.guard()
+            return {"schemaVersion": 1, "state": "INPUT_ACK_ONLY", "action": decision["action"],
+                    "intent": proof, "transport": result, "approvalSucceeded": False,
+                    "productOutcomeProved": False, "replayAllowed": False}
+        except BaseException:
+            # Includes a failed intent publication: a partially durable burn is
+            # retained. Same original owner may only collect, never redispatch.
+            self.unknown = True
+            raise Unknown("original-input-unknown-no-replay") from None
+        finally:
+            if password is not None:
+                password[:] = b"\0" * len(password)
+
+    def cancel(self, decision):
+        need(decision.get("action") == "deny", "cancel-decision")
+        return self.decide(decision)
+
+    def approve(self, decision):
+        need(decision.get("action") == "grant", "approve-decision")
+        return self.decide(decision)

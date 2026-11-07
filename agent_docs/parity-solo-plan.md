@@ -1,28 +1,30 @@
-# Deferred GUI/CLI parity brief; active MCP repair
+# Windows GUI/CLI parity execution brief
 
 ## Current route and completion boundary
 
-When the user resumes product parity, use fresh MCP `prepare_start`,
+For the Windows parity resumed on 2026-10-19, use fresh MCP `prepare_start`,
 [router](README.md), [current WIP](work-in-progress.md),
 `docs`, `change_impact`, `workflow_status` and read-only `matrix-status`.
 Confirm actual SHA/version and all five required workflows. Historical SHAs are
 source/evidence identities, not reset targets. WIP is the sole current custody ledger.
 
-The latest human instruction requires the MCP reproducibility repair in
-`.runtime/mcp-repair-handoff-2026-10-15/plan.md`, permits subagents, and closes all
-prior VM and connection sessions. Closed guests, tunnels, mounts and helpers must
+The latest human instruction resumes Windows product parity, installed-package
+native acceptance and visual work after the MCP repair. Linux, Android and macOS
+product-native and visual work remain deferred. Closed guests, tunnels, mounts and helpers must
 stay closed; do not restore them for testing. Preserve their disks, original
 evidence and durable job/lease records. Fresh reusable actions must receive their
 VM, connection, account, path and identity context explicitly. Historical records
 remain only in original read/status/diagnostic/closure paths.
 
-Windows caller acceptance, H14 and every platform's product-native/visual work are
-**USER-DEFERRED**. The original Windows plan remains preserved at
-`.runtime/windows-only-handoff-2026-10-14/plan.md`; it is not the active run plan.
-The five standard development workflows are required for the exact repaired SHA.
-The optimizer baseline `e167a73ee8acd7fbb9844380dc12f310f537d0e6` was verified;
-that receipt does not validate current source. Current owners, causal evidence,
-session closures and remaining gates are in WIP. Earlier platform scheduling
+Windows caller/native/visual acceptance is active with a freshly admitted isolated
+fixture, complete direct scenarios followed by matching current MCP procedures,
+and the required Windows-applicable shared document cases. Fix the public
+mode-only subscription entrypoint first. The original Windows plan remains at
+`.runtime/windows-only-handoff-2026-10-14/plan.md` as historical evidence.
+Startup verified `d24c19047ec15689948404ede40f50c5ec284e77`, version `2.2.13`,
+and all five required workflows; verify current state rather than resetting to it.
+The retained repair receipts qualify tooling only. Current owners, causal evidence,
+session closures and remaining gates are in WIP. Earlier non-Windows scheduling
 below is historical and supplies no authority to resume deferred work.
 Report in-scope completion separately from full four-platform acceptance and
 from shared scenarios with deferred macOS applicability.
@@ -76,7 +78,7 @@ approach. Neither limit permits dropped coverage or unknown lease release.
 Switch platform only after proving no conflicting active effect; preserve external
 blocker/custody. Completion remains open for required in-scope unknowns.
 
-## Platform sequence
+## Historical platform sequence
 
 | Stage | First bounded outcome | Remaining complete scenario families |
 | --- | --- | --- |

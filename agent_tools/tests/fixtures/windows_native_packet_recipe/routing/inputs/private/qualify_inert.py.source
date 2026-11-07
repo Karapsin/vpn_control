@@ -1,0 +1,319 @@
+"""PRIVATE in-process qualification. No socket, SSH, QMP or guest operation.
+
+Executes the complete rendered namespace and its finite owner engine using an
+explicit inert backend. The real NativeBackend/serve are not executed. This is
+not native acceptance or proof of actual Windows UI/process behavior.
+"""
+import copy
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+import tempfile
+import time
+import types
+import unittest
+from unittest.mock import patch
+import uuid
+
+BASE = Path(__file__).resolve().parent
+path = BASE / "uac_program_template.py"
+spec = importlib.util.spec_from_file_location("private_uac_program_template", path)
+template = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = template
+spec.loader.exec_module(template)
+
+
+def config():
+    operation = "11111111-1111-4111-8111-111111111111"
+    qualification = "22222222-2222-4222-8222-222222222222"
+    q = "qualification-" + qualification
+    leaves = ("intent.json", "qemu-started.json", "swtpm-started.json", "visual-session-qualified.json",
+              "secure-intent.json", "secure-terminal.json", q + ".intent.json", q + ".terminal.json")
+    return {"targetSha": "0" * 40, "operationId": operation,
+        "spec": {"deploymentId": "33333333-3333-4333-8333-333333333333", "root": "/home/future-visual-not-a-vm", "host": "archlinux"},
+        "setup": {"imageName": "Windows 11 Enterprise Evaluation", "locale": "en-US", "user": "futureUser", "administrator": "futureAdmin", "purpose": "windowsUacVisual"},
+        "context": {"hostBootId": "44444444-4444-4444-8444-444444444444", "pending": []},
+        "qemu": {"pid": 100, "startTicks": 200}, "swtpm": {"pid": 101, "startTicks": 201},
+        "receiptPins": {leaf: "0" * 64 for leaf in leaves},
+        "securityOperationId": "55555555-5555-4555-8555-555555555555", "postSecureQualificationId": qualification}
+
+
+SOURCE = template.render(config())
+MODULE = types.ModuleType("private_uac_whole_generated_caller")
+MODULE.__file__ = "<private-complete-generated-uac-caller>"
+sys.modules[MODULE.__name__] = MODULE
+exec(compile(SOURCE, MODULE.__file__, "exec"), MODULE.__dict__)
+
+
+class InertBackend:
+    """Controlled native facts/frames, with genuine local private record files."""
+    def __init__(self, directory):
+        self.directory = Path(directory)
+        self.time = 100.0
+        self.frame_sha = hashlib.sha256(b"inert-exact-frame").hexdigest()
+        self.packets = []
+        self.records = []
+        self.failure = None
+        self.guard_calls = 0
+        self.fail_save = None
+
+    def guard(self):
+        self.guard_calls += 1
+        if self.failure == "guard":
+            raise ValueError("controlled-guard-refusal")
+
+    def save(self, name, value):
+        if self.fail_save and name.endswith(self.fail_save):
+            raise OSError("controlled-record-failure")
+        raw = MODULE.canonical_json(value)
+        fd = os.open(self.directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            offset = 0
+            while offset < len(raw):
+                offset += os.write(fd, raw[offset:])
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        self.records.append((name, value))
+
+    def reviewed_frame(self, frame_id):
+        if type(frame_id) is not str or str(uuid.UUID(frame_id)) != frame_id:
+            raise ValueError("frame_operation_id")
+        return {"frame": "setup-frame-" + uuid.UUID(frame_id).hex + ".png", "bytes": 123, "sha256": self.frame_sha}
+
+    def current_frame(self):
+        return {"sha256": self.frame_sha, "observedAt": self.time}
+
+    def current_guest_guard(self):
+        if self.failure == "guest-changed":
+            raise ValueError("controlled-current-guest-session-changed")
+
+    def now(self):
+        return self.time
+
+    def owner_actor(self):
+        return {"pid": 999, "startTicks": 888}
+
+    def key(self, codes, deadline):
+        if self.time > deadline:
+            raise ValueError("controlled-native-key-expiry")
+        if self.failure == "key-ack":
+            self.packets.append((codes, "possibly-sent"))
+            raise OSError("controlled-lost-key-ack")
+        self.packets.append(codes)
+        self.time += .01
+        if self.failure == "slow-plan":
+            self.time += 16
+
+
+class CompleteCallerTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="uac-inert-", dir=BASE)
+        self.addCleanup(self.temp.cleanup)
+        self.backend = InertBackend(self.temp.name)
+        self.owner = MODULE.UacOwner(MODULE.CONFIG, self.backend)
+
+    def observe(self):
+        frame_id = str(uuid.uuid4())
+        return self.owner.dispatch({"operationId": self.owner.operation, "kind": "observe", "frameId": frame_id})
+
+    def decision(self):
+        result = self.observe()
+        challenge = result["challenge"]
+        return {key: challenge[key] for key in ("operationId", "stage", "nonce", "frameId", "frameSha256")} | {
+            "kind": "decision", "action": self.owner.ACTIONS[self.owner.stage], "openedReview": self.owner.REVIEWS[self.owner.stage]}
+
+    def advance(self):
+        return self.owner.dispatch(self.decision())
+
+    def test_complete_namespace_and_exact_canonical_command(self):
+        for name in (*template.VM_HELPERS, "_visual_session", "run_if_current"):
+            self.assertIs(getattr(MODULE, name).__globals__, MODULE.__dict__)
+        text = "powershell start powershell -verb runas"
+        self.assertEqual(MODULE.CONFIG["keyPlan"], MODULE.console_key_plan(text))
+        self.assertEqual(len(MODULE.CONFIG["sourcePins"]), 10)
+        self.assertIs(MODULE.UacOwner.dispatch.__globals__, MODULE.__dict__)
+
+    def test_all_four_opened_stages_and_exact_packet_order(self):
+        for stage in MODULE.UacOwner.STAGES[:-1]:
+            self.assertEqual(self.owner.stage, stage)
+            self.advance()
+        self.assertTrue(self.owner.closed)
+        self.assertEqual(self.backend.packets, [("meta_l", "r"), ("ctrl", "a"), ("backspace",)] + [tuple(row) for row in MODULE.CONFIG["keyPlan"]] + [("ret",), ("esc",)])
+        self.assertEqual(sum(packet == ("esc",) for packet in self.backend.packets), 1)
+        intents = [value for name, value in self.backend.records if name.startswith("action-") and name.endswith(".intent.json")]
+        self.assertEqual(len(intents), 4)
+        self.assertEqual(intents[-1]["decision"]["action"], "finish")
+        self.assertTrue(all(stat.S_IMODE(os.lstat(self.backend.directory / name).st_mode) == 0o600 for name, _ in self.backend.records))
+
+    def test_unopened_or_wrong_stage_refuses_before_input(self):
+        for field, value in (("openedReview", "native-uac-opened"), ("action", "cancel"), ("stage", "uac"), ("nonce", "0" * 32), ("operationId", str(uuid.uuid4()))):
+            request = self.decision(); request[field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.owner.dispatch(request)
+            self.assertEqual(self.backend.packets, [])
+
+    def test_stale_changed_and_future_time_challenge_refusals(self):
+        for mode in ("stale", "changed", "future"):
+            request = self.decision()
+            if mode == "stale": self.backend.time += 15.001
+            elif mode == "changed": self.backend.frame_sha = hashlib.sha256(b"changed").hexdigest()
+            else: self.backend.time -= .001
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                self.owner.dispatch(request)
+            self.assertEqual(self.backend.packets, [])
+
+    def test_observation_refresh_has_no_keys(self):
+        first = self.observe()["challenge"]
+        second = self.observe()["challenge"]
+        self.assertNotEqual(first["nonce"], second["nonce"])
+        self.assertEqual(self.backend.packets, [])
+
+    def test_ack_lost_is_held_unknown_and_decision_never_repeats(self):
+        request = self.decision()
+        self.backend.failure = "key-ack"
+        with self.assertRaises(OSError): self.owner.dispatch(request)
+        self.assertTrue(self.owner.effect_uncertain)
+        self.assertIsInstance(self.owner.original_failure, OSError)
+        with self.assertRaises(ValueError): self.owner.dispatch(request)
+        with self.assertRaises(ValueError): self.observe()
+        self.assertEqual(len(self.backend.packets), 1)
+        self.assertEqual(self.owner.dispatch({"operationId": self.owner.operation, "kind": "status"})["effectUncertain"], True)
+
+    def test_successful_original_decision_cannot_repeat(self):
+        request = self.decision(); self.owner.dispatch(request)
+        with self.assertRaises(ValueError): self.owner.dispatch(request)
+        self.assertEqual(self.backend.packets, [("meta_l", "r")])
+
+    def test_guard_refusal_after_review_has_no_keys(self):
+        request = self.decision(); self.backend.failure = "guard"
+        with self.assertRaises(ValueError): self.owner.dispatch(request)
+        self.assertEqual(self.backend.packets, [])
+
+    def test_current_guest_change_refuses_before_input(self):
+        request = self.decision(); self.backend.failure = "guest-changed"
+        with self.assertRaises(ValueError): self.owner.dispatch(request)
+        self.assertEqual(self.backend.packets, [])
+
+    def test_post_effect_base_exception_is_kept_in_original_owner(self):
+        request = self.decision()
+        failure = KeyboardInterrupt("controlled-after-native-send")
+        def key(codes, deadline):
+            self.backend.packets.append((codes, "possibly-sent"))
+            raise failure
+        self.backend.key = key
+        with self.assertRaises(KeyboardInterrupt): self.owner.dispatch(request)
+        self.assertIs(self.owner.original_failure, failure)
+        self.assertTrue(self.owner.effect_uncertain)
+        with self.assertRaises(ValueError): self.owner.dispatch(request)
+        self.assertEqual(len(self.backend.packets), 1)
+
+    def test_native_entrypoint_cannot_start_with_unbound_guest_qualification(self):
+        with patch.object(MODULE, "FRESH_GUEST_QUALIFIER", None):
+            with self.assertRaisesRegex(ValueError, "preparation_only_fresh_guest_qualification_unbound"):
+                MODULE.serve(MODULE.CONFIG)
+
+    def test_control_close_failure_keeps_handles_and_original_failure(self):
+        original = KeyboardInterrupt("original-native-uncertainty")
+        self.owner.original_failure = original
+        class FailedClose:
+            def close(self): raise OSError("controlled-close-failed")
+        class KnownClose:
+            def __init__(self): self.closed = False
+            def close(self): self.closed = True
+        stream, connection = FailedClose(), KnownClose()
+        self.owner.close_control_resources(stream, connection)
+        self.assertIs(self.owner.original_failure, original)
+        self.assertIs(self.owner.retained_control_cleanup[0][1], stream)
+        self.assertTrue(connection.closed)
+        self.assertTrue(self.owner.effect_uncertain)
+        self.assertFalse(self.owner.closed)
+        self.assertEqual(self.backend.packets, [])
+
+    def test_real_derived_qmp_checks_original_expiry_at_input_write(self):
+        # Execute the actual complete canonical-derived qmp function. These
+        # objects only model its wire; no socket or native process is opened.
+        writes = []
+        class Stream:
+            def __init__(self):
+                self.lines = [b'{"QMP":{}}\n', b'{"return":{},"id":0}\n', b'{"return":{},"id":1}\n']
+            def readline(self, limit): return self.lines.pop(0)
+            def write(self, raw): writes.append(json.loads(raw)); return len(raw)
+        class Client:
+            def __init__(self, *args, **kwargs): pass
+            def settimeout(self, timeout): pass
+            def connect(self, path): pass
+            def getsockopt(self, *args): return __import__("struct").pack("3i", 100, 1000, 1000)
+            def makefile(self, *args, **kwargs): return Stream()
+            def close(self): pass
+        fake_socket = types.SimpleNamespace(AF_UNIX=1, SOL_SOCKET=1, SO_PEERCRED=17, socket=Client)
+        fake_os = types.SimpleNamespace(lstat=lambda path: types.SimpleNamespace(st_ino=500), geteuid=lambda: 1000)
+        fake_time = types.SimpleNamespace(monotonic=lambda: 115.001)
+        replacements = {"socket": fake_socket, "os": fake_os, "time": fake_time,
+            "read": lambda leaf: {"pid": 100}, "process": lambda row: 100,
+            "UAC_INPUT_DEADLINE": 115.0}
+        with patch.dict(MODULE.__dict__, replacements):
+            with self.assertRaisesRegex(ValueError, "uac_key_deadline"):
+                MODULE.qmp("send-key", {"keys": [{"type": "qcode", "data": "esc"}], "hold-time": 10})
+        self.assertEqual([value["execute"] for value in writes], ["qmp_capabilities"])
+
+    def test_partial_slow_command_has_no_enter_or_finally_escape(self):
+        self.advance()
+        self.backend.failure = "slow-plan"
+        with self.assertRaises(ValueError): self.owner.dispatch(self.decision())
+        self.assertTrue(self.owner.effect_uncertain)
+        self.assertNotIn(("ret",), self.backend.packets)
+        self.assertNotIn(("esc",), self.backend.packets)
+
+    def test_ack_record_failure_does_not_repeat_cancellation(self):
+        self.advance(); self.advance()
+        self.backend.fail_save = ".ack.json"
+        with self.assertRaises(OSError): self.owner.dispatch(self.decision())
+        self.assertEqual(self.backend.packets.count(("esc",)), 1)
+        self.assertTrue(self.owner.effect_uncertain)
+        with self.assertRaises(ValueError): self.owner.dispatch(self.decision())
+
+    def test_action_intent_failure_has_no_native_packet(self):
+        self.backend.fail_save = ".intent.json"
+        with self.assertRaises(OSError): self.owner.dispatch(self.decision())
+        self.assertEqual(self.backend.packets, [])
+
+    def test_control_renderer_compiles_quoting_without_native_dispatch(self):
+        request = {"operationId": self.owner.operation, "kind": "status", "quote": "Tokyo 東京 ' \\\"\n"}
+        source = template.render_control(self.owner.operation, "/home/future-visual/uac-x/control.sock", request, {"pid": 100, "startTicks": 200})
+        tree = __import__("ast").parse(source)
+        assignment = next(node for node in tree.body if isinstance(node, __import__("ast").Assign) and node.targets[0].id == "REQUEST")
+        self.assertEqual(__import__("ast").literal_eval(assignment.value), request)
+        self.assertNotIn("shell=True", source)
+
+    def test_unknown_purpose_and_current_product_vm_are_not_templates(self):
+        for change in ("purpose", "deployment"):
+            value = config()
+            if change == "purpose": value["setup"]["purpose"] = "ordinary"
+            else: value["spec"]["deploymentId"] = "d493a373-1d2c-4ab0-bfd4-e93575019dce"
+            with self.subTest(change=change), self.assertRaises(ValueError): template.render(value)
+
+    def test_private_source_hold_detects_actual_replacement(self):
+        # Exercise the renderer's real held-FD closing check against a private
+        # copied input. Canonical files remain unchanged.
+        path = self.backend.directory / "copied-input.py"
+        path.write_bytes(b"value=1\n")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            info = os.fstat(fd)
+            holder = template.Sources()
+            holder.held = [(fd, path, holder.generation(info), hashlib.sha256(path.read_bytes()).hexdigest())]
+            holder.guard()
+            other = self.backend.directory / "replacement.py"; other.write_bytes(b"value=1\n"); os.replace(other, path)
+            with self.assertRaises(ValueError): holder.guard()
+        finally: os.close(fd)
+
+
+if __name__ == "__main__":
+    print(json.dumps({"kind": "INERT_ONLY", "completeRenderedSourceSha256": hashlib.sha256(SOURCE.encode()).hexdigest(),
+        "sourcePins": MODULE.CONFIG["sourcePins"], "nativeBackendExecuted": False, "nativeSocketOrGuestActions": False}, sort_keys=True), flush=True)
+    unittest.main(verbosity=2)

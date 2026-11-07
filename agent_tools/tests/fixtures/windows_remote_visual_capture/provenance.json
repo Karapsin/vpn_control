@@ -1,0 +1,22 @@
+{
+  "failure": "Merged capture-local appended --target to a driver that rejected it: 'error: unrecognized arguments: --target libvirt:vpn-control-win11', exit 2. The selector had no family that could truthfully name a remote deployment, and a relative --output reached the driver as a relative --scenes path that its held-file read refused.",
+  "observed": "local process only, no VM, SSH, credential or real journal",
+  "purpose": "Authentic unfixed sources before a remote deployment could be named through merged capture-local; no native capture or image claim",
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "bytes": 10819,
+      "commit": "a9aed70190cff5af2b7123981a976dc9091f7eb1",
+      "fixture": "capture_visual_windows_remote.before.source",
+      "sha256": "273398259385d88e639372db1512c878595dafee47c2e1c342143eae9aa31919",
+      "sourcePath": "scripts/capture_visual_windows_remote.py"
+    },
+    {
+      "bytes": 5541,
+      "commit": "17587717a41d47aac803ce8c3471f36ce8a30447",
+      "fixture": "visual_target.before.source",
+      "sha256": "ff3627429307105489e1c646303ee2edd27380fab5c3a053858dd91c0952ff1c",
+      "sourcePath": "scripts/visual_target.py"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+"""Hash exactly two host assets. No binary output/socket/process/guest actions."""
+import hashlib,json,os,pwd,re,stat
+COLLECTOR_ID='d6872430-b062-4cf8-9eb2-aa42d4116dda'
+EXPECTED_BOOT='25515f23-b966-4c3a-ae63-d38452375578'
+ROOT='/home/kardinal/vc-art-d493a3731d2c'
+SPECS=(('vpn-control-2.2.13.msi',131228020,'8167212cb412c0e0d1c3ad1d60f12fdbc5477043725fd35484bdf6b46db25fb6'),('python-3.13.15-amd64.exe',29452944,'edec09c4853aeae9ac36efb8c9f95b6b8e2fee65eee56d9767a8b7c69c574403'))
+MAX_FILE=131228020
+MAX_OUTPUT=131072
+
+def require(ok,reason):
+ if not ok:raise ValueError(reason)
+def generation(value):return[value.st_dev,value.st_ino,value.st_mode,value.st_uid,value.st_gid,value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns]
+def structure(value):return generation(value)[:5]
+def boot():
+ fd=os.open('/proc/sys/kernel/random/boot_id',os.O_RDONLY|os.O_NOFOLLOW)
+ try:raw=os.read(fd,80)
+ finally:os.close(fd)
+ value=raw.decode('ascii').strip();require(re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',value)is not None,'collector_boot_shape');return value
+def actor():
+ uid=os.getuid();euid=os.geteuid();user=pwd.getpwuid(uid)
+ require(uid==euid==1000 and user.pw_name=='kardinal' and user.pw_dir=='/home/kardinal' and os.getcwd()=='/home/kardinal','collector_actor')
+ value={'uid':uid,'euid':euid,'principal':user.pw_name,'home':user.pw_dir,'cwd':os.getcwd(),'bootId':boot()}
+ require(value['bootId']==EXPECTED_BOOT,'collector_boot');return value
+
+def held_digest(fd,size):
+ value=hashlib.sha256();total=0
+ while True:
+  raw=os.pread(fd,min(65536,size+1-total),total)
+  if not raw:break
+  total+=len(raw);require(total<=size,'collector_file_bound');value.update(raw)
+ require(total==size,'collector_exact_size');return value.hexdigest()
+
+def main():
+ opening_actor=actor();held=[];rows=[];parents=[]
+ try:
+  fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+  parents.append((fd,None,None,'/',structure(os.fstat(fd))))
+  prefix=''
+  for name in ROOT.split('/')[1:]:
+   parent=fd;fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);prefix+='/'+name
+   parents.append((fd,parent,name,prefix,structure(os.fstat(fd))))
+  root_fd=fd;root_open=os.fstat(root_fd)
+  require(stat.S_ISDIR(root_open.st_mode)and root_open.st_uid==1000,'collector_root_identity')
+  root_structure=structure(root_open)
+  # Both exact asset FDs are held before any content hash begins.
+  for name,size,expected in SPECS:
+   fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=root_fd);held.append((name,fd,size,expected));info=os.fstat(fd)
+   require(stat.S_ISREG(info.st_mode)and info.st_uid==1000 and info.st_nlink==1 and info.st_size==size and 0<size<=MAX_FILE,'collector_file_identity')
+   require(generation(os.stat(name,dir_fd=root_fd,follow_symlinks=False))==generation(info),'collector_named_opening')
+   rows.append({'path':ROOT+'/'+name,'bytes':size,'expectedSha256':expected,'openingGeneration':generation(info)})
+  for row,(name,fd,size,expected)in zip(rows,held):
+   value=held_digest(fd,size);require(value==expected,'collector_exact_bytes');row['sha256']=value
+  for row,(name,fd,size,expected)in zip(rows,held):
+   require(generation(os.fstat(fd))==row['openingGeneration']==generation(os.stat(name,dir_fd=root_fd,follow_symlinks=False)),'collector_file_changed')
+   require(held_digest(fd,size)==expected,'collector_closing_hash')
+   require(generation(os.fstat(fd))==row['openingGeneration']==generation(os.stat(name,dir_fd=root_fd,follow_symlinks=False)),'collector_file_changed')
+   row['closingGeneration']=generation(os.fstat(fd));row['heldAndNamedClosing']=True
+  ancestors=[]
+  for fd,parent,name,path,identity in parents:
+   named=os.lstat('/')if parent is None else os.stat(name,dir_fd=parent,follow_symlinks=False)
+   require(stat.S_ISDIR(named.st_mode)and structure(os.fstat(fd))==identity==structure(named),'collector_ancestor_changed')
+   ancestors.append({'path':path,'structure':identity,'heldAndNamedClosing':True})
+  closing_actor=actor();require(closing_actor==opening_actor,'collector_actor_changed')
+  result={'state':'qualified','collectorId':COLLECTOR_ID,'scope':'exact-two-baseline-host-assets','root':ROOT,'sourceRootStructure':root_structure,'files':rows,'ancestors':ancestors,'actorOpening':opening_actor,'actorClosing':closing_actor,'fileClosing':True,'ancestorClosing':True,'bothAssetFileDescriptorsHeldAcrossCollection':True,'binaryContentsReturned':False,'upstreamOriginalProgramSourceClosingRequired':True,'qgaConnectOrRead':False,'processInspectionOrSignal':False,'guestProgramSubmitted':False}
+  encoded=(json.dumps(result,sort_keys=True,separators=(',',':'))+'\n').encode();require(len(encoded)<=MAX_OUTPUT,'collector_output_bound')
+  print(encoded.decode(),end='')
+ finally:
+  for name,fd,size,expected in reversed(held):os.close(fd)
+  for fd,parent,name,path,identity in reversed(parents):os.close(fd)
+
+if __name__=='__main__':main()

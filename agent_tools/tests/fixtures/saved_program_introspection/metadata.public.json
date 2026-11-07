@@ -1,0 +1,36 @@
+{
+  "A": {
+    "beforeSha256": "ec552271162155f5f331be97882321590da91a5b18823fc81b41c2a50d09bc39",
+    "cause": "module_from_spec/exec_module omitted sys.modules registration before real class source inspection",
+    "greenConsumer": "current source_module_loader.SourceSession importing the complete original renderer and its current dependencies; real stdlib inspect.getsource plus complete gateway generation and generated HeldFile guard/closure",
+    "originalClass": "private_raw_stage.HeldFile",
+    "originalErrorClass": "TypeError",
+    "qualifierBeforeSha256": "518901db9f3a6fefa04199f240b24ae9a12bbea29308ee1fe8dfa034520c96c3"
+  },
+  "B": {
+    "beforeSha256": "66abcafe85a76995c71b358d61b28a2e42a5a5cf97f0c9f665e1c1ea5a416752",
+    "cause": "legitimate unregistered saved-source namespace cannot support inspect.getsource(class)",
+    "greenConsumer": "agent_tools.tests.test_ssh_program_execution.ProgramExecutionTests.test_real_small_child_preserves_main_args_cwd_streams_exit_and_duplicate_identity",
+    "greenScope": "current whole-program carrier executes exact snapshotted class-bearing source without class-source introspection, with source hash/raw bytes retained",
+    "historicalFixScope": "private renderer extracted its own class AST; this is not a current reusable production API",
+    "historicalFixSha256": "8517c40056d1207194addd923c20877634c38d75aa29956a0ed8efd79f05b623",
+    "originalClass": "saved_fixture_unregistered.HeldFile",
+    "originalErrorClass": "TypeError"
+  },
+  "C": {
+    "greenConsumer": "agent_tools.tests.test_ssh_program_execution.ProgramExecutionTests.test_original_route_order_failure_and_fixed_actual_worker",
+    "greenScope": "current program request serialization/actual worker command identity, with its own authentic whole-worker RED source; private historical fixture is not relabeled as current production",
+    "historicalFixedSha256": "6f2ea17e7498d0c1b82812ecfce54482f7951d33b662bd3adf8d2763a8e9f021",
+    "historicalPrivateEntryRedGreenSha256": "81b07c8e21c42a13aa486db39bca5d0f036ba656a998aebf5a6434ca49404154",
+    "originalBeforeSha256": "31b1e07d166d93a0536977053e499dfe318c5f30adffdadd4ceb4aad65ac62d2",
+    "originalErrorClass": "ValueError",
+    "originalPhase": "actual saved-loader whole __main__/argparse/sorted production JSON file entry before first publication",
+    "originalReason": "receiver_source_binding"
+  },
+  "classification": "local complete-caller qualification failures before host submission",
+  "containsCredentialValues": false,
+  "contextualHistoricalSourcesUnchanged": true,
+  "hostSubmitted": false,
+  "nativeClaim": false,
+  "rawTracebackExported": false
+}

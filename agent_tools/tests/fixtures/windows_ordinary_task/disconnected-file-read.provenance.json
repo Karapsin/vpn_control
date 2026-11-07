@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "fixture": "disconnected-file-read.before.source",
+  "sha256": "d00ab003ea79b961efa25ff22a69cdea981203b259cb13ba4dbd1b8e87bbb6ef",
+  "sizeBytes": 74273,
+  "originPath": ".runtime/windows-parity-20261019/windows-product-runner/disconnected-cli-config-preparation-v1/history/pre-file-read-bound-review/candidate/agent_tools/windows_disconnected_cli_cases.py",
+  "originPhase": "Private finite disconnected adapter after command-renderer audit, before independent bounded-reader source-review correction.",
+  "observedNativeFailure": false,
+  "preservedEntireSource": true,
+  "execution": "Only module definitions/stdlib imports are loaded; only Cases.output is invoked with disposable TempFS inputs and inert owner. No run(), CLI, Popen, Win32 or network call is invoked.",
+  "causalOracle": "Same positive sparse64MiB+1 file refusal test; old output reaches explicit must-not-open tripwire; current rejects by size before opening. Second positive checks that the small real-file read has a positive finite bound.",
+  "sourceReviewFinding": "Original Cases.output called stream.read() without a cap.",
+  "originalPrivateHandoffSha256": "d5a79bc381dd04bb32420bbc1700ae7f0b9943e95a504d4c39df3991c6641cb8",
+  "originalQualificationSha256": "310d53e1449c7954d17dcb2fe39c955e6be1ad32fbb8bca4fc22b38de2cefe3a",
+  "notAWindowsCauseClaim": true
+}

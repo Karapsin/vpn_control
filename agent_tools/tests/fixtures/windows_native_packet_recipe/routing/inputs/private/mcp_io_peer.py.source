@@ -1,0 +1,350 @@
+"""Explicit inert SDK I/O seams for the whole saved MCP client.
+
+Only this peer's MCP-facing objects are substituted.  The actual saved client's
+``main`` still reads its request, creates its directory, initializes, lists tools,
+calls the tool, writes every client receipt, and checks raw-stream closing.  This
+module does not import the real SDK, launch a process, use a socket, or produce a
+``client-result.json``.  Its JSON-RPC serialization is a deliberately synthetic
+I/O model, not evidence that the SDK, relay, or server ran.
+
+Contract for the coordinator's virtual-filesystem World::
+
+    peer = MCPIoPeer(backend, emit_terminal, observe)
+
+Expose ``peer.mcp_module`` for ``mcp`` and ``peer.stdio_module`` for
+``mcp.client.stdio`` through World's import seam.  ``peer.modules`` additionally
+contains the parent ``mcp.client`` package if an import hook needs it.  Preserve
+the real asyncio module; no asyncio subprocess replacement is needed.
+
+``backend(tool_name, arguments, session_context)`` is invoked exactly once per
+actual ``ClientSession.call_tool``.  It receives JSON copies of the arguments
+and context.  Return the synthetic same-operation backend body as a JSON value;
+it becomes one text item in CallToolResult.  Return ``ToolReply(body,
+is_error=True)`` for an explicit tool error.  An awaitable backend is supported.
+The callback must not return or write the client's final bookkeeping result.
+
+``emit_terminal(session_context, raw_streams, delivery)`` is invoked once when
+the stdio context exits, after the session context has exited.  It may be an
+awaitable.  The context is a JSON dictionary with ``directory`` (the client's
+``parameters.args[-2]``), ``complete``, ``returnCode``, ``eof``, ``overflow``, and
+``readError``.  ``raw_streams`` is exactly ``{stdin: bytes, stdout: bytes,
+stderr: bytes}``; ``delivery`` contains tool-call frame/forwarding counts,
+pending frame bytes, and total stdin bytes.  World must add ``server.stdin``,
+``server.stdout``, ``server.stderr`` and ``server-terminal.json`` to its virtual
+filesystem, compute the actual virtual-file SHA/size/generation pins, and put
+those pins in terminal.raw.  This peer never invents filesystem generations.
+
+``observe(event_name, details)`` is a synchronous callback.  Events include
+stdio/session opening and closing, synthetic JSON-RPC frame metadata, backend
+invocation, and explicit dual EOF.  ``peer.events`` retains the same observations
+and ``peer.sessions`` retains original session objects for local assertions.
+Callbacks never receive the server environment's values.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import inspect
+import json
+from pathlib import PurePath
+import types
+
+
+def _json_copy(value):
+    return json.loads(json.dumps(value, ensure_ascii=False, allow_nan=False))
+
+
+def _json_bytes(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
+
+
+class ToolReply:
+    """Backend body plus the SDK's explicit CallToolResult error flag."""
+
+    def __init__(self, body, *, is_error=False):
+        if type(is_error) is not bool:
+            raise TypeError("inert_mcp_tool_error_type")
+        self.body = _json_copy(body)
+        self.is_error = is_error
+
+
+class _Model:
+    def __init__(self, value):
+        self._value = _json_copy(value)
+
+    def model_dump(self, *, mode="python", **kwargs):
+        if mode not in ("json", "python") or kwargs:
+            raise ValueError("inert_mcp_model_dump_options")
+        return _json_copy(self._value)
+
+
+class _ToolModel(_Model):
+    @property
+    def name(self):
+        return self._value["name"]
+
+
+class _ToolsResult(_Model):
+    @property
+    def tools(self):
+        return [_ToolModel(item) for item in self._value["tools"]]
+
+
+class _CallResult(_Model):
+    @property
+    def isError(self):
+        return self._value["isError"]
+
+
+class _Stream:
+    def __init__(self, session, direction):
+        self.session = session
+        self.direction = direction
+
+
+class _SessionState:
+    def __init__(self, peer, parameters):
+        self.peer = peer
+        args = parameters.args
+        if (len(args) != 4 or args[0] != "-B"
+                or PurePath(args[1]).name != "ssh_keeper_mcp_relay.py"
+                or not PurePath(args[-2]).is_absolute()
+                or len(args[-1]) != 64
+                or any(c not in "0123456789abcdef" for c in args[-1])):
+            raise ValueError("inert_mcp_stdio_parameters")
+        self.context = {
+            "inertSdkIoPeer": True,
+            "sessionIndex": len(peer.sessions) + 1,
+            "directory": args[-2],
+            "command": parameters.command,
+            "args": list(args),
+            "cwd": str(parameters.cwd),
+            "environmentKeys": sorted(parameters.env),
+            "serverSha256": args[-1],
+        }
+        self.parameters = parameters
+        self.raw = {"stdin": bytearray(), "stdout": bytearray(), "stderr": bytearray()}
+        self.next_id = 1
+        self.pending_id = None
+        self.tool_calls = 0
+        self.forwarded_tool_calls = 0
+        self.session_entered = False
+        self.session_exited = False
+        self.initialized = False
+        self.tools_listed = False
+        self.terminal_emitted = False
+
+    def frame(self, direction, value):
+        raw = _json_bytes(value)
+        self.raw[direction].extend(raw)
+        kind = "notification" if "method" in value and "id" not in value else (
+            "request" if "method" in value else "response")
+        self.peer._observe("jsonrpc_frame", {
+            "sessionIndex": self.context["sessionIndex"], "direction": direction,
+            "kind": kind, "method": value.get("method"), "id": value.get("id"),
+            "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+            "syntheticSerialization": True,
+        })
+
+    def request(self, method, params):
+        if self.pending_id is not None:
+            raise ValueError("inert_mcp_pending_request")
+        request_id = self.next_id
+        self.next_id += 1
+        self.pending_id = request_id
+        self.frame("stdin", {"jsonrpc": "2.0", "id": request_id,
+                             "method": method, "params": params})
+        if method == "tools/call":
+            self.tool_calls += 1
+            # The complete frame above is the peer's explicit forwarding seam.
+            # It is not a claim that an actual relay forwarded any bytes.
+            self.forwarded_tool_calls += 1
+        return request_id
+
+    def response(self, request_id, value):
+        if self.pending_id != request_id:
+            raise ValueError("inert_mcp_response_id")
+        self.frame("stdout", {"jsonrpc": "2.0", "id": request_id, "result": value})
+        self.pending_id = None
+
+    def require_live(self):
+        if not self.session_entered or self.session_exited or self.terminal_emitted:
+            raise ValueError("inert_mcp_session_not_live")
+
+
+class MCPIoPeer:
+    """Three explicit callbacks and module objects for World's import hook."""
+
+    def __init__(self, backend, emit_terminal, observe, *, tools=None,
+                 initialize_result=None):
+        if not all(callable(value) for value in (backend, emit_terminal, observe)):
+            raise TypeError("inert_mcp_callbacks")
+        self.backend = backend
+        self.emit_terminal = emit_terminal
+        self.observe = observe
+        self.events = []
+        self.sessions = []
+        self.tools = _json_copy(tools if tools is not None else [{
+            "name": "ssh_workflow", "description": "Explicit inert workflow I/O peer",
+            "inputSchema": {"type": "object"},
+        }])
+        self.initialize_result = _json_copy(initialize_result if initialize_result is not None else {
+            "protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
+            "serverInfo": {"name": "inert-sdk-io-peer", "version": "1"},
+        })
+        peer = self
+
+        class StdioServerParameters:
+            def __init__(self, *, command, args, cwd, env):
+                if (type(command) is not str or type(args) is not list
+                        or any(type(item) is not str for item in args)
+                        or type(env) is not dict):
+                    raise TypeError("inert_mcp_parameter_types")
+                self.command = command
+                self.args = list(args)
+                self.cwd = cwd
+                self.env = dict(env)
+
+        class StdioContext:
+            def __init__(self, parameters, *, errlog):
+                if not isinstance(parameters, StdioServerParameters):
+                    raise TypeError("inert_mcp_parameter_class")
+                self.state = _SessionState(peer, parameters)
+                self.errlog = errlog
+                self.entered = False
+
+            async def __aenter__(self):
+                if self.entered:
+                    raise ValueError("inert_mcp_stdio_reentry")
+                self.entered = True
+                peer.sessions.append(self.state)
+                peer._observe("stdio_open", self.state.context)
+                return (_Stream(self.state, "read"), _Stream(self.state, "write"))
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                state = self.state
+                if not self.entered or state.terminal_emitted:
+                    raise ValueError("inert_mcp_stdio_exit_order")
+                normal = exc_type is None and state.session_exited and state.pending_id is None
+                state.context.update(complete=normal, returnCode=0 if normal else None,
+                                     eof={"stdout": True, "stderr": True},
+                                     overflow=False, readError=False,
+                                     sessionExited=state.session_exited)
+                peer._observe("dual_eof", {
+                    "sessionIndex": state.context["sessionIndex"],
+                    "stdout": True, "stderr": True, "inertSdkIoPeer": True,
+                })
+                delivery = {
+                    "toolCallFrameCount": state.tool_calls,
+                    "fullyForwardedToolCallFrameCount": state.forwarded_tool_calls,
+                    "pendingFrameBytes": 0,
+                    "stdinBytesWritten": len(state.raw["stdin"]),
+                }
+                state.terminal_emitted = True
+                emitted = peer.emit_terminal(_json_copy(state.context),
+                    {key: bytes(value) for key, value in state.raw.items()}, delivery)
+                if inspect.isawaitable(emitted):
+                    await emitted
+                peer._observe("stdio_closed", state.context)
+                return False
+
+        class ClientSession:
+            def __init__(self, read_stream, write_stream, *, read_timeout_seconds):
+                if (not isinstance(read_stream, _Stream) or not isinstance(write_stream, _Stream)
+                        or read_stream.session is not write_stream.session
+                        or read_stream.direction != "read" or write_stream.direction != "write"):
+                    raise ValueError("inert_mcp_stream_pair")
+                self.state = read_stream.session
+                self.read_timeout_seconds = read_timeout_seconds
+
+            async def __aenter__(self):
+                if self.state.session_entered or self.state.terminal_emitted:
+                    raise ValueError("inert_mcp_session_reentry")
+                self.state.session_entered = True
+                peer._observe("session_open", {
+                    "sessionIndex": self.state.context["sessionIndex"],
+                    "readTimeoutSeconds": self.read_timeout_seconds.total_seconds(),
+                })
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                self.state.require_live()
+                self.state.session_exited = True
+                peer._observe("session_closed", {
+                    "sessionIndex": self.state.context["sessionIndex"],
+                    "exceptionClass": exc_type.__name__ if exc_type is not None else None,
+                })
+                return False
+
+            async def initialize(self):
+                state = self.state
+                state.require_live()
+                if state.initialized:
+                    raise ValueError("inert_mcp_initialize_replay")
+                request_id = state.request("initialize", {
+                    "protocolVersion": "2024-11-05", "capabilities": {},
+                    "clientInfo": {"name": "inert-sdk-io-peer", "version": "1"},
+                })
+                state.response(request_id, peer.initialize_result)
+                state.frame("stdin", {"jsonrpc": "2.0", "method": "notifications/initialized"})
+                state.initialized = True
+                return _Model(peer.initialize_result)
+
+            async def list_tools(self):
+                state = self.state
+                state.require_live()
+                if not state.initialized or state.tools_listed:
+                    raise ValueError("inert_mcp_inventory_order")
+                request_id = state.request("tools/list", {})
+                value = {"tools": peer.tools}
+                state.response(request_id, value)
+                state.tools_listed = True
+                return _ToolsResult(value)
+
+            async def call_tool(self, name, arguments, *, read_timeout_seconds):
+                state = self.state
+                state.require_live()
+                if not state.tools_listed or state.tool_calls or type(name) is not str:
+                    raise ValueError("inert_mcp_tool_order")
+                copied = _json_copy(arguments)
+                request_id = state.request("tools/call", {"name": name, "arguments": copied})
+                peer._observe("backend_invoked", {
+                    "sessionIndex": state.context["sessionIndex"], "toolName": name,
+                    "readTimeoutSeconds": read_timeout_seconds.total_seconds(),
+                    "requestId": request_id,
+                })
+                body = peer.backend(name, copied, _json_copy(state.context))
+                if inspect.isawaitable(body):
+                    body = await body
+                reply = body if isinstance(body, ToolReply) else ToolReply(body)
+                value = {"content": [{"type": "text", "text": json.dumps(reply.body,
+                    sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)}],
+                    "isError": reply.is_error}
+                if type(reply.body) is dict:
+                    value["structuredContent"] = _json_copy(reply.body)
+                state.response(request_id, value)
+                return _CallResult(value)
+
+        def stdio_client(parameters, *, errlog):
+            return StdioContext(parameters, errlog=errlog)
+
+        self.mcp_module = types.ModuleType("mcp")
+        self.mcp_module.__path__ = []
+        self.mcp_module.ClientSession = ClientSession
+        self.mcp_module.StdioServerParameters = StdioServerParameters
+        client_module = types.ModuleType("mcp.client")
+        client_module.__path__ = []
+        self.stdio_module = types.ModuleType("mcp.client.stdio")
+        self.stdio_module.stdio_client = stdio_client
+        client_module.stdio = self.stdio_module
+        self.mcp_module.client = client_module
+        self.modules = {"mcp": self.mcp_module, "mcp.client": client_module,
+                        "mcp.client.stdio": self.stdio_module}
+
+    def _observe(self, name, details):
+        record = _json_copy(details)
+        self.events.append({"event": name, "details": record})
+        returned = self.observe(name, _json_copy(record))
+        if inspect.isawaitable(returned):
+            raise TypeError("inert_mcp_observe_must_be_synchronous")

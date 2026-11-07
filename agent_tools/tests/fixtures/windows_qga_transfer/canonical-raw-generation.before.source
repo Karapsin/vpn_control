@@ -1,0 +1,443 @@
+"""Retain one original QGA request and its custody through an unknown outcome.
+
+Importing this module performs no I/O. The caller supplies already admitted
+paths, peer identity, guards, journals and descriptors. Unknown operations keep
+their original socket, bytes and descriptors; observation never sends a frame.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import socket
+import struct
+import sys
+import time
+
+
+def _require(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+
+def _generation(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _held_hash(fd, length):
+    os.lseek(fd, 0, os.SEEK_SET)
+    digest = hashlib.sha256()
+    total = 0
+    while True:
+        data = os.read(fd, 262144)
+        if not data:
+            break
+        total += len(data)
+        _require(total <= length, "retained_rpc_held_size")
+        digest.update(data)
+    _require(total == length, "retained_rpc_held_size")
+    return digest.hexdigest()
+
+
+def _write_exact_fd(fd, data):
+    offset = 0
+    while offset < len(data):
+        count = os.write(fd, data[offset:])
+        _require(type(count) is int and 0 < count <= len(data) - offset,
+                 "retained_rpc_capture_write")
+        offset += count
+    return offset
+
+
+def write_journal(root, name, value, *, guard):
+    """Create one guarded journal with finite positive-count writes."""
+    _require(callable(guard) and isinstance(root, (str, Path)), "retained_qga_journal_dependencies")
+    root = Path(root)
+    _require(root.is_absolute() and ".." not in root.parts and type(name) is str
+             and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,254}", name) is not None
+             and name not in (".", ".."), "retained_qga_journal_name")
+    guard()
+    data = value if type(value) is bytes else (json.dumps(value, sort_keys=True) + "\n").encode()
+    fd = os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        _write_exact_fd(fd, data)
+        os.fsync(fd)
+        guard()
+    finally:
+        os.close(fd)
+
+
+class RetainedQgaOwner:
+    """Own requests, reporting and parking in the same original Python process.
+
+    Construction only validates and binds explicit dependencies. A descriptor
+    pair of (-1, -1) allows an owner to exist before host admission. Bind actual
+    captures and the final RPC guard once, before the first call. The initial
+    guard may admit only host journals; it must refuse unadmitted paths.
+    """
+
+    def __init__(self, root, prefix, peer_pid, guard, save, held_fds,
+                 wire_fd, partial_wire_fd):
+        _require(isinstance(root, (str, Path)), "retained_qga_root")
+        self.root = Path(root)
+        _require(self.root.is_absolute() and ".." not in self.root.parts,
+                 "retained_qga_root")
+        _require(type(prefix) is str and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,191}", prefix)
+                 is not None and prefix not in (".", ".."), "retained_qga_prefix")
+        _require(type(peer_pid) is int and peer_pid > 0, "retained_qga_peer_pid")
+        _require(callable(guard) and callable(save) and type(held_fds) is list,
+                 "retained_qga_dependencies")
+        _require(type(wire_fd) is int and type(partial_wire_fd) is int and
+                 ((wire_fd == partial_wire_fd == -1) or
+                  (wire_fd >= 0 and partial_wire_fd >= 0 and wire_fd != partial_wire_fd)),
+                 "retained_qga_capture_fds")
+        self.prefix = prefix
+        self.peer_pid = peer_pid
+        self.guard = guard
+        self.journal_guard = guard
+        self.save = save
+        self.held_fds = held_fds
+        self.wire_fd = wire_fd
+        self.partial_wire_fd = partial_wire_fd
+        self.captures_bound = wire_fd >= 0
+        self.current = None
+        self.sequence = 0
+        self.reporting_failures = []
+        self.failed = False
+        self.parked = False
+        self.finalized = False
+        self.unknown_journal_path = None
+
+    def bind_captures(self, wire_fd, partial_wire_fd, *, guard):
+        """Bind capture descriptors and the final guard once, without I/O."""
+        _require(not self.captures_bound and self.current is None and self.sequence == 0
+                 and not self.failed and not self.parked and not self.finalized,
+                 "retained_qga_capture_rebind")
+        _require(type(wire_fd) is int and type(partial_wire_fd) is int and
+                 wire_fd >= 0 and partial_wire_fd >= 0 and wire_fd != partial_wire_fd
+                 and callable(guard), "retained_qga_capture_fds")
+        self.wire_fd = wire_fd
+        self.partial_wire_fd = partial_wire_fd
+        self.guard = guard
+        self.captures_bound = True
+
+    def remember_reporting_failure(self, stage, error):
+        self.failed = True
+        try:
+            if len(self.reporting_failures) >= 64:
+                self.reporting_failures.pop(0)
+            self.reporting_failures.append({"stage": stage, "errorClass": type(error).__name__,
+                                            "error": str(error)[:512]})
+        except BaseException:
+            pass
+
+    def safe_report(self, value):
+        try:
+            print(json.dumps(value, sort_keys=True))
+            sys.stdout.flush()
+            return True
+        except BaseException as error:
+            self.remember_reporting_failure("stdout", error)
+            return False
+
+    def safe_journal(self, name, value):
+        try:
+            _require(type(name) is str and name.startswith(self.prefix + ".") and
+                     "/" not in name and "\\" not in name and "\x00" not in name,
+                     "retained_qga_journal_name")
+            self.journal_guard()
+            self.save(name, value)
+            if name == self.prefix + ".unknown.json":
+                self.unknown_journal_path = str(self.root / name)
+            return True
+        except BaseException as error:
+            self.remember_reporting_failure("journal:" + str(name), error)
+            return False
+
+    def call(self, command, args, deadline):
+        _require(self.captures_bound and not self.failed and not self.parked
+                 and not self.finalized, "retained_qga_call_state")
+        try:
+            self.guard()
+            if self.current is not None:
+                self.current.close_known()
+            self.sequence += 1
+            # Keep the original object before its first journal, open or send.
+            self.current = RetainedRpc(self, command, args, deadline, self.sequence)
+            return self.current.run()
+        except BaseException:
+            self.failed = True
+            raise
+
+    def finalize_known(self):
+        _require(not self.failed and not self.parked and not self.finalized,
+                 "retained_qga_finalize_state")
+        try:
+            self.guard()
+            if self.current is not None:
+                self.current.close_known()
+            self.finalized = True
+        except BaseException:
+            self.failed = True
+            raise
+
+    def snapshot(self):
+        return None if self.current is None else self.current.snapshot()
+
+    def park_original(self, receipt, error):
+        """Park without replay, reconnect, mutation resume, or custody cleanup."""
+        self.failed = True
+        self.parked = True
+        late_index = 0
+        last = None
+        while True:
+            try:
+                try:
+                    observation = (self.current.observe_same_wire(time.monotonic() + 1)
+                                   if self.current is not None and self.current.unknown
+                                   else self.snapshot())
+                except BaseException as observation_error:
+                    observation = {"errorClass": type(observation_error).__name__,
+                                   "error": str(observation_error), "custodyRetained": True}
+                fingerprint = hashlib.sha256(json.dumps(observation, sort_keys=True).encode()).hexdigest()
+                if fingerprint != last:
+                    late_index += 1
+                    self.safe_journal(self.prefix + ".late-" + str(late_index).zfill(6) + ".json", {
+                        "state": "pending", "immutableUnknownPath": self.unknown_journal_path,
+                        "sameWireReadOnly": True, "automaticMutationResume": False,
+                        "observation": observation})
+                    last = fingerprint
+                    self.safe_report({"state": "pending", "operationPrefix": self.prefix,
+                                      "sameWireReadOnly": True, "automaticMutationResume": False,
+                                      "observation": observation})
+            except BaseException as preparation_error:
+                # Fingerprinting and preparing reports are part of custody too.
+                self.remember_reporting_failure("pending-preparation", preparation_error)
+            try:
+                time.sleep(1)
+            except BaseException as sleep_error:
+                self.remember_reporting_failure("pending-wait", sleep_error)
+
+
+class RetainedRpc:
+    """One original request. Only its owner may advance or finalize it."""
+
+    def __init__(self, owner, command, args, deadline, sequence):
+        _require(isinstance(owner, RetainedQgaOwner), "retained_rpc_owner")
+        _require(type(command) is str and command and type(args) is dict,
+                 "retained_rpc_command")
+        _require(type(deadline) in (int, float), "retained_rpc_deadline")
+        self.owner = owner
+        self.command = command
+        self.args = args
+        self.deadline = min(time.monotonic() + 20, deadline)
+        self.sequence = sequence
+        self.request = (json.dumps({"execute": command, "arguments": args}, separators=(",", ":")) + "\n").encode()
+        _require(len(self.request) <= 60000, "retained_rpc_request_bound")
+        self.nonce = secrets.randbits(63)
+        self.sync = b"\xff" + (json.dumps({"execute": "guest-sync-delimited", "arguments": {"id": self.nonce}}, separators=(",", ":")) + "\n").encode()
+        self.client = self.request_fd = self.raw_fd = None
+        self.raw = bytearray()
+        self.buffer = bytearray()
+        self.response = None
+        self.phase = "constructed"
+        self.frame = None
+        self.sent = 0
+        self.sync_sent = self.sync_known = self.command_sent = False
+        self.unknown = self.eof = self.closed = self.read_refused = False
+        self.capture_failure = None
+        self.pending_reply = None
+        self.reply_failure = None
+        self.raw_saved_bytes = 0
+        self.name = owner.prefix + ".rpc-" + str(sequence).zfill(6)
+        self.request_name = self.name + ".request.json"
+        self.raw_name = self.name + ".raw"
+
+    def budget(self, deadline):
+        remaining = deadline - time.monotonic()
+        _require(remaining > 0, "retained_rpc_deadline")
+        self.client.settimeout(min(1, remaining))
+
+    def open(self):
+        owner = self.owner
+        owner.guard()
+        owner.save(self.request_name, self.request)
+        self.request_fd = os.open(owner.root / self.request_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        owner.held_fds.append(self.request_fd)
+        self.request_generation = _generation(os.fstat(self.request_fd))
+        self.raw_fd = os.open(owner.root / self.raw_name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        owner.held_fds.append(self.raw_fd)
+        self.raw_identity = _generation(os.fstat(self.raw_fd))[:6]
+        _require(_generation(os.fstat(self.raw_fd)) == _generation(os.lstat(owner.root / self.raw_name)),
+                 "retained_rpc_raw_named_opening")
+        owner.save(self.name + ".intent.json", {"command": self.command, "requestPath": str(owner.root / self.request_name),
+                   "requestBytes": len(self.request), "requestSha256": hashlib.sha256(self.request).hexdigest(),
+                   "rawPath": str(owner.root / self.raw_name), "nonce": self.nonce, "sequence": self.sequence})
+        self.client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.budget(self.deadline)
+        self.client.connect(str(owner.root / "qga.sock"))
+        peer = struct.unpack("3i", self.client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        _require(peer[:2] == (owner.peer_pid, os.geteuid()), "retained_rpc_peer")
+        owner.guard()
+
+    def send(self, frame, kind):
+        _require(not self.unknown and not self.owner.failed and not self.owner.parked,
+                 "retained_rpc_no_send_after_unknown")
+        self.phase = kind + "-sending"
+        self.frame = frame
+        self.sent = 0
+        while self.sent < len(frame):
+            self.budget(self.deadline)
+            count = self.client.send(frame[self.sent:])
+            _require(type(count) is int and 0 < count <= len(frame) - self.sent, "retained_rpc_send")
+            self.sent += count
+        if kind == "sync":
+            self.sync_sent = True
+        else:
+            self.command_sent = True
+        self.phase = kind + "-waiting"
+
+    def receive_line(self, deadline):
+        while b"\n" not in self.buffer:
+            _require(not self.eof and not self.read_refused, "retained_rpc_original_read_refused")
+            self.budget(deadline)
+            data = self.client.recv(min(4096, 524288 - len(self.raw) + 1, 262144 - len(self.buffer) + 1))
+            if not data:
+                self.eof = True
+                raise ConnectionError("retained_rpc_original_wire_eof")
+            self.raw.extend(data)
+            self.buffer.extend(data)
+            try:
+                self.raw_saved_bytes += _write_exact_fd(self.raw_fd, data)
+                os.fsync(self.raw_fd)
+                _write_exact_fd(self.owner.partial_wire_fd, data)
+                os.fsync(self.owner.partial_wire_fd)
+            except BaseException as error:
+                self.read_refused = True
+                self.capture_failure = {"errorClass": type(error).__name__, "error": str(error),
+                                        "rawMemoryBytes": len(self.raw), "rawFileBytesConfirmed": self.raw_saved_bytes}
+                raise
+            if len(self.raw) > 524288 or len(self.buffer) > 262144:
+                self.read_refused = True
+                raise ValueError("retained_rpc_response_bound_latched")
+        end = self.buffer.index(b"\n") + 1
+        line = bytes(self.buffer[:end])
+        del self.buffer[:end]
+        return line
+
+    def receive_sync(self, deadline):
+        for _ in range(32):
+            line = self.receive_line(deadline)
+            marker = line.rfind(b"\xff")
+            if marker < 0:
+                continue
+            try:
+                value = json.loads(line[marker + 1:])
+            except (ValueError, UnicodeError):
+                continue
+            if type(value) is dict and type(value.get("return")) is int and value["return"] == self.nonce:
+                self.sync_known = True
+                return
+        raise ValueError("retained_rpc_sync")
+
+    def receive_reply(self, deadline):
+        _require(self.pending_reply is None, "retained_rpc_original_reply_pending")
+        self.pending_reply = self.receive_line(deadline)
+        try:
+            _write_exact_fd(self.owner.wire_fd, self.pending_reply)
+            os.fsync(self.owner.wire_fd)
+            value = json.loads(self.pending_reply)
+            _require(type(value) is dict and set(value) in ({"return"}, {"error"}), "retained_rpc_reply_fields")
+            self.response = value
+            self.pending_reply = None
+            self.phase = "reply-observed"
+            return value
+        except BaseException as error:
+            # The original line has left the input buffer. Retain it and stop
+            # reading; a later line must never be promoted to its response.
+            self.read_refused = True
+            self.reply_failure = {"errorClass": type(error).__name__, "error": str(error)}
+            raise
+
+    def run(self):
+        try:
+            self.open()
+            self.send(self.sync, "sync")
+            self.receive_sync(self.deadline)
+            self.owner.guard()
+            self.send(self.request, "command")
+            value = self.receive_reply(self.deadline)
+            _require("return" in value, "retained_rpc_remote_error")
+            return value["return"]
+        except BaseException as error:
+            self.unknown = True
+            self.failure = {"errorClass": type(error).__name__, "error": str(error)}
+            raise
+
+    def snapshot(self):
+        return {"sequence": self.sequence, "command": self.command, "phase": self.phase,
+                "unknown": self.unknown, "nonce": self.nonce,
+                "frameBytes": None if self.frame is None else len(self.frame),
+                "frameConfirmedSentBytes": self.sent, "syncSent": self.sync_sent,
+                "syncKnown": self.sync_known, "commandSent": self.command_sent,
+                "originalSocketRetained": self.client is not None and not self.closed,
+                "wireEof": self.eof, "readRefused": self.read_refused,
+                "captureFailure": self.capture_failure,
+                "replyFailure": self.reply_failure,
+                "pendingReplyBytes": 0 if self.pending_reply is None else len(self.pending_reply),
+                "pendingReplySha256": None if self.pending_reply is None else hashlib.sha256(self.pending_reply).hexdigest(),
+                "requestPath": str(self.owner.root / self.request_name),
+                "requestBytes": len(self.request), "requestSha256": hashlib.sha256(self.request).hexdigest(),
+                "rawPath": str(self.owner.root / self.raw_name), "rawBytes": len(self.raw),
+                "rawSha256": hashlib.sha256(self.raw).hexdigest(),
+                "rawFileBytesConfirmed": self.raw_saved_bytes,
+                "rawCaptureComplete": self.raw_saved_bytes == len(self.raw),
+                "bufferBytes": len(self.buffer), "bufferSha256": hashlib.sha256(self.buffer).hexdigest(),
+                "response": self.response, "closed": self.closed}
+
+    def observe_same_wire(self, deadline):
+        _require(self.unknown and not self.closed, "retained_rpc_late_state")
+        self.owner.guard()
+        if self.response is not None or self.eof or self.read_refused or self.client is None:
+            return self.snapshot()
+        try:
+            if self.command_sent:
+                self.receive_reply(deadline)
+            elif self.sync_sent and not self.sync_known:
+                self.receive_sync(deadline)
+                self.phase = "late-sync-only-command-not-sent"
+        except (TimeoutError, OSError, ValueError) as error:
+            self.lastObservationError = {"errorClass": type(error).__name__, "error": str(error)}
+        self.owner.guard()
+        return self.snapshot()
+
+    def close_known(self):
+        _require(not self.unknown and self.response is not None and not self.closed
+                 and not self.owner.failed and not self.owner.parked,
+                 "retained_rpc_close_requires_known_reply")
+        self.owner.guard()
+        _require(_generation(os.fstat(self.request_fd)) == self.request_generation
+                 and _generation(os.lstat(self.owner.root / self.request_name)) == self.request_generation
+                 and _held_hash(self.request_fd, len(self.request)) == hashlib.sha256(self.request).hexdigest(),
+                 "retained_rpc_request_changed")
+        _require(self.raw_saved_bytes == len(self.raw)
+                 and _held_hash(self.raw_fd, len(self.raw)) == hashlib.sha256(self.raw).hexdigest()
+                 and _generation(os.fstat(self.raw_fd))[:6] == self.raw_identity
+                 and _generation(os.fstat(self.raw_fd)) == _generation(os.lstat(self.owner.root / self.raw_name)),
+                 "retained_rpc_raw_changed")
+        self.owner.save(self.name + ".known.json", self.snapshot())
+        self.owner.guard()
+        _require(_generation(os.fstat(self.raw_fd))[:6] == self.raw_identity
+                 and _generation(os.fstat(self.raw_fd)) == _generation(os.lstat(self.owner.root / self.raw_name))
+                 and _generation(os.fstat(self.request_fd)) == self.request_generation
+                 and _generation(os.lstat(self.owner.root / self.request_name)) == self.request_generation,
+                 "retained_rpc_closing_changed")
+        self.client.close()
+        self.closed = True
+        for fd in (self.request_fd, self.raw_fd):
+            os.close(fd)
+            self.owner.held_fds.remove(fd)

@@ -1,0 +1,116 @@
+"""PRIVATE binding of the existing fixed visual query to canonical retained QGA.
+
+Included whole in the generated owner. No caller-supplied source, token, guest
+or command selector is introduced. All original query objects remain reachable.
+"""
+class RetainedVisualQualifier:
+    def __init__(self):
+        self.backend = None
+        self.queries = []
+        self.failed = False
+        check(hashlib.sha256(QGA_MODULE_SOURCE).hexdigest() == QGA_MODULE_SHA,
+              "fresh_visual_qga_source")
+        name = "_uac_retained_qga_" + QGA_MODULE_SHA + "_" + uuid.uuid4().hex
+        module = types.ModuleType(name)
+        module.__file__ = "agent_tools/windows_qga_transfer.py@" + QGA_MODULE_SHA
+        check(name not in sys.modules, "fresh_visual_qga_registration")
+        sys.modules[name] = module
+        exec(compile(QGA_MODULE_SOURCE, module.__file__, "exec"), module.__dict__)
+        check(sys.modules[name] is module and
+              module.RetainedQgaOwner.__module__ == name and
+              module.RetainedRpc.__module__ == name and
+              module.write_journal.__globals__ is module.__dict__,
+              "fresh_visual_qga_namespace")
+        self.module = module
+
+    def bind(self, backend):
+        check(self.backend is None, "fresh_visual_qualifier_already_bound")
+        self.backend = backend
+
+    def __call__(self):
+        check(self.backend is not None and not self.failed,
+              "fresh_visual_qualifier_not_actionable")
+        backend = self.backend
+        backend.guard()
+        operation = str(uuid.uuid4())
+        prefix = "uac-" + uuid.UUID(backend.config["operationId"]).hex + ".qualification-" + uuid.UUID(operation).hex
+        row = read("qemu-started.json")
+        check({key: row[key] for key in ("pid", "startTicks")} == backend.config["qemu"],
+              "fresh_visual_original_qemu")
+        process(row)
+        owns(row["pid"], root / "qga.sock", True)
+        socket_generation = generation(os.lstat(root / "qga.sock"))
+        def guard():
+            backend.guard()
+            process(row)
+            check(generation(os.lstat(root / "qga.sock")) == socket_generation,
+                  "fresh_visual_qga_changed")
+        def save(name, value):
+            return self.module.write_journal(root, name, value, guard=guard)
+        descriptors = []
+        owner = self.module.RetainedQgaOwner(root, prefix, row["pid"], guard,
+                                              save, descriptors, -1, -1)
+        query = {"operationId": operation, "prefix": prefix, "owner": owner,
+                 "heldFds": descriptors, "guestPid": None, "terminal": None}
+        self.queries.append(query)  # original owner exists before journal/open/send
+        try:
+            wire = os.open(root / (prefix + ".wire"), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            descriptors.append(wire)
+            partial = os.open(root / (prefix + ".partial-wire"), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            descriptors.append(partial)
+            owner.bind_captures(wire, partial, guard=guard)
+            marker = "$OperationId=" + repr(VISUAL_QUERY_TEMPLATE_OPERATION) + "\n"
+            check(VISUAL_QUERY_TEMPLATE.count(marker) == 1, "fresh_visual_query_nonce_marker")
+            source = VISUAL_QUERY_TEMPLATE.replace(marker, "$OperationId=" + repr(operation) + "\n", 1)
+            encoded = base64.b64encode(source.encode("utf-16le")).decode()
+            check(len(encoded) + 256 <= 30000, "fresh_visual_query_command_bound")
+            save(prefix + ".ps1", source.encode())
+            save(prefix + ".intent.json", {"operationId": operation,
+                 "powerShellSha256": hashlib.sha256(source.encode()).hexdigest(),
+                 "readOnly": True, "automaticReplay": False})
+            deadline = time.monotonic() + 25
+            ack = owner.call("guest-exec", {"path": "powershell.exe", "arg": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], "capture-output": True}, deadline)
+            check(type(ack) is dict and set(ack) == {"pid"} and
+                  type(ack["pid"]) is int and 0 < ack["pid"] < 2**31,
+                  "fresh_visual_guest_ack")
+            query["guestPid"] = ack["pid"]
+            save(prefix + ".ack.json", {"operationId": operation, "ack": ack, "automaticReplay": False})
+            while True:
+                terminal = owner.call("guest-exec-status", ack, deadline)
+                if terminal.get("exited") is True:
+                    query["terminal"] = terminal
+                    break
+                check(time.monotonic() < deadline, "fresh_visual_original_query_pending")
+                time.sleep(.2)
+            save(prefix + ".terminal.json", terminal)
+            out = base64.b64decode(terminal.get("out-data", ""), validate=True)
+            err = base64.b64decode(terminal.get("err-data", ""), validate=True)
+            check(terminal.get("exitcode") == 0 and not terminal.get("out-truncated", False)
+                  and not terminal.get("err-truncated", False) and not err and len(out) <= 16384,
+                  "fresh_visual_query_output")
+            value = json.loads(out.decode("utf-8-sig"), object_pairs_hook=strict_pairs)
+            binding = _visual_session(value, operation, SETUP)
+            check(binding == backend.visual_binding, "current_native_visual_session_changed")
+            guard()
+            owner.finalize_known()
+            for descriptor in (wire, partial):
+                os.fsync(descriptor)
+                os.close(descriptor)
+                descriptors.remove(descriptor)
+            check(not descriptors, "fresh_visual_query_fd_closure")
+            save(prefix + ".known.json", {"operationId": operation, "binding": binding,
+                 "readOnly": True, "originalQueryTerminal": True,
+                 "canonicalQgaSha256": QGA_MODULE_SHA, "retainedContextClosing": True,
+                 "completeProgramSourceClosingRequiredFromOuterOwner": True})
+            query["closed"] = True
+            return binding
+        except BaseException as error:
+            self.failed = True
+            query["originalError"] = error
+            receipt = {"state": "unknown", "operationId": operation,
+                       "guestPid": query["guestPid"], "errorClass": type(error).__name__,
+                       "reason": str(error), "automaticReplay": False, "automaticCleanup": False}
+            owner.safe_journal(prefix + ".unknown.json", receipt)
+            owner.safe_report(receipt)
+            owner.park_original(receipt, error)
+            raise AssertionError("canonical park_original unexpectedly returned")

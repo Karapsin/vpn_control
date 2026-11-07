@@ -82,6 +82,7 @@ docs_assistant = _captured_core('docs_assistant')
 local_build_environment = _captured_core('local_build_environment')
 managed_check_lease = _captured_core('managed_check_lease')
 check_output_retention = _captured_core('check_output_retention')
+managed_agent_check = _captured_core('managed_agent_check')
 windows_vm_setup_policy = _captured_core('windows_vm_setup_policy')
 native_workflow_policy = _captured_core('native_workflow_policy')
 _SOURCE_MODULE_LOADER = _captured_native_sources()
@@ -559,6 +560,10 @@ def _failed_modules(command: list[str], result: dict[str, Any]) -> list[str] | N
     """Failed agent test modules, or None when the whole command must rerun."""
     if command[1:3] != ["-m", "unittest"]:
         return None
+    # A timed-out private runner still returns output, but modules the timeout
+    # cut off never reported: the whole command reruns.
+    if (result.get("managedAgent") or {}).get("timedOut"):
+        return None
     tests = (result.get("completionOutput") or {}).get("tests") or {}
     identities = tests.get("identities") or []
     if not identities or tests.get("truncated") or tests.get("unparsedHeaders"):
@@ -668,7 +673,8 @@ def _run_check_commands(selected_area: str, level: str, commands: list[list[str]
             dispatched_command = _agent_test_runtime_command(command, output_fingerprint)
         except (affected_agent_tests.SelectionError, OSError) as error:
             return _error("run_checks", str(error), blockers=[{"phase": "agent-test-plan", "state": "refused"}], command_results=results)
-        result = _run(dispatched_command, timeout=50 * 60, output_capture=capture)
+        result = _run(dispatched_command, timeout=50 * 60, output_capture=capture,
+                      **({"managed_agent": True} if managed_agent_check.is_private_command(REPO_ROOT, dispatched_command) else {}))
         results.append(result)
         if not result["ok"]:
             # Independent checks keep running so one pass reports every
@@ -1952,6 +1958,7 @@ def _run(
     timeout: int = 120,
     output_limit: int | None = MAX_OUTPUT_CHARS,
     output_capture=None,
+    managed_agent: bool = False,
 ) -> dict[str, Any]:
     try:
         environment = local_build_environment.apply(REPO_ROOT, dict(os.environ))
@@ -1960,37 +1967,42 @@ def _run(
                 "stdout": "", "stderr": str(exc)}
     environment.pop("DYLD_INSERT_LIBRARIES", None)
     try:
-        # A check child never inherits this server's stdio transport or terminal.
-        with subprocess.Popen(
-            command,
-            cwd=REPO_ROOT,
-            stdin=subprocess.DEVNULL,
-            text=output_capture is None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=environment,
-        ) as process:
-            try:
-                stdout, stderr = process.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                # SIGTERM first so an agent test runner stops its own worker
-                # sessions before the next check starts. Output keeps draining;
-                # SIGKILL follows only after a bounded grace (30 seconds, or the
-                # command's own shorter bound). Only the original timeout is
-                # reported, even when the drained text output does not decode.
-                process.terminate()
+        owned = None
+        if managed_agent:
+            owned = managed_agent_check.run(command, cwd=REPO_ROOT, env=environment, timeout=timeout)
+            completed = owned.completed
+        else:
+            # A check child never inherits this server's stdio transport or terminal.
+            with subprocess.Popen(
+                command,
+                cwd=REPO_ROOT,
+                stdin=subprocess.DEVNULL,
+                text=output_capture is None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=environment,
+            ) as process:
                 try:
-                    process.communicate(timeout=min(30, timeout))
-                except Exception:
-                    pass
-                finally:
-                    process.kill()  # A no-op once the child has exited.
-                    process.wait()
-                raise
-            except BaseException:
-                process.kill()
-                raise
-        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+                    stdout, stderr = process.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    # SIGTERM first so an agent test runner stops its own worker
+                    # sessions before the next check starts. Output keeps draining;
+                    # SIGKILL follows only after a bounded grace (30 seconds, or the
+                    # command's own shorter bound). Only the original timeout is
+                    # reported, even when the drained text output does not decode.
+                    process.terminate()
+                    try:
+                        process.communicate(timeout=min(30, timeout))
+                    except Exception:
+                        pass
+                    finally:
+                        process.kill()  # A no-op once the child has exited.
+                        process.wait()
+                    raise
+                except BaseException:
+                    process.kill()
+                    raise
+            completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
         retention = None
         retention_error = None
         if output_capture is not None:
@@ -2013,7 +2025,7 @@ def _run(
             # the caller's exact cap after extracting for very small limits.
             return _failure_log_excerpt(_bounded(value, None), max(2000, output_limit))[-output_limit:]
         return {
-            "ok": completed.returncode == 0 and retention_error is None,
+            "ok": completed.returncode == 0 and retention_error is None and not (owned and owned.timed_out),
             "command": _display(command),
             "returncode": completed.returncode,
             "stdout": excerpt(completed.stdout),
@@ -2022,6 +2034,7 @@ def _run(
                 "completionOutputScope": "repository" if retention and retention["label"].startswith("prepush-") else "runner-source"}
                if retention is not None else {}),
             **({"retentionError": retention_error} if retention_error is not None else {}),
+            **({"managedAgent": owned.metadata()} if owned is not None else {}),
         }
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {
@@ -9539,7 +9552,15 @@ def _native_response(tool: str, action: str, result: dict[str, Any], request: di
 
 @_core_source_request
 def ssh_workflow(action: str = "inventory", host: str | None = None, timeout_seconds: int = 15, identity: dict[str, Any] | None = None, transfer: dict[str, Any] | None = None, device: str | None = None) -> dict[str, Any]:
-    """Observe or perform fixed configured SSH fixture actions with durable evidence and safe next steps."""
+    """Manage configured SSH connections and run generated programs with durable evidence.
+
+    program-start accepts an explicit host and structured transfer containing an
+    operationId and Python program/source/args/cwd/targetContext. Oversized source
+    automatically uses verified saved-file transport. program-status,
+    program-collect and program-reconcile take identity={operationId} and never
+    submit another execution.
+    Other actions manage configured fixtures and connections.
+    """
     if action == "forward-open":
         return {"tool": "ssh_workflow", "ok": False, "state": "blocked",
                 "reason": "historical_cp117_forward_open_retired",

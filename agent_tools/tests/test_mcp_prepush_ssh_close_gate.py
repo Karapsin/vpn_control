@@ -37,6 +37,7 @@ def actual_planner_runner():
           "hashlib": hashlib, "time": time, "__file__": str(SOURCE),
           "Any": object, "REPO_ROOT": Path("/inert-unused-root"),
           "RECEIPT_PATH": Path("/inert-unused-root/receipt.json"), "affected_agent_tests": affected_agent_tests,
+          "managed_agent_check": SimpleNamespace(is_private_command=lambda root, command: False),
           "_agent_test_selection": lambda: SELECTION}
     exec(compile(ast.Module(body=chosen, type_ignores=[]), str(SOURCE), "exec"), ns)
     return ns

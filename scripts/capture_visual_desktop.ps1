@@ -137,7 +137,7 @@ if ($NativeScenes) {
 $Driver = if ($IsWindows) { "cmd.exe /c exit 0" } else { "/usr/bin/true" }
 $Validation = @(
     (Join-Path $RepoRoot "scripts\visual_platform.py"),
-    "capture-local", "--platform", $Platform, "--driver", $Driver, "--output", $OutputPath
+    "capture-local", "--platform", $Platform, "--target", "native:$Platform", "--driver", $Driver, "--output", $OutputPath
 )
 foreach ($Scene in ($Scenes -split ',' | Where-Object { $_ })) {
     $Validation += @("--scene", $Scene)

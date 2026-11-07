@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "fixture": "serve-exit.before.source",
+  "sha256": "ee28050bd0e33166956cc4f4ac68ca10cc89c30c01ae93468379895fee268a18",
+  "sizeBytes": 33439,
+  "completeSource": true,
+  "origin": "Canonical retained ordinary owner before any private action integration; exact frozen original ee2805.",
+  "executionContext": "Only unbound Owner.run with explicit response/module/child peers, using existing fixed-source-mode action. Native/Pin constructors, real subprocesses, Win32 and sockets are never invoked.",
+  "finding": "Owner.run discarded the original serve.wait terminal exitCode and returned0 for a known nonzero peer terminal.",
+  "notNativeFailureOrCause": true,
+  "routineOracle": "The same existing-route positive test requires rejection of a known exit37 original serve after the single acknowledged quit; no replay/finally cleanup."
+}

@@ -1,0 +1,463 @@
+"""Finite installed-desktop document acceptance client; never a product CLI.
+
+Wire grammar is copied structurally from DesktopControlFrames, DesktopCliProtocol,
+DesktopControlDocuments and ControlTransferCodec. Native callers supply a held,
+actually observed endpoint admission. This module does not start an owner, find
+credentials, select a process, reconnect to a replacement owner or replay unknown
+mutations. Socket closure is a transport observation, not a domain error code.
+"""
+import base64
+import hashlib
+import json
+import socket
+import struct
+import time
+import uuid
+
+FRAME = 1_048_576
+CHUNK = 65_536
+TRANSFER = "vpn-control-transfer-v1\t"
+REFERENCE = "vpn-control-document-v1\t"
+CONTEXT = "vpn-control-context-v1\t"
+KINDS = frozenset(("command", "response", "snapshot", "presentation", "export"))
+
+
+class Refused(RuntimeError):
+    pass
+
+
+class ClosedFrame(Exception):
+    """A clean server close, with retained partial framing bytes."""
+    def __init__(self, part):
+        self.part = part
+        super().__init__("document-peer-closed")
+
+
+def need(value, code):
+    if not value:
+        raise Refused(code)
+
+
+def canonical_id(value):
+    need(type(value) is str and str(uuid.UUID(value)) == value, "document-uuid")
+    return value
+
+
+def dump(value):
+    # Matches logical JSON types. Object order is not an authentication input.
+    return json.dumps(value, ensure_ascii=True, separators=(",", ":"), allow_nan=False)
+
+
+def load(value):
+    def pairs(items):
+        answer = {}
+        for key, item in items:
+            need(key not in answer, "document-duplicate-json-key")
+            answer[key] = item
+        return answer
+    return json.loads(value, object_pairs_hook=pairs,
+                      parse_constant=lambda _: (_ for _ in ()).throw(Refused("document-json-number")))
+
+
+def sha(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def encoded_text(value):
+    return base64.urlsafe_b64encode(value.encode("utf-8", "strict")).decode().rstrip("=")
+
+
+def decoded_text(value):
+    need(type(value) is str and "=" not in value, "document-base64url")
+    raw = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+    need(base64.urlsafe_b64encode(raw).decode().rstrip("=") == value, "document-base64url-canonical")
+    return raw.decode("utf-8", "strict")
+
+
+def wire(value):
+    need(type(value) is str, "document-wire-string")
+    raw = dump(value).encode("utf-8")
+    need(0 < len(raw) <= FRAME, "document-wire-frame-bound")
+    return struct.pack(">I", len(raw)) + raw
+
+
+def receive(sock, journal):
+    parts = []
+    def exact(size):
+        answer = bytearray()
+        while len(answer) < size:
+            block = sock.recv(size - len(answer))
+            if not block:
+                journal.append({"direction": "receive", "state": "eof", "partialBytes": len(answer),
+                                "partialSha256": sha(bytes(answer))})
+                raise ClosedFrame(bytes(answer))
+            answer.extend(block)
+        parts.append(bytes(answer))
+        return bytes(answer)
+    count = struct.unpack(">I", exact(4))[0]
+    need(0 < count <= FRAME, "document-response-frame-bound")
+    raw = exact(count)
+    result = load(raw.decode("utf-8", "strict"))
+    need(type(result) is str, "document-response-frame-string")
+    journal.append({"direction": "receive", "state": "frame", "bytes": count, "sha256": sha(raw)})
+    return result
+
+
+def fields(owner, context, kind, field, value):
+    canonical_id(owner); canonical_id(context)
+    need(kind in KINDS, "document-kind")
+    return dump({"owner": owner, "context": context, "kind": kind, field: value})
+
+
+def transfer(owner, context, action, kind="command"):
+    return TRANSFER + fields(owner, context, kind, "command", dump(action))
+
+
+def reference(owner, context, manifest, kind="command"):
+    return REFERENCE + fields(owner, context, kind, "manifest", dump(manifest))
+
+
+def manifest(value):
+    answer = load(value)
+    need(type(answer) is dict and set(answer) == {"id", "byteCount", "sha256", "chunkBytes"},
+         "document-manifest-shape")
+    canonical_id(answer["id"])
+    need(type(answer["byteCount"]) is int and 0 <= answer["byteCount"] <= 2**63 - 1
+         and type(answer["chunkBytes"]) is int and 1 <= answer["chunkBytes"] <= CHUNK,
+         "document-manifest-count")
+    digest = answer["sha256"]
+    need(digest is None or type(digest) is str and len(digest) == 64
+         and all(c in "0123456789abcdef" for c in digest), "document-manifest-hash")
+    return answer
+
+
+def cli_response(frame):
+    parts = frame.split("\t")
+    need(len(parts) == 4 and parts[0] == "cli-response" and parts[1] in ("ok", "error"),
+         "document-cli-response")
+    code = int(parts[2])
+    need(code in (0, 1, 2, 130), "document-cli-exit")
+    body = decoded_text(parts[3])
+    return {"success": parts[1] == "ok", "exitCode": code, "body": body}
+
+
+def request_document(owner, request_id, operation, arguments, revision=None, asynchronous=False):
+    canonical_id(owner)
+    need(type(request_id) is str and 0 < len(request_id) <= 128, "document-request-id")
+    need(operation in ("routing.show", "routing.import", "routing.export", "settings.show", "settings.set",
+                       "locations.import", "operations.status", "operations.wait", "operations.cancel"),
+         "document-finite-operation")
+    need(type(arguments) is dict, "document-request-arguments")
+    return "cli\tcontrol-submit\t" + encoded_text(dump({"schemaVersion": 1, "requestId": request_id,
+        "controllerId": owner, "ifRevision": revision, "interactive": False,
+        "asynchronous": asynchronous, "command": {"operation": operation, "arguments": arguments}}))
+
+
+class Client:
+    """One admitted endpoint and owner epoch. Guard and custody stay caller owned."""
+    def __init__(self, endpoint, guard, event, connector=None):
+        need(type(endpoint) is dict and set(endpoint) == {"port", "controllerId", "token", "documentTransfers"},
+             "document-endpoint-admission")
+        canonical_id(endpoint["controllerId"])
+        need(type(endpoint["port"]) is int and 1 <= endpoint["port"] <= 65535
+             and endpoint["documentTransfers"] is True, "document-endpoint-capability")
+        token = endpoint["token"]
+        need(type(token) is str and len(base64.b64decode(token + "=" * (-len(token) % 4),
+             altchars=b"-_", validate=True)) == 32, "document-endpoint-token")
+        self._endpoint = dict(endpoint)
+        self.guard, self.event = guard, event
+        self.connector = connector or (lambda port: socket.create_connection(("127.0.0.1", port), 0.5))
+        self.owner = endpoint["controllerId"]
+        self.submissions = {}  # Immutable bytes plus authoritative known-terminal witness.
+        self.transfers = {}
+        self.original_sockets = []
+
+    def __repr__(self):
+        return "Client(<admitted-private-endpoint>)"
+
+    def exchange(self, payload, context=None, timeout=30, credential=None):
+        self.guard()
+        journal = []
+        sock = self.connector(self._endpoint["port"])
+        self.original_sockets.append(sock)
+        try:
+            sock.settimeout(timeout)
+            def send(value, private=False):
+                data = wire(value)
+                sock.sendall(data)
+                journal.append({"direction": "send", "bytes": len(data) - 4,
+                                "sha256": None if private else sha(data[4:]), "credential": private})
+            send(self._endpoint["token"] if credential is None else credential, True)
+            auth = receive(sock, journal)
+            if credential is not None:
+                need(auth == "PERMISSION_DENIED", "document-invalid-auth-admitted")
+                return auth
+            need(auth == "AUTHENTICATED", "document-authentication-refused")
+            if context is not None:
+                send(context)
+            send(payload)
+            return receive(sock, journal)
+        finally:
+            sock.close()
+            self.original_sockets.remove(sock)
+            self.event("document-exchange", {"owner": self.owner, "frames": journal,
+                                            "socketClosed": True, "replacementEndpointRead": False})
+            self.guard()
+
+    def negative(self, payload, context=None, label="negative"):
+        # Installed server deliberately closes on invalid transfer, without an
+        # invented error envelope. Timeout, reset and local validation are NOT EOF.
+        try:
+            result = self.exchange(payload, context)
+        except ClosedFrame as closed:
+            need(not closed.part, "document-negative-partial-frame")
+            self.event("document-negative", {"label": label, "observed": "clean-frame-eof"})
+            return
+        raise Refused("document-negative-admitted:" + label)
+
+    def action(self, context, command, kind="command"):
+        return self.exchange(transfer(self.owner, context, command, kind))
+
+    def begin(self, context):
+        canonical_id(context)
+        value = manifest(self.action(context, {"action": "begin", "requestId": context}))
+        need(value["byteCount"] == 0 and value["sha256"] is None, "document-begin-not-empty")
+        self.transfers[context] = value
+        return value
+
+    def upload(self, context, data, split=None):
+        need(type(data) is bytes, "document-upload-byte-input")
+        value = self.begin(context)
+        chunk = value["chunkBytes"]
+        offset = 0
+        while offset < len(data):
+            count = min(chunk, len(data) - offset)
+            if split is not None and offset < split < offset + count:
+                count = split - offset
+            block = data[offset:offset + count]
+            after = manifest(self.action(context, {"action": "append", "id": value["id"], "offset": offset,
+                "bytes": base64.b64encode(block).decode()}))
+            need(after["id"] == value["id"] and after["byteCount"] == offset + count
+                 and after["sha256"] is None, "document-append-readback")
+            offset += count
+        sealed = manifest(self.action(context, {"action": "seal", "id": value["id"],
+                "byteCount": len(data), "sha256": sha(data)}))
+        need(sealed == dict(value, byteCount=len(data), sha256=sha(data)), "document-seal-readback")
+        self.transfers[context] = sealed
+        return reference(self.owner, context, sealed)
+
+    def discard(self, context):
+        value = self.transfers[context]
+        answer = self.action(context, {"action": "discard", "id": value["id"]})
+        need(answer == "DISCARDED", "document-discard")
+        return answer
+
+    def download(self, frame, context, kind="response", interrupt_after=None):
+        if not frame.startswith(REFERENCE):
+            return frame
+        envelope = load(frame[len(REFERENCE):])
+        need(set(envelope) == {"owner", "context", "kind", "manifest"}
+             and envelope["owner"] == self.owner and envelope["context"] == context
+             and envelope["kind"] == kind and kind != "command", "document-download-binding")
+        value = manifest(envelope["manifest"])
+        need(value["sha256"] is not None, "document-download-unsealed")
+        blocks, offset = [], 0
+        while offset < value["byteCount"]:
+            size = min(value["chunkBytes"], value["byteCount"] - offset)
+            decoded = load(self.action(context, {"action": "read", "id": value["id"],
+                "offset": offset, "length": size}, kind))
+            need(set(decoded) == {"id", "offset", "bytes"} and decoded["id"] == value["id"]
+                 and decoded["offset"] == offset, "document-download-chunk-binding")
+            block = base64.b64decode(decoded["bytes"], validate=True)
+            need(len(block) == size and base64.b64encode(block).decode() == decoded["bytes"],
+                 "document-download-chunk-count")
+            blocks.append(block); offset += size
+            if interrupt_after is not None and offset >= interrupt_after:
+                # Actual partial download only. No ACK/discard and no mutation retry.
+                return {"state": "interrupted", "manifest": value, "context": context,
+                        "kind": kind, "partialBytes": offset, "partialSha256": sha(b"".join(blocks))}
+        data = b"".join(blocks)
+        need(len(data) == value["byteCount"] and sha(data) == value["sha256"], "document-download-full-digest")
+        text = data.decode("utf-8", "strict")
+        ack = TRANSFER + fields(self.owner, context, kind, "command", "ack:" + value["id"] + ":" + value["sha256"])
+        need(self.exchange(ack) == "ACKNOWLEDGED", "document-download-ack")
+        need(self.action(context, {"action": "discard", "id": value["id"]}, kind) == "DISCARDED",
+             "document-download-discard")
+        return text
+
+    def command(self, document, context, kind="response", original_request_id=None, retry_known=False):
+        need(type(document) is str, "document-command-text")
+        if original_request_id is not None:
+            existing = self.submissions.get(original_request_id)
+            if existing is not None:
+                need(retry_known and existing["document"] == document and existing["knownTerminal"],
+                     "document-unknown-or-changed-request-replay")
+            else:
+                need(not retry_known, "document-retry-without-original")
+                self.submissions[original_request_id] = {"document": document, "knownTerminal": False}
+        data = document.encode("utf-8", "strict")
+        outgoing = document if len(dump(document).encode("utf-8")) <= FRAME else self.upload(context, data)
+        try:
+            response = self.exchange(outgoing, CONTEXT + fields(self.owner, context, kind, "command", ""))
+            response = self.download(response, context, kind)
+            decoded = cli_response(response)
+            if original_request_id is not None:
+                result = load(decoded["body"])
+                need(result.get("requestId") == original_request_id and result.get("controllerId") == self.owner,
+                     "document-request-result-binding")
+                self.submissions[original_request_id]["knownTerminal"] = result.get("final") is True
+            return decoded
+        finally:
+            # Never discard an uncertain original input; park keeps the reference.
+            if context in self.transfers and (original_request_id is None or
+                    self.submissions[original_request_id]["knownTerminal"]):
+                self.discard(context)
+
+
+def transport_adversaries(client, contexts):
+    """Owned protocol inputs only; no domain mutation or OS state changes."""
+    need(len(contexts) == 8 and len(set(contexts)) == 8, "document-eight-fresh-contexts")
+    for value in contexts: canonical_id(value)
+    c = contexts[0]
+    item = client.begin(c)
+    raw = "A東🙂\n\\\"Z".encode()
+    command = {"action": "append", "id": item["id"], "offset": 0,
+               "bytes": base64.b64encode(raw).decode()}
+    first = manifest(client.action(c, command))
+    need(manifest(client.action(c, command)) == first, "document-exact-chunk-retry")
+    client.negative(transfer(client.owner, c, dict(command, bytes=base64.b64encode(b"X" * len(raw)).decode())),
+                    label="conflicting-chunk")
+    client.negative(transfer(client.owner, c, dict(command, offset=len(raw) + 1)), label="noncontiguous-chunk")
+    client.negative(transfer(client.owner, contexts[1], dict(command, offset=len(raw))), label="wrong-context")
+    client.negative(transfer(contexts[7], c, command), label="wrong-owner")
+    client.negative(transfer(client.owner, c, command, "response"), label="wrong-kind")
+    client.negative(transfer(client.owner, c, {"action": "seal", "id": item["id"],
+                    "byteCount": len(raw) + 1, "sha256": sha(raw)}), label="forged-length")
+    client.negative(transfer(client.owner, c, {"action": "seal", "id": item["id"],
+                    "byteCount": len(raw), "sha256": "0" * 64}), label="forged-hash")
+    sealed = manifest(client.action(c, {"action": "seal", "id": item["id"], "byteCount": len(raw), "sha256": sha(raw)}))
+    need(sealed["sha256"] == sha(raw), "document-negatives-retained-content")
+    client.transfers[c] = sealed
+    client.discard(c); client.discard(c)
+    client.negative(transfer(client.owner, contexts[2], {"action": "append", "id": contexts[2],
+                    "offset": 0, "bytes": "QQ=="}), label="forged-transfer-id")
+    # Real UTF8 split across chunks, followed by invalid surrogate bytes and a
+    # truncated sequence. Each remains transport-only until discarded.
+    client.upload(contexts[3], raw, split=2); client.discard(contexts[3])
+    for context, invalid in ((contexts[4], b"\xed\xa0\x80"), (contexts[5], b"\xc0\xaf")):
+        item = client.begin(context)
+        client.negative(transfer(client.owner, context, {"action": "append", "id": item["id"],
+                         "offset": 0, "bytes": base64.b64encode(invalid).decode()}), label="invalid-utf8")
+        client.discard(context)
+    item = client.begin(contexts[6])
+    client.action(contexts[6], {"action": "append", "id": item["id"], "offset": 0, "bytes": "8J8="})
+    client.negative(transfer(client.owner, contexts[6], {"action": "seal", "id": item["id"],
+                     "byteCount": 2, "sha256": sha(b"\xf0\x9f")}), label="truncated-utf8")
+    client.discard(contexts[6])
+    need(client.exchange("cli\tstatus", credential="A" * 43) == "PERMISSION_DENIED", "document-bad-credential")
+    client.event("document-protocol-subcases", {"state": "observed", "differentPrincipal": False,
+                 "expiry": False, "domainMutations": 0, "fullMembershipComplete": False})
+
+
+def begin_expiry(client, context):
+    item = client.begin(context)
+    return {"owner": client.owner, "context": context, "manifest": item,
+            "startedMonotonicNs": time.monotonic_ns()}
+
+
+def finish_expiry(client, ticket):
+    need(ticket["owner"] == client.owner and time.monotonic_ns() - ticket["startedMonotonicNs"] >= 301_000_000_000,
+         "document-expiry-real-idle-interval-required")
+    client.negative(transfer(client.owner, ticket["context"], {"action": "append",
+                    "id": ticket["manifest"]["id"], "offset": 0, "bytes": "QQ=="}), label="actual-idle-expiry")
+    client.discard(ticket["context"])
+
+
+def exact_retry(client, request_id, context, retry_context, routing_document, revision):
+    document = request_document(client.owner, request_id, "routing.import", {"input": routing_document}, revision)
+    first = load(client.command(document, context, original_request_id=request_id)["body"])
+    need(first.get("code") == "OK" and first.get("final") is True, "document-original-not-final")
+    retry = load(client.command(document, retry_context, original_request_id=request_id, retry_known=True)["body"])
+    need(first == retry, "document-known-retry-result-changed")
+    client.event("document-exact-retry", {"requestId": request_id, "operationId": first.get("operationId"),
+                 "configurationRevision": first.get("configurationRevision"), "identicalResult": True,
+                 "retryAfterInputDiscard": True})
+    return first
+
+
+def committed_no_op(client, request_id, context, routing_document, committed_revision):
+    result = load(client.command(request_document(client.owner, request_id, "routing.import",
+        {"input": routing_document}, committed_revision), context, original_request_id=request_id)["body"])
+    need(result.get("code") == "OK" and result.get("final") is True and
+         result.get("configurationRevision") == committed_revision, "document-no-op-incremented-revision")
+    client.event("document-committed-no-op", {"requestId": request_id,
+        "operationId": result.get("operationId"), "configurationRevision": committed_revision})
+    return result
+
+
+def retained_operation(client, operation_id, status_request, wait_request, contexts, original_result):
+    for operation, request_id, context in zip(("operations.status", "operations.wait"),
+                                             (status_request, wait_request), contexts):
+        result = load(client.command(request_document(client.owner, request_id, operation,
+                      {"id": operation_id}), context)["body"])
+        need(result == dict(original_result, requestId=request_id), "document-retained-operation-changed")
+    return True
+
+
+def lose_response_and_reconcile(client, request_id, upload_context, snapshot_context, routing_document, revision):
+    """Submit once, consume only the response header, then independently inspect.
+
+    The original immutable request and input stay retained. A current same-owner
+    snapshot may reveal its authoritative operation/result. No mutation retry is
+    made, including when that one observation cannot reconcile the outcome.
+    """
+    need(request_id not in client.submissions, "document-loss-original-id-already-used")
+    document = request_document(client.owner, request_id, "routing.import", {"input": routing_document}, revision)
+    client.submissions[request_id] = {"document": document, "knownTerminal": False}
+    outgoing = client.upload(upload_context, document.encode("utf-8"))
+    client.guard()
+    sock = client.connector(client._endpoint["port"])
+    client.original_sockets.append(sock)
+    journal = []
+    try:
+        sock.settimeout(30)
+        sock.sendall(wire(client._endpoint["token"]))
+        need(receive(sock, journal) == "AUTHENTICATED", "document-loss-authentication")
+        sock.sendall(wire(CONTEXT + fields(client.owner, upload_context, "response", "command", "")))
+        sock.sendall(wire(outgoing))
+        header = bytearray()
+        while len(header) < 4:
+            part = sock.recv(4 - len(header))
+            need(part, "document-loss-before-response-header")
+            header.extend(part)
+        size = struct.unpack(">I", header)[0]
+        need(0 < size <= FRAME, "document-loss-response-header-size")
+        client.event("document-response-deliberately-unread", {"requestId": request_id,
+            "responseFrameBytes": size, "responsePayloadReadBytes": 0,
+            "requestDocumentSha256": sha(document.encode("utf-8")), "replayAllowed": False})
+    finally:
+        sock.close(); client.original_sockets.remove(sock)
+        client.guard()
+    snapshot_command = "cli\tcontrol-snapshot\t" + encoded_text(client.owner)
+    snapshot = load(client.command(snapshot_command, snapshot_context, kind="snapshot")["body"])
+    need(snapshot.get("controllerId") == client.owner and snapshot.get("schemaVersion") == 1,
+         "document-loss-observation-owner")
+    rows = [row for row in snapshot.get("operations", []) if row.get("requestId") == request_id]
+    need(len(rows) <= 1, "document-loss-ambiguous-operation")
+    if not rows:
+        return {"state": "outcome-unknown", "requestId": request_id, "operationId": None,
+                "inputRetained": True, "replayAllowed": False}
+    row = rows[0]
+    result = row.get("result")
+    if result is not None:
+        need(result.get("controllerId") == client.owner and result.get("requestId") == request_id
+             and result.get("operationId") == row.get("id"), "document-loss-result-identity")
+        client.submissions[request_id]["knownTerminal"] = result.get("final") is True
+    known_final = client.submissions[request_id]["knownTerminal"]
+    if known_final:
+        client.discard(upload_context)
+    outcome = {"state": "known-final" if known_final else "known-operation",
+               "requestId": request_id, "operationId": row["id"], "result": result,
+               "inputRetained": not known_final, "replayAllowed": False}
+    client.event("document-response-loss-reconciliation", {k: v for k, v in outcome.items() if k != "result"})
+    return outcome

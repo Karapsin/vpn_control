@@ -9,6 +9,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Clone generalized Windows fixture images, recover agent SSH transport after reboots and name the cause of unverified Windows deploy replies.
 - Checkpoint in-progress Android, macOS and Windows sign-in, idle and sleep agent tool recovery work.
 - Windows fixtures gain a typed sleep capability route, protected sign-in readiness, complete idle receipts and roles, and a no-unexpected-updates policy.
+- Fix public subscription-mode CLI selection and recognize unrelated Arch VM-preflight advisories.
+- Bring in the Windows parity tools: hardened test transfers, ordinary-task policy, private program diagnostics and portable acceptance regressions.
+- Record Windows-only document results as partial on shared acceptance rows, and fix hosted Windows visual capture and the update check on visual clones.
 
 ## 2.2.15 - 2026-10-27
 

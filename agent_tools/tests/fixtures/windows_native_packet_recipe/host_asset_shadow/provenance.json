@@ -1,0 +1,52 @@
+{
+  "scope": "TEST001 hostreadonlydecoder wholeentry generation shadow",
+  "fixturePins": {
+    "operator.before.source": {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/host-asset-shadow-recipe-preparation-v1/candidate/agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/operator.before.source",
+      "bytes": 9042,
+      "sha256": "115836dfac880948a1e1317975adb5c4edd25c32c398783e53813ad04e53477e"
+    },
+    "collector.source": {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/host-asset-shadow-recipe-preparation-v1/candidate/agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/collector.source",
+      "bytes": 4918,
+      "sha256": "f1a26e56a6228a979663b799c7ab5bbdfcfc3a31e883b9d9b0c934d4a9412a6b"
+    },
+    "positive-result.json": {
+      "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/host-asset-shadow-recipe-preparation-v1/candidate/agent_tools/tests/fixtures/windows_native_packet_recipe/host_asset_shadow/positive-result.json",
+      "bytes": 2092,
+      "sha256": "709f649423db48cb722a43d0f0d4aac848ba84e08a520d464d3b7cf723315188"
+    }
+  },
+  "authenticBefore": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/baseline-two-host-revalidation-preparation-v1/beforeimages/thin-local-caller.shadow-before.py",
+    "bytes": 9042,
+    "sha256": "115836dfac880948a1e1317975adb5c4edd25c32c398783e53813ad04e53477e"
+  },
+  "authenticFixed": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/baseline-two-host-revalidation-preparation-v1/thin-local-caller.py",
+    "bytes": 9067,
+    "sha256": "97e28e9a69724665288f4efd2ac075e5959ed0d2eefc942d0a9cdb0729b83fb2"
+  },
+  "actualOriginalRed": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/baseline-two-host-revalidation-preparation-v1/qualification/actual-before-shadow-red.private.json",
+    "bytes": 800,
+    "sha256": "0947ce50c785f00fbaa5bde9ced458b1becf6298d7323f44978a942623aef4af"
+  },
+  "actualOriginalGreen": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/baseline-two-host-revalidation-preparation-v1/qualification/outer-success/receipt.json",
+    "bytes": 31675,
+    "sha256": "88977015696589126b3d1739704d69da70abbf63a1a3313a4c708aacdb37306d"
+  },
+  "actualNativeQualified": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/baseline-two-host-revalidation-preparation-v1/packet/direct-baseline-two-host-revalidation-original-operator/qualified.json",
+    "bytes": 4229,
+    "sha256": "3b46c5e71658a9f445eed0d36818ce91aa86454cfff074041bf5e0b04dfc0e60"
+  },
+  "actualNativeCompletion": {
+    "path": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/baseline-two-host-revalidation-preparation-v1/native-run-v1/original-exec-completion.private.json",
+    "bytes": 2796,
+    "sha256": "5a2ae30fd381ce482b37d4b02048e0f8f4ccd19c5e18c1f3a1900cf728a7b9aa"
+  },
+  "fixedDelta": "exact module-scope generation variable renamed file_generation; functionASTs unchanged",
+  "routineBoundary": "common existing packet World and actual current registeredSourceSession; no ignoredruntimepath opened. Logical paths rerooted as declaredfiledata peer; positive inner result is byte-equivalent decoded originalcontrolledpositive; no actual preimage/hash claim made by routine."
+}

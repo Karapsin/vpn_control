@@ -1,0 +1,19 @@
+{
+  "actualClosureAdmission": null,
+  "beforeHelperSha256": "2cfde229526f89e4a2146a28afc75b6f9615c79c63953c74a81cf51f50890d7a",
+  "correlationId": "546de96429aa4b9c8ea6332b1c549182",
+  "records": {
+    "intent": {
+      "bytes": 2202,
+      "sha256": "d83df5cd1090c965c404cf810de697da143893541c4f781859a91800a8a8ceb0",
+      "sourcePath": ".rag_index/ssh-direct-nested-channel/hosts/archlinux/546de96429aa4b9c8ea6332b1c549182.intent.json"
+    },
+    "ready": {
+      "bytes": 675,
+      "sha256": "e929879537f8a7e266bfc94045bc45343d7590f355f65173758a7ac8f3928f0a",
+      "sourcePath": ".rag_index/ssh-direct-nested-channel/hosts/archlinux/546de96429aa4b9c8ea6332b1c549182.ready.json"
+    }
+  },
+  "schemaVersion": 1,
+  "scope": "Authentic original546 intent/READY only; no original ba962 closure, EOF, sourceClosing, or guest4120 outcome inferred."
+}

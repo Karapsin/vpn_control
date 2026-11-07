@@ -11,6 +11,7 @@ Authoritative behavior is `UI-001` through `UI-008` and `VISUAL-001` through `VI
 | `visual-tests/baselines/<platform>/` | Canonical Git LFS PNG objects. |
 | `scripts/visual_platform.py` | Local probe/bootstrap/start/stop, provider plan, hosted dispatch, capture, and report ingestion. |
 | `scripts/capture_visual_windows_qemu.py` | QMP-controlled UAC launch plus headless VNC capture in the managed Windows client VM. |
+| `scripts/capture_visual_windows_remote.py` | Collects one retained frame of the Windows UAC scene from an owned remote deployment through the capture-only `deployment:<id>` target. |
 | `scripts/capture_visual_macos_tart.py` | Headless VNC capture of Gatekeeper and authorization surfaces in the managed macOS Tart VM. |
 | `scripts/visual_regression.py` | Pixel comparator, geometry validator, diffs, reports, and contact sheets. |
 | `scripts/visual_review.py` | Exact-SHA review queue, scene verdicts, evidence receipt, and GitHub status. |
@@ -55,7 +56,15 @@ python3 scripts/visual_platform.py start --platform <platform> --target <provide
 Local mutation and capture require an explicit target: `android:<configured-AVD>`,
 `tart:<configured-VM>`, `libvirt:<configured-domain>` or
 `qemu:<absolute-configured-disk>`. Existing native host capture uses
-`native:<platform>`. The selector must match the configured provider and current
+`native:<platform>`. `deployment:<deployment-id>` is capture-only and Windows-only:
+its allowlist is that deployment's own retained `windowsUacVisual` intent, and
+`bootstrap`, `start`, `stop` and `local_probe` refuse it. The operator names the
+deployment twice (`--target` and `--deployment-id`), so a mismatch stops with no
+output. `python3 scripts/visual_platform.py capture-local --platform windows
+--target deployment:<id> --driver "python3 scripts/capture_visual_windows_remote.py
+--deployment-id <id> --operation-id <frame-op> --journal-id <journal>" --output
+build/visual-actual/windows --scene windows-uac`.
+The selector must match the configured provider and current
 owned instance; a missing or conflicting selector blocks before recovery or
 input. There is no fallback to another provider. A QMP mutation additionally
 verifies the connected local peer and its held selected disk. Historical

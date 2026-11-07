@@ -1,0 +1,82 @@
+"""Execute one pre-qualified, explicitly selected DIRECT request once.
+
+Preparation of this caller is not authority to run it before the coordinator's
+fresh selected-channel/source window. No retry, signal, timeout reset or cleanup.
+"""
+from pathlib import Path
+import hashlib,json,os,re,stat,sys,time
+ROOT=Path(__file__).resolve().parents[4];sys.path.insert(0,str(ROOT))
+from agent_tools import source_module_loader
+BASE=Path(__file__).resolve().parent
+label=sys.argv[1]
+if label not in ('direct-canonical','direct-kernel','direct-native-causal','direct-xml-policy'):raise ValueError('explicit_direct_label_required')
+if len(sys.argv)!=3 or re.fullmatch('[0-9a-f]{64}',sys.argv[2])is None:raise ValueError('reviewed_manifest_sha256_required')
+manifest_path=BASE/'retained-api-native-requests-v2/manifest.private.json'
+manifest=None;pin=None
+out=BASE/'packet'/(label+'-original-operator');out.mkdir(mode=0o700)
+held=[]
+def generation(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def hold(path,expected):
+ path=Path(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);held.append((fd,path,generation(os.fstat(fd))));row=held[-1][2]
+ if not stat.S_ISREG(row[2])or row[3]!=os.getuid()or row[5]!=1:raise ValueError('operator_source_identity')
+ raw=b''
+ while True:
+  chunk=os.read(fd,65536)
+  if not chunk:break
+  raw+=chunk
+  if len(raw)>8*1024*1024:raise ValueError('operator_source_bound')
+ if hashlib.sha256(raw).hexdigest()!=expected:raise ValueError('operator_source_hash')
+ guard();return raw
+def guard():
+ for fd,path,row in held:
+  if generation(os.fstat(fd))!=row or generation(os.stat(path,follow_symlinks=False))!=row:raise ValueError('operator_source_changed')
+def save(name,value):
+ raw=value if type(value)is bytes else(json.dumps(value,sort_keys=True,ensure_ascii=False)+'\n').encode();fd=os.open(out/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ try:
+  at=0
+  while at<len(raw):
+   count=os.write(fd,raw[at:])
+   if count<=0:raise OSError('operator_receipt_write')
+   at+=count
+  os.fsync(fd)
+ finally:os.close(fd)
+started=False;terminal=None
+try:
+ manifest=json.loads(hold(manifest_path,sys.argv[2]));hold(Path(__file__).resolve(),manifest['operatorSourceSha256']);pin=next(p for p in manifest['requests']if p['label']==label)
+ request=json.loads(hold(pin['requestPath'],pin['requestSha256']));source=hold(pin['sourcePath'],pin['sourceSha256']);hold(ROOT/'agent_tools/windows_artifact_transfer.py',manifest['canonicalEmitterSha256']);hold(ROOT/'agent_tools/windows_qga_transfer.py',manifest['canonicalQgaSha256'])
+ for source_pin in pin.get('sourcePins',[]):hold(source_pin['path'],source_pin['sha256'])
+ if request['program']['source'].encode()!=source or request['operationId']!=pin['operationId']:raise ValueError('operator_request_source_join')
+ save('intent.private.json',{'request':request,'requestPin':pin,'canonicalEmitterSha256':manifest['canonicalEmitterSha256'],'sourceHold':[(str(path),list(row))for fd,path,row in held],'sourceClosing':False,'newOperationStartOnce':True,'productOperation':False})
+ with source_module_loader.request_scope(ROOT/'agent_tools'):
+  owner=source_module_loader.adapter(ROOT/'agent_tools','ssh_program_execution');guard()
+  admission=owner.admit_start(ROOT,'archlinux',request);save('admission.json',admission)
+  if admission!={'ok':True}:raise ValueError('original_admission_refused')
+  save('start-call-intent.json',{'operationId':request['operationId'],'sourceSha256':pin['sourceSha256'],'noReplay':True})
+  started=True;initial=owner.start(ROOT,'archlinux',request,source_context=owner._session);save('initial.json',initial)
+  identity={'operationId':request['operationId']};deadline=time.monotonic()+180;sequence=0
+  while time.monotonic()<deadline:
+   guard();value=owner.collect(ROOT,'archlinux',identity);sequence+=1;save('observation-'+str(sequence).zfill(5)+'.json',value)
+   if value.get('state')in ('unknown','refused'):raise ValueError('original_operation_'+value['state'])
+   if value.get('state')=='terminal':terminal=value;break
+   time.sleep(.3)
+  if terminal is None:raise TimeoutError('original_operation_observation_pending_no_replay')
+  if terminal.get('exitCode')!=0 or terminal.get('capture',{}).get('complete')is not True or terminal['capture'].get('eof')!={'stdout':True,'stderr':True}:raise ValueError('original_outer_terminal_not_success')
+  directory=ROOT/'.rag_index/ssh-program-execution'/request['operationId'];stdout=(directory/'stdout.private').read_bytes();stderr=(directory/'stderr.private').read_bytes();save('stdout.private',stdout);save('stderr.private',stderr)
+  for name,raw in [('stdout',stdout),('stderr',stderr)]:
+   stream=terminal['streams'][name]
+   if hashlib.sha256(raw).hexdigest()!=stream['retainedSha256']or hashlib.sha256(raw).hexdigest()!=stream['receivedSha256']or len(raw)!=stream['bytes']or len(raw)!=stream['receivedBytes']:raise ValueError('original_raw_stream_join')
+  if stderr:raise ValueError('original_outer_stderr_nonempty')
+  result=json.loads(stdout.decode('utf-8-sig'))
+  if result.get('state')!='qualified'or result.get('sourceClosing')is not True:raise ValueError('original_inner_result_not_qualified')
+  if result.get('probeId')!=pin['probeId']or result.get('canonicalEmitterSha256')!=manifest['canonicalEmitterSha256']or result.get('canonicalQgaSha256')!=manifest['canonicalQgaSha256']:raise ValueError('original_inner_result_context_join')
+  for field,expected in pin.get('resultJoins',{}).items():
+   if result.get(field)!=expected:raise ValueError('original_inner_result_extra_source_join')
+  closed=json.loads((directory/'owner-closed.json').read_bytes());save('owner-closed.json',closed)
+  if closed.get('sourceClosing')is not True:raise ValueError('original_owner_source_not_closed')
+  guard();save('qualified.json',{'state':'qualified','label':label,'operationId':request['operationId'],'sourceSha256':pin['sourceSha256'],'canonicalEmitterSha256':manifest['canonicalEmitterSha256'],'terminal':terminal,'innerResult':result,'ownerClosing':closed,'sourceClosing':True,'productOperation':False})
+  print(json.dumps({'state':'qualified','label':label,'operationId':request['operationId'],'exitCode':0,'sourceClosing':True},sort_keys=True))
+except BaseException as error:
+ save('original-failure.json',{'state':'unknown'if started else'refused-before-start','errorClass':type(error).__name__,'error':str(error),'operationId':None if pin is None else pin['operationId'],'startedOnce':started,'terminalObserved':terminal is not None,'replayAllowed':False,'automaticCleanup':False})
+ raise
+finally:
+ for fd,path,row in reversed(held):os.close(fd)

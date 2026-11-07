@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "kind": "actual private draft client correction routine provenance",
+  "productOrNativeFailure": false,
+  "sources": [
+    {
+      "fixture": "document-client-v1.before.source",
+      "sha256": "3b34a9402881175fd1466519922be02e69d680141dd95c8fd134a61225d9537c",
+      "sizeBytes": 23870,
+      "originalPrivatePath": ".runtime/windows-parity-20261019/windows-product-runner/document-acceptance-preparation-v1/preserved-v1/document_client.py",
+      "completeSource": true
+    },
+    {
+      "fixture": "document-client-v2.before.source",
+      "sha256": "9d3e56d15da321a7e20bcfc4d2aa3a863efb1244066f96d6676b83f834c3ff16",
+      "sizeBytes": 28445,
+      "originalPrivatePath": ".runtime/windows-parity-20261019/windows-product-runner/document-acceptance-preparation-v1/successor-v2/document_client.py",
+      "completeSource": true
+    }
+  ],
+  "proofs": [
+    {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/document-acceptance-preparation-v1/successor-v2/local-causal-controls.private.json",
+      "sha256": "dc4af8e24ccd1205f0254d381ad8e25276e3c9abb609d3592e132ca941114d88"
+    },
+    {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/document-acceptance-preparation-v1/successor-v3/local-causal-controls.private.json",
+      "sha256": "4d3f98b6a508ccb2751798af822ac86552c6fc79786229d48aa48e9b2a29de46"
+    }
+  ],
+  "executionContext": "Only original Client/receive functions execute via in-memory connector/stream peers; no native socket, product, Win32 or other source dispatch. Complete original module definitions are authenticated before exec.",
+  "currentOracleRefinement": "Capture actual error object and assert its identity/retained attributes; absent old metadata becomes intended assertion RED, not a missing-attribute setup error."
+}

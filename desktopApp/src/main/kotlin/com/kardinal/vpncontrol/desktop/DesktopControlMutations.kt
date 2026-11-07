@@ -1,6 +1,7 @@
 package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.control.ControlCommandArguments
+import com.kardinal.vpncontrol.control.ControlCliParseResult
 import com.kardinal.vpncontrol.model.ControlCommand
 import com.kardinal.vpncontrol.model.ControlOperationId.*
 import com.kardinal.vpncontrol.model.ALL_SUBSCRIPTIONS_ID
@@ -11,10 +12,18 @@ internal object DesktopControlMutations {
         SUBSCRIPTIONS_DELETE, LOCATIONS_ADD, LOCATIONS_UPDATE, LOCATIONS_DELETE, LOCATIONS_IMPORT,
         ROUTING_SET, ROUTING_IMPORT, SSH_KEY_IMPORT, UPDATES_DISMISS)
 
-    fun command(request: ControlCommand): DesktopCliCommand? {
+    // Typed owner actions may have no legacy command representation (subscription mode only).
+    fun accepts(request: ControlCommand): Boolean = parse(request) != null
+
+    private fun parse(request: ControlCommand): ControlCliParseResult.Invocation? {
         if (request.operation !in operations) return null
         val parsed = ControlCommandArguments.decode(request) ?: return null
         if ("--qr-image" in parsed.options) return null
+        return parsed
+    }
+
+    fun command(request: ControlCommand): DesktopCliCommand? {
+        val parsed = parse(request) ?: return null
         val args = parsed.positional
         val options = parsed.options
         return when (request.operation) {

@@ -1,0 +1,126 @@
+"""Existing full28-control harness definitions from 54547b147761902db91e038c08cf181c7322ada31dac749389d8b5637373349a; only entrypoint removed and OEXCL journal boundary accepts old+fixed scope for causal before/after."""
+"""Complete caller execution with in-memory proc/pidfd/signal/poll boundaries.
+
+No real signal, pidfd, process, socket, network or repository API can be called.
+The real complete c9 collector first produces the explicitly inert input facts.
+"""
+from pathlib import Path
+import base64,builtins,collections,contextlib,copy,hashlib,importlib.util,io,json,os,re,stat,sys,traceback,types
+W=Path(__file__).resolve().parent;B=W.parent;ROOT=W.parents[3]
+def module(path,name):
+ spec=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(spec);sys.modules[name]=m;spec.loader.exec_module(m);return m
+prep=module(W/'prepare_packet.py','_abandon_prepare')
+peer=module(B/'owned-host-readonly-preparation-v1/qualify_collector.py','_abandon_collector_peer')
+status=module(B/'original-pid-status-private-preparation-v1/qualification_models.py','_abandon_status_models')
+DEST=None
+
+class ParkCut(RuntimeError):pass
+
+class World(peer.CollectorWorld):
+ def __init__(self,declarations,fault=None):
+  self.abandon_fault=fault;self.pidfd_calls=[];self.signal_calls=[];self.poll_calls=[];self.pidfd_invocations=0;self.signal_invocations=0;self.absence_reads=0;self.target_alive=True;self.pidfd_number=None;self.park_sleeps=0;self.last_write=None;self.changed=False
+  super().__init__(declarations,None,True)
+  self.os.readlink=self.resolve_link;self.os.pidfd_open=self.pidfd_open;self.os.fsync=self.fsync
+  self.os.lstat=self.live_lstat
+  self.os.kill=self.trap;self.os.waitpid=self.trap;self.os.waitid=self.trap
+  self.signal=types.ModuleType('signal');self.signal.SIGTERM=15;self.signal.pidfd_send_signal=self.send_signal
+  self.select=types.ModuleType('select');self.select.POLLIN=1;self.select.POLLHUP=16;self.select.poll=lambda:self
+  self.node('/proc/sys/kernel/random/boot_id',(self.context['hostBootId']+'\n').encode())
+  if fault=='host-boot-changed':self.nodes['/proc/sys/kernel/random/boot_id']['data']=bytearray(b'wrong-boot\n')
+  if fault=='wrong-live-uids':self.nodes[f'/proc/{self.original_pid}/status']['data']=bytearray(b'Uid:\t1000\t1001\t1000\t1000\nNSpid:\t54321\n')
+  self.initial_original=self.original_snapshot()
+ def live_lstat(self,path):
+  path=self.resolve(path)
+  if self.abandon_fault=='delayed-proc-reap'and path=='/proc/'+str(self.original_pid)and self.signal_calls:
+   self.absence_reads+=1
+   if self.absence_reads>=3:self.nodes.pop(path,None);self.target_alive=False
+  return self.info(path)
+ def _original_files(self):
+  for name,data in status.ORIGINAL_FILES.items():
+   if name.endswith('.rpc-000005.intent.json'):
+    value=json.loads(data);value.update(requestPath=self.root+'/'+name.replace('.intent.json','.request.json'),rawPath=self.root+'/'+name.replace('.intent.json','.raw'));data=status.jbytes(value)
+   self.node(self.root+'/'+name,data)
+ def _actor(self,pid):
+  super()._actor(pid)
+  self.nodes[f'/proc/{pid}/status']['data'].extend(('NSpid:\t'+str(pid)+'\n').encode())
+ def original_snapshot(self):return {p:copy.deepcopy(n)for p,n in self.nodes.items()if p.startswith(self.root+'/'+self.prefix+'.')}
+ def open_fd(self,path,flags,mode=0o777,*,dir_fd=None):
+  absolute=self.resolve(path,dir_fd)
+  if re.match(r'/proc/[0-9]+/fd(?:/|$)',absolute):return self.trap('proc-fd-payload')
+  if flags&(os.O_CREAT|os.O_WRONLY|os.O_RDWR):
+   assert 'ABANDONMENT_ID'in self.declarations and absolute.startswith(self.root+'/host-actor-abandon-')
+  return peer.PeerWorld.open_fd(self,path,flags,mode,dir_fd=dir_fd)
+ def write_fd(self,fd,data):
+  path=self.fds[fd]['path'];assert path.startswith(self.root+'/host-actor-abandon-')
+  if self.abandon_fault=='complete-write-failure'and path.endswith('.complete.json'):raise OSError('inert complete receipt write failure')
+  if self.abandon_fault=='intent-write-failure'and path.endswith('.intent.json'):raise OSError('inert intent write failure')
+  self.last_write=path;return peer.PeerWorld.write_fd(self,fd,data)
+ def fsync(self,fd):
+  self.events.append(['fsync',fd])
+  if self.last_write and self.last_write.endswith('.intent.json')and self.fds[fd]['path']==self.root and not self.changed:
+   self.changed=True
+   if self.abandon_fault=='source-change-after-intent':self.nodes[self.root+'/'+self.prefix+'.rpc-000005.request.json']['data'][0]^=1
+   if self.abandon_fault=='fd-change-after-intent':self.links[f'/proc/{self.original_pid}/fd/100']=self.root+'/foreign-request'
+   if self.abandon_fault=='socket-change-after-intent':self.links[f'/proc/{self.original_pid}/fd/104']='socket:[1]'
+   if self.abandon_fault=='intent-tamper':self.nodes[self.last_write]['data'][0]^=1
+   if self.abandon_fault=='intent-parent-fsync-failure':raise OSError('inert intent parent fsync failure')
+ def pidfd_open(self,pid,flags):
+  self.pidfd_invocations+=1
+  assert pid==self.original_pid and flags==0 and self.pidfd_invocations==1
+  self.pidfd_calls.append({'pid':pid,'flags':flags})
+  if self.abandon_fault=='pidfd-open-error':raise ProcessLookupError('inert pidfd open ESRCH')
+  path=self.root+'/inert-pidfd-node';self.node(path,b'',mode=stat.S_IFREG|0o600);self.next_fd+=1;fd=self.next_fd;self.fds[fd]={'path':path,'offset':0,'flags':os.O_RDONLY};self.pidfd_number=fd
+  self.links['/proc/self/fd/'+str(fd)]='anon_inode:[pidfd]'
+  wrong=self.original_pid+1 if self.abandon_fault=='pidfd-wrong-pid'else self.original_pid
+  self.node('/proc/self/fdinfo/'+str(fd),f'pos:\t0\nflags:\t02000002\nPid:\t{wrong}\nNSpid:\t{wrong}\n'.encode())
+  if self.abandon_fault=='pidfd-duplicate-pid':self.nodes['/proc/self/fdinfo/'+str(fd)]['data'].extend(f'Pid:\t{pid}\n'.encode())
+  if self.abandon_fault=='pidfd-wrong-namespace':self.nodes['/proc/self/fdinfo/'+str(fd)]['data']=bytearray(f'Pid:\t{pid}\nNSpid:\t{pid}\t1\n'.encode())
+  if self.abandon_fault=='pid-reuse-after-open':self.nodes[f'/proc/{pid}/stat']['data']=bytearray(bytes(self.nodes[f'/proc/{pid}/stat']['data']).replace(b'1234567',b'1234568'))
+  if self.abandon_fault=='pidfd-link-wrong':self.links['/proc/self/fd/'+str(fd)]='anon_inode:[eventfd]'
+  return fd
+ def register(self,fd,events):assert fd==self.pidfd_number and events==1
+ def poll(self,milliseconds):
+  assert self.pidfd_number is not None;self.poll_calls.append({'fd':self.pidfd_number,'timeoutMs':milliseconds})
+  if self.abandon_fault=='exit-before-signal'and not self.signal_calls:return[(self.pidfd_number,1)]
+  if not self.signal_calls:return[]
+  if self.abandon_fault=='exit-pending':self.time_now+=milliseconds/1000;return[]
+  if self.abandon_fault=='poll-error':return[(self.pidfd_number,32)]
+  self.time_now+=.1
+  if self.abandon_fault not in('actor-proc-remains','delayed-proc-reap'):
+   self.nodes.pop('/proc/'+str(self.original_pid),None);self.target_alive=False
+  self.nodes['/proc/self/fdinfo/'+str(self.pidfd_number)]['data']=bytearray(b'Pid:\t-1\nNSpid:\t-1\n')
+  return[(self.pidfd_number,1)]
+ def send_signal(self,fd,signum,info,flags):
+  self.signal_invocations+=1
+  assert fd==self.pidfd_number and signum==15 and info is None and flags==0 and self.signal_invocations==1
+  intent=self.root+'/host-actor-abandon-'+(self.declarations['ORIGINAL_PROBE_ID']if self.declarations.get('INTENT_SCOPE')=='original-probe-v1'else self.declarations['ABANDONMENT_ID'])+'.intent.json';assert intent in self.nodes
+  # Actual exact intent was read back after file + parent fsync before call.
+  assert any(e[0]=='fsync'for e in self.events)
+  self.signal_calls.append({'fd':fd,'pid':self.original_pid,'signum':signum,'info':None,'flags':flags})
+  if self.abandon_fault=='signal-interrupted':raise InterruptedError('inert pidfd signal interrupted')
+  return None
+ def sleep(self,seconds):
+  if seconds==1:self.park_sleeps+=1
+  self.time_now+=seconds
+ def import_peer(self,name,globals=None,locals=None,fromlist=(),level=0):
+  if name in('signal','select'):self.imports.append({'name':name});return getattr(self,name)
+  return super().import_peer(name,globals,locals,fromlist,level)
+
+
+def execute_source(path,world,park=False):
+ source=path.read_bytes();namespace={'__name__':'__main__'};normal=dict(vars(builtins));normal['__import__']=world.import_peer;normal['open']=world.builtin_open;namespace['__builtins__']=normal
+ stdout=io.StringIO();stderr=io.StringIO();error=None;calls=collections.Counter();lines=set()
+ def trace(frame,event,arg):
+  if frame.f_code.co_filename==str(path):
+   if event=='call':calls[frame.f_code.co_name]+=1
+   elif event=='line':lines.add(frame.f_lineno)
+   if event=='line'and frame.f_code.co_name=='park_unknown'and world.park_sleeps>=1 and source.decode().splitlines()[frame.f_lineno-1].strip()=='while True:':raise ParkCut('inert cut at original park loop backedge')
+  return trace
+ prior=sys.gettrace()
+ try:
+  with contextlib.redirect_stdout(stdout),contextlib.redirect_stderr(stderr):sys.settrace(trace);exec(compile(source,str(path),'exec'),namespace,namespace)
+ except BaseException as caught:error={'class':type(caught).__name__,'error':str(caught),'traceback':traceback.format_exc()}
+ finally:sys.settrace(prior)
+ if park:assert error and error['class']=='ParkCut'and world.fds,(error,stdout.getvalue())
+ else:assert error is None and not world.fds,(error,stdout.getvalue())
+ return {'sourceSha256':hashlib.sha256(source).hexdigest(),'stdout':stdout.getvalue(),'stderr':stderr.getvalue(),'error':error,'functions':dict(calls),'lines':sorted(lines),'state':namespace.get('state'),'signals':world.signal_calls,'pidfdCalls':world.pidfd_calls,'pollCalls':world.poll_calls,'retainedDescriptors':[{'fd':fd,'path':row['path']}for fd,row in world.fds.items()],'originalFailure':None if namespace.get('original_failure')is None else str(namespace['original_failure']),'originalFilesUnchanged':world.original_snapshot()==world.initial_original,'realSignalsOrProcessNetworkApiActions':False,'initialGlobals':['__name__','__builtins__'],'completeNamespace':True,'postExecFunctionReplacement':False}

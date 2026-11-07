@@ -1,0 +1,101 @@
+"""Whole actual caller arming/request/READY/ACK branch; declared native peers only."""
+from __future__ import annotations
+import hashlib
+import os
+from pathlib import Path
+import sys
+import types
+import unittest
+from unittest.mock import patch
+B=Path(__file__).resolve().parent
+ROWS={'/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-failing-msi-consumer-preparation-v1/successor-v2/failing_msi_hold_protocol.py': 'ec0c7b665d14d8c4fe4129a9c84f0a8fb4ee79b50b7ae00a122be383a5912721', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-failing-msi-consumer-preparation-v1/successor-v2/failing_msi_caller_hold.py': '7550405de0268295fdadba6bcae308db4da2b6ea1933673e0fe1141b567dd6a4', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-failing-msi-consumer-preparation-v1/successor-v2/test_failing_caller_body.py': '945ac7c218aa6dbabd13b1208d7543e007e5c3ca93087958f527a1fdce9865d9', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-failing-msi-consumer-preparation-v1/successor-v2/collector_contract.py': '933c3acdbfc17656f689efb85e9073881b9b55c9092d97ab198de4a5f6722ab1', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-failing-msi-consumer-preparation-v1/successor-v2/system_collector_worker.py': 'f5a47e804ab340c95705070a865afceead09d250932872ab2585740979442488', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-failing-msi-consumer-preparation-v1/hold_protocol.py': '70440195ac8f3116f4a40b788616419ea88591eb430119ce386f6b31684fc1c1', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-failing-msi-consumer-preparation-v1/caller_hold.py': '6a6fbbe73e8d70db247656af330a8a4de9b2119a181ae4e3af5d0757dc8f0ef5', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-system-collector-wrapper-preparation-v1/successor-v2/system_collector_worker.py': 'd3ab44e9a7d5cd521069f407ffbf7c6a33cae3e237b48cb5dc0750ffecc4bb9a'}
+_held={};_modules={};CAUSAL_RESULTS={};BEFORE=False
+
+def generation(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def guard():
+    for path,(stream,opening,raw) in _held.items():
+        if generation(os.fstat(stream.fileno()))!=opening or generation(Path(path).stat())!=opening:raise ValueError('pipeline-source-generation-drift')
+        stream.seek(0)
+        if stream.read()!=raw:raise ValueError('pipeline-source-byte-drift')
+for path,expected in ROWS.items():
+    stream=Path(path).open('rb');opening=generation(os.fstat(stream.fileno()));raw=stream.read()
+    if hashlib.sha256(raw).hexdigest()!=expected:raise ValueError('pipeline-source-admission')
+    _held[path]=(stream,opening,raw)
+def load(path,expected=None):
+    key=str(path.resolve())
+    if key not in ROWS or expected is not None and ROWS[key]!=expected:raise ValueError('pipeline-undeclared-source')
+    guard()
+    if key in _modules:return _modules[key]
+    value=types.ModuleType('_fixed_pipeline_'+hashlib.sha256(key.encode()).hexdigest()[:16]);value.__file__=key
+    value._load_source=load;sys.modules[value.__name__]=value;_modules[key]=value
+    exec(compile(_held[key][2],key,'exec',dont_inherit=True),value.__dict__);guard();return value
+BODY=load(B/'test_failing_caller_body.py')
+OLD_P=load(B.parent/'hold_protocol.py');OLD_H=load(B.parent/'caller_hold.py')
+NEW_CONTRACT=ROWS[str(B/'collector_contract.py')];NEW_WORKER=ROWS[str(B/'system_collector_worker.py')]
+ACTUAL_COLLECTOR='7c23f177a701b7e553cccc1fc4ec9de1fadde8991e451050e64e94539da36a8b'
+
+class PipelineTests(unittest.TestCase):
+    def setUp(self):guard()
+    def tearDown(self):guard()
+    def test_same_actual_failing_collector_arms_binds_ready_and_ack_once(self):
+        pmod,hmod=(OLD_P,OLD_H) if BEFORE else (BODY.P,BODY.H)
+        base=B.parent if BEFORE else B
+        caller='caller_hold.py' if BEFORE else 'failing_msi_caller_hold.py'
+        protocol='hold_protocol.py' if BEFORE else 'failing_msi_hold_protocol.py'
+        with patch.multiple(BODY,P=pmod,H=hmod,B=base,SELF='C:\\AdmittedSources\\'+caller,PROTOCOL='C:\\AdmittedSources\\'+protocol):
+            patches=[patch.object(hmod,'__file__',BODY.SELF),patch.object(hmod.sys,'executable',BODY.PYTHON),
+                patch.object(hmod,'owner_source_path',lambda owner:BODY.OWNER_SOURCE),patch.object(hmod.os,'getpid',lambda:77),
+                patch.dict(hmod.os.environ,{'ProgramData':'C:\\ProgramData'}),patch.object(hmod.time,'sleep',lambda _:None)]
+            for p in patches:p.start();self.addCleanup(p.stop)
+            peer=BODY.Peer();peer.inputs.update(collectorSourceSha256=ACTUAL_COLLECTOR,
+                systemContractSourceSha256=NEW_CONTRACT,systemWorkerSourceSha256=NEW_WORKER)
+            # The caller fixture supplies declared native storage; request values are actual current source hashes.
+            # Pin caller/protocol from the selected complete authentic source, not a synthetic hash claim.
+            original_binding=peer.binding
+            def binding():
+                original_binding();peer.system_request['modules']['contract']['sha256']=NEW_CONTRACT
+                peer.system_request['modules']['worker']['sha256']=NEW_WORKER
+                peer.system_request['modules']['collector']['sha256']=ACTUAL_COLLECTOR
+                peer.system_request['collectorRequest']['collectorSourceSha256']=ACTUAL_COLLECTOR
+                peer.publish_binding()
+            peer.binding=binding;completed=False;unknown=None
+            try:
+                hold=peer.arm();peer.write_counts=[1,3,17]
+                def closed_collector():
+                    self.assertTrue(peer.alive)
+                    self.assertEqual(hold.state,'waiting-release')
+                    return peer.release()
+                peer.release_factory=closed_collector
+                hold.driver_completed(0);release=hold.wait_for_release()
+                completed=hold.state=='released' and release['collectorOperationId']==BODY.COLLECTOR
+                self.assertEqual(peer.inputs['collectorSourceSha256'],ACTUAL_COLLECTOR)
+                self.assertEqual(bytes(peer.files[hold.ready_path]['raw']),pmod.encoded(hold.ready))
+                self.assertEqual(len(peer.created),1);self.assertIs(peer.caller_collection_hold,hold)
+                self.assertIsNotNone(hold.ready_lease);self.assertIsNotNone(hold.release_lease)
+                self.assertEqual(hold.collector_request['modules']['collector']['sha256'],ACTUAL_COLLECTOR)
+                self.assertEqual(hold.collector_request['modules']['contract']['sha256'],NEW_CONTRACT)
+                self.assertEqual(hold.collector_request['modules']['worker']['sha256'],NEW_WORKER)
+                self.assertGreater(len([v for v in peer.calls if v[0]=='write']),1)
+            except BODY.Parked as exc:unknown=str(exc)
+            self.assertTrue(completed,'actual failing collector must finish original caller arm→binding→READY→ACK; '+str(unknown))
+
+    def test_authentic_before_and_current_full_pipeline_pair(self):
+        global BEFORE
+        for phase,before in [('before',True),('current',False)]:
+            BEFORE=before;r=unittest.TestResult();PipelineTests('test_same_actual_failing_collector_arms_binds_ready_and_ack_once').run(r)
+            CAUSAL_RESULTS[phase]={'testsRun':r.testsRun,'failures':[v for _,v in r.failures],'errors':[v for _,v in r.errors]}
+        BEFORE=False
+        self.assertEqual({k:(v['testsRun'],len(v['failures']),len(v['errors'])) for k,v in CAUSAL_RESULTS.items()},
+            {'before':(1,1,0),'current':(1,0,0)})
+class HeldSuite(unittest.TestSuite):
+    def run(self,result,debug=False):
+        guard()
+        try:return super().run(result,debug)
+        finally:
+            try:guard()
+            finally:
+                for stream,_,_ in _held.values():stream.close()
+def load_tests(loader,tests,pattern):return HeldSuite([loader.loadTestsFromModule(BODY),loader.loadTestsFromTestCase(PipelineTests)])
+if __name__=='__main__':
+    if '--before' in sys.argv:sys.argv.remove('--before');BEFORE=True
+    unittest.main()

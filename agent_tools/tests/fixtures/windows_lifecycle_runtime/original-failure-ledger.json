@@ -1,0 +1,824 @@
+{
+  "schemaVersion": 1,
+  "scope": "Read-only frozen packet inspection, plus this new audit only; no qualifier rerun, canonical edit, native or network effect.",
+  "failureTypes": 15,
+  "actualRedGreenPairs": 21,
+  "files": {
+    "l1-cases": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v1/lifecycle_cases.py",
+      "sha256": "71af208957e1c30bde6194af0a7a60b0b00438b2fa658858ef9e2f4f181cbfe1",
+      "sizeBytes": 38627
+    },
+    "l1-scheduled": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v1/scheduled_fixture_worker.py",
+      "sha256": "e6f318b6b346fcb8d6932b26dabf28bbc0f1d3f5fcf71bd0ab425626ac3b24f1",
+      "sizeBytes": 5662
+    },
+    "l2-cases": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/lifecycle_cases.py",
+      "sha256": "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b",
+      "sizeBytes": 41291
+    },
+    "l2-scheduled": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/scheduled_fixture_worker.py",
+      "sha256": "25cfe5dc170f40e811139bb2ebe96ac7d00af73a7f76b474d4542b2663f74978",
+      "sizeBytes": 5883
+    },
+    "l2-runtime-before": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/before-local-operation-correlation.runtime_stages.py",
+      "sha256": "4122d83f0df53a6c7ea0a097fac849bbce3ca072b19971ab89dd9e64905b0438",
+      "sizeBytes": 19090
+    },
+    "l2-runtime": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/runtime_stages.py",
+      "sha256": "147f2114b0ce554e85669b770b836d7927f775f6009795ceb308b6e57bc5fbd9",
+      "sizeBytes": 25377
+    },
+    "l2-traffic": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/traffic_worker.py",
+      "sha256": "c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d",
+      "sizeBytes": 6091
+    },
+    "l2-worker": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/runtime_fixture_worker.py",
+      "sha256": "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a",
+      "sizeBytes": 8779
+    },
+    "l2-desktop": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/no_tray_desktop.py",
+      "sha256": "55c9b8dc072cd0a44bbe958d0be49ecc6c358ba36a5ca137bc3cb7e9479165ce",
+      "sizeBytes": 15473
+    },
+    "l2-tun": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/tun_stages.py",
+      "sha256": "339c7b0fcaf9b5a1e0b61c3654d423f395a5e4b6779c32f6a57c56e2104935c8",
+      "sizeBytes": 14775
+    },
+    "l2-collector": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/tun_native_observer.py",
+      "sha256": "ec5256d42208585695e1566df5697c8c4c010631258876e08a1ea61874172de1",
+      "sizeBytes": 12820
+    },
+    "l2-local-qualifier": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/qualify_local.py",
+      "sha256": "42574169462bb32a568649f1701c88efe67dc7dc33c82da9a140544edf9d5bc7",
+      "sizeBytes": 13656
+    },
+    "l2-stage-qualifier": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/qualify_stages.py",
+      "sha256": "897638264d70518a412fb822301e885c5d271e6a472ef625db69ca43e9190054",
+      "sizeBytes": 18117
+    },
+    "l2-causal-qualifier": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/causal_review_pairs.py",
+      "sha256": "a879a6137619cb841578660fca9009d0a95cc44bf51dd7b4a57224e2968cea9b",
+      "sizeBytes": 7257
+    },
+    "l2-ledger-qualifier": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/ledger_pair.py",
+      "sha256": "d23ec1d0f2e46231a83a5733a0fa2ad5af4ff990839c696f07875ec8d65d7b1c",
+      "sizeBytes": 3732
+    },
+    "l3-tun-before": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.before.source",
+      "sha256": "339c7b0fcaf9b5a1e0b61c3654d423f395a5e4b6779c32f6a57c56e2104935c8",
+      "sizeBytes": 14775
+    },
+    "l3-tun": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
+      "sha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a",
+      "sizeBytes": 15407
+    },
+    "l3-qualifier": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/qualify_context_join.py",
+      "sha256": "79f650f62c2c0358297c1dfc56def8d7ec8463f43a50dd590f95eaeadb9b91d9",
+      "sizeBytes": 6024
+    },
+    "b1-route-before": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/runtime_branch_cases.route-shape.before.source",
+      "sha256": "7029620da881405393194b6bbc614096a9e423ae799dfdca6cd26f80a1a4b813",
+      "sizeBytes": 18360
+    },
+    "b1-fixture-before": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/runtime_branch_cases.fixture-liveness.before.source",
+      "sha256": "ec8d9b9b9be79114dddcbf18d6da16b9ed5c0cccbfd498a1a9b507c702b4ebaa",
+      "sizeBytes": 32311
+    },
+    "b1-direct-before": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/runtime_branch_cases.direct-probe.before.source",
+      "sha256": "ca255102b5dff3f68f5f1137d405c3ea3ce8a085eddc1773de58b0c6c6d066c3",
+      "sizeBytes": 33566
+    },
+    "b1-cases": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/runtime_branch_cases.py",
+      "sha256": "4fc8b394e4da7af9c654aa1d9cfb7a5a124417444d544a555dba29433087d269",
+      "sizeBytes": 34485
+    },
+    "b1-qualifier": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/qualify_branches.py",
+      "sha256": "3fbf4258a4b82c381ebb6799f92baab4f6af2f5172ab296bcc547ca13e1a3e54",
+      "sizeBytes": 17719
+    },
+    "b2-before": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/runtime_branch_cases.before.source",
+      "sha256": "4fc8b394e4da7af9c654aa1d9cfb7a5a124417444d544a555dba29433087d269",
+      "sizeBytes": 34485
+    },
+    "b2-cases": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/runtime_branch_cases.py",
+      "sha256": "0b90fef622d8f0511aaf391209096db987a1d696e376283d056388c5c6493cb0",
+      "sizeBytes": 34698
+    },
+    "b2-qualifier": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/qualify_probe_closing.py",
+      "sha256": "15089da029c3d7bd6b5768d35fc098fa84238c90c9d21831fc0c5a6fead0e430",
+      "sizeBytes": 3860
+    },
+    "socks": {
+      "path": "scripts/integration/socks_http_fixture.py",
+      "sha256": "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210",
+      "sizeBytes": 13675
+    },
+    "https": {
+      "path": "scripts/integration/https_subscription_relay_fixture.py",
+      "sha256": "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4",
+      "sizeBytes": 9474
+    },
+    "refresh": {
+      "path": "scripts/integration/desktop_scheduled_refresh_fixture.py",
+      "sha256": "65be608719e8c8fbee08b72c2af99b3f60499d40d85df740698bc5ab87a1c672",
+      "sizeBytes": 17769
+    },
+    "route-shape-source": {
+      "path": "shared/core/src/commonMain/kotlin/com/kardinal/vpncontrol/data/SingBoxRouteDnsBuilder.kt",
+      "sha256": "38e200a4855625816875f44123760fadd387dbf2af0db68b8a461d3713d87a2a",
+      "sizeBytes": 12404
+    },
+    "direct-probe-source": {
+      "path": "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactory.kt",
+      "sha256": "cce73372c2aae2acccd975efd4b380e790583056e609b846f3ea71fdeb461572",
+      "sizeBytes": 10375
+    },
+    "l2-receipt": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/qualification.private.json",
+      "sha256": "fee5be9067cf35702066cc576acd8a63caa2da6ae9f54b53ae75d8b00c7ef255",
+      "sizeBytes": 21779
+    },
+    "l3-receipt": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/qualification.private.json",
+      "sha256": "59d59f5c3ff74fe246cdca8f75949693d1b57a6272ae5104de16b9a3228ca52e",
+      "sizeBytes": 48349
+    },
+    "b1-receipt": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v1/qualification-v1/receipt.private.json",
+      "sha256": "c3e8497b26f21dd9a5fad5a55b711e4530953b024bbd5197bf00c260ee7038e9",
+      "sizeBytes": 52312
+    },
+    "b2-receipt": {
+      "path": ".runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/qualification-v1/receipt.private.json",
+      "sha256": "1a55d490a76a38da2b2bfe1c3831e3406d2df8fafc2424181ac3f719fed3c789",
+      "sizeBytes": 26039
+    }
+  },
+  "failures": [
+    {
+      "failureType": "gui-upstream-port-bypass",
+      "cause": "GUI traffic sampler was allowed to use the upstream fixture port instead of the product mixed-in port.",
+      "sameOracle": {
+        "source": "l2-causal-qualifier",
+        "callable": "port_pair(source-directory)",
+        "argvTail": [
+          "--pair",
+          "port",
+          "--source",
+          "before|after"
+        ]
+      },
+      "beforeSources": [
+        "l1-cases"
+      ],
+      "fixedSource": "l2-cases",
+      "loadDependencies": [],
+      "receipt": "l2-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "port-before",
+          "afterLabel": "port-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "sampler bypasses product by connecting directly to upstream fixture",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "scheduled-partial-stop-publication",
+      "cause": "Complete scheduled worker main treated an incomplete stop-control JSON write as fatal and abandoned fixture listener ownership.",
+      "sameOracle": {
+        "source": "l2-causal-qualifier",
+        "callable": "control_pair(source-directory)",
+        "argvTail": [
+          "--pair",
+          "control",
+          "--source",
+          "before|after"
+        ]
+      },
+      "beforeSources": [
+        "l1-scheduled"
+      ],
+      "fixedSource": "l2-scheduled",
+      "loadDependencies": [],
+      "receipt": "l2-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "control-before",
+          "afterLabel": "control-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "JSONDecodeError on partial { control file",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "original-https-ledger-schema-compatibility",
+      "cause": "Original HTTPS handler ledger lacks timestamp/path/userAgent attribution required by the scheduled refresh collector; subclass supplies that attribution.",
+      "sameOracle": {
+        "source": "l2-ledger-qualifier",
+        "callable": "exercise(mode)",
+        "argvTail": [
+          "--mode",
+          "before|after"
+        ]
+      },
+      "beforeSources": [
+        "https"
+      ],
+      "fixedSource": "l2-scheduled",
+      "loadDependencies": [
+        "socks",
+        "https",
+        "refresh"
+      ],
+      "receipt": "l2-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "ledger-before",
+          "afterLabel": "ledger-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "scheduled request lacks timestamp/path/userAgent attribution",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "operation-status-request-correlation",
+      "cause": "Operation status is a new inspection request; original request must instead join the operations-list ledger, while operation/controller identity remains exact.",
+      "sameOracle": {
+        "source": "l2-stage-qualifier",
+        "callable": "operation_pair(module)",
+        "argvTail": [
+          "--operation-source",
+          "before|after"
+        ]
+      },
+      "beforeSources": [
+        "l2-runtime-before"
+      ],
+      "fixedSource": "l2-runtime",
+      "loadDependencies": [
+        "l2-worker",
+        "l2-desktop",
+        "l2-tun",
+        "l2-collector"
+      ],
+      "receipt": "l2-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "operation-before",
+          "afterLabel": "operation-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "original-operation-status-join",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "tun-context-wrong-admin",
+      "cause": "Protected collector record from a foreign approving administrator was admitted.",
+      "sameOracle": {
+        "source": "l3-qualifier",
+        "callable": "exercise(source,stage,variant)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--stage",
+          "ready|off",
+          "--variant",
+          "wrong-admin"
+        ]
+      },
+      "beforeSources": [
+        "l3-tun-before"
+      ],
+      "fixedSource": "l3-tun",
+      "loadDependencies": [],
+      "receipt": "l3-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "ready-wrong-admin-before",
+          "afterLabel": "ready-wrong-admin-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        },
+        {
+          "beforeLabel": "off-wrong-admin-before",
+          "afterLabel": "off-wrong-admin-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "foreign collector context was accepted by original TUN consumer",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "tun-context-wrong-session",
+      "cause": "Protected collector record from a foreign ordinary session was admitted.",
+      "sameOracle": {
+        "source": "l3-qualifier",
+        "callable": "exercise(source,stage,variant)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--stage",
+          "ready|off",
+          "--variant",
+          "wrong-session"
+        ]
+      },
+      "beforeSources": [
+        "l3-tun-before"
+      ],
+      "fixedSource": "l3-tun",
+      "loadDependencies": [],
+      "receipt": "l3-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "ready-wrong-session-before",
+          "afterLabel": "ready-wrong-session-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        },
+        {
+          "beforeLabel": "off-wrong-session-before",
+          "afterLabel": "off-wrong-session-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "foreign collector context was accepted by original TUN consumer",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "tun-context-wrong-workspace",
+      "cause": "Protected collector record for a different workspace was admitted.",
+      "sameOracle": {
+        "source": "l3-qualifier",
+        "callable": "exercise(source,stage,variant)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--stage",
+          "ready|off",
+          "--variant",
+          "wrong-workspace"
+        ]
+      },
+      "beforeSources": [
+        "l3-tun-before"
+      ],
+      "fixedSource": "l3-tun",
+      "loadDependencies": [],
+      "receipt": "l3-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "ready-wrong-workspace-before",
+          "afterLabel": "ready-wrong-workspace-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        },
+        {
+          "beforeLabel": "off-wrong-workspace-before",
+          "afterLabel": "off-wrong-workspace-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "foreign collector context was accepted by original TUN consumer",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "tun-context-wrong-programdata",
+      "cause": "Protected collector record declaring foreign ProgramData was admitted.",
+      "sameOracle": {
+        "source": "l3-qualifier",
+        "callable": "exercise(source,stage,variant)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--stage",
+          "ready|off",
+          "--variant",
+          "wrong-programdata"
+        ]
+      },
+      "beforeSources": [
+        "l3-tun-before"
+      ],
+      "fixedSource": "l3-tun",
+      "loadDependencies": [],
+      "receipt": "l3-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "ready-wrong-programdata-before",
+          "afterLabel": "ready-wrong-programdata-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        },
+        {
+          "beforeLabel": "off-wrong-programdata-before",
+          "afterLabel": "off-wrong-programdata-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "foreign collector context was accepted by original TUN consumer",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "tun-context-foreign-state-workspace",
+      "cause": "Retained state workspace differed from original request but record was admitted.",
+      "sameOracle": {
+        "source": "l3-qualifier",
+        "callable": "exercise(source,stage,variant)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--stage",
+          "ready|off",
+          "--variant",
+          "foreign-state-workspace"
+        ]
+      },
+      "beforeSources": [
+        "l3-tun-before"
+      ],
+      "fixedSource": "l3-tun",
+      "loadDependencies": [],
+      "receipt": "l3-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "ready-foreign-state-workspace-before",
+          "afterLabel": "ready-foreign-state-workspace-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        },
+        {
+          "beforeLabel": "off-foreign-state-workspace-before",
+          "afterLabel": "off-foreign-state-workspace-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "foreign collector context was accepted by original TUN consumer",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "tun-context-boolean-session",
+      "cause": "Boolean ordinarySessionId passed numeric session equality.",
+      "sameOracle": {
+        "source": "l3-qualifier",
+        "callable": "exercise(source,stage,variant)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--stage",
+          "ready|off",
+          "--variant",
+          "boolean-session"
+        ]
+      },
+      "beforeSources": [
+        "l3-tun-before"
+      ],
+      "fixedSource": "l3-tun",
+      "loadDependencies": [],
+      "receipt": "l3-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "ready-boolean-session-before",
+          "afterLabel": "ready-boolean-session-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        },
+        {
+          "beforeLabel": "off-boolean-session-before",
+          "afterLabel": "off-boolean-session-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "foreign collector context was accepted by original TUN consumer",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "custom-management-route-shape",
+      "cause": "CUSTOM semantic oracle expected an invented route shape and rejected the actual scalar inbound/action/timeout shape.",
+      "sameOracle": {
+        "source": "b1-qualifier",
+        "callable": "route_pair(before)",
+        "argvTail": [
+          "--route-source",
+          "before|after"
+        ]
+      },
+      "beforeSources": [
+        "b1-route-before"
+      ],
+      "fixedSource": "b1-cases",
+      "loadDependencies": [
+        "route-shape-source"
+      ],
+      "receipt": "b1-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "route-before",
+          "afterLabel": "route-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "custom-management-route-prefix-changed",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "original-runtime-fixture-liveness",
+      "cause": "Branch admission checked serve owner but failed to require the exact original fixture process handle/birth/live state.",
+      "sameOracle": {
+        "source": "b1-qualifier",
+        "callable": "fixture_pair(before)",
+        "argvTail": [
+          "--fixture-source",
+          "before|after"
+        ]
+      },
+      "beforeSources": [
+        "b1-fixture-before"
+      ],
+      "fixedSource": "b1-cases",
+      "loadDependencies": [],
+      "receipt": "b1-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "fixture-before",
+          "afterLabel": "fixture-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "exited-original-fixture-was-admitted",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "custom-direct-probe-transformation",
+      "cause": "CUSTOM semantic oracle failed to admit actual trusted direct-probe process_name/process_path route transformations.",
+      "sameOracle": {
+        "source": "b1-qualifier",
+        "callable": "direct_probe_pair(before)",
+        "argvTail": [
+          "--direct-probe-source",
+          "before|after"
+        ]
+      },
+      "beforeSources": [
+        "b1-direct-before"
+      ],
+      "fixedSource": "b1-cases",
+      "loadDependencies": [
+        "route-shape-source",
+        "direct-probe-source"
+      ],
+      "receipt": "b1-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "direct-probe-before",
+          "afterLabel": "direct-probe-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "custom-unrecognized-direct-probe-transformation",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "probe-closing-actor-replacement",
+      "cause": "Sampler completion could be attributed to an old runtime generation after it exited or its PID was replaced.",
+      "sameOracle": {
+        "source": "b2-qualifier",
+        "callable": "run(source,scenario)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--scenario",
+          "actor-replacement"
+        ]
+      },
+      "beforeSources": [
+        "b2-before"
+      ],
+      "fixedSource": "b2-cases",
+      "loadDependencies": [],
+      "receipt": "b2-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "actor-replacement-before",
+          "afterLabel": "actor-replacement-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "closing-native-replacement-was-attributed-to-old-runtime",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    },
+    {
+      "failureType": "probe-closing-listener-takeover",
+      "cause": "Sampler completion could be attributed to an old runtime after its product port ceased to belong to that generation.",
+      "sameOracle": {
+        "source": "b2-qualifier",
+        "callable": "run(source,scenario)",
+        "argvTail": [
+          "--source",
+          "before|after",
+          "--scenario",
+          "listener-takeover"
+        ]
+      },
+      "beforeSources": [
+        "b2-before"
+      ],
+      "fixedSource": "b2-cases",
+      "loadDependencies": [],
+      "receipt": "b2-receipt",
+      "actualPairs": [
+        {
+          "beforeLabel": "listener-takeover-before",
+          "afterLabel": "listener-takeover-after",
+          "exitCodes": [
+            1,
+            0
+          ]
+        }
+      ],
+      "originalRedReason": "closing-native-replacement-was-attributed-to-old-runtime",
+      "classification": "external Windows test-fixture defect, not a demonstrated product defect"
+    }
+  ],
+  "minimumAuthenticBeforeFixtureSources": [
+    "l1-cases",
+    "l1-scheduled",
+    "l2-runtime-before",
+    "https",
+    "l3-tun-before",
+    "b1-route-before",
+    "b1-fixture-before",
+    "b1-direct-before",
+    "b2-before"
+  ],
+  "beforeDeduplication": {
+    "l3-tun-before": "Exact same bytes as l2-tun.",
+    "b2-before": "Exact same bytes as b1-cases."
+  },
+  "portablePromotionConstraints": [
+    "Load preserved full-source .source files with SourceFileLoader or compile/exec and a unique module name. spec_from_file_location alone does not select a loader for .source.",
+    "causal_review_pairs.py BEFORE assumes a sibling windows-lifecycle-private-preparation-v1 directory; after-only input shape is selected by source == HERE. Preserve explicit source role independent of promoted path and retain the real full gui_continuity/control main bodies.",
+    "qualify_stages.py ROOT=HERE.parents[3] is packet-depth dependent. Its import-time eager loads of runtime_stages, runtime_fixture_worker, no_tray_desktop, tun_stages and tun_native_observer are dependencies even for --operation-source. Split the operation oracle or map all five consumers; do not silently omit them.",
+    "ledger_pair.py discovers repository root by scripts/integration and installs socks_http_fixture into sys.modules before HTTPS import. Preserve original HTTPS handler, fresh subclass and unchanged collector attribution oracle. These three canonical input pins still exactly match the qualification.",
+    "qualify_branches.py ROOT=HERE.parents[3] is packet-depth dependent. route_pair/direct_probe_pair deliberately guard actual Kotlin source text; both source files must be transitive affected-test consumers. They currently match qualification pins.",
+    "qualify_context_join.py and qualify_probe_closing.py hardcode HERE source filenames. Adapt source paths explicitly while preserving each same oracle and actual complete beforeimage.",
+    "Each existing causal command is a separate subprocess. Shared-process promotion must isolate source modules and monkeypatch state; temporary directories currently use dir=HERE and should move to a writable test temporary root.",
+    "Native peers are explicitly inert in every oracle. Routine GREEN establishes deterministic fixture behavior only; original Windows scenarios remain required.",
+    "Proposed canonical consumer/test/fixture names are not final ownership decisions; source hashes and same-oracle behavior must survive path adaptation. All changed tools, full beforefixtures, qualifier modules and transitive canonical source inputs require affected-test enrollment."
+  ],
+  "existingControlMethods": {
+    "l2-local-qualifier": [
+      "test_real_socks_and_http_byte_parser_with_fragmented_peer",
+      "test_wrong_response_and_malformed_http_refuse",
+      "test_finite_input_refuses_unbound_or_unbounded",
+      "test_failed_middle_sample_is_not_discarded",
+      "test_measured_action_overlap_and_gaps_and_omissions",
+      "test_retained_scheduled_callback_pins_owner_and_never_uses_timeout_to_kill",
+      "test_unbound_gui_inputs_refuse_before_owner_or_native_access",
+      "test_exact_retained_original_handle_once_and_terminal_eof",
+      "test_wrong_original_handle_birth_or_token_has_zero_effects",
+      "test_exact_wm_close_once_and_no_detach_claim",
+      "test_live_config_uses_share_read_write_delete_and_closes_on_known_success",
+      "test_named_generation_change_refuses_and_retains_original_observer"
+    ],
+    "l2-stage-qualifier": [
+      "test_inspection_request_changes_but_original_ledger_join_is_required",
+      "test_foreign_original_ledger_request_refuses",
+      "test_unbound_runtime_and_tun_refuse_before_native_or_program_access",
+      "test_trust_options_are_one_scoped_path_and_refuse_control_or_quote",
+      "test_cancel_waits_actual_generation_delayed_get_not_partial_row",
+      "test_only_own_https_role_can_forward",
+      "test_actual_handler_ledger_success_partial_reject_and_slow",
+      "test_absent_child_api_refuses_before_any_native_effect",
+      "test_exact_inherited_owned_desktop_handle_and_single_launch",
+      "test_foreign_gui_path_never_consumes_desktop_launch",
+      "test_exact_review_handoff_consumed_once_and_performs_no_input",
+      "test_stale_foreign_or_boolean_authority_refuses_without_consuming",
+      "test_original_helper_runtime_handles_retained_to_exact_off_without_reopen",
+      "test_wrong_parent_or_live_off_refuses_and_retains_custody"
+    ],
+    "l3-qualifier": [
+      "test_both_stages_accept_matching_original_context",
+      "test_both_stages_refuse_each_foreign_context_without_native_effect"
+    ],
+    "b1-qualifier": [
+      "test_large_valid_owned_payload_exceeds_inline_command_limit",
+      "test_actual_product_management_route_shape_is_accepted",
+      "test_actual_direct_probe_source_shape_is_accepted",
+      "test_custom_semantics_refuses_changed_user_meaning",
+      "test_unknown_variants_ports_and_profile_names_refuse",
+      "test_unbound_cases_refuse_before_effects",
+      "test_exact_original_fixture_is_live_before_any_branch_action",
+      "test_owned_fixture_listener_must_remain_original_at_both_check_edges",
+      "test_prepare_failure_requires_original_generation_and_config",
+      "test_commit_failure_requires_actual_recovered_generation_not_only_same_location",
+      "test_failed_b_cannot_commit_b_or_restore_from_pending_config",
+      "test_complete_exact_roles_and_original_handles_close_known_observation",
+      "test_extra_runtime_changing_snapshot_or_access_denial_never_certifies_absence",
+      "test_native_lease_reads_full_large_bytes_and_keeps_original_on_named_change",
+      "test_off_observer_uses_original_handle_and_never_reopens_pid",
+      "test_different_child_role_refuses_before_native_process_access",
+      "test_product_not_off_refuses_sibling_cleanup_before_native_effect",
+      "test_complete_samples_and_product_port_join",
+      "test_middle_failure_wrong_port_duplicate_or_incomplete_stream_refuses"
+    ]
+  },
+  "bodyCoverageLimits": [
+    "Lifecycle local controls exercise byte framing, sample stream failure/overlap, retained scheduled callback, exact close/crash helpers and LiveConfig custody. GUI causal oracle runs gui_continuity only until sampler launch; it does not exercise the whole native GUI attach/hide/show/close/crash/reopen flow.",
+    "Stage controls exercise operation ledger correlation, scoped trust string, actual delayed-GET wait and fixture HTTP handler modes, desktop startup lease admission, TUN decision validation and same-object collector ready/OFF custody. start_runtime and TUN begin are only exercised at unbound refusal; real runtime/Find Best/scheduled/no-tray/TUN stage sequences are not qualified.",
+    "Frozen TunDecisionCases target old bind_reviewed_decision. The separately owned MainInputBridge is the sole current nonce/durable-burn path; do not promote the old helper as active input authorization or perform a second decision burn.",
+    "Runtime branch controls exercise custom builders/meaning, source shape, fixture liveness/listener guards, pure preparation/recovery oracle, census, large original/named immutable file lease, original OFF handle, cleanup role gates and complete traffic stream validation. config_case/failure_case/start_sibling full public bodies are only reached at unbound refusal.",
+    "Closing probe oracle executes complete probe body using explicit inert Child/listener peers, including natural terminal/full EOF and second exact listener query; it provides no Windows process/listener execution.",
+    "No autostart/SYSTEM/current-main-input wrappers, real credentials, privileged recovery, full renamed-image census, direct Windows acceptance or matching MCP acceptance is supplied by these packets."
+  ],
+  "routineEnrolled": false,
+  "canonicalChanged": false,
+  "windowsNativeExecuted": false,
+  "networkExecuted": false
+}

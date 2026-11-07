@@ -1,0 +1,50 @@
+{
+  "afterSummarySha256": "48b77bd22e3d43bb78d23f40a9e45237c041648df5f42c8a3a7e41086c4da926",
+  "beforeReceiptSha256": "336c6c59c5b563e4c17c1bdaade984c174bc29cbfb3f9defc4866d179cb2150e",
+  "beforeSha256": "495b28e31c71faba29e31cc61bd57c869f88f72cf5b1c32c7d102d6cdceddbc6",
+  "currentSha256": "aa3b9c6d1928829a8bb703f1a9369c10a153cc43f42be4af999d7625122f6b7c",
+  "failureClass": "module-registration-lexical-attribute",
+  "fixturePins": {
+    "caller.before.source": {
+      "bytes": 153074,
+      "original": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-initial-system-intake-preparation-v1/native-preparation-v3/intake-caller.py",
+      "sha256": "495b28e31c71faba29e31cc61bd57c869f88f72cf5b1c32c7d102d6cdceddbc6"
+    },
+    "private/inert-caller-qualification/harness.py": {
+      "bytes": 20601,
+      "original": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/inert-caller-qualification/harness.py",
+      "sha256": "ea82b43ee0d687a503a415360bec27acd1826fced11e18caf617d7e2062c4390"
+    },
+    "private/post-program-adoption-prerequisite-preparation-v1/qualification/producer_peers.py": {
+      "bytes": 18661,
+      "original": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post-program-adoption-prerequisite-preparation-v1/qualification/producer_peers.py",
+      "sha256": "5ee86cbe4145ca2820a6ee261740090d1d518df74aa1e77948013316d978553e"
+    },
+    "private/post-program-adoption-prerequisite-preparation-v1/qualification/qualify_current.py": {
+      "bytes": 15257,
+      "original": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post-program-adoption-prerequisite-preparation-v1/qualification/qualify_current.py",
+      "sha256": "03b4be17aed7311df389db51c7be01bc36d129038fe5912f34a94f1ebb71c14a"
+    },
+    "private/qga-transfer-preparation/native-source-sddl-causal-fixture/native-owner-probe-gates-receipt.json": {
+      "bytes": 727,
+      "original": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/native-source-sddl-causal-fixture/native-owner-probe-gates-receipt.json",
+      "sha256": "c75d1bd910bff604c2da68e4d8eff3617bfc1cf0a5f5e65f4eb28aae1ce526db"
+    },
+    "private/qga-transfer-preparation/qualify_protocol.py": {
+      "bytes": 40364,
+      "original": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/qualify_protocol.py",
+      "sha256": "f4f01ff6f3343f030d9e0388210c6453c8c2e24989e8266406d710cacee88537"
+    },
+    "qualifier.before.source": {
+      "bytes": 7901,
+      "original": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-initial-system-intake-preparation-v1/qualify-native.py",
+      "sha256": "081af328860eb8824bbe61f1234a0204104fcc1dd8bbaa9549c168f2df4bca7a"
+    }
+  },
+  "nativeAcceptance": "UNRUN; declared native observations only",
+  "nativeActions": false,
+  "oneCorrection": "decoder.__name__not in sys.modules -> decoder.__name__ not in sys.modules",
+  "qualifierOnlyClassExtracted": "IntakeReply",
+  "schemaVersion": 1,
+  "wholeCallerMustRemainUnmodified": true
+}

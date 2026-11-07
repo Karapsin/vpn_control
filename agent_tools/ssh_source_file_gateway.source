@@ -3,26 +3,68 @@ import errno,fcntl,pwd,selectors,termios,pty
 import errno, fcntl, os, pty, re, selectors, subprocess, termios, time
 CAP=4096
 class Custody:
-    def __init__(self, child, master, slave, stdout, secret, admitted_keys):
+    """Reserve the original child, streams and writer before fallible setup."""
+    def __init__(self, child=None, master=None, slave=None, stdout=None, secret=None, admitted_keys=()):
         self.child=child; self.master=master; self.slave=slave; self.stdout=stdout
-        self.secret=secret; self.keys=tuple(os.fsencode(k) for k in admitted_keys)
-        self.selector=selectors.DefaultSelector(); self.raw={'stdout':bytearray(),'tty':bytearray()}
+        self.secret=secret; self.keys=()
+        self.raw={'stdout':bytearray(),'tty':bytearray()}
         self.counts={'stdout':0,'tty':0}; self.eof={'stdout':False,'tty':False}
         self.sent=False; self.refusal=None; self.timeout=False; self.closed=False
-        for fd,name in ((master,'tty'),(stdout.fileno(),'stdout')):
-            os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name)
+        self.capture_errors=[]; self.writer=None; self.write_errors=[]
+        self.selector=None;self.registered=set()
+        try:
+            self.selector=selectors.DefaultSelector()
+            self.keys=tuple(os.fsencode(k) for k in admitted_keys)
+            if child is not None:self.attach()
+        except BaseException as error:
+            if child is not None:
+                if self.refusal is None:self._unknown('setup',error)
+                self.finish_naturally()
+            elif self.selector is not None:self.selector.close();self.selector=None
+            raise
+    def _unknown(self, phase, error):
+        self.refusal=self.refusal or 'capture_'+phase
+        if len(self.capture_errors)<16:
+            self.capture_errors.append({'phase':phase,'errorClass':type(error).__name__})
+    def attach(self):
+        # The child and both PTY descriptors already belong to this object.
+        try:
+            for fd,name in ((self.master,'tty'),(self.stdout.fileno(),'stdout')):
+                os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name);self.registered.add(fd)
+        except BaseException as error:
+            self._unknown('setup',error);raise
     def _close_slave(self):
         if self.slave is not None: os.close(self.slave); self.slave=None
     def _step(self, seconds):
         if self.child.poll() is not None:self._close_slave()
-        for key,_ in self.selector.select(seconds):
-            name=key.data
-            try: chunk=os.read(key.fd,4096)
-            except BlockingIOError:continue
-            except OSError as exc:
-                if name=='tty' and exc.errno==errno.EIO:chunk=b''
-                else:self.refusal=self.refusal or 'capture_read';self.selector.unregister(key.fd);self.eof[name]=True;continue
-            if not chunk:self.eof[name]=True;self.selector.unregister(key.fd);continue
+        mapping={}
+        if not self.eof['tty']:mapping[self.master]='tty'
+        if not self.eof['stdout']:mapping[self.stdout.fileno()]='stdout'
+        if not mapping:
+            time.sleep(min(seconds,.01));return
+        try:
+            if self.selector is None:self.selector=selectors.DefaultSelector()
+            for fd,name in mapping.items():
+                if fd not in self.registered:
+                    os.set_blocking(fd,False);self.selector.register(fd,selectors.EVENT_READ,name);self.registered.add(fd)
+            ready=self.selector.select(seconds)
+        except (OSError,ValueError) as error:
+            self._unknown('select',error);time.sleep(min(seconds,.01));return
+        for key,_ in ready:
+            fd=key.fd;name=key.data
+            if self.eof[name]:continue
+            try: chunk=os.read(fd,4096)
+            except (BlockingIOError,InterruptedError):continue
+            except OSError as error:
+                if name=='tty' and error.errno==errno.EIO:chunk=b''
+                else:self._unknown('read',error);continue
+            # Read errors never manufacture EOF. Only a zero-byte read or the
+            # PTY's terminal EIO closes this original stream's observation.
+            if not chunk:
+                self.eof[name]=True
+                try:self.selector.unregister(fd)
+                except (OSError,ValueError) as error:self._unknown('select',error)
+                self.registered.discard(fd);continue
             self.counts[name]+=len(chunk); left=CAP-len(self.raw[name]);self.raw[name].extend(chunk[:max(left,0)])
             if self.counts[name]>CAP:self.refusal=self.refusal or 'capture_overflow'
             if name!='tty':continue
@@ -40,35 +82,65 @@ class Custody:
                         if written!=len(payload):self.refusal='credential_write'
                         self.sent=True;self.secret=None;self._close_slave()
             if (b'assword:' in wire or b'Are you sure' in wire or b'yes/no' in wire) and not prompts:self.refusal=self.refusal or 'foreign_prompt'
+    def snapshot(self):
+        code=self.child.poll() if self.child is not None else None
+        complete=self.child is not None and code is not None and all(self.eof.values())
+        return {'pid':self.child.pid if self.child is not None else None,'returnCode':code,'complete':complete,
+                'timeout':self.timeout,'refusal':self.refusal,'credentialSent':self.sent,
+                'counts':dict(self.counts),'eof':dict(self.eof),'captureErrors':list(self.capture_errors)}
     def observe(self,seconds):
         end=time.monotonic()+seconds
-        while not (self.child.poll() is not None and all(self.eof.values())):
+        while not self.snapshot()['complete']:
             left=end-time.monotonic()
             if left<=0:self.timeout=True;break
             self._step(min(.05,left))
-        complete=self.child.poll() is not None and all(self.eof.values())
-        if complete:self.close_terminal()
-        return {'pid':self.child.pid,'returnCode':self.child.poll(),'complete':complete,
-                'timeout':self.timeout,'refusal':self.refusal,'credentialSent':self.sent,
-                'counts':dict(self.counts),'eof':dict(self.eof)}
+        if self.snapshot()['complete']:
+            if self.writer is not None and self.writer.ident is not None:self.writer.join(1)
+            if self.writer is None or not self.writer.is_alive():self.close_terminal()
+        return self.snapshot()
     def finish_naturally(self):
-        while not (self.child.poll() is not None and all(self.eof.values())):self._step(.05)
+        if self.child is None:return
+        # If setup failed before any writer started, EOF is the only input sent.
+        if (self.writer is None or self.writer.ident is None) and not self.child.stdin.closed:self.child.stdin.close()
+        while not self.snapshot()['complete']:self._step(.05)
+        if self.writer is not None and self.writer.ident is not None:
+            while self.writer.is_alive():self.writer.join(.05)
         self.close_terminal()
     def close_terminal(self):
-        if self.child.poll() is None:raise ValueError('live_child_custody')
+        if not self.snapshot()['complete'] or self.writer is not None and self.writer.is_alive():raise ValueError('live_child_custody')
         if not self.closed:
-            self._close_slave(); self.selector.close();os.close(self.master);self.stdout.close();self.closed=True;self.secret=None
+            self._close_slave();self.selector.close();os.close(self.master);self.stdout.close()
+            if not self.child.stdin.closed:self.child.stdin.close()
+            self.closed=True;self.secret=None
 
-def start_fixed(argv, secret, admitted_keys):
-    master,slave=pty.openpty();attrs=termios.tcgetattr(slave);attrs[3]&=~(termios.ECHO|termios.ECHONL);termios.tcsetattr(slave,termios.TCSANOW,attrs)
-    def session():
-        os.setsid();fcntl.ioctl(slave,termios.TIOCSCTTY,0)
-    env=dict(os.environ)
-    for key in ('SSH_ASKPASS','SSH_ASKPASS_REQUIRE','VPN_CONTROL_SSH_PASSWORD_FILE','DISPLAY'):env.pop(key,None)
-    env['TERM']='dumb'
-    try:child=subprocess.Popen(argv,stdin=subprocess.PIPE,stderr=slave,stdout=subprocess.PIPE,env=env,preexec_fn=session,close_fds=True)
-    except BaseException:os.close(master);os.close(slave);raise
-    return Custody(child,master,slave,child.stdout,secret,admitted_keys)
+def start_fixed(argv, secret, admitted_keys, *, custody=None):
+    reserved=custody is not None
+    custody=Custody(secret=secret,admitted_keys=admitted_keys) if custody is None else custody
+    try:
+        custody.secret=secret;custody.keys=tuple(os.fsencode(k) for k in admitted_keys)
+        custody.master,custody.slave=pty.openpty()
+        attrs=termios.tcgetattr(custody.slave);attrs[3]&=~(termios.ECHO|termios.ECHONL);termios.tcsetattr(custody.slave,termios.TCSANOW,attrs)
+        def session():
+            os.setsid();fcntl.ioctl(custody.slave,termios.TIOCSCTTY,0)
+        env=dict(os.environ)
+        for key in ('SSH_ASKPASS','SSH_ASKPASS_REQUIRE','VPN_CONTROL_SSH_PASSWORD_FILE','DISPLAY'):env.pop(key,None)
+        env['TERM']='dumb'
+        custody.child=subprocess.Popen(argv,stdin=subprocess.PIPE,stderr=custody.slave,stdout=subprocess.PIPE,env=env,preexec_fn=session,close_fds=True)
+        custody.stdout=custody.child.stdout
+        custody.attach()
+    except BaseException as error:
+        if custody.child is None:
+            for name in ('master','slave'):
+                fd=getattr(custody,name)
+                if fd is not None:os.close(fd);setattr(custody,name,None)
+            if custody.selector is not None:custody.selector.close();custody.selector=None
+        else:
+            custody._unknown('setup',error)
+            # A caller which reserved custody can retain it through its handler.
+            # Legacy calls still drain the same child before the error escapes.
+            if not reserved:custody.finish_naturally()
+        raise
+    return custody
 
 def owned_home_identity(value):
     if not isinstance(value,str) or '%' in value or '..' in value.split('/') or any(ord(c)<32 for c in value):raise ValueError('effective_key_not_literal')
@@ -212,15 +284,18 @@ def stage_main():
   command=shlex.join(('python3','-I','-B','-c',receiver))
   if len(command.encode())>60000:raise ValueError('receiver_command_cap')
   argv=['ssh','-T','-F',config_file,'-S','none','-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=none','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-o','StrictHostKeyChecking=yes','-o','IdentitiesOnly=yes','-o','BatchMode=no','-o','NumberOfPasswordPrompts=1','-o','IdentityAgent=none','-o','PreferredAuthentications=publickey','-o','PasswordAuthentication=no','-o','KbdInteractiveAuthentication=no','-o','ConnectTimeout=10',profile,command]
-  secret_bytes=secret.encode();custody=start_fixed(argv,secret_bytes,route_pin['keyMetadata']);secret=None
+  secret_bytes=secret.encode();custody=Custody()
+  start_fixed(argv,secret_bytes,route_pin['keyMetadata'],custody=custody);secret=None
   body=PROBE.encode();payload=json.dumps({'bytes':len(body),'sha256':hashlib.sha256(body).hexdigest()},sort_keys=True).encode()+b'\n'+body
-  write_errors=[]
+  write_errors=custody.write_errors
   def write():
    try:custody.child.stdin.write(payload);custody.child.stdin.flush()
    except BaseException as e:write_errors.append(type(e).__name__)
-   finally:custody.child.stdin.close()
-  writer=threading.Thread(target=write,daemon=True);writer.start();result=custody.observe(60)
-  if not result['complete'] or result['refusal'] or result['returnCode'] not in (0,64):raise ValueError('source_transfer_unverified')
+   finally:
+    try:custody.child.stdin.close()
+    except BaseException as e:write_errors.append(type(e).__name__)
+  writer=threading.Thread(target=write,daemon=True);custody.writer=writer;writer.start();result=custody.observe(60)
+  if not result['complete'] or result['timeout'] or result['refusal'] or result['returnCode'] not in (0,64):raise ValueError('source_transfer_unverified')
   writer.join(1)
   if writer.is_alive() or write_errors:raise ValueError('source_writer_unclosed')
   value=json.loads(bytes(custody.raw['stdout']),object_pairs_hook=reject_pairs)
@@ -234,7 +309,13 @@ def stage_main():
   print(json.dumps({'state':'observed','correlationId':corr,'stage':value,'capture':result,'_operatorPrivateCapture':private_inner(custody,secret_bytes),'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True),flush=True)
   return 0
  except BaseException as e:
-  print(json.dumps({'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(e).__name__,'reason':str(e) if type(e)is ValueError and re.fullmatch('[a-z_]{1,64}',str(e)) else 'unclassified','capture':custody.observe(.01) if custody else None,'_operatorPrivateCapture':private_inner(custody,secret_bytes) if custody else None,'nativeActionAllowed':False,'replayAllowed':False},sort_keys=True),flush=True)
-  if custody is not None and not custody.closed:custody.finish_naturally()
+  try:
+   if custody is not None and custody.refusal is None:custody._unknown('stage',e)
+   unknown={'state':'unknown','correlationId':locals().get('corr'),'errorClass':type(e).__name__,'reason':str(e) if type(e)is ValueError and re.fullmatch('[a-z_]{1,64}',str(e)) else 'unclassified','capture':custody.snapshot() if custody else None,'_operatorPrivateCapture':private_inner(custody,secret_bytes) if custody else None,'nativeActionAllowed':False,'replayAllowed':False}
+  finally:
+   if custody is not None and not custody.closed:custody.finish_naturally()
+  unknown['finalCapture']=custody.snapshot() if custody else None
+  unknown['_operatorPrivateFinalCapture']=private_inner(custody,secret_bytes) if custody else None
+  print(json.dumps(unknown,sort_keys=True),flush=True)
   return 3
 if __name__=='__main__':sys.exit(stage_main())

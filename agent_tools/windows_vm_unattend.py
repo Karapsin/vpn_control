@@ -4,7 +4,9 @@ from xml.etree import ElementTree as ET
 
 FIELDS={'imageName','locale','user','administrator'}
 def parse_setup(value):
-    if type(value)is not dict or set(value)!=FIELDS:raise ValueError('setup_fields')
+    if type(value)is not dict:raise ValueError('setup_fields')
+    if set(value)!=FIELDS:
+        if set(value)!=FIELDS|{'purpose'} or type(value['purpose'])is not str or value['purpose']!='windowsUacVisual':raise ValueError('setup_fields')
     if type(value['imageName'])is not str or not re.fullmatch(r'[A-Za-z0-9 ()_-]{1,80}',value['imageName']):raise ValueError('setup_image')
     if type(value['locale'])is not str or not re.fullmatch('[a-z]{2}-[A-Z]{2}',value['locale']):raise ValueError('setup_locale')
     names=[value[k] for k in ('user','administrator')]
@@ -136,6 +138,7 @@ def answer_file(setup,credentials):
     for role,group in (('user','Users'),('administrator','Administrators')):
         account=node(accounts,'LocalAccount',**{'{'+wcm+'}action':'add'});node(account,'Name',setup[role]);node(account,'Group',group)
         password=node(account,'Password');node(password,'Value',credentials[role]);node(password,'PlainText','true')
-    logon=node(shell,'AutoLogon');node(logon,'Username',setup['user']);node(logon,'Enabled','true');node(logon,'LogonCount',3)
-    password=node(logon,'Password');node(password,'Value',credentials['user']);node(password,'PlainText','true')
+    role='administrator' if setup.get('purpose')=='windowsUacVisual' else 'user'
+    logon=node(shell,'AutoLogon');node(logon,'Username',setup[role]);node(logon,'Enabled','true');node(logon,'LogonCount',1 if role=='administrator' else 3)
+    password=node(logon,'Password');node(password,'Value',credentials[role]);node(password,'PlainText','true')
     return ET.tostring(root,encoding='utf-8',xml_declaration=True)

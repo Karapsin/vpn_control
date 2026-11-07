@@ -1,0 +1,79 @@
+{
+  "failure": "Source review identified constructor ownership gaps, escaping select/read faults, premature input closure and ignored timeout latches. Local inert peers establish the causal boundaries; original native Windows outcome remains UNKNOWN.",
+  "schemaVersion": 1,
+  "scope": "No SSH, VM, QGA, native or real transport; complete preserved source modules are executed.",
+  "sources": {
+    "android_installer_dispatch.py": {
+      "bytes": 62780,
+      "originalPath": "agent_tools/android_installer_dispatch.py",
+      "sha256": "48d853093b0e6b3b4a10704904c44333dc5e22d7725d703708c900b04b9b3d13"
+    },
+    "android_original_host_status.py.before.source": {
+      "bytes": 17771,
+      "originalPath": "agent_tools/android_original_host_status.py",
+      "sha256": "660fe14865aedd165d230861f7264967d1e8920d9ded11b7bbe3c87ed43fb6ec"
+    },
+    "android_qualified_cli_observation.py.before.source": {
+      "bytes": 19949,
+      "originalPath": "agent_tools/android_qualified_cli_observation.py",
+      "sha256": "6a2cdec7f26258a75d394a91f03114b4ae72141f2625b27427d61a96b1a3ca28"
+    },
+    "android_qualified_cli_observation.select.before.source": {
+      "bytes": 21842,
+      "originalPath": "private unadopted Android/direct custody candidate",
+      "role": "authentic first private candidate: new high-fd restriction and subclass metadata compatibility failure",
+      "sha256": "a41b56ac7bd311586b8721843bcd420ede4c0ef5bb9858e195441e5ed9cdfe0a"
+    },
+    "android_qualified_cli_remote.source": {
+      "bytes": 33184,
+      "originalPath": "agent_tools/android_qualified_cli_remote.source",
+      "role": "unchanged whole observer dependency",
+      "sha256": "9b6585ad543225751608ef29e9090edaec719626f580c78f1883cf80b6b56c84"
+    },
+    "ssh_source_file_gateway.reserved-selector.before.source": {
+      "bytes": 19943,
+      "originalPath": "private unadopted gateway custody candidate ssh_source_file_gateway.source",
+      "role": "authentic reviewed private candidate: reserved no-child key setup outside cleanup try",
+      "sha256": "69cc4be83883489c53affc69b5ab4578db2a97f18b0f7258409713d9fe1748b8"
+    },
+    "ssh_source_file_gateway.source.before.source": {
+      "bytes": 15727,
+      "originalPath": "agent_tools/ssh_source_file_gateway.source",
+      "sha256": "17ea428f8dc8be814f7906dc478dcb67a4119015a2e48d1ba754a8855598f17b"
+    },
+    "ssh_source_file_stage.py.before.source": {
+      "bytes": 10465,
+      "originalPath": "agent_tools/ssh_source_file_stage.py",
+      "sha256": "0fc515e7e118b846ea154cd979e5571afdfc1ea474beb4197c9e1a8237d2b3c9"
+    },
+    "ssh_source_file_stage.reserved-selector.before.source": {
+      "bytes": 10465,
+      "originalPath": "private unadopted gateway custody candidate ssh_source_file_stage.py",
+      "role": "authentic reviewed private candidate: reserved no-child key setup outside cleanup try",
+      "sha256": "8cb40ada5f4be6972ceccc2b0f52a89fe29ea2b991d15a54f66306a85d1daba3"
+    },
+    "ssh_source_file_stage_direct.py.before.source": {
+      "bytes": 17047,
+      "originalPath": "agent_tools/ssh_source_file_stage_direct.py",
+      "sha256": "d793ead7f9954ddac8d5c7251e838dd8a534df9a5a87069fe784dc1221970d99"
+    },
+    "windows_vm_deploy.duplicate-output.before.source": {
+      "bytes": 29465,
+      "originalPath": "private unadopted windows_vm_deploy.py custody candidate",
+      "role": "authentic first Windows exception candidate duplicated full raw base64 streams beyond unchanged16MiB outer capture",
+      "sha256": "f38835e5deb0d58be37fc19c7b8985711f947cf9617f9da05fb32d5e7217e243"
+    },
+    "windows_vm_deploy.observed-output.before.source": {
+      "bytes": 30235,
+      "originalPath": "private qualified windows_vm_deploy.py f4a5 candidate",
+      "role": "complete f4a5 prior to observed-success combined framing admission; pre-existing serializer also present in authentic00c22",
+      "sha256": "f4a5c34029f644edcbbb54dadd51bed8d56e351506cf4f032cf5ada54bb3ac0f"
+    },
+    "windows_vm_deploy.py.before.source": {
+      "bytes": 28976,
+      "originalPath": "agent_tools/windows_vm_deploy.py",
+      "role": "complete additional authorized Windows emitted consumer beforeimage",
+      "sha256": "00c22a5c39414ce9f3f58e75df72cd37c8a199d34d97e9e6b4ddee1db4e6f0d9"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+"""Finite full-source closing-edge oracles with explicit inert native peers."""
+from pathlib import Path
+from types import SimpleNamespace as N
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import sys
+import uuid
+
+HERE=Path(__file__).resolve().parent
+
+def load(source):
+    path=HERE/('runtime_branch_cases.before.source' if source=='before' else 'runtime_branch_cases.py')
+    name='_closing_'+uuid.uuid4().hex;loader=importlib.machinery.SourceFileLoader(name,str(path))
+    spec=importlib.util.spec_from_loader(name,loader);module=importlib.util.module_from_spec(spec)
+    sys.modules[name]=module;loader.exec_module(module);return module
+
+def run(source,scenario):
+    module=load(source);calls=[];events=[];effects=[]
+    actor={'pid':42,'creationFileTime':123456789,'image':'C:/Owned/sing-box.exe','sha256':'a'*64,
+        'sid':'S-1-5-21-1-2-3-1001','sessionId':2}
+    rows=[{'kind':'sample','ordinal':i,'succeeded':True,'mixedPort':12345} for i in range(4)]
+    rows.append({'kind':'terminal','allSamplesSucceeded':True,'sampleCount':4})
+    output=N(returncode=0,stderr='',stdout=''.join(json.dumps(row)+'\n' for row in rows))
+    class Child:
+        ordinal=7
+        def completed(self):
+            effects.append('natural-terminal-and-both-full-eof');return output
+    def child(label,argv):
+        assert label=='runtime-branch-traffic-closing' and argv[-2:]==['--mixed-port','12345']
+        effects.append('original-sampler-start');return Child()
+    def listeners(owner,inputs,expected):
+        assert expected is actor
+        if calls:assert effects[-1]=='natural-terminal-and-both-full-eof','closing-query-before-natural-eof'
+        calls.append(dict(expected))
+        if len(calls)==2 and scenario=='actor-replacement':
+            # Native fixed script/adapter refusal: retained opening PID now
+            # denotes another FILETIME (or original actor has exited).
+            raise AssertionError('original-listener-query-terminal')
+        if len(calls)==2 and scenario=='listener-takeover':
+            return [] # fixed native script filters the foreign port owner out
+        return [{'address':'127.0.0.1','port':12345,'pid':42}]
+    module.listeners=listeners
+    owner=N(request={'pythonRuntime':{'interpreterPath':'python.exe'}},child=child,event=lambda kind,value:events.append((kind,value)))
+    state={'ready':{'advertisedSocksPort':23456}}
+    inputs={'trafficWorkerPath':'traffic_worker.py','trafficInputPath':'traffic.json'}
+    rejected=False;reason=None
+    try:result=module.probe(owner,state,inputs,12345,'closing',actor)
+    except AssertionError as error:
+        reason=str(error)
+        expected='original-listener-query-terminal' if scenario=='actor-replacement' else 'traffic-closing-port-not-owned-by-exact-runtime-generation'
+        assert scenario!='valid' and reason==expected,(scenario,reason)
+        rejected=True
+    if scenario=='valid':
+        assert not rejected and len(result)==5 and len(calls)==2 and len(events)==1
+    else:
+        assert rejected,'closing-native-replacement-was-attributed-to-old-runtime'
+        assert len(calls)==2 and events==[],'failed-closing-observation-published-success'
+    assert effects==['original-sampler-start','natural-terminal-and-both-full-eof']
+    print(json.dumps({'source':source,'scenario':scenario,'rejected':rejected,'reason':reason,
+        'nativeQueryCount':len(calls),'samplerNaturalTerminalAndFullEof':True,'nativePeerExplicitlyInert':True,
+        'noWindowsNativeOrNetworkExecution':True}),flush=True)
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--source',choices=['before','after'],required=True)
+    parser.add_argument('--scenario',choices=['actor-replacement','listener-takeover','valid'],required=True)
+    args=parser.parse_args();run(args.source,args.scenario)

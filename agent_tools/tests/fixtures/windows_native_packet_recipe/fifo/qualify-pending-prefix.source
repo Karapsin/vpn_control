@@ -1,0 +1,498 @@
+"""Inert local-filesystem qualification for pending_prefix.py; no remote I/O."""
+
+from __future__ import annotations
+
+import errno
+import hashlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import platform
+import sys
+import threading
+import time
+import unittest
+from unittest import mock
+import uuid
+
+
+HERE = Path(__file__).resolve().parent
+spec = importlib.util.spec_from_file_location("private_pending_prefix", HERE / "pending_prefix.py")
+assert spec is not None and spec.loader is not None
+pending = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(pending)
+RUN = HERE / "pending-prefix-evidence" / uuid.uuid4().hex
+
+
+def exclusive(path: Path, raw: bytes) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb", closefd=False) as target:
+            target.write(raw)
+            target.flush()
+            os.fsync(target.fileno())
+    finally:
+        os.close(descriptor)
+
+
+def pin(raw: bytes, **changes) -> dict:
+    digest = hashlib.sha256(raw).hexdigest()
+    result = {
+        "bytes": len(raw),
+        "receivedBytes": len(raw),
+        "receivedSha256": digest,
+        "retainedSha256": digest,
+        "eof": False,
+    }
+    result.update(changes)
+    return result
+
+
+def encoded(value) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+
+
+class Qualification(unittest.TestCase):
+    def setUp(self):
+        self.case = RUN / self._testMethodName
+        self.case.mkdir(mode=0o700)
+        self.readers = []
+
+    def tearDown(self):
+        # Every actor here is a synchronous local qualification mutation, not a
+        # remote owner.  It has returned before this known-terminal assertion.
+        for reader in self.readers:
+            reader.close_known(terminal=True)
+
+    def stream(self, raw: bytes):
+        root = self.case / "streams"
+        root.mkdir(mode=0o700)
+        exclusive(root / "stdout.raw", raw)
+        exclusive(self.case / "original-prefix.bin", raw)
+        exclusive(self.case / "original-pin.json", encoded(pin(raw)))
+        return root
+
+    def held(self, root):
+        reader = pending.HeldPrefix(root, "stdout.raw")
+        self.readers.append(reader)
+        exclusive(self.case / "opened-identity.json", encoded(reader.identity))
+        return reader
+
+    def refused(self, reader, receipt):
+        with self.assertRaises(pending.PrefixError):
+            reader.read(receipt)
+        self.assertFalse(reader.closed)
+        os.fstat(reader._stream_fd)
+
+    def during_read(self, change):
+        original = os.pread
+        called = False
+
+        def gated(descriptor, amount, offset):
+            nonlocal called
+            raw = original(descriptor, amount, offset)
+            if not called:
+                called = True
+                change()
+            return raw
+
+        return mock.patch.object(pending.os, "pread", side_effect=gated)
+
+    def test_exact_prefix_and_identity(self):
+        raw = b'{"stage":"pending"}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+        self.assertEqual(reader.read(pin(raw)), raw)
+        self.assertEqual(reader.identity["stream"][1], os.stat(root / "stdout.raw").st_ino)
+        exclusive(self.case / "accepted-prefix.bin", raw)
+
+    def test_zero_byte_pending_receipt(self):
+        root = self.stream(b"")
+        reader = self.held(root)
+        self.assertEqual(reader.read(pin(b"")), b"")
+
+    def test_append_after_receipt_before_open_is_allowed(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        with (root / "stdout.raw").open("ab") as target:
+            target.write(b'{"stage":2}\n')
+        reader = self.held(root)
+        self.assertEqual(reader.read(pin(raw)), raw)
+
+    def test_append_during_real_pread_is_allowed(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+
+        def append():
+            with (root / "stdout.raw").open("ab") as target:
+                target.write(b'{"stage":2}\n')
+
+        with self.during_read(append):
+            self.assertEqual(reader.read(pin(raw)), raw)
+        self.assertGreater(os.stat(root / "stdout.raw").st_size, len(raw))
+
+    def test_original_fds_support_monotonic_growth(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+        self.assertEqual(reader.read(pin(raw)), raw)
+        added = b'{"stage":2}\n'
+        with (root / "stdout.raw").open("ab") as target:
+            target.write(added)
+        self.assertEqual(reader.read(pin(raw + added)), raw + added)
+
+    def test_receipt_cannot_move_backwards(self):
+        raw = b'{"stage":1}\n'
+        reader = self.held(self.stream(raw))
+        reader.read(pin(raw))
+        self.refused(reader, pin(raw[:-1]))
+
+    def test_truncate_before_read_retains_original_fd(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+        os.truncate(root / "stdout.raw", len(raw) - 1)
+        self.refused(reader, pin(raw))
+
+    def test_truncate_after_real_pread_retains_original_fd(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+        with self.during_read(lambda: os.truncate(root / "stdout.raw", len(raw) - 1)):
+            self.refused(reader, pin(raw))
+
+    def test_same_bytes_named_replacement_between_receipts_is_refused(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+        reader.read(pin(raw))
+        os.rename(root / "stdout.raw", root / "original-renamed.raw")
+        exclusive(root / "stdout.raw", raw)
+        self.refused(reader, pin(raw))
+        self.assertEqual(os.pread(reader._stream_fd, len(raw), 0), raw)
+
+    def test_same_bytes_named_replacement_during_pread_is_refused(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+
+        def replace():
+            os.rename(root / "stdout.raw", root / "original-renamed.raw")
+            exclusive(root / "stdout.raw", raw)
+
+        with self.during_read(replace):
+            self.refused(reader, pin(raw))
+
+    def test_directory_replacement_keeps_original_fds_and_is_refused(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+        reader.read(pin(raw))
+        os.rename(root, root.with_name("original-streams"))
+        root.mkdir(mode=0o700)
+        exclusive(root / "stdout.raw", raw)
+        self.refused(reader, pin(raw))
+
+    def test_wrong_prefix_even_with_coherent_receipt_is_refused(self):
+        raw = b'{"stage":1}\n'
+        reader = self.held(self.stream(raw))
+        self.refused(reader, pin(raw.replace(b"1", b"2")))
+
+    def test_previously_authenticated_bytes_cannot_change(self):
+        raw = b'{"stage":1}\n'
+        root = self.stream(raw)
+        reader = self.held(root)
+        reader.read(pin(raw))
+        altered = raw.replace(b"1", b"2")
+        descriptor = os.open(root / "stdout.raw", os.O_WRONLY | os.O_NOFOLLOW)
+        try:
+            os.pwrite(descriptor, altered, 0)
+        finally:
+            os.close(descriptor)
+        self.refused(reader, pin(altered))
+
+    def test_file_policy_change_is_refused(self):
+        raw = b"x"
+        root = self.stream(raw)
+        reader = self.held(root)
+        os.chmod(root / "stdout.raw", 0o640)
+        self.refused(reader, pin(raw))
+
+    def test_directory_policy_change_is_refused(self):
+        raw = b"x"
+        root = self.stream(raw)
+        reader = self.held(root)
+        os.chmod(root, 0o750)
+        self.refused(reader, pin(raw))
+
+    def test_initial_nonprivate_file_is_refused(self):
+        root = self.stream(b"x")
+        os.chmod(root / "stdout.raw", 0o644)
+        with self.assertRaises(pending.PrefixError):
+            pending.HeldPrefix(root, "stdout.raw")
+
+    def test_initial_hardlinked_file_is_refused(self):
+        root = self.stream(b"x")
+        os.link(root / "stdout.raw", root / "second-link.raw")
+        with self.assertRaises(pending.PrefixError):
+            pending.HeldPrefix(root, "stdout.raw")
+
+    def test_initial_symlink_file_is_refused(self):
+        root = self.stream(b"x")
+        os.rename(root / "stdout.raw", root / "target.raw")
+        os.symlink("target.raw", root / "stdout.raw")
+        with self.assertRaises(pending.PrefixError):
+            pending.HeldPrefix(root, "stdout.raw")
+
+    def test_fifo_replacement_at_real_open_is_nonblocking_and_refused(self):
+        root = self.stream(b"x")
+        original_open = os.open
+        before_open = threading.Event()
+        after_open = threading.Event()
+        opened = []
+        seen_flags = []
+        outcomes = []
+
+        def replace_then_open(name, flags, *args, **kwargs):
+            if name == "stdout.raw" and kwargs.get("dir_fd") is not None:
+                os.rename(root / "stdout.raw", root / "original-before-fifo.raw")
+                os.mkfifo(root / "stdout.raw", 0o600)
+                seen_flags.append(flags)
+                before_open.set()
+                descriptor = original_open(name, flags, *args, **kwargs)
+                opened.append(descriptor)
+                after_open.set()
+                return descriptor
+            descriptor = original_open(name, flags, *args, **kwargs)
+            opened.append(descriptor)
+            return descriptor
+
+        def observe():
+            try:
+                reader = pending.HeldPrefix(root, "stdout.raw")
+            except BaseException as exc:
+                outcomes.append(exc)
+            else:
+                # A FIFO accepted as a stream would be a separate test failure.
+                reader.close_known(terminal=True)
+                outcomes.append(None)
+
+        writer_needed = False
+        writer_opened = False
+        after_open_before_release = None
+        worker = threading.Thread(target=observe, name="owned-inert-fifo-reader")
+        with mock.patch.object(pending.os, "open", side_effect=replace_then_open):
+            worker.start()
+            try:
+                self.assertTrue(before_open.wait(5), "worker did not reach its real FIFO open")
+                writer_needed = not bool(seen_flags[0] & os.O_NONBLOCK)
+                if writer_needed:
+                    # POSIX O_RDONLY FIFO open cannot complete without a writer.
+                    # Release this exact owned blocked open, rather than signal
+                    # its worker or abandon a timeout/FD.  Success of O_WRONLY
+                    # proves the corresponding reader reached the kernel open.
+                    after_open_before_release = after_open.is_set()
+                    deadline = time.monotonic() + 5
+                    while True:
+                        try:
+                            descriptor = original_open(
+                                root / "stdout.raw",
+                                os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
+                            )
+                        except OSError as exc:
+                            if exc.errno != errno.ENXIO or time.monotonic() >= deadline:
+                                raise
+                            time.sleep(0.001)
+                        else:
+                            writer_opened = True
+                            os.close(descriptor)
+                            break
+                self.assertTrue(after_open.wait(5), "original FIFO open did not return")
+            finally:
+                # The only deliberately blocking operation is the owned FIFO
+                # open above, and the old-source branch has already released it.
+                worker.join(5)
+        self.assertFalse(worker.is_alive(), "owned FIFO reader was not joined")
+        closed = []
+        for descriptor in opened:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                if exc.errno == errno.EBADF:
+                    closed.append(descriptor)
+        proof = {
+            "flags": seen_flags,
+            "writerNeeded": writer_needed,
+            "writerOpened": writer_opened,
+            "afterOpenBeforeWriterRelease": after_open_before_release,
+            "workerJoined": not worker.is_alive(),
+            "openedDescriptors": opened,
+            "closedDescriptors": closed,
+            "outcomeTypes": [type(value).__name__ for value in outcomes],
+        }
+        exclusive(self.case / "fifo-open-proof.json", encoded(proof))
+        self.assertEqual(closed, opened, "original worker descriptors were not all closed")
+        self.assertEqual(len(outcomes), 1)
+        self.assertIsInstance(outcomes[0], pending.PrefixError)
+        if writer_needed:
+            self.assertFalse(after_open_before_release)
+            self.assertTrue(writer_opened)
+        # This assertion runs only after the actual old blocked open has been
+        # released and joined, and every original descriptor has closed.
+        self.assertFalse(writer_needed, "actual FIFO open required an external writer to unblock")
+
+    def test_symlink_directory_ancestry_is_refused(self):
+        root = self.stream(b"x")
+        alias = self.case / "alias"
+        os.symlink(root.name, alias)
+        with self.assertRaises(pending.PrefixError):
+            pending.HeldPrefix(alias, "stdout.raw")
+
+    def test_receipt_caps_and_hash_disagreement_are_refused(self):
+        raw = b"x"
+        reader = self.held(self.stream(raw))
+        invalid = (
+            pin(raw, receivedBytes=2),
+            pin(raw, bytes=True),
+            pin(raw, receivedBytes=True),
+            pin(raw, bytes=-1, receivedBytes=-1),
+            pin(raw, bytes=pending.MAXIMUM_PREFIX + 1, receivedBytes=pending.MAXIMUM_PREFIX + 1),
+            pin(raw, retainedSha256="0" * 64),
+            pin(raw, receivedSha256="A" * 64, retainedSha256="A" * 64),
+            pin(raw, receivedSha256=None),
+            pin(raw, extra="status was capped"),
+        )
+        for value in invalid:
+            with self.subTest(receipt=value):
+                self.refused(reader, value)
+
+    def test_terminal_eof_is_not_a_pending_prefix(self):
+        raw = b"x"
+        reader = self.held(self.stream(raw))
+        for eof in (True, 0, 1, None, "false"):
+            with self.subTest(eof=eof):
+                self.refused(reader, pin(raw, eof=eof))
+
+    def test_caller_limit_is_hard_and_may_be_lower(self):
+        raw = b"xy"
+        reader = self.held(self.stream(raw))
+        for limit in (True, -1, pending.MAXIMUM_PREFIX + 1, 1):
+            with self.subTest(limit=limit), self.assertRaises(pending.PrefixError):
+                reader.read(pin(raw), maximum=limit)
+        self.assertEqual(reader.read(pin(raw), maximum=2), raw)
+
+    def test_unknown_close_retains_fds_known_close_releases_them(self):
+        reader = self.held(self.stream(b"x"))
+        original = tuple(reader._held)
+        with self.assertRaises(pending.PrefixError):
+            reader.close_known()
+        for descriptor in original:
+            os.fstat(descriptor)
+        reader.close_known(terminal=True)
+        self.assertTrue(reader.closed)
+        for descriptor in original:
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
+        with self.assertRaises(pending.PrefixError):
+            reader.read(pin(b"x"))
+
+    def test_complete_unicode_objects_and_unaccepted_partial_tail(self):
+        raw = '{"stage":"Ω","nested":{"x":1}}\n'.encode("utf-8")
+        tail = b'{"stage":"\xce'
+        records, remaining = pending.parse_complete_lines(raw + tail)
+        self.assertEqual(records, [{"stage": "Ω", "nested": {"x": 1}}])
+        self.assertEqual(remaining, tail)
+        exclusive(self.case / "accepted-input.bin", raw + tail)
+
+    def test_no_newline_never_accepts_a_record(self):
+        for raw in (b"", b'{"complete":true}', b"\xff", b'{"x":'):
+            with self.subTest(raw=raw):
+                self.assertEqual(pending.parse_complete_lines(raw), ([], raw))
+
+    def test_duplicate_keys_including_nested_are_refused(self):
+        for raw in (b'{"x":1,"x":2}\n', b'{"nested":{"x":1,"x":2}}\n'):
+            with self.subTest(raw=raw), self.assertRaises(pending.PrefixError):
+                pending.parse_complete_lines(raw)
+
+    def test_nonobjects_invalid_utf8_and_invalid_complete_json_are_refused(self):
+        for raw in (b"[]\n", b"true\n", b"1\n", b"\xff\n", b'{"x":}\n', b"\n"):
+            with self.subTest(raw=raw), self.assertRaises(pending.PrefixError):
+                pending.parse_complete_lines(raw)
+
+    def test_nonfinite_json_numbers_are_refused(self):
+        for raw in (b'{"x":NaN}\n', b'{"x":Infinity}\n', b'{"x":1e999}\n'):
+            with self.subTest(raw=raw), self.assertRaises(pending.PrefixError):
+                pending.parse_complete_lines(raw)
+
+    def test_parser_byte_line_and_record_caps(self):
+        invalid = (
+            (b" " * (pending.MAXIMUM_LINE + 1), {}),
+            (b" " * (pending.MAXIMUM_LINE + 1) + b"\n", {}),
+            (b"{}\n" * (pending.MAXIMUM_RECORDS + 1), {}),
+            (b"{}\n", {"max_line": True}),
+            (b"{}\n", {"max_line": pending.MAXIMUM_LINE + 1}),
+            (b"{}\n", {"max_line": 1}),
+            (bytearray(b"{}\n"), {}),
+        )
+        for raw, options in invalid:
+            with self.subTest(length=len(raw), options=options), self.assertRaises(pending.PrefixError):
+                pending.parse_complete_lines(raw, **options)
+
+
+def fingerprint(path: Path) -> dict:
+    value = path.stat()
+    return {
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "bytes": value.st_size,
+        "device": value.st_dev,
+        "inode": value.st_ino,
+        "mtimeNs": value.st_mtime_ns,
+        "ctimeNs": value.st_ctime_ns,
+    }
+
+
+def main() -> int:
+    RUN.parent.mkdir(mode=0o700, exist_ok=True)
+    RUN.mkdir(mode=0o700)
+    sources = [HERE / "pending_prefix.py", Path(__file__).resolve()]
+    before = {p.name: fingerprint(p) for p in sources}
+    exclusive(RUN / "source-before.json", encoded(before))
+    capture = io.StringIO()
+    suite = unittest.defaultTestLoader.loadTestsFromTestCase(Qualification)
+    result = unittest.TextTestRunner(stream=capture, verbosity=2).run(suite)
+    after = {p.name: fingerprint(p) for p in sources}
+    exclusive(RUN / "test-output.txt", capture.getvalue().encode("utf-8"))
+    exclusive(RUN / "source-after.json", encoded(after))
+    summary = {
+        "qualification": "private-inert-local-filesystem-only",
+        "runDirectory": str(RUN),
+        "testsRun": result.testsRun,
+        "failures": len(result.failures),
+        "errors": len(result.errors),
+        "skipped": len(result.skipped),
+        "sourcesFrozen": before == after,
+        "sourceBefore": before,
+        "sourceAfter": after,
+        "euid": os.geteuid(),
+        "python": sys.version,
+        "platform": platform.platform(),
+        "scope": "No remote/status, SSH, SDK, VM, guest, credential, or socket actions.",
+        "limitations": [
+            "A five-field receipt cannot prove a same-bytes pathname replacement before first open.",
+            "Unknown state retains original reader FDs only while the caller retains the live object/process.",
+            "The terminal close argument is a caller assertion, not proof of remote owner state.",
+            "No production or native Windows acceptance is claimed.",
+        ],
+    }
+    exclusive(RUN / "summary.json", encoded(summary))
+    print(json.dumps({"summary": str(RUN / "summary.json"), "testsRun": result.testsRun,
+                      "failures": len(result.failures), "errors": len(result.errors),
+                      "sourcesFrozen": before == after}, sort_keys=True))
+    return 0 if result.wasSuccessful() and before == after else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

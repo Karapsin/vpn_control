@@ -28,6 +28,11 @@
       "path": "agent_tools/affected_agent_tests.py",
       "baseline": "d24c1904",
       "sha256": "5e09740df63d87e9f2c8dfbc322e302353cb4026a122878d701f8ee912158237"
+    },
+    "managed_agent_check.before.source": {
+      "path": "agent_tools/managed_agent_check.py",
+      "baseline": "a9aed701",
+      "sha256": "6b51b95449493e563adcede547fec271209c0faccd7597171571b486cc2e7820"
     }
   }
 }

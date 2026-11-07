@@ -1,0 +1,35 @@
+param([Parameter(Mandatory=$true)][string]$BodyPath,[Parameter(Mandatory=$true)][string]$AssignmentPath)
+$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+$script:peerProcessCalls=0
+$script:peerServiceCalls=0
+$self=[Diagnostics.Process]::GetCurrentProcess()
+try {$script:peerOwnProcessId=$self.Id;$script:peerOwnImage=$self.MainModule.FileName} finally {$self.Dispose()}
+function Get-CimInstance {
+ param([string]$ClassName,[string]$Filter)
+ if($ClassName -ceq 'Win32_Process' -and $Filter -ceq "Name='qemu-ga.exe'"){
+  $script:peerProcessCalls++
+  return [pscustomobject]@{ProcessId=$script:peerOwnProcessId;ExecutablePath=$script:peerOwnImage}
+ }
+ if($ClassName -ceq 'Win32_Service' -and $Filter -ceq ('ProcessId='+$script:peerOwnProcessId)){
+  $script:peerServiceCalls++
+  return [pscustomobject]@{Name='declared-own-child-service';State='Running';PathName=$script:peerOwnImage}
+ }
+ throw 'UNDECLARED_CIM_QUERY'
+}
+try {
+ $body=[IO.File]::ReadAllText($BodyPath,[Text.Encoding]::UTF8)
+ $r= & ([scriptblock]::Create($body))
+ if($script:peerProcessCalls -ne 1 -or $script:peerServiceCalls -ne 1 -or $r.processId -ne $script:peerOwnProcessId -or $r.processImagePath -cne $script:peerOwnImage){throw 'OWN_PROCESS_PEER_SCOPE'}
+ $bootstrapOpening=[pscustomobject]@{peer='declared-inert-actor-opening';pid=$script:peerOwnProcessId}
+ $bootstrapClosing=[pscustomobject]@{peer='declared-inert-actor-closing';pid=$script:peerOwnProcessId}
+ $assignment=[IO.File]::ReadAllText($AssignmentPath,[Text.Encoding]::UTF8)
+ $result= & ([scriptblock]::Create($assignment))
+ if($result -isnot [Management.Automation.PSCustomObject] -or $result.bootstrapOpening.peer -cne $bootstrapOpening.peer -or $result.bootstrapClosing.peer -cne $bootstrapClosing.peer -or $result.guestBootClosing -ne $true -or $result.bootstrapActorClosing -ne $true){throw 'ACTUAL_ASSIGNMENT_RESULT'}
+ if($result.state -cne 'observed' -or $result.query -cne 'qga-binary-metadata' -or $result.files.Count -lt 1){throw 'COMPLETE_BODY_RESULT'}
+ [Console]::WriteLine((@{state='qualified';completeBodyExecuted=$true;actualGeneratedAssignmentsExecuted=$true;bootstrapGuardsExecuted=$false;actorValues='declared-inert-fixtures';realObjectFileProcessSemantics=$true;declaredCimPeerOnlyOwnChild=$true;foreignProcessOrServiceQueried=$false;peerProcessCalls=$script:peerProcessCalls;peerServiceCalls=$script:peerServiceCalls;processId=$script:peerOwnProcessId;powerShellVersion=$PSVersionTable.PSVersion.ToString();powerShellEdition=$PSVersionTable.PSEdition;resultType=$result.GetType().FullName;propertyNames=@($result.PSObject.Properties.Name);ownImageFileObserved=@($result.files|Where-Object {$_.path -ceq $script:peerOwnImage}).Count}|ConvertTo-Json -Depth 8 -Compress))
+} catch {
+ [Console]::Error.WriteLine(('REAL_POWERSHELL_OBJECT_BOUNDARY_ERROR|'+$_.FullyQualifiedErrorId+'|'+$_.Exception.GetType().FullName+'|'+$_.Exception.Message))
+ exit 1
+}

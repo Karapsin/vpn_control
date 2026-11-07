@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "classification": "LOCAL_FRAMEWORK_API_MISSING_NOT_PRODUCT_OR_NATIVE_FAILURE",
+  "ownerBeforeSha256": "1ed34a289ab1befd4963ac088c776c274af8f953ff1a22f00441c6ade3848427",
+  "ownerBeforeSizeBytes": 34729,
+  "authenticSource": ".runtime/windows-parity-20261019/windows-product-runner/ordinary-reviewed-actions-integration-preparation-v1/candidate/agent_tools/windows_ordinary_process_owner.py",
+  "oracle": "exact_launch_oracle: real Owner.child/Child constructor with declared inert Windows/Popen/thread peers; original lacks owned_desktop API",
+  "nativeQualification": null,
+  "installedProductFailure": false,
+  "foregroundBeforeSha256": "1dd5f8ad8b8d6fb50d001f9c5f84dc6bf8d9584229aedcad591ae43b603f3d5c",
+  "foregroundBeforeSizeBytes": 20534,
+  "foregroundClassification": "PRIVATE_STATIC_REVIEW_OBSERVATION_SCOPE_NOT_NATIVE_FAILURE",
+  "foregroundOracle": "Actual whole proposed observer before review accepts same HWND as foreground while caller thread remains on Default; same causal refusal oracle fails before and passes after explicit context join",
+  "observerThreadBeforeSha256": "63277433be5831449de4b852e22b593eef12a8c29278b47f9cc437e6364066d3",
+  "observerThreadBeforeSizeBytes": 22301,
+  "observerThreadClassification": "PRIVATE_STATIC_REVIEW_NOT_NATIVE_FAILURE",
+  "observerThreadOracle": "Actual before observer uses construction thread for foreground context without checking actual current caller; same refusal oracle fails before and passes after GetCurrentThreadId check"
+}

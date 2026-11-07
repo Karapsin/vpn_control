@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "v5.before.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/draft-v5-before-reporting-and-cap-review/retained_rpc.py",
+      "sha256": "e00a2db3267b9be075b2622c9eb7906f3d4e662344145127702a460eb24b5429",
+      "scope": "Complete authentic retained_rpc fragment appended verbatim to the actual saved caller; local pre-submit defects, not a native failure."
+    },
+    "v10.before.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/draft-v10-before-canonical-qga-promotion/retained_rpc.py",
+      "sha256": "5457abc177762ef9107c76c32cb5b0971f2f4415d79065d1ee52659c7cb7fa88",
+      "scope": "Complete authentic retained_rpc fragment appended verbatim to the actual saved caller; local pre-submit defects, not a native failure."
+    },
+    "canonical-raw-generation.before.source": {
+      "originalPath": "agent_tools/windows_qga_transfer.py",
+      "sha256": "e6cdadc7acfcd3058e783ed59f255f83673eb49c5317f46e366b680973341589",
+      "scope": "Complete live first canonical module before observed LOCAL same-inode post-hash capture mutation fix; no native failure."
+    },
+    "journal.before.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/packets-v10/msi-transfer-caller.py",
+      "originalSha256": "8e3a8833b708aab6c4d75f8cf599b27d868e64f2f29ad67a94935ee1bebd95e8",
+      "lineStart": 156,
+      "lineEnd": 162,
+      "sha256": "77f8141dc468b66e833da9f38bf90bf6ddd79862d36ca596717285f5f1d60683",
+      "scope": "Exact unmodified complete save function span from actual V10 caller. Source selection, not reconstructed code."
+    },
+    "caller-args.before.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/direct-native-context/caller.py",
+      "sha256": "51c8b0731c5b3714f63691db830d724916de0f7f19e8610d4aaf96dd15a2ccab",
+      "bytes": 19851
+    },
+    "caller-global.before.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/ordinary-token-guest-observation-caller.py",
+      "sha256": "2503dc41ce241a4b4ca103912c3bd9b9e2cecf03cb387d09e3ca5d129cc21981",
+      "bytes": 20967
+    },
+    "namespace-prelude.input.source": {
+      "sha256": "73255618f35bd3b8bd177ec0bd6c4d83a9154bb7bc7a30c8794786e476d09b7e",
+      "bytes": 70031,
+      "scope": "Current derived input authenticates full current producer2938 by renewing exactly EMITTER_SOURCE, EMITTER_SHA256 and EMITTER_ORIGIN literal spans. All unrelated bytes/literals and operation body remain unchanged.",
+      "historicalBefore": {
+        "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/canonical-consumer-inputs-v11/namespace-prelude.source",
+        "sha256": "d76868309f7f4a35837218d3b84d97c14d06a0d43ffcf500c58f89e3cdc3ba6c",
+        "bytes": 69620
+      },
+      "derivation": {
+        "schemaVersion": 1,
+        "kind": "exact-three-producer-binding-literal-renewal",
+        "authenticPrelude": {
+          "fixture": "namespace-prelude.input.source",
+          "bytes": 69620,
+          "sha256": "d76868309f7f4a35837218d3b84d97c14d06a0d43ffcf500c58f89e3cdc3ba6c"
+        },
+        "currentPrelude": {
+          "fixture": "namespace-prelude.input.source",
+          "bytes": 70031,
+          "sha256": "73255618f35bd3b8bd177ec0bd6c4d83a9154bb7bc7a30c8794786e476d09b7e"
+        },
+        "producer": {
+          "path": "agent_tools/windows_artifact_transfer.py",
+          "bytes": 44601,
+          "sha256": "2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8"
+        },
+        "literalNames": [
+          "EMITTER_SOURCE",
+          "EMITTER_SHA256",
+          "EMITTER_ORIGIN"
+        ],
+        "allOtherPreludeBytesAndLiteralsUnchanged": true,
+        "operationBody": {
+          "fixture": "operation-body.input.source",
+          "bytes": 11318,
+          "sha256": "17628c773bc86d91fb80d1736ba9103782435891ee6ce449a5c78cb703f3bc4b"
+        },
+        "currentFactorySource": {
+          "path": "agent_tools/windows_qga_transfer.py",
+          "bytes": 28116,
+          "sha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022"
+        },
+        "historicalOriginalCallerSha256": "444b6e812d64731479e03985aff2d8b8318b23926dda71cdfe2c714c0906adaa",
+        "sourceClaim": "Current derived input only; actual complete current-factory caller qualification is recorded separately, without promoting the original caller hash to current."
+      }
+    },
+    "operation-body.input.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/canonical-consumer-inputs-v11/operation-body.source",
+      "sha256": "17628c773bc86d91fb80d1736ba9103782435891ee6ce449a5c78cb703f3bc4b",
+      "bytes": 11318
+    },
+    "factory-input.provenance.json": {
+      "sha256": "0cd9628627d2afe4449cc95f40a7fc5ec7edffccdb11f892d95dfb94adf91075",
+      "bytes": 2700,
+      "scope": "Current derivation metadata retains original caller/d768 prelude/1762 body/QGA028 historical facts and explicitly separates current input binding.",
+      "historicalBefore": {
+        "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/canonical-consumer-inputs-v11/provenance.json",
+        "sha256": "cc2ed8cb58cd8cba3e9ffa2a0673f9c713d119c52794cdcac29e4fd54c059c45",
+        "bytes": 892
+      }
+    },
+    "whole-caller-peer.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/inert-caller-qualification/harness.py",
+      "sha256": "ea82b43ee0d687a503a415360bec27acd1826fced11e18caf617d7e2062c4390",
+      "bytes": 20601
+    },
+    "whole-protocol-peer.source": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/qualify_protocol.py",
+      "sha256": "f4f01ff6f3343f030d9e0388210c6453c8c2e24989e8266406d710cacee88537",
+      "bytes": 40364
+    },
+    "native-source-receipt.json": {
+      "originalPath": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/native-source-sddl-causal-fixture/native-owner-probe-gates-receipt.json",
+      "sha256": "c75d1bd910bff604c2da68e4d8eff3617bfc1cf0a5f5e65f4eb28aae1ce526db",
+      "bytes": 727
+    }
+  },
+  "originalEvidenceIndex": {
+    "path": ".runtime/windows-parity-20261019/windows-fixture/qga-transfer-preparation/causal-red-beforeimages.json",
+    "sha256": "9e7975878d151b3b330cc96d34edbf2a84e1446aafefa35f79a28f9ac54ae76c"
+  },
+  "nativeEffects": false
+}

@@ -1,0 +1,8 @@
+{
+  "beforeSha256": "60e8ff7d895d10ea9b0ec45f31b316cd08d8c253353c39d2ed48feb265f8e6d9",
+  "controlledCause": "Whole unchanged _native fixture exposes live Mac shared temporary-directory full generations as Linux route ancestor facts. Owned sibling-directory churn invalidates those facts; current model freezes volatile fields only for real ancestors outside the modeled native root, while actual structure and config leaf bytes/full generations stay strict.",
+  "nativeAcceptance": false,
+  "originalFailureEvidence": ".runtime/windows-parity-20261019/channel546-retirement-private-candidate-v1/tests-v12.stderr.bin",
+  "originalObservedFailure": "Private inert whole fixed probe raised ValueError route at final snapshot; exact originally changed field was not logged and is unproved.",
+  "schemaVersion": 1
+}

@@ -1,0 +1,293 @@
+"""Offline actual private stage bodies; native/socket boundaries explicitly inert."""
+from __future__ import annotations
+import argparse
+import hashlib
+import importlib.util
+import io
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import threading
+from types import SimpleNamespace as N
+import unittest
+import uuid
+from unittest.mock import patch
+
+HERE=Path(__file__).resolve().parent
+ROOT=HERE.parents[3]
+
+
+def load(path,name=None):
+    name=name or '_qualification_'+path.stem+'_'+uuid.uuid4().hex
+    spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)
+    sys.modules[name]=module;spec.loader.exec_module(module);return module
+
+
+runtime=load(HERE/'runtime_stages.py')
+worker=load(HERE/'runtime_fixture_worker.py')
+desktop=load(HERE/'no_tray_desktop.py')
+tun=load(HERE/'tun_stages.py')
+collector=load(HERE/'tun_native_observer.py')
+
+
+def envelope(identity,code='OK',final=True,**other):
+    return {'schemaVersion':1,'controllerId':identity,'requestId':str(uuid.uuid4()),'code':code,
+        'final':final,'ok':code in {'OK','ACCEPTED'},**other}
+
+
+def operation_pair(module):
+    identity,operation,original_request=[str(uuid.uuid4()) for _ in range(3)]
+    accepted=envelope(identity,'ACCEPTED',False,operationId=operation,requestId=original_request)
+    calls=[]
+    def invoke(_workspace,*args):
+        calls.append(args)
+        if args[-2:]==('operations','list'):
+            value=envelope(identity,data={'operations':[{'id':operation,'requestId':original_request,
+                'controllerId':identity}]})
+        else:
+            assert args[-3:]==('operations','status',operation)
+            value=envelope(identity,operationId=operation) # New inspection request ID.
+        return subprocess.CompletedProcess([],0,json.dumps(value),'')
+    owner=N(invoke=invoke,guard=lambda:None,event=lambda *_:None)
+    terminal=module.finish_operation(owner,{'workspace':Path('/owned/state'),'identity':identity},accepted,{'OK'})
+    assert terminal['requestId']!=original_request
+    assert len(calls)==2 and calls[0][-2:]==('operations','list')
+    return {'originalRequestId':original_request,'inspectionRequestId':terminal['requestId'],
+            'sameActualOperationId':operation,'nativeOrNetworkExecuted':False}
+
+
+class RuntimeCases(unittest.TestCase):
+    def test_inspection_request_changes_but_original_ledger_join_is_required(self):
+        operation_pair(runtime)
+
+    def test_foreign_original_ledger_request_refuses(self):
+        identity,operation,original=[str(uuid.uuid4()) for _ in range(3)]
+        owner=N(guard=lambda:None,invoke=lambda *_:subprocess.CompletedProcess([],0,json.dumps(
+            envelope(identity,data={'operations':[{'id':operation,'requestId':'foreign','controllerId':identity}]})),''))
+        with self.assertRaisesRegex(AssertionError,'original-operation-ledger-join'):
+            runtime.finish_operation(owner,{'workspace':Path('/owned/state'),'identity':identity},
+                envelope(identity,'ACCEPTED',False,operationId=operation,requestId=original),{'OK'})
+
+    def test_unbound_runtime_and_tun_refuse_before_native_or_program_access(self):
+        with self.assertRaisesRegex(AssertionError,'runtime-native-inputs-pending'):
+            runtime.start_runtime(N(),{'schemaVersion':1},N())
+        with self.assertRaisesRegex(AssertionError,'scoped-tun-native-inputs-pending'):
+            tun.begin(N(),{}, {'schemaVersion':1},N(),N())
+        with self.assertRaisesRegex(ValueError,'tun-native-request-pending'):
+            collector.validate({},N())
+
+    def test_trust_options_are_one_scoped_path_and_refuse_control_or_quote(self):
+        self.assertEqual(runtime.scoped_trust_options('C:\\private tree\\fixture.jks'),
+            '"-Djavax.net.ssl.trustStore=C:\\private tree\\fixture.jks" -Djavax.net.ssl.trustStorePassword=changeit')
+        for value in ('', 'file\n-Dsomething', 'file" injected'):
+            with self.assertRaises(AssertionError):runtime.scoped_trust_options(value)
+
+    def test_cancel_waits_actual_generation_delayed_get_not_partial_row(self):
+        with tempfile.TemporaryDirectory(dir=HERE) as temporary:
+            root=Path(temporary);path=root/'ledger.jsonl'
+            row={'timestamp':10,'path':'/traffic','modeOrdinal':2,'mode':'slow','userAgent':'VPNControlDesktop/1.0'}
+            foreign={**row,'modeOrdinal':1};path.write_bytes((json.dumps(foreign)+'\n{').encode())
+            state={'inputs':{'fixtureRoot':temporary},'fixture':N(process=N(poll=lambda:None)),'modeOrdinal':2}
+            events=[];owner=N(guard=lambda:None,event=lambda *args:events.append(args))
+            def publish(_):path.write_bytes((json.dumps(foreign)+'\n'+json.dumps(row)+'\n').encode())
+            with patch.object(runtime.time,'sleep',side_effect=publish):
+                actual=runtime.wait_https_work(owner,state,9)
+            self.assertEqual(actual,row);self.assertEqual(len(events),1)
+
+
+class FixtureCases(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Imports canonical sources but constructs no server, socket or TLS API.
+        socks=ROOT/'scripts/integration/socks_http_fixture.py'
+        https=ROOT/'scripts/integration/https_subscription_relay_fixture.py'
+        cls.socks=load(socks,'socks_http_fixture')
+        cls.source=load(https)
+        cls.Fixture=worker.classes(cls.source)
+
+    def test_only_own_https_role_can_forward(self):
+        server=object.__new__(self.source.FixtureServer);server._forward_port=24443
+        self.assertTrue(server.should_forward('localhost',24443))
+        for host,port in [('example.org',443),('localhost',443),('127.0.0.1',24443),('::1',24443)]:
+            self.assertFalse(server.should_forward(host,port))
+        self.assertFalse(server.has_forwarding) # Other targets get fixed local response.
+
+    def test_actual_handler_ledger_success_partial_reject_and_slow(self):
+        with tempfile.TemporaryDirectory(dir=HERE) as temporary:
+            root=Path(temporary);operation=str(uuid.uuid4());ledger=root/'ledger'
+            value={'certificatePath':'unused','privateKeyPath':'unused','readyFile':str(root/'ready'),
+                'ledgerFile':str(ledger),'operationId':operation,'token':'ownedbody'}
+            fixture=self.Fixture(value)
+            server=N(subscription_body='socks://127.0.0.1:23456\n')
+            fixture.https_server=server
+            fixture._publish_readiness({'httpsPort':24443})
+            ready=json.loads((root/'ready').read_bytes())
+            self.assertEqual(ready['trafficUrl'],'https://localhost:24443/traffic')
+            with self.assertRaises(FileExistsError):fixture._publish_readiness({'httpsPort':24443})
+            statuses=[]
+            def get():
+                handler=object.__new__(server.RequestHandlerClass)
+                handler.path='/traffic';handler.headers={'User-Agent':'VPNControlDesktop/1.0'}
+                handler.server=server;handler.wfile=io.BytesIO()
+                handler.send_response=lambda status:statuses.append(status)
+                handler.send_header=lambda *_:None;handler.end_headers=lambda:None
+                handler.send_error=lambda code:statuses.append(code)
+                handler.do_GET();return handler.wfile.getvalue()
+            self.assertEqual(get(),b'ownedbody')
+            mode=root/'mode-0001.json';mode.write_text('{')
+            get();mode.write_text(json.dumps({'operationId':operation,'ordinal':1,'mode':'reject'}));get()
+            mode2=root/'mode-0002.json';mode2.write_text(json.dumps({'operationId':operation,'ordinal':2,'mode':'slow'}))
+            with patch.object(worker.time,'sleep') as delay:get();delay.assert_called_once_with(2)
+            rows=[json.loads(line) for line in ledger.read_text().splitlines()]
+            self.assertEqual(statuses,[200,503,503,200])
+            self.assertEqual([row['mode'] for row in rows],['ok','unavailable','reject','slow'])
+            self.assertTrue(all(set(row)=={'timestamp','path','userAgent','status','mode','modeOrdinal'} for row in rows))
+
+
+class DesktopCases(unittest.TestCase):
+    def test_absent_child_api_refuses_before_any_native_effect(self):
+        owner=N(child=lambda label,argv:None)
+        with self.assertRaisesRegex(AssertionError,'OWNED_DESKTOP_CHILD_API_MISSING'):
+            desktop.no_tray_close_case(owner,{}, {'guiPath':'gui','trafficWorkerPath':'worker',
+                'trafficInputPath':'input','startupKind':'normal'},N(),N())
+
+    def test_exact_inherited_owned_desktop_handle_and_single_launch(self):
+        owner=N(event=lambda *_:None);lease=object.__new__(desktop.OwnedNoTrayDesktop)
+        lease.current=lambda:None;lease.owner=owner;lease.gui_path='C:\\App\\gui.exe';lease.workspace='C:\\Owned\\state'
+        lease.startup_kind='normal';lease.used=False;lease.name='owned';lease.security=b'private';lease.handle=42
+        owner.no_tray_desktop_leases=[lease]
+        argv=[lease.gui_path,'--state-dir',lease.workspace]
+        with patch.object(desktop.subprocess,'STARTUPINFO',create=True,side_effect=lambda **kw:N(**kw)):
+            result=lease.startup_info(owner,'lifecycle-gui',argv)
+            self.assertEqual(result.lpAttributeList,{'handle_list':[42]})
+            with self.assertRaisesRegex(AssertionError,'closed-no-tray-child-role'):
+                lease.startup_info(owner,'lifecycle-gui',argv)
+
+    def test_foreign_gui_path_never_consumes_desktop_launch(self):
+        owner=N(event=lambda *_:None);lease=object.__new__(desktop.OwnedNoTrayDesktop)
+        lease.current=lambda:None;lease.owner=owner;lease.gui_path='C:\\App\\gui.exe';lease.workspace='C:\\Owned\\state'
+        lease.startup_kind='normal';lease.used=False;owner.no_tray_desktop_leases=[lease]
+        with self.assertRaisesRegex(AssertionError,'closed-no-tray-child-role'):
+            lease.startup_info(owner,'lifecycle-gui',['C:\\Other.exe','--state-dir',lease.workspace])
+        self.assertFalse(lease.used)
+
+
+class TunDecisionCases(unittest.TestCase):
+    def values(self):
+        operation,original,controller,task,boot,nonce,frame=[str(uuid.uuid4()) for _ in range(7)]
+        accepted={'operationId':operation,'requestId':original};context={'bootIdentifier':boot,'ordinarySessionId':2}
+        owner=N(request={'operationId':task,'context':context},event=lambda *_:None)
+        lease={'decisionConsumed':False,'finished':False,'accepted':accepted,
+            'inputs':{'variant':'restart-deny','currentMainInputAdmissionArtifactId':'input-receipt',
+                'expectedApprovingAdminSid':'admin'},'state':{'identity':controller,'workspace':'owned'}}
+        owner.tun_operation_leases=[lease]
+        challenge={'schemaVersion':1,'ordinaryTaskOperationId':task,'productOperationId':operation,
+            'originRequestId':original,'controllerId':controller,'bootIdentifier':boot,
+            'inputAdmissionArtifactId':'input-receipt','qemuIdentity':{'pid':10,'startTicks':100},
+            'consentActor':{'pid':44,'creationFileTime':123,'image':'C:\\Windows\\System32\\consent.exe',
+                'sha256':'a'*64,'sid':'S-1-5-18','sessionId':2},'stage':'current-product-credential-uac',
+            'nonce':nonce,'frameId':frame,'frameSha256':'b'*64,'observedAtMonotonic':100,
+            'expectedApprovingAdminSid':'admin'}
+        decision={key:challenge[key] for key in ('schemaVersion','productOperationId','stage','nonce','frameId','frameSha256')}
+        decision.update(action='deny',openedFrameArtifactId='actually-opened-frame')
+        def result(*_):return {'data':{'operations':[{'id':operation,'requestId':original,'final':False}]}}
+        return owner,lease,challenge,decision,N(result=result)
+
+    def test_exact_review_handoff_consumed_once_and_performs_no_input(self):
+        values=self.values()
+        with patch.object(tun.time,'monotonic',return_value=105):
+            receipt=tun.bind_reviewed_decision(*values)
+            self.assertFalse(receipt['physicalInputPerformed'])
+            with self.assertRaisesRegex(AssertionError,'unconsumed-job'):
+                tun.bind_reviewed_decision(*values)
+
+    def test_stale_foreign_or_boolean_authority_refuses_without_consuming(self):
+        for mutate in (lambda c,d:c.update(frameSha256='wrong'),
+                       lambda c,d:d.update(promptVerified=True),
+                       lambda c,d:c.update(observedAtMonotonic=80),
+                       lambda c,d:d.update(action='grant')):
+            owner,lease,c,d,r=self.values();mutate(c,d)
+            with patch.object(tun.time,'monotonic',return_value=105),self.assertRaises(AssertionError):
+                tun.bind_reviewed_decision(owner,lease,c,d,r)
+            self.assertFalse(lease['decisionConsumed'])
+
+
+class TunCustodyCases(unittest.TestCase):
+    def setup_case(self, wrong_parent=False):
+        ordinary,admin='S-1-5-21-1-2-3-1001','S-1-5-21-1-2-3-1002'
+        boot=str(uuid.uuid4());config=b'{"inbounds":[]}'
+        def actor(pid,image,sid):return {'pid':pid,'creationFileTime':100+pid,'image':image,
+            'sha256':'a'*64,'sid':sid,'sessionId':2}
+        owner_actor=actor(10,'C:\\App\\cli.exe',ordinary)
+        helper=actor(20,'C:\\Temp\\owned-helper.exe',admin)
+        child=actor(21,'C:\\Temp\\owned-runtime.exe',admin)
+        context={'ordinarySid':ordinary,'ordinarySessionId':2,'approvingAdminSid':admin,
+            'bootIdentifier':boot,'programData':'C:\\ProgramData','workspace':'C:\\Owned\\state'}
+        request={'schemaVersion':1,'ordinaryTaskOperationId':str(uuid.uuid4()),'productOperationId':str(uuid.uuid4()),
+            'originRequestId':str(uuid.uuid4()),'controllerId':str(uuid.uuid4()),'collectorSourceSha256':'b'*64,
+            'sourceSha':'c'*40,'context':context,'ownerActor':owner_actor,'guiActor':None,
+            'helperActor':helper,'runtimeActor':child,'helperImagePath':helper['image'],
+            'helperImageSha256':helper['sha256'],'runtimeImagePath':child['image'],'runtimeImageSha256':child['sha256'],
+            'configuration':{'path':'C:\\Owned\\state\\runtime-config.json',
+                'sha256':hashlib.sha256(config).hexdigest(),'sizeBytes':len(config)}}
+        opens=[];processes={}
+        class Process:
+            def __init__(self,expected):self.expected=expected;self.state=258;self.closed=False
+            def describe(self):return {'creationFileTime':self.expected['creationFileTime'],
+                'image':self.expected['image'],'sha256':self.expected['sha256'],
+                'token':{'sid':self.expected['sid'],'sessionId':2,'elevated':int(self.expected['sid']==admin)}}
+            def wait(self):return self.state
+            def times(self):return {'creationFileTime':self.expected['creationFileTime']}
+            def modules(self):return []
+            def __exit__(self,*_):self.closed=True
+        def open_process(pid,access):
+            expected=next(value for value in (owner_actor,helper,child) if value['pid']==pid)
+            process=Process(expected);opens.append(pid);processes[pid]=process;return process
+        native=N(open_process=open_process,processes=lambda:[{'pid':21,'parentPid':999 if wrong_parent else 20}])
+        def match(actual,expected):
+            assert actual['creationFileTime']==expected['creationFileTime'] and actual['sha256']==expected['sha256']
+            assert actual['image']==expected['image'] and actual['token']['sid']==expected['sid']
+        observer=N(WindowsNative=lambda:native,require_identity=match)
+        class FileObservation:
+            def __init__(self,owner,path):self.opening={'security':{'ownerSid':ordinary}}
+            def read(self,maximum):return config
+            def close(self):pass
+        from pathlib import PureWindowsPath
+        receipts=N(canonical_uuid=lambda value:str(uuid.UUID(value)),canonical_path=PureWindowsPath,
+            FileObservation=FileObservation)
+        collection_owner=N(native=N(token=lambda:{'sid':'S-1-5-18','elevation':1},boot_identifier=lambda:boot),
+            by_path={str(Path(collector.__file__)).casefold():N(record={'sha256':'b'*64})},guard=lambda:None)
+        return request,collection_owner,receipts,observer,opens,processes
+
+    def test_original_helper_runtime_handles_retained_to_exact_off_without_reopen(self):
+        request,owner,receipts,observer,opens,processes=self.setup_case()
+        custody=collector.collect_ready(request,owner,receipts,observer)
+        self.assertEqual(opens,[10,20,21]);self.assertFalse(any(p.closed for p in processes.values()))
+        processes[20].state=processes[21].state=0
+        after=custody.after_off()
+        self.assertEqual(opens,[10,20,21]);self.assertTrue(all(p.closed for p in processes.values()))
+        self.assertEqual({row['pid'] for row in after['originalProcesses']},{20,21})
+        self.assertTrue(custody.closed)
+
+    def test_wrong_parent_or_live_off_refuses_and_retains_custody(self):
+        request,owner,receipts,observer,opens,processes=self.setup_case(wrong_parent=True)
+        with self.assertRaisesRegex(ValueError,'runtime-not-exact-helper-child'):
+            collector.collect_ready(request,owner,receipts,observer)
+        self.assertEqual(opens,[10,20,21]);self.assertFalse(any(p.closed for p in processes.values()))
+        self.assertEqual(len(owner.tun_custodies),1)
+        request,owner,receipts,observer,opens,processes=self.setup_case()
+        custody=collector.collect_ready(request,owner,receipts,observer)
+        processes[20].state=0
+        with self.assertRaisesRegex(ValueError,'not-signaled-after-off'):custody.after_off()
+        self.assertFalse(custody.closed);self.assertFalse(any(p.closed for p in processes.values()))
+
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--operation-source',choices=('before','after'))
+    args=parser.parse_args()
+    if args.operation_source:
+        module=runtime if args.operation_source=='after' else load(HERE/'before-local-operation-correlation.runtime_stages.py')
+        print(json.dumps(operation_pair(module),sort_keys=True),flush=True)
+    else:unittest.main(argv=[sys.argv[0]],verbosity=2)

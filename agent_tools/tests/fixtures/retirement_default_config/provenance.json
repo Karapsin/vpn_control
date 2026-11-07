@@ -1,0 +1,7 @@
+{
+  "beforeSha256": "375ce3b17719673a1d0c868737214e422402b128e84e98ff5cfce3137ff4ef20",
+  "cause": "str(None) sent as remote config; original default is empty then UID home/.ssh/config",
+  "nativeStderrSha256": "374e9d1efe142e1a46e80c7cac15d0be9bdbd5367b2df883aae5be44247606b4",
+  "originalNativeEffect": "read-only observation; no exit claim or Oexit submitted",
+  "originalObservationId": "e9840432-9e90-4afb-b52b-5bb2de4a12ec"
+}

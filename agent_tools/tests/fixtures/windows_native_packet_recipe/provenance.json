@@ -1,0 +1,93 @@
+{
+  "configurationAdapters": [
+    "Explicit repo_root added to real sys.path around the pair; original sys.path restored in finally.",
+    "Physical loader-closing pair uses a World subclass mapping only logical MCP self FD11 to a real caller-owned temporary file; same-byte os.replace after loader opening guard; actual uid/fstat/lstat retained. Existing two routine cases retain virtual World."
+  ],
+  "fixtures": {
+    "held-loader-systemexit.before.source": {
+      "bytes": 1900,
+      "origin": ".runtime/windows-parity-20261019/program-tool-native/post267-stage-b179c-native-v1/held-sdk-argv-loader.before.source",
+      "purpose": "authentic complete locally qualified SystemExit closing causal input; no SDK/native invocation",
+      "sha256": "d03ff48f0e0411266755e393b171b5377450c6a582aa4fbcde02cdd77a59e837"
+    },
+    "held-loader.source": {
+      "bytes": 1708,
+      "origin": "frozen outer qualification source",
+      "purpose": "exact preserved source bytes",
+      "sha256": "312b8035fba337a6306bcd080bbec73e359b650438941ce029681dd9ffa129c0"
+    },
+    "mcp_io_peer.source": {
+      "bytes": 15852,
+      "origin": "frozen outer qualification source",
+      "purpose": "exact preserved source bytes",
+      "sha256": "b20f80a89b8e1d26ad10a65d9c7785fa7e2fdf48fca42877acddb92f98608238"
+    },
+    "mcp_server.source": {
+      "bytes": 666318,
+      "origin": "agent_tools/mcp_server.py",
+      "purpose": "data only; never compiled or executed",
+      "sha256": "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3"
+    },
+    "operator-direct.before.source": {
+      "bytes": 6643,
+      "origin": "frozen outer qualification source",
+      "purpose": "exact preserved source bytes",
+      "sha256": "35d4eba5c7917d0574439bdd4cadbdb8fe06e42d72660e155c1437b8efa18c55"
+    },
+    "operator-mcp.before.source": {
+      "bytes": 8249,
+      "origin": "frozen outer qualification source",
+      "purpose": "exact preserved source bytes",
+      "sha256": "36edacaa3412153ad65e7468ee5f67ae70a52aa2dcb46f1e1ca78f78e392a25c"
+    },
+    "ssh_program_mcp_client.source": {
+      "bytes": 7522,
+      "origin": "agent_tools/ssh_program_mcp_client.py",
+      "purpose": "exact preserved source bytes",
+      "sha256": "a32f318ababd1562afadced8401c3a51b2f5f75be247f9b2c70b01ed1c98cabb"
+    },
+    "systemexit-replacement.entry.source": {
+      "bytes": 154,
+      "origin": ".runtime/windows-parity-20261019/program-tool-native/post267-stage-b179c-native-v1/held-sdk-argv-qualification-v1/old-mutation-red/entry.py",
+      "purpose": "authentic complete locally qualified SystemExit closing causal input; no SDK/native invocation",
+      "sha256": "5038c2608481b4ca3dfc07690b95cadb13cd0223dd9973511c523e95fe2d6da3"
+    },
+    "systemexit-three-argv.entry.source": {
+      "bytes": 134,
+      "origin": ".runtime/windows-parity-20261019/program-tool-native/post267-stage-b179c-native-v1/held-sdk-argv-qualification-v1/current-systemexit0-three-argv-green/entry.py",
+      "purpose": "authentic complete locally qualified SystemExit closing causal input; no SDK/native invocation",
+      "sha256": "2d58494c3abfb2771f0f281a1e46a0261d23c158e7025e603c5f9879bc736736"
+    }
+  },
+  "frozenQualifierSha256": "6343c7e219f13871c6d111cff1b268fbfa40a0600833d2e0409e2cd5a7c67626",
+  "frozenSourceReuse": "World and execute copied; configuration/input/fixture loading/return adaptations only. See boundary.py docstring.",
+  "nativeQualified": false,
+  "physicalClosingCase": {
+    "beforeLoaderSha256": "312b8035fba337a6306bcd080bbec73e359b650438941ce029681dd9ffa129c0",
+    "fixedClosingError": "operator_source_changed",
+    "fixedLoaderFixtureCreated": false,
+    "mcpSelfSourceHeldOnlyByOuterLoader": true,
+    "operatorSourcePath": "DIRECT",
+    "sameBytesNamedReplacementCount": 1,
+    "serverExecutionAllowed": false,
+    "wholeActualClientMain": true
+  },
+  "preparationOnly": true,
+  "realNetworkNativeOperations": false,
+  "routineCases": [
+    "direct-before/after",
+    "mcp-before/after"
+  ],
+  "schemaVersion": 1,
+  "serverSourceExecutionAllowed": false,
+  "systemExitClosingCase": {
+    "actualSDKInvocations": 0,
+    "authenticBeforeSha256": "d03ff48f0e0411266755e393b171b5377450c6a582aa4fbcde02cdd77a59e837",
+    "derivedCurrentSha256": "f9d5b99d1dac6f13e02d01fbd268b66f08f6ec7230c4ff2a170648e8838c8d3b",
+    "engineeringCurrentSha256": "21056683d729523bd29453de4b6f69c5bc246646c621a881b19bb88d04e8f8a9",
+    "engineeringReceiptSha256": "4c38c312d7936d5f3d6d6ed83ff1e1036e5d42d91d6d1041242e9ecc634a6a36",
+    "entryArguments": "legacy label+manifest or exactly3 explicit SDK arguments",
+    "nativeQualified": false,
+    "observedKind": "pre-submit local review qualification"
+  }
+}

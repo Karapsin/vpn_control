@@ -9,9 +9,11 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 # Keep Git blobs intact when Windows enables automatic line-ending conversion.
 /agent_tools/**/*.py -text
 /agent_tools/ssh_source_file_gateway.source -text
+/agent_tools/windows_ordinary_task_owner.ps1 -text
 
 # Historical source fixtures retain the exact bytes named by their provenance.
 /agent_tools/tests/fixtures/**/*.source -text
+/agent_tools/tests/fixtures/windows_ordinary_task/original-task.xml -text
 /agent_tools/tests/fixtures/native_wire_event_evidence/*.fragment -text
 /agent_tools/tests/fixtures/windows_cp117_publisher_boundary/*.fragment -text
 /agent_tools/tests/fixtures/fast_workflow_budget/before.yml -text
@@ -246,3 +248,17 @@ agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.
 /agent_tools/tests/fixtures/windows_reservation_executable_schema/*.json -text
 /agent_tools/tests/fixtures/windows_native_tools_20261106/*.json -text
 /agent_tools/tests/fixtures/windows_secure_clone_seed/provenance.json -text
+/agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/inputs/06-rpc83.raw.bin -text
+/agent_tools/windows_runtime_tcp_listeners.ps1 -text
+/agent_tools/windows_system_collector/*.ps1 -text
+/agent_tools/windows_system_collector/*.cs -text
+
+# Windows parity causal fixtures authenticate exact preserved bytes across checkouts.
+/agent_tools/tests/fixtures/windows_failing_msi_consumer/** -text
+/agent_tools/tests/fixtures/windows_lifecycle_runtime/** -text
+/agent_tools/tests/fixtures/windows_main_input_bridge/** -text
+/agent_tools/tests/fixtures/windows_native_packet_recipe/** -text
+/agent_tools/tests/fixtures/windows_ordinary_task/** -text
+/agent_tools/tests/fixtures/windows_owned_desktop/** -text
+/agent_tools/tests/fixtures/windows_public_updater/** -text
+/agent_tools/tests/fixtures/windows_system_collector/** -text

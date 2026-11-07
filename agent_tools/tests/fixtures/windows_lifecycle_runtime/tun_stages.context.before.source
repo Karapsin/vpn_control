@@ -1,0 +1,218 @@
+"""Finite ordinary active-A/pending-B TUN stages and exact input handoff binding.
+
+The product's original async job stays retained. This module cannot press UAC
+keys. Canonical windows_guest_input.CurrentGuestContext requires a different
+wrapper->owner->frontend chain, so direct ordinary Owner children must not be
+passed to that renderer. All current-main input identities remain unbound.
+"""
+from __future__ import annotations
+import hashlib
+import json
+import os
+from pathlib import Path
+import time
+import uuid
+
+
+def require(value, reason):
+    if not value:
+        raise AssertionError(reason)
+
+
+def begin(owner, state, inputs, runtime, cases):
+    fields = {'schemaVersion','variant','pendingLocation','runtimeConfigPath','guiPath',
+        'installedAdmissionArtifactId','ordinaryContextArtifactId','expectedApprovingAdminSid',
+        'currentMainInputAdmissionArtifactId','programData','collectorSourceSha256'}
+    require(type(inputs) is dict and set(inputs)==fields and inputs['schemaVersion']==1
+            and inputs['variant'] in {'restart-grant','restart-deny','find-best-grant','find-best-deny'}
+            and all(inputs[key] is not None for key in fields), 'scoped-tun-native-inputs-pending')
+    require(inputs['pendingLocation']=='Owned B' and str(Path(inputs['guiPath'])).casefold() in owner.by_path
+            and inputs['expectedApprovingAdminSid']!=owner.request['context']['ordinarySid'],
+            'scoped-tun-fixed-pending-location-admin-role')
+    require(os.name=='nt' and Path(inputs['programData'])==Path(os.environ['ProgramData']),
+            'scoped-tun-current-programdata-context')
+    before = runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(before['data']['runtimeRunning'] is True and before['data']['activeMode']=='proxy-only'
+            and before['restartRequired'] is False, 'scoped-tun-active-proxy-a')
+    config=cases.LiveConfig(owner,state['workspace'],inputs['runtimeConfigPath'])
+    actual={k:before['data'][k] for k in ('activeLocationId','activeMode','runtimeId','runtimeStartedAt')}
+    for tail in (('locations','select','Owned B'),('settings','set','mode','vpn')):
+        status=runtime.result(owner,state['workspace'],state['identity'],'status')
+        runtime.result(owner,state['workspace'],state['identity'],'--if-revision',str(status['configurationRevision']),*tail)
+        pending=runtime.result(owner,state['workspace'],state['identity'],'status')
+        require(all(pending['data'][key]==value for key,value in actual.items()) and config.snapshot()==config.initial,
+                'pending-b-mutated-active-a')
+    require(pending['restartRequired'] is True and pending['data']['configuredMode']=='vpn'
+            and pending['data']['selectedLocationId']!=before['data']['activeLocationId'],
+            'scoped-tun-pending-b-not-established')
+    # Intentional product restart may replace its config. Preserve the actual
+    # beforeimage and release this stable-window observer BEFORE mutation.
+    raw=Path(inputs['runtimeConfigPath']).read_bytes()
+    require(len(raw)<=32768 and hashlib.sha256(raw).hexdigest()==config.initial['sha256'],
+            'owned-small-proxy-config-beforeimage')
+    runtime.publish(owner,owner.root/'tun-active-a-beforeimage.json',raw)
+    config.close()
+    operation='find-best' if inputs['variant'].startswith('find-best') else 'restart'
+    accepted=runtime.result(owner,state['workspace'],state['identity'],'--async',operation,
+                            final=False,codes=('ACCEPTED',))
+    require(type(accepted['operationId']) is str and str(uuid.UUID(accepted['operationId']))==accepted['operationId']
+            and str(uuid.UUID(accepted['requestId']))==accepted['requestId'], 'scoped-tun-original-accepted-job')
+    lease={'state':state,'inputs':inputs,'before':before,'pending':pending,'accepted':accepted,
+           'activeConfig':config,'decisionConsumed':False,'finished':False}
+    if not hasattr(owner,'tun_operation_leases'):owner.tun_operation_leases=[]
+    owner.tun_operation_leases.append(lease)
+    owner.event('scoped-tun-awaiting-current-input', {'accepted':accepted,'variant':inputs['variant'],
+        'ordinarySid':owner.request['context']['ordinarySid'],
+        'ordinarySessionId':owner.request['context']['ordinarySessionId'],
+        'expectedApprovingAdminSid':inputs['expectedApprovingAdminSid'],
+        'currentMainInputAdmissionArtifactId':inputs['currentMainInputAdmissionArtifactId'],
+        'ownerActor':state['actors']['owner'],'originalServeChild':state['serve'].ordinal,
+        'inputNotPerformedByThisAdapter':True,'replayAllowed':False})
+    return lease
+
+
+def bind_reviewed_decision(owner, lease, challenge, decision, runtime):
+    """Consume one exact current-frame handoff. This does NOT inject input.
+
+    openedFrameArtifactId is the source-bound artifact actually opened by the
+    native operator, not a promptVerified/approved boolean. Actual key dispatch
+    requires the missing direct-owner input backend described in protocol v2.
+    """
+    require(lease in owner.tun_operation_leases and not lease['decisionConsumed'] and not lease['finished'],
+            'scoped-tun-original-unconsumed-job')
+    cf={'schemaVersion','ordinaryTaskOperationId','productOperationId','originRequestId','controllerId',
+        'bootIdentifier','inputAdmissionArtifactId','qemuIdentity','consentActor','stage','nonce',
+        'frameId','frameSha256','observedAtMonotonic','expectedApprovingAdminSid'}
+    df={'schemaVersion','productOperationId','stage','nonce','frameId','frameSha256','action','openedFrameArtifactId'}
+    require(type(challenge) is dict and set(challenge)==cf and challenge['schemaVersion']==1
+            and type(decision) is dict and set(decision)==df and decision['schemaVersion']==1,
+            'scoped-tun-closed-review-schema')
+    accepted=lease['accepted'];inputs=lease['inputs'];state=lease['state']
+    require(challenge['ordinaryTaskOperationId']==owner.request['operationId']
+            and challenge['productOperationId']==accepted['operationId']
+            and challenge['originRequestId']==accepted['requestId']
+            and challenge['controllerId']==state['identity']
+            and challenge['bootIdentifier']==owner.request['context']['bootIdentifier']
+            and challenge['inputAdmissionArtifactId']==inputs['currentMainInputAdmissionArtifactId']
+            and challenge['expectedApprovingAdminSid']==inputs['expectedApprovingAdminSid'],
+            'scoped-tun-original-task-guest-operation-join')
+    expected='deny' if inputs['variant'].endswith('deny') else 'grant'
+    require(challenge['stage']=='current-product-credential-uac' and decision['action']==expected
+            and all(decision[key]==challenge[key] for key in ('productOperationId','stage','nonce','frameId','frameSha256'))
+            and type(decision['openedFrameArtifactId']) is str and decision['openedFrameArtifactId']
+            and type(challenge['frameSha256']) is str and len(challenge['frameSha256'])==64
+            and str(uuid.UUID(challenge['nonce']))==challenge['nonce']
+            and str(uuid.UUID(challenge['frameId']))==challenge['frameId']
+            and type(challenge['observedAtMonotonic']) in (int,float)
+            and 0<=time.monotonic()-challenge['observedAtMonotonic']<=15,
+            'scoped-tun-exact-fresh-reviewed-frame')
+    # The actual current-main backend must re-observe this actor and full frame
+    # after its QGA/source/guest guard and immediately before physical dispatch.
+    actor=challenge['consentActor']
+    require(type(actor) is dict and set(actor)=={'pid','creationFileTime','image','sha256','sid','sessionId'}
+            and type(actor['pid']) is int and actor['pid']>0 and type(actor['creationFileTime']) is int
+            and actor['creationFileTime']>0 and actor['sessionId']==owner.request['context']['ordinarySessionId'],
+            'scoped-tun-current-consent-actor-required')
+    listed=runtime.result(owner,state['workspace'],state['identity'],'operations','list')
+    rows=[row for row in listed['data']['operations'] if row['id']==accepted['operationId']]
+    require(len(rows)==1 and rows[0]['requestId']==accepted['requestId'] and rows[0]['final'] is False,
+            'scoped-tun-operation-ended-before-input')
+    lease['decisionConsumed']=True
+    record={'schemaVersion':1,'productOperationId':accepted['operationId'],'action':expected,
+        'frameId':challenge['frameId'],'frameSha256':challenge['frameSha256'],
+        'openedFrameArtifactId':decision['openedFrameArtifactId'],'nonce':challenge['nonce'],
+        'inputAdmissionArtifactId':challenge['inputAdmissionArtifactId'],
+        'state':'review-bound-dispatch-capability-pending','physicalInputPerformed':False,'replayAllowed':False}
+    owner.event('scoped-tun-review-bound-no-input',record)
+    return record
+
+
+def read_native_record(owner, lease, file_record, receipts, expected_stage):
+    """Read a create-only machine-protected record from the actual SYS collector."""
+    require(type(file_record) is dict and set(file_record)=={'path','sha256','sizeBytes'}
+            and type(file_record['sizeBytes']) is int and 0<file_record['sizeBytes']<=262144,
+            'scoped-tun-native-record-bound')
+    expected=receipts.canonical_path(lease['inputs']['programData']) / ('tun-evidence-'+owner.request['operationId']) / (expected_stage+'.json')
+    require(receipts.canonical_path(file_record['path'])==expected, 'scoped-tun-exact-machine-record-destination')
+    observation=receipts.FileObservation(owner,file_record['path'])
+    try:
+        receipts.machine_security(observation.opening['security'],False)
+        raw=observation.read(262144)
+        require(len(raw)==file_record['sizeBytes'] and hashlib.sha256(raw).hexdigest()==file_record['sha256'],
+                'scoped-tun-native-record-generation')
+        value=json.loads(raw)
+    finally:observation.close()
+    require(value['schemaVersion']==1 and value['stage']==expected_stage
+            and value['ordinaryTaskOperationId']==owner.request['operationId']
+            and value['productOperationId']==lease['accepted']['operationId']
+            and value['originRequestId']==lease['accepted']['requestId']
+            and value['controllerId']==lease['state']['identity']
+            and value['context']['bootIdentifier']==owner.request['context']['bootIdentifier']
+            and value['context']['ordinarySid']==owner.request['context']['ordinarySid']
+            and value['collectorSourceSha256']==lease['inputs']['collectorSourceSha256']
+            and value['sourceSha']==owner.request['sourceSha'],
+            'scoped-tun-protected-native-operation-join')
+    return value
+
+
+def finish(owner, lease, runtime, cases, observer, native_record=None, receipts=None):
+    require(lease in owner.tun_operation_leases and not lease['finished'],'scoped-tun-finish-once')
+    state=lease['state'];denied=lease['inputs']['variant'].endswith('deny')
+    terminal=runtime.finish_operation(owner,state,lease['accepted'],
+        {'CANCELLED','PERMISSION_DENIED'} if denied else {'OK'})
+    status=runtime.result(owner,state['workspace'],state['identity'],'status')
+    if denied:
+        require(all(status['data'][key]==lease['before']['data'][key] for key in
+            ('runtimeRunning','activeLocationId','activeMode','runtimeId','runtimeStartedAt'))
+            and status['restartRequired'] is True and status['data']['configuredMode']=='vpn'
+            and cases.config_bytes(lease['inputs']['runtimeConfigPath'])=={key:lease['activeConfig'].initial[key]
+                for key in ('sizeBytes','sha256')},
+            'uac-denial-lost-active-a-or-pending-b')
+        native=observer.WindowsNative()
+        cases.exact_actor(native,state['actors']['owner'],elevated=False)
+        cases.exact_actor(native,state['actors']['runtime'],elevated=False)
+    else:
+        require(native_record is not None and receipts is not None,'actual-tun-native-file-required')
+        native_record=read_native_record(owner,lease,native_record,receipts,'ready')
+        require(native_record['stage']=='ready'
+                and native_record['productOperationId']==lease['accepted']['operationId'],
+                'actual-machine-protected-tun-ready-observation-required')
+        require(status['data']['runtimeRunning'] is True and status['data']['activeMode']=='vpn'
+                and status['data']['activeLocationId']==status['data']['selectedLocationId']
+                and status['restartRequired'] is False
+                and native_record['observations']['configuration']['sha256']!=lease['activeConfig'].initial['sha256'],
+                'scoped-tun-actual-commit-result')
+    lease['finished']=True
+    owner.event('scoped-tun-public-outcome',{'variant':lease['inputs']['variant'],'terminal':terminal,
+        'status':status,'nativeRecord':native_record,'uacInputOriginStillRequired':True,
+        'trafficAndExactOffStillRequired':not denied,'privilegedFaultRecoveryProven':False})
+    return {'terminal':terminal,'status':status,'nativeRecord':native_record}
+
+
+def begin_off(owner,lease,runtime):
+    require(lease in owner.tun_operation_leases and lease['finished']
+            and lease['inputs']['variant'].endswith('grant') and not lease.get('offRequested'),
+            'scoped-tun-explicit-off-once')
+    lease['offRequested']=True
+    state=lease['state']
+    # Product owns retirement of the exact elevated child; no process kill.
+    terminal=runtime.result(owner,state['workspace'],state['identity'],'off')
+    status=runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(status['data']['runtimeRunning'] is False,'scoped-tun-public-off-runtime-still-running')
+    lease['offTerminal']=terminal
+    owner.event('scoped-tun-awaiting-exact-off-observation',{'accepted':lease['accepted'],
+        'offTerminal':terminal,'status':status,'originalNativeCustodyMustBeRetained':True})
+    return terminal
+
+
+def finish_off(owner,lease,file_record,receipts):
+    require(lease.get('offRequested') and not lease.get('offFinished'),'scoped-tun-original-off-stage')
+    record=read_native_record(owner,lease,file_record,receipts,'off')
+    rows=record['originalProcesses']
+    require(len(rows)==2 and {row['role'] for row in rows}=={'helperActor','runtimeActor'}
+            and all(row['originalHandleSignaled'] is True and row['times']['creationFileTime']==row['creationFileTime']
+                    for row in rows), 'scoped-tun-original-process-handles-not-proven-terminal')
+    lease['offFinished']=True
+    owner.event('scoped-tun-exact-off-observed',{'offTerminal':lease['offTerminal'],'record':record,
+        'noBroadProcessStop':True,'originalOwnerCleanupStillRequired':True})
+    return record

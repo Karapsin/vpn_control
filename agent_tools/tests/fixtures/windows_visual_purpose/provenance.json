@@ -1,0 +1,26 @@
+{
+  "head": "d24c19047ec15689948404ede40f50c5ec284e77",
+  "newModuleAbsent": true,
+  "purpose": "Authentic unfixed source before explicit fresh Windows UAC visual setup purpose; no native qualification claim",
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "bytes": 9195,
+      "fixture": "windows_vm_unattend.py.before.source",
+      "sha256": "1023536d57f860d40146710f09ad08fae19da1dc8adb7f3cb5d7911b74445d11",
+      "sourcePath": "agent_tools/windows_vm_unattend.py"
+    },
+    {
+      "bytes": 28153,
+      "fixture": "windows_vm_deploy_remote.py.before.source",
+      "sha256": "f057a59b70cb8e3a79d520bf435fc246725a8ee54a7cb97e5d754b9a328515f2",
+      "sourcePath": "agent_tools/windows_vm_deploy_remote.py"
+    },
+    {
+      "bytes": 28790,
+      "fixture": "windows_vm_deploy.py.before.source",
+      "sha256": "fec00524066cb15d23a4008a79e5df6372ab701fd5e1c655989d26a237b9f1db",
+      "sourcePath": "agent_tools/windows_vm_deploy.py"
+    }
+  ]
+}

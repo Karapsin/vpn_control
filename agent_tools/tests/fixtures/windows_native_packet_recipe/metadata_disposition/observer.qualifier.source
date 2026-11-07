@@ -1,0 +1,107 @@
+"""Six focused complete-source disposition cases using the prior32-case peers.
+
+Only fixture bytes and proc metadata bindings change. Real process, pidfd,
+signal, socket, network and guest APIs are unavailable to the complete caller.
+"""
+from pathlib import Path
+import ast,base64,hashlib,importlib.util,json,os,re,stat,sys,types
+sys.dont_write_bytecode=True
+W=Path(__file__).resolve().parent;B=W.parents[1];R=B.parents[2]
+OLD=B/'host-actor-abandonment-private-preparation-v1'
+SOURCE=W/'disposition-caller.v2.py';EXPECTED='5dd39aacbcd7b7133c7d4933134497864e852a75a580aa02972e9c8d15d34af7'
+sha=lambda b:hashlib.sha256(b).hexdigest()
+source=SOURCE.read_bytes();assert sha(source)==EXPECTED
+def literals(raw):
+ result={}
+ for node in ast.parse(raw).body:
+  if isinstance(node,ast.Assign)and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+   try:result[node.targets[0].id]=ast.literal_eval(node.value)
+   except(ValueError,TypeError):pass
+ return result
+decl=literals(source);COLLECTOR=json.loads(decl['COLLECTOR_SOURCE']);ACTOR=COLLECTOR['actorOpening'];FILES=COLLECTOR['files']
+QGA=B/'qga-recv-poll-private-preparation-v1/windows_qga_transfer.candidate.py'
+EMITTER=B/'original-park-host-evidence-extracted-v1/artifact-probe-d053e44c-5652-4fc2-9b1d-bbcc7413398e.canonical-emitter.py'
+H=W.parent/'host-rpc83-readonly-preparation-v1/native-run-v1'
+data={'.canonical-qga.py':QGA.read_bytes(),'.canonical-emitter.py':EMITTER.read_bytes(),'.rpc-000083.request.json':(H/'rpc83.request.json').read_bytes(),'.rpc-000083.raw':(H/'rpc83.raw').read_bytes()}
+stem=COLLECTOR['files'][decl['ORIGINAL_PREFIX']+'.rpc-000083.raw']['path'][:-4]
+intent={'command':'guest-exec','requestPath':stem+'.request.json','requestBytes':len(data['.rpc-000083.request.json']),'requestSha256':sha(data['.rpc-000083.request.json']),'rawPath':stem+'.raw','nonce':8220859838733921813,'sequence':83}
+data['.rpc-000083.intent.json']=(json.dumps(intent,sort_keys=True)+'\n').encode()
+for suffix,raw in data.items():
+ row=FILES[decl['ORIGINAL_PREFIX']+suffix];assert len(raw)==row['bytes']and sha(raw)==row['openingSha256']==row['closingSha256']
+models_path=OLD/'qualification_models_actual.py';models_before=models_path.read_bytes();models_text=models_before.decode()
+for before,after in[("prep=module(W/'prepare_packet.py','_abandon_prepare')",'prep=None'),("status=module(B/'original-pid-status-private-preparation-v1/qualification_models.py','_abandon_status_models')",'status=None')]:
+ assert models_text.count(before)==1;models_text=models_text.replace(before,after,1)
+models_adapted=models_text.encode()
+def machinery(raw):return[ast.dump(n,include_attributes=False)for n in ast.parse(raw).body if isinstance(n,(ast.ClassDef,ast.FunctionDef))]
+assert machinery(models_before)==machinery(models_adapted)
+m=types.ModuleType('_current_disposition_old32_models');m.__file__=str(models_path);sys.modules[m.__name__]=m;exec(compile(models_adapted,str(models_path),'exec'),m.__dict__,m.__dict__)
+class ActualWorld(m.World):
+ def __init__(self,declarations,fault=None,existing=False):
+  self.native_generations={};super().__init__(declarations,fault)
+  if existing:self.node(self.root+'/host-actor-abandon-'+declarations['ORIGINAL_PROBE_ID']+'.intent.json',b'{"priorDifferentAbandonmentId":"different-original-id","signalAttempted":true,"state":"UNKNOWN"}\n')
+  self.initial_original=self.original_snapshot()
+ def _original_files(self):
+  self.original_pid=ACTOR['pid']
+  for suffix,raw in data.items():
+   path=self.root+'/'+self.prefix+suffix;self.node(path,raw);self.native_generations[path]=FILES[self.prefix+suffix]['openingGeneration']
+ def _actor(self,pid):
+  if pid!=ACTOR['pid']:return super()._actor(pid)
+  base='/proc/'+str(pid);self.node(base,mode=stat.S_IFDIR|0o555)
+  self.node(base+'/stat',(str(pid)+' (actual-2965-metadata-inert-actor) '+' '.join(['S']+['0']*18+[str(ACTOR['startTicks'])])).encode())
+  self.node(base+'/status',base64.b64decode(ACTOR['statusBase64'],validate=True));self.node(base+'/cmdline',base64.b64decode(ACTOR['cmdlineBase64'],validate=True))
+  self.node(base+'/exe',b'INERT-EXECUTABLE-CONTENT-NOT-READ',mode=ACTOR['executableGeneration'][2]);self.links[base+'/exe']=ACTOR['exe'];self.native_generations[base+'/exe']=ACTOR['executableGeneration']
+  for target,rows in ACTOR['requiredSourceAndRequestFds'].items():
+   for row in rows:path=base+'/fd/'+str(row['fd']);self.links[path]=target;self.fd_targets[path]=target
+  for row in ACTOR['socketFds']:
+   path=base+'/fd/'+str(row['fd']);self.links[path]=row['link'];self.node(path,mode=row['targetGeneration'][2]);self.native_generations[path]=row['targetGeneration']
+  self.node(base+'/ns',mode=stat.S_IFDIR|0o555)
+  for name,row in ACTOR['namespaces'].items():
+   path=base+'/ns/'+name;self.node(path,mode=row['targetGeneration'][2]);self.links[path]=row['link'];self.native_generations[path]=row['targetGeneration']
+  row=ACTOR['processRoot'];path=base+'/root';self.node(path,mode=row['targetGeneration'][2]);self.links[path]=row['link'];self.native_generations[path]=row['targetGeneration']
+ def listdir(self,path):
+  path=str(path)
+  if re.fullmatch(r'/proc/[0-9]+/ns',path):return sorted(p[len(path)+1:]for p in self.links if p.startswith(path+'/'))
+  return super().listdir(path)
+ def info(self,path):
+  path=str(path);target=self.fd_targets.get(path,path)
+  if target in self.native_generations:
+   if path in self.fd_targets:self.metadata_reads.append(path)
+   if path not in self.fd_targets and path not in self.nodes:raise FileNotFoundError(path)
+   return types.SimpleNamespace(**dict(zip(('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns'),self.native_generations[target])))
+  return super().info(path)
+ def fsync(self,fd):
+  prior=self.changed;fault=self.abandon_fault
+  if fault in('fd-change-after-intent','socket-change-after-intent'):self.abandon_fault=None
+  try:super().fsync(fd)
+  finally:self.abandon_fault=fault
+  if self.changed and not prior:
+   if fault=='fd-change-after-intent':self.links[f'/proc/{ACTOR["pid"]}/fd/18']=self.root+'/foreign-request'
+   if fault=='socket-change-after-intent':self.links[f'/proc/{ACTOR["pid"]}/fd/20']='socket:[1]'
+ def pidfd_open(self,pid,flags):
+  fd=super().pidfd_open(pid,flags)
+  if self.abandon_fault=='pid-reuse-after-open':self.nodes[f'/proc/{pid}/stat']['data']=bytearray(bytes(self.nodes[f'/proc/{pid}/stat']['data']).replace(str(ACTOR['startTicks']).encode(),str(ACTOR['startTicks']+1).encode()))
+  return fd
+
+def main():
+ dest=W/'qualification-current-v1';dest.mkdir(mode=0o700)
+ (dest/'models.before.source').write_bytes(models_before);(dest/'models.adapted.source').write_bytes(models_adapted)
+ controls=[]
+ for label,fault,existing,reason in [('success-one-effect',None,False,None),('wrong-pidfd','pidfd-wrong-pid',False,'abandon_pidfd_wrong_actor'),('birth-reused','pid-reuse-after-open',False,'abandon_actor_identity_changed'),('actual-fd18-changed','fd-change-after-intent',False,'collector_actor_exact_fd_scope'),('actual-socket20-changed','socket-change-after-intent',False,'abandon_actor_identity_changed'),('different-id-existing-original-fence',None,True,'abandon_original_scope_intent_already_exists')]:
+  world=ActualWorld(decl,fault,existing);receipt=m.execute_source(SOURCE,world,park=reason is not None)
+  assert world.pidfd_invocations<=1 and world.signal_invocations<=1 and not world.rpc and not world.sockets and not world.forbidden_attempts
+  assert receipt['originalFilesUnchanged']and receipt['completeNamespace']and not receipt['postExecFunctionReplacement']
+  if reason:
+   assert receipt['originalFailure']==reason,(label,receipt['originalFailure'],reason)
+   assert world.signal_invocations==0
+   if existing:assert world.pidfd_invocations==0
+  else:
+   value=json.loads(receipt['stdout']);assert value['state']=='abandoned-host-actor'and value['actor']['pid']==ACTOR['pid']and value['actor']['startTicks']==ACTOR['startTicks']
+   assert value['signalAttempts']==1 and value['signalAccepted']is True and value['pidfdExitObserved']is True and value['actorAbsentAfter']is True
+   assert value['originalInnerState']=='unknown'and value['originalInnerQualified']is False and value['closeKnownCalled']is False
+   assert world.signal_invocations==world.pidfd_invocations==1 and not world.fds
+  case=dest/label;case.mkdir(mode=0o700);p=case/'receipt.private.json';p.write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
+  controls.append({'label':label,'passed':True,'pidfdOpens':world.pidfd_invocations,'signalInvocations':world.signal_invocations,'expectedError':reason,'receiptPath':str(p),'receiptSha256':sha(p.read_bytes())})
+ assert SOURCE.read_bytes()==source
+ report={'schema':'disposition-focused-whole-source-v1','allGreen':True,'caseCount':len(controls),'controls':controls,'sourcePath':str(SOURCE),'sourceSha256':sha(source),'qualifierSha256':sha(Path(__file__).read_bytes()),'reusedWhole32Machinery':str(OLD/'qualification_models_actual.py'),'reusedWhole32MachinerySha256':sha((OLD/'qualification_models_actual.py').read_bytes()),'boundaryOnlyUnusedPrepStatusImportsRemoved':True,'allBoundaryClassesAndFunctionsAstUnchanged':True,'adaptedBoundarySha256':sha(models_adapted),'sameInitialGlobals':['__name__','__builtins__'],'productionSourceRewritten':False,'productionGuardFunctionsMirrored':False,'actualFiveFileFullGenerationsModeled':True,'actualActorNamespaceRootMetadataModeled':True,'intentBytesDerivedFromCanonicalSevenFieldJournalAndMatchActualHash':{'bytes':len(data['.rpc-000083.intent.json']),'sha256':sha(data['.rpc-000083.intent.json'])},'actualCollectorSha256':decl['COLLECTOR_SHA256'],'actualQualifiedReceiptSha256':'6a2ac133870fcc004b5be8fb4fcfcbe4efdc93fe550a1956e30d7e1ad07b6c43','original8cedOutcome':'UNKNOWN','nativeSignals':0,'nativeProcNetworkGuestActions':False,'executionAuthorityGranted':False}
+ p=dest/'summary.private.json';p.write_text(json.dumps(report,sort_keys=True,indent=2)+'\n');print(json.dumps({'summaryPath':str(p),'summarySha256':sha(p.read_bytes()),'caseCount':len(controls),'allGreen':True},sort_keys=True))
+if __name__=='__main__':main()

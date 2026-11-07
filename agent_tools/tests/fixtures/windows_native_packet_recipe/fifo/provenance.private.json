@@ -1,0 +1,79 @@
+{
+  "authority": "Renderer uses only authenticated before fixture and three unique finite replacements; retained current source is provenance, not render authority.",
+  "executedCase": "Qualification.test_fifo_replacement_at_real_open_is_nonblocking_and_refused",
+  "kind": "private-finite-authentic-pending-prefix-FIFO-fixtures",
+  "renderDeltas": [
+    "serialized read/close documentation",
+    "O_NONBLOCK on actual stream open",
+    "complete JSON record hard cap"
+  ],
+  "scope": "Only the single authentic FIFO causal oracle is executed; whole original qualifier source retained without duplicating its other tests. No remote, guest, socket, native Windows, SSH, or API actions.",
+  "sources": [
+    {
+      "bytes": 13622,
+      "fixture": "pending-prefix.before.source",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-review-before-v1/pending_prefix.py.before.source",
+      "sha256": "5ad9c4fc86ae47bbb4e69a2b365334509e7edbe7f991ca9c5d2366e18d5cc7eb"
+    },
+    {
+      "bytes": 14049,
+      "fixture": "pending-prefix.current.source",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending_prefix.py",
+      "sha256": "b1092da71d6688aa4cb90ed910a62ed3dad1572888db30f357fb4f373f46a279"
+    },
+    {
+      "bytes": 19957,
+      "fixture": "qualify-pending-prefix.source",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/qualify_pending_prefix.py",
+      "sha256": "0bb83f1aba8d1742f969dad39534642d3bd310e4cc0572ef5b10905383da0e1d"
+    },
+    {
+      "bytes": 1486,
+      "fixture": "evidence/original-fifo-red/summary.json",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-actual-open-red-v1/summary.json",
+      "sha256": "f205de67955ca5ff802a391ef94bd3e92ac35ed5bc85d6f27b91aa475c8bbbc8"
+    },
+    {
+      "bytes": 859,
+      "fixture": "evidence/original-fifo-red/source-before.json",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-actual-open-red-v1/source-before.json",
+      "sha256": "e8875d816ef6bb75ba02e2b5a6d4b357bc9d7a3c7d43beb8a69dced6dfb7c27a"
+    },
+    {
+      "bytes": 859,
+      "fixture": "evidence/original-fifo-red/source-after.json",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-actual-open-red-v1/source-after.json",
+      "sha256": "e8875d816ef6bb75ba02e2b5a6d4b357bc9d7a3c7d43beb8a69dced6dfb7c27a"
+    },
+    {
+      "bytes": 1193,
+      "fixture": "evidence/original-fifo-red/test-output.txt",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-actual-open-red-v1/test-output.txt",
+      "sha256": "db6311d0ad6fae014c57a3b266806689b40d5e1a804d3623df78d0c40f0abdaa"
+    },
+    {
+      "bytes": 474,
+      "fixture": "evidence/original-fifo-red/fifo-open-proof.json",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-actual-open-red-v1/test_fifo_replacement_at_real_open_is_nonblocking_and_refused/fifo-open-proof.json",
+      "sha256": "e36d613dc42562751f2782998f514966001f60eb98fb2707f068aeb456ffe4c1"
+    },
+    {
+      "bytes": 231,
+      "fixture": "evidence/original-fifo-red/original-pin.json",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-actual-open-red-v1/test_fifo_replacement_at_real_open_is_nonblocking_and_refused/original-pin.json",
+      "sha256": "2025b3fb85e7b78eaeee7762b803ac96518f726a9f8154b715f9ed553c893108"
+    },
+    {
+      "bytes": 1,
+      "fixture": "evidence/original-fifo-red/original-prefix.bin",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/fifo-actual-open-red-v1/test_fifo_replacement_at_real_open_is_nonblocking_and_refused/original-prefix.bin",
+      "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+    },
+    {
+      "bytes": 2116,
+      "fixture": "evidence/original-30-summary.json",
+      "originalPath": ".runtime/windows-parity-20261019/windows-visual-context/minimum-uac-foundation-v2/outer-preparation-v1/pending-prefix-evidence/3c8ab284f16c4d9793f00b3b3dccd28f/summary.json",
+      "sha256": "7c4bb729b818804a7527216d2db677d6fbd0d5a8658fb6a66c52c833eefb3750"
+    }
+  ]
+}

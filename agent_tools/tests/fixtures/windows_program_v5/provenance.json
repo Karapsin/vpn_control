@@ -1,0 +1,32 @@
+{
+  "bootstrap": {
+    "bytes": 6987,
+    "sha256": "6bbf0a01c39aef522638f0f08d9829d5af8bf041bcde19a70c7065b08aad3c97",
+    "source": "ordinary-token-continuation-v5-bootstrap.ps1"
+  },
+  "caller": {
+    "sha256": "1ff720f671be8017e5ee84a5c002571c933afff784857c2a7056a466fed9e1a8",
+    "source": "ordinary-token-continuation-v5-caller.py"
+  },
+  "commandUtf16UnitsIncludingNul": 18750,
+  "finalAbsenceReceipt": {
+    "sha256": "69d29dcd24450806ac794fde2ffa9f39f2fab826547b417e1d92bdb587ca44cd",
+    "source": ".runtime/windows-parity-20261019/windows-fixture/direct-ordinary-token-final-status/native-result.json"
+  },
+  "heldSource": {
+    "bytes": 14458,
+    "sha256": "db13e3d4ca89d1c1e39ff279bfe59f2100da9c27978060c832aa4ebe69eb8fb7",
+    "source": "ordinary-token-continuation-v5-caller.py:GUEST_SOURCE"
+  },
+  "nativeOwnerCausalReceipt": {
+    "sha256": "c75d1bd910bff604c2da68e4d8eff3617bfc1cf0a5f5e65f4eb28aae1ce526db",
+    "source": ".runtime/windows-parity-20261019/windows-fixture/native-owner-probe-gates-receipt.json"
+  },
+  "nativeReceipt": {
+    "sha256": "bbc10bbef20f7b36f7f141b6ebecaff61d802ab261488571cd7db59b0268529c",
+    "source": ".runtime/windows-parity-20261019/windows-fixture/direct-ordinary-token-continuation-v5/native-result.json"
+  },
+  "schemaVersion": 1,
+  "scope": "Explicit SYSTEM held-source infrastructure ScriptBlock transport only; the ordinary actor proof was one original finite scheduled task, not arbitrary ordinary source execution. Host tests do not replace native acceptance.",
+  "serializedRequestBytes": 38141
+}

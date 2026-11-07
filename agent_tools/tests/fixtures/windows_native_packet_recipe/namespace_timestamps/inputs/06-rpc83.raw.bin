@@ -1,0 +1,3 @@
+{"error": {"class": "GenericError", "desc": "JSON parse error, stray '\uFFFD'"}}
+ÿ{"return": 8220859838733921813}
+{"error": {"class": "GenericError", "desc": "Failed to execute helper program (Invalid argument)"}}

@@ -150,7 +150,9 @@ class VmDispatchTests(unittest.TestCase):
         # like every other pinned closure member (windows_vm_image was shipped
         # without being in any Windows deployment closure).
         from agent_tools import windows_vm_deploy
-        shipped = sorted(set(windows_vm_deploy._INSTANCE_SOURCES))
+        # windows_visual_fixture ships only for a windowsUacVisual setup, which a dispatch
+        # cannot see from its action, so every deployment route reviews it too.
+        shipped = sorted({*windows_vm_deploy._INSTANCE_SOURCES, 'windows_visual_fixture'})
         self.assertIn('windows_vm_image', shipped)
         # Every other pin holds the current bytes, so only the injected one can refuse.
         current = {name: subject.policies._capture(subject._SOURCE.parent / (name + '.py'))[2] for name in subject._SOURCE_PINS}

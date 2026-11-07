@@ -662,10 +662,10 @@ def _tart_names() -> set[str]:
     } if completed.returncode == 0 else set()
 
 
-def _selected_target(platform: str, target: str | None) -> tuple[str, str]:
+def _selected_target(platform: str, target: str | None, *, capture: bool = False) -> tuple[str, str]:
     config = android_local_config() if platform == "android" else _read_json(ENVIRONMENTS_PATH)["platforms"][platform]["local"]
     try:
-        return visual_target.select(platform, target, config)
+        return visual_target.select_capture(platform, target, config, ROOT) if capture else visual_target.select(platform, target, config)
     except (visual_target.TargetError, KeyError):
         raise VisualPlatformError("explicit visual target missing or mismatched") from None
 
@@ -1261,7 +1261,7 @@ def stamp_capture(
 
 
 def run_local_driver(platform: str, driver: str, output: Path, scene_ids: list[str], *, target: str | None = None) -> dict[str, Any]:
-    _selected_target(platform, target)
+    _selected_target(platform, target, capture=True)
     command = shlex.split(driver)
     if not command:
         raise VisualPlatformError("a local capture driver command is required")

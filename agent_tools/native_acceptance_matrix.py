@@ -143,7 +143,7 @@ def matrix_equivalence_record(root: Path | str, value: Mapping[str, Any], *,
                 any(state != "passed" for state in receipt["scenarioResults"].values())):
             raise NativeAcceptanceMatrixError("only complete passed full-native receipts may be linked")
         _verify_evidence(root, receipt["evidencePath"], receipt["evidenceHash"])
-        _verify_artifacts(root, receipt["immutableArtifactIDs"], receipt["platform"], receipt["originalSourceSHA"])
+        _verify_artifacts(root, receipt["immutableArtifactIDs"], receipt["platform"], receipt["originalSourceSHA"], receipt["evidenceScope"])
         for existing_path in directory.glob("native-acceptance-*.json"):
             existing = _read_receipt(existing_path, requirements)
             if existing["requirementId"] != receipt["requirementId"] or existing["originalSourceSHA"] != receipt["originalSourceSHA"]:
@@ -228,7 +228,7 @@ def _requirement(value: Any) -> dict[str, Any]:
 def _observation(root: Path | str, value: Mapping[str, Any], requirements: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     normalized = _stored_observation(value, requirements)
     _verify_evidence(root, normalized["evidencePath"], normalized["evidenceHash"])
-    _verify_artifacts(root, normalized["immutableArtifactIDs"], normalized["platform"], normalized["originalSourceSHA"])
+    _verify_artifacts(root, normalized["immutableArtifactIDs"], normalized["platform"], normalized["originalSourceSHA"], normalized["evidenceScope"])
     return normalized
 
 
@@ -303,13 +303,15 @@ def _row(requirement: Mapping[str, Any], records: list[Mapping[str, Any]], curre
     full_states = {scenario: {record["scenarioResults"][scenario] for record in full if scenario in record["scenarioResults"]}
                    for scenario in requirement["requiredScenarios"]}
     missing_scenarios = [scenario for scenario, values in full_states.items() if values != {"passed"}]
+    limited_passed = [scenario for scenario in missing_scenarios if states[scenario] == {"passed"}]
     record = current[0]
     row = {"requirementId": requirement["requirementId"], "platform": requirement["platform"], "requiredScenarios": requirement["requiredScenarios"],
            "originalSourceSHA": record["originalSourceSHA"], "immutableArtifactIDs": record["immutableArtifactIDs"],
            "evidencePath": record["evidencePath"], "evidenceHash": record["evidenceHash"], "environment": record["environment"],
            "result": record["result"], "missingEvidence": record["missingEvidence"], "missingScenarios": missing_scenarios,
            "nextFixedCommand": record["nextFixedCommand"], "receiptCount": len(current), "conflictingScenarios": conflicts,
-           "partialReceiptCount": len(current) - len(full), "verificationFailures": verification_failures}
+           "partialReceiptCount": len(current) - len(full), "limitedPassedScenarios": limited_passed,
+           "verificationFailures": verification_failures}
     link = record.get("_equivalenceLink")
     if isinstance(link, Mapping):
         row.update(equivalenceLinkId=link["linkId"], equivalentToSourceSHA=link["targetSourceSHA"],
@@ -354,7 +356,19 @@ def _verify_evidence(root: Path | str, relative_path: str, declared_hash: str) -
         raise NativeAcceptanceMatrixError("native acceptance evidence path is missing or unsafe") from error
 
 
-def _verify_artifacts(root: Path | str, artifact_ids: list[str], platform: str, source_sha: str) -> None:
+def _artifacts_cover(platforms: set[str], platform: str, scope: str) -> bool:
+    """Only artifacts for every platform can close a cross-platform row.
+
+    A limited receipt may carry a subset, because it stays a recorded partial:
+    `_row` never counts it towards a passed scenario.
+    """
+    if platform != "cross-platform":
+        return platforms == {platform}
+    every = _PLATFORMS - {"cross-platform"}
+    return platforms == every or (scope == "limited" and bool(platforms) and platforms < every)
+
+
+def _verify_artifacts(root: Path | str, artifact_ids: list[str], platform: str, source_sha: str, scope: str) -> None:
     try:
         from agent_tools import native_artifact_registry as registry
     except ImportError:
@@ -368,21 +382,20 @@ def _verify_artifacts(root: Path | str, artifact_ids: list[str], platform: str, 
         platforms.add(artifact_platform)
         if registry.verify_artifact(root, artifact_id).get("verification") != "verified":
             raise NativeAcceptanceMatrixError("native acceptance artifact bytes are not currently verified")
-    expected = _PLATFORMS - {"cross-platform"} if platform == "cross-platform" else {platform}
-    if platforms != expected:
+    if not _artifacts_cover(platforms, platform, scope):
         raise NativeAcceptanceMatrixError("native acceptance registered artifacts do not cover the requirement platform")
 
 
 def _verification_error(root: Path | str, record: Mapping[str, Any]) -> str | None:
     try:
         _verify_evidence(root, record["evidencePath"], record["evidenceHash"])
-        _verify_artifacts_readonly(root, record["immutableArtifactIDs"], record["platform"], record["originalSourceSHA"])
+        _verify_artifacts_readonly(root, record["immutableArtifactIDs"], record["platform"], record["originalSourceSHA"], record["evidenceScope"])
     except (NativeAcceptanceMatrixError, OSError, ValueError) as error:
         return str(error)
     return None
 
 
-def _verify_artifacts_readonly(root: Path | str, artifact_ids: list[str], platform: str, source_sha: str) -> None:
+def _verify_artifacts_readonly(root: Path | str, artifact_ids: list[str], platform: str, source_sha: str, scope: str) -> None:
     """Status-time artifact verification without registry housekeeping."""
     try:
         from agent_tools import native_artifact_registry as registry
@@ -395,8 +408,7 @@ def _verify_artifacts_readonly(root: Path | str, artifact_ids: list[str], platfo
         if not isinstance(artifact, Mapping) or artifact.get("sourceSha") != source_sha or result.get("verification") != "verified":
             raise NativeAcceptanceMatrixError("native acceptance artifact is not read-only verified for original source")
         platforms.add(artifact.get("platform"))
-    expected = _PLATFORMS - {"cross-platform"} if platform == "cross-platform" else {platform}
-    if platforms != expected:
+    if not _artifacts_cover(platforms, platform, scope):
         raise NativeAcceptanceMatrixError("native acceptance registered artifacts do not cover the requirement platform")
 
 

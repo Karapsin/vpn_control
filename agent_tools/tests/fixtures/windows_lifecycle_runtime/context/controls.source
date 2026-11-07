@@ -1,0 +1,106 @@
+"""Full before/fixed TUN reader with inert machine-file custody boundary.
+
+No native process, ACL mutation, credentials, networking or public command runs.
+The same oracle rejects a self-consistent protected collector record for a foreign
+approving administrator/session/workspace, in both ready and OFF consumer stages.
+"""
+from __future__ import annotations
+import argparse
+import hashlib
+from importlib.machinery import SourceFileLoader
+import importlib.util
+import json
+from pathlib import Path, PureWindowsPath
+import sys
+from types import SimpleNamespace as N
+import unittest
+import uuid
+
+HERE=Path(__file__).resolve().parent
+
+
+def load(source):
+    path=HERE/('tun_stages.before.source' if source=='before' else 'tun_stages.py')
+    name='_tun_context_'+source+'_'+uuid.uuid4().hex
+    loader=SourceFileLoader(name,str(path));spec=importlib.util.spec_from_loader(name,loader)
+    module=importlib.util.module_from_spec(spec);sys.modules[name]=module;loader.exec_module(module);return module
+
+
+def exercise(source,stage,variant):
+    module=load(source)
+    task,operation,request,controller,boot=[str(uuid.uuid4()) for _ in range(5)]
+    ordinary='S-1-5-21-1-2-3-1001';admin='S-1-5-21-1-2-3-1002'
+    workspace='C:\\Owned\\state';program_data='C:\\ProgramData'
+    owner=N(request={'operationId':task,'sourceSha':'a'*40,'workspace':workspace,
+        'context':{'bootIdentifier':boot,'ordinarySid':ordinary,'ordinarySessionId':2}})
+    lease={'inputs':{'programData':program_data,'collectorSourceSha256':'b'*64,
+                    'expectedApprovingAdminSid':admin},
+        'accepted':{'operationId':operation,'requestId':request},
+        'state':{'identity':controller,'workspace':Path(workspace)}}
+    context={'bootIdentifier':boot,'ordinarySid':ordinary,'ordinarySessionId':2,
+             'approvingAdminSid':admin,'workspace':workspace,'programData':program_data}
+    if variant=='wrong-admin':context['approvingAdminSid']='S-1-5-21-1-2-3-1999'
+    if variant=='wrong-session':context['ordinarySessionId']=3
+    if variant=='wrong-workspace':context['workspace']='C:\\Different\\state'
+    if variant=='wrong-programdata':context['programData']='C:\\DifferentProgramData'
+    if variant=='foreign-state-workspace':lease['state']['workspace']=Path('C:\\Different\\state')
+    if variant=='boolean-session':context['ordinarySessionId']=True;owner.request['context']['ordinarySessionId']=1
+    # The hypothetical native collector is self-consistent with ITS requested
+    # context. A native file's protected ACL does not bind it to THIS consumer.
+    observations={role:{'token':{'sid':context['approvingAdminSid'],'sessionId':context['ordinarySessionId']}}
+        for role in ('helperActor','runtimeActor')}
+    observations['configuration']={'path':str(PureWindowsPath(context['workspace'])/'runtime-config.json'),
+        'sha256':'c'*64,'sizeBytes':100}
+    value={'schemaVersion':1,'stage':stage,'ordinaryTaskOperationId':task,'productOperationId':operation,
+        'originRequestId':request,'controllerId':controller,'context':context,
+        'collectorSourceSha256':'b'*64,'sourceSha':'a'*40,'observations':observations}
+    raw=(json.dumps(value,sort_keys=True)+'\n').encode()
+    path=str(PureWindowsPath(program_data)/('tun-evidence-'+task)/(stage+'.json'))
+    record={'path':path,'sizeBytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+    calls=[]
+    class FileObservation:
+        def __init__(self,actual_owner,actual_path):
+            assert actual_owner is owner and actual_path==path
+            self.opening={'security':{'ownerSid':'S-1-5-18','sddl':'inert-machine-protected-boundary'}}
+            calls.append('open-exact-protected-record')
+        def read(self,maximum):assert maximum==262144;calls.append('read-complete-record');return raw
+        def close(self):calls.append('close-original-file')
+    def machine_security(security,directory):
+        assert security['ownerSid']=='S-1-5-18' and directory is False
+        calls.append('check-machine-policy')
+    receipts=N(canonical_path=PureWindowsPath,FileObservation=FileObservation,machine_security=machine_security)
+    accepted=False;reason=None
+    try:
+        result=module.read_native_record(owner,lease,record,receipts,stage)
+        accepted=True
+        assert result==value
+    except AssertionError as error:
+        reason=str(error)
+        assert reason=='scoped-tun-protected-native-operation-join',reason
+    assert calls==['open-exact-protected-record','check-machine-policy','read-complete-record','close-original-file']
+    evidence={'source':source,'stage':stage,'variant':variant,'accepted':accepted,'refusal':reason,
+        'fileBoundaryCalls':calls,'nativeExecuted':False,'networkExecuted':False}
+    print(json.dumps(evidence,sort_keys=True),flush=True)
+    assert accepted is (variant=='valid'), 'foreign collector context was accepted by original TUN consumer'
+    return evidence
+
+
+class ContextJoinTests(unittest.TestCase):
+    def test_both_stages_accept_matching_original_context(self):
+        for stage in ('ready','off'):exercise('after',stage,'valid')
+    def test_both_stages_refuse_each_foreign_context_without_native_effect(self):
+        for stage in ('ready','off'):
+            for variant in ('wrong-admin','wrong-session','wrong-workspace','wrong-programdata',
+                            'foreign-state-workspace','boolean-session'):
+                exercise('after',stage,variant)
+
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--source',choices=('before','after'))
+    parser.add_argument('--stage',choices=('ready','off'));parser.add_argument('--variant',choices=(
+        'valid','wrong-admin','wrong-session','wrong-workspace','wrong-programdata','foreign-state-workspace','boolean-session'))
+    arguments=parser.parse_args()
+    if arguments.source:
+        assert arguments.stage and arguments.variant
+        exercise(arguments.source,arguments.stage,arguments.variant)
+    else:unittest.main(argv=[sys.argv[0]],verbosity=2)

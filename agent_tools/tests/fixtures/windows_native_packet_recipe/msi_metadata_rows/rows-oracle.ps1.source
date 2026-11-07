@@ -1,0 +1,40 @@
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+Add-Type -LiteralPath (Join-Path $PSScriptRoot 'declared-view-record-release-peers.cs')
+$accelerators=[psobject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
+$accelerators::Add('Runtime.InteropServices.Marshal',[DeclaredMarshal])
+$accelerators::Add('System.Runtime.InteropServices.Marshal',[DeclaredMarshal])
+. ([scriptblock]::Create([IO.File]::ReadAllText($env:FUNCTION_SOURCE)))
+$cases=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CASE_LIST_JSON))|ConvertFrom-Json
+$results=[Collections.Generic.List[object]]::new();$failureCount=0
+foreach($c in $cases){
+[ReadRowsPeer]::Reset()
+$script:fieldBytes=0;$script:rows=0
+[ReadRowsPeer]::ExecuteKind=$c.execute;[ReadRowsPeer]::CloseKind=$c.close
+$viewType='ReadRowsView'+$(if($c.execute -ceq 'void'){'V'}else{'O'})+$(if($c.close -ceq 'void'){'V'}else{'O'})
+$view=New-Object -TypeName $viewType
+$declaredRows=[Collections.Generic.List[object[]]]::new()
+foreach($declaredRow in $c.rows){$fields=[Collections.Generic.List[object]]::new();foreach($field in $declaredRow){$fields.Add($field)};$declaredRows.Add($fields.ToArray())}
+$view.Rows=$declaredRows.ToArray();$db=[ReadRowsDatabase]::new();$db.View=$view
+$ok=$false;$errorInfo=$null;$seen=[Collections.Generic.List[string]]::new();$observedShape=[Collections.Generic.List[object]]::new()
+try {
+ # Preserve the actual first consumer and its index-zero operation. This is the
+ # same positive oracle for both complete source versions; no -ErrorAction skip.
+ $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+ foreach($row in (Read-Rows $db 'SELECT `Name` FROM `_Tables`' 1)){
+  [void]$names.Add([string]$row[0]);$seen.Add([string]$row[0])
+  $observedShape.Add([ordered]@{type=$row.GetType().FullName;count=$row.Count;value=$row})
+ }
+ $expected=[Collections.Generic.List[string]]::new();foreach($r in $c.rows){$expected.Add([string]$r[0])}
+ if(($seen.ToArray()|ConvertTo-Json -Compress) -cne ($expected.ToArray()|ConvertTo-Json -Compress)){throw 'POSITIVE_ROW_ORACLE'}
+ $ok=$true
+} catch {
+ $errorInfo=[ordered]@{message=$_.Exception.Message;fullyQualifiedErrorId=$_.FullyQualifiedErrorId;category=[string]$_.CategoryInfo.Category;position=$_.InvocationInfo.PositionMessage;scriptStackTrace=$_.ScriptStackTrace}
+} finally {
+ $closing=[ordered]@{executeCalls=[ReadRowsPeer]::ExecuteCalls;closeCalls=[ReadRowsPeer]::CloseCalls;fetchCalls=[ReadRowsPeer]::FetchCalls;fieldCalls=[ReadRowsPeer]::FieldCalls;releases=[ReadRowsPeer]::Releases;events=[ReadRowsPeer]::Events;aggregateRows=$script:rows;aggregateFieldUtf8Bytes=$script:fieldBytes}
+ $caseResult=[ordered]@{case=$c.name;ok=$ok;error=$errorInfo;seen=$seen;shape=$observedShape;closing=$closing;powerShell=[string]$PSVersionTable.PSVersion;releaseType=([scriptblock]::Create('[Runtime.InteropServices.Marshal].FullName').Invoke()[0])}
+ $caseResult=$caseResult|ConvertTo-Json -Depth 12 -Compress|ConvertFrom-Json
+ $results.Add($caseResult);if(-not $ok){$failureCount++}
+}
+}
+[Console]::WriteLine(([ordered]@{cases=$results;oracleFailures=$failureCount;portableCauseWitness=$true;actualMsiComAbiQualified=$false}|ConvertTo-Json -Depth 16 -Compress))
+if($failureCount -gt 0){exit 1}

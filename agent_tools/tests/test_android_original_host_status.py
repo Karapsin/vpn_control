@@ -177,3 +177,118 @@ class PrivateBinaryCustodyTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@unittest.skipUnless(_POSIX, 'whole original host-status retained pipe fixture')
+class OriginalHostCaptureCustodyRegressionTests(unittest.TestCase):
+    def before(self,name):
+        import types
+        fixture=Path(__file__).parent/'fixtures/capture_custody'
+        path=fixture/(name+'.py.before.source');raw=path.read_bytes()
+        provenance=json.loads((fixture/'provenance.json').read_bytes())
+        self.assertEqual(provenance['sources'][path.name]['sha256'],hashlib.sha256(raw).hexdigest())
+        module=types.ModuleType('agent_tools._custody_original_before_'+name)
+        module.__package__='agent_tools';module.__file__=str(path)
+        exec(compile(raw,str(path),'exec'),module.__dict__)
+        return module
+
+    def whole(self,subject,qualified,fault):
+        import agent_tools,sys,subprocess
+        from agent_tools import ssh_direct_nested_channel as direct,ssh_transport as transport
+        from agent_tools import android_observation,android_installer_tool_bundle as bundles
+        from agent_tools.native_review_source_closure import _Held
+        from agent_tools import android_original_host_wire as wire
+        owners=[];closing=[];writes={};fired=[]
+        real_init=qualified.OuterCustody.__init__;real_observe=qualified.OuterCustody.observe
+        real_write=subject._write;real_read=os.read
+        bundle={'toolBundleId':subject.ORIGINAL_BUNDLE,'reviewedTreeSha256':'a'*64,'manifest':[]}
+        profile={'serial':'emulator-5682','expectedAvd':'fixed-owned-avd','api':35,'adb':'/fixed/adb','cli':'/configured/fresh-cli'}
+        intent={'correlationId':subject.ORIGINAL,'host':'archlinux','device':'api35','toolBundleId':subject.ORIGINAL_BUNDLE,
+                'fixtureRoot':'/fixed-private-fixture','remote':{'toolBundle':bundle,'serial':profile['serial'],
+                'avd':profile['expectedAvd'],'api':35,'adb':profile['adb'],'cli':'/immutable/original-staged-cli'}}
+        value={'state':'observed','correlationId':subject.ORIGINAL,'hostUid':1000,
+               'hostBoot':'25515f23-b966-4c3a-ae63-d38452375578'}
+        payload=wire.encode_payload(value)
+        script="import sys,time;time.sleep(.05);sys.stdin.buffer.read();sys.stdout.buffer.write("+repr(payload)+")"
+        def init(owner,*args,**kwargs):owners.append(owner);return real_init(owner,*args,**kwargs)
+        def observed(owner,seconds):
+            real_observe(owner,.000001);owner.finish_naturally();return owner.snapshot()
+        def read(fd,size):
+            if owners and getattr(owners[0],'child',None) is not None and fd in (owners[0].child.stdout.fileno(),owners[0].child.stderr.fileno()) and not fired:
+                fired.append(True);raise OSError('inert original host read error')
+            return real_read(fd,size)
+        def write(directory,name,value):writes[name]=value;return real_write(directory,name,value)
+        with tempfile.TemporaryDirectory(prefix='owned-original-status-',dir=Path('/tmp').resolve()) as temporary:
+            root=Path(temporary);parent=root/'.rag_index/android-installer-dispatch'/subject.ORIGINAL
+            parent.mkdir(mode=0o700,parents=True)
+            held=_Held();held_closed=[False]
+            class Guard:
+                def __init__(self,_):
+                    self.source_pins={};self.authority_sha='a'*64
+                    self.config=SimpleNamespace(hosts={'archlinux':SimpleNamespace(fixture_transfer_root=intent['fixtureRoot'],android_devices={'api35':profile})})
+                    def consume(path,digest):
+                        if path.endswith('/dispatch.json'):return json.dumps(intent).encode()
+                        if path.endswith('/intent.json') or path.endswith('/lease-archlinux-api35.json'):return b'controlled-original-record-admission'
+                        return held.read(path,digest)
+                    self.held=SimpleNamespace(read=consume)
+                def guard(self):held.finish();held.final_identity_pass()
+                def close(self):
+                    closing.append(owners[0].child.poll() if owners and getattr(owners[0],'child',None) else 'no-child')
+                    held.close();held_closed[0]=True
+            try:
+                with __import__('contextlib').ExitStack() as stack:
+                    stack.enter_context(patch.object(agent_tools,'android_qualified_cli_observation',qualified))
+                    stack.enter_context(patch.dict(sys.modules,{'agent_tools.android_qualified_cli_observation':qualified}))
+                    stack.enter_context(patch.object(direct,'Guard',Guard))
+                    stack.enter_context(patch.object(bundles,'load',return_value=bundle))
+                    stack.enter_context(patch.object(transport,'build_ssh_argv',return_value=[sys.executable,'-I','-B','-c',script]))
+                    stack.enter_context(patch.object(qualified.OuterCustody,'__init__',init))
+                    stack.enter_context(patch.object(subject,'_write',write))
+                    if fault=='setup':stack.enter_context(patch.object(os,'set_blocking',side_effect=OSError('inert postlaunch setup')))
+                    elif fault=='read':stack.enter_context(patch.object(os,'read',side_effect=read))
+                    elif fault=='timeout':stack.enter_context(patch.object(qualified.OuterCustody,'observe',observed))
+                    result=subject.observe_original(root,intent)
+                self.assertEqual(1,len(owners));owner=owners[0]
+                return {'result':result,'writes':writes,'closing':closing,'closed':getattr(owner,'closed',False)}
+            finally:
+                if not held_closed[0]:held.close()
+                for owner in owners:
+                    child=owner.child
+                    if not getattr(owner,'closed',False):
+                        if hasattr(owner,'captureErrors'):owner.finish_naturally()
+                        else:
+                            if not child.stdin.closed:child.stdin.close()
+                            child.wait()
+                            for stream in (child.stdout,child.stderr):
+                                if not stream.closed:stream.read();stream.close()
+                            if hasattr(owner,'selector'):owner.selector.close()
+
+    def test_original_host_constructor_holds_sources_until_same_child_natural_eof(self):
+        from agent_tools import android_qualified_cli_observation as qualified
+        before=self.whole(self.before('android_original_host_status'),self.before('android_qualified_cli_observation'),'setup')
+        self.assertIn(None,before['closing']);self.assertFalse(before['closed'])
+        current=self.whole(observer,qualified,'setup')
+        self.assertNotIn(None,current['closing']);self.assertTrue(current['closed'])
+        self.assertEqual('transport_or_receipt_unknown',current['result']['reason'])
+        self.assertFalse(current['writes']['receipt.private.json']['observationComplete'])
+
+    def test_original_host_read_fault_keeps_final_raw_bytes_before_source_close(self):
+        from agent_tools import android_qualified_cli_observation as qualified
+        before=self.whole(self.before('android_original_host_status'),self.before('android_qualified_cli_observation'),'read')
+        self.assertNotIn('final.private.json',before['writes'])
+        current=self.whole(observer,qualified,'read')
+        self.assertNotIn(None,current['closing']);self.assertTrue(current['closed'])
+        final=current['writes']['final.private.json'];self.assertTrue(final['complete']);self.assertTrue(all(final['eof'].values()))
+        self.assertEqual('read',final['captureErrors'][0]['phase'])
+        self.assertGreater(len(current['writes']['final-stdout.private']),0)
+        self.assertFalse(current['writes']['receipt.private.json']['observationComplete'])
+
+    def test_original_host_complete_after_timeout_keeps_observation_incomplete(self):
+        from agent_tools import android_qualified_cli_observation as qualified
+        before=self.whole(self.before('android_original_host_status'),qualified,'timeout')
+        self.assertTrue(before['writes']['receipt.private.json']['observationComplete'])
+        self.assertEqual('worker_or_receipt_unknown',before['result']['reason'])
+        current=self.whole(observer,qualified,'timeout')
+        final=current['writes']['final.private.json'];self.assertTrue(final['complete']);self.assertTrue(final['timeout'])
+        self.assertFalse(current['writes']['receipt.private.json']['observationComplete'])
+        self.assertEqual('transport_or_receipt_unknown',current['result']['reason'])

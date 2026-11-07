@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "<string>", line 237, in <module>
+    first=snapshot();second=snapshot()
+  File "<string>", line 208, in snapshot
+    guards();table=rows();present=actor_present();socket_present=os.path.lexists(control)
+    ~~~~~~^^
+  File "<string>", line 162, in guards
+    if json.dumps(file_pin(request['config'],body=True),sort_keys=True)!=json.dumps(remote_intent['configPin'],sort_keys=True) or json.dumps(effective_route(spec),sort_keys=True)!=json.dumps(remote_intent['effectiveRoute'],sort_keys=True):raise ValueError('route')
+                  ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 27, in file_pin
+    if not path.is_absolute() or '..' in path.parts:raise ValueError('route_parent_unsafe')
+                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: route_parent_unsafe

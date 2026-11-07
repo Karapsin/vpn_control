@@ -176,7 +176,7 @@ internal object DesktopCli {
             return fail(ControlCode.UNSUPPORTED)
         val request = com.kardinal.vpncontrol.control.ControlCliRequestBuilder.build(invocation, requestId, readInput, readQrImage)
             .getOrElse { return fail(desktopInputFailureCode(it)) }
-        if (request.command.operation in DesktopControlMutations.operations && DesktopControlMutations.command(request.command) == null)
+        if (request.command.operation in DesktopControlMutations.operations && !DesktopControlMutations.accepts(request.command))
             return fail(ControlCode.INVALID_ARGUMENT)
         val submit = DesktopCliCommand.ControlSubmit(request, invocation.client.timeoutSeconds)
         val output = invocation.options["--output"]

@@ -1,0 +1,1016 @@
+"""Internal, finite retirement of three exact owned test connections.
+
+There is no public mutator, arbitrary archive execution, renewal or replay.
+Historical MCP bytes are data only; every executed capsule equals current
+reviewed source. A new operation records its sole exit request before launch.
+"""
+from __future__ import annotations
+
+import ast
+from contextlib import ExitStack, closing, contextmanager
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import uuid
+
+from . import private_inventory_lock as private
+from . import source_module_loader as loader
+from . import ssh_channel_selection as selection
+from . import ssh_direct_nested_channel as direct
+from . import ssh_fresh_nested_channel as channel
+from . import ssh_transport as transport
+
+_LOADED_BYTES = Path(__file__).read_bytes()
+if sys._getframe().f_code != compile(_LOADED_BYTES, __file__, "exec", dont_inherit=True, optimize=sys.flags.optimize):
+    raise ValueError("retirement_loaded_source_changed")
+_LOADED_SHA = hashlib.sha256(_LOADED_BYTES).hexdigest()
+
+CORRELATION = "fbac0defae0349caa8a9f445cc7278cc"
+INTENT_SHA = "f1c7a0e00967054ccd50ea95100d604442df6852be87386900bec723c81cd469"
+READY_SHA = "c9fd5b249f01eeaa93b6b1f7fb84c0455075013773414560a68c4e1164bce8ec"
+BEFORE_MCP = "df6e54b0404a3ce95e6db98e84ba9f9cae0d019f73f2da16ed90115305002768"
+CURRENT_MCP = "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3"
+PROGRAMS = ("fe53bef8-7d4e-4d26-93e2-92241a7f7f73", "0178c308-1d41-490c-a390-1c0d42883e98",
+            "264686dc-c3bc-4afd-9eca-bf931a7bc1d6", "48f55cb9-65af-49a3-aaae-5236d49fe8eb")
+
+
+# Exact authentic terminal/closing records from the four qualified operations.
+PROGRAM_RECORDS = {
+    "0178c308-1d41-490c-a390-1c0d42883e98": {
+        "intent.json": "271bd59634712a9ee0b7644f7e86294c2f135439ac3951370e17204d33ed7f9a",
+        "owner-closed.json": "ff2571c0dc15c55402e1197d39b4f7cb00265a26c8cb04843881addba321e694",
+        "owner.json": "3a60286fe103791b5672aac326fb9af9b9edaeec6e527eb0ecb223bac41d18f6",
+        "terminal.json": "7887543136577e3feb8d031ea7081733f6c33ce9b532a109cf775d107477f664"
+    },
+    "264686dc-c3bc-4afd-9eca-bf931a7bc1d6": {
+        "intent.json": "e22c347cb2ce0d2310699630354485c3484d492a30e835df91ff34702f7bd309",
+        "owner-closed.json": "5716686365d9e81ca6a5828cf28c9f2ff1a195d7c8e91621efb45187c545c3dc",
+        "owner.json": "2eb418d073d98c3046901188b1d3aec527e659f3f6e1e0926fd24833b921c29e",
+        "terminal.json": "7d65d3681956f5e68dd7b4466919546f1bb4f72712641b345f7febcec7d0afa5"
+    },
+    "48f55cb9-65af-49a3-aaae-5236d49fe8eb": {
+        "intent.json": "8e6a1798901f35f91ab0cb90c177032202b3d8824f44036bd7c0d8e24434b55e",
+        "owner-closed.json": "b8bfbb5011be918ed74bcea9094a6159baf5e32f8bf48f2fc7c5516043b8948a",
+        "owner.json": "b2ae3906c1ab30ebea65e57f7389b4f612f65be834bd4c3ccb8b3bf3ff4f80d6",
+        "terminal.json": "eb0be35ecd63d485f97c1fd1842341e804365c9705e1e1cadc7bc9c28c4a2a74"
+    },
+    "fe53bef8-7d4e-4d26-93e2-92241a7f7f73": {
+        "intent.json": "1c77678df0bc684f98be853e155b077478782272e4f0efb0228aebf86ae9a561",
+        "owner-closed.json": "abbc8ce1d9777d354357b2f933f506a2e3df9fe50d016c939f2c3d49adccc31b",
+        "owner.json": "3ca7b76b6e1be2a54eb395f15f7aef53edb6445e659784b496df3f6ab08962f2",
+        "terminal.json": "9361952925fa799c960853f1389b666ac450a60d971b324b42e12578a253785b"
+    }
+}
+
+SECOND_CORRELATION = "315960df95134764a39cca602d36df76"
+SECOND_INTENT_SHA = "cedefb1c54195c6be2988f9e5059933e8c3a76b9cb75e04adfedf5b3e28778bb"
+SECOND_READY_SHA = "7cc8478dfa90f8bd4ce9cbd72da505abda818a40f2f5f915406083df921c46a5"
+SECOND_UNKNOWN = "bc6ed15f-36ba-492a-88ac-13eaca58fa10"
+SECOND_PROGRAM_RECORDS = {**PROGRAM_RECORDS,
+    "949ae643-8eda-4f19-8dba-5e4c17b2894e": {
+        "intent.json": "5a9a9f0adcfac71845349c6c8bb82e37ed391a3e81545f31ae05fd098e6c1b65",
+        "owner.json": "6287211550115367d3c2b526763087999bd703a28847728cefa67c0a947483a4",
+        "owner-closed.json": "b4f012d1f527b1d4356384cd6ec918f1f73b8b2571fa946e16573ca04e2db06d",
+        "terminal.json": "3514c15d3579909d3b0583844be78341c949605c9024ef5101342dd2ce9829f9"},
+    SECOND_UNKNOWN: {
+        "intent.json": "19b5a52b58a4f3ebd6e70f0e2f4f665b44307e83af8fafa204c3b484f79d9f26",
+        "owner.json": "5ddde551b4d6bc5f749f273de9e3f69d067eaad0dbcb7c33f2e13725fabc5011",
+        "owner-closed.json": "b6ffff517704f4f0d5a3121e16d08df69aa22d115e74f2017f16c84818b51cde",
+        "terminal.json": "02e3c459e36162f54a67c04e629c3b49d2d8f3b38e1c9bdfcf8630f041f0d40d"}}
+
+
+THIRD_CORRELATION = "546de96429aa4b9c8ea6332b1c549182"
+THIRD_INTENT_SHA = "d83df5cd1090c965c404cf810de697da143893541c4f781859a91800a8a8ceb0"
+THIRD_READY_SHA = "e929879537f8a7e266bfc94045bc45343d7590f355f65173758a7ac8f3928f0a"
+THIRD_UNKNOWN = "ba9620b4-e5d3-4f61-82a9-ee4ce38522ec"
+THIRD_UNKNOWN_INTENT_SHA = "29f4bf187a7ce24231ee9a2e633d38b811390fea76b47536e99b298966ddd59e"
+THIRD_ORIGINAL_AUTHORITY = "a0bf2aba949fe60c70f181edb96684b8f8d1b2a806d71c163bcf1a63aebc8394"
+THIRD_CURRENT_AUTHORITY = "7c45a305489b45f9142343262688c79348fdaee34986bd028eab9402028fbe2e"
+THIRD_ORIGINAL_TRUST = "c907aa5bc91e23ffe31a1490b5515227c64412607e878ce6f1c379aa91bdae67"
+THIRD_CURRENT_TRUST = "20bb94d7611f2ff2fb7115a3a45be7b69d9f30e23ba1834ba49c291f03030294"
+# Deliberately unavailable until the coordinator has joined actual original
+# actor/custody/guest-status evidence. This is not a caller-supplied admission.
+_THIRD_ADMISSION = None
+_THIRD_FACTS = {"operationId": THIRD_UNKNOWN, "channelId": THIRD_CORRELATION,
+    "originalLocalActorsAbsent": True, "originalGuestStatusReconciled": True,
+    "originalUnknownPreserved": True, "originalEofClaimed": False,
+    "originalSourceClosingClaimed": False, "originalCaptureCompletion": "lost",
+    "originalClosureQualified": False, "historicalTrustEquivalent": False,
+    "hostCustodyDropped": True, "guestReplayAllowed": False}
+
+
+def _third_release():
+    value = _THIRD_ADMISSION
+    if (type(value) is not dict or set(value) != {"facts", "proofs", "programRecords", "baLeafNames"}
+            or value["facts"] != _THIRD_FACTS or type(value["proofs"]) is not dict
+            or not 1 <= len(value["proofs"]) <= 16 or type(value["programRecords"]) is not dict
+            or set(value["programRecords"]) != set(SECOND_PROGRAM_RECORDS) | {
+                "bd18cb94-e6a2-4003-99d5-9edc792ed05c", "138e8eeb-ca78-40b8-acb0-6f91fb855873",
+                "bf8fc478-c548-42c5-955b-b3698b6905c0", "2690c7cd-a4e4-4c0a-832a-1364ab325755", THIRD_UNKNOWN}
+            or type(value["baLeafNames"]) is not list or len(value["baLeafNames"]) > 8192
+            or len(set(value["baLeafNames"])) != len(value["baLeafNames"])):
+        raise ValueError("retirement_546_evidence_unavailable")
+    for name, digest in value["proofs"].items():
+        path = Path(name)
+        if (type(name) is not str or path.is_absolute() or ".." in path.parts or not path.parts
+                or path.parts[0] != ".runtime" or type(digest) is not str
+                or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)):
+            raise ValueError("retirement_546_evidence_identity")
+    if any(type(name) is not str or Path(name).name != name for name in value["baLeafNames"]):
+        raise ValueError("retirement_546_evidence_identity")
+    return value
+
+
+def _third_authority(current, original, original_program):
+    """Separate current trust from historical metadata; never assert equivalence."""
+    if (current.authority_sha != THIRD_CURRENT_AUTHORITY
+            or original["outerAuthoritySha256"] != THIRD_ORIGINAL_AUTHORITY):
+        raise ValueError("retirement_authority")
+    pins = original_program["connectionPins"]
+    old = _parse(_json(current.authority))
+    changed = []
+    for row in old["files"]:
+        pin = pins.get(row["path"])
+        if type(pin) is not dict or set(pin) != {"generation", "sha256"}:
+            raise ValueError("retirement_historical_authority")
+        generation = pin["generation"]
+        if (type(generation) is not list or len(generation) != 9
+                or any(type(item) is not int for item in generation)):
+            raise ValueError("retirement_historical_authority")
+        prior = {"path": row["path"], "sha256": pin["sha256"],
+                 "fingerprint": generation[:4] + generation[5:]}
+        if row != prior:
+            if (Path(row["path"]).name != "known_hosts" or row["sha256"] != THIRD_CURRENT_TRUST
+                    or prior["sha256"] != THIRD_ORIGINAL_TRUST):
+                raise ValueError("retirement_unreviewed_authority_delta")
+            changed.append(row["path"])
+        row.update(prior)
+    if len(changed) != 1 or _sha(_json(old)) != THIRD_ORIGINAL_AUTHORITY:
+        raise ValueError("retirement_historical_authority")
+    return {"historicalAuthoritySha256": THIRD_ORIGINAL_AUTHORITY,
+            "currentAuthoritySha256": THIRD_CURRENT_AUTHORITY,
+            "changedTrustPath": changed[0], "historicalTrustBytesAvailable": False,
+            "historicalTrustEquivalent": False}
+
+
+def _profile(correlation):
+    if correlation == CORRELATION:
+        return INTENT_SHA, READY_SHA, PROGRAM_RECORDS
+    if correlation == SECOND_CORRELATION:
+        return SECOND_INTENT_SHA, SECOND_READY_SHA, SECOND_PROGRAM_RECORDS
+    if correlation == THIRD_CORRELATION:
+        return THIRD_INTENT_SHA, THIRD_READY_SHA, _third_release()["programRecords"]
+    raise ValueError("retirement_identity")
+
+
+def _sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _parse(raw):
+    return json.loads(raw, object_pairs_hook=transport._reject_duplicate_keys)
+
+
+def _local_absent(pid):
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("retirement_local_actor")
+    result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "pid="],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, timeout=3, check=False)
+    if result.returncode != 1 or result.stdout or result.stderr:
+        raise ValueError("retirement_local_owner_present")
+
+
+def _mcp_data_transition(before, current):
+    """The exact reviewed six-line guard is the only historical data edge."""
+    if _sha(before) != BEFORE_MCP or _sha(current) != CURRENT_MCP:
+        raise ValueError("retirement_mcp_source")
+    old, new = ast.parse(before), ast.parse(current)
+    functions = [node for node in new.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and node.name == "_ssh_workflow_impl"]
+    if len(functions) != 1:
+        raise ValueError("retirement_mcp_shape")
+    guards = [node for node in ast.walk(functions[0]) if isinstance(node, ast.If)
+              and ast.unparse(node.test) == "os.name != 'posix'"]
+    if len(guards) != 1:
+        raise ValueError("retirement_mcp_guard")
+    guard = guards[0]
+    expected = ast.parse('''if os.name != "posix":
+        original = transfer if starting else identity
+        return {"tool": "ssh_workflow", "ok": False, "state": "refused",
+                "reason": "program_coordinator_unsupported", "host": host,
+                "operationId": original.get("operationId"),
+                "nativeActionAllowed": False, "replayAllowed": False}
+''').body[0]
+    if ast.dump(guard, include_attributes=False) != ast.dump(expected, include_attributes=False):
+        raise ValueError("retirement_mcp_guard")
+    for parent in ast.walk(new):
+        for _, value in ast.iter_fields(parent):
+            if isinstance(value, list) and guard in value:
+                value.remove(guard)
+    if ast.dump(old, include_attributes=False) != ast.dump(new, include_attributes=False):
+        raise ValueError("retirement_mcp_delta")
+
+
+def _write(directory, name, raw):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory.fd)
+    try:
+        offset = 0
+        while offset < len(raw):
+            count = os.write(fd, raw[offset:])
+            if count <= 0:
+                raise OSError("retirement_short_write")
+            offset += count
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.fsync(directory.fd)
+
+
+@contextmanager
+def _original(root, host, correlation, operation):
+    if host != "archlinux" or str(uuid.UUID(operation)) != operation:
+        raise ValueError("retirement_identity")
+    intent_sha, ready_sha, program_records = _profile(correlation)
+    root = Path(root).resolve(strict=True)
+    with ExitStack() as stack:
+        presented, _, lock = stack.enter_context(private.ownership(root))
+        journal = stack.enter_context(private.Directory(channel._context_journal(root, host, correlation, False, True)))
+        intent = stack.enter_context(private.Snapshot(journal, correlation + ".intent.json"))
+        ready = stack.enter_context(private.Snapshot(journal, correlation + ".ready.json"))
+        if intent.digest != intent_sha or ready.digest != ready_sha:
+            raise ValueError("retirement_original_records")
+        value, receipt = _parse(intent.body), _parse(ready.body)
+        if receipt["intent"] != intent.pin() or receipt["result"]["correlationId"] != correlation:
+            raise ValueError("retirement_ready_binding")
+        current = stack.enter_context(direct.Guard(root, host))
+        current.held.read(str(Path(__file__).absolute()), _LOADED_SHA)
+        current.held.read(str(Path(loader.__file__).absolute()), loader._LOADED_SHA)
+        extra = []
+        trust = None
+        if correlation == THIRD_CORRELATION:
+            release = _third_release()
+            for name, digest in release["proofs"].items():
+                folder = stack.enter_context(private.Directory(root / Path(name).parent))
+                evidence = stack.enter_context(private.Snapshot(folder, Path(name).name))
+                if evidence.digest != digest:
+                    raise ValueError("retirement_546_evidence_changed")
+                extra.append(evidence)
+            ba_directory = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution" / THIRD_UNKNOWN))
+            ba_intent = stack.enter_context(private.Snapshot(ba_directory, "intent.json"))
+            if ba_intent.digest != THIRD_UNKNOWN_INTENT_SHA:
+                raise ValueError("retirement_original_program")
+            extra.append(ba_intent)
+            trust = _third_authority(current, value, _parse(ba_intent.body))
+        elif current.authority_sha != value["outerAuthoritySha256"]:
+            raise ValueError("retirement_authority")
+        config = stack.enter_context(private.Snapshot(stack.enter_context(private.Directory(root)), transport.CONFIG_FILENAME))
+        if config.pin() != value["inventory"]:
+            raise ValueError("retirement_inventory")
+        sources = {"remote": value["remoteSourceSha256"], "ssh_fresh_nested_channel.py": value["sourceSha256"], **value["directSourcePins"]}
+        if set(value["directSourcePins"]) != set(direct._SOURCE_NAMES):
+            raise ValueError("retirement_source_members")
+        capsules = {}
+        for name, digest in sources.items():
+            part = stack.enter_context(private.Snapshot(journal, correlation + "." + name + ".source"))
+            if part.digest != digest:
+                raise ValueError("retirement_capsule_bytes")
+            capsules[name] = part
+            canonical = channel._REMOTE.encode() if name == "remote" else Path(__file__).with_name(name).read_bytes()
+            if name == "mcp_server.py":
+                if correlation == CORRELATION:
+                    _mcp_data_transition(part.body, canonical)
+                elif part.body != canonical or part.digest != CURRENT_MCP:
+                    raise ValueError("retirement_mcp_source")
+            elif part.body != canonical:
+                raise ValueError("retirement_executable_source_changed")
+        # Block every cooperating selected-route admission during observation
+        # and exit. Already admitted owners must independently be closed.
+        selected = stack.enter_context(private.Directory(selection._selected_directory(root, host)))
+        selected_lock = stack.enter_context(selection._Lock(selected))
+        owners = []
+        program_group = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution"))
+        if set(os.listdir(program_group.fd)) != set(program_records):
+            raise ValueError("retirement_unaccounted_program")
+        for identifier in program_records:
+            directory = stack.enter_context(private.Directory(root / ".rag_index/ssh-program-execution" / identifier))
+            records = {}
+            for name, digest in program_records[identifier].items():
+                part = stack.enter_context(private.Snapshot(directory, name))
+                if part.digest != digest:
+                    raise ValueError("retirement_program_record_changed")
+                owners.append(part); records[name] = part
+            if correlation == THIRD_CORRELATION and identifier == THIRD_UNKNOWN:
+                # Exact physical closure proof does not fabricate lost original
+                # EOF, terminal, or source-closing records. UNKNOWN stays intact.
+                if (set(os.listdir(directory.fd)) != set(release["baLeafNames"])
+                        or "terminal.json" in release["baLeafNames"]
+                        or "owner-closed.json" in release["baLeafNames"]
+                        or not {"intent.json", "owner.json", "child.json", "stdout.private", "stderr.private"} <= set(records)):
+                    raise ValueError("retirement_original_unknown_changed")
+                owner, child = _parse(records["owner.json"].body), _parse(records["child.json"].body)
+                if owner["actor"]["pid"] != 57875 or child["actor"]["pid"] != 58163:
+                    raise ValueError("retirement_original_unknown_actor")
+                _local_absent(57875); _local_absent(58163)
+                continue
+            terminal = _parse(records["terminal.json"].body)
+            closing = _parse(records["owner-closed.json"].body)
+            # The exact pinned bc6 UNKNOWN is never promoted to terminal or
+            # treated as no-start. Its keeper must be closed; native mux/client
+            # quiescence below independently gates the connection exit.
+            closed_unknown = (correlation in (SECOND_CORRELATION, THIRD_CORRELATION) and identifier == SECOND_UNKNOWN
+                              and terminal.get("state") == "unknown" and terminal.get("capture") is None)
+            known_terminal = (terminal.get("state") == "terminal" and type(terminal.get("exitCode")) is int
+                              and terminal["exitCode"] != 255 and terminal["capture"]["complete"] is True
+                              and terminal["capture"]["eof"] == {"stdout": True, "stderr": True})
+            if (not (known_terminal or closed_unknown)
+                    or closing != {"operationId": identifier, "terminalSha256": records["terminal.json"].digest, "sourceClosing": True}):
+                raise ValueError("retirement_program_not_terminal")
+            owner = _parse(records["owner.json"].body)
+            _local_absent(owner["actor"]["pid"])
+        group = root / ".rag_index/ssh-owned-channel-retirement"
+        group.mkdir(mode=0o700, exist_ok=True)
+        stack.enter_context(private.Directory(group))
+        with private.Directory(group.parent) as parent:
+            os.fsync(parent.fd)
+        path = group / operation
+        path.mkdir(mode=0o700)
+        output = stack.enter_context(private.Directory(path))
+        with private.Directory(group) as parent:
+            os.fsync(parent.fd)
+        def guard():
+            presented.guard(); lock.guard(); journal.guard(); intent.guard(); ready.guard(); config.guard()
+            current.guard(); selected.guard(); selected_lock.guard()
+            program_group.guard()
+            if set(os.listdir(program_group.fd)) != set(program_records):
+                raise ValueError("retirement_program_membership_changed")
+            if correlation == THIRD_CORRELATION:
+                if set(os.listdir(ba_directory.fd)) != set(release["baLeafNames"]):
+                    raise ValueError("retirement_original_unknown_changed")
+                ba_directory.guard()
+            for part in (*capsules.values(), *owners, *extra):
+                part.guard()
+            output.guard()
+        guard()
+        pins = {name: part.pin() for name, part in capsules.items()}
+        _write(output, "intent.json", _json({"operationId": operation, "correlationId": correlation,
+            "intent": intent.pin(), "ready": ready.pin(), "sourceCapsules": pins,
+            "sourceViewUsesRealGenerations": True, "historicalMcpExecutionAllowed": False,
+            "replayAllowed": False, **({"trustSeparation": trust, "currentAuthority": current.authority, "closureProofs": release["proofs"],
+                "originalUnknownPreserved": True, "originalEofClaimed": False, "originalSourceClosingClaimed": False}
+                if correlation == THIRD_CORRELATION else {})}))
+        local_intent = stack.enter_context(private.Snapshot(output, "intent.json"))
+        original_guard = guard
+        def guard():
+            original_guard(); local_intent.guard()
+        inventory_locked = [True]
+        def release_inventory_for_status():
+            guard()
+            if not inventory_locked[0]:
+                raise ValueError("retirement_status_already_admitted")
+            # The authentic status acquires this same cooperative lock itself.
+            # Keep the original descriptor/snapshot and all authority guards;
+            # release only ownership, never fake a successful reentrant flock.
+            private.fcntl.flock(lock.snapshot.fd, private.fcntl.LOCK_UN)
+            inventory_locked[0] = False
+            guard()
+        yield root, value, receipt["result"], current, output, capsules, guard, release_inventory_for_status
+        guard()
+
+
+_PROBE = r'''
+request=json.loads(sys.stdin.buffer.read(4097),object_pairs_hook=reject_pairs)
+if request['action'] not in ('observe','retire') or re.fullmatch('[0-9a-f-]{36}',request['operationId']) is None:raise ValueError('request')
+corr=request['ready']['correlationId'];ready=request['ready'];master=ready['master']
+stage='/tmp/vpn-channel-'+corr;control=ready['controlPath']
+if control!=stage+'/m' or os.getuid()!=master['actor']['uid']:raise ValueError('identity')
+boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+if boot!=master['gatewayBoot']:raise ValueError('boot')
+held=[];retirement_directory=None
+config_file=request['config'] if request['config'] else str(Path.home()/'.ssh/config')
+def pin(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);info=os.fstat(fd)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1:raise ValueError('private')
+ body=os.read(fd,65537)
+ if len(body)!=info.st_size or len(body)>65536:raise ValueError('bound')
+ held.append((path,fd,generation(info),body));return json.loads(body,object_pairs_hook=reject_pairs)
+def guards():
+ for path,fd,identity,body in held:
+  if generation(os.fstat(fd))!=identity or generation(os.lstat(path))!=identity or os.pread(fd,len(body)+1,0)!=body:raise ValueError('changed')
+ if [getattr(os.lstat(stage),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')]!=master['directory']:raise ValueError('directory')
+ if set(os.listdir(stage)) not in ({'m','intent.json','ready.json'},{'intent.json','ready.json'}):raise ValueError('directory_membership')
+ if retirement_directory is not None and [getattr(os.lstat(retirement_directory[0]),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')]!=retirement_directory[1]:raise ValueError('retirement_directory_changed')
+ if json.dumps(file_pin(config_file,body=True),sort_keys=True)!=json.dumps(remote_intent['configPin'],sort_keys=True) or json.dumps(effective_route(spec),sort_keys=True)!=json.dumps(remote_intent['effectiveRoute'],sort_keys=True):raise ValueError('route')
+remote_intent=pin(stage+'/intent.json');remote_ready=pin(stage+'/ready.json')
+if json.dumps(remote_ready,sort_keys=True)!=json.dumps(ready,sort_keys=True) or set(remote_intent)!={'correlationId','gatewayBoot','gatewayUid','sourceSha256','configPin','effectiveRoute'} or any(json.dumps(remote_intent[k])!=json.dumps(v) for k,v in {'correlationId':corr,'gatewayBoot':boot,'gatewayUid':os.getuid(),'sourceSha256':request['sourceSha256']}.items()):raise ValueError('original')
+spec={'configFile':config_file,'controlPath':control,'remoteHostAlias':request['profile']}
+def actor_present():
+ path='/proc/'+str(master['actor']['pid'])
+ if not os.path.lexists(path):return False
+ raw=Path(path+'/stat').read_bytes();tail=raw[raw.rindex(b')')+2:].split()
+ if int(tail[19])!=master['actor']['startTicks'] or os.stat(path).st_uid!=master['actor']['uid'] or tail[0] in (b'Z',b'X'):raise ValueError('actor')
+ return True
+def proc_bytes(path):
+ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW);parts=[];total=0;deadline=time.monotonic()+2
+ try:
+  while True:
+   if time.monotonic()>deadline:raise ValueError('proc_deadline')
+   part=os.read(fd,min(65536,1048577-total))
+   if not part:break
+   parts.append(part);total+=len(part)
+   if total>1048576:raise ValueError('proc_bound')
+  return b''.join(parts)
+ finally:os.close(fd)
+def rows():
+ raw=proc_bytes('/proc/net/unix')
+ if len(raw)>1048576 or not raw.startswith(b'Num       RefCount Protocol Flags    Type St Inode Path\n') or not raw.endswith(b'\n'):raise ValueError('table')
+ result=[];seen=set()
+ for line in raw.splitlines()[1:]:
+  row=line.split(maxsplit=7)
+  if len(row) not in (7,8) or not re.fullmatch(rb'[0-9a-fA-F]+:',row[0]) or any(re.fullmatch(rb'[0-9a-fA-F]+',v) is None for v in row[1:6]) or not row[6].isdigit() or row[6] in seen:raise ValueError('table_row')
+  seen.add(row[6]);result.append(row)
+ return result
+def owned_row(row):return len(row)==8 and re.fullmatch(re.escape(control.encode())+rb'(\.[A-Za-z0-9]{16})?',row[7]) is not None
+def census():
+ names=os.listdir('/proc')
+ if len(names)>8192:raise ValueError('process_bound')
+ for name in names:
+  if not name.isdecimal() or int(name) in (os.getpid(),master['actor']['pid']):continue
+  path='/proc/'+name
+  try:
+   info=os.stat(path)
+   if info.st_uid!=os.getuid():continue
+   raw=Path(path+'/cmdline').read_bytes()
+   if len(raw)>1048576:raise ValueError('command_bound')
+   if control.encode() in raw or corr.encode() in raw.split(b'\0'):raise ValueError('client_present')
+  except FileNotFoundError:
+   if os.path.lexists(path):raise ValueError('process_race')
+def snapshot():
+ guards();table=rows();present=actor_present();socket_present=os.path.lexists(control)
+ if not present and not socket_present:
+  if any(owned_row(r) for r in table):raise ValueError('listener_present')
+  census();guards();return {'state':'ended','gatewayBoot':boot,'correlationId':corr,'independentAbsence':True}
+ if not present or not socket_present or generation(os.lstat(control))!=master['socket']:raise ValueError('partial')
+ matches=[r for r in table if owned_row(r)]
+ if len(matches)!=1 or matches[0][6].decode()!=master['listenerInode'] or matches[0][3:6]!=[b'00010000',b'0001',b'01']:raise ValueError('listener')
+ fds=os.listdir('/proc/%d/fd'%master['actor']['pid'])
+ if len(fds)>256:raise ValueError('fd_bound')
+ inodes=set()
+ for name in fds:
+  link=os.readlink('/proc/%d/fd/%s'%(master['actor']['pid'],name));match=re.fullmatch(r'socket:\[([0-9]+)\]',link)
+  if match:inodes.add(match[1].encode())
+ unix={r[6] for r in table}&inodes
+ if unix!={master['listenerInode'].encode()}:raise ValueError('mux_client_active')
+ tcp=set()
+ for path in ('/proc/net/tcp','/proc/net/tcp6'):
+  raw=proc_bytes(path)
+  if not raw.endswith(b'\n') or b'local_address' not in raw.splitlines()[0]:raise ValueError('tcp_table')
+  for line in raw.splitlines()[1:]:
+   row=line.split()
+   if len(row)<10 or not row[9].isdigit():raise ValueError('tcp_row')
+   if row[9] in inodes:
+    if row[3]!=b'01':raise ValueError('forwarding_socket')
+    tcp.add(row[9])
+ if len(tcp)!=1 or inodes!=unix|tcp:raise ValueError('unexplained_socket')
+ census();guards()
+ if not actor_present() or generation(os.lstat(control))!=master['socket']:raise ValueError('closing')
+ return {'state':'ready','gatewayBoot':boot,'correlationId':corr,'unixListenerOnly':True,'socketInodes':sorted(x.decode() for x in inodes)}
+first=snapshot();second=snapshot()
+if first!=second:raise ValueError('snapshot_changed')
+if request['action']=='retire' and first['state']=='ready':
+ operation='/tmp/vpn-retire-'+corr
+ os.mkdir(operation,0o700)
+ parent_fd=os.open('/tmp',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ os.fsync(parent_fd);os.close(parent_fd)
+ retirement_directory=(operation,[getattr(os.lstat(operation),k) for k in ('st_dev','st_ino','st_mode','st_uid','st_gid')])
+ fd=os.open(operation+'/intent.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ with os.fdopen(fd,'w') as f:json.dump(request,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+ directory_fd=os.open(operation,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ os.fsync(directory_fd)
+ if json.dumps(pin(operation+'/intent.json'),sort_keys=True)!=json.dumps(request,sort_keys=True):raise ValueError('retirement_intent_changed')
+ if snapshot()!=first:raise ValueError('exit_boundary_changed')
+ command=['ssh']+(['-F',request['config']] if request['config'] else [])+['-S',control,'-o','ControlMaster=no','-o','ControlPersist=no','-o','ProxyCommand=false','-o','PermitLocalCommand=no','-o','ClearAllForwardings=yes','-o','UpdateHostKeys=no','-O','exit',request['profile']]
+ capture=inner(command,5)
+ fd=os.open(operation+'/exit.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ saved={k:v for k,v in capture.items() if k not in ('stdout','stderr')};saved.update(stdoutBase64=base64.b64encode(capture['stdout']).decode(),stderrBase64=base64.b64encode(capture['stderr']).decode())
+ with os.fdopen(fd,'w') as f:json.dump(saved,f,sort_keys=True);f.flush();os.fsync(f.fileno())
+ if not capture['complete'] or capture['returnCode']!=0:raise ValueError('exit_unknown')
+ deadline=time.monotonic()+3
+ while time.monotonic()<deadline:
+  if not os.path.lexists(control) and not os.path.lexists('/proc/'+str(master['actor']['pid'])):break
+  time.sleep(.02)
+ final=snapshot()
+ if final['state']!='ended':raise ValueError('absence_unknown')
+ final['exitCapture']=saved;first=final
+guards();print(json.dumps(first,sort_keys=True))
+'''
+
+
+def _remote_program(correlation=None):
+    # These are the current reviewed provider's complete route guards and
+    # binary child collector. No historical module top-level is executed.
+    prefix = "import base64,hashlib,json,os,re,stat,subprocess,sys,time,pwd,selectors\nfrom pathlib import Path\n_SOCKET_CAPTURE_BYTES=4096\n"
+    pairs = "def reject_pairs(pairs):\n value={}\n for key,item in pairs:\n  if key in value:raise ValueError('duplicate')\n  value[key]=item\n return value\n"
+    return prefix + channel._guard_program + (_fixed546_inner_source() if correlation == THIRD_CORRELATION else channel._inner_source) + pairs + _PROBE
+
+
+def _capture(output, name, capture):
+    for stream in ("stdout", "stderr"):
+        _write(output, name + "." + stream, capture[stream])
+    _write(output, name + ".json", _json({key: value for key, value in capture.items() if key not in ("stdout", "stderr")}))
+
+
+def _source_view(output, capsules):
+    view = output.path / "source-view"
+    view.mkdir(mode=0o700)
+    with private.Directory(view) as directory:
+        for name, part in capsules.items():
+            if name != "remote":
+                _write(directory, name, part.body)
+    expected = {str(view / name): part.digest for name, part in capsules.items()
+                if name not in ("remote", "mcp_server.py")}
+    return view, expected
+
+
+@contextmanager
+def _claim_exit(output, operation, correlation=CORRELATION):
+    # A different UUID cannot replay an uncertain prior exit for this channel.
+    _profile(correlation)
+    with private.Directory(output.path.parent) as group:
+        _write(group, correlation + ".exit-intent.json", _json({"operationId": operation,
+            "correlationId": correlation, "action": "single-owned-mux-exit", "replayAllowed": False}))
+        with private.Snapshot(group, correlation + ".exit-intent.json") as claim:
+            claim.guard()
+            yield claim
+            claim.guard()
+
+
+def _probe(context, operation, action):
+    root, value, ready, current, output, _, guard, _ = context
+    target = current.config.hosts["archlinux"]
+    gateway = transport.connection_host(current.config, target.gateway)
+    prefix, endpoint = direct.outer_prefix(current.config, gateway)
+    source = _remote_program(correlation=ready.get("correlationId"))
+    argv = [*prefix, *direct.OUTER_OPTIONS, "-T", "-o", "PermitLocalCommand=no", "-o", "ClearAllForwardings=yes", "-o", "UpdateHostKeys=no", endpoint,
+            shlex.join(("python3", "-I", "-B", "-c", source))]
+    packet = None
+    if ready.get("correlationId") == THIRD_CORRELATION:
+        fixed_payload = _json({"operationId": operation, "action": action, "ready": ready,
+            "sourceSha256": value["sourceSha256"], "config": str(target.remote_config_file or ""), "profile": target.remote_host_alias})
+        packet = _fixed546_transport_packet(prefix, endpoint, source, fixed_payload)
+        argv = packet["argv"]
+    sizes = transport.argv_byte_sizes(argv)
+    whole, maximum = sum(size + 1 for size in sizes), max(sizes)
+    if whole > 60000 or maximum > 60000:
+        raise ValueError("retirement_command_bound")
+    correlation = ready["correlationId"]
+    _profile(correlation)
+    payload = _json({"operationId": operation, "action": action, "ready": ready,
+                     "sourceSha256": value["sourceSha256"], "config": str(target.remote_config_file or ""), "profile": target.remote_host_alias})
+    guard(); _write(output, "probe-request.json", payload)
+    _write(output, "submission-intent.json", _json({"operationId": operation, "correlationId": correlation,
+        "action": action, "programmeSha256": _sha(source.encode()), "helperSha256": _LOADED_SHA,
+        "loaderSha256": loader._LOADED_SHA, "argvSha256": _sha(_json(argv)),
+        "wholeArgvBytes": whole, "maxArgumentBytes": maximum, "limitBytes": 60000,
+        "requestSha256": _sha(payload), "replayAllowed": False}))
+    guard()
+    with private.Snapshot(output, "probe-request.json") as request_held, private.Snapshot(output, "submission-intent.json") as submission:
+        request_held.guard(); submission.guard(); guard()
+        if correlation == THIRD_CORRELATION:
+            if packet["argv"] != argv:
+                raise ValueError("retirement_transport_changed")
+            capture = _fixed546_collect(packet, 30)
+        else:
+            capture = channel._collect(argv, payload, 30)
+        _capture(output, "probe", capture); guard(); request_held.guard(); submission.guard()
+    if not capture["complete"] or capture["returnCode"] != 0 or capture["stderr"]:
+        raise ValueError("retirement_probe_unknown")
+    result = _parse(capture["stdout"])
+    if result.get("correlationId") != correlation or result.get("state") not in ("ready", "ended"):
+        raise ValueError("retirement_probe_binding")
+    return result
+
+
+def _publish_ended(context, native=None):
+    root, _, ready, _, output, capsules, guard, release_inventory = context
+    if ready["correlationId"] == THIRD_CORRELATION:
+        return _third_publish_ended(context, native)
+    view, expected = _source_view(output, capsules)
+    guard()
+    with closing(loader.SourceSession(view, "ssh_direct_nested_channel", expected_sources=expected)) as session:
+        captures = []
+        release_inventory()
+        result = session.module.status(root, "archlinux", ready["correlationId"], _private_capture=captures.append)
+        for index, capture in enumerate(captures):
+            _capture(output, "original-status-" + str(index), capture)
+        if result.get("state") != "ended":
+            raise ValueError("retirement_original_status_not_ended")
+        session.guard(); guard()
+        _write(output, "source-view.json", _json({"expectedSources": expected,
+            "heldSources": {name: {"sha256": _sha(raw), "realGeneration": list(session.held.files[name][1])}
+                            for name, raw in ((path, data) for path, data in session.cache.values())},
+            "historicalMcpExecutionAllowed": False}))
+    return result
+
+
+def observe_original(root, host, correlation, operation):
+    """Fixed readonly native observation; never creates or adopts READY."""
+    with _original(root, host, correlation, operation) as context:
+        result = _probe(context, operation, "observe")
+        if result.get("state") == "ended" and result.get("independentAbsence") is True:
+            result["originalStatus"] = _publish_ended(context, result)
+        _write(context[4], "result.json", _json(result))
+        return result
+
+
+def retire_owned(root, host, correlation, operation):
+    """One fixed owned exit; any existing operation refuses before transport."""
+    with _original(root, host, correlation, operation) as context:
+        with _claim_exit(context[4], operation, correlation) as claim:
+            claim.guard()
+            result = _probe(context, operation, "retire")
+            claim.guard()
+            if result.get("state") != "ended" or result.get("independentAbsence") is not True:
+                raise ValueError("retirement_absence_unproved")
+            ended = _publish_ended(context, result)
+            _write(context[4], "result.json", _json({"native": result, "originalStatus": ended, "replayAllowed": False}))
+            claim.guard()
+            return ended
+
+
+
+def _third_publish_ended(context, native):
+    """Create only a positively proved original terminal; never repair old jobs."""
+    root, value, ready, current, output, _, guard, release_inventory = context
+    if ready["correlationId"] != THIRD_CORRELATION:
+        raise ValueError("retirement_identity")
+    _third_release()
+    with ExitStack() as stack:
+        records = {name: stack.enter_context(private.Snapshot(output, name)) for name in
+            ("intent.json", "probe.json", "probe.stdout", "probe.stderr", "probe-request.json", "submission-intent.json")}
+        capture = _parse(records["probe.json"].body)
+        request = _parse(records["probe-request.json"].body)
+        submission = _parse(records["submission-intent.json"].body)
+        intent = _parse(records["intent.json"].body)
+        expected = {"state": "ended", "correlationId": THIRD_CORRELATION,
+                    "gatewayBoot": ready["master"]["gatewayBoot"], "independentAbsence": True}
+        if (type(native) is not dict or set(native) not in (set(expected), set(expected) | {"exitCapture"})
+                or any(native[key] != item for key, item in expected.items())
+                or _parse(records["probe.stdout"].body) != native or records["probe.stderr"].body
+                or capture.get("complete") is not True or capture.get("returnCode") != 0
+                or capture.get("eof") != {"stdout": True, "stderr": True}
+                or capture.get("counts") != {"stdout": len(records["probe.stdout"].body), "stderr": 0}
+                or any(capture.get(name) for name in ("timeout", "overflow", "readError", "firstUnknown"))
+                or request.get("ready") != ready or request.get("sourceSha256") != value["sourceSha256"]
+                or request.get("action") not in ("observe", "retire")
+                or submission.get("requestSha256") != records["probe-request.json"].digest
+                or submission.get("helperSha256") != _LOADED_SHA
+                or intent.get("currentAuthority") != current.authority
+                or intent.get("trustSeparation", {}).get("historicalTrustEquivalent") is not False):
+            raise ValueError("retirement_absence_unproved")
+        if "exitCapture" in native:
+            exit_capture = native["exitCapture"]
+            if (request["action"] != "retire" or type(exit_capture) is not dict
+                    or exit_capture.get("complete") is not True or exit_capture.get("returnCode") != 0
+                    or exit_capture.get("eof") != {"stdout": True, "stderr": True}
+                    or any(exit_capture.get(name) for name in ("timeout", "overflow", "readError", "firstUnknown"))):
+                raise ValueError("retirement_exit_unproved")
+        journal = stack.enter_context(private.Directory(channel._context_journal(root, "archlinux", THIRD_CORRELATION, False, True)))
+        original = stack.enter_context(private.Snapshot(journal, THIRD_CORRELATION + ".intent.json"))
+        original_ready = stack.enter_context(private.Snapshot(journal, THIRD_CORRELATION + ".ready.json"))
+        if (original.digest != THIRD_INTENT_SHA or original_ready.digest != THIRD_READY_SHA
+                or original.pin() != intent["intent"] or original_ready.pin() != intent["ready"]):
+            raise ValueError("retirement_original_records")
+        terminal = {"state": "ended", "correlationId": THIRD_CORRELATION,
+                    "receiptSha256": original_ready.digest, "intentSha256": original.digest,
+                    "gatewayBoot": ready["master"]["gatewayBoot"]}
+        def closing():
+            guard(); original.guard(); original_ready.guard(); journal.guard()
+            for part in records.values(): part.guard()
+        closing()
+        proof = {"correlationId": THIRD_CORRELATION, "originalIntent": original.pin(),
+                 "originalReady": original_ready.pin(), "currentAuthority": current.authority,
+                 "nativeEvidence": {name: part.pin() for name, part in records.items()},
+                 "terminalSha256": _sha(_json(terminal)), "originalUnknownPreserved": True,
+                 "originalEofClaimed": False, "originalSourceClosingClaimed": False,
+                 "historicalTrustEquivalent": False, "replayAllowed": False}
+        _write(output, "terminal-publication-intent.json", _json(proof))
+        publication = stack.enter_context(private.Snapshot(output, "terminal-publication-intent.json"))
+        closing(); publication.guard()
+        name = THIRD_CORRELATION + ".terminal.json"
+        if not os.path.lexists(journal.path / name):
+            channel.session._create(journal.path / name, terminal, parent_fd=journal.fd)
+        saved = stack.enter_context(private.Snapshot(journal, name))
+        if _parse(saved.body) != terminal:
+            raise ValueError("retirement_terminal_conflict")
+        closing(); publication.guard(); saved.guard()
+        release_inventory()
+        captures = []
+        result = direct.status(root, "archlinux", THIRD_CORRELATION, _private_capture=captures.append)
+        if result.get("state") != "ended" or captures:
+            raise ValueError("retirement_terminal_readback")
+        closing(); publication.guard(); saved.guard()
+        _write(output, "terminal-publication.json", _json({"terminal": saved.pin(),
+            "publication": publication.pin(), "originalStatus": result,
+            "sourceExecutionFromArchive": False, "historicalTrustEquivalent": False}))
+        return result
+
+
+"""Private fixed546 gateway transport fragment; no entry point or public API.
+
+Adapted from the complete reviewed foreground carrier:
+direct_host_abandon.py a9ef684d2779a9fbf7921254f458e520471ff373f09f71ee5cd8744ccba8f483.
+OuterOwner's reserve/start/step/observe/submit/finish principles are retained.
+There is one gateway hop and no Arch execution, route adoption, or signal here.
+The integrating helper owns all input/source/authority guards and evidence writes.
+"""
+import base64
+import hashlib
+import inspect
+import json
+import os
+import re
+import select
+import shlex
+import subprocess
+import threading
+import time
+import zlib
+
+_FIXED546 = "546de96429aa4b9c8ea6332b1c549182"
+_FIXED546_LIMIT = 60000
+_FIXED546_SOURCE_LIMIT = 8 * 1024**2
+
+
+def _fixed546_sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+class _Fixed546Owner:
+    """Owner exists before Popen; the returned original handle is assigned first."""
+    def __init__(self, *, popen=None, clock=None, capture_limit=40 * 1024**2):
+        self.child = None
+        self.raw = {"stdout": bytearray(), "stderr": bytearray()}
+        self.counts = {name: 0 for name in self.raw}
+        self.eof = {name: False for name in self.raw}
+        self.capture_limit = capture_limit
+        self.overflow = False
+        self.timeout = False
+        self.closed = False
+        self.writer = None
+        self.writer_errors = []
+        self.read_errors = []
+        self.forwarded_bytes = 0
+        self._popen = subprocess.Popen if popen is None else popen
+        self._clock = time.monotonic if clock is None else clock
+
+    def start(self, argv, *, environment=None, input_allowed=True):
+        self.child = self._popen(argv, stdin=subprocess.PIPE if input_allowed else subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 bufsize=0, env=environment)
+        for name in self.raw:
+            os.set_blocking(getattr(self.child, name).fileno(), False)
+        if input_allowed:
+            os.set_blocking(self.child.stdin.fileno(), False)
+
+    def step(self, seconds):
+        mapping = {getattr(self.child, name).fileno(): name for name in self.raw if not self.eof[name]}
+        if not mapping:
+            time.sleep(min(seconds, .01))
+            return
+        try:
+            ready = select.select(list(mapping), [], [], seconds)[0]
+        except (OSError, ValueError) as error:
+            if len(self.read_errors) < 16:
+                self.read_errors.append(type(error).__name__)
+            time.sleep(.01)
+            return
+        for fd in ready:
+            name = mapping[fd]
+            try:
+                raw = os.read(fd, 65536)
+            except (BlockingIOError, InterruptedError):
+                continue
+            except OSError as error:
+                if len(self.read_errors) < 16:
+                    self.read_errors.append(type(error).__name__)
+                continue
+            if not raw:
+                self.eof[name] = True
+                continue
+            self.counts[name] += len(raw)
+            left = self.capture_limit - len(self.raw[name])
+            self.raw[name].extend(raw[:max(left, 0)])
+            if self.counts[name] > self.capture_limit:
+                self.overflow = True
+
+    def snapshot(self):
+        return {"pid": self.child.pid, "returnCode": self.child.poll(),
+                "complete": self.child.poll() is not None and all(self.eof.values()),
+                "timeout": self.timeout, "overflow": self.overflow,
+                "counts": dict(self.counts), "eof": dict(self.eof),
+                "readErrors": list(self.read_errors), "writerErrors": list(self.writer_errors),
+                "forwardedBytes": self.forwarded_bytes,
+                "stdinClosed": self.child.stdin is None or self.child.stdin.closed}
+
+    def observe(self, seconds):
+        deadline = self._clock() + seconds
+        while not (self.child.poll() is not None and all(self.eof.values())):
+            left = deadline - self._clock()
+            if left <= 0:
+                self.timeout = True
+                break
+            self.step(min(.05, left))
+        return self.snapshot()
+
+    def submit(self, payload):
+        if type(payload) is not bytes or not 4 < len(payload) <= _FIXED546_SOURCE_LIMIT + 4100:
+            raise ValueError("fixed546_input_bound")
+        expected = _fixed546_sha(payload)
+        def write():
+            view = memoryview(payload)
+            deadline = self._clock() + 60
+            try:
+                while view:
+                    if self._clock() >= deadline:
+                        raise TimeoutError("fixed546_writer_deadline")
+                    if self.child.poll() is not None:
+                        raise BrokenPipeError("fixed546_original_child_exited")
+                    if not select.select([], [self.child.stdin], [], .05)[1]:
+                        continue
+                    count = os.write(self.child.stdin.fileno(), view[:65536])
+                    if count > 0:
+                        view = view[count:]
+                        self.forwarded_bytes += count
+                if _fixed546_sha(payload) != expected:
+                    raise ValueError("fixed546_input_changed")
+            except BaseException as error:
+                self.writer_errors.append(type(error).__name__)
+            finally:
+                self.child.stdin.close()
+        self.writer = threading.Thread(target=write, daemon=True)
+        self.writer.start()
+
+    def finish_naturally(self):
+        if self.child is None:
+            return
+        if self.child.stdin is not None and (self.writer is None or self.writer.ident is None):
+            if not self.child.stdin.closed:
+                self.child.stdin.close()
+        # Pump before joining: the original writer can depend on the reader.
+        while not (self.child.poll() is not None and all(self.eof.values())):
+            self.step(.05)
+        if self.writer is not None and self.writer.ident is not None:
+            while self.writer.is_alive():
+                self.writer.join(.05)
+        self.child.stdout.close()
+        self.child.stderr.close()
+        self.closed = True
+
+
+def _fixed546_streams(raw):
+    return {name: {"base64": base64.b64encode(bytes(body)).decode("ascii"),
+                   "bytes": len(body), "sha256": _fixed546_sha(body)} for name, body in raw.items()}
+
+
+def _fixed546_capture(argv, payload, timeout_seconds, *, environment=None,
+                      input_allowed=True, _popen=None, _clock=None,
+                      _capture_limit=40 * 1024**2):
+    if (not isinstance(argv, (tuple, list)) or not argv
+            or not all(type(value) is str and '\0' not in value for value in argv)):
+        raise ValueError("fixed546_argv_shape")
+    sizes = [len(os.fsencode(value)) for value in argv]
+    if sum(value + 1 for value in sizes) > _FIXED546_LIMIT or max(sizes) > _FIXED546_LIMIT:
+        raise ValueError("fixed546_command_bound")
+    owner = _Fixed546Owner(popen=_popen, clock=_clock, capture_limit=_capture_limit)
+    first = None
+    primary = None
+    try:
+        owner.start(argv, environment=environment, input_allowed=input_allowed)
+        if input_allowed:
+            owner.submit(payload)
+        first = owner.observe(timeout_seconds)
+        first["streams"] = _fixed546_streams(owner.raw)
+    except BaseException as error:
+        primary = {"errorClass": type(error).__name__,
+                   "errno": error.errno if isinstance(error, OSError) else None}
+    finally:
+        owner.finish_naturally()
+    terminal = owner.snapshot() if owner.child is not None else {
+        "state": "unknown", "creationUnproved": True, "originalHandleUnavailable": True}
+    good = (first is not None and first["complete"] and not first["timeout"]
+            and not first["overflow"] and not owner.read_errors and not owner.writer_errors
+            and primary is None and owner.closed
+            and (not input_allowed or owner.forwarded_bytes == len(payload)))
+    return {"stdout": bytes(owner.raw["stdout"]), "stderr": bytes(owner.raw["stderr"]),
+            "counts": dict(owner.counts), "eof": dict(owner.eof),
+            "returnCode": owner.child.returncode if owner.child is not None else None,
+            "complete": good, "timeout": owner.timeout, "overflow": owner.overflow,
+            "readError": bool(owner.read_errors), "writeError": bool(owner.writer_errors),
+            "firstCapture": first, "originalTerminal": terminal,
+            "originalPopenRetained": owner.child is not None,
+            "originalStreamsClosed": owner.closed, "inputSourceClosing": primary is None and not owner.writer_errors,
+            "primaryError": primary, "replayAllowed": False}
+
+
+def _fixed546_transport_packet(prefix, endpoint, source, request):
+    """One gateway hop; prelaunch inline/source-stream selection, no execution."""
+    if type(source) is not str or not 0 < len(source.encode()) <= _FIXED546_SOURCE_LIMIT:
+        raise ValueError("fixed546_source_bound")
+    raw = source.encode("utf-8", "strict")
+    compile(raw, "fixed546-retirement-gateway", "exec")
+    if type(request) is not bytes or not 0 < len(request) <= 4096:
+        raise ValueError("fixed546_request_bound")
+    value = json.loads(request)
+    if (type(value) is not dict or set(value) != {"operationId", "action", "ready", "sourceSha256", "config", "profile"}
+            or value["ready"].get("correlationId") != _FIXED546
+            or value["action"] not in ("observe", "retire")
+            or re.fullmatch(r"[0-9a-f-]{36}", value["operationId"]) is None):
+        raise ValueError("fixed546_request_identity")
+    if not isinstance(prefix, (tuple, list)) or not all(type(x) is str and "\0" not in x for x in prefix):
+        raise ValueError("fixed546_prefix")
+    if type(endpoint) is not str or not endpoint or "\0" in endpoint:
+        raise ValueError("fixed546_endpoint")
+    inline = None
+    for mode in ("inline", "source-stream"):
+        packed = base64.b64encode(zlib.compress(raw)).decode("ascii") if mode == "inline" else None
+        receiver = """import base64,hashlib,io,json,os,select,sys,time,zlib
+_deadline=time.monotonic()+55
+_fd=sys.stdin.fileno();os.set_blocking(_fd,False)
+def _read_exact(_count):
+ _parts=[];_size=0
+ while _size<_count:
+  _left=_deadline-time.monotonic()
+  if _left<=0:raise ValueError('fixed546_input_deadline')
+  if not select.select([_fd],[],[],min(.05,_left))[0]:continue
+  _part=os.read(_fd,min(65536,_count-_size))
+  if not _part:raise ValueError('fixed546_input_truncated')
+  _parts.append(_part);_size+=len(_part)
+ return b''.join(_parts)
+_length=int.from_bytes(_read_exact(4),'big')
+if not 0<_length<=4096:raise ValueError('fixed546_header_bound')
+_request=_read_exact(_length)
+if hashlib.sha256(_request).hexdigest()!=@@REQUESTSHA@@:raise ValueError('fixed546_request_hash')
+_source=_read_exact(@@SIZE@@) if @@MODE@@=='source-stream' else zlib.decompress(base64.b64decode(@@PACKED@@,validate=True))
+while True:
+ _left=_deadline-time.monotonic()
+ if _left<=0:raise ValueError('fixed546_trailing_deadline')
+ if not select.select([_fd],[],[],min(.05,_left))[0]:continue
+ if os.read(_fd,1):raise ValueError('fixed546_input_trailing')
+ break
+if len(_source)!=@@SIZE@@ or hashlib.sha256(_source).hexdigest()!=@@SHA@@:raise ValueError('fixed546_source_hash')
+_original_stdin=sys.stdin
+sys.stdin=io.TextIOWrapper(io.BytesIO(_request),encoding='utf-8')
+try:exec(compile(_source.decode('utf-8','strict'),'fixed546-retirement-gateway','exec'),{'__name__':'__main__','__file__':'fixed546-retirement-gateway'})
+finally:
+ sys.stdin=_original_stdin
+ if hashlib.sha256(_source).hexdigest()!=@@SHA@@:raise ValueError('fixed546_source_closing')
+"""
+        for key, replacement in {"@@REQUESTSHA@@": repr(_fixed546_sha(request)), "@@SIZE@@": str(len(raw)),
+                                 "@@MODE@@": repr(mode), "@@PACKED@@": repr(packed), "@@SHA@@": repr(_fixed546_sha(raw))}.items():
+            receiver = receiver.replace(key, replacement)
+        command = shlex.join(("python3", "-I", "-B", "-c", receiver))
+        argv = [*prefix, "-S", "none", "-o", "ControlMaster=no", "-o", "ControlPersist=no",
+                "-T", "-o", "PermitLocalCommand=no", "-o", "ClearAllForwardings=yes",
+                "-o", "UpdateHostKeys=no", "-o", "StrictHostKeyChecking=yes",
+                "-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no",
+                "-o", "IdentityAgent=none", "-o", "ProxyCommand=none", "-o", "ForkAfterAuthentication=no",
+                endpoint, command]
+        sizes = [len(os.fsencode(x)) for x in argv]
+        metrics = {"wholeArgvBytes": sum(x + 1 for x in sizes), "maxArgumentBytes": max(sizes),
+                   "commandBytes": len(command.encode()), "limitBytes": _FIXED546_LIMIT}
+        if mode == "inline":
+            inline = dict(metrics)
+        if all(metrics[key] <= _FIXED546_LIMIT for key in ("wholeArgvBytes", "maxArgumentBytes", "commandBytes")):
+            return {"argv": argv, "stdin": len(request).to_bytes(4, "big") + request + (raw if mode == "source-stream" else b""),
+                    "sourceTransport": mode, "programmeSha256": _fixed546_sha(raw), "programmeBytes": len(raw),
+                    "requestSha256": _fixed546_sha(request), "requestBytes": len(request),
+                    "receiverSha256": _fixed546_sha(receiver.encode()), "inlineCandidateMetrics": inline,
+                    "remoteSourceFilesCreated": False, "replayAllowed": False, **metrics}
+    raise ValueError("fixed546_command_bound")
+
+
+def _fixed546_collect(packet, timeout_seconds=30, *, _popen=None, _clock=None):
+    argv = packet["argv"]
+    sizes = [len(os.fsencode(x)) for x in argv]
+    if sum(x + 1 for x in sizes) > _FIXED546_LIMIT or max(sizes) > _FIXED546_LIMIT:
+        raise ValueError("fixed546_command_bound")
+    capture = _fixed546_capture(argv, packet["stdin"], timeout_seconds, _popen=_popen, _clock=_clock)
+    capture["transport"] = {k: v for k, v in packet.items() if k not in ("argv", "stdin")}
+    return capture
+
+
+def _fixed546_inner_source():
+    """Fixed546 only: replacement compatible with the existing `inner` call."""
+    names = (_fixed546_sha, _Fixed546Owner, _fixed546_streams, _fixed546_capture)
+    prefix = "import base64,hashlib,os,select,subprocess,threading,time\n_FIXED546_SOURCE_LIMIT=8*1024**2\n_FIXED546_LIMIT=60000\n"
+    body = "\n\n".join(inspect.getsource(item) for item in names)
+    return prefix + body + "\ndef inner(argv, timeout_seconds, environment=None):\n return _fixed546_capture(argv,None,timeout_seconds,environment=environment,input_allowed=False,_capture_limit=4096)\n"

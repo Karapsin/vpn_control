@@ -1,0 +1,20 @@
+{
+  "originalRunId": "5f49d7bd-3d93-4496-8be9-f36cd2b99676",
+  "sourceFingerprint": "b43eda78765d6df8845f788704a6b1590d41f9d35d9eabb60d7620f4fa863e97",
+  "mcp_server.py": {
+    "bytes": 663084,
+    "sha256": "36ecd6b24c2097478c458b72f2064e7bf332845d0b33e79f04d3d448acb76ff6",
+    "source": "agent_tools/mcp_server.py"
+  },
+  "affected_agent_tests.py": {
+    "bytes": 44345,
+    "sha256": "5e09740df63d87e9f2c8dfbc322e302353cb4026a122878d701f8ee912158237",
+    "source": "agent_tools/affected_agent_tests.py"
+  },
+  "managed_agent_check.py": {
+    "bytes": 4172,
+    "sha256": "a3eb8fab1770290bd65802128d56df6f1ec6d5849215c210db166e4214cf14a0",
+    "source": "agent_tools/managed_agent_check.py",
+    "failure": "KeyboardInterrupt during original communicate before context-manager closure"
+  }
+}

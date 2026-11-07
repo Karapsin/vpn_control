@@ -1,0 +1,539 @@
+import contextlib,hashlib,io,json,os,pathlib,pwd,re,shutil,socket,stat,struct,subprocess,sys,time,base64
+SPEC={'assets': {'drivers': {'bytes': 789645312, 'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/virtio-win.iso', 'sha256': 'e14cf2b94492c3e925f0070ba7fdfedeb2048c91eea9c5a5afb30232a3976331'}, 'firmwareCode': {'bytes': 3653632, 'path': '/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd', 'sha256': 'cc150d941d4f1d39e596dedc545384a66ccfb3c9ba5cf9bc3a54d8d427d4d88f'}, 'firmwareVars': {'bytes': 540672, 'path': '/usr/share/edk2/x64/OVMF_VARS.4m.fd', 'sha256': '5d2ac383371b408398accee7ec27c8c09ea5b74a0de0ceea6513388b15be5d1e'}, 'installer': {'bytes': 7092807680, 'path': '/home/kardinal/vpn-control-windows-install-media-20261014-164e20432634406599ce89d386121f6b/windows-x64.iso', 'sha256': 'a61adeab895ef5a4db436e0a7011c92a2ff17bb0357f58b13bbc4062e535e7b9'}}, 'cpus': 4, 'deploymentId': 'd493a373-1d2c-4ab0-bfd4-e93575019dce', 'diskGiB': 96, 'headroomMiB': 8192, 'host': 'archlinux', 'memoryMiB': 6144, 'root': '/home/kardinal/vc-win-d493a3731d2c', 'vncPort': 5955}
+SETUP={'administrator': 'winparityAdmin', 'imageName': 'Windows 11 Enterprise Evaluation', 'locale': 'en-US', 'user': 'winparityUser'}
+CONTEXT={'hostBootId': '25515f23-b966-4c3a-ae63-d38452375578', 'pending': [{'id': 'env-3c4eb7ea8873512d3397aec8fe946a69', 'memoryBytes': 8589934592}, {'id': 'env-11f1a10b21cfea11b504bd9db53dd9a0', 'memoryBytes': 2147483648}, {'id': 'env-d2731056fb591098d64a377ce2dd3698', 'memoryBytes': 2147483648}]}
+root=pathlib.Path(SPEC['root']);held=[];parents=[];pins=[]
+def require(value,reason):
+        if not value:raise ValueError(reason)
+def generation(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def structure(s):return (s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+def chain():
+        fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(fd);parents.append((fd,None,None,structure(os.fstat(fd))))
+        for name in root.parent.parts[1:]:
+            parent=fd;fd=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);held.append(fd)
+            parents.append((fd,parent,name,structure(os.fstat(fd))))
+        info=os.fstat(fd)
+        require(info.st_uid==os.geteuid() and not info.st_mode&0o022 or info.st_uid==0 and info.st_mode&stat.S_ISVTX,'instance_parent')
+        return fd
+def closing():
+        for fd,parent,name,identity in parents:
+            require(structure(os.fstat(fd))==identity,'instance_parent_changed')
+            require(structure(os.lstat('/') if parent is None else os.stat(name,dir_fd=parent,follow_symlinks=False))==identity,'instance_parent_changed')
+        for fd,path,identity in pins:
+            require(generation(os.fstat(fd))==identity and generation(os.stat(path,follow_symlinks=False))==identity,'instance_source_changed')
+def private(path,directory=False):
+        s=os.lstat(path);require((stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode)) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==(0o700 if directory else 0o600) and (directory or s.st_nlink==1),'instance_private');return s
+def read(name):
+        path=root/name;private(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            info=os.fstat(fd);require(info.st_size<=65536,'instance_receipt_bound');raw=os.read(fd,65537)
+            require(len(raw)==info.st_size and generation(os.fstat(fd))==generation(info) and generation(os.lstat(path))==generation(info),'instance_receipt_changed')
+            return json.loads(raw)
+        finally:os.close(fd)
+def birth(pid):
+        with open('/proc/'+str(pid)+'/stat') as f:row=f.read(8193).rsplit(')',1)[1].split()
+        require(row[0] not in ('Z','X') and len(row)>19,'instance_process_dead');return int(row[19])
+def process(row):
+        require(type(row)is dict and set(row)=={'pid','startTicks','argv','commandSha256','executableGeneration'} and type(row['pid'])is int and row['pid']>0 and type(row['startTicks'])is int and row['startTicks']>0,'instance_process_receipt')
+        pid=row['pid'];require(birth(pid)==row['startTicks'],'instance_process_changed');base='/proc/'+str(pid)
+        with open(base+'/cmdline','rb') as f:raw=f.read(32769)
+        require(raw==b'\0'.join(os.fsencode(x) for x in row['argv'])+b'\0' and hashlib.sha256(raw).hexdigest()==row['commandSha256'] and list(generation(os.stat(base+'/exe')))==row['executableGeneration'] and os.stat(base).st_uid==os.geteuid() and birth(pid)==row['startTicks'],'instance_process_changed')
+        return pid
+def owns(pid,path,is_socket=False):
+        fdlist=os.listdir('/proc/'+str(pid)+'/fd');require(len(fdlist)<=8192,'instance_fd_capacity')
+        if is_socket:
+            with open('/proc/net/unix') as f:raw=f.read(1024**2+1)
+            require(len(raw)<=1024**2,'instance_socket_capacity')
+            # Accepted Unix streams retain the bound pathname too. Identify
+            # the listening stream, then prove its descriptor belongs to pid.
+            rows=[r.split() for r in raw.splitlines()[1:]]
+            matches=[r[6] for r in rows if len(r)>=8 and r[-1]==str(path) and
+                     r[3:6]==['00010000','0001','01']]
+            require(len(matches)==1,'instance_socket_identity');target='socket:['+matches[0]+']'
+            require(any(os.readlink('/proc/'+str(pid)+'/fd/'+n)==target for n in fdlist),'instance_socket_owner')
+        else:
+            identity=private(path);found=False
+            for n in fdlist:
+                try:info=os.stat('/proc/'+str(pid)+'/fd/'+n)
+                except FileNotFoundError:continue
+                if (info.st_dev,info.st_ino)==(identity.st_dev,identity.st_ino):found=True
+            require(found,'instance_disk_owner')
+def qmp(command,arguments=None):
+        client=socket.socket(socket.AF_UNIX);client.settimeout(3)
+        try:
+            row=read('qemu-started.json');pid=process(row);named=os.lstat(root/'qmp.sock')
+            client.connect(str(root/'qmp.sock'))
+            peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+            require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_peer')
+            stream=client.makefile('rwb',buffering=0)
+            def receive():
+                line=stream.readline(65537);require(0<len(line)<=65536,'instance_qmp_bound');return json.loads(line)
+            require('QMP' in receive(),'instance_qmp_greeting')
+            for sequence,(name,args) in enumerate((('qmp_capabilities',None),(command,arguments))):
+                request={'execute':name,'id':sequence}
+                if args is not None:request['arguments']=args
+                stream.write((json.dumps(request)+'\n').encode())
+                for _ in range(32):
+                    value=receive()
+                    if value.get('id')==sequence:break
+                else:raise ValueError('instance_qmp_response')
+                require('return' in value,'instance_qmp_error')
+            process(row);require(os.lstat(root/'qmp.sock').st_ino==named.st_ino,'instance_qmp_changed')
+            return value['return']
+        finally:client.close()
+def guest_state(pid):
+        state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+        client=socket.socket(socket.AF_UNIX);client.settimeout(1)
+        try:
+            owns(pid,root/'qga.sock',True);named=os.lstat(root/'qga.sock');client.connect(str(root/'qga.sock'))
+            peer=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
+            require(peer[:2]==(pid,os.geteuid()) and os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_peer')
+            stream=client.makefile('rwb',buffering=0)
+            nonce=int.from_bytes(os.urandom(8),'big')&((1<<63)-1)
+            stream.write(b'\xff'+(json.dumps({'execute':'guest-sync-delimited','arguments':{'id':nonce}})+'\n').encode())
+            def receive():
+                line=stream.readline(65537);require(0<len(line)<=65536,'instance_qga_bound')
+                return json.loads(line.lstrip(b'\xff'))
+            # The flush sentinel can itself produce an error; stale complete
+            # replies and partial JSON may also precede the real response.
+            # QGA requires ignoring all input until a delimited matching nonce.
+            deadline=time.monotonic()+3;consumed=0
+            for _ in range(32):
+                remaining=deadline-time.monotonic();require(remaining>0,'instance_qga_sync')
+                client.settimeout(min(1,remaining));line=stream.readline(65537)
+                consumed+=len(line);require(0<len(line)<=65536 and consumed<=262144,'instance_qga_bound')
+                marker=line.rfind(b'\xff')
+                if marker<0:continue
+                try:reply=json.loads(line[marker+1:])
+                except (ValueError,UnicodeError):continue
+                if type(reply)is dict and type(reply.get('return'))is int and reply['return']==nonce:break
+            else:raise ValueError('instance_qga_sync')
+            client.settimeout(1)
+            def query(command):
+                stream.write((json.dumps({'execute':command})+'\n').encode());response=receive()
+                require('return' in response,'instance_qga_query');return response['return']
+            query('guest-ping');state['guestAgentReady']=True
+            osinfo=query('guest-get-osinfo');name=osinfo.get('pretty-name') or osinfo.get('name')
+            if type(name)is str and 0<len(name)<=256 and not any(ord(c)<32 for c in name):state['osName']=name
+            try:
+                users=query('guest-get-users')
+                if type(users)is list and len(users)<=128:
+                    state['ordinarySessionObserved']=any(type(u)is dict and type(u.get('user'))is str and u['user'].rsplit('\\',1)[-1].casefold()==SETUP['user'].casefold() for u in users)
+            except (OSError,ValueError):pass
+            require(os.lstat(root/'qga.sock').st_ino==named.st_ino,'instance_qga_changed')
+        except (OSError,ValueError,KeyError,TypeError):
+            state={'guestAgentReady':False,'ordinarySessionObserved':False,'osName':None}
+        finally:client.close()
+        return state
+def instance_intent():
+        private(root,True);intent=read('intent.json')
+        require(type(intent)is dict and set(intent)=={'schemaVersion','spec','setup','hostBootId','rootIdentity','assetIdentities'} and type(intent['schemaVersion'])is int and intent['schemaVersion']==1,'instance_intent_fields')
+        require(intent['spec']==SPEC and intent['setup']==SETUP and intent['hostBootId']==CONTEXT['hostBootId'] and intent['rootIdentity']==list(structure(os.lstat(root))),'instance_intent')
+        require(type(intent['assetIdentities'])is dict and set(intent['assetIdentities'])=={'firmwareCode','installer','drivers'},'instance_asset_receipt')
+        return intent
+def observed():
+        intent=instance_intent()
+        q=read('qemu-started.json');t=read('swtpm-started.json');pid=process(q);tpid=process(t)
+        mutable=read('mutable-artifacts.json')
+        require(type(mutable)is dict and set(mutable)=={'disk.qcow2','uefi-vars.fd'},'instance_mutable_receipt')
+        for name,identity in mutable.items():
+            require(type(identity)is list and len(identity)==5 and list(structure(private(root/name)))==identity,'instance_mutable_changed')
+            owns(pid,root/name)
+        owns(pid,root/'qmp.sock',True);owns(tpid,root/'swtpm.sock',True)
+        state=qmp('query-status');sets=qmp('query-fdsets')
+        require(type(sets)is list,'instance_asset_descriptors')
+        for name,expected in intent['assetIdentities'].items():
+            require(type(expected)is dict and set(expected)=={'set','generation'} and type(expected['set'])is int and
+                    expected['set']==('firmwareCode','installer','drivers').index(name)+1 and type(expected['generation'])is list and
+                    len(expected['generation'])==9 and all(type(x)is int and x>=0 for x in expected['generation']) and
+                    expected['generation'][6]==SPEC['assets'][name]['bytes'],'instance_asset_receipt')
+            selected=[s for s in sets if s.get('fdset-id')==expected['set']]
+            require(len(selected)==1 and len(selected[0].get('fds',[]))==1,'instance_asset_descriptors')
+            item=selected[0]['fds'][0];require(item.get('opaque')=='asset:'+name and type(item.get('fd'))is int and item['fd']>2,'instance_asset_descriptors')
+            require(list(generation(os.stat('/proc/'+str(pid)+'/fd/'+str(item['fd']))))==expected['generation'],'instance_asset_changed')
+        guest=guest_state(pid);process(q);process(t);closing()
+        return {'qemu':{'pid':q['pid'],'startTicks':q['startTicks']},'swtpm':{'pid':t['pid'],'startTicks':t['startTicks']},'qemuStatus':state.get('status'),**guest,'productReady':False}
+def save(name,value):
+        fd=os.open(root/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        try:
+            raw=value if type(value)is bytes else (json.dumps(value,sort_keys=True)+'\n').encode();offset=0
+            while offset<len(raw):offset+=os.write(fd,raw[offset:])
+            os.fsync(fd)
+        finally:os.close(fd)
+import base64,hashlib,json,os,re,secrets,socket,stat,sys,tempfile,gzip,time,select,struct
+from pathlib import PureWindowsPath
+import struct
+def call(sock, command, args, _deadline=None):
+    received = bytearray()
+    primary = None
+    deadline = min(time.monotonic() + 20, _deadline) if _deadline is not None else time.monotonic() + 20
+    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+    def budget():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('collection-deadline')
+        c.settimeout(min(20, remaining))
+
+    def receive():
+        budget()
+        return c.recv(1)
+
+    def send(data):
+        budget()
+        c.sendall(data)
+    try:
+        budget()
+        c.connect(sock)
+        peer = struct.unpack('3i', c.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        if peer[:2] != (QGA_PEER_PID, os.geteuid()):
+            raise ValueError('instance_qga_peer')
+        QGA_GUARD()
+        sid = secrets.randbits(63)
+        send(b'\xff' + json.dumps({'execute': 'guest-sync-delimited', 'arguments': {'id': sid}}, separators=(',', ':')).encode() + b'\n')
+        for i in range(8192):
+            x = receive()
+            received.extend(x)
+            if x == b'\xff':
+                break
+        else:
+            raise ValueError()
+
+        def line():
+            raw = bytearray()
+            for i in range(262144):
+                x = receive()
+                received.extend(x)
+                if x == b'\n':
+                    os.write(wire, bytes(raw) + b'\n')
+                    os.fsync(wire)
+                    return json.loads(raw)
+                if not x:
+                    raise ValueError()
+                raw.extend(x)
+            raise ValueError()
+        if line().get('return') != sid:
+            raise ValueError()
+        send(json.dumps({'execute': command, 'arguments': args}, separators=(',', ':')).encode() + b'\n')
+        result = line()
+        if 'return' not in result:
+            raise ValueError()
+        return result['return']
+    except BaseException as error:
+        primary = error
+        raise
+    finally:
+        try:
+            os.write(partial_wire, bytes(received))
+            os.fsync(partial_wire)
+        except OSError as error:
+            if primary is None:
+                raise
+            primary.readonlyQgaCaptureFailure = {'stage': 'raw_capture', 'errorClass': type(error).__name__, 'errno': error.errno}
+        finally:
+            c.close()
+
+INTENT_SCOPE='original-probe-v1'
+ABANDONMENT_ID='c9721074-e828-433c-b902-ea1b7dbb187f'
+PREPARATION_MODE='actual-8ced-observer-intake-preparation'
+COLLECTOR_SOURCE=b'{"actorCandidateCount": 1, "actorClosing": {"argvBytesBase64": ["cHl0aG9uMw==", "LUk=", "LUI=", "LWM=", "aW1wb3J0IGJhc2U2NCx6bGliO2V4ZWMoY29tcGlsZSh6bGliLmRlY29tcHJlc3MoYmFzZTY0LmI2NGRlY29kZSgnZU5xMVY5OXYyellRZnM5ZlFXTVBsQlpGVHRvbTIreXFRTnU0UTdBc0x0S3MzV0FZQWkxUkZodUpGRWdxanRmMWY5OGRaVWwya21icHd4NFNuRTdpM2ZHNzczNVlsSlhTbHVUTTVJVllCSitOa29FeVFiVktBMk9aRFV5OXFMUkt1REdCV1p2QThyTEtSTUgzVXA0UmtYSnBoVjE3L21pUFZCR2NDWmZjVnF0YXBKNHlLSE1VZlgrUGlJekE4YkFxbU0yVUxrT3dyYTFaQ1p0N3RCQ3l2cVZvZzZDQ3FJcExqdzdSN1JBT0RhKzVscndZYWlaVFZRNFhTdGxZcE5RbnpKQnNoSTlSRm1yT1V1L28yYzgrV05haThzQWxMKzQ0alNLYU1yMFNrcUlySGZWWEMzVXR2UmtkMWtZUHpVSklkSnZZZ2diMFFNSS9EQ0JFUndhK0ZVcldjQ3M2QjN4U0liZXRuRTQrWHZ4eGZvNHZWRzIzMzd3L2V6OUJOZGY2b1FOV2xCeFBQQStTbkNmWDBaV3V1VDkyVjlOaFl5MU1lYUpTN25VWERBdTE0cnE1cU9FanpZVGg1Q01yYWo3UldtbVBzdHFxa2xtUnhNdWFHeHUzTU5BbUhRV0FqQjc4UWZUOGhDanRGRlZZcmVKVWFQL1ZpOE5mZHJXU2xkeC9kZkxpQ1o1YVhxQW56VzJ0SmZsQ0ViUFJOaXNDV21raEUxR3hnbzQ2RndITlZjazNDb2drb0Jna2RYbis2bGkzaElpTVA5b1luaGtBSkU3NVRlQUVJVlVqbEFCV0k0R3pSbGkyZ2dUR1hUZWlFWDl2UGlzeENiRTB6Vk95ZVpvN2wwd211ZEk4OVNwbWN5UXE0Q2VWSmZpNFErVWgwQkpBWTNMdFZVUkk0bEdnVDRoL0lid0I5SWxUTitlcVFsaDNaSFkwbXZ1UDRvb0hFTTBzQWdRMzlVR2hUc05wZkhrNnZUai82eDhubjU1ZFR0NWVUUzgzanhmVGQ5UHo4K2tuZjV6eklvMW0yWHp2MFJpd0xIb1AxWlB0QjVDbk9FdWpySEVVc2dyT3AxN1dwejhMOElYRDBrQ1MzWDBjbUU2UGlHWUJXeklvcDEybzk0alZhd3dMQUo5aFQ4bXdLWG0zZnB2ME95cElmd1B6TFY0UmJjOEgwZmNmZEtITUg4MEl4QWxVMStzNHlabGM4dFJsUjBoV0ZDN2V6cFRtTjF3YnVJK3o2V01GSklVeUhQdzZPTEJ4eGRBUGxwcVZIdURJRTZ2ME9uQzhUTVVTZkFUOHRnSXRUNk1MSmJuRHFtZkI1bVJvVkswVC9nQWwyaHkxVHhkdnpxZHZmMnN6MWpuMHh5YnFJTWwyY0VlaW96cjhFSjk5dUp6ODZuWDE1YmplMXRnZzJpNXU5Mlp6NlBmcDZXVHIwQ0E2VkNlSGg5MVpWNDJENktoVDROMEhFZjVIVlh0N0lvd0xCVUdBQWtzM2ZXQVF0Ujg4WGtBTlRuSEpMVXVaWlpndWt1UzF2RGJSYkQ2VzBlRTRqelpETURRNWUzWjhncTJWckhJWWRrUyt4R2dRRDdMQWE3cHBrd1dsa043SjhmSHpFNWV1QTRtRHJvTnM4YVI0REpEZHVtQ0kzSTljVDRZaUN1c0tndVFvTnpHMkpiWHdtNXowTVJ3NXFQTXc1N2NOWFR5QXBKR2VGQURlMmZtdjhyVVJDU3Z3Zm80Rjk3aDFsek5CcGdvWVFyRlpsNWhDRTcxak1JazJFV0oydGdnRlFUWDV3bWhSYXQxMUw1NFU3VmF4OWEzRkJBdEt3ODhLc3RHZ2hUUHhOdUdWSlcrWTRSTW53dGp1YXc4YWxmUG1LakFCSkFIci9scHVER20yMmkwMXAzVkY5T215TDYrM2w1UFhWNDA0K2ZQdCtaMis2SWgrdjlhNjZyb1JmQldWdkFRbGloNDY3VWlIR2tjNWlUR3N0SUFnc3dDMXM1RmozYnlqMjh2bzhGSDRITXRpWjZMaG1uUHNUTWtSREFYaU1yV1dpU3Y5dG8xdHdiVzMxelVoM0JCaDkyQ3A4WEM1WW5wNU16dWErMk1RNmhMbXZvazY5YlBSZkl4dHZDdlJHZTFBb1BQeGdrT1g1RkcvUmU3QlhScmxZT3RJdDAwODNwRGJ6N1k0QXViUXZldE1idHhCcGdzM2V0bzFGaHNXeWhBV3JLbjdkSGhUeVlORVNhdFZjWUMyRCtoK0gwbWl0T2F3UlFHWHp0TC9DQWV0STJVZ2pKNVpGZE1Pb1R0RHJtSEQzYUxwK2VMUFJzZnp3VU1vbm5YWTNHdTREOWpaYWNFL0hUN09tZTdZem9TRFlnT1NSdCtZV24yRW0zZHYxcFliV0pYdnZmamdXdXpPRzdnODF3NWNPdTlMNUFkeWxYT1NGRXlVcEFJL1BPV0dXRkFaSVpjRlRnaXhSTDZTaldHb2ZKN1VhQ1VrcnlWTVlBczdkMTJCQjJjTWljczF1ZWE4UWpNd1V4clRPRkFTSmwzajV0QmFZRmxldzh6SnRDcUpzQWEybGh0ODNDUTF4T0Z4dDIzUXp2TUJlcFUyeEZLaDdpZFZtTlpsWmJ6MnNvSEJlcnptYStOVy9jQndZQVlES3lieVlGa002SWo2ZnNobHMvRmp4ZDdabWpaRTJ2VGF2b0lHVVZNLzMxc3BoTFJGRzgzb1FVS0RIN3R5eHZaZ0VtaUIwUmNhdXhVOWppRytPQzVobndFeEFMRml5VFZidWhjNG5sRmw0S2Jienczd3FPbGwxS2RxNTdORkxRb3JwR2srN0orK1FoVElDTVRZUzFSWlFTYXdYUVlJeDc3N3NiZ3pxMXd5cUIrNHlQRitXN3NaY1QreUFwWUJOWUw0LytmeXVHdWt6bkhidFIrYmtOK1pVYlFPNWJDVDBHOVQ1cUgrM3NPRG0ydTJzN20ySjNjTy9BdEJTS2MvJykpLCAnPGF1dG9tYXRpYy1maWxlLXRyYW5zcG9ydD4nLCAnZXhlYycpKQ==", "eyJjb3JyZWxhdGlvbklkIjoiYWNjNWI5NWM1M2YyNGY2ZTljNTE3YjMzNWRmNThlODciLCJkaXJlY3RvcnkiOiIvdG1wL3Zwbi1jb250cm9sLWF1dG8tYWNjNWI5NWM1M2YyNGY2ZTljNTE3YjMzNWRmNThlODciLCJkaXJlY3RvcnlJZGVudGl0eSI6WzQzLDI2NjYwLDE2ODMyLDEwMDAsMTAwMF0sImdlbmVyYXRpb24iOls0MywyNjY2MSwzMzE1MiwxMDAwLDEwMDAsMSwyMjAyNjcsMTc5MjQzNDAzNTc5OTc4NDg0MywxNzkyNDM0MDM1Nzk5Nzg0ODQzXSwiaWRlbnRpdHkiOnsiYm9vdCI6IjI1NTE1ZjIzLWI5NjYtNGMzYS1hZTYzLWQzODQ1MjM3NTU3OCIsImhvbWUiOiIvaG9tZS9rYXJkaW5hbCIsInByaW5jaXBhbCI6ImthcmRpbmFsIiwidWlkIjoxMDAwfSwicHJvZ3JhbUJ5dGVzIjoyMjAyNjcsInByb2dyYW1TaGEyNTYiOiIzNjU0NzhiY2MzZmU3YjM2ZmY5ZjY2NzI3ZGNiNTliYjUyOWJlMDNlNmVlYWUxYmMyMjVlYTEyNmZhODA0NDhlIiwic2NoZW1hVmVyc2lvbiI6MX0="], "cmdlineBase64": "cHl0aG9uMwAtSQAtQgAtYwBpbXBvcnQgYmFzZTY0LHpsaWI7ZXhlYyhjb21waWxlKHpsaWIuZGVjb21wcmVzcyhiYXNlNjQuYjY0ZGVjb2RlKCdlTnExVjk5djJ6WVFmczlmUVdNUGxCWkZUdG9tMit5cVFOdTRRN0FzTHRLczNXQVlBaTFSRmh1SkZFZ3FqdGYxZjk4ZFpVbDJrbWJwd3g0U25FN2kzZkc3NzM1WWxKWFNsdVRNNUlWWUJKK05rb0V5UWJWS0EyT1pEVXk5cUxSS3VER0JXWnZBOHJMS1JNSDNVcDRSa1hKcGhWMTcvbWlQVkJHY0NaZmNWcXRhcEo0eUtITVVmWCtQaUl6QThiQXFtTTJVTGtPd3JhMVpDWnQ3dEJDeXZxVm9nNkNDcUlwTGp3N1I3UkFPRGErNWxyd1lhaVpUVlE0WFN0bFlwTlFuekpCc2hJOVJGbXJPVXUvbzJjOCtXTmFpOHNBbEwrNDRqU0thTXIwU2txSXJIZlZYQzNVdHZSa2Qxa1lQelVKSWRKdllnZ2IwUU1JL0RDQkVSd2ErRlVyV2NDczZCM3hTSWJldG5FNCtYdnh4Zm80dlZHMjMzN3cvZXo5Qk5kZjZvUU5XbEJ4UFBBK1NuQ2ZYMFpXdXVUOTJWOU5oWXkxTWVhSlM3blVYREF1MTRycTVxT0VqellUaDVDTXJhajdSV21tUHN0cXFrbG1SeE11YUd4dTNNTkFtSFFXQWpCNzhRZlQ4aENqdEZGVllyZUpVYVAvVmk4TmZkcldTbGR4L2RmTGlDWjVhWHFBbnpXMnRKZmxDRWJQUk5pc0NXbWtoRTFHeGdvNDZGd0hOVmNrM0NvZ2tvQmdrZFhuKzZsaTNoSWlNUDlvWW5oa0FKRTc1VGVBRUlWVWpsQUJXSTRHelJsaTJnZ1RHWFRlaUVYOXZQaXN4Q2JFMHpWT3llWm83bDB3bXVkSTg5U3BtY3lRcTRDZVZKZmk0UStVaDBCSkFZM0x0VlVSSTRsR2dUNGgvSWJ3QjlJbFROK2VxUWxoM1pIWTBtdnVQNG9vSEVNMHNBZ1EzOVVHaFRzTnBmSGs2dlRqLzZ4OG5uNTVkVHQ1ZVRTODNqeGZUZDlQejgra25mNXp6SW8xbTJYenYwUml3TEhvUDFaUHRCNUNuT0V1anJIRVVzZ3JPcDE3V3B6OEw4SVhEMGtDUzNYMGNtRTZQaUdZQld6SW9wMTJvOTRqVmF3d0xBSjloVDhtd0tYbTNmcHYwT3lwSWZ3UHpMVjRSYmM4SDBmY2ZkS0hNSDgwSXhBbFUxK3M0eVpsYzh0UmxSMGhXRkM3ZXpwVG1OMXdidUkrejZXTUZKSVV5SFB3Nk9MQnh4ZEFQbHBxVkh1RElFNnYwT25DOFRNVVNmQVQ4dGdJdFQ2TUxKYm5EcW1mQjVtUm9WSzBUL2dBbDJoeTFUeGR2enFkdmYyc3oxam4weHlicUlNbDJjRWVpb3pyOEVKOTl1Sno4Nm5YMTViamUxdGdnMmk1dTkyWno2UGZwNldUcjBDQTZWQ2VIaDkxWlY0MkQ2S2hUNE4wSEVmNUhWWHQ3SW93TEJVR0FBa3MzZldBUXRSODhYa0FOVG5ISkxVdVpaWmd1a3VTMXZEYlJiRDZXMGVFNGp6WkRNRFE1ZTNaOGdxMlZySElZZGtTK3hHZ1FEN0xBYTdwcGt3V2xrTjdKOGZIekU1ZXVBNG1Ecm9OczhhUjRESkRkdW1DSTNJOWNUNFlpQ3VzS2d1UW9OekcySmJYd201ejBNUnc1cVBNdzU3Y05YVHlBcEpHZUZBRGUyZm12OHJVUkNTdndmbzRGOTdoMWx6TkJwZ29ZUXJGWmw1aENFNzFqTUlrMkVXSjJ0Z2dGUVRYNXdtaFJhdDExTDU0VTdWYXg5YTNGQkF0S3c4OEtzdEdnaFRQeE51R1ZKVytZNFJNbnd0anVhdzhhbGZQbUtqQUJKQUhyL2xwdURHbTIyaTAxcDNWRjlPbXlMNiszbDVQWFY0MDQrZlB0K1oyKzZJaCt2OWE2NnJvUmZCV1Z2QVFsaWg0NjdVaUhHa2M1aVRHc3RJQWdzd0MxczVGajNieWoyOHZvOEZINEhNdGlaNkxobW5Qc1RNa1JEQVhpTXJXV2lTdjl0bzF0d2JXMzF6VWgzQkJoOTJDcDhYQzVZbnA1TXp1YSsyTVE2aExtdm9rNjliUFJmSXh0dkN2UkdlMUFvUFB4Z2tPWDVGRy9SZTdCWFJybFlPdEl0MDA4M3BEYno3WTRBdWJRdmV0TWJ0eEJwZ3MzZXRvMUZoc1d5aEFXcktuN2RIaFR5WU5FU2F0VmNZQzJEK2grSDBtaXRPYXdSUUdYenRML0NBZXRJMlVnako1WkZkTU9vVHREcm1IRDNhTHArZUxQUnNmendVTW9ublhZM0d1NEQ5alphY0UvSFQ3T21lN1l6b1NEWWdPU1J0K1lXbjJFbTNkdjFwWWJXSlh2dmZqZ1d1ek9HN2c4MXc1Y091OUw1QWR5bFhPU0ZFeVVwQUkvUE9XR1dGQVpJWmNGVGdpeFJMNlNqV0dvZko3VWFDVWtyeVZNWUFzN2QxMkJCMmNNaWNzMXVlYThRak13VXhyVE9GQVNKbDNqNXRCYVlGbGV3OHpKdENxSnNBYTJsaHQ4M0NRMXhPRnh0MjNRenZNQmVwVTJ4RktoN2lkVm1OWmxaYnoyc29IQmVyem1hK05XL2NCd1lBWURLeWJ5WUZrTTZJajZmc2hscy9GanhkN1ptalpFMnZUYXZvSUdVVk0vMzFzcGhMUkZHODNvUVVLREg3dHl4dlpnRW1pQjBSY2F1eFU5amlHK09DNWhud0V4QUxGaXlUVmJ1aGM0bmxGbDRLYmJ6dzN3cU9sbDFLZHE1N05GTFFvcnBHays3SisrUWhUSUNNVFlTMVJaUVNhd1hRWUl4Nzc3c2JnenExd3lxQis0eVBGK1c3c1pjVCt5QXBZQk5ZTDQvK2Z5dUd1a3puSGJ0Uitia04rWlViUU81YkNUMEc5VDVxSCszc09EbTJ1MnM3bTJKM2NPL0F0QlNLYy8nKSksICc8YXV0b21hdGljLWZpbGUtdHJhbnNwb3J0PicsICdleGVjJykpAHsiY29ycmVsYXRpb25JZCI6ImFjYzViOTVjNTNmMjRmNmU5YzUxN2IzMzVkZjU4ZTg3IiwiZGlyZWN0b3J5IjoiL3RtcC92cG4tY29udHJvbC1hdXRvLWFjYzViOTVjNTNmMjRmNmU5YzUxN2IzMzVkZjU4ZTg3IiwiZGlyZWN0b3J5SWRlbnRpdHkiOls0MywyNjY2MCwxNjgzMiwxMDAwLDEwMDBdLCJnZW5lcmF0aW9uIjpbNDMsMjY2NjEsMzMxNTIsMTAwMCwxMDAwLDEsMjIwMjY3LDE3OTI0MzQwMzU3OTk3ODQ4NDMsMTc5MjQzNDAzNTc5OTc4NDg0M10sImlkZW50aXR5Ijp7ImJvb3QiOiIyNTUxNWYyMy1iOTY2LTRjM2EtYWU2My1kMzg0NTIzNzU1NzgiLCJob21lIjoiL2hvbWUva2FyZGluYWwiLCJwcmluY2lwYWwiOiJrYXJkaW5hbCIsInVpZCI6MTAwMH0sInByb2dyYW1CeXRlcyI6MjIwMjY3LCJwcm9ncmFtU2hhMjU2IjoiMzY1NDc4YmNjM2ZlN2IzNmZmOWY2NjcyN2RjYjU5YmI1MjliZTAzZTZlZWFlMWJjMjI1ZWExMjZmYTgwNDQ4ZSIsInNjaGVtYVZlcnNpb24iOjF9AA==", "cmdlineSha256": "97f4593186f21311a6be59733419b0d9d365637f363ca05d3005eabd70640680", "exe": "/usr/bin/python3.14", "executableGeneration": [66306, 1227482, 33261, 0, 0, 1, 14424, 1786348016000000000, 1786804189213449734], "namespaces": {"cgroup": {"link": "cgroup:[4026531835]", "targetGeneration": [5, 4026531835, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "ipc": {"link": "ipc:[4026531839]", "targetGeneration": [5, 4026531839, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "mnt": {"link": "mnt:[4026531832]", "targetGeneration": [5, 4026531832, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "net": {"link": "net:[4026531833]", "targetGeneration": [5, 4026531833, 33060, 0, 0, 1, 0, 1791018373427348463, 1791018373427348463]}, "pid": {"link": "pid:[4026531836]", "targetGeneration": [5, 4026531836, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "pid_for_children": {"link": "pid:[4026531836]", "targetGeneration": [5, 4026531836, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "time": {"link": "time:[4026531834]", "targetGeneration": [5, 4026531834, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "time_for_children": {"link": "time:[4026531834]", "targetGeneration": [5, 4026531834, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "user": {"link": "user:[4026531837]", "targetGeneration": [5, 4026531837, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}, "uts": {"link": "uts:[4026531838]", "targetGeneration": [5, 4026531838, 33060, 0, 0, 1, 0, 1792438373534222799, 1792438373534222799]}}, "pid": 1931344, "processRoot": {"link": "/", "targetGeneration": [66306, 2, 16749, 0, 0, 17, 4096, 1778888471458849935, 1786804199547723610]}, "requiredSourceAndRequestFds": {"/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py": [{"fd": 11, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py", "targetGeneration": [66307, 103426948, 33152, 1000, 1000, 1, 44195, 1792434046351781059, 1792434046351781059]}], "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py": [{"fd": 10, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py", "targetGeneration": [66307, 103418492, 33152, 1000, 1000, 1, 28116, 1792434046348781060, 1792434046348781060]}], "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw": [{"fd": 19, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw", "targetGeneration": [66307, 103427562, 33152, 1000, 1000, 1, 214, 1792434054806778027, 1792434054806778027]}], "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json": [{"fd": 18, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json", "targetGeneration": [66307, 103427561, 33152, 1000, 1000, 1, 32805, 1792434054799778029, 1792434054799778029]}]}, "socketFds": [{"fd": 20, "link": "socket:[87352336]", "targetGeneration": [10, 87352336, 49663, 1000, 1000, 1, 0, 0, 0]}], "startTicks": 141567990, "statusBase64": "TmFtZToJcHl0aG9uMwpVbWFzazoJMDAyMgpTdGF0ZToJUyAoc2xlZXBpbmcpClRnaWQ6CTE5MzEzNDQKTmdpZDoJMApQaWQ6CTE5MzEzNDQKUFBpZDoJMTgyOTU0MApUcmFjZXJQaWQ6CTAKVWlkOgkxMDAwCTEwMDAJMTAwMAkxMDAwCkdpZDoJMTAwMAkxMDAwCTEwMDAJMTAwMApGRFNpemU6CTY0Ckdyb3VwczoJOTUzIDk1OCA5NjEgOTY0IDk5MCA5OTggMTAwMCAKTlN0Z2lkOgkxOTMxMzQ0Ck5TcGlkOgkxOTMxMzQ0Ck5TcGdpZDoJMTkzMTM0NApOU3NpZDoJMTkzMTM0NApLdGhyZWFkOgkwClZtUGVhazoJICAgNDM0MDgga0IKVm1TaXplOgkgICA0MzQwOCBrQgpWbUxjazoJICAgICAgIDAga0IKVm1QaW46CSAgICAgICAwIGtCClZtSFdNOgkgICAzMzQ4NCBrQgpWbVJTUzoJICAgMzM0ODQga0IKUnNzQW5vbjoJICAgMTkwODQga0IKUnNzRmlsZToJICAgMTQ0MDAga0IKUnNzU2htZW06CSAgICAgICAwIGtCClZtRGF0YToJICAgMTk4NzIga0IKVm1TdGs6CSAgICAgMTMyIGtCClZtRXhlOgkgICAgICAgNCBrQgpWbUxpYjoJICAgMTI1NDAga0IKVm1QVEU6CSAgICAgMTIwIGtCClZtU3dhcDoJICAgICAgIDAga0IKSHVnZXRsYlBhZ2VzOgkgICAgICAgMCBrQgpDb3JlRHVtcGluZzoJMApUSFBfZW5hYmxlZDoJMQp1bnRhZ19tYXNrOgkweGZmZmZmZmZmZmZmZmZmZmYKVGhyZWFkczoJMQpTaWdROgkwLzI0NjY0MApTaWdQbmQ6CTAwMDAwMDAwMDAwMDAwMDAKU2hkUG5kOgkwMDAwMDAwMDAwMDAwMDAwClNpZ0JsazoJMDAwMDAwMDAwMDAwMDAwMApTaWdJZ246CTAwMDAwMDAwMDEwMDEwMDAKU2lnQ2d0OgkwMDAwMDAwMDAwMDAwMDAyCkNhcEluaDoJMDAwMDAwMDAwMDAwMDAwMApDYXBQcm06CTAwMDAwMDAwMDAwMDAwMDAKQ2FwRWZmOgkwMDAwMDAwMDAwMDAwMDAwCkNhcEJuZDoJMDAwMDAxZmZmZmZmZmZmZgpDYXBBbWI6CTAwMDAwMDAwMDAwMDAwMDAKTm9OZXdQcml2czoJMApTZWNjb21wOgkwClNlY2NvbXBfZmlsdGVyczoJMApTcGVjdWxhdGlvbl9TdG9yZV9CeXBhc3M6CXRocmVhZCB2dWxuZXJhYmxlClNwZWN1bGF0aW9uSW5kaXJlY3RCcmFuY2g6CWNvbmRpdGlvbmFsIGVuYWJsZWQKQ3B1c19hbGxvd2VkOglmZmZmZmZmZgpDcHVzX2FsbG93ZWRfbGlzdDoJMC0zMQpNZW1zX2FsbG93ZWQ6CTAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAxCk1lbXNfYWxsb3dlZF9saXN0OgkwCnZvbHVudGFyeV9jdHh0X3N3aXRjaGVzOgk2MzM5Cm5vbnZvbHVudGFyeV9jdHh0X3N3aXRjaGVzOgkyNTUKeDg2X1RocmVhZF9mZWF0dXJlczoJCng4Nl9UaHJlYWRfZmVhdHVyZXNfbG9ja2VkOgkK", "uid": 1000}, "actorIdentityProjectionDiff": [], "actorOpening": {"argvBytesBase64": ["cHl0aG9uMw==", "LUk=", "LUI=", "LWM=", "aW1wb3J0IGJhc2U2NCx6bGliO2V4ZWMoY29tcGlsZSh6bGliLmRlY29tcHJlc3MoYmFzZTY0LmI2NGRlY29kZSgnZU5xMVY5OXYyellRZnM5ZlFXTVBsQlpGVHRvbTIreXFRTnU0UTdBc0x0S3MzV0FZQWkxUkZodUpGRWdxanRmMWY5OGRaVWwya21icHd4NFNuRTdpM2ZHNzczNVlsSlhTbHVUTTVJVllCSitOa29FeVFiVktBMk9aRFV5OXFMUkt1REdCV1p2QThyTEtSTUgzVXA0UmtYSnBoVjE3L21pUFZCR2NDWmZjVnF0YXBKNHlLSE1VZlgrUGlJekE4YkFxbU0yVUxrT3dyYTFaQ1p0N3RCQ3l2cVZvZzZDQ3FJcExqdzdSN1JBT0RhKzVscndZYWlaVFZRNFhTdGxZcE5RbnpKQnNoSTlSRm1yT1V1L28yYzgrV05haThzQWxMKzQ0alNLYU1yMFNrcUlySGZWWEMzVXR2UmtkMWtZUHpVSklkSnZZZ2diMFFNSS9EQ0JFUndhK0ZVcldjQ3M2QjN4U0liZXRuRTQrWHZ4eGZvNHZWRzIzMzd3L2V6OUJOZGY2b1FOV2xCeFBQQStTbkNmWDBaV3V1VDkyVjlOaFl5MU1lYUpTN25VWERBdTE0cnE1cU9FanpZVGg1Q01yYWo3UldtbVBzdHFxa2xtUnhNdWFHeHUzTU5BbUhRV0FqQjc4UWZUOGhDanRGRlZZcmVKVWFQL1ZpOE5mZHJXU2xkeC9kZkxpQ1o1YVhxQW56VzJ0SmZsQ0ViUFJOaXNDV21raEUxR3hnbzQ2RndITlZjazNDb2drb0Jna2RYbis2bGkzaElpTVA5b1luaGtBSkU3NVRlQUVJVlVqbEFCV0k0R3pSbGkyZ2dUR1hUZWlFWDl2UGlzeENiRTB6Vk95ZVpvN2wwd211ZEk4OVNwbWN5UXE0Q2VWSmZpNFErVWgwQkpBWTNMdFZVUkk0bEdnVDRoL0lid0I5SWxUTitlcVFsaDNaSFkwbXZ1UDRvb0hFTTBzQWdRMzlVR2hUc05wZkhrNnZUai82eDhubjU1ZFR0NWVUUzgzanhmVGQ5UHo4K2tuZjV6eklvMW0yWHp2MFJpd0xIb1AxWlB0QjVDbk9FdWpySEVVc2dyT3AxN1dwejhMOElYRDBrQ1MzWDBjbUU2UGlHWUJXeklvcDEybzk0alZhd3dMQUo5aFQ4bXdLWG0zZnB2ME95cElmd1B6TFY0UmJjOEgwZmNmZEtITUg4MEl4QWxVMStzNHlabGM4dFJsUjBoV0ZDN2V6cFRtTjF3YnVJK3o2V01GSklVeUhQdzZPTEJ4eGRBUGxwcVZIdURJRTZ2ME9uQzhUTVVTZkFUOHRnSXRUNk1MSmJuRHFtZkI1bVJvVkswVC9nQWwyaHkxVHhkdnpxZHZmMnN6MWpuMHh5YnFJTWwyY0VlaW96cjhFSjk5dUp6ODZuWDE1YmplMXRnZzJpNXU5Mlp6NlBmcDZXVHIwQ0E2VkNlSGg5MVpWNDJENktoVDROMEhFZjVIVlh0N0lvd0xCVUdBQWtzM2ZXQVF0Ujg4WGtBTlRuSEpMVXVaWlpndWt1UzF2RGJSYkQ2VzBlRTRqelpETURRNWUzWjhncTJWckhJWWRrUyt4R2dRRDdMQWE3cHBrd1dsa043SjhmSHpFNWV1QTRtRHJvTnM4YVI0REpEZHVtQ0kzSTljVDRZaUN1c0tndVFvTnpHMkpiWHdtNXowTVJ3NXFQTXc1N2NOWFR5QXBKR2VGQURlMmZtdjhyVVJDU3Z3Zm80Rjk3aDFsek5CcGdvWVFyRlpsNWhDRTcxak1JazJFV0oydGdnRlFUWDV3bWhSYXQxMUw1NFU3VmF4OWEzRkJBdEt3ODhLc3RHZ2hUUHhOdUdWSlcrWTRSTW53dGp1YXc4YWxmUG1LakFCSkFIci9scHVER20yMmkwMXAzVkY5T215TDYrM2w1UFhWNDA0K2ZQdCtaMis2SWgrdjlhNjZyb1JmQldWdkFRbGloNDY3VWlIR2tjNWlUR3N0SUFnc3dDMXM1RmozYnlqMjh2bzhGSDRITXRpWjZMaG1uUHNUTWtSREFYaU1yV1dpU3Y5dG8xdHdiVzMxelVoM0JCaDkyQ3A4WEM1WW5wNU16dWErMk1RNmhMbXZvazY5YlBSZkl4dHZDdlJHZTFBb1BQeGdrT1g1RkcvUmU3QlhScmxZT3RJdDAwODNwRGJ6N1k0QXViUXZldE1idHhCcGdzM2V0bzFGaHNXeWhBV3JLbjdkSGhUeVlORVNhdFZjWUMyRCtoK0gwbWl0T2F3UlFHWHp0TC9DQWV0STJVZ2pKNVpGZE1Pb1R0RHJtSEQzYUxwK2VMUFJzZnp3VU1vbm5YWTNHdTREOWpaYWNFL0hUN09tZTdZem9TRFlnT1NSdCtZV24yRW0zZHYxcFliV0pYdnZmamdXdXpPRzdnODF3NWNPdTlMNUFkeWxYT1NGRXlVcEFJL1BPV0dXRkFaSVpjRlRnaXhSTDZTaldHb2ZKN1VhQ1VrcnlWTVlBczdkMTJCQjJjTWljczF1ZWE4UWpNd1V4clRPRkFTSmwzajV0QmFZRmxldzh6SnRDcUpzQWEybGh0ODNDUTF4T0Z4dDIzUXp2TUJlcFUyeEZLaDdpZFZtTlpsWmJ6MnNvSEJlcnptYStOVy9jQndZQVlES3lieVlGa002SWo2ZnNobHMvRmp4ZDdabWpaRTJ2VGF2b0lHVVZNLzMxc3BoTFJGRzgzb1FVS0RIN3R5eHZaZ0VtaUIwUmNhdXhVOWppRytPQzVobndFeEFMRml5VFZidWhjNG5sRmw0S2Jienczd3FPbGwxS2RxNTdORkxRb3JwR2srN0orK1FoVElDTVRZUzFSWlFTYXdYUVlJeDc3N3NiZ3pxMXd5cUIrNHlQRitXN3NaY1QreUFwWUJOWUw0LytmeXVHdWt6bkhidFIrYmtOK1pVYlFPNWJDVDBHOVQ1cUgrM3NPRG0ydTJzN20ySjNjTy9BdEJTS2MvJykpLCAnPGF1dG9tYXRpYy1maWxlLXRyYW5zcG9ydD4nLCAnZXhlYycpKQ==", "eyJjb3JyZWxhdGlvbklkIjoiYWNjNWI5NWM1M2YyNGY2ZTljNTE3YjMzNWRmNThlODciLCJkaXJlY3RvcnkiOiIvdG1wL3Zwbi1jb250cm9sLWF1dG8tYWNjNWI5NWM1M2YyNGY2ZTljNTE3YjMzNWRmNThlODciLCJkaXJlY3RvcnlJZGVudGl0eSI6WzQzLDI2NjYwLDE2ODMyLDEwMDAsMTAwMF0sImdlbmVyYXRpb24iOls0MywyNjY2MSwzMzE1MiwxMDAwLDEwMDAsMSwyMjAyNjcsMTc5MjQzNDAzNTc5OTc4NDg0MywxNzkyNDM0MDM1Nzk5Nzg0ODQzXSwiaWRlbnRpdHkiOnsiYm9vdCI6IjI1NTE1ZjIzLWI5NjYtNGMzYS1hZTYzLWQzODQ1MjM3NTU3OCIsImhvbWUiOiIvaG9tZS9rYXJkaW5hbCIsInByaW5jaXBhbCI6ImthcmRpbmFsIiwidWlkIjoxMDAwfSwicHJvZ3JhbUJ5dGVzIjoyMjAyNjcsInByb2dyYW1TaGEyNTYiOiIzNjU0NzhiY2MzZmU3YjM2ZmY5ZjY2NzI3ZGNiNTliYjUyOWJlMDNlNmVlYWUxYmMyMjVlYTEyNmZhODA0NDhlIiwic2NoZW1hVmVyc2lvbiI6MX0="], "cmdlineBase64": "cHl0aG9uMwAtSQAtQgAtYwBpbXBvcnQgYmFzZTY0LHpsaWI7ZXhlYyhjb21waWxlKHpsaWIuZGVjb21wcmVzcyhiYXNlNjQuYjY0ZGVjb2RlKCdlTnExVjk5djJ6WVFmczlmUVdNUGxCWkZUdG9tMit5cVFOdTRRN0FzTHRLczNXQVlBaTFSRmh1SkZFZ3FqdGYxZjk4ZFpVbDJrbWJwd3g0U25FN2kzZkc3NzM1WWxKWFNsdVRNNUlWWUJKK05rb0V5UWJWS0EyT1pEVXk5cUxSS3VER0JXWnZBOHJMS1JNSDNVcDRSa1hKcGhWMTcvbWlQVkJHY0NaZmNWcXRhcEo0eUtITVVmWCtQaUl6QThiQXFtTTJVTGtPd3JhMVpDWnQ3dEJDeXZxVm9nNkNDcUlwTGp3N1I3UkFPRGErNWxyd1lhaVpUVlE0WFN0bFlwTlFuekpCc2hJOVJGbXJPVXUvbzJjOCtXTmFpOHNBbEwrNDRqU0thTXIwU2txSXJIZlZYQzNVdHZSa2Qxa1lQelVKSWRKdllnZ2IwUU1JL0RDQkVSd2ErRlVyV2NDczZCM3hTSWJldG5FNCtYdnh4Zm80dlZHMjMzN3cvZXo5Qk5kZjZvUU5XbEJ4UFBBK1NuQ2ZYMFpXdXVUOTJWOU5oWXkxTWVhSlM3blVYREF1MTRycTVxT0VqellUaDVDTXJhajdSV21tUHN0cXFrbG1SeE11YUd4dTNNTkFtSFFXQWpCNzhRZlQ4aENqdEZGVllyZUpVYVAvVmk4TmZkcldTbGR4L2RmTGlDWjVhWHFBbnpXMnRKZmxDRWJQUk5pc0NXbWtoRTFHeGdvNDZGd0hOVmNrM0NvZ2tvQmdrZFhuKzZsaTNoSWlNUDlvWW5oa0FKRTc1VGVBRUlWVWpsQUJXSTRHelJsaTJnZ1RHWFRlaUVYOXZQaXN4Q2JFMHpWT3llWm83bDB3bXVkSTg5U3BtY3lRcTRDZVZKZmk0UStVaDBCSkFZM0x0VlVSSTRsR2dUNGgvSWJ3QjlJbFROK2VxUWxoM1pIWTBtdnVQNG9vSEVNMHNBZ1EzOVVHaFRzTnBmSGs2dlRqLzZ4OG5uNTVkVHQ1ZVRTODNqeGZUZDlQejgra25mNXp6SW8xbTJYenYwUml3TEhvUDFaUHRCNUNuT0V1anJIRVVzZ3JPcDE3V3B6OEw4SVhEMGtDUzNYMGNtRTZQaUdZQld6SW9wMTJvOTRqVmF3d0xBSjloVDhtd0tYbTNmcHYwT3lwSWZ3UHpMVjRSYmM4SDBmY2ZkS0hNSDgwSXhBbFUxK3M0eVpsYzh0UmxSMGhXRkM3ZXpwVG1OMXdidUkrejZXTUZKSVV5SFB3Nk9MQnh4ZEFQbHBxVkh1RElFNnYwT25DOFRNVVNmQVQ4dGdJdFQ2TUxKYm5EcW1mQjVtUm9WSzBUL2dBbDJoeTFUeGR2enFkdmYyc3oxam4weHlicUlNbDJjRWVpb3pyOEVKOTl1Sno4Nm5YMTViamUxdGdnMmk1dTkyWno2UGZwNldUcjBDQTZWQ2VIaDkxWlY0MkQ2S2hUNE4wSEVmNUhWWHQ3SW93TEJVR0FBa3MzZldBUXRSODhYa0FOVG5ISkxVdVpaWmd1a3VTMXZEYlJiRDZXMGVFNGp6WkRNRFE1ZTNaOGdxMlZySElZZGtTK3hHZ1FEN0xBYTdwcGt3V2xrTjdKOGZIekU1ZXVBNG1Ecm9OczhhUjRESkRkdW1DSTNJOWNUNFlpQ3VzS2d1UW9OekcySmJYd201ejBNUnc1cVBNdzU3Y05YVHlBcEpHZUZBRGUyZm12OHJVUkNTdndmbzRGOTdoMWx6TkJwZ29ZUXJGWmw1aENFNzFqTUlrMkVXSjJ0Z2dGUVRYNXdtaFJhdDExTDU0VTdWYXg5YTNGQkF0S3c4OEtzdEdnaFRQeE51R1ZKVytZNFJNbnd0anVhdzhhbGZQbUtqQUJKQUhyL2xwdURHbTIyaTAxcDNWRjlPbXlMNiszbDVQWFY0MDQrZlB0K1oyKzZJaCt2OWE2NnJvUmZCV1Z2QVFsaWg0NjdVaUhHa2M1aVRHc3RJQWdzd0MxczVGajNieWoyOHZvOEZINEhNdGlaNkxobW5Qc1RNa1JEQVhpTXJXV2lTdjl0bzF0d2JXMzF6VWgzQkJoOTJDcDhYQzVZbnA1TXp1YSsyTVE2aExtdm9rNjliUFJmSXh0dkN2UkdlMUFvUFB4Z2tPWDVGRy9SZTdCWFJybFlPdEl0MDA4M3BEYno3WTRBdWJRdmV0TWJ0eEJwZ3MzZXRvMUZoc1d5aEFXcktuN2RIaFR5WU5FU2F0VmNZQzJEK2grSDBtaXRPYXdSUUdYenRML0NBZXRJMlVnako1WkZkTU9vVHREcm1IRDNhTHArZUxQUnNmendVTW9ublhZM0d1NEQ5alphY0UvSFQ3T21lN1l6b1NEWWdPU1J0K1lXbjJFbTNkdjFwWWJXSlh2dmZqZ1d1ek9HN2c4MXc1Y091OUw1QWR5bFhPU0ZFeVVwQUkvUE9XR1dGQVpJWmNGVGdpeFJMNlNqV0dvZko3VWFDVWtyeVZNWUFzN2QxMkJCMmNNaWNzMXVlYThRak13VXhyVE9GQVNKbDNqNXRCYVlGbGV3OHpKdENxSnNBYTJsaHQ4M0NRMXhPRnh0MjNRenZNQmVwVTJ4RktoN2lkVm1OWmxaYnoyc29IQmVyem1hK05XL2NCd1lBWURLeWJ5WUZrTTZJajZmc2hscy9GanhkN1ptalpFMnZUYXZvSUdVVk0vMzFzcGhMUkZHODNvUVVLREg3dHl4dlpnRW1pQjBSY2F1eFU5amlHK09DNWhud0V4QUxGaXlUVmJ1aGM0bmxGbDRLYmJ6dzN3cU9sbDFLZHE1N05GTFFvcnBHays3SisrUWhUSUNNVFlTMVJaUVNhd1hRWUl4Nzc3c2JnenExd3lxQis0eVBGK1c3c1pjVCt5QXBZQk5ZTDQvK2Z5dUd1a3puSGJ0Uitia04rWlViUU81YkNUMEc5VDVxSCszc09EbTJ1MnM3bTJKM2NPL0F0QlNLYy8nKSksICc8YXV0b21hdGljLWZpbGUtdHJhbnNwb3J0PicsICdleGVjJykpAHsiY29ycmVsYXRpb25JZCI6ImFjYzViOTVjNTNmMjRmNmU5YzUxN2IzMzVkZjU4ZTg3IiwiZGlyZWN0b3J5IjoiL3RtcC92cG4tY29udHJvbC1hdXRvLWFjYzViOTVjNTNmMjRmNmU5YzUxN2IzMzVkZjU4ZTg3IiwiZGlyZWN0b3J5SWRlbnRpdHkiOls0MywyNjY2MCwxNjgzMiwxMDAwLDEwMDBdLCJnZW5lcmF0aW9uIjpbNDMsMjY2NjEsMzMxNTIsMTAwMCwxMDAwLDEsMjIwMjY3LDE3OTI0MzQwMzU3OTk3ODQ4NDMsMTc5MjQzNDAzNTc5OTc4NDg0M10sImlkZW50aXR5Ijp7ImJvb3QiOiIyNTUxNWYyMy1iOTY2LTRjM2EtYWU2My1kMzg0NTIzNzU1NzgiLCJob21lIjoiL2hvbWUva2FyZGluYWwiLCJwcmluY2lwYWwiOiJrYXJkaW5hbCIsInVpZCI6MTAwMH0sInByb2dyYW1CeXRlcyI6MjIwMjY3LCJwcm9ncmFtU2hhMjU2IjoiMzY1NDc4YmNjM2ZlN2IzNmZmOWY2NjcyN2RjYjU5YmI1MjliZTAzZTZlZWFlMWJjMjI1ZWExMjZmYTgwNDQ4ZSIsInNjaGVtYVZlcnNpb24iOjF9AA==", "cmdlineSha256": "97f4593186f21311a6be59733419b0d9d365637f363ca05d3005eabd70640680", "exe": "/usr/bin/python3.14", "executableGeneration": [66306, 1227482, 33261, 0, 0, 1, 14424, 1786348016000000000, 1786804189213449734], "namespaces": {"cgroup": {"link": "cgroup:[4026531835]", "targetGeneration": [5, 4026531835, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "ipc": {"link": "ipc:[4026531839]", "targetGeneration": [5, 4026531839, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "mnt": {"link": "mnt:[4026531832]", "targetGeneration": [5, 4026531832, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "net": {"link": "net:[4026531833]", "targetGeneration": [5, 4026531833, 33060, 0, 0, 1, 0, 1791018373427348463, 1791018373427348463]}, "pid": {"link": "pid:[4026531836]", "targetGeneration": [5, 4026531836, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "pid_for_children": {"link": "pid:[4026531836]", "targetGeneration": [5, 4026531836, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "time": {"link": "time:[4026531834]", "targetGeneration": [5, 4026531834, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "time_for_children": {"link": "time:[4026531834]", "targetGeneration": [5, 4026531834, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "user": {"link": "user:[4026531837]", "targetGeneration": [5, 4026531837, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}, "uts": {"link": "uts:[4026531838]", "targetGeneration": [5, 4026531838, 33060, 0, 0, 1, 0, 1792438373529222793, 1792438373529222793]}}, "pid": 1931344, "processRoot": {"link": "/", "targetGeneration": [66306, 2, 16749, 0, 0, 17, 4096, 1778888471458849935, 1786804199547723610]}, "requiredSourceAndRequestFds": {"/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py": [{"fd": 11, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py", "targetGeneration": [66307, 103426948, 33152, 1000, 1000, 1, 44195, 1792434046351781059, 1792434046351781059]}], "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py": [{"fd": 10, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py", "targetGeneration": [66307, 103418492, 33152, 1000, 1000, 1, 28116, 1792434046348781060, 1792434046348781060]}], "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw": [{"fd": 19, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw", "targetGeneration": [66307, 103427562, 33152, 1000, 1000, 1, 214, 1792434054806778027, 1792434054806778027]}], "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json": [{"fd": 18, "link": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json", "targetGeneration": [66307, 103427561, 33152, 1000, 1000, 1, 32805, 1792434054799778029, 1792434054799778029]}]}, "socketFds": [{"fd": 20, "link": "socket:[87352336]", "targetGeneration": [10, 87352336, 49663, 1000, 1000, 1, 0, 0, 0]}], "startTicks": 141567990, "statusBase64": "TmFtZToJcHl0aG9uMwpVbWFzazoJMDAyMgpTdGF0ZToJUyAoc2xlZXBpbmcpClRnaWQ6CTE5MzEzNDQKTmdpZDoJMApQaWQ6CTE5MzEzNDQKUFBpZDoJMTgyOTU0MApUcmFjZXJQaWQ6CTAKVWlkOgkxMDAwCTEwMDAJMTAwMAkxMDAwCkdpZDoJMTAwMAkxMDAwCTEwMDAJMTAwMApGRFNpemU6CTY0Ckdyb3VwczoJOTUzIDk1OCA5NjEgOTY0IDk5MCA5OTggMTAwMCAKTlN0Z2lkOgkxOTMxMzQ0Ck5TcGlkOgkxOTMxMzQ0Ck5TcGdpZDoJMTkzMTM0NApOU3NpZDoJMTkzMTM0NApLdGhyZWFkOgkwClZtUGVhazoJICAgNDM0MDgga0IKVm1TaXplOgkgICA0MzQwOCBrQgpWbUxjazoJICAgICAgIDAga0IKVm1QaW46CSAgICAgICAwIGtCClZtSFdNOgkgICAzMzQ4NCBrQgpWbVJTUzoJICAgMzM0ODQga0IKUnNzQW5vbjoJICAgMTkwODQga0IKUnNzRmlsZToJICAgMTQ0MDAga0IKUnNzU2htZW06CSAgICAgICAwIGtCClZtRGF0YToJICAgMTk4NzIga0IKVm1TdGs6CSAgICAgMTMyIGtCClZtRXhlOgkgICAgICAgNCBrQgpWbUxpYjoJICAgMTI1NDAga0IKVm1QVEU6CSAgICAgMTIwIGtCClZtU3dhcDoJICAgICAgIDAga0IKSHVnZXRsYlBhZ2VzOgkgICAgICAgMCBrQgpDb3JlRHVtcGluZzoJMApUSFBfZW5hYmxlZDoJMQp1bnRhZ19tYXNrOgkweGZmZmZmZmZmZmZmZmZmZmYKVGhyZWFkczoJMQpTaWdROgkwLzI0NjY0MApTaWdQbmQ6CTAwMDAwMDAwMDAwMDAwMDAKU2hkUG5kOgkwMDAwMDAwMDAwMDAwMDAwClNpZ0JsazoJMDAwMDAwMDAwMDAwMDAwMApTaWdJZ246CTAwMDAwMDAwMDEwMDEwMDAKU2lnQ2d0OgkwMDAwMDAwMDAwMDAwMDAyCkNhcEluaDoJMDAwMDAwMDAwMDAwMDAwMApDYXBQcm06CTAwMDAwMDAwMDAwMDAwMDAKQ2FwRWZmOgkwMDAwMDAwMDAwMDAwMDAwCkNhcEJuZDoJMDAwMDAxZmZmZmZmZmZmZgpDYXBBbWI6CTAwMDAwMDAwMDAwMDAwMDAKTm9OZXdQcml2czoJMApTZWNjb21wOgkwClNlY2NvbXBfZmlsdGVyczoJMApTcGVjdWxhdGlvbl9TdG9yZV9CeXBhc3M6CXRocmVhZCB2dWxuZXJhYmxlClNwZWN1bGF0aW9uSW5kaXJlY3RCcmFuY2g6CWNvbmRpdGlvbmFsIGVuYWJsZWQKQ3B1c19hbGxvd2VkOglmZmZmZmZmZgpDcHVzX2FsbG93ZWRfbGlzdDoJMC0zMQpNZW1zX2FsbG93ZWQ6CTAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAwLDAwMDAwMDAxCk1lbXNfYWxsb3dlZF9saXN0OgkwCnZvbHVudGFyeV9jdHh0X3N3aXRjaGVzOgk2MzM5Cm5vbnZvbHVudGFyeV9jdHh0X3N3aXRjaGVzOgkyNTUKeDg2X1RocmVhZF9mZWF0dXJlczoJCng4Nl9UaHJlYWRfZmVhdHVyZXNfbG9ja2VkOgkK", "uid": 1000}, "actorScan": {"racedOrUnreadableProcesses": 4, "sameUidProcesses": 90}, "actorStableProjectionDiff": [["namespaces", "cgroup", "targetGeneration", 7], ["namespaces", "cgroup", "targetGeneration", 8], ["namespaces", "ipc", "targetGeneration", 7], ["namespaces", "ipc", "targetGeneration", 8], ["namespaces", "mnt", "targetGeneration", 7], ["namespaces", "mnt", "targetGeneration", 8], ["namespaces", "pid", "targetGeneration", 7], ["namespaces", "pid", "targetGeneration", 8], ["namespaces", "pid_for_children", "targetGeneration", 7], ["namespaces", "pid_for_children", "targetGeneration", 8], ["namespaces", "time", "targetGeneration", 7], ["namespaces", "time", "targetGeneration", 8], ["namespaces", "time_for_children", "targetGeneration", 7], ["namespaces", "time_for_children", "targetGeneration", 8], ["namespaces", "user", "targetGeneration", 7], ["namespaces", "user", "targetGeneration", 8], ["namespaces", "uts", "targetGeneration", 7], ["namespaces", "uts", "targetGeneration", 8]], "aggregateFileBytes": 105753, "allFileBytesComplete": true, "allFileBytesReadAndHashesComplete": true, "candidateIdentities": [{"pid": 1931344, "startTicks": 141567990}], "canonicalEmitterSha256": "297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479", "canonicalQgaSha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022", "canonicalSourceFilesJoined": true, "collectorId": "29650277-5a0b-47f0-afa3-7f0695c983ea", "files": {"native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py": {"bytes": 44195, "closingGeneration": [66307, 103426948, 33152, 1000, 1000, 1, 44195, 1792434046351781059, 1792434046351781059], "closingSha256": "297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479", "namedHeldClosing": true, "namedHeldOpening": true, "openingGeneration": [66307, 103426948, 33152, 1000, 1000, 1, 44195, 1792434046351781059, 1792434046351781059], "openingSha256": "297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479", "path": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py", "state": "complete"}, "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py": {"bytes": 28116, "closingGeneration": [66307, 103418492, 33152, 1000, 1000, 1, 28116, 1792434046348781060, 1792434046348781060], "closingSha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022", "namedHeldClosing": true, "namedHeldOpening": true, "openingGeneration": [66307, 103418492, 33152, 1000, 1000, 1, 28116, 1792434046348781060, 1792434046348781060], "openingSha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022", "path": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py", "state": "complete"}, "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.intent.json": {"bytes": 423, "closingGeneration": [66307, 103427564, 33152, 1000, 1000, 1, 423, 1792434054801902201, 1792434054801902201], "closingSha256": "16baf5c27311e1c0c8fe6810958ea2aa2de2c07f9c9cfbcdcd58cec59742d541", "namedHeldClosing": true, "namedHeldOpening": true, "openingGeneration": [66307, 103427564, 33152, 1000, 1000, 1, 423, 1792434054801902201, 1792434054801902201], "openingSha256": "16baf5c27311e1c0c8fe6810958ea2aa2de2c07f9c9cfbcdcd58cec59742d541", "path": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.intent.json", "state": "complete"}, "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw": {"bytes": 214, "closingGeneration": [66307, 103427562, 33152, 1000, 1000, 1, 214, 1792434054806778027, 1792434054806778027], "closingSha256": "639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4", "namedHeldClosing": true, "namedHeldOpening": true, "openingGeneration": [66307, 103427562, 33152, 1000, 1000, 1, 214, 1792434054806778027, 1792434054806778027], "openingSha256": "639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4", "path": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw", "state": "complete"}, "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json": {"bytes": 32805, "closingGeneration": [66307, 103427561, 33152, 1000, 1000, 1, 32805, 1792434054799778029, 1792434054799778029], "closingSha256": "8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81", "namedHeldClosing": true, "namedHeldOpening": true, "openingGeneration": [66307, 103427561, 33152, 1000, 1000, 1, 32805, 1792434054799778029, 1792434054799778029], "openingSha256": "8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81", "path": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json", "state": "complete"}}, "foreignFdContentsRead": false, "guestProgramSubmitted": false, "guestQueries": false, "historicalWireJoin": {"afterSyncReply": {"error": {"class": "GenericError", "desc": "Failed to execute helper program (Invalid argument)"}}, "canonicalOpenChecksPeerCredentialsBeforeSync": true, "canonicalSourceSha256": "bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022", "command": "guest-exec", "guestChildAbsenceClaimed": false, "guestReplayAllowed": false, "knownQemuPid": 3823747, "knownQemuStartTicks": 137277120, "matchingDelimitedSyncReplies": 1, "meaning": "Historical complete bf05 source/intent/nonce/raw causal join only; not a fresh socket peer or guest child-state query.", "nonce": 8220859838733921813, "originalRpcOutcome": "UNKNOWN", "rawBytes": 214, "rawSha256": "639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4", "requestSha256": "8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81", "rpcSequence": 83}, "hostProcessMetadataReadOnly": true, "hostReadOnly": true, "newSocketOperations": false, "originalFileBytePayloadEmitted": false, "originalHandleClose": false, "originalPrefix": "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108", "originalProbeId": "f31cc5f7-32b8-4cd6-aaa2-91226d194108", "prefixInventoryObserved": false, "probeId": "29650277-5a0b-47f0-afa3-7f0695c983ea", "productOperation": false, "qgaConnectOrRead": false, "rootListenerProcNetUnixGuard": true, "rootNamedHeldClosing": true, "rootStructureClosing": [66307, 103420846, 16832, 1000, 1000], "rootStructureOpening": [66307, 103420846, 16832, 1000, 1000], "schemaVersion": 1, "scope": "exact-original-rpc83-host-actor-identity", "selectedFileNames": ["native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py", "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py", "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.intent.json", "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw", "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json"], "signals": false, "socketObservation": {"anonymousSocketIsNotFreshQgaPeerProof": true, "currentPeerRelation": "not-observed-by-readonly-proc-metadata", "newProtocolQueries": false, "socketPayloadRead": false}, "sourceClosing": true, "state": "qualified", "taskOperation": false}\n'
+COLLECTOR_SHA256='50a5913135bbc155958ce8496e78e0d944b6dcb843c8872101acd87ed0373dc1'
+COLLECTOR_PRODUCER_SHA256='c8365ace8f9162837b4b6f393a90597a59fbfe1bf2728aaeda14ddabb9714a99'
+RELEASE_SOURCE=b'{"actorStableIdentitySha256": "cc8261b2780fc7e91e5721bb8b10df76438637f7a26cbb2e4490b73d0bf112c6", "allowOneHostSigterm": true, "assignment": "PROPOSED ONLY: one pidfd SIGTERM to the exact owned Arch observer. Root execution release and final current-context/carrier binding are pending. No guest process action or child-absence claim.", "collectorSha256": "50a5913135bbc155958ce8496e78e0d944b6dcb843c8872101acd87ed0373dc1", "deploymentId": "d493a373-1d2c-4ab0-bfd4-e93575019dce", "hostBootId": "25515f23-b966-4c3a-ae63-d38452375578", "mode": "actual-8ced-observer-intake-preparation", "originalGuestPid": null, "originalInnerState": "unknown", "originalOperationId": "8ced843c-dc6b-4b89-a8d6-84b517692efb", "originalUnknownReceiptSha256": "3f9f0465185c9d5e01b4fa2f768d109c5db465f1464d1e03da99741ebe229037", "protectedActorScopes": {"arch": {"qemu": 3823747, "swtpm": 3823746}, "mac-original-observations-only": {"operator": 84802, "ssh": 86132, "worker": 84980}, "no-numeric-pid-namespace-equivalence-asserted": true, "unknown-owner-before-guest-pid": null, "windows-original-acknowledgements-only": {"atomic-before": 10004, "atomic-current": 7816, "progress-before": 6604, "progress-current": 2492}}, "protectedPids": [3823747, 3823746], "purpose": "abandon-only-original-parked-host-actor", "schemaVersion": 1, "sourceIntentEvidence": {"guestPid": null, "operationId": "8ced843c-dc6b-4b89-a8d6-84b517692efb", "payloadSha256": "e00783a9b9ca9d9d711901703edb387ac7689c070084a06be671cc5ee6ad8ecc", "phaseId": "967aecfb-e320-4e0b-b3fd-8867cb3d1b65", "probeId": "f31cc5f7-32b8-4cd6-aaa2-91226d194108", "requestSha256": "42762abc18d1bae43e5bbc15eef94d0ddbd38a42569642ae3de76cdbb61e840e", "rpcSequence": 83, "scopeId": "e62e2a3e-d249-4509-b6bb-f2edf4e51b22", "sourceSha256": "8786a5fc9ed8ee34144391bc04b0ee69b959c3874d0dfe40e19784df3afd2e00"}}\n'
+RELEASE_SHA256='97c591c504d066210a3f4b9c2b70464a5360ba58aa8d157158afa3134ef89a17'
+SOURCE_PINS={'/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/host-actor-abandonment-private-preparation-v1/actual-intake-v2/abandon-caller.py': '2924a3e668684edf8e13b03d34285c429ee818e7d7a3b19ed7f8a40d84ba0f30', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/namespace-stability-preparation-v1/collector.py': 'c8365ace8f9162837b4b6f393a90597a59fbfe1bf2728aaeda14ddabb9714a99', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/host-rpc83-actor-identity-preparation-v1/namespace-stability-preparation-v1/packet/direct-host-rpc83-closing-diagnostic-original-operator/diagnostic-capture-qualified.json': '6a2ac133870fcc004b5be8fb4fcfcbe4efdc93fe550a1956e30d7e1ad07b6c43', '/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-fixture/post267-closure-current-native-preparation-v1/native-run-v1/direct-native-causal-first-pending-stdout.private': '3f9f0465185c9d5e01b4fa2f768d109c5db465f1464d1e03da99741ebe229037'}
+ORIGINAL_OPERATION_ID='8ced843c-dc6b-4b89-a8d6-84b517692efb'
+ORIGINAL_SOURCE_BINDING={'operationId': '8ced843c-dc6b-4b89-a8d6-84b517692efb', 'sourceSha256': '8786a5fc9ed8ee34144391bc04b0ee69b959c3874d0dfe40e19784df3afd2e00', 'requestSha256': '42762abc18d1bae43e5bbc15eef94d0ddbd38a42569642ae3de76cdbb61e840e', 'probeId': 'f31cc5f7-32b8-4cd6-aaa2-91226d194108', 'phaseId': '967aecfb-e320-4e0b-b3fd-8867cb3d1b65', 'scopeId': 'e62e2a3e-d249-4509-b6bb-f2edf4e51b22', 'payloadSha256': 'e00783a9b9ca9d9d711901703edb387ac7689c070084a06be671cc5ee6ad8ecc', 'guestPid': None, 'rpcSequence': 83}
+ORIGINAL_PREFIX='native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108'
+ORIGINAL_PROBE_ID='f31cc5f7-32b8-4cd6-aaa2-91226d194108'
+EMITTER_SHA256='297b4bad26f810b7f2433846f10a23c6abe33870f0be50315cfa45dbdcd4b479'
+QGA_SHA256='bf05c8f08c1e5210ba79ffb59186206e80dc13fef057748dab3596df8ab6f022'
+QEMU_EXPECTED={'pid': 3823747, 'startTicks': 137277120}
+SWTPM_EXPECTED={'pid': 3823746, 'startTicks': 137277110}
+TARGET_UID=1000
+PROTECTED_PIDS=[3823747, 3823746]
+ACTUAL_INTAKE_BINDING={'scope': 'preparation-only', 'nativeExecutionReleased': False, 'finalCurrentContext': None, 'collectorQualifiedReceiptSha256': '6a2ac133870fcc004b5be8fb4fcfcbe4efdc93fe550a1956e30d7e1ad07b6c43', 'originalUnknownReceiptSha256': '3f9f0465185c9d5e01b4fa2f768d109c5db465f1464d1e03da99741ebe229037'}
+def bounded_proc(path,limit):
+ with open(path,'rb')as stream:raw=stream.read(limit+1)
+ require(len(raw)<=limit,'collector_proc_bound');return raw
+def file_bytes(suffix,required=True):
+ name=ORIGINAL_PREFIX+suffix;data=ORIGINAL_HELD_BYTES.get(name)
+ if data is None:require(not required,'collector_required_original_file_absent');return None
+ return data
+def historical_wire_join():
+ qga=file_bytes('.canonical-qga.py');emitter=file_bytes('.canonical-emitter.py')
+ require(hashlib.sha256(qga).hexdigest()==QGA_SHA256 and hashlib.sha256(emitter).hexdigest()==EMITTER_SHA256,'collector_original_canonical_source_hash')
+ raw=file_bytes('.rpc-000083.raw');request=file_bytes('.rpc-000083.request.json');intent=json.loads(file_bytes('.rpc-000083.intent.json'))
+ require(type(intent)is dict and intent.get('sequence')==83 and type(intent.get('nonce'))is int and intent['nonce']==EXPECTED_NONCE and intent.get('requestPath')==str(root/(ORIGINAL_PREFIX+'.rpc-000083.request.json'))and intent.get('rawPath')==str(root/(ORIGINAL_PREFIX+'.rpc-000083.raw'))and intent.get('requestBytes')==len(request)and intent.get('requestSha256')==hashlib.sha256(request).hexdigest(),'collector_original_rpc_intent_join')
+ parsed=json.loads(request);require(type(parsed)is dict and parsed.get('execute')==intent.get('command')=='guest-exec','collector_original_rpc_command_join')
+ matches=0;after_sync=[]
+ for line in raw.splitlines(keepends=True):
+  marker=line.rfind(b'\xff')
+  if marker>=0:
+   try:value=json.loads(line[marker+1:])
+   except(ValueError,UnicodeDecodeError):continue
+   if type(value)is dict and set(value)=={'return'}and type(value['return'])is int and value['return']==intent['nonce']:matches+=1
+  elif matches:
+   after_sync.append(json.loads(line))
+ require(matches==1,'collector_original_sync_nonce_join')
+ require(after_sync==[{'error':{'class':'GenericError','desc':'Failed to execute helper program (Invalid argument)'}}],'collector_original_error_reply_join')
+ return {'canonicalSourceSha256':QGA_SHA256,'canonicalOpenChecksPeerCredentialsBeforeSync':True,'knownQemuPid':QEMU_EXPECTED['pid'],'knownQemuStartTicks':QEMU_EXPECTED['startTicks'],'rpcSequence':83,'command':'guest-exec','requestSha256':hashlib.sha256(request).hexdigest(),'rawSha256':hashlib.sha256(raw).hexdigest(),'rawBytes':len(raw),'nonce':intent['nonce'],'matchingDelimitedSyncReplies':matches,'afterSyncReply':after_sync[0],'originalRpcOutcome':'UNKNOWN','guestChildAbsenceClaimed':False,'guestReplayAllowed':False,'meaning':'Historical complete bf05 source/intent/nonce/raw causal join only; not a fresh socket peer or guest child-state query.'}
+def fd_metadata(pid,number,expected_link=None):
+ path='/proc/'+str(pid)+'/fd/'+number;before=os.readlink(path)
+ if expected_link is not None:require(before==expected_link,'collector_actor_fd_link_changed')
+ info=os.stat(path);after=os.readlink(path);require(before==after,'collector_actor_fd_link_changed')
+ return {'fd':int(number),'link':before,'targetGeneration':list(generation(info))}
+def process_link_metadata(pid,leaf):
+ path='/proc/'+str(pid)+'/'+leaf;before=os.readlink(path);info=os.stat(path);after=os.readlink(path);require(before==after,'collector_actor_metadata_link_changed')
+ return {'link':before,'targetGeneration':list(generation(info))}
+
+def process_namespace_root(pid):
+ base='/proc/'+str(pid);names=os.listdir(base+'/ns');require(0<len(names)<=32 and all(type(name)is str and re.fullmatch('[a-z_]+',name)for name in names),'collector_namespace_bound')
+ return {'namespaces':{name:process_link_metadata(pid,'ns/'+name)for name in sorted(names)},'processRoot':process_link_metadata(pid,'root')}
+
+def actor_snapshot(pid,required_paths):
+ base='/proc/'+str(pid);require(os.stat(base).st_uid==os.geteuid(),'collector_actor_uid')
+ start=birth(pid);cmd=bounded_proc(base+'/cmdline',1024*1024);status=bounded_proc(base+'/status',65536);exe=os.readlink(base+'/exe');exestat=generation(os.stat(base+'/exe'));argv=cmd.rstrip(b'\0').split(b'\0')
+ require(cmd.endswith(b'\0')and argv and all(b'\0'not in x for x in argv),'collector_actor_cmdline');require(re.fullmatch(r'python3(?:\.[0-9]+)?',pathlib.PurePosixPath(exe).name)is not None,'collector_actor_python')
+ uid_line=[line for line in status.splitlines()if line.startswith(b'Uid:')];require(len(uid_line)==1 and [int(x)for x in uid_line[0].split()[1:]]==[os.geteuid()]*4,'collector_actor_uid_status')
+ numbers=os.listdir(base+'/fd');require(len(numbers)<=8192,'collector_actor_fd_bound');selected={};sockets=[]
+ for number in sorted(numbers,key=lambda x:int(x)if x.isdecimal()else-1):
+  if not number.isdecimal():continue
+  try:link=os.readlink(base+'/fd/'+number)
+  except FileNotFoundError:continue
+  if link in required_paths:
+   metadata=fd_metadata(pid,number,link);require(metadata['targetGeneration']==all_files[pathlib.Path(link).name]['openingGeneration'],'collector_actor_original_fd_identity');selected.setdefault(link,[]).append(metadata)
+  elif re.fullmatch(r'socket:\[[0-9]+\]',link):sockets.append(fd_metadata(pid,number,link))
+ require(set(selected)==set(required_paths)and sockets,'collector_actor_exact_fd_scope')
+ metadata=process_namespace_root(pid)
+ require(birth(pid)==start and os.stat(base).st_uid==os.geteuid()and os.readlink(base+'/exe')==exe and generation(os.stat(base+'/exe'))==exestat and bounded_proc(base+'/cmdline',1024*1024)==cmd,'collector_actor_opening_identity')
+ return {'pid':pid,'uid':os.geteuid(),'startTicks':start,'exe':exe,'executableGeneration':list(exestat),'cmdlineBase64':base64.b64encode(cmd).decode(),'cmdlineSha256':hashlib.sha256(cmd).hexdigest(),'argvBytesBase64':[base64.b64encode(x).decode()for x in argv],'statusBase64':base64.b64encode(status).decode(),'requiredSourceAndRequestFds':selected,'socketFds':sockets,**metadata}
+def actor_identity_observation(value):
+ keys=('pid','uid','startTicks','exe','executableGeneration','cmdlineBase64','cmdlineSha256','argvBytesBase64','requiredSourceAndRequestFds','socketFds','namespaces','processRoot')
+ return {key:value[key]for key in keys}
+
+def stable_actor_identity(value):
+ projection=actor_identity_observation(value);namespaces=projection['namespaces']
+ if type(namespaces)is not dict or not namespaces:raise ValueError('collector_namespace_projection_shape')
+ projected={}
+ for name,metadata in namespaces.items():
+  if type(metadata)is not dict or type(metadata.get('targetGeneration'))is not list or len(metadata['targetGeneration'])!=9:raise ValueError('collector_namespace_projection_shape')
+  projected[name]={**metadata,'targetGeneration':metadata['targetGeneration'][:7]}
+ projection['namespaces']=projected
+ return projection
+# Sole-host-actor abandonment. No socket/QGA/QMP/subprocess/kill APIs are called.
+import signal
+import select
+EXPECTED_NONCE=8220859838733921813
+EXPECTED_REQUEST_SHA256='8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81'
+EXPECTED_RAW_SHA256='639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4'
+ORIGINAL_UNKNOWN_SOURCE=b'{"originalState": {"automaticClose": false, "automaticMutationResume": false, "automaticRetry": false, "error": "retained_rpc_remote_error", "errorClass": "ValueError", "hostAdmitted": true, "hostDescriptorDisposition": "retained-in-original-namespace", "keeperBindingRequired": true, "originalGuestProcesses": {"atomic-before": {"pid": 10004}, "atomic-current": {"pid": 7816}, "progress-before": {"pid": 6604}, "progress-current": {"pid": 2492}}, "originalRpc": {"bufferBytes": 0, "bufferSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "captureFailure": null, "closed": false, "command": "guest-exec", "commandSent": true, "frameBytes": 32805, "frameConfirmedSentBytes": 32805, "nonce": 8220859838733921813, "originalSocketRetained": true, "pendingReplyBytes": 0, "pendingReplySha256": null, "phase": "reply-observed", "rawBytes": 214, "rawCaptureComplete": true, "rawFileBytesConfirmed": 214, "rawPath": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw", "rawSha256": "639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4", "readRefused": false, "replyFailure": null, "requestBytes": 32805, "requestPath": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json", "requestSha256": "8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81", "response": {"error": {"class": "GenericError", "desc": "Failed to execute helper program (Invalid argument)"}}, "sequence": 83, "syncKnown": true, "syncSent": true, "timing": {"deadlineMonotonic": 1415708.400303669, "elapsedSeconds": 0.009625617880374193, "readTimeoutPolls": 0, "readTimeoutTrace": [], "readTimeoutTraceOverflow": false, "startedMonotonic": 1415688.400303669}, "unknown": true, "wireEof": false}, "pending": {"case": "owner-before", "kind": "guest-exec", "nativePhaseId": "967aecfb-e320-4e0b-b3fd-8867cb3d1b65", "scopeId": "e62e2a3e-d249-4509-b6bb-f2edf4e51b22", "sourceSha256": "e00783a9b9ca9d9d711901703edb387ac7689c070084a06be671cc5ee6ad8ecc"}, "probeId": "f31cc5f7-32b8-4cd6-aaa2-91226d194108", "productOperation": false, "programParked": true, "retainedHostDescriptors": [7, 8, 9, 10, 11, 12, 13, 14, 15, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 18, 19, 16, 17], "state": "unknown", "taskOperation": false}, "probeId": "f31cc5f7-32b8-4cd6-aaa2-91226d194108", "productOperation": false, "state": "unknown"}\n{"automaticMutationResume": false, "observation": {"bufferBytes": 0, "bufferSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "captureFailure": null, "closed": false, "command": "guest-exec", "commandSent": true, "frameBytes": 32805, "frameConfirmedSentBytes": 32805, "nonce": 8220859838733921813, "originalSocketRetained": true, "pendingReplyBytes": 0, "pendingReplySha256": null, "phase": "reply-observed", "rawBytes": 214, "rawCaptureComplete": true, "rawFileBytesConfirmed": 214, "rawPath": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw", "rawSha256": "639ec96921964c4e0dc65cfd20603b2ea040de99b5e83792f67c4f156c9bf2f4", "readRefused": false, "replyFailure": null, "requestBytes": 32805, "requestPath": "/home/kardinal/vc-win-d493a3731d2c/native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json", "requestSha256": "8db1bf43f51b325fc620957366af54ff0555696e6c0fd7cd7bfa71963d147c81", "response": {"error": {"class": "GenericError", "desc": "Failed to execute helper program (Invalid argument)"}}, "sequence": 83, "syncKnown": true, "syncSent": true, "timing": {"deadlineMonotonic": 1415708.400303669, "elapsedSeconds": 0.009625617880374193, "readTimeoutPolls": 0, "readTimeoutTrace": [], "readTimeoutTraceOverflow": false, "startedMonotonic": 1415688.400303669}, "unknown": true, "wireEof": false}, "operationPrefix": "native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108", "sameWireReadOnly": true, "state": "pending"}\n'
+ORIGINAL_UNKNOWN_SHA256='3f9f0465185c9d5e01b4fa2f768d109c5db465f1464d1e03da99741ebe229037'
+ORIGINAL_HELD_BYTES={}
+EXPECTED_SELECTED_NAMES={'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-emitter.py', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.intent.json', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.raw', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.rpc-000083.request.json', 'native-causal-f31cc5f7-32b8-4cd6-aaa2-91226d194108.canonical-qga.py'}
+PROTECTED_ACTOR_SCOPES={'arch': {'qemu': 3823747, 'swtpm': 3823746}, 'mac-original-observations-only': {'operator': 84802, 'worker': 84980, 'ssh': 86132}, 'windows-original-acknowledgements-only': {'progress-before': 6604, 'progress-current': 2492, 'atomic-before': 10004, 'atomic-current': 7816}, 'unknown-owner-before-guest-pid': None, 'no-numeric-pid-namespace-equivalence-asserted': True}
+MAX_INPUT=8*1024*1024
+prefix='host-actor-abandon-'+ORIGINAL_PROBE_ID
+held_files=[]
+pidfd=None
+pidfd_generation=None
+poller=None
+original_failure=None
+signal_attempted=False
+signal_accepted=False
+HOST_ADMITTED=False
+state={'schemaVersion':1,'state':'preparing','purpose':'abandon-only-original-parked-host-actor','socketOperations':False,'abandonmentId':ABANDONMENT_ID,'originalOperationId':ORIGINAL_OPERATION_ID,'originalPrefix':ORIGINAL_PREFIX,'originalProbeId':ORIGINAL_PROBE_ID,'originalGuestPid':None,'deploymentId':SPEC['deploymentId'],'hostBootId':CONTEXT['hostBootId'],'collectorSha256':COLLECTOR_SHA256,'sourcePins':SOURCE_PINS,'signalNumber':15,'signalAttempts':0,'guestQueries':False,'qgaConnections':0,'qmpConnections':0,'guestTerminationRequested':False,'vmTerminationRequested':False,'sourceClosingScope':'new-abandonment-caller-sources-and-receipts-only','productOperation':False,'taskOperation':False,'originalInnerState':'unknown','originalInnerQualified':False,'closeKnownCalled':False,'automaticRetry':False,'automaticCleanup':False,'protectedPids':PROTECTED_PIDS}
+
+
+def exact_write(fd,data):
+ at=0
+ while at<len(data):
+  count=os.write(fd,data[at:at+65536]);require(type(count)is int and 0<count<=min(65536,len(data)-at),'abandon_journal_short_write');at+=count
+
+
+def journal(name,value):
+ require(HOST_ADMITTED and name.startswith(prefix+'.')and '/'not in name and '\\'not in name,'abandon_journal_scope')
+ instance_intent();closing()
+ raw=value if type(value)is bytes else(json.dumps(value,sort_keys=True,separators=(',',':'))+'\n').encode()
+ require(len(raw)<=MAX_INPUT,'abandon_journal_bound')
+ fd=os.open(root/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+ try:exact_write(fd,raw);os.fsync(fd)
+ finally:os.close(fd)
+ os.fsync(ROOT_FD)
+ fd=os.open(root/name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);opening=generation(os.fstat(fd));actual=b''
+ while True:
+  part=os.read(fd,65536)
+  if not part:break
+  actual+=part;require(len(actual)<=MAX_INPUT,'abandon_journal_read_bound')
+ require(actual==raw and generation(os.fstat(fd))==opening and generation(os.lstat(root/name))==opening,'abandon_journal_readback')
+ pins.append((fd,root/name,opening));held_files.append((fd,len(raw),hashlib.sha256(raw).hexdigest()))
+ return {'path':str(root/name),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'fileFsynced':True,'parentFsynced':True}
+
+
+def hash_held(fd,length):
+ os.lseek(fd,0,os.SEEK_SET);h=hashlib.sha256();size=0
+ while True:
+  part=os.read(fd,65536)
+  if not part:break
+  size+=len(part);require(size<=length,'abandon_held_bound');h.update(part)
+ require(size==length,'abandon_held_size');return h.hexdigest()
+
+
+def files_closing():
+ for fd,length,digest in held_files:require(hash_held(fd,length)==digest,'abandon_held_hash_changed')
+ closing()
+
+
+def actor_status_identity(raw):
+ rows=raw.splitlines();uids=[r for r in rows if r.startswith(b'Uid:')];require(len(uids)==1,'abandon_actor_uids')
+ uid_values=[int(x)for x in uids[0].split()[1:]];require(uid_values==[os.geteuid()]*4,'abandon_actor_uids')
+ namespace=[r for r in rows if r.startswith(b'NSpid:')];require(len(namespace)<=1,'abandon_actor_namespace')
+ ns=[int(x)for x in namespace[0].split()[1:]]if namespace else None
+ require(ns is None or ns and all(x>0 for x in ns),'abandon_actor_namespace')
+ return {'uids':uid_values,'namespacePids':ns}
+
+
+def host_guard():
+ with open('/proc/sys/kernel/random/boot_id')as stream:live_boot=stream.read(128).strip()
+ require(live_boot==CONTEXT['hostBootId']and os.geteuid()==TARGET_UID,'abandon_host_context')
+ instance_intent();closing()
+ require(structure(os.fstat(ROOT_FD))==ROOT_STRUCTURE and structure(os.lstat(root))==ROOT_STRUCTURE,'abandon_root_changed')
+ q=read('qemu-started.json');t=read('swtpm-started.json')
+ require({'pid':q['pid'],'startTicks':q['startTicks']}==QEMU_EXPECTED and {'pid':t['pid'],'startTicks':t['startTicks']}==SWTPM_EXPECTED,'abandon_vm_identity')
+ process(q);process(t);owns(q['pid'],root/'qga.sock',True)
+
+
+def original_files_guard():
+ host_guard();files_closing()
+ require(set(all_files)==EXPECTED_SELECTED_NAMES,'abandon_original_selected_scope_changed')
+
+
+def actor_guard():
+ original_files_guard()
+ actual=actor_snapshot(ACTOR['pid'],REQUIRED_PATHS)
+ require(stable_actor_identity(actual)==ACTOR_STABLE,'abandon_actor_identity_changed')
+ require(actor_status_identity(base64.b64decode(actual['statusBase64'],validate=True))==ACTOR_STATUS_IDENTITY,'abandon_actor_stable_status_changed')
+ return actual
+
+
+def fdinfo_identity(require_alive):
+ require(pidfd is not None and os.readlink('/proc/self/fd/'+str(pidfd))=='anon_inode:[pidfd]'and generation(os.fstat(pidfd))==pidfd_generation,'abandon_pidfd_descriptor_changed')
+ raw=bounded_proc('/proc/self/fdinfo/'+str(pidfd),65536);rows=raw.splitlines();pids=[r for r in rows if r.startswith(b'Pid:')];namespaces=[r for r in rows if r.startswith(b'NSpid:')]
+ require(len(pids)==1 and len(pids[0].split())==2 and len(namespaces)<=1,'abandon_pidfd_fdinfo_shape')
+ value=int(pids[0].split()[1]);ns=[int(x)for x in namespaces[0].split()[1:]]if namespaces else None
+ if require_alive:
+  require(value==ACTOR['pid']and(ns is None or ns and ns[0]==ACTOR['pid']),'abandon_pidfd_wrong_actor')
+  if ACTOR_STATUS_IDENTITY['namespacePids']is not None:require(ns==ACTOR_STATUS_IDENTITY['namespacePids'],'abandon_pidfd_namespace_changed')
+ else:require(value in(ACTOR['pid'],-1)and(ns is None or ns and ns[0]in(ACTOR['pid'],-1)),'abandon_pidfd_exit_identity')
+ return {'fd':pidfd,'pid':value,'namespacePids':ns,'rawBase64':base64.b64encode(raw).decode(),'rawSha256':hashlib.sha256(raw).hexdigest(),'generation':list(pidfd_generation),'link':'anon_inode:[pidfd]'}
+
+
+def no_exit_yet():
+ observed=poller.poll(0);require(observed==[],'abandon_actor_exited_before_signal')
+
+
+def validate_and_hold_inputs():
+ global COLLECTOR,all_files,ACTOR,ACTOR_STABLE,ACTOR_STATUS_IDENTITY,REQUIRED_PATHS
+ require(hashlib.sha256(COLLECTOR_SOURCE).hexdigest()==COLLECTOR_SHA256 and hashlib.sha256(RELEASE_SOURCE).hexdigest()==RELEASE_SHA256,'abandon_input_hash')
+ COLLECTOR=json.loads(COLLECTOR_SOURCE);release=json.loads(RELEASE_SOURCE)
+ require(COLLECTOR.get('state')=='qualified'and COLLECTOR.get('sourceClosing')is True and COLLECTOR.get('allFileBytesComplete')is True and COLLECTOR.get('actorCandidateCount')==1 and COLLECTOR.get('originalPrefix')==ORIGINAL_PREFIX and COLLECTOR.get('originalProbeId')==ORIGINAL_PROBE_ID and COLLECTOR.get('canonicalEmitterSha256')==EMITTER_SHA256 and COLLECTOR.get('canonicalQgaSha256')==QGA_SHA256,'abandon_collector_binding')
+ require(COLLECTOR.get('hostReadOnly')is True and COLLECTOR.get('guestQueries')is False and COLLECTOR.get('newSocketOperations')is False and COLLECTOR.get('signals')is False and COLLECTOR.get('originalHandleClose')is False and COLLECTOR.get('prefixInventoryObserved')is False and COLLECTOR.get('rootNamedHeldClosing')is True,'abandon_collector_scope')
+ ACTOR=COLLECTOR['actorOpening'];ACTOR_STABLE=stable_actor_identity(ACTOR)
+ require(ACTOR_STABLE==stable_actor_identity(COLLECTOR['actorClosing']),'abandon_collector_actor_unstable')
+ require(type(ACTOR['pid'])is int and ACTOR['pid']>1 and ACTOR['pid']not in PROTECTED_PIDS and ACTOR['pid']!=os.getpid()and ACTOR['uid']==TARGET_UID==os.geteuid(),'abandon_protected_or_wrong_actor')
+ ACTOR_STATUS_IDENTITY=actor_status_identity(base64.b64decode(ACTOR['statusBase64'],validate=True))
+ require(ACTOR_STATUS_IDENTITY==actor_status_identity(base64.b64decode(COLLECTOR['actorClosing']['statusBase64'],validate=True)),'abandon_collector_uid_namespace_changed')
+ require(type(release)is dict and set(release)=={'schemaVersion','mode','purpose','originalOperationId','deploymentId','hostBootId','collectorSha256','actorStableIdentitySha256','allowOneHostSigterm','protectedPids','originalGuestPid','originalInnerState','sourceIntentEvidence','originalUnknownReceiptSha256','protectedActorScopes','assignment'},'abandon_release_fields')
+ require(release['schemaVersion']==1 and type(release['schemaVersion'])is int and release['mode']==PREPARATION_MODE and release['purpose']=='abandon-only-original-parked-host-actor'and release['originalOperationId']==ORIGINAL_OPERATION_ID and release['deploymentId']==SPEC['deploymentId']and release['hostBootId']==CONTEXT['hostBootId']and release['collectorSha256']==COLLECTOR_SHA256 and release['actorStableIdentitySha256']==hashlib.sha256((json.dumps(ACTOR_STABLE,sort_keys=True,separators=(',',':'))+'\n').encode()).hexdigest()and release['allowOneHostSigterm']is True and release['protectedPids']==PROTECTED_PIDS and release['originalGuestPid']is None and release['protectedActorScopes']==PROTECTED_ACTOR_SCOPES and release['originalUnknownReceiptSha256']==ORIGINAL_UNKNOWN_SHA256 and release['originalInnerState']=='unknown'and release['sourceIntentEvidence']==ORIGINAL_SOURCE_BINDING and type(release['assignment'])is str and 1<=len(release['assignment'])<=8192,'abandon_release_binding')
+ all_files=COLLECTOR['files'];require(type(all_files)is dict and set(all_files)==EXPECTED_SELECTED_NAMES,'abandon_original_files')
+ total=0
+ for name,row in all_files.items():
+  require(type(name)is str and name.startswith(ORIGINAL_PREFIX+'.')and '/'not in name and '\\'not in name and type(row)is dict and row.get('path')==str(root/name),'abandon_original_file_path')
+  if row.get('state')=='absent':require(row.get('closingAbsent')is True,'abandon_original_absence_receipt');continue
+  require(row.get('state')=='complete'and row.get('namedHeldOpening')is True and row.get('namedHeldClosing')is True and row.get('openingGeneration')==row.get('closingGeneration')and row.get('openingSha256')==row.get('closingSha256'),'abandon_original_closing_receipt')
+  require(type(row.get('bytes'))is int and row['bytes']>=0,'abandon_original_file_size')
+  total+=row['bytes'];require(total<=MAX_INPUT,'abandon_original_total_bound')
+  private(root/name);fd=os.open(root/name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(fd);opening=generation(os.fstat(fd))
+  require(list(opening)==row['openingGeneration']and generation(os.lstat(root/name))==opening,'abandon_original_live_generation_changed')
+  data=b''
+  while True:
+   chunk=os.read(fd,65536)
+   if not chunk:break
+   data+=chunk;require(len(data)<=row['bytes'],'abandon_original_read_bound')
+  require(len(data)==row['bytes']and hashlib.sha256(data).hexdigest()==row['openingSha256'],'abandon_original_live_source_changed')
+  ORIGINAL_HELD_BYTES[name]=data
+  pins.append((fd,root/name,opening));held_files.append((fd,len(data),row['openingSha256']))
+ require(hashlib.sha256(file_bytes('.rpc-000083.request.json')).hexdigest()==EXPECTED_REQUEST_SHA256 and hashlib.sha256(file_bytes('.rpc-000083.raw')).hexdigest()==EXPECTED_RAW_SHA256,'abandon_original_rpc83_hash')
+ historical=historical_wire_join();require(historical==COLLECTOR['historicalWireJoin'],'abandon_historical_wire_changed')
+ require(hashlib.sha256(ORIGINAL_UNKNOWN_SOURCE).hexdigest()==ORIGINAL_UNKNOWN_SHA256,'abandon_original_unknown_receipt_hash')
+ unknown_rows=[json.loads(line)for line in ORIGINAL_UNKNOWN_SOURCE.splitlines()if line.strip()]
+ require(len(unknown_rows)==2 and unknown_rows[0].get('state')=='unknown'and unknown_rows[0].get('probeId')==ORIGINAL_PROBE_ID,'abandon_original_unknown_receipt_shape')
+ unknown=unknown_rows[0]['originalState'];rpc=unknown.get('originalRpc',{});pending=unknown.get('pending',{})
+ require(unknown.get('programParked')is True and unknown.get('automaticMutationResume')is False and unknown.get('automaticRetry')is False and unknown.get('automaticClose')is False and rpc.get('sequence')==83 and rpc.get('command')=='guest-exec'and rpc.get('commandSent')is True and rpc.get('response')==historical['afterSyncReply']and rpc.get('originalSocketRetained')is True and rpc.get('requestSha256')==EXPECTED_REQUEST_SHA256 and rpc.get('rawSha256')==EXPECTED_RAW_SHA256,'abandon_original_parked_error_binding')
+ require(pending.get('nativePhaseId')==ORIGINAL_SOURCE_BINDING['phaseId']and pending.get('scopeId')==ORIGINAL_SOURCE_BINDING['scopeId']and pending.get('sourceSha256')==ORIGINAL_SOURCE_BINDING['payloadSha256'],'abandon_original_pending_source_binding')
+ REQUIRED_PATHS={str(root/(ORIGINAL_PREFIX+s))for s in('.rpc-000083.request.json','.rpc-000083.raw','.canonical-qga.py','.canonical-emitter.py')}
+ require(set(ACTOR['requiredSourceAndRequestFds'])==REQUIRED_PATHS and ACTOR['socketFds'],'abandon_original_actor_fd_scope')
+ # The fence is fixed to the original probe/source operation, not a newly
+ # generated diagnostic ID. A different new operation/abandonment ID must not
+ # permit another signal after any prior attempt created its durable intent.
+ try:os.lstat(root/(prefix+'.intent.json'))
+ except FileNotFoundError:pass
+ else:raise ValueError('abandon_original_scope_intent_already_exists')
+ # Keep full inputs through the operation in bounded CreateNew held parts.
+ for label,data in(('collector',COLLECTOR_SOURCE),('release',RELEASE_SOURCE),('original-unknown',ORIGINAL_UNKNOWN_SOURCE)):
+  require(0<len(data)<=MAX_INPUT,'abandon_input_bound')
+  for index,offset in enumerate(range(0,len(data),262144)):journal(prefix+'.'+label+'-'+str(index).zfill(3)+'.bytes',data[offset:offset+262144])
+ return release
+
+
+def park_unknown():
+ # Retain this original one-shot actor's pidfd/source/request/journal custody.
+ # No further signals, polls, protocol queries, retries or cleanup are allowed.
+ while True:
+  try:time.sleep(1)
+  except BaseException:pass
+
+
+try:
+ chain();instance_intent();closing();HOST_ADMITTED=True
+ ROOT_FD=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);held.append(ROOT_FD);ROOT_STRUCTURE=structure(os.fstat(ROOT_FD))
+ host_guard();release=validate_and_hold_inputs();actor_opening=actor_guard()
+ require(callable(getattr(os,'pidfd_open',None))and callable(getattr(signal,'pidfd_send_signal',None)),'abandon_pidfd_apis_unavailable')
+ pidfd=os.pidfd_open(ACTOR['pid'],0);held.append(pidfd);pidfd_generation=generation(os.fstat(pidfd));pidfd_opening=fdinfo_identity(True)
+ poller=select.poll();poller.register(pidfd,select.POLLIN);no_exit_yet();actor_after_pidfd=actor_guard();fdinfo_identity(True)
+ state.update(actor=ACTOR_STABLE,actorStableStatus=ACTOR_STATUS_IDENTITY,pidfdOpening=pidfd_opening,collectorProducerSha256=COLLECTOR_PRODUCER_SHA256,releaseSha256=RELEASE_SHA256,scope='one-exact-original-host-python-actor')
+ intent=journal(prefix+'.intent.json',dict(state,state='intent-durable-before-signal',plannedSignal='SIGTERM',pidfdTargetOnly=True,deliberateCustodyDrop='original-host-source-request-raw-socket-fds-by-process-exit',rootAssignment=release['assignment']))
+ files_closing();host_guard();pre_signal_actor=actor_guard();state['preSignalActorStable']=stable_actor_identity(pre_signal_actor);fdinfo_before_signal=fdinfo_identity(True);no_exit_yet()
+ state.update(state='signal-attempted',signalAttempts=1,intent=intent,pidfdBeforeSignal=fdinfo_before_signal)
+ signal_attempted=True;state.update(signalCallEntered=True,signalReturnObserved=False,signalInfoIsNone=True,signalFlags=0)
+ signal.pidfd_send_signal(pidfd,signal.SIGTERM,None,0)
+ signal_accepted=True;state.update(signalAccepted=True,signalReturnObserved=True)
+ deadline=time.monotonic()+15;events=None
+ while time.monotonic()<deadline:
+  observed=poller.poll(min(250,max(1,int((deadline-time.monotonic())*1000))))
+  if observed:
+   require(len(observed)==1 and observed[0][0]==pidfd and observed[0][1]&select.POLLIN and not observed[0][1]&~(select.POLLIN|select.POLLHUP),'abandon_pidfd_poll_error');events=observed;break
+ require(events is not None,'abandon_pidfd_exit_pending_no_resignal')
+ pidfd_closing=fdinfo_identity(False);state.update(pidfdExitObserved=True,pidfdExitEvents=events,pidfdClosing=pidfd_closing)
+ absence_polls=0;actor_absent=False
+ while time.monotonic()<deadline:
+  absence_polls+=1
+  try:os.lstat('/proc/'+str(ACTOR['pid']))
+  except FileNotFoundError:actor_absent=True;break
+  time.sleep(min(.05,max(0,deadline-time.monotonic())))
+ require(actor_absent,'abandon_actor_not_absent_after_pidfd_exit')
+ state['actorAbsencePolls']=absence_polls;pidfd_closing=fdinfo_identity(False)
+ original_files_guard();files_closing()
+ state.update(state='abandoned-host-actor',pidfdExitObserved=True,pidfdExitEvents=events,pidfdClosing=pidfd_closing,actorAbsentAfter=True,pidfdIdentityVerified=True,signalAccepted=True,sourceClosing=True,custodyDisposition='explicitly-dropped-original-host-source-request-raw-socket-fds',originalInnerState='unknown',originalInnerQualified=False,closeKnownCalled=False)
+ journal(prefix+'.complete.json',state);files_closing();host_guard()
+ print(json.dumps(state,sort_keys=True))
+except BaseException as error:
+ original_failure=error;state.update(state='unknown',errorClass=type(error).__name__,error=str(error),signalAttempted=signal_attempted,signalAccepted=signal_accepted,signalAttempts=1 if signal_attempted else 0,sourceClosing=False,hostAdmitted=HOST_ADMITTED,retainedDescriptors=list(held),originalHostCustodyMayHaveDropped=signal_attempted,originalInnerState='unknown',originalInnerQualified=False,closeKnownCalled=False,programParked=True)
+ try:journal(prefix+'.unknown.json',state)
+ except BaseException:pass
+ try:print(json.dumps(state,sort_keys=True));sys.stdout.flush()
+ except BaseException:pass
+ park_unknown()
+finally:
+ if original_failure is None:
+  for fd in reversed(held):os.close(fd)

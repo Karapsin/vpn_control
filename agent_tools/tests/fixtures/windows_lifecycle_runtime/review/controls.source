@@ -1,0 +1,125 @@
+"""Whole frozen/current source causal decisions, with declared inert native peers."""
+from __future__ import annotations
+import argparse
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+from types import SimpleNamespace
+
+HERE = Path(__file__).resolve().parent
+BEFORE = HERE.parent / "windows-lifecycle-private-preparation-v1"
+
+
+def load(path):
+    spec = importlib.util.spec_from_file_location("_causal_" + path.stem, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def port_pair(source):
+    module = load(source / "lifecycle_cases.py")
+    with tempfile.TemporaryDirectory(prefix="owned-port-pair-", dir=HERE) as temporary:
+        root = Path(temporary)
+        config, traffic = root / "runtime-config.json", root / "traffic.json"
+        config.write_text(json.dumps({"inbounds": [{"type": "mixed", "tag": "mixed-in",
+                          "listen": "127.0.0.1", "listen_port": 12345}]}))
+        traffic.write_text(json.dumps({"mixedPort": 23456}))  # The upstream fixture port.
+        status = {"schemaVersion": 1, "controllerId": "owner", "code": "OK", "ok": True,
+            "final": True, "configurationRevision": 0, "restartRequired": False,
+            "data": {"runtimeRunning": True, "runtimeId": "runtime", "runtimeStartedAt": 100,
+                     "activeLocationId": "a", "activeMode": "proxy-only"}}
+        actor = lambda pid, image: {"pid": pid, "creationFileTime": 123, "image": image,
+            "sha256": "1" * 64, "sid": "ordinary", "sessionId": 2}
+        owner_actor, runtime_actor = actor(11, "/app/cli.exe"), actor(12, "/owned/state/runtime/tools/sing-box.exe")
+        # These are the declared native process/file observation boundaries. The
+        # original complete gui_continuity body still chooses the actual argv.
+        module.LiveConfig = lambda *_: SimpleNamespace(initial={"sha256": "same"},
+                    snapshot=lambda: {"sha256": "same"})
+        module.GuiWindows = lambda: object()
+        module.exact_actor = lambda *_args, **_options: None
+        captured = []
+        class EndBeforeNative(Exception): pass
+        def child(label, argv):
+            assert label == "lifecycle-traffic"
+            captured.append(argv)
+            raise EndBeforeNative()
+        paths = ["/app/gui.exe", "/observer.py", "/traffic.py", str(traffic),
+                 "/app/cli.exe", "/owned/state/runtime/tools/sing-box.exe"]
+        owner = SimpleNamespace(root=Path("/owned"), by_path={str(Path(path)).casefold():
+                    SimpleNamespace(record={"sha256": "1" * 64}) for path in paths},
+            request={"workspace": "/owned/state", "context": {"ordinarySid": "ordinary",
+                     "ordinarySessionId": 2}, "pythonRuntime": {"interpreterPath": "/python.exe"}},
+            children=[SimpleNamespace(label="serve", pid=11, birth="123",
+                                      process=SimpleNamespace(poll=lambda: None))],
+            guard=lambda: None, event=lambda *_: None, child=child,
+            module=lambda *_: SimpleNamespace(WindowsNative=lambda: object()),
+            invoke=lambda *_: subprocess.CompletedProcess([], 0, json.dumps(status), ""))
+        values = {"schemaVersion": 1, "stateDir": "/owned/state", "controllerId": "owner",
+            "guiPath": "/app/gui.exe", "observerPath": "/observer.py", "trafficWorkerPath": "/traffic.py",
+            "trafficInputPath": str(traffic), "runtimeConfigPath": str(config),
+            "ownerActor": owner_actor, "runtimeActor": runtime_actor,
+            "installedAdmissionArtifactId": "installed", "fixtureAdmissionArtifactId": "fixture",
+            "sourceArtifactId": "source", "allowExactFrontendCrash": True}
+        if source == HERE:
+            values.pop("allowExactFrontendCrash")
+            values.update(fixtureSocksPort=23456, trayAdmissionArtifactId="tray",
+                frontendCrashScenario="exact-owned-original-gui-handle",
+                runtimeArtifact={"installedAdmissionArtifactId":"installed",
+                    "runtimeImagePath":"/owned/state/runtime/tools/sing-box.exe","runtimeSha256":"1"*64})
+        try:
+            module.gui_continuity(owner, "/owned/state", "owner", values)
+        except EndBeforeNative:
+            pass
+        assert len(captured) == 1
+        argv = captured[0]
+        actual = int(argv[argv.index("--mixed-port") + 1]) if "--mixed-port" in argv else json.loads(traffic.read_text())["mixedPort"]
+        print(json.dumps({"actualPort": actual, "productPort": 12345, "upstreamPort": 23456,
+                          "nativeOrNetworkExecuted": False}), flush=True)
+        assert actual == 12345, "sampler bypasses product by connecting directly to upstream fixture"
+
+
+def control_pair(source):
+    module = load(source / "scheduled_fixture_worker.py")
+    with tempfile.TemporaryDirectory(prefix="owned-control-pair-", dir=HERE) as temporary:
+        root = Path(temporary)
+        operation = "846e1ba3-c21e-428a-986d-0dfd65bc4224"
+        control = root / "control.json"
+        expected = {"schemaVersion": 1, "operationId": operation, "action": "stop-owned-fixture"}
+        calls = []
+        class Fixture:
+            def __init__(self, *_args, **_options): pass
+            def start(self):
+                calls.append("start")
+                control.write_text("{")  # Ordinary incomplete create/write publication.
+                return {"httpsHost": "localhost", "httpsPort": 24443}
+            def stop(self):
+                assert json.loads(control.read_text()) == expected
+                calls.append("stop-after-exact-record")
+        value = {"schemaVersion": 1, "socksSourcePath": "/inert/socks.py", "httpsSourcePath": "/inert/https.py",
+            "certificatePath": "/inert/cert.pem", "privateKeyPath": "/inert/key.pem",
+            "readyFile": str(root / "ready"), "ledgerFile": str(root / "ledger"),
+            "controlFile": str(control), "operationId": operation, "maxServeSeconds": 360, "token": "fixture"}
+        config = root / "input.json"
+        config.write_text(json.dumps(value))
+        module.module = lambda *_: object()  # Existing fixture/SSL socket boundary.
+        module.fixture_type = lambda _: Fixture
+        ticks = iter(range(1000))
+        module.time = SimpleNamespace(monotonic=lambda: next(ticks),
+                                      sleep=lambda _: control.write_text(json.dumps(expected)))
+        sys.argv = ["fixture", "--input", str(config)]
+        result = module.main()  # Original full main, no socket/listener/native API.
+        print(json.dumps({"calls": calls, "exitCode": result, "nativeOrNetworkExecuted": False}), flush=True)
+        assert result == 0 and calls == ["start", "stop-after-exact-record"], "partial control lost original listener ownership"
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pair", choices=("port", "control"), required=True)
+    parser.add_argument("--source", choices=("before", "after"), required=True)
+    args = parser.parse_args()
+    (port_pair if args.pair == "port" else control_pair)(BEFORE if args.source == "before" else HERE)

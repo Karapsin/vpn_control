@@ -1,0 +1,92 @@
+# Actual caller source, appended verbatim. No subprocess, daemon or transport.
+CURRENT_RPC=None
+RPC_SEQUENCE=0
+
+class RetainedRpc:
+ def __init__(self,command,args,deadline,sequence):
+  self.command=command;self.args=args;self.deadline=min(time.monotonic()+20,deadline);self.sequence=sequence
+  self.request=(json.dumps({'execute':command,'arguments':args},separators=(',',':'))+'\n').encode();require(len(self.request)<=60000,'retained_rpc_request_bound')
+  self.nonce=secrets.randbits(63);self.sync=b'\xff'+(json.dumps({'execute':'guest-sync-delimited','arguments':{'id':self.nonce}},separators=(',',':'))+'\n').encode()
+  self.client=None;self.request_fd=None;self.raw_fd=None;self.raw=bytearray();self.buffer=bytearray();self.response=None
+  self.phase='constructed';self.frame=None;self.sent=0;self.sync_sent=False;self.sync_known=False;self.command_sent=False;self.unknown=False;self.eof=False;self.closed=False
+  self.name=prefix+'.rpc-'+str(sequence).zfill(6);self.request_name=self.name+'.request.json';self.raw_name=self.name+'.raw'
+ def budget(self,deadline):
+  remaining=deadline-time.monotonic();require(remaining>0,'retained_rpc_deadline');self.client.settimeout(min(1,remaining))
+ def open(self):
+  save(self.request_name,self.request);self.request_fd=os.open(root/self.request_name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK);held.append(self.request_fd);self.request_generation=generation(os.fstat(self.request_fd))
+  self.raw_fd=os.open(root/self.raw_name,os.O_RDWR|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);held.append(self.raw_fd)
+  save(self.name+'.intent.json',{'command':self.command,'requestPath':str(root/self.request_name),'requestBytes':len(self.request),'requestSha256':hashlib.sha256(self.request).hexdigest(),'rawPath':str(root/self.raw_name),'nonce':self.nonce,'sequence':self.sequence})
+  self.client=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);self.budget(self.deadline);self.client.connect(str(root/'qga.sock'))
+  peer=struct.unpack('3i',self.client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12));require(peer[:2]==(QGA_PEER_PID,os.geteuid()),'retained_rpc_peer');QGA_GUARD()
+ def send(self,frame,kind):
+  require(not self.unknown,'retained_rpc_no_send_after_unknown');self.phase=kind+'-sending';self.frame=frame;self.sent=0
+  while self.sent<len(frame):
+   self.budget(self.deadline);n=self.client.send(frame[self.sent:]);require(type(n)is int and 0<n<=len(frame)-self.sent,'retained_rpc_send');self.sent+=n
+  if kind=='sync':self.sync_sent=True
+  else:self.command_sent=True
+  self.phase=kind+'-waiting'
+ def receive_line(self,deadline):
+  while b'\n'not in self.buffer:
+   require(not self.eof,'retained_rpc_original_wire_eof');self.budget(deadline);data=self.client.recv(4096)
+   if not data:self.eof=True;raise ConnectionError('retained_rpc_original_wire_eof')
+   self.raw.extend(data);self.buffer.extend(data);require(len(self.raw)<=524288 and len(self.buffer)<=262144,'retained_rpc_response_bound')
+   offset=0
+   while offset<len(data):offset+=os.write(self.raw_fd,data[offset:])
+   os.fsync(self.raw_fd);os.write(partial_wire,data);os.fsync(partial_wire)
+  end=self.buffer.index(b'\n')+1;line=bytes(self.buffer[:end]);del self.buffer[:end];return line
+ def receive_sync(self,deadline):
+  for _ in range(32):
+   line=self.receive_line(deadline);marker=line.rfind(b'\xff')
+   if marker<0:continue
+   try:value=json.loads(line[marker+1:])
+   except(ValueError,UnicodeError):continue
+   if type(value)is dict and type(value.get('return'))is int and value['return']==self.nonce:self.sync_known=True;return
+  raise ValueError('retained_rpc_sync')
+ def receive_reply(self,deadline):
+  line=self.receive_line(deadline);os.write(wire,line);os.fsync(wire);value=json.loads(line)
+  require(type(value)is dict and set(value)in ({'return'},{'error'}),'retained_rpc_reply_fields');self.response=value;self.phase='reply-observed';return value
+ def run(self):
+  try:
+   self.open();self.send(self.sync,'sync');self.receive_sync(self.deadline);self.send(self.request,'command');value=self.receive_reply(self.deadline)
+   require('return'in value,'retained_rpc_remote_error');return value['return']
+  except BaseException as error:
+   self.unknown=True;self.failure={'errorClass':type(error).__name__,'error':str(error)}
+   raise
+ def snapshot(self):
+  return {'sequence':self.sequence,'command':self.command,'phase':self.phase,'unknown':self.unknown,'nonce':self.nonce,'frameBytes':None if self.frame is None else len(self.frame),'frameConfirmedSentBytes':self.sent,'syncSent':self.sync_sent,'syncKnown':self.sync_known,'commandSent':self.command_sent,'originalSocketRetained':self.client is not None and not self.closed,'wireEof':self.eof,'requestPath':str(root/self.request_name),'requestBytes':len(self.request),'requestSha256':hashlib.sha256(self.request).hexdigest(),'rawPath':str(root/self.raw_name),'rawBytes':len(self.raw),'rawSha256':hashlib.sha256(self.raw).hexdigest(),'bufferBytes':len(self.buffer),'bufferSha256':hashlib.sha256(self.buffer).hexdigest(),'response':self.response,'closed':self.closed}
+ def observe_same_wire(self,deadline):
+  require(self.unknown and not self.closed,'retained_rpc_late_state');QGA_GUARD()
+  if self.response is not None or self.eof or self.client is None:return self.snapshot()
+  try:
+   if self.command_sent:self.receive_reply(deadline)
+   elif self.sync_sent and not self.sync_known:self.receive_sync(deadline);self.phase='late-sync-only-command-not-sent'
+  except(TimeoutError,OSError,ValueError)as error:self.lastObservationError={'errorClass':type(error).__name__,'error':str(error)}
+  return self.snapshot()
+ def close_known(self):
+  require(not self.unknown and self.response is not None and not self.closed,'retained_rpc_close_requires_known_reply')
+  require(generation(os.fstat(self.request_fd))==self.request_generation and generation(os.lstat(root/self.request_name))==self.request_generation and held_hash(self.request_fd,len(self.request))==hashlib.sha256(self.request).hexdigest(),'retained_rpc_request_changed')
+  require(held_hash(self.raw_fd,len(self.raw))==hashlib.sha256(self.raw).hexdigest(),'retained_rpc_raw_changed');save(self.name+'.known.json',self.snapshot())
+  self.client.close();self.closed=True
+  for fd in(self.request_fd,self.raw_fd):os.close(fd);held.remove(fd)
+
+def retained_call(command,args,_deadline):
+ global CURRENT_RPC,RPC_SEQUENCE
+ if CURRENT_RPC is not None:CURRENT_RPC.close_known()
+ RPC_SEQUENCE+=1;CURRENT_RPC=RetainedRpc(command,args,_deadline,RPC_SEQUENCE);return CURRENT_RPC.run()
+def finalize_rpc_success():
+ if CURRENT_RPC is not None:CURRENT_RPC.close_known()
+def park_original(receipt,error):
+ # Runs in the same owned original program. It never sends another frame,
+ # reopens a file/connection, resumes a mutation, closes custody, or starts a job.
+ # Explicit resolution controls are intentionally absent until coordinator binds
+ # them through the canonical original-operation keeper.
+ late_index=0;last=None
+ while True:
+  try:
+   observation=CURRENT_RPC.observe_same_wire(time.monotonic()+1)if CURRENT_RPC is not None and CURRENT_RPC.unknown else(None if CURRENT_RPC is None else CURRENT_RPC.snapshot())
+  except BaseException as observation_error:observation={'errorClass':type(observation_error).__name__,'error':str(observation_error),'custodyRetained':True}
+  fingerprint=hashlib.sha256(json.dumps(observation,sort_keys=True).encode()).hexdigest()
+  if fingerprint!=last:
+   late_index+=1;save(prefix+'.late-'+str(late_index).zfill(6)+'.json',{'state':'pending','immutableUnknownPath':str(root/(prefix+'.unknown.json')),'sameWireReadOnly':True,'automaticMutationResume':False,'observation':observation});last=fingerprint
+   print(json.dumps({'state':'pending','transferId':ARTIFACT['transferId'],'sameWireReadOnly':True,'automaticMutationResume':False,'observation':observation},sort_keys=True));sys.stdout.flush()
+  time.sleep(1)

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "scope": "Wholeauthenticdiagnosticbody+realgeneratedassignmentboundary; partialbootstraponly",
+  "beforeBodySha256": "b076b5caacbeebc04e2b78e2ba27de5e026d6c04bf9666ea231eacf7ca5c2359",
+  "currentGetterOutputSha256": "ba72389db3e2dbddc8f5e3948c26f5cf1c884490983d3f524c2baa6333107cb8",
+  "wholeProducerSha256": "2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8",
+  "nativeBeforeBoundSha256": "faf20e55a28888257ee3005b84f5ca1cdb5f5c1ec44c702060dd35fbbe0a815a",
+  "declaredCimPeer": "OnlytestPowerShellchildownPID/imageandonesyntheticRunningservice; allotherqueryshapesrefuse",
+  "fullNativeBootstrapAcceptance": "STILL_REQUIRED",
+  "platformSelection": "PreferWindowsPowerShell5.1powershell.exe; explicittrustedVPN_CONTROL_TEST_POWERSHELLorPATHpwshonotherhosts; skipifabsent",
+  "files": [
+    {
+      "path": "object_boundary.py",
+      "bytes": 4511,
+      "sha256": "bc9f8037f9a1acbc27bcd67d398d7d48ee4038b6726369fee3ddd4bd70b3234d"
+    },
+    {
+      "path": "object-boundary.ps1.source",
+      "bytes": 2974,
+      "sha256": "29bcc5a361b77686e8830409e415bbc3cf4bc6dfd49070c974d172506ba664c0"
+    },
+    {
+      "path": "diagnostic-draft.native-before.ps1.source",
+      "bytes": 4759,
+      "sha256": "49c6f7810584229e829b8929816bcafc72c736dcd76584d79bcaac5cec30f5e8"
+    },
+    {
+      "path": "actual-guest-context.json",
+      "bytes": 504,
+      "sha256": "2da95262677c0f6398c07d5c28f77e39e98b6c1cba14c0c327851e44f14deef0"
+    }
+  ]
+}

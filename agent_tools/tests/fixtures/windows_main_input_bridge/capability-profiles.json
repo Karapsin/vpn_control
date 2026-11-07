@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "posix-and-powershell": {
+      "tests": 56,
+      "passes": 56,
+      "skips": 0
+    },
+    "missing-posix-with-powershell": {
+      "tests": 56,
+      "passes": 10,
+      "skips": 46
+    },
+    "missing-posix-and-powershell": {
+      "tests": 56,
+      "passes": 2,
+      "skips": 54
+    }
+  },
+  "classification": {
+    "currentPosix": 33,
+    "currentPowerShell": 7,
+    "compileWithoutPInvoke": 1,
+    "authenticPosixCausalPairs": 13,
+    "catalog": 2
+  },
+  "nativeWindowsProviderFrameKeysCredentials": null
+}

@@ -1465,6 +1465,14 @@ class VisualPlatformTest(unittest.TestCase):
         residue_start = windows.index("function Dismiss-HostedVisualResidue")
         self.assertGreater(residue_start, add_type_end)
 
+    def test_hosted_capture_wrappers_name_the_target_the_parser_requires(self) -> None:
+        # capture-local refuses without --target, which a hosted run reports only after
+        # all its frames are taken, as "Windows visual capture is incomplete".
+        shell = (visual_platform.ROOT / "scripts/capture_visual_desktop.sh").read_text(encoding="utf-8")
+        windows = (visual_platform.ROOT / "scripts/capture_visual_desktop.ps1").read_text(encoding="utf-8")
+        self.assertIn('--target "native:$platform_name"', shell)
+        self.assertIn('"capture-local", "--platform", $Platform, "--target", "native:$Platform", "--driver"', windows)
+
     def test_windows_foreign_dialog_is_checked_after_native_capture_before_provenance(self) -> None:
         wrapper = (visual_platform.ROOT / "scripts/capture_visual_desktop.ps1").read_text(
             encoding="utf-8",

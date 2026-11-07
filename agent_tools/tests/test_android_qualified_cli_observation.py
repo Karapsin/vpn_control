@@ -655,3 +655,269 @@ class CliQualifiedRoutingTest(unittest.TestCase):
 
 
 if __name__ == "__main__": unittest.main()
+
+
+@unittest.skipUnless(os.name == 'posix', 'inert retained-pipe custody fixtures')
+class CaptureCustodyRegressionTests(unittest.TestCase):
+    """Whole preserved owners versus the current owner; no SSH peer is used."""
+    def before(self,leaf='android_qualified_cli_observation.py.before.source'):
+        fixture=Path(__file__).parent/'fixtures/capture_custody'
+        path=fixture/leaf
+        provenance=json.loads((fixture/'provenance.json').read_bytes())
+        self.assertEqual(provenance['sources'][path.name]['sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
+        module=types.ModuleType('agent_tools._custody_before_android')
+        module.__package__='agent_tools';module.__file__=str(path)
+        exec(compile(path.read_bytes(),str(path),'exec'),module.__dict__)
+        return module
+
+    def drain_fixture(self,owner):
+        child=getattr(owner,'child',None)
+        if child is None:return
+        if getattr(owner,'closed',False):return
+        if hasattr(owner,'captureErrors'):
+            owner.finish_naturally();return
+        # The unfixed constructor has no capture fields. The finite local peer
+        # exits by itself; cleanup reads only that same original child's pipes.
+        if not child.stdin.closed:child.stdin.close()
+        child.wait()
+        for name in ('stdout','stderr'):
+            stream=getattr(child,name)
+            if not stream.closed:stream.read();stream.close()
+
+    def whole_constructor(self,subject):
+        from agent_tools.native_review_source_closure import _Held
+        original_init=subject.OuterCustody.__init__
+        real_close=_Held.close;real_popen=subject.ssh_transport.popen_ssh
+        objects=[];closing=[];writes={}
+        def init(owner,*args,**kwargs):
+            objects.append(owner);return original_init(owner,*args,**kwargs)
+        def popen(argv,**kwargs):
+            # A finite local peer, independent of stdin, prevents an unfixed
+            # capture bug from leaving a live test process behind.
+            return real_popen([sys.executable,'-I','-B','-c',
+                "import sys,time;time.sleep(.12);sys.stdout.write('LATE_OUT');sys.stderr.write('LATE_ERR')"],**kwargs)
+        def close(held):
+            if objects and getattr(objects[0],'child',None) is not None:
+                closing.append(objects[0].child.poll())
+            return real_close(held)
+        original_retain=subject._retain
+        def retain(directory,name,value):
+            writes[name]=value;return original_retain(directory,name,value)
+        case=QualifiedCliCustodyTest('test_whole_qualified_adapter_inert_transport_and_source_closing')
+        try:
+            with mock.patch.dict(globals(),{'qualified':subject}), \
+                 mock.patch.object(subject.OuterCustody,'__init__',init), \
+                 mock.patch.object(subject.ssh_transport,'popen_ssh',popen), \
+                 mock.patch.object(subject.os,'set_blocking',side_effect=OSError('inert post-Popen setup')), \
+                 mock.patch.object(_Held,'close',close),mock.patch.object(subject,'_retain',retain):
+                try:case.test_whole_qualified_adapter_inert_transport_and_source_closing()
+                except AssertionError:pass  # existing positive fixture expects observed
+            self.assertEqual(1,len(objects));owner=objects[0]
+            return {'closed':getattr(owner,'closed',False),'childTerminal':owner.child.poll() is not None,
+                    'closing':closing,'writes':writes,'owner':owner}
+        finally:
+            for owner in objects:self.drain_fixture(owner)
+            case.doCleanups()
+
+    def test_whole_android_constructor_failure_keeps_original_until_eof_and_source_close(self):
+        before=self.whole_constructor(self.before())
+        with self.assertRaises(AssertionError):self.assertTrue(before['closed'])
+        self.assertIn(None,before['closing'],'before source guard closed while original child was live')
+        current=self.whole_constructor(qualified)
+        self.assertTrue(current['closed']);self.assertTrue(current['childTerminal'])
+        self.assertNotIn(None,current['closing'])
+        final=current['writes']['final-capture.private.json']
+        self.assertTrue(final['complete']);self.assertTrue(all(final['eof'].values()))
+        self.assertEqual(b'LATE_OUT',current['writes']['outer-final-stdout.private'])
+        self.assertEqual(b'LATE_ERR',current['writes']['outer-final-stderr.private'])
+        self.assertEqual('setup',final['captureErrors'][0]['phase'])
+        self.assertEqual('unknown',current['writes']['finite-result.public.json']['state'])
+
+    def pipe_fault(self,subject,family):
+        owner=subject.OuterCustody([sys.executable,'-I','-B','-c',
+            "import sys,time;time.sleep(.04);sys.stdout.write('OUT');sys.stderr.write('ERR')"])
+        owner.child.stdin.close();caught=None
+        real_read=os.read
+        try:
+            if family=='read':
+                fired=[]
+                def read(fd,size):
+                    if fd in (owner.child.stdout.fileno(),owner.child.stderr.fileno()) and not fired:
+                        fired.append(True);raise OSError('inert read error')
+                    return real_read(fd,size)
+                patch=mock.patch.object(subject.os,'read',side_effect=read)
+            elif hasattr(owner,'selector'):
+                patch=mock.patch.object(owner.selector,'select',side_effect=OSError('inert select error'))
+            else:
+                real_select=subject.select.select;fired=[]
+                def selected(*args):
+                    if not fired:fired.append(True);raise OSError('inert select error')
+                    return real_select(*args)
+                patch=mock.patch.object(subject.select,'select',side_effect=selected)
+            with patch:
+                try:owner.observe(.5)
+                except OSError as error:caught=error
+            owner.finish_naturally()
+            return owner,caught
+        finally:self.drain_fixture(owner)
+
+    def test_original_read_error_is_not_eof_and_latches_unknown(self):
+        before,error=self.pipe_fault(self.before(),'read')
+        self.assertIsInstance(error,OSError)
+        current,error=self.pipe_fault(qualified,'read')
+        self.assertIsNone(error);self.assertTrue(current.closed);self.assertEqual(0,current.child.returncode)
+        self.assertEqual({'stdout':b'OUT','stderr':b'ERR'},{k:bytes(v) for k,v in current.raw.items()})
+        self.assertTrue(all(current.eof.values()));self.assertEqual('read',current.snapshot()['captureErrors'][0]['phase'])
+
+    def test_original_select_error_retains_same_child_until_positive_eof(self):
+        before,error=self.pipe_fault(self.before(),'select')
+        self.assertIsInstance(error,OSError)
+        current,error=self.pipe_fault(qualified,'select')
+        self.assertIsNone(error);self.assertTrue(current.closed);self.assertTrue(all(current.eof.values()))
+        self.assertEqual('select',current.snapshot()['captureErrors'][0]['phase'])
+        self.assertEqual({'stdout':3,'stderr':3},current.counts)
+
+    def whole_timeout(self,subject):
+        observe_original=subject.OuterCustody.observe;init_original=subject.OuterCustody.__init__
+        retain_original=subject._retain;writes={};objects=[]
+        def init(owner,argv,*args,**kwargs):
+            objects.append(owner);argv=list(argv);argv[-1]='import time;time.sleep(.04);'+argv[-1]
+            return init_original(owner,argv,*args,**kwargs)
+        def observe(owner,seconds=45):
+            observe_original(owner,.000001);owner.finish_naturally();return owner.snapshot()
+        def retain(directory,name,value):writes[name]=value;return retain_original(directory,name,value)
+        case=QualifiedCliCustodyTest('test_whole_qualified_adapter_inert_transport_and_source_closing')
+        try:
+            with mock.patch.dict(globals(),{'qualified':subject}),mock.patch.object(subject.OuterCustody,'__init__',init), \
+                 mock.patch.object(subject.OuterCustody,'observe',observe),mock.patch.object(subject,'_retain',retain):
+                try:case.test_whole_qualified_adapter_inert_transport_and_source_closing()
+                except AssertionError:pass
+            self.assertEqual(1,len(objects));self.assertTrue(objects[0].closed)
+            self.assertTrue(writes['capture.private.json']['complete']);self.assertTrue(writes['capture.private.json']['timeout'])
+            return writes['finite-result.public.json']
+        finally:
+            for owner in objects:self.drain_fixture(owner)
+            case.doCleanups()
+
+    def test_android_complete_after_timeout_cannot_become_observed(self):
+        before=self.whole_timeout(self.before())
+        with self.assertRaises(AssertionError):self.assertEqual('unknown',before['state'])
+        self.assertEqual('observed',before['state'])
+        current=self.whole_timeout(qualified)
+        self.assertEqual('unknown',current['state']);self.assertFalse(current['available'])
+        self.assertTrue(current['finalCapture']['complete']);self.assertTrue(current['finalCapture']['timeout'])
+
+    def high_fd_whole_owner(self, subject):
+        """Actual complete owner at valid descriptors above select FD_SETSIZE.
+
+        The peer is a finite local Python process. Only after recording the
+        observation, duplicate handles back down when the broken select owner
+        needs that explicit finite test-cleanup seam. Never signal the child.
+        """
+        import fcntl, resource, subprocess
+        original_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if original_limit[1] < 1102:
+            self.skipTest('platform hard fd limit cannot exercise FD_SETSIZE')
+        if original_limit[0] < 1200:
+            resource.setrlimit(resource.RLIMIT_NOFILE,
+                               (min(1200, original_limit[1]), original_limit[1]))
+        real_popen = subprocess.Popen
+        owner = None
+        def finite_peer(argv, **kwargs):
+            child = real_popen([sys.executable, '-I', '-B', '-c',
+                "import sys;sys.stdin.buffer.read();"
+                "sys.stdout.buffer.write(b'VALID_OUT');"
+                "sys.stderr.buffer.write(b'VALID_ERR')"], **kwargs)
+            # Preserve the same pipe endpoints. No path, command, source,
+            # selector or observation is substituted after owner construction.
+            for name in ('stdout', 'stderr'):
+                stream = getattr(child, name)
+                descriptor = fcntl.fcntl(stream.fileno(), fcntl.F_DUPFD, 1100)
+                stream.close()
+                setattr(child, name, os.fdopen(descriptor, 'rb', buffering=0))
+            return child
+        try:
+            with mock.patch.object(subject.ssh_transport, 'popen_ssh',
+                                   side_effect=finite_peer):
+                owner = subject.OuterCustody(['finite-local-peer'])
+            fds = {name: getattr(owner.child, name).fileno()
+                   for name in ('stdout', 'stderr')}
+            self.assertTrue(all(value >= 1100 for value in fds.values()))
+            owner.send(b'{}')
+            capture = owner.observe(.5)
+            return {'capture': capture,
+                    'raw': {key: bytes(value) for key, value in owner.raw.items()},
+                    'fds': fds}
+        finally:
+            try:
+                if owner is not None:
+                    if not hasattr(owner, 'selector'):
+                        # The saved select.select beforeimage cannot naturally
+                        # drain valid high fds. Restore these same original pipe
+                        # handles to low descriptor numbers only for cleanup.
+                        # DefaultSelector owners retain their registered fds.
+                        for name in ('stdout', 'stderr'):
+                            stream = getattr(owner.child, name)
+                            descriptor = os.dup(stream.fileno())
+                            stream.close()
+                            setattr(owner.child, name,
+                                    os.fdopen(descriptor, 'rb', buffering=0))
+                    owner.finish_naturally()
+                    self.assertTrue(owner.closed)
+                    self.assertIsNotNone(owner.child.poll())
+                    self.assertTrue(all(owner.eof.values()))
+            finally:
+                resource.setrlimit(resource.RLIMIT_NOFILE, original_limit)
+
+    def test_complete_original_and_current_owners_support_valid_high_pipe_fds(self):
+        # The original DefaultSelector owner already supported these fds. This
+        # prevents fixing setup custody by narrowing the accepted fd domain.
+        for label, subject in (('original', self.before()), ('current', qualified)):
+            with self.subTest(owner=label):
+                result = self.high_fd_whole_owner(subject)
+                self.assertTrue(result['capture']['complete'])
+                self.assertFalse(result['capture']['timeout'])
+                self.assertTrue(all(result['capture']['eof'].values()))
+                self.assertEqual({'stdout': b'VALID_OUT', 'stderr': b'VALID_ERR'},
+                                 result['raw'])
+
+    def test_authentic_first_candidate_high_fd_failure_is_red_before_scalable_fix(self):
+        broken=self.high_fd_whole_owner(self.before('android_qualified_cli_observation.select.before.source'))
+        with self.assertRaises(AssertionError):self.assertTrue(broken['capture']['complete'])
+        self.assertTrue(broken['capture']['timeout']);self.assertFalse(all(broken['capture']['eof'].values()))
+        self.assertEqual({'stdout':b'','stderr':b''},broken['raw'])
+        current=self.high_fd_whole_owner(qualified)
+        self.assertTrue(current['capture']['complete']);self.assertFalse(current['capture']['timeout'])
+        self.assertEqual({'stdout':b'VALID_OUT','stderr':b'VALID_ERR'},current['raw'])
+
+    def program_subclass(self,base):
+        import agent_tools
+        from agent_tools import ssh_program_execution as actual_program
+        path=Path(actual_program.__file__);raw=path.read_bytes()
+        module=types.ModuleType('agent_tools._custody_unchanged_program_subclass')
+        module.__package__='agent_tools';module.__file__=str(path)
+        with mock.patch.object(agent_tools,'android_qualified_cli_observation',base), \
+             mock.patch.dict(sys.modules,{'agent_tools.android_qualified_cli_observation':base}):
+            exec(compile(raw,str(path),'exec'),module.__dict__)
+        with tempfile.TemporaryDirectory(prefix='owned-program-subclass-') as temporary:
+            owner=module._Capture(Path(temporary));error=None;capture=None
+            try:
+                owner.start([sys.executable,'-I','-B','-c',"import sys;sys.stdout.write('PROGRAM_OUT');sys.stderr.write('PROGRAM_ERR')"])
+                try:capture=owner.observe(2)
+                except AttributeError as caught:error=caught
+            finally:
+                try:owner.finish_naturally()
+                except AttributeError as caught:
+                    if error is None:error=caught
+                owner.close_raw()
+            return {'capture':capture,'error':error,'pid':owner.child.pid,'exit':owner.child.returncode,
+                    'eof':dict(owner.eof),'stdout':(Path(temporary)/'stdout.private').read_bytes(),
+                    'stderr':(Path(temporary)/'stderr.private').read_bytes()}
+
+    def test_unchanged_generated_program_subclass_keeps_base_snapshot_api(self):
+        broken=self.program_subclass(self.before('android_qualified_cli_observation.select.before.source'))
+        self.assertIsInstance(broken['error'],AttributeError)
+        current=self.program_subclass(qualified)
+        self.assertIsNone(current['error']);self.assertEqual(0,current['exit']);self.assertTrue(all(current['eof'].values()))
+        self.assertTrue(current['capture']['complete']);self.assertEqual([],current['capture']['captureErrors'])
+        self.assertEqual(b'PROGRAM_OUT',current['stdout']);self.assertEqual(b'PROGRAM_ERR',current['stderr'])

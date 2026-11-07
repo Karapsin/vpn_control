@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "fixture": "dedicated-driver-cleanup.before.source",
+  "source": ".runtime/windows-parity-20261019/windows-product-runner/ordinary-dedicated-acceptance-integration-preparation-v1/history/initial-driver/windows_ordinary_dedicated_driver.before.source",
+  "sha256": "9fde8ce7db24dbc4d7c437400c43af6794f3f0a10c9f1422e62c08ce3d9353c0",
+  "sizeBytes": 13336,
+  "provenance": "Complete first private dispatcher draft preserved before correcting final cleanup to retain intentional first GUI CRASH_EXIT and before fixed armed-hold park guards. No native execution or historical Windows cause is attributed.",
+  "executionScope": "Definitions only; only run_lifecycle against explicit in-memory lifecycle/child peers and disposable local directory data."
+}

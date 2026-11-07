@@ -1,0 +1,45 @@
+﻿$ProgressPreference='SilentlyContinue';$ErrorActionPreference='Stop'
+$r= & {
+$helperDirectoryEnvironment=[Environment]::GetEnvironmentVariable('G_SPAWN_WIN32_HELPER_DIR',[EnvironmentVariableTarget]::Process)
+$pathEnvironment=[Environment]::GetEnvironmentVariable('PATH',[EnvironmentVariableTarget]::Process)
+if(($null -ne $helperDirectoryEnvironment -and $helperDirectoryEnvironment.Length -gt 4096) -or ($null -ne $pathEnvironment -and $pathEnvironment.Length -gt 16384)){throw 'QGA_DIAGNOSTIC_ENVIRONMENT_BOUND'}
+$rows=@(Get-CimInstance Win32_Process -Filter "Name='qemu-ga.exe'")
+if($rows.Count -ne 1){throw 'QGA_DIAGNOSTIC_PROCESS_CARDINALITY'}
+$originalPid=[int]$rows[0].ProcessId
+$process=[Diagnostics.Process]::GetProcessById($originalPid)
+$streams=[Collections.Generic.List[IO.FileStream]]::new()
+try {
+ $birth=$process.StartTime.ToUniversalTime().ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture)
+ $image=$process.MainModule.FileName
+ if([string]::IsNullOrWhiteSpace($image) -or -not [IO.Path]::IsPathRooted($image) -or -not [string]::Equals($image,[string]$rows[0].ExecutablePath,[StringComparison]::OrdinalIgnoreCase)){throw 'QGA_DIAGNOSTIC_IMAGE'}
+ $services=@(Get-CimInstance Win32_Service -Filter ("ProcessId="+$originalPid))
+ if($services.Count -ne 1 -or $services[0].State -ne 'Running'){throw 'QGA_DIAGNOSTIC_SERVICE'}
+ $loaded=@($process.Modules | Where-Object {$_.ModuleName -match '^(lib)?g(lib|io|module|object).*\.dll$'})
+ if($loaded.Count -gt 16){throw 'QGA_DIAGNOSTIC_MODULE_BOUND'}
+ $paths=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+ [void]$paths.Add($image)
+ foreach($module in $loaded){[void]$paths.Add($module.FileName)}
+ $directory=[IO.Path]::GetDirectoryName($image)
+ foreach($leaf in @('libglib-2.0-0.dll','libgio-2.0-0.dll','libgmodule-2.0-0.dll','libgobject-2.0-0.dll','gspawn-win64-helper.exe','gspawn-win64-helper-console.exe')){[void]$paths.Add([IO.Path]::Combine($directory,$leaf))}
+ $files=@();$notObserved=@()
+ foreach($path in $paths){
+  try {$stream=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)}
+  catch [IO.FileNotFoundException] {$notObserved+=[pscustomobject]@{path=$path;errorClass='FileNotFoundException'};continue}
+  [void]$streams.Add($stream)
+  if($stream.Length -lt 1 -or $stream.Length -gt 67108864){throw 'QGA_DIAGNOSTIC_FILE_BOUND'}
+  $info=[IO.FileInfo]::new($path);$info.Refresh()
+  if(($info.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $info.Length -ne $stream.Length){throw 'QGA_DIAGNOSTIC_FILE_KIND'}
+  $length=$stream.Length;$created=$info.CreationTimeUtc.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture);$modified=$info.LastWriteTimeUtc.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture)
+  $sha=[Security.Cryptography.SHA256]::Create()
+  try {$hash=[BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToLowerInvariant()} finally {$sha.Dispose()}
+  $version=[Diagnostics.FileVersionInfo]::GetVersionInfo($path)
+  $info.Refresh()
+  if($info.Length -ne $length -or $info.CreationTimeUtc.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture) -ne $created -or $info.LastWriteTimeUtc.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture) -ne $modified){throw 'QGA_DIAGNOSTIC_FILE_CHANGED'}
+  $files+=[pscustomobject]@{path=$path;bytes=$length;sha256=$hash;fileVersion=$version.FileVersion;productVersion=$version.ProductVersion;originalFilename=$version.OriginalFilename;creationFileTimeUtc=$created;lastWriteFileTimeUtc=$modified;heldShareRead=$true}
+ }
+ if($process.HasExited -or $process.Id -ne $originalPid -or $process.StartTime.ToUniversalTime().ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture) -ne $birth -or -not [string]::Equals($process.MainModule.FileName,$image,[StringComparison]::OrdinalIgnoreCase)){throw 'QGA_DIAGNOSTIC_PROCESS_CHANGED'}
+ [pscustomobject]@{state='observed';query='qga-binary-metadata';readOnly=$true;processId=$originalPid;processBirthFileTimeUtc=$birth;processImagePath=$image;serviceName=$services[0].Name;servicePath=$services[0].PathName;loadedMatchingModules=@($loaded|ForEach-Object{[pscustomobject]@{name=$_.ModuleName;path=$_.FileName}});files=$files;candidatePathsNotObserved=$notObserved;nativeFileIdAdmissionClaimed=$false;guestChildAbsenceClaimed=$false;diagnosticChildProcessEnvironment=[pscustomobject]@{G_SPAWN_WIN32_HELPER_DIR=$helperDirectoryEnvironment;PATH=$pathEnvironment;source='current-diagnostic-child-process';qgaParentInheritanceRequiresPrimarySourceJoin=$true}}
+} finally {foreach($stream in $streams){$stream.Dispose()};$process.Dispose()}
+
+}
+[Console]::WriteLine(($r|ConvertTo-Json -Depth 8 -Compress))

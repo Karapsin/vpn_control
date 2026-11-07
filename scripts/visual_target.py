@@ -9,6 +9,7 @@ import stat
 import struct
 import subprocess
 import sys
+import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
@@ -37,6 +38,27 @@ def select(platform,target,config):
     elif family=='native':need(platform in {'linux','windows','macos'} and name==platform);backend='native-'+platform
     else:raise TargetError('explicit visual target missing or mismatched')
     return backend,name
+
+
+def select_capture(platform,target,config,root=ROOT):
+    """Capture alone may name a remote deployment: it has no local lifecycle.
+
+    Its allowlist is its own retained visual-purpose start intent, never
+    configuration, and the collection driver joins that identity to the original
+    frame journal. Every other target is exactly select().
+    """
+    if type(target)is not str or not target.startswith('deployment:'):return select(platform,target,config)
+    name=target.partition(':')[2]
+    try:
+        need(platform=='windows' and hasattr(os,'O_NOFOLLOW') and str(uuid.UUID(name))==name)
+        fd=os.open(Path(root)/'.rag_index/windows-vm-deploy-intents'/(name+'.intent.json'),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            info=os.fstat(fd);need(stat.S_ISREG(info.st_mode) and info.st_uid==os.geteuid() and info.st_nlink==1 and not info.st_mode&0o077 and 0<info.st_size<=131072)
+            intent=json.loads(os.read(fd,info.st_size))
+        finally:os.close(fd)
+        need(intent['mode']=='start' and intent['spec']['deploymentId']==name and intent['setup']['purpose']=='windowsUacVisual')
+    except (OSError,ValueError,KeyError,TypeError):raise TargetError('explicit visual target missing or mismatched')from None
+    return 'deployment-windows',name
 
 
 def peer(connection):

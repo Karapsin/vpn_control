@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "cause": "An expected assertion escapes inner TestCase.debug before that case runs its addCleanup stack; outer TestCase.run owns a different stack. Six real-module patches remain underneath the next phase.",
+  "actualFailureReceipt": "6a710118ae4445a66ce8e2be4c9f4cdc854086e3ff55dd8df446d3bb74cd3d79",
+  "preserved166IndexSha256": "a41d0e9a51876b2845cc070dff749710fc6765b243f48fab3c11c2fe811e6e09",
+  "beforeWholeSourceSha256": "a7d3e8f0e8dd68f23a88f7620296d01d29c8cd626e16a7bd5b1fe6f7836d8233",
+  "beforeFixture": "oracle-cleanup.before.source",
+  "oracle": "oracle_interpreter_guard.py executes whole before/current namespaces, then the genuine existing original-live-caller-barrier pair; verifies real sys.executable/os.getpid/time.sleep/ProgramData and a retained actual local Python child. The before process is isolated; parent cannot inherit its leak.",
+  "originalFunctionsAssertionsBeforeExpectationsUnchanged": true,
+  "nativeActions": false
+}

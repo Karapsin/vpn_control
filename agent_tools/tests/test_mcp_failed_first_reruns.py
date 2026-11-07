@@ -187,6 +187,18 @@ class FailedFirstTests(unittest.TestCase):
                 ns, calls = self.runner(CURRENT, [])
                 self.assertTrue(ns["run_checks"]("agent_tools", "prepush")["ok"]);self.assertIn(half, calls)
 
+    def test_timed_out_private_runner_with_parsed_failures_reruns_its_whole_half(self):
+        # A private runner returns its output after a timeout. Failures parsed so
+        # far must not narrow the rerun: modules the timeout cut off would be skipped.
+        half = HALVES[0]
+        outputs = {tuple(half): {**tests_output(["agent_tools.tests.test_readiness.Cases.test_one"]),
+                                 "managedAgent": {"timedOut": True}}}
+        ns, _ = self.runner(CURRENT, [half], outputs)
+        ns["run_checks"]("agent_tools", "prepush")
+        self.assertEqual([{"command": half, "modules": None}], self.state()["failed"])
+        ns, calls = self.runner(CURRENT, [])
+        self.assertTrue(ns["run_checks"]("agent_tools", "failed")["ok"]);self.assertEqual([half], calls)
+
     def test_unparsed_agent_commands_rerun_once_in_the_planned_ci_groups(self):
         # The whole retained beforeimage reran an agent command without failed
         # modules unchanged, removed modules included; it now reruns once in the

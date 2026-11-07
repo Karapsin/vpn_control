@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "authentic-unfixed-function-source",
+  "sourcePath": "agent_tools/android_installer_component_bundle.py",
+  "function": "_physical_batch_source",
+  "sourceModuleSha256": "e5bdaf09353f979af3ebbcb40091fd7f661ec563159bb7e900ea1a2a659ede0a",
+  "sourceModuleBytes": 137819,
+  "sourceLineStart": 536,
+  "sourceLineEnd": 647,
+  "fragmentSha256": "8b56c4d644324206dd37aafdb761f004223835535990f99e568b260f2839716c",
+  "fragmentBytes": 6024,
+  "captureHEAD": "d24c19047ec15689948404ede40f50c5ec284e77",
+  "captureSourceEqualRetainedBeforeimage": true,
+  "captureGeneration": [
+    16777231,
+    138373356,
+    33188,
+    503,
+    20,
+    1,
+    137819,
+    1791621480964177328,
+    1791621480964177328
+  ],
+  "purpose": "TEST-001 actual complete emitted-shell generation-only mutation controls; unchanged native20s command watchdog; no installed-product acceptance",
+  "authenticTestMethod": {
+    "sourcePath": "agent_tools/tests/test_android_installer_component_bundle.py",
+    "sourceModuleSha256": "1b538a0f7795a1407e92158e04c7b66dde6f3a344c49113dbf509599ef6e7856",
+    "sourceModuleBytes": 88446,
+    "class": "BundleTests",
+    "method": "test_actual_generated_batch_shell_exclusive_capture_and_cleanup",
+    "sourceLineStart": 200,
+    "defLine": 201,
+    "sourceLineEnd": 287,
+    "fixture": "physical-batch-test.before.source",
+    "fixtureSha256": "c2ce4b523bfea95bff788b1102ca56b17a486a711c355c42c6c4829503a85846",
+    "fixtureBytes": 6646,
+    "preservedIndentationAndDecoratorBytes": true,
+    "dedentOrWrapperIsSeparateFromAuthenticFixture": true
+  }
+}

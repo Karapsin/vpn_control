@@ -1,0 +1,327 @@
+"""Finite pure and real TempFS controls with DECLARED native MSI peers.
+
+These tests never load msi.dll, validate an actual MSI, install anything, start a
+subprocess, or use the network. JSON-backed package peers exercise real file
+copying, hashing, immutable inputs, exclusive outputs and the complete entry body.
+"""
+import copy
+import ast
+import ctypes
+import hashlib
+from importlib.machinery import SourceFileLoader
+import importlib.util
+import json
+import os
+from pathlib import Path
+import stat
+import tempfile
+from types import SimpleNamespace
+import unittest
+import uuid
+
+
+PATH = Path(os.environ.get("VPN_CONTROL_FAILING_MSI_TEST_SOURCE", str(Path(__file__).with_name("failing_msi_fixture.py"))))
+spec = importlib.util.spec_from_loader("private_failing_msi", SourceFileLoader("private_failing_msi", str(PATH)))
+f = importlib.util.module_from_spec(spec); spec.loader.exec_module(f)
+
+
+def fixture_snapshot():
+    return {"schemaVersion": 1, "tables": {
+        "Property": {"columns": [["Property", "s72"], ["Value", "l0"]], "rows": sorted([
+            ["ProductName", "vpn-control"], ["ProductCode", "{11111111-1111-1111-1111-111111111111}"],
+            ["UpgradeCode", f.UPGRADE], ["ProductVersion", "2.2.14"]], key=f.encoded)},
+        "LaunchCondition": {"columns": [["Condition", "s255"], ["Description", "l255"]],
+                            "rows": [["VersionNT64", "64-bit Windows is required"]]},
+        "InstallExecuteSequence": {"columns": [["Action", "s72"], ["Condition", "S255"], ["Sequence", "I2"]],
+            "rows": sorted([["LaunchConditions", None, "100"], ["CostInitialize", None, "800"],
+                ["InstallInitialize", None, "1500"], ["InstallFiles", None, "4000"],
+                ["InstallFinalize", None, "6600"]], key=f.encoded)},
+        "File": {"columns": [["File", "s72"], ["Component_", "s72"]], "rows": [["app", "app-component"]]},
+        "_Streams": {"columns": [["Name", "s62"], ["Data", "v0"]],
+            "rows": [["cabinet", {"sizeBytes": 32, "sha256": "c" * 64}]]},
+        "_Storages": {"columns": [["Name", "s62"], ["Data", "v0"]], "rows": []}},
+        "summary": {"7": {"type": 30, "value": "x64;1033"},
+                    "9": {"type": 30, "value": "{22222222-2222-2222-2222-222222222222}"}}}
+
+
+def generation(info):
+    return tuple(getattr(info, k) for k in ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid",
+                 "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns"))
+
+
+class Pin:
+    def __init__(self, path):
+        self.path = Path(path)
+        self.handle = os.open(self.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        self.opening = generation(os.fstat(self.handle))
+        raw = self.path.read_bytes()
+        self.record = {"path": str(self.path), "sha256": hashlib.sha256(raw).hexdigest(),
+                       "nativeIdentity": {"sizeBytes": len(raw)}}
+
+    def current(self):
+        f.require(generation(os.fstat(self.handle)) == self.opening
+                  == generation(self.path.lstat()), "test-peer-held-full-generation")
+        f.require(stat.S_ISREG(self.path.lstat().st_mode) and self.path.lstat().st_nlink == 1,
+                  "test-peer-regular-single-link")
+
+    def digest(self, return_bytes=False, maximum=8 * 1024 * 1024):
+        self.current(); os.lseek(self.handle, 0, 0)
+        data = b""
+        while True:
+            part = os.read(self.handle, 65536)
+            if not part: break
+            data += part
+            f.require(not return_bytes or len(data) <= maximum, "test-peer-size-bound")
+        self.current()
+        f.require(hashlib.sha256(data).hexdigest() == self.record["sha256"], "test-peer-full-hash")
+        return data if return_bytes else self.record["sha256"]
+
+    def close(self):
+        os.close(self.handle)
+
+
+class Owner:
+    """Declared ordinary/native peers; does not claim a Windows token or ACL."""
+    def __init__(self, root):
+        self.root = Path(root)
+        self.operation = "046dba4d-a25c-42a4-bae9-a1a6c822041a"
+        self.by_path, self.pins, self.events = {}, [], []
+        self.native = self
+
+    def add(self, path):
+        pin = Pin(path); self.pins.append(pin); self.by_path[str(path).casefold()] = pin
+        return pin
+
+    def read_blocks(self, handle):
+        os.lseek(handle, 0, 0)
+        while True:
+            block = os.read(handle, 64)
+            if not block: return
+            yield block
+
+    def guard(self):
+        for pin in self.pins: pin.current()
+
+    def event(self, kind, value):
+        self.events.append((kind, copy.deepcopy(value)))
+
+    def close(self):
+        for pin in self.pins: pin.close()
+
+
+class JsonMsiPeer:
+    """DECLARED native peer: real JSON files, no actual MSI/native calls."""
+    def __init__(self):
+        self.calls, self.signature_status, self.corruption = [], "NotSigned", None
+
+    def signature(self, path):
+        self.calls.append(("signature", str(path)))
+        return {"status": self.signature_status,
+                "winVerifyTrustStatus": 0x800B0100 if self.signature_status == "NotSigned" else 0,
+                "cacheOnly": True}
+
+    def inspect(self, path):
+        self.calls.append(("inspect", str(path)))
+        return json.loads(Path(path).read_bytes())
+
+    def add_fixed_condition(self, path, code):
+        self.calls.append(("modify", str(path)))
+        value = json.loads(Path(path).read_bytes())
+        # Independent finite peer does not call the validator's expected_after.
+        value["tables"]["LaunchCondition"]["rows"] += [list(f.CONDITION)]
+        value["tables"]["LaunchCondition"]["rows"].sort(key=f.encoded)
+        value["summary"]["9"]["value"] = code
+        if self.corruption: self.corruption(value)
+        Path(path).write_bytes(f.encoded(value))
+
+    def seal(self, owner, path, parent):
+        return owner.add(path)
+
+
+class FixtureTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)
+        self.owner = Owner(self.root); self.native = JsonMsiPeer()
+        self.parent = self.root / "vpn-control-2.2.14.msi"
+        self.parent.write_bytes(f.encoded(fixture_snapshot()))
+        parent_sha = hashlib.sha256(self.parent.read_bytes()).hexdigest()
+        files = [{"path": "gradle.properties", "sha256": "a" * 64}]
+        fingerprint = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        self.receipt = {"schemaVersion": 1, "testOnly": True, "productionTrustChanged": False,
+            "architecture": "x86_64", "nativeOs": "Windows-declared-test-peer", "sourceFingerprint": fingerprint,
+            "builds": [{"label": label, "version": version, "sourceFingerprint": fingerprint,
+                "codeFingerprint": "b" * 64, "assets": [{"packageType": "msi", "platform": "windows",
+                    "architecture": "x86_64", "displayVersion": version, "fileName": "vpn-control-" + version + ".msi",
+                    "sizeBytes": self.parent.stat().st_size, "sha256": parent_sha if label == "target" else "d" * 64}]}
+                for label, version in (("base", "2.2.13"), ("target", "2.2.14"))]}
+        self.receipt["manifest"] = {"assets": copy.deepcopy(self.receipt["builds"][1]["assets"])}
+        snapshot = {"schemaVersion": 1, "sourceHead": "1" * 40, "canonicalVersion": "2.2.14",
+                    "files": files, "sourceFingerprint": fingerprint}
+        plan = {"schemaVersion": 1, "testOnly": True, "productionTrustChanged": False, "platform": "windows",
+                "architecture": "x86_64", "packageFamily": "default", "sourceFingerprint": fingerprint,
+                "stages": [{"label": "base", "version": "2.2.13"}, {"label": "target", "version": "2.2.14"}]}
+        paths = {}
+        for name, value in (("fixtureReceiptPath", self.receipt), ("sourceSnapshotPath", snapshot), ("buildPlanPath", plan)):
+            path = self.root / (name + ".json"); path.write_bytes(f.encoded(value)); paths[name] = str(path)
+            self.owner.add(path)
+        self.owner.add(self.parent); self.owner.add(PATH)
+        self.request = {"sourceSha": "1" * 40, "sourceFingerprint": fingerprint,
+            "fixtureReceiptArtifactId": "sha256-" + self.owner.by_path[paths["fixtureReceiptPath"].casefold()].record["sha256"],
+            "baseMsiArtifactId": "sha256-" + "d" * 64, "targetMsiArtifactId": "sha256-" + parent_sha,
+            **paths, "targetMsiPath": str(self.parent), "expectedParentSignatureStatus": "NotSigned"}
+
+    def tearDown(self):
+        self.owner.close(); self.tmp.cleanup()
+
+    def derive(self):
+        return f._derive(self.owner, self.request, self.native)
+
+    def read_outputs(self, result):
+        return [json.loads(Path(result["paths"][x]).read_bytes())
+                for x in ("derivationReceipt", "beforeSnapshot", "afterSnapshot")]
+
+    def test_complete_tempfs_derivation_keeps_parent_and_every_other_table_stream(self):
+        original = self.parent.read_bytes(); result = self.derive()
+        receipt, before, after = self.read_outputs(result)
+        self.assertEqual(original, self.parent.read_bytes())
+        self.assertEqual(1, len([x for x in self.native.calls if x[0] == "modify"]))
+        self.assertEqual(fixture_snapshot()["tables"]["File"], after["tables"]["File"])
+        self.assertEqual(before["tables"]["_Streams"], after["tables"]["_Streams"])
+        self.assertNotEqual(before["summary"]["9"], after["summary"]["9"])
+        self.assertEqual(["0", "VPN_CONTROL_NATIVE_ACCEPTANCE_DELIBERATE_FAILURE"],
+                         next(x for x in after["tables"]["LaunchCondition"]["rows"] if x[0] == "0"))
+        self.assertIsNone(result["actualNativeAcceptance"])
+        self.assertFalse(receipt["nativeInstallationExecuted"])
+
+    def test_repeat_original_operation_refuses_before_second_modification(self):
+        self.derive()
+        with self.assertRaises(FileExistsError): self.derive()
+        self.assertEqual(1, len([x for x in self.native.calls if x[0] == "modify"]))
+
+    def test_signed_parent_refuses_without_creating_intent_or_copy(self):
+        self.native.signature_status = "Valid"
+        with self.assertRaisesRegex(f.Refused, "actual-parent-signature-policy"): self.derive()
+        self.assertFalse(list(self.root.glob("native-failure-*")))
+
+    def test_mismatched_source_or_artifact_refuses_before_native_calls(self):
+        for key, bad in (("sourceSha", "2" * 40), ("sourceFingerprint", "3" * 64),
+                         ("targetMsiArtifactId", "sha256-" + "4" * 64)):
+            with self.subTest(key=key):
+                value = copy.deepcopy(self.request); value[key] = bad
+                with self.assertRaises(f.Refused): f._derive(self.owner, value, self.native)
+        self.assertEqual([], self.native.calls)
+
+    def test_unadmitted_or_null_requests_refuse(self):
+        for key in self.request:
+            value = dict(self.request); value[key] = None
+            with self.subTest(key=key), self.assertRaises((f.Refused, TypeError, KeyError)):
+                f._derive(self.owner, value, self.native)
+
+    def test_early_unknown_effect_or_disabled_launchconditions_refuses(self):
+        for row in (["UnknownCustomAction", None, "50"], ["InstallFiles", None, "50"]):
+            before = fixture_snapshot()
+            before["tables"]["InstallExecuteSequence"]["rows"] = [x for x in before["tables"]["InstallExecuteSequence"]["rows"] if x[0] != row[0]] + [row]
+            with self.subTest(row=row), self.assertRaisesRegex(f.Refused, "before-every-modifying"): f.validate_schedule(before)
+        for condition in ("0", "Installed", "NOT Installed"):
+            before = fixture_snapshot()
+            next(x for x in before["tables"]["InstallExecuteSequence"]["rows"] if x[0] == "LaunchConditions")[1] = condition
+            with self.subTest(condition=condition), self.assertRaisesRegex(f.Refused, "unconditional-positive"): f.validate_schedule(before)
+
+    def test_later_unknown_action_remains_unreachable_and_payload_is_preserved(self):
+        before = fixture_snapshot()
+        before["tables"]["InstallExecuteSequence"]["rows"].append(["LaterCustomAction", None, "5000"])
+        f.validate_schedule(before)
+
+    def test_extra_native_payload_mutation_retains_failed_output_without_receipt(self):
+        self.native.corruption = lambda value: value["tables"]["File"]["rows"].append(["unexpected", "effect"])
+        with self.assertRaisesRegex(f.Refused, "unexpected-native-msi-delta"): self.derive()
+        self.assertTrue(list(self.root.glob("native-failure-*.msi")))
+        self.assertTrue(list(self.root.glob("native-failure-*.intent.json")))
+        self.assertFalse(list(self.root.glob("native-failure-*.derivation.json")))
+
+    def test_pure_validator_rejects_each_extra_table_stream_version_signature_and_asset_delta(self):
+        result = self.derive(); receipt, before, after = self.read_outputs(result)
+        expected = f.expected_context(self.request, f.admitted_inputs(self.owner, self.request))
+        for change in (lambda x: x["tables"]["_Streams"]["rows"][0][1].update(sha256="f" * 64),
+                       lambda x: x["tables"]["Property"]["rows"].append(["New", "hidden"]),
+                       lambda x: x["summary"].update({"19": {"type": 3, "value": 4}})):
+            bad = copy.deepcopy(after); change(bad)
+            with self.assertRaisesRegex(f.Refused, "only-declared"): f.validate_derivation(receipt, before, bad, expected, f.fault_asset(receipt))
+        for change in (lambda x: x["signatures"].update(preservationClaim=True),
+                       lambda x: x.update(nativeAcceptance=True),
+                       lambda x: x["parent"].update(targetMsiArtifactId="sha256-" + "f" * 64)):
+            bad = copy.deepcopy(receipt); change(bad)
+            with self.assertRaises(f.Refused): f.validate_derivation(bad, before, after, expected, f.fault_asset(receipt))
+        bad_asset = f.fault_asset(receipt); bad_asset["sha256"] = "f" * 64
+        with self.assertRaisesRegex(f.Refused, "served-downloaded"): f.validate_derivation(receipt, before, after, expected, bad_asset)
+
+    def test_derivative_fixture_is_new_truthful_metadata_not_rewritten_original(self):
+        result = self.derive(); receipt, _, _ = self.read_outputs(result)
+        original = copy.deepcopy(self.receipt)
+        value = f.derived_fixture_receipt(self.receipt, receipt)
+        self.assertEqual(original, self.receipt)
+        self.assertEqual(f.fault_asset(receipt), value["manifest"]["assets"][0])
+        self.assertEqual(self.request["targetMsiArtifactId"], value["nativeFailureDerivation"]["originalTargetMsiArtifactId"])
+
+    def test_strict_validator_refuses_self_consistent_invalid_expected_artifact(self):
+        result = self.derive(); receipt, before, after = self.read_outputs(result)
+        expected = f.expected_context(self.request, f.admitted_inputs(self.owner, self.request))
+        expected["baseMsiArtifactId"] = "not-an-artifact"
+        receipt["parent"]["baseMsiArtifactId"] = "not-an-artifact"
+        with self.assertRaises(f.Refused):
+            f.validate_derivation(receipt, before, after, expected, f.fault_asset(receipt))
+
+    def test_strict_validator_refuses_different_download_route_or_extra_asset_authority(self):
+        result = self.derive(); receipt, before, after = self.read_outputs(result)
+        expected = f.expected_context(self.request, f.admitted_inputs(self.owner, self.request))
+        for change in (lambda asset: asset.update(downloadUrl="https://example.invalid/foreign.msi"),
+                       lambda asset: asset.update(nativeAuthorization=True)):
+            asset = f.fault_asset(receipt); change(asset)
+            with self.subTest(asset=asset), self.assertRaises(f.Refused):
+                f.validate_derivation(receipt, before, after, expected, asset)
+
+    def test_semantic_consumer_reobserves_real_files_not_hash_only_metadata(self):
+        result = self.derive(); receipt, _, _ = self.read_outputs(result)
+        for key in ("derivationReceipt", "beforeSnapshot", "afterSnapshot"): self.owner.add(result["paths"][key])
+        binding = {"kind": f.KIND, "derivationReceiptPath": result["paths"]["derivationReceipt"],
+            "beforeSnapshotPath": result["paths"]["beforeSnapshot"], "afterSnapshotPath": result["paths"]["afterSnapshot"],
+            "faultMsiPath": result["outputPin"]["path"]}
+        value = f._validate_served_fault(self.owner, self.request, binding, f.fault_asset(receipt), self.native)
+        self.assertEqual(result["faultMsiArtifactId"], value["faultMsiArtifactId"])
+        bad = f.fault_asset(receipt); bad["sizeBytes"] += 1
+        with self.assertRaisesRegex(f.Refused, "served-downloaded"):
+            f._validate_served_fault(self.owner, self.request, binding, bad, self.native)
+
+    def test_public_entry_refuses_non_windows_without_loading_native_api(self):
+        if os.name != "nt":
+            with self.assertRaisesRegex(f.Refused, "actual-windows"): f.derive(self.owner, self.request)
+
+    def test_actual_owner_pin_constructor_failure_retains_both_native_handles(self):
+        # Execute the unchanged complete canonical Pin class with declared native
+        # functions; the actual constructor opens its second handle before its
+        # identity recheck fails. No Windows function or real handle is involved.
+        source = Path(__file__).parents[4] / "agent_tools/windows_ordinary_process_owner.py"
+        node = next(x for x in ast.parse(source.read_text()).body if isinstance(x, ast.ClassDef) and x.name == "Pin")
+        env = {"absolute": Path, "require": f.require, "ctypes": ctypes, "hashlib": hashlib}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), "exec"), env)
+        class Kernel:
+            def __init__(self): self.handles = []
+            def CreateFileW(self, *args): self.handles.append(len(self.handles) + 1); return self.handles[-1]
+            def CloseHandle(self, handle): return True
+        class Native:
+            def __init__(self): self.k = Kernel()
+            def identity(self, handle, directory):
+                if handle == 2: raise f.Refused("declared-native-second-handle-identity-failure")
+                return {"sizeBytes": 3}
+            def security(self, handle): return {"ownerSid": "declared", "sddl": "declared"}
+            def read_blocks(self, handle): yield b"abc"
+        native = Native(); owner = SimpleNamespace(native=native, pins=[], by_path={})
+        parent = env["Pin"].__new__(env["Pin"])
+        with self.assertRaisesRegex(f.Refused, "second-handle"):
+            f.SystemMsi.__new__(f.SystemMsi).seal(owner, self.root / "declared-output.msi", parent)
+        self.assertEqual([1, 2], native.k.handles)
+        self.assertEqual(1, owner.failing_msi_unclosed_handle)
+        self.assertEqual(2, owner.failing_msi_pending_pin.handle)
+
+
+if __name__ == "__main__": unittest.main()

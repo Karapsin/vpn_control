@@ -741,6 +741,268 @@ raise SystemExit(not result.wasSuccessful())
 ''', input_text=json.dumps(payload))
 
 
+def probe_windows_native_packet_recipe_test_suite(
+    helper_path: Path | None = None,
+    *, expected_tests: int = 10, windows_like: bool = True,
+    temporary_root: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run the complete registered helper under declared missing OS capabilities.
+
+    The missing-API peer is local to the helper and its boundary source imports;
+    the host os module, Python imports, and production privacy code stay intact.
+    """
+    return _run('''import builtins
+import collections
+import hashlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+import types
+import unittest
+
+config = json.load(sys.stdin)
+path = Path(config["helperPath"]).resolve(strict=True)
+boundary_path = path.parent / "fixtures/windows_native_packet_recipe/boundary.py"
+sys.dont_write_bytecode = True
+if config["temporaryRoot"] is not None:
+    tempfile.tempdir = config["temporaryRoot"]
+
+class WindowsOs:
+    name = "nt"
+    def __getattr__(self, name):
+        if name in {"O_NOFOLLOW", "getuid"}:
+            raise AttributeError(name)
+        return getattr(os, name)
+
+surface = WindowsOs()
+original_import = builtins.__import__
+imports = []
+def declared_import(name, globals=None, locals=None, fromlist=(), level=0):
+    origin = None if globals is None else globals.get("__file__")
+    if config["windowsLike"] and name == "os" and origin in {str(path), str(boundary_path)}:
+        imports.append({"name": name, "source": origin, "declaredPeer": "WindowsOs", "missing": ["O_NOFOLLOW", "getuid"]})
+        return surface
+    return original_import(name, globals, locals, fromlist, level)
+
+name = "_windows_native_recipe_capability_probe"
+spec = importlib.util.spec_from_file_location(name, path)
+module = importlib.util.module_from_spec(spec)
+assert name not in sys.modules
+sys.modules[name] = module
+calls = collections.Counter()
+owners = {}
+def profile(frame, event, arg):
+    origin = frame.f_code.co_filename
+    if event == "call" and origin in {str(path), str(boundary_path)}:
+        owner_name = frame.f_globals.get("__name__")
+        registered = sys.modules.get(owner_name)
+        assert registered is not None and registered.__dict__ is frame.f_globals
+        calls[(origin, frame.f_code.co_name)] += 1
+        owners[owner_name] = {"source": origin, "completeRegisteredNamespace": True}
+
+prior_profile = sys.getprofile()
+builtins.__import__ = declared_import
+try:
+    sys.setprofile(profile)
+    spec.loader.exec_module(module)
+    cases = (module.WindowsNativePacketRecipeTest, module.DiagnosticResultContainerPowerShellTest)
+    original_functions = {case: {key: value for key, value in vars(case).items() if callable(value)}
+                          for case in cases}
+    loader = unittest.TestLoader()
+    posix_ids = {test.id() for test in loader.loadTestsFromTestCase(cases[0])}
+    diagnostic_ids = {test.id() for test in loader.loadTestsFromTestCase(cases[1])}
+    suite = loader.loadTestsFromModule(module)
+    test_ids = [test.id() for group in suite for test in group]
+    output = io.StringIO()
+    result = unittest.TextTestRunner(stream=output, verbosity=2).run(suite)
+    assert all(vars(case)[key] is value for case, functions in original_functions.items()
+               for key, value in functions.items())
+    assert all(case.__module__ == module.__name__ for case in cases)
+    assert module.render_operator.__globals__ is module.__dict__
+finally:
+    sys.setprofile(prior_profile)
+    builtins.__import__ = original_import
+
+skipped_ids = {test.id() for test, reason in result.skipped}
+failed_ids = {test.id() for test, error in result.failures + result.errors}
+passed_ids = set(test_ids) - skipped_ids - failed_ids
+powershell = (os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
+              or (shutil.which("powershell.exe") if config["windowsLike"] or os.name == "nt" else None)
+              or shutil.which("pwsh"))
+terminal = {
+    "testsRun": result.testsRun,
+    "testIds": test_ids,
+    "skipped": [{"test": test.id(), "reason": reason} for test, reason in result.skipped],
+    "failures": [{"test": test.id(), "traceback": error} for test, error in result.failures],
+    "errors": [{"test": test.id(), "traceback": error} for test, error in result.errors],
+    "successful": result.wasSuccessful(),
+    "passed": sorted(passed_ids),
+    "posixTestIds": sorted(posix_ids),
+    "diagnosticTestIds": sorted(diagnostic_ids),
+    "diagnosticPowerShellRuntime": powershell,
+    "helperPath": str(path),
+    "helperSha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    "boundaryPath": str(boundary_path),
+    "boundarySha256": hashlib.sha256(boundary_path.read_bytes()).hexdigest(),
+    "helperModule": module.__name__,
+    "helperWholeRegisteredModuleCalls": calls[(str(path), "<module>")],
+    "boundaryWholeRegisteredModuleCalls": calls[(str(boundary_path), "<module>")],
+    "registeredModuleOwners": owners,
+    "sourceCalls": [{"source": source, "function": function, "calls": count} for (source, function), count in sorted(calls.items())],
+    "declaredOsPeerImports": imports,
+    "callerFunctionsReplaced": False,
+    "wholeHelperAndFixtureSourceUnmodified": True,
+    "windowsLike": config["windowsLike"],
+    "realNetworkOrGuestActions": False,
+}
+print(output.getvalue(), file=sys.stderr, end="")
+print(json.dumps(terminal, sort_keys=True))
+assert terminal["helperWholeRegisteredModuleCalls"] == 1
+assert len(posix_ids) == 8 and len(diagnostic_ids) == 2, "exact helper class case counts changed"
+assert set(test_ids) == posix_ids | diagnostic_ids, "unclassified helper coverage"
+assert result.testsRun == config["expectedTests"], "exact helper case count changed"
+if result.wasSuccessful():
+    expected_posix_skips = posix_ids if config["windowsLike"] else set()
+    assert skipped_ids & posix_ids == expected_posix_skips, "POSIX helper capability coverage changed"
+    if powershell is None:
+        assert skipped_ids & diagnostic_ids == diagnostic_ids, "unavailable PowerShell diagnostic did not skip"
+    else:
+        assert diagnostic_ids <= passed_ids, "available PowerShell diagnostic coverage skipped"
+raise SystemExit(not result.wasSuccessful())
+''', timeout=30, input_text=json.dumps({
+        "helperPath": str(helper_path or ROOT / "agent_tools/tests/test_windows_native_packet_recipe.py"),
+        "expectedTests": expected_tests,
+        "windowsLike": windows_like,
+        "temporaryRoot": None if temporary_root is None else str(temporary_root),
+    }))
+
+
+def probe_windows_main_input_bridge_test_suite(
+    helper_path: Path | None = None, *, powershell_absent: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Whole routine suite with local absent-POSIX and optional absent-PS peers.
+
+    Only test/boundary imports see these capability peers. Production module
+    imports, original method objects and complete registered namespaces remain
+    unchanged. No guest, network, credentials or input is involved.
+    """
+    return _run('''import builtins
+import collections
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import types
+import unittest
+
+config = json.load(sys.stdin)
+path = Path(config["helperPath"]).resolve(strict=True)
+boundary = path.parent / "fixtures/windows_main_input_bridge/boundary.py"
+origins = {str(path), str(boundary)}
+original_import = builtins.__import__
+class MissingPosix:
+    name = "nt"
+    environ = {key: value for key, value in os.environ.items()
+               if not(config["powershellAbsent"] and key == "VPN_CONTROL_TEST_POWERSHELL")}
+    def __getattr__(self, name):
+        if name in {"getuid", "O_NOFOLLOW", "O_DIRECTORY", "pread", "fchmod"}:
+            raise AttributeError(name)
+        return getattr(os, name)
+class MissingPowerShell:
+    def which(self, executable):
+        return None
+    def __getattr__(self, name):
+        return getattr(shutil, name)
+def peer_import(name, globals=None, locals=None, fromlist=(), level=0):
+    origin = None if globals is None else globals.get("__file__")
+    if origin in origins and name == "os":
+        return MissingPosix()
+    if origin in origins and name == "shutil" and config["powershellAbsent"]:
+        return MissingPowerShell()
+    return original_import(name, globals, locals, fromlist, level)
+
+module_name = "_windows_main_input_capability_profile"
+spec = importlib.util.spec_from_file_location(module_name, path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[module_name] = module
+counts = collections.Counter()
+registered = {}
+def profile(frame, event, arg):
+    if event != "call":
+        return
+    name = frame.f_globals.get("__name__", "")
+    if name == module_name or name == "_windows_main_input_routine_boundary" or name.startswith("_windows_main_input_whole_current_"):
+        owner = sys.modules.get(name)
+        assert owner is not None and owner.__dict__ is frame.f_globals
+        counts[(name, frame.f_code.co_name)] += 1
+        registered[name] = {"file": frame.f_globals.get("__file__"), "completeRegisteredNamespace": True}
+
+prior_profile = sys.getprofile()
+builtins.__import__ = peer_import
+try:
+    sys.setprofile(profile)
+    spec.loader.exec_module(module)
+    cases = (module.WindowsMainInputBridgePosixTest, module.WindowsMainInputBridgePowerShellTest,
+             module.WindowsMainInputBridgeHistoricalCausalTest, module.WindowsMainInputBridgeCatalogTest)
+    loader = unittest.TestLoader()
+    groups = {case.__name__: {test.id() for test in loader.loadTestsFromTestCase(case)} for case in cases}
+    original_functions = {case: {key: value for key, value in vars(case).items() if callable(value)} for case in cases}
+    suite = loader.loadTestsFromModule(module)
+    output = io.StringIO()
+    result = unittest.TextTestRunner(stream=output, verbosity=2).run(suite)
+    assert all(vars(case)[key] is value for case, functions in original_functions.items() for key, value in functions.items())
+finally:
+    sys.setprofile(prior_profile)
+    builtins.__import__ = original_import
+
+skipped = {test.id() for test, reason in result.skipped}
+failed = {test.id() for test, error in result.failures + result.errors}
+all_ids = set().union(*groups.values())
+passed = all_ids - skipped - failed
+posix_ids = groups["WindowsMainInputBridgePosixTest"] | groups["WindowsMainInputBridgeHistoricalCausalTest"]
+ps_ids = groups["WindowsMainInputBridgePowerShellTest"]
+catalog_ids = groups["WindowsMainInputBridgeCatalogTest"]
+runtime = module._powershell
+expected_skips = posix_ids | (ps_ids if runtime is None else set())
+summary = {"testsRun": result.testsRun, "successful": result.wasSuccessful(), "passed": sorted(passed),
+    "skipped": sorted(skipped), "failures": [{"test": test.id(), "error": error} for test, error in result.failures],
+    "errors": [{"test": test.id(), "error": error} for test, error in result.errors],
+    "sourceMethodObjectsUnchanged": True, "registeredWholeNamespaces": registered,
+    "registeredWholeCalls": [{"module": key[0], "function": key[1], "calls": count} for key, count in sorted(counts.items())],
+    "declaredMissingPosix": ["getuid", "O_NOFOLLOW", "O_DIRECTORY", "pread", "fchmod"],
+    "powerShellIntentionallyUnavailable": config["powershellAbsent"], "actualPowerShellRuntime": runtime,
+    "nativeNetworkCredentialsOrInput": False}
+print(output.getvalue(), file=sys.stderr, end="")
+print(json.dumps(summary, sort_keys=True))
+assert len(groups["WindowsMainInputBridgePosixTest"]) == 33
+assert len(groups["WindowsMainInputBridgePowerShellTest"]) == 8
+assert len(groups["WindowsMainInputBridgeHistoricalCausalTest"]) == 13
+assert len(groups["WindowsMainInputBridgeCatalogTest"]) == 2
+assert result.testsRun == 56 and set(skipped) == expected_skips
+assert catalog_ids <= passed
+if runtime is not None:
+    assert ps_ids <= passed, "available PowerShell current method coverage skipped"
+assert counts[(module_name, "<module>")] == 1
+assert counts[("_windows_main_input_routine_boundary", "<module>")] == 1
+assert sum(count for (name, function), count in counts.items() if name.startswith("_windows_main_input_whole_current_") and function == "<module>") == 1
+raise SystemExit(not result.wasSuccessful())
+''', timeout=45, input_text=json.dumps({
+        "helperPath": str(helper_path or ROOT / "agent_tools/tests/test_windows_main_input_bridge.py"),
+        "powershellAbsent": powershell_absent,
+    }))
+
+def probe_windows_main_input_bridge_without_powershell() -> subprocess.CompletedProcess[str]:
+    return probe_windows_main_input_bridge_test_suite(powershell_absent=True)
+
+
 def check_contracts(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     for probe in IMPORT_PROBES:
@@ -759,7 +1021,10 @@ def check_contracts(root: Path = ROOT) -> list[str]:
                         ("windows-android-test-suites", probe_windows_android_test_suites),
                         ("windows-visual-test-suites", probe_windows_visual_test_suites),
                         ("windows-fixture-storage-test-suite", probe_windows_fixture_storage_test_suite),
-                        ("windows-android-persisted-start-test-suite", probe_windows_android_persisted_start_test_suite)):
+                        ("windows-android-persisted-start-test-suite", probe_windows_android_persisted_start_test_suite),
+                        ("windows-native-packet-recipe-test-suite", probe_windows_native_packet_recipe_test_suite),
+                        ("windows-main-input-bridge-test-suite", probe_windows_main_input_bridge_test_suite),
+                        ("windows-main-input-bridge-without-powershell", probe_windows_main_input_bridge_without_powershell)):
         result = probe()
         if result.returncode:
             errors.append(_failure(name, result))
@@ -772,7 +1037,7 @@ def main() -> int:
         print("Python platform contract check failed:", file=sys.stderr)
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 7} capability probes)")
+    print(f"Python platform contracts OK ({len(IMPORT_PROBES)} import probes, {len(METHOD_PROBES) + 10} capability probes)")
     return 0
 
 

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "originalPath": "agent_tools/windows_qga_transfer.py",
+  "sourceSha256": "028dacbb4ef679270c10b77a272c687c780fb43c9277a033411b098836b351bb",
+  "bytes": 26476,
+  "preservedBeforeDiagnosis": {
+    "path": ".runtime/windows-parity-20261019/windows-fixture/canonical-direct-first-native-unknown-before-diagnosis/custody-snapshot.private.json",
+    "sha256": "c9336e49476502deead513c9f3ab5a2a65d598caef9c4c0a19c18a3d75ec7ca2"
+  },
+  "privateCausalQualification": {
+    "path": ".runtime/windows-parity-20261019/windows-fixture/qga-recv-poll-private-preparation-v1/qualify_private.py",
+    "sha256": "093ef08a2bd8288c8395b36b7aa927ab42621c5bfe6d0f79bb952efcc4861db0"
+  },
+  "scope": "Complete authentic original module, executed through its actual whole-source registered factory consumer. Local AF_UNIX RED/GREEN only; the original native process outcome is UNKNOWN and its elapsed time was not recorded.",
+  "nativeActions": false,
+  "declaredSeams": [
+    "On Darwin only, Linux SO_PEERCRED metadata is the same-process local fixture identity. On Linux the real socket peer credentials are used. All AF_UNIX connect/send/recv/timeouts/EOF and original source/factory execution are real."
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "state": "AUTHENTIC_WHOLE_SOURCE_FIXTURES_NATIVE_UNQUALIFIED",
+  "fixtures": {
+    "v1/controls.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/test_controls.py",
+      "sha256": "af848a0c6ea64dad489bdab9b7567d09d21bdbd44de06eee6315250a41bca597",
+      "bytes": 40523,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/main.current.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/main_input_bridge.py",
+      "sha256": "363576f8ae4dcd26fa0e15d57b8d2b2a500b5754ca0588ee7ff7796d568d518c",
+      "bytes": 30513,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/initial-main.before.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/initial-local-control-failure-v1/main_input_bridge.py.before.source",
+      "sha256": "71647e80d72e554c952ae578d2366321b185f2b1be4225237c52d17b6c6e5a92",
+      "bytes": 23872,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/capture-observer.before.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/capture-scope-cause-v1/secure_observer.py.before.source",
+      "sha256": "4bfecddfebed1b70e66a448466acc23727a55c21d5d5793896d34fb287a2947d",
+      "bytes": 45089,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/canonical-observer.before.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/canonical-envelope-limit-cause-v1/secure_observer.py.before.source",
+      "sha256": "f222888e07ae2a1e58f21b8eb0ffb1acd5d45181114218df7b99d983682f0c9a",
+      "bytes": 28741,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/observer.current.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/secure_observer.py",
+      "sha256": "13608d178a2cd074f796718e643be415ac3353f1a992a75d5d441d1e4bc947fb",
+      "bytes": 50637,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/partial-main.before.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/qmp-partial-custody-cause-v1/main_input_bridge.py.before.source",
+      "sha256": "eca4c4d75766914909d323933325ed726f3527966efb72cf9b32eecad1a98f74",
+      "bytes": 26920,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/frame-main.before.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/frame-conversion-custody-cause-v1/main_input_bridge.py.before.source",
+      "sha256": "2668575e4f8123061c78d38451d15ebe979814525a677cd998b2f4b80fc93f98",
+      "bytes": 29516,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v1/private-main.before.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v1/private-qmp-unknown-cause-v1/main_input_bridge.py.before.source",
+      "sha256": "3d4c09b01996127e918dfbb3e0e7802cf7a6ab676ac8176415b3ac0fa7cf3899",
+      "bytes": 28930,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v2/controls.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v2/test_controls.py",
+      "sha256": "d7eb9b8cb3cf88f99714d9531206257833536cc3d63b754f67de8921b371e59a",
+      "bytes": 47041,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v2/main.current.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v2/main_input_bridge.py",
+      "sha256": "260b8f80b049e024cb4985c2adb3115ab6e44a049d601b4232eb5a970a012ae9",
+      "bytes": 32710,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v2/observer.current.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v2/secure_observer.py",
+      "sha256": "32f3822d5310497ebd64e5c4ad579e856489eebc68f4a9b1cf9d7019290b11e3",
+      "bytes": 52204,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    },
+    "v3/controls.source": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v3/test_controls.py",
+      "sha256": "da84871af2394aa99a3a72b573b2956bbbf02979312a57af43e5ffa1e4bf25a3",
+      "bytes": 50513,
+      "completeOriginalBytes": true,
+      "nativeAuthority": false
+    }
+  },
+  "production": {
+    "agent_tools/windows_main_input_bridge.py": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v3/main_input_bridge.py",
+      "sha256": "3e4a435f03df3e2daa11b6296c454bd2c4ab7a11188c7d1ff781476ef7f456ae",
+      "bytes": 32902,
+      "sourceBytesUnchanged": true
+    },
+    "agent_tools/windows_main_secure_observer.py": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v3/secure_observer.py",
+      "sha256": "07376d43e5f26b01c90ed62bb6ff5f6c4b6e47bb75bb8c7e32479ecc9e49a96c",
+      "bytes": 52279,
+      "sourceBytesUnchanged": true
+    },
+    "agent_tools/windows_main_input_observer_backend.py": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v3/canonical_observer_backend.py",
+      "sha256": "0b744e386214e1aa622a99f805c356710b93ba863b33e2870880edf5e9815a53",
+      "bytes": 10258,
+      "sourceBytesUnchanged": true
+    },
+    "agent_tools/windows_pending_installer_join.py": {
+      "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v3/pending_join.py",
+      "sha256": "3eab6a7fbca0f40dd7a618ce19190ad1459fa28e74a5d64761764d3c9e5445ce",
+      "bytes": 14717,
+      "sourceBytesUnchanged": true
+    }
+  },
+  "baselineInputs": {
+    "agent_tools/windows_artifact_transfer.py": {
+      "sha256": "2938a7c6c25d23adc9683ced126fe2d3c0a88614dab59a7b134a624d6f8b0ee8",
+      "bytes": 44601
+    },
+    "agent_tools/windows_source_fixture_login.py": {
+      "sha256": "156fe5e4e38987b348ebc58b331d16c00f328ab5850567a19e5606205257bf39",
+      "bytes": 15433
+    },
+    "scripts/capture_visual_windows_qemu.py": {
+      "sha256": "c165aefaa7301231638b17a08b891cce41092c7c4ca66628f5eb8b3503958e17",
+      "bytes": 15271
+    }
+  },
+  "limits": [
+    "No native Windows/provider/frame/key/credential admission",
+    "No network or VM input",
+    "Opened-frame review remains an external genuine native gate",
+    "Historical fixed sources preserve original causal chronology; latest V3 controls execute actual mapped current production sources"
+  ],
+  "metadata": {
+    "causal-chain.json": {
+      "sha256": "5737f719bee87a9a3331583792ad432e3a7fc2f6a16c4f09604ed0dd6397dcdd",
+      "bytes": 39823
+    },
+    "capability-profiles.json": {
+      "sha256": "5a8c55d52f69be201f409d8530adfd7d3ecb7edf0c59f1e56074fc86b69fc6fc",
+      "bytes": 560
+    }
+  }
+}

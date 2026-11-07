@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "originalSourcePath": "agent_tools/tests/test_android_api35_routing_step_diagnostic.py",
+  "originalSourceSha256": "41252a222c5b9ec5e148facdd89ba21f959f87daf3d00ed273c087df6100ffd6",
+  "originalSourceBytes": 8691,
+  "fragmentSha256": "94547a8fffccbce08e0a6ed95f2898abea3c1c6b73620ff5345b9476f9140fad",
+  "fragmentBytes": 1565,
+  "definitions": [
+    {
+      "name": "launch",
+      "startLine": 36,
+      "endLine": 39,
+      "sha256": "8dc0ab6f03f1014e33a37385ce66fe3ebd2713e974d69365805355f43d1a525c"
+    },
+    {
+      "name": "test_live_child_and_exact_partial_bytes_retained_before_owned_kill",
+      "startLine": 56,
+      "endLine": 61,
+      "sha256": "c67c144b0ce507ece2a9e01fe5bd449c603931bfd29f198aeef93705d6f956d2"
+    },
+    {
+      "name": "test_exited_parent_with_descendant_held_pipe_is_distinct",
+      "startLine": 63,
+      "endLine": 68,
+      "sha256": "5534215b26d734794a18f4d3d1c254b9a8a827df09a32438a513c8fa6b7f34ae"
+    }
+  ],
+  "controlledCause": "An unacknowledged child startup delay consumes the unchanged 50 ms measurement budget before the required fixture state exists.",
+  "originalFullcheckCauseAttributed": false,
+  "nativeActionAllowed": false
+}

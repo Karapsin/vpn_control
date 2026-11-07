@@ -2,7 +2,8 @@
 
 This accepts only one UID mismatch, on the mutable CA directory, when its
 metadata exactly matches the package's independently checked tmpfiles policy.
-No other pacman warning or file alteration is ignored. This function supplies
+One bounded missing sync-database advisory may precede that warning. No other
+pacman warning or file alteration is ignored. This function supplies
 no native authority; its caller must observe and hold every argument itself.
 """
 from __future__ import annotations
@@ -13,7 +14,7 @@ def swtpm_runtime_owner_accepted(return_code,stdout,stderr,policy,metadata,uid,g
     if type(return_code)is not int or return_code!=1:return False
     if type(stdout)is not bytes or type(stderr)is not bytes:return False
     if re.fullmatch(rb'swtpm: [1-9][0-9]{0,5} total files, 1 altered file\n',stdout)is None:return False
-    if stderr!=b'warning: swtpm: /var/lib/swtpm-localca (UID mismatch)\n':return False
+    if re.fullmatch(rb"(?:warning: database file for '[A-Za-z0-9][A-Za-z0-9@+_.-]{0,127}' does not exist \(use '-Sy' to download\)\n)?warning: swtpm: /var/lib/swtpm-localca \(UID mismatch\)\n",stderr)is None:return False
     if type(policy)is not str or len(policy.encode())>16384:return False
     rows=[line.split() for line in policy.splitlines() if line.strip() and not line.lstrip().startswith('#')]
     if len(rows)!=1:return False
