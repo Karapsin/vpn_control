@@ -897,6 +897,21 @@ local defects and none is native acceptance. Evidence is under
 | Hosted Windows capture never names its target | `test_visual_platform.test_hosted_capture_wrappers_name_the_target_the_parser_requires` | `capture-local` requires `--target`. The Linux and macOS wrapper passes `native:<platform>`; the Windows wrapper did not, so every hosted Windows capture would end "Windows visual capture is incomplete" after taking its frames. Found by reading, before any hosted run. |
 | Windows remote visual driver rejects the shared `--target` and relative `--output` | `fixtures/windows_remote_visual_capture/`; `test_windows_remote_visual_capture.test_preserved_*` and `test_documented_capture_local_command_with_relative_output_collects_the_frame` | RED: exit 2 `unrecognized arguments: --target`, and `[Errno 2]` for the relative scene path. GREEN adds the capture-only `deployment:<id>` target, allowlisted by the deployment's own retained `windowsUacVisual` intent. Local lifecycle paths still refuse it. No VM was contacted. |
 
+### First full CI run of the merge (run 42392787639 and siblings, 2026-11-07)
+
+These commits had never run in CI, so tests skipped on the Mac met Linux and Windows for the first time. Logs are under `.runtime/windows-parity-20261107/ci/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Windows helper build refuses a vulnerable toolchain | The Windows Desktop Package workflow itself | `Microsoft.DotNet.ILCompiler 10.0.11` gained high-severity advisory GHSA-p3jp-9v83-76w9 on 2026-11-03 and audit warnings are errors. Pins move to runtime 10.0.14 and SDK 10.0.403. Never suppress the audit. |
+| Packaged smoke assumes the wrong start state | `test_packaged_cli_harness.SourceModeSmokeTest` and the packaged smoke on each platform | A new workspace starts in subscription mode. The script expected current-locations, and an exact error line, and had never run on a real package. RED on Linux and macOS CI; GREEN on a real macOS package. The product is unchanged. |
+| Linux-only stand-ins lag dev's sign-in changes | `test_windows_login_credential_continuation_execution`, `test_readiness_windows_login` | The stand-in lacked `LOGIN_OWNER_REMAINING`, and a fake owner typed without the credential intent the real flow writes first. Both skip on the Mac. |
+| Retirement fixture root collides with the modeled Linux `/tmp` | `test_ssh_owned_channel_retirement` | On Linux a real root under `/tmp` is remapped into itself. It moves to `/var/tmp`; the preserved fixture is redirected without changing its bytes. |
+| Stale pin of a changed client | `test_ssh_acceptance_owner_readiness` | dev's client change touched read and follow timeouts, not the request this case proves, so the pin is renewed. |
+| Tests assume an order or a moving clock | `test_native_host_observation`, `test_android_persisted_start` | `/proc` listing order is arbitrary, and a Windows clock can return the same value twice. |
+| Probe budget too short for real PowerShell | `scripts/check_python_platform_contracts.py` | 30 s cannot fit the complete helper on a hosted Windows runner. |
+| Legacy intent now keeps closed exit facts | `test_readiness_windows_sockets` | dev retains metadata for a legacy intent, so the test asserts that it holds no output rather than that no file exists. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

@@ -18,7 +18,82 @@ import unittest
 from unittest import mock
 
 from test_packaged_cli import (envelope, stream_records, verify_stream_records, interrupt_stream,
-                               large_routing_fixture, verify_routing_export, implicit_owner_smoke, smoke)
+                               large_routing_fixture, verify_routing_export, implicit_owner_smoke, smoke,
+                               source_mode_smoke)
+
+
+class SourceModeSmokeTest(unittest.TestCase):
+    """The smoke's source-mode walk against the product's start state (not native evidence)."""
+
+    @staticmethod
+    def fixture_cli(owner="fixture-owner"):
+        # A new workspace starts in subscription mode with nothing selected, as
+        # DesktopStateStore and MainUiState default and agent_docs/cli.md describes.
+        state = SimpleNamespace(mode="subscription", selected="", revision=3, subscriptions=[])
+
+        def reply(args, code="OK", data=None):
+            ok = code == "OK"
+            if "--json" in args:
+                return subprocess.CompletedProcess([], 0 if ok else 1, json.dumps({
+                    "schemaVersion": 1, "ok": ok, "code": code, "controllerId": owner, "final": True,
+                    "configurationRevision": state.revision, "data": data or {}}), "")
+            if not ok:
+                return subprocess.CompletedProcess([], 1, "", code + ": invalid state directory or command.\n")
+            lines = ["OK", f"Controller: {owner}", f"Revision: {state.revision}", "Completion: final",
+                     *(f"  {key}: {value}" for key, value in (data or {}).items())]
+            return subprocess.CompletedProcess([], 0, "\n".join(lines) + "\n", "")
+
+        def invoke(_workspace, *args):
+            command = [value for value in args if value != "--json"]
+            guards = {}
+            while command and command[0] in ("--controller-id", "--if-revision"):
+                guards[command[0]] = command[1]
+                command = command[2:]
+            if "--if-revision" in guards and "--controller-id" not in guards:
+                return reply(args, "INVALID_ARGUMENT")
+            if guards.get("--controller-id", owner) != owner or int(guards.get("--if-revision", state.revision)) != state.revision:
+                if command[:2] != ["source", "set"] or len(command) < 4:
+                    return reply(args, "CONFLICT")
+            if command == ["status"]:
+                return reply(args, data={"runtimeRunning": False})
+            if command == ["source", "show"]:
+                subscription = state.selected if state.mode == "subscription" else None
+                return reply(args, data={"mode": state.mode, "subscriptionId": subscription})
+            if command == ["subscriptions", "list"]:
+                return reply(args, data={"subscriptions": list(state.subscriptions)})
+            if command == ["settings", "show", "refresh.policy"]:
+                return reply(args, data={"refresh.policy": "off"})
+            if command[:2] == ["subscriptions", "add"]:
+                state.subscriptions.append("fixture-subscription")
+                state.selected = "fixture-subscription"
+                state.revision += 1
+                return reply(args, data={"id": "fixture-subscription"})
+            if command[:2] == ["subscriptions", "delete"]:
+                state.subscriptions.remove(command[2])
+                state.selected = ""
+                state.revision += 1
+                return reply(args)
+            target = command[2:]
+            if (not target or target[0] not in ("current-locations", "subscription")
+                    or len(target) > (1 if target[0] == "current-locations" else 2)):
+                return reply(args, "INVALID_ARGUMENT")
+            if guards.get("--controller-id", owner) != owner or int(guards.get("--if-revision", state.revision)) != state.revision:
+                return reply(args, "CONFLICT")
+            if len(target) == 2 and target[1] not in state.subscriptions:
+                return reply(args, "NOT_FOUND")
+            before = (state.mode, state.selected)
+            state.mode = target[0]
+            if len(target) == 2:
+                state.selected = target[1]
+            state.revision += (state.mode, state.selected) != before
+            selected = "current-locations" if state.mode == "current-locations" else state.selected or "subscription"
+            return reply(args, data={"id": selected})
+        return invoke, state, owner
+
+    def test_walk_starts_from_the_new_workspace_subscription_mode(self):
+        invoke, state, owner = self.fixture_cli()
+        source_mode_smoke(Path("fixture-workspace"), owner, invoke)
+        self.assertEqual(("current-locations", []), (state.mode, state.subscriptions))
 
 
 class StaticLaunchFailureTest(unittest.TestCase):

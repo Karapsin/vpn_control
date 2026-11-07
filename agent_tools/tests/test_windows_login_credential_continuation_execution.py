@@ -177,7 +177,7 @@ class CredentialContinuationExecution(unittest.TestCase):
         source += "_original_login_flow=_login_flow\nprepare_screen=_credential_only_screen\n"
         source += "OPERATION=operation;LOGIN_MODE='login-submit';LOGIN_SID='SID';SETUP={'user':'recovery'};SPEC={'deploymentId':'controlled'}\n"
         source += 'LOGIN_PROFILE=' + repr(self.profile) + ';LOGIN_EXPECTED=' + repr(self.identity['expected']) + '\n'
-        source += "LOGIN_ACCOUNT_SCRIPT='public-fixed-account';LOGIN_OWNER_SECRET=secret;LOGIN_OWNER_PHASE=owner.phase;SESSION_SCRIPT='public-fixed-session'\n"
+        source += "LOGIN_ACCOUNT_SCRIPT='public-fixed-account';LOGIN_OWNER_SECRET=secret;LOGIN_OWNER_PHASE=owner.phase;LOGIN_OWNER_REMAINING=lambda:60;SESSION_SCRIPT='public-fixed-session'\n"
         source += "fresh={'machine':'controlled','boot':'controlled','expectedSid':'SID','ordinary':True,'tokenSid':'SID','console':1,'session':{'SessionId':1,'User':'recovery','Flags':0,'State':0,'Logon':123},'explorers':[]}\n"
         source += "def save(name,value):\n prefix=owner.prefix;owner.prefix=name\n try:owner._save('',value)\n finally:owner.prefix=prefix\n"
         source += "def script(label,program):\n if label.startswith('login-account'):return {'name':'recovery','sid':'SID','enabled':True,'loginKeyboard':'00000409'}\n if label.startswith('login-after'):return {**fresh,'session':{**fresh['session'],'Flags':1},'explorers':[{'SessionId':1}]}\n return fresh\n"

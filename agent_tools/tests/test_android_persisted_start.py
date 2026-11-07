@@ -205,7 +205,7 @@ class AllocationCoverageTests(unittest.TestCase):
         evidence = runtime["LAST_ALLOCATION_EVIDENCE"]
         self.assertEqual(evidence["coveredNativeBytes"], 12 * 1024 ** 3)
         self.assertEqual(len(evidence["bridgeRecords"]), 2)
-        self.assertNotEqual(evidence["bridgeRecords"][0]["observedAtNs"], evidence["bridgeRecords"][1]["observedAtNs"])
+        self.assertLessEqual(evidence["bridgeRecords"][0]["observedAtNs"], evidence["bridgeRecords"][1]["observedAtNs"])
 
     def test_unrepresented_native_allocation_is_charged_in_full(self):
         auth, cap, _, probe = allocation_control()

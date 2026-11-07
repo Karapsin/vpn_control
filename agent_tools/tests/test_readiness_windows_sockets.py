@@ -213,7 +213,8 @@ class CompleteWindowsSocketTests(unittest.TestCase):
             operation=str(uuid4());prefix='readiness-'+operation+'-session'
             self.assertEqual('observed',self.run_packet(operation=operation,producer=legacy)['state'])
             self.assertEqual('observed',self.run_packet(operation=operation,producer=producer)['state'])
-            self.assertEqual(not fixed,(self.root/(prefix+'.observed-terminal.json')).exists())
+            observed=json.loads((self.root/(prefix+'.observed-terminal.json')).read_text())
+            self.assertEqual(not fixed,'out-data'in observed)
             (self.root/(prefix+'.terminal.json')).unlink()
             result=self.run_packet(operation=operation,producer=producer)
             self.assertEqual('blocked'if fixed else'observed',result['state'])

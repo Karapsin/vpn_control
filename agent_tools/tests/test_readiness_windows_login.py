@@ -417,7 +417,7 @@ class DurableProtectedOwnerTests(unittest.TestCase):
         out,err=run(login);self.assertEqual([],self.received);self.assertIn(b'instance_login_prior_owner_unresolved',err)
         self.assertFalse((self.root/('login-owner-'+self.operation+'.intent.json')).exists())
     def test_two_concurrent_uuids_share_actual_root_lock_and_only_first_can_enter(self):
-        self.release.set();first=self.operation;source=self.source(login,extra='time.sleep(.4)');process,digest=self.spawn(source,b'\x00\x00\x00\x03A!9')
+        self.release.set();first=self.operation;source=self.source(login,extra="(root/('login-credential-'+operation+'.intent.json')).write_text('{}');time.sleep(.4)");process,digest=self.spawn(source,b'\x00\x00\x00\x03A!9')
         path=self.root/('login-owner-'+first+'.owner.json');limit=time.monotonic()+3
         while not path.exists()and time.monotonic()<limit:time.sleep(.01)
         self.assertTrue(path.exists());self.operation=str(uuid.uuid4());second=self.with_approval(self.source(login),self.approved(first,digest));other,_=self.spawn(second,b'\x00\x00\x00\x03A!9')

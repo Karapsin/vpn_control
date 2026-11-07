@@ -190,8 +190,8 @@ class NativeHostObservationTest(unittest.TestCase):
         rows = [{"pid": 3726886, "ticks": 21863571, "comm": "7", "exe": "qemu-system-x86_64", "cmdline": b"\0".join((b"qemu-system-x86_64", b"-m", b"4096", b""))},
                 {"pid": 3847348, "ticks": 22216504, "comm": "7", "exe": "qemu-system-x86_64", "cmdline": b"\0".join((b"qemu-system-x86_64", b"-m", b"4096", b""))}]
         payload = self._inert_remote_census(rows)
-        self.assertEqual([(row["pid"], row["ticks"]) for row in rows],
-                         [(row["pid"], row["startTicks"]) for row in payload["vms"]])
+        self.assertEqual(sorted((row["pid"], row["ticks"]) for row in rows),
+                         sorted((row["pid"], row["startTicks"]) for row in payload["vms"]))
         result = observation._measurement(payload, 100, {"pid": rows[0]["pid"], "startTicks": rows[0]["ticks"]}, 5)
         self.assertEqual("OBSERVED", result["state"])
         self.assertEqual(8 * 1024 ** 3, result["measurement"]["runningConfiguredMemoryBytes"])

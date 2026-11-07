@@ -286,16 +286,21 @@ def source_mode_smoke(workspace, identity, invoke):
                     and selected["data"].get("id") == expected_id,
                     "JSON source selection lost its committed identity or revision")
 
-    revision = observe("current-locations", None)
+    # A new workspace starts in subscription mode with nothing selected.
+    revision = observe("subscription", "")
     require(read("subscriptions", "list")["data"]["subscriptions"] == [],
             "Source-mode smoke requires the fresh empty fixture")
     require(read("settings", "show", "refresh.policy")["data"]["refresh.policy"] == "off",
             "Source-mode smoke requires automatic subscription refresh to remain disabled")
     # Empty subscription mode must be reachable from both renderers, including a no-op retry.
-    select(("subscription",), revision, revision + 1, "subscription")
-    revision = observe("subscription", "", revision + 1)
+    select(("subscription",), revision, revision, "subscription")
+    observe("subscription", "", revision)
     select(("subscription",), revision, revision, "subscription", human=True)
     observe("subscription", "", revision)
+    select(("current-locations",), revision, revision + 1, "current-locations")
+    revision = observe("current-locations", None, revision + 1)
+    select(("subscription",), revision, revision + 1, "subscription")
+    revision = observe("subscription", "", revision + 1)
     select(("current-locations",), revision, revision + 1, "current-locations")
     revision = observe("current-locations", None, revision + 1)
     select(("subscription",), revision, revision + 1, "subscription", human=True)
@@ -331,7 +336,7 @@ def source_mode_smoke(workspace, identity, invoke):
         envelope(invoke(workspace, "--json", *args), 1, "INVALID_ARGUMENT")
         human = invoke(workspace, *args)
         require(human.returncode == 1 and not human.stdout.strip()
-                and human.stderr.splitlines()[:1] == ["INVALID_ARGUMENT"],
+                and human.stderr.startswith("INVALID_ARGUMENT"),
                 "Invalid human source arguments did not fail on stderr")
         observe("subscription", subscription_id, revision)
     for guards, target, code in (

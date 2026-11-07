@@ -874,7 +874,7 @@ if result.wasSuccessful():
     else:
         assert diagnostic_ids <= passed_ids, "available PowerShell diagnostic coverage skipped"
 raise SystemExit(not result.wasSuccessful())
-''', timeout=30, input_text=json.dumps({
+''', timeout=180, input_text=json.dumps({
         "helperPath": str(helper_path or ROOT / "agent_tools/tests/test_windows_native_packet_recipe.py"),
         "expectedTests": expected_tests,
         "windowsLike": windows_like,

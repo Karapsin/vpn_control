@@ -2156,7 +2156,8 @@
       ],
       "sourceSha256": [
         "a088df1dfcd24fdc836b16d8c5011cb61e26397bcfc3265630624e2814926e51",
-        "e722b3b25c0d24356c36e38490b2d6065b5dc40b13f91668754d5eb3b07df2ce"
+        "e722b3b25c0d24356c36e38490b2d6065b5dc40b13f91668754d5eb3b07df2ce",
+        "e6afca9292beaaa15ff5f35e416371f19787fe2461cd9741bcc137a942f33b92"
       ]
     },
     "agent_tools/tests/fixtures/ssh_acceptance_preparation/controller14d.before.source": {
@@ -7539,7 +7540,8 @@
       ],
       "sourceSha256": [
         "e2f01038406d5169d4c7903643d240328effb4f1ec76db5d53cab935ae9d12c3",
-        "fcdd63ed18a67612e8a89f916403f58591ca7564761a09ab688bb1941e0a6355"
+        "fcdd63ed18a67612e8a89f916403f58591ca7564761a09ab688bb1941e0a6355",
+        "91ad91a41534de8c4a7d21d527adf390ab3b558721a7313aa08aff263a930cfd"
       ]
     },
     "agent_tools/tests/test_android_poststart_current_authority.py": {
@@ -9209,7 +9211,8 @@
         "9fb5a0a8d2c55b7783a1c1ad471a5b69522f927175a475c1bf4135565ce15fd5",
         "199b146a9d7958ad51d2a7a6836fd16cf3c9bde2e40d2e7a476c8e07093b5255",
         "b9eafc7128c0accf40a62b6fc150338050b97539c0f9c282aa6d702ca786ed52",
-        "3ab18c00fc9d6852b2fc7fe96b0f8466c41e650ae8e2af970e6ce9a45e2e793a"
+        "3ab18c00fc9d6852b2fc7fe96b0f8466c41e650ae8e2af970e6ce9a45e2e793a",
+        "2367b4cf4ab935c95d030ea96a4dd869e679d08d251811422d5becdfab5f00a4"
       ]
     },
     "agent_tools/tests/test_readiness_windows_preexec.py": {
@@ -9271,7 +9274,8 @@
         "f46d23335e6e6d99cf26ccc39456a63891542fc9cc13e7d9502aaf14803d03cf",
         "3e6211a680ab8281fb2bb9f15601daef17758498c047adf14deba03b50ca7006",
         "2d597dc99dfe3672c046c0085c6aff5406b0ce88907ee8848dfda837420580dd",
-        "f2feba1db04003e49f01119f575ef0e138dfe3bc042a4d6fdcf8de404753dadd"
+        "f2feba1db04003e49f01119f575ef0e138dfe3bc042a4d6fdcf8de404753dadd",
+        "ebde29295f97f20acf5e4617505f52396a87e431f4a59807dc37dbf95add2053"
       ]
     },
     "agent_tools/tests/test_recovery_route_source_custody.py": {
@@ -9564,7 +9568,8 @@
       ],
       "sourceSha256": [
         "f2fa8b20acabc830334d4f83f830c71506bcc7c49f5c5f84706253f85f479bb9",
-        "ff4ca501153500e2bda6f8c2bad0d67c15cfacc6f74308d60c7be2c2c7b791b2"
+        "ff4ca501153500e2bda6f8c2bad0d67c15cfacc6f74308d60c7be2c2c7b791b2",
+        "ab80b3e680d1da6460bcfd58222939fd7a2be24a1e3e809446a2a6252f54cc4f"
       ]
     },
     "agent_tools/tests/test_ssh_acceptance_stream_cleanup.py": {
@@ -10316,7 +10321,8 @@
         "ba8be2c27ecaa02e655bb2c604b49b087d747977952aa626a51ef1b4c4c82d19",
         "e50befaf39859ecd0d6a041aa26cae7986becbf3efb5c37b1f2d829ac0f99dd4",
         "cf8a125c7480641a418bd96ae9e625bb38624904cdd2c8d9a2220114d063ab2c",
-        "d9769644baeccd7b35c042f30d7f4d3c4a6252a37dfec05e32996acdb1344a15"
+        "d9769644baeccd7b35c042f30d7f4d3c4a6252a37dfec05e32996acdb1344a15",
+        "6794b8d22abd1e807f419f1e8589275dac6753dff666f63b9fa37e10144f9562"
       ]
     },
     "agent_tools/tests/test_ssh_privileged_program.py": {

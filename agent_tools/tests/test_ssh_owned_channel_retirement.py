@@ -184,7 +184,9 @@ class OwnedChannelRetirementTests(unittest.TestCase):
         This is a routine logic fixture, never a native acceptance receipt.
         """
         subject = subject or self.subject
-        short = tempfile.TemporaryDirectory(prefix="r-", dir="/tmp")
+        # /tmp is the modeled Linux root's own path, so the real root stays outside it:
+        # short enough for the AF_UNIX bind, and never remapped into itself on Linux.
+        short = tempfile.TemporaryDirectory(prefix="r-", dir="/var/tmp")
         self.addCleanup(short.cleanup)
         native = Path(short.name).resolve()
         corr = correlation or subject.CORRELATION; stage = native / "tmp" / ("vpn-channel-" + corr)
@@ -1304,7 +1306,13 @@ class Fixed546RetirementTests(unittest.TestCase):
         for case_type, guards, fixed in ((old.OwnedChannelRetirementTests, unfixed, False), (OwnedChannelRetirementTests, unfixed, True),
                                          (OwnedChannelRetirementTests, current, True)):
             case = case_type("runTest"); case.setUp(); self.addCleanup(case.doCleanups)
-            with mock.patch.object(self.subject.channel, "_guard_program", guards):
+            # The preserved fixture hard-codes dir="/tmp", which Linux remaps into itself.
+            real_temporary = tempfile.TemporaryDirectory
+            def outside_modeled_tmp(*args, **kwargs):
+                if kwargs.get("dir") == "/tmp":
+                    kwargs["dir"] = "/var/tmp"
+                return real_temporary(*args, **kwargs)
+            with mock.patch.object(self.subject.channel, "_guard_program", guards), mock.patch.object(tempfile, "TemporaryDirectory", outside_modeled_tmp):
                 execute, calls, _ = case._native(subject=self.subject, correlation=self.subject.THIRD_CORRELATION, action="retire")
             namespace = dict(zip(execute.__code__.co_freevars, (cell.cell_contents for cell in execute.__closure__)))["namespace"]
             original_inner = namespace["inner"]
