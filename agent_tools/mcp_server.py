@@ -8266,6 +8266,7 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
                     expected = adapter.SCENARIO_ARTIFACT_KEYS.get(inputs.get("scenarioId"))
                     if expected is None or set(inputs.get("artifactIds", {})) != expected:
                         return _error("vm_workflow", "Scenario is unsupported or its registered artifacts do not match the fixed recipe.")
+                    adapter.admit_start(REPO_ROOT, inputs, resolve_bundle)
                     result = executor.start(inputs)
                 else:
                     if set(inputs) != {"correlationId"}:
@@ -8273,10 +8274,7 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
                     method = {"scenario-status": executor.status, "scenario-resume": executor.resume, "scenario-collect": executor.collect}[action]
                     result = method(inputs["correlationId"])
                 accepted = result.get("state") == "submitted" or (result.get("state") == "terminal" and result.get("exitCode") == 0)
-                product_action = result.get("scenarioId") in {"linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
-                return {"tool": "vm_workflow", "ok": accepted,
-                        "evidenceClass": "installed-package" if product_action else "component",
-                        "productAction": product_action, **result}
+                return {"tool": "vm_workflow", "ok": accepted, **adapter.public_evidence(result), **result}
             except (ValueError, OSError) as error:
                 return _error("vm_workflow", str(error))
         if action in ("environment-status", "environment-reserve", "environment-release"):

@@ -46,6 +46,17 @@ _SCENARIOS = {
         "scripts/native_fixture_preflight.py",
         "scripts/native_fixture_run.sh",
     ),
+    "windows-scenario-driver": (
+        "agent_tools/windows_scenario_host_job.py",
+        "agent_tools/windows_ordinary_task.py",
+        "agent_tools/windows_ordinary_process_owner.py",
+        "agent_tools/windows_ordinary_task_owner.ps1",
+        "agent_tools/windows_artifact_transfer.py",
+        "agent_tools/readiness_windows_guest.py",
+        "agent_tools/windows_scenario_publisher.ps1.template",
+        "agent_tools/windows_scenario_system_run.ps1.template",
+        "agent_tools/windows_scenario_qualification_child.ps1",
+    ),
 }
 
 
@@ -212,7 +223,8 @@ def prepare_bundle(root: str | Path, scenario_id: str, output_directory: str | P
         (stage / MANIFEST_NAME).write_bytes(manifest_bytes)
         os.chmod(stage / MANIFEST_NAME, 0o600)
         _isolated_import(stage, files[0])
-        os.replace(stage / "scripts", destination / "scripts")
+        for name in sorted({Path(str(entry["path"])).parts[0] for entry in before}):
+            os.replace(stage / name, destination / name)
         os.replace(stage / MANIFEST_NAME, destination / MANIFEST_NAME)
         stage.rmdir()
     except Exception:

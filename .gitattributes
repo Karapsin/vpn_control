@@ -10,6 +10,9 @@ visual-tests/baselines/**/*.png filter=lfs diff=lfs merge=lfs -text
 /agent_tools/**/*.py -text
 /agent_tools/ssh_source_file_gateway.source -text
 /agent_tools/windows_ordinary_task_owner.ps1 -text
+/agent_tools/windows_scenario_publisher.ps1.template -text
+/agent_tools/windows_scenario_system_run.ps1.template -text
+/agent_tools/windows_scenario_qualification_child.ps1 -text
 
 # Historical source fixtures retain the exact bytes named by their provenance.
 /agent_tools/tests/fixtures/**/*.source -text

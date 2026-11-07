@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from agent_tools.native_scenario_bundle import (
     MANIFEST_NAME, NativeScenarioBundleError, prepare_bundle, verify_bundle,
@@ -51,6 +52,50 @@ class NativeScenarioBundleTest(unittest.TestCase):
         destination = self.root.parent / "scheduled"
         receipt = prepare_bundle(self.root, "linux-scheduled-refresh-driver", destination)
         self.assertEqual(4, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
+
+    def windows_repository(self):
+        import agent_tools.native_scenario_bundle as bundles
+        for relative in bundles._SCENARIOS["windows-scenario-driver"]:
+            source = self.root / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("# harmless fixture module\n", encoding="utf-8")
+
+    def test_inventory_outside_scripts_moves_every_top_level_name(self):
+        # Before: only stage/scripts moved, so a bundle of agent_tools paths never finalized.
+        self.windows_repository()
+        destination = self.root.parent / "windows"
+        receipt = prepare_bundle(self.root, "windows-scenario-driver", destination)
+        self.assertEqual(9, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
+        self.assertEqual({"agent_tools", MANIFEST_NAME}, {item.name for item in destination.iterdir()})
+        self.assertEqual([], list(self.root.parent.glob("native-scenario-stage-*")))
+
+    def test_mixed_inventory_moves_each_top_level_name_once(self):
+        import agent_tools.native_scenario_bundle as bundles
+        files = ("agent_tools/entry.py", "agent_tools/nested/leaf.py", "scripts/helper.py")
+        for relative in files:
+            source = self.root / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("# harmless fixture module\n", encoding="utf-8")
+        with mock.patch.dict(bundles._SCENARIOS, {"mixed-driver": files}):
+            destination = self.root.parent / "mixed"
+            receipt = prepare_bundle(self.root, "mixed-driver", destination)
+            self.assertEqual(3, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
+        self.assertEqual({"agent_tools", "scripts", MANIFEST_NAME}, {item.name for item in destination.iterdir()})
+
+    def test_real_windows_driver_imports_inertly_from_its_stage(self):
+        repository = Path(__file__).resolve().parents[2]
+        destination = self.root.parent / "real-windows"
+        receipt = prepare_bundle(repository, "windows-scenario-driver", destination)
+        verified = verify_bundle(repository, destination, receipt["manifestSha256"])
+        self.assertEqual("agent_tools/windows_scenario_host_job.py", verified["files"][0]["path"])
+
+    def test_tampered_windows_template_fails_verification(self):
+        self.windows_repository()
+        destination = self.root.parent / "windows"
+        receipt = prepare_bundle(self.root, "windows-scenario-driver", destination)
+        (destination / "agent_tools/windows_scenario_system_run.ps1.template").write_text("changed", encoding="utf-8")
+        with self.assertRaisesRegex(NativeScenarioBundleError, "Bundle file differs"):
+            verify_bundle(self.root, destination, receipt["manifestSha256"])
 
     def test_missing_sibling_fails_before_creating_bundle(self):
         (self.root / "scripts/rpm_public_update.py").unlink()

@@ -28,12 +28,36 @@ SCENARIO_ARTIFACT_KEYS = {
     "linux-owner-gui-lifecycle": frozenset({"bundleManifest", "scenarioInput"}),
     SCENARIO_ID: frozenset({"bundleManifest"}),
     "linux-scheduled-refresh": frozenset({"bundleManifest", "scenarioInput"}),
+    "windows-ordinary-qualification": frozenset({"bundleManifest"}),
 }
 _MAX_OUTPUT = 8192
+_WINDOWS_PREFIX = "windows-"
 
 
 class NativeScenarioSshError(ValueError):
     pass
+
+
+def _windows_module():
+    try:
+        from . import native_scenario_windows
+    except ImportError:  # pragma: no cover - script-style fallback
+        import native_scenario_windows  # type: ignore[no-redef]
+    return native_scenario_windows
+
+
+def admit_start(root: Path | str, request: Mapping[str, Any], bundle_resolver: Callable[[native_scenario_execution.ScenarioPlan], Path | str]) -> None:
+    """Refuse a Windows row before any journal; other rows keep their existing gates."""
+    if isinstance(request, Mapping) and str(request.get("scenarioId")).startswith(_WINDOWS_PREFIX):
+        _windows_module().admit_start(root, request, bundle_resolver)
+
+
+def public_evidence(result: Mapping[str, Any]) -> dict[str, Any]:
+    """The public evidence class of one scenario result, by its own row."""
+    if str(result.get("scenarioId")).startswith(_WINDOWS_PREFIX):
+        return _windows_module().public_evidence(result)
+    product_action = result.get("scenarioId") in {"linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
+    return {"evidenceClass": "installed-package" if product_action else "component", "productAction": product_action}
 
 
 def _py(program: str, *arguments: str) -> tuple[str, ...]:
@@ -173,7 +197,16 @@ class NativeScenarioSshDriver:
         self.ssh_binary = ssh_binary
         self.input_resolver = input_resolver
 
+    def _windows(self, plan: native_scenario_execution.ScenarioPlan):
+        if not plan.scenario_id.startswith(_WINDOWS_PREFIX):
+            return None
+        return _windows_module().NativeScenarioWindowsDriver(self.root, self.bundle_resolver, self.timeout_seconds,
+                                                             self.ssh_binary, self.configuration_root)
+
     def submit(self, plan: native_scenario_execution.ScenarioPlan) -> native_scenario_execution.JobIdentity:
+        windows = self._windows(plan)
+        if windows is not None:
+            return windows.submit(plan)
         if plan.scenario_id == "linux-owner-gui-lifecycle":
             if self.input_resolver is None:
                 raise NativeScenarioSshError("Owner GUI input resolver is unavailable.")
@@ -204,10 +237,16 @@ class NativeScenarioSshDriver:
         return self._identity(result.get("identity"), pending=True)
 
     def discover(self, plan: native_scenario_execution.ScenarioPlan) -> native_scenario_execution.JobIdentity | None:
+        windows = self._windows(plan)
+        if windows is not None:
+            return windows.discover(plan)
         result = self._status(plan)
         return self._identity(result.get("identity"), pending=True) if result and isinstance(result.get("identity"), Mapping) else None
 
     def observe(self, plan: native_scenario_execution.ScenarioPlan, identity: native_scenario_execution.JobIdentity) -> native_scenario_execution.DriverObservation:
+        windows = self._windows(plan)
+        if windows is not None:
+            return windows.observe(plan, identity)
         result = self._status(plan)
         if result is None:
             return native_scenario_execution.DriverObservation(native_scenario_execution.ObservationStatus.UNKNOWN, "observer_unavailable")
@@ -221,6 +260,9 @@ class NativeScenarioSshDriver:
 
     def collect(self, plan: native_scenario_execution.ScenarioPlan,
                 identity: native_scenario_execution.JobIdentity) -> Mapping[str, Any] | None:
+        windows = self._windows(plan)
+        if windows is not None:
+            return windows.collect(plan, identity)
         if plan.scenario_id == "linux-owner-gui-lifecycle":
             if self.input_resolver is None:
                 return None

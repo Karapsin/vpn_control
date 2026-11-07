@@ -24,12 +24,12 @@ Android and macOS native and visual work stay deferred and open, never passed.
 
 ## Remaining, in order
 
-1. Prove the merge's regressions on Python 3.14 and 3.12, commit and push. The full
-   managed pre-push cannot finish on this Mac, so exact-SHA CI is its first
-   complete check.
-2. Add the taken tools, the tracked launcher, the Windows `scenario-start` adapter
-   and the closed UAC action. Fix the tool defects the review predicted, each with
-   RED and GREEN when it is proven.
+1. Done: the merge is pushed, and all five required workflows pass on `4d221173`,
+   with the Windows helpers on .NET 10.0.14.
+2. In progress: the Windows `scenario-start` adapter and host job exist with only
+   `windows-ordinary-qualification`, unproven natively. Still to add: the taken
+   tools, the closed UAC action, the reboot allowance and the base-reset setup step.
+   Fix the tool defects the review predicted, each with RED and GREEN when proven.
 3. Build the same-source package pair, enroll the fixture and re-prove status,
    display wake, lease and counter, direct and then MCP. By user decision, all
    scenarios run in sequence on one VM, updates may chain on it, and sign-in and

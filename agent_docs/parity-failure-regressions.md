@@ -897,6 +897,18 @@ local defects and none is native acceptance. Evidence is under
 | Hosted Windows capture never names its target | `test_visual_platform.test_hosted_capture_wrappers_name_the_target_the_parser_requires` | `capture-local` requires `--target`. The Linux and macOS wrapper passes `native:<platform>`; the Windows wrapper did not, so every hosted Windows capture would end "Windows visual capture is incomplete" after taking its frames. Found by reading, before any hosted run. |
 | Windows remote visual driver rejects the shared `--target` and relative `--output` | `fixtures/windows_remote_visual_capture/`; `test_windows_remote_visual_capture.test_preserved_*` and `test_documented_capture_local_command_with_relative_output_collects_the_frame` | RED: exit 2 `unrecognized arguments: --target`, and `[Errno 2]` for the relative scene path. GREEN adds the capture-only `deployment:<id>` target, allowlisted by the deployment's own retained `windowsUacVisual` intent. Local lifecycle paths still refuse it. No VM was contacted. |
 
+### Windows scenario route, offline build (2026-11-07)
+
+Before any VM contact. Evidence and before-images are under `.runtime/windows-parity-20261107/step2/`; 28 constructed mutations of the driver and host job all go RED (`mutation_red.py`). These are review findings, not native failures.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Frozen bundle keeps only `scripts/` | `test_native_scenario_bundle` | `prepare_bundle` moved only the `scripts` tree, so a bundle holding `agent_tools` paths lost them. RED: 4 errors of 15. |
+| Fence could close on an unknown task outcome | `test_windows_scenario_host_job` | An owner whose journal opened with neither a terminal nor a refusal now ends UNKNOWN, and the next job refuses. |
+| A SYSTEM program could follow a lost reply | `test_windows_scenario_host_job` | After a lost ack or terminal, or a passed deadline, no further guest program is sent. |
+| Free guest text could reach a public reply | `test_windows_scenario_host_job`, `test_native_scenario_windows` | Only closed `RUN_`, `TASK_`, `TOKEN_` and `PUB_` codes cross; the raw message stays in the private index on the host. |
+| Status file stops updating after one poll | `test_the_status_file_is_really_replaced_on_every_poll` | `$null` reached `File.Replace` as an empty string; it now passes `[NullString]::Value`. Skips without PowerShell, so CI is its first run. |
+
 ### First full CI run of the merge (run 42392787639 and siblings, 2026-11-07)
 
 These commits had never run in CI, so tests skipped on the Mac met Linux and Windows for the first time. Logs are under `.runtime/windows-parity-20261107/ci/`.

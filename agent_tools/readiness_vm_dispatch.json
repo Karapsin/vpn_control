@@ -4814,6 +4814,7 @@
     },
     "batch-collect": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -4832,9 +4833,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -4852,6 +4856,7 @@
     },
     "batch-resume": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -4870,9 +4875,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -4890,6 +4898,7 @@
     },
     "batch-status": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -4908,9 +4917,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5108,6 +5120,7 @@
     },
     "linux-owner-public-quit-collect": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5124,9 +5137,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5142,6 +5158,7 @@
     },
     "linux-owner-public-quit-start": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5158,9 +5175,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5176,6 +5196,7 @@
     },
     "linux-owner-public-quit-status": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5192,9 +5213,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5686,6 +5710,7 @@
     },
     "linux-rpm-base-prepare-preflight": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5702,9 +5727,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5720,6 +5748,7 @@
     },
     "linux-rpm-base-prepare-start": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5736,9 +5765,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5754,6 +5786,7 @@
     },
     "linux-rpm-base-prepare-status": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5770,9 +5803,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5797,6 +5833,7 @@
     },
     "linux-rpm-fixture-server-collect": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5813,9 +5850,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5831,6 +5871,7 @@
     },
     "linux-rpm-fixture-server-start": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5847,9 +5888,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5865,6 +5909,7 @@
     },
     "linux-rpm-fixture-server-status": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5881,9 +5926,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5899,6 +5947,7 @@
     },
     "linux-rpm-fixture-server-stop": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5915,9 +5964,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5942,6 +5994,7 @@
     },
     "linux-rpm-owner-observe": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5958,9 +6011,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -5976,6 +6032,7 @@
     },
     "linux-rpm-protected-job-observe": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -5992,9 +6049,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6010,6 +6070,7 @@
     },
     "linux-rpm-workspace-cleanup-start": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6026,9 +6087,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6044,6 +6108,7 @@
     },
     "linux-rpm-workspace-cleanup-status": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6060,9 +6125,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6078,6 +6146,7 @@
     },
     "linux-rpm-workspace-recovery-status": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6094,9 +6163,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6278,6 +6350,7 @@
     },
     "rpm-proc-observe": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6294,9 +6367,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6312,6 +6388,7 @@
     },
     "rpm-proc-observe-privileged": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6328,9 +6405,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6346,6 +6426,7 @@
     },
     "rpm-public-install-collect": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6362,9 +6443,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6381,6 +6465,7 @@
     },
     "rpm-public-install-start": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6397,9 +6482,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6416,6 +6504,7 @@
     },
     "rpm-public-install-status": {
       "closure": [
+        "durable_remote_job",
         "linux_owner_public_quit",
         "linux_rpm_base_prepare",
         "linux_rpm_fixture_server",
@@ -6432,9 +6521,12 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
+        "ssh_program_execution_remote",
         "ssh_transfer",
-        "vm_workflow"
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "host": "fedora2328",
       "kind": "fixed_host",
@@ -6451,6 +6543,7 @@
     },
     "scenario-collect": {
       "closure": [
+        "durable_remote_job",
         "native_artifact_registry",
         "native_artifact_reuse",
         "native_environment",
@@ -6459,8 +6552,11 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
-        "vm_workflow"
+        "ssh_program_execution_remote",
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "kind": "selected_host",
       "modules": [
@@ -6471,6 +6567,7 @@
     },
     "scenario-resume": {
       "closure": [
+        "durable_remote_job",
         "native_artifact_registry",
         "native_artifact_reuse",
         "native_environment",
@@ -6479,8 +6576,11 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
-        "vm_workflow"
+        "ssh_program_execution_remote",
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "kind": "selected_host",
       "modules": [
@@ -6491,6 +6591,7 @@
     },
     "scenario-status": {
       "closure": [
+        "durable_remote_job",
         "native_artifact_registry",
         "native_artifact_reuse",
         "native_environment",
@@ -6499,8 +6600,11 @@
         "native_scenario_bundle",
         "native_scenario_execution",
         "native_scenario_ssh",
+        "native_scenario_windows",
         "native_scheduled_refresh_ssh",
-        "vm_workflow"
+        "ssh_program_execution_remote",
+        "vm_workflow",
+        "windows_scenario_host_job"
       ],
       "kind": "selected_host",
       "modules": [
@@ -22171,9 +22275,10 @@
     "native_rpm_public_install_adapter": "5479434011cf0e02e8743d4ffd510dc34d9b4ac5a681335ff2a82a653bce42c9",
     "native_rpm_public_install_ssh": "3b9b590629db13ff3152eed4748793a695b24506ccf66b775903b3029513c715",
     "native_scenario_batch": "034070dc3697b949410e334d3ba304b65a7faac01be873a127da4d29e99f35ce",
-    "native_scenario_bundle": "84a7c8d5e28817a2744a1eaa60a59020ddb3d3b523490b2ec5a029e822b5b850",
-    "native_scenario_execution": "0eaca9030da70ce9bac0e276c7a9ecf76e78303054be2afaf3082ef602a71b33",
-    "native_scenario_ssh": "ca9d702326d9675f09d6ae044dd4004c258e35fc15d44ca23b8f755eb3dcd89f",
+    "native_scenario_bundle": "b5b13464ee0b81c72efbcac9477133b45f92d8b894699c06d5699b7f5c8dbeaa",
+    "native_scenario_execution": "82e42b862d7043459b2f50f732f0876544e41e97c724534aad146363f3ce5365",
+    "native_scenario_ssh": "bb1657d134b92601427e415369e915c55c8067e1bf990dfa1b0a804495eb914d",
+    "native_scenario_windows": "b6290eccfb547c22c86d0bbc897dc695829b0f1057e71926cc765807e64cb8c7",
     "native_scheduled_refresh_ssh": "a02bd277452716e6688bdf4f0049a6a5272b8f3ba7844ed7650f7c8c0ca7e05d",
     "native_vm_baseline": "1e9c30064543b484180f00b7adfd61b086ff8c92c7bc282022443f4a1ef0289e",
     "native_vm_baseline_config": "8b9eaa028ec866aa331e6822e773460223a13b5aae757d06fd9998a3bb0ba723",
@@ -22199,6 +22304,7 @@
     "ssh_nested_socket_owned_home_observation": "9e595d01d4cccc319ed573788ced30ba168a49fe69e2217d50668278c5cde91f",
     "ssh_nested_socket_retirement": "356985224da09aa4306e0c018b5afd92a86f018312df34bc68685d7da6188731",
     "ssh_nested_socket_route_diagnostic": "d23217e1c64f3fd74fb049a721945885acabb3e82774a2eeb3ee32870d736160",
+    "ssh_program_execution_remote": "b4bb3a52a0d4aa0c425bfe94043d704bfba428ad6f781e12bbdea8f1db9a38f1",
     "ssh_recovery_adoption": "cb07b4c3ea864adb3f18a2509a19d6844c60ef0f61b500d58c9fe5c8c41d1775",
     "ssh_source_file_stage": "e2eb9031c27597c6fbf0f19d0e9b60f3d1f6ebc39f58c2abf8f016212e523be4",
     "ssh_source_file_stage_direct": "f67a567bb5623096c5f478ba9d989b917ad93b07748383bfc5d64184c048adb0",
@@ -22285,6 +22391,7 @@
     "windows_parallel_vm_prepare_transport": "d9e4ee3a6376a8d158fd61aecc577382a90d9434dff0d3a16fcec2f6e284f8bc",
     "windows_parallel_vm_source_inventory": "5d3a087ce2f14f4199948fe6e28715a52ca67ee964e98fe400b598bd2b539110",
     "windows_ps_bootstrap": "16e75497abe7cd6da3367b620143cdd9209a61e078a6e02a94879f281fa9ea79",
+    "windows_scenario_host_job": "c6842bc5ba35cfade8da8175071bf439d84cfbea9ebdc3737faba5e5866e6114",
     "windows_secure_recovery": "4fd63c18fe3c7fd1a2ac59e32216e63a744d90e089e2468c67529cb6fd081966",
     "windows_update_fixture_download_abort": "5978663fbb98d6eda1925e0e50bbe2081ac9b3161331cedc4ef19a7cf5214996",
     "windows_update_fixture_download_abort_current": "fb52c38c4d7b4f2060c2529a3b22bce8c7c698f21255a9eca99172eb3e962076",

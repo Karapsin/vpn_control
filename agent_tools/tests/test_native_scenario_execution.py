@@ -287,6 +287,74 @@ class NativeScenarioExecutionTest(unittest.TestCase):
             with self.assertRaisesRegex(execution.ScenarioExecutionError, "unsafe"):
                 executor.status("run-17")
 
+    def windows_request(self):
+        return {"scenarioId": "windows-ordinary-qualification", "host": "owned-host", "environment": "33333333-4444-4555-8666-777777777777",
+                "bundleHash": "a" * 64, "artifactIds": {"bundleManifest": "sha256-" + "a" * 64}, "correlationId": "11111111-1111-4111-8111-111111111111"}
+
+    class WindowsDriver:
+        """The job's owner on the host: identity from its birth, a known exit only from the job."""
+        def __init__(self):
+            self.submits = 0
+            self.exit_code = None
+
+        def submit(self, plan):
+            self.submits += 1
+            return execution.JobIdentity("windows-" + plan.correlation_id, 42, 4242, "/owned/" + plan.correlation_id + "/scenario-receipt.json")
+
+        def discover(self, plan):
+            raise AssertionError("the original identity is already journaled")
+
+        def observe(self, plan, identity):
+            if self.exit_code is None:
+                return execution.DriverObservation(execution.ObservationStatus.RUNNING, "original_owner_running", identity)
+            receipt = {**plan.as_dict(), "jobId": identity.job_id, "pid": identity.pid, "startTicks": identity.start_ticks, "exitCode": self.exit_code}
+            return execution.DriverObservation(execution.ObservationStatus.TERMINAL, "remote_receipt", identity, receipt)
+
+    @unittest.skipIf(os.name != "posix", "private journal requires POSIX ownership admission")
+    def test_windows_repeated_start_returns_the_original_and_submits_once(self):
+        with tempfile.TemporaryDirectory() as raw:
+            driver = self.WindowsDriver()
+            executor = execution.ScenarioExecutor(Path(raw) / "journal", driver)
+            first = executor.start(self.windows_request())
+            again = executor.start(self.windows_request())
+            self.assertEqual(1, driver.submits)
+            self.assertTrue(again["duplicate"])
+            self.assertEqual(first["jobIdentity"], again["jobIdentity"])
+            changed = self.windows_request()
+            changed["environment"] = "ff6b5d84-f546-4a96-baf7-f9c801c743c0"
+            with self.assertRaisesRegex(execution.ScenarioExecutionError, "different immutable"):
+                executor.start(changed)
+
+    @unittest.skipIf(os.name != "posix", "private journal requires POSIX ownership admission")
+    def test_windows_terminal_without_collection_stays_unknown(self):
+        with tempfile.TemporaryDirectory() as raw:
+            driver = self.WindowsDriver()
+            executor = execution.ScenarioExecutor(Path(raw) / "journal", driver)
+            correlation = self.windows_request()["correlationId"]
+            executor.start(self.windows_request())
+            self.assertEqual("submitted", executor.status(correlation)["state"])
+            driver.exit_code = 0
+            result = executor.status(correlation)
+            self.assertEqual(("unknown", "terminal_collection_unverified", "terminal", 0, "unknown"),
+                             (result["state"], result["reason"], result["executionState"], result["executionExitCode"], result["collectionState"]))
+            self.assertNotIn("scenarioEvidence", result)
+
+    def test_only_a_windows_row_shows_its_job_failure_and_only_as_a_token(self):
+        def public(scenario, excerpt):
+            return execution.ScenarioExecutor._public({"plan": {**self.windows_request(), "scenarioId": scenario}, "state": "terminal", "lastReason": "correlated_receipt",
+                                                       "exitCode": 2, "failureExcerpt": excerpt})
+        self.assertEqual("host_setup:instance_host_epoch", public("windows-ordinary-qualification", "host_setup:instance_host_epoch")["executionFailure"])
+        self.assertNotIn("executionFailure", public("windows-ordinary-qualification", "C:\\Users\\private account"))
+        self.assertNotIn("executionFailure", public("linux-scheduled-refresh", "host_setup:instance_host_epoch"))
+
+    def test_windows_names_are_closed(self):
+        for name in ("windows-other", "windows-ordinary-qualification.extra", "WINDOWS-ORDINARY-QUALIFICATION"):
+            changed = self.windows_request()
+            changed["scenarioId"] = name
+            with self.assertRaisesRegex(execution.ScenarioExecutionError, "allowlisted"):
+                execution.ScenarioPlan.from_mapping(changed)
+        self.assertEqual(frozenset({"windows-ordinary-qualification"}), execution.WINDOWS_SCENARIOS)
+
     def test_windows_private_journal_is_explicitly_unsupported_before_path_access(self):
         with tempfile.TemporaryDirectory() as raw:
             executor = execution.ScenarioExecutor(Path(raw) / "journal", LocalFixtureDriver(Path(raw) / "fixture"))

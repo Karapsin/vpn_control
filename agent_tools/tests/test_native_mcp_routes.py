@@ -333,6 +333,64 @@ class NativeRoutesTest(unittest.TestCase):
         self.assertFalse(result["productAction"])
         self.assertEqual("retained", result["correlationId"])
 
+    def windows_scenario_request(self):
+        return {"scenarioId": "windows-ordinary-qualification", "host": "archlinux", "environment": "33333333-4444-4555-8666-777777777777",
+                "bundleHash": "a" * 64, "artifactIds": {"bundleManifest": "sha256-" + "a" * 64},
+                "correlationId": "11111111-1111-4111-8111-111111111111"}
+
+    def scenario_journals(self):
+        return list((mcp_server.REPO_ROOT / ".rag_index/native-scenario-executions").glob("*"))
+
+    def test_windows_scenario_refusals_leave_no_journal(self):
+        for change in ({"scenarioId": "windows-arbitrary-command"},
+                       {"artifactIds": {"bundleManifest": "sha256-" + "a" * 64, "targetPackage": "sha256-" + "b" * 64}},
+                       {"correlationId": "not-a-uuid"}, {"environment": "not-a-uuid"},
+                       {"stopAfter": "context"}, {},
+                       ):
+            with self.subTest(change=change):
+                result = mcp_server.vm_workflow("scenario-start", {**self.windows_scenario_request(), **change})
+                self.assertFalse(result["ok"])
+                self.assertEqual([], self.scenario_journals())
+
+    def test_windows_scenario_admission_runs_through_the_real_source_loader(self):
+        # The genuine adapter and the readiness modules it imports, in a private package.
+        result = mcp_server.vm_workflow("scenario-start", self.windows_scenario_request())
+        self.assertFalse(result["ok"])
+        self.assertIn("windows_scenario_environment_unavailable", json.dumps(result))
+        self.assertEqual([], self.scenario_journals())
+
+    def test_windows_scenario_is_admitted_before_the_journal_and_keeps_its_row_class(self):
+        from agent_tools import native_scenario_execution, native_scenario_ssh
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        bind_cached_routes(self, mcp_server, "native_scenario_execution", "native_scenario_ssh", "native_artifact_registry")
+        order = []
+        terminal = {"state": "terminal", "exitCode": 0, "correlationId": "c", "scenarioId": "windows-ordinary-qualification", "collectionState": "complete",
+                    "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": "a" * 64}}}
+        for answer, accepted in (({"state": "submitted", "scenarioId": "windows-ordinary-qualification"}, True), (terminal, True),
+                                 ({**terminal, "exitCode": 1}, False),
+                                 ({"state": "unknown", "reason": "job_exit_unknown:x", "scenarioId": "windows-ordinary-qualification"}, False)):
+            with self.subTest(answer=answer["state"]), \
+                 patch.object(native_scenario_ssh, "admit_start", side_effect=lambda *a: order.append("admit")), \
+                 patch.object(native_scenario_execution.ScenarioExecutor, "start", side_effect=lambda request: (order.append("journal"), answer)[1]):
+                result = mcp_server.vm_workflow("scenario-start", self.windows_scenario_request())
+                self.assertEqual(accepted, result.get("ok"))
+                self.assertEqual("component", result["evidenceClass"], "a component row never claims installed-package")
+                self.assertFalse(result["productAction"])
+        self.assertEqual(["admit", "journal"] * 4, order)
+
+    def test_windows_scenario_observation_keeps_its_row_class(self):
+        from agent_tools import native_scenario_execution, native_scenario_ssh
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        bind_cached_routes(self, mcp_server, "native_scenario_execution", "native_scenario_ssh", "native_artifact_registry")
+        answer = {"state": "terminal", "exitCode": 0, "scenarioId": "windows-ordinary-qualification", "correlationId": "11111111-1111-4111-8111-111111111111"}
+        for action, method in (("scenario-status", "status"), ("scenario-resume", "resume"), ("scenario-collect", "collect")):
+            with self.subTest(action=action), patch.object(native_scenario_execution.ScenarioExecutor, method, return_value=answer) as called:
+                result = mcp_server.vm_workflow(action, {"correlationId": answer["correlationId"]})
+                called.assert_called_once_with(answer["correlationId"])
+                self.assertEqual(("component", False, True), (result["evidenceClass"], result["productAction"], result["ok"]))
+            with self.subTest(action=action, extra=True):
+                self.assertFalse(mcp_server.vm_workflow(action, {"correlationId": answer["correlationId"], "stopAfter": "context"})["ok"])
+
     def test_vm_unknown_action_is_structured_failure(self):
         self.assertFalse(mcp_server.vm_workflow("restart-unknown-installer", {})["ok"])
 

@@ -175,7 +175,8 @@
         "603c8602124289cfdaf93b38d7e86b2df3992ae7b9f397bd725007f4ef71b3e1",
         "df6e54b0404a3ce95e6db98e84ba9f9cae0d019f73f2da16ed90115305002768",
         "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3",
-        "902afbf12b0fb1fc9b3900f7f1af63abac658517f90c3c830e4e71946590621a"
+        "902afbf12b0fb1fc9b3900f7f1af63abac658517f90c3c830e4e71946590621a",
+        "2bb3629f16546472c7d5adee7f4db60f692998f57d6ebb03e8d50d64f8c4b145"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -8562,7 +8563,8 @@
         "agent_tools/native_scenario_execution.py"
       ],
       "sourceSha256": [
-        "bff6cf6a7f4a31fac577b23d41566e4e5caeae279daed9cf08b743699b06ff10"
+        "bff6cf6a7f4a31fac577b23d41566e4e5caeae279daed9cf08b743699b06ff10",
+        "c0a54c33b2ebb0160ce1d37a8145fb15e3aabf80aab37460fac2d2891862555c"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {
@@ -13328,7 +13330,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "9fa2423e6374ed1669d0b53c5a67ff5bde842a9ed4c51c4908c7c04298851dd0",
+    "agent_tools/readiness_vm_dispatch.json": "c9a0243f9af12377d7005a9d5f79c32aba54e339a4e9bdaba36272b0fed54abe",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

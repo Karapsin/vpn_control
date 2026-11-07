@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Bring in the Windows parity tools: hardened test transfers, ordinary-task policy, private program diagnostics and portable acceptance regressions.
 - Record Windows-only document results as partial on shared acceptance rows, and fix hosted Windows visual capture and the update check on visual clones.
 - Move the Windows native helpers to .NET 10.0.14 for its Brotli security fix, and correct packaged CLI smoke and platform test assumptions found by the first full CI run.
+- Add the Windows scenario adapter and durable host job behind scenario-start, with a harmless qualification row.
 
 ## 2.2.15 - 2026-10-27
 

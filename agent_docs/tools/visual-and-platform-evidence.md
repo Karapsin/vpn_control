@@ -759,4 +759,29 @@ prevent observation of an already submitted remote job. Missing or uncertain
 receipts remain unknown. The installed-package recipe below has its own fixed
 adapter; new scenarios require an explicit adapter and native evidence.
 
+#### Windows scenarios
+
+`agent_tools/native_scenario_windows.py` is the Windows adapter behind the same
+four actions. `host` names the VM host and `environment` the deployment UUID, and
+`correlationId` must be a canonical UUID. Today the closed list holds only
+`windows-ordinary-qualification`, a harmless component row with no product and no
+package; each later name lands only with its case module and direct proof. The
+adapter refuses before any journal unless the name, host, deployment, artifact keys
+and every bundle byte match this checkout, so a caller cannot supply a path, argv,
+source or bytes.
+
+One durable job, `agent_tools/windows_scenario_host_job.py`, runs on the VM host
+and carries the stages: fence, read-only guest context, publish, requests, one
+SYSTEM program that registers and runs an InteractiveToken LeastPrivilege task,
+evidence and receipt. Its guest programs journal as flat
+`direct-guest-<uuid>.{intent,ack,terminal}.json` in the VM root, so
+`readiness-reboot` refuses while a job is open. A job exits 0 for passed, 1 for a
+known failure and 2 when refused before any guest effect. Anything else, including
+exit 3, is UNKNOWN: its fence stays open, no terminal is written, and new jobs and
+reboots on that clone refuse. Recover by reading the original, never by resubmitting.
+
+A row that was refused before it started has no receipt, so its collection stays
+`unknown` with `executionExitCode` 2 and a closed `executionFailure` token. A setup
+or component row never claims installed-package evidence.
+
 Return to [the tool entry point](../../agent_tools/README.md) for current task routing.

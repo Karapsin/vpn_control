@@ -32,8 +32,9 @@ _ARTIFACT_ID = re.compile(r"^sha256-[0-9a-f]{64}$")
 _JOURNAL_VERSION = 1
 _FAILURE_EXCERPT_LIMIT = 1_024
 _COLLECTION_LIMIT = 8_192  # Existing fixed collector transport bound.
-_COLLECTED_SCENARIOS = {"linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
-_SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle"}
+WINDOWS_SCENARIOS = frozenset({"windows-ordinary-qualification"})  # Rows live in native_scenario_windows.
+_COLLECTED_SCENARIOS = {"linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
+_SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
 
 
 class ScenarioExecutionError(ValueError):
@@ -611,6 +612,9 @@ class ScenarioExecutor:
             if not complete:
                 result.update(state="unknown", reason="terminal_collection_unverified",
                               executionState="terminal", executionExitCode=record["exitCode"])
+                excerpt = record.get("failureExcerpt")
+                if plan["scenarioId"] in WINDOWS_SCENARIOS and isinstance(excerpt, str) and _TOKEN.fullmatch(excerpt):
+                    result["executionFailure"] = excerpt  # A Windows job's own finite word; other rows keep raw text private.
             else:
                 result["scenarioEvidence"] = ScenarioExecutor._project_collection(json.loads(collection["rawJson"]))
         if duplicate:
@@ -641,6 +645,20 @@ class ScenarioExecutor:
                 result[name] = {key: part[key] for key in flags if type(part.get(key)) is bool}
                 if name == "cleanup":
                     result[name]["state"] = part.get("state") if part.get("state") in {"complete", "incomplete", "preserved-for-recovery", "not-started"} else "unknown"
+        part = value.get("windows")
+        if isinstance(part, Mapping):
+            windows: dict[str, Any] = {}
+            if part.get("evidenceClass") in {"component", "setup", "product"}:
+                windows["evidenceClass"] = part["evidenceClass"]
+            for key, kind in (("installedPackage", bool), ("taskDeleted", bool), ("parked", bool), ("taskExitCode", int), ("taskEvents", int)):
+                if type(part.get(key)) is kind:
+                    windows[key] = part[key]
+            if isinstance(part.get("packageSha256"), str) and _SHA256.fullmatch(part["packageSha256"]):
+                windows["packageSha256"] = part["packageSha256"]
+            for key in ("stoppedAfter", "failure"):
+                if isinstance(part.get(key), str) and _TOKEN.fullmatch(part[key]):
+                    windows[key] = part[key]
+            result["windows"] = windows
         return result
 
     @staticmethod
