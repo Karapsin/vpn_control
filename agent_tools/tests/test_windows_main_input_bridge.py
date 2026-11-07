@@ -98,7 +98,8 @@ class WindowsMainInputBridgeCatalogTest(unittest.TestCase):
     def test_authentic_sources_and_declared_current_roles(self):
         pins = _boundary.provenance()
         self.assertEqual(set(pins["production"]), set(_boundary.SOURCE_ROLES.values()))
-        self.assertTrue(all(pin["completeOriginalBytes"] for pin in pins["fixtures"].values()))
+        # One line of the v3 control writes exact bytes so its literal hashes hold on Windows.
+        self.assertEqual({"v3/controls.source"}, {name for name, pin in pins["fixtures"].items() if not pin["completeOriginalBytes"]})
         self.assertTrue(all(pin["sourceBytesUnchanged"] for pin in pins["production"].values()))
 
 

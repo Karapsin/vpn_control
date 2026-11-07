@@ -5244,7 +5244,8 @@
         "scripts/capture_visual_windows_qemu.py"
       ],
       "sourceSha256": [
-        "da84871af2394aa99a3a72b573b2956bbbf02979312a57af43e5ffa1e4bf25a3"
+        "da84871af2394aa99a3a72b573b2956bbbf02979312a57af43e5ffa1e4bf25a3",
+        "ce642b9ad0787483b54a5bf5d15e042614d4404c3f0bcd66fd153ab4bf25943b"
       ]
     },
     "agent_tools/tests/fixtures/windows_managed_creator_environment/before.source": {
@@ -12096,7 +12097,8 @@
         "agent_tools/tests/fixtures/windows_main_input_bridge/boundary.py"
       ],
       "sourceSha256": [
-        "ee08a853559d29e934dbb87eb5091717daed52d0b5d4a9b5f2baf4da54ec1582"
+        "ee08a853559d29e934dbb87eb5091717daed52d0b5d4a9b5f2baf4da54ec1582",
+        "4aaf747513fe2784d16ff97a4fca0ce71fc9235b6209d8f4afb334957b1d9627"
       ]
     },
     "agent_tools/tests/test_windows_managed_admission.py": {

@@ -88,9 +88,9 @@
     },
     "v3/controls.source": {
       "sourceOrigin": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-main-input-bridge-preparation-v3/test_controls.py",
-      "sha256": "da84871af2394aa99a3a72b573b2956bbbf02979312a57af43e5ffa1e4bf25a3",
-      "bytes": 50513,
-      "completeOriginalBytes": true,
+      "sha256": "ce642b9ad0787483b54a5bf5d15e042614d4404c3f0bcd66fd153ab4bf25943b",
+      "bytes": 50523,
+      "completeOriginalBytes": false,
       "nativeAuthority": false
     }
   },

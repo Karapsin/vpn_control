@@ -231,7 +231,7 @@ class BridgeControls(unittest.TestCase):
         pwsh=os.environ.get("VPN_CONTROL_TEST_POWERSHELL")
         if not pwsh:self.skipTest("Explicit real PowerShell parser not supplied")
         packet=s.render(self.render_input,U[7],"4"*64)
-        parent=self.directory/"literal-parent.ps1";parent.write_text(packet["parent"])
+        parent=self.directory/"literal-parent.ps1";parent.write_bytes(packet["parent"].encode())
         verifier=self.directory/"literal-hashes-only.ps1"
         verifier.write_text("param([string]$InputPath,[string]$NativeHash,[string]$ChildHash)\n$t=$null;$e=$null;$a=[Management.Automation.Language.Parser]::ParseFile($InputPath,[ref]$t,[ref]$e);if($e.Count){exit 2};$values=$a.FindAll({param($n) $n-is[Management.Automation.Language.StringConstantExpressionAst]-and$n.StringConstantType-eq'SingleQuotedHereString'},$true);$hashes=@($values|ForEach-Object{$h=[Security.Cryptography.SHA256]::Create();try{([BitConverter]::ToString($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($_.Value)))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}});if($NativeHash-notin$hashes-or$ChildHash-notin$hashes){exit 3}\n")
         result=subprocess.run([pwsh,"-NoProfile","-NonInteractive","-File",str(verifier),str(parent),
