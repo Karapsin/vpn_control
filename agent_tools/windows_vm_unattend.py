@@ -11,6 +11,22 @@ def parse_setup(value):
     if any(type(n)is not str or not re.fullmatch('[A-Za-z][A-Za-z0-9_-]{0,19}',n) or n.lower() in ('administrator','guest','defaultaccount','wdagutilityaccount') for n in names) or names[0].lower()==names[1].lower():raise ValueError('setup_accounts')
     return dict(value)
 
+# A test fixture never takes an update unannounced: no automatic Windows Update
+# download, install or restart, no Store auto-download, no Edge updater, whose
+# own policy is honored only on managed machines, and no OneDrive self-update.
+# Defender signatures stay on.
+UPDATE_POLICY=r'''$windowsUpdate='HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU';$store='HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore'
+foreach($key in @($windowsUpdate,$store)){if(-not (Test-Path -LiteralPath $key)){New-Item -Path $key -Force | Out-Null}}
+New-ItemProperty -LiteralPath $windowsUpdate -Name NoAutoUpdate -PropertyType DWord -Value 1 -Force | Out-Null
+New-ItemProperty -LiteralPath $windowsUpdate -Name NoAutoRebootWithLoggedOnUsers -PropertyType DWord -Value 1 -Force | Out-Null
+New-ItemProperty -LiteralPath $store -Name AutoDownload -PropertyType DWord -Value 2 -Force | Out-Null
+foreach($task in @(Get-ScheduledTask -TaskPath '\' -ErrorAction SilentlyContinue | Where-Object {$_.TaskName -like 'MicrosoftEdgeUpdateTaskMachine*' -or $_.TaskName -like 'OneDrive Standalone Update Task-*'})){
+ if($task.State -eq 'Running'){Stop-ScheduledTask -InputObject $task}
+ Disable-ScheduledTask -InputObject $task | Out-Null
+}
+foreach($service in @(Get-Service -Name 'edgeupdate','edgeupdatem' -ErrorAction SilentlyContinue)){Set-Service -InputObject $service -StartupType Disabled}
+'''
+
 # Specialize only installs the serial driver and stages a protected task.
 # MSI runs as SYSTEM after Setup finishes; graphical autologon stays ordinary.
 INITIALIZE=r'''$ErrorActionPreference='Stop'
@@ -38,6 +54,8 @@ $triggers=@((New-ScheduledTaskTrigger -AtStartup),(New-ScheduledTaskTrigger -AtL
 $principal=New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
 $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 Register-ScheduledTask -TaskName 'VpnControlFixtureInitialize' -Action $action -Trigger $triggers -Principal $principal -Settings $settings | Out-Null
+try {
+'''+UPDATE_POLICY+r'''} catch {Write-Output 'FIXTURE_UPDATE_POLICY_UNAPPLIED'}
 Stop-Transcript
 '''
 

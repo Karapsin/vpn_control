@@ -167,7 +167,8 @@
         "3d7f548378c9d9ad9a4c157904bf6026bc785decb77072b41075c8c24115ee54",
         "0c15c7fc5157b4fab791480c3f91411a9cd13085622a2758af2fd0433c35dd0b",
         "b04dc01019e9328110caf482877dba48dcf58061e1febb40616a7d48bdbb8bd4",
-        "f86efd92d75509c17f56980756db89a676b6f95f063223bdd67ca37385272588"
+        "f86efd92d75509c17f56980756db89a676b6f95f063223bdd67ca37385272588",
+        "151315d5c3b0f048547d775241b6be8248c915ffc5a9d53ed4f16bd02e9732c7"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -6538,7 +6539,8 @@
         "agent_tools/tests/fixtures/lease_provider_policy/provenance.json"
       ],
       "sourceSha256": [
-        "d5d9a7d74bba18f01a09df695a3730ac062d3cea1bab0bb557f72335d3112f5f"
+        "d5d9a7d74bba18f01a09df695a3730ac062d3cea1bab0bb557f72335d3112f5f",
+        "7d909b47ffa61b670fe4cfb77590dea2160b1d839f08ca0190f1ab2d5a23efe9"
       ]
     },
     "agent_tools/tests/test_lease_provider_policy_runtime.py": {
@@ -7274,6 +7276,24 @@
         "d2c34c798e8f5f354c99e2f95717fb47d4ff68191cf06ba41d237c1c434e499a"
       ]
     },
+    "agent_tools/tests/test_readiness_reservation_observation.py": {
+      "reason": "Exact whole observer before/current execute under their real agent_tools package with owned POSIX private caller, intents and reservation snapshots and the actual held self-source. Only the current observer and its authenticated whole-before fixture compile; the native schema DTO is fixed authenticated data, never live authority. No native action or claim mutation.",
+      "scopes": [
+        "agent_tools/readiness_reservation_observation.py",
+        "agent_tools/native_environment.py",
+        "agent_tools/private_inventory_lock.py",
+        "agent_tools/windows_vm_resources.py",
+        "agent_tools/native_review_source_closure.py",
+        "agent_tools/native_vm_spec.py",
+        "agent_tools/tests/fixtures/windows_reservation_executable_schema/observer.before.source",
+        "agent_tools/tests/fixtures/windows_reservation_executable_schema/native-schema.json",
+        "agent_tools/tests/fixtures/windows_reservation_executable_schema/provenance.json"
+      ],
+      "sourceSha256": [
+        "e273a97d275c514e98c709b0dbc07cdf16955a33827b426558e9507c14f6188d",
+        "d07e88dfc55bdf814bc0bcf102ff5879c76a652a345a9f5c4a4d5b0793621a31"
+      ]
+    },
     "agent_tools/tests/test_readiness_submission.py": {
       "reason": "Complete authenticated current and preserved submission callers use existing finite source fixtures plus fixed native read-only observer beforeimage and workflow source.",
       "scopes": [
@@ -7518,7 +7538,8 @@
         "3e0b173e697c76570e384530aea10742858d0e97fc6e1c949aa6d58b549bb0a6",
         "9fb5a0a8d2c55b7783a1c1ad471a5b69522f927175a475c1bf4135565ce15fd5",
         "199b146a9d7958ad51d2a7a6836fd16cf3c9bde2e40d2e7a476c8e07093b5255",
-        "b9eafc7128c0accf40a62b6fc150338050b97539c0f9c282aa6d702ca786ed52"
+        "b9eafc7128c0accf40a62b6fc150338050b97539c0f9c282aa6d702ca786ed52",
+        "3ab18c00fc9d6852b2fc7fe96b0f8466c41e650ae8e2af970e6ce9a45e2e793a"
       ]
     },
     "agent_tools/tests/test_readiness_windows_preexec.py": {
@@ -9755,7 +9776,8 @@
       "sourceSha256": [
         "097826ef1351938b5e6993063de7259ebf06731d361185a745311646ce25f919",
         "ce3604fbdcf86082bcc78a650bf89ac77b40fd5ea49580ac3058829807eff750",
-        "227cad06e06ea266ae2bb524b498a2d544020d60b2d309ac4cc9e82bfc8e31f2"
+        "227cad06e06ea266ae2bb524b498a2d544020d60b2d309ac4cc9e82bfc8e31f2",
+        "ff80a2a46aebc253dec04b5dc93a2a3c09fea17f8a160bd42dbc8e9666b80284"
       ]
     },
     "agent_tools/tests/test_windows_credential_explicit_target.py": {
@@ -9870,6 +9892,21 @@
       ],
       "sourceSha256": [
         "d9287e405d1d6270741d84827a677f303107c43ab640f861fcc224e94566ee0b"
+      ]
+    },
+    "agent_tools/tests/test_windows_fixture_registration.py": {
+      "reason": "The alias writer over private temporary roots, and two real reviewed screen regions from the fixed 2026-11-06 fixture directory run through the current gate. Only that named file and this repository mcp_server text are read; nothing contacts a host.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/signed-out-field-regions.json",
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/provenance.json",
+        "agent_tools/readiness_windows_registration.py",
+        "agent_tools/readiness_windows_login.py",
+        "agent_tools/readiness_windows.py",
+        "agent_tools/readiness_fixture_registry.py",
+        "agent_tools/mcp_server.py"
+      ],
+      "sourceSha256": [
+        "570f830139d626e64b9e2f6cf540259e10c62f28083e0958901c808428495b7a"
       ]
     },
     "agent_tools/tests/test_windows_fresh_readonly_harness.py": {
@@ -9999,6 +10036,17 @@
         "35ba6a2eb3312652376b13fe318ff84f87f29bd541f2ab358cb3d3be6281058e"
       ]
     },
+    "agent_tools/tests/test_windows_idle_receipt_classes.py": {
+      "reason": "Whole authenticated remote beforeimage from the fixed 2026-11-06 fixture directory executes the receipt classification against fake receipts in a private directory.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness_windows_remote.py",
+        "agent_tools/readiness_windows_idle.py"
+      ],
+      "sourceSha256": [
+        "5782da22c6a5f4e71a1c8d3a76926df76baabc8d11d5ff03e462b8714c4e2f2e"
+      ]
+    },
     "agent_tools/tests/test_windows_input_chardev_label.py": {
       "reason": "Compile actual live/identity and immutable identity before fragment; physical proc-record/socket files with explicit kernel path seams test label-independent full argv/epoch custody.",
       "scopes": [
@@ -10037,6 +10085,54 @@
         "ffac93eb68a3460a48be107a2a4168ab29943a3b49d9caa07a1c6fe4641c7486"
       ]
     },
+    "agent_tools/tests/test_windows_job_start_budget.py": {
+      "reason": "Whole authenticated job facade and verbatim public route branches from the fixed 2026-11-06 fixture directory, compiled against the current sources with fakes. Only named fixture files and this repository mcp_server source are read; nothing contacts a host.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness_windows_jobs.py",
+        "agent_tools/readiness_fixture_registry.py",
+        "agent_tools/readiness.py",
+        "agent_tools/mcp_server.py"
+      ],
+      "sourceSha256": [
+        "b24cb8f425165571b40427a9de6101ec0de38c2263e2f6d45035a5e4efc4da46"
+      ]
+    },
+    "agent_tools/tests/test_windows_lease_receipt_race.py": {
+      "reason": "Whole authenticated lease and job beforeimages from the fixed 2026-11-06 fixture directory; native lost-read counts are retained evidence and nothing contacts a guest.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness_windows_leases.py",
+        "agent_tools/readiness_windows_jobs.py"
+      ],
+      "sourceSha256": [
+        "47ce19eb4666f9e0c38eb126562ceb23b2f41244b33421a223c0310182eae4aa"
+      ]
+    },
+    "agent_tools/tests/test_windows_lease_repeat_cancel.py": {
+      "reason": "Whole authenticated lease facade from the fixed 2026-11-06 fixture directory and the current facade with a fake executor in a private directory; nothing contacts a host.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness_lease_workflow.py",
+        "agent_tools/readiness_fixture_registry.py"
+      ],
+      "sourceSha256": [
+        "1af74f1b8f16385eff40fb48fd88bb911012921b12dbeda10530677c4f250475"
+      ]
+    },
+    "agent_tools/tests/test_windows_login_field_route.py": {
+      "reason": "Whole authenticated login and remote beforeimages from the fixed 2026-11-06 fixture directory execute named embedded sign-in helpers against the current source. Only named fixture files and fake guests are read; no credential or host is used.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness_windows.py",
+        "agent_tools/readiness_windows_login.py",
+        "agent_tools/readiness_windows_remote.py",
+        "agent_tools/readiness.py"
+      ],
+      "sourceSha256": [
+        "41d29b65724b6273cab783f010188ab1896de3ddcef00d6a090c5b6a71e03449"
+      ]
+    },
     "agent_tools/tests/test_windows_login_history_before_secret.py": {
       "reason": "Loads exactly the SHA-authenticated whole prior login implementation under a registered module identity so real inspect/source guards run. The existing real local Unix-socket transport fixture and controlled launch-absence observer exercise the same execute path; actual synthetic private-file opens establish RED before prior-source admission and GREEN after ordering, without a Windows guest or real credential.",
       "scopes": [
@@ -10057,11 +10153,13 @@
         "agent_tools/tests/fixtures/windows_login_latest_readmission/after.source",
         "agent_tools/tests/fixtures/windows_login_latest_readmission/before.source",
         "agent_tools/tests/fixtures/windows_login_latest_readmission/positive-native-facts.json",
-        "agent_tools/tests/fixtures/windows_login_latest_readmission/provenance.json"
+        "agent_tools/tests/fixtures/windows_login_latest_readmission/provenance.json",
+        "agent_tools/tests/fixtures/windows_login_latest_readmission/current.source"
       ],
       "sourceSha256": [
         "513b6a59b07208b69e87b2b3237daf4a33777c8a899476fe112cb1cac99634a2",
-        "cf98d9986b6fd22918e99fd803b3468dcf4bc79de67a48a6a1ce55a13a1ea8fe"
+        "cf98d9986b6fd22918e99fd803b3468dcf4bc79de67a48a6a1ce55a13a1ea8fe",
+        "68f3e52491b85ba6ff861160dbcc8282ebddaa8a15393d4f064821269efd5575"
       ]
     },
     "agent_tools/tests/test_windows_login_spotlight_profile_execution.py": {
@@ -10333,6 +10431,17 @@
         "73eaf9b6a47dc3e41f80acc3c224ae3761fee2cdef89e2c656edafa9d893e5ec"
       ]
     },
+    "agent_tools/tests/test_windows_new_process_roles.py": {
+      "reason": "Whole authenticated process-role beforeimage from the fixed 2026-11-06 fixture directory with the current role source; PowerShell runs only where available and only over fixed rows.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness_windows_processes.py",
+        "agent_tools/readiness_windows_idle.py"
+      ],
+      "sourceSha256": [
+        "17430f9b7900f10120650fadb15bfa862b25c9af0e5d6af1382c08e346c32f28"
+      ]
+    },
     "agent_tools/tests/test_windows_observer_framing_evidence.py": {
       "reason": "Finite authenticated native evidence payloads are read only from the literal fixture family. Python never executes the retained PowerShell beforeimages; the reflection test runs only its exact fixed causal PS1 on Windows. No production job/helper authority is added.",
       "scopes": [
@@ -10515,6 +10624,17 @@
         "8487de7b8061e7f40e7e4e973872756ca403f94640aa4968cb73bf126dfa2e27"
       ]
     },
+    "agent_tools/tests/test_windows_secure_clone_seed.py": {
+      "reason": "Whole authenticated secure-cleanup beforeimage and its provenance with the current guest module; the seed tree is a private temporary directory.",
+      "scopes": [
+        "agent_tools/windows_vm_guest.py",
+        "agent_tools/tests/fixtures/windows_secure_clone_seed/before.source",
+        "agent_tools/tests/fixtures/windows_secure_clone_seed/provenance.json"
+      ],
+      "sourceSha256": [
+        "786784943fd5256238dfb336aa51a4b4a7235cd0297beef9c6cfe71f01365e8e"
+      ]
+    },
     "agent_tools/tests/test_windows_secure_recovery.py": {
       "reason": "Compile only exact literal authenticated complete preserved Windows callers; finite canonical deployment/login/remote owners define generated source authority.",
       "scopes": [
@@ -10530,6 +10650,23 @@
         "47b2977ed2607a0dedfc53418c7679e352541c682f0c94ae000037949be79d25"
       ]
     },
+    "agent_tools/tests/test_windows_sleep_route.py": {
+      "reason": "Whole authenticated beforeimages from the fixed 2026-11-06 fixture directory run against the current sleep decision, remote and route modules. Only named fixture files are read; retained powercfg lines are data, and no branch reaches a power request.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness_windows_sleep.py",
+        "agent_tools/windows_sleep_capability.py",
+        "agent_tools/readiness_windows.py",
+        "agent_tools/readiness_windows_remote.py",
+        "agent_tools/readiness_workflow.py",
+        "agent_tools/native_next_action.py",
+        "agent_tools/tool_action_policy.json",
+        "agent_tools/readiness_vm_dispatch.json"
+      ],
+      "sourceSha256": [
+        "a2a59cf9dd294e52a9dae397ddb035d719c5eb5c24fb26fff8148b80c49eef3a"
+      ]
+    },
     "agent_tools/tests/test_windows_standard_token.py": {
       "reason": "Complete immutable old profile parser is executed only for local lexical policy RED; current parser/rendered full runtime reject inconsistent or elevated tokens. Native source compiler/parser uses fixed actual classes and harness, no public source inputs.",
       "scopes": [
@@ -10541,6 +10678,19 @@
       "sourceSha256": [
         "3b9146608a5748b9f0384ea1661e400b3e85957293ae9fbdd7bad6be40941842",
         "a9e11bdd39648eb38effb2da6a1a38f36ccf9112b0b30b931c32f0b27cbf8f2e"
+      ]
+    },
+    "agent_tools/tests/test_windows_status_budgets.py": {
+      "reason": "Whole authenticated workflow, backend and remote beforeimages from the fixed 2026-11-06 fixture directory are compared with the current sources against retained native durations. Only named fixture files are read and nothing contacts a host.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/readiness.py",
+        "agent_tools/readiness_windows.py",
+        "agent_tools/readiness_windows_remote.py",
+        "agent_tools/readiness_workflow.py"
+      ],
+      "sourceSha256": [
+        "4d63f286eb35a66705028830db520eecd375f937d242b62a652b98d6ed63ff1f"
       ]
     },
     "agent_tools/tests/test_windows_system_image_inquiry.py": {
@@ -10576,6 +10726,19 @@
         "33956137988977372879fa5dd51727142a7dcbf0ebeae752a6f2ab954ac8563c"
       ]
     },
+    "agent_tools/tests/test_windows_update_policy.py": {
+      "reason": "Whole authenticated remote beforeimage from the fixed 2026-11-06 fixture directory with the current update policy, setup and receipt sources; nothing changes a machine policy.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/windows_vm_unattend.py",
+        "agent_tools/windows_vm_guest.py",
+        "agent_tools/readiness_windows_remote.py",
+        "agent_tools/readiness_windows.py"
+      ],
+      "sourceSha256": [
+        "a96ccd4ec4c182afeec322058c8e65b0cdbd2abfd13f323942530e15f873eb2e"
+      ]
+    },
     "agent_tools/tests/test_windows_vm_deploy_coordinator.py": {
       "reason": "Compile only finite preserved deployment modules with physical private state, original host resource clock samples and explicit native admission seams. Added clock-ahead regression uses the exact unchanged reservation freshness guard; prepared retry retains original payload/credential generation. Immutable fixture and provenance inputs are explicit.",
       "scopes": [
@@ -10606,7 +10769,8 @@
         "bbc997cef4df06b3525b6c03d651ebb3c540d94e84d7c6835c853fba381deb95",
         "2d01970c0f3729b8966daf3feaf73e9847a985c02bd73f3010bfdf6ae3e0db5f",
         "e28435133db779e4d536d82597d54ba97dd5d0da91f3c4daa17747d1d2e5ffe7",
-        "bb2a9e2e150d1fcaf2a2170bafbf314e7d00b118f3ce8b7b9794756bb322626a"
+        "bb2a9e2e150d1fcaf2a2170bafbf314e7d00b118f3ce8b7b9794756bb322626a",
+        "3eb10beeb823e0989d8981899c10454e2d4a55d94a771a95dab91731e2d0a409"
       ]
     },
     "agent_tools/tests/test_windows_vm_inspection.py": {
@@ -10966,6 +11130,7 @@
     "agent_tools/tests/fixtures/windows_jobs_reflection/start.before.source": "2680f4a70e15b2e48f793ec055749f714c6dad20264aa052a3b5665a6b67cd41",
     "agent_tools/tests/fixtures/windows_jobs_reflection/status.before.source": "36c50d40b48584934904b40bee195bcff050a0069ee37ab37858e1d31aa3da4c",
     "agent_tools/tests/fixtures/windows_managed_creator_unix_address/managed_create.before.source": "8aeb4c0153ea840c595a5996295e62f6ef6b5504df2cb4845cbbab953955d218",
+    "agent_tools/tests/fixtures/windows_native_tools_20261106/route_timeout.before.source": "1042848029016672f9189e3312c01de33c04d130ea09e2c7264c06b90a2ab519",
     "agent_tools/tests/fixtures/windows_original_vm_selector/mcp_server.before.source": "224ad9339a86a4541a7da1f2463635853e99e9e85aba28f7f3bc34d38ee6d88b",
     "agent_tools/tests/fixtures/windows_original_vm_selector/policy.before.source": "0a757105e3e29c34f35ededb8a648228aac1537dfe0ad6570443b3c875466fbf",
     "agent_tools/tests/fixtures/windows_powershell_environment/native_capture_document_ca1.before.fragment": "e10c6535655a51c3244f93dfb29c819789bb69247a14e021d850703422080924",

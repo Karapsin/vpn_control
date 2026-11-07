@@ -44,7 +44,7 @@ for _action in ("connection-channel-prepare", "connection-channel-status", "conn
     for _reason in _SNAPSHOT_REASONS:
         _REGRESSIONS[(_action, _reason)] = (
             "agent_tools/tests/test_ssh_channel_mcp_routes.py::test_snapshot_refusal_retains_only_complete_finite_diagnostics")
-for _action in ("readiness-status", "readiness-ensure", "readiness-reboot", "readiness-providers"):
+for _action in ("readiness-status", "readiness-ensure", "readiness-reboot", "readiness-providers", "readiness-sleep-capability"):
     for _reason in ("readiness_identity_invalid", "readiness_inputs_invalid"):
         _REGRESSIONS[(_action, _reason)] = (
             "agent_tools/tests/test_readiness_identity_refusal.py::test_whole_before_generic_blocker_current_typed_refusal")

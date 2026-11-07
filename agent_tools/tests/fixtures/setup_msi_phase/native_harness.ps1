@@ -51,6 +51,17 @@ function Start-Process {
  return $process
 }
 function Set-Service {param($Name,$StartupType)}
+# The fixture update policy must never reach the machine running this test.
+function New-Item {
+ param($Path,$ItemType,[switch]$Force)
+ if($Path -like 'HKLM:*'){return}
+ Microsoft.PowerShell.Management\New-Item -Path $Path -ItemType $ItemType -Force:$Force
+}
+function New-ItemProperty {param($LiteralPath,$Name,$PropertyType,$Value,[switch]$Force)}
+function Get-ScheduledTask {param($TaskPath,$ErrorAction) @()}
+function Stop-ScheduledTask {throw 'REAL_TASK_REACHED'}
+function Disable-ScheduledTask {throw 'REAL_TASK_REACHED'}
+function Get-Service {param($Name,$ErrorAction) @()}
 function Start-Service {param($Name)}
 try {
  if($data.mode -eq 'beforeEarly') { & $data.before }

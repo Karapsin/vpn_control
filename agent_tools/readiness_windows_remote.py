@@ -100,7 +100,8 @@ def _main():
         else:
             request=json.dumps({'execute':command,'arguments':arguments},separators=(',',':'))
             require(len(request.encode())<=262144,'instance_guest_request_bound')
-            raw=libvirt_qemu.qemuAgentCommand(domain,request,8,0)
+            try:raw=libvirt_qemu.qemuAgentCommand(domain,request,8,0)
+            except libvirt.libvirtError:raise ValueError()from None
             require(type(raw)is str and 0<len(raw.encode())<=262144,'instance_guest_reply_bound')
             answer=json.loads(raw);require(type(answer)is dict and 'return'in answer and 'error'not in answer,'instance_guest_reply')
             value=answer['return']
@@ -129,7 +130,7 @@ def _main():
         # unknown extension modes cannot archive unvalidated controller output.
         retain_public=MODE in {'observe','idle-inventory','reboot','resume','wake_display',
                               'lease-acquire','lease-status','lease-cancel','lease-enroll','lease-enrollment-status',
-                              'job-enroll','job-namespace-status','job-start','job-status','job-inventory'}
+                              'job-enroll','job-namespace-status','job-start','job-status','job-inventory','sleep-capability','update-policy'}
         observed_name=prefix+'.observed-terminal.json'
         if not os.path.lexists(root/intent_name):
             if original is not None:return {'state':'unsubmitted','reason':'original_admission_absent','replayAllowed':False}
@@ -160,7 +161,7 @@ def _main():
         elif retain_public and os.path.lexists(root/observed_name):terminal=read_guest_terminal(observed_name)
         else:
             require(type(intent.get('controllerIdentity'))is dict,'instance_legacy_guest_job_unresolved')
-            deadline=time.monotonic()+20
+            deadline=time.monotonic()+35
             while True:
                 terminal=rpc('guest-exec-status',ack['ack'])
                 if terminal.get('exited')is True:break
@@ -168,6 +169,8 @@ def _main():
             # Validate correlation before admitting the terminal receipt.
         require(type(terminal)is dict and len((json.dumps(terminal,sort_keys=True)+'\n').encode())<=262144,'instance_guest_reply_bound')
         if retain_public and not os.path.lexists(root/observed_name):save(observed_name,terminal)
+        elif not retain_public and terminal.get('exited')is True and not os.path.lexists(root/observed_name):
+            save(observed_name,{key:terminal[key]for key in ('exited','exitcode','signal')if key in terminal})
         require(terminal.get('exited')is True and type(terminal.get('exitcode'))is int and terminal['exitcode']==0 and not terminal.get('out-truncated',False)
                 and not terminal.get('err-truncated',False)
                 and all(type(terminal[key])is bool for key in ('out-truncated','err-truncated')if key in terminal),'instance_guest_program_failed')
@@ -220,7 +223,87 @@ def _main():
         for proof in ORIGINAL_HOST_PHASES:
             if proof['intentName']not in names:
                 unresolved.append({'receipt':proof['intentName'],'reason':'original_lifecycle_unresolved'})
-        guest_prefix=r'(?:qualification-[0-9a-f-]{36}|direct-guest-[0-9a-f-]{36}|readiness-[0-9a-f-]{36}-(?:session|interactive|display|wake-admission|lease-acquire|lease-status|lease-cancel|lease-enroll|idle|(?:job-enroll|job-namespace-status|job-start|job-status|job-inventory)-[0-9a-f]{16}|(?:login-session|login-account|login-admission|login-after)-[0-9a-f]{12}))'
+        identifier='[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+        # These fixed programs only read. Their lost reply never leaves an effect
+        # behind, so a guest agent that stopped tracking one, with its pid absent
+        # from this same complete census, closes it. Effectful labels stay open.
+        read_only=r'readiness-'+identifier+r'-(?:session|interactive|display|wake-admission|sleep-capability|lease-status|idle|(?:job-namespace-status|job-status|job-inventory)-[0-9a-f]{16}|(?:login-session|login-account|login-admission|login-after)-[0-9a-f]{12})'
+        collections=[8]
+        def guest_ended(value):
+            return type(value)is dict and value.get('exited')is True and (type(value.get('exitcode'))is int or type(value.get('signal'))is int)
+        def retained_guest_terminal(prefix):
+            for suffix in ('.terminal.json','.observed-terminal.json'):
+                if os.path.lexists(root/(prefix+suffix)):return read_guest_terminal(prefix+suffix)
+            return None
+        def read_only_closed(prefix,ack):
+            """Collect once through the original pid; absence alone proves nothing."""
+            if re.fullmatch(read_only,prefix)is None:return False
+            closed=prefix+'.orphan-closed.json';pid=ack['ack']['pid']
+            if os.path.lexists(root/closed):
+                value=read(closed);return value.get('pid')==pid and value.get('replayAllowed')is False
+            rows=(result.get('idleFacts')or{}).get('processes')
+            if type(rows)is not list or collections[0]<=0:return False
+            collections[0]-=1
+            # A refused guard or lost transport proves nothing about this program.
+            try:terminal=rpc('guest-exec-status',ack['ack'])
+            except OSError:return False
+            except ValueError as error:
+                if str(error):return False
+                terminal=None
+            if terminal is not None:
+                if not guest_ended(terminal):return False
+                save(prefix+'.observed-terminal.json',terminal);return True
+            if any(type(row)is not dict or row.get('pid')==pid and row.get('name')=='powershell.exe' for row in rows):return False
+            save(closed,{'pid':pid,'state':'guest-agent-no-longer-tracks-absent-read-only-program','replayAllowed':False})
+            return True
+        def read_only_unacknowledged(prefix):
+            """A lost guest-exec reply: this census's own later request proves it is over."""
+            if re.fullmatch(read_only,prefix)is None:return False
+            closed=prefix+'.orphan-closed.json'
+            if os.path.lexists(root/closed):return read(closed).get('pid')is None and read(closed).get('replayAllowed')is False
+            rows=(result.get('idleFacts')or{}).get('processes')
+            if type(rows)is not list or any(type(row)is not dict or row.get('name')=='powershell.exe' and row.get('self')is not True for row in rows):return False
+            save(closed,{'pid':None,'state':'unacknowledged-read-only-program-not-running','replayAllowed':False})
+            return True
+        def inspection_closed(prefix):
+            """A frame capture: no input footprint, this actor, the exact retained PNG."""
+            operation=prefix.removeprefix('inspection-');intent=read(prefix+'.intent.json')
+            require(set(intent)=={'schemaVersion','operationId','probe','before'}and type(intent['schemaVersion'])is int and intent['schemaVersion']==1
+                    and intent['operationId']==operation and intent['probe']is False and type(intent['before'])is dict
+                    and intent['before'].get('qemu')=={'pid':current_actor['pid'],'startTicks':current_actor['startTicks']},'instance_original_work_pending')
+            for marker in ('.input-started.json','.input-complete.json'):
+                require(not os.path.lexists(root/(prefix+marker)),'instance_original_work_pending')
+            done=read(prefix+'.result.json');leaf='setup-frame-'+operation.replace('-','')+'.png'
+            require(set(done)=={'frame','bytes','sha256'}and done['frame']==leaf and type(done['bytes'])is int and 0<done['bytes']<=3*1024**2
+                    and type(done['sha256'])is str and re.fullmatch('[0-9a-f]{64}',done['sha256'])is not None,'instance_original_work_pending')
+            info=private(root/leaf);require(info.st_size==done['bytes'],'instance_original_work_pending')
+            fd=os.open(root/leaf,os.O_RDONLY|os.O_NOFOLLOW)
+            try:
+                raw=os.read(fd,3*1024**2+1)
+                require(generation(os.fstat(fd))==generation(info),'instance_original_work_pending')
+            finally:os.close(fd)
+            require(len(raw)==done['bytes']and hashlib.sha256(raw).hexdigest()==done['sha256']and raw.startswith(b'\x89PNG\r\n\x1a\n'),'instance_original_work_pending')
+        def login_receipt_closed(name,prefix):
+            """Protected sign-in has one owner; an open credential never closes here."""
+            if re.fullmatch(r'login-(?:test-lock|field-capture|screen-pin)-'+identifier,prefix):
+                return read(prefix+'.terminal.json').get('replayAllowed')is False
+            owner=re.fullmatch(r'login-owner-('+identifier+r')(?:-credential-continuation)?',prefix)
+            prepared=re.fullmatch(r'login-preparation-('+identifier+r')-(?:wake|dismiss)',prefix)
+            credential=re.fullmatch(r'login-credential-('+identifier+r')',prefix)
+            if owner:
+                packet=read(prefix+'.terminal.json').get('packet');operation=owner[1]
+                require(type(packet)is dict and packet.get('operationId')==operation,'instance_original_work_pending')
+                submitted=os.path.lexists(root/('login-credential-'+operation+'.intent.json'))
+                if packet.get('state')=='blocked':return not submitted or os.path.lexists(root/('login-credential-'+operation+'.terminal.json'))
+                return packet.get('state')=='owner-terminal'and (packet.get('loginState')=='ready'or os.path.lexists(root/('login-credential-'+operation+'.terminal.json')))
+            if credential:return read(prefix+'.terminal.json').get('state')=='ready'
+            if prepared:
+                operation=prepared[1]
+                if os.path.lexists(root/(prefix+'.terminal.json')):return read(prefix+'.terminal.json').get('state')=='ready-observed'
+                packet=read('login-owner-'+operation+'.terminal.json').get('packet')
+                return packet.get('state')=='blocked'and not os.path.lexists(root/('login-credential-'+operation+'.intent.json'))
+            return False
+        guest_prefix=r'(?:qualification-[0-9a-f-]{36}|direct-guest-[0-9a-f-]{36}|readiness-[0-9a-f-]{36}-(?:session|interactive|display|wake-admission|sleep-capability|update-policy|lease-acquire|lease-status|lease-cancel|lease-enroll|idle|(?:job-enroll|job-namespace-status|job-start|job-status|job-inventory)-[0-9a-f]{16}|(?:login-session|login-account|login-admission|login-after|login-screen-pin)-[0-9a-f]{12}))'
         for name in names:
             if not name.endswith('.intent.json'):continue
             prefix=name.removesuffix('.intent.json')
@@ -235,14 +318,31 @@ def _main():
                     unresolved.append({'receipt':name,'reason':'original_lifecycle_unresolved'})
                 continue
             if re.fullmatch(guest_prefix,prefix):
-                intent=read(name);operation=intent.get('operationId')
                 try:
-                    ack=read(prefix+'.ack.json');terminal=read_guest_terminal(prefix+'.terminal.json')
-                    require(ack.get('operationId')==operation and ack.get('replayAllowed')is False
-                            and type(ack.get('ack'))is dict and type(ack['ack'].get('pid'))is int
-                            and terminal.get('exited')is True and type(terminal.get('exitcode'))is int,'instance_original_work_pending')
+                    intent=read(name);operation=intent.get('operationId')
+                    if os.path.lexists(root/(prefix+'.ack.json')):
+                        ack=read(prefix+'.ack.json')
+                        require(ack.get('operationId')==operation and ack.get('replayAllowed')is False
+                                and type(ack.get('ack'))is dict and type(ack['ack'].get('pid'))is int,'instance_original_work_pending')
+                        terminal=retained_guest_terminal(prefix)
+                        if terminal is None:require(read_only_closed(prefix,ack),'instance_original_work_pending')
+                        else:require(guest_ended(terminal),'instance_original_work_pending')
+                    else:require(read_only_unacknowledged(prefix),'instance_original_work_pending')
                     terminal_count+=1
                 except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_guest_work_unresolved'})
+            elif re.fullmatch(r'fixture-update-policy-'+identifier,prefix):
+                try:
+                    done=read(prefix+'.terminal.json')
+                    require(done.get('state')in {'update-policy-applied','update-policy-unverified'}and done.get('replayAllowed')is False,'instance_original_work_pending')
+                    terminal_count+=1
+                except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_fixture_policy_unresolved'})
+            elif re.fullmatch(r'inspection-'+identifier,prefix):
+                try:inspection_closed(prefix);terminal_count+=1
+                except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_inspection_unresolved'})
+            elif prefix.startswith('login-'):
+                try:
+                    require(login_receipt_closed(name,prefix),'instance_original_work_pending');terminal_count+=1
+                except (OSError,ValueError,KeyError,TypeError,AttributeError):unresolved.append({'receipt':name,'reason':'original_login_work_unresolved'})
             elif re.fullmatch(r'readiness-recovery-[0-9a-f]{64}',prefix):
                 try:
                     intent=read(name);done=read(prefix+'.result.json')
@@ -264,6 +364,8 @@ def _main():
                     else:require(done.get('state')=='defined','instance_original_work_pending')
                 except (OSError,ValueError,KeyError,TypeError):unresolved.append({'receipt':name,'reason':'original_lifecycle_unresolved'})
             else:unresolved.append({'receipt':name,'reason':'unclassified_original_intent'})
+        if os.path.lexists(root/'stop-intent.json')and not os.path.lexists(root/'stop-result.json'):
+            unresolved.append({'receipt':'stop-intent.json','reason':'original_lifecycle_unresolved'})
         if os.path.lexists(root/'secure-intent.json'):
             try:
                 original=read('secure-intent.json');ack=read('secure-ack.json');terminal=read('secure-terminal.json')
@@ -322,9 +424,10 @@ def _main():
             require(state=='running' and EXPECTED.get('actor')==current_actor and EXPECTED.get('controlConnection')==result['controlConnection'],'instance_recovery_identity_changed')
             before=EXPECTED.get('sessionFacts');require(type(before)is dict,'instance_recovery_session_missing')
             fresh=script('wake-admission',SESSION_SCRIPT)
+            signed_out=not fresh['session']['User'] and not before['session']['User'] and fresh['tokenSid']is None
             require(fresh['machine'].lower()==SPEC['deploymentId'] and fresh['boot']==before['boot'] and fresh['console']==before['console']
-                    and fresh['expectedSid']==before['expectedSid'] and fresh['tokenSid']==before['expectedSid'] and fresh['ordinary']is True
-                    and fresh['session']['State']==0 and fresh['session']['Flags']in {0,1} and fresh['session']['Logon']==before['session']['Logon'],'instance_recovery_session_changed')
+                    and fresh['expectedSid']==before['expectedSid'] and fresh['ordinary']is True and fresh['session']['Logon']==before['session']['Logon']
+                    and (signed_out or fresh['tokenSid']==before['expectedSid'] and fresh['session']['State']==0 and fresh['session']['Flags']in {0,1}),'instance_recovery_session_changed')
             mice=monitor('query-mice');require(type(mice)is list and len(mice)<=16,'instance_mouse_unrecognized')
             selected=[mouse for mouse in mice if type(mouse)is dict and mouse.get('current')is True]
             require(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_mouse_unrecognized')
@@ -374,6 +477,31 @@ def _main():
             require(EXPECTED.get('actor')==current_actor and EXPECTED.get('hostBoot')==CONTEXT['hostBootId']
                     and EXPECTED.get('controlConnection')==result['controlConnection'],'instance_original_lease_host_changed')
             result['lease']=script('lease-enroll',None,ORIGINAL_SCRIPT)if MODE=='lease-enrollment-status'else script(MODE,LEASE_SCRIPT)
+        elif MODE=='update-policy':
+            require(state=='running','instance_guest_not_ready');rpc('guest-ping',{});result['guestAgent']=True
+            require(EXPECTED.get('actor')==current_actor and EXPECTED.get('hostBoot')==CONTEXT['hostBootId']
+                    and EXPECTED.get('controlConnection')==result['controlConnection'],'instance_recovery_identity_changed')
+            name='fixture-update-policy-'+OPERATION;intent={'operationId':OPERATION,'hostBoot':CONTEXT['hostBootId'],'replayAllowed':False}
+            if os.path.lexists(root/(name+'.intent.json')):require(read(name+'.intent.json')==intent,'instance_update_policy_changed')
+            else:vm_guard();save(name+'.intent.json',intent)
+            # A lost reply re-reads this same guest program; it is never submitted twice.
+            # An ended program closes its receipt even when it could not verify the policy.
+            def policy_closed(state):
+                if not os.path.lexists(root/(name+'.terminal.json')):vm_guard();save(name+'.terminal.json',{'operationId':OPERATION,'state':state,'replayAllowed':False})
+            try:value=script('update-policy',UPDATE_POLICY_SCRIPT)
+            except ValueError as error:
+                if str(error)=='instance_guest_program_failed':policy_closed('update-policy-unverified')
+                raise
+            if not(type(value)is dict and set(value)=={'windowsUpdate','storeAutoDownload','edgeTasksDisabled','edgeServicesDisabled','defenderSignaturesUnchanged','boot'}
+                    and value['windowsUpdate']=={'noAutoUpdate':1,'noAutoRebootWithLoggedOnUsers':1}and value['storeAutoDownload']==2
+                    and value['edgeTasksDisabled']is True and value['edgeServicesDisabled']is True and value['defenderSignaturesUnchanged']is True):
+                policy_closed('update-policy-unverified');raise ValueError('instance_update_policy_unverified')
+            policy_closed('update-policy-applied');result['updatePolicy']=value
+        elif MODE=='sleep-capability':
+            require(state=='running','instance_guest_not_ready');rpc('guest-ping',{});result['guestAgent']=True
+            require(EXPECTED.get('actor')==current_actor and EXPECTED.get('hostBoot')==CONTEXT['hostBootId']
+                    and EXPECTED.get('controlConnection')==result['controlConnection'],'instance_recovery_identity_changed')
+            result['sleepFacts']=script('sleep-capability',SLEEP_SCRIPT)
         else:raise ValueError('instance_packet_action')
         vm_guard();print(json.dumps(result))
     except BaseException as error:
@@ -413,6 +541,14 @@ def _interactive_source(user,machine,idle_source=None):
     return session+display
 
 
+_UPDATE_POLICY_READBACK=r'''$au=Get-ItemProperty -LiteralPath $windowsUpdate;$storePolicy=Get-ItemProperty -LiteralPath $store
+$tasks=@(Get-ScheduledTask -TaskPath '\' | Where-Object {$_.TaskName -like 'MicrosoftEdgeUpdateTaskMachine*' -or $_.TaskName -like 'OneDrive Standalone Update Task-*'})
+$services=@(Get-Service -Name 'edgeupdate','edgeupdatem' -ErrorAction SilentlyContinue)
+$defender=(Get-Service -Name WinDefend).Status -eq 'Running'
+[Console]::WriteLine((@{windowsUpdate=@{noAutoUpdate=[int]$au.NoAutoUpdate;noAutoRebootWithLoggedOnUsers=[int]$au.NoAutoRebootWithLoggedOnUsers};storeAutoDownload=[int]$storePolicy.AutoDownload;edgeTasksDisabled=(@($tasks|Where-Object {$_.State -ne 'Disabled'}).Count -eq 0);edgeServicesDisabled=(@($services|Where-Object {$_.StartType -ne 'Disabled'}).Count -eq 0);defenderSignaturesUnchanged=[bool]$defender;boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')}|ConvertTo-Json -Depth 4 -Compress))
+'''
+
+
 def validate_binding(binding):
     """Validate immutable target metadata without generating commands."""
     if type(binding)is not dict or set(binding)!={'provider','spec','setup','context','uri','domain','xmlSha256'}:
@@ -438,7 +574,7 @@ def validate_binding(binding):
     return provider,spec,setup,context
 
 
-def program(binding,mode,operation,*,expected=None,recovery_id=None,interactive=False,lease_binding=None,lease_operation=None,ttl_seconds=None,original_script=None,idle=False,expected_sid=None,lease_root_generation=None,job_root_generation=None,job_admission_generation=None,reservation=None,preexec_rejections=(),original_host_phases=(),creator_handle=None):
+def program(binding,mode,operation,*,expected=None,recovery_id=None,interactive=False,lease_binding=None,lease_operation=None,ttl_seconds=None,original_script=None,idle=False,expected_sid=None,lease_root_generation=None,job_root_generation=None,job_admission_generation=None,reservation=None,preexec_rejections=(),original_host_phases=(),creator_handle=None,sleep_boot=None):
     """Build only reviewed actions; no caller command/source or credential input."""
     provider,spec,setup,context=validate_binding(binding)
     creator_definitions=''
@@ -447,7 +583,7 @@ def program(binding,mode,operation,*,expected=None,recovery_id=None,interactive=
         if type(creator_handle)is not creators.CreatorHandle:raise ValueError('windows_creator_custody_unresolved')
         if creator_handle.guard()['scope']!=creators._scope(binding):raise ValueError('windows_creator_custody_unresolved')
         creator_definitions=creator_handle.definitions()
-    if mode not in {'observe','idle-inventory','reboot','resume','wake_display','lease-acquire','lease-status','lease-cancel','lease-enroll','lease-enrollment-status'}:
+    if mode not in {'observe','idle-inventory','reboot','resume','wake_display','lease-acquire','lease-status','lease-cancel','lease-enroll','lease-enrollment-status','sleep-capability','update-policy'}:
         raise ValueError('windows_packet_action')
     if type(operation)is not str or str(UUID(operation))!=operation or type(interactive)is not bool:
         raise ValueError('windows_packet_identity')
@@ -476,9 +612,18 @@ def program(binding,mode,operation,*,expected=None,recovery_id=None,interactive=
     if interactive:
         if mode!='observe':raise ValueError('windows_display_binding')
         interactive_source=_interactive_source(setup['user'],spec.deployment_id,idle_script or None)
-    if mode.startswith('lease-'):
+    if mode.startswith('lease-')or mode in {'sleep-capability','update-policy'}:
         if type(expected)is not dict or set(expected)!={'actor','hostBoot','controlConnection'}:
             raise ValueError('windows_lease_host_binding')
+    sleep_script=''
+    if mode=='sleep-capability':
+        from . import readiness_windows_sleep as sleep_module
+        sleep_script=sleep_module.powershell_source(spec.deployment_id,sleep_boot)
+    update_policy_script=''
+    if mode=='update-policy':
+        from .windows_vm_unattend import UPDATE_POLICY
+        update_policy_script=("$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'\n[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"
+            "if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18'){throw 'SYSTEM_REQUIRED'}\n"+UPDATE_POLICY+_UPDATE_POLICY_READBACK)
     if mode=='lease-enrollment-status':
         if (type(original_script)is not dict or set(original_script)!={'operationId','sourceSha256'}
                 or type(original_script['operationId'])is not str or str(UUID(original_script['operationId']))!=original_script['operationId']
@@ -503,6 +648,6 @@ def program(binding,mode,operation,*,expected=None,recovery_id=None,interactive=
     text=text.replace(marker,''.join('    '+line+'\n'for line in canonical.splitlines()))
     bindings={'SPEC':spec.as_dict(),'SETUP':setup,'CONTEXT':context,'PROVIDER':provider,'URI':binding['uri'],'DOMAIN':binding['domain'],'XML_SHA':binding['xmlSha256'],'SOCKET_PATH':str(PurePosixPath(spec.root).parent/'.cache/libvirt/virtqemud-sock')if provider=='libvirt-windows'else None,
               'OPERATION':operation,'MODE':mode,'EXPECTED':expected,'RECOVERY_ID':recovery_id,'SESSION_SCRIPT':guest.powershell_source(setup['user']),
-              'INTERACTIVE_SCRIPT':interactive_source,'LEASE_SCRIPT':lease,'ORIGINAL_SCRIPT':original_script,'IDLE_SCRIPT':idle_script,'RESERVATION':reservation,'ORIGINAL_HOST_PHASES':original_phases,'CREATOR_ENROLLED':creator_handle is not None}
+              'INTERACTIVE_SCRIPT':interactive_source,'LEASE_SCRIPT':lease,'SLEEP_SCRIPT':sleep_script,'UPDATE_POLICY_SCRIPT':update_policy_script,'ORIGINAL_SCRIPT':original_script,'IDLE_SCRIPT':idle_script,'RESERVATION':reservation,'ORIGINAL_HOST_PHASES':original_phases,'CREATOR_ENROLLED':creator_handle is not None}
     packet='\n'.join(key+'='+repr(value)for key,value in bindings.items())+'\n'+deployment.guest_rpc_definitions()+'\n'+host_work_module.protocol_source()+'\n'+creator_definitions+'\nwire=partial_wire=-1\n'+text+'\n_main()\n'
     compile(packet,'finite Windows readiness packet','exec');return packet.encode()

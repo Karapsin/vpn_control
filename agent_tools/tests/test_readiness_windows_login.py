@@ -115,7 +115,7 @@ class RemoteCredentialFenceTests(unittest.TestCase):
                 else:module._login_flow(root,records.__getitem__,save,monitor,lambda:None,script,fresh,before)
                 original_count=len(keys);module.LOGIN_MODE='login-status'
                 value=module._login_flow(root,records.__getitem__,save,monitor,lambda:None,script,fresh,before)
-                self.assertEqual(original_count,len(keys));self.assertEqual(4 if animated else 3 if sleeping else 1,len(screens));self.assertEqual('ready'if ready_after else'credential-submission-unresolved',value['login']['state'])
+                self.assertEqual(original_count,len(keys));self.assertEqual((4 if animated else 3 if sleeping else 1)+(1 if module is login else 0),len(screens));self.assertEqual('ready'if ready_after else'credential-submission-unresolved',value['login']['state'])
                 self.assertEqual((3 if sleeping else 1)+(1 if ready_after else 0),len(records))
                 for path in root.glob('*.json'):
                     text=path.read_text();self.assertNotIn('FIXTURE_PRIVATE_PASSWORD_A!9',text);self.assertNotIn('hold-time',text);self.assertNotIn('qcode',text)

@@ -306,9 +306,11 @@ def _external_original(root, state, action, value, inputs, *, deadline=None):
     request = {"schemaVersion": 2, "fixtureId": value["fixtureId"], "operationId": value["operationId"],
                "executorSha256": hashlib.sha256(jobs.json.dumps(value["executor"], sort_keys=True,
                                               separators=(",", ":")).encode()).hexdigest()}
+    first_cancel = False
     if action == "cancel":
         try:
             jobs._publish(marker, request)
+            first_cancel = True
         except FileExistsError:
             _need(jobs._record(marker) == request, "lease_cancel_record_invalid")
     cancelled = marker.exists() or marker.is_symlink()
@@ -323,8 +325,11 @@ def _external_original(root, state, action, value, inputs, *, deadline=None):
     if cancelled and result["state"] == "unsubmitted":
         result = {**result, "ok": True, "state": "cancelled", "reason": "lease_cancelled_before_dispatch",
                   "restored": True, "jobState": "terminal", "nextAction": "none"}
-    elif action == "cancel":
-        result = _bounded_call(executor.cancel, value["operationId"], deadline=deadline)
+    elif action == "cancel" and result.get("jobState") != "terminal":
+        # The first cancel's host receipt is retained once, so a repeat reads that old
+        # answer back. It still reaches the original, and this observation is the answer.
+        answer = _bounded_call(executor.cancel, value["operationId"], deadline=deadline)
+        result = answer if first_cancel else result
     elif action == "acquire" and not cancelled and result["state"] == "unsubmitted":
         # Exact original admission absence is the executor's affirmative no-start
         # proof. The same saved snapshot/UUID is the only allowed preparation.

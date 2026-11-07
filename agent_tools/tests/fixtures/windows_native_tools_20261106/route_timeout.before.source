@@ -1,0 +1,32 @@
+# Verbatim branches of _vm_workflow_dispatch before typed transport timeouts.
+# GUEST
+        if action in {"guest-program-start", "guest-program-status", "guest-program-reconcile", "guest-program-collect",
+                      "android-program-start", "android-program-status", "android-program-reconcile", "android-program-collect"}:
+            android = action.startswith("android-program-")
+            module = "readiness_adb_jobs" if android else "readiness_guest_jobs"
+            verb = action.removeprefix("android-program-" if android else "guest-program-")
+            try:
+                result = _agent_module(module).workflow(REPO_ROOT, verb, inputs)
+                return {"tool": "vm_workflow", **result, "ok": result.get("state") in {"running", "terminal"}}
+            except Exception as error:
+                core = _agent_module("readiness")
+                if isinstance(error, core.ReadinessBlocked):
+                    return {"tool": "vm_workflow", **error.as_dict()}
+                if not isinstance(error, (OSError, ValueError, TypeError, KeyError, AttributeError)):
+                    raise
+                identity = inputs.get("operationId")
+                fixture = inputs.get("fixtureId")
+                bound = ({"operationId": identity, "fixtureId": fixture}
+                         if _valid_uuid(identity) and type(fixture) is str
+                         and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", fixture) else {})
+                return {"tool": "vm_workflow", "ok": False, "state": "blocked", **bound,
+                        "reason": "android_program_admission_unavailable" if android else "guest_program_admission_unavailable",
+                        "replayAllowed": False}
+# LEASE
+        if action in {"readiness-lease-acquire", "readiness-lease-status", "readiness-lease-cancel", "readiness-lease-reconcile"}:
+            try:
+                result = _agent_module("readiness_lease_workflow").workflow(REPO_ROOT, action.removeprefix("readiness-lease-"), inputs)
+                return {"tool": "vm_workflow", **result, "ok": result.get("ok") is True or result.get("state") in {"active", "starting", "expired", "cancelled", "restoring", "restored"}}
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                return {"tool": "vm_workflow", "ok": False, "state": "blocked",
+                        "reason": "readiness_lease_admission_unavailable", "replayAllowed": False}

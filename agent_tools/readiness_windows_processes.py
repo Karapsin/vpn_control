@@ -71,11 +71,11 @@ function Test-RecoveryMicrosoftSignature([string]$path) {
  } catch {$valid=$false}
  $RecoveryRoleSignatures[$path]=[bool]$valid;return [bool]$valid
 }
-function Test-RecoveryWidgetPackage([object]$native,[string]$ordinary) {
+function Test-RecoveryPublishedPackage([object]$native,[string]$ordinary,[string]$identity,[string]$relative) {
  if($native.packageError -ne 0 -or [string]::IsNullOrEmpty($native.package)){return $false}
  $full=[string]$native.package
- if($full -notmatch '^Microsoft\.WidgetsPlatformRuntime_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__8wekyb3d8bbwe$'){return $false}
- $expected=$env:ProgramFiles+'\WindowsApps\'+$full+'\WidgetService\WidgetService.exe'
+ if($full -notmatch ('^'+[regex]::Escape($identity)+'_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__8wekyb3d8bbwe$')){return $false}
+ $expected=$env:ProgramFiles+'\WindowsApps\'+$full+'\'+$relative
  if(-not [string]::Equals($native.image,$expected,[StringComparison]::OrdinalIgnoreCase)){return $false}
  if($RecoveryRolePackages.ContainsKey($full)){return [bool]$RecoveryRolePackages[$full]}
  $valid=$false
@@ -83,13 +83,25 @@ function Test-RecoveryWidgetPackage([object]$native,[string]$ordinary) {
   Add-Type -AssemblyName System.Runtime.WindowsRuntime
   $null=[Windows.Management.Deployment.PackageManager,Windows.Management.Deployment,ContentType=WindowsRuntime]
   $manager=[Windows.Management.Deployment.PackageManager]::new();$package=$manager.FindPackageForUser($ordinary,$full)
-  if($package.Id.Name -ne 'Microsoft.WidgetsPlatformRuntime' -or $package.Id.FullName -ne $full -or $package.Id.PublisherId -ne '8wekyb3d8bbwe' -or $package.Id.Publisher -ne 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US' -or $package.SignatureKind.ToString() -notin @('Store','System') -or -not $package.Status.VerifyIsOK() -or -not [string]::Equals($package.InstalledLocation.Path,($env:ProgramFiles+'\WindowsApps\'+$full),[StringComparison]::OrdinalIgnoreCase)){throw 'PROCESS_PACKAGE_TRUST'}
+  if($package.Id.Name -ne $identity -or $package.Id.FullName -ne $full -or $package.Id.PublisherId -ne '8wekyb3d8bbwe' -or $package.Id.Publisher -ne 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US' -or $package.SignatureKind.ToString() -notin @('Store','System') -or -not $package.Status.VerifyIsOK() -or -not [string]::Equals($package.InstalledLocation.Path,($env:ProgramFiles+'\WindowsApps\'+$full),[StringComparison]::OrdinalIgnoreCase)){throw 'PROCESS_PACKAGE_TRUST'}
   $methods=@([System.WindowsRuntimeSystemExtensions].GetMethods()|Where-Object {$_.Name -eq 'AsTask' -and $_.IsGenericMethodDefinition -and $_.GetGenericArguments().Count -eq 1 -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'})
   if($methods.Count -ne 1){throw 'PROCESS_PACKAGE_ASYNC'}
   $task=$methods[0].MakeGenericMethod([bool]).Invoke($null,@($package.VerifyContentIntegrityAsync()))
   $valid=($task.Wait(8000) -and [bool]$task.Result)
  } catch {$valid=$false}
  $RecoveryRolePackages[$full]=[bool]$valid;return [bool]$valid
+}
+function Test-RecoveryWidgetPackage([object]$native,[string]$ordinary) {
+ return [bool](Test-RecoveryPublishedPackage $native $ordinary 'Microsoft.WidgetsPlatformRuntime' 'WidgetService\WidgetService.exe')
+}
+function Test-RecoveryStoreExtension([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
+ # The Store's desktop extension, briefly after a sign-in. It is package-signed with
+ # no embedded signature, so its identity is the verified package and the session owner.
+ try {
+  if([UInt32]$p.SessionId -ne $console -or -not (Test-RecoveryPublishedPackage $native $ordinary 'Microsoft.WindowsStore' 'StoreDesktopExtension.exe')){return $false}
+  $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
+  return [bool]($owner.ReturnValue -eq 0 -and [string]::Equals([string]$owner.Sid,$ordinary,[StringComparison]::OrdinalIgnoreCase))
+ }catch{return $false}
 }
 function Get-RecoveryOneDriveMetadata([object]$p,[string]$ordinary) {
  $profile=$null;$hive=$null;$accounts=$null
@@ -124,8 +136,18 @@ function Test-RecoveryUnconfiguredOneDrive([object]$p,[object]$native,[string]$o
  $metadata=Get-RecoveryOneDriveMetadata $p $ordinary
  return [bool]($null -ne $metadata -and $metadata.hiveLoaded -eq $true -and $metadata.accountsKnown -eq $true -and $metadata.configuredFieldsAbsent -eq $true -and [string]::Equals($metadata.ownerSid,$ordinary,[StringComparison]::OrdinalIgnoreCase) -and -not [string]::IsNullOrEmpty($metadata.profileRoot) -and [string]::Equals($native.image,($metadata.profileRoot+'\AppData\Local\Microsoft\OneDrive\OneDrive.exe'),[StringComparison]::OrdinalIgnoreCase) -and (Test-RecoveryMicrosoftSignature $native.image))
 }
+function Test-RecoveryUnconfiguredOneDriveSync([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
+ # The helper of the same unconfigured per-user OneDrive: no account, its own
+ # version folder and its one setup argument. Anything else stays unknown.
+ if([UInt32]$p.SessionId -ne $console){return $false}
+ $metadata=Get-RecoveryOneDriveMetadata $p $ordinary
+ if($null -eq $metadata -or $metadata.hiveLoaded -ne $true -or $metadata.accountsKnown -ne $true -or $metadata.configuredFieldsAbsent -ne $true -or -not [string]::Equals($metadata.ownerSid,$ordinary,[StringComparison]::OrdinalIgnoreCase) -or [string]::IsNullOrEmpty($metadata.profileRoot)){return $false}
+ $pattern='^'+[regex]::Escape($metadata.profileRoot+'\AppData\Local\Microsoft\OneDrive\')+'[0-9]+(\.[0-9]+){3}\\OneDrive\.Sync\.Service\.exe$'
+ if([string]$native.image -notmatch $pattern -or -not [string]::Equals([string]$p.CommandLine,('"'+$native.image+'" /silentConfig'),[StringComparison]::OrdinalIgnoreCase)){return $false}
+ return [bool](Test-RecoveryMicrosoftSignature $native.image)
+}
 function Test-RecoveryWebView([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
- if([UInt32]$p.SessionId -ne $console -or $native.packageError -ne 0 -or $native.package -notmatch '^MicrosoftWindows\.Client\.(CBS|WebExperience)_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__cw5n1h2txyewy$'){return $false}
+ if([UInt32]$p.SessionId -ne $console -or $native.packageError -ne 0 -or $native.package -notmatch '^(MicrosoftWindows\.Client\.(CBS|WebExperience)_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__cw5n1h2txyewy|Microsoft\.MicrosoftOfficeHub_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__8wekyb3d8bbwe)$'){return $false}
  $pattern='^'+[regex]::Escape(${env:ProgramFiles(x86)}+'\Microsoft\EdgeWebView\Application\')+'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\\msedgewebview2\.exe$'
  if($native.image -notmatch $pattern -or -not (Test-RecoveryMicrosoftSignature $native.image)){return $false}
  $seen=@{};$child=$p;$childNative=$native
@@ -141,6 +163,9 @@ function Test-RecoveryWebView([object]$p,[object]$native,[string]$ordinary,[UInt
   }
   if($parent.Name -eq 'Widgets.exe'){
    return [bool]($parentNative.package -match '^MicrosoftWindows\.Client\.WebExperience_' -and (Test-RecoveryExtraRole $parent $parentNative $ordinary $console))
+  }
+  if($parent.Name -eq 'M365Copilot.exe'){
+   return [bool]($parentNative.package -match '^Microsoft\.MicrosoftOfficeHub_' -and (Test-RecoveryExtraRole $parent $parentNative $ordinary $console))
   }
   if($parent.Name -ne 'msedgewebview2.exe' -or $parentNative.image -notmatch $pattern -or -not (Test-RecoveryMicrosoftSignature $parentNative.image)){return $false}
   $child=$parent;$childNative=$parentNative
@@ -172,16 +197,47 @@ function Test-RecoveryInstalledDefender([object]$p,[object]$native) {
   return [bool]([RecoveryProcessIdentity]::Image($fresh,$name,$creation) -and $fresh.birth -eq $native.birth -and $fresh.protection -eq 3 -and [string]::Equals($fresh.image,$image,[StringComparison]::OrdinalIgnoreCase))
  }catch{return $false}
 }
+function Test-RecoveryDefenderPlatformHost([object]$p,[object]$native) {
+ # Defender's protected AI host: its own platform image under LocalService, a
+ # child of the qualified protected engine, and no service of its own.
+ try {
+  $candidateId=[UInt32]$p.ProcessId;$platform='^'+[regex]::Escape($env:ProgramData+'\Microsoft\Windows Defender\Platform\')+'[0-9.]+-[0-9]+\\'
+  if($candidateId -eq 0 -or $native.pid -ne $candidateId -or [UInt32]$p.SessionId -ne 0 -or $native.protection -ne 3 -or [string]$native.image -notmatch ($platform+'DefenderAiPlatformHost\.exe$') -or -not (Test-RecoveryMicrosoftSignature $native.image)){return $false}
+  $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
+  if($owner.ReturnValue -ne 0 -or $owner.Sid -ne 'S-1-5-19'){return $false}
+  if(@(Get-CimInstance Win32_Service -Filter ('ProcessId = '+$candidateId) -ErrorAction Stop).Count -ne 0){return $false}
+  $parentId=[UInt32]$p.ParentProcessId
+  if(-not $RecoveryRoleProcessMap.ContainsKey($parentId)){return $false}
+  $parent=$RecoveryRoleProcessMap[$parentId];$parentNative=[RecoveryProcessIdentity]::Read($parentId)
+  $parentCreation=if($null -eq $parent.CreationDate){''}else{$parent.CreationDate.ToUniversalTime().ToFileTimeUtc().ToString()}
+  return [bool]($parent.Name -eq 'MsMpEng.exe' -and [UInt32]$parent.SessionId -eq 0 -and $parentNative.protection -eq 3 -and [RecoveryProcessIdentity]::Image($parentNative,'MsMpEng.exe',$parentCreation) -and [string]$parentNative.image -match ($platform+'MsMpEng\.exe$') -and [UInt64]$parentNative.birth -le [UInt64]$native.birth -and (Test-RecoveryMicrosoftSignature $parentNative.image))
+ }catch{return $false}
+}
+function Test-RecoveryOfficeHub([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
+ # The Store's auto-started Office hub in the ordinary session, nowhere else.
+ try {
+  if([UInt32]$p.SessionId -ne $console -or $native.packageError -ne 0 -or $native.package -notmatch '^Microsoft\.MicrosoftOfficeHub_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__8wekyb3d8bbwe$'){return $false}
+  if(-not [string]::Equals($native.image,($env:ProgramFiles+'\WindowsApps\'+$native.package+'\M365Copilot.exe'),[StringComparison]::OrdinalIgnoreCase) -or -not (Test-RecoveryMicrosoftSignature $native.image)){return $false}
+  $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
+  return [bool]($owner.ReturnValue -eq 0 -and [string]::Equals([string]$owner.Sid,$ordinary,[StringComparison]::OrdinalIgnoreCase))
+ }catch{return $false}
+}
 function Test-RecoveryExtraRole([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
  $name=[string]$p.Name;$path=[string]$native.image;$session=[UInt32]$p.SessionId
+ if($name -eq 'DefenderAiPlatformHost.exe'){return [bool](Test-RecoveryDefenderPlatformHost $p $native)}
+ if($name -eq 'M365Copilot.exe'){return [bool](Test-RecoveryOfficeHub $p $native $ordinary $console)}
+ if($name -eq 'StoreDesktopExtension.exe'){return [bool](Test-RecoveryStoreExtension $p $native $ordinary $console)}
  if($name -in @('MsMpEng.exe','NisSrv.exe')){return [bool](Test-RecoveryInstalledDefender $p $native)}
  if($name -eq 'msedgewebview2.exe'){return [bool](Test-RecoveryWebView $p $native $ordinary $console)}
  if($name -eq 'OneDrive.exe'){return [bool](Test-RecoveryUnconfiguredOneDrive $p $native $ordinary $console)}
+ if($name -eq 'OneDrive.Sync.Service.exe'){return [bool](Test-RecoveryUnconfiguredOneDriveSync $p $native $ordinary $console)}
  if($name -eq 'WidgetService.exe' -and $session -eq $console){return [bool](Test-RecoveryWidgetPackage $native $ordinary)}
  $shape=$false
  if($name -eq 'wlms.exe' -and $session -eq 0){$shape=($path -eq ($env:SystemRoot+'\System32\wlms\wlms.exe'))}
  elseif($name -eq 'DefenderSessionHelper.exe' -and $native.protection -eq 3){$shape=($path -match ('^'+[regex]::Escape($env:ProgramData+'\Microsoft\Windows Defender\Platform\')+'[0-9.]+-[0-9]+\\DefenderSessionHelper\.exe$'))}
  elseif($name -eq 'CrossDeviceResume.exe' -and $session -eq $console){$shape=($path -eq ($env:SystemRoot+'\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\CrossDeviceResume.exe'))}
+ elseif($name -eq 'LockApp.exe' -and $session -eq $console){$shape=($path -eq ($env:SystemRoot+'\SystemApps\Microsoft.LockApp_cw5n1h2txyewy\LockApp.exe'))}
+ elseif($name -eq 'smartscreen.exe' -and $session -eq $console){$shape=($path -eq ($env:SystemRoot+'\System32\smartscreen.exe'))}
  elseif($name -eq 'MoNotificationUx.exe' -and $session -eq $console){$shape=($path -eq ($env:SystemRoot+'\UUS\amd64\MoNotificationUx.exe'))}
  elseif($name -eq 'Widgets.exe' -and $session -eq $console -and $native.packageError -eq 0 -and $native.package -match '^MicrosoftWindows\.Client\.WebExperience_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__cw5n1h2txyewy$'){$shape=($path -eq ($env:ProgramFiles+'\WindowsApps\'+$native.package+'\Dashboard\Widgets.exe'))}
  return [bool]($shape -and (Test-RecoveryMicrosoftSignature $path))

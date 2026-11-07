@@ -5,10 +5,11 @@ This follow-up remains incomplete. Work in
 verified baseline `2efd2569ce39d86a991b32f68d8e89419360ac5c` passed all five
 development workflows. On 2026-11-05 the user moved `dev` off it with two local,
 unpushed commits, the Windows tool-recovery lane and then a work-in-progress
-checkpoint of every other uncommitted lane, so the worktree is clean; see the
-handoff in [work in progress](work-in-progress.md). No workflow receipt covers
-those commits, and the single existing Android APK update must be re-qualified
-against the new HEAD before it is collected.
+checkpoint of every other uncommitted lane. A third local commit on 2026-11-07
+holds the Windows native tools, so the worktree is clean; see the handoff in
+[work in progress](work-in-progress.md). No workflow receipt covers those commits,
+and the single existing Android APK update must be re-qualified against the new
+HEAD before it is collected.
 The [recovery ledger](tool-recovery-ledger.md) retains historical native outcomes;
 ignored `.runtime/tool-recovery/CONTINUATION.md` records exact active handles.
 
@@ -38,6 +39,14 @@ including `575c610c`, `8042e683`, `7310f227` and `b9e349f8`. A missing process
 does not provide a historical terminal receipt. Preserve disks and original pins.
 
 ## Current native state
+
+- Windows: the sleep route, idle proof, protected sign-in and unlock, display wake,
+  leases, finite counter and `readiness-reboot` passed on clone `246a3304` on
+  2026-11-06, direct and then through MCP and the CLI on matching sources. See the
+  Windows row and failure types of the [recovery ledger](tool-recovery-ledger.md).
+  That clone is now stopped, and new clone `34e354eb` is the running fixture, not yet
+  enrolled. Same-disk restart is the remaining lifecycle gap. The older Windows
+  statements below are historical.
 
 - Android: durable carrier control `5f779f3f` retained one execution across caller
   timeout and all 9 MiB of stdout in bounded slices. Native census control

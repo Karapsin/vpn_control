@@ -27,6 +27,9 @@ from . import readiness_windows_guest as guest
 from . import readiness_windows_leases as leases
 from . import readiness_windows_display as monitor
 from . import readiness_windows_idle as idle_module
+from . import readiness_windows_sleep as sleep_module
+from . import readiness_windows_login as login_module
+from . import readiness_windows_login_continuation as login_continuation_module
 from . import readiness_windows_processes as process_module
 from . import readiness_windows_jobs as job_module
 from . import readiness_windows_preexec as preexec_module
@@ -51,7 +54,8 @@ def _source_pins():
     from . import readiness_reservation_observation,native_environment,windows_vm_deploy,windows_vm_resources,private_credential_file
     creator_modules=(creator_registry,creator_registry.creator,creator_registry.custody,creator_registry.creator.lifecycle,
         managed_admission,managed_admission.bootstrap,managed_admission.seed,managed_admission.bootstrap.initial,managed_admission.tpm)
-    modules=(packets,guest,leases,monitor,idle_module,process_module,job_module,preexec_module,host_work_module,*creator_modules,creator_registry.jobs,readiness,providers,transport,
+    from . import windows_sleep_capability
+    modules=(packets,guest,leases,monitor,idle_module,sleep_module,windows_sleep_capability,login_module,login_continuation_module,process_module,job_module,preexec_module,host_work_module,*creator_modules,creator_registry.jobs,readiness,providers,transport,
              packets.instance,packets.deployment,native_vm_spec,windows_vm_unattend,
              readiness_reservation_observation,native_environment,windows_vm_deploy,windows_vm_resources,private_credential_file,publication)
     paths=(Path(__file__),*(Path(module.__file__)for module in modules))
@@ -62,7 +66,7 @@ def _source_pins():
         # Source-bound requests also retain the complete transitive closure.
         # These producers carry fixed native literals, so a previously imported
         # module must never pair its old constants with newly read source pins.
-        module=next((item for item in (packets,guest,leases,monitor,idle_module,process_module,job_module,preexec_module,host_work_module,*creator_modules)if Path(item.__file__)==path),None)
+        module=next((item for item in (packets,guest,leases,monitor,idle_module,sleep_module,login_module,login_continuation_module,process_module,job_module,preexec_module,host_work_module,*creator_modules)if Path(item.__file__)==path),None)
         if module is not None:
             _need(getattr(module,'_EXECUTING_CODE',None)==compile(raw,str(path),'exec',dont_inherit=True),
                   'windows_producer_source_changed')
@@ -136,14 +140,35 @@ def _binding(value):
     return json.loads(json.dumps(value))
 
 
+# A sign-in refused with one of these typed nothing. They arise only before the
+# credential admission; 'instance_login_session_changed' also arises after it.
+_LOGIN_NOTHING_TYPED=frozenset({'instance_login_screen_unrecognized','instance_login_screen_profile','instance_login_screen_bound','instance_login_wake_unresolved',
+    'instance_login_dismiss_unresolved','instance_login_preparation_changed','instance_login_mouse_unrecognized','instance_login_keyboard_unrecognized',
+    'instance_login_budget_insufficient','instance_login_prior_owner_unresolved','instance_login_prior_source_untrusted','instance_login_prior_phase_unresolved',
+    'instance_login_legacy_original_unresolved','instance_login_history_invalid','instance_login_history_bound','instance_operator_busy','instance_login_account_mismatch',
+    'instance_login_binding_changed','instance_login_wrong_account','credential_unavailable','deadline_before_submission','original_launch_barrier_unresolved'})
+_LOGIN_LOCAL_REFUSALS=frozenset({'windows_login_prior_source_untrusted','windows_login_prior_artifact_invalid','windows_login_prior_artifact_unsafe','windows_login_prior_artifact_changed','windows_login_history_bound','windows_login_requires_unwound_admission'})
+
+
 class WindowsBackend:
-    def __init__(self,root,binding,expected_sid,*,capabilities=frozenset(),guard=None,lease_root_generation=None,credential_file=None,credential_metadata_only=False):
+    def __init__(self,root,binding,expected_sid,*,capabilities=frozenset(),guard=None,lease_root_generation=None,credential_file=None,credential_metadata_only=False,login_profiles=None,login_credential=None):
         self.root=Path(root).resolve(strict=True);self.binding=_binding(binding);self.guard=guard
         self.provider=self.binding['provider'];self.machine=self.binding['spec']['deploymentId']
         self.target='windows:'+self.binding['spec']['host']+':'+self.machine
         _need(type(expected_sid)is str and re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',expected_sid)is not None,'windows_account_invalid')
         self.expected_sid=expected_sid;self.capabilities=frozenset(capabilities);self.last_facts=None
-        _need(self.capabilities<={'reconnect','resume','wake_display','reboot'},'windows_recovery_unqualified')
+        _need(self.capabilities<={'reconnect','resume','wake_display','reboot','login'},'windows_recovery_unqualified')
+        self.login_profiles=None;self.login_credential=None;self.login_credential_pin=None
+        if 'login'in self.capabilities:
+            # Public screen profiles per console state; the secret stays closed until
+            # the one protected owner opens it, after every local admission.
+            _need(type(login_profiles)is dict and set(login_profiles)<={'locked','signed_out'}and login_profiles,'windows_recovery_unqualified')
+            try:
+                for profile in login_profiles.values():login_module.validate_profile(profile)
+            except ValueError:raise providers.ProviderError('windows_recovery_unqualified')from None
+            _need(type(login_credential)is str and Path(login_credential)==self.root/'.runtime/windows-vm-credentials'/self.machine/'user.secret','windows_credential_binding')
+            self.login_profiles=json.loads(json.dumps(login_profiles));self.login_credential=login_credential
+            self.login_credential_pin=managed_admission.credential_metadata(login_credential)
         _need(lease_root_generation is None or type(lease_root_generation)is str and leases._ROOT.fullmatch(lease_root_generation),'windows_lease_root_invalid')
         self.lease_root_generation=lease_root_generation;self.credential_file=credential_file
         _need(type(credential_metadata_only)is bool,'windows_credential_binding');self._credential_metadata_only=credential_metadata_only
@@ -170,6 +195,8 @@ class WindowsBackend:
             for proof in (*self._preexec_rejections,*self._original_host_phases):proof.guard()
             if self._creator_handle is not None:self._creator_handle.guard()
         except (OSError,ValueError):raise readiness.AdapterBlocked('integrity_mismatch')from None
+        if self.login_credential_pin is not None:
+            _need(managed_admission.credential_metadata(self.login_credential)==self.login_credential_pin,'windows_credential_changed')
         if self.credential_pin is not None:
             if self._credential_metadata_only:_need(managed_admission.credential_metadata(self.credential_file)==self.credential_pin,'windows_credential_changed')
             else:
@@ -218,7 +245,7 @@ class WindowsBackend:
                 remaining=deadline-time.monotonic()
                 _need(math.isfinite(remaining)and remaining>0,'windows_deadline')
                 result=transport.run_ssh(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
-                        timeout=min(50,remaining),check=False)
+                        timeout=min(120,remaining),check=False)
                 _save(directory/(label+'.stdout.private'),result.stdout);_save(directory/(label+'.stderr.private'),result.stderr)
                 _save(directory/(label+'.callback.json'),{'returnCode':result.returncode,'stdoutBytes':len(result.stdout),'stderrBytes':len(result.stderr),'sourceSha256':hashlib.sha256(source).hexdigest()})
                 self._guard();held.finish();held.final_identity_pass()
@@ -306,10 +333,91 @@ class WindowsBackend:
         return readiness.Observation(self.target,self.machine,connection=connection,boot=boot,account=account,session=session,
             transport='ready',guest=state if state in {'running','booting','stopped','paused','suspended','unhealthy','unknown'}else'unknown',
             guest_agent=value['guestAgent'],ordinary_session=ordinary,display=display,owned=True,trusted=True,integrity=True,
-            credential_available=False,idle_visibility=idle_visibility,idle_blockers=idle_blockers)
+            credential_available=ordinary in getattr(self,'login_profiles',None)if getattr(self,'login_profiles',None)else False,
+            idle_visibility=idle_visibility,idle_blockers=idle_blockers)
+
+    def sleep_capability(self,operation,deadline):
+        """The sleep scenario's decision: a capability, never permission to sleep."""
+        self._guard();_need(type(operation)is str and str(UUID(operation))==operation,'windows_sleep_operation')
+        facts,_=self._run('observe',str(uuid5(UUID(operation),'sleep-capability-admission')),deadline,reconcile=True)
+        _need(facts.get('state')=='observed'and facts.get('machine')==self.machine and facts.get('guest')=='running'and facts.get('guestAgent')is True
+              and type(facts.get('sessionFacts'))is dict,'windows_sleep_guest_unavailable')
+        boot=guest.validate_session(facts['sessionFacts'],self.expected_sid,self.binding['setup']['user'],self.machine)['boot']
+        host={key:facts[key]for key in ('actor','hostBoot','controlConnection')}
+        value,_=self._run('sleep-capability',operation,deadline,reconcile=True,expected=host,sleep_boot=boot)
+        if value.get('state')!='observed'or value.get('machine')!=self.machine:
+            reason=value.get('reason')
+            return sleep_module.decision(None,machine=self.machine,boot=boot,reason=reason if type(reason)is str and re.fullmatch('instance_[a-z_]{1,64}',reason)else None)
+        try:projection=sleep_module.validate(value.get('sleepFacts'),self.machine,boot)
+        except ValueError:projection=None
+        return sleep_module.decision(projection,machine=self.machine,boot=boot)
+
+    def apply_update_policy(self,operation,deadline):
+        """The fixture takes no unannounced update; a repeat re-reads the original."""
+        self._guard();_need(type(operation)is str and str(UUID(operation))==operation,'windows_update_policy_operation')
+        facts,_=self._run('observe',str(uuid5(UUID(operation),'update-policy-admission')),deadline,reconcile=True)
+        _need(facts.get('state')=='observed'and facts.get('machine')==self.machine and facts.get('guest')=='running'and facts.get('guestAgent')is True,'windows_update_policy_guest_unavailable')
+        value,_=self._run('update-policy',operation,deadline,reconcile=True,expected={key:facts[key]for key in ('actor','hostBoot','controlConnection')})
+        _need(value.get('state')=='observed'and type(value.get('updatePolicy'))is dict,'windows_original_outcome_unknown')
+        return value['updatePolicy']
+
+    def _recover_login(self,recovery_identity,observed,deadline,attempt=1,dispatch_digest=None):
+        """One protected owner per dispatch; only a proven refusal allows another.
+
+        A refusal before any credential names a new operation for the next dispatch.
+        Anything else is followed by read-only status of this original, never retyped.
+        """
+        facts=self.last_facts
+        _need(type(facts)is dict and facts.get('guest')=='running'and observed.ordinary_session in self.login_profiles
+              and guest.validate_session(facts['sessionFacts'],self.expected_sid,self.binding['setup']['user'],self.machine)['ordinary_session']==observed.ordinary_session,
+              'windows_recovery_state_changed')
+        operation=str(uuid5(UUID(self.machine),recovery_identity if attempt==1 else recovery_identity+':'+str(attempt)))
+        def refused(reason):
+            if dispatch_digest is None:raise providers.ProviderError('windows_original_outcome_unknown')
+            proof=hashlib.sha256(json.dumps([dispatch_digest,operation,reason],separators=(',',':')).encode()).hexdigest()
+            raise readiness.RecoveryUnsubmitted(recovery_identity,attempt,dispatch_digest,proof)
+        def ready(value):
+            return (value.get('operationId')==operation and value.get('replayAllowed')is False and
+                    (value.get('state')=='terminal'and value.get('login')=={'state':'ready'}
+                     or value.get('state')=='observed'and type(value.get('login'))is dict and value['login'].get('state')=='ready'))
+        try:result=login_module.execute(self,operation,self.login_profiles[observed.ordinary_session],login_module.expected_from_facts(facts),self.login_credential,deadline)
+        except ValueError as error:
+            # Local admission only: these are raised before any packet can be dispatched.
+            if str(error)in _LOGIN_LOCAL_REFUSALS:refused(str(error))
+            raise
+        if not ready(result)and result.get('state')in {'blocked','unknown'}and result.get('reason')in _LOGIN_NOTHING_TYPED:refused(result['reason'])
+        while not ready(result)and deadline-time.monotonic()>5:
+            time.sleep(min(5,deadline-time.monotonic()));self._guard()
+            try:result=login_module.observe_original(self,operation,deadline)
+            except (OSError,ValueError,subprocess.SubprocessError):pass
+        _need(ready(result),'windows_original_outcome_unknown')
+
+    def recover_attempt(self,action,recovery_identity,observed,deadline,attempt,dispatch_digest):
+        self._guard();_need(action in self.capabilities,'windows_recovery_unqualified')
+        if action=='login':return self._recover_login(recovery_identity,observed,deadline,attempt,dispatch_digest)
+        return self.recover(action,recovery_identity,observed,deadline)
+
+    def reconcile_ready(self,ready,deadline):
+        """Close sign-ins whose reply was lost; status types nothing and failure is harmless."""
+        if 'login'not in self.capabilities:return
+        parent=self.root/'.runtime/readiness-windows-login'
+        if not parent.is_dir():return
+        checked=0
+        for directory in sorted(parent.iterdir()):
+            if checked>=3 or deadline-time.monotonic()<60:return
+            try:
+                intent=json.loads((directory/'credential.intent.json').read_text())
+                if intent['identity']['binding']!=self.binding or not any(directory.glob('login-submit-*.py')):continue
+                outcomes=[json.loads(path.read_text())for path in directory.glob('*.result.json')]
+                if any((row.get('login')or{}).get('state')=='ready'for row in outcomes):continue
+                # A refusal before anything was typed is finished; a status read every call only delays readiness.
+                if outcomes and all(row.get('state')=='blocked'and row.get('reason')in _LOGIN_NOTHING_TYPED for row in outcomes):continue
+                checked+=1;login_module.observe_original(self,directory.name,min(deadline,time.monotonic()+60))
+            except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError):continue
 
     def recover(self,action,recovery_identity,observed,deadline):
         self._guard();_need(action in self.capabilities,'windows_recovery_unqualified')
+        if action=='login':return self._recover_login(recovery_identity,observed,deadline)
         if action=='reconnect':
             with transport.admitted_transport(self.root,self.binding['spec']['host'],str(uuid5(UUID(self.machine),recovery_identity)),deadline=deadline):pass
             return
@@ -460,9 +568,15 @@ class WindowsLeaseExecutor:
         # operation UUID and its retained owner stay exactly the same. Acquire
         # and cancellation each retain one original host admission/ACK.
         host_operation=(str(uuid4())if action=='status'else str(uuid5(UUID(operation),'windows-lease-'+action)))
-        value,_=self.backend._run('lease-'+action,host_operation,deadline,reconcile=True,
+        try:
+            value,_=self.backend._run('lease-'+action,host_operation,deadline,reconcile=True,
                 expected=self._snapshot['host'],lease_binding=self.binding,lease_operation=operation,
                 **({'ttl_seconds':ttl}if action=='acquire'else{}))
+        except subprocess.SubprocessError:
+            # The packet may already have reached the guest: unknown, never a refusal or a replay.
+            # A caller's own deadline stays a TimeoutError for the facade to report.
+            return {'ok':False,'schemaVersion':1,'operationId':operation,'state':'unknown','reason':'windows_original_lease_transport_unknown',
+                    'replayAllowed':False,'jobState':'unknown','nextAction':'observe_original'}
         self._guard()
         if value.get('state')!='observed' or type(value.get('lease'))is not dict:
             return {'ok':False,'schemaVersion':1,'operationId':operation,'state':'unknown',
@@ -544,19 +658,21 @@ def load_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
     value,pin=registry._json(original)
     _need(pin==descriptor['originalIntentPin']and value.get('spec')==binding['spec']and value.get('setup')==binding['setup']
             and value.get('context')==binding['context']and value.get('mode')=='start','windows_original_intent_changed')
-    proofs=descriptor['qualifications'];_need(type(proofs)is dict and set(proofs)<={'resume','transport','wake_display','reboot'},'windows_qualification_invalid')
+    proofs=descriptor['qualifications'];_need(type(proofs)is dict and set(proofs)<={'resume','transport','wake_display','reboot','login'},'windows_qualification_invalid')
     credential=descriptor['credential']
     _need(credential is None or type(credential)is dict and set(credential)=={'path','generation'},'windows_credential_binding')
     if credential is not None:
         registry._under(credential['path'],root/'.runtime')
         with SecretFile(credential['path'])as secret:_need(list(secret.pin)==credential['generation'],'windows_credential_changed')
-    capabilities=set()
+    capabilities=set();login_profiles=None;login_credential=None
     for name,proof in proofs.items():
         _need(type(proof)is dict and set(proof)=={'path','pin'},'windows_qualification_invalid')
         path=registry._under(proof['path'],root/'.runtime');body,pin=registry._json(path)
         _need(pin==proof['pin']and body.get('provider')==descriptor['provider']and body.get('machine')==binding['spec']['deploymentId']
                 and body.get('capability')==name and body.get('qualified')is True and body.get('sourcePins')==descriptor['sources'],'windows_qualification_invalid')
         capabilities.add('reconnect'if name=='transport'else name)
+        if name=='login':
+            login_profiles=body.get('profiles');login_credential=str(root/'.runtime/windows-vm-credentials'/binding['spec']['deploymentId']/'user.secret')
     def custody():
         current,pin=registry._json(root/'.rag_index/readiness-fixtures'/(fixture_id+'.json'))
         _need(current==descriptor and pin==descriptor_pin and descriptor['sources']==_source_pins(),'windows_registration_changed')
@@ -565,7 +681,8 @@ def load_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
         if credential is not None:
             with SecretFile(credential['path'])as secret:_need(list(secret.pin)==credential['generation'],'windows_credential_changed')
     custody();backend=WindowsBackend(root,binding,descriptor['expectedSid'],capabilities=frozenset(capabilities),guard=custody,
-            lease_root_generation=descriptor['leaseRootGeneration'],credential_file=credential['path']if credential is not None else None)
+            lease_root_generation=descriptor['leaseRootGeneration'],credential_file=credential['path']if credential is not None else None,
+            login_profiles=login_profiles,login_credential=login_credential)
     digest=hashlib.sha256(json.dumps([backend.target,backend.machine],separators=(',',':')).encode()).hexdigest()
     return RegisteredWindowsFixture(backend.target,backend.machine,providers.ProviderAdapter(descriptor['provider'],backend.target,backend.machine,backend),root/'.rag_index/readiness-targets'/digest)
 

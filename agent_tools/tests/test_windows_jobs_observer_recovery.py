@@ -166,7 +166,7 @@ class OriginalObserverRecoveryTests(unittest.TestCase):
     def test_ack_publication_wait_preserves_pending_original_at_short_deadline(self):
         self.start_ack = True; self.ack_statuses = 10
         inputs = self.inputs('fixture-a', count=30, intervalSeconds=.01)
-        with mock.patch.object(time, 'sleep', side_effect=AssertionError('deadline extended')):
+        with mock.patch.object(time, 'sleep', side_effect=AssertionError('deadline extended')), mock.patch.object(self.jobs, '_START_MINIMUM_SECONDS', 0, create=True):
             result = self.jobs.workflow(self.root, 'start', inputs, deadline=time.monotonic()+.25)
         self.assertEqual('unknown', result['state'])
         self.assertEqual('original_owner_ack_pending', result['reason'])

@@ -1,0 +1,105 @@
+{
+  "causalEvidence": "Private logs red-final-native-schema.json (exit1, original observe:178) and green-final-native-schema.json (exit0); same proposed test bytes. Full fixed suite:19 tests,182 subtests,0 failures/errors/skips.",
+  "causalTest": "ReservationObservationTests.test_retained_native_schema_pair_joins_through_full_observe",
+  "designReview": {
+    "bytes": 15371,
+    "path": ".runtime/tool-recovery/native-followup-20261027/ssh/windows-idle-resource-design-review-20261028.json",
+    "sha256": "00d943301532c0b17d26724ab70bbb75463c109da9af9ee2b357f5efd2a538a8"
+  },
+  "failureType": "Authenticated getter and census FD9 producer ordering mismatch",
+  "fixedSource": {
+    "bytes": 12104,
+    "path": "agent_tools/readiness_reservation_observation.py",
+    "sha256": "736709e18b1ba52f5b6ad1e2958d1d23df39bf0e21160613029576ee790565d5"
+  },
+  "fixtureAuthority": "Owned synthetic private caller/intents/reservation ledger, original distinctive native actor/census values, frozen test clock. Every actual observer source/private-file/freshness guard runs. No live inventory is opened or mutated.",
+  "fixtureProjection": {
+    "bytes": 2891,
+    "derivation": "Exact getter pid/startTicks/commandSha256/executableGeneration projection and unchanged complete native host-resource DTO; other guest facts and argv omitted.",
+    "path": "agent_tools/tests/fixtures/windows_reservation_executable_schema/native-schema.json",
+    "sha256": "c597b19b58fecda0816f549e4672fcf695b5beeb43d678d0cc622fc8d3225ebc"
+  },
+  "limits": [
+    "Local POSIX component regression; Windows discovery skips before native imports. Native Windows guest scenario and matching DIRECT/MCP/CLI rerun remain open.",
+    "No real host resource capacity admission, full native idle, reservation-policy relaxation, claim cleanup, native dispatch or UNKNOWN reconciliation is proved.",
+    "Census process UID type/range and private/source current-owner checks are retained; executable uid/gid drift is rejected. Getter actor has no process UID field and authenticates that owner upstream; this patch adds no invented UID join.",
+    "Only owner expectation queries use an explicit inert os.getuid/geteuid seam in two negative cases. Source drift negatives use actual owned files and unchanged canonical guards."
+  ],
+  "operationId": "a5245a96-7d21-4c36-b0df-eea6cd2d872f",
+  "originalActor": {
+    "pid": 1133839,
+    "startTicks": 217088739
+  },
+  "originalNativeInputs": {
+    ".runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-original-counter-idle-a5245a96-7d21-4c36-b0df-eea6cd2d872f/closing.json": {
+      "bytes": 685,
+      "sha256": "f2572103170e2eb337607520bac2413d83015477123cd0f06d4e2df40c5ccf84"
+    },
+    ".runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-original-counter-idle-a5245a96-7d21-4c36-b0df-eea6cd2d872f/host-resources.private.json": {
+      "bytes": 1725,
+      "sha256": "d4578f0f7dc082a0bd019e4dbeed10f81f2cfe52fb6b42b10ea81b0ec67f7b85"
+    },
+    ".runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-original-counter-idle-a5245a96-7d21-4c36-b0df-eea6cd2d872f/idle-facts.private.json": {
+      "bytes": 16581,
+      "sha256": "11d402d5fbfae5816dcfcb5b6fe37318cb5186c8e3362d6514e32eaf32bf1e97"
+    },
+    ".runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-original-counter-idle-a5245a96-7d21-4c36-b0df-eea6cd2d872f/reservation-proof.before.source": {
+      "bytes": 11486,
+      "sha256": "21623665ca18a477a4311334d3e048c496e09dbb55e783b36d9bde405f4d5fb2"
+    },
+    ".runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-original-counter-idle-a5245a96-7d21-4c36-b0df-eea6cd2d872f/reservation-proof.private.json": {
+      "bytes": 215,
+      "sha256": "0a47efbbf942b32e28e8f7cbd6041d9287eebca9e21a86e6a3700277082abbf8"
+    },
+    ".runtime/tool-recovery/native-followup-20261027/windows/current-policy-getter-qualification/raw62-original-counter-idle-a5245a96-7d21-4c36-b0df-eea6cd2d872f/reservation-proof.source-trace.json": {
+      "bytes": 377,
+      "sha256": "484a79a38409646838e7edaa26bb6d9ff9bbf934681b3daaa2363a0e6521bac8"
+    }
+  },
+  "originalSource": {
+    "bytes": 11486,
+    "path": "agent_tools/readiness_reservation_observation.py",
+    "sha256": "21623665ca18a477a4311334d3e048c496e09dbb55e783b36d9bde405f4d5fb2"
+  },
+  "originalTest": {
+    "bytes": 9003,
+    "path": "agent_tools/tests/test_readiness_reservation_observation.py",
+    "sha256": "e273a97d275c514e98c709b0dbc07cdf16955a33827b426558e9507c14f6188d"
+  },
+  "regression": {
+    "bytes": 21104,
+    "path": "agent_tools/tests/test_readiness_reservation_observation.py",
+    "sha256": "d07e88dfc55bdf814bc0bcf102ff5879c76a652a345a9f5c4a4d5b0793621a31"
+  },
+  "routine": "Existing agent_tools.tests.test_readiness_reservation_observation module; finite affected-selector metadata proposed separately, pending coordinator promotion after freeze.",
+  "schemaByAuthenticatedProducer": {
+    "ssh_tmux_resource_admission.census": [
+      "dev",
+      "ino",
+      "mode",
+      "uid",
+      "gid",
+      "size",
+      "mtimeNs",
+      "ctimeNs",
+      "nlink"
+    ],
+    "windows_vm_instance.generation": [
+      "dev",
+      "ino",
+      "mode",
+      "uid",
+      "gid",
+      "nlink",
+      "size",
+      "mtimeNs",
+      "ctimeNs"
+    ]
+  },
+  "schemaVersion": 1,
+  "wholeBeforeFixture": {
+    "bytes": 11486,
+    "path": "agent_tools/tests/fixtures/windows_reservation_executable_schema/observer.before.source",
+    "sha256": "21623665ca18a477a4311334d3e048c496e09dbb55e783b36d9bde405f4d5fb2"
+  }
+}

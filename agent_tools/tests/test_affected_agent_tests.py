@@ -578,6 +578,8 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
         actual = _native_causal_commands(raw, (name,))[name]
         self.assertEqual(actual, ['python', 'agent_tools/affected_agent_tests.py', '--audit', '--baseline', 'HEAD', '--run', '--include',
             'agent_tools.tests.test_readiness_windows_guest.NativeWindowsWtsTests',
+            'agent_tools.tests.test_windows_new_process_roles',
+            'agent_tools.tests.test_windows_lease_receipt_race',
             'agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_actual_complete_census_before_RED_fixed_native_identity_GREEN',
             'agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_actual_native_process_handle_birth_and_image',
             'agent_tools.tests.test_readiness_windows_processes.NativeWindowsProcessTests.test_complete_background_before_RED_verified_role_GREEN',

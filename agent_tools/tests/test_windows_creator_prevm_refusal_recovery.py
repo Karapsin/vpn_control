@@ -1541,12 +1541,13 @@ class CreatorPreVmClosure(unittest.TestCase):
   self.assertEqual(json.loads(evidence('collect.callback.json')), {'complete': True, 'returnCode': 0, 'stderrBytes': 0, 'stdoutBytes': 1718})
   self.assertEqual(json.loads(evidence('unknown.json'))['phase'], 'original-listener')
   # The frozen production identity of this closed closure stays exactly as reviewed.
-  # Later source epochs changed four of its sources (2026-10-28 conservative capacity
-  # policy; 2026-11-05 generalized Windows images). The user kept these pins on
-  # 2026-11-05, so the writer refuses to run on the changed sources, and only on them.
+  # Later source epochs changed these sources (2026-10-28 conservative capacity policy;
+  # 2026-11-05 generalized Windows images; 2026-11-06 sign-in coordinator budget and
+  # fixture update policy). The user kept these pins on 2026-11-05, so the writer
+  # refuses to run on the changed sources, and only on them.
   changed = sorted(relpath for relpath, digest in production.sources.items() if sha((REPO / relpath).read_bytes()) != digest)
-  self.assertEqual(changed, ['agent_tools/readiness_resources.py', 'agent_tools/readiness_windows_remote.py',
-   'agent_tools/windows_vm_instance.py', 'agent_tools/windows_vm_resources.py'])
+  self.assertEqual(changed, ['agent_tools/readiness.py', 'agent_tools/readiness_resources.py', 'agent_tools/readiness_windows_remote.py',
+   'agent_tools/windows_vm_instance.py', 'agent_tools/windows_vm_resources.py', 'agent_tools/windows_vm_unattend.py'])
   with self.assertRaises(WRITER.Refused) as caught:
    WRITER._epoch(production)
   self.assertEqual(caught.exception.reason, 'source_epoch_changed')

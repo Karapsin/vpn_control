@@ -1,0 +1,6 @@
+{
+  "failure": "secure_instance removes only the blank-install seed files, so a clone's seed/clone-specialize.ps1 makes rmdir fail after the one-shot credential effects",
+  "nativeEvidenceLimit": "found by source review before the first secure of clone 246a3304; the fixed canonical secure then ran natively",
+  "nativeFailureClaimed": false,
+  "sourceSha256": "4ce8abc079e70ac09399a1d934ef7bee0f82571189c6e03597d8bdc170a1ba5e"
+}

@@ -18,6 +18,24 @@ $key=Get-ItemProperty -LiteralPath 'Registry::HKEY_USERS\.DEFAULT\Keyboard Layou
 [Console]::WriteLine(([ordered]@{name=$u.Name;fullName=$u.FullName;sid=$u.SID.Value;enabled=$u.Enabled;loginKeyboard=$key.'1'}|ConvertTo-Json -Compress))
 '''
 
+# One fixed fixture setting: a stable system image instead of rotating Spotlight
+# content, so a reviewed exact screen profile keeps matching. No account, password
+# or logon setting is read or changed here.
+LOGIN_SCREEN_PIN=r'''
+$image=Join-Path $env:SystemRoot 'Web\Screen\img100.jpg'
+$item=Get-Item -LiteralPath $image -Force
+if(-not ($item -is [IO.FileInfo]) -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'LOGIN_SCREEN_IMAGE_IDENTITY'}
+$personalization='HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization';$widgets='HKLM:\SOFTWARE\Policies\Microsoft\Dsh'
+foreach($key in @($personalization,$widgets)){if(-not (Test-Path -LiteralPath $key)){New-Item -Path $key -Force|Out-Null}}
+New-ItemProperty -LiteralPath $personalization -Name LockScreenImage -PropertyType String -Value $image -Force|Out-Null
+New-ItemProperty -LiteralPath $personalization -Name NoChangingLockScreen -PropertyType DWord -Value 1 -Force|Out-Null
+New-ItemProperty -LiteralPath $personalization -Name LockScreenOverlaysDisabled -PropertyType DWord -Value 1 -Force|Out-Null
+New-ItemProperty -LiteralPath $widgets -Name DisableWidgetsOnLockScreen -PropertyType DWord -Value 1 -Force|Out-Null
+$a=Get-ItemProperty -LiteralPath $personalization;$b=Get-ItemProperty -LiteralPath $widgets
+if($a.LockScreenImage -cne $image -or $a.NoChangingLockScreen -ne 1 -or $a.LockScreenOverlaysDisabled -ne 1 -or $b.DisableWidgetsOnLockScreen -ne 1){throw 'LOGIN_SCREEN_POLICY_READBACK'}
+[Console]::WriteLine((@{pinned=$true;imageBytes=$item.Length;accountSettingsChanged=$false}|ConvertTo-Json -Compress))
+'''
+
 class _LoginDeadlineUnsubmitted(ValueError):
     """Owner proof: no target submission was attempted within this admission."""
 
@@ -28,7 +46,7 @@ class _ProtectedOwner:
     """One Linux memory-only owner; no SSH descriptor or private stream survives."""
     def __init__(self,root,operation,identity,source_sha,original_sha,approved=None):
         import os,re
-        self.root=root;self.operation=operation;self.identity=identity;self.source_sha=source_sha;self.original_sha=original_sha;self.child=False;self.lock=None;self.intent=None
+        self.root=root;self.operation=operation;self.identity=identity;self.source_sha=source_sha;self.original_sha=original_sha;self.child=False;self.lock=None;self.intent=None;self.typing=False
         if not all(type(v)is str and re.fullmatch('[0-9a-f]{64}',v)for v in (source_sha,original_sha)):raise ValueError('instance_login_owner_source')
         self.approved={}if approved is None else approved
         if type(self.approved)is not dict or len(self.approved)>256:raise ValueError('instance_login_history_bound')
@@ -93,7 +111,9 @@ class _ProtectedOwner:
         from pathlib import Path
         if self.intent is None:return
         if Path('/proc/sys/kernel/random/boot_id').read_text().strip()!=self.intent['hostBoot']:raise ValueError('instance_login_owner_boot_changed')
-        if deadline and time.monotonic_ns()>self.intent['deadlineNs']:raise ValueError('instance_login_owner_deadline')
+        # The budget bounds everything before the credential; once admitted, the keys
+        # finish and the outcome is observed, so a deadline can't cut a password in half.
+        if deadline and not self.typing and time.monotonic_ns()>self.intent['deadlineNs']:raise ValueError('instance_login_owner_deadline')
         named=os.lstat(self.root/'intent.json')
         if (self._root_pin()!=self.intent['root']or self._pin(named)!=self.intent['lock']or not stat.S_ISREG(named.st_mode)or named.st_uid!=os.geteuid()or named.st_nlink!=1 or named.st_mode&0o077):raise ValueError('instance_login_owner_lock_changed')
         if self.lock is not None and self._pin(os.fstat(self.lock))!=self.intent['lock']:raise ValueError('instance_login_owner_lock_changed')
@@ -142,11 +162,38 @@ class _ProtectedOwner:
             if str(UUID(operation))!=operation or operation not in self.approved:raise ValueError('instance_login_prior_source_untrusted')
             approval=self.approved[operation]
             prior=_ProtectedOwner(self.root,operation,{},approval['sourceSha256'],approval['sourceSha256'])
+            credential='login-credential-'+operation
+            prepared=['login-preparation-'+operation+'-'+phase for phase in ('wake','dismiss')]
+            def record(name):
+                old=prior.prefix;prior.prefix=name
+                try:return prior._read('')
+                finally:prior.prefix=old
+            # A packet refused before its owner existed left nothing behind.
+            if ('continuation'not in approval and not any(os.path.lexists(self.root/(name+'.intent.json'))for name in (prior.prefix,credential,*prepared))):
+                approved_ready.add(operation);continue
             try:
                 intent=prior._read('.intent.json');identity=intent['identity']
                 digest=hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest()
                 if digest!=approval['identitySha256']:raise ValueError('instance_login_prior_source_untrusted')
                 prior.identity=identity;value=prior.existing();original_prior=prior;original_identity=identity
+                # A terminal refusal before any credential intent left no secret or
+                # owner behind: wake and Return are public. It cannot block a new attempt.
+                if ('continuation'not in approval and value is not None and value.get('state')=='terminal' and value['packet'].get('state')=='blocked'
+                        and not os.path.lexists(self.root/('login-credential-'+operation+'.intent.json'))
+                        and not os.path.lexists(self.root/(prior.prefix+'.phase-credential.terminal.json'))
+                        and prior._birth(prior._read('.owner.json')['pid'])!=prior._read('.owner.json')['birth']):
+                    approved_ready.add(operation);continue
+                # A credential the owner could not see finish, closed later by read-only
+                # status: its own retained ready terminal is the proof, not the owner's.
+                if ('continuation'not in approval and value is not None and value.get('state')=='terminal'
+                        and not(value['packet'].get('state')=='owner-terminal'and value['packet'].get('loginState')=='ready')
+                        and os.path.lexists(self.root/(credential+'.terminal.json'))):
+                    closed=record(credential+'.terminal.json');expected={**closed,'operationId':operation,'state':'ready','boot':identity['expected']['boot'],'account':identity['account'],'settingsChanged':False,'replayAllowed':False}
+                    if (not self._same(closed,expected)or type(closed.get('console'))is not int or type(closed.get('logon'))is not int
+                            or not self._same(record(credential+'.intent.json'),{'operationId':operation,'expected':identity['expected'],'profile':identity['profile'],'account':identity['account'],'replayAllowed':False})):raise ValueError('instance_login_prior_phase_unresolved')
+                    for phase,prefix in zip(('wake','dismiss'),prepared):
+                        if os.path.lexists(self.root/(prefix+'.intent.json'))and not self._same(record(prefix+'.terminal.json'),{**closed,'phase':phase,'state':'ready-observed'}):raise ValueError('instance_login_prior_phase_unresolved')
+                    approved_ready.add(operation);continue
                 if 'continuation'in approval:
                     if value is None or value.get('state')!='terminal'or value['packet']!={'state':'blocked','operationId':operation,'reason':'instance_login_screen_unrecognized','replayAllowed':False}:raise ValueError('instance_login_prior_owner_unresolved')
                     old_prefix=prior.prefix;prior.prefix='login-owner-'+operation+'-credential-continuation'
@@ -159,12 +206,7 @@ class _ProtectedOwner:
                 if value is None or value.get('state')!='terminal' or value['packet'].get('state')!='owner-terminal' or value['packet'].get('loginState')!='ready':raise ValueError('instance_login_prior_owner_unresolved')
                 # The terminal is useful only with the original canonical phase
                 # chain, not a ready boolean added to a historical JSON file.
-                terminal=value['packet'];credential='login-credential-'+operation
-                prepared=['login-preparation-'+operation+'-'+phase for phase in ('wake','dismiss')]
-                def record(name):
-                    old=prior.prefix;prior.prefix=name
-                    try:return prior._read('')
-                    finally:prior.prefix=old
+                terminal=value['packet']
                 expected={'operationId':operation,'state':'ready','boot':identity['expected']['boot'],'account':identity['account'],'console':terminal['console'],'logon':terminal['logon'],'settingsChanged':False,'replayAllowed':False}
                 has_credential=os.path.lexists(self.root/(credential+'.intent.json'))
                 credential_source=approval['continuation']['sourceSha256']if 'continuation'in approval else approval['sourceSha256']
@@ -328,9 +370,16 @@ def prepare_screen(shot,monitor,guard,save,read,exists,operation,profile,expecte
         events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
         guard();save(name,identity);monitor('input-send-event',{'events':events});guard()
         if globals().get('LOGIN_OWNER_PHASE'):LOGIN_OWNER_PHASE('wake')
-        time.sleep(1);raw=shot()
-        try:screen_gate(raw,field);return
-        except ValueError:pass
+        # The display needs a moment to render; only a reviewed screen ends the wait.
+        limit=time.monotonic()+6;time.sleep(1)
+        while True:
+            raw=shot()
+            try:screen_gate(raw,field);return
+            except ValueError:pass
+            try:screen_gate(raw,profile['lockscreen']);break
+            except ValueError as error:
+                if str(error)!='instance_login_screen_unrecognized'or time.monotonic()>=limit:raise
+            guard();time.sleep(.25)
     screen_gate(raw,profile['lockscreen'])
     name='login-preparation-'+operation+'-dismiss.intent.json';identity={'operationId':operation,'phase':'dismiss','expected':expected,'profile':profile['lockscreen'],'replayAllowed':False}
     if exists(name):
@@ -382,12 +431,53 @@ def _login_flow(root,read,save,monitor,guard,script,fresh,before):
         finally:os.close(fd)
     if LOGIN_MODE=='login-lock-fixture':
         need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
-        row=fresh['session'];need(fresh['tokenSid']==LOGIN_SID and row['User'].casefold()==SETUP['user'].casefold()and row['Flags']==1 and row['State']==0 and row['Logon']==LOGIN_EXPECTED.get('logon')and fresh['console']==LOGIN_EXPECTED.get('console'),'instance_login_lock_session_changed')
-        name='login-test-lock-'+OPERATION+'.intent.json';intent={'operationId':OPERATION,'intentionalTestState':'locked','expected':LOGIN_EXPECTED,'account':LOGIN_SID,'replayAllowed':False}
-        if not os.path.lexists(root/name):
-            guard();save(name,intent);monitor('send-key',{'keys':[{'type':'qcode','data':'meta_l'},{'type':'qcode','data':'l'}],'hold-time':80})
-        else:need(read(name)==intent,'instance_login_original_lock_changed')
+        row=fresh['session'];name='login-test-lock-'+OPERATION+'.intent.json';intent={'operationId':OPERATION,'intentionalTestState':'locked','expected':LOGIN_EXPECTED,'account':LOGIN_SID,'replayAllowed':False}
+        closed='login-test-lock-'+OPERATION+'.terminal.json'
+        if os.path.lexists(root/name):
+            # One key press per operation; a lost reply is closed only by the observed lock.
+            need(read(name)==intent,'instance_login_original_lock_changed')
+            if row['Flags']==0 and row['Logon']==LOGIN_EXPECTED.get('logon')and not os.path.lexists(root/closed):guard();save(closed,{'operationId':OPERATION,'state':'lock-observed','replayAllowed':False})
+            return {'login':{'state':'intentional-lock-submitted','operationId':OPERATION,'replayAllowed':False},'sessionFacts':fresh}
+        need(fresh['tokenSid']==LOGIN_SID and row['User'].casefold()==SETUP['user'].casefold()and row['Flags']==1 and row['State']==0 and row['Logon']==LOGIN_EXPECTED.get('logon')and fresh['console']==LOGIN_EXPECTED.get('console'),'instance_login_lock_session_changed')
+        guard();save(name,intent);monitor('send-key',{'keys':[{'type':'qcode','data':'meta_l'},{'type':'qcode','data':'l'}],'hold-time':80})
+        guard();save(closed,{'operationId':OPERATION,'state':'lock-key-acknowledged','replayAllowed':False})
         return {'login':{'state':'intentional-lock-submitted','operationId':OPERATION,'replayAllowed':False},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-screen-pin':
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        name='login-screen-pin-'+OPERATION+'.intent.json';intent={'operationId':OPERATION,'expected':LOGIN_EXPECTED,'replayAllowed':False}
+        closed='login-screen-pin-'+OPERATION+'.terminal.json'
+        if os.path.lexists(root/name):need(read(name)==intent,'instance_login_screen_pin_changed')
+        else:guard();save(name,intent)
+        # One fixed guest label: a repeat re-reads this program and never runs another.
+        try:value=script('login-screen-pin-'+OPERATION.replace('-','')[:12],LOGIN_SCREEN_PIN_SCRIPT)
+        except ValueError as error:
+            if str(error)=='instance_guest_program_failed'and not os.path.lexists(root/closed):guard();save(closed,{'operationId':OPERATION,'state':'screen-pin-unverified','replayAllowed':False})
+            raise
+        verified=type(value)is dict and value.get('pinned')is True and value.get('accountSettingsChanged')is False
+        if not os.path.lexists(root/closed):guard();save(closed,{'operationId':OPERATION,'state':'screen-pinned'if verified else'screen-pin-unverified','replayAllowed':False})
+        need(verified,'instance_login_screen_pin_unverified')
+        return {'login':{'state':'screen-pinned','operationId':OPERATION,'replayAllowed':False},'sessionFacts':fresh}
+    if LOGIN_MODE=='login-field-capture':
+        # Reference frames for one reviewed profile: public pixels only, before any
+        # credential exists. One wake and one Return, journaled once, never repeated.
+        need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
+        row=fresh['session'];need(row['SessionId']==LOGIN_EXPECTED.get('console')and row['Logon']==LOGIN_EXPECTED.get('logon')and row['User']==LOGIN_EXPECTED.get('user')and row['Flags']==0 and (not row['User']or fresh['tokenSid']==LOGIN_SID),'instance_login_session_changed')
+        name='login-field-capture-'+OPERATION+'.intent.json';intent={'operationId':OPERATION,'expected':LOGIN_EXPECTED,'account':LOGIN_SID,'privateInput':False,'replayAllowed':False}
+        if os.path.lexists(root/name):
+            need(read(name)==intent,'instance_login_capture_changed')
+            if not os.path.lexists(root/('login-field-capture-'+OPERATION+'.terminal.json')):guard();save('login-field-capture-'+OPERATION+'.terminal.json',{'operationId':OPERATION,'state':'field-capture-interrupted','replayAllowed':False})
+        else:
+            first=shot();mice=monitor('query-mice',None);selected=[x for x in mice if type(x)is dict and x.get('current')is True]
+            need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_login_mouse_unrecognized')
+            guard();save(name,intent)
+            if not any(ppm(first)[2]):
+                events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
+                monitor('input-send-event',{'events':events});time.sleep(2);shot()
+            time.sleep(1);shot();guard();monitor('send-key',{'keys':[{'type':'qcode','data':'ret'}],'hold-time':80});guard();time.sleep(2)
+            for _ in range(4):shot();time.sleep(.7)
+            guard();save('login-field-capture-'+OPERATION+'.terminal.json',{'operationId':OPERATION,'state':'field-frames-retained','replayAllowed':False})
+        frames=sorted(p.name for p in root.glob('login-'+OPERATION+'-*.ppm'));need(1<=len(frames)<=32,'instance_login_original_screens_bound')
+        return {'login':{'state':'field-capture-observed','operationId':OPERATION,'frames':len(frames),'replayAllowed':False},'sessionFacts':fresh}
     if LOGIN_MODE=='login-reference':
         need(LOGIN_ORIGINAL is not None and not os.path.lexists(root/('login-credential-'+LOGIN_ORIGINAL+'.intent.json')),'instance_login_original_submission_exists')
         need(type(LOGIN_EXPECTED)is dict and LOGIN_EXPECTED.get('actor')==before['actor']and LOGIN_EXPECTED.get('hostBoot')==before['hostBoot']and LOGIN_EXPECTED.get('controlConnection')==before['controlConnection']and LOGIN_EXPECTED.get('boot')==fresh['boot'],'instance_login_binding_changed')
@@ -450,26 +540,41 @@ def _login_flow(root,read,save,monitor,guard,script,fresh,before):
     current=script('login-admission-'+os.urandom(6).hex(),SESSION_SCRIPT)
     need(current['ordinary']is True and current['expectedSid']==LOGIN_SID,'instance_login_account_mismatch')
     need(current['boot']==fresh['boot']and current['console']==fresh['console']and current['tokenSid']==fresh['tokenSid']and current['session']['Logon']==fresh['session']['Logon']and current['session']['User']==fresh['session']['User']and current['session']['State']==fresh['session']['State']and current['session']['Flags']==fresh['session']['Flags'],'instance_login_session_changed')
+    # The admission read takes seconds and the field can time out meanwhile. Recognize
+    # it again, and refuse here, before the credential, without the budget to finish.
+    wait_known_field(shot,LOGIN_PROFILE['password']if type(LOGIN_PROFILE)is dict and set(LOGIN_PROFILE)=={'password','lockscreen'}else LOGIN_PROFILE,guard)
+    if globals().get('LOGIN_OWNER_PHASE'):need(globals()['LOGIN_OWNER_REMAINING']()>=20,'instance_login_budget_insufficient')
     secret=globals().pop('LOGIN_OWNER_SECRET',None)
     if secret is None:secret=sys.stdin.buffer.read(65)
     # Validate all private bytes before journaling and before the first key. No
     # count, derived key request, echo or hash is retained by either path.
     private_keys(secret);guard();save(name,admission)
+    if globals().get('LOGIN_OWNER_TYPING'):LOGIN_OWNER_TYPING()
     try:enter_private(secret,lambda arguments:monitor('send-key',arguments),guard)
     finally:secret=None
     if globals().get('LOGIN_OWNER_PHASE'):LOGIN_OWNER_PHASE('credential')
-    after=script('login-after-'+os.urandom(6).hex(),SESSION_SCRIPT)
-    need(after['boot']==fresh['boot']and after['expectedSid']==LOGIN_SID and after['ordinary']is True,'instance_login_session_changed')
-    if globals().get('LOGIN_OWNER_PHASE'):
-        deadline=time.monotonic()+30
-        while not ready(after)and time.monotonic()<deadline:
-            guard();time.sleep(.5);after=script('login-after-'+os.urandom(6).hex(),SESSION_SCRIPT)
-            need(after['boot']==fresh['boot']and after['expectedSid']==LOGIN_SID and after['ordinary']is True,'instance_login_session_changed')
+    # The console session is in transition right after a sign-in, so the fixed
+    # read-only query can fail for a moment. Each retry is a new read, never input.
+    limit=time.monotonic()+(90 if globals().get('LOGIN_OWNER_PHASE')else 0)
+    after=None
+    while True:
+        guard()
+        try:current=script('login-after-'+os.urandom(6).hex(),SESSION_SCRIPT)
+        except OSError:pass
+        except ValueError as error:
+            if re.fullmatch('instance_[a-z_]{1,64}',str(error))and str(error)not in {'instance_guest_program_failed','instance_original_guest_pending','instance_guest_output','instance_guest_output_bound','instance_guest_exec_ack'}:raise
+        else:
+            need(current['boot']==fresh['boot']and current['expectedSid']==LOGIN_SID and current['ordinary']is True,'instance_login_session_changed')
+            after=current
+            if ready(after):break
+        if time.monotonic()>=limit:break
+        time.sleep(.5)
+    need(after is not None,'instance_login_after_unresolved')
     if ready(after):close_ready(after)
     return {'login':{'state':'ready'if ready(after)else'credential-submitted','operationId':OPERATION,'interactiveSessionVerified':ready(after),'replayAllowed':False},'sessionFacts':after}
 
 def program(binding,mode,operation,*,expected_sid,profile=None,expected=None,original_operation=None,original_frame=0):
-    if mode not in {'login-probe','login-wake','login-dismiss','login-submit','login-status','login-original-screens','login-reference','login-lock-fixture'}or type(operation)is not str or str(UUID(operation))!=operation:raise ValueError('windows_login_action')
+    if mode not in {'login-probe','login-wake','login-dismiss','login-submit','login-status','login-original-screens','login-reference','login-lock-fixture','login-field-capture','login-screen-pin'}or type(operation)is not str or str(UUID(operation))!=operation:raise ValueError('windows_login_action')
     if type(expected_sid)is not str or re.fullmatch(r'S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',expected_sid)is None:raise ValueError('windows_login_account')
     if type(original_frame)is not int or not 0<=original_frame<=31:raise ValueError('windows_login_original_frame')
     if original_operation is not None and (type(original_operation)is not str or str(UUID(original_operation))!=original_operation):raise ValueError('windows_login_original')
@@ -477,9 +582,11 @@ def program(binding,mode,operation,*,expected_sid,profile=None,expected=None,ori
     helpers='import hashlib,re,os\n'+_publication_source()+'\nLOGIN_MODE='+repr(mode)+'\nLOGIN_SID='+repr(expected_sid)+'\nLOGIN_PROFILE='+repr(profile)+'\nLOGIN_EXPECTED='+repr(expected)+'\nLOGIN_ORIGINAL='+repr(original_operation)+'\nLOGIN_FRAME='+repr(original_frame)+'\n'
     account="$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"+LOGIN_ACCOUNT.replace('__USER__',repr(binding['setup']['user']))
     helpers+='LOGIN_ACCOUNT_SCRIPT='+repr(account)+'\n'
+    pin="$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n"+"if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18'){throw 'SYSTEM_REQUIRED'}\n"+LOGIN_SCREEN_PIN
+    helpers+='LOGIN_SCREEN_PIN_SCRIPT='+repr(pin)+'\n'
     for fn in (PrivateInputUnknown,_ProtectedOwner,private_keys,enter_private,ppm,screen_gate,wait_known_field,prepare_screen,_login_flow):helpers+=inspect.getsource(fn)+'\n'
     marker="        elif MODE in {'observe','idle-inventory','reboot'}:\n"
-    extension="        elif MODE in {'login-probe','login-wake','login-dismiss','login-submit','login-status','login-original-screens','login-reference','login-lock-fixture'}:\n            require(state=='running','instance_guest_not_ready')\n            fresh=script('login-session-'+os.urandom(6).hex(),SESSION_SCRIPT)\n            result['guestAgent']=True\n            result.update(_login_flow(root,read,save,monitor,vm_guard,script,fresh,result))\n"
+    extension="        elif MODE in {'login-probe','login-wake','login-dismiss','login-submit','login-status','login-original-screens','login-reference','login-lock-fixture','login-field-capture','login-screen-pin'}:\n            require(state=='running','instance_guest_not_ready')\n            fresh=script('login-session-'+os.urandom(6).hex(),SESSION_SCRIPT)\n            result['guestAgent']=True\n            result.update(_login_flow(root,read,save,monitor,vm_guard,script,fresh,result))\n"
     source=base.decode()
     if source.count(marker)!=1 or source.count("MODE='observe'")!=1:raise ValueError('windows_login_producer_changed')
     source=source.replace("MODE='observe'","MODE="+repr(mode),1).replace(marker,extension+marker,1)
@@ -496,7 +603,11 @@ def program(binding,mode,operation,*,expected_sid,profile=None,expected=None,ori
             if existing is not None:
                 if existing['state']!='terminal':
                     print(json.dumps({'state':'owner-'+existing['state'],'operationId':OPERATION,'replayAllowed':False}));return
-                print(json.dumps(existing['packet']));return
+                # Status types nothing. It alone can close a credential whose owner
+                # ended before seeing the desktop; every other terminal stays verbatim.
+                if not(MODE=='login-status'and not(existing['packet'].get('state')=='owner-terminal'and existing['packet'].get('loginState')=='ready')
+                       and os.path.lexists(root/('login-credential-'+OPERATION+'.intent.json'))and not os.path.lexists(root/('login-credential-'+OPERATION+'.terminal.json'))):
+                    print(json.dumps(existing['packet']));return
     """.rstrip()
     if source.count('        epoch();chain()')!=1:raise ValueError('windows_login_owner_producer_changed')
     source=source.replace('        epoch();chain()',owner_init,1)
@@ -508,6 +619,8 @@ def program(binding,mode,operation,*,expected_sid,profile=None,expected=None,ori
                 if type(launched)is dict:print(json.dumps(launched));return
                 globals()['LOGIN_OWNER_SECRET']=launched
                 globals()['LOGIN_OWNER_PHASE']=login_owner.phase
+                globals()['LOGIN_OWNER_REMAINING']=lambda:max(0,(login_owner.intent['deadlineNs']-time.monotonic_ns())/1e9-5)
+                globals()['LOGIN_OWNER_TYPING']=lambda:setattr(login_owner,'typing',True)
             plain_guard=vm_guard
             def vm_guard():
                 login_owner.guard(login_owner.child);plain_guard()
@@ -527,6 +640,29 @@ def program(binding,mode,operation,*,expected_sid,profile=None,expected=None,ori
     reasons=sorted({node.value for node in ast.walk(ast.parse(helpers+source))if isinstance(node,ast.Constant)and type(node.value)is str and re.fullmatch('instance_[a-z_]{1,64}',node.value)})
     source='LOGIN_PUBLIC_REASONS='+repr(reasons)+'\n'+helpers+source
     compile(source,'fixed protected Windows login','exec');return source.encode()
+
+
+def expected_from_facts(facts):
+    """The exact identity one attempt binds, from one fresh full observation."""
+    if type(facts)is not dict or type(facts.get('sessionFacts'))is not dict or type(facts['sessionFacts'].get('session'))is not dict:raise ValueError('windows_login_expected')
+    session=facts['sessionFacts']['session']
+    return {'actor':facts['actor'],'hostBoot':facts['hostBoot'],'controlConnection':facts['controlConnection'],'boot':facts['sessionFacts']['boot'],
+            'console':facts['sessionFacts']['console'],'logon':session['Logon'],'user':session['User']}
+
+
+def validate_profile(profile):
+    """Shape of one reviewed screen pair, refused before any owner or credential."""
+    def crops(value):
+        if (type(value)is not dict or set(value)!={'width','height','crops'}or type(value['width'])is not int or type(value['height'])is not int
+                or not 320<=value['width']<=4096 or not 200<=value['height']<=2160 or type(value['crops'])is not list or not 1<=len(value['crops'])<=8):raise ValueError('windows_login_profile')
+        for row in value['crops']:
+            if (type(row)is not dict or set(row)!={'rect','sha256'}or type(row['rect'])is not list or len(row['rect'])!=4 or any(type(v)is not int for v in row['rect'])
+                    or type(row['sha256'])is not str or re.fullmatch('[0-9a-f]{64}',row['sha256'])is None):raise ValueError('windows_login_profile')
+            x0,y0,x1,y1=row['rect']
+            if not 0<=x0<x1<=value['width']or not 0<=y0<y1<=value['height']:raise ValueError('windows_login_profile')
+    if type(profile)is not dict or set(profile)!={'password','lockscreen'}:raise ValueError('windows_login_profile')
+    crops(profile['password']);crops(profile['lockscreen'])
+    return profile
 
 
 def decode_precredential_reference(stdout,stderr=b'',returncode=0):
@@ -774,6 +910,7 @@ def _approved_predecessors(backend,operation,held):
         if str(UUID(original))!=original or set(value)!={'identity','callerSha256','replayAllowed'}or set(identity)!={'operationId','binding','expectedSid','profile','expected'}or identity['operationId']!=original or value['replayAllowed']is not False or type(value['callerSha256'])is not str or re.fullmatch('[0-9a-f]{64}',value['callerSha256'])is None:raise ValueError('windows_login_prior_artifact_invalid')
         canonical=program(binding,'login-submit',original,expected_sid=identity['expectedSid'],profile=identity['profile'],expected=identity['expected'])
         callers=sorted(directory.glob('login-submit-*.py'))
+        if not callers and not any(directory.glob('login-status-*.py')):continue
         if not 1<=len(callers)<=64:raise ValueError('windows_login_prior_source_untrusted')
         matched=False;matched_source=None
         for caller in callers:
@@ -881,11 +1018,11 @@ def execute(backend,operation,profile,expected,credential_file,deadline,*,status
                 except BaseException:return {'state':'unknown','reason':'original_launch_barrier_unresolved','operationId':operation,'replayAllowed':False}
                 _retain(directory,'credential.launch-barrier.json',barrier)
             else:barrier=launch._load(launch._public_file(directory/'credential.launch-barrier.json',held,131072))
+        # Prior source admission is independent of the new credential. Refuse
+        # untrusted history before retaining a packet or opening any private file.
+        approved=_approved_predecessors(backend,operation,held)if mode=='login-submit'else{}
         label=mode+'-'+__import__('uuid').uuid4().hex;path=directory/(label+'.py');_retain(directory,path.name,source)
         held.read(str(path),hashlib.sha256(source).hexdigest(),max_bytes=1048576)
-        # Prior source admission is independent of the new credential. Refuse
-        # untrusted history before opening any private file for this attempt.
-        approved=_approved_predecessors(backend,operation,held)if mode=='login-submit'else{}
         backend._guard();held.finish();held.final_identity_pass()
         # Passwords are opened only after the immutable local credential fence.
         if mode=='login-submit':

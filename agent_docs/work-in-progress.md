@@ -1,20 +1,76 @@
 # Native tool recovery and retained parity history
 
-## Handoff (2026-11-05)
+## Handoff (2026-11-07)
 
-`dev` in this checkout is clean. The Windows lane commit described next is
-followed by a local work-in-progress checkpoint commit of every other lane that
-was uncommitted on 2026-11-05: Android, Tart macOS, Windows sign-in, idle and
-sleep tools, scripts, fixtures and test enrollment. Neither commit is pushed.
-The checkpoint was committed as found, without separate review or native
-qualification, so its lanes keep the open items recorded below. The next task
-continues the Windows sleep and related tools:
-`agent_tools/windows_sleep_capability.py` (a conservative projection of an
-English `powercfg /a` observation) with its test, the
-`windows_fresh_readonly_observer` wake-operator fixtures, and the Windows idle
-and lifecycle notes under the native tool follow-up below. The paused
-`/Users/karapsin_de/projects/vpn_control` checkout is still dirty and diverged
-(unpushed `a9aed701`) and was left untouched.
+`dev` in this checkout is clean and three local commits ahead of `origin/dev`:
+the Windows lane, the 2026-11-05 checkpoint and the 2026-11-06 Windows native
+tools. None is pushed and no workflow run covers them. The next task the user
+named is finishing GUI/CLI parity.
+
+Most of that work is not in this checkout. The paused
+`/Users/karapsin_de/projects/vpn_control` checkout, left untouched, holds it:
+
+- Local commit `a9aed701` on `d24c1904` changes 275 paths, 191 of them absent here.
+  It includes the public `source set subscription` fix in `DesktopCli.kt` and
+  `DesktopControlMutations.kt` with `DesktopCliSourceModeParityTest`.
+- On top are 10 modified and 183 untracked paths, including the updater, lifecycle,
+  document and TUN scenario tools and their fixtures.
+- The parity ledger is the top of its `agent_docs/work-in-progress.md`, with matrix
+  receipts under `.rag_index/native-acceptance` and private evidence under
+  `.runtime/windows-parity-20261019/`.
+
+At its last record the app was not installed on any fixture, and all 64 Windows
+installed-package memberships and all 58 Windows visual scenes were open. The
+user's last parity scope decision, on 2026-10-19, is Windows, with Linux, Android
+and macOS native and visual work deferred.
+
+## Earlier handoff (2026-11-05)
+
+The Windows lane commit described below is followed by a local work-in-progress
+checkpoint commit of every other lane that was uncommitted on 2026-11-05: Android,
+Tart macOS, Windows sign-in, idle and sleep tools, scripts, fixtures and test
+enrollment. The checkpoint was committed as found, without separate review or
+native qualification, so its lanes keep the open items recorded below. Its next
+task, the Windows sleep and related tools, finished as described next.
+
+## Windows native tools (2026-11-06)
+
+This round is committed locally and not pushed. The
+Windows sleep route, idle proof, protected sign-in and unlock, display wake,
+leases, finite counter and `readiness-reboot` pass natively on clone `246a3304`,
+direct first and then through MCP and the CLI on the same sources. That clone was
+then stopped by `windows-vm-deploy-stop`, a public blank start and stop passed, and
+new clone `34e354eb` of image `637199a5` is running, qualified and secured, with no
+alias, screen profiles, or lease and job namespaces yet. Results, failure types and
+limits are in the [recovery ledger](tool-recovery-ledger.md); exact private handles
+are at the top of `.runtime/tool-recovery/CONTINUATION.md`.
+
+Fixtures now take no unexpected updates, by user decision:
+`windows_vm_unattend.UPDATE_POLICY`. Sign-in source is frozen on a clone after its
+first real submit, so finish edits to the remote packet, instance, guest session
+and embedded login source before that; afterwards use a new clone.
+
+Open: S3 itself cannot run on this guest, which refuses it. The libvirt provider
+was not run. Android and macOS stay deferred and R1 and R2 stay rejected. Delivery
+still needs the user's push decision, then exact-SHA CI; the full managed pre-push
+cannot finish on this Mac.
+
+Same-disk restart has no public route: `windows-vm-deploy-stop` is a hard quit, and a
+stopped clone can only be replaced. `powerdown_program`, `existing_start_program`,
+`start_observation_program` and `readiness_windows_managed_start.dispatch_program`
+have no public caller. Known gaps from the 2026-11-06 reading, none attempted:
+
+1. No route or capability reaches them.
+2. A durable powerdown refuses itself: its namespace under the VM root makes idle
+   visibility false, and enrolling it also blocks a later reboot.
+3. A restarted actor is invisible: the actor identity reads only `qemu-started.json`,
+   so lineage, status and the reservation observer report it stopped.
+4. A clean stop's terminal lacks `state=submitted`, and an `existing-start` intent is
+   an unclassified receipt.
+5. Storage: `start` never claims it, while the existing-disk start needs a retained
+   claim, and no Windows route settles a pending one.
+6. `observe` needs the QMP socket that an existing-disk start requires to be absent.
+7. A restarted VM would count against two reservation rows.
 
 ## Windows tool-recovery lane (committed 2026-11-05)
 

@@ -1,0 +1,32 @@
+{
+ "boot": "2026-11-06T00:30:36.5000000Z",
+ "lines": [
+  "The following sleep states are available on this system:",
+  "    Hibernate",
+  "    Fast Startup",
+  "",
+  "The following sleep states are not available on this system:",
+  "    Standby (S1)",
+  "\tThe system firmware does not support this standby state.",
+  "\tAn internal system component has disabled this standby state.",
+  "\t\tGraphics",
+  "",
+  "    Standby (S2)",
+  "\tThe system firmware does not support this standby state.",
+  "\tAn internal system component has disabled this standby state.",
+  "\t\tGraphics",
+  "",
+  "    Standby (S3)",
+  "\tAn internal system component has disabled this standby state.",
+  "\t\tGraphics",
+  "",
+  "    Standby (S0 Low Power Idle)",
+  "\tThe system firmware does not support this standby state.",
+  "",
+  "    Hybrid Sleep",
+  "\tStandby (S3) is not available.",
+  ""
+ ],
+ "machine": "246a3304-86f3-4e96-bf47-d53c28f83a27",
+ "operationId": "de252160-594c-4831-83bb-c5d1836e1a09"
+}

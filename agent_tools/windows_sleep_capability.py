@@ -33,7 +33,7 @@ def observe_s3(lines):
                 reasons.append(following.strip())
             rows.append((section, reasons))
     if (headings != {_AVAILABLE, _UNAVAILABLE} or len(rows) != 1
-            or rows[0][0] == _UNAVAILABLE and not rows[0][1]):
+            or (rows[0][0] == _UNAVAILABLE) != bool(rows[0][1])):
         raise ValueError("windows_sleep_capability_unrecognized")
     supported = rows[0][0] == _AVAILABLE
     return {"schemaVersion": 1, "state": "supported" if supported else "unsupported",

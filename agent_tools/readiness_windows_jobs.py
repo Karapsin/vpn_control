@@ -42,6 +42,9 @@ def _identity(machine, boot):
     _need(type(boot) is str and _BOOT.fullmatch(boot), "windows_job_boot_invalid")
 
 
+_START_MINIMUM_SECONDS = 130
+
+
 @dataclass(frozen=True)
 class WindowsJobBinding:
     machine: str
@@ -137,7 +140,7 @@ public static class NativeJob {
  [DllImport("kernel32.dll")]static extern bool CloseHandle(IntPtr handle);
  [StructLayout(LayoutKind.Sequential)]struct FileInfoNative {public UInt32 Attributes;public System.Runtime.InteropServices.ComTypes.FILETIME Created,Accessed,Written;public UInt32 Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
  static void Need(bool yes,string reason){if(!yes)throw new Exception(reason);}
- static Dictionary<string,object> Read(string path){Need(new FileInfo(path).Length<=262144,"RECORD_BOUND");NoLink(path);FileTag(path);return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(path,Encoding.UTF8));}
+ static Dictionary<string,object> Read(string path){Need(new FileInfo(path).Length<=262144,"RECORD_BOUND");NoLink(path);FileTag(path);for(int attempt=0;;attempt++){try{return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(path,Encoding.UTF8));}catch(IOException){if(attempt>=40||!File.Exists(path))throw;Thread.Sleep(25);}}}
  static string S(Dictionary<string,object> v,string key){return Convert.ToString(v[key],System.Globalization.CultureInfo.InvariantCulture);}
  static string Hash(byte[] value){using(var h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(value)).Replace("-","").ToLowerInvariant();}
  static void Write(string path,Dictionary<string,object> value){byte[] raw=Encoding.UTF8.GetBytes(Json.Serialize(value));string temp=path+".pending-"+Guid.NewGuid().ToString("N");using(var f=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(raw,0,raw.Length);f.Flush(true);}File.Move(temp,path);}
@@ -825,7 +828,7 @@ def _observe_original(executor, operation, spec, deadline, cached, *, readonly_f
 
 def workflow(root, action, inputs, *, deadline=None):
     """Finite normal tool facade; status/collect never resolve any fixture."""
-    import time
+    import subprocess, time
     from . import readiness, readiness_fixture_registry as registry
     from . import readiness_windows as windows
     _need(action in {"start", "status", "reconcile", "collect"} and type(inputs) is dict, "windows_job_action_invalid")
@@ -840,7 +843,8 @@ def workflow(root, action, inputs, *, deadline=None):
         result = _status(root, fixture, operation)
         _need(action != "collect" or result["state"] == "terminal", "windows_job_collection_not_terminal")
         return result
-    deadline = time.monotonic() + 180 if deadline is None else deadline
+    # A start runs readiness, namespace and revalidation packets before its own.
+    deadline = time.monotonic() + (readiness.COLD_BUDGET if action == "start" else 180) if deadline is None else deadline
     if has_original(root, fixture, operation):
         path = _local(root, fixture, operation)
         intent = registry._json(path / "intent.json")[0]
@@ -851,7 +855,10 @@ def workflow(root, action, inputs, *, deadline=None):
         if cached["state"] == "terminal":
             return cached
         executor = executor_from_snapshot(root, intent["executor"])
-        observed = _observe_original(executor, operation, intent["spec"], deadline, cached)
+        try:
+            observed = _observe_original(executor, operation, intent["spec"], deadline, cached)
+        except (subprocess.SubprocessError, TimeoutError, ConnectionError):
+            return cached  # Nothing new was read; the same original stays the only route.
         return _save_observation(path, intent, observed)
     _need(action == "start", "windows_job_original_missing")
     spec = {"count": inputs["count"], "intervalSeconds": inputs["intervalSeconds"]}
@@ -869,6 +876,9 @@ def workflow(root, action, inputs, *, deadline=None):
     _need(type(executor) is WindowsJobExecutor and executor.target == registered.target and executor.machine == registered.machine,
           "windows_job_executor_binding")
     readiness.revalidate(context, ready)
+    # Refuse while nothing is recorded: a transport timeout after this point can
+    # only leave an unknown attempt that is never replayed.
+    _need(deadline - time.monotonic() >= _START_MINIMUM_SECONDS, "windows_job_budget_insufficient")
     path = _local(root, fixture, operation, create=True)
     intent = {"kind": "windows-fixed-counter-v1", "schemaVersion": 1, "fixtureId": fixture,
               "operationId": operation, "executor": executor.snapshot(), "spec": spec}
@@ -876,7 +886,11 @@ def workflow(root, action, inputs, *, deadline=None):
         windows._save(path / "intent.json", intent)
     except FileExistsError:
         _need(registry._json(path / "intent.json")[0] == intent, "windows_job_local_identity_changed")
-    observed = executor.submit(operation, count=spec["count"], interval_seconds=spec["intervalSeconds"], deadline=deadline)
+    try:
+        observed = executor.submit(operation, count=spec["count"], interval_seconds=spec["intervalSeconds"], deadline=deadline)
+    except (subprocess.SubprocessError, TimeoutError, ConnectionError):
+        # The packet may already have reached the guest: unknown, never a refusal or a replay.
+        return _public(fixture, operation, {"state": "unknown", "reason": "windows_job_submission_unknown"}, intent["executor"]["provider"])
     if observed["state"] == "unknown" and observed["reason"] == "original_owner_ack_pending":
         observed = _observe_original(executor, operation, spec, deadline,
                     {"identity": observed["identity"]}, readonly_first=True)

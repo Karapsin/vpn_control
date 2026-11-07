@@ -190,7 +190,8 @@ def validate_observation(value, binding, operation, *, original_identity=None):
         _need(type(owner["sessionId"]) is int and owner["sessionId"] == int(binding.session.split(":")[0])
               and owner["accountSid"] == "S-1-5-18", "windows_lease_execution_session_invalid")
         identity["owner"] = dict(owner)
-    if original_identity is not None:
+    evidence_unavailable = not identity and value["state"] == "unknown" and value["reason"] == "original_lease_evidence_unavailable"
+    if original_identity is not None and not evidence_unavailable:
         _need(type(original_identity) is dict and {"admissionNonce", "programSha256"} <= set(original_identity)
               <= {"admissionNonce", "programSha256", "owner"}
               and all(identity.get(key) == item for key, item in original_identity.items()),
@@ -230,7 +231,7 @@ def validate_observation(value, binding, operation, *, original_identity=None):
     complete = state in {"expired", "cancelled"} and value.get("restored") is True and job_state == "terminal"
     observe = (state in {"active", "starting"} and job_state == "running" or
                state in {"expired", "cancelled"} and value.get("restored") is True and job_state == "running" or
-               state == "unknown" and value["reason"] in {"original_owner_ack_pending", "original_admission_pending"})
+               state == "unknown" and value["reason"] in {"original_owner_ack_pending", "original_admission_pending", "original_lease_evidence_unavailable"})
     result = {key: value[key] for key in required}
     result.update(jobState=job_state, identity=identity, ok=complete or observe,
                   nextAction="none" if complete else "observe_original" if observe else "resolve_blocker")
@@ -266,10 +267,10 @@ public static class NativeLease {
  [StructLayout(LayoutKind.Sequential)]struct ProcessInfo {public IntPtr Process,Thread;public UInt32 Pid,Tid;}
  [StructLayout(LayoutKind.Sequential)]struct FileInfoNative {public UInt32 Attributes;public System.Runtime.InteropServices.ComTypes.FILETIME Created,Accessed,Written;public UInt32 Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
  static void Need(bool yes,string reason){if(!yes)throw new Exception(reason);}
- static Dictionary<string,object> Read(string path){Need(new FileInfo(path).Length<=262144,"RECORD_BOUND");NoLink(path);return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(path,Encoding.UTF8));}
+ static Dictionary<string,object> Read(string path){Need(new FileInfo(path).Length<=262144,"RECORD_BOUND");NoLink(path);for(int attempt=0;;attempt++){try{return Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(path,Encoding.UTF8));}catch(IOException){if(attempt>=40||!File.Exists(path))throw;Thread.Sleep(25);}}}
  static string S(Dictionary<string,object> v,string key){return Convert.ToString(v[key],System.Globalization.CultureInfo.InvariantCulture);}
  static string Hash(byte[] value){using(var h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(value)).Replace("-","").ToLowerInvariant();}
- static void Write(string path,Dictionary<string,object> value){byte[] raw=Encoding.UTF8.GetBytes(Json.Serialize(value));using(var f=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(raw,0,raw.Length);f.Flush(true);}}
+ static void Write(string path,Dictionary<string,object> value){byte[] raw=Encoding.UTF8.GetBytes(Json.Serialize(value));string temp=path+".pending-"+Guid.NewGuid().ToString("N");using(var f=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None)){f.Write(raw,0,raw.Length);f.Flush(true);}File.Move(temp,path);}
  static void NoLink(string path){Need((File.GetAttributes(path)&FileAttributes.ReparsePoint)==0,"REPARSE_POINT");}
  static void Private(string path,bool create=false){
   if(!Directory.Exists(path)){

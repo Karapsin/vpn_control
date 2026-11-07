@@ -6261,6 +6261,21 @@
         "readiness_recovery_status"
       ]
     },
+    "readiness-sleep-capability": {
+      "closure": [
+        "private_inventory_lock",
+        "readiness",
+        "readiness_recovery_status",
+        "readiness_windows_login",
+        "readiness_workflow"
+      ],
+      "kind": "facade",
+      "modules": [
+        "readiness",
+        "readiness_workflow",
+        "readiness_recovery_status"
+      ]
+    },
     "rpm-proc-observe": {
       "closure": [
         "linux_owner_public_quit",
@@ -22155,13 +22170,13 @@
     "private_config_custody": "efc4b40e1f455444bd80ad3bbb5cb8753cad1d4cf737853010f1bccea32ea040",
     "private_credential_file": "0bfb7bf2dc8fc6cf970112aea856a01193950aa400b4fc09d48c0c2cbd153a77",
     "private_inventory_lock": "0ef6e2dda29a396a201368e1c3bce2ad52c441a3c9cc8647d8cadce198b73d42",
-    "readiness": "eda12770d2141a1933159d0151eb8e512effb04663e6475a29dca90ea0a39a23",
+    "readiness": "d9412d4c67fdf42a95d003e72825aa04505687f37406a27b8e99c41e7c63caa8",
     "readiness_lease_reconciliation": "53c644648f03883d3ddb872d39860cc71058a31cfae0a6de7bbd8a2f7d6d2ec0",
-    "readiness_lease_workflow": "a6baae6deb812b20d61455f6d817df959a14f837768704973330498a9f32a5d7",
+    "readiness_lease_workflow": "97bf1b426f065d216d9e6a851309d98c421ccbc4c06c63d1f461b54b33c9cf0c",
     "readiness_leases": "104ec0588179822f4ad851dc6a1a91df55a68f155540d93ce6c0b9be18a2ff6f",
     "readiness_recovery_status": "a73af4fe04c2056d4db3b10e2cc8fe7135800967b82fcff95a71ab27afb4f4cd",
-    "readiness_windows_login": "fe13e3b9b8a911fe487ca245f4b9fe5634c7258404af98dfeddbdf78dbee6dda",
-    "readiness_workflow": "5ee66840b11281a6c6c4d8b31ce91e88a57bfcd28ba5abd8b2f156010bb779f4",
+    "readiness_windows_login": "73240a83576e1ca6a4e5cdf30ea12f88a00f41ba34bfe5eeb581fa34abf179c5",
+    "readiness_workflow": "67a971bfc81466e1b7dd7171c5c44abeb2d85a30ba3fa868ef6007e93ba994dc",
     "ssh_channel_inventory_diagnostics": "9152ea074b39f89c2fae4f0c8b02246c5e264abcc10d08c7bc4d27c2c1012c35",
     "ssh_connection_recovery": "5937d793033d4478c401e561d7fd52696b63f2b97b23d01e143e60daacf2337f",
     "ssh_connection_session": "dd0273609c7537237c159f82cf318745e27e4952ec784c63d251760b38adb887",
@@ -22272,7 +22287,7 @@
     "windows_vm_deploy_remote": "0c76e3ec351b4be5ff63dacd4bd2f77a1d366be492d2b832f108ac5b5c611453",
     "windows_vm_driver_fetch": "38da7a06dc1a2700508a7440b29eccb94927b28ec38befcededaed34c35a0f2a",
     "windows_vm_fresh_setup": "7eda55c2f622768f0dc569be8560a0efd001201fcab475060a8089e991cc26fe",
-    "windows_vm_guest": "4ce8abc079e70ac09399a1d934ef7bee0f82571189c6e03597d8bdc170a1ba5e",
+    "windows_vm_guest": "aef8c9ef5223962ed4c4bd8137f58740566283543d8cf464c180426377b9337a",
     "windows_vm_hardware": "541d9ad4c733b0092254e991915f5f7ae631fe12249b1bd984a0c74002a1d4ad",
     "windows_vm_image": "c6502b08149f1127ada09d71c7b4b917906377028ed818df0481ac30bb03fcbd",
     "windows_vm_instance": "50d624e9e79c3f6111b5b081455beaa3b73d2f0177569a54481e3baa527f548a",
@@ -22293,7 +22308,7 @@
     "windows_vm_setup_keyboard_next": "200f86f50356763242d813c04c6104401bd4da3463e81ee0bd3f4cf07f68e48f",
     "windows_vm_setup_language_next": "987509c25ef36843d9dbae573bb3db37e124979d3a5c3fc80668133eabcc5c67",
     "windows_vm_swtpm_repair": "47190e2c3a0b0b2d56be4595904aa0b3c30c939aa5841c69850e1e263e24eca1",
-    "windows_vm_unattend": "1023536d57f860d40146710f09ad08fae19da1dc8adb7f3cb5d7911b74445d11",
+    "windows_vm_unattend": "e4ae0653f080ce1a5a84102d4c851ceb7085c03a83dfd2de44d65690179b46c3",
     "windows_vm_virt_firmware_install": "752863505733482fad930ec4b409c00beb5a705c0be581eba04e774f0691ef1a"
   }
 }

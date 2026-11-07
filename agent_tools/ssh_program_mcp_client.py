@@ -82,6 +82,14 @@ def follow_request(action, host, operation, value, fixture=None):
 # Bounded overrun past the follow deadline for one in-flight call and the
 # relay close; the MCP SDK kills the relay 2 s after stdin closes otherwise.
 CLOSE_GRACE_SECONDS = 30
+# A registered Windows counter start runs readiness, namespace and revalidation
+# packets before its own and may use the whole cold budget, so it may be read that long.
+_LONG_START_READ_SECONDS = 660
+_LONG_START_FOLLOW_SECONDS = 720
+
+
+def _read_seconds(action, remaining):
+    return min(_LONG_START_READ_SECONDS if action == "guest-program-start" else 90, remaining + CLOSE_GRACE_SECONDS)
 
 
 def protocol_loss(error):
@@ -155,8 +163,10 @@ async def main(arguments):
     environment["PYTHONPATH"] = str(ROOT)
     follow = getattr(arguments, "follow", None)
     follow = arguments.action in ("program-start", "guest-program-start", "android-program-start") if follow is None else follow
-    follow_seconds = getattr(arguments, "follow_seconds", 180)
-    if type(follow_seconds) is not int or not 1 <= follow_seconds <= 600:
+    follow_seconds = getattr(arguments, "follow_seconds", None)
+    if follow_seconds is None:
+        follow_seconds = _LONG_START_FOLLOW_SECONDS if arguments.action == "guest-program-start" else 180
+    if type(follow_seconds) is not int or not 1 <= follow_seconds <= 900:
         raise ValueError("program_mcp_follow_deadline")
     deadline = asyncio.get_running_loop().time() + follow_seconds
     operation = body["operationId"] if payload is not None else None
@@ -215,7 +225,7 @@ async def main(arguments):
                                  "operationId": operation, "relayAttempt": attempt, "automaticReplay": False})
                             attempted_calls += 1
                             response = await session.call_tool(tool, active_payload,
-                                read_timeout_seconds=timedelta(seconds=min(90, remaining + CLOSE_GRACE_SECONDS)))
+                                read_timeout_seconds=timedelta(seconds=_read_seconds(active_payload["action"], remaining)))
                             returned_calls += 1
                             wire = response.model_dump(mode="json")
                             save(directory, "call-result-%08d.json" % ordinal, wire)
@@ -286,5 +296,5 @@ if __name__ == "__main__":
     follow_group.add_argument("--follow", dest="follow", action="store_true")
     follow_group.add_argument("--no-follow", dest="follow", action="store_false")
     parser.set_defaults(follow=None)
-    parser.add_argument("--follow-seconds", type=int, default=180)
+    parser.add_argument("--follow-seconds", type=int, default=None)
     raise SystemExit(asyncio.run(main(parser.parse_args())))

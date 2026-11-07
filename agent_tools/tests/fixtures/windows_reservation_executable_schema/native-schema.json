@@ -1,0 +1,118 @@
+{
+  "getterActor": {
+    "commandSha256": "0cbe12388fb4a28761e554e4b9c084b58a7bce6d429e0a92cb8a75ffd1c1374a",
+    "executableGeneration": [
+      66306,
+      1234700,
+      33261,
+      0,
+      0,
+      1,
+      28940536,
+      1789559094000000000,
+      1790008459287925436
+    ],
+    "pid": 1133839,
+    "startTicks": 217088739
+  },
+  "hostResources": {
+    "deploymentId": "62b489bc-81d5-4d3a-b87a-94fa2b90c57d",
+    "freeDiskBytes": 224714133504,
+    "hostBootId": "25515f23-b966-4c3a-ae63-d38452375578",
+    "inventoryComplete": true,
+    "mode": "host-resources",
+    "nativeActionAllowed": false,
+    "physicalMemoryBytes": 64823275520,
+    "reason": null,
+    "replayAllowed": false,
+    "samples": [
+      {
+        "availableMemoryBytes": 40432701440,
+        "observedAtUnixMs": 1793202423895,
+        "psi": "normal",
+        "psiFullAvg10": 0.0,
+        "psiSomeAvg10": 0.0,
+        "vmstat": {
+          "oomKill": 0,
+          "pswpin": 824163,
+          "pswpout": 4321666
+        }
+      },
+      {
+        "availableMemoryBytes": 40432660480,
+        "observedAtUnixMs": 1793202423995,
+        "psi": "normal",
+        "psiFullAvg10": 0.0,
+        "psiSomeAvg10": 0.0,
+        "vmstat": {
+          "oomKill": 0,
+          "pswpin": 824163,
+          "pswpout": 4321666
+        }
+      }
+    ],
+    "schemaVersion": 1,
+    "state": "resources-observed",
+    "swapUsedBytes": 1885761536,
+    "vms": [
+      {
+        "commandSha256": "a16b52782248582a742779da223c85e6f11736567d1cbc308d214165d3061459",
+        "configuredMemoryBytes": 6442450944,
+        "executableGeneration": [
+          66306,
+          1234700,
+          33261,
+          0,
+          0,
+          28940536,
+          1789559094000000000,
+          1790008459287925436,
+          1
+        ],
+        "pid": 730152,
+        "sessionId": 730151,
+        "startTicks": 147154057,
+        "uid": 1000
+      },
+      {
+        "commandSha256": "0cbe12388fb4a28761e554e4b9c084b58a7bce6d429e0a92cb8a75ffd1c1374a",
+        "configuredMemoryBytes": 4294967296,
+        "executableGeneration": [
+          66306,
+          1234700,
+          33261,
+          0,
+          0,
+          28940536,
+          1789559094000000000,
+          1790008459287925436,
+          1
+        ],
+        "pid": 1133839,
+        "sessionId": 1133839,
+        "startTicks": 217088739,
+        "uid": 1000
+      },
+      {
+        "commandSha256": "84d270a23c2d167bbdd12b2c3e4c106fbb435a186af7165076611ebeb39e72bd",
+        "configuredMemoryBytes": 6442450944,
+        "executableGeneration": [
+          66306,
+          1234700,
+          33261,
+          0,
+          0,
+          28940536,
+          1789559094000000000,
+          1790008459287925436,
+          1
+        ],
+        "pid": 1484803,
+        "sessionId": 1484803,
+        "startTicks": 148537299,
+        "uid": 1000
+      }
+    ]
+  },
+  "schemaVersion": 1
+}

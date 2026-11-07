@@ -242,3 +242,7 @@ agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.
 /agent_tools/tests/fixtures/android_poststart_current_authority/provenance.json -text
 /agent_tools/tests/fixtures/android_terminal_observer_lifetime/provenance.json -text
 /agent_tools/tests/fixtures/android_terminal_zombie_retry/provenance.json -text
+# Windows native tools round 2026-11-06: authenticated fixture bytes.
+/agent_tools/tests/fixtures/windows_reservation_executable_schema/*.json -text
+/agent_tools/tests/fixtures/windows_native_tools_20261106/*.json -text
+/agent_tools/tests/fixtures/windows_secure_clone_seed/provenance.json -text

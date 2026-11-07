@@ -22,11 +22,20 @@ from .native_vm_spec import FreshWindowsVmSpec
 
 _EXECUTING_CODE = sys._getframe().f_code
 _MAX_AGE_MS = 60_000
+_INSTANCE_EXECUTABLE_FIELDS = ('dev', 'ino', 'mode', 'uid', 'gid', 'nlink', 'size', 'mtimeNs', 'ctimeNs')
+_CENSUS_EXECUTABLE_FIELDS = ('dev', 'ino', 'mode', 'uid', 'gid', 'size', 'mtimeNs', 'ctimeNs', 'nlink')
 
 
 def _need(value):
     if not value:
         raise ValueError('reservation_visibility_unavailable')
+
+
+def _executable_generation(value, fields):
+    """Name each field using its authenticated producer's fixed schema."""
+    _need(type(value) is list and len(value) == 9
+          and all(type(item) is int and item >= 0 for item in value))
+    return dict(zip(fields, value))
 
 
 def _pairs(rows):
@@ -175,7 +184,9 @@ def observe(root, binding, facts, *, census=None, clock=lambda: time.time_ns()//
         proof._fresh()
         matches = [item for item in census['vms'] if (item['pid'], item['startTicks']) == (actor['pid'], actor['startTicks'])]
         _need(len(matches) == 1 and matches[0]['configuredMemoryBytes'] == spec.memory_mib*1024**2)
-        _need(matches[0]['commandSha256'] == row.get('commandSha256') and matches[0]['executableGeneration'] == row.get('executableGeneration'))
+        _need(matches[0]['commandSha256'] == row.get('commandSha256')
+              and _executable_generation(matches[0]['executableGeneration'], _CENSUS_EXECUTABLE_FIELDS)
+              == _executable_generation(row.get('executableGeneration'), _INSTANCE_EXECUTABLE_FIELDS))
         blockers = set()
         # A stable running allocation occupies capacity. Guest work is proved
         # separately by the Windows idle observer; pending/UNKNOWN allocations

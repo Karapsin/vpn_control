@@ -81,8 +81,18 @@ def vm_workflow(root, action, inputs):
     required = (frozenset({"guest_agent"}) if action == "readiness-reboot" else
                 getattr(fixture, "required_readiness", frozenset({"interactive_desktop"})))
     requirements = readiness.Requirements(required, policy.permitted_recoveries)
+    if action == "readiness-sleep-capability":
+        # The sleep scenario decides here and stops: a read-only capability answer.
+        # No branch reaches a power request; another provider refuses by type.
+        inquiry = getattr(fixture.adapter.backend, "sleep_capability", None)
+        if not callable(inquiry):
+            return {"fixtureId": inputs["fixtureId"], "ok": False, "state": "refused", "operationId": operation,
+                    "reason": "sleep_capability_provider_unsupported", "powerAllowed": False, "powerSubmitted": False,
+                    "replayAllowed": False, "nextAction": "complete"}
+        return {"fixtureId": inputs["fixtureId"], "operationId": operation, **inquiry(operation, time.monotonic() + 170)}
     if action == "readiness-status":
-        observed = fixture.adapter.observe(requirements, time.monotonic() + 30)
+        # A registered Windows census with idle facts runs for tens of seconds.
+        observed = fixture.adapter.observe(requirements, time.monotonic() + 170)
         try:
             ready = readiness._next(observed, requirements, operation) is None
             blocker = {}

@@ -48,9 +48,10 @@ def _same_record(actual, expected):
 
 
 class RecoveryUnsubmitted(Exception):
-    """Trusted adapter proof that this exact dispatch never reached execution.
+    """Trusted adapter proof that this exact dispatch never reached its effect.
 
-    The adapter retains the actual non-secret evidence privately. No error text,
+    A refused sign-in may have moved the pointer or dismissed a lock screen, but it
+    typed nothing. The adapter retains the actual non-secret evidence privately. No error text,
     credentials, packet source or argv belongs here. Lost acknowledgements and
     missing sockets are not evidence of non-submission.
     """
@@ -642,7 +643,7 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
                             raise ReadinessBlocked("recovery_bookkeeping_unresolved", operation_identity) from None
                         revalidate(context, ready)
                     return ready
-                if action in {"start", "reboot"} or (observed.transport == "ready" and observed.guest == "booting" and
+                if action in {"start", "reboot", "login"} or (observed.transport == "ready" and observed.guest == "booting" and
                         requirements.required & {"guest", "guest_agent", "ordinary_session", "interactive_desktop"}):
                     deadline = min(started + COLD_BUDGET, context.deadline if context.deadline is not None else float("inf"))
                 if action == "wait":

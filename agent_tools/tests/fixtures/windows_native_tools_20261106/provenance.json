@@ -1,0 +1,37 @@
+{
+  "beforeImageCommit": "92cb4a5de9dc235f9868ff140dc55b3c44b4679c",
+  "midRoundBeforeImages": {
+    "client.before.source": "The fresh client before it could wait for a Windows counter start: every call read for at most 90 s, while native public starts took 231 s and 233 s (independent review, 2026-11-06).",
+    "guest-secure.before.source": "Secure before the update policy moved ahead of the password rotation: a policy failure would have ended a one-shot secure after its credential effect (independent review, 2026-11-06).",
+    "lease_workflow.before.source": "The lease facade unchanged from the checkpoint, retained when a public repeat cancel answered active for a lease that was already cancelled and restored (2026-11-06).",
+    "next_action-unknown.before.source": "Guidance before a timed-out submission and a lost lease read pointed at the original: both stayed resolve_blocker (independent review, 2026-11-06).",
+    "next_action.before.source": "This round's source immediately before the provider listing guidance fix, found by the first public readiness-providers call on 2026-11-06.",
+    "processes-store.before.source": "This round's roles immediately before StoreDesktopExtension.exe was classified: the census at 16:50:52 on 2026-11-06, about two minutes after a sign-in, reported it unknown and blocked idle until it exited.",
+    "route_timeout.before.source": "Verbatim guest-program and lease branches of mcp_server._vm_workflow_dispatch; whole file digest in routeTimeoutWholeFileSha256. A native SSH timeout escaped them as a raw command line (operation 91e074bf, 2026-11-06).",
+    "signed-out-field-regions.json": "Reviewed regions of the reference frame (capture ba7aa13f, boot 12:03Z) and of the frame refused on boot 14:13Z (sign-in b878ab46). One avatar pixel at (615,246) differs by one level; nothing was typed.",
+    "windows-reconcile.before.source": "This round's backend before the fix: reconcile_ready read a refused sign-in on every readiness call, up to 60 s each. That widened the window in which the display slept before the final revalidation, and public lease 109e6e24 refused with prepared_context_stale (2026-11-06)."
+  },
+  "nativeAcceptanceLimitation": "Local regressions cover decisions and receipts; the real guest, QGA, WTS and lock-screen behaviour is proved only by the native runs recorded in the ledger.",
+  "nativeEvidenceRoot": ".runtime/tool-recovery/windows-sleep-20261106",
+  "routeTimeoutWholeFileSha256": "54fa631c76fb8c8250591fdb317db0f464ead80ff68c801c7b9d75b7457c7c7f",
+  "sha256": {
+    "capability.before.source": "94900d2721129d6734276a48ca1d02b7b33a2f83ba8e6dd7e0efec7f139db833",
+    "client.before.source": "2a14d514b55b6ad5dd9bcada3aaddaa1a6b8b93832b8eb75e55e11d88c447142",
+    "guest-secure.before.source": "c0a8cd9e49d3b1d1064e1917d8086778490b6f24a1e49c88f3a705c4f02c2f03",
+    "jobs.before.source": "5ee5224dd6c975cc3d91325627e1b205ed1132c693beef8343ef910a850481a0",
+    "lease_workflow.before.source": "a6baae6deb812b20d61455f6d817df959a14f837768704973330498a9f32a5d7",
+    "leases.before.source": "9fbe47bc099d043104e351ac24b5f52244b83892213d4670ce53b3214605be96",
+    "login.before.source": "fe13e3b9b8a911fe487ca245f4b9fe5634c7258404af98dfeddbdf78dbee6dda",
+    "native-power-lines.json": "530bf6f1aa8e0cb2fca7df1f86c36f0e81ea958dd2604a781e3d22a22f5812c1",
+    "next_action-unknown.before.source": "559e9ce91b119666a2a66bbadc3a0cdf74835b9e2f07ba24354636ebbd99607a",
+    "next_action.before.source": "89487d9811f7b2a8690742d3893daa598beec91662b20b7f2e38f04eb2cfee1e",
+    "processes-store.before.source": "318b7a5705e077b4712e94160b4c5fee3c8a4534fd76982ab9603e068deef51c",
+    "processes.before.source": "f708b775fb90cf59621ef5c691110ad40b379d37fd30565793def5c5c806f561",
+    "remote.before.source": "4b7064080c43a1599a1ae2c709d2b4521ea685606bfd18dd9e62edac7e50756f",
+    "route_timeout.before.source": "1042848029016672f9189e3312c01de33c04d130ea09e2c7264c06b90a2ab519",
+    "signed-out-field-regions.json": "5868347ac51d61865dd2b0984bd3f866fbc3b7fa2e2fd883222226a8f7299740",
+    "windows-reconcile.before.source": "12b2ac1b907edc5553fcdde2149a4963c9786dab6fe1bd5038d6633bec99513f",
+    "windows.before.source": "80d55e2037a3e2e8f26a4f1aa5cbf1635ac15cf795b12eca5aecb901a1c0ba3a",
+    "workflow.before.source": "5ee66840b11281a6c6c4d8b31ce91e88a57bfcd28ba5abd8b2f156010bb779f4"
+  }
+}

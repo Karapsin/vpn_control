@@ -83,6 +83,10 @@ class LeaseProviderPolicyTests(unittest.TestCase):
         before = json.loads((FIXTURE/'policy.before.json').read_bytes())
         actual = self.document()
         variants = self.group(actual).pop('providerPolicies')
+        # A later reviewed group: the read-only Windows sleep capability route.
+        later = {'readiness-sleep-capability': 'vm_workflow:readiness-status'}
+        self.assertEqual(1, sum(group.get('actions') == later for group in actual['groups']))
+        actual['groups'] = [group for group in actual['groups'] if group.get('actions') != later]
         self.assertEqual(before, actual)
         self.assertEqual(PROVIDERS, set(variants))
 

@@ -2,7 +2,7 @@
 import base64,builtins,hashlib,inspect,io,json,os,shutil,socket,subprocess,tempfile,types,unittest,uuid
 from pathlib import Path
 from unittest import mock
-from agent_tools import windows_vm_guest as guest
+from agent_tools import windows_vm_guest as guest,windows_vm_unattend as unattended
 from agent_tools.tests.fixtures.windows_powershell_environment import windows_powershell_environment
 
 
@@ -22,7 +22,8 @@ class GuestQualificationTests(unittest.TestCase):
                      'user':{'name':'fixtureUser','sid':'S-1-5-21-1-2-3-1001','enabled':True,'isAdministrator':False,'isUsersMember':True,'profileRoot':'C:\\Users\\fixtureUser'},
                      'administrator':{'name':'fixtureAdmin','sid':'S-1-5-21-1-2-3-1000','enabled':True,'isAdministrator':True},
                      'setup':{'systemSetupInProgress':0,'oobeInProgress':0,'imageState':'IMAGE_STATE_COMPLETE','taskState':'Ready','taskResult':0,'ready':{'state':'ready','installerExit':0}},
-                     'guestAgent':{'state':'Running','startMode':'Auto','path':'fixture','pid':123}}
+                     'guestAgent':{'state':'Running','startMode':'Auto','path':'fixture','pid':123},
+                     'updatePolicy':{'noAutoUpdate':1,'storeAutoDownload':2}}
         self.terminal={'exited':True,'exitcode':0,'out-data':base64.b64encode(json.dumps(self.result).encode()).decode()}
         namespace={'CONTEXT':{'hostBootId':'FIXTURE_BOOT'},'PS_SCRIPT':guest.powershell_source(self.setup,self.operation),
                    'call':self.call,'validate_setup_result':guest.validate_setup_result}
@@ -70,6 +71,11 @@ class GuestQualificationTests(unittest.TestCase):
         self.calls.clear()
         with self.assertRaisesRegex(ValueError,'instance_guest_admission_output'):self.run_subject(True)
         self.assertEqual([],self.calls)
+    def test_fixture_without_the_update_policy_is_not_ready(self):
+        self.result['updatePolicy']={'noAutoUpdate':None,'storeAutoDownload':2}
+        self.terminal['out-data']=base64.b64encode(json.dumps(self.result).encode()).decode()
+        self.assertFalse(self.run_subject()['setupReady'])
+
     def test_unrecorded_media_and_admin_ordinary_user_cannot_be_ready(self):
         del self.records['installer-image.json'];(self.root/'installer-image.json').unlink();self.assertFalse(self.run_subject()['setupReady'])
 
@@ -115,7 +121,8 @@ class FixedPowerShellTests(unittest.TestCase):
         self.assertIn("$ExpectedUser='otherUser'",source);self.assertIn(identity,source)
         secure=guest.secure_source(settings,identity)
         self.assertIn('[Console]::In.ReadToEnd()',secure)
-        self.assertIn(guest.SECURE_SETUP,secure)
+        self.assertIn(guest.SECURE_SETUP.replace('__UPDATE_POLICY__',unattended.UPDATE_POLICY),secure)
+        self.assertNotIn('__UPDATE_POLICY__',secure)
         self.assertNotIn('final-administrator.secret',secure)
 
     @unittest.skipUnless(os.name=='nt' and shutil.which('powershell.exe'),'actual Windows PowerShell5.1 streams')

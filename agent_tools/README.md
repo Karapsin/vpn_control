@@ -158,6 +158,23 @@ and UNKNOWN jobs, installers, lifecycle phases, other operators and protected
 processes. Repeating the operation observes its original reboot. This action
 does not start or resume a stopped or paused fixture.
 
+`readiness-sleep-capability` takes the same two inputs and answers from one
+fixed read-only `powercfg /a` query on a registered Windows fixture. An S3 sleep
+scenario decides here and stops: the answer is `refused` with
+`windows_s3_unsupported` and the guest's own reasons, `supported`, or `unknown`.
+It never requests a power state, so `powerAllowed` and `powerSubmitted` are
+always false, and another provider refuses with
+`sleep_capability_provider_unsupported`.
+
+`readiness-ensure` signs an ordinary fixture user in or unlocks it only when the
+fixture's private registration carries the `login` qualification: reviewed
+sign-in and lock screen crops per console state and the private credential file
+under `.runtime/windows-vm-credentials/<machine>/`. Public inputs never carry a
+credential or a profile. The credential is typed once per recovery after the
+screen is recognized again immediately before typing; a later attempt on the
+same fixture first requires every earlier attempt to have closed. An unknown
+outcome observes the original owner and never types again.
+
 The same registered identities admit `readiness-lease-acquire` (also
 `ttlSeconds`), `readiness-lease-status` and `readiness-lease-cancel`. Expiry,
 cancellation and fresh-client reconciliation observe the original lease owner
@@ -185,7 +202,8 @@ owner and may restore transport without powering or unlocking its VM.
 The fresh client `agent_tools/ssh_program_mcp_client.py` follows a start through
 same-operation status/reconciliation/collection automatically. Use `--host` for
 SSH jobs or `--fixture` for registered guest/Android jobs, with a bounded
-`--follow-seconds` budget (default 180; `--no-follow` disables it). Retained RPC
+`--follow-seconds` budget (default 180, or 720 for `guest-program-start`, whose
+Windows start can use its whole 600 s budget; `--no-follow` disables it). Retained RPC
 and stream records distinguish a lost response from a proven unsubmitted
 operation. Typed `nextAction` responses contain only fixed public routes and
 the original identity. See the [infrastructure ledger](../agent_docs/tool-recovery-ledger.md)

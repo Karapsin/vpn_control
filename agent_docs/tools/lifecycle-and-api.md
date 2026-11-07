@@ -208,6 +208,40 @@ boots its disk with normal networking and without the installer key press.
 Images never auto-encrypt. Release a template's own claim only after its
 `generalized-stopped` absence.
 
+Fixtures take no unexpected updates. `windows_vm_unattend.UPDATE_POLICY` runs
+in the fixture's first-boot initialize script and sets the machine policies for
+Windows Update (`NoAutoUpdate=1`, `NoAutoRebootWithLoggedOnUsers=1`) and the
+Store (`AutoDownload=2`), then disables the Edge and OneDrive updater tasks and
+the Edge updater services. It does not touch Defender. A failure there prints
+`FIXTURE_UPDATE_POLICY_UNAPPLIED` to the transcript and does not stop setup.
+`windows-vm-deploy-qualify` requires only the `NoAutoUpdate` and `AutoDownload`
+values. Edge registers its update tasks after first setup, so
+`windows-vm-deploy-secure` reapplies the whole policy before its one-shot credential
+effect, and a failure there stops secure with no credential change.
+
+A running raw Windows fixture reaches the readiness routes through a private
+alias from `readiness_windows_registration` (no public route). `register` writes
+one immutable descriptor bound to the current source pins, so any pinned source
+change needs a new alias and old aliases are never rewritten. Each capability has
+a qualification file naming its direct native evidence; the writer stamps the
+current pins and does not check that evidence, so running it on those pins is the
+operator's duty (TEST-002).
+A fixture with `reboot` runs the full idle census on every observation, about 50 s
+each, so a desktop alias (`transport`, `wake_display`, `login`) and a lifecycle
+alias (`transport`, `reboot`, with the host credential) stay separate. `login`
+needs reviewed screen crops per console state: `login_enrollment_packet` submits
+the private `login-screen-pin`, `login-lock-fixture`, `login-field-capture` and
+`login-original-screens` modes, and `reviewed_profile` builds the crops from a
+reviewed lock frame and field frame. Crops are the account name and password box,
+never the avatar, which rerenders one level differently across boots. The gate
+allows no difference, so another rerender refuses safely with nothing typed.
+
+After the first real sign-in on a clone, an edit to the remote packet, instance,
+guest session or embedded login source refuses every later sign-in on that clone,
+by design: `windows_login_prior_source_untrusted` directly, and
+`recovery_dispatch_attempts_exhausted` from `readiness-ensure`. Finish those edits
+before the first submit; afterwards use a new clone.
+
 Host image maintenance uses the same Python API. `images(root, spec)` lists the
 published images read-only. `retire_images(root, spec, imageIds)` deletes exact
 superseded images and refuses, per image, the current schema or an image whose

@@ -1397,6 +1397,18 @@
       }
     },
     {
+      "surface": "vm_workflow",
+      "classification": "readiness_observation",
+      "requirements": [
+        "guest_agent"
+      ],
+      "permittedRecoveries": [],
+      "expectedTestState": "default",
+      "actions": {
+        "readiness-sleep-capability": "vm_workflow:readiness-status"
+      }
+    },
+    {
       "surface": "readiness_adb_dispatch",
       "classification": "original_operation",
       "requirements": [],

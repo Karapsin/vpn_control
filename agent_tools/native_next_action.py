@@ -67,11 +67,24 @@ def _readiness_guidance(tool, action, result):
                      action={"tool": tool, "action": "readiness-ensure", "args": args}, fresh=True)
 
 
+def _sleep_guidance(result):
+    if result.get("replayAllowed") is not False or result.get("powerSubmitted") is not False:
+        return _guidance("resolve_blocker", "sleep capability identity is incomplete", fresh=True)
+    if result.get("state") in {"refused", "supported"}:
+        return _guidance("complete", "the capability answered; no power state was requested", fresh=False)
+    return _guidance("resolve_blocker", "the sleep capability stayed unrecognized", fresh=True)
+
+
 def _lease_guidance(result):
     operation, fixture = _operation(result), _fixture(result)
     if operation is None or fixture is None or result.get("replayAllowed") is not False:
         return _guidance("resolve_blocker", "original lease identity is incomplete", fresh=True)
     state, owner = result.get("state"), result.get("jobState")
+    if state == "unknown" and result.get("reason") == "windows_original_outcome_unknown":
+        # A packet that ended uncleanly may have reached the guest: only the original can tell.
+        return _guidance("observe_original", "observe the same original lease until its owner receipt is terminal",
+                         action={"tool": "vm_workflow", "action": "readiness-lease-status",
+                                 "args": {"inputs": {"fixtureId": fixture, "operationId": operation}}}, fresh=True)
     if type(state) is not str or type(owner) is not str:
         return _guidance("resolve_blocker", "original lease state is incomplete", fresh=True)
     qualified_mac = (type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
@@ -115,9 +128,10 @@ def _lease_guidance(result):
             and type(result.get("restored")) is bool
             and result.get("nextAction") == "observe_original"
             and mac_pending_reason)
-    pending = (state == "unknown" and owner in {"unknown", "pending"} and result.get("ok") is True
-               and type(result.get("reason")) is str
-               and result.get("reason") in {"original_owner_ack_pending", "original_admission_pending"})
+    pending = (state == "unknown" and owner in {"unknown", "pending"} and type(result.get("reason")) is str
+               and (result.get("ok") is True
+                    and result.get("reason") in {"original_owner_ack_pending", "original_admission_pending", "original_lease_evidence_unavailable"}
+                    or result.get("reason") == "windows_original_lease_transport_unknown"))
     starting = (state == "starting" and owner in {"running", "pending"} and result.get("ok") is True
                 and type(result.get("schemaVersion")) is int and result["schemaVersion"] == 1
                 and type(result.get("provider")) is str
@@ -165,7 +179,7 @@ def _guest_program_guidance(prefix, action, result):
                 "record_unavailable", "guest_submission_unresolved", "guest_original_observation_unavailable"}
             or prefix == "guest-program" and type(result.get("provider")) is str
             and result["provider"] in {"raw-qemu-windows", "libvirt-windows"}
-            and type(reason) is str and reason == "original_owner_ack_pending"
+            and type(reason) is str and reason in {"original_owner_ack_pending", "windows_job_submission_unknown"}
             or prefix == "android-program" and (reason is None or type(reason) is str and reason in {
                 "android_job_admission_unknown", "android_job_transport_unknown", "android_job_transport_timeout",
                 "android_job_deadline", "android_job_original_owner_unresolved"}))
@@ -246,6 +260,10 @@ def next_action(tool: str, action: str, result: Mapping[str, Any] | Any) -> dict
 
     if action in {"readiness-status", "readiness-ensure", "readiness-reboot"}:
         return _readiness_guidance(tool, action, result)
+    if tool == "vm_workflow" and action == "readiness-sleep-capability":
+        return _sleep_guidance(result)
+    if tool == "vm_workflow" and action == "readiness-providers" and result.get("ok") is True and state == "observed":
+        return _guidance("complete", "the provider listing touched no fixture", fresh=False)
     if tool == "vm_workflow" and action in {"readiness-lease-acquire", "readiness-lease-status", "readiness-lease-cancel", "readiness-lease-reconcile"}:
         return _lease_guidance(result)
     if tool == "vm_workflow" and action in {

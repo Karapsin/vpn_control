@@ -1,8 +1,8 @@
 """Protected-flow causal readmission tests with controlled public-marker input.
 
-Historical native facts and whole-source provenance remain unchanged. Linkage
-covers only the definitions this cohort actually compiles; it does not qualify
-the current complete producer, execute() admission or native credential input.
+Historical native facts and whole-source provenance remain unchanged. These cases
+also run a linked copy of the current source, and linkage covers the definitions
+this cohort compiles; native credential input is proved separately.
 """
 import ast
 import copy
@@ -120,6 +120,11 @@ class LatestReadmissionExecution(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertFalse(admitted)
         self.assertEqual(error, reason)
+        current, sent, admitted, error = self.run_flow('current.source', change)
+        self.assertEqual(hashlib.sha256(current).hexdigest(), self.provenance['currentSourceSha256'])
+        self.assertEqual(sent, [])
+        self.assertFalse(admitted)
+        self.assertEqual(error, reason)
 
     def test_latest_account_is_no_longer_ordinary_before_any_input(self):
         self.causal(lambda current: current.update(ordinary=False), 'instance_login_account_mismatch')
@@ -135,11 +140,15 @@ class LatestReadmissionExecution(unittest.TestCase):
         self.causal(lambda current: current['session'].update(State=4), 'instance_login_session_changed')
 
     def assert_protected_linkage(self, current):
+        linked = (FIXTURE / 'current.source').read_bytes()
+        self.assertEqual(hashlib.sha256(linked).hexdigest(), self.provenance['currentSourceSha256'])
+        self.assertEqual(protected_definition_sources(current), protected_definition_sources(linked))
+
+    def test_historical_afterimage_is_unchanged(self):
         after = (FIXTURE / 'after.source').read_bytes()
         self.assertEqual(hashlib.sha256(after).hexdigest(), self.provenance['afterSourceSha256'])
-        self.assertEqual(protected_definition_sources(current), protected_definition_sources(after))
 
-    def test_current_consumed_protected_definitions_match_historical_afterimage(self):
+    def test_current_consumed_protected_definitions_match_linked_source(self):
         production = Path(__file__).parents[1] / 'readiness_windows_login.py'
         self.assert_protected_linkage(production.read_bytes())
 
