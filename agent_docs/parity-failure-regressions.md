@@ -910,6 +910,8 @@ These commits had never run in CI, so tests skipped on the Mac met Linux and Win
 | Stale pin of a changed client | `test_ssh_acceptance_owner_readiness` | dev's client change touched read and follow timeouts, not the request this case proves, so the pin is renewed. |
 | Tests assume an order or a moving clock | `test_native_host_observation`, `test_android_persisted_start` | `/proc` listing order is arbitrary, and a Windows clock can return the same value twice. |
 | Probe budget too short for real PowerShell | `scripts/check_python_platform_contracts.py` | 30 s cannot fit the complete helper on a hosted Windows runner. |
+| Byte pin breaks on a Windows CRLF checkout | `windows-main-input-bridge-test-suite` in `scripts/check_python_platform_contracts.py` | `scripts/capture_visual_windows_qemu.py` is pinned by hash but had no `-text` rule, so a Windows runner saw different bytes. |
+| Oracle budget too short for real PowerShell | `test_complete_msi_metadata_recipe_suppresses_com_method_success_values` on Windows | 20 s cannot fit the 28-case oracle on a hosted runner. |
 | Legacy intent now keeps closed exit facts | `test_readiness_windows_sockets` | dev retains metadata for a legacy intent, so the test asserts that it holds no output rather than that no file exists. |
 
 ## Historical coverage rule

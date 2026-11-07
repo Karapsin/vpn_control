@@ -262,3 +262,5 @@ agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.
 /agent_tools/tests/fixtures/windows_owned_desktop/** -text
 /agent_tools/tests/fixtures/windows_public_updater/** -text
 /agent_tools/tests/fixtures/windows_system_collector/** -text
+# Pinned by byte in the main input bridge fixture provenance.
+scripts/capture_visual_windows_qemu.py -text

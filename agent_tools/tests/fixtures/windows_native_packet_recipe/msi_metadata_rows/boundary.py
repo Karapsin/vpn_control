@@ -70,7 +70,7 @@ def run_rows_pair(before, current, directory, powershell):
         process = subprocess.run([str(powershell), '-NoLogo', '-NoProfile', '-NonInteractive',
             '-ExecutionPolicy', 'Bypass', '-File', str(target / 'rows-oracle.ps1')],
             cwd=target, env=environment, stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20, check=False)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120, check=False)
         (target / 'stdout.bin').write_bytes(process.stdout)
         (target / 'stderr.bin').write_bytes(process.stderr)
         value = json.loads(process.stdout.decode('utf-8-sig'))

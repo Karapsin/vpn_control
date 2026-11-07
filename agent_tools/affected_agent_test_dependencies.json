@@ -6399,7 +6399,8 @@
         "agent_tools/tests/fixtures/windows_native_packet_recipe/msi_metadata_rows/provenance.json"
       ],
       "sourceSha256": [
-        "398a70bd419052d43da90eb31cacaf9aaa965c4504f7ea32838f37b6c152f068"
+        "398a70bd419052d43da90eb31cacaf9aaa965c4504f7ea32838f37b6c152f068",
+        "67366afbab28ee555e2d95b4203f3847946ee51572514a57b8bb44cfdda4fa37"
       ]
     },
     "agent_tools/tests/fixtures/windows_native_packet_recipe/namespace_timestamps/boundary.py": {
