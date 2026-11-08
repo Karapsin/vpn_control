@@ -42,7 +42,17 @@ Android and macOS native and visual work stay deferred and open, never passed.
    rows `windows-python-install`, `windows-msi-base-install` and
    `windows-msi-base-reset`, product rows `windows-packaged-cli-smoke`,
    `windows-disconnected-cli-config` and `windows-streaming-client-interrupt`, and
-   the closed `windows-uac-decision` action. None of them has run natively yet.
+   the closed `windows-uac-decision` action. First native contact (2026-11-08):
+   Python installed on all four clones; the MSI rows needed two reader fixes (an
+   MSI property read that returned a list, and a SYSTEM registration read that
+   missed per-user installs), then installed 2.2.16 or the 2.2.13 base on every
+   clone; `windows-packaged-cli-smoke` passed directly as installed-package. The
+   disconnected and streaming rows each parked their owner and blocked their clone:
+   the jpackage Windows launcher restarts itself, so a third process shares the
+   console and arguments containing `"` arrive mangled (a product defect, fixed in
+   the CLI entry by user decision), and the owner parks on known failures while its
+   own children run. By user decision the two blocked clones are stopped with their
+   disks kept, and two fresh clones replace them.
    Still to add: the taken tools, the reboot allowance and the remaining families
    (proxy, updater with its collector stage, documents, TUN, reboot). Fix the tool
    defects the review predicted, each with RED and GREEN when proven.

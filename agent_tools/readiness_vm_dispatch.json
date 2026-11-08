@@ -22450,7 +22450,7 @@
     "windows_parallel_vm_prepare_transport": "d9e4ee3a6376a8d158fd61aecc577382a90d9434dff0d3a16fcec2f6e284f8bc",
     "windows_parallel_vm_source_inventory": "5d3a087ce2f14f4199948fe6e28715a52ca67ee964e98fe400b598bd2b539110",
     "windows_ps_bootstrap": "16e75497abe7cd6da3367b620143cdd9209a61e078a6e02a94879f281fa9ea79",
-    "windows_scenario_host_job": "ed93188990db3db75709775e21b941d511d2e09c82888fa382894222a97dd962",
+    "windows_scenario_host_job": "180a08d3a766f47a13e39e75d7c7bb84890c697c2225a59e3d8e105964d17bff",
     "windows_secure_recovery": "4fd63c18fe3c7fd1a2ac59e32216e63a744d90e089e2468c67529cb6fd081966",
     "windows_uac_decision": "1d0417cf1811d1a92be353d8fbcd39f5cecabb78ba0475a62fa51fa350a6e24d",
     "windows_update_fixture_download_abort": "5978663fbb98d6eda1925e0e50bbe2081ac9b3161331cedc4ef19a7cf5214996",

@@ -763,12 +763,16 @@ adapter; new scenarios require an explicit adapter and native evidence.
 
 `agent_tools/native_scenario_windows.py` is the Windows adapter behind the same
 four actions. `host` names the VM host and `environment` the deployment UUID, and
-`correlationId` must be a canonical UUID. Today the closed list holds only
+`correlationId` must be a canonical UUID. The closed list holds
 `windows-ordinary-qualification`, a harmless component row with no product and no
-package; each later name lands only with its case module and direct proof. The
-adapter refuses before any journal unless the name, host, deployment, artifact keys
-and every bundle byte match this checkout, so a caller cannot supply a path, argv,
-source or bytes.
+package, three setup rows (`windows-python-install`, `windows-msi-base-install`,
+`windows-msi-base-reset`) and three product rows (`windows-packaged-cli-smoke`,
+`windows-disconnected-cli-config`, `windows-streaming-client-interrupt`). A name
+lands only with its case module; the six package rows have offline regressions,
+and their first native runs are still their direct proof. The adapter refuses
+before any journal unless the name, host, deployment, artifact keys and every
+bundle byte match this checkout, so a caller cannot supply a path, argv, source or
+bytes.
 
 One durable job, `agent_tools/windows_scenario_host_job.py`, runs on the VM host
 and carries the stages: fence, read-only guest context, publish, requests, one
@@ -783,6 +787,88 @@ reboots on that clone refuse. Recover by reading the original, never by resubmit
 A row that was refused before it started has no receipt, so its collection stays
 `unknown` with `executionExitCode` 2 and a closed `executionFailure` token. A setup
 or component row never claims installed-package evidence.
+
+Package rows name more artifacts at `scenario-start`. `windows-python-install`
+takes `pythonInstaller`, admitted only by the hash and size the planner pins. The
+other five take `scenarioInput` and the package their row names: `basePackage` for
+the two MSI setup rows, `targetPackage` for the product rows. The scenario input is
+a registered local artifact of platform `windows`, kind `scenario-input` and at
+most 4,096 bytes: one JSON object with exactly `schema`
+(`vpn-control.windows-scenario.input`), `schemaVersion` (1), `scenarioId`,
+`correlationId` and `deploymentId` (this start's own), `sourceSha` (a full Git
+SHA), `productVersion` (`a.b.c`), `artifactSetId` and `priorInstall`.
+`priorInstall` is null on a setup row; a product row names the operation of a
+passed `windows-msi-base-install` or `windows-msi-base-reset` on the same VM.
+
+Package admission runs at `scenario-start` before any journal and again inside
+submit. Each package must be a verified local registration with platform
+`windows`, its role's fixed kind (`test-toolchain-installer` or `desktop-package`)
+and at most 1 GiB. A desktop package must also be an `.msi` whose `sourceSha` is
+the input's, and a member of the frozen set that `artifactSetId` names, verified
+read-only, whose source is that SHA and whose product version equals the input's
+`productVersion`. Refusals name `windows_scenario_input_*` or
+`windows_scenario_package_*`, such as `windows_scenario_package_not_frozen` or
+`windows_scenario_package_version`. These checks catch a mislabelled package, not
+a substituted one: the registry and the set record what their caller registered.
+
+Submit stages an admitted package before the job exists. It goes over SSH stdin
+into the host's artifact cache,
+`~/.cache/vpn-control-windows-scenarios/artifacts/<sha256>`: a check, then a write
+into a private temporary file that is hashed and linked create-only, within 900 s.
+A present, matching copy is never sent again. The staging program sets umask 077
+itself and refuses an existing cache folder that other users can open. The job
+plan names only digests and sizes, and the job pushes the bytes to the guest in
+32,768-byte chunks. One transport admission covers every call of a submit and is
+the sum of their budgets: 390 s without a package, 1,350 s with one. A lost reply
+anywhere in submit, staging included, ends the start as
+`submit_response_unavailable`; status and resume only look for it by
+correlation, and nothing submits it again.
+
+A product row pushes no MSI. Before its fence the job reads the named install's
+receipt on the host and exits 2 unless that job passed on this VM with the same
+package digest and product version (`prior_install_unavailable`,
+`prior_install_other_package`). In the guest it then requires exactly one per-user
+registration with that product code and version, installed in the install folder
+(`installed_registration_differs`), and a complete installed-tree digest and file
+count equal to the recorded ones (`installed_tree_differs`). The installed
+application is pinned only in the worker request, so an MSI may replace its files.
+The Python and installed trees are listed first and counted with the request's
+fixed pins: above 4,096 file or 1,024 directory pins the row ends with the known
+failure `worker_pin_bound`, before any tree pin and before any task.
+
+`windows-python-install` refuses when the Python tree already exists
+(`python_tree_present`). `windows-msi-base-install` refuses when any vpn-control
+product is registered (`installed_product_state`) or when the install folder,
+`%LOCALAPPDATA%\vpn-control`, already holds a file (`installed_files_present`;
+empty folders do not count, as the tree digest counts only files).
+`windows-msi-base-reset` is the VM's way back to a clean base: it needs exactly one
+per-user registration, removes it with `msiexec /x` and the exact product code the
+guest reported, then installs the admitted base as the install row does. Its
+worker request also names `uninstallRoot`, the install folder, which the planner
+requires inside LocalAppData, not LocalAppData itself, and apart from the
+operation root. A failed removal installs nothing. If the removal left any file
+there, the worker writes the event `uninstall-left-files` and exits 1 without
+installing, and the receipt shows only `task_exit_code`. The VM then has no
+product but files in that folder, so a base install refuses until someone clears
+it; no tool route does.
+
+The registration read runs as SYSTEM and enumerates every user and context at once
+(`S-1-1-0`, context 7), keeping the ordinary user's rows and the machine's and
+naming products by `InstalledProductName`, as the natively proven installed-context
+reader does. A name it cannot read is counted, never dropped silently. A failed
+receipt check names that check after a colon, as a finite code and never as guest
+text: for example `publisher_msi_receipt:package_shape_list`,
+`installed_product_state:count_0:considered_12:unnamed_0` or
+`installed_registration_differs:location`.
+
+A product row is `productAction` true and is `installed-package` evidence only
+when the job is terminal, its collection complete, `windows.installedPackage` true
+and `packageSha256` equal to the `targetPackage` ID. The receipt sets
+`installedPackage` only for a passed product row whose registration and installed
+tree matched and whose task passed its check. A stopped product row never claims
+it: a job stopped early by `stop_after`, which only the direct script sets,
+records `installedPackage` false and its `stoppedAfter`, and `public_evidence`
+reads it as `installed-package-unproven` whatever else its receipt says.
 
 #### Windows UAC decision
 

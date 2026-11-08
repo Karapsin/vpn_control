@@ -909,6 +909,33 @@ Before any VM contact. Evidence and before-images are under `.runtime/windows-pa
 | Free guest text could reach a public reply | `test_windows_scenario_host_job`, `test_native_scenario_windows` | Only closed `RUN_`, `TASK_`, `TOKEN_` and `PUB_` codes cross; the raw message stays in the private index on the host. |
 | Status file stops updating after one poll | `test_the_status_file_is_really_replaced_on_every_poll` | `$null` reached `File.Replace` as an empty string; it now passes `[NullString]::Value`. Skips without PowerShell, so CI is its first run. |
 
+### Windows scenario family, offline build (2026-11-08)
+
+Before any VM contact. The first five rows stopped the unchanged case modules
+against the real 2.2.15 macOS packaged CLI with a private temporary
+`--state-dir`; none is a native Windows failure. Their before-images are
+`fixtures/windows_cli_case_rules/*.before.source`, and each oracle of
+`test_windows_cli_case_rules` is RED on the preserved module and GREEN on the
+current one. The other rows are review findings. `StageProgramTests`,
+`PublicEvidenceTests`, `PackageAdmissionTests` and `PackageSubmitTests` are in
+`test_native_scenario_windows`; `ProductAdmissionTests`, `PinBoundTests` and
+`FamilyJobTests` in `test_windows_scenario_host_job`; `PlannerTests` in
+`test_windows_ordinary_task`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A human parser refusal was read as a bare code | `CaseRuleTests.test_disconnected_cases_follow_the_product_rules` (static oracle), `CaseRuleTests.test_the_human_refusal_shapes_are_the_recorded_ones` | The real refusal is one stderr line, `INVALID_ARGUMENT: invalid state directory or command.`. `static_cases` required the bare code and stopped at `human-static-streams`; `human_error_is` accepts `CODE` or `CODE: reason`. |
+| Location edits ran in subscription mode | `CaseRuleTests.test_disconnected_cases_follow_the_product_rules` (location oracle) | A subscription add selects subscription mode again, and the owner answers `READ_ONLY_SOURCE` to location edits. `location_cases` first selects current locations with a guarded, revision-checked `source set current-locations`. |
+| A transfer imported into a fresh subscription workspace | `CaseRuleTests.test_disconnected_cases_follow_the_product_rules` (transfer oracle) | The destination workspace starts in subscription mode, so `locations import` answered `READ_ONLY_SOURCE`. The second owner selects current locations first. |
+| Reads and exports passed `--if-revision` | `CaseRuleTests.test_disconnected_cases_follow_the_product_rules` (diagnostics oracle) | The predicted defect. `diagnostics export`, `operations wait` and `operations status` answered `INVALID_ARGUMENT`: the owner takes the guard only on the writes `capabilities` lists in `revisionGuardOperations`. Every reply still checks its revision metadata. |
+| The streaming module expected current locations on a fresh workspace | `CaseRuleTests.test_streaming_cases_select_current_locations_once_on_a_fresh_workspace` | A new workspace starts in subscription mode, so `run` stopped at `fresh-current-locations-before-streams`. One guarded write selects current locations, and every later log pulse stays a known no-op. |
+| The staging program refused the cache folder it had just created | `StageProgramTests.test_a_first_staging_under_a_login_umask_creates_private_directories_and_stages_once`, `StageProgramTests.test_a_cache_open_to_other_users_still_refuses` | `os.makedirs` gives its mode only to the last folder, so under a umask-022 login the new cache parent was 0755 and the same program exited 3. It now sets umask 077 first; an existing folder open to other users is still refused, never repaired. |
+| A product row stopped after publish claimed installed-package | `ProductAdmissionTests.test_a_product_row_stopped_before_its_task_claims_nothing`, `PublicEvidenceTests.test_a_job_stopped_before_its_task_never_proves_an_installed_package`, `PackageSubmitTests.test_a_job_stopped_after_publish_is_collected_without_an_installed_package_claim` | The receipt claims `installedPackage` only when the task ran and passed its check and nothing stopped the job, and `public_evidence` also refuses a job with `stoppedAfter`. |
+| A joint pin excess was refused only by the planner, after every tree read | `PinBoundTests.test_one_file_over_the_bound_refuses_before_any_tree_pin`, `PinBoundTests.test_one_directory_over_the_bound_refuses_before_any_tree_pin`, `PinBoundTests.test_a_product_row_at_both_planner_bounds_runs` | The tree limit was per tree. Both trees are now listed first and counted with the worker request's fixed pins; above 4,096 file or 1,024 directory pins the row ends `worker_pin_bound` before any tree pin and before any task. |
+| Leftover files in the install folder joined the recorded base | `FamilyJobTests.test_a_base_install_never_takes_files_it_did_not_install_into_its_baseline`, `PlannerTests.test_owner_reset_installs_nothing_over_files_the_removal_left`, `PlannerTests.test_reset_names_one_exact_product_code_two_private_logs_and_the_folder_it_empties` | A base install refuses with `installed_files_present` when the install folder holds any file. A reset names that folder as `uninstallRoot`, and its worker installs nothing if the removal left files there (event `uninstall-left-files`, exit 1). |
+| The submit admission was shorter than the calls under it | `PackageSubmitTests.test_every_call_keeps_its_whole_budget_inside_the_one_submit_admission` | One 180 s admission carried calls budgeted at 390 s, or 1,350 s with a package. It is now their sum, so a slow but in-budget staging cannot clip the submit into an unknown outcome. |
+| A scenario input could name another version than its frozen set | `PackageAdmissionTests.test_an_input_naming_another_version_than_its_frozen_set_is_refused_before_any_journal` | Review finding, implemented when the family and UAC tracks were joined. Admission checked source, kind and set membership but never the version, so a mislabelled input was admitted. It now refuses with `windows_scenario_package_version` before any journal. This catches mislabelling, not a substituted package. |
+
 ### Windows UAC decision, offline build (2026-11-08)
 
 Before any VM contact; these are review findings, not native failures. Before-images
@@ -958,6 +985,16 @@ A native failure. The replies are `.runtime/windows-parity-20261107/direct/statu
 | Failure type | Regression | Notes |
 | --- | --- | --- |
 | A nested reconnect whose candidate channel ended never became a terminal failure | `test_readiness_transport.NestedEndedCandidateTests.test_whole_before_keeps_the_ended_candidate_pending_current_ends_it_and_reconnects` | The Arch VM was off, so candidate `d5cf3d8a` of recovery `5c310c42` (operation `34e354eb`, the deployment UUID) ended with no receipt. The nested branch of `reconcile_recovery` returned None for every status but ready, so the dispatch stayed pending and each later status call of that operation waited out its budget with `recovery_outcome_unknown`. RED on the preserved whole adapter. GREEN records `ended-<recovery>` with the SHA-256 of the exact retained terminal bytes, then reconnects once under a new recovery. The controls `test_unknown_candidate_status_is_never_ended_and_grants_no_dispatch` and `test_ready_candidate_whose_launch_reply_was_lost_is_selected_not_ended` keep an unknown status and a live candidate unended. Only the remote endpoint is fake, so the status route still needs a native rerun. |
+
+### First native contact of the first family (2026-11-08)
+
+`windows-python-install` passed on all four clones. The first `windows-msi-base-install` of the 2.2.16 target ended exit 1 in its publish stage, before any task or `msiexec`: operation `3a4c2735` with failure `publisher_msi_receipt` and nothing more. The receipts and journals are under `.rag_index/native-scenario-executions/` and `.runtime/windows-parity-20261107/family/`; the unfixed template is kept as `.runtime/windows-parity-20261107/family/diag/before/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A publisher receipt failure lost its cause | `test_windows_scenario_host_job.PublisherReceiptCheckTests` | The failed receipt carried only `publisher_msi_receipt`, and the reply stayed in a guest terminal on the host. The MSI and signer checks now name the check that failed as a finite code (`keys`, `state`, `package_shape_<type>`, `properties_shape_<type>`, `pin_<planner code>`, `held_path`, `held_sha256`, `held_size`), never guest text. A rerun (operation `f9f257f6`) named `package_shape_list`. |
+| The MSI reader returned a list, because PowerShell returns everything a function does not capture | `test_windows_scenario_host_job.PublisherFunctionOutputTests.test_the_msi_reader_has_no_bare_method_call_statement` | `Get-MsiProperties` called the COM `$view.Execute()` and `$view.Close()` as bare statements, so their output joined its result and `package` became a list. RED on the template at `ce2bc407` (both bare calls); GREEN discards both. The next native install (operation `67902930`) passed the publish stage and ran `msiexec`. |
+| The SYSTEM registration reader missed a per-user install | `test_windows_scenario_host_job.RegistrationReaderTests`, `FamilyJobTests.test_a_registration_read_that_could_not_name_products_says_so` | `msiexec` installed 2.2.16 per user, unmanaged, for the ordinary SID (its log: status 0, `ARPINSTALLLOCATION` set), yet the after-install read found no row: `installed_registration_differs`, then `installed_product_state:count_0` on a reset (operation `d811bdc4`), which refused before any task. The reader enumerated each context by the user's SID, named products by `ProductName` and silently dropped any product whose name it could not read. It now enumerates every user and context at once (`S-1-1-0`, 7) and reads `InstalledProductName`, as the natively proven reader in `windows_tertiary_guest_stage.py` does, and it reports how many products it considered and which name reads failed. A wrong count names both. RED on the template at `ce2bc407`. |
 
 ## Historical coverage rule
 

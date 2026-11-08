@@ -91,6 +91,8 @@ _PRODUCT_CODE = re.compile(r"\{[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12}\}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _VERSION = re.compile(r"(?:[1-9]|1[0-9])\.(?:[0-9]|1[0-9])\.(?:[0-9]|1[0-9])\Z")
 _GUEST_CODE = re.compile(r"(?:RUN|TASK|TOKEN|PUB)_[A-Z0-9_]{1,80}\Z")
+# The finite name of the receipt check a publisher reply failed; never guest text.
+_RECEIPT_CHECK = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
 _SETUP_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _OPEN_RUN_STATES = frozenset({"owner-parked", "deadline", "post-launch-unknown"})
 
@@ -965,41 +967,79 @@ class Job:
     def _registration(self, label):
         """Registered products named vpn-control in the ordinary user's and the machine's MSI contexts."""
         value, required = self._publisher(label, "msi-registration", productName=PRODUCT_NAME)
-        rows = value.get("products")
+        rows, scan = value.get("products"), value.get("scan")
         try:
-            if (set(value) != required | {"products"} or value["state"] != "ordinary-msi-registration" or type(rows) is not list
+            if (set(value) != required | {"products", "scan"} or value["state"] != "ordinary-msi-registration" or type(rows) is not list
                     or not all(type(row) is dict and set(row) == {"productCode", "context", "productName", "version", "installLocation"}
                                and isinstance(row["productCode"], str) and _PRODUCT_CODE.fullmatch(row["productCode"])
                                and row["context"] in (1, 2, 4) and row["productName"] == PRODUCT_NAME
-                               and isinstance(row["version"], str) and isinstance(row["installLocation"], str) for row in rows)):
+                               and isinstance(row["version"], str) and isinstance(row["installLocation"], str) for row in rows)
+                    or type(scan) is not dict or set(scan) != {"considered", "unnamed", "unnamedCodes"}
+                    or not all(type(scan[key]) is int and scan[key] >= 0 for key in ("considered", "unnamed"))
+                    or type(scan["unnamedCodes"]) is not list or len(scan["unnamedCodes"]) > 16
+                    or not all(type(code) is int and 0 < code < 65536 for code in scan["unnamedCodes"])):
                 raise ValueError("publisher_registration_receipt")
         except (ValueError, TypeError, KeyError):
             raise KnownFailure("publisher_registration_receipt") from None
+        self.registration_scan = scan
         return rows
 
-    def _registered_as(self, rows, code, version):
-        """Exactly one registration: per user, this product code and version, installed where the CLI is run from."""
-        location = self.paths["installed"].casefold()
-        return (len(rows) == 1 and rows[0]["context"] == 2 and rows[0]["productCode"] == code and rows[0]["version"] == version
-                and rows[0]["installLocation"].rstrip("\\").casefold() == location)
+    def _count_check(self, rows):
+        """A wrong registration count with what the reader saw: products considered and names it could not read."""
+        scan = self.registration_scan
+        unread = "unnamed_" + str(min(scan["unnamed"], 999)) + ("_rc_" + str(scan["unnamedCodes"][0]) if scan["unnamedCodes"] else "")
+        return "count_" + str(min(len(rows), 9)) + ":considered_" + str(min(scan["considered"], 9999)) + ":" + unread
+
+    def _registration_check(self, rows, code, version):
+        """None for exactly one registration: per user, this product code and version, installed where the CLI is run from.
+
+        Otherwise the finite name of the first check that failed; the rows themselves stay on the host.
+        """
+        if len(rows) != 1:
+            return self._count_check(rows)
+        row, location = rows[0], self.paths["installed"].casefold()
+        for check, held in (("context_" + str(row["context"]), row["context"] == 2), ("code", row["productCode"] == code),
+                            ("version", row["version"] == version), ("location_empty", row["installLocation"] != ""),
+                            ("location", row["installLocation"].rstrip("\\").casefold() == location)):
+            if not held:
+                return check
+        return None
 
     def _held_file(self, value, path, package):
+        """The publisher's held pin of the published package; a mismatch names its finite check."""
         pin = value.get("filePin")
-        self._load("windows_ordinary_task").validate_pin(pin)
-        if pin["path"] != path or pin["sha256"] != package["sha256"] or pin["nativeIdentity"]["sizeBytes"] != package["bytes"]:
-            raise ValueError("publisher_held_file")
+        try:
+            self._load("windows_ordinary_task").validate_pin(pin)
+        except ValueError as error:
+            raise ValueError("pin_" + str(error)) from None
+        for check, held in (("held_path", pin["path"] == path), ("held_sha256", pin["sha256"] == package["sha256"]),
+                            ("held_size", pin["nativeIdentity"]["sizeBytes"] == package["bytes"])):
+            if not held:
+                raise ValueError(check)
+
+    @staticmethod
+    def _receipt_check(error):
+        """Which receipt check failed, as a finite code: the guest's reply itself stays on the host."""
+        text = str(error) if type(error) is ValueError else ""
+        return text if _RECEIPT_CHECK.fullmatch(text) else type(error).__name__
 
     def _msi_properties(self):
         path, package = self.paths["file:package"], self.package()
         value, required = self._publisher("publish-msi-properties", "msi-properties", packagePath=path)
         found = value.get("package")
         try:
+            if set(value) != required | {"package"}:
+                raise ValueError("keys")
+            if value["state"] != "ordinary-msi-properties":
+                raise ValueError("state")
+            if type(found) is not dict or set(found) != {"filePin", "properties"}:
+                raise ValueError("package_shape_" + type(found).__name__)
             properties = found["properties"]
-            if set(value) != required | {"package"} or value["state"] != "ordinary-msi-properties" or set(found) != {"filePin", "properties"}:
-                raise ValueError("publisher_msi_receipt")
+            if type(properties) is not dict:
+                raise ValueError("properties_shape_" + type(properties).__name__)
             self._held_file(found, path, package)
-        except (ValueError, TypeError, KeyError):
-            raise KnownFailure("publisher_msi_receipt") from None
+        except (ValueError, TypeError, KeyError) as error:
+            raise KnownFailure("publisher_msi_receipt:" + self._receipt_check(error)) from None
         code = properties.get("ProductCode")
         if (properties.get("ProductName") != PRODUCT_NAME or properties.get("ProductVersion") != self.plan["product"]["productVersion"]
                 or str(properties.get("UpgradeCode")).upper() != UPGRADE_CODE or not isinstance(code, str) or _PRODUCT_CODE.fullmatch(code) is None):
@@ -1011,12 +1051,15 @@ class Job:
         value, required = self._publisher("publish-installer-signer", "installer-signer", installerPath=path)
         signer = value.get("signer")
         try:
-            if (set(value) != required | {"signer"} or value["state"] != "ordinary-installer-signer"
-                    or set(signer) != {"filePin", "status", "subject", "certificateSha256"}):
-                raise ValueError("publisher_signer_receipt")
+            if set(value) != required | {"signer"}:
+                raise ValueError("keys")
+            if value["state"] != "ordinary-installer-signer":
+                raise ValueError("state")
+            if type(signer) is not dict or set(signer) != {"filePin", "status", "subject", "certificateSha256"}:
+                raise ValueError("signer_shape_" + type(signer).__name__)
             self._held_file(signer, path, package)
-        except (ValueError, TypeError, KeyError):
-            raise KnownFailure("publisher_signer_receipt") from None
+        except (ValueError, TypeError, KeyError) as error:
+            raise KnownFailure("publisher_signer_receipt:" + self._receipt_check(error)) from None
         if (signer["status"] != "Valid" or not isinstance(signer["subject"], str) or "O=Python Software Foundation" not in signer["subject"]
                 or not isinstance(signer["certificateSha256"], str) or _SHA256.fullmatch(signer["certificateSha256"]) is None):
             raise KnownFailure("python_installer_signer")
@@ -1044,8 +1087,9 @@ class Job:
             trees, installed = [(self.paths["python"], python)], None
             if self.row.get("priorInstall"):
                 rows = self._registration("publish-registration")
-                if not self._registered_as(rows, self.prior_installed["productCode"], self.plan["product"]["productVersion"]):
-                    raise KnownFailure("installed_registration_differs")
+                check = self._registration_check(rows, self.prior_installed["productCode"], self.plan["product"]["productVersion"])
+                if check is not None:
+                    raise KnownFailure("installed_registration_differs:" + check)
                 installed = self._listed("installed", self.paths["installed"], INSTALLED_REQUIRED)
                 trees.append((self.paths["installed"], installed))
             # Both trees go into one worker request: a joint excess is refused before either tree is pinned.
@@ -1063,9 +1107,12 @@ class Job:
             self.registered = self._registration("publish-registration")
             reset = self.row["workerAction"] == "msi-reset"
             # Never a silent upgrade: install needs no product, reset exactly one registered product to remove.
-            if (len(self.registered) != (1 if reset else 0)
-                    or reset and (self.registered[0]["context"] != 2 or _PRODUCT_CODE.fullmatch(self.registered[0]["productCode"]) is None)):
-                raise KnownFailure("installed_product_state")
+            if len(self.registered) != (1 if reset else 0):
+                raise KnownFailure("installed_product_state:" + self._count_check(self.registered))
+            if reset and self.registered[0]["context"] != 2:
+                raise KnownFailure("installed_product_state:context_" + str(self.registered[0]["context"]))
+            if reset and _PRODUCT_CODE.fullmatch(self.registered[0]["productCode"]) is None:
+                raise KnownFailure("installed_product_state:code")
             # Files already in the install folder would join the recorded base. Reset's worker checks the same after its removal.
             if not reset and self._listing("publish-installed", self.paths["installed"])["files"]:
                 raise KnownFailure("installed_files_present")
@@ -1220,8 +1267,9 @@ class Job:
         if self.row["workerAction"] not in {"msi-install", "msi-reset"}:
             return
         rows = self._registration("after-registration")
-        if not self._registered_as(rows, self.msi["productCode"], self.msi["productVersion"]):
-            raise KnownFailure("installed_registration_differs")
+        check = self._registration_check(rows, self.msi["productCode"], self.msi["productVersion"])
+        if check is not None:
+            raise KnownFailure("installed_registration_differs:" + check)
         tree = self._tree("after-installed", self.paths["installed"], "installed-app",
                           self._listed("after-installed", self.paths["installed"], INSTALLED_REQUIRED))
         self.installed = {"packageSha256": self.package()["sha256"], "productCode": self.msi["productCode"],

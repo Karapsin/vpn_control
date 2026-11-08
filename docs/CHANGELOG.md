@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Add the first Windows scenario family (Python and MSI setup, packaged CLI smoke, disconnected CLI and streaming rows) and the closed Windows UAC decision action.
+- Fix the Windows scenario MSI property and registration readers found on first native contact, and name each failed receipt check.
 
 ## 2.2.16 - 2026-11-08
 

@@ -100,6 +100,10 @@ class FakeQga:
         self.msi_properties = {"ProductCode": NEW_CODE, "ProductName": "vpn-control", "ProductVersion": VERSION,
                                "UpgradeCode": "{7a5e0a8e-2a7a-4baf-9f2a-5fb2c3529af2}"}
         self.signer_status = "Valid"
+        # Return codes of product names the registration reader could not read.
+        self.unnamed_codes = []
+        # action -> callable(reply): what a real guest might say instead.
+        self.reply_changes = {}
         self.install_effect = True
         self.task_exit = None
         self.requests_seen = []
@@ -254,7 +258,10 @@ class FakeQga:
             reply.update(state="ordinary-msi-properties", package={"filePin": self._pin(m["packagePath"], raw=self.files[m["packagePath"]]),
                                                                    "properties": dict(self.msi_properties)})
         elif action == "msi-registration":
-            reply.update(state="ordinary-msi-registration", products=[dict(row) for row in self.registration])
+            # Three other products (the Python runtime's) are considered beside any vpn-control row.
+            reply.update(state="ordinary-msi-registration", products=[dict(row) for row in self.registration],
+                         scan={"considered": len(self.registration) + 3 + len(self.unnamed_codes), "unnamed": len(self.unnamed_codes),
+                               "unnamedCodes": list(self.unnamed_codes)})
         elif action == "evidence-zip":
             path = m["workspace"] + "\\evidence-" + str(m["evidenceNumber"]) + ".zip"
             raw = b"PK" + b"evidence" * 40000
@@ -262,6 +269,9 @@ class FakeQga:
             reply.update(state="ordinary-evidence-zip", zipPath=path, zipBytes=len(raw), zipSha256=hashlib.sha256(raw).hexdigest(), entries=5)
         else:
             raise AssertionError("closed publisher action")
+        change = self.reply_changes.get(action)
+        if change is not None:
+            change(reply)
         return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
 
     def content(self, path):
@@ -965,6 +975,41 @@ class DecodeTests(unittest.TestCase):
                 job.decode_stdout(self.terminal(raw))
 
 
+class PublisherFunctionOutputTests(unittest.TestCase):
+    """A PowerShell function returns everything it does not capture.
+
+    Natively (2026-11-08) the MSI reader's bare COM calls made its result a list, so a
+    good package failed as publisher_msi_receipt:package_shape_list before msiexec.
+    """
+
+    def test_the_msi_reader_has_no_bare_method_call_statement(self):
+        source = (ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text(encoding="ascii")
+        body = source[source.index("function Get-MsiProperties"):source.index("function Get-MsiRegistration")]
+        self.assertEqual([], re.findall(r"(?:^|[;{])\s*(\$[A-Za-z]+\.[A-Za-z]+\()", body, re.M))
+
+
+class RegistrationReaderTests(unittest.TestCase):
+    """The ordinary user's per-user install must be visible to the SYSTEM reader.
+
+    Natively (2026-11-08) msiexec registered vpn-control 2.2.16 per user, unmanaged, for
+    the ordinary SID, and the reader that enumerated each context by that SID and named
+    products by ProductName returned no row (installed_product_state:count_0). The reader
+    now enumerates every user and context at once and reads InstalledProductName, as the
+    natively proven installed-context reader in windows_tertiary_guest_stage does, and it
+    counts a name it cannot read instead of dropping that product silently.
+    """
+
+    def body(self, source):
+        return source[source.index("function Get-MsiRegistration"):source.index("function New-EvidenceZip")]
+
+    def test_the_reader_enumerates_every_user_and_context_and_counts_unread_names(self):
+        body = self.body((ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text(encoding="ascii"))
+        self.assertIn('MsiEnumProductsExW(null,"S-1-1-0",7,', body)
+        self.assertIn("'InstalledProductName'", body)
+        self.assertIn("$unnamed=$unnamed+1", body)
+        self.assertNotIn("return rc==0&&size<=1024?value.ToString():null", body)
+
+
 class ClosedDoorTests(unittest.TestCase):
     OPERATION = "11111111-1111-4111-8111-111111111111"
     ROOT_PATH = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + OPERATION
@@ -1318,6 +1363,43 @@ class FamilyBase(Base):
                 if pin["path"] == root or pin["path"].startswith(root + "\\")]
 
 
+class PublisherReceiptCheckTests(FamilyBase):
+    """A publisher reply that fails a receipt check names that check, only by a finite code."""
+
+    def test_each_failed_package_check_is_named(self):
+        def pin(reply):
+            return reply["package"]["filePin"]
+        cases = (
+            ("array", lambda reply: reply.update(package=[{"note": "stray output"}, reply["package"]]), "package_shape_list"),
+            ("properties", lambda reply: reply["package"].update(properties=["ProductCode"]), "properties_shape_list"),
+            ("links", lambda reply: pin(reply)["nativeIdentity"].update(links=2), "pin_single-link-file-digest"),
+            ("path", lambda reply: pin(reply).update(path=pin(reply)["path"] + "x"), "held_path"),
+            ("hash", lambda reply: pin(reply).update(sha256="0" * 64), "held_sha256"),
+            ("size", lambda reply: pin(reply)["nativeIdentity"].update(sizeBytes=1), "held_size"),
+            ("state", lambda reply: reply.update(state="ordinary-other"), "state"),
+            ("keys", lambda reply: reply.update(extra=True), "keys"),
+        )
+        for name, change, check in cases:
+            with self.subTest(name=name):
+                self.qga.reply_changes = {"msi-properties": change}
+                plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+                self.assertEqual((1, "publisher_msi_receipt:" + check), (code, receipt["failure"]))
+                self.assertNotIn("system-run", kinds)
+
+    def test_a_signer_reply_names_its_check_too(self):
+        del self.qga.trees[PYTHON_ROOT]
+        self.qga.reply_changes = {"installer-signer": lambda reply: reply.update(signer=[reply["signer"]])}
+        plan, code, receipt, kinds = self.run_family("windows-python-install")
+        self.assertEqual((1, "publisher_signer_receipt:signer_shape_list"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+
+    def test_guest_text_never_becomes_the_check_name(self):
+        self.assertEqual("ValueError", job.Job._receipt_check(ValueError("C:\\Users\\someone\\package.msi is locked")))
+        self.assertEqual("TypeError", job.Job._receipt_check(TypeError("unhashable type: 'dict'")))
+        self.assertEqual("KeyError", job.Job._receipt_check(KeyError("properties")))
+        self.assertEqual("held_size", job.Job._receipt_check(ValueError("held_size")))
+
+
 class FamilyJobTests(FamilyBase):
     def test_the_family_runs_in_order_on_one_vm(self):
         del self.qga.trees[PYTHON_ROOT]
@@ -1418,11 +1500,16 @@ class FamilyJobTests(FamilyBase):
         self.qga.registration = [{"productCode": OLD_CODE, "context": 2, "productName": "vpn-control", "version": "2.2.13",
                                   "installLocation": INSTALLED_ROOT}]
         plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
-        self.assertEqual((1, "installed_product_state"), (code, receipt["failure"]))
+        self.assertEqual((1, "installed_product_state:count_1:considered_4:unnamed_0"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
         self.qga.registration = []
         plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
-        self.assertEqual((1, "installed_product_state"), (code, receipt["failure"]))
+        self.assertEqual((1, "installed_product_state:count_0:considered_3:unnamed_0"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+        self.qga.registration = [{"productCode": OLD_CODE, "context": 4, "productName": "vpn-control", "version": "2.2.13",
+                                  "installLocation": INSTALLED_ROOT}]
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
+        self.assertEqual((1, "installed_product_state:context_4"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
 
     def test_a_package_naming_another_product_or_version_is_refused_by_its_own_properties(self):
@@ -1448,6 +1535,20 @@ class FamilyJobTests(FamilyBase):
         self.assertEqual((1, "python_installer_signer"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
 
+    def test_a_registration_read_that_could_not_name_products_says_so(self):
+        # Natively the reader saw no vpn-control row after a good per-user install; its
+        # count says what it considered and which name reads failed, never which names.
+        self.qga.unnamed_codes = [1608, 1605]
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
+        self.assertEqual((1, "installed_product_state:count_0:considered_5:unnamed_2_rc_1608"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+
+    def test_a_registration_reply_without_its_scan_is_refused(self):
+        self.qga.reply_changes = {"msi-registration": lambda reply: reply.pop("scan")}
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+        self.assertEqual((1, "publisher_registration_receipt"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+
     def test_a_python_install_that_left_no_tree_is_a_known_failure(self):
         del self.qga.trees[PYTHON_ROOT]
         self.qga.install_effect = False
@@ -1458,7 +1559,8 @@ class FamilyJobTests(FamilyBase):
     def test_an_installer_that_registered_something_else_is_a_known_failure(self):
         self.qga.install_effect = False
         plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
-        self.assertEqual((1, "installed_registration_differs", "installed"), (code, receipt["failure"], receipt["stage"]))
+        self.assertEqual((1, "installed_registration_differs:count_0:considered_3:unnamed_0", "installed"),
+                         (code, receipt["failure"], receipt["stage"]))
         self.assertIsNone(receipt["installed"])
 
 
@@ -1490,9 +1592,11 @@ class ProductAdmissionTests(FamilyBase):
         cases = (("tree", lambda: setattr(self.qga, "installed_tree", (self.qga.installed_tree[0] + ["app/extra.jar"], self.qga.installed_tree[1])),
                   "installed_tree_differs"),
                  ("bytes", lambda: self.qga.msi_properties.update(ProductVersion="2.2.16"), "installed_tree_differs"),
-                 ("registration", lambda: self.qga.registration[0].update(version="2.2.16"), "installed_registration_differs"),
-                 ("second", lambda: self.qga.registration.append(dict(self.qga.registration[0], context=4)), "installed_registration_differs"),
-                 ("location", lambda: self.qga.registration[0].update(installLocation="C:\\Other\\"), "installed_registration_differs"))
+                 ("registration", lambda: self.qga.registration[0].update(version="2.2.16"), "installed_registration_differs:version"),
+                 ("second", lambda: self.qga.registration.append(dict(self.qga.registration[0], context=4)), "installed_registration_differs:count_2:considered_5:unnamed_0"),
+                 ("location", lambda: self.qga.registration[0].update(installLocation="C:\\Other\\"), "installed_registration_differs:location"),
+                 ("unset", lambda: self.qga.registration[0].update(installLocation=""), "installed_registration_differs:location_empty"),
+                 ("machine", lambda: self.qga.registration[0].update(context=4), "installed_registration_differs:context_4"))
         for name, change, reason in cases:
             with self.subTest(name=name):
                 saved = (json.loads(json.dumps(self.qga.registration)), dict(self.qga.msi_properties), self.qga.installed_tree)

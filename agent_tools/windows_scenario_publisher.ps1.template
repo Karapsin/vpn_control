@@ -141,8 +141,8 @@ function Get-MsiProperties([string]$path) {
  try{
   $database=$installer.OpenDatabase($path,0)
   foreach($name in @('ProductCode','ProductName','ProductVersion','UpgradeCode')){
-   $view=$database.OpenView('SELECT `Value` FROM `Property` WHERE `Property`='+[char]39+$name+[char]39);$view.Execute();$row=$view.Fetch()
-   try{if($null -eq $row){$values[$name]=$null}else{$values[$name]=[string]$row.StringData(1);if($null -ne $view.Fetch()){throw 'PUB_MSI_PROPERTY'}}}finally{$view.Close()}
+   $view=$database.OpenView('SELECT `Value` FROM `Property` WHERE `Property`='+[char]39+$name+[char]39);[void]$view.Execute();$row=$view.Fetch()
+   try{if($null -eq $row){$values[$name]=$null}else{$values[$name]=[string]$row.StringData(1);if($null -ne $view.Fetch()){throw 'PUB_MSI_PROPERTY'}}}finally{[void]$view.Close()}
   }
  }finally{if($null -ne $database){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database)};[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)}
  return [ordered]@{filePin=$pin;properties=$values}
@@ -153,21 +153,27 @@ using System;using System.Text;using System.Collections.Generic;using System.Run
 public static class VpnScenarioMsiRegistration {
  [DllImport("msi.dll",CharSet=CharSet.Unicode,ExactSpelling=true)]static extern uint MsiEnumProductsExW(string product,string user,uint contexts,uint index,StringBuilder code,out uint context,StringBuilder sid,ref uint size);
  [DllImport("msi.dll",CharSet=CharSet.Unicode,ExactSpelling=true)]static extern uint MsiGetProductInfoExW(string product,string user,uint context,string property,StringBuilder value,ref uint size);
- public static string[] Codes(string user,uint context){var found=new List<string>();for(uint index=0;index<4096;index++){var code=new StringBuilder(39);var sid=new StringBuilder(185);uint actual,size=184;uint rc=MsiEnumProductsExW(null,context==4?null:user,context,index,code,out actual,sid,ref size);if(rc==259)return found.ToArray();if(rc!=0||actual!=context)throw new InvalidOperationException("PUB_MSI_ENUM:"+rc);found.Add(code.ToString());}throw new InvalidOperationException("PUB_MSI_ENUM_BOUND");}
- public static string Name(string code,string user,uint context){uint size=1024;var value=new StringBuilder(1025);uint rc=MsiGetProductInfoExW(code,context==4?null:user,context,"ProductName",value,ref size);return rc==0&&size<=1024?value.ToString():null;}
- public static string Info(string code,string user,uint context,string property){uint size=1024;var value=new StringBuilder(1025);uint rc=MsiGetProductInfoExW(code,context==4?null:user,context,property,value,ref size);if(rc!=0||size>1024)throw new InvalidOperationException("PUB_MSI_INFO:"+property+":"+rc);return value.ToString();}
+ public sealed class Product{public string Code,Sid;public uint Context;}
+ public sealed class Lookup{public uint Rc;public string Value;}
+ // Every user and context in one enumeration, as the natively proven installed-context reader does.
+ public static Product[] All(){var found=new List<Product>();for(uint index=0;index<4096;index++){var code=new StringBuilder(39);var sid=new StringBuilder(185);uint actual,size=184;uint rc=MsiEnumProductsExW(null,"S-1-1-0",7,index,code,out actual,sid,ref size);if(rc==259)return found.ToArray();if(rc!=0||size>184||(actual!=1&&actual!=2&&actual!=4)||(actual==4&&sid.Length!=0))throw new InvalidOperationException("PUB_MSI_ENUM:"+rc);found.Add(new Product{Code=code.ToString(),Sid=sid.ToString(),Context=actual});}throw new InvalidOperationException("PUB_MSI_ENUM_BOUND");}
+ public static Lookup Read(string code,string user,uint context,string property){uint size=1024;var value=new StringBuilder(1025);uint rc=MsiGetProductInfoExW(code,context==4?null:user,context,property,value,ref size);if(rc==0&&size>1024){rc=234;}return new Lookup{Rc=rc,Value=rc==0?value.ToString():null};}
+ public static string Info(string code,string user,uint context,string property){Lookup found=Read(code,user,context,property);if(found.Rc!=0)throw new InvalidOperationException("PUB_MSI_INFO:"+property+":"+found.Rc);return found.Value;}
 }
 '@ -ReferencedAssemblies @('System','System.Core')
- # SYSTEM reads the ordinary user's contexts by explicit SID; the machine context takes none.
- $rows=[Collections.Generic.List[object]]::new()
- foreach($context in @(1,2,4)){
-  foreach($code in @([VpnScenarioMsiRegistration]::Codes($m.ordinarySid,[uint32]$context))){
-   if([VpnScenarioMsiRegistration]::Name($code,$m.ordinarySid,[uint32]$context) -cne $name){continue}
-   $rows.Add([ordered]@{productCode=$code;context=$context;productName=$name;version=[VpnScenarioMsiRegistration]::Info($code,$m.ordinarySid,[uint32]$context,'VersionString');installLocation=[VpnScenarioMsiRegistration]::Info($code,$m.ordinarySid,[uint32]$context,'InstallLocation')})
-   if($rows.Count -gt 8){throw 'PUB_MSI_ROWS'}
-  }
+ # SYSTEM keeps the ordinary user's rows and the machine's. A name that cannot be read is counted, never silently dropped.
+ $rows=[Collections.Generic.List[object]]::new();$considered=0;$unnamed=0;$unnamedCodes=[Collections.Generic.List[int]]::new()
+ foreach($product in @([VpnScenarioMsiRegistration]::All())){
+  if($product.Context -ne 4 -and $product.Sid -cne $m.ordinarySid){continue}
+  $considered=$considered+1
+  $lookup=[VpnScenarioMsiRegistration]::Read($product.Code,$product.Sid,$product.Context,'InstalledProductName')
+  if($lookup.Rc -ne 0){$lookup=[VpnScenarioMsiRegistration]::Read($product.Code,$product.Sid,$product.Context,'ProductName')}
+  if($lookup.Rc -ne 0){$unnamed=$unnamed+1;if($unnamedCodes.Count -lt 16){$unnamedCodes.Add([int]$lookup.Rc)};continue}
+  if($lookup.Value -cne $name){continue}
+  $rows.Add([ordered]@{productCode=$product.Code;context=[int]$product.Context;productName=$name;version=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'VersionString');installLocation=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'InstallLocation')})
+  if($rows.Count -gt 8){throw 'PUB_MSI_ROWS'}
  }
- return @($rows.ToArray())
+ return [ordered]@{products=@($rows.ToArray());scan=[ordered]@{considered=$considered;unnamed=$unnamed;unnamedCodes=@($unnamedCodes.ToArray())}}
 }
 function New-EvidenceZip([int]$number) {
  # Closed top-level names only: this listing never enters a folder, and
@@ -233,7 +239,7 @@ try{
  }elseif($m.action -ceq 'list-tree'){$r=[ordered]@{schemaVersion=1;state='ordinary-tree-listing';operationId=$m.operationId;treeRoot=$m.treeRoot;listing=(Get-TreeListing $m.treeRoot)}
  }elseif($m.action -ceq 'installer-signer'){$r=[ordered]@{schemaVersion=1;state='ordinary-installer-signer';operationId=$m.operationId;signer=(Get-InstallerSigner $m.installerPath)}
  }elseif($m.action -ceq 'msi-properties'){$r=[ordered]@{schemaVersion=1;state='ordinary-msi-properties';operationId=$m.operationId;package=(Get-MsiProperties $m.packagePath)}
- }elseif($m.action -ceq 'msi-registration'){$r=[ordered]@{schemaVersion=1;state='ordinary-msi-registration';operationId=$m.operationId;products=@(Get-MsiRegistration $m.productName)}
+ }elseif($m.action -ceq 'msi-registration'){$found=@(Get-MsiRegistration $m.productName);if($found.Count -ne 1){throw 'PUB_MSI_OUTPUT'};$r=[ordered]@{schemaVersion=1;state='ordinary-msi-registration';operationId=$m.operationId;products=@($found[0].products);scan=$found[0].scan}
  }elseif($m.action -ceq 'evidence-zip'){$r=New-EvidenceZip ([int]$m.evidenceNumber)
  }else{throw 'PUB_ACTION'}
  Assert-Context
