@@ -19,7 +19,7 @@ from unittest import mock
 
 from test_packaged_cli import (envelope, stream_records, verify_stream_records, interrupt_stream,
                                large_routing_fixture, verify_routing_export, implicit_owner_smoke, smoke,
-                               source_mode_smoke)
+                               source_mode_smoke, launcher_argument_smoke)
 
 
 class SourceModeSmokeTest(unittest.TestCase):
@@ -94,6 +94,110 @@ class SourceModeSmokeTest(unittest.TestCase):
         invoke, state, owner = self.fixture_cli()
         source_mode_smoke(Path("fixture-workspace"), owner, invoke)
         self.assertEqual(("current-locations", []), (state.mode, state.subscriptions))
+
+
+class LauncherArgumentSmokeTest(unittest.TestCase):
+    """The restart-sensitive values against a modeled CLI and owner (not native evidence)."""
+
+    @staticmethod
+    def without_recovery(args):
+        # What jpackage's Executor and CommandLineToArgvW make of these values when main keeps what it
+        # received: the quotes of a value without whitespace toggle quoting and vanish, and an empty
+        # value leaves nothing. Only values without backslashes, and without both quotes and whitespace.
+        assert not any("\\" in value or ('"' in value and (" " in value or "\t" in value)) for value in args)
+        return [value.replace('"', "") for value in args if value]
+
+    @staticmethod
+    def fixture_cli(restart=list, owner="fixture-owner"):
+        state = SimpleNamespace(revision=0, domains=[], subscriptions={}, received=[])
+
+        def reply(code="OK", data=None):
+            ok = code == "OK"
+            return subprocess.CompletedProcess([], 0 if ok else 1, json.dumps({
+                "schemaVersion": 1, "ok": ok, "code": code, "controllerId": owner, "final": True,
+                "configurationRevision": state.revision, "data": data or {}}), "")
+
+        def commit(changed, data=None):
+            state.revision += bool(changed)
+            return reply(data=data)
+
+        def invoke(_workspace, *typed):
+            args = restart(typed)
+            state.received.append(args)
+            command, guards = [value for value in args if value != "--json"], {}
+            while command[:1] in (["--controller-id"], ["--if-revision"]):
+                guards[command[0]] = command[1]
+                command = command[2:]
+            words, rest, options, positional = command[:2], command[2:], {}, []
+            while rest:
+                token = rest.pop(0)
+                if token in ("--source", "--name"):
+                    # As ControlCliParser: a valued option needs a value, and only --name may be empty.
+                    if not rest or rest[0].startswith("--") or (rest[0] == "" and token != "--name"):
+                        return reply("INVALID_ARGUMENT")
+                    options[token] = rest.pop(0)
+                else:
+                    positional.append(token)
+            if guards.get("--controller-id", owner) != owner or int(guards.get("--if-revision", state.revision)) != state.revision:
+                return reply("CONFLICT")
+            if command == ["status"]:
+                return reply(data={"runtimeRunning": False})
+            if command == ["routing", "show"]:
+                return reply(data={"routing": {"rules": {"direct_domain_suffixes": list(state.domains)}}})
+            if words == ["routing", "set"] and positional[:1] == ["direct-domains"] and len(positional) == 2:
+                text = positional[1]
+                if text.lstrip()[:1] in ("[", "{", '"'):
+                    # As ControlRoutingLogic: a value opening with [, { or " must be a JSON array of strings.
+                    try:
+                        entries = json.loads(text)
+                    except ValueError:
+                        return reply("INVALID_ARGUMENT")
+                    if not isinstance(entries, list) or not all(isinstance(entry, str) for entry in entries):
+                        return reply("INVALID_ARGUMENT")
+                    text = "\n".join(entries)
+                # As RoutingRules.parseDirectDomainSuffixes, without its wildcard and dot trimming.
+                domains = list(dict.fromkeys(part.lower() for part in re.split(r"[,\n\r\t ]+", text) if part))
+                changed, state.domains = state.domains != domains, domains
+                return commit(changed)
+            if command == ["subscriptions", "list"]:
+                return reply(data={"subscriptions": [{"id": key, "name": name} for key, name in state.subscriptions.items()]})
+            if words == ["subscriptions", "add"] and "--source" in options:
+                state.subscriptions["fixture-subscription"] = options.get("--name", "")
+                return commit(True, {"id": "fixture-subscription"})
+            if words[:1] == ["subscriptions"] and len(positional) == 1:
+                if positional[0] not in state.subscriptions:
+                    return reply("NOT_FOUND")
+                if words[1] == "show":
+                    return reply(data={"id": positional[0], "name": state.subscriptions[positional[0]]})
+                if words[1] == "delete":
+                    return commit(state.subscriptions.pop(positional[0]) is not None)
+                if words[1] == "update" and "--name" in options:
+                    changed = state.subscriptions[positional[0]] != options["--name"]
+                    state.subscriptions[positional[0]] = options["--name"]
+                    return commit(changed, {"id": positional[0]})
+            return reply("INVALID_ARGUMENT")
+        return invoke, state, owner
+
+    def test_typed_values_are_committed_and_read_back(self):
+        invoke, state, owner = self.fixture_cli()
+        launcher_argument_smoke(Path("fixture-workspace"), owner, invoke)
+        self.assertEqual((4, ["ci.test"], {}), (state.revision, state.domains, state.subscriptions))
+        self.assertIn('["ci.test"]', [args[-1] for args in state.received])
+        self.assertIn(["--name", ""], [args[-2:] for args in state.received])
+
+    def test_each_value_a_restart_without_recovery_mangles_fails_the_smoke(self):
+        # The failing call: 2 is the routing set of the JSON array, 6 the update with the empty name.
+        for name, restart, failing in (
+                ("both", self.without_recovery, 2),
+                ("json-quotes", lambda args: [value.replace('"', "") for value in args], 2),
+                ("empty-value", lambda args: [value for value in args if value], 6)):
+            with self.subTest(restart=name):
+                invoke, state, owner = self.fixture_cli(lambda args: restart(list(args)))
+                with self.assertRaises(AssertionError) as failure:
+                    launcher_argument_smoke(Path("fixture-workspace"), owner, invoke)
+                self.assertIn("CLI exit 1, expected 0", str(failure.exception))
+                self.assertIn('"code": "INVALID_ARGUMENT"', str(failure.exception))
+                self.assertEqual(failing, len(state.received))
 
 
 class StaticLaunchFailureTest(unittest.TestCase):

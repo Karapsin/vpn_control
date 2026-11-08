@@ -50,10 +50,11 @@ internal object DesktopWindowsLauncherArguments {
         val born = self.createdAt ?: return null
         val parent = windows.parentPid()?.let(windows::open) ?: return null
         if (parent.image != image) return null
-        // The parent that started this process was created before it, and a reused PID belongs to a later
-        // process. An equal creation time proves neither, so it is refused too.
+        // A reused PID belongs to a process created after this one, so only a later parent is refused; an equal
+        // time is kept, as OpenJDK's ProcessHandleImpl keeps it. The real parent is earlier in practice: Windows
+        // records creation times finer than 1 ms, and that parent runs before it creates this process.
         val parentBorn = parent.createdAt ?: return null
-        if (parentBorn >= born) return null
+        if (parentBorn > born) return null
         return restored(received, image, parent.commandLine ?: return null, windows::split)
     }
 

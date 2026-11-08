@@ -162,6 +162,34 @@ class DesktopWindowsLauncherArgumentsTest {
         assertSame(array, forMain(array, "Windows 11") { windows(parent = Process(exe, 100L, other)) })
     }
 
+    @Test fun aQuotedValueEndingInOneBackslashKeepsWhatCommandLineToArgvMakesOfIt() {
+        // cmd.exe and Windows PowerShell 5.1 can leave the backslash before a closing quote single. CommandLineToArgvW
+        // then reads that quote as a literal and keeps the value quoted until the next unescaped quote, here none, so
+        // to the end of the line. The restart used to split it again by accident; main now gets what every other
+        // Windows program gets from the line.
+        val single = "\"$exe\" --state-dir \"C:\\VPN State\\\" status"
+        val received = restarted(single)
+        assertEquals(listOf("--state-dir", "C:\\VPN State", "status"), received)
+        val handed = forMain(received.toTypedArray(), "Windows 11") { windows(parent = Process(exe, 100L, single)) }
+        assertEquals(listOf("--state-dir", "C:\\VPN State\" status"), handed.toList())
+        assertEquals(shell32(single).drop(1), handed.toList())
+        // A later quoted value's opening quote ends that quoting: the value takes in the arguments before it and runs
+        // on to the next space, and the quotes after it pair up anew.
+        val later = "\"$exe\" --state-dir \"C:\\VPN State\\\" --name \"My Sub\" status"
+        val laterReceived = restarted(later)
+        assertEquals(listOf("--state-dir", "C:\\VPN State", "--name", "My Sub", "status"), laterReceived)
+        val laterHanded = forMain(laterReceived.toTypedArray(), "Windows 11") {
+            windows(parent = Process(exe, 100L, later))
+        }.toList()
+        assertEquals(listOf("--state-dir", "C:\\VPN State\" --name My", "Sub status"), laterHanded)
+        assertEquals(shell32(later).drop(1), laterHanded)
+        // Doubled before the closing quote, as CommandLineToArgvW requires, the value ends where it was meant to.
+        val doubled = "\"$exe\" --state-dir \"C:\\VPN State\\\\\" status"
+        assertEquals(listOf("--state-dir", "C:\\VPN State\" status"), restarted(doubled))
+        assertEquals(listOf("--state-dir", "C:\\VPN State\\", "status"), forMain(restarted(doubled).toTypedArray(),
+            "Windows 11") { windows(parent = Process(exe, 100L, doubled)) }.toList())
+    }
+
     @Test fun theConfiguredHelpOfAnEmptyRestartIsNotRewritten() {
         // vpn-control-cli.cfg passes --help when the child line holds no argument, as after a lone "".
         for (parentLine in listOf("\"$exe\"", "\"$exe\" \"\"")) {
@@ -183,12 +211,13 @@ class DesktopWindowsLauncherArgumentsTest {
         }
     }
 
-    @Test fun onlyAParentOfTheSameImageBornEarlierIsTheRestart() {
+    @Test fun onlyAParentOfTheSameImageNotBornLaterIsTheRestart() {
         val received = restarted(nativeParentLine).toTypedArray()
         fun handed(parent: Process) = forMain(received, "Windows 11") { windows(parent = parent) }
         assertEquals(typed, handed(Process(exe, 199L, nativeParentLine)).toList())
-        // An equal creation time does not prove that the parent came first.
-        assertSame(received, handed(Process(exe, 200L, nativeParentLine)))
+        // An equal creation time is kept, as OpenJDK's ProcessHandleImpl keeps it. The real parent is earlier in
+        // practice: native creation times are finer than 1 ms, and that parent runs before it creates its child.
+        assertEquals(typed, handed(Process(exe, 200L, nativeParentLine)).toList())
         // Born after this process: the parent's PID was reused.
         assertSame(received, handed(Process(exe, 201L, nativeParentLine)))
         assertSame(received, handed(Process("""C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe""", 100L,

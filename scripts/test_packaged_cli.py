@@ -356,6 +356,45 @@ def source_mode_smoke(workspace, identity, invoke):
     observe("current-locations", None, revision + 1)
 
 
+def launcher_argument_smoke(workspace, identity, invoke):
+    """Values the restarted Windows launcher used to mangle must reach the CLI as typed.
+
+    The jpackage Windows launcher restarts itself and re-quotes its arguments without escaping
+    them; main recovers the originals from the waiting parent. Without that recovery the JSON
+    array arrives as [ci.test] and the empty name vanishes, so either write answers
+    INVALID_ARGUMENT. macOS and Linux launchers pass arguments unchanged. Each write below
+    changes the given workspace, which must not hold these values yet.
+    """
+    def read(*args):
+        return envelope(invoke(workspace, "--json", "--controller-id", identity, *args))
+
+    def write(revision, *args):
+        changed = envelope(invoke(workspace, "--json", "--controller-id", identity,
+                                  "--if-revision", str(revision), *args))
+        require(changed["controllerId"] == identity and changed["final"] is True
+                and changed["configurationRevision"] == revision + 1,
+                "Launcher-argument write lost its owner, completion or revision")
+        return changed
+
+    revision = read("status")["configurationRevision"]
+    write(revision, "routing", "set", "direct-domains", '["ci.test"]')
+    require(read("routing", "show")["data"]["routing"]["rules"]["direct_domain_suffixes"] == ["ci.test"],
+            "routing show did not list the JSON array value")
+    before = read("subscriptions", "list")["data"]["subscriptions"]
+    added = write(revision + 1, "subscriptions", "add", "--source",
+                  "https://example.test/packaged-arguments.txt", "--name", "Packaged arguments 東京")
+    subscription_id = added["data"].get("id")
+    require(isinstance(subscription_id, str) and bool(subscription_id),
+            "Subscription add did not return its fixture identity")
+    # One empty value among other arguments: it clears the name.
+    write(revision + 2, "subscriptions", "update", subscription_id, "--name", "")
+    require(read("subscriptions", "show", subscription_id)["data"]["name"] == "",
+            "An empty --name did not clear the subscription name")
+    write(revision + 3, "subscriptions", "delete", subscription_id)
+    require(read("subscriptions", "list")["data"]["subscriptions"] == before,
+            "Launcher-argument smoke did not remove its dormant fixture subscription")
+
+
 def launch_diagnostics(result):
     # Static discovery has no user document payload; retain bounded launcher
     # evidence so native failures can be diagnosed from the ordinary CI log.
@@ -439,6 +478,8 @@ def smoke(launcher, expected_version):
             isolated = envelope(invoke(second, "--json", "settings", "show", "validation.batch-size"))
             require(isolated["data"] == baseline["data"] and isolated["configurationRevision"] == 0,
                     "Settings crossed workspace boundaries")
+            # The second workspace: no later step checks its revision, and the first keeps its fresh fixture.
+            launcher_argument_smoke(second, identities[1], invoke)
             settings_file = root / "設定 input.json"
             settings_file.write_text('{"validation.batch-size":8}', encoding="utf-8")
             applied = envelope(invoke(first, "--json", "settings", "apply", "--input", str(settings_file)))

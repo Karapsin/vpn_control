@@ -7,7 +7,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Add the first Windows scenario family (Python and MSI setup, packaged CLI smoke, disconnected CLI and streaming rows) and the closed Windows UAC decision action.
 - Fix the Windows scenario MSI property and registration readers found on first native contact, and name each failed receipt check.
-- Recover the Windows CLI's original arguments after the jpackage launcher restart, so JSON and empty values pass unchanged.
+- Recover the Windows CLI's original arguments after the jpackage launcher restart, so JSON values and empty values among other arguments pass unchanged.
+- Smoke-test JSON and empty arguments through the packaged Windows CLI launcher, and accept a restart parent created at the same instant as its child.
 
 ## 2.2.16 - 2026-11-08
 

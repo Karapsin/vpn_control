@@ -501,8 +501,18 @@ DISPLAY/WAYLAND, retaining installed TUN/capability and direct-probe behavior.
 On Windows the jpackage launcher restarts itself and re-quotes its arguments
 without escaping them (JDK 17.0.10+). `main` first recovers the original
 arguments from that waiting parent's command line, so JSON values such as
-`routing set direct-domains JSON_ARRAY` and empty values pass unchanged. It uses
-them only when re-quoting them reproduces exactly what `main` received.
+`routing set direct-domains JSON_ARRAY` and empty values among other arguments
+pass unchanged. It uses them only when re-quoting them reproduces exactly what
+`main` received. Windows CLI arguments therefore follow `CommandLineToArgvW`
+exactly: a quoted value ending in a backslash must double it before the closing
+quote (`"C:\VPN State\\"`; in a batch file `"%~dp0."`). Otherwise that quote is
+literal and the value stays quoted until the next unescaped quote (to the end of
+the line if there is none), taking in the arguments between them. Windows
+PowerShell 5.1 neither doubles that backslash nor escapes embedded quotes, so
+its `'["x"]'` still arrives as `[x]`: use PowerShell 7.3+, or escape the quotes
+there (`'[\"x\"]'`). A command made only of empty values leaves the restarted
+line without arguments, so it still reaches `main` as the CLI launcher's
+configured `--help`.
 
 ## Android Adapter Work
 
@@ -770,6 +780,8 @@ repository's version-bump/prepush/managed-push/exact-SHA CI loop, not a release.
 The disconnected `scripts/test_packaged_cli.py` harness is invoked by native
 DEB/RPM/Arch/MSI/macOS package smoke scripts. It verifies public launcher streams,
 exit codes, Unicode workspaces, serve/read/settings isolation and async operation
-inspection without connecting. Native macOS app-image execution has passed;
+inspection without connecting. Its JSON array and empty `--name` values fail on
+Windows whenever `main` cannot recover the restarted launcher's arguments.
+Native macOS app-image execution has passed;
 the other native package paths still require execution. This is an additional
 safe tier, not a substitute for the traffic/GUI/consent cases above.
