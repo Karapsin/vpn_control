@@ -56,6 +56,10 @@ _SCENARIOS = {
         "agent_tools/windows_scenario_publisher.ps1.template",
         "agent_tools/windows_scenario_system_run.ps1.template",
         "agent_tools/windows_scenario_qualification_child.ps1",
+        "agent_tools/windows_disconnected_cli_cases.py",
+        "agent_tools/windows_streaming_cli_cases.py",
+        "scripts/test_packaged_cli.py",
+        "scripts/windows_install_admission_diagnostic.py",
     ),
 }
 

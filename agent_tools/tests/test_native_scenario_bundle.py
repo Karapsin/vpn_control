@@ -65,8 +65,8 @@ class NativeScenarioBundleTest(unittest.TestCase):
         self.windows_repository()
         destination = self.root.parent / "windows"
         receipt = prepare_bundle(self.root, "windows-scenario-driver", destination)
-        self.assertEqual(9, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
-        self.assertEqual({"agent_tools", MANIFEST_NAME}, {item.name for item in destination.iterdir()})
+        self.assertEqual(13, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
+        self.assertEqual({"agent_tools", "scripts", MANIFEST_NAME}, {item.name for item in destination.iterdir()})
         self.assertEqual([], list(self.root.parent.glob("native-scenario-stage-*")))
 
     def test_mixed_inventory_moves_each_top_level_name_once(self):

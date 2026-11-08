@@ -108,6 +108,67 @@ function New-ReadPin([string]$path) {
  [void](Get-PinHash $pin)
  return $pin.record
 }
+function Assert-ProfileTree([string]$path) {
+ # Read-only listings stay inside the ordinary profile: the Python runtime and the installed product.
+ if($path -cnotlike ($m.localAppData+'\*') -or $path.Contains('\..') -or $path.EndsWith('\')){throw 'PUB_TREE_ROOT'}
+}
+function Get-TreeListing([string]$root) {
+ Assert-ProfileTree $root
+ if(-not [IO.Directory]::Exists($root)){return [ordered]@{present=$false;files=@();directories=@()}}
+ $found=[Collections.Generic.List[string]]::new();$folders=[Collections.Generic.List[string]]::new()
+ $todo=[Collections.Generic.Stack[IO.DirectoryInfo]]::new();$todo.Push([IO.DirectoryInfo]::new($root))
+ while($todo.Count -gt 0){
+  $directory=$todo.Pop();if(($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw 'PUB_TREE_REPARSE'}
+  foreach($item in $directory.GetFileSystemInfos()){
+   if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint)-ne 0){throw 'PUB_TREE_REPARSE'}
+   $relative=$item.FullName.Substring($root.Length+1).Replace('\','/')
+   if($item -is [IO.DirectoryInfo]){$folders.Add($relative);$todo.Push($item)}else{$found.Add($relative)}
+   if($found.Count+$folders.Count -gt 8192){throw 'PUB_TREE_BOUND'}
+  }
+ }
+ return [ordered]@{present=$true;files=@($found.ToArray());directories=@($folders.ToArray())}
+}
+function Get-InstallerSigner([string]$path) {
+ Assert-OwnedPath $path
+ $pin=New-ReadPin $path;$signature=Get-AuthenticodeSignature -LiteralPath $path -ErrorAction Stop
+ $certificate=$null;if($null -ne $signature.SignerCertificate){$h=[Security.Cryptography.SHA256]::Create();try{$certificate=([BitConverter]::ToString($h.ComputeHash($signature.SignerCertificate.RawData))).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}}
+ return [ordered]@{filePin=$pin;status=[string]$signature.Status;subject=$(if($null -eq $signature.SignerCertificate){$null}else{[string]$signature.SignerCertificate.Subject});certificateSha256=$certificate}
+}
+function Get-MsiProperties([string]$path) {
+ # The held read pin is hashed again by Assert-Context after COM has read the same bytes.
+ Assert-OwnedPath $path
+ $pin=New-ReadPin $path;$installer=New-Object -ComObject WindowsInstaller.Installer;$database=$null;$values=[ordered]@{}
+ try{
+  $database=$installer.OpenDatabase($path,0)
+  foreach($name in @('ProductCode','ProductName','ProductVersion','UpgradeCode')){
+   $view=$database.OpenView('SELECT `Value` FROM `Property` WHERE `Property`='+[char]39+$name+[char]39);$view.Execute();$row=$view.Fetch()
+   try{if($null -eq $row){$values[$name]=$null}else{$values[$name]=[string]$row.StringData(1);if($null -ne $view.Fetch()){throw 'PUB_MSI_PROPERTY'}}}finally{$view.Close()}
+  }
+ }finally{if($null -ne $database){[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($database)};[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)}
+ return [ordered]@{filePin=$pin;properties=$values}
+}
+function Get-MsiRegistration([string]$name) {
+ Add-Type -TypeDefinition @'
+using System;using System.Text;using System.Collections.Generic;using System.Runtime.InteropServices;
+public static class VpnScenarioMsiRegistration {
+ [DllImport("msi.dll",CharSet=CharSet.Unicode,ExactSpelling=true)]static extern uint MsiEnumProductsExW(string product,string user,uint contexts,uint index,StringBuilder code,out uint context,StringBuilder sid,ref uint size);
+ [DllImport("msi.dll",CharSet=CharSet.Unicode,ExactSpelling=true)]static extern uint MsiGetProductInfoExW(string product,string user,uint context,string property,StringBuilder value,ref uint size);
+ public static string[] Codes(string user,uint context){var found=new List<string>();for(uint index=0;index<4096;index++){var code=new StringBuilder(39);var sid=new StringBuilder(185);uint actual,size=184;uint rc=MsiEnumProductsExW(null,context==4?null:user,context,index,code,out actual,sid,ref size);if(rc==259)return found.ToArray();if(rc!=0||actual!=context)throw new InvalidOperationException("PUB_MSI_ENUM:"+rc);found.Add(code.ToString());}throw new InvalidOperationException("PUB_MSI_ENUM_BOUND");}
+ public static string Name(string code,string user,uint context){uint size=1024;var value=new StringBuilder(1025);uint rc=MsiGetProductInfoExW(code,context==4?null:user,context,"ProductName",value,ref size);return rc==0&&size<=1024?value.ToString():null;}
+ public static string Info(string code,string user,uint context,string property){uint size=1024;var value=new StringBuilder(1025);uint rc=MsiGetProductInfoExW(code,context==4?null:user,context,property,value,ref size);if(rc!=0||size>1024)throw new InvalidOperationException("PUB_MSI_INFO:"+property+":"+rc);return value.ToString();}
+}
+'@ -ReferencedAssemblies @('System','System.Core')
+ # SYSTEM reads the ordinary user's contexts by explicit SID; the machine context takes none.
+ $rows=[Collections.Generic.List[object]]::new()
+ foreach($context in @(1,2,4)){
+  foreach($code in @([VpnScenarioMsiRegistration]::Codes($m.ordinarySid,[uint32]$context))){
+   if([VpnScenarioMsiRegistration]::Name($code,$m.ordinarySid,[uint32]$context) -cne $name){continue}
+   $rows.Add([ordered]@{productCode=$code;context=$context;productName=$name;version=[VpnScenarioMsiRegistration]::Info($code,$m.ordinarySid,[uint32]$context,'VersionString');installLocation=[VpnScenarioMsiRegistration]::Info($code,$m.ordinarySid,[uint32]$context,'InstallLocation')})
+   if($rows.Count -gt 8){throw 'PUB_MSI_ROWS'}
+  }
+ }
+ return @($rows.ToArray())
+}
 function New-EvidenceZip([int]$number) {
  # Closed top-level names only: this listing never enters a folder, and
  # ReadWrite+Delete sharing leaves a parked owner's live files alone.
@@ -165,6 +226,14 @@ try{
   $read=[Collections.Generic.List[object]]::new()
   foreach($path in @($m.readPaths)){$read.Add((New-ReadPin $path))}
   $r=[ordered]@{schemaVersion=1;state='ordinary-publication-read-pins';operationId=$m.operationId;filePins=@($read.ToArray())}
+ }elseif($m.action -ceq 'read-directories'){
+  $read=[Collections.Generic.List[object]]::new()
+  foreach($path in @($m.readDirectories)){$read.Add((Hold-Directory $path $null))}
+  $r=[ordered]@{schemaVersion=1;state='ordinary-publication-read-directories';operationId=$m.operationId;directoryPins=@($read.ToArray())}
+ }elseif($m.action -ceq 'list-tree'){$r=[ordered]@{schemaVersion=1;state='ordinary-tree-listing';operationId=$m.operationId;treeRoot=$m.treeRoot;listing=(Get-TreeListing $m.treeRoot)}
+ }elseif($m.action -ceq 'installer-signer'){$r=[ordered]@{schemaVersion=1;state='ordinary-installer-signer';operationId=$m.operationId;signer=(Get-InstallerSigner $m.installerPath)}
+ }elseif($m.action -ceq 'msi-properties'){$r=[ordered]@{schemaVersion=1;state='ordinary-msi-properties';operationId=$m.operationId;package=(Get-MsiProperties $m.packagePath)}
+ }elseif($m.action -ceq 'msi-registration'){$r=[ordered]@{schemaVersion=1;state='ordinary-msi-registration';operationId=$m.operationId;products=@(Get-MsiRegistration $m.productName)}
  }elseif($m.action -ceq 'evidence-zip'){$r=New-EvidenceZip ([int]$m.evidenceNumber)
  }else{throw 'PUB_ACTION'}
  Assert-Context

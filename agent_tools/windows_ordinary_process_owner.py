@@ -123,6 +123,10 @@ def encoded(value):
                        ensure_ascii=False) + "\n").encode("utf-8", "strict")
 
 
+def _unreadable(error):
+    raise error
+
+
 def absolute(value):
     require(type(value) is str and "\0" not in value and len(value) <= 1000,
             "absolute-path-type")
@@ -605,6 +609,29 @@ class Owner:
         exec(compile(pin.digest(True), str(pin.path), "exec"), module.__dict__)
         return module
 
+    def installer_child(self, label, arguments, log_path, kind):
+        log = absolute(log_path)
+        require(log.parent == self.root and not log.exists(), "create-only-installer-log")
+        terminal = self.child(label, arguments).wait()
+        if not log.is_file() or log.lstat().st_file_attributes & 0x400:
+            self.park("installer-log-closing-unknown")
+        # Open original log read-only without writer/delete sharing before
+        # closing receipt; another active writer is an explicit UNKNOWN.
+        log_handle = self.native.k.CreateFileW(str(log), 0x80020000, 1, None, 3, 0x02200000, None)
+        if log_handle == ctypes.c_void_p(-1).value:
+            self.park("installer-log-still-owned-or-unavailable")
+        self.log_handles = [*getattr(self, "log_handles", []), log_handle]
+        log_identity = self.native.identity(log_handle)
+        require(log_identity["sizeBytes"] <= 64 * 1024 * 1024, "installer-log-bound")
+        log_digest = hashlib.sha256()
+        for block in self.native.read_blocks(log_handle):
+            log_digest.update(block)
+        self.event(kind, {"terminal": terminal, "installedAdmissionComplete": False,
+                   "rebootRequired": terminal["exitCode"] == 3010,
+                   "logNativeIdentity": log_identity, "logSha256": log_digest.hexdigest(),
+                   "logSecurity": self.native.security(log_handle)})
+        return terminal
+
     def invoke(self, workspace, *arguments, timeout=30):
         # timeout is an observer notice, never subprocess.run(timeout=...).
         del timeout
@@ -618,36 +645,38 @@ class Owner:
             self.event("qualification-result", {"terminal": terminal, "productOperation": False,
                        "fullWindowsAcceptance": False})
             return 0 if terminal["exitCode"] == self.request["expectedExitCode"] else 1
-        if action == "msi-install":
+        if action == "msi-reset":
+            # Setup only: remove the exact registered product by its code, then the install below.
+            code = self.request["uninstallProductCode"]
+            require(type(code) is str and len(code) == 38 and code[0] + code[-1] == "{}"
+                    and str(uuid.UUID(code[1:-1])).upper() == code[1:-1], "exact-uninstall-product-code")
+            terminal = self.installer_child("msi-uninstall", [r"C:\Windows\System32\msiexec.exe", "/x", code,
+                "/qn", "/norestart", "REBOOT=ReallySuppress", "MSIRESTARTMANAGERCONTROL=Disable", "/L*v",
+                self.request["uninstallLogPath"]], self.request["uninstallLogPath"], "uninstaller-result")
+            if terminal["exitCode"] != 0:
+                return 1
+            # Files the removal left would be recorded as part of the base installed beside them.
+            # Empty folders hold nothing the installed-tree digest counts; an unreadable one is not a pass.
+            folder = absolute(self.request["uninstallRoot"])
+            left = 0
+            if os.path.lexists(folder):
+                for _, _, names in os.walk(folder, onerror=_unreadable):
+                    left += len(names)
+            if left:
+                self.event("uninstall-left-files", {"files": left})
+                return 1
+        if action in {"msi-install", "msi-reset"}:
             arguments = [r"C:\Windows\System32\msiexec.exe", "/i", self.request["msiPath"],
                          "/qn", "/norestart", "/L*v", self.request["installerLogPath"]]
             require(str(absolute(self.request["msiPath"])).casefold() in self.by_path,
                     "exact-msi-file-pin-required")
-            log = absolute(self.request["installerLogPath"])
-            require(log.parent == self.root and not log.exists(), "create-only-installer-log")
-            terminal = self.child(action, arguments).wait()
-            if not log.is_file() or log.lstat().st_file_attributes & 0x400:
-                self.park("installer-log-closing-unknown")
-            # Open original log read-only without writer/delete sharing before
-            # closing receipt; another active writer is an explicit UNKNOWN.
-            log_handle = self.native.k.CreateFileW(str(log), 0x80020000, 1, None, 3, 0x02200000, None)
-            if log_handle == ctypes.c_void_p(-1).value:
-                self.park("installer-log-still-owned-or-unavailable")
-            self.log_handle = log_handle
-            log_identity = self.native.identity(log_handle)
-            require(log_identity["sizeBytes"] <= 64 * 1024 * 1024, "installer-log-bound")
-            log_digest = hashlib.sha256()
-            for block in self.native.read_blocks(log_handle):
-                log_digest.update(block)
-            self.event("installer-result", {"terminal": terminal, "installedAdmissionComplete": False,
-                       "rebootRequired": terminal["exitCode"] == 3010,
-                       "logNativeIdentity": log_identity, "logSha256": log_digest.hexdigest(),
-                       "logSecurity": self.native.security(log_handle)})
+            terminal = self.installer_child("msi-install", arguments, self.request["installerLogPath"],
+                                            "installer-result")
             return 0 if terminal["exitCode"] == 0 else 1
         if action in {"windows-public-update", "windows-proxy-lifecycle"}:
             driver_path = str(Path(__file__).with_name("windows_ordinary_dedicated_driver.py"))
             pin = self.by_path[str(absolute(driver_path)).casefold()]
-            require(pin.record["sha256"] == "1b4aa32f0c370d49278c57dc79d48246e3c2e22d0d51620b2b88ce1cd8021048",
+            require(pin.record["sha256"] == "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb",
                     "held-fixed-dedicated-driver-source")
             driver = self.module(driver_path, "_owned_fixed_dedicated_driver")
             return driver.run(self, action)
@@ -734,8 +763,8 @@ class Owner:
             "fullWindowsAcceptance": False})
         for pin in reversed(self.pins):
             pin.close()
-        if getattr(self, "log_handle", None) is not None:
-            self.native.k.CloseHandle(self.log_handle)
+        for log_handle in getattr(self, "log_handles", []):
+            self.native.k.CloseHandle(log_handle)
 
 
 def main():

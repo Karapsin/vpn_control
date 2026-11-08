@@ -23,6 +23,9 @@ VARIANTS = frozenset(("public-ready", "download-cancelled", "checksum-rejected",
     "success-off", "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss", "transport-loss"))
 INSTALL_VARIANTS = VARIANTS - {"public-ready", "download-cancelled", "checksum-rejected"}
 SUCCESS_VARIANTS = frozenset(("success-off", "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss", "transport-loss"))
+# A returned CANCELLED ends these known. The async installer wait needs a native terminal to rule out a
+# running helper, and protected storage leaves its counterfeit root behind, so both keep parking.
+GRANT_VARIANTS = INSTALL_VARIANTS - {"uac-denied", "install-cancelled", "installer-wait-client-loss", "protected-storage-rejected"}
 
 
 def require(condition, code):
@@ -41,6 +44,15 @@ def json_result(result, *, codes=("OK",), final=True):
         "UNAVAILABLE", "TIMEOUT", "OUTCOME_UNKNOWN", "INCOMPATIBLE_PROTOCOL"} else 1
     require(result.returncode == expected_exit and value.get("ok") == (expected_exit == 0), "public-code-exit-agreement")
     return value
+
+
+def returned_cancelled(result):
+    """Peek only; anything but the product's own CANCELLED stays with the checks that follow."""
+    try:
+        value = json.loads(result.stdout)
+    except ValueError:
+        return False
+    return type(value) is dict and value.get("code") == "CANCELLED"
 
 
 def inventory(value):
@@ -487,6 +499,30 @@ def _run_update(owner, harness):
         close_disconnected(owner, workspace, identity, serve, gui_child)
         fixture.close_known(all_update_operations_terminal=True)
         return 0
+    if variant in GRANT_VARIANTS and returned_cancelled(result):
+        # An expired prompt reaches a grant as the product's own CANCELLED, with no handoff and nothing
+        # installed. This closes what the case started and is a known failure, so the clone does not park.
+        cancelled = json_result(result, codes=("CANCELLED",))
+        require(cancelled.get("controllerId") == identity, "cancelled-grant-original-controller")
+        rows = public(owner, workspace, identity, "updates", "status")["data"].get("installations", [])
+        matches = [x for x in rows if x.get("originControllerId") == identity
+                   and x.get("operationId") == cancelled.get("operationId")]
+        require(len(matches) == 1 and matches[0].get("final") is True and matches[0].get("installed") is False,
+                "exact-cancelled-grant-public-installation")
+        invariant_status(before, public(owner, workspace, identity, "status"))
+        for pin in lease.files:
+            pin.digest()
+        if blocking_copy is not None:
+            close_disconnected(owner, blocking_workspace, blocking_status["controllerId"], blocking_copy)
+        if traffic_before is not None:
+            modules["lifecycle"].cleanup_update_traffic(owner, traffic_before)
+        if before["data"].get("runtimeRunning") is True:
+            public(owner, workspace, identity, "off")
+        close_disconnected(owner, workspace, identity, serve, gui_child)
+        fixture.close_known(all_update_operations_terminal=True)
+        owner.update_cancelled_grant = {"variant": variant, "operationId": cancelled.get("operationId")}
+        owner.event("update-grant-cancelled-known", {**owner.update_cancelled_grant, "knownFailure": True, "replayAllowed": False})
+        return 1
     if variant == "protected-storage-rejected":
         refused = json_result(result, codes=("OUTCOME_UNKNOWN", "RUNTIME_FAILED", "PERMISSION_DENIED"), final=None)
         receipts.preserve(owner, "update-protected-storage-refusal.json", {"public": refused,

@@ -279,6 +279,95 @@ class PlannerTests(unittest.TestCase):
         self.assertTrue(flags[-1].startswith("TargetDir="))
         self.assertNotIn("InstallAllUsers=1", flags)
 
+    def test_reset_names_one_exact_product_code_two_private_logs_and_the_folder_it_empties(self):
+        common, _, _ = synthetic_request()
+        msi = next(item["path"] for item in common["filePins"] if item["path"].endswith("baseline.msi"))
+        root = PureWindowsPath(common["operationRoot"])
+        local = PureWindowsPath(common["context"]["localAppData"])
+        fields = dict(msiPath=msi, installerLogPath=str(root / "msi-install.log"), uninstallLogPath=str(root / "msi-uninstall.log"),
+                      uninstallProductCode="{11111111-2222-4333-8444-555555555555}", uninstallRoot=str(local / "vpn-control"))
+        request = task.worker_request(common, "msi-reset", **fields)
+        self.assertEqual(("msi-reset", fields["uninstallProductCode"], fields["uninstallRoot"]),
+                         (request["action"], request["uninstallProductCode"], request["uninstallRoot"]))
+        for name, change, reason in (
+                ("lowercase-code", {"uninstallProductCode": "{11111111-2222-4333-8444-55555555555a}"}, "msi-reset-product-code"),
+                ("pattern", {"uninstallProductCode": "*"}, "msi-reset-product-code"),
+                ("package-path", {"uninstallProductCode": msi}, "msi-reset-product-code"),
+                ("one-log", {"uninstallLogPath": fields["installerLogPath"]}, "private-msi-log-parent"),
+                ("foreign-log", {"uninstallLogPath": r"C:\Users\Public\uninstall.log"}, "private-msi-log-parent"),
+                ("machine-root", {"uninstallRoot": r"C:\Program Files\vpn-control"}, "msi-reset-install-root"),
+                ("local-app-data", {"uninstallRoot": str(local)}, "msi-reset-install-root"),
+                ("operation-root", {"uninstallRoot": str(root)}, "msi-reset-install-root"),
+                ("inside-operation-root", {"uninstallRoot": str(root / "vpn-control")}, "msi-reset-install-root"),
+                ("relative-root", {"uninstallRoot": "vpn-control"}, "normalized-absolute-drive-path")):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, reason):
+                task.worker_request(common, "msi-reset", **{**fields, **change})
+        with self.assertRaisesRegex(ValueError, "msi-worker-input-schema"):
+            task.worker_request(common, "msi-install", **fields)
+        for missing in ("uninstallProductCode", "uninstallRoot"):
+            without = dict(fields)
+            del without[missing]
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, "msi-worker-input-schema"):
+                task.worker_request(common, "msi-reset", **without)
+
+    def test_owner_reset_removes_the_exact_product_then_installs_and_stops_after_a_failed_removal(self):
+        code = "{11111111-2222-4333-8444-555555555555}"
+        msiexec = r"C:\Windows\System32\msiexec.exe"
+        root = PureWindowsPath(r"C:\Users\fixture-user\AppData\Local\VpnControlOrdinary-op")
+        request = {"action": "msi-reset", "msiPath": r"C:\ProgramData\task\package.msi", "installerLogPath": str(root / "msi-install.log"),
+                   "uninstallLogPath": str(root / "msi-uninstall.log"), "uninstallProductCode": code,
+                   "uninstallRoot": r"C:\Users\fixture-user\AppData\Local\vpn-control-absent-" + str(uuid.uuid4())}
+        for exits, result in (((0, 0), 0), ((1605,), 1), ((0, 1603), 1), ((3010,), 1)):
+            with self.subTest(exits=exits):
+                calls, codes = [], list(exits)
+                owner = types.SimpleNamespace(request=dict(request), by_path={request["msiPath"].casefold(): object()},
+                                              installer_child=lambda label, arguments, log, kind: (calls.append((label, arguments, log, kind)),
+                                                                                                   {"exitCode": codes.pop(0)})[1])
+                with mock.patch.object(process_owner, "absolute", PureWindowsPath):
+                    self.assertEqual(result, process_owner.Owner.run(owner))
+                self.assertEqual(("msi-uninstall", [msiexec, "/x", code, "/qn", "/norestart", "REBOOT=ReallySuppress",
+                                                    "MSIRESTARTMANAGERCONTROL=Disable", "/L*v", request["uninstallLogPath"]],
+                                  request["uninstallLogPath"], "uninstaller-result"), calls[0])
+                self.assertEqual(len(exits), len(calls), "a failed removal installs nothing")
+                if len(calls) == 2:
+                    self.assertEqual(("msi-install", [msiexec, "/i", request["msiPath"], "/qn", "/norestart", "/L*v", request["installerLogPath"]],
+                                      request["installerLogPath"], "installer-result"), calls[1])
+        for bad in ("{11111111-2222-4333-8444-55555555555a}", "11111111-2222-4333-8444-555555555555", "*", None):
+            with self.subTest(code=bad):
+                calls = []
+                owner = types.SimpleNamespace(request={**request, "uninstallProductCode": bad}, by_path={},
+                                              installer_child=lambda *arguments: calls.append(arguments))
+                with self.assertRaisesRegex(process_owner.Refused, "exact-uninstall-product-code"):
+                    process_owner.Owner.run(owner)
+                self.assertEqual([], calls)
+
+    def test_owner_reset_installs_nothing_over_files_the_removal_left(self):
+        # What msiexec /x leaves would otherwise be recorded as part of the base the install puts beside it.
+        installed = r"C:\Users\fixture-user\AppData\Local\vpn-control"
+        root = PureWindowsPath(r"C:\Users\fixture-user\AppData\Local\VpnControlOrdinary-op")
+        request = {"action": "msi-reset", "msiPath": r"C:\ProgramData\task\package.msi", "installerLogPath": str(root / "msi-install.log"),
+                   "uninstallLogPath": str(root / "msi-uninstall.log"), "uninstallProductCode": "{11111111-2222-4333-8444-555555555555}",
+                   "uninstallRoot": installed}
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory) / "vpn-control"
+
+            def located(value):
+                return folder if value == installed else PureWindowsPath(value)
+            for name, prepare, result in (("absent", lambda: None, 0),
+                                          ("empty-folders", lambda: (folder / "app").mkdir(parents=True), 0),
+                                          ("left-file", lambda: (folder / "app" / "runtime-cache.bin").write_bytes(b"x"), 1)):
+                with self.subTest(name=name):
+                    prepare()
+                    calls, events, codes = [], [], [0, 0]
+                    owner = types.SimpleNamespace(request=dict(request), by_path={request["msiPath"].casefold(): object()},
+                                                  event=lambda kind, value: events.append((kind, value)),
+                                                  installer_child=lambda label, arguments, log, kind: (calls.append(label),
+                                                                                                       {"exitCode": codes.pop(0)})[1])
+                    with mock.patch.object(process_owner, "absolute", located):
+                        self.assertEqual(result, process_owner.Owner.run(owner))
+                    self.assertEqual(["msi-uninstall"] if result else ["msi-uninstall", "msi-install"], calls)
+                    self.assertEqual([("uninstall-left-files", {"files": 1})] if result else [], events)
+
 
 def finite_cli_inputs():
     """Synthetic request data only; no ordinary/native capability is minted."""

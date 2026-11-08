@@ -3002,6 +3002,7 @@ _VM_NATIVE_ADAPTERS = (
     'ssh_transfer',
     'ssh_transport',
     'windows_guest_input',
+    'windows_uac_decision',
     'windows_credential_recovery_ssh',
     'windows_credential_probe_ssh',
     'native_review_source_closure',
@@ -3441,6 +3442,16 @@ def _deploy_frame_invalid(inputs):
     return set(inputs) != {"deploymentId", "operationId"} or any(type(v) is not str for v in inputs.values())
 
 
+def _uac_decision_invalid(inputs):
+    # The UUID pattern is exactly the canonical form _valid_uuid accepts.
+    return (set(inputs) != {"host", "environment", "correlationId", "prompt", "decision"}
+            or any(type(v) is not str for v in inputs.values())
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", inputs["host"])
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["environment"])
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["correlationId"])
+            or inputs["prompt"] not in {"install-helper", "vpn-broker"} or inputs["decision"] not in {"approve", "deny"})
+
+
 def _deploy_lifecycle_invalid(action, inputs):
     starting = action.endswith("-start")
     required = {"spec", "setup", "credentialFile"} if starting else {"deploymentId", "credentialFile"}
@@ -3790,6 +3801,8 @@ def _vm_invalid_before_recovery(action, inputs):
                 or any(type(v) is not str for v in inputs.values()))
     if action in {"windows-vm-deploy-frame", "windows-vm-deploy-frame-collect"}:
         return _deploy_frame_invalid(inputs)
+    if action == "windows-uac-decision":
+        return _uac_decision_invalid(inputs)
     if action in {"windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop"}:
         return _deploy_lifecycle_invalid(action, inputs)
     if action in {"windows-vm-deploy-media", "windows-vm-deploy-preflight", "windows-vm-deploy-resources"}:
@@ -4107,6 +4120,16 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
         if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
                   "windows-input-decision", "windows-input-finish"}:
             return _agent_module("windows_guest_input").dispatch(REPO_ROOT, action, inputs)
+        if action == "windows-uac-decision":
+            if _uac_decision_invalid(inputs):
+                return _error("vm_workflow", "UAC decision requires exactly host, environment, correlationId, prompt and decision.")
+            try:
+                result = _agent_module("windows_uac_decision").execute(REPO_ROOT, inputs)
+                return {"tool": "vm_workflow", **result, "ok": result["state"] == "input-ack-only", "nativeActionAllowed": False,
+                        "productAction": False, "evidenceClass": "uac-input-ack-only"}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown", "reason": "uac_decision_unavailable",
+                        "nativeActionAllowed": False, "replayAllowed": False, "productAction": False}
         if action == "source-review-close":
             if _source_review_close_invalid(inputs):
                 return _error("vm_workflow", "Invalid source closure input fields.")
@@ -9579,7 +9602,7 @@ def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if retired is not None:
             return retired
     if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
-                  "windows-input-decision", "windows-input-finish"}:
+                  "windows-input-decision", "windows-input-finish", "windows-uac-decision"}:
         return _vm_workflow_impl(action, inputs)
     if action in {"source-review-close", "baseline-source-inventory"}:
         # Metadata/source reads must not write native failure evidence on refusal.
@@ -9720,6 +9743,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-input-join",
                                       "windows-input-decision",
                                       "windows-input-finish",
+                                      "windows-uac-decision",
                                       "windows-vm-virt-firmware-install-preflight",
                                       "windows-vm-virt-firmware-install-start",
                                       "windows-vm-virt-firmware-install-status",

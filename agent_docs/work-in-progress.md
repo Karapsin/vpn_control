@@ -38,9 +38,14 @@ Android and macOS native and visual work stay deferred and open, never passed.
    and a duplicate repeat start. The host outage exposed a status defect: a nested
    reconnect whose channel had definitely ended stayed pending, so the deployment
    status kept returning `recovery_outcome_unknown`. It is fixed with RED and
-   GREEN, and a native status rerun is still owed. Still to add: the taken tools,
-   the closed UAC action, the reboot allowance and the base-reset setup step. Fix
-   the tool defects the review predicted, each with RED and GREEN when proven.
+   GREEN, and a native status rerun is still owed. The first family is in: setup
+   rows `windows-python-install`, `windows-msi-base-install` and
+   `windows-msi-base-reset`, product rows `windows-packaged-cli-smoke`,
+   `windows-disconnected-cli-config` and `windows-streaming-client-interrupt`, and
+   the closed `windows-uac-decision` action. None of them has run natively yet.
+   Still to add: the taken tools, the reboot allowance and the remaining families
+   (proxy, updater with its collector stage, documents, TUN, reboot). Fix the tool
+   defects the review predicted, each with RED and GREEN when proven.
 3. Build the same-source package pair, enroll the fixture and re-prove status,
    display wake, lease and counter, direct and then MCP. By user decision, all
    scenarios run in sequence on one VM, updates may chain on it, and sign-in and

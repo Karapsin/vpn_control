@@ -18,6 +18,7 @@ import json
 import os
 from pathlib import Path, PureWindowsPath
 import re
+import stat
 import sys
 import time
 import types
@@ -46,10 +47,11 @@ READ_PIN_BATCH = 512
 VM_ROOT_ENTRY_LIMIT = 3500  # readiness_windows_lifecycle refuses a start above 4,096.
 QGA_LOCK_WAIT_SECONDS = 120  # Nothing was sent while waiting; readiness keeps working between exchanges.
 PROGRAM_BUDGET_SECONDS = 600
-RUN_MARGIN_SECONDS = 120
+RUN_MARGIN_SECONDS = 1800  # Pins held before launch and at closing: a Python tree is thousands of hashes.
 STATUS_POLL_SECONDS = 5
 STATUS_FAILURES = 3
 POWERSHELL_PATH = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+MSIEXEC_PATH = r"C:\Windows\System32\msiexec.exe"
 GUEST_ARGUMENTS = ("-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
                    "$s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($s))")
 WORKSPACE_PREFIX = "C:\\ProgramData\\VpnControlOrdinaryTask-"
@@ -58,18 +60,36 @@ BUNDLE_TOOLS = "bundle/agent_tools"
 OWNER_SOURCE = "windows_ordinary_task_owner.ps1"
 PUBLISHER_TEMPLATE = "windows_scenario_publisher.ps1.template"
 RUN_TEMPLATE = "windows_scenario_system_run.ps1.template"
+# Fixed places under the ordinary profile's LocalAppData: the per-user Python the
+# python-install row creates, and the per-user MSI install of the product.
+PYTHON_RELATIVE = "Programs\\Python\\Python313"
+INSTALL_RELATIVE = "vpn-control"
+CLI_LEAF = "vpn-control-cli.exe"
+PRODUCT_NAME = "vpn-control"
+UPGRADE_CODE = "{7A5E0A8E-2A7A-4BAF-9F2A-5FB2C3529AF2}"  # desktopApp/build.gradle.kts upgradeUuid.
+PYTHON_REQUIRED = ("python.exe", "python313.dll", "Lib/os.py", "Lib/subprocess.py", "Lib/threading.py",
+                   "Lib/json/__init__.py", "Lib/ctypes/__init__.py", "DLLs/_ctypes.pyd")
+INSTALLED_REQUIRED = ("vpn-control.exe", CLI_LEAF)
+INSTALL_SCENARIOS = frozenset({"windows-msi-base-install", "windows-msi-base-reset"})
+TREE_FILE_LIMIT = 3800  # One tree. A product row's Python and installed trees share one request: see _pin_bound.
+FILE_PIN_LIMIT, DIRECTORY_PIN_LIMIT = 4096, 1024  # windows_ordinary_task.validate_closure, per request.
+DIRECTORY_BATCH = 256
 # Top-level evidence only; folders holding activation.port are never entered.
 EVIDENCE_NAME = (r"(?:(?:task-)?event-[0-9A-Za-z_.-]+\.json|child-[0-9A-Za-z_.-]+\.raw"
                  r"|task-child\.[0-9A-Za-z_.-]+\.raw|(?:task-)?owner-parked\.json"
-                 r"|(?:python|msi)-install[0-9A-Za-z_.-]*\.log)")
+                 r"|(?:python-install|msi-install|msi-uninstall)[0-9A-Za-z_.-]*\.log)")
 # A collector stage for the update and TUN grant rows runs inside "run", driven by the
 # owner's update-native-observation-needed kind in the status file; see Job._on_status.
-STAGE_ORDER = ("anchor", "context", "publish", "requests", "run", "evidence", "receipt")
+# "installed" reads what an installer row left behind, before evidence is copied.
+STAGE_ORDER = ("anchor", "context", "publish", "requests", "run", "installed", "evidence", "receipt")
 STOP_AFTER = frozenset({"context", "publish"})
 _TOKEN_CHARACTERS = re.compile(r"[^A-Za-z0-9_.:-]+")
 _LABEL = re.compile(r"[a-z][a-z0-9-]{0,79}\Z")
 _UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
-_BUNDLE_PATH = re.compile(r"agent_tools/[A-Za-z0-9_.-]+\Z")
+_BUNDLE_PATH = re.compile(r"(?:agent_tools|scripts)/[A-Za-z0-9_.-]+\Z")
+_PRODUCT_CODE = re.compile(r"\{[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12}\}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_VERSION = re.compile(r"(?:[1-9]|1[0-9])\.(?:[0-9]|1[0-9])\.(?:[0-9]|1[0-9])\Z")
 _GUEST_CODE = re.compile(r"(?:RUN|TASK|TOKEN|PUB)_[A-Z0-9_]{1,80}\Z")
 _SETUP_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _OPEN_RUN_STATES = frozenset({"owner-parked", "deadline", "post-launch-unknown"})
@@ -252,24 +272,111 @@ def refused_before_effects(terminal):
     return type(value) is dict and value.get("state") == "refused-before-file-effects" and value.get("fileEffects") is False
 
 
-def assert_closed(row, requests, expected):
-    """Refuse any request this closed row does not build, before it reaches a guest."""
-    def need(condition, code):
-        if not condition:
-            raise KnownFailure("requests_not_closed:" + code)
-    request = requests["bootstrap"]
-    need(requests.get("worker") is None and row["workerAction"] is None, "worker")
-    need(type(request) is dict and set(request) == {"schemaVersion", "context", "operationId", "operationRoot", "filePins",
-                                                    "directoryPins", "treePins", "rawStreamLimitBytes", "bootstrap"}, "fields")
+def layout(operation, context, row):
+    """Every guest path a row may name, derived from the operation and observed profile only."""
+    local = context["localAppData"]
+    workspace, root = WORKSPACE_PREFIX + operation, local + "\\" + ROOT_PREFIX + operation
+    python, installed = local + "\\" + PYTHON_RELATIVE, local + "\\" + INSTALL_RELATIVE
+    paths = {"workspace": workspace, "operationRoot": root, "python": python, "pythonExe": python + "\\python.exe",
+             "installed": installed, "cli": installed + "\\" + CLI_LEAF, "productWorkspace": root + "\\workspace",
+             "workerRequest": root + "\\worker-request.json", "bootstrapRequest": root + "\\bootstrap-request.json",
+             "pythonLog": root + "\\python-install.log", "msiLog": root + "\\msi-install.log",
+             "msiUninstallLog": root + "\\msi-uninstall.log"}
+    for relative, role, _ in row["guestFiles"]:
+        paths["file:" + role] = workspace + "\\" + relative.rsplit("/", 1)[1]
+    if row.get("package"):
+        paths["file:package"] = workspace + "\\" + row["package"]["leaf"]
+    return paths
+
+
+def bootstrap_inputs(row, paths, *, signer=None, worker_pin=None, encode=None):
+    """The one bootstrap a row may run: qualificationArguments and the child are constants of the row."""
+    mode = row["bootstrapMode"]
+    if mode == "qualification":
+        inputs = {"qualificationSourcePath": paths["file:child"], "qualificationArguments": list(row["qualificationArguments"])}
+    elif mode == "python-install":
+        inputs = {"pythonInstallerPath": paths["file:package"], "pythonTargetDir": paths["python"],
+                  "pythonLogPath": paths["pythonLog"], "pythonInstallerSignerCertificateSha256": signer}
+    else:
+        inputs = {"pythonPath": paths["pythonExe"], "workerPath": paths["file:worker"], "workerRequestPath": paths["workerRequest"],
+                  "workerRequestSha256": worker_pin["sha256"], "workerRequestPinBase64": base64.b64encode(encode(worker_pin)).decode("ascii")}
+    return {"mode": mode, **inputs}
+
+
+def worker_inputs(row, paths, product, *, product_code=None):
+    """The one worker request a row may run. casesPath and qualificationArgv come only from here."""
+    action = row["workerAction"]
+    if action in {"msi-install", "msi-reset"}:
+        inputs = {"msiPath": paths["file:package"], "installerLogPath": paths["msiLog"]}
+        if action == "msi-reset":
+            # The worker installs nothing over files the removal left in the install folder.
+            inputs.update(uninstallProductCode=product_code, uninstallLogPath=paths["msiUninstallLog"], uninstallRoot=paths["installed"])
+        return inputs
+    if action == "qualification":
+        # The packaged CLI smoke: the unchanged public harness, its sibling diagnostic import kept by -E rather than -I.
+        return {"qualificationArgv": [paths["pythonExe"], "-E", "-s", "-B", paths["file:harness"], "--launcher", paths["cli"],
+                                      "--expected-version", product["productVersion"]], "expectedExitCode": 0}
+    return {"cliPath": paths["cli"], "workspace": paths["productWorkspace"], "productVersion": product["productVersion"],
+            "casesPath": paths["file:cases"], "harnessPath": paths["file:harness"]}
+
+
+def tree_digest(root, files, pins):
+    """A complete tree's identity: every relative name with its held bytes, in order."""
+    by_path = {pin["path"]: pin for pin in pins}
+    rows = []
+    for name in sorted(files):
+        pin = by_path[root + "\\" + name.replace("/", "\\")]
+        rows.append([name, pin["sha256"], pin["nativeIdentity"]["sizeBytes"]])
+    return _sha(json.dumps(rows, separators=(",", ":"), ensure_ascii=True).encode("ascii"))
+
+
+def _need_closed(condition, code):
+    if not condition:
+        raise KnownFailure("requests_not_closed:" + code)
+
+
+_COMMON_FIELDS = frozenset({"schemaVersion", "context", "operationId", "operationRoot", "filePins", "directoryPins", "treePins",
+                            "rawStreamLimitBytes"})
+
+
+def _same_request(row, request, expected, files, directories, trees, code):
+    need = _need_closed
     need(request["schemaVersion"] == 1 and request["operationId"] == expected["operationId"]
          and request["operationRoot"] == expected["operationRoot"] and request["context"] == expected["context"]
-         and request["rawStreamLimitBytes"] == row["rawStreamLimitBytes"], "identity")
-    need(request["treePins"] == [], "tree")
-    need({pin["path"]: pin["sha256"] for pin in request["filePins"]} == expected["files"]
-         and len(request["filePins"]) == len(expected["files"]), "file-pins")
-    need(sorted(pin["path"] for pin in request["directoryPins"]) == sorted(expected["directories"]), "directory-pins")
-    need(request["bootstrap"] == {"mode": row["bootstrapMode"], "qualificationSourcePath": expected["child"],
-                                  "qualificationArguments": list(row["qualificationArguments"])}, "bootstrap")
+         and request["rawStreamLimitBytes"] == row["rawStreamLimitBytes"], code + "identity")
+    need(request["treePins"] == trees, code + "tree")
+    need({pin["path"]: pin["sha256"] for pin in request["filePins"]} == files and len(request["filePins"]) == len(files), code + "file-pins")
+    need(sorted(pin["path"] for pin in request["directoryPins"]) == sorted(directories), code + "directory-pins")
+    if row["bootstrapMode"] == "python-worker":
+        need(request.get("pythonRuntime") == expected["pythonRuntime"], code + "python-runtime")
+
+
+def assert_closed_worker(row, worker, expected):
+    """The worker request before it is published: action, inputs and every pin are the row's."""
+    closed = expected["worker"]
+    _need_closed(row["workerAction"] is not None and type(worker) is dict
+                 and set(worker) == _COMMON_FIELDS | {"pythonRuntime", "action"} | set(closed["inputs"]), "worker-fields")
+    _need_closed(worker["action"] == row["workerAction"] and {key: worker[key] for key in closed["inputs"]} == closed["inputs"],
+                 "worker-inputs")
+    _same_request(row, worker, expected, closed["files"], closed["directories"], closed["trees"], "worker-")
+
+
+def assert_closed(row, requests, expected):
+    """Refuse any request this closed row does not build, before it reaches a guest."""
+    need = _need_closed
+    request = requests["bootstrap"]
+    worker = requests.get("worker")
+    runtime = {"pythonRuntime"} if row["bootstrapMode"] == "python-worker" else set()
+    need((worker is None) == (row["workerAction"] is None) == (expected.get("worker") is None), "worker")
+    need(type(request) is dict and set(request) == _COMMON_FIELDS | runtime | {"bootstrap"}, "fields")
+    _same_request(row, request, expected, expected["files"], expected["directories"], expected["bootstrapTrees"], "")
+    need(request["bootstrap"] == expected["bootstrap"], "bootstrap")
+    installed = expected.get("installedRoot", "").casefold()
+    # Installed application pins live only in the worker request, so an MSI can replace files.
+    need(not installed or not any(pin["path"].casefold() == installed or pin["path"].casefold().startswith(installed + "\\")
+                                  for pin in request["filePins"] + request["directoryPins"]), "installed-in-bootstrap")
+    if worker is not None:
+        assert_closed_worker(row, worker, expected)
     task = requests.get("task")
     if task is None:
         return
@@ -283,8 +390,14 @@ def assert_closed(row, requests, expected):
          and policy.get("WorkingDirectory") == expected["operationRoot"] and policy.get("Command") == POWERSHELL_PATH, "task-policy")
 
 
-def build_receipt(plan, *, exit_code, stage, failure, context=None, task=None, evidence=None, guest_programs=0):
-    """Tokens, integers and evidence hashes only; raw evidence stays on the host until pulled."""
+def build_receipt(plan, *, exit_code, stage, failure, context=None, task=None, evidence=None, guest_programs=0,
+                  installed=None, python=None, windows=None):
+    """Tokens, integers and evidence hashes only; raw evidence stays on the host until pulled.
+
+    ``installed`` is what an installer row left behind and what a product row found; a
+    later row compares the tree against it. ``windows`` claims an installed package only
+    for a passed product row whose registration, complete tree and package all matched.
+    """
     context = context or {}
     task = task or {}
     streams = {row["name"]: row for row in task.get("rawStreams", [])}
@@ -308,7 +421,9 @@ def build_receipt(plan, *, exit_code, stage, failure, context=None, task=None, e
                  "stdout": stream("stdout"),
                  "stderr": stream("stderr")},
         "evidence": evidence,
-        "windows": {"installedPackage": False, "packageSha256": None},
+        "installed": installed,
+        "python": python,
+        "windows": windows or {"installedPackage": False, "packageSha256": None},
     }
 
 
@@ -336,6 +451,9 @@ class Job:
         self.file_pins = {}
         self.read_pins = []
         self.request_pin = self.rendered_task = None
+        self.paths = self.signer = self.msi = self.registered = self.prior_installed = None
+        self.python_tree = self.installed_tree = self.installed = self.python_facts = self.worker = None
+        self.installed_matched = self.task_checked = False
 
     # QGA and journal helpers.
     def _keep(self, relative, raw):
@@ -409,29 +527,61 @@ class Job:
         except ValueError as error:
             raise KnownFailure("guest_source_refused:" + token(error)) from None
 
-    def push_file(self, path, raw):
+    def _artifact(self, package):
+        """A staged package in the host's artifact cache, opened without following links."""
+        path = Path(self.plan["artifactDirectory"]) / package["sha256"]
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_size != package["bytes"]
+                or (hasattr(os, "getuid") and (info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077))):
+            os.close(descriptor)
+            raise ValueError("artifact_cache_unsafe")
+        return descriptor
+
+    def _chunks(self, source):
+        """Bytes in memory, or a staged package read in chunks and hashed on the way."""
+        if type(source) is bytes:
+            for offset in range(0, len(source), CHUNK_BYTES):
+                yield source[offset:offset + CHUNK_BYTES]
+            return
+        descriptor = self._artifact(source)
+        digest, total = hashlib.sha256(), 0
+        try:
+            while True:
+                part = os.read(descriptor, CHUNK_BYTES)
+                if not part:
+                    break
+                digest.update(part)
+                total += len(part)
+                yield part
+        finally:
+            os.close(descriptor)
+        if total != source["bytes"] or digest.hexdigest() != source["sha256"]:
+            raise ValueError("artifact_cache_changed")
+
+    def push_file(self, path, source):
         """QGA writes in 32,768-byte chunks through call(); one line in push.jsonl, no VM-root entry."""
         digest = hashlib.sha256()
-        chunks = 0
+        chunks = total = 0
         try:
             handle = self.rt.rpc("guest-file-open", {"path": path, "mode": "wb"}, budget=20)
             if type(handle) is not int or handle <= 0:
                 raise ValueError("guest_file_handle")
             try:
-                for offset in range(0, len(raw), CHUNK_BYTES):
-                    part = raw[offset:offset + CHUNK_BYTES]
+                for part in self._chunks(source):
                     reply = self.rt.rpc("guest-file-write", {"handle": handle, "buf-b64": base64.b64encode(part).decode("ascii")}, budget=20)
                     if type(reply) is not dict or reply.get("count") != len(part):
                         raise ValueError("guest_file_short_write")
                     digest.update(part)
                     chunks += 1
+                    total += len(part)
             finally:
                 self.rt.rpc("guest-file-close", {"handle": handle}, budget=20)
         except Exception:
             # No program runs here. The bytes are checked by "verify" and never written twice.
             raise KnownFailure("guest_file_push_lost") from None
         with (self.data / "push.jsonl").open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps({"path": path, "bytes": len(raw), "sha256": digest.hexdigest(), "chunks": chunks},
+            stream.write(json.dumps({"path": path, "bytes": total, "sha256": digest.hexdigest(), "chunks": chunks},
                                     sort_keys=True, separators=(",", ":")) + "\n")
 
     def read_guest_file(self, path, limit, *, truncate_wires=False):
@@ -487,6 +637,18 @@ class Job:
             if _BUNDLE_PATH.fullmatch(relative) is None or len(raw) != row["sizeBytes"] or _sha(raw) != row["sha256"]:
                 raise Refused("bundle_bytes_changed")
             self._keep("bundle/" + relative, raw)
+        package = self.package()
+        if package is not None:
+            # Staged before submit; the bytes are hashed here, again while pushed, and in the guest.
+            try:
+                for _ in self._chunks(package):
+                    pass
+            except (OSError, ValueError):
+                raise Refused("artifact_cache_unavailable") from None
+
+    def package(self):
+        spec = self.row.get("package")
+        return None if not spec else self.plan["packages"][spec["role"]]
 
     def _read_record(self, path):
         try:
@@ -507,6 +669,8 @@ class Job:
             fence = "direct-guest-" + other.name
             if record.get("fenceAnchored") is not False and not os.path.lexists(self.root / (fence + ".intent.json")):
                 raise Refused("prior_job_fence_missing")
+        if self.row.get("priorInstall"):
+            self.prior_installed = self._prior_install()
         names = [path.name for path in self.root.iterdir()]
         if len(names) > VM_ROOT_ENTRY_LIMIT:
             raise Refused("vm_root_entry_bound")
@@ -519,6 +683,30 @@ class Job:
             self.rt.rpc("guest-ping", {}, budget=8)
         except Exception:
             raise Refused("guest_agent_unavailable") from None
+
+    def _prior_install(self):
+        """The passed installer job on this VM whose package this product row names: what it left is the baseline."""
+        prior = (self.plan.get("prior") or {}).get("install")
+        if not isinstance(prior, str) or _UUID.fullmatch(prior) is None or prior == self.op:
+            raise Refused("prior_install_unavailable")
+        other = self.data.parent / prior
+        receipt = self._read_record(other / "scenario-receipt.json")
+        record = self._read_record(other / "job-exit.json")
+        installed = receipt.get("installed") if receipt is not None else None
+        target = self.package_target()
+        if (receipt is None or record is None or record.get("exitCode") != EXIT_PASSED or receipt.get("exitCode") != EXIT_PASSED
+                or receipt.get("result") != "passed" or receipt.get("correlationId") != prior or receipt.get("deploymentId") != self.machine
+                or receipt.get("scenarioId") not in INSTALL_SCENARIOS or type(installed) is not dict):
+            raise Refused("prior_install_unavailable")
+        if (installed.get("packageSha256") != target["sha256"] or installed.get("productVersion") != self.plan["product"]["productVersion"]
+                or not isinstance(installed.get("productCode"), str) or _PRODUCT_CODE.fullmatch(installed["productCode"]) is None
+                or not isinstance(installed.get("treeSha256"), str) or _SHA256.fullmatch(installed["treeSha256"]) is None
+                or type(installed.get("treeFiles")) is not int):
+            raise Refused("prior_install_other_package")
+        return installed
+
+    def package_target(self):
+        return self.plan["packages"]["targetPackage"]
 
     def stage_anchor(self):
         self.prepare()
@@ -564,20 +752,28 @@ class Job:
             self._load("windows_artifact_transfer")._context(self.raw_context, self.machine)
         except ValueError:
             raise KnownFailure("context_invalid") from None
+        self.paths = layout(self.op, self.context, self.row)
+        if self.paths["operationRoot"] != self.operation_root:
+            raise KnownFailure("context_profile_layout")
+        # What the closed UAC action reads through uac_context(plan). The job never calls or waits on that action.
+        self._keep("uac-context.json", (json.dumps({"operationRoot": self.operation_root, "ordinarySid": facts["expectedSid"],
+                                                    "ordinarySessionId": facts["console"], "bootFileTimeUtc": value["bootFileTimeUtc"]},
+                                                   sort_keys=True) + "\n").encode())
 
     # Stage 3.
     def _publisher(self, label, action, **fields):
         emitter = self._load("windows_artifact_transfer")
         m = {"schemaVersion": 1, "action": action, "operationId": self.op, "ordinarySid": self.context["ordinarySid"],
              "kernelBootIdentifier": self.context["bootIdentifier"], "systemToken": self.system_token,
-             "workspace": self.workspace, "operationRoot": self.operation_root, "directoryPins": self.directory_pins, **fields}
+             "workspace": self.workspace, "operationRoot": self.operation_root, "localAppData": self.context["localAppData"],
+             "directoryPins": self.directory_pins, **fields}
 
         def render():
             parts = fragments(self._bundle_source(OWNER_SOURCE), emitter)
             template = fill_template(self._bundle_source(PUBLISHER_TEMPLATE).decode("ascii"),
                                      {"INPUT": bound_input(m), "EVIDENCE_NAME": EVIDENCE_NAME, **parts})
-            # 512 read pins of hashes and file IDs do not compress below the publisher bound.
-            limit = MAX_STDOUT_BYTES if action == "read-pins" else PUBLISHER_OUTPUT_BYTES
+            # 512 read pins of hashes and file IDs, or a tree listing, do not compress below the publisher bound.
+            limit = MAX_STDOUT_BYTES if action in {"read-pins", "read-directories", "list-tree"} else PUBLISHER_OUTPUT_BYTES
             return wrap_output(emitter._boot_bound(template, self.raw_context), limit)
         terminal, pid = self.guest_program(label, self._rendered(render))
         return self._protocol(label, terminal, pid, m)
@@ -680,11 +876,11 @@ class Job:
                 raise KnownFailure("publisher_verify_receipt") from None
         return pins
 
-    def _read_pins(self, paths):
+    def _read_pins(self, paths, label="publish"):
         planner = self._load("windows_ordinary_task")
         pins = []
         for number, batch in enumerate(batches(paths, READ_PIN_BATCH), 1):
-            value, required = self._publisher("publish-read-pins-" + str(number), "read-pins", readPaths=batch)
+            value, required = self._publisher(label + "-read-pins-" + str(number), "read-pins", readPaths=batch)
             rows = value.get("filePins")
             try:
                 if (set(value) != required | {"filePins"} or value["state"] != "ordinary-publication-read-pins"
@@ -697,16 +893,182 @@ class Job:
             pins.extend(rows)
         return pins
 
+    def _read_directories(self, paths, label):
+        planner = self._load("windows_ordinary_task")
+        pins = []
+        for number, batch in enumerate(batches(paths, DIRECTORY_BATCH), 1):
+            value, required = self._publisher(label + "-directories-" + str(number), "read-directories", readDirectories=batch)
+            rows = value.get("directoryPins")
+            try:
+                if (set(value) != required | {"directoryPins"} or value["state"] != "ordinary-publication-read-directories"
+                        or type(rows) is not list or [pin.get("path") for pin in rows] != batch):
+                    raise ValueError("publisher_read_directories_receipt")
+                for pin in rows:
+                    planner.validate_pin(pin, True)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise KnownFailure("publisher_read_directories_receipt") from None
+            pins.extend(rows)
+        return pins
+
+    def _listing(self, label, root):
+        value, required = self._publisher(label + "-tree", "list-tree", treeRoot=root)
+        listing = value.get("listing")
+        try:
+            if (set(value) != required | {"treeRoot", "listing"} or value["state"] != "ordinary-tree-listing" or value["treeRoot"] != root
+                    or type(listing) is not dict or set(listing) != {"present", "files", "directories"} or type(listing["present"]) is not bool
+                    or type(listing["files"]) is not list or type(listing["directories"]) is not list
+                    or not all(type(name) is str and name and "\\" not in name and not name.startswith("/") and "//" not in name
+                               and ".." not in name.split("/") for name in listing["files"] + listing["directories"])
+                    or len(set(name.casefold() for name in listing["files"] + listing["directories"])) != len(listing["files"]) + len(listing["directories"])):
+                raise ValueError("publisher_tree_receipt")
+        except (ValueError, TypeError, KeyError):
+            raise KnownFailure("publisher_tree_receipt") from None
+        return listing
+
+    def _listed(self, label, root, required):
+        """A tree's listing: present, holding its required files, within one tree's bound."""
+        listing = self._listing(label, root)
+        if not listing["present"] or not set(required) <= set(listing["files"]):
+            raise KnownFailure(label + "_tree_absent")
+        if len(listing["files"]) > TREE_FILE_LIMIT:
+            raise KnownFailure(label + "_tree_bound")
+        return listing
+
+    def _tree_paths(self, root, listing):
+        """What pinning a listed tree reads: every file, every unheld ancestor, the root and every directory."""
+        held = {pin["path"].casefold() for pin in self.directory_pins}
+        directories = [path for path in ancestors([root]) if path.casefold() not in held]
+        directories += [root, *(root + "\\" + name.replace("/", "\\") for name in sorted(listing["directories"]))]
+        return [root + "\\" + name.replace("/", "\\") for name in sorted(listing["files"])], directories
+
+    def _pin_bound(self, trees):
+        """The worker request holds the most pins of a row: its fixed pins and every tree, counted before any tree pin."""
+        files = (len(self.read_pins) + sum(1 for _, role, _ in self.row["guestFiles"] if role != "owner")
+                 + int("package" in self.file_pins))
+        directories = len(self.directory_pins)
+        for root, listing in trees:
+            tree_files, tree_directories = self._tree_paths(root, listing)
+            files += len(tree_files)
+            directories += len(tree_directories)
+        if files > FILE_PIN_LIMIT or directories > DIRECTORY_PIN_LIMIT:
+            raise KnownFailure("worker_pin_bound")
+
+    def _tree(self, label, root, role, listing):
+        """A complete tree: a pin for every directory it needs and a read pin for every file."""
+        paths, directories = self._tree_paths(root, listing)
+        files = sorted(listing["files"])
+        directory_pins = self._read_directories(directories, label)
+        file_pins = self._read_pins(paths, label)
+        return {"tree": {"role": role, "root": root, "files": files}, "directoryPins": directory_pins, "filePins": file_pins,
+                "sha256": tree_digest(root, files, file_pins)}
+
+    def _registration(self, label):
+        """Registered products named vpn-control in the ordinary user's and the machine's MSI contexts."""
+        value, required = self._publisher(label, "msi-registration", productName=PRODUCT_NAME)
+        rows = value.get("products")
+        try:
+            if (set(value) != required | {"products"} or value["state"] != "ordinary-msi-registration" or type(rows) is not list
+                    or not all(type(row) is dict and set(row) == {"productCode", "context", "productName", "version", "installLocation"}
+                               and isinstance(row["productCode"], str) and _PRODUCT_CODE.fullmatch(row["productCode"])
+                               and row["context"] in (1, 2, 4) and row["productName"] == PRODUCT_NAME
+                               and isinstance(row["version"], str) and isinstance(row["installLocation"], str) for row in rows)):
+                raise ValueError("publisher_registration_receipt")
+        except (ValueError, TypeError, KeyError):
+            raise KnownFailure("publisher_registration_receipt") from None
+        return rows
+
+    def _registered_as(self, rows, code, version):
+        """Exactly one registration: per user, this product code and version, installed where the CLI is run from."""
+        location = self.paths["installed"].casefold()
+        return (len(rows) == 1 and rows[0]["context"] == 2 and rows[0]["productCode"] == code and rows[0]["version"] == version
+                and rows[0]["installLocation"].rstrip("\\").casefold() == location)
+
+    def _held_file(self, value, path, package):
+        pin = value.get("filePin")
+        self._load("windows_ordinary_task").validate_pin(pin)
+        if pin["path"] != path or pin["sha256"] != package["sha256"] or pin["nativeIdentity"]["sizeBytes"] != package["bytes"]:
+            raise ValueError("publisher_held_file")
+
+    def _msi_properties(self):
+        path, package = self.paths["file:package"], self.package()
+        value, required = self._publisher("publish-msi-properties", "msi-properties", packagePath=path)
+        found = value.get("package")
+        try:
+            properties = found["properties"]
+            if set(value) != required | {"package"} or value["state"] != "ordinary-msi-properties" or set(found) != {"filePin", "properties"}:
+                raise ValueError("publisher_msi_receipt")
+            self._held_file(found, path, package)
+        except (ValueError, TypeError, KeyError):
+            raise KnownFailure("publisher_msi_receipt") from None
+        code = properties.get("ProductCode")
+        if (properties.get("ProductName") != PRODUCT_NAME or properties.get("ProductVersion") != self.plan["product"]["productVersion"]
+                or str(properties.get("UpgradeCode")).upper() != UPGRADE_CODE or not isinstance(code, str) or _PRODUCT_CODE.fullmatch(code) is None):
+            raise KnownFailure("msi_package_identity")
+        return {"productCode": code, "productVersion": properties["ProductVersion"]}
+
+    def _installer_signer(self):
+        path, package = self.paths["file:package"], self.package()
+        value, required = self._publisher("publish-installer-signer", "installer-signer", installerPath=path)
+        signer = value.get("signer")
+        try:
+            if (set(value) != required | {"signer"} or value["state"] != "ordinary-installer-signer"
+                    or set(signer) != {"filePin", "status", "subject", "certificateSha256"}):
+                raise ValueError("publisher_signer_receipt")
+            self._held_file(signer, path, package)
+        except (ValueError, TypeError, KeyError):
+            raise KnownFailure("publisher_signer_receipt") from None
+        if (signer["status"] != "Valid" or not isinstance(signer["subject"], str) or "O=Python Software Foundation" not in signer["subject"]
+                or not isinstance(signer["certificateSha256"], str) or _SHA256.fullmatch(signer["certificateSha256"]) is None):
+            raise KnownFailure("python_installer_signer")
+        return signer["certificateSha256"]
+
     def stage_publish(self):
         read_paths = list(self.row["readPins"])
         self._initialize(read_paths)
         targets = []
         for relative, role, kind in self.row["guestFiles"]:
             raw = self.files[relative]
-            path = self.workspace + "\\" + relative.rsplit("/", 1)[1]
-            targets.append({"role": role, "path": path, "bytes": len(raw), "sha256": _sha(raw), "kind": kind, "raw": raw})
+            targets.append({"role": role, "path": self.paths["file:" + role], "bytes": len(raw), "sha256": _sha(raw), "kind": kind, "raw": raw})
+        package = self.package()
+        if package is not None:
+            targets.append({"role": "package", "path": self.paths["file:package"], "bytes": package["bytes"], "sha256": package["sha256"],
+                            "kind": "data", "raw": package})
         self.file_pins = self._publish_files(targets, "publish")
         self.read_pins = self._read_pins(read_paths)
+        if self.row["bootstrapMode"] == "python-install":
+            if self._listing("publish-python", self.paths["python"])["present"]:
+                raise KnownFailure("python_tree_present")
+            self.signer = self._installer_signer()
+        if self.row["bootstrapMode"] == "python-worker":
+            python = self._listed("python", self.paths["python"], PYTHON_REQUIRED)
+            trees, installed = [(self.paths["python"], python)], None
+            if self.row.get("priorInstall"):
+                rows = self._registration("publish-registration")
+                if not self._registered_as(rows, self.prior_installed["productCode"], self.plan["product"]["productVersion"]):
+                    raise KnownFailure("installed_registration_differs")
+                installed = self._listed("installed", self.paths["installed"], INSTALLED_REQUIRED)
+                trees.append((self.paths["installed"], installed))
+            # Both trees go into one worker request: a joint excess is refused before either tree is pinned.
+            self._pin_bound(trees)
+            self.python_tree = self._tree("python", self.paths["python"], "python-runtime", python)
+            if installed is not None:
+                self.installed_tree = self._tree("installed", self.paths["installed"], "installed-app", installed)
+                if (self.installed_tree["sha256"] != self.prior_installed["treeSha256"]
+                        or len(self.installed_tree["tree"]["files"]) != self.prior_installed["treeFiles"]):
+                    raise KnownFailure("installed_tree_differs")
+                self.installed = dict(self.prior_installed)
+                self.installed_matched = True
+        if (self.row.get("package") or {}).get("role") == "basePackage":
+            self.msi = self._msi_properties()
+            self.registered = self._registration("publish-registration")
+            reset = self.row["workerAction"] == "msi-reset"
+            # Never a silent upgrade: install needs no product, reset exactly one registered product to remove.
+            if (len(self.registered) != (1 if reset else 0)
+                    or reset and (self.registered[0]["context"] != 2 or _PRODUCT_CODE.fullmatch(self.registered[0]["productCode"]) is None)):
+                raise KnownFailure("installed_product_state")
+            # Files already in the install folder would join the recorded base. Reset's worker checks the same after its removal.
+            if not reset and self._listing("publish-installed", self.paths["installed"])["files"]:
+                raise KnownFailure("installed_files_present")
 
     # Stage 4.
     def stage_requests(self):
@@ -715,26 +1077,67 @@ class Job:
         except ValueError as error:  # The planner refused; nothing was started.
             raise KnownFailure("planner_refused:" + token(error)) from None
 
+    def _publish_request(self, role, path, request):
+        raw = self._load("windows_ordinary_task").data(request)
+        pins = self._publish_files([{"role": role, "path": path, "bytes": len(raw), "sha256": _sha(raw), "kind": "data", "raw": raw}], role)
+        return pins[role]
+
+    def _python_runtime(self):
+        return {"root": self.paths["python"], "interpreterPath": self.paths["pythonExe"], "version": "3.13.15", "architecture": "amd64"}
+
     def _build_requests(self):
         planner = self._load("windows_ordinary_task")
-        child, owner = self.file_pins["child"], self.file_pins["owner"]
-        file_pins = [*self.read_pins, owner, child]
-        common = planner.common_request(self.context, self.op, self.operation_root, file_pins, self.directory_pins, [],
-                                        self.row["rawStreamLimitBytes"])
-        request = planner.bootstrap_request(common, self.row["bootstrapMode"], qualificationSourcePath=child["path"],
-                                            qualificationArguments=list(self.row["qualificationArguments"]))
-        expected = {"operationId": self.op, "operationRoot": self.operation_root, "context": self.context,
-                    "files": {pin["path"]: pin["sha256"] for pin in file_pins},
-                    "directories": [pin["path"] for pin in self.directory_pins], "child": child["path"], "owner": owner["path"],
-                    "ownerSha256": owner["sha256"]}
-        requests = {"worker": None, "bootstrap": request}
-        assert_closed(self.row, requests, expected)
-        raw = planner.data(request)
-        path = self.operation_root + "\\bootstrap-request.json"
-        pins = self._publish_files([{"role": "bootstrap-request", "path": path, "bytes": len(raw), "sha256": _sha(raw), "kind": "data", "raw": raw}], "requests")
-        self.request_pin = pins["bootstrap-request"]
-        self.rendered_task = planner.render_task(request, owner, self.request_pin)
-        assert_closed(self.row, {**requests, "task": self.rendered_task}, {**expected, "requestSha256": self.request_pin["sha256"]})
+        row, paths, owner = self.row, self.paths, self.file_pins["owner"]
+        limit = row["rawStreamLimitBytes"]
+        expected = {"operationId": self.op, "operationRoot": self.operation_root, "context": self.context, "owner": owner["path"],
+                    "ownerSha256": owner["sha256"], "bootstrapTrees": [], "pythonRuntime": None, "worker": None,
+                    "installedRoot": paths["installed"]}
+        # The task's own executable; msiexec is the worker's child and is held only by the worker request.
+        bootstrap_files = [*(pin for pin in self.read_pins if pin["path"] == POWERSHELL_PATH), owner]
+        bootstrap_directories, runtime = list(self.directory_pins), None
+        requests = {"worker": None}
+        if row["bootstrapMode"] == "qualification":
+            bootstrap_files.append(self.file_pins["child"])
+            inputs = bootstrap_inputs(row, paths)
+        elif row["bootstrapMode"] == "python-install":
+            bootstrap_files.append(self.file_pins["package"])
+            inputs = bootstrap_inputs(row, paths, signer=self.signer)
+        else:
+            runtime = self._python_runtime()
+            python = self.python_tree
+            module_pins = [self.file_pins[role] for _, role, _ in row["guestFiles"] if role != "owner"]
+            worker_files = [*self.read_pins, *python["filePins"], *module_pins]
+            worker_directories = [*self.directory_pins, *python["directoryPins"]]
+            worker_trees = [python["tree"]]
+            if "package" in self.file_pins:
+                worker_files.append(self.file_pins["package"])
+            if self.installed_tree is not None:
+                worker_files += self.installed_tree["filePins"]
+                worker_directories += self.installed_tree["directoryPins"]
+                worker_trees.append(self.installed_tree["tree"])
+            code = self.registered[0]["productCode"] if row["workerAction"] == "msi-reset" else None
+            closed = worker_inputs(row, paths, self.plan.get("product"), product_code=code)
+            worker_common = planner.common_request(self.context, self.op, self.operation_root, worker_files, worker_directories,
+                                                   worker_trees, limit, runtime)
+            requests["worker"] = planner.worker_request(worker_common, row["workerAction"], **closed)
+            expected["worker"] = {"inputs": closed, "files": {pin["path"]: pin["sha256"] for pin in worker_files},
+                                  "directories": [pin["path"] for pin in worker_directories], "trees": worker_trees}
+            expected["pythonRuntime"] = runtime
+            assert_closed_worker(row, requests["worker"], expected)
+            self.worker = self._publish_request("worker-request", paths["workerRequest"], requests["worker"])
+            bootstrap_files += [*python["filePins"], self.file_pins["worker"], self.worker]
+            bootstrap_directories += python["directoryPins"]
+            expected["bootstrapTrees"] = [python["tree"]]
+            inputs = bootstrap_inputs(row, paths, worker_pin=self.worker, encode=planner.data)
+        common = planner.common_request(self.context, self.op, self.operation_root, bootstrap_files, bootstrap_directories,
+                                        expected["bootstrapTrees"], limit, runtime)
+        requests["bootstrap"] = planner.bootstrap_request(common, row["bootstrapMode"], **{k: v for k, v in inputs.items() if k != "mode"})
+        expected.update(files={pin["path"]: pin["sha256"] for pin in bootstrap_files},
+                        directories=[pin["path"] for pin in bootstrap_directories], bootstrap=inputs)
+        assert_closed(row, requests, expected)
+        self.request_pin = self._publish_request("bootstrap-request", paths["bootstrapRequest"], requests["bootstrap"])
+        self.rendered_task = planner.render_task(requests["bootstrap"], owner, self.request_pin)
+        assert_closed(row, {**requests, "task": self.rendered_task}, {**expected, "requestSha256": self.request_pin["sha256"]})
 
     # Stage 5.
     def _on_status(self):
@@ -785,6 +1188,7 @@ class Job:
         if state != "task-finished":
             raise Unknown(state if state in _OPEN_RUN_STATES else "system_run_state_unrecognized")
         self._check_task(value)
+        self.task_checked = True
 
     def _check_task(self, value):
         def need(condition, code):
@@ -804,6 +1208,24 @@ class Job:
         for name, text in self.row["expectedStreams"].items():
             raw = text.encode("ascii")
             need(streams.get(name, {}).get("bytes") == len(raw) and streams[name].get("sha256") == _sha(raw), name)
+
+    # Stage 5b: what an installer row left behind, read after its owner finished.
+    def stage_installed(self):
+        if self.row["bootstrapMode"] == "python-install":
+            listing = self._listing("after-python", self.paths["python"])
+            if not listing["present"] or not set(PYTHON_REQUIRED) <= set(listing["files"]):
+                raise KnownFailure("python_tree_absent")
+            self.python_facts = {"files": len(listing["files"]), "directories": len(listing["directories"])}
+            return
+        if self.row["workerAction"] not in {"msi-install", "msi-reset"}:
+            return
+        rows = self._registration("after-registration")
+        if not self._registered_as(rows, self.msi["productCode"], self.msi["productVersion"]):
+            raise KnownFailure("installed_registration_differs")
+        tree = self._tree("after-installed", self.paths["installed"], "installed-app",
+                          self._listed("after-installed", self.paths["installed"], INSTALLED_REQUIRED))
+        self.installed = {"packageSha256": self.package()["sha256"], "productCode": self.msi["productCode"],
+                          "productVersion": self.msi["productVersion"], "treeSha256": tree["sha256"], "treeFiles": len(tree["tree"]["files"])}
 
     # Stage 6.
     def stage_evidence(self):
@@ -831,8 +1253,15 @@ class Job:
                 # The raw identity as the guest reports it: this is what a first proof reads.
                 context = None if self.context is None else {**self.context, **{
                     "hardwareUuid": self.raw_context["boot"]["hardwareUuid"], "machineGuid": self.raw_context["boot"]["machineGuid"]}}
+                # Installed-package evidence: a passed product row whose MSI registration, complete
+                # installed tree and --version (the worker's own static probe or the harness) all held.
+                # A job stopped before its task matched the first two but never ran --version.
+                claimed = (code == EXIT_PASSED and self.row["evidenceClass"] == "product" and self.installed_matched
+                           and self.task_checked and self.plan.get("stopAfter") is None)
+                windows = {"installedPackage": claimed, "packageSha256": self.package_target()["sha256"] if claimed else None}
                 receipt = build_receipt(self.plan, exit_code=code, stage=self.stage, failure=failure, context=context,
-                                        task=self.task, evidence=self.evidence, guest_programs=self.programs)
+                                        task=self.task, evidence=self.evidence, guest_programs=self.programs,
+                                        installed=self.installed, python=self.python_facts, windows=windows)
                 raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
                 if len(raw) > RECEIPT_BYTES:
                     raise ValueError("receipt_bound")
@@ -851,7 +1280,7 @@ class Job:
         code, failure = EXIT_PASSED, None
         stop = self.plan.get("stopAfter")
         stages = {"anchor": self.stage_anchor, "context": self.stage_context, "publish": self.stage_publish,
-                  "requests": self.stage_requests, "run": self.stage_run}
+                  "requests": self.stage_requests, "run": self.stage_run, "installed": self.stage_installed}
         try:
             for name in self.row["stages"]:
                 if name not in stages:

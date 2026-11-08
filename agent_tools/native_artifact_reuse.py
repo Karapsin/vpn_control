@@ -100,7 +100,10 @@ def artifact_set_verify(root: str | Path, artifact_set: str | Mapping[str, Any])
 
 
 def artifact_set_verify_readonly(root: str | Path, artifact_set: str | Mapping[str, Any]) -> dict[str, Any]:
-    """Verify a frozen set without registry creation, cleanup, migration, or locks."""
+    """Verify a frozen set without registry creation, cleanup, migration, or locks.
+
+    A verified set also names the product version it was frozen with, so a caller can compare it.
+    """
     root = _root(root)
     try:
         artifact_set = _load_set_readonly(root, artifact_set)
@@ -132,7 +135,7 @@ def artifact_set_verify_readonly(root: str | Path, artifact_set: str | Mapping[s
             raise ArtifactReuseError("runtime or signer bytes changed")
     except (ArtifactReuseError, registry.NativeArtifactRegistryError, KeyError, TypeError, ValueError, OSError) as error:
         return {"verification": "mismatch", "reason": str(error)}
-    return {"verification": "verified", "packages": checked, "originalSourceSha": source}
+    return {"verification": "verified", "packages": checked, "originalSourceSha": source, "productVersion": inputs["version"]}
 
 
 def artifact_reuse_check(root: str | Path, value: Mapping[str, Any], *,

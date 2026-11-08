@@ -52,7 +52,13 @@ OS_OWNER = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
 BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows_ordinary_task.py", "agent_tools/windows_ordinary_process_owner.py",
                 "agent_tools/windows_ordinary_task_owner.ps1", "agent_tools/windows_artifact_transfer.py", "agent_tools/readiness_windows_guest.py",
                 "agent_tools/windows_scenario_publisher.ps1.template", "agent_tools/windows_scenario_system_run.ps1.template",
-                "agent_tools/windows_scenario_qualification_child.ps1")
+                "agent_tools/windows_scenario_qualification_child.ps1", "agent_tools/windows_disconnected_cli_cases.py",
+                "agent_tools/windows_streaming_cli_cases.py", "scripts/test_packaged_cli.py", "scripts/windows_install_admission_diagnostic.py")
+PYTHON_ROOT = PROFILE + "\\AppData\\Local\\Programs\\Python\\Python313"
+INSTALLED_ROOT = PROFILE + "\\AppData\\Local\\vpn-control"
+OLD_CODE = "{11111111-2222-4333-8444-555555555555}"
+NEW_CODE = "{66666666-7777-4888-8999-AAAAAAAAAAAA}"
+VERSION = "2.2.15"
 
 
 def out_data(value):
@@ -84,6 +90,19 @@ class FakeQga:
         self.program_exit = {}
         self.status_file = None
         self.write_sizes = []
+        # The guest's trees and MSI state: what list-tree, read-pins and msi-registration report.
+        self.python_tree = (["DLLs/_ctypes.pyd", "Lib/ctypes/__init__.py", "Lib/json/__init__.py", "Lib/os.py", "Lib/subprocess.py",
+                             "Lib/threading.py", "python.exe", "python313.dll"], ["DLLs", "Lib", "Lib/ctypes", "Lib/json"])
+        self.trees = {PYTHON_ROOT: self.python_tree}
+        self.installed_tree = (["app/vpn-control-cli.cfg", "runtime/bin/java.exe", "vpn-control-cli.exe", "vpn-control.exe"],
+                               ["app", "runtime", "runtime/bin"])
+        self.registration = []
+        self.msi_properties = {"ProductCode": NEW_CODE, "ProductName": "vpn-control", "ProductVersion": VERSION,
+                               "UpgradeCode": "{7a5e0a8e-2a7a-4baf-9f2a-5fb2c3529af2}"}
+        self.signer_status = "Valid"
+        self.install_effect = True
+        self.task_exit = None
+        self.requests_seen = []
 
     def count(self, command):
         return sum(1 for name, _ in self.calls if name == command)
@@ -219,8 +238,23 @@ class FakeQga:
                                  "heldPhysicalRead": True})
             reply.update(state="ordinary-publication-verified-set", verified=verified)
         elif action == "read-pins":
-            reply.update(state="ordinary-publication-read-pins", filePins=[self._pin(path, raw=b"exe", security={
+            reply.update(state="ordinary-publication-read-pins", filePins=[self._pin(path, raw=self.content(path), security={
                 "ownerSid": OS_OWNER, "sddl": "O:" + OS_OWNER + "D:P(A;;FA;;;" + OS_OWNER + ")(A;;FRFX;;;BU)"}) for path in m["readPaths"]])
+        elif action == "list-tree":
+            found = self.trees.get(m["treeRoot"])
+            listing = {"present": found is not None, "files": list(found[0]) if found else [], "directories": list(found[1]) if found else []}
+            reply.update(state="ordinary-tree-listing", treeRoot=m["treeRoot"], listing=listing)
+        elif action == "read-directories":
+            reply.update(state="ordinary-publication-read-directories", directoryPins=[self._pin(path, directory=True) for path in m["readDirectories"]])
+        elif action == "installer-signer":
+            reply.update(state="ordinary-installer-signer", signer={"filePin": self._pin(m["installerPath"], raw=self.files[m["installerPath"]]),
+                         "status": self.signer_status, "subject": "CN=Python Software Foundation, O=Python Software Foundation, C=US",
+                         "certificateSha256": "c" * 64})
+        elif action == "msi-properties":
+            reply.update(state="ordinary-msi-properties", package={"filePin": self._pin(m["packagePath"], raw=self.files[m["packagePath"]]),
+                                                                   "properties": dict(self.msi_properties)})
+        elif action == "msi-registration":
+            reply.update(state="ordinary-msi-registration", products=[dict(row) for row in self.registration])
         elif action == "evidence-zip":
             path = m["workspace"] + "\\evidence-" + str(m["evidenceNumber"]) + ".zip"
             raw = b"PK" + b"evidence" * 40000
@@ -230,11 +264,31 @@ class FakeQga:
             raise AssertionError("closed publisher action")
         return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
 
+    def content(self, path):
+        """Installed bytes depend on what was installed, so a changed product changes the tree digest."""
+        return b"exe:" + str(self.msi_properties["ProductVersion"]).encode() if path.startswith(INSTALLED_ROOT + "\\") else b"exe"
+
+    def install(self, worker):
+        if worker["action"] in {"msi-install", "msi-reset"}:
+            self.registration = [{"productCode": self.msi_properties["ProductCode"], "context": 2, "productName": "vpn-control",
+                                  "version": self.msi_properties["ProductVersion"], "installLocation": INSTALLED_ROOT + "\\"}]
+            # msiexec /x removes only the package's own files and /i adds its files beside whatever else is there.
+            files, directories = self.trees.get(INSTALLED_ROOT, ([], []))
+            if worker["action"] == "msi-reset":
+                files = [name for name in files if name not in self.installed_tree[0]]
+            self.trees[INSTALLED_ROOT] = (sorted({*files, *self.installed_tree[0]}), sorted({*directories, *self.installed_tree[1]}))
+
     def _system_run(self, m, pid):
         pin = m["taskRequestPin"]
         request = json.loads(self.files[pin["path"]])
         if hashlib.sha256(self.files[pin["path"]]).hexdigest() != pin["sha256"] or request["bootstrap"]["mode"] != m["mode"]:
             raise AssertionError("request pin differs from the published bytes")
+        worker = None
+        if m["mode"] == "python-worker":
+            worker = json.loads(self.files[request["bootstrap"]["workerRequestPath"]])
+            if hashlib.sha256(self.files[request["bootstrap"]["workerRequestPath"]]).hexdigest() != request["bootstrap"]["workerRequestSha256"]:
+                raise AssertionError("worker request differs from the published bytes")
+        self.requests_seen.append({"bootstrap": request, "worker": worker})
         if m["taskXml"].startswith("<?xml") or planner.policy_fields(m["taskXml"])["Arguments"] != m["taskArguments"]:
             raise AssertionError("task policy differs")
         reply = {"schemaVersion": 1, "operationId": m["operationId"], "productOperation": False, "bootstrapOpening": self._actor(pid),
@@ -244,13 +298,19 @@ class FakeQga:
         else:
             def stream(name, text):
                 return {"name": name, "bytes": len(text), "sha256": hashlib.sha256(text.encode()).hexdigest()}
+            exit_code = (7 if m["mode"] == "qualification" else 0) if self.task_exit is None else self.task_exit
+            if m["mode"] == "python-install" and exit_code == 0 and self.install_effect:
+                self.trees[PYTHON_ROOT] = self.python_tree
+            if worker is not None and exit_code == 0 and self.install_effect:
+                self.install(worker)
             reply.update({"state": "task-finished", "taskName": m["taskName"], "instanceGuid": "{guid}", "enginePid": 900, "ownerPid": 901,
-                          "ownerBirthFileTimeUtc": "134368653065000002", "ownerExitCode": 7, "lastTaskResult": 7, "terminalExitCode": 7,
+                          "ownerBirthFileTimeUtc": "134368653065000002", "ownerExitCode": exit_code, "lastTaskResult": exit_code, "terminalExitCode": exit_code,
                           "commandLineMatched": True, "workerEvents": 0, "taskDeleted": True, "polls": 2, "statusFailures": 0, "parkedFiles": [],
                           "sourceClosing": True,
                           "events": [{"name": "task-event-00000" + str(i) + "-" + kind + ".json", "bytes": 9, "sha256": "0" * 64, "kind": kind}
                                      for i, kind in enumerate(("submission-intent", "submitted", "terminal"))],
-                          "rawStreams": [stream("stdout", "stdout|scenario-ok"), stream("stderr", "stderr|scenario-ok")]})
+                          "rawStreams": ([stream("stdout", "stdout|scenario-ok"), stream("stderr", "stderr|scenario-ok")] if m["mode"] == "qualification"
+                                         else [stream("stdout", ""), stream("stderr", "")])})
             reply.update(self.run_changes)
         return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
 
@@ -930,8 +990,11 @@ class ClosedDoorTests(unittest.TestCase):
         task = planner.render_task(request, owner, request_pin)
         expected = {"operationId": self.OPERATION, "operationRoot": self.ROOT_PATH, "context": dict(context),
                     "files": {item["path"]: item["sha256"] for item in (engine, owner, child)},
-                    "directories": [item["path"] for item in directories], "child": self.CHILD, "owner": self.OWNER,
-                    "ownerSha256": owner["sha256"], "requestSha256": request_pin["sha256"]}
+                    "directories": [item["path"] for item in directories], "owner": self.OWNER, "ownerSha256": owner["sha256"],
+                    "requestSha256": request_pin["sha256"], "bootstrapTrees": [], "pythonRuntime": None, "worker": None,
+                    "installedRoot": PROFILE + "\\AppData\\Local\\vpn-control",
+                    "bootstrap": job.bootstrap_inputs(row, job.layout(self.OPERATION, context, row))}
+        self.assertEqual(self.CHILD, expected["bootstrap"]["qualificationSourcePath"])
         return row, request, task, expected
 
     def test_the_built_requests_pass(self):
@@ -986,10 +1049,12 @@ class ClosedDoorTests(unittest.TestCase):
     def test_evidence_regex_refuses_activation_port(self):
         pattern = re.compile(job.EVIDENCE_NAME)
         for name in ("task-event-000000-submission-intent.json", "event-000012-update-ready.json", "child-3.stdout.raw", "task-child.stdout.raw",
-                     "task-child.stderr.raw", "owner-parked.json", "task-owner-parked.json", "python-install.log", "python-install_000_core.log", "msi-install.log"):
+                     "task-child.stderr.raw", "owner-parked.json", "task-owner-parked.json", "python-install.log", "python-install_000_core.log", "msi-install.log",
+                     "msi-uninstall.log"):
             self.assertIsNotNone(pattern.fullmatch(name), name)
         for name in ("activation.port", "workspace\\activation.port", "event-1\\activation.port", "child-activation.port", "task-event-1.json.port",
-                     "bootstrap-request.json", "worker-request.json", "secret.key", "../event-1.json", "event-1/activation.port", "windows_ordinary_task_owner.ps1", ""):
+                     "bootstrap-request.json", "worker-request.json", "secret.key", "../event-1.json", "event-1/activation.port", "windows_ordinary_task_owner.ps1", "",
+                     "package.msi", "msi-repair.log", "workspace"):
             self.assertIsNone(pattern.fullmatch(name), name)
 
     def test_the_guest_program_uses_exactly_the_tested_evidence_names(self):
@@ -1003,7 +1068,7 @@ class ClosedDoorTests(unittest.TestCase):
         run = (ROOT / "agent_tools/windows_scenario_system_run.ps1.template").read_text(encoding="ascii")
         self.assertIn("throw 'PUB_ACTION'", publisher)
         self.assertEqual(2, publisher.count("Assert-OwnedPath $target.path"))
-        self.assertIn("$m.mode -ceq 'qualification'", run)
+        self.assertIn("@('qualification','python-install','python-worker') -ccontains $m.mode", run)
         for forbidden in ("Stop-Process", "Stop-ScheduledTask", "Remove-Item", ".Terminate(", ".Kill(", "shutdown.exe", "Start-Process", "RunLevel>Highest", "Park-"):
             self.assertNotIn(forbidden, publisher + run, forbidden)
         self.assertNotIn("WaitForExit()", run.split("if($end -ceq 'exited'")[0], "the wait loop keeps polling")
@@ -1077,6 +1142,11 @@ class SourceTests(Base):
                                       ("endpoints", "endpoints", {"targets": [dict(target, role="r" + str(i)) for i in range(job.FILE_BATCH)]}),
                                       ("verify", "verify", {"targets": [dict(target, role="r" + str(i), endpointPin=pin) for i in range(job.FILE_BATCH)]}),
                                       ("read-pins", "read-pins", {"readPaths": ["C:\\Python\\Lib\\" + "x" * 60 + str(i) + ".py" for i in range(job.READ_PIN_BATCH)]}),
+                                      ("read-directories", "read-directories", {"readDirectories": [PYTHON_ROOT + "\\Lib\\" + "x" * 60 + str(i) for i in range(job.DIRECTORY_BATCH)]}),
+                                      ("list-tree", "list-tree", {"treeRoot": PYTHON_ROOT}),
+                                      ("installer-signer", "installer-signer", {"installerPath": instance.workspace + "\\python-3.13.15-amd64.exe"}),
+                                      ("msi-properties", "msi-properties", {"packagePath": instance.workspace + "\\package.msi"}),
+                                      ("msi-registration", "msi-registration", {"productName": "vpn-control"}),
                                       ("evidence-zip", "evidence", {"evidenceNumber": 1})):
             try:
                 instance._publisher(label, action, **fields)
@@ -1093,7 +1163,8 @@ class SourceTests(Base):
 
     def test_sources_are_ascii_and_within_the_largest_proven_bound(self):
         sources = self.rendered()
-        self.assertEqual({"context", "initialize", "endpoints", "verify", "read-pins", "evidence", "run"}, set(sources))
+        self.assertEqual({"context", "initialize", "endpoints", "verify", "read-pins", "read-directories", "list-tree", "installer-signer",
+                          "msi-properties", "msi-registration", "evidence", "run"}, set(sources))
         for name, source in sources.items():
             with self.subTest(name=name):
                 raw = job.check_source(source)
@@ -1103,6 +1174,9 @@ class SourceTests(Base):
                 self.assertIn("$protocolResult= & {", source)
         self.assertIn("-gt 24576", sources["endpoints"])
         self.assertIn("-gt 65536", sources["read-pins"])
+        self.assertIn("-gt 65536", sources["read-directories"])
+        self.assertIn("-gt 65536", sources["list-tree"])
+        self.assertIn("-gt 24576", sources["msi-registration"])
 
     @unittest.skipUnless(POWERSHELL, "PowerShell parser unavailable; hosted Windows and Linux runners have one")
     def test_every_rendered_source_parses(self):
@@ -1174,6 +1248,386 @@ class SourceTests(Base):
             return len(base64.b64encode(gzip.compress(json.dumps({"filePins": rows}, separators=(",", ":")).encode())))
         self.assertLessEqual(encoded([pin(i) for i in range(job.FILE_BATCH)]), job.PUBLISHER_OUTPUT_BYTES)
         self.assertLessEqual(encoded([pin(i) for i in range(job.READ_PIN_BATCH)]), job.MAX_STDOUT_BYTES)
+
+        def directory(number):
+            rng = random.Random(number)
+            return {"path": PYTHON_ROOT + "\\Lib\\site\\pkg%04d" % number,
+                    "nativeIdentity": {"attributes": 16, "volumeSerial": 123456789, "fileIndex": rng.getrandbits(60)},
+                    "security": {"ownerSid": SID, "sddl": "O:" + SID + "D:AI(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;" + SID + ")"}}
+        self.assertLessEqual(len(base64.b64encode(gzip.compress(json.dumps({"directoryPins": [directory(i) for i in range(job.DIRECTORY_BATCH)]}).encode()))),
+                             job.MAX_STDOUT_BYTES)
+        names = ["Lib/%s/module_%04d.py" % (["encodings", "email", "asyncio", "json", "tkinter", "idlelib"][i % 6], i) for i in range(job.TREE_FILE_LIMIT)]
+        listing = {"listing": {"present": True, "files": names, "directories": ["Lib/d%03d" % i for i in range(300)]}}
+        self.assertLessEqual(len(base64.b64encode(gzip.compress(json.dumps(listing).encode()))), job.MAX_STDOUT_BYTES)
+
+    def test_the_planner_pins_the_installer_the_owner_script_pins(self):
+        owner = (ROOT / "agent_tools/windows_ordinary_task_owner.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn("record.sha256 -cne '" + planner.PYTHON_INSTALLER_SHA256 + "'", owner)
+        self.assertIn("stream.Length -ne " + str(planner.PYTHON_INSTALLER_BYTES) + ")", owner)
+
+
+class FamilyBase(Base):
+    """The first family on one fake VM: setup rows, then product rows that name what setup left."""
+
+    def setUp(self):
+        super().setUp()
+        self.artifacts = self.work / "home/.cache/vpn-control-windows-scenarios/artifacts"
+        self.artifacts.mkdir(parents=True, mode=0o700)
+        self.msi = random.Random(3).randbytes(job.CHUNK_BYTES * 3 + 5)
+        self.packages = {}
+        for role, raw in (("basePackage", self.msi), ("targetPackage", self.msi), ("pythonInstaller", random.Random(4).randbytes(40000))):
+            digest = hashlib.sha256(raw).hexdigest()
+            (self.artifacts / digest).write_bytes(raw)
+            (self.artifacts / digest).chmod(0o600)
+            self.packages[role] = {"sha256": digest, "bytes": len(raw)}
+        # The planner pins the real installer's bytes; this synthetic installer stands in for them in the job's own planner.
+        original = job.Job._load
+        installer = self.packages["pythonInstaller"]
+
+        def load(instance, name):
+            module = original(instance, name)
+            if name == "windows_ordinary_task":
+                module.PYTHON_INSTALLER_SHA256, module.PYTHON_INSTALLER_BYTES = installer["sha256"], installer["bytes"]
+            return module
+        patcher = mock.patch.object(job.Job, "_load", load)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def family_plan(self, scenario, *, prior=None, operation=None, stop=None):
+        row = json.loads(json.dumps(driver.RECIPES[scenario]))
+        keys = [key for key in row["artifactKeys"] if key in driver.PACKAGE_KINDS]
+        product = {"sourceSha": "a" * 40, "productVersion": VERSION} if "scenarioInput" in row["artifactKeys"] else None
+        return self.plan(operation, scenarioId=scenario, row=row, artifactDirectory=str(self.artifacts),
+                         packages={key: self.packages[key] for key in keys}, product=product,
+                         prior={} if prior is None else {"install": prior}, stopAfter=stop)
+
+    def run_family(self, scenario, **options):
+        plan = self.family_plan(scenario, **options)
+        self.addCleanup(self.forget_modules, plan["operationId"])
+        start = len(self.qga.programs)
+        code = job.run_job(self.rt, plan, self.files)
+        return plan, code, self.receipt(plan), [kind for kind, _ in self.qga.programs[start:]]
+
+    def install_base(self):
+        plan, code, receipt, _ = self.run_family("windows-msi-base-install")
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        return plan["operationId"], receipt
+
+    def pins_under(self, request, root):
+        return [pin["path"] for pin in request["filePins"] + request["directoryPins"]
+                if pin["path"] == root or pin["path"].startswith(root + "\\")]
+
+
+class FamilyJobTests(FamilyBase):
+    def test_the_family_runs_in_order_on_one_vm(self):
+        del self.qga.trees[PYTHON_ROOT]
+        plan, code, receipt, kinds = self.run_family("windows-python-install")
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual(["context", "initialize", "endpoints", "verify", "read-pins", "list-tree", "installer-signer", "endpoints", "verify",
+                          "system-run", "list-tree", "evidence-zip"], kinds)
+        self.assertEqual({"files": 8, "directories": 4}, receipt["python"])
+        bootstrap = self.qga.requests_seen[-1]["bootstrap"]["bootstrap"]
+        workspace = job.WORKSPACE_PREFIX + plan["operationId"]
+        self.assertEqual({"mode": "python-install", "pythonInstallerPath": workspace + "\\python-3.13.15-amd64.exe", "pythonTargetDir": PYTHON_ROOT,
+                          "pythonLogPath": PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"] + "\\python-install.log",
+                          "pythonInstallerSignerCertificateSha256": "c" * 64}, bootstrap)
+
+        install, receipt = self.install_base()
+        tree = receipt["installed"].pop("treeSha256")
+        self.assertRegex(tree, "[0-9a-f]{64}")
+        self.assertEqual({"packageSha256": self.packages["basePackage"]["sha256"], "productCode": NEW_CODE, "productVersion": VERSION, "treeFiles": 4},
+                         receipt["installed"])
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"], "setup never claims an installed package")
+        seen = self.qga.requests_seen[-1]
+        self.assertEqual("msi-install", seen["worker"]["action"])
+        self.assertIn(job.MSIEXEC_PATH, {pin["path"] for pin in seen["worker"]["filePins"]})
+        self.assertNotIn(job.MSIEXEC_PATH, {pin["path"] for pin in seen["bootstrap"]["filePins"]})
+        self.assertEqual([], self.pins_under(seen["bootstrap"], INSTALLED_ROOT))
+
+        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+            with self.subTest(scenario=scenario):
+                plan, code, receipt, kinds = self.run_family(scenario, prior=install)
+                self.assertEqual((0, None), (code, receipt["failure"]))
+                self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+                self.assertEqual(tree, receipt["installed"]["treeSha256"])
+                self.assertNotIn("list-tree", kinds[kinds.index("system-run"):], "a product row installs nothing")
+                seen = self.qga.requests_seen[-1]
+                self.assertEqual([], self.pins_under(seen["bootstrap"], INSTALLED_ROOT), "installed pins live only in the worker request")
+                self.assertEqual(["installed-app", "python-runtime"], sorted(tree_["role"] for tree_ in seen["worker"]["treePins"]))
+                self.assertEqual(["python-runtime"], [tree_["role"] for tree_ in seen["bootstrap"]["treePins"]])
+                root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+                workspace = job.WORKSPACE_PREFIX + plan["operationId"]
+                if scenario == "windows-packaged-cli-smoke":
+                    self.assertEqual([PYTHON_ROOT + "\\python.exe", "-E", "-s", "-B", workspace + "\\test_packaged_cli.py", "--launcher",
+                                      INSTALLED_ROOT + "\\vpn-control-cli.exe", "--expected-version", VERSION], seen["worker"]["qualificationArgv"])
+                    self.assertNotIn("casesPath", seen["worker"])
+                else:
+                    self.assertEqual(scenario.removeprefix("windows-"), seen["worker"]["action"])
+                    self.assertEqual(workspace + "\\" + ("windows_disconnected_cli_cases.py" if "disconnected" in scenario else "windows_streaming_cli_cases.py"),
+                                     seen["worker"]["casesPath"])
+                    self.assertEqual(root + "\\workspace", seen["worker"]["workspace"])
+                    self.assertNotIn("qualificationArgv", seen["worker"])
+                planner.validate_closure(seen["worker"])
+                planner.validate_python_runtime(seen["bootstrap"], seen["bootstrap"]["bootstrap"]["pythonPath"])
+
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual("msi-reset", self.qga.requests_seen[-1]["worker"]["action"])
+        self.assertEqual(NEW_CODE, self.qga.requests_seen[-1]["worker"]["uninstallProductCode"], "the exact registered product, by its code")
+        self.assertEqual(INSTALLED_ROOT, self.qga.requests_seen[-1]["worker"]["uninstallRoot"], "the folder the removal must leave without files")
+        self.assertEqual(tree, receipt["installed"]["treeSha256"])
+        plan, code, receipt, _ = self.run_family("windows-packaged-cli-smoke", prior=plan["operationId"])
+        self.assertEqual((0, True), (code, receipt["windows"]["installedPackage"]))
+        self.assertEqual([], self.classify()["unresolved"])
+        self.assertTrue(all(re.fullmatch(r"direct-guest-[0-9a-f-]{36}\.(?:intent|ack|terminal)\.json", path.name) for path in self.vm.iterdir()))
+
+    def test_a_large_package_goes_in_chunks_with_no_vm_root_entry_per_chunk(self):
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+        self.assertEqual(0, code)
+        package = job.WORKSPACE_PREFIX + plan["operationId"] + "\\package.msi"
+        self.assertEqual(self.msi, self.qga.files[package])
+        lines = [json.loads(line) for line in (Path(plan["dataDirectory"]) / "push.jsonl").read_text().splitlines()]
+        self.assertEqual([{"path": package, "bytes": len(self.msi), "sha256": hashlib.sha256(self.msi).hexdigest(), "chunks": 4}],
+                         [line for line in lines if line["path"] == package])
+        self.assertEqual(3 * (len(kinds) + 1), len(list(self.vm.iterdir())), "three flat journal entries per program and the fence, none per chunk")
+
+    def test_an_unstaged_or_changed_package_is_refused_before_any_guest_effect(self):
+        digest = self.packages["basePackage"]["sha256"]
+        for change in ("changed", "missing"):
+            with self.subTest(change=change):
+                if change == "changed":
+                    (self.artifacts / digest).write_bytes(b"x" * len(self.msi))
+                else:
+                    (self.artifacts / digest).unlink()
+                plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+                self.assertEqual((2, "artifact_cache_unavailable", []), (code, receipt["failure"], kinds))
+                self.assertFalse(self.fence(plan, ".intent.json").exists())
+        self.assertEqual(0, self.qga.count("guest-exec"))
+
+    def test_a_base_install_never_takes_files_it_did_not_install_into_its_baseline(self):
+        self.qga.trees[INSTALLED_ROOT] = (["runtime-cache.bin"], ["app"])
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+        self.assertEqual((1, "installed_files_present", None), (code, receipt["failure"], receipt["installed"]))
+        self.assertNotIn("system-run", kinds)
+        # An empty folder holds nothing the installed-tree digest would count.
+        self.qga.trees[INSTALLED_ROOT] = ([], ["app"])
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+        self.assertEqual((0, None, 4), (code, receipt["failure"], receipt["installed"]["treeFiles"]))
+
+    def test_installer_rows_never_upgrade_or_remove_silently(self):
+        self.qga.registration = [{"productCode": OLD_CODE, "context": 2, "productName": "vpn-control", "version": "2.2.13",
+                                  "installLocation": INSTALLED_ROOT}]
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+        self.assertEqual((1, "installed_product_state"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+        self.qga.registration = []
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
+        self.assertEqual((1, "installed_product_state"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+
+    def test_a_package_naming_another_product_or_version_is_refused_by_its_own_properties(self):
+        for name, change in (("version", {"ProductVersion": "2.2.13"}), ("name", {"ProductName": "other"}),
+                             ("upgrade", {"UpgradeCode": "{00000000-0000-4000-8000-000000000000}"}), ("code", {"ProductCode": "not-a-code"})):
+            with self.subTest(name=name):
+                self.qga.msi_properties = {**self.qga.msi_properties, **change}
+                plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+                self.assertEqual((1, "msi_package_identity"), (code, receipt["failure"]))
+                self.assertNotIn("system-run", kinds)
+                self.qga.msi_properties = FakeQga().msi_properties
+
+    def test_python_is_installed_once_per_vm(self):
+        plan, code, receipt, kinds = self.run_family("windows-python-install")
+        self.assertEqual((1, "python_tree_present"), (code, receipt["failure"]))
+        self.assertNotIn("installer-signer", kinds)
+        self.assertNotIn("system-run", kinds)
+
+    def test_an_installer_without_the_python_signature_never_runs(self):
+        del self.qga.trees[PYTHON_ROOT]
+        self.qga.signer_status = "NotSigned"
+        plan, code, receipt, kinds = self.run_family("windows-python-install")
+        self.assertEqual((1, "python_installer_signer"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+
+    def test_a_python_install_that_left_no_tree_is_a_known_failure(self):
+        del self.qga.trees[PYTHON_ROOT]
+        self.qga.install_effect = False
+        plan, code, receipt, kinds = self.run_family("windows-python-install")
+        self.assertEqual((1, "python_tree_absent", "installed"), (code, receipt["failure"], receipt["stage"]))
+        self.assertEqual(["system-run", "list-tree", "evidence-zip"], kinds[-3:])
+
+    def test_an_installer_that_registered_something_else_is_a_known_failure(self):
+        self.qga.install_effect = False
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+        self.assertEqual((1, "installed_registration_differs", "installed"), (code, receipt["failure"], receipt["stage"]))
+        self.assertIsNone(receipt["installed"])
+
+
+class ProductAdmissionTests(FamilyBase):
+    def assert_refused(self, scenario, reason, prior):
+        plan, code, receipt, kinds = self.run_family(scenario, prior=prior)
+        self.assertEqual((2, reason, []), (code, receipt["failure"], kinds))
+        self.assertFalse(self.fence(plan, ".intent.json").exists(), "a refused job anchors nothing")
+
+    def test_a_product_row_needs_a_passed_install_of_its_own_package(self):
+        self.assert_refused("windows-packaged-cli-smoke", "prior_install_unavailable", str(uuid.uuid4()))
+        plan, code, _, _ = self.run_family("windows-ordinary-qualification")
+        self.assertEqual(0, code)
+        self.assert_refused("windows-packaged-cli-smoke", "prior_install_unavailable", plan["operationId"])
+        install, _ = self.install_base()
+        other = random.Random(9).randbytes(100)
+        self.packages["targetPackage"] = {"sha256": hashlib.sha256(other).hexdigest(), "bytes": len(other)}
+        self.assert_refused("windows-disconnected-cli-config", "prior_install_other_package", install)
+
+    def test_a_failed_install_is_no_baseline(self):
+        self.qga.task_exit = 1
+        plan, code, receipt, _ = self.run_family("windows-msi-base-install")
+        self.assertEqual(1, code)
+        self.qga.task_exit = None
+        self.assert_refused("windows-streaming-client-interrupt", "prior_install_unavailable", plan["operationId"])
+
+    def test_the_installed_product_must_still_be_what_setup_left(self):
+        install, _ = self.install_base()
+        cases = (("tree", lambda: setattr(self.qga, "installed_tree", (self.qga.installed_tree[0] + ["app/extra.jar"], self.qga.installed_tree[1])),
+                  "installed_tree_differs"),
+                 ("bytes", lambda: self.qga.msi_properties.update(ProductVersion="2.2.16"), "installed_tree_differs"),
+                 ("registration", lambda: self.qga.registration[0].update(version="2.2.16"), "installed_registration_differs"),
+                 ("second", lambda: self.qga.registration.append(dict(self.qga.registration[0], context=4)), "installed_registration_differs"),
+                 ("location", lambda: self.qga.registration[0].update(installLocation="C:\\Other\\"), "installed_registration_differs"))
+        for name, change, reason in cases:
+            with self.subTest(name=name):
+                saved = (json.loads(json.dumps(self.qga.registration)), dict(self.qga.msi_properties), self.qga.installed_tree)
+                change()
+                self.qga.trees[INSTALLED_ROOT] = self.qga.installed_tree
+                plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install)
+                self.assertEqual((1, reason), (code, receipt["failure"]))
+                self.assertNotIn("system-run", kinds)
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+                self.qga.registration, self.qga.msi_properties, self.qga.installed_tree = saved
+                self.qga.trees[INSTALLED_ROOT] = self.qga.installed_tree
+
+    def test_a_failed_product_run_claims_nothing(self):
+        install, _ = self.install_base()
+        self.qga.task_exit = 1
+        plan, code, receipt, _ = self.run_family("windows-packaged-cli-smoke", prior=install)
+        self.assertEqual((1, "task_exit_code"), (code, receipt["failure"]))
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+    def test_a_product_row_stopped_before_its_task_claims_nothing(self):
+        # Registration and installed tree match at publish, but no worker ran: no --version under the ordinary token.
+        install, _ = self.install_base()
+        for stop in ("context", "publish"):
+            with self.subTest(stop=stop):
+                plan, code, receipt, kinds = self.run_family("windows-packaged-cli-smoke", prior=install, stop=stop)
+                self.assertEqual((0, stop, stop), (code, receipt["stoppedAfter"], receipt["stage"]))
+                self.assertNotIn("system-run", kinds)
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+
+class PinBoundTests(FamilyBase):
+    """A product row's worker request holds both trees, so their joint bound is checked before either tree is pinned."""
+
+    def grow(self, python_files, python_directories=0):
+        # One PowerShell pin, the worker, harness and diagnostic, 3,708 Python files and 384 installed files are 4,096 pins.
+        files, directories = self.qga.python_tree
+        self.qga.python_tree = (files + ["Lib/site/m%05d.py" % number for number in range(python_files)],
+                                directories + ["Lib/site", *("Lib/site/d%04d" % number for number in range(python_directories))])
+        self.qga.trees[PYTHON_ROOT] = self.qga.python_tree
+        files, directories = self.qga.installed_tree
+        self.qga.installed_tree = (files + ["app/lib%04d.jar" % number for number in range(380)], directories)
+        install, _ = self.install_base()
+        return self.run_family("windows-packaged-cli-smoke", prior=install)
+
+    def assert_refused_before_any_tree_pin(self, code, receipt, kinds):
+        self.assertEqual((1, "worker_pin_bound"), (code, receipt["failure"]))
+        self.assertEqual(["read-pins"], [kind for kind in kinds if kind in {"read-pins", "read-directories"}], "only the fixed OS pins were read")
+        self.assertNotIn("system-run", kinds)
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+    def test_a_product_row_at_both_planner_bounds_runs(self):
+        plan, code, receipt, _ = self.grow(3700, 1000)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        worker = self.qga.requests_seen[-1]["worker"]
+        self.assertEqual((4096, 1024), (len(worker["filePins"]), len(worker["directoryPins"])))
+
+    def test_one_file_over_the_bound_refuses_before_any_tree_pin(self):
+        self.assert_refused_before_any_tree_pin(*self.grow(3701)[1:])
+
+    def test_one_directory_over_the_bound_refuses_before_any_tree_pin(self):
+        self.assert_refused_before_any_tree_pin(*self.grow(3700, 1001)[1:])
+
+
+class WorkerClosedDoorTests(FamilyBase):
+    """Every worker row's requests as the job built them from synthetic pins, then mutated: each is refused."""
+
+    def captured(self, scenario, prior=None, calls=None):
+        calls = [] if calls is None else calls
+        original = job.assert_closed
+
+        def record(row, requests, expected):
+            calls.append(json.loads(json.dumps([row, requests, expected])))
+            return original(row, requests, expected)
+        with mock.patch.object(job, "assert_closed", record):
+            plan, code, receipt, _ = self.run_family(scenario, prior=prior)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        return plan, calls[-1]
+
+    def assert_refused(self, captured, change):
+        row, requests, expected = json.loads(json.dumps(captured))
+        change(row, requests, expected)
+        with self.assertRaisesRegex(job.KnownFailure, "requests_not_closed"):
+            job.assert_closed(row, requests, expected)
+
+    def test_the_built_worker_requests_pass_and_each_mutation_is_refused(self):
+        plan, base = self.captured("windows-msi-base-install")
+        install = plan["operationId"]
+        captures = {"windows-msi-base-install": base}
+        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt", "windows-msi-base-reset"):
+            captures[scenario] = self.captured(scenario, None if scenario.endswith("reset") else install)[1]
+        installed_pin = dict(captures["windows-packaged-cli-smoke"][1]["worker"]["filePins"][-1])
+
+        def worker(change):
+            return lambda row, requests, expected: change(requests["worker"])
+
+        def both(change):
+            def apply(row, requests, expected):
+                change(requests["worker"])
+                change({"filePins": [], "directoryPins": [], **expected["worker"]})
+            return apply
+        common = {
+            "worker-action": worker(lambda w: w.update(action="msi-install" if w["action"] != "msi-install" else "qualification")),
+            "worker-extra-pin": worker(lambda w: w["filePins"].append(dict(w["filePins"][0], path="C:\\Windows\\System32\\cmd.exe"))),
+            "worker-changed-hash": worker(lambda w: w["filePins"][0].update(sha256="2" * 64)),
+            "worker-tree": worker(lambda w: w["treePins"].pop()),
+            "worker-runtime": worker(lambda w: w.update(pythonRuntime=dict(w["pythonRuntime"], root="C:\\Python"))),
+            "worker-root": worker(lambda w: w.update(operationRoot=PROFILE + "\\AppData\\Local\\Other")),
+            "bootstrap-mode": lambda row, requests, expected: requests["bootstrap"]["bootstrap"].update(mode="qualification"),
+            "bootstrap-worker-pin": lambda row, requests, expected: requests["bootstrap"]["bootstrap"].update(workerRequestSha256="3" * 64),
+            "bootstrap-tree": lambda row, requests, expected: requests["bootstrap"]["treePins"].clear(),
+            "installed-in-bootstrap": lambda row, requests, expected: (requests["bootstrap"]["filePins"].append(installed_pin),
+                                                                       expected["files"].update({installed_pin["path"]: installed_pin["sha256"]})),
+            "no-worker": lambda row, requests, expected: requests.update(worker=None),
+        }
+        special = {
+            "windows-msi-base-install": {"msi-path": worker(lambda w: w.update(msiPath=w["msiPath"] + ".other")),
+                                         "extra-reset-code": worker(lambda w: w.update(uninstallProductCode=OLD_CODE))},
+            "windows-msi-base-reset": {"uninstall-code": worker(lambda w: w.update(uninstallProductCode=OLD_CODE)),
+                                       "uninstall-log": worker(lambda w: w.update(uninstallLogPath=w["installerLogPath"])),
+                                       "uninstall-root": worker(lambda w: w.update(uninstallRoot=PYTHON_ROOT))},
+            "windows-packaged-cli-smoke": {"argv-extra": worker(lambda w: w["qualificationArgv"].append("--extra")),
+                                           "argv-isolated": worker(lambda w: w["qualificationArgv"].__setitem__(1, "-I")),
+                                           "argv-version": worker(lambda w: w["qualificationArgv"].__setitem__(-1, "2.2.13")),
+                                           "cases-path": worker(lambda w: w.update(casesPath=w["qualificationArgv"][4]))},
+            "windows-disconnected-cli-config": {"cases-path": worker(lambda w: w.update(casesPath=w["harnessPath"])),
+                                                "free-argv": worker(lambda w: w.update(qualificationArgv=["cmd.exe"])),
+                                                "workspace": worker(lambda w: w.update(workspace=w["workspace"] + "-other"))},
+            "windows-streaming-client-interrupt": {"cases-path": worker(lambda w: w.update(casesPath=w["harnessPath"])),
+                                                   "action": worker(lambda w: w.update(action="disconnected-cli-config"))},
+        }
+        for scenario, captured in captures.items():
+            job.assert_closed(*captured)
+            for name, change in {**common, **special[scenario]}.items():
+                with self.subTest(scenario=scenario, change=name):
+                    self.assert_refused(captured, change)
 
 
 class StageShapeTests(unittest.TestCase):

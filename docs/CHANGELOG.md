@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Add the first Windows scenario family (Python and MSI setup, packaged CLI smoke, disconnected CLI and streaming rows) and the closed Windows UAC decision action.
+
 ## 2.2.16 - 2026-11-08
 
 - Publish complete gateway fixture terminal markers atomically before observation.

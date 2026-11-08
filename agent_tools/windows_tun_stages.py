@@ -166,10 +166,13 @@ def read_native_record(owner, lease, file_record, receipts, expected_stage):
 def finish(owner, lease, runtime, cases, observer, native_record=None, receipts=None):
     require(lease in owner.tun_operation_leases and not lease['finished'],'scoped-tun-finish-once')
     state=lease['state'];denied=lease['inputs']['variant'].endswith('deny')
+    # The default wait parks at 120 s, about as long as a prompt lives, so it must outlast the prompt.
     terminal=runtime.finish_operation(owner,state,lease['accepted'],
-        {'CANCELLED','PERMISSION_DENIED'} if denied else {'OK'})
+        {'CANCELLED','PERMISSION_DENIED'} if denied else {'OK','CANCELLED'},seconds=300)
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
-    if denied:
+    # An expired prompt reaches a grant as the product's own CANCELLED: the same unchanged A, a known failure.
+    cancelled=not denied and terminal['code']=='CANCELLED'
+    if denied or cancelled:
         require(all(status['data'][key]==lease['before']['data'][key] for key in
             ('runtimeRunning','activeLocationId','activeMode','runtimeId','runtimeStartedAt'))
             and status['restartRequired'] is True and status['data']['configuredMode']=='vpn'
@@ -191,6 +194,10 @@ def finish(owner, lease, runtime, cases, observer, native_record=None, receipts=
                 and native_record['observations']['configuration']['sha256']!=lease['activeConfig'].initial['sha256'],
                 'scoped-tun-actual-commit-result')
     lease['finished']=True
+    if cancelled:
+        owner.event('scoped-tun-grant-cancelled-known',{'variant':lease['inputs']['variant'],'terminal':terminal,
+            'status':status,'knownFailure':True,'replayAllowed':False})
+        return {'terminal':terminal,'status':status,'nativeRecord':None,'cancelled':True}
     owner.event('scoped-tun-public-outcome',{'variant':lease['inputs']['variant'],'terminal':terminal,
         'status':status,'nativeRecord':native_record,'uacInputOriginStillRequired':True,
         'trafficAndExactOffStillRequired':not denied,'privilegedFaultRecoveryProven':False})

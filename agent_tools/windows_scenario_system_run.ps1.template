@@ -65,7 +65,7 @@ function Count-OperationProcesses {
 $r=$null
 try{
 @@NATIVE@@
- N ($m.schemaVersion -eq 1 -and $m.mode -ceq 'qualification') 'RUN_CLOSED_MODE'
+ N ($m.schemaVersion -eq 1 -and @('qualification','python-install','python-worker') -ccontains $m.mode) 'RUN_CLOSED_MODE'
  N ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ceq 'S-1-5-18' -and [IntPtr]::Size -eq 8) 'RUN_SYSTEM'
  $requestPin=Open-Pin $m.taskRequestPin $false
  $q=[Text.UTF8Encoding]::new($false,$true).GetString((Read-PinBytes $requestPin 4194304))|ConvertFrom-Json

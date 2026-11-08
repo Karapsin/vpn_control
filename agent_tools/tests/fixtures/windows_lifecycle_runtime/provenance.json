@@ -189,9 +189,12 @@
       "sha256": "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"
     },
     "agent_tools/windows_tun_stages.py": {
-      "bytes": 15407,
+      "bytes": 16011,
+      "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
-      "sha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a"
+      "originalSourceBytes": 15407,
+      "originalSourceSha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a",
+      "sha256": "b672958650ced3cfd676400b1e497715d6ffbe5dad19893b272fb3137de9e12e"
     }
   },
   "schemaVersion": 1,

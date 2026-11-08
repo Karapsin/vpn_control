@@ -784,4 +784,43 @@ A row that was refused before it started has no receipt, so its collection stays
 `unknown` with `executionExitCode` 2 and a closed `executionFailure` token. A setup
 or component row never claims installed-package evidence.
 
+#### Windows UAC decision
+
+`vm_workflow windows-uac-decision` takes exactly `host`, `environment`,
+`correlationId`, `prompt` (`install-helper` or `vpn-broker`) and `decision`
+(`approve` or `deny`). It answers the one prompt of a running scenario whose
+dotted name is in the closed table of `agent_tools/windows_uac_decision.py`, and
+only when that row's prompt and decision equal the inputs. A row whose owner
+published its prompt event reports `uac-pending:<prompt>:<decision>` in
+`scenario-status`; a fixed client polls for it, because a model turn may not fit
+the prompt's lifetime. The job and the owner never call or wait on this action.
+The token outlives the prompt, so the client may call on every poll: a refusal
+that proved only "not yet" (event not pending, a failed guest read, a busy lock,
+nothing sent) permits another submit; any other refusal, such as no prompt
+within the 30 s gate, leaves the prompt to expire, and a repeat returns that
+refusal with no packet. A deny row is refused at `scenario-start` until collect
+joins the decision's input terminal, because an expired prompt ends as the same
+public `CANCELLED` as Esc.
+
+Proof comes before any key: reviewed pixel crops of a QMP frame and a SYSTEM
+census of `consent.exe` (one, System32, signed by Microsoft Windows, parent
+Appinfo, younger than 90 s), the owner's pending event and the UAC policy. The
+90 s rule holds at the burn, counting frames read after the census, and a dark
+field is read again within the gate, since the caret blinks there. Deny is
+one Esc and opens no credential. Approve reads `final-administrator.secret` through
+`SecretFile` and passes it on SSH stdin to a detached child. A create-only burn per
+prompt and the input journal precede the first key, so a lost reply never types
+twice; a repeat is a status packet with no key path. The reply is an
+acknowledgement only: `approvalSucceeded` and `productOutcomeProved` are always
+false, and the scenario's own collection proves the product outcome. Profiles are
+private, under `.runtime/windows-uac-profiles/<deployment>/<prompt>.json`, made by
+`reviewed_uac_profile` from a frame the reviewer opened. Guest files stay under the
+VM-root subdirectory `windows-uac/`, published whole, and the fence is a flat
+`direct-guest-*` journal, so `readiness-reboot` refuses while input is open and
+sign-in history never sees them. A known input closes the fence, and status
+closes it if that close was lost. An input whose owner died stays UNKNOWN:
+status records `input-outcome-unknown` once the prompt is gone but never closes
+the fence, so reboots and new jobs on that clone refuse until the original is
+read. No sign-in source pin moves, and the module is not alias-pinned.
+
 Return to [the tool entry point](../../agent_tools/README.md) for current task routing.

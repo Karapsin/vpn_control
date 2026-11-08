@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "fixtures": {
+    "disconnected-cases.before.source": {
+      "sha256": "586b2ad33459348535fd655fa6cc9db001708f83eb346291b27e32d1b6c55510",
+      "sizeBytes": 74666,
+      "origin": "agent_tools/windows_disconnected_cli_cases.py at commit 32d32706982bebaa6e110535384b2faf156c12af"
+    },
+    "streaming-cases.before.source": {
+      "sha256": "f40b207f5b482df9cd3061fddadde3e4f6002ec3d8321cdaeadb1d6c5d152462",
+      "sizeBytes": 17272,
+      "origin": "agent_tools/windows_streaming_cli_cases.py at commit 32d32706982bebaa6e110535384b2faf156c12af"
+    }
+  },
+  "observedFailure": "Each defect stopped the unchanged module against the real 2.2.15 macOS packaged CLI with a private temporary --state-dir, the case modules' own Windows-independent paths: human-static-streams, then READ_ONLY_SOURCE at the first location add, then READ_ONLY_SOURCE at the transfer destination's import, then INVALID_ARGUMENT for diagnostics export with --if-revision; the streaming module stopped at fresh-current-locations-before-streams. After the fixes both modules completed against the same product.",
+  "nativeWindowsFailure": false,
+  "productRules": [
+    "A human argument-parser refusal is one stderr line 'INVALID_ARGUMENT: invalid state directory or command.'",
+    "--if-revision is accepted only on the guarded writes capabilities lists in revisionGuardOperations; a read or export answers INVALID_ARGUMENT",
+    "A new workspace starts in subscription mode; a subscription add selects it again; location edits there answer READ_ONLY_SOURCE"
+  ],
+  "execution": "Only module definitions and standard-library imports are loaded. Each oracle drives one case function against an in-memory product that answers with the recorded output shapes; no process, CLI, network or Win32 call is made."
+}

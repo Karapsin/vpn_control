@@ -12,7 +12,7 @@ import re
 
 
 CASE_SHA = {
-    "windows-public-update": "939f33f84c3c35c404e65dfb887107354e086710aa1c7ba077b7082f8d1b17b1",
+    "windows-public-update": "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78",
     "windows-proxy-lifecycle": "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b",
 }
 CASE_NAME = {"windows-public-update": "windows_public_updater/update_cases.py",
@@ -45,6 +45,9 @@ PROXY_VARIANTS = frozenset({"gui-pending", "find-best-success",
 CONFIG_VARIANTS = frozenset({"generated", "custom", "large"})
 FAILURE_VARIANTS = frozenset({"prepare-failure", "commit-readiness-failure"})
 BRANCH_VARIANTS = CONFIG_VARIANTS | FAILURE_VARIANTS | {"sibling-off"}
+# restart-grant waits for the collector stage: an approved grant ends only with its native ready record.
+TUN_VARIANTS = frozenset({"restart-deny"})
+TUN_SHA = "b672958650ced3cfd676400b1e497715d6ffbe5dad19893b272fb3137de9e12e"
 BRANCH_SHA = "0b90fef622d8f0511aaf391209096db987a1d696e376283d056388c5c6493cb0"
 LISTENER_SHA = "1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928"
 
@@ -147,8 +150,20 @@ def run_update(owner, cases, harness):
         if hold is not None:
             owner.park("dedicated-case-failure-with-original-collector-hold", error)
         raise
+    # The counterfeit storage root stays on the clone, so this variant parks however its prompt ended.
     if inputs["variant"] == "protected-storage-rejected":
         owner.park("protected-storage-scenario-cannot-return-known-success")
+    cancelled = getattr(owner, "update_cancelled_grant", None)
+    if type(result) is int and result == 1 and cancelled is not None and cancelled.get("variant") == inputs["variant"]:
+        # The case closed everything it started and proved no handoff. No collector was asked to hold this
+        # owner, so its armed hold retires here; waiting for a release would park the clone over a known failure.
+        if hold is not None:
+            if getattr(owner, "caller_collection_hold", None) is not hold or hold.state != "armed":
+                owner.park("dedicated-original-caller-hold-replaced")
+            owner.retired_collection_hold = hold
+            owner.caller_collection_hold = None
+        owner.event("dedicated-update-grant-cancelled-known", {**cancelled, "holdRetired": hold is not None, "replayAllowed": False})
+        return 1
     if hold is not None:
         if getattr(owner, "caller_collection_hold", None) is not hold:
             owner.park("dedicated-original-caller-hold-replaced")
@@ -163,17 +178,23 @@ def run_update(owner, cases, harness):
 def lifecycle_inputs(owner, value):
     fields = {"schemaVersion", "variant", "sourceSha", "modules", "runtime", "gui"}
     require(type(value) is dict and type(value.get("variant")) is str
-            and value["variant"] in PROXY_VARIANTS | BRANCH_VARIANTS,
+            and (value["variant"] in PROXY_VARIANTS | BRANCH_VARIANTS or value["variant"] in TUN_VARIANTS and "tun" in value),
             "dedicated-finite-proxy-variants-only")
     branch = value["variant"] in BRANCH_VARIANTS
-    require(set(value) == fields | ({"branch"} if branch else set())
+    tun = value["variant"] in TUN_VARIANTS
+    require(set(value) == fields | ({"branch"} if branch else {"tun"} if tun else set())
             and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1,
             "dedicated-proxy-input-schema")
+    # The stages pick restart or find-best, deny or grant, from their own inputs: they must name this variant.
+    require(not tun or type(value["tun"]) is dict and value["tun"].get("variant") == value["variant"],
+            "dedicated-tun-variant-binding")
     require(type(value["sourceSha"]) is str and re.fullmatch("[a-f0-9]{40}", value["sourceSha"]),
             "dedicated-lifecycle-source-sha")
     roles = {"runtime": RUNTIME_SHA, "observer": UPDATE_MODULES["broker_observer"]}
     if branch:
         roles["branches"] = BRANCH_SHA
+    if tun:
+        roles["tun"] = TUN_SHA
     module_roles(owner, value["modules"], roles)
     runtime_inputs = value["runtime"]
     require(type(runtime_inputs) is dict and type(runtime_inputs.get("schemaVersion")) is int
@@ -235,7 +256,12 @@ def run_lifecycle(owner, cases, harness):
     runtime.validate_inputs(owner, inputs["runtime"])
     state = runtime.start_runtime(owner, inputs["runtime"], observer)
     workspace, identity = state["workspace"], state["identity"]
-    if inputs["variant"] == "gui-pending":
+    if inputs["variant"] in TUN_VARIANTS:
+        # The deny row has no collector: active A must survive the prompt unchanged.
+        tun = owner.module(inputs["modules"]["tun"], "_owned_dedicated_tun_stages")
+        tun.finish(owner, tun.begin(owner, state, inputs["tun"], runtime, cases), runtime, cases, observer)
+        actors = state["actors"]
+    elif inputs["variant"] == "gui-pending":
         gui = dict(inputs["gui"], stateDir=str(workspace), controllerId=identity,
             observerPath=inputs["modules"]["observer"], runtimeConfigPath=str(workspace / "runtime-config.json"),
             ownerActor=state["actors"]["owner"], runtimeActor=state["actors"]["runtime"],

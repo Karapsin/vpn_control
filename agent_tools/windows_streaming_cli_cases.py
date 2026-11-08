@@ -193,9 +193,20 @@ def run(owner, workspace, identity, harness):
     before = _status(owner, workspace, identity, harness)
     source = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity,
                                                "source", "show"))
-    require(source["controllerId"] == identity and source["data"]["mode"] == "current-locations"
+    require(source["controllerId"] == identity
             and source["configurationRevision"] == before["configurationRevision"],
-            "fresh-current-locations-before-streams")
+            "fresh-source-before-streams")
+    if source["data"]["mode"] != "current-locations":
+        # A new workspace starts in subscription mode. One guarded selection makes
+        # every later log pulse a known no-op at a fixed revision.
+        selected = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity,
+            "--if-revision", str(before["configurationRevision"]), "source", "set", "current-locations"))
+        require(selected["controllerId"] == identity and selected["final"] is True
+                and selected["configurationRevision"] == before["configurationRevision"] + 1,
+                "fresh-current-locations-selection")
+        before = _status(owner, workspace, identity, harness)
+        require(before["configurationRevision"] == selected["configurationRevision"],
+                "fresh-current-locations-before-streams")
     revision = before["configurationRevision"]
     for json_mode in (True, False):
         for args in STREAMS:

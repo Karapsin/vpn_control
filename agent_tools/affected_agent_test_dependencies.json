@@ -176,7 +176,8 @@
         "df6e54b0404a3ce95e6db98e84ba9f9cae0d019f73f2da16ed90115305002768",
         "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3",
         "902afbf12b0fb1fc9b3900f7f1af63abac658517f90c3c830e4e71946590621a",
-        "2bb3629f16546472c7d5adee7f4db60f692998f57d6ebb03e8d50d64f8c4b145"
+        "2bb3629f16546472c7d5adee7f4db60f692998f57d6ebb03e8d50d64f8c4b145",
+        "ddc0b780428760e9de644488ebbd024c7daa458d7f341b473c8f5a46ebec91fb"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -8197,7 +8198,8 @@
       ],
       "sourceSha256": [
         "d5d9a7d74bba18f01a09df695a3730ac062d3cea1bab0bb557f72335d3112f5f",
-        "7d909b47ffa61b670fe4cfb77590dea2160b1d839f08ca0190f1ab2d5a23efe9"
+        "7d909b47ffa61b670fe4cfb77590dea2160b1d839f08ca0190f1ab2d5a23efe9",
+        "218b0b76c3a18ea80c219b4c935bd7e09ed60da395ec05bc9f4557f12a0416cf"
       ]
     },
     "agent_tools/tests/test_lease_provider_policy_runtime.py": {
@@ -8564,7 +8566,8 @@
       ],
       "sourceSha256": [
         "bff6cf6a7f4a31fac577b23d41566e4e5caeae279daed9cf08b743699b06ff10",
-        "c0a54c33b2ebb0160ce1d37a8145fb15e3aabf80aab37460fac2d2891862555c"
+        "c0a54c33b2ebb0160ce1d37a8145fb15e3aabf80aab37460fac2d2891862555c",
+        "1abcc54c49db744cc1a1224a26dcb355689163f61620652bb4c9a24eda4066dc"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {
@@ -11416,6 +11419,18 @@
         "5f1527a8084deb6bb59b9513d409e6797e3f225d6fca2ebf7e899256ac22de76"
       ]
     },
+    "agent_tools/tests/test_windows_cli_case_rules.py": {
+      "reason": "Reviewed actual test body: hash-checked before-image fixtures of the two case modules, their provenance, and the unchanged packaged CLI harness loaded by its fixed path; no other file is read.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_cli_case_rules/disconnected-cases.before.source",
+        "agent_tools/tests/fixtures/windows_cli_case_rules/provenance.json",
+        "agent_tools/tests/fixtures/windows_cli_case_rules/streaming-cases.before.source",
+        "scripts/test_packaged_cli.py"
+      ],
+      "sourceSha256": [
+        "866e7b6831a6bdfd73f8db4128821e6317acb3e53ee88df091b9832158d8bf91"
+      ]
+    },
     "agent_tools/tests/test_windows_compile_acl_creation.py": {
       "reason": "Two exact SHA-checked PowerShell sources only: extract authentic parent function Save at exact Hash boundary, execute complete fixed NewPrivateCompileFile helper; substitute only constant SYSTEM subject SDDL/SID data with runtime current token SID. Generated wrapper creates an owned private temp child and runs only actual FileStream ACL/write/readback/duplicate causals on Windows .NET Framework; no other parent source, service, task, native compiler, VM, input or repository source. JSON provenance/native projection parsed only and cannot grant new native authority.",
       "scopes": [
@@ -12544,7 +12559,8 @@
       "sourceSha256": [
         "0f17c83d95f1e860ca153d0d72e8ab1d0597ff7f8159713b27778acb6caa19ae",
         "7eec9a18d85e4ad2c5d7f93b2a9af8cf10d8ac80fa07e54b69eb69186785bbe6",
-        "b1b0feaa7e7e0e6e434a9fbaf66af0c97535bb880a9c0baf9681fe565e0b62a1"
+        "b1b0feaa7e7e0e6e434a9fbaf66af0c97535bb880a9c0baf9681fe565e0b62a1",
+        "c88802c47c1488a4dd734aaef9762dc10faaac46d116862bbabb5ac0ca51d522"
       ]
     },
     "agent_tools/tests/test_windows_original_vm_selector.py": {
@@ -12684,7 +12700,8 @@
         "agent_tools/windows_public_updater/update_receipts.py"
       ],
       "sourceSha256": [
-        "c049fe0d94e7762e2c67be86530dc0e57b09075064985a5159c77d9df003aa5e"
+        "c049fe0d94e7762e2c67be86530dc0e57b09075064985a5159c77d9df003aa5e",
+        "fa53088f2a094b31d8adfa0f82f0644e19fd34d30ba1386b93331cc1def25578"
       ]
     },
     "agent_tools/tests/test_windows_python_fixture_io.py": {
@@ -13210,7 +13227,7 @@
       ]
     },
     "agent_tools/windows_ordinary_dedicated_driver.py": {
-      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. TUN, scheduled, no-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No TUN/no-tray/autostart/input action is added; the old four paths retain their original continuity meaning.",
+      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. Scheduled, no-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks.",
       "scopes": [
         "agent_tools/windows_public_updater/update_cases.py",
         "agent_tools/windows_public_updater/update_receipts.py",
@@ -13229,11 +13246,13 @@
         "scripts/integration/socks_http_fixture.py",
         "scripts/integration/https_subscription_relay_fixture.py",
         "agent_tools/windows_runtime_branch_cases.py",
-        "agent_tools/windows_runtime_tcp_listeners.ps1"
+        "agent_tools/windows_runtime_tcp_listeners.ps1",
+        "agent_tools/windows_tun_stages.py"
       ],
       "sourceSha256": [
         "ea432e878b863c5d28165d010f974dd03cfc11574e2948c2234171a1af74dbb8",
-        "1b4aa32f0c370d49278c57dc79d48246e3c2e22d0d51620b2b88ce1cd8021048"
+        "1b4aa32f0c370d49278c57dc79d48246e3c2e22d0d51620b2b88ce1cd8021048",
+        "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13249,7 +13268,8 @@
         "agent_tools/windows_public_updater/native_collector.py"
       ],
       "sourceSha256": [
-        "939f33f84c3c35c404e65dfb887107354e086710aa1c7ba077b7082f8d1b17b1"
+        "939f33f84c3c35c404e65dfb887107354e086710aa1c7ba077b7082f8d1b17b1",
+        "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78"
       ]
     },
     "agent_tools/windows_system_collector/caller_hold.py": {
@@ -13333,7 +13353,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "c9a0243f9af12377d7005a9d5f79c32aba54e339a4e9bdaba36272b0fed54abe",
+    "agent_tools/readiness_vm_dispatch.json": "569cb6c06747a3672fc9e65043cfdfcefcc2dca1dd21af55d719fdbaba98a31d",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",
@@ -13535,7 +13555,7 @@
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.before.source": "21a0185c5bee3d0ec6045a64ba319ab396f4aceabd82f8b981cbd2aa503121b3",
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.fixed.source": "d761bc4c8e4c581af05559d27855562e9324d86b8839e5b63eac7eb9927cda5b",
     "agent_tools/tests/fixtures/windows_wts_info_class/observe.before.source": "6ea19c6ffd6e53190df564f4ec56bc9772d60a663ad2820ea08dc2a4ed0f5e50",
-    "agent_tools/tool_action_policy.json": "c5802d72fa5e1b064cd709c0e2bc635d3fa745797d2d4d1c61f2f8b6fa515e54",
+    "agent_tools/tool_action_policy.json": "9690f3ca655da921fa9a461c65c800899030d60c0926072cfa7a951ba65a1c8d",
     "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5",
     "scripts/tests/fixtures/visual_target_before/bootstrap_windows_visual_vm.sh.source": "855a6b625b00a5411cd8b9dd7832cf23a824fa5e52e7ef294d87447100a298ae",
     "scripts/tests/fixtures/visual_target_before/mark_windows_visual_vm_ready.sh.source": "4eeb3e2ee6d01e78503052a6ce2496195a02d55cb7fe120b723a136effea9a13",

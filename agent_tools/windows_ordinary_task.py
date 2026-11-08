@@ -17,6 +17,9 @@ import uuid
 import xml.etree.ElementTree as ET
 
 PS = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+MSIEXEC = r"C:\Windows\System32\msiexec.exe"
+PYTHON_INSTALLER_SHA256 = "edec09c4853aeae9ac36efb8c9f95b6b8e2fee65eee56d9767a8b7c69c574403"
+PYTHON_INSTALLER_BYTES = 29452944
 NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 PYTHON_FLAGS = ("/quiet", "InstallAllUsers=0", "PrependPath=0", "Include_launcher=0",
                 "Include_pip=0", "Include_test=0")
@@ -34,12 +37,13 @@ POLICY_FIELDS = ("UserId", "LogonType", "ExecutionTimeLimit", "MultipleInstances
                  "WorkingDirectory", "Command", "Arguments")
 COMMON_FIELDS = {"schemaVersion", "context", "operationId", "operationRoot", "filePins",
                  "directoryPins", "treePins", "rawStreamLimitBytes"}
-ACTION_FIELDS = {"pythonRuntime", "action", "msiPath", "installerLogPath", "qualificationArgv",
+ACTION_FIELDS = {"pythonRuntime", "action", "msiPath", "installerLogPath", "uninstallProductCode",
+                 "uninstallLogPath", "uninstallRoot", "qualificationArgv",
                  "expectedExitCode", "cliPath", "workspace", "productVersion", "casesPath",
                  "harnessPath", "documentAcceptance", "bootstrap"}
-DEDICATED_DRIVER_SHA = "1b4aa32f0c370d49278c57dc79d48246e3c2e22d0d51620b2b88ce1cd8021048"
+DEDICATED_DRIVER_SHA = "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb"
 DEDICATED_CASES = {
-    "windows-public-update": ("windows_public_updater/update_cases.py", "939f33f84c3c35c404e65dfb887107354e086710aa1c7ba077b7082f8d1b17b1"),
+    "windows-public-update": ("windows_public_updater/update_cases.py", "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78"),
     "windows-proxy-lifecycle": ("windows_lifecycle_cases.py", "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b"),
 }
 
@@ -301,12 +305,23 @@ def worker_request(common, action, **inputs):
              "qualification-executable-and-argv-pins")
         need(type(inputs["expectedExitCode"]) is int and 0 <= inputs["expectedExitCode"] <= 255,
              "qualification-expected-exit")
-    elif action == "msi-install":
-        need(set(inputs) == {"msiPath", "installerLogPath"}, "msi-worker-input-schema")
-        need(path(inputs["msiPath"]) in files and
-             path(r"C:\Windows\System32\msiexec.exe") in files, "msi-and-native-installer-pins")
-        need(path(inputs["installerLogPath"]).parent == path(request["operationRoot"]),
+    elif action in {"msi-install", "msi-reset"}:
+        reset = {"uninstallProductCode", "uninstallLogPath", "uninstallRoot"} if action == "msi-reset" else set()
+        need(set(inputs) == {"msiPath", "installerLogPath"} | reset, "msi-worker-input-schema")
+        need(path(inputs["msiPath"]) in files and path(MSIEXEC) in files, "msi-and-native-installer-pins")
+        logs = [path(inputs[name]) for name in ("installerLogPath", "uninstallLogPath") if name in inputs]
+        need(all(log.parent == path(request["operationRoot"]) for log in logs) and len(set(logs)) == len(logs),
              "private-msi-log-parent")
+        if reset:
+            # Setup only: the exact registered product code, never a package path or a pattern.
+            need(type(inputs["uninstallProductCode"]) is str and re.fullmatch(
+                r"\{[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12}\}", inputs["uninstallProductCode"]),
+                "msi-reset-product-code")
+            # The per-user install folder the removal must leave without files; it is only read.
+            folder, local = path(inputs["uninstallRoot"]), path(request["context"]["localAppData"])
+            operation_root = path(request["operationRoot"])
+            need(folder.is_relative_to(local) and folder != local and not folder.is_relative_to(operation_root)
+                 and not operation_root.is_relative_to(folder), "msi-reset-install-root")
     else:
         need(action in {"baseline-source-mode", "fixed-source-mode", "disconnected-cli-config",
                         "streaming-client-interrupt", "document-acceptance", *DEDICATED_CASES}, "worker-action")
@@ -393,8 +408,8 @@ def bootstrap_request(common, mode, **inputs):
         need(set(inputs) == required and path(inputs["pythonInstallerPath"]) in files,
              "python-installer-input-schema")
         pin = next(item for item in request["filePins"] if item["path"] == inputs["pythonInstallerPath"])
-        need(pin["sha256"] == "edec09c4853aeae9ac36efb8c9f95b6b8e2fee65eee56d9767a8b7c69c574403"
-             and pin["nativeIdentity"]["sizeBytes"] == 29452944, "exact-python-installer")
+        need(pin["sha256"] == PYTHON_INSTALLER_SHA256
+             and pin["nativeIdentity"]["sizeBytes"] == PYTHON_INSTALLER_BYTES, "exact-python-installer")
         need(re.fullmatch(r"[0-9a-f]{64}", inputs["pythonInstallerSignerCertificateSha256"]),
              "actual-PSF-signer-certificate-required")
         argv = python_installer_arguments(inputs["pythonTargetDir"], inputs["pythonLogPath"],

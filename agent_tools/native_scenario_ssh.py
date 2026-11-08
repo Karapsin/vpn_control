@@ -29,6 +29,12 @@ SCENARIO_ARTIFACT_KEYS = {
     SCENARIO_ID: frozenset({"bundleManifest"}),
     "linux-scheduled-refresh": frozenset({"bundleManifest", "scenarioInput"}),
     "windows-ordinary-qualification": frozenset({"bundleManifest"}),
+    "windows-python-install": frozenset({"bundleManifest", "pythonInstaller"}),
+    "windows-msi-base-install": frozenset({"bundleManifest", "scenarioInput", "basePackage"}),
+    "windows-msi-base-reset": frozenset({"bundleManifest", "scenarioInput", "basePackage"}),
+    "windows-packaged-cli-smoke": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
+    "windows-disconnected-cli-config": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
+    "windows-streaming-client-interrupt": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
 }
 _MAX_OUTPUT = 8192
 _WINDOWS_PREFIX = "windows-"

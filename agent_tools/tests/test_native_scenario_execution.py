@@ -353,7 +353,9 @@ class NativeScenarioExecutionTest(unittest.TestCase):
             changed["scenarioId"] = name
             with self.assertRaisesRegex(execution.ScenarioExecutionError, "allowlisted"):
                 execution.ScenarioPlan.from_mapping(changed)
-        self.assertEqual(frozenset({"windows-ordinary-qualification"}), execution.WINDOWS_SCENARIOS)
+        self.assertEqual(frozenset({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install",
+                                    "windows-msi-base-reset", "windows-packaged-cli-smoke", "windows-disconnected-cli-config",
+                                    "windows-streaming-client-interrupt"}), execution.WINDOWS_SCENARIOS)
 
     def test_windows_private_journal_is_explicitly_unsupported_before_path_access(self):
         with tempfile.TemporaryDirectory() as raw:

@@ -30,6 +30,12 @@ def require(value, reason):
         raise AssertionError(reason)
 
 
+def human_error_is(stderr, code):
+    """A human failure opens with its code, alone or as `CODE: reason` from the argument parser."""
+    first = stderr.splitlines()[:1]
+    return bool(first) and (first[0] == code or first[0].startswith(code + ": "))
+
+
 def metadata(body):
     return {key: body[key] for key in ("schemaVersion", "controllerId", "requestId",
         "operationId", "configurationRevision", "restartRequired", "code", "final")
@@ -97,7 +103,7 @@ class Cases:
         result = self.invoke(*args, json_output=False, revision=revision)
         require(result.returncode == expected_exit, "human-exit-code")
         if expected_exit:
-            require(result.stdout == "" and result.stderr.splitlines()[:1] == [expected_code],
+            require(result.stdout == "" and human_error_is(result.stderr, expected_code),
                     "human-error-stream-or-code")
         else:
             lines = result.stdout.splitlines()
@@ -208,8 +214,8 @@ def static_cases(c):
         result = c.owner.invoke(missing, *args)
         require(result.returncode == expected, "human-static-exit")
         require((result.stderr == "" and bool(result.stdout)) if expected == 0 else
-                (result.stdout == "" and result.stderr.splitlines()[:1] ==
-                 ["UNAVAILABLE" if expected == 2 else "INVALID_ARGUMENT"]),
+                (result.stdout == "" and human_error_is(result.stderr,
+                 "UNAVAILABLE" if expected == 2 else "INVALID_ARGUMENT")),
                 "human-static-streams")
         require(not missing.exists(), "human-static-created-workspace")
     c.group("static-missing-owner")
@@ -298,7 +304,14 @@ def subscription_cases(c):
     c.group("subscriptions", noRefresh=True, noNetworkFixtureClaim=True)
 
 
+def select_current_locations(c):
+    """A subscription add selects subscription mode, where location edits are READ_ONLY_SOURCE."""
+    mode = c.json("source", "show")["data"]["mode"]
+    c.mutate("source", "set", "current-locations", delta=int(mode != "current-locations"))
+
+
 def location_cases(c):
+    select_current_locations(c)
     for human in (True, False):
         label = "human" if human else "json"
         name, edited = f"Manual 東京 Ω {label}", f"Edited 東京 Ω {label}"
@@ -461,6 +474,7 @@ def independent_transfer(c, document, original):
     second = Cases(c.owner, workspace, identity, c.harness, c.root)
     require(second.json("settings", "show")["data"] == c.initial_settings,
             "configuration-crossed-workspace-boundary")
+    select_current_locations(second)
     expected = c.json("locations", "list")["data"]["locations"]
     for human in (True, False):
         require(second.json("locations", "list")["data"]["locations"] == [],
@@ -658,6 +672,10 @@ def diagnostics_cases(core, root):
 
     Distinct reports contain generated_at and are never compared to one another.
     File/raw comparisons always use the same original retained operation.
+
+    Reads and exports carry no revision guard: the owner accepts --if-revision only
+    on guarded writes and answers INVALID_ARGUMENT otherwise. Revision metadata is
+    checked in every reply instead.
     """
     root = Path(root)
     before = core.status()
@@ -676,7 +694,7 @@ def diagnostics_cases(core, root):
         status = _diag_dynamic_json(core, "operations", "status", operation)
         _diag_require(_diag_operation(status) == operation,
                  "Diagnostics status changed original operation")
-        terminal = core.json("operations", "wait", operation, revision=revision)
+        terminal = core.json("operations", "wait", operation)
         _diag_require(_diag_operation(terminal) == operation,
                  "Diagnostics wait changed original operation")
         content = terminal.get("data", {}).get("content")
@@ -695,12 +713,10 @@ def diagnostics_cases(core, root):
     for renderer in ("json", "human"):
         path = destination("diagnostics sync " + renderer + " 東京.txt")
         if renderer == "json":
-            body = core.json("diagnostics", "export", "--output", str(path),
-                             revision=revision)
+            body = core.json("diagnostics", "export", "--output", str(path))
             operation = _diag_operation(body)
         else:
-            result = core.human("diagnostics", "export", "--output", str(path),
-                                revision=revision)
+            result = core.human("diagnostics", "export", "--output", str(path))
             operation = _diag_human_fields(result, owner, revision)["operationId"]
         output = _diag_output(core, path)
         if renderer == "json":
@@ -714,7 +730,7 @@ def diagnostics_cases(core, root):
         retained(operation, output["content"])
         method = core.json if renderer == "json" else core.human
         method("diagnostics", "export", "--output", str(path),
-               expected_exit=1, expected_code="PERSISTENCE_FAILED", revision=revision)
+               expected_exit=1, expected_code="PERSISTENCE_FAILED")
         _diag_require(_diag_output(core, path)["content"] == output["content"],
                  "Rejected diagnostics overwrite changed the existing file")
         operations.append(operation)
@@ -737,13 +753,12 @@ def diagnostics_cases(core, root):
                      "Already-final async diagnostics changed its retained report")
         if renderer == "human":
             for action in ("status", "wait"):
-                result = core.human("operations", action, operation, revision=revision)
+                result = core.human("operations", action, operation)
                 _diag_require(_diag_human_fields(result, owner, revision)["operationId"] == operation,
                          "Human retained diagnostics changed original operation")
         path = destination("diagnostics retained " + renderer + " 東京.txt")
         method = core.json if renderer == "json" else core.human
-        exported = method("operations", "wait", operation, "--output", str(path),
-                          revision=revision)
+        exported = method("operations", "wait", operation, "--output", str(path))
         output = _diag_output(core, path)
         _diag_require(output["content"] == content,
                  "Retained diagnostics file differs from original operation content")
@@ -755,7 +770,7 @@ def diagnostics_cases(core, root):
             _diag_require(_diag_human_fields(exported, owner, revision)["operationId"] == operation,
                      "Human retained file export changed original operation")
         method("operations", "wait", operation, "--output", str(path),
-               expected_exit=1, expected_code="PERSISTENCE_FAILED", revision=revision)
+               expected_exit=1, expected_code="PERSISTENCE_FAILED")
         _diag_require(_diag_output(core, path)["content"] == content,
                  "Rejected retained export overwrite changed the original file")
         raw = core.invoke("operations", "wait", operation, "--output", "-",

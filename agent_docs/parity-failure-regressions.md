@@ -909,6 +909,30 @@ Before any VM contact. Evidence and before-images are under `.runtime/windows-pa
 | Free guest text could reach a public reply | `test_windows_scenario_host_job`, `test_native_scenario_windows` | Only closed `RUN_`, `TASK_`, `TOKEN_` and `PUB_` codes cross; the raw message stays in the private index on the host. |
 | Status file stops updating after one poll | `test_the_status_file_is_really_replaced_on_every_poll` | `$null` reached `File.Replace` as an empty string; it now passes `[NullString]::Value`. Skips without PowerShell, so CI is its first run. |
 
+### Windows UAC decision, offline build (2026-11-08)
+
+Before any VM contact; these are review findings, not native failures. Before-images
+and the RED/GREEN log are under `.runtime/uac-before/` of the build clone, and for
+the review fixes under `.runtime/uac-review/`. All regressions are in
+`test_windows_uac_decision`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| TUN finish parks while a prompt is still up | `TunFinishTests.test_the_wait_outlasts_a_prompt_that_the_default_would_park_on` | `finish_operation` parked at its 120 s default, about a prompt's lifetime; TUN finish now waits 300 s. |
+| An expired prompt on a TUN grant ends unknown | `TunFinishTests.test_a_cancelled_grant_is_known_and_keeps_the_same_active_runtime` | A grant accepted only `OK`. A CANCELLED that kept active A is now a known failure in the stages; the dispatcher admits a grant only with the collector stage. |
+| An expired prompt on an update grant parks the clone | `CancelledGrantUpdateTests.test_a_cancelled_grant_is_closed_and_known_where_it_used_to_park_the_clone`, `CancelledGrantDriverTests.test_a_proven_cancelled_grant_retires_its_unused_hold_and_exits_one` | The handoff check failed with the fixture open. The case now closes what it started and returns 1; the dispatcher retires the unused collector hold. |
+| An UNKNOWN input closed its fence | `LostOwnerTests.test_status_never_keys_and_an_unknown_input_keeps_its_fence_open` | Status wrote exit 3 for a dead owner, and any integer exit lets reboots and new jobs through. It now records only the gone prompt. |
+| A known input's lost fence close blocked the clone | `LostOwnerTests.test_a_known_input_whose_fence_close_was_lost_is_closed_by_status` | Status returned the input terminal before any closer. It now closes the fence under the lock, with the owner's pid. |
+| A receipt was readable half written | `OwnerAdmissionTests.test_the_parent_never_reads_a_terminal_still_being_written` | The final name was created before its bytes, so the parent reported a completed input as unknown. Receipts are now linked from a complete file. |
+| The caret refused a good prompt | `ProofBeforeKeyTests.test_a_caret_in_the_field_is_read_again_and_the_prompt_is_answered` | One dark frame of the field refused the attempt; it is now read again within the gate. |
+| A prompt could be past 90 s at the first key | `ProofBeforeKeyTests.test_the_age_rule_holds_at_the_burn_and_counts_the_frames_read_after_the_census` | Frames after the second census could add up to the gate's 30 s. The rule is checked again at the burn. |
+| A polling client spent every attempt | `ExecuteInputTests.test_a_refusal_that_saw_the_prompt_due_ends_the_submits` | Any refusal allowed a new decide packet, up to 16. Only a "not yet" refusal does now. |
+| Protected storage ended known | `CancelledGrantUpdateTests.test_a_cancelled_protected_storage_install_still_parks`, `CancelledGrantDriverTests.test_a_cancelled_protected_storage_grant_still_parks` | An expired prompt returned 1 with the counterfeit root still on the clone. It parks again. |
+| An async installer CANCELLED ended known | `CancelledGrantUpdateTests.test_a_cancelled_installer_wait_stays_on_the_parking_path` | No native terminal rules out a running helper there, so it parks until the collector stage. |
+| A TUN grant started with no way to finish | `CancelledGrantDriverTests.test_a_tun_grant_waits_for_its_collector_and_starts_nothing` | An approved grant needs its native ready record and would park over VPN B; only `restart-deny` is admitted. |
+| TUN inputs could name another variant | `CancelledGrantDriverTests.test_the_tun_inputs_must_name_the_same_variant` | The stages chose restart or find-best, deny or grant, from their own inputs. Both must now name the same variant. |
+| A deny row could pass with no decision | `DenyRowAdmissionTests.test_a_deny_row_is_refused_before_any_journal_until_collect_joins_the_decision` | An expired prompt is the same `CANCELLED` as Esc. Deny rows are refused at admission until collect joins the decision terminal. |
+
 ### First full CI run of the merge (run 42392787639 and siblings, 2026-11-07)
 
 These commits had never run in CI, so tests skipped on the Mac met Linux and Windows for the first time. Logs are under `.runtime/windows-parity-20261107/ci/`.

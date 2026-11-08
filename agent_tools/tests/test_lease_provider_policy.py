@@ -87,6 +87,10 @@ class LeaseProviderPolicyTests(unittest.TestCase):
         later = {'readiness-sleep-capability': 'vm_workflow:readiness-status'}
         self.assertEqual(1, sum(group.get('actions') == later for group in actual['groups']))
         actual['groups'] = [group for group in actual['groups'] if group.get('actions') != later]
+        # A later reviewed action in an existing original-operation group: the closed Windows UAC decision.
+        owners = [group for group in actual['groups'] if 'windows-uac-decision' in group.get('actions', {})]
+        self.assertEqual(1, len(owners))
+        self.assertEqual('vm_workflow:windows-uac-decision', owners[0]['actions'].pop('windows-uac-decision'))
         self.assertEqual(before, actual)
         self.assertEqual(PROVIDERS, set(variants))
 

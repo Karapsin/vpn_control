@@ -4838,6 +4838,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -4880,6 +4881,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -4922,6 +4924,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5142,6 +5145,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5180,6 +5184,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5218,6 +5223,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5732,6 +5738,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5770,6 +5777,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5808,6 +5816,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5855,6 +5864,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5893,6 +5903,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5931,6 +5942,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -5969,6 +5981,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6016,6 +6029,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6054,6 +6068,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6092,6 +6107,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6130,6 +6146,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6168,6 +6185,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6372,6 +6390,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6410,6 +6429,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6448,6 +6468,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6487,6 +6508,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6526,6 +6548,7 @@
         "ssh_program_execution_remote",
         "ssh_transfer",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "host": "fedora2328",
@@ -6556,6 +6579,7 @@
         "native_scheduled_refresh_ssh",
         "ssh_program_execution_remote",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "kind": "selected_host",
@@ -6580,6 +6604,7 @@
         "native_scheduled_refresh_ssh",
         "ssh_program_execution_remote",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "kind": "selected_host",
@@ -6604,6 +6629,7 @@
         "native_scheduled_refresh_ssh",
         "ssh_program_execution_remote",
         "vm_workflow",
+        "windows_ordinary_task",
         "windows_scenario_host_job"
       ],
       "kind": "selected_host",
@@ -22172,6 +22198,35 @@
         "module": "windows_vm_virt_firmware_install",
         "sha256": "752863505733482fad930ec4b409c00beb5a705c0be581eba04e774f0691ef1a"
       }
+    },
+    "windows-uac-decision": {
+      "closure": [
+        "durable_remote_job",
+        "native_artifact_registry",
+        "native_artifact_reuse",
+        "native_scenario_bundle",
+        "native_scenario_execution",
+        "native_scenario_windows",
+        "native_vm_spec",
+        "private_credential_file",
+        "private_inventory_lock",
+        "readiness_windows_guest",
+        "readiness_windows_host_work",
+        "readiness_windows_login",
+        "readiness_windows_remote",
+        "ssh_program_execution_remote",
+        "windows_guest_input",
+        "windows_ordinary_task",
+        "windows_scenario_host_job",
+        "windows_uac_decision",
+        "windows_vm_deploy_remote",
+        "windows_vm_instance",
+        "windows_vm_unattend"
+      ],
+      "kind": "selected_host",
+      "modules": [
+        "windows_uac_decision"
+      ]
     }
   },
   "schemaVersion": 1,
@@ -22263,7 +22318,7 @@
     "macos_machine_server_stop": "0ab0c81a72ada556476e0c9899b891faff01fa78c3d79312fd6bd8358e973945",
     "macos_machine_tart_readonly": "38cf72e570c35b35466359794be4372749c32d5f304e607683d1d1a2070ea441",
     "native_artifact_registry": "2c0b960ce9a9af74eb96245b30e64d66f3bda8c92e3bbbf64de8386cc7ca23d4",
-    "native_artifact_reuse": "f123ab47f9d587792fbb27770fa84d71ec691d713fcb9b4527d814f8f5808eab",
+    "native_artifact_reuse": "19dff9d3497938acdc41a2304878b546855ff0abfd6dfd1ea487dfe923a6e1e6",
     "native_credentials": "8549e4471761351c3c8a2c7ffdd2a24d5cbad81e3c5b88202504923ca1039539",
     "native_environment": "e842650c8308d5b2cd8d9770afcd86d930556c0ae0836dea9b76d4cb864147cf",
     "native_execution_context": "5a4a93f96db99321cba915651788663c02460a7a6965df7a219738b1065871d1",
@@ -22275,10 +22330,10 @@
     "native_rpm_public_install_adapter": "5479434011cf0e02e8743d4ffd510dc34d9b4ac5a681335ff2a82a653bce42c9",
     "native_rpm_public_install_ssh": "3b9b590629db13ff3152eed4748793a695b24506ccf66b775903b3029513c715",
     "native_scenario_batch": "034070dc3697b949410e334d3ba304b65a7faac01be873a127da4d29e99f35ce",
-    "native_scenario_bundle": "b5b13464ee0b81c72efbcac9477133b45f92d8b894699c06d5699b7f5c8dbeaa",
-    "native_scenario_execution": "82e42b862d7043459b2f50f732f0876544e41e97c724534aad146363f3ce5365",
-    "native_scenario_ssh": "bb1657d134b92601427e415369e915c55c8067e1bf990dfa1b0a804495eb914d",
-    "native_scenario_windows": "b6290eccfb547c22c86d0bbc897dc695829b0f1057e71926cc765807e64cb8c7",
+    "native_scenario_bundle": "b7fc4f331c0a4bcde50f19cdfca674ad704c2973403cf2853142d48de7b3cd56",
+    "native_scenario_execution": "80d25f0b71b1e40ba204c92640463406f2de87d41ab7e90818b796d8e80d6a75",
+    "native_scenario_ssh": "1853dde0e36486519dd795526a415b857b5fcb0626df4c5e954aecce66457467",
+    "native_scenario_windows": "6811c5555874c4ab5de5e9ea3c34108eb688ded7745dbf6c41c4d17699fed28f",
     "native_scheduled_refresh_ssh": "a02bd277452716e6688bdf4f0049a6a5272b8f3ba7844ed7650f7c8c0ca7e05d",
     "native_vm_baseline": "1e9c30064543b484180f00b7adfd61b086ff8c92c7bc282022443f4a1ef0289e",
     "native_vm_baseline_config": "8b9eaa028ec866aa331e6822e773460223a13b5aae757d06fd9998a3bb0ba723",
@@ -22291,7 +22346,10 @@
     "readiness_lease_workflow": "97bf1b426f065d216d9e6a851309d98c421ccbc4c06c63d1f461b54b33c9cf0c",
     "readiness_leases": "104ec0588179822f4ad851dc6a1a91df55a68f155540d93ce6c0b9be18a2ff6f",
     "readiness_recovery_status": "a73af4fe04c2056d4db3b10e2cc8fe7135800967b82fcff95a71ab27afb4f4cd",
+    "readiness_windows_guest": "11e1bee487b238ed99560a738e43350ca510c7d4a8c71dcfd271d264edb63585",
+    "readiness_windows_host_work": "6b3cf0dc58b7035b581f319b1d4e34c735b305e6e46d2763fcc1a9ae6847a9e2",
     "readiness_windows_login": "73240a83576e1ca6a4e5cdf30ea12f88a00f41ba34bfe5eeb581fa34abf179c5",
+    "readiness_windows_remote": "e5084838b83d2bfe29230e885c02c3741379614ae6e7717df254c0034d56d6b6",
     "readiness_workflow": "67a971bfc81466e1b7dd7171c5c44abeb2d85a30ba3fa868ef6007e93ba994dc",
     "ssh_channel_inventory_diagnostics": "9152ea074b39f89c2fae4f0c8b02246c5e264abcc10d08c7bc4d27c2c1012c35",
     "ssh_connection_recovery": "5937d793033d4478c401e561d7fd52696b63f2b97b23d01e143e60daacf2337f",
@@ -22387,12 +22445,14 @@
     "windows_msi_target_prepare": "c1700c90398d2c2b85a7d97215c72f8d07f86b5a019a85a59412e19d7432e1aa",
     "windows_msi_transfer_endpoint": "f55b9b48ab1aaa07cd7b5f35cf2a10f922037084627d0665ea3349d64521c13b",
     "windows_msiexec_service_diagnostic": "c36599d5fed2e141b9a928a319c77583a56062149646d20a546f324992b66838",
+    "windows_ordinary_task": "fafcd99cc7f0ddbba290155952deb23c6e104bcc3583f401c751598542b6111c",
     "windows_parallel_vm_prepare": "4ce0aec013698919c762f291897b906252e6371e7fb50a14790e74e312ff3050",
     "windows_parallel_vm_prepare_transport": "d9e4ee3a6376a8d158fd61aecc577382a90d9434dff0d3a16fcec2f6e284f8bc",
     "windows_parallel_vm_source_inventory": "5d3a087ce2f14f4199948fe6e28715a52ca67ee964e98fe400b598bd2b539110",
     "windows_ps_bootstrap": "16e75497abe7cd6da3367b620143cdd9209a61e078a6e02a94879f281fa9ea79",
-    "windows_scenario_host_job": "c6842bc5ba35cfade8da8175071bf439d84cfbea9ebdc3737faba5e5866e6114",
+    "windows_scenario_host_job": "ed93188990db3db75709775e21b941d511d2e09c82888fa382894222a97dd962",
     "windows_secure_recovery": "4fd63c18fe3c7fd1a2ac59e32216e63a744d90e089e2468c67529cb6fd081966",
+    "windows_uac_decision": "1d0417cf1811d1a92be353d8fbcd39f5cecabb78ba0475a62fa51fa350a6e24d",
     "windows_update_fixture_download_abort": "5978663fbb98d6eda1925e0e50bbe2081ac9b3161331cedc4ef19a7cf5214996",
     "windows_update_fixture_download_abort_current": "fb52c38c4d7b4f2060c2529a3b22bce8c7c698f21255a9eca99172eb3e962076",
     "windows_update_fixture_guest_create_abort": "68bb35316ecd2c8e034cd0a5063db1e5d89ce815a48baab929e781e4533c8354",

@@ -5,22 +5,26 @@ the real durable owner through a fake ssh binary with a harmless job in its plac
 """
 import ast
 import base64
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest import mock
 import uuid
 
 from agent_tools import durable_remote_job
+from agent_tools import native_artifact_registry as registry
+from agent_tools import native_artifact_reuse as reuse
 from agent_tools import native_scenario_bundle as bundles
 from agent_tools import native_scenario_execution as execution
 from agent_tools import native_scenario_ssh as ssh_driver
@@ -29,6 +33,7 @@ from agent_tools import native_scenario_windows as windows
 from agent_tools import readiness_windows_registration  # noqa: F401
 from agent_tools import ssh_program_execution_remote as carrier
 from agent_tools import ssh_transport as transport
+from agent_tools import windows_ordinary_task as planner
 from agent_tools import windows_scenario_host_job as host_job
 from agent_tools.tests.test_native_vm_spec import request as vm_request
 
@@ -73,6 +78,8 @@ class FakeSsh:
         self.evidence = b""
         self.on_submit = None
         self.pulls = 0
+        self.staged = {}
+        self.stdin = None
 
     def _marker(self, operation):
         return json.dumps({"schemaVersion": 1, "operationId": operation, "scenarioExit": self.exit_code, "failure": None}).encode() + b"\n"
@@ -85,6 +92,14 @@ class FakeSsh:
             return "target", TARGET
         if program == windows._COLLECT:
             return "collect", self.collect_reply
+        if program == windows._STAGE:
+            digest, size, mode = command[5], int(command[6]), command[7]
+            if mode == "check":
+                return "stage-check", {"state": "present" if digest in self.staged else "absent"}
+            raw = self.stdin.read()
+            if len(raw) == size and hashlib.sha256(raw).hexdigest() == digest:
+                self.staged[digest] = raw
+            return "stage-write", {"state": "staged" if digest in self.staged else "differs"}
         if program == windows._PULL:
             self.pulls += 1
             offset, length = int(command[7]), int(command[8])
@@ -124,6 +139,7 @@ class FakeSsh:
 
     def run(self, argv, **options):
         command = tuple(argv[1:])
+        self.stdin = options.get("stdin")
         kind, reply = self.respond(command)
         self.calls.append(kind)
         if kind in self.lost:
@@ -194,7 +210,7 @@ class AdmissionTests(Base):
         self.assertEqual("component", windows.admit_start(self.root, self.request(), self.resolver)["evidenceClass"])
 
     def test_unknown_name_is_refused_before_any_journal(self):
-        for name in ("windows-arbitrary-command", "windows-ordinary-qualification.other", "windows-python-install", "linux-scheduled-refresh", None, 7):
+        for name in ("windows-arbitrary-command", "windows-ordinary-qualification.other", "windows-python-install.other", "linux-scheduled-refresh", None, 7):
             with self.subTest(name=name):
                 self.assert_refused(self.request(scenarioId=name), "windows_scenario_not_allowlisted")
 
@@ -253,13 +269,34 @@ class AdmissionTests(Base):
 class TableTests(unittest.TestCase):
     def test_the_closed_names_agree_everywhere(self):
         self.assertEqual(set(windows.RECIPES), set(execution.WINDOWS_SCENARIOS))
-        self.assertEqual({"windows-ordinary-qualification"}, set(windows.RECIPES))
+        self.assertEqual({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install", "windows-msi-base-reset",
+                          "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt"}, set(windows.RECIPES))
         for name, row in windows.RECIPES.items():
             self.assertEqual(frozenset(row["artifactKeys"]), ssh_driver.SCENARIO_ARTIFACT_KEYS[name])
             self.assertIn(name, execution._SCENARIOS)
             self.assertIn(name, execution._COLLECTED_SCENARIOS)
             for relative, _, _ in row["guestFiles"]:
                 self.assertIn(relative, bundles._SCENARIOS[windows.BUNDLE_SCENARIO_ID])
+
+    def test_setup_rows_are_never_evidence_and_product_rows_name_their_package(self):
+        classes = {name: row["evidenceClass"] for name, row in windows.RECIPES.items()}
+        self.assertEqual({"windows-ordinary-qualification": "component", "windows-python-install": "setup", "windows-msi-base-install": "setup",
+                          "windows-msi-base-reset": "setup", "windows-packaged-cli-smoke": "product", "windows-disconnected-cli-config": "product",
+                          "windows-streaming-client-interrupt": "product"}, classes)
+        for name, row in windows.RECIPES.items():
+            with self.subTest(name=name):
+                packages = [key for key in row["artifactKeys"] if key in windows.PACKAGE_KINDS]
+                self.assertEqual(row["evidenceClass"] == "product", packages == ["targetPackage"] and row["priorInstall"] is True)
+                self.assertEqual(row["package"] is not None, row["evidenceClass"] == "setup")
+                self.assertEqual("installed" in row["stages"], row["evidenceClass"] == "setup")
+
+    def test_the_worker_doors_are_constants_of_their_rows(self):
+        casing = {name: [relative for relative, role, _ in row["guestFiles"] if role == "cases"] for name, row in windows.RECIPES.items()}
+        self.assertEqual({"windows-disconnected-cli-config": ["agent_tools/windows_disconnected_cli_cases.py"],
+                          "windows-streaming-client-interrupt": ["agent_tools/windows_streaming_cli_cases.py"]},
+                         {name: files for name, files in casing.items() if files})
+        self.assertEqual({"windows-packaged-cli-smoke"}, {name for name, row in windows.RECIPES.items() if row["workerAction"] == "qualification"})
+        self.assertEqual({"windows-ordinary-qualification"}, {name for name, row in windows.RECIPES.items() if "qualificationArguments" in row})
 
     def test_the_qualification_doors_are_constants_of_the_row(self):
         row = windows.RECIPES["windows-ordinary-qualification"]
@@ -296,17 +333,70 @@ class PublicEvidenceTests(unittest.TestCase):
 
     def test_a_product_row_needs_every_real_fact(self):
         digest = "b" * 64
-        complete = {"scenarioId": "windows-product-row", "state": "terminal", "collectionState": "complete",
-                    "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": digest}}}
-        with mock.patch.dict(windows.RECIPES, {"windows-product-row": {"evidenceClass": "product", "packageSha256": digest}}):
+        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+            complete = {"scenarioId": scenario, "state": "terminal", "collectionState": "complete",
+                        "artifactIds": {"bundleManifest": "sha256-" + "a" * 64, "scenarioInput": "sha256-" + "c" * 64, "targetPackage": "sha256-" + digest},
+                        "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": digest}}}
             self.assertEqual({"evidenceClass": "installed-package", "productAction": True}, windows.public_evidence(complete))
             for change in ({"state": "submitted"}, {"state": "unknown"}, {"collectionState": "unknown"},
                            {"scenarioEvidence": {"windows": {"installedPackage": False, "packageSha256": digest}}},
                            {"scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": "c" * 64}}},
                            {"scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": None}}},
+                           {"artifactIds": {"bundleManifest": "sha256-" + "a" * 64}}, {"artifactIds": None},
                            {"scenarioEvidence": None}):
-                with self.subTest(change=change):
+                with self.subTest(scenario=scenario, change=change):
                     self.assertEqual({"evidenceClass": "installed-package-unproven", "productAction": True}, windows.public_evidence({**complete, **change}))
+
+    def test_setup_rows_never_claim_whatever_their_receipt_says(self):
+        for scenario in ("windows-python-install", "windows-msi-base-install", "windows-msi-base-reset"):
+            claim = {"scenarioId": scenario, "state": "terminal", "collectionState": "complete", "artifactIds": {"basePackage": "sha256-" + "b" * 64},
+                     "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": "b" * 64}}}
+            self.assertEqual({"evidenceClass": "setup", "productAction": False}, windows.public_evidence(claim))
+
+    def test_a_job_stopped_before_its_task_never_proves_an_installed_package(self):
+        digest = "b" * 64
+        for stop in ("context", "publish"):
+            claim = {"scenarioId": "windows-packaged-cli-smoke", "state": "terminal", "collectionState": "complete",
+                     "artifactIds": {"bundleManifest": "sha256-" + "a" * 64, "scenarioInput": "sha256-" + "c" * 64, "targetPackage": "sha256-" + digest},
+                     "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": digest, "stoppedAfter": stop}}}
+            with self.subTest(stop=stop):
+                self.assertEqual({"evidenceClass": "installed-package-unproven", "productAction": True}, windows.public_evidence(claim))
+
+
+@unittest.skipUnless(os.name == "posix" and hasattr(os, "geteuid"), "the staging program runs on the POSIX VM host")
+class StageProgramTests(unittest.TestCase):
+    """The real staging program, run as SSH runs it on the host: a plain login umask, no durable owner."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.home = Path(temporary.name).resolve()
+        self.parent = self.home / ".cache/vpn-control-windows-scenarios"
+        self.raw = os.urandom(70000)
+        self.digest = hashlib.sha256(self.raw).hexdigest()
+
+    def stage(self, mode, raw=b""):
+        argv = list(windows._py(windows._STAGE, self.digest, str(len(self.raw)), mode))
+        argv[0] = sys.executable
+        done = subprocess.run(argv, input=raw, capture_output=True, env={"HOME": str(self.home), "PATH": os.defpath},
+                              umask=0o022, timeout=120)
+        return done.returncode, json.loads(done.stdout) if done.returncode == 0 else None
+
+    def test_a_first_staging_under_a_login_umask_creates_private_directories_and_stages_once(self):
+        self.assertEqual((0, {"state": "absent"}), self.stage("check"))
+        for directory in (self.parent, self.parent / "artifacts"):
+            self.assertEqual(0o700, stat.S_IMODE(directory.stat().st_mode), directory.name)
+        self.assertEqual((0, {"state": "staged"}), self.stage("write", self.raw))
+        target = self.parent / "artifacts" / self.digest
+        self.assertEqual((self.raw, 0o600), (target.read_bytes(), stat.S_IMODE(target.stat().st_mode)))
+        self.assertEqual([self.digest], os.listdir(self.parent / "artifacts"), "no partial copy is left")
+        self.assertEqual((0, {"state": "present"}), self.stage("check"))
+
+    def test_a_cache_open_to_other_users_still_refuses(self):
+        self.parent.mkdir(parents=True)
+        self.parent.chmod(0o755)
+        self.assertEqual((3, None), self.stage("check"))
+        self.assertEqual(0o755, stat.S_IMODE(self.parent.stat().st_mode), "an existing folder is refused, never repaired")
 
 
 class DriverBase(Base):
@@ -636,6 +726,240 @@ class DelegateTests(DriverBase):
         driver = ssh_driver.NativeScenarioSshDriver(self.root, self.resolver)
         linux = execution.ScenarioPlan.from_mapping({**self.request(), "scenarioId": "linux-public-update-preflight"})
         self.assertIsNone(driver._windows(linux))
+
+
+class FamilyDriverBase(DriverBase):
+    """Package rows over a real registry and real frozen sets in a throwaway Git checkout."""
+
+    def setUp(self):
+        super().setUp()
+        (self.root / ".gitignore").write_text(".rag_index/\n.vm-hosts.local.json\n")
+        (self.root / "gradle.properties").write_text("vpnControlVersion=2.2.15\n")
+        (self.root / "gradlew").write_text("#!/bin/sh\n")
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "fixture")
+        self.head = self.git("rev-parse", "HEAD").strip()
+        self.sources = self.work / "packages"
+        self.sources.mkdir(mode=0o700)
+        self.msi = self.register(b"MSI base " * 4000, "vpn-control-2.2.15.msi", "desktop-package", source=self.head)
+        self.set_id = self.freeze([self.msi])
+        installer = b"python installer " * 3000
+        self.installer = self.register(installer, "python-3.13.15-amd64.exe", "test-toolchain-installer")
+        for name, value in (("PYTHON_INSTALLER_SHA256", hashlib.sha256(installer).hexdigest()), ("PYTHON_INSTALLER_BYTES", len(installer))):
+            patcher = mock.patch.object(planner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.prior = str(uuid.uuid4())
+
+    def git(self, *arguments):
+        environment = {"PATH": os.environ.get("PATH", os.defpath), "HOME": str(self.work), "GIT_CONFIG_NOSYSTEM": "1",
+                       "GIT_AUTHOR_NAME": "fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+                       "GIT_COMMITTER_NAME": "fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid"}
+        return subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", "-c", "core.hooksPath=/dev/null", *arguments],
+                              cwd=self.root, env=environment, check=True, capture_output=True, text=True).stdout
+
+    def register(self, raw, name, kind, *, platform="windows", source=None):
+        # One location per artifact: a second local copy of the same bytes leaves no unique default to verify.
+        known = getattr(self, "registered", {})
+        self.registered = known
+        if raw in known:
+            return known[raw]
+        directory = Path(tempfile.mkdtemp(dir=self.sources))
+        path = directory / name
+        path.write_bytes(raw)
+        record = {"platform": platform, "artifactKind": kind, "localPath": str(path), "sha256": hashlib.sha256(raw).hexdigest(),
+                  "size": len(raw), "evidenceClass": "local-verified", **({"sourceSha": source} if source else {})}
+        registered = registry.register_artifact(self.root, record)
+        known[raw] = {"artifactId": registered["artifactId"], "locationId": registered["locations"][0]["locationId"], "path": path}
+        return known[raw]
+
+    def freeze(self, packages):
+        return reuse.artifact_set_freeze(self.root, {"sourceSha": self.head, "runtimePaths": ["gradlew"],
+                                                     "packages": [{key: item[key] for key in ("artifactId", "locationId")} for item in packages],
+                                                     "provenance": {"architecture": "amd64", "signer": {"kind": "unsigned"}}})["artifactSetId"]
+
+    def scenario_input(self, scenario, **changes):
+        value = {"schema": windows.INPUT_SCHEMA, "schemaVersion": 1, "scenarioId": scenario, "correlationId": self.operation, "deploymentId": MACHINE,
+                 "sourceSha": self.head, "productVersion": "2.2.15", "artifactSetId": self.set_id,
+                 "priorInstall": self.prior if windows.RECIPES[scenario]["priorInstall"] else None}
+        value.update(changes)
+        return self.register(json.dumps(value, sort_keys=True).encode(), "input-" + str(uuid.uuid4()) + ".json", "scenario-input")["artifactId"]
+
+    def family_request(self, scenario, *, package=None, value=None):
+        row = windows.RECIPES[scenario]
+        artifacts = {"bundleManifest": "sha256-" + self.bundle_hash}
+        if "scenarioInput" in row["artifactKeys"]:
+            artifacts["scenarioInput"] = value or self.scenario_input(scenario)
+        for role in row["artifactKeys"]:
+            if role in windows.PACKAGE_KINDS:
+                artifacts[role] = package or (self.installer if role == "pythonInstaller" else self.msi)["artifactId"]
+        return self.request(scenarioId=scenario, artifactIds=artifacts)
+
+    def assert_refused(self, request, reason):
+        with self.assertRaises(ValueError) as caught:
+            windows.admit_start(self.root, request, self.resolver)
+        self.assertEqual(reason, str(caught.exception))
+        self.assertFalse(self.journal.exists(), "a refusal leaves no journal")
+        self.assertFalse(self.root.joinpath(*windows._LOCAL_STATE).exists())
+
+
+class PackageAdmissionTests(FamilyDriverBase):
+    def test_every_new_row_admits_before_any_journal(self):
+        for scenario in ("windows-python-install", "windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke",
+                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+            with self.subTest(scenario=scenario):
+                self.assertEqual(windows.RECIPES[scenario], windows.admit_start(self.root, self.family_request(scenario), self.resolver))
+                self.assertFalse(self.journal.exists())
+
+    def test_a_package_failing_any_admission_rule_is_refused_before_any_journal(self):
+        other = "f" * 40
+        changed = self.register(b"MSI changed " * 4000, "changed.msi", "desktop-package", source=self.head)
+        self.freeze([changed])
+        changed["path"].write_bytes(b"MSI CHANGED " * 4000)
+        cases = {
+            "linux-platform": (self.register(b"MSI linux " * 4000, "linux.msi", "desktop-package", platform="linux", source=self.head)["artifactId"],
+                               "windows_scenario_package_kind"),
+            "other-kind": (self.register(b"MSI receipt " * 4000, "receipt.msi", "fixture-receipt", source=self.head)["artifactId"],
+                           "windows_scenario_package_kind"),
+            "not-an-msi": (self.register(b"EXE bytes " * 4000, "vpn-control-2.2.15.exe", "desktop-package", source=self.head)["artifactId"],
+                           "windows_scenario_package_kind"),
+            "other-source": (self.register(b"MSI older " * 4000, "older.msi", "desktop-package", source=other)["artifactId"],
+                             "windows_scenario_package_source"),
+            "no-source": (self.register(b"MSI unbound " * 4000, "unbound.msi", "desktop-package")["artifactId"], "windows_scenario_package_source"),
+            "not-frozen": (self.register(b"MSI loose " * 4000, "loose.msi", "desktop-package", source=self.head)["artifactId"],
+                           "windows_scenario_package_not_frozen"),
+            "changed-bytes": (changed["artifactId"], "windows_scenario_package_unavailable"),
+            "unregistered": ("sha256-" + "e" * 64, "windows_scenario_package_unavailable"),
+        }
+        for scenario in ("windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke"):
+            for name, (artifact, reason) in cases.items():
+                with self.subTest(scenario=scenario, case=name):
+                    self.assert_refused(self.family_request(scenario, package=artifact), reason)
+        loose_set = self.freeze([self.register(b"MSI other set " * 4000, "set.msi", "desktop-package", source=self.head)])
+        self.assert_refused(self.family_request("windows-packaged-cli-smoke", value=self.scenario_input("windows-packaged-cli-smoke", artifactSetId=loose_set)),
+                            "windows_scenario_package_not_frozen")
+        self.assert_refused(self.family_request("windows-packaged-cli-smoke", value=self.scenario_input(
+            "windows-packaged-cli-smoke", artifactSetId="artifact-set-" + "0" * 64)), "windows_scenario_package_not_frozen")
+        wrong = self.register(b"not the python installer", "python-3.13.15-amd64.exe", "test-toolchain-installer")["artifactId"]
+        self.assert_refused(self.family_request("windows-python-install", package=wrong), "windows_scenario_python_installer")
+        self.assert_refused(self.family_request("windows-python-install", package=self.msi["artifactId"]), "windows_scenario_package_kind")
+
+    def test_an_input_naming_another_version_than_its_frozen_set_is_refused_before_any_journal(self):
+        # The set was frozen with gradle.properties' 2.2.15; a well-formed input naming any other version is mislabelled.
+        for scenario in ("windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke",
+                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+            for version in ("2.2.16", "2.2.14", "3.0.0"):
+                with self.subTest(scenario=scenario, version=version):
+                    self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, productVersion=version)),
+                                        "windows_scenario_package_version")
+        self.assertEqual("2.2.15", reuse.artifact_set_verify_readonly(self.root, self.set_id).get("productVersion"))
+
+    def test_the_scenario_input_must_name_this_operation_and_nothing_else(self):
+        scenario = "windows-disconnected-cli-config"
+        cases = {"other-operation": {"correlationId": str(uuid.uuid4())}, "other-scenario": {"scenarioId": "windows-packaged-cli-smoke"},
+                 "other-vm": {"deploymentId": str(uuid.uuid4())}, "other-schema": {"schema": "vpn-control.linux-scheduled-refresh.input"},
+                 "short-source": {"sourceSha": self.head[:12]}, "version": {"productVersion": "2.2"}, "set": {"artifactSetId": "set"},
+                 "no-prior": {"priorInstall": None}, "own-prior": {"priorInstall": self.operation}, "bad-prior": {"priorInstall": "prior"},
+                 "extra": {"path": "C:\\x"}, "argv": {"argv": ["cmd.exe"]}}
+        for name, change in cases.items():
+            with self.subTest(case=name):
+                self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, **change)), "windows_scenario_input_invalid")
+        self.assert_refused(self.family_request("windows-msi-base-install", value=self.scenario_input("windows-msi-base-install", priorInstall=self.prior)),
+                            "windows_scenario_input_invalid")
+        kind = self.register(json.dumps({"schema": windows.INPUT_SCHEMA}).encode(), "input.json", "native-scenario-input")["artifactId"]
+        self.assert_refused(self.family_request(scenario, value=kind), "windows_scenario_input_invalid")
+        self.assert_refused(self.family_request(scenario, value="sha256-" + "d" * 64), "windows_scenario_input_unavailable")
+
+
+class PackageSubmitTests(FamilyDriverBase):
+    def program_plan(self):
+        program = json.loads(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "program.json").read_text())
+        for node in ast.parse(program["program"]["source"]).body:
+            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "PLAN":
+                return ast.literal_eval(node.value)
+
+    def test_the_package_is_staged_once_before_the_job_and_the_job_names_only_digests(self):
+        started = self.executor().start(self.family_request("windows-msi-base-install"))
+        self.assertEqual("submitted", started["state"])
+        self.assertEqual(["target", "stage-check", "stage-write", "prepare", "submit"], self.ssh.calls)
+        digest = self.msi["artifactId"].removeprefix("sha256-")
+        self.assertEqual(self.msi["path"].read_bytes(), self.ssh.staged[digest])
+        plan = self.program_plan()
+        self.assertEqual({"basePackage": {"sha256": digest, "bytes": len(self.ssh.staged[digest])}}, plan["packages"])
+        self.assertEqual({"sourceSha": self.head, "productVersion": "2.2.15"}, plan["product"])
+        self.assertEqual({}, plan["prior"])
+        self.assertEqual(HOME + "/.cache/vpn-control-windows-scenarios/artifacts", plan["artifactDirectory"])
+        self.assertNotIn(str(self.sources), json.dumps(plan), "no local path crosses to the host")
+        self.operation = str(uuid.uuid4())
+        self.ssh.calls.clear()
+        self.executor().start(self.family_request("windows-msi-base-install"))
+        self.assertEqual(["target", "stage-check", "prepare", "submit"], self.ssh.calls, "a staged copy is never sent again")
+
+    def test_product_rows_send_no_package_and_name_their_prior_install(self):
+        self.executor().start(self.family_request("windows-packaged-cli-smoke"))
+        self.assertEqual(["target", "prepare", "submit"], self.ssh.calls)
+        plan = self.program_plan()
+        self.assertEqual({"install": self.prior}, plan["prior"])
+        self.assertEqual(["targetPackage"], list(plan["packages"]))
+        self.assertTrue(plan["row"]["priorInstall"])
+
+    def test_every_call_keeps_its_whole_budget_inside_the_one_submit_admission(self):
+        # A slow but in-budget staging must not clip the prepare or submit after it into an unknown outcome.
+        admissions, budgets = [], []
+        run = self.ssh.run
+        clock = types.SimpleNamespace(monotonic=lambda: 5000.0)  # The driver's only clock read is the admission deadline.
+
+        @contextmanager
+        def admitted(root, host, operation, *, deadline=None, requirements=None):
+            admissions.append(deadline - clock.monotonic())
+            yield
+            admissions.append(None)
+
+        def timed(argv, **options):
+            budgets.append((len(admissions), options["timeout"]))
+            return run(argv, **options)
+        self.ssh.run = timed
+        with mock.patch.object(transport, "admitted_transport", admitted), mock.patch.object(windows, "time", clock):
+            for scenario, calls in (("windows-msi-base-install", 5), (SCENARIO, 3)):
+                with self.subTest(scenario=scenario):
+                    admissions.clear()
+                    budgets.clear()
+                    self.operation = str(uuid.uuid4())
+                    request = self.family_request(scenario) if scenario != SCENARIO else self.request()
+                    self.assertEqual("submitted", self.executor().start(request)["state"])
+                    self.assertEqual(2, len(admissions), "one admission carries every call of the submit")
+                    self.assertEqual([1] * calls, [inside for inside, _ in budgets])
+                    self.assertLessEqual(sum(seconds for _, seconds in budgets), admissions[0])
+
+    def test_a_job_stopped_after_publish_is_collected_without_an_installed_package_claim(self):
+        self.executor().start(self.family_request("windows-packaged-cli-smoke"))
+        digest = self.msi["artifactId"].removeprefix("sha256-")
+        plan = {"scenarioId": "windows-packaged-cli-smoke", "operationId": self.operation, "machine": MACHINE, "bundleHash": self.bundle_hash,
+                "stopAfter": "publish"}
+        # What a stopped job's receipt claimed before its claim needed a checked task.
+        receipt = host_job.build_receipt(plan, exit_code=0, stage="publish", failure=None, guest_programs=12,
+                                         windows={"installedPackage": True, "packageSha256": digest})
+        self.finished(raw=(json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode())
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "publish"),
+                         (result["state"], result["collectionState"], result["scenarioEvidence"]["windows"]["stoppedAfter"]))
+        self.assertEqual({"evidenceClass": "installed-package-unproven", "productAction": True}, windows.public_evidence(result))
+        self.assertEqual({"evidenceClass": "installed-package-unproven", "productAction": True}, ssh_driver.public_evidence(result))
+
+    def test_a_lost_stage_reply_never_reaches_a_submit(self):
+        self.ssh.lost = {"stage-write"}
+        first = self.executor().start(self.family_request("windows-msi-base-reset"))
+        self.assertEqual(("submitting", "submit_response_unavailable"), (first["state"], first["reason"]))
+        self.assertNotIn("prepare", self.ssh.calls)
+        self.assertEqual(0, self.ssh.submits)
+        self.assertEqual("unknown", self.executor().resume(self.operation)["state"])
+
+    def test_the_mcp_route_admits_through_the_ssh_adapter_before_any_journal(self):
+        self.assertIsNone(ssh_driver.admit_start(self.root, self.family_request("windows-streaming-client-interrupt"), self.resolver))
+        with self.assertRaises(ValueError):
+            ssh_driver.admit_start(self.root, self.family_request("windows-streaming-client-interrupt", package=self.installer["artifactId"]), self.resolver)
+        self.assertFalse(self.journal.exists())
 
 
 class RenderTests(DriverBase):
