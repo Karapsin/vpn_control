@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "kind": "whole-source-review-beforeimages",
+  "nativeFailureClaimed": true,
+  "finding": "a nested reconnect candidate whose channel ended without a receipt (Arch VM powered off) was never reconciled as a terminal failure: the nested branch of reconcile_recovery returned None for an ENDED status, so the consumed dispatch stayed pending and every later call of the same operation waited out its budget with recovery_outcome_unknown",
+  "originalOperationId": "34e354eb-397f-4697-ba46-01426b94d9d5",
+  "originalRecoveryId": "5c310c42a4508447619a572d9813866722a90b83b4b94ae2969c342a0728b546",
+  "originalCandidateCorrelationId": "d5cf3d8a77c08a866afdfa89cd1142a1",
+  "originalTerminalSha256": "38af81874763abd91455f7e77b51406eef23adc84bf6ad80553d42a7c31b5ce6",
+  "files": {
+    "readiness_transport.before.source": {
+      "path": "agent_tools/readiness_transport.py",
+      "sha256": "536fc249b93620f4c23b548b98cc947d8914a38b2ab1b5cad915bd450377aba1"
+    }
+  }
+}

@@ -373,6 +373,20 @@ class TransportAdapter:
             candidate_guard()
             return readiness.RecoveryUnsubmitted(recovery_identity, attempt, dispatch_digest, digest)
 
+    def _ended_candidate(self,candidate,anchor,stack,candidate_guard,recovery_identity,attempt,dispatch_digest):
+        """Terminal proof of a candidate channel that ended; missing or other records stay unknown."""
+        corr=candidate['correlationId']
+        try:
+            journal=stack.enter_context(private.Directory(channel._context_journal(self.root,anchor,corr,False,True)))
+            intent=stack.enter_context(private.Snapshot(journal,corr+'.intent.json'))
+            terminal=stack.enter_context(private.Snapshot(journal,corr+'.terminal.json'))
+        except FileNotFoundError:return None
+        ended=json.loads(terminal.body,object_pairs_hook=transport._reject_duplicate_keys)
+        if (type(ended)is not dict or set(ended)!={'state','correlationId','receiptSha256','intentSha256','gatewayBoot'}
+                or ended['state']!='ended' or ended['correlationId']!=corr or ended['intentSha256']!=intent.digest):return None
+        candidate_guard();intent.guard();terminal.guard()
+        return readiness.RecoveryEnded(recovery_identity,attempt,dispatch_digest,terminal.digest)
+
     def reconcile_recovery(self, action, recovery_identity, observed, deadline, attempt, dispatch_digest):
         """Observe the consumed original connection attempt, without replay."""
         if (action!='reconnect' or observed.target!=self.host or observed.machine!=self.machine):
@@ -402,6 +416,11 @@ class TransportAdapter:
                 candidate_guard()
                 result=direct.status(self.root,anchor.alias,candidate['correlationId'])
                 candidate_guard()
+                if result.get('state')=='ended' and result.get('correlationId')==candidate['correlationId']:
+                    # A positive end of this recovery's own channel, proven by
+                    # its exact retained terminal; never readiness or a job grant.
+                    return self._ended_candidate(candidate,anchor.alias,held_candidate,candidate_guard,
+                                                 recovery_identity,attempt,dispatch_digest)
                 if result.get('state')!='ready':return None
                 selected=nested_ready.admit(self.root,anchor.alias,candidate['correlationId'],result['receiptSha256'])
                 candidate_guard()

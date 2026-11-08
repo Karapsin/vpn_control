@@ -9117,6 +9117,8 @@
         "agent_tools/readiness_transport.py",
         "agent_tools/ssh_direct_nested_channel.py",
         "agent_tools/ssh_transport.py",
+        "agent_tools/tests/fixtures/nested_ended_candidate/provenance.json",
+        "agent_tools/tests/fixtures/nested_ended_candidate/readiness_transport.before.source",
         "agent_tools/tests/fixtures/readiness_transport/provenance.json",
         "agent_tools/tests/fixtures/readiness_transport/readiness_ssh_master.py.before-unavailable.source",
         "agent_tools/tests/fixtures/readiness_transport/readiness_ssh_master.py.before.source",
@@ -9130,7 +9132,8 @@
       "sourceSha256": [
         "25274836ab02b3e445266f2aed28e8fde80567d7c752fa24824c58687be5ece1",
         "7d0795aee26bf2e958eda8c34963d052520df2e3dc4e02846273603a5c6b484f",
-        "a842004a22c4f38eabb5321c1cd4b1333c0e2b990930270cb4d2df8517f0e26f"
+        "a842004a22c4f38eabb5321c1cd4b1333c0e2b990930270cb4d2df8517f0e26f",
+        "9dbb0a1ea5cbbd997609275361bd9c85228af01ff77474557191edbd9c8095c8"
       ]
     },
     "agent_tools/tests/test_readiness_windows_host_work.py": {
@@ -13418,6 +13421,7 @@
     "agent_tools/tests/fixtures/macos_active_work_integration/qualification-pins.json": "bf412f06eca0a46c47a70a34edc604c17574f42e899046edbb35ba6bce05e2ce",
     "agent_tools/tests/fixtures/msi_qga_fixture_bounds/receive.before.fragment": "142b4f66c31007ee273bbd1f04781c52c21302aeaa40638e747dd9359c41aa75",
     "agent_tools/tests/fixtures/native_review_input_bytes/attributes.before.source": "99ef961a6b1ef27fe7340f2b9a9c2fb5ffad7dd88501215076b6b8b0f12db7ed",
+    "agent_tools/tests/fixtures/nested_ended_candidate/readiness_transport.before.source": "536fc249b93620f4c23b548b98cc947d8914a38b2ab1b5cad915bd450377aba1",
     "agent_tools/tests/fixtures/program_mcp_follow_deadline_before/ssh_program_mcp_client.py.source": "f8a083e3f9b6462d9b4c4c4a89bf16c9ac4272658f7aa3a1c901d3518cefd469",
     "agent_tools/tests/fixtures/qemu_projection_birth/projection.before.fragment": "beab62becfbb8b2e9947243ba5d2ec7c848bb91998480e6f1ef21d2c7d7cbad6",
     "agent_tools/tests/fixtures/readiness_identity_refusal/mcp_server.before.source": "d1620c0e27b48721bc20f099eac6e6d4c2ed3a0922788e7874df0411133b1c34",

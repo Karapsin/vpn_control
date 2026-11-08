@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.16 - 2026-11-08
 
 - Publish complete gateway fixture terminal markers atomically before observation.
 - Clone generalized Windows fixture images, recover agent SSH transport after reboots and name the cause of unverified Windows deploy replies.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Record Windows-only document results as partial on shared acceptance rows, and fix hosted Windows visual capture and the update check on visual clones.
 - Move the Windows native helpers to .NET 10.0.14 for its Brotli security fix, and correct packaged CLI smoke and platform test assumptions found by the first full CI run.
 - Add the Windows scenario adapter and durable host job behind scenario-start, with a harmless qualification row.
+- End a nested reconnect whose candidate channel ended, so Windows deploy status recovers after a host outage.
 
 ## 2.2.15 - 2026-10-27
 

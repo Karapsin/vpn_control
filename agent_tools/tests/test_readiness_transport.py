@@ -298,4 +298,135 @@ def diagnosed(describe):
 
 from agent_tools.private_inventory_lock import Directory as private_directory
 
+ENDED_CANDIDATE=Path(__file__).parent/'fixtures/nested_ended_candidate'
+# The deployment status route's fixed operation identity in the native failure.
+ENDED_OPERATION='34e354eb-397f-4697-ba46-01426b94d9d5'
+
+
+def ended_candidate_before():
+    """The whole unfixed adapter that ran the native failure; its campaign reads the live siblings."""
+    raw=(ENDED_CANDIDATE/'readiness_transport.before.source').read_bytes()
+    provenance=json.loads((ENDED_CANDIDATE/'provenance.json').read_bytes())
+    if hashlib.sha256(raw).hexdigest()!=provenance['files']['readiness_transport.before.source']['sha256']:
+        raise ValueError('before_source_changed')
+    module=types.ModuleType('agent_tools._ended_candidate_before_readiness_transport')
+    module.__package__='agent_tools';module.__file__=subject.__file__
+    exec(compile(raw,str(ENDED_CANDIDATE/'readiness_transport.before.source'),'exec'),module.__dict__)
+    return module
+
+
+@unittest.skipUnless(os.name=='posix','POSIX generated SSH/ancestry sockets')
+class NestedEndedCandidateTests(unittest.TestCase):
+    """Native 34e354eb: the reconnect candidate's channel ended without a receipt.
+
+    Only the remote endpoint is fake. The loop, journal, adapter, channel
+    provider and selection are production code; a fake clock replaces waiting.
+    """
+    def setUp(self):
+        from agent_tools.tests.test_ssh_direct_nested_channel import DirectChannelTests
+        from agent_tools import readiness_nested_channel as nested
+        case=DirectChannelTests('runTest');case.setUp();self.addCleanup(case.doCleanups)
+        ready=case.invoke();self.assertEqual('ready',ready['state'])
+        self.case=case;self.root=case.root;self.old=case.corr;self.prior=case.result
+        self.old_ended=False;self.down=False;self.unknown=False;self.lost_reply=False
+        self.launched=set();self.calls=[];self.events=[]
+        popen=mock.patch.object(subprocess,'Popen',side_effect=self.consumer);popen.start();self.addCleanup(popen.stop)
+        nested.admit(self.root,'archlinux',self.old,ready['receiptSha256'])
+        self.old_ended=True  # The selected original ends: every observation is expired.
+
+    def consumer(self,argv,**kwargs):
+        remote=shlex.split(argv[-1]);code=0
+        if remote[0]=='python3' and len(remote)>6:
+            corr,action=remote[5],remote[6];boot=self.prior['master']['gatewayBoot']
+            if corr==self.old:
+                self.assertEqual('status',action)
+                body={'state':'ended','correlationId':corr,'prior':self.prior,'gatewayBoot':boot} if self.old_ended else self.prior
+            else:
+                self.calls.append((corr,action))
+                if action=='prepare' and not self.down and not self.unknown:self.launched.add(corr)
+                if self.unknown or action=='prepare' and (self.down or self.lost_reply):
+                    body={'state':'unknown','correlationId':corr};code=3
+                elif corr in self.launched:
+                    body={**self.prior,'correlationId':corr,'controlPath':'/tmp/vpn-channel-'+corr+'/m'}
+                else:
+                    # The stage holds only its intent: no master ever started.
+                    body={'state':'ended','correlationId':corr,'prior':None,'gatewayBoot':boot}
+        else:
+            user=transport.load_config(self.root).hosts['archlinux'].user
+            body={'boot':self.prior['arch']['boot'],'uid':1000,'principal':user,'home':'/owned','connection':'192.0.2.1 1000 192.0.2.2 22'}
+        program='import sys;sys.stdin.buffer.read();sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]));raise SystemExit(int(sys.argv[2]))'
+        return self.case.real_popen([sys.executable,'-I','-B','-c',program,json.dumps(body).encode().hex(),str(code)],**kwargs)
+
+    def ensure(self,module):
+        """Waiting on the consumed original is final for an unchanged observation: it spends the budget."""
+        offset=[0.0];self.events=[]
+        clock=lambda:time.monotonic()+offset[0]
+        def sleep(seconds):offset[0]+=max(0.0,seconds)
+        def progress(event):
+            self.events.append(event)
+            if event=='observing_original_recovery':offset[0]+=readiness.NORMAL_BUDGET
+        context=module.context(self.root,'archlinux',deadline=clock()+60,clock=clock,sleep=sleep,progress=progress)
+        return readiness.ensure_ready(context,readiness.Requirements(frozenset({'transport'}),frozenset({'reconnect'})),ENDED_OPERATION)
+
+    def candidate(self):
+        return json.loads((self.root/'.rag_index/readiness-transport-v2/archlinux/current.json').read_bytes())
+
+    def terminal(self,corr):
+        return direct._dependencies()[1]._context_journal(self.root,'archlinux',corr,False,True)/(corr+'.terminal.json')
+
+    def ended_record(self,recovery):
+        return self.root/'.rag_index/readiness'/hashlib.sha256(b'archlinux').hexdigest()/('ended-'+recovery+'.json')
+
+    def prepares(self):
+        return [corr for corr,action in self.calls if action=='prepare']
+
+    def test_whole_before_keeps_the_ended_candidate_pending_current_ends_it_and_reconnects(self):
+        from agent_tools import readiness_nested_channel as nested
+        self.down=True  # Arch VM off: the reconnect's channel never gets a master.
+        with self.assertRaises(readiness.ReadinessBlocked)as first:self.ensure(ended_candidate_before())
+        self.assertEqual('recovery_outcome_unknown',first.exception.reason)
+        candidate=self.candidate();rid=candidate['recoveryId'];corr=candidate['correlationId']
+        self.assertEqual(('5c310c42a4508447619a572d9813866722a90b83b4b94ae2969c342a0728b546','d5cf3d8a77c08a866afdfa89cd1142a1'),(rid,corr))
+        terminal=self.terminal(corr).read_bytes()
+        self.assertEqual(('ended',None),tuple(json.loads(terminal)[key]for key in ('state','receiptSha256')))
+        self.down=False  # The host is back; the original channel stays ENDED.
+        for _ in range(2):
+            with self.assertRaises(readiness.ReadinessBlocked)as red:self.ensure(ended_candidate_before())
+            self.assertEqual('recovery_outcome_unknown',red.exception.reason)
+            self.assertEqual(['observing_original_recovery'],self.events)
+        self.assertEqual([corr],self.prepares());self.assertFalse(self.ended_record(rid).exists())
+        ready=self.ensure(subject)
+        self.assertEqual(ENDED_OPERATION,ready.operation_identity);self.assertTrue(ready.connection)
+        self.assertEqual(['reconnect'],self.events)
+        record=json.loads(self.ended_record(rid).read_bytes())
+        self.assertEqual((rid,1,'failed',hashlib.sha256(terminal).hexdigest()),
+                         (record['recoveryId'],record['attempt'],record['state'],record['proofSha256']))
+        renewed=self.candidate()['correlationId']
+        self.assertEqual([corr,renewed],self.prepares());self.assertNotEqual(corr,renewed)
+        self.assertEqual(renewed,nested.route_options(self.root,'archlinux')['correlationId'])
+        self.assertEqual(terminal,self.terminal(corr).read_bytes())
+        again=self.ensure(subject)
+        self.assertEqual(ready.connection,again.connection);self.assertEqual([corr,renewed],self.prepares())
+
+    def test_unknown_candidate_status_is_never_ended_and_grants_no_dispatch(self):
+        self.down=True;self.unknown=True
+        for _ in range(2):
+            with self.assertRaises(readiness.ReadinessBlocked)as blocked:self.ensure(subject)
+            self.assertEqual('recovery_outcome_unknown',blocked.exception.reason)
+            self.assertIn('observing_original_recovery',self.events)
+        candidate=self.candidate();corr=candidate['correlationId']
+        self.assertEqual([corr],self.prepares())
+        self.assertFalse(self.terminal(corr).exists());self.assertFalse(self.ended_record(candidate['recoveryId']).exists())
+
+    def test_ready_candidate_whose_launch_reply_was_lost_is_selected_not_ended(self):
+        from agent_tools import readiness_nested_channel as nested
+        self.lost_reply=True  # Its master started; only the prepare reply was lost.
+        ready=self.ensure(subject)
+        candidate=self.candidate();corr=candidate['correlationId']
+        self.assertEqual(ENDED_OPERATION,ready.operation_identity);self.assertEqual(['reconnect'],self.events)
+        self.assertEqual([corr],self.prepares());self.assertIn((corr,'status'),self.calls)
+        self.assertEqual(corr,nested.route_options(self.root,'archlinux')['correlationId'])
+        self.assertFalse(self.terminal(corr).exists());self.assertFalse(self.ended_record(candidate['recoveryId']).exists())
+
+
 if __name__=='__main__':unittest.main()

@@ -927,6 +927,14 @@ These commits had never run in CI, so tests skipped on the Mac met Linux and Win
 | Windows text mode changes a rendered here-string's hash | `test_actual_powershell_literal_bytes_match_child_and_native_hashes` in `windows_main_input_bridge/v3/controls.source` | Exit 3 on real PowerShell: `write_text` added CRLF, so the parsed literal no longer matched the child and native hashes. The control now writes exact bytes; one line differs from the preserved original. |
 | Legacy intent now keeps closed exit facts | `test_readiness_windows_sockets` | dev retains metadata for a legacy intent, so the test asserts that it holds no output rather than that no file exists. |
 
+### Nested reconnect after an ended candidate (Windows deploy status, 2026-11-07/08)
+
+A native failure. The replies are `.runtime/windows-parity-20261107/direct/status-1.json` to `status-3.json`. The retained terminal is `.rag_index/ssh-direct-nested-channel/hosts/archlinux/d5cf3d8a77c08a866afdfa89cd1142a1.terminal.json`. The unfixed adapter that ran is kept byte for byte as `fixtures/nested_ended_candidate/readiness_transport.before.source` (`536fc249`, the campaign's own source pin).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A nested reconnect whose candidate channel ended never became a terminal failure | `test_readiness_transport.NestedEndedCandidateTests.test_whole_before_keeps_the_ended_candidate_pending_current_ends_it_and_reconnects` | The Arch VM was off, so candidate `d5cf3d8a` of recovery `5c310c42` (operation `34e354eb`, the deployment UUID) ended with no receipt. The nested branch of `reconcile_recovery` returned None for every status but ready, so the dispatch stayed pending and each later status call of that operation waited out its budget with `recovery_outcome_unknown`. RED on the preserved whole adapter. GREEN records `ended-<recovery>` with the SHA-256 of the exact retained terminal bytes, then reconnects once under a new recovery. The controls `test_unknown_candidate_status_is_never_ended_and_grants_no_dispatch` and `test_ready_candidate_whose_launch_reply_was_lost_is_selected_not_ended` keep an unknown status and a live candidate unended. Only the remote endpoint is fake, so the status route still needs a native rerun. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

@@ -4,7 +4,7 @@ This section is the one current parity ledger. Everything below it is retained
 history. Scope is Windows, the user's last parity decision (2026-10-19). Linux,
 Android and macOS native and visual work stay deferred and open, never passed.
 
-## State (2026-11-07)
+## State (2026-11-08)
 
 - Source: the paused checkout's parity commit `a9aed701` is merged into `dev` on
   top of `17587717`, with the paused worktree's reviewed paths ported byte for byte.
@@ -14,9 +14,12 @@ Android and macOS native and visual work stay deferred and open, never passed.
   reviewed UAC prompt. There is no new generic executor. The newer private
   composition (`final-freeze-v3`, 598 paths) was reviewed: 22 paths are taken,
   most of them adapted, in a later commit, and the rest is reported to the user.
-- Fixture: clone `34e354eb` of image `637199a5` runs, qualified and secured, with
+- Fixture: clone `7bb1f0c0` of image `637199a5` runs, qualified and secured, with
   no alias, screen profiles or lease and job namespaces. It is enrolled only
-  after the sources settle.
+  after the sources settle. The Arch host rebooted on 2026-11-07 and stopped the
+  earlier clone `34e354eb`; its disk and stale reservation stay as they are. The
+  user allows up to four clones in parallel, each running its scenarios in
+  sequence.
 - Product acceptance: 0 of 22 matrix rows pass and the app is on no fixture. Old
   receipts in the paused checkout are not current. The ported scenario tools have
   never run natively, and no tracked code launches them yet.
@@ -27,9 +30,17 @@ Android and macOS native and visual work stay deferred and open, never passed.
 1. Done: the merge is pushed, and all five required workflows pass on `4d221173`,
    with the Windows helpers on .NET 10.0.14.
 2. In progress: the Windows `scenario-start` adapter and host job exist with only
-   `windows-ordinary-qualification`, unproven natively. Still to add: the taken
-   tools, the closed UAC action, the reboot allowance and the base-reset setup step.
-   Fix the tool defects the review predicted, each with RED and GREEN when proven.
+   `windows-ordinary-qualification`. On 2026-11-08 it passed natively on source
+   `32d32706`, clone `7bb1f0c0` (the Arch host rebooted and stopped clone
+   `34e354eb`): direct context, publish and full runs (an InteractiveToken
+   LeastPrivilege task in the ordinary session, exit 7 with exact output, task
+   deleted, evidence pulled), then the same through fresh MCP servers with resume
+   and a duplicate repeat start. The host outage exposed a status defect: a nested
+   reconnect whose channel had definitely ended stayed pending, so the deployment
+   status kept returning `recovery_outcome_unknown`. It is fixed with RED and
+   GREEN, and a native status rerun is still owed. Still to add: the taken tools,
+   the closed UAC action, the reboot allowance and the base-reset setup step. Fix
+   the tool defects the review predicted, each with RED and GREEN when proven.
 3. Build the same-source package pair, enroll the fixture and re-prove status,
    display wake, lease and counter, direct and then MCP. By user decision, all
    scenarios run in sequence on one VM, updates may chain on it, and sign-in and
