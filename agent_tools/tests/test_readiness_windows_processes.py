@@ -90,7 +90,7 @@ class NativeWindowsProcessTests(unittest.TestCase):
             return subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(path)],capture_output=True,timeout=45)
 
     def test_actual_complete_census_before_RED_fixed_native_identity_GREEN(self):
-        for name,observer,code in [('before',before_observer(),1),('fixed',idle._OBSERVE,0)]:
+        for name,observer,code in [('before',before_observer(),1),('fixed',idle.ALLOWANCE+idle._OBSERVE,0)]:
             with self.subTest(name=name):
                 result=self.run_ps(causal_harness(observer))
                 self.assertEqual(code,result.returncode,(result.stdout+result.stderr).decode(errors='replace'))
@@ -111,7 +111,7 @@ if([RecoveryProcessIdentity]::Image($f,[string]$p.Name,$birth)){throw 'PROCESS_M
 
     def test_complete_background_before_RED_verified_role_GREEN(self):
         before=before_observer(Path(__file__).parent/'fixtures/windows_background_roles')
-        for name,observer,code in [('before',before,1),('fixed',idle._OBSERVE,0)]:
+        for name,observer,code in [('before',before,1),('fixed',idle.ALLOWANCE+idle._OBSERVE,0)]:
             with self.subTest(name=name):
                 result=self.run_ps(role_harness(observer))
                 self.assertEqual(code,result.returncode,(result.stdout+result.stderr).decode(errors='replace'))

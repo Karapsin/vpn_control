@@ -64,13 +64,13 @@ class NativeWindowsDesktopBackgroundTests(unittest.TestCase):
     def test_complete_before_RED_fixed_desktop_roles_GREEN(self):
         old_process,old_idle=before()
         for kind in ('onedrive','webview'):
-            for observer,roles,expected in [(old_idle._OBSERVE,old_process._ROLES,1),(idle._OBSERVE,processes._ROLES,0)]:
+            for observer,roles,expected in [(old_idle._OBSERVE,old_process._ROLES,1),(idle.ALLOWANCE+idle._OBSERVE,processes._ROLES,0)]:
                 with self.subTest(kind=kind,fixed=expected==0):
                     result=self.run_ps(harness(kind,observer,roles));self.assertEqual(expected,result.returncode,(result.stdout+result.stderr).decode(errors='replace'))
     def test_target_parent_package_account_and_configured_mismatches_block(self):
         cases=[('onedrive',"$RecoveryMetadata.ownerSid='foreign'"),('onedrive',"$RecoveryMetadata.profileRoot='C:\\Users\\foreign'"),('onedrive',"$RecoveryMetadata.hiveLoaded=$false"),('onedrive',"$RecoveryMetadata.accountsKnown=$false"),('onedrive',"$RecoveryMetadata.configuredFieldsAbsent=$false"),('webview',"function Get-CimInstance { [pscustomobject]@{ProcessId=200;Name='msedgewebview2.exe';ParentProcessId=202;SessionId=1;ExecutablePath='C:\\invalid';CreationDate=[DateTime]::FromFileTimeUtc(134369743096527020)} }")]
         for kind,negative in cases:
             with self.subTest(kind=kind,negative=negative):
-                result=self.run_ps(harness(kind,idle._OBSERVE,processes._ROLES,negative));self.assertEqual(1,result.returncode,(result.stdout+result.stderr).decode(errors='replace'));self.assertIn(b'DESKTOP_BACKGROUND_CAUSAL_RED',result.stderr)
+                result=self.run_ps(harness(kind,idle.ALLOWANCE+idle._OBSERVE,processes._ROLES,negative));self.assertEqual(1,result.returncode,(result.stdout+result.stderr).decode(errors='replace'));self.assertIn(b'DESKTOP_BACKGROUND_CAUSAL_RED',result.stderr)
 
 if __name__=='__main__':unittest.main()

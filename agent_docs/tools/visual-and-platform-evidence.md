@@ -856,11 +856,16 @@ it; no tool route does.
 The registration read runs as SYSTEM and enumerates every user and context at once
 (`S-1-1-0`, context 7), keeping the ordinary user's rows and the machine's and
 naming products by `InstalledProductName`, as the natively proven installed-context
-reader does. A name it cannot read is counted, never dropped silently. A failed
-receipt check names that check after a colon, as a finite code and never as guest
-text: for example `publisher_msi_receipt:package_shape_list`,
+reader does. A name it cannot read is counted, never dropped silently. Each row's
+package code is the revision number of the cached package that the installed
+property `LocalPackage` names, because SYSTEM's `MsiGetProductInfoExW` answers 1608
+for `PackageCode` of a per-user install. A failed receipt check names that check
+after a colon, as a finite code and never as guest text: for example
+`publisher_msi_receipt:package_shape_list`,
 `installed_product_state:count_0:considered_12:unnamed_0` or
-`installed_registration_differs:location`.
+`installed_registration_differs:location`. A publisher program that fails names the
+template's own code when its stderr carries one, for example
+`publisher_refused:after-registration:PUB_MSI_INFO:LocalPackage:1608`.
 
 A product row is `productAction` true and is `installed-package` evidence only
 when the job is terminal, its collection complete, `windows.installedPackage` true

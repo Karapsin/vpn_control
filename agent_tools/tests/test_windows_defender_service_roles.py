@@ -94,7 +94,8 @@ function Test-Path { $false }
     source += '\nfunction Invoke-Census {\n' + before_idle._OBSERVE.replace(output, 'return $result') + '\n}\n'
     source += "$before=Invoke-Census;if(@($before.processes|Where-Object {$_.name -in @('MsMpEng.exe','NisSrv.exe') -and -not $_.knownSystem}).Count -ne 2){throw 'ORIGINAL_NOT_RED'}\n"
     source += processes._ROLES
-    source += '\nfunction Invoke-Census {\n' + idle._OBSERVE.replace(output, 'return $result') + '\n}\n'
+    # The census calls the product allowance reader, which production prepends as ALLOWANCE.
+    source += '\n' + idle.ALLOWANCE + '\nfunction Invoke-Census {\n' + idle._OBSERVE.replace(output, 'return $result') + '\n}\n'
     source += r'''
 $fixed=Invoke-Census
 if(@($fixed.processes|Where-Object {$_.name -in @('MsMpEng.exe','NisSrv.exe') -and $_.knownSystem}).Count -ne 2){throw 'FIXED_NOT_GREEN'}

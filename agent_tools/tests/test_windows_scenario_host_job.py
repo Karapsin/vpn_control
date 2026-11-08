@@ -112,6 +112,7 @@ class FakeQga:
         self.run_state = None
         self.run_code = "RUN_SYNTHETIC_CODE"
         self.program_exit = {}
+        self.program_stderr = {}
         self.status_file = None
         self.write_sizes = []
         # The guest's trees and MSI state: what list-tree, read-pins and msi-registration report.
@@ -181,7 +182,8 @@ class FakeQga:
         else:
             kind, terminal = m["action"], self._publisher(m, pid)
         if kind in self.program_exit:
-            terminal = {"exited": True, "exitcode": self.program_exit[kind], "err-data": base64.b64encode(b"refused").decode()}
+            terminal = {"exited": True, "exitcode": self.program_exit[kind],
+                        "err-data": base64.b64encode(self.program_stderr.get(kind, b"refused")).decode()}
         self.programs.append((kind, source))
         self.pending[pid] = {"polls": self.polls_before_exit, "terminal": terminal}
         return {"pid": pid}
@@ -871,7 +873,7 @@ class KnownFailureTests(Base):
             return result
         self.qga._guest_file_write = corrupt
         plan, code, receipt = self.run_job()
-        self.assert_known_failure(plan, code, receipt, "publisher_refused:publish-verify-1")
+        self.assert_known_failure(plan, code, receipt, "publisher_refused:publish-verify-1:PUB_FILE_HASH_OR_SIZE")
         self.assertEqual(1, self.qga.kinds().count("verify"))
 
     def test_a_lost_file_write_reply_is_never_written_twice(self):
@@ -1074,8 +1076,14 @@ class RegistrationReaderTests(unittest.TestCase):
 
     def test_each_row_carries_the_package_code_of_its_own_registration(self):
         # An update row's inputs bind the base and target registrations by package code, read where the row was found.
+        # Natively (2026-11-09) SYSTEM's MsiGetProductInfoExW answered 1608 for PackageCode of the per-user install, while
+        # installed properties read; the code is the revision number of the cached package LocalPackage names.
         body = self.body((ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text(encoding="ascii"))
-        self.assertIn("packageCode=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'PackageCode')", body)
+        self.assertIn("packageCode=[VpnScenarioMsiRegistration]::PackageCode($product.Code,$product.Sid,$product.Context)", body)
+        self.assertNotIn("'PackageCode'", body)
+        self.assertIn('Info(code,user,context,"LocalPackage")', body)
+        self.assertIn("MsiSummaryInfoGetPropertyW(handle,9,out type,out number,ref time,value,ref size)", body)
+        self.assertIn("finally{MsiCloseHandle(handle);}", body)
 
 
 class ClosedDoorTests(unittest.TestCase):
@@ -1630,6 +1638,31 @@ class FamilyJobTests(FamilyBase):
         plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
         self.assertEqual((1, "publisher_registration_receipt"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
+
+    def test_a_failed_publisher_names_the_templates_own_refusal_code(self):
+        # Natively (2026-11-09) msiexec installed the package, then the registration reader threw
+        # PUB_MSI_INFO:PackageCode:1608 and the receipt said only publisher_refused:after-registration.
+        native = (b'Exception calling "Info" with "4" argument(s): "PUB_MSI_INFO:PackageCode:1608"\r\n'
+                  b"At line:279 char:3\r\n+   $rows.Add([ordered]@{productCode=$product.Code;context=[int]$produc ...\r\n")
+        self.qga.registration = [{"productCode": OLD_CODE, "context": 2, "productName": "vpn-control", "version": "2.2.13",
+                                  "installLocation": INSTALLED_ROOT, "packageCode": PACKAGE_CODE}]
+        self.qga.program_exit["msi-registration"] = 1
+        self.qga.program_stderr["msi-registration"] = native
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
+        self.assertEqual((1, "publisher_refused:publish-registration:PUB_MSI_INFO:PackageCode:1608"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+
+    def test_only_the_templates_own_codes_and_words_cross_from_publisher_stderr(self):
+        for stderr, expected in ((b"Access to the path C:\\Users\\private is denied.", "publisher_refused:publish-registration"),
+                                 (b"PUB_NOT_A_TEMPLATE_CODE:LocalPackage:5", "publisher_refused:publish-registration"),
+                                 (b"PUB_MSI_INFO:Privateaccountname:5", "publisher_refused:publish-registration:PUB_MSI_INFO"),
+                                 (b"PUB_MSI_LOCAL_PACKAGE", "publisher_refused:publish-registration:PUB_MSI_LOCAL_PACKAGE"),
+                                 (b"x\xff\xfe PUB_MSI_SUMMARY:LocalPackage:1610", "publisher_refused:publish-registration:PUB_MSI_SUMMARY:LocalPackage:1610")):
+            with self.subTest(stderr=stderr):
+                self.qga.program_exit["msi-registration"] = 1
+                self.qga.program_stderr["msi-registration"] = stderr
+                plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+                self.assertEqual((1, expected), (code, receipt["failure"]))
 
     def test_a_registration_row_without_a_package_code_is_refused(self):
         self.qga.registration = [{"productCode": OLD_CODE, "context": 2, "productName": "vpn-control", "version": "2.2.13",
@@ -2281,7 +2314,8 @@ class ProxyFamilyTests(ProxyFamilyBase):
                 self.assertNotIn("system-run", kinds)
                 self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
         self.qga.runtime_reply = None
-        for jars, reason in (({"app/desktopApp.jar", "app/skiko-awt.jar"}, "publisher_refused:publish-runtime"), (set(), "publisher_refused:publish-runtime")):
+        for jars, reason in (({"app/desktopApp.jar", "app/skiko-awt.jar"}, "publisher_refused:publish-runtime:PUB_RUNTIME_ENTRY_COUNT"),
+                             (set(), "publisher_refused:publish-runtime:PUB_RUNTIME_ENTRY_COUNT")):
             with self.subTest(jars=sorted(jars)):
                 self.qga.runtime_jars = jars
                 plan, code, receipt, kinds = self.run_family("windows-proxy-lifecycle.find-best-success", prior=install)

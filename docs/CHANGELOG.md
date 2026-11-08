@@ -10,6 +10,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Recover the Windows CLI's original arguments after the jpackage launcher restart, so JSON values and empty values among other arguments pass unchanged.
 - Smoke-test JSON and empty arguments through the packaged Windows CLI launcher, and accept a restart parent created at the same instant as its child.
 - Add the Windows reboot, proxy-lifecycle and public-update scenario rows with an exact idle allowance for declared product processes, and close known CLI row failures instead of parking.
+- Read the installed Windows package code from its cached package, name a failed publisher's own refusal code, and run the Windows idle census tests as production composes the census.
 
 ## 2.2.16 - 2026-11-08
 

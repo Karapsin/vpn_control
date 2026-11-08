@@ -159,6 +159,18 @@ public static class VpnScenarioMsiRegistration {
  public static Product[] All(){var found=new List<Product>();for(uint index=0;index<4096;index++){var code=new StringBuilder(39);var sid=new StringBuilder(185);uint actual,size=184;uint rc=MsiEnumProductsExW(null,"S-1-1-0",7,index,code,out actual,sid,ref size);if(rc==259)return found.ToArray();if(rc!=0||size>184||(actual!=1&&actual!=2&&actual!=4)||(actual==4&&sid.Length!=0))throw new InvalidOperationException("PUB_MSI_ENUM:"+rc);found.Add(new Product{Code=code.ToString(),Sid=sid.ToString(),Context=actual});}throw new InvalidOperationException("PUB_MSI_ENUM_BOUND");}
  public static Lookup Read(string code,string user,uint context,string property){uint size=1024;var value=new StringBuilder(1025);uint rc=MsiGetProductInfoExW(code,context==4?null:user,context,property,value,ref size);if(rc==0&&size>1024){rc=234;}return new Lookup{Rc=rc,Value=rc==0?value.ToString():null};}
  public static string Info(string code,string user,uint context,string property){Lookup found=Read(code,user,context,property);if(found.Rc!=0)throw new InvalidOperationException("PUB_MSI_INFO:"+property+":"+found.Rc);return found.Value;}
+ [DllImport("msi.dll",CharSet=CharSet.Unicode,ExactSpelling=true)]static extern uint MsiGetSummaryInformationW(uint database,string path,uint updates,out uint handle);
+ [DllImport("msi.dll",CharSet=CharSet.Unicode,ExactSpelling=true)]static extern uint MsiSummaryInfoGetPropertyW(uint handle,uint property,out uint type,out int number,ref long time,StringBuilder value,ref uint size);
+ [DllImport("msi.dll",ExactSpelling=true)]static extern uint MsiCloseHandle(uint handle);
+ // As SYSTEM, MsiGetProductInfoExW answers 1608 for PackageCode of a per-user unmanaged product (native, 2026-11-09), while
+ // installed properties read. The installed package code is the revision number (PID 9) of the cached package LocalPackage names.
+ public static string PackageCode(string code,string user,uint context){
+  string local=Info(code,user,context,"LocalPackage");string folder=Environment.GetFolderPath(Environment.SpecialFolder.Windows).TrimEnd('\\')+"\\Installer\\";
+  if(!local.StartsWith(folder,StringComparison.OrdinalIgnoreCase)||!local.EndsWith(".msi",StringComparison.OrdinalIgnoreCase)||local.IndexOf('\\',folder.Length)>=0)throw new InvalidOperationException("PUB_MSI_LOCAL_PACKAGE");
+  uint handle;uint rc=MsiGetSummaryInformationW(0,local,0,out handle);if(rc!=0)throw new InvalidOperationException("PUB_MSI_SUMMARY:"+rc);
+  try{uint type,size=64;int number;long time=0;var value=new StringBuilder(65);rc=MsiSummaryInfoGetPropertyW(handle,9,out type,out number,ref time,value,ref size);if(rc!=0||type!=30||size>64)throw new InvalidOperationException("PUB_MSI_PACKAGE_CODE:"+rc);return value.ToString();}
+  finally{MsiCloseHandle(handle);}
+ }
 }
 '@ -ReferencedAssemblies @('System','System.Core')
  # SYSTEM keeps the ordinary user's rows and the machine's. A name that cannot be read is counted, never silently dropped.
@@ -170,7 +182,7 @@ public static class VpnScenarioMsiRegistration {
   if($lookup.Rc -ne 0){$lookup=[VpnScenarioMsiRegistration]::Read($product.Code,$product.Sid,$product.Context,'ProductName')}
   if($lookup.Rc -ne 0){$unnamed=$unnamed+1;if($unnamedCodes.Count -lt 16){$unnamedCodes.Add([int]$lookup.Rc)};continue}
   if($lookup.Value -cne $name){continue}
-  $rows.Add([ordered]@{productCode=$product.Code;context=[int]$product.Context;productName=$name;version=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'VersionString');installLocation=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'InstallLocation');packageCode=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'PackageCode')})
+  $rows.Add([ordered]@{productCode=$product.Code;context=[int]$product.Context;productName=$name;version=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'VersionString');installLocation=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'InstallLocation');packageCode=[VpnScenarioMsiRegistration]::PackageCode($product.Code,$product.Sid,$product.Context)})
   if($rows.Count -gt 8){throw 'PUB_MSI_ROWS'}
  }
  return [ordered]@{products=@($rows.ToArray());scan=[ordered]@{considered=$considered;unnamed=$unnamed;unnamedCodes=@($unnamedCodes.ToArray())}}

@@ -124,6 +124,8 @@ _PRODUCT_CODE = re.compile(r"\{[0-9A-F]{8}-(?:[0-9A-F]{4}-){3}[0-9A-F]{12}\}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _VERSION = re.compile(r"(?:[1-9]|1[0-9])\.(?:[0-9]|1[0-9])\.(?:[0-9]|1[0-9])\Z")
 _GUEST_CODE = re.compile(r"(?:RUN|TASK|TOKEN|PUB)_[A-Z0-9_]{1,80}\Z")
+# A publisher template refusal as its stderr carries it: the code, then an optional detail word and Win32 code.
+_PUBLISHER_REFUSAL = re.compile(r"\b(PUB_[A-Z0-9_]{1,80})(?::([A-Za-z]{1,40})(?::([0-9]{1,10}))?)?")
 # The finite name of the receipt check a publisher reply failed; never guest text.
 _RECEIPT_CHECK = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
 _SETUP_WORD = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
@@ -1276,7 +1278,28 @@ class Job:
                 raise ValueError("publisher_result_context")
             return value, required
         except (ValueError, TypeError, KeyError):
-            raise KnownFailure("publisher_refused:" + token(label)) from None
+            raise KnownFailure("publisher_refused:" + token(label) + self._publisher_code(terminal)) from None
+
+    def _publisher_code(self, terminal):
+        """The template's own refusal code from a failed publisher's stderr, or nothing.
+
+        A PUB_ name crosses only when the template holds it, with its detail word and Win32 code only when that word is
+        in the template too: natively (2026-11-09) the receipt said publisher_refused:after-registration, while the
+        guest's stderr named PUB_MSI_INFO:PackageCode:1608. No other guest text crosses.
+        """
+        try:
+            text = base64.b64decode(terminal.get("err-data") or "", validate=True).decode("utf-8", "replace")
+            source = self._bundle_source(PUBLISHER_TEMPLATE).decode("ascii")
+        except (ValueError, TypeError, AttributeError, KeyError, OSError):
+            return ""
+        for found in _PUBLISHER_REFUSAL.finditer(text[:MAX_TERMINAL_BYTES]):
+            name, word, number = found.groups()
+            if re.search(r"['\"]" + name + r"['\":]", source) is None:
+                continue
+            if word is None or re.search(r"\b" + word + r"\b", source) is None:
+                return ":" + name
+            return ":" + name + ":" + word + ("" if number is None else ":" + number)
+        return ""
 
     def _file_security(self):
         sid = self.context["ordinarySid"]
