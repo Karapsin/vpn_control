@@ -12,8 +12,8 @@ import re
 
 
 CASE_SHA = {
-    "windows-public-update": "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78",
-    "windows-proxy-lifecycle": "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b",
+    "windows-public-update": "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c",
+    "windows-proxy-lifecycle": "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795",
 }
 CASE_NAME = {"windows-public-update": "windows_public_updater/update_cases.py",
              "windows-proxy-lifecycle": "windows_lifecycle_cases.py"}
@@ -27,7 +27,7 @@ UPDATE_MODULES = {
     "lifecycle": CASE_SHA["windows-proxy-lifecycle"],
     "collector": "246bb5e7110fe5fdad986e3cf082683934070195098730bf79ab86e0fd0296b2",
 }
-RUNTIME_SHA = "147f2114b0ce554e85669b770b836d7927f775f6009795ceb308b6e57bc5fbd9"
+RUNTIME_SHA = "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"
 FIXTURE_WORKER_SHA = "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a"
 SOCKS_SHA = "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"
 HTTPS_SHA = "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"
@@ -48,7 +48,7 @@ BRANCH_VARIANTS = CONFIG_VARIANTS | FAILURE_VARIANTS | {"sibling-off"}
 # restart-grant waits for the collector stage: an approved grant ends only with its native ready record.
 TUN_VARIANTS = frozenset({"restart-deny"})
 TUN_SHA = "b672958650ced3cfd676400b1e497715d6ffbe5dad19893b272fb3137de9e12e"
-BRANCH_SHA = "0b90fef622d8f0511aaf391209096db987a1d696e376283d056388c5c6493cb0"
+BRANCH_SHA = "a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e"
 LISTENER_SHA = "1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928"
 
 
@@ -248,54 +248,140 @@ def lifecycle_inputs(owner, value):
     return value
 
 
+def installed_version(owner):
+    """The installed launcher's --help and --version under this ordinary token, before any product state.
+
+    The owner's own static probe, which its dedicated route does not reach. The host job
+    claims installed-package only for a passed row, so a launcher that reports another
+    version ends the row 1 before its runtime starts.
+    """
+    workspace = Path(owner.request["workspace"])
+    for label, argv, text in (("help", ["--help"], "Usage:"),
+                              ("version", ["--version"], owner.request["productVersion"])):
+        value = owner.child(label, [owner.request["cliPath"], "--state-dir", str(workspace), *argv]).completed()
+        require(value.returncode == 0 and value.stderr == "" and text in value.stdout,
+                "dedicated-static-public-launcher-probe")
+    require(not workspace.exists(), "dedicated-static-launch-created-owner-state")
+
+
+def known_failure(owner, cases, runtime, branches, observer, state, inputs, error):
+    """A reviewed oracle failed after its own public call returned, so the outcome is known.
+
+    The row closes what it started by the same public steps as a pass and ends 1. The
+    failed oracle never runs again and no step is replayed over an unknown outcome, but
+    the closing issues its own off while status shows the runtime running and its own
+    quit: an off that left the runtime running, or a quit that was refused, is issued
+    once more. A fixture that already ended keeps its own terminal. A child whose
+    outcome is still open, or any closing step that does not end as it must, parks.
+    """
+    workspace, identity = state["workspace"], state["identity"]
+    reason = str(error)[:120]
+    sibling = getattr(owner, "runtime_case_sibling", None)
+    retained = [state["serve"], state["fixture"], *(() if sibling is None else (sibling["child"],))]
+    for child in owner.children:
+        if child.terminal is not None or child.label == "lifecycle-gui" or any(child is held for held in retained):
+            continue
+        if child.label != "lifecycle-traffic":
+            owner.park("dedicated-known-failure-child-outcome-open", error)
+        child.wait()  # A finite sampler: every sample has its own I/O bound, and its terminal is evidence.
+    if sibling is not None and sibling["child"] is not None and sibling["child"].terminal is None and sibling["stopAttempted"]:
+        owner.park("dedicated-known-failure-sibling-stop-open", error)
+    owner.event("dedicated-proxy-lifecycle-known-failure-closing", {"variant": inputs["variant"], "reason": reason,
+        "controllerId": identity, "replayAllowed": False})
+    if cases.read(owner, workspace, identity, "status")["data"]["runtimeRunning"] is True:
+        cases.read(owner, workspace, identity, "off")
+        require(cases.read(owner, workspace, identity, "status")["data"]["runtimeRunning"] is False,
+                "dedicated-known-failure-product-off")
+    if sibling is not None and sibling["child"] is not None and sibling["child"].terminal is None:
+        branches.close_sibling(owner, state, inputs["branch"], runtime, observer, sibling)
+    # A sibling that never started leaves only file handles, which close with this process.
+    if branches is not None and (sibling is None or sibling["child"] is not None):
+        branches.close_fixture_files_after_off(owner, state, runtime)
+    fixture = state["fixture"]
+    if fixture.terminal is None and fixture.process.poll() is None:
+        try:
+            runtime.stop_fixture(owner, state)
+        except AssertionError:
+            # Only the fixture's own nonzero terminal excuses this: its lease ended as the stop went out.
+            if fixture.terminal is None or fixture.terminal["exitCode"] == 0:
+                raise
+    # A fixture that ended by itself (its 1,800 s lease, or the fault the oracle saw) is no open outcome.
+    fixture_terminal = fixture.wait()
+    require(all(fixture_terminal["eof"].values()), "dedicated-known-failure-fixture-terminal")
+    for lease in reversed(getattr(owner, "fixture_data_leases", [])):
+        if lease.handle is not None:
+            lease.close()
+    cases.read(owner, workspace, identity, "quit")
+    for child in [state["serve"], *(child for child in owner.children if child.label == "lifecycle-gui")]:
+        terminal = child.wait()
+        expected = cases.CRASH_EXIT if getattr(child, "_lifecycle_crash_attempted", False) is True else 0
+        require(terminal["exitCode"] == expected and terminal["eof"] == {"stdout": True, "stderr": True},
+                "dedicated-known-failure-terminal-and-eof")
+    require(all(type(child.terminal) is dict for child in owner.children), "dedicated-known-failure-all-children-terminal")
+    require(not (workspace / "activation.port").exists(), "dedicated-known-failure-endpoint-released")
+    owner.event("dedicated-proxy-lifecycle-known-failure", {"variant": inputs["variant"], "reason": reason,
+        "controllerId": identity, "sourceSha": inputs["sourceSha"], "fixtureExitCode": fixture_terminal["exitCode"],
+        "closed": True, "replayAllowed": False, "nativeAcceptanceComplete": False})
+    return 1
+
+
 def run_lifecycle(owner, cases, harness):
     require(harness.SYSTEM_COLLECTOR_CLOSE_HOLD is None, "proxy-has-no-system-collector")
     inputs = lifecycle_inputs(owner, harness.LIFECYCLE_INPUTS)
     runtime = owner.module(inputs["modules"]["runtime"], "_owned_dedicated_runtime_stages")
     observer = owner.module(inputs["modules"]["observer"], "_owned_dedicated_proxy_observer")
+    branches = None
+    if inputs["variant"] in BRANCH_VARIANTS:
+        branches = owner.module(inputs["modules"]["branches"], "_owned_dedicated_runtime_branches")
     runtime.validate_inputs(owner, inputs["runtime"])
+    installed_version(owner)
     state = runtime.start_runtime(owner, inputs["runtime"], observer)
     workspace, identity = state["workspace"], state["identity"]
-    if inputs["variant"] in TUN_VARIANTS:
-        # The deny row has no collector: active A must survive the prompt unchanged.
-        tun = owner.module(inputs["modules"]["tun"], "_owned_dedicated_tun_stages")
-        tun.finish(owner, tun.begin(owner, state, inputs["tun"], runtime, cases), runtime, cases, observer)
-        actors = state["actors"]
-    elif inputs["variant"] == "gui-pending":
-        gui = dict(inputs["gui"], stateDir=str(workspace), controllerId=identity,
-            observerPath=inputs["modules"]["observer"], runtimeConfigPath=str(workspace / "runtime-config.json"),
-            ownerActor=state["actors"]["owner"], runtimeActor=state["actors"]["runtime"],
-            fixtureSocksPort=state["ready"]["advertisedSocksPort"], runtimeArtifact=state["runtimeArtifact"])
-        cases.gui_continuity(owner, workspace, identity, gui)
-        cases.pending_selection(owner, workspace, identity, {"active": "Owned A", "pending": "Owned B"},
-            str(workspace / "runtime-config.json"), observer.WindowsNative(),
-            state["actors"]["owner"], state["actors"]["runtime"])
-        actors = state["actors"]
-    elif inputs["variant"] in BRANCH_VARIANTS:
-        branches = owner.module(inputs["modules"]["branches"], "_owned_dedicated_runtime_branches")
-        if inputs["variant"] in CONFIG_VARIANTS:
-            branches.config_case(owner, state, inputs["branch"], runtime, cases, observer, inputs["variant"])
-        elif inputs["variant"] in FAILURE_VARIANTS:
-            branches.failure_case(owner, state, inputs["branch"], runtime, cases, observer, inputs["variant"])
+    try:
+        if inputs["variant"] in TUN_VARIANTS:
+            # The deny row has no collector: active A must survive the prompt unchanged.
+            tun = owner.module(inputs["modules"]["tun"], "_owned_dedicated_tun_stages")
+            tun.finish(owner, tun.begin(owner, state, inputs["tun"], runtime, cases), runtime, cases, observer)
+            actors = state["actors"]
+        elif inputs["variant"] == "gui-pending":
+            gui = dict(inputs["gui"], stateDir=str(workspace), controllerId=identity,
+                observerPath=inputs["modules"]["observer"], runtimeConfigPath=str(workspace / "runtime-config.json"),
+                ownerActor=state["actors"]["owner"], runtimeActor=state["actors"]["runtime"],
+                fixtureSocksPort=state["ready"]["advertisedSocksPort"], runtimeArtifact=state["runtimeArtifact"])
+            cases.gui_continuity(owner, workspace, identity, gui)
+            cases.pending_selection(owner, workspace, identity, {"active": "Owned A", "pending": "Owned B"},
+                str(workspace / "runtime-config.json"), observer.WindowsNative(),
+                state["actors"]["owner"], state["actors"]["runtime"])
+            actors = state["actors"]
+        elif inputs["variant"] in BRANCH_VARIANTS:
+            if inputs["variant"] in CONFIG_VARIANTS:
+                branches.config_case(owner, state, inputs["branch"], runtime, cases, observer, inputs["variant"])
+            elif inputs["variant"] in FAILURE_VARIANTS:
+                branches.failure_case(owner, state, inputs["branch"], runtime, cases, observer, inputs["variant"])
+            else:
+                sibling = branches.start_sibling(owner, state, inputs["branch"], runtime, observer)
+                branches.off_with_sibling_survivor(owner, state, inputs["branch"], runtime, cases, observer, sibling)
+                branches.close_sibling(owner, state, inputs["branch"], runtime, observer, sibling)
+            if inputs["variant"] != "sibling-off":
+                actors = runtime.capture_proxy_actors(owner, state["serve"], observer.WindowsNative(),
+                    inputs["runtime"]["runtimeImagePath"], inputs["runtime"]["runtimeSha256"])
+                cases.off_proxy_and_disconnected_serve(owner, workspace, identity, observer,
+                    actors["owner"], actors["runtime"])
+            branches.close_fixture_files_after_off(owner, state, runtime)
         else:
-            sibling = branches.start_sibling(owner, state, inputs["branch"], runtime, observer)
-            branches.off_with_sibling_survivor(owner, state, inputs["branch"], runtime, cases, observer, sibling)
-            branches.close_sibling(owner, state, inputs["branch"], runtime, observer, sibling)
-        if inputs["variant"] != "sibling-off":
+            runtime.find_best(owner, state, inputs["variant"].removeprefix("find-best-"))
             actors = runtime.capture_proxy_actors(owner, state["serve"], observer.WindowsNative(),
                 inputs["runtime"]["runtimeImagePath"], inputs["runtime"]["runtimeSha256"])
+        if inputs["variant"] not in BRANCH_VARIANTS:
             cases.off_proxy_and_disconnected_serve(owner, workspace, identity, observer,
                 actors["owner"], actors["runtime"])
-        branches.close_fixture_files_after_off(owner, state, runtime)
-    else:
-        runtime.find_best(owner, state, inputs["variant"].removeprefix("find-best-"))
-        actors = runtime.capture_proxy_actors(owner, state["serve"], observer.WindowsNative(),
-            inputs["runtime"]["runtimeImagePath"], inputs["runtime"]["runtimeSha256"])
-    if inputs["variant"] not in BRANCH_VARIANTS:
-        cases.off_proxy_and_disconnected_serve(owner, workspace, identity, observer,
-            actors["owner"], actors["runtime"])
-    runtime.stop_fixture(owner, state)
-    cases.read(owner, workspace, identity, "quit")
+        runtime.stop_fixture(owner, state)
+        cases.read(owner, workspace, identity, "quit")
+    except AssertionError as error:
+        # A TUN row's prompt and broker are its stages' to close; it keeps their own known ends.
+        if inputs["variant"] in TUN_VARIANTS:
+            raise
+        return known_failure(owner, cases, runtime, branches, observer, state, inputs, error)
     originals = [state["serve"], *(child for child in owner.children if child.label == "lifecycle-gui")]
     for child in originals:
         terminal = child.wait()

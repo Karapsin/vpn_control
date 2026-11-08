@@ -315,13 +315,17 @@ def _run_update(owner, harness):
                 "owned-no-egress-socks-connection-profile")
         revision = before["configurationRevision"]
         mode = public(owner, workspace, identity, "settings", "set", "mode", "proxy-only", revision=revision)
-        added = public(owner, workspace, identity, "locations", "add", "--input", profile_path,
+        # A fresh workspace reads subscriptions, and locations add answers READ_ONLY_SOURCE there.
+        source = public(owner, workspace, identity, "source", "set", "current-locations",
             revision=mode["configurationRevision"])
+        added = public(owner, workspace, identity, "locations", "add", "--input", profile_path,
+            revision=source["configurationRevision"])
         location_id = added["data"].get("id")
         require(type(location_id) is str and location_id, "public-loopback-location-id")
-        selected = public(owner, workspace, identity, "locations", "select", location_id,
+        public(owner, workspace, identity, "locations", "select", location_id,
             revision=added["configurationRevision"])
-        public(owner, workspace, identity, "on", revision=selected["configurationRevision"])
+        # Runtime commands take no revision guard: the product answers UNSUPPORTED to one.
+        public(owner, workspace, identity, "on")
         traffic_before = modules["lifecycle"].prepare_update_traffic(owner, workspace, identity, inputs["trafficInputs"])
         before = public(owner, workspace, identity, "status")
         require(before["data"].get("runtimeRunning") is True, "connected-update-fixture-active")

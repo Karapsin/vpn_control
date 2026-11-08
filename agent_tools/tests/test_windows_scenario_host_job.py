@@ -5,10 +5,13 @@ flat journals are judged by the real host_work classifier, and the real emitter 
 planner build and read every program and request.
 """
 import ast
+import importlib.util
 import base64
 from contextlib import nullcontext
+import datetime
 import gzip
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -21,6 +24,7 @@ import types
 import unittest
 from unittest import mock
 import uuid
+import zipfile
 
 from agent_tools import native_scenario_bundle as bundles
 from agent_tools import native_scenario_execution as execution
@@ -53,11 +57,31 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_ordinary_task_owner.ps1", "agent_tools/windows_artifact_transfer.py", "agent_tools/readiness_windows_guest.py",
                 "agent_tools/windows_scenario_publisher.ps1.template", "agent_tools/windows_scenario_system_run.ps1.template",
                 "agent_tools/windows_scenario_qualification_child.ps1", "agent_tools/windows_disconnected_cli_cases.py",
-                "agent_tools/windows_streaming_cli_cases.py", "scripts/test_packaged_cli.py", "scripts/windows_install_admission_diagnostic.py")
+                "agent_tools/windows_streaming_cli_cases.py", "scripts/test_packaged_cli.py", "scripts/windows_install_admission_diagnostic.py",
+                "agent_tools/windows_postboot_source_roles.py", "agent_tools/windows_postboot_action.py", "agent_tools/windows_preboot_action.py",
+                "agent_tools/windows_autostart_reboot.py", "agent_tools/windows_lifecycle_cases.py", "agent_tools/windows_runtime_branch_cases.py",
+                "agent_tools/windows_lifecycle_runtime_stages.py", "scripts/windows_broker_fixture_observer.py",
+                "agent_tools/windows_lifecycle_traffic_worker.py", "scripts/integration/socks_http_fixture.py",
+                "agent_tools/windows_runtime_tcp_listeners.ps1", "agent_tools/windows_autostart_snapshot.ps1",
+                "agent_tools/windows_autostart_create_highest_fixture.ps1", "agent_tools/windows_autostart_task_start.ps1",
+                "agent_tools/windows_postboot_startup_actors.ps1",
+                "agent_tools/windows_scenario_proxy.py", "agent_tools/windows_ordinary_dedicated_driver.py",
+                "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "scripts/integration/https_subscription_relay_fixture.py",
+                "agent_tools/windows_public_updater/update_cases.py", "agent_tools/windows_public_updater/update_receipts.py",
+                "agent_tools/windows_public_updater/update_fixture_server.py", "agent_tools/windows_public_updater/native_collector.py",
+                "scripts/fixture_environment.py", "scripts/macos_packaging_jdk_preflight.py", "scripts/prepare_desktop_update_fixture.py",
+                "agent_tools/windows_system_collector/caller_hold.py", "agent_tools/windows_system_collector/hold_protocol.py",
+                "agent_tools/windows_system_collector/collector_contract.py", "agent_tools/windows_system_collector/collector_wrapper.py",
+                "agent_tools/windows_system_collector/system_bootstrap_template.ps1",
+                "agent_tools/windows_system_collector/release_template.ps1",
+                "agent_tools/windows_system_collector/system_collector_worker.py",
+                "agent_tools/windows_system_collector/native_primitives.py", "agent_tools/windows_system_collector/ordinary_task_guard.ps1",
+                "agent_tools/windows_system_collector/system_collector_native.cs")
 PYTHON_ROOT = PROFILE + "\\AppData\\Local\\Programs\\Python\\Python313"
 INSTALLED_ROOT = PROFILE + "\\AppData\\Local\\vpn-control"
 OLD_CODE = "{11111111-2222-4333-8444-555555555555}"
 NEW_CODE = "{66666666-7777-4888-8999-AAAAAAAAAAAA}"
+PACKAGE_CODE = "{77777777-8888-4999-8AAA-BBBBBBBBBBBB}"
 VERSION = "2.2.15"
 
 
@@ -104,9 +128,23 @@ class FakeQga:
         self.unnamed_codes = []
         # action -> callable(reply): what a real guest might say instead.
         self.reply_changes = {}
+        # The DACL form a file the publisher creates and then protects reads back with. Natively (2026-11-08,
+        # every worker-request.json pin of eight runs) SetAccessControl's protected DACL reads back auto-inherited.
+        self.endpoint_form = "PAI"
         self.install_effect = True
         self.task_exit = None
         self.requests_seen = []
+        self.boot_filetime = FILETIME
+        self.guest_data = {}  # Bytes an earlier job left in the guest, read by a later one's read-pins.
+        self.evidence_factory = None
+        # The installed jars that hold the bundled runtime entry, and what the read pins of a path were.
+        self.runtime_jars = {"app/desktopApp.jar"}
+        self.runtime_bytes = b"MZ bundled sing-box"
+        self.read_pin_records = {}
+        self.runtime_reply = None
+
+    def file_security(self):
+        return {"ownerSid": "S-1-5-18", "sddl": "O:SYD:" + self.endpoint_form + "(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;" + SID + ")"}
 
     def count(self, command):
         return sum(1 for name, _ in self.calls if name == command)
@@ -162,11 +200,15 @@ class FakeQga:
         path, mode = arguments["path"], arguments["mode"]
         if mode == "wb":
             self.files[path] = b""
-        elif path not in self.files:
+        elif path not in self.files and not self.listed(path):
             raise ValueError()
         self.next_index += 1
         self.handles[self.next_index] = {"path": path, "offset": 0}
         return self.next_index
+
+    def listed(self, path):
+        """A file of a guest tree: an agent read returns the bytes read-pins hash."""
+        return any(path.startswith(root + "\\") and path[len(root) + 1:].replace("\\", "/") in files for root, (files, _) in self.trees.items())
 
     def _guest_file_write(self, arguments):
         raw = base64.b64decode(arguments["buf-b64"])
@@ -177,9 +219,10 @@ class FakeQga:
 
     def _guest_file_read(self, arguments):
         row = self.handles[arguments["handle"]]
-        raw = self.files[row["path"]][row["offset"]:row["offset"] + arguments["count"]]
+        whole = self.files[row["path"]] if row["path"] in self.files else self.content(row["path"])
+        raw = whole[row["offset"]:row["offset"] + arguments["count"]]
         row["offset"] += len(raw)
-        return {"count": len(raw), "buf-b64": base64.b64encode(raw).decode(), "eof": row["offset"] >= len(self.files[row["path"]])}
+        return {"count": len(raw), "buf-b64": base64.b64encode(raw).decode(), "eof": row["offset"] >= len(whole)}
 
     def _guest_file_close(self, arguments):
         del self.handles[arguments["handle"]]
@@ -191,12 +234,12 @@ class FakeQga:
         value["session"]["Flags"] = self.session_flags
         return {"exited": True, "exitcode": 0, "out-data": out_data({
             "sessionFacts": value, "machineGuid": RAW_GUID, "hardwareUuid": MACHINE.upper(), "bootIdentifier": BOOT_IDENTIFIER,
-            "bootFileTimeUtc": FILETIME, "profileRoot": PROFILE, "systemToken": TOKEN})}
+            "bootFileTimeUtc": self.boot_filetime, "profileRoot": PROFILE, "systemToken": TOKEN})}
 
     def _actor(self, pid):
         return {"pid": pid, "birthFileTimeUtc": "134368653065000001", "sessionId": 0, "path": job.POWERSHELL_PATH, "principalSid": "S-1-5-18",
                 "is64BitProcess": True, "powerShellMajor": 5, "powerShellEdition": "Desktop", "tokenElevation": 1, "tokenElevationType": 1,
-                "boot": {"lastBootUpTimeFileTimeUtc": FILETIME, "machineGuid": RAW_GUID, "hardwareUuid": MACHINE.upper()}}
+                "boot": {"lastBootUpTimeFileTimeUtc": self.boot_filetime, "machineGuid": RAW_GUID, "hardwareUuid": MACHINE.upper()}}
 
     def _pin(self, path, *, directory=False, raw=b"", security=None):
         self.next_index += 1
@@ -227,7 +270,8 @@ class FakeQga:
                     raise AssertionError("endpoint created twice")
                 self.files[target["path"]] = b""
                 created.append({"schemaVersion": 1, "state": "ordinary-publication-created", "operationId": m["operationId"], "role": target["role"],
-                                "filePin": self._pin(target["path"]), "expectedBytes": target["bytes"], "expectedSha256": target["sha256"],
+                                "filePin": self._pin(target["path"], security=self.file_security()), "expectedBytes": target["bytes"],
+                                "expectedSha256": target["sha256"],
                                 "createNew": True, "heldReadOnly": True, "writeOpenError": 32, "deleteOpenError": 32})
             reply.update(state="ordinary-publication-created-set", endpoints=created)
         elif action == "verify":
@@ -242,8 +286,24 @@ class FakeQga:
                                  "heldPhysicalRead": True})
             reply.update(state="ordinary-publication-verified-set", verified=verified)
         elif action == "read-pins":
-            reply.update(state="ordinary-publication-read-pins", filePins=[self._pin(path, raw=self.content(path), security={
-                "ownerSid": OS_OWNER, "sddl": "O:" + OS_OWNER + "D:P(A;;FA;;;" + OS_OWNER + ")(A;;FRFX;;;BU)"}) for path in m["readPaths"]])
+            pins = [self._pin(path, raw=self.content(path), security={
+                "ownerSid": OS_OWNER, "sddl": "O:" + OS_OWNER + "D:P(A;;FA;;;" + OS_OWNER + ")(A;;FRFX;;;BU)"}) for path in m["readPaths"]]
+            self.read_pin_records.update({pin["path"]: pin for pin in pins})
+            reply.update(state="ordinary-publication-read-pins", filePins=pins)
+        elif action == "runtime-extract":
+            app = m["installedRoot"] + "\\app\\"
+            if not all(path.startswith(app) and path.endswith(".jar") and "\\" not in path[len(app):] for path in m["jarPaths"]):
+                return {"exited": True, "exitcode": 1, "err-data": base64.b64encode(b"PUB_RUNTIME_JAR").decode()}
+            found = [path for path in m["jarPaths"] if "app/" + path[len(app):] in self.runtime_jars]
+            if len(found) != 1 or m["runtimePath"] != m["workspace"] + "\\sing-box.exe" or m["runtimePath"] in self.files:
+                return {"exited": True, "exitcode": 1, "err-data": base64.b64encode(b"PUB_RUNTIME_ENTRY_COUNT").decode()}
+            self.files[m["runtimePath"]] = self.runtime_bytes
+            # The jar is read through a held pin of the same file the installed tree pinned.
+            runtime = {"jarPin": dict(self.read_pin_records[found[0]]), "filePin": self._pin(m["runtimePath"], raw=self.runtime_bytes),
+                       "entry": "bin/windows-amd64/sing-box.exe"}
+            if self.runtime_reply is not None:
+                self.runtime_reply(runtime)
+            reply.update(state="ordinary-runtime-extracted", runtime=runtime)
         elif action == "list-tree":
             found = self.trees.get(m["treeRoot"])
             listing = {"present": found is not None, "files": list(found[0]) if found else [], "directories": list(found[1]) if found else []}
@@ -264,7 +324,7 @@ class FakeQga:
                                "unnamedCodes": list(self.unnamed_codes)})
         elif action == "evidence-zip":
             path = m["workspace"] + "\\evidence-" + str(m["evidenceNumber"]) + ".zip"
-            raw = b"PK" + b"evidence" * 40000
+            raw = self.evidence_factory(m) if self.evidence_factory is not None else b"PK" + b"evidence" * 40000
             self.files[path] = raw
             reply.update(state="ordinary-evidence-zip", zipPath=path, zipBytes=len(raw), zipSha256=hashlib.sha256(raw).hexdigest(), entries=5)
         else:
@@ -276,12 +336,15 @@ class FakeQga:
 
     def content(self, path):
         """Installed bytes depend on what was installed, so a changed product changes the tree digest."""
+        if path in self.guest_data:
+            return self.guest_data[path]
         return b"exe:" + str(self.msi_properties["ProductVersion"]).encode() if path.startswith(INSTALLED_ROOT + "\\") else b"exe"
 
     def install(self, worker):
         if worker["action"] in {"msi-install", "msi-reset"}:
             self.registration = [{"productCode": self.msi_properties["ProductCode"], "context": 2, "productName": "vpn-control",
-                                  "version": self.msi_properties["ProductVersion"], "installLocation": INSTALLED_ROOT + "\\"}]
+                                  "version": self.msi_properties["ProductVersion"], "installLocation": INSTALLED_ROOT + "\\",
+                                  "packageCode": PACKAGE_CODE}]
             # msiexec /x removes only the package's own files and /i adds its files beside whatever else is there.
             files, directories = self.trees.get(INSTALLED_ROOT, ([], []))
             if worker["action"] == "msi-reset":
@@ -1009,6 +1072,11 @@ class RegistrationReaderTests(unittest.TestCase):
         self.assertIn("$unnamed=$unnamed+1", body)
         self.assertNotIn("return rc==0&&size<=1024?value.ToString():null", body)
 
+    def test_each_row_carries_the_package_code_of_its_own_registration(self):
+        # An update row's inputs bind the base and target registrations by package code, read where the row was found.
+        body = self.body((ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text(encoding="ascii"))
+        self.assertIn("packageCode=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'PackageCode')", body)
+
 
 class ClosedDoorTests(unittest.TestCase):
     OPERATION = "11111111-1111-4111-8111-111111111111"
@@ -1183,7 +1251,16 @@ class SourceTests(Base):
             raise job.Unknown("captured")
         instance.guest_program = capture
         target = {"role": "r", "path": instance.workspace + "\\" + "f" * 64 + ".py", "bytes": 1, "sha256": "0" * 64, "kind": "data"}
+        folders = job.update_subfolders(instance.op, {"update": {"collectorStages": ["before-install", "terminal-actors"]}})
+        fixture = instance.workspace + "\\mcp-update-fixture-" + job.fixture_id(instance.op)
         for action, label, fields in (("initialize", "initialize", {"existingDirectories": job.ancestors([instance.workspace, instance.operation_root, job.POWERSHELL_PATH]), "subfolders": []}),
+                                      ("initialize", "initialize-update", {"existingDirectories": job.ancestors([instance.workspace, instance.operation_root, job.POWERSHELL_PATH]),
+                                                                           "subfolders": [name for name, rights in folders if rights == "0x1200a9"],
+                                                                           "privateSubfolders": [name for name, rights in folders if rights == "FA"]}),
+                                      ("seal-readonly", "seal-readonly", {"sealPath": fixture + "\\content\\packages\\target\\vpn-control-" + "9" * 40 + ".msi"}),
+                                      ("fixture-tls", "fixture-tls", {}),
+                                      ("collector-observe", "collector-observe", {"childStdoutLabels": ["one-public-update-install"], "readDisposition": True,
+                                                                                  "productWorkspace": instance.workspace + "\\product-workspace"}),
                                       ("endpoints", "endpoints", {"targets": [dict(target, role="r" + str(i)) for i in range(job.FILE_BATCH)]}),
                                       ("verify", "verify", {"targets": [dict(target, role="r" + str(i), endpointPin=pin) for i in range(job.FILE_BATCH)]}),
                                       ("read-pins", "read-pins", {"readPaths": ["C:\\Python\\Lib\\" + "x" * 60 + str(i) + ".py" for i in range(job.READ_PIN_BATCH)]}),
@@ -1192,6 +1269,8 @@ class SourceTests(Base):
                                       ("installer-signer", "installer-signer", {"installerPath": instance.workspace + "\\python-3.13.15-amd64.exe"}),
                                       ("msi-properties", "msi-properties", {"packagePath": instance.workspace + "\\package.msi"}),
                                       ("msi-registration", "msi-registration", {"productName": "vpn-control"}),
+                                      ("runtime-extract", "runtime-extract", {"installedRoot": INSTALLED_ROOT, "runtimePath": instance.workspace + "\\sing-box.exe",
+                                                                              "jarPaths": [INSTALLED_ROOT + "\\app\\" + "j" * 60 + str(i) + ".jar" for i in range(400)]}),
                                       ("evidence-zip", "evidence", {"evidenceNumber": 1})):
             try:
                 instance._publisher(label, action, **fields)
@@ -1208,8 +1287,9 @@ class SourceTests(Base):
 
     def test_sources_are_ascii_and_within_the_largest_proven_bound(self):
         sources = self.rendered()
-        self.assertEqual({"context", "initialize", "endpoints", "verify", "read-pins", "read-directories", "list-tree", "installer-signer",
-                          "msi-properties", "msi-registration", "evidence", "run"}, set(sources))
+        self.assertEqual({"context", "initialize", "initialize-update", "seal-readonly", "fixture-tls", "collector-observe", "endpoints", "verify", "read-pins",
+                          "read-directories", "list-tree", "installer-signer", "msi-properties", "msi-registration", "runtime-extract", "evidence", "run"},
+                         set(sources))
         for name, source in sources.items():
             with self.subTest(name=name):
                 raw = job.check_source(source)
@@ -1222,6 +1302,7 @@ class SourceTests(Base):
         self.assertIn("-gt 65536", sources["read-directories"])
         self.assertIn("-gt 65536", sources["list-tree"])
         self.assertIn("-gt 24576", sources["msi-registration"])
+        self.assertIn("-gt 24576", sources["runtime-extract"])
 
     @unittest.skipUnless(POWERSHELL, "PowerShell parser unavailable; hosted Windows and Linux runners have one")
     def test_every_rendered_source_parses(self):
@@ -1417,7 +1498,8 @@ class FamilyJobTests(FamilyBase):
         install, receipt = self.install_base()
         tree = receipt["installed"].pop("treeSha256")
         self.assertRegex(tree, "[0-9a-f]{64}")
-        self.assertEqual({"packageSha256": self.packages["basePackage"]["sha256"], "productCode": NEW_CODE, "productVersion": VERSION, "treeFiles": 4},
+        self.assertEqual({"packageSha256": self.packages["basePackage"]["sha256"], "productCode": NEW_CODE, "productVersion": VERSION, "treeFiles": 4,
+                          "packageCode": PACKAGE_CODE},
                          receipt["installed"])
         self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"], "setup never claims an installed package")
         seen = self.qga.requests_seen[-1]
@@ -1498,7 +1580,7 @@ class FamilyJobTests(FamilyBase):
 
     def test_installer_rows_never_upgrade_or_remove_silently(self):
         self.qga.registration = [{"productCode": OLD_CODE, "context": 2, "productName": "vpn-control", "version": "2.2.13",
-                                  "installLocation": INSTALLED_ROOT}]
+                                  "installLocation": INSTALLED_ROOT, "packageCode": PACKAGE_CODE}]
         plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
         self.assertEqual((1, "installed_product_state:count_1:considered_4:unnamed_0"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
@@ -1507,7 +1589,7 @@ class FamilyJobTests(FamilyBase):
         self.assertEqual((1, "installed_product_state:count_0:considered_3:unnamed_0"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
         self.qga.registration = [{"productCode": OLD_CODE, "context": 4, "productName": "vpn-control", "version": "2.2.13",
-                                  "installLocation": INSTALLED_ROOT}]
+                                  "installLocation": INSTALLED_ROOT, "packageCode": PACKAGE_CODE}]
         plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
         self.assertEqual((1, "installed_product_state:context_4"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
@@ -1546,6 +1628,14 @@ class FamilyJobTests(FamilyBase):
     def test_a_registration_reply_without_its_scan_is_refused(self):
         self.qga.reply_changes = {"msi-registration": lambda reply: reply.pop("scan")}
         plan, code, receipt, kinds = self.run_family("windows-msi-base-install")
+        self.assertEqual((1, "publisher_registration_receipt"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+
+    def test_a_registration_row_without_a_package_code_is_refused(self):
+        self.qga.registration = [{"productCode": OLD_CODE, "context": 2, "productName": "vpn-control", "version": "2.2.13",
+                                  "installLocation": INSTALLED_ROOT, "packageCode": PACKAGE_CODE}]
+        self.qga.reply_changes = {"msi-registration": lambda reply: [row.pop("packageCode") for row in reply["products"]]}
+        plan, code, receipt, kinds = self.run_family("windows-msi-base-reset")
         self.assertEqual((1, "publisher_registration_receipt"), (code, receipt["failure"]))
         self.assertNotIn("system-run", kinds)
 
@@ -1734,6 +1824,1035 @@ class WorkerClosedDoorTests(FamilyBase):
                     self.assert_refused(captured, change)
 
 
+AUTHORITY = INSTALLED_ROOT + "\\app\\native\\windows-amd64\\native-helpers.json"
+
+
+def authority_record(runtime_sha256, **changes):
+    """native-helpers.json as scripts/windows_native_helpers.py writes it: the bundled runtime's digest and size."""
+    value = {"schemaVersion": 1, "policySha256": "e" * 64, "artifacts": [],
+             "runtimeAuthority": {"runtimeSha256": runtime_sha256, "runtimeSizeBytes": 41943040, "authoritySourceSha256": "f" * 64}}
+    value.update(changes)
+    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
+
+
+def iso_boot(filetime):
+    """A boot FILETIME as readiness's sessionFacts.boot reports it: LastBootUpTime in UTC, round-trip format."""
+    ticks = int(filetime)
+    moment = datetime.datetime(1601, 1, 1, tzinfo=datetime.timezone.utc) + datetime.timedelta(seconds=ticks // 10 ** 7)
+    return moment.strftime("%Y-%m-%dT%H:%M:%S") + ".%07dZ" % (ticks % 10 ** 7)
+
+
+def without_autostart(events):
+    """An owner that failed before it changed autostart: no autostart intent and no checkpoint in its journal."""
+    events[:] = [row for row in events if row[0] not in job.AUTOSTART_INTENTS and row[0] != "reboot-checkpoint"]
+
+
+class RebootFamilyTests(FamilyBase):
+    """A reboot pair on one fake VM: the preboot declares the app it left running, readiness-reboot runs, then the postboot."""
+
+    def setUp(self):
+        super().setUp()
+        files, directories = self.qga.installed_tree
+        # The package's own layout: no loose runtime, which ships inside an app jar; its digest is in native-helpers.json.
+        native = ["app/native/windows-amd64/" + name for name in ("native-helpers.json", "vpn-control-install-helper.exe",
+                                                                   "vpn-control-vpn-broker.exe")]
+        self.qga.installed_tree = (sorted([*files, "app/desktopApp.jar", "app/kotlin-stdlib.jar", *native]),
+                                   sorted([*directories, "app/native", "app/native/windows-amd64"]))
+        self.runtime = hashlib.sha256(b"bundled sing-box.exe").hexdigest()
+        self.qga.guest_data[AUTHORITY] = authority_record(self.runtime)
+        self.install, _ = self.install_base()
+        self.change_rows = None
+        self.change_events = None
+        self.qga.evidence_factory = self.evidence
+
+    def declared(self, workspace, scenario):
+        product = hashlib.sha256(b"exe:" + VERSION.encode()).hexdigest()
+        rows = [{"role": role, "pid": 500 + number, "parentPid": 40 if number == 0 else 500 + number - 1,
+                 "creationFileTime": str(int(self.qga.boot_filetime) + 1000 + number),
+                 "image": workspace + "\\runtime\\tools\\sing-box.exe" if role == "runtime" else INSTALLED_ROOT + "\\vpn-control.exe",
+                 "sha256": self.runtime if role == "runtime" else product, "sid": SID, "sessionId": 2}
+                for number, role in enumerate(job.DECLARED_ROLES[:5 if scenario == "reconnect" else 4])]
+        if self.change_rows is not None:
+            self.change_rows(rows)
+        return rows
+
+    def evidence(self, m):
+        worker = self.qga.requests_seen[-1]["worker"] if self.qga.requests_seen else None
+        operation = m["operationId"]
+        # A reboot owner's journal. A job whose owner never ran, or no reboot owner, copies none here.
+        config = worker.get("postbootAcceptance") if worker is not None and worker["operationId"] == operation else None
+        events = [] if config is None else [("owner-started", {"operationId": operation, "pid": 900}),
+                                            ("child-started", {"child": 0, "pid": 901}), ("child-started", {"child": 1, "pid": 902})]
+        if config is not None and config["phase"] == "preboot-reboot" and config["scenario"] != "query-first":
+            # An intent precedes each autostart change and the product's own start.
+            events += [("autostart-public-toggle-intent", {"enabled": False}), ("autostart-highest-fixture-intent", {}),
+                       ("autostart-public-toggle-intent", {"enabled": True}), ("product-autostart-start-intent", {})]
+            events.append(("reboot-checkpoint", {"schemaVersion": 3, "kind": "owned-reboot-checkpoint", "operationId": operation,
+                           "scenario": config["scenario"], "deploymentId": MACHINE, "ordinarySid": SID, "oldSessionId": 2,
+                           "oldBootFileTimeUtc": self.qga.boot_filetime, "workspace": worker["workspace"],
+                           "declaredProduct": self.declared(worker["workspace"], config["scenario"]), "replayAllowed": False}))
+        if self.change_events is not None:
+            self.change_events(events)
+        memory = io.BytesIO()
+        with zipfile.ZipFile(memory, "w") as archive:
+            for ordinal, (kind, value) in enumerate(events):
+                archive.writestr("event-%06d-%s.json" % (ordinal, kind), json.dumps(
+                    {"schemaVersion": 1, "operationId": operation, "ordinal": ordinal, "kind": kind, "value": value}, sort_keys=True))
+            archive.writestr("child-0000.stdout.raw", b"")
+        return memory.getvalue()
+
+    def run_reboot(self, scenario, *, preboot=None, **options):
+        plan = self.family_plan(scenario, prior=self.install, **options)
+        if preboot is not None:
+            plan["prior"]["preboot"] = preboot
+        self.addCleanup(self.forget_modules, plan["operationId"])
+        start = len(self.qga.programs)
+        code = job.run_job(self.rt, plan, self.files)
+        return plan, code, self.receipt(plan), [kind for kind, _ in self.qga.programs[start:]]
+
+    def submit_reboot(self, receipt, *, action="reboot", boot=None, products=None, known=True):
+        """readiness-reboot's own VM-root journal: submitted from the preboot's boot, its idle census knowing the declared app."""
+        preboot = receipt["preboot"]
+        recovery, operation = hashlib.sha256(uuid.uuid4().bytes).hexdigest(), str(uuid.uuid4())
+        count = preboot["declaredProcesses"] if products is None else products
+        rows = [{"pid": 4, "name": "System", "session": 0, "knownSystem": True, "self": False}] + [
+            {"pid": 500 + number, "name": "sing-box.exe" if number == 4 else "vpn-control.exe", "session": 2, "knownSystem": known, "self": False}
+            for number in range(count)]
+        before = {"state": "observed", "operationId": operation, "guestAgent": True,
+                  "sessionFacts": {"boot": iso_boot(boot or preboot["bootFileTimeUtc"])}, "idleFacts": {"processes": rows}}
+        name = "readiness-recovery-" + recovery
+        for suffix, value in ((".intent.json", {"action": action, "recoveryId": recovery, "operationId": operation, "before": before,
+                                                 "replayAllowed": False}),
+                              (".ack.json", {"operationId": operation, "responseObserved": True, "replayAllowed": False}),
+                              (".result.json", {**before, "state": "submitted", "guest": "booting", "shutdownAcknowledged": True})):
+            (self.vm / (name + suffix)).write_text(json.dumps(value, sort_keys=True) + "\n")
+        return recovery, operation
+
+    def new_boot(self, receipt):
+        """The guest after a boot: the same clone at a later boot time, the preboot's files in place."""
+        preboot = receipt["preboot"]
+        with zipfile.ZipFile(io.BytesIO(self.qga.files[job.WORKSPACE_PREFIX + receipt["correlationId"] + "\\evidence-1.zip"])) as archive:
+            self.qga.guest_data[preboot["operationRoot"] + "\\" + preboot["checkpointName"]] = archive.read(preboot["checkpointName"])
+        self.qga.boot_filetime = str(int(self.qga.boot_filetime) + 600000000)
+
+    def reboot(self, receipt):
+        """readiness-reboot: its journal from the preboot's boot, then the guest's new boot."""
+        submitted = self.submit_reboot(receipt)
+        self.new_boot(receipt)
+        return submitted
+
+    def fresh_history(self):
+        """Another clone's job history beside the same base install: an open reboot chain stays with the old one."""
+        old, self.machine_data = self.machine_data, self.work / ("history-" + str(uuid.uuid4())) / MACHINE
+        self.machine_data.mkdir(parents=True, mode=0o700)
+        shutil.copytree(old / self.install, self.machine_data / self.install)
+
+    def test_each_pair_declares_its_app_and_its_postboot_needs_a_new_boot(self):
+        for name in ("windows-reboot-reconnect", "windows-reboot-explicit-off", "windows-autostart-migration"):
+            with self.subTest(name=name):
+                scenario = driver.RECIPES[name + ".pre"]["reboot"]["scenario"]
+                pre, code, receipt, kinds = self.run_reboot(name + ".pre")
+                self.assertEqual((0, None, True), (code, receipt["failure"], receipt["windows"]["installedPackage"]))
+                self.assertEqual(["system-run", "evidence-zip", "endpoints", "verify"], kinds[-4:], "the declaration is the last guest effect")
+                worker = self.qga.requests_seen[-1]["worker"]
+                root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + pre["operationId"]
+                self.assertEqual(("windows-preboot-reboot", root + "\\workspace", scenario),
+                                 (worker["action"], worker["workspace"], worker["postbootAcceptance"]["scenario"]))
+                self.assertEqual(AUTHORITY, worker["postbootAcceptance"]["sourceRoles"]["runtimeAuthority"])
+                planner.worker_request({key: worker[key] for key in job._COMMON_FIELDS | {"pythonRuntime"}}, worker["action"],
+                                       **{key: worker[key] for key in ("cliPath", "workspace", "productVersion", "postbootAcceptance")})
+                allowance = json.loads(self.qga.files[job.WORKSPACE_PREFIX + pre["operationId"] + "\\product-allowance.json"])
+                count = 5 if scenario == "reconnect" else 4
+                # The runtime is declared by the digest the installed record names, the GUI by its installed file.
+                self.assertEqual({row["image"].rsplit("\\", 1)[1]: row["sha256"] for row in allowance["processes"]},
+                                 {"vpn-control.exe": hashlib.sha256(b"exe:" + VERSION.encode()).hexdigest(),
+                                  **({"sing-box.exe": self.runtime} if scenario == "reconnect" else {})})
+                self.assertEqual({"schema": "vpn-control.windows-product-allowance", "schemaVersion": 1, "operationId": pre["operationId"],
+                                  "machine": MACHINE, "bootFileTimeUtc": self.qga.boot_filetime, "ordinarySid": SID, "sessionId": 2},
+                                 {key: value for key, value in allowance.items() if key != "processes"})
+                self.assertEqual(count, len(allowance["processes"]))
+                self.assertEqual({"scenario": scenario, "productWorkspace": root + "\\workspace", "operationRoot": root,
+                                  "checkpointName": "event-000007-reboot-checkpoint.json", "bootFileTimeUtc": self.qga.boot_filetime,
+                                  "declaredProcesses": count},
+                                 {key: value for key, value in receipt["preboot"].items() if key not in ("checkpointSha256", "allowanceSha256")})
+                self.assertEqual({"phase": "pre", "autostart": "changed", "preboot": None, "readinessReboot": None}, receipt["reboot"])
+                # No readiness-reboot yet: the postboot is refused before any guest program.
+                post, code, refused, kinds = self.run_reboot(name + ".post", preboot=pre["operationId"])
+                self.assertEqual((2, "prior_preboot_reboot_unproven", []), (code, refused["failure"], kinds))
+                # Submitted, but the guest has not booted again: refused after its read-only context.
+                recovery, operation = self.submit_reboot(receipt)
+                post, code, refused, kinds = self.run_reboot(name + ".post", preboot=pre["operationId"])
+                self.assertEqual((2, "preboot_boot_not_newer", ["context"]), (code, refused["failure"], kinds))
+                self.new_boot(receipt)
+                post, code, passed, kinds = self.run_reboot(name + ".post", preboot=pre["operationId"])
+                self.assertEqual((0, None, True, None), (code, passed["failure"], passed["windows"]["installedPackage"], passed["preboot"]))
+                self.assertEqual({"phase": "post", "preboot": pre["operationId"],
+                                  "readinessReboot": {"recoveryId": recovery, "operationId": operation, "shutdownAcknowledged": True}},
+                                 {key: value for key, value in passed["reboot"].items() if key != "autostart"})
+                self.assertNotIn("declare", passed["stage"])
+                worker = self.qga.requests_seen[-1]["worker"]
+                config = worker["postbootAcceptance"]
+                self.assertEqual(("windows-postboot-final", root + "\\workspace", root + "\\event-000007-reboot-checkpoint.json"),
+                                 (worker["action"], worker["workspace"], config["checkpointPath"]))
+                self.assertIn(root + "\\workspace", [pin["path"] for pin in worker["directoryPins"]])
+                planner.worker_request({key: worker[key] for key in job._COMMON_FIELDS | {"pythonRuntime"}}, worker["action"],
+                                       **{key: worker[key] for key in ("cliPath", "workspace", "productVersion", "postbootAcceptance")})
+        self.assertEqual([], self.classify()["unresolved"])
+
+    def test_a_declaration_with_any_wrong_fact_is_never_published(self):
+        cases = {
+            "wrong-hash": lambda rows: rows[0].update(sha256="0" * 64),
+            "wrong-sid": lambda rows: rows[1].update(sid="S-1-5-21-9-9-9-1000"),
+            "wrong-session": lambda rows: rows[2].update(sessionId=3),
+            "owner-child": lambda rows: rows[0].update(parentPid=900),
+            "owner-grandchild": lambda rows: rows[0].update(parentPid=902),
+            "broken-tree": lambda rows: rows[3].update(parentPid=40),
+            "before-this-boot": lambda rows: rows[4].update(creationFileTime=FILETIME),
+            "no-runtime": lambda rows: rows.pop(),
+            "other-image": lambda rows: rows[1].update(image=INSTALLED_ROOT + "\\vpn-control-cli.exe"),
+            "other-runtime-image": lambda rows: rows[4].update(image=INSTALLED_ROOT + "\\sing-box.exe"),
+            "runtime-with-the-gui-hash": lambda rows: rows[4].update(sha256=rows[0]["sha256"]),
+        }
+        for name, change in cases.items():
+            with self.subTest(case=name):
+                self.fresh_history()  # Each refused declaration leaves its app behind and holds its clone.
+                self.change_rows = change
+                plan, code, receipt, kinds = self.run_reboot("windows-reboot-reconnect.pre")
+                self.assertEqual((1, "product_declaration_refused", "declare", None), (code, receipt["failure"], receipt["stage"], receipt["preboot"]))
+                self.assertEqual(["system-run", "evidence-zip"], kinds[-2:])
+                self.assertNotIn(job.WORKSPACE_PREFIX + plan["operationId"] + "\\product-allowance.json", self.qga.files)
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+        self.change_rows = None
+        for name, change in {"two-checkpoints": lambda events: events.append(events[-1]),
+                             "no-owner-start": lambda events: events.pop(0)}.items():
+            with self.subTest(case=name):
+                self.fresh_history()
+                self.change_events = change
+                plan, code, receipt, kinds = self.run_reboot("windows-reboot-explicit-off.pre")
+                self.assertEqual((1, "product_declaration_refused"), (code, receipt["failure"]))
+
+    def test_a_postboot_without_its_own_passed_preboot_claims_nothing(self):
+        def refused(prior, name="windows-reboot-reconnect.post"):
+            plan, code, receipt, kinds = self.run_reboot(name, preboot=prior)
+            self.assertEqual((2, "prior_preboot_unavailable", []), (code, receipt["failure"], kinds))
+            self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+            self.assertFalse(self.fence(plan, ".intent.json").exists())
+        refused(str(uuid.uuid4()))
+        refused(self.install)
+        # A preboot that failed before it changed autostart is no preboot, and holds nothing.
+        self.qga.task_exit, self.change_events = 1, without_autostart
+        failed, code, _, _ = self.run_reboot("windows-reboot-reconnect.pre")
+        self.assertEqual(1, code)
+        self.qga.task_exit, self.change_events = None, None
+        refused(failed["operationId"])
+        other, code, receipt, _ = self.run_reboot("windows-reboot-explicit-off.pre")
+        self.assertEqual(0, code)
+        refused(other["operationId"])
+        plan = self.family_plan("windows-reboot-reconnect.post", prior=self.install)
+        self.assertEqual(2, job.run_job(self.rt, plan, self.files))
+        self.assertEqual("prior_preboot_unavailable", self.receipt(plan)["failure"])
+
+    def test_a_changed_checkpoint_after_the_reboot_is_a_known_failure(self):
+        pre, code, receipt, _ = self.run_reboot("windows-reboot-explicit-off.pre")
+        self.reboot(receipt)
+        key = receipt["preboot"]["operationRoot"] + "\\" + receipt["preboot"]["checkpointName"]
+        self.qga.guest_data[key] += b" "
+        plan, code, failed, kinds = self.run_reboot("windows-reboot-explicit-off.post", preboot=pre["operationId"])
+        self.assertEqual((1, "preboot_checkpoint_changed"), (code, failed["failure"]))
+        self.assertNotIn("system-run", kinds)
+
+    def test_the_query_row_runs_the_preboot_action_and_declares_nothing(self):
+        plan, code, receipt, kinds = self.run_reboot("windows-query-owner-gui-reconnect")
+        self.assertEqual((0, None, None), (code, receipt["failure"], receipt["preboot"]))
+        self.assertEqual({"phase": "none", "autostart": "untouched", "preboot": None, "readinessReboot": None}, receipt["reboot"])
+        self.assertEqual(["system-run", "evidence-zip"], kinds[-2:])
+        worker = self.qga.requests_seen[-1]["worker"]
+        self.assertEqual(("windows-preboot-reboot", "query-first"), (worker["action"], worker["postbootAcceptance"]["scenario"]))
+        self.assertNotIn(job.WORKSPACE_PREFIX + plan["operationId"] + "\\product-allowance.json", self.qga.files)
+
+    def test_the_runtime_digest_comes_only_from_the_installed_record(self):
+        # Before, every reboot row looked for a loose installed sing-box.exe, which the package never has, and failed here.
+        layout = self.qga.installed_tree
+        cases = {"absent": None, "no-authority": authority_record(self.runtime, runtimeAuthority=None),
+                 "short-digest": authority_record("ab" * 16), "duplicate-key": b'{"schemaVersion":1,"schemaVersion":1}\n'}
+        for name, raw in cases.items():
+            with self.subTest(case=name):
+                # A fresh base install whose installed tree already holds this record.
+                self.qga.registration, self.qga.trees[INSTALLED_ROOT], self.qga.evidence_factory = [], ([], []), None
+                if raw is None:
+                    self.qga.installed_tree = ([path for path in layout[0] if not path.endswith("native-helpers.json")], layout[1])
+                else:
+                    self.qga.installed_tree, self.qga.guest_data[AUTHORITY] = layout, raw
+                self.install, _ = self.install_base()
+                self.qga.evidence_factory = self.evidence
+                plan, code, receipt, kinds = self.run_reboot("windows-reboot-reconnect.pre")
+                self.assertEqual((1, "installed_runtime_authority", "publish"), (code, receipt["failure"], receipt["stage"]))
+                self.assertNotIn("system-run", kinds)
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+    def test_only_the_readiness_reboot_from_the_preboot_boot_admits_its_postboot(self):
+        pre, code, receipt, _ = self.run_reboot("windows-reboot-reconnect.pre")
+        self.assertEqual(0, code)
+        self.new_boot(receipt)  # A later boot readiness-reboot never submitted: a crash or a restart.
+
+        def refused():
+            plan, code, refused, kinds = self.run_reboot("windows-reboot-reconnect.post", preboot=pre["operationId"])
+            self.assertEqual((2, "prior_preboot_reboot_unproven", []), (code, refused["failure"], kinds))
+            for path in self.vm.glob("readiness-recovery-*"):
+                path.unlink()
+        refused()
+        cases = {"a-resume": {"action": "resume"}, "another-boot": {"boot": str(int(receipt["preboot"]["bootFileTimeUtc"]) + 10)},
+                 "one-declared-process-missing": {"products": receipt["preboot"]["declaredProcesses"] - 1},
+                 "a-product-row-the-census-did-not-know": {"known": False}}
+        for name, change in cases.items():
+            with self.subTest(case=name):
+                self.submit_reboot(receipt, **change)
+                refused()
+        self.submit_reboot(receipt)
+        self.submit_reboot(receipt)
+        refused()  # Two from one boot: which one rebooted is not known.
+        recovery, operation = self.submit_reboot(receipt)
+        plan, code, passed, _ = self.run_reboot("windows-reboot-reconnect.post", preboot=pre["operationId"])
+        self.assertEqual((0, {"recoveryId": recovery, "operationId": operation, "shutdownAcknowledged": True}),
+                         (code, passed["reboot"]["readinessReboot"]))
+        self.assertEqual([], self.classify()["unresolved"])
+
+    def test_a_postboot_refuses_a_preboot_that_ran_on_another_install(self):
+        pre, code, receipt, _ = self.run_reboot("windows-reboot-explicit-off.pre")
+        self.assertEqual(0, code)
+        # The same package and version installed again over another layout: another installed tree.
+        files, directories = self.qga.installed_tree
+        self.qga.installed_tree = (sorted([*files, "app/extra.jar"]), directories)
+        reset, code, _, _ = self.run_family("windows-msi-base-reset")
+        self.assertEqual(0, code)
+        self.reboot(receipt)
+        self.install = reset["operationId"]
+        plan, code, refused, kinds = self.run_reboot("windows-reboot-explicit-off.post", preboot=pre["operationId"])
+        self.assertEqual((2, "prior_preboot_other_install", []), (code, refused["failure"], kinds))
+
+    def test_a_preboot_that_changed_autostart_holds_reboot_rows_until_its_postboot_passes(self):
+        def refused(scenario, reason="reboot_chain_open", **options):
+            plan, code, refused, kinds = self.run_reboot(scenario, **options)
+            self.assertEqual((2, reason, []), (code, refused["failure"], kinds))
+        pre, code, receipt, _ = self.run_reboot("windows-reboot-explicit-off.pre")
+        self.assertEqual(0, code)
+        # Its app runs from the task it registered: another preboot would meet that task while its own serve runs.
+        refused("windows-reboot-reconnect.pre")
+        refused("windows-query-owner-gui-reconnect")
+        self.reboot(receipt)
+        post, code, _, _ = self.run_reboot("windows-reboot-explicit-off.post", preboot=pre["operationId"])
+        self.assertEqual(0, code)
+        refused("windows-reboot-explicit-off.post", "prior_preboot_unavailable", preboot=pre["operationId"])
+        # A preboot whose owner never reached autostart leaves nothing behind.
+        self.qga.task_exit, self.change_events = 1, without_autostart
+        early, code, receipt, _ = self.run_reboot("windows-reboot-reconnect.pre")
+        self.assertEqual((1, "untouched"), (code, receipt["reboot"]["autostart"]))
+        # One that did is never closed on this clone: a new attempt is a new operation on another clone.
+        self.change_events = None
+        failed, code, receipt, _ = self.run_reboot("windows-reboot-reconnect.pre")
+        self.assertEqual((1, "changed"), (code, receipt["reboot"]["autostart"]))
+        self.qga.task_exit = None
+        refused("windows-reboot-explicit-off.pre")
+        refused("windows-reboot-reconnect.post", "prior_preboot_unavailable", preboot=failed["operationId"])
+        plan, code, _, _ = self.run_family("windows-packaged-cli-smoke", prior=self.install)
+        self.assertEqual(0, code, "a row that is no reboot row is not held")
+
+    def test_the_traffic_input_is_the_pinned_fixed_body(self):
+        value = json.loads(job.traffic_input())
+        self.assertEqual(job.UPSTREAM_TOKEN.encode("ascii").hex(), value["expectedBodyHex"])
+        from agent_tools import windows_postboot_source_roles as source_roles
+        self.assertEqual(source_roles.UPSTREAM_TOKEN, job.UPSTREAM_TOKEN)
+        self.assertEqual(job.DECLARED_ROLES, ("guiLauncher", "gui", "controllerLauncher", "controller", "runtime"))
+
+
+_PROXY_TLS = []
+
+
+def proxy_tls():
+    """One generated key for this module: making it is the slow part, and its own tests live in test_windows_proxy_lifecycle."""
+    if not _PROXY_TLS:
+        from agent_tools import windows_scenario_proxy as proxy
+        _PROXY_TLS.append(proxy.material(random.Random(5).getrandbits, 1793000000))
+    return _PROXY_TLS[0]
+
+
+def proxy_inputs(raw):
+    """The literal harness's two constants, read as the dedicated driver reads them: no statement runs."""
+    tree = ast.parse(raw.decode("ascii"))
+    values = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)}
+    if set(values) != {"LIFECYCLE_INPUTS", "SYSTEM_COLLECTOR_CLOSE_HOLD"} or len(tree.body) != 3:
+        raise AssertionError("harness is not literal")
+    return values
+
+
+class ProxyFamilyBase(FamilyBase):
+    """windows-proxy-lifecycle.<variant> on the same fake VM: an installed base whose app folder holds the runtime's jar."""
+
+    def setUp(self):
+        super().setUp()
+        files, directories = self.qga.installed_tree
+        self.qga.installed_tree = (sorted(files + ["app/desktopApp.jar", "app/skiko-awt.jar"]), directories)
+        self.material_calls = []
+        loaded = job.Job._load
+
+        def load(instance, name):
+            module = loaded(instance, name)
+            if name == "windows_scenario_proxy":
+                module.material = lambda randbits, now: self.material_calls.append((randbits, now)) or proxy_tls()
+            return module
+        patcher = mock.patch.object(job.Job, "_load", load)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
+class ProxyFamilyTests(ProxyFamilyBase):
+    def test_every_proxy_row_runs_on_one_installed_base_and_refuses_each_mutated_request(self):
+        install, base = self.install_base()
+        tree, tls = base["installed"]["treeSha256"], proxy_tls()
+        runtime_sha = hashlib.sha256(self.qga.runtime_bytes).hexdigest()
+        captures, original = {}, job.assert_closed
+
+        def record(row, requests, expected):
+            captures[row["proxy"]["variant"]] = json.loads(json.dumps([row, requests, expected]))
+            return original(row, requests, expected)
+        for variant in driver.PROXY_VARIANTS:
+            scenario = "windows-proxy-lifecycle." + variant
+            with self.subTest(variant=variant):
+                with mock.patch.object(job, "assert_closed", record):
+                    plan, code, receipt, kinds = self.run_family(scenario, prior=install)
+                self.assertEqual((0, None), (code, receipt["failure"]))
+                self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+                self.assertEqual(tree, receipt["installed"]["treeSha256"], "a proxy row leaves the one base as it found it")
+                self.assertLess(kinds.index("runtime-extract"), kinds.index("system-run"))
+                self.assertIs(job.secrets.randbits, self.material_calls[-1][0], "the key comes from the host's own CSPRNG")
+                seen = self.qga.requests_seen[-1]
+                worker, workspace = seen["worker"], job.WORKSPACE_PREFIX + plan["operationId"]
+                root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+                # The driver's --version probe runs this launcher and expects this admitted version.
+                self.assertEqual(("windows-proxy-lifecycle", workspace + "\\windows_lifecycle_cases.py", workspace + "\\proxy-harness.py",
+                                  root + "\\workspace", INSTALLED_ROOT + "\\vpn-control-cli.exe", VERSION),
+                                 (worker["action"], worker["casesPath"], worker["harnessPath"], worker["workspace"], worker["cliPath"],
+                                  worker["productVersion"]))
+                pins = {pin["path"]: pin for pin in worker["filePins"]}
+                self.assertEqual(runtime_sha, pins[workspace + "\\sing-box.exe"]["sha256"])
+                for role, leaf in driver.RECIPES[scenario]["generated"]:
+                    self.assertEqual(hashlib.sha256(self.qga.files[workspace + "\\" + leaf]).hexdigest(), pins[workspace + "\\" + leaf]["sha256"])
+                for role in ("certificate", "privateKey", "trustStore"):
+                    self.assertEqual(tls[role], self.qga.files[workspace + "\\" + dict(driver.RECIPES[scenario]["generated"])[role]])
+                inputs = proxy_inputs(self.qga.files[workspace + "\\proxy-harness.py"])["LIFECYCLE_INPUTS"]
+                self.assertEqual((variant, "a" * 40, runtime_sha, plan["operationId"], root + "\\workspace\\runtime\\tools\\sing-box.exe"),
+                                 (inputs["variant"], inputs["sourceSha"], inputs["runtime"]["runtimeSha256"], inputs["runtime"]["operationId"],
+                                  inputs["runtime"]["runtimeImagePath"]))
+                self.assertEqual("sha256-" + self.packages["targetPackage"]["sha256"], inputs["runtime"]["installedAdmissionArtifactId"])
+                self.assertEqual(variant in driver._PROXY_BRANCH_VARIANTS, "branch" in inputs)
+                if "branch" in inputs:
+                    self.assertEqual((workspace + "\\sing-box.exe", runtime_sha), (inputs["branch"]["fixtureRuntimeToolPath"], inputs["branch"]["runtimeSha256"]))
+                if variant == "gui-pending":
+                    self.assertEqual(INSTALLED_ROOT + "\\vpn-control.exe", inputs["gui"]["guiPath"])
+                    self.assertIn(inputs["gui"]["guiPath"], pins, "the GUI is the installed tree's own pinned launcher")
+                for path in (*inputs["modules"].values(), inputs["runtime"]["fixtureWorkerPath"], inputs["runtime"]["socksSourcePath"],
+                             inputs["runtime"]["httpsSourcePath"], inputs["runtime"]["certificatePath"], inputs["runtime"]["trustStorePath"]):
+                    self.assertIn(path, pins, "every file the harness names is held by the worker")
+                planner.validate_closure(worker)
+                self.assertEqual([], self.pins_under(seen["bootstrap"], INSTALLED_ROOT), "installed pins live only in the worker request")
+                self.assertNotIn(workspace + "\\proxy-localhost.key", {pin["path"] for pin in seen["bootstrap"]["filePins"]})
+        self.assertEqual([], self.classify()["unresolved"])
+        self.assertEqual(set(driver.PROXY_VARIANTS), set(captures))
+        for variant, captured in captures.items():
+            job.assert_closed(*captured)
+            for name, change in self.mutations().items():
+                with self.subTest(variant=variant, change=name):
+                    row, requests, expected = json.loads(json.dumps(captured))
+                    change(row, requests, expected)
+                    with self.assertRaisesRegex(job.KnownFailure, "requests_not_closed"):
+                        job.assert_closed(row, requests, expected)
+
+    def test_a_runtime_that_is_not_the_installed_trees_own_is_a_known_failure(self):
+        install, _ = self.install_base()
+        cases = (("another-jar-pin", lambda runtime: runtime["jarPin"].update(sha256="0" * 64)),
+                 ("jar-outside-the-tree", lambda runtime: runtime["jarPin"].update(path=INSTALLED_ROOT + "\\app\\other.jar")),
+                 ("another-target", lambda runtime: runtime["filePin"].update(path=PROFILE + "\\sing-box.exe")),
+                 ("another-entry", lambda runtime: runtime.update(entry="bin/windows-amd64/other.exe")))
+        for name, change in cases:
+            with self.subTest(name=name):
+                self.qga.runtime_reply = change
+                plan, code, receipt, kinds = self.run_family("windows-proxy-lifecycle.generated", prior=install)
+                self.assertEqual((1, "publisher_runtime_receipt"), (code, receipt["failure"]))
+                self.assertNotIn("system-run", kinds)
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+        self.qga.runtime_reply = None
+        for jars, reason in (({"app/desktopApp.jar", "app/skiko-awt.jar"}, "publisher_refused:publish-runtime"), (set(), "publisher_refused:publish-runtime")):
+            with self.subTest(jars=sorted(jars)):
+                self.qga.runtime_jars = jars
+                plan, code, receipt, kinds = self.run_family("windows-proxy-lifecycle.find-best-success", prior=install)
+                self.assertEqual((1, reason), (code, receipt["failure"]))
+                self.assertNotIn("system-run", kinds)
+
+    def test_an_installed_tree_without_a_jar_never_reaches_the_guest_for_its_runtime(self):
+        self.qga.installed_tree = (["vpn-control-cli.exe", "vpn-control.exe"], [])
+        install, _ = self.install_base()
+        plan, code, receipt, kinds = self.run_family("windows-proxy-lifecycle.find-best-cancel", prior=install)
+        self.assertEqual((1, "installed_runtime_jar_absent"), (code, receipt["failure"]))
+        self.assertNotIn("runtime-extract", kinds)
+
+    def test_a_proxy_row_needs_a_passed_install_of_its_own_package(self):
+        foreign = self.run_family("windows-ordinary-qualification")[0]["operationId"]
+        for variant in driver.PROXY_VARIANTS:
+            scenario = "windows-proxy-lifecycle." + variant
+            with self.subTest(variant=variant):
+                for prior in (str(uuid.uuid4()), foreign):
+                    plan, code, receipt, kinds = self.run_family(scenario, prior=prior)
+                    self.assertEqual((2, "prior_install_unavailable", []), (code, receipt["failure"], kinds))
+                    self.assertFalse(self.fence(plan, ".intent.json").exists(), "a refused job anchors nothing")
+        install, _ = self.install_base()
+        other = random.Random(9).randbytes(100)
+        self.packages["targetPackage"] = {"sha256": hashlib.sha256(other).hexdigest(), "bytes": len(other)}
+        plan, code, receipt, kinds = self.run_family("windows-proxy-lifecycle.large", prior=install)
+        self.assertEqual((2, "prior_install_other_package", []), (code, receipt["failure"], kinds))
+        self.assertFalse(self.fence(plan, ".intent.json").exists())
+
+    @staticmethod
+    def mutations():
+        """Each change a caller might try on a built proxy request; every one must be refused."""
+        def worker(change):
+            return lambda row, requests, expected: change(requests["worker"])
+
+        def pin_named(leaf):
+            def change(w):
+                next(item for item in w["filePins"] if item["path"].endswith("\\" + leaf)).update(sha256="2" * 64)
+            return change
+        return {
+            "cases-is-harness": worker(lambda w: w.update(casesPath=w["harnessPath"])),
+            "harness-is-cases": worker(lambda w: w.update(harnessPath=w["casesPath"])),
+            "action": worker(lambda w: w.update(action="windows-public-update")),
+            "generic-action": worker(lambda w: w.update(action="disconnected-cli-config")),
+            "free-argv": worker(lambda w: w.update(qualificationArgv=["cmd.exe"])),
+            "runtime-dropped": worker(lambda w: w["filePins"].remove(next(item for item in w["filePins"] if item["path"].endswith("\\sing-box.exe")))),
+            "runtime-changed": worker(pin_named("sing-box.exe")),
+            "harness-changed": worker(pin_named("proxy-harness.py")),
+            "key-changed": worker(pin_named("proxy-localhost.key")),
+            "driver-changed": worker(pin_named("windows_ordinary_dedicated_driver.py")),
+            "extra-pin": worker(lambda w: w["filePins"].append(dict(w["filePins"][0], path="C:\\Windows\\System32\\cmd.exe"))),
+            "workspace": worker(lambda w: w.update(workspace=w["workspace"] + "-other")),
+            "bootstrap-mode": lambda row, requests, expected: requests["bootstrap"]["bootstrap"].update(mode="qualification"),
+            "no-worker": lambda row, requests, expected: requests.update(worker=None),
+        }
+
+
+JOB_ID = "88888888-9999-4aaa-8bbb-cccccccccccc"
+PRODUCT_OPERATION = "99999999-aaaa-4bbb-8ccc-dddddddddddd"
+BASE = "2.2.14"
+ADMIN_SID = "S-1-5-21-1-2-3-500"
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+
+
+class UpdateQga(FakeQga):
+    """The same wire peer, plus what an update row's owner and SYSTEM collector would leave: the owner asks for
+    before-install, then terminal-actors once the first stage was served, and its task ends after the release."""
+
+    def __init__(self):
+        super().__init__()
+        self.collectors, self.releases, self.served = [], [], []
+        self.run_pid = None
+        self.run_polls = None  # Polls before the SYSTEM run returns; by default it waits on its collectors.
+        self.needs = ["before-install", "terminal-actors"]
+        self.parked_files = []  # What the run's status names as parked.
+        self.verified = {}
+        self.disposition = b'{"disposition":"NOT_STARTED"}'
+        # The product writes its not-started disposition for its owner alone, and a SYSTEM open without an enabled
+        # SeBackupPrivilege is refused: nothing on this route enables it. True only where a test supposes a reader.
+        self.system_reads_owner_only = False
+
+    def _guest_exec(self, arguments):
+        source = base64.b64decode(arguments["input-data"]).decode("ascii")
+        if "$RequestPinBase64=" in source or "$releaseBytes=" in source:
+            if arguments["path"] != job.POWERSHELL_PATH or arguments["arg"] != list(job.GUEST_ARGUMENTS):
+                raise AssertionError("guest-exec shape changed")
+            self.next_pid += 1
+            pid = self.next_pid
+            kind = "collector-release" if "$releaseBytes=" in source else "collector"
+            terminal = self._release(source, pid) if kind == "collector-release" else self._collector(source, pid)
+            self.programs.append((kind, source))
+            self.pending[pid] = {"polls": 0, "terminal": terminal}
+            return {"pid": pid}
+        self.admin_requested = "administratorSid=" in source
+        ack = super()._guest_exec(arguments)
+        if self.programs[-1][0] == "system-run" and (program_input(source) or {}).get("nativeNeeds"):
+            self.run_pid = ack["pid"]
+            if self.run_polls is not None:
+                self.pending[ack["pid"]]["polls"] = self.run_polls
+            elif self.needs:
+                self.pending[ack["pid"]]["polls"] = 10 ** 6  # The owner waits on its collectors.
+        return ack
+
+    def _guest_file_open(self, arguments):
+        if arguments["path"].endswith("\\scenario-status.json") and arguments["mode"] == "rb":
+            served = [kind for kind, _ in self.programs if kind == "collector"]
+            needs = self.needs[:len(served) + 1]
+            values = {"before-install": {"jobId": None, "productOperationId": None},
+                      "terminal-actors": {"jobId": JOB_ID, "productOperationId": PRODUCT_OPERATION}}
+            self.files[arguments["path"]] = json.dumps({"schemaVersion": 1, "poll": len(self.calls), "pendingKinds": [],
+                                                        "parkedFiles": list(self.parked_files),
+                                                        "uacEvents": ["update-uac-action-pending"] if served else [],
+                                                        "nativeNeeds": [{"name": "event", "ordinal": i, "stage": stage,
+                                                                         **values.get(stage, {"jobId": None, "productOperationId": None})}
+                                                                        for i, stage in enumerate(needs)]}).encode()
+        return super()._guest_file_open(arguments)
+
+    def _context(self):
+        terminal = super()._context()
+        if not self.admin_requested:
+            return terminal
+        value = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
+        value["administratorSid"] = ADMIN_SID
+        return {"exited": True, "exitcode": 0, "out-data": out_data(value)}
+
+    def _publisher(self, m, pid):
+        action = m["action"]
+        if action not in {"initialize", "verify", "fixture-tls", "seal-readonly", "collector-observe"}:
+            return super()._publisher(m, pid)
+        reply = {"schemaVersion": 1, "operationId": m["operationId"], "kernelBootIdentifier": m["kernelBootIdentifier"], "systemToken": m["systemToken"],
+                 "allHeldAndNamedPinsClosing": True, "productOperation": False, "taskOperation": False, "bootstrapOpening": self._actor(pid),
+                 "bootstrapClosing": self._actor(pid), "guestBootClosing": True, "bootstrapActorClosing": True}
+        if action == "initialize":
+            def directory(path, rights, form="P"):
+                return self._pin(path, directory=True, security={"ownerSid": "S-1-5-18", "sddl": "O:SYD:" + form + "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;" + rights + ";;;" + SID + ")"})
+            pins = [self._pin(path, directory=True) for path in m["existingDirectories"]]
+            pins.append(directory(m["workspace"], "0x1200a9"))
+            # A protected DACL set at CreateDirectory reads back auto-inherited: the form the collector contract names.
+            pins.extend(directory(m["workspace"] + "\\" + name, "0x1200a9", "PAI" if name.startswith("system-collector-") else "P") for name in m["subfolders"])
+            pins.extend(directory(m["workspace"] + "\\" + name, "FA") for name in m.get("privateSubfolders", []))
+            pins.append(directory(m["operationRoot"], "0x1301bf"))
+            reply.update(state="ordinary-publication-initialized", workspace=m["workspace"], operationRoot=m["operationRoot"], createNew=True, directoryPins=pins)
+        elif action == "verify":
+            terminal = super()._publisher(m, pid)
+            for row in json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))["verified"]:
+                self.verified[row["filePin"]["path"]] = row["filePin"]
+            return terminal
+        elif action == "fixture-tls":
+            der = b"0\x82\x01\x00certificate-der"
+            text = base64.b64encode(der).decode()
+            pem = ("-----BEGIN CERTIFICATE-----\n" + "\n".join(text[at:at + 64] for at in range(0, len(text), 64)) + "\n-----END CERTIFICATE-----\n").encode()
+            folder = m["workspace"] + "\\update-tls"
+            # New-GeneratedFile protects its files as New-Endpoint does, so they read back in the same form.
+            reply.update(state="ordinary-fixture-tls", tls={"certificateDer": text,
+                                                            "certificatePin": self._pin(folder + "\\server-cert.pem", raw=pem, security=self.file_security()),
+                                                            "privateKeyPin": self._pin(folder + "\\server-key.pem", raw=b"generated key",
+                                                                                       security=self.file_security())})
+        elif action == "seal-readonly":
+            pin = json.loads(json.dumps(self.verified[m["sealPath"]]))
+            pin["nativeIdentity"]["attributes"] = 33
+            reply.update(state="ordinary-sealed-readonly", filePin=pin)
+        else:
+            def event(ordinal, kind, value, task=False):
+                body = {"schemaVersion": 1, "operationId": m["operationId"], "ordinal": ordinal, "kind": kind, "value": value}
+                if task:
+                    body.update(ownerPid=901, ownerBirthFileTimeUtc="134368653065000002")
+                return base64.b64encode(json.dumps(body).encode()).decode()
+            files = {"task-event-000000-submission-intent.json": event(0, "submission-intent", {"mode": "python-worker"}, True),
+                     "task-event-000001-submitted.json": event(1, "submitted", {"pid": 902, "birthFileTimeUtc": "134368653065000003",
+                                                                                "originalHandleRetained": True}, True),
+                     "event-000002-child-intent.json": event(2, "child-intent", {"child": 0, "label": "update-public-serve", "argv": ["cli", "serve"]}),
+                     "event-000003-child-started.json": event(3, "child-started", {"child": 0, "pid": 903, "birthFileTimeUtc": "134368653065000004"}),
+                     "event-000004-child-intent.json": event(4, "child-intent", {"child": 1, "label": "public-cli", "argv": ["cli", "status"]})}
+            dispositions = []
+            if "one-public-update-install" in m["childStdoutLabels"]:
+                files["event-000009-child-intent.json"] = event(9, "child-intent", {"child": 5, "label": "one-public-update-install", "argv": ["cli"]})
+                files["event-000010-child-started.json"] = event(10, "child-started", {"child": 5, "pid": 904, "birthFileTimeUtc": "134368653065000005"})
+                files["child-0005.stdout.raw"] = base64.b64encode(json.dumps({"schemaVersion": 1, "ok": False, "code": "CANCELLED", "final": True,
+                                                                              "controllerId": "controller-1", "requestId": "request-1",
+                                                                              "operationId": PRODUCT_OPERATION}).encode()).decode()
+            if m["readDisposition"]:
+                # DesktopWindowsExportFile creates it O:<owner>G:<owner>D:P(A;;FA;;;<owner>): no ACE for SYSTEM.
+                if not self.system_reads_owner_only:
+                    return {"exited": True, "exitcode": 1, "err-data": base64.b64encode(b"Access to the path is denied.").decode()}
+                dispositions.append(self._pin(m["productWorkspace"] + "\\.install-not-started-" + "a" * 64 + ".json", raw=self.disposition,
+                                              security={"ownerSid": SID, "sddl": "O:" + SID + "D:P(A;;FA;;;" + SID + ")"}))
+            reply.update(state="ordinary-collector-observation", observation={"files": files, "dispositions": dispositions})
+        return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
+
+    def _request(self, source, pattern):
+        pin = json.loads(base64.b64decode(re.search(pattern, source)[1]))
+        return pin, json.loads(self.files[pin["path"]])
+
+    def _collector(self, source, pid):
+        pin, request = self._request(source, r"\$RequestPinBase64='([A-Za-z0-9+/=]+)'")
+        self.collectors.append(request)
+        worker = {"pid": 6000 + len(self.collectors), "birthFileTimeUtc": "134368653065000010", "image": request["pythonRuntime"]["interpreterPath"]}
+        hold, caller = request["closeHold"], None
+        if hold is not None:
+            ordinary = request["ordinaryTask"]["workerActor"]
+            ready = {"schemaVersion": 1, "kind": "caller-collector-close-ready", "ordinaryTaskOperationId": request["ordinaryTaskOperationId"],
+                     "collectorOperationId": request["operationId"], "sourceSha": hold["sourceSha"], "scope": "update", "stage": hold["stage"],
+                     "bootIdentifier": request["context"]["bootIdentifier"],
+                     "ordinaryWorker": {"pid": ordinary["pid"], "birthFileTimeUtc": str(ordinary["creationFileTime"]),
+                                        **{key: ordinary[key] for key in ("image", "sha256", "sid", "sessionId")}},
+                     "callerSourcePin": hold["callerSourcePin"], "collectorRequestSha256": pin["sha256"],
+                     "systemActor": {"pid": pid, "birthFileTimeUtc": "134368653065000001"},
+                     "collectorChild": {"pid": worker["pid"], "birthFileTimeUtc": worker["birthFileTimeUtc"]},
+                     "driverKnownResult": 0, "allOriginalChildrenTerminalAndEof": True}
+            raw = encoded(ready)
+            caller = {"ready": ready, "sha256": hashlib.sha256(raw).hexdigest(), "originalHandleRetained": True,
+                      "nativeFile": {"path": hold["holdReadyPath"], "nativeIdentity": self._pin(hold["holdReadyPath"], raw=raw)["nativeIdentity"],
+                                     "security": {"ownerSid": SID, "sddl": "O:" + SID + "D:P(A;;FA;;;" + SID + ")"}}}
+        result = {"schemaVersion": 1, "state": "collector-completed", "operationId": request["operationId"],
+                  "ordinaryTaskOperationId": request["ordinaryTaskOperationId"], "scope": "update",
+                  "collectorSourceSha256": request["modules"]["collector"]["sha256"],
+                  "workerActor": {"pid": worker["pid"], "birthFileTimeUtc": worker["birthFileTimeUtc"], "image": worker["image"],
+                                  "bootIdentifier": request["context"]["bootIdentifier"], "token": {"sid": "S-1-5-18", "sessionId": 0, "elevation": 1}},
+                  "publications": [{"stage": request["collectorRequest"]["stage"], "noProductMutation": True}],
+                  "closing": {"sourceClosing": True, "files": len(request["filePins"]) + 1, "completeFileDigestSha256": "a" * 64}, "callerHold": caller}
+        stdout = json.dumps(result).encode()
+
+        def capture(name, raw):
+            return {"name": name, "sizeBytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "base64": base64.b64encode(raw).decode(),
+                    "eof": True, "nativeIdentity": {"sizeBytes": len(raw)}}
+        proof = {"schemaVersion": 1, "state": "collector-closed", "operationId": request["operationId"],
+                 "ordinaryTaskOperationId": request["ordinaryTaskOperationId"], "scope": "update",
+                 "collectorSourceSha256": request["modules"]["collector"]["sha256"], "requestSha256": pin["sha256"],
+                 "requestNativeIdentity": pin["nativeIdentity"],
+                 "worker": {"pid": worker["pid"], "birthFileTimeUtc": worker["birthFileTimeUtc"], "image": worker["image"], "sessionId": 0,
+                            "exitCode": 0, "bothEof": True, "originalHandleRetained": True},
+                 "captures": [capture("stdout", stdout), capture("stderr", b"")], "sourceClosing": True, "productMutation": False,
+                 "bootstrapOpening": self._actor(pid), "bootstrapClosing": self._actor(pid), "guestBootClosing": True, "bootstrapActorClosing": True}
+        if hold is None and self.run_pid in self.pending and len(self.collectors) == len(self.needs):
+            self.pending[self.run_pid]["polls"] = 0
+        return {"exited": True, "exitcode": 0, "out-data": out_data(proof)}
+
+    def _release(self, source, pid):
+        pin, request = self._request(source, r"\$requestRecord=.*?FromBase64String\('([A-Za-z0-9+/=]+)'\)")
+        release = base64.b64decode(re.search(r"\$releaseBytes=\[Convert\]::FromBase64String\('([A-Za-z0-9+/=]+)'\)", source)[1])
+        self.releases.append(json.loads(release))
+        if self.run_pid in self.pending:
+            self.pending[self.run_pid]["polls"] = 0  # The caller's hold is released: its owner finishes.
+        proof = {"schemaVersion": 1, "state": "collector-release-published", "operationId": request["operationId"], "requestSha256": pin["sha256"],
+                 "releasePath": request["closeHold"]["releasePath"], "releaseSha256": hashlib.sha256(release).hexdigest(),
+                 "releaseNativeIdentity": self._pin(request["closeHold"]["releasePath"], raw=release)["nativeIdentity"], "sourceClosing": True,
+                 "originalCollectorKnownClosed": True, "productMutation": False, "bootstrapOpening": self._actor(pid), "bootstrapClosing": self._actor(pid),
+                 "guestBootClosing": True, "bootstrapActorClosing": True}
+        return {"exited": True, "exitcode": 0, "out-data": out_data(proof)}
+
+
+class UpdateFamilyBase(FamilyBase):
+    """One VM: install the target once, which records the tree it leaves, then reset to the older base and update."""
+
+    def setUp(self):
+        super().setUp()
+        self.qga = UpdateQga()
+        self.rt = FakeRuntime(self.vm, self.qga)
+        self.base_msi = random.Random(5).randbytes(job.CHUNK_BYTES + 9)
+        receipt = {"schemaVersion": 1, "testOnly": True, "productionTrustChanged": False, "sourceFingerprint": "f" * 64,
+                   "manifest": {"assets": [{"fileName": "vpn-control-" + VERSION + ".msi", "sha256": self.packages["targetPackage"]["sha256"],
+                                            "sizeBytes": self.packages["targetPackage"]["bytes"], "displayVersion": VERSION}]}}
+        for role, raw in (("basePackage", self.base_msi), ("fixtureReceipt", json.dumps(receipt).encode())):
+            digest = hashlib.sha256(raw).hexdigest()
+            (self.artifacts / digest).write_bytes(raw)
+            (self.artifacts / digest).chmod(0o600)
+            self.packages[role] = {"sha256": digest, "bytes": len(raw)}
+
+    def install(self, scenario, role, version, *, prior=None):
+        self.qga.msi_properties["ProductVersion"] = version
+        row = json.loads(json.dumps(driver.RECIPES[scenario]))
+        plan = self.plan(None, scenarioId=scenario, row=row, artifactDirectory=str(self.artifacts),
+                         packages={"basePackage": self.packages[role]}, product={"sourceSha": "a" * 40, "productVersion": version},
+                         prior={} if prior is None else {"install": prior})
+        self.addCleanup(self.forget_modules, plan["operationId"])
+        code = job.run_job(self.rt, plan, self.files)
+        self.assertEqual((0, None), (code, self.receipt(plan)["failure"]))
+        return plan["operationId"]
+
+    def prepared(self):
+        """The target's own install records its tree; the reset leaves the older base the update starts from."""
+        target = self.install("windows-msi-base-install", "targetPackage", VERSION)
+        base = self.install("windows-msi-base-reset", "basePackage", BASE)
+        self.qga.programs.clear()
+        self.qga.requests_seen.clear()
+        return base, target
+
+    def update_plan(self, variant, base, target, **changes):
+        row = json.loads(json.dumps(driver.RECIPES["windows-public-update." + variant]))
+        fields = {"scenarioId": "windows-public-update." + variant, "row": row, "artifactDirectory": str(self.artifacts),
+                  "packages": {key: self.packages[key] for key in ("targetPackage", "fixtureReceipt")},
+                  "product": {"sourceSha": "a" * 40, "productVersion": VERSION, "baseVersion": BASE},
+                  "prior": {"install": base, "targetInstall": target}, "administrator": "recoveryadmin"}
+        return self.plan(None, **{**fields, **changes})
+
+    def run_update(self, variant, base, target, **changes):
+        plan = self.update_plan(variant, base, target, **changes)
+        self.addCleanup(self.forget_modules, plan["operationId"])
+        code = job.run_job(self.rt, plan, self.files)
+        return plan, code, self.receipt(plan)
+
+    def suppose_collector_inputs(self):
+        """A guest that does not exist yet: a request file in the pinned O:SYD:P form and a SYSTEM reader of the product's
+        owner-only disposition. The driver refuses uac-denied until both are proved natively; these tests run the
+        collector stage engine as if they were."""
+        self.qga.endpoint_form = "P"
+        self.qga.system_reads_owner_only = True
+
+
+class UpdateFamilyTests(UpdateFamilyBase):
+    def harness(self, plan):
+        raw = self.qga.files[job.WORKSPACE_PREFIX + plan["operationId"] + "\\update-harness.py"]
+        tree = ast.parse(raw.decode("utf-8"))
+        self.assertIsInstance(tree.body[0].value, ast.Constant)
+        self.assertEqual(["UPDATE_INPUTS", "SYSTEM_COLLECTOR_CLOSE_HOLD"], [node.targets[0].id for node in tree.body[1:]])
+        return [ast.literal_eval(node.value) for node in tree.body[1:]]
+
+    def test_a_no_system_row_runs_the_case_with_its_fixture_and_no_collector(self):
+        base, target = self.prepared()
+        self.qga.needs = []
+        plan, code, receipt = self.run_update("public-ready", base, target)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"], "no --version ran: no installed-package claim")
+        self.assertEqual({"variant": "public-ready", "collectors": {}}, receipt["update"])
+        kinds = self.qga.kinds()
+        self.assertNotIn("collector", kinds)
+        self.assertLess(kinds.index("seal-readonly"), kinds.index("system-run"))
+        self.assertLess(kinds.index("fixture-tls"), kinds.index("system-run"))
+        worker = self.qga.requests_seen[-1]["worker"]
+        self.assertEqual("windows-public-update", worker["action"])
+        self.assertEqual(["installed-application", "python-runtime"], sorted(tree["role"] for tree in worker["treePins"]))
+        workspace = job.WORKSPACE_PREFIX + plan["operationId"]
+        self.assertEqual(workspace + "\\windows_public_updater\\update_cases.py", worker["casesPath"])
+        self.assertEqual(workspace + "\\update-harness.py", worker["harnessPath"])
+        self.assertEqual(BASE, worker["productVersion"], "the update starts from the installed base")
+        planner.validate_closure(worker)
+        inputs, hold = self.harness(plan)
+        self.assertIsNone(hold)
+        from agent_tools.windows_public_updater import update_cases
+        pins = {pin["path"].casefold(): types.SimpleNamespace(record=pin) for pin in worker["filePins"]}
+        owner = types.SimpleNamespace(request={"context": worker["context"], "productVersion": worker["productVersion"]}, by_path=pins)
+        self.assertIs(inputs, update_cases.validate_inputs(owner, inputs))
+        sealed = pins[(workspace + "\\mcp-update-fixture-" + job.fixture_id(plan["operationId"]) + "\\content\\packages\\target\\vpn-control-"
+                       + VERSION + ".msi").casefold()].record
+        self.assertTrue(sealed["nativeIdentity"]["attributes"] & 1, "the served package is pinned read-only")
+        self.assertIsNone(inputs["approvingAdminSid"])
+        self.assertEqual(json.loads((self.machine_data / target / job.INVENTORY_NAME).read_bytes())["files"], inputs["targetInventory"])
+        self.assertEqual(set(self.qga.installed_tree[0]), set(inputs["baseInventory"]))
+
+    def test_a_deny_row_serves_both_collector_stages_inside_the_run_and_releases_the_hold(self):
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        kinds = self.qga.kinds()
+        run = kinds.index("system-run")
+        self.assertEqual(["collector-observe", "endpoints", "verify", "collector", "collector-observe", "endpoints", "verify", "collector",
+                          "collector-release"], kinds[run + 1:run + 10], "both stages run between two polls of the SYSTEM run")
+        self.assertEqual(["before-install", "terminal-actors"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
+        first, final = self.qga.collectors
+        self.assertIsNone(first["closeHold"])
+        self.assertEqual("terminal-actors", final["closeHold"]["stage"])
+        owner = first["collectorRequest"]["actors"]["owner"]
+        self.assertEqual((903, 134368653065000004), (owner["pid"], owner["creationFileTime"]))
+        self.assertEqual({"pid": 902, "creationFileTime": 134368653065000003}, {key: final["ordinaryTask"]["workerActor"][key] for key in ("pid", "creationFileTime")})
+        self.assertEqual({}, final["collectorRequest"]["actors"], "a denied prompt starts no installer")
+        self.assertEqual(("controller-1", "request-1"), (final["collectorRequest"]["context"]["originControllerId"], final["collectorRequest"]["context"]["originRequestId"]))
+        self.assertEqual(MACHINE, first["context"]["hardwareUuid"], "the contract's lowercase form")
+        self.assertEqual([job.collector_operation(plan["operationId"], "terminal-actors")], [release["collectorOperationId"] for release in self.qga.releases])
+        self.assertEqual({"before-install": {"requestSha256": hashlib.sha256(self.qga.files[first["requestPath"]]).hexdigest(), "released": False},
+                          "terminal-actors": {"requestSha256": hashlib.sha256(self.qga.files[final["requestPath"]]).hexdigest(), "released": True}},
+                         receipt["update"]["collectors"])
+        inputs, hold = self.harness(plan)
+        self.assertEqual(ADMIN_SID, inputs["approvingAdminSid"])
+        from agent_tools.windows_system_collector import hold_protocol
+        self.assertIs(hold, hold_protocol.validate_inputs(hold, ordinary_task_operation_id=plan["operationId"], program_data="C:\\ProgramData"))
+        self.assertEqual(final["operationRoot"], hold["collectorRoot"])
+        self.assertEqual([], self.classify()["unresolved"])
+
+    def test_the_collector_program_is_the_rendered_template_on_the_stdin_route(self):
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        self.run_update("uac-denied", base, target)
+        for kind, source in self.qga.programs:
+            if kind in {"collector", "collector-release"}:
+                with self.subTest(kind=kind):
+                    raw = job.check_source(source)
+                    self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+                    defined = source.index("public static class VpnHeldProgram")
+                    self.assertLess(defined, source.index("[VpnHeldProgram]::Identity("), "the launcher's type exists before the template calls it")
+                    self.assertIn("$expectedHardware='" + MACHINE.upper() + "'", source, "the prelude compares what WMI reports")
+                    self.assertIn("$protocolResult= & {", source)
+
+    @unittest.skipUnless(POWERSHELL, "PowerShell parser unavailable; hosted Windows and Linux runners have one")
+    def test_the_collector_and_release_programs_parse(self):
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        self.run_update("uac-denied", base, target)
+        sources = [(kind, source) for kind, source in self.qga.programs if kind in {"collector", "collector-release"}]
+        self.assertEqual(["collector", "collector", "collector-release"], [kind for kind, _ in sources])
+        with tempfile.TemporaryDirectory(prefix="collector-sources-") as directory:
+            for number, (kind, source) in enumerate(sources):
+                path = Path(directory) / (kind + "-" + str(number) + ".ps1")
+                path.write_text(source, encoding="ascii")
+                script = ("$tokens=$null;$errors=$null;[void][Management.Automation.Language.Parser]::ParseFile('" + str(path).replace("'", "''")
+                          + "',[ref]$tokens,[ref]$errors);if(@($errors).Count){$errors|ForEach-Object {[Console]::Error.WriteLine($_.Message)};exit 9}")
+                result = subprocess.run([str(POWERSHELL), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+                                        stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+                self.assertEqual(0, result.returncode, kind + ": " + result.stderr.decode("utf-8", "replace"))
+
+    def test_a_stage_the_row_cannot_serve_ends_unknown_with_the_fence_open(self):
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        self.qga.needs = ["authorization"]
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((3, "collector_stage_unserved:authorization"), (code, receipt["failure"]))
+        self.assertFalse(self.fence(plan, ".terminal.json").exists())
+        self.assertNotIn("collector", self.qga.kinds())
+
+    def test_a_collector_that_never_returns_is_unknown_and_nothing_follows_it(self):
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        original = self.qga._collector
+
+        def parked(source, pid):
+            original(source, pid)
+            return {"exited": False}
+        self.qga._collector = parked
+        self.qga.polls_before_exit = 1
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual(3, code)
+        self.assertTrue(receipt["failure"].startswith("collector_stage_failed:before-install") or receipt["failure"].startswith("guest_"), receipt["failure"])
+        self.assertEqual(1, self.qga.kinds().count("collector"))
+        self.assertNotIn("evidence-zip", self.qga.kinds()[self.qga.kinds().index("system-run"):], "no copy while a program is open")
+        self.assertFalse(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_collector_root_in_another_form_refuses_before_any_task(self):
+        base, target = self.prepared()
+        original = self.qga._publisher
+
+        def plain(m, pid):
+            terminal = original(m, pid)
+            if m["action"] == "initialize":
+                reply = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
+                for pin in reply["directoryPins"]:
+                    pin["security"]["sddl"] = pin["security"]["sddl"].replace("O:SYD:PAI(", "O:SYD:P(")
+                terminal = {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
+            return terminal
+        self.qga._publisher = plain
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((1, "collector_root_policy"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", self.qga.kinds())
+
+    def test_a_published_file_reads_back_auto_inherited_so_a_collector_row_stops_before_its_task(self):
+        """The native form. The pinned collector chain takes its request only as O:SYD:P, and the publisher's files read
+        back O:SYD:PAI, so the row ends at publish as a known failure: no owner ever waits on a refused request."""
+        base, target = self.prepared()
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((1, "collector_file_policy", "publish"), (code, receipt["failure"], receipt["stage"]))
+        self.assertNotIn("system-run", self.qga.kinds())
+        self.assertTrue(self.fence(plan, ".terminal.json").exists(), "a known failure closes the fence")
+
+    def test_system_cannot_open_the_owner_only_disposition_so_terminal_actors_ends_unknown(self):
+        """Even past publish, terminal-actors reads the product's not-started disposition as SYSTEM, and the product
+        grants that file to its owner alone. The owner is still waiting on that stage, so the job ends UNKNOWN."""
+        base, target = self.prepared()
+        self.qga.endpoint_form = "P"  # Supposed: only the reader is missing here.
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((3, "collector_stage_failed:terminal-actors:publisher_refused:collector-observe-terminal-actors"),
+                         (code, receipt["failure"]))
+        kinds = self.qga.kinds()
+        self.assertEqual(1, kinds.count("collector"), "before-install only")
+        self.assertNotIn("collector-release", kinds)
+        self.assertNotIn("evidence-zip", kinds[kinds.index("system-run"):], "the run is still open")
+        self.assertFalse(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_need_beside_a_parked_file_starts_nothing(self):
+        """A parked owner is reported and never touched: its status may still name a need it asked for before parking."""
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        self.qga.needs, self.qga.parked_files = ["before-install"], ["owner-parked.json"]
+        self.qga.run_state, self.qga.run_polls = "owner-parked", 2
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((3, "owner-parked"), (code, receipt["failure"]))
+        kinds = self.qga.kinds()
+        self.assertEqual(["system-run", "evidence-zip"], kinds[kinds.index("system-run"):], "no collector program for a parked owner")
+        self.assertEqual([], self.qga.collectors)
+        self.assertFalse(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_need_read_after_the_run_returned_starts_nothing(self):
+        """The last status copy is read after the run returned, here at its deadline. A need in it is never served:
+        nothing starts for an owner the run has stopped watching."""
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        self.qga.needs = ["before-install"]
+        self.qga.run_state, self.qga.run_polls = "deadline", 0
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((3, "deadline"), (code, receipt["failure"]))
+        kinds = self.qga.kinds()
+        self.assertEqual(["system-run", "evidence-zip"], kinds[kinds.index("system-run"):])
+        self.assertEqual([], self.qga.collectors)
+        status = json.loads((Path(plan["dataDirectory"]) / "status.json").read_bytes())
+        self.assertEqual(["before-install"], [need["stage"] for need in status["nativeNeeds"]], "the copy is still kept for observers")
+
+    def test_the_update_needs_the_target_install_inventory_and_an_older_base(self):
+        base, target = self.prepared()
+        for prior, reason in (({"install": base, "targetInstall": base}, "target_install_other_package"),
+                              ({"install": target, "targetInstall": target}, "prior_install_other_package"),
+                              ({"install": base, "targetInstall": str(uuid.uuid4())}, "prior_install_unavailable")):
+            with self.subTest(prior=prior):
+                plan = self.update_plan("public-ready", base, target, prior=prior)
+                self.addCleanup(self.forget_modules, plan["operationId"])
+                self.assertEqual(2, job.run_job(self.rt, plan, self.files))
+                self.assertEqual(reason, self.rt.emitted[-1]["failure"])
+        inventory = self.machine_data / target / job.INVENTORY_NAME
+        value = json.loads(inventory.read_bytes())
+        value["files"]["vpn-control.exe"]["sha256"] = "0" * 64
+        inventory.chmod(0o600)
+        inventory.write_bytes(json.dumps(value).encode())
+        plan, code, receipt = self.run_update("public-ready", base, target)
+        self.assertEqual((2, "target_install_inventory"), (code, self.rt.emitted[-1]["failure"]))
+
+    def test_the_status_copy_names_the_decision_once_its_terminal_exists(self):
+        base, target = self.prepared()
+        self.suppose_collector_inputs()
+        plan = self.update_plan("uac-denied", base, target)
+        decision = job.decision_id(plan["operationId"])
+        directory = self.vm / "windows-uac" / decision
+        directory.mkdir(parents=True, mode=0o700)
+        (directory / "input.terminal.json").write_text(json.dumps({"state": "input-ack-only", "operationId": decision, "attempt": 1, "decision": "deny",
+                                                                   "prompt": "install-helper", "promptClosed": True, "approvalSucceeded": False,
+                                                                   "productOutcomeProved": False, "replayAllowed": False}))
+        (directory / "input.terminal.json").chmod(0o600)
+        self.addCleanup(self.forget_modules, plan["operationId"])
+        self.assertEqual(0, job.run_job(self.rt, plan, self.files))
+        status = json.loads((Path(plan["dataDirectory"]) / "status.json").read_bytes())
+        self.assertEqual({"state": "input-ack-only", "decision": "deny", "prompt": "install-helper", "promptClosed": True}, status["uacDecision"])
+        self.assertEqual(["update-uac-action-pending"], status["uacEvents"])
+
+
+class TrustStoreTests(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("cryptography"), "cryptography verifies the store's MAC and bag here")
+    def test_the_store_holds_exactly_the_certificate_and_opens_with_the_fixture_password(self):
+        import datetime
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.serialization import pkcs12
+        from cryptography.x509.oid import NameOID
+        key = ec.generate_private_key(ec.SECP256R1())
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "github.com")])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        certificate = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(7)
+                       .not_valid_before(now).not_valid_after(now + datetime.timedelta(hours=1)).sign(key, hashes.SHA256()))
+        store = job.java_truststore(certificate.public_bytes(serialization.Encoding.DER), b"0123456789abcdef")
+        loaded = pkcs12.load_pkcs12(store, job.TRUSTSTORE_PASSWORD.encode())
+        self.assertEqual((None, None, 1), (loaded.key, loaded.cert, len(loaded.additional_certs)))
+        self.assertEqual(certificate, loaded.additional_certs[0].certificate)
+        self.assertEqual(job.TRUSTSTORE_ALIAS.encode(), loaded.additional_certs[0].friendly_name)
+        with self.assertRaises(ValueError):
+            pkcs12.load_pkcs12(store, b"other")
+
+    def test_the_store_carries_the_trusted_key_usage_attribute(self):
+        store = job.java_truststore(b"0\x03\x02\x01\x00", b"0123456789abcdef")
+        # 2.16.840.1.113894.746875.1.1 with anyExtendedKeyUsage: what makes a JVM read the bag as a trust anchor.
+        self.assertIn(bytes.fromhex("060c6086480186f966adca7b0101") + bytes.fromhex("3106") + bytes.fromhex("0604551d2500"), store)
+
+
 class StageShapeTests(unittest.TestCase):
     def test_the_test_inventory_is_the_bundle_inventory(self):
         self.assertEqual(BUNDLE_FILES, bundles._SCENARIOS["windows-scenario-driver"])
@@ -1744,7 +2863,9 @@ class StageShapeTests(unittest.TestCase):
                 order = [stage for stage in job.STAGE_ORDER if stage in row["stages"]]
                 self.assertEqual(order, list(row["stages"]))
                 self.assertEqual(("anchor", "context"), tuple(row["stages"][:2]))
-                self.assertEqual(("evidence", "receipt"), tuple(row["stages"][-2:]))
+                # Only a reboot preboot declares, after its evidence and before its receipt.
+                ending = ("evidence", "declare", "receipt") if (row.get("reboot") or {}).get("phase") == "pre" else ("evidence", "receipt")
+                self.assertEqual(ending, tuple(row["stages"][-len(ending):]))
 
     def test_module_import_needs_only_the_standard_library(self):
         tree = ast.parse((ROOT / "agent_tools/windows_scenario_host_job.py").read_text(encoding="utf-8"))

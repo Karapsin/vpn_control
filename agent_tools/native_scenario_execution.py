@@ -32,9 +32,18 @@ _ARTIFACT_ID = re.compile(r"^sha256-[0-9a-f]{64}$")
 _JOURNAL_VERSION = 1
 _FAILURE_EXCERPT_LIMIT = 1_024
 _COLLECTION_LIMIT = 8_192  # Existing fixed collector transport bound.
-WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows.
+WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a variant sits in its dotted name.
     "windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install", "windows-msi-base-reset",
-    "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt"})
+    "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
+    "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
+    "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
+    *("windows-proxy-lifecycle." + variant for variant in (
+        "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
+        "prepare-failure", "commit-readiness-failure", "sibling-off")),
+    *("windows-public-update." + variant for variant in (
+        "public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
+        "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "different-admin",
+        "wait-client-loss", "installer-wait-client-loss"))})
 _COLLECTED_SCENARIOS = {"linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
 _SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
 
@@ -657,7 +666,7 @@ class ScenarioExecutor:
                     windows[key] = part[key]
             if isinstance(part.get("packageSha256"), str) and _SHA256.fullmatch(part["packageSha256"]):
                 windows["packageSha256"] = part["packageSha256"]
-            for key in ("stoppedAfter", "failure"):
+            for key in ("stoppedAfter", "failure", "uacDecision"):
                 if isinstance(part.get(key), str) and _TOKEN.fullmatch(part[key]):
                     windows[key] = part[key]
             result["windows"] = windows

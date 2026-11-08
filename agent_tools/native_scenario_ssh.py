@@ -35,6 +35,16 @@ SCENARIO_ARTIFACT_KEYS = {
     "windows-packaged-cli-smoke": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
     "windows-disconnected-cli-config": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
     "windows-streaming-client-interrupt": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
+    **{name: frozenset({"bundleManifest", "scenarioInput", "targetPackage"}) for name in (
+        "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
+        "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect")},
+    **{"windows-proxy-lifecycle." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage"}) for variant in (
+        "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
+        "prepare-failure", "commit-readiness-failure", "sibling-off")},
+    **{"windows-public-update." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage", "fixtureReceipt"})
+       for variant in ("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
+                       "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "different-admin",
+                       "wait-client-loss", "installer-wait-client-loss")},
 }
 _MAX_OUTPUT = 8192
 _WINDOWS_PREFIX = "windows-"

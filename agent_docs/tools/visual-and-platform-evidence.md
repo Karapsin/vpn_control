@@ -763,16 +763,17 @@ adapter; new scenarios require an explicit adapter and native evidence.
 
 `agent_tools/native_scenario_windows.py` is the Windows adapter behind the same
 four actions. `host` names the VM host and `environment` the deployment UUID, and
-`correlationId` must be a canonical UUID. The closed list holds
-`windows-ordinary-qualification`, a harmless component row with no product and no
-package, three setup rows (`windows-python-install`, `windows-msi-base-install`,
-`windows-msi-base-reset`) and three product rows (`windows-packaged-cli-smoke`,
-`windows-disconnected-cli-config`, `windows-streaming-client-interrupt`). A name
-lands only with its case module; the six package rows have offline regressions,
-and their first native runs are still their direct proof. The adapter refuses
-before any journal unless the name, host, deployment, artifact keys and every
-bundle byte match this checkout, so a caller cannot supply a path, argv, source or
-bytes.
+`correlationId` must be a canonical UUID. The closed list is the table
+`native_scenario_windows.RECIPES`: `windows-ordinary-qualification`, a harmless
+component row with no product and no package; three setup rows
+(`windows-python-install`, `windows-msi-base-install`, `windows-msi-base-reset`);
+three product rows (`windows-packaged-cli-smoke`, `windows-disconnected-cli-config`,
+`windows-streaming-client-interrupt`); and the reboot, proxy-lifecycle and thirteen
+`windows-public-update.<variant>` rows below. A name lands only with its case
+module; the package rows have offline regressions, and their first native runs are
+still their direct proof. The adapter refuses before any journal unless the name,
+host, deployment, artifact keys and every bundle byte match this checkout, so a
+caller cannot supply a path, argv, source or bytes.
 
 One durable job, `agent_tools/windows_scenario_host_job.py`, runs on the VM host
 and carries the stages: fence, read-only guest context, publish, requests, one
@@ -870,6 +871,183 @@ it: a job stopped early by `stop_after`, which only the direct script sets,
 records `installedPackage` false and its `stoppedAfter`, and `public_evidence`
 reads it as `installed-package-unproven` whatever else its receipt says.
 
+Reboot rows come in pairs around `readiness-reboot`, which stays the only reboot
+submitter: `windows-reboot-reconnect.pre|.post`, `windows-reboot-explicit-off.pre|.post`
+and `windows-autostart-migration.pre|.post`. Each `.pre` runs the
+`windows-preboot-reboot` worker action in a fresh product workspace: an in-guest
+SOCKS upstream on loopback port 41081, the owned profile (source set before the
+first location), autostart migration from a legacy HighestAvailable task to the
+public LeastPrivilege one, then a graceful quit of its own serve. It then starts
+the app through the product's own autostart task, measures traffic for reconnect,
+stops its upstream and finishes with the app running and no child of its own. A
+passed `.pre` publishes `product-allowance.json` into its own ProgramData workspace
+through the SYSTEM publisher (stage `declare`); its receipt's `preboot` part names
+the workspace, the checkpoint event and the boot time. The package has no loose
+runtime: it ships inside an app jar and is extracted per workspace, so every reboot
+row takes the runtime digest from `runtimeAuthority` in the installed
+`app\native\windows-amd64\native-helpers.json`. The job reads that file's bytes
+once over the agent against its installed-tree pin; the guest action reads the same
+held file. A missing or malformed record is the known failure
+`installed_runtime_authority` at publish.
+
+Each `.post` is a new operation whose `scenarioInput` names its `.pre` in
+`priorPreboot` (only `.post` inputs carry that field). It refuses with exit 2 and no
+guest program unless that `.pre` passed on the same install record and package
+(`prior_preboot_other_install` otherwise), and unless exactly one
+`readiness-recovery-<id>` reboot journal in the VM root was submitted from the
+`.pre`'s boot with an idle census that knew every declared product process
+(`prior_preboot_reboot_unproven` otherwise: a crash or a restart is no reboot of the
+pair). It then refuses after its read-only context unless the guest's boot FILETIME
+is later than the `.pre`'s (`preboot_boot_not_newer`): the kernel boot identifier is
+the same on every boot of a clone. Its receipt's `reboot.readinessReboot` names that
+journal's recovery and operation IDs. It runs `windows-postboot-final` on the same
+workspace: the startup census before any query, the task ran this boot, the GUI and
+controller are the launcher-plus-JVM tree under the ordinary token, reconnect or off
+held, GUI show and hide, traffic for reconnect, then autostart off and quit.
+`windows-query-owner-gui-reconnect` is rebootless: `status` with no owner never
+starts one, so a config query (`locations list`) starts a transient owner that never
+connects, then a GUI restores the remembered intent once. All of these are product
+rows that name their `priorInstall` and `targetPackage`.
+
+One reboot chain runs at a time on a machine. Every reboot row's receipt has a
+`reboot` part; for a `.pre` its `autostart` is `changed` when the owner's journal
+holds an autostart or product-start intent, `untouched` when the owner never ran or
+never got that far, and `unknown` when its evidence could not be read. A `.pre` that
+is not `untouched` holds the machine until a passed `.post` names it: meanwhile
+every other reboot row is refused with `reboot_chain_open`, and a `.post` for a
+closed `.pre` with `prior_preboot_unavailable`. A prior job of the machine without a
+readable receipt refuses every reboot row with `reboot_chain_unknown`. A failed `.pre`
+that changed autostart may have left the legacy task or the app behind, so nothing
+closes it on that clone; a new attempt is a new operation on another clone. A known refusal in
+either action retires what the owner still runs: the owned upstream, then the
+`.pre`'s own serve or the query GUI through the same journaled public quit to its
+controller. The owner then finishes with exit 1; only an effect whose outcome was not
+observed parks.
+
+The order on one VM: package and install setup, then `.pre`, collect,
+`readiness-reboot`, `readiness-ensure` (the sign-in fires the logon trigger), then
+`.post`. The idle census lets the reboot through with the app running only for a
+current-boot declaration (see `readiness_windows_idle.ALLOWANCE`); `consent.exe`, the
+CLI and every undeclared process still block. Known gaps: the GUI tray, natively
+unproven process shapes and the start of the task from a standard user are first
+native contact; `windows-document-responsive` has its tools but no row yet, because
+its TLS certificate, key and trust store have no producer.
+
+`windows-proxy-lifecycle.<variant>` has one row per variant
+`windows_ordinary_dedicated_driver.py` accepts for that action: `gui-pending`,
+`find-best-success`, `find-best-verification-failure`, `find-best-cancel`,
+`generated`, `custom`, `large`, `prepare-failure`, `commit-readiness-failure` and
+`sibling-off`. `no-tray-close` and `scheduled-refresh` have no row, because the
+driver refuses them. Inputs are those of every product row: the bundle manifest,
+`targetPackage`, and a `scenarioInput` whose `priorInstall` names the passed
+`windows-msi-base-install` or `windows-msi-base-reset` of that same package on
+this VM. An absent, malformed or self-referencing `priorInstall` refuses before
+any journal; one that names no passed install of this package on this VM is
+refused by the job with exit 2, after the journal and before any guest effect.
+The job publishes the driver's reviewed roles (driver, lifecycle cases,
+runtime stages, observer, fixture worker, both loopback fixtures, and for
+`gui-pending` and the six branch variants the traffic sampler, with the branch
+cases and listener script for the branch variants). It extracts the bundled
+`sing-box.exe` from the one installed jar that holds it, through a pin equal to
+the installed tree's, and makes a literal harness, a self-signed `localhost`
+certificate and key, a JKS trust store and the sampler's input. The key is made on
+the VM host and lives only in the job's memory and the guest workspace: the QGA
+wire files keep replies, never the write requests that carry it, and it never
+enters evidence. The fixtures run in the guest on loopback, as the ordinary
+user's children, started and stopped by the row. Evidence is that of every
+product row: `installed-package` only from a passed, unstopped run whose MSI
+registration and complete installed tree still match its prior install and whose
+installed launcher, run under the ordinary token, answered `--help` and reported
+the admitted version to `--version`. The driver asks before the row's runtime
+starts, and another version ends the row 1. All ten variants can share one
+installed base. A reviewed oracle failure closes what the row started and ends
+1; an unknown outcome parks and ends UNKNOWN as before. The closing issues its
+own off and quit, so an off that left the runtime running, or a refused quit,
+goes out once more; a fixture that already ended keeps its own terminal.
+
+Known before any native run: the relaunched launcher pair, the launcher's
+`--help` and `--version` output through it, the extraction action, the generated
+material in the product's JVM, GUI windows, close-to-tray and the crash path are
+proved only offline. The loopback fixture keeps its 0.25 s TLS
+handshake bound, which a slow guest JVM could miss; a find-best row would then end
+a known failure, not UNKNOWN. The `gui-pending` sampler runs about six minutes,
+so a longer GUI sequence also ends a known failure. The fixture's lease is
+1,800 s, the most the runtime stages allow, while the row deadline is 3,600 s: a
+row whose work after its fixture started outlives the lease loses its fixture and
+ends a known failure.
+
+`windows-public-update.<variant>` runs one `update_cases` variant through the
+dedicated driver as the ordinary user. The update server, its CONNECT proxy and
+the test-only trust store live in the guest on `127.0.0.1`; nothing listens on the
+VM host or the controller. Inputs:
+
+- Artifacts `targetPackage` (the target MSI) and `fixtureReceipt` (kind
+  `desktop-update-fixture-receipt`), both from one frozen set at the input's
+  `sourceSha`. The receipt is the CI fixture pair's `fixture-receipt.json`: test
+  only, production trust unchanged, base and target built from one source, and a
+  manifest whose single asset is the admitted target MSI.
+- `baseVersion`, the installed version the update starts from: older than
+  `productVersion` and never `2.2.13`, since the planner keeps expanded cases off
+  that baseline (`windows_scenario_update_base_baseline`).
+- `priorInstall`, the `windows-msi-base-reset` that installed that base, and
+  `targetInstall`, an earlier `windows-msi-base-install` or `windows-msi-base-reset`
+  of the same target MSI, whose job recorded the installed tree the update must
+  leave. The fixture pair's own base build cannot be that base: a frozen set
+  records its source's canonical version, so the reset installs an older MSI built
+  at a commit whose canonical version is `baseVersion`, from that commit's own
+  frozen set.
+
+The job seals the served MSI read-only, makes a fresh TLS pair in the guest and
+builds the trust store on the host from the public certificate only. It reads the
+base's MSI registration with the reader the first native installs proved (one
+enumeration of every user and context, by `InstalledProductName`), which also
+reports each row's package code. Admitted: `public-ready`, `download-cancelled` and
+`checksum-rejected`, which raise no prompt and need no SYSTEM collector. Refused
+before any journal:
+
+- the seven grant variants (`install-cancelled`, `participating-copy-lock`,
+  `success-off`, `success-reconnect`, `different-admin`, `wait-client-loss`,
+  `installer-wait-client-loss`) with `windows_scenario_update_grant_unproven`. No
+  stage of this job discovers the elevated helper coordinator and its worker, so
+  no collector proves the helper image and the approving SID.
+- `native-install-failed` and `protected-storage-rejected` with
+  `windows_scenario_update_fault_unavailable`. Nothing produces their faults: the
+  product's MSIs carry no LaunchCondition table to fault, and nothing creates or
+  removes a counterfeit protected-storage root.
+- `uac-denied` with `windows_scenario_update_collector_unproven`. Its SYSTEM
+  collector cannot run natively yet. The pinned collector chain takes its request
+  file only as `O:SYD:P(...)`, but a file the publisher creates and then protects
+  reads back `O:SYD:PAI(...)` (every native `worker-request.json` pin so far), so
+  the job would end at publish with `collector_file_policy`. Its `terminal-actors`
+  stage also reads the product's not-started disposition as SYSTEM, while the
+  product writes that file for its owner alone and nothing on this route enables
+  `SeBackupPrivilege`. Both a request writer and a reader have to be proved
+  natively before the row is admitted.
+
+The job keeps the collector stage engine for that day. A row with collector
+stages serves `before-install` and then `terminal-actors` behind the caller's
+close hold, inside its run. The owner names each need with an
+`update-native-observation-needed` event. The job renders the collector from
+`windows_system_collector`, runs it on the stdin route and then releases the hold.
+It serves a need only while the run is open and the same status names no parked
+file: a parked owner is reported and never touched, and a need read after the run
+returned starts nothing. A stage the row cannot serve, or a collector that never
+returns, ends UNKNOWN with the fence open. The status keeps
+`uac-pending:install-helper:deny` from the owner's prompt event until the
+decision's input terminal exists, however many events follow it. Collect passes
+a deny row only when that terminal reads `input-ack-only`, `deny`,
+`install-helper` and `promptClosed: true`. Without it the collection stays
+`unknown`. Update rows never claim installed-package evidence, because no
+`--version` runs under the ordinary token there.
+
+Nothing in this family has reached a guest yet. The guest's Windows PowerShell
+5.1 still has to prove the TLS pair (`CertificateRequest`, `RSACng` export), and
+the product JVM has to open the generated trust store. An update row's
+`priorInstall` and `targetInstall` must be installs made by this code: an earlier
+install record has no package code and no installed inventory, so the job refuses
+it before its fence (`prior_install_other_package`, `target_install_other_package`,
+`target_install_inventory`).
+
 #### Windows UAC decision
 
 `vm_workflow windows-uac-decision` takes exactly `host`, `environment`,
@@ -884,9 +1062,10 @@ The token outlives the prompt, so the client may call on every poll: a refusal
 that proved only "not yet" (event not pending, a failed guest read, a busy lock,
 nothing sent) permits another submit; any other refusal, such as no prompt
 within the 30 s gate, leaves the prompt to expire, and a repeat returns that
-refusal with no packet. A deny row is refused at `scenario-start` until collect
-joins the decision's input terminal, because an expired prompt ends as the same
-public `CANCELLED` as Esc.
+refusal with no packet. A deny row is admitted at `scenario-start` only where
+collect joins the decision's input terminal, because an expired prompt ends as the
+same public `CANCELLED` as Esc. `windows-public-update.uac-denied` has that join
+but is refused today for its collector (above).
 
 Proof comes before any key: reviewed pixel crops of a QMP frame and a SYSTEM
 census of `consent.exe` (one, System32, signed by Microsoft Windows, parent

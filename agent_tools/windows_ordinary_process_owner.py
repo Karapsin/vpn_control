@@ -30,6 +30,33 @@ else:
     winreg = None
 
 
+# Equal to the planner's tables; regenerated after every leaf edit.
+_POSTBOOT_ENTRY_SOURCES = {'sourceRoles': {'sha256': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'sizeBytes': 6945}, 'postbootAction': {'sha256': '8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771', 'sizeBytes': 29231}, 'prebootAction': {'sha256': 'c55b4eecb097e011996c65a54c3237c28e9003f449852d7d60bf1bbb8467c6f9', 'sizeBytes': 9349}, 'startupCollector': {'sha256': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'sizeBytes': 2875}}
+_POSTBOOT_ACTION_PHASES = {"windows-preboot-reboot": "preboot-reboot", "windows-postboot-final": "postboot-final"}
+
+DOCUMENT_RESPONSIVE_CASE = (
+    "windows_document_responsive_cli_cases.py",
+    "f02bd180210568a7219f33bd22e7c72d8fde5dbab560ce2b6a5803de21338705",
+)
+
+DOCUMENT_RESPONSIVE_SOURCES = {
+    "casesPath": ("windows_document_responsive_cases.py", "678f1a92c68a5a545760c6bf4d22ee7271262d5e6099681d679cd6a808e1c173"),
+    "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"),
+    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "9f6c274aba0d49e9ff3c036087d0a229ad96582d47ef7392da9f8d523be7e976"),
+    "socksSourcePath": ("socks_http_fixture.py", "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"),
+    "httpsSourcePath": ("https_subscription_relay_fixture.py", "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"),
+}
+
+DOCUMENT_RESPONSIVE_FIELDS = {"schemaVersion", "casesPath", "runtimeStagesPath",
+    "fixtureWorkerPath", "socksSourcePath", "httpsSourcePath", "certificatePath",
+    "privateKeyPath", "trustStorePath", "contexts", "largeRoutingInputPath"}
+
+# The CLI case modules whose every child is a serve owner, a completed public call, the
+# console helper or a stream client bound to the one serve, all through this owner: a
+# case oracle failure there is a known failure the owner closes (close_known_failure).
+KNOWN_FAILURE_ACTIONS = frozenset({"disconnected-cli-config", "streaming-client-interrupt"})
+KNOWN_FAILURE_EXIT_SECONDS = 120
+
 _PROTECTED_OS_PATHS = frozenset({
     r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
     r"C:\Windows\System32\msiexec.exe",
@@ -638,8 +665,94 @@ class Owner:
         return self.child("public-cli", [self.request["cliPath"], "--state-dir",
                                          str(workspace), *arguments]).completed()
 
+    def validate_responsive_work(self):
+        """Closed optional document form, checked against original held pins."""
+        self.guard()
+        require(self.request["action"] == "document-acceptance", "responsive-only-document-action")
+        document = self.request["documentAcceptance"]
+        require(type(document) is dict and set(document) == {"schemaVersion", "clientPath",
+                "windowsPath", "racePath", "largeRoutingInputPath", "spoolTempParent",
+                "contexts", "endpointPinBeforeObservation"}
+                and type(document["schemaVersion"]) is int and document["schemaVersion"] == 1
+                and document["endpointPinBeforeObservation"] is None,
+                "responsive-document-input-schema")
+        contexts = document["contexts"]
+        require(type(contexts) is list and len(contexts) == 52
+                and all(type(value) is str for value in contexts) and len(set(contexts)) == 52
+                and all(str(uuid.UUID(value)) == value for value in contexts)
+                and self.operation not in contexts, "responsive-document-context-schema")
+        work = self.request["responsiveWork"]
+        require(type(work) is dict and set(work) == DOCUMENT_RESPONSIVE_FIELDS
+                and type(work["schemaVersion"]) is int and work["schemaVersion"] == 1,
+                "responsive-finite-input-schema")
+        work_contexts = work["contexts"]
+        require(type(work_contexts) is list and len(work_contexts) == 2
+                and all(type(value) is str for value in work_contexts)
+                and len(set(work_contexts)) == 2
+                and all(str(uuid.UUID(value)) == value for value in work_contexts)
+                and not set(work_contexts).intersection(contexts)
+                and self.operation not in work_contexts, "responsive-disjoint-canonical-contexts")
+        paths = {key: absolute(work[key]) for key in DOCUMENT_RESPONSIVE_FIELDS
+                 - {"schemaVersion", "contexts"}}
+        keys = {key: str(value).casefold() for key, value in paths.items()}
+        modules = [absolute(self.request["casesPath"]),
+                   *(absolute(document[key]) for key in ("clientPath", "windowsPath", "racePath"))]
+        other = {str(value).casefold() for value in
+                 (*modules, absolute(self.request["cliPath"]), absolute(self.request["harnessPath"]))}
+        require(len(other) == 6 and len(set(keys.values())) == 9
+                and not set(keys.values()).intersection(other)
+                and set(keys.values()) | other <= set(self.by_path), "responsive-distinct-held-role-paths")
+        require(keys["largeRoutingInputPath"] == str(absolute(document["largeRoutingInputPath"])).casefold(),
+                "responsive-same-document-large-input")
+        case = self.by_path[str(modules[0]).casefold()]
+        require(case.path.name == DOCUMENT_RESPONSIVE_CASE[0]
+                and case.record["sha256"] == DOCUMENT_RESPONSIVE_CASE[1],
+                "responsive-fixed-document-cases-source")
+        for key, (name, digest) in DOCUMENT_RESPONSIVE_SOURCES.items():
+            pin = self.by_path[keys[key]]
+            require(pin.path.name == name and pin.record["sha256"] == digest,
+                    "responsive-fixed-producer-source-" + key)
+        distinct = set(keys.values()) | other
+        identities = [(self.by_path[key].record["nativeIdentity"]["volumeSerial"],
+                       self.by_path[key].record["nativeIdentity"]["fileIndex"]) for key in distinct]
+        require(len(set(identities)) == len(distinct), "responsive-native-role-alias")
+        large = self.by_path[keys["largeRoutingInputPath"]]
+        require(10 * 1024 * 1024 < large.record["nativeIdentity"]["sizeBytes"] <= 64 * 1024 * 1024,
+                "responsive-document-large-input-size")
+        for key in distinct:
+            self.by_path[key].digest()
+        self.guard()
+
     def run(self):
         action = self.request["action"]
+        require("responsiveWork" not in self.request or action == "document-acceptance",
+                "responsive-only-document-action")
+        if action in _POSTBOOT_ACTION_PHASES:
+            require(not hasattr(self, "postboot_dispatch"), "one-original-fixed-postboot-dispatch")
+            self.postboot_dispatch = {"action": action, "stage": "binding"}
+            config = self.request["postbootAcceptance"]
+            require(type(config) is dict and config.get("phase") == _POSTBOOT_ACTION_PHASES[action],
+                    "same-fixed-postboot-action-phase")
+            roles = config["sourceRoles"]
+            loaded = {}
+            for role, expected in _POSTBOOT_ENTRY_SOURCES.items():
+                source_path = roles[role]
+                pin = self.by_path[str(absolute(source_path)).casefold()]
+                pin.current()
+                require(pin.record["sha256"] == expected["sha256"]
+                        and pin.record["nativeIdentity"]["sizeBytes"] == expected["sizeBytes"]
+                        and hashlib.sha256(pin.digest(True)).hexdigest() == expected["sha256"],
+                        "held-fixed-postboot-entry-source-" + role)
+                if role != "startupCollector":
+                    loaded[role] = self.module(source_path, "_owned_fixed_" + role)
+                pin.current()
+            self.postboot_module = loaded["postbootAction"]
+            self.postboot_dispatch["stage"] = "entered-original-action"
+            # Both end with a known result the owner finishes: the preboot leaves no child
+            # of its own, and nothing here reboots.
+            if action == "windows-preboot-reboot":
+                return loaded["prebootAction"].run_preboot(self, config, loaded["sourceRoles"], self.postboot_module)
+            return self.postboot_module.run_postboot(self, config, loaded["sourceRoles"])
         if action == "qualification":
             terminal = self.child(action, self.request["qualificationArgv"]).wait()
             self.event("qualification-result", {"terminal": terminal, "productOperation": False,
@@ -676,7 +789,7 @@ class Owner:
         if action in {"windows-public-update", "windows-proxy-lifecycle"}:
             driver_path = str(Path(__file__).with_name("windows_ordinary_dedicated_driver.py"))
             pin = self.by_path[str(absolute(driver_path)).casefold()]
-            require(pin.record["sha256"] == "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb",
+            require(pin.record["sha256"] == "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256",
                     "held-fixed-dedicated-driver-source")
             driver = self.module(driver_path, "_owned_fixed_dedicated_driver")
             return driver.run(self, action)
@@ -687,6 +800,13 @@ class Owner:
         launcher = self.request["cliPath"]
         cases = None
         if action == "document-acceptance":
+            if "responsiveWork" in self.request:
+                self.validate_responsive_work()
+            else:
+                case_pin = self.by_path[str(absolute(self.request["casesPath"])).casefold()]
+                require(case_pin.path.name != DOCUMENT_RESPONSIVE_CASE[0]
+                        and case_pin.record["sha256"] != DOCUMENT_RESPONSIVE_CASE[1],
+                        "responsive-cases-require-responsive-work")
             cases = self.module(self.request["casesPath"], "_owned_native_document_acceptance")
         for label, argv, text in (("help", ["--help"], "Usage:"),
                                   ("version", ["--version"], self.request["productVersion"])):
@@ -695,8 +815,13 @@ class Owner:
                     "static-public-launcher-probe")
         require(not workspace.exists(), "static-launch-created-owner-state")
         if action == "document-acceptance":
+            if "responsiveWork" in self.request:
+                self.validate_responsive_work()
             cases.configure_launch(self, workspace)
         serve = self.child("serve", [launcher, "--state-dir", str(workspace), "serve"])
+        if "responsiveWork" in self.request:
+            # The scoped trust options reach only this serve: no later child ever inherits them.
+            self.environment.pop("JAVA_TOOL_OPTIONS", None)
         identity = None
         ready_until = time.monotonic() + 30
         while time.monotonic() < ready_until:
@@ -728,7 +853,16 @@ class Owner:
             cases.fixed_full_cases(workspace, identity, self.invoke, harness.__dict__)
         else:
             harness = self.module(self.request["harnessPath"], "_owned_pinned_package_cli_harness")
-            cases.run(self, workspace, identity, harness.__dict__)
+            try:
+                cases.run(self, workspace, identity, harness.__dict__)
+            except AssertionError as error:
+                # A case oracle fails only after the child it checked exited, so in these actions
+                # no child process the owner started has an open outcome, and the product answers
+                # a quit BUSY while a mutation is in flight: the owner closes its children and the
+                # job ends 1. Any other error or action keeps every child for the park.
+                if action in KNOWN_FAILURE_ACTIONS:
+                    close_known_failure(self, workspace, identity, serve, error)
+                raise
         safe_quit_status = self.invoke(workspace, "--json", "--controller-id", identity, "status")
         status = json.loads(safe_quit_status.stdout)
         require(safe_quit_status.returncode == 0 and safe_quit_status.stderr == ""
@@ -765,6 +899,123 @@ class Owner:
             pin.close()
         for log_handle in getattr(self, "log_handles", []):
             self.native.k.CloseHandle(log_handle)
+
+
+def _known_envelope(result):
+    """The JSON envelope of one completed public call, or None."""
+    try:
+        body = json.loads(result.stdout)
+    except ValueError:
+        return None
+    return body if type(body) is dict and result.stderr == "" else None
+
+
+def _await_known_exit(owner, child, error, reason):
+    until = time.monotonic() + KNOWN_FAILURE_EXIT_SECONDS
+    while True:
+        terminal = child.observe()
+        if terminal is not None:
+            return terminal
+        if time.monotonic() >= until:
+            owner.park(reason, error)
+        time.sleep(0.1)
+
+
+def _quit_known_serve(owner, child, identity, error):
+    """The journaled public quit a pass sends, to the controller of this serve's own workspace.
+
+    The primary serve's controller is the one the owner admitted; a second serve a case
+    started is named by status, which never starts an owner. Sent once, never replayed.
+    """
+    workspace = Path(child.argv[2])
+    bound = ("--controller-id", identity) if identity is not None else ()
+    status = owner.invoke(workspace, "--json", *bound, "status")
+    body = _known_envelope(status)
+    if not (status.returncode == 0 and body is not None and body.get("schemaVersion") == 1
+            and body.get("code") == "OK" and body.get("ok") is True and body.get("final") is True
+            and type(body.get("controllerId")) is str and body["controllerId"] != ""
+            and (identity is None or body["controllerId"] == identity)
+            and type(body.get("data")) is dict and body["data"].get("runtimeRunning") is False):
+        owner.park("known-failure-quit-admission", error)
+    controller = body["controllerId"]
+    owner.event("known-failure-quit-intent", {"child": child.ordinal, "pid": child.pid,
+        "birthFileTimeUtc": child.birth, "controllerId": controller, "replayAllowed": False})
+    result = owner.invoke(workspace, "--json", "--controller-id", controller, "quit")
+    body = _known_envelope(result)
+    if not (result.returncode == 0 and body is not None and body.get("controllerId") == controller
+            and body.get("final") is True):
+        owner.park("known-failure-quit-not-acknowledged", error)
+    terminal = _await_known_exit(owner, child, error, "known-failure-serve-exit-unknown")
+    owner.event("known-failure-serve-closed", {"child": child.ordinal, "controllerId": controller,
+        "terminal": terminal, "endpointReleased": not (workspace / "activation.port").exists()})
+
+
+def close_known_failure(owner, workspace, identity, serve, error):
+    """Close what the owner started after a case oracle failed; the caller then exits 1.
+
+    The reboot actions retire their children the same way. No child process has an open
+    outcome here, and the product answers a quit BUSY while any mutation is in flight. A
+    read-only operation still pending, such as an admitted --async diagnostics export whose
+    report stays in the owner's memory, ends with its owner. Each serve owner ends by the
+    journaled public quit to its own controller, the quit a pass sends. A serve a case already
+    sent a quit, whatever that quit answered, is never sent another: the closing only waits
+    for its exit. A stream client is bound to the one serve's controller and only polls it,
+    never starting or rebinding an owner (DesktopCliStream), so it ends by its own known close
+    once that owner is gone; a child that already exited is collected. Nothing is killed,
+    signalled or replayed. Any other live child (a public call, the console helper), a quit
+    that is refused or not acknowledged, or a child that does not exit in time parks, keeping
+    every original.
+    """
+    try:
+        cli, reason = owner.request["cliPath"], str(error)[:120]
+        serves, streams, ended = [], [], []
+        for child in owner.children:
+            if child.terminal is not None:
+                continue
+            argv, console = tuple(child.argv), getattr(child, "new_console", False) is True
+            if child.process.poll() is not None:
+                ended.append(child)
+            elif (not console and len(argv) == 4 and argv[:2] == (cli, "--state-dir") and argv[3] == "serve"
+                    and Path(argv[2]).parent == owner.root and (child is serve) == (argv[2] == str(workspace))):
+                serves.append(child)
+            elif (console and child.label.startswith("stream-")
+                    and argv[:5] == (cli, "--state-dir", str(workspace), "--controller-id", identity)):
+                streams.append(child)
+            else:
+                owner.park("known-failure-child-outcome-open", error)
+        # Every quit a case sent went through this owner, so its custody names it, and its answer
+        # may have been unknown (TIMEOUT, OUTCOME_UNKNOWN): that serve is awaited, never quit again.
+        case_quits = {}
+        for child in owner.children:
+            argv = tuple(child.argv)
+            if len(argv) > 3 and argv[:2] == (cli, "--state-dir") and argv[-1] == "quit":
+                case_quits.setdefault(argv[2].casefold(), []).append(child.ordinal)
+        awaited = [child for child in serves if child.argv[2].casefold() in case_quits]
+        serves = [child for child in serves if child.argv[2].casefold() not in case_quits]
+        serves.sort(key=lambda child: child is serve)  # A case's second serve first, the one the streams poll last.
+        owner.event("known-failure-closing", {"action": owner.request["action"], "reason": reason,
+            "errorClass": type(error).__name__, "quit": [child.ordinal for child in serves],
+            "caseQuit": [child.ordinal for child in awaited],
+            "ownClose": [child.ordinal for child in streams], "exited": [child.ordinal for child in ended],
+            "replayAllowed": False})
+        for child in ended:
+            _await_known_exit(owner, child, error, "known-failure-exited-child-eof-unknown")
+        for child in awaited:
+            terminal = _await_known_exit(owner, child, error, "known-failure-case-quit-exit-unknown")
+            owner.event("known-failure-serve-closed", {"child": child.ordinal, "controllerId": None,
+                "caseQuitChildren": case_quits[child.argv[2].casefold()], "terminal": terminal,
+                "endpointReleased": not (Path(child.argv[2]) / "activation.port").exists()})
+        for child in serves:
+            _quit_known_serve(owner, child, identity if child is serve else None, error)
+        for child in streams:
+            _await_known_exit(owner, child, error, "known-failure-stream-exit-unknown")
+        require(all(child.terminal is not None for child in owner.children), "known-failure-all-children-terminal")
+        owner.event("known-failure-closed", {"action": owner.request["action"], "reason": reason,
+            "children": [{"child": child.ordinal, "label": child.label, "exitCode": child.terminal["exitCode"]}
+                         for child in (*ended, *awaited, *serves, *streams)],
+            "replayAllowed": False, "nativeAcceptanceComplete": False})
+    except Exception as closing:
+        owner.park("known-failure-closing-unknown", closing)
 
 
 def main():

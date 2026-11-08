@@ -197,12 +197,13 @@ def start_runtime(owner, inputs, observer):
     def guarded(*tail):
         before = result(owner, workspace, identity, "status")
         return result(owner, workspace, identity, "--if-revision", str(before["configurationRevision"]), *tail)
+    # A fresh workspace reads its locations from a subscription, where adding one is READ_ONLY_SOURCE.
+    guarded("source", "set", "current-locations")
     require(result(owner, workspace, identity, "locations", "list")["data"]["locations"] == [], "empty-runtime-location-population")
     for name in ("Owned A", "Owned B"):
         link = f"socks5://127.0.0.1:{ready['advertisedSocksPort']}#{name.replace(' ', '%20')}\n".encode()
         path = publish(owner, owner.root / (name.replace(" ", "-") + ".txt"), link)
         guarded("locations", "add", "--input", str(path))
-    guarded("source", "set", "current-locations")
     guarded("locations", "select", "Owned A")
     guarded("routing", "set", "ignore-rules", "true")
     for key, value in (("mode", "proxy-only"), ("validation.test-url", ready["trafficUrl"]),
@@ -228,6 +229,12 @@ def start_runtime(owner, inputs, observer):
 
 
 def capture_proxy_actors(owner, serve, native, runtime_path, runtime_sha):
+    """The serve launcher, the JVM that owns the runtime, and that one exact runtime.
+
+    A jpackage launcher whose PATH lacks its app folder starts itself again and waits for
+    that second process of the same image, which runs the JVM and so starts the runtime.
+    A launcher that did not relaunch is its own JVM.
+    """
     require(serve in owner.children and serve.label == "serve" and serve.process.poll() is None,
             "original-runtime-serve-handle")
     context = owner.request["context"]
@@ -238,22 +245,27 @@ def capture_proxy_actors(owner, serve, native, runtime_path, runtime_sha):
                     and value["token"]["sessionId"] == context["ordinarySessionId"]
                     and value["token"]["elevated"] == 0, "ordinary-runtime-actor-token")
             return value
-    parent = describe(serve.pid)
+    parent = {"pid": serve.pid, **describe(serve.pid)}
     require(parent["creationFileTime"] == int(serve.birth), "original-runtime-serve-generation")
-    candidates, auxiliary = [], []
-    for entry in native.processes():
-        if entry["parentPid"] != serve.pid:
-            continue
-        value = describe(entry["pid"])
-        if ntpath.normcase(value["image"]) == ntpath.normcase(runtime_path) and value["sha256"] == runtime_sha:
-            candidates.append({"pid": entry["pid"], **value})
-        else:
-            auxiliary.append({"pid": entry["pid"], **value})
+    table = native.processes()
+    def children(actor):
+        # A parent PID outlives its process: only a child born after this actor is its child.
+        found = [{"pid": entry["pid"], **describe(entry["pid"])} for entry in table if entry["parentPid"] == actor["pid"]]
+        return [row for row in found if row["creationFileTime"] >= actor["creationFileTime"]]
+    launched = children(parent)
+    relaunched = [row for row in launched if ntpath.normcase(row["image"]) == ntpath.normcase(parent["image"])
+                  and row["sha256"] == parent["sha256"]]
+    require(len(relaunched) <= 1, "one-relaunched-owner-jvm")
+    jvm = relaunched[0] if relaunched else parent
+    owned = children(jvm) if relaunched else launched
+    candidates = [row for row in owned if ntpath.normcase(row["image"]) == ntpath.normcase(runtime_path)
+                  and row["sha256"] == runtime_sha]
+    auxiliary = [row for row in launched + (owned if relaunched else []) if row is not jvm and row not in candidates]
     require(len(candidates) == 1, "one-exact-owned-proxy-runtime")
-    project = lambda pid, value: {"pid": pid, "creationFileTime": value["creationFileTime"],
+    project = lambda value: {"pid": value["pid"], "creationFileTime": value["creationFileTime"],
         "image": value["image"], "sha256": value["sha256"], "sid": value["token"]["sid"],
         "sessionId": value["token"]["sessionId"]}
-    return {"owner": project(serve.pid, parent), "runtime": project(candidates[0]["pid"], candidates[0]),
+    return {"owner": project(parent), "jvm": project(jvm), "runtime": project(candidates[0]),
             "auxiliary": auxiliary}
 
 

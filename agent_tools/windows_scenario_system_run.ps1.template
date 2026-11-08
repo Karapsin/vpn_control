@@ -44,7 +44,16 @@ function Read-Status([string]$root,[int]$number){
  $taskEvents=@($names|Where-Object {$_ -cmatch '\Atask-event-[0-9]{6}-[0-9A-Za-z_.-]+\.json\z'}|Sort-Object)
  $workerEvents=@($names|Where-Object {$_ -cmatch '\Aevent-[0-9]{6}-[0-9A-Za-z_.-]+\.json\z'}|Sort-Object)
  $kinds=@($workerEvents|Select-Object -Last 16|ForEach-Object {($_ -creplace '\Aevent-[0-9]{6}-','') -creplace '\.json\z',''})
- return [ordered]@{schemaVersion=1;operationId=$m.operationId;poll=$number;lastTaskOrdinal=($taskEvents.Count-1);lastEventOrdinal=($workerEvents.Count-1);pendingKinds=$kinds;parkedFiles=@($names|Where-Object {$_ -ceq 'owner-parked.json' -or $_ -ceq 'task-owner-parked.json'})}
+ # A row's prompt event stays reported from every event, not the last sixteen: child events can follow it within one poll.
+ $uac=@(foreach($kind in @($m.uacKinds)){if($null -ne $kind -and @($workerEvents -cmatch ('\Aevent-[0-9]{6}-'+[regex]::Escape([string]$kind)+'\.json\z')).Count -gt 0){[string]$kind}})
+ $needs=@()
+ if($m.nativeNeeds){
+  $needs=@(foreach($name in @($workerEvents|Where-Object {$_ -cmatch '\Aevent-[0-9]{6}-update-native-observation-needed\.json\z'}|Select-Object -First 16)){
+   $v=$null;try{$v=[Text.UTF8Encoding]::new($false,$true).GetString((Read-Shared (Join-Path $root $name)))|ConvertFrom-Json}catch{$v=$null}
+   if($null -ne $v){[ordered]@{name=$name;ordinal=[int]$v.ordinal;stage=[string]$v.value.stage;jobId=$v.value.jobId;productOperationId=$v.value.productOperationId}}
+  })
+ }
+ return [ordered]@{schemaVersion=1;operationId=$m.operationId;poll=$number;lastTaskOrdinal=($taskEvents.Count-1);lastEventOrdinal=($workerEvents.Count-1);pendingKinds=$kinds;uacEvents=$uac;nativeNeeds=$needs;parkedFiles=@($names|Where-Object {$_ -ceq 'owner-parked.json' -or $_ -ceq 'task-owner-parked.json'})}
 }
 function Write-Status($value){
  $path=Join-Path $m.workspace 'scenario-status.json';$temporary=$path+'.new'

@@ -24,6 +24,7 @@ NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 PYTHON_FLAGS = ("/quiet", "InstallAllUsers=0", "PrependPath=0", "Include_launcher=0",
                 "Include_pip=0", "Include_test=0")
 PIN_FIELDS = {"path", "nativeIdentity", "security", "sha256"}
+TREE_ROLES = frozenset({"python-runtime", "installed-app", "installed-application", "source"})
 FILE_ID_FIELDS = {"volumeSerial", "fileIndex", "attributes", "sizeBytes", "links",
                   "creationFileTime", "lastWriteFileTime"}
 DIR_ID_FIELDS = {"volumeSerial", "fileIndex", "attributes"}
@@ -40,12 +41,38 @@ COMMON_FIELDS = {"schemaVersion", "context", "operationId", "operationRoot", "fi
 ACTION_FIELDS = {"pythonRuntime", "action", "msiPath", "installerLogPath", "uninstallProductCode",
                  "uninstallLogPath", "uninstallRoot", "qualificationArgv",
                  "expectedExitCode", "cliPath", "workspace", "productVersion", "casesPath",
-                 "harnessPath", "documentAcceptance", "bootstrap"}
-DEDICATED_DRIVER_SHA = "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb"
+                 "harnessPath", "documentAcceptance", "postbootAcceptance", "responsiveWork", "bootstrap"}
+DEDICATED_DRIVER_SHA = "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256"
 DEDICATED_CASES = {
-    "windows-public-update": ("windows_public_updater/update_cases.py", "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78"),
-    "windows-proxy-lifecycle": ("windows_lifecycle_cases.py", "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b"),
+    "windows-public-update": ("windows_public_updater/update_cases.py", "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c"),
+    "windows-proxy-lifecycle": ("windows_lifecycle_cases.py", "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795"),
 }
+
+# Reboot actions: one preboot operation, readiness-reboot, then one postboot operation. The
+# role table equals windows_postboot_source_roles.ROLES; each fixed source is pinned here.
+POSTBOOT_ACTION_PHASES = {"windows-preboot-reboot": "preboot-reboot", "windows-postboot-final": "postboot-final"}
+POSTBOOT_SCENARIOS = {"windows-preboot-reboot": frozenset({"reconnect", "explicit-off", "autostart-migration", "query-first"}),
+                      "windows-postboot-final": frozenset({"reconnect", "explicit-off", "autostart-migration"})}
+POSTBOOT_RUNTIME_AUTHORITY = ("app", "native", "windows-amd64", "native-helpers.json")
+POSTBOOT_ROLE_HASHES = {'autostart': 'fa3da7a4c9b507b9c7114cdf39bbf853a2c6d2bfa085f0707a8a3ba22be0b0ca', 'lifecycle': 'e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795', 'listenerScript': '1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928', 'migrationScript': 'c984104461806c2f3fa4b74a4260acf48ef9f66524149a01cc4f67b2a305104d', 'observer': '6d08edf9e57b09e98ce80d414b2ac12da4f39eb82e27cd2a3f06d9f900e04dcb', 'postbootAction': '8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771', 'prebootAction': 'c55b4eecb097e011996c65a54c3237c28e9003f449852d7d60bf1bbb8467c6f9', 'runtime': 'a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e', 'runtimeStages': '5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a', 'snapshotScript': 'ece980bb211e52349c4623fd941e217c5c1f1d4e854efd0f7765cbdc5eba2cb2', 'sourceRoles': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'startScript': '9f7b4b5ad3ffa7743bd9961463cb0d38ef791b0d8191313984e0f74bf0a9d502', 'startupCollector': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'trafficWorker': 'c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d', 'upstreamFixture': '50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210'}
+POSTBOOT_ROLES = frozenset(['autostart', 'gui', 'lifecycle', 'listenerScript', 'migrationScript', 'observer', 'postbootAction', 'powerShell', 'prebootAction', 'runtime', 'runtimeAuthority', 'runtimeStages', 'snapshotScript', 'sourceRoles', 'startScript', 'startupCollector', 'trafficWorker', 'upstreamFixture'])
+
+DOCUMENT_RESPONSIVE_CASE = (
+    "windows_document_responsive_cli_cases.py",
+    "f02bd180210568a7219f33bd22e7c72d8fde5dbab560ce2b6a5803de21338705",
+)
+
+DOCUMENT_RESPONSIVE_SOURCES = {
+    "casesPath": ("windows_document_responsive_cases.py", "678f1a92c68a5a545760c6bf4d22ee7271262d5e6099681d679cd6a808e1c173"),
+    "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"),
+    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "9f6c274aba0d49e9ff3c036087d0a229ad96582d47ef7392da9f8d523be7e976"),
+    "socksSourcePath": ("socks_http_fixture.py", "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"),
+    "httpsSourcePath": ("https_subscription_relay_fixture.py", "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"),
+}
+
+DOCUMENT_RESPONSIVE_FIELDS = {"schemaVersion", "casesPath", "runtimeStagesPath",
+    "fixtureWorkerPath", "socksSourcePath", "httpsSourcePath", "certificatePath",
+    "privateKeyPath", "trustStorePath", "contexts", "largeRoutingInputPath"}
 
 
 _PROTECTED_OS_PATHS = frozenset({
@@ -234,8 +261,10 @@ def validate_closure(request):
     for item in files | {root}:
         need(set(item.parents) <= directories, "every-ancestor-native-pin-required")
     for tree in request["treePins"]:
+        # installed-application is the one tree the public updater's lease retires and re-admits
+        # (update_receipts.InstalledApplicationLease); installed-app stays the read-only CLI rows' role.
         need(type(tree) is dict and set(tree) == {"role", "root", "files"}
-             and tree["role"] in {"python-runtime", "installed-app", "source"}, "tree-role-schema")
+             and tree["role"] in TREE_ROLES, "tree-role-schema")
         tree_root = path(tree["root"])
         need(tree_root in directories and type(tree["files"]) is list and len(tree["files"]) <= 8192,
              "complete-tree-schema")
@@ -305,6 +334,60 @@ def worker_request(common, action, **inputs):
              "qualification-executable-and-argv-pins")
         need(type(inputs["expectedExitCode"]) is int and 0 <= inputs["expectedExitCode"] <= 255,
              "qualification-expected-exit")
+    elif action in POSTBOOT_ACTION_PHASES:
+        need(set(inputs) == {"cliPath", "workspace", "productVersion", "postbootAcceptance"},
+             "postboot-worker-input-schema")
+        config = inputs["postbootAcceptance"]
+        need(type(config) is dict and config.get("phase") == POSTBOOT_ACTION_PHASES[action],
+             "same-fixed-postboot-action-phase")
+        extra = set() if action == "windows-preboot-reboot" else {"checkpointPath"}
+        need(set(config) == {"schemaVersion", "phase", "scenario", "sourceRoles", "autostartInputs",
+             "trafficInputPath"} | extra
+             and type(config["schemaVersion"]) is int and config["schemaVersion"] == 1
+             and config["scenario"] in POSTBOOT_SCENARIOS[action]
+             and all(value is not None for value in config.values()), "closed-postboot-config-schema")
+        roles = config["sourceRoles"]
+        need(type(roles) is dict and set(roles) == POSTBOOT_ROLES,
+             "closed-postboot-source-role-map")
+        role_paths = {role: path(value) for role, value in roles.items()}
+        need(len(set(role_paths.values())) == len(role_paths)
+             and set(role_paths.values()) <= files and path(inputs["cliPath"]) in files,
+             "all-distinct-postboot-role-and-cli-native-pins")
+        # The package has no loose runtime: its runtime digest is the installed record beside the GUI.
+        need(role_paths["runtimeAuthority"] == role_paths["gui"].parent.joinpath(*POSTBOOT_RUNTIME_AUTHORITY),
+             "installed-runtime-authority-beside-gui")
+        pins = {path(pin["path"]): pin for pin in request["filePins"]}
+        for role, expected in POSTBOOT_ROLE_HASHES.items():
+            need(pins[role_paths[role]]["sha256"] == expected, "frozen-postboot-role-" + role)
+        auto = config["autostartInputs"]
+        need(type(auto) is dict and set(auto) == {"schemaVersion", "snapshotScriptPath",
+             "powerShellPath", "migrationScriptPath", "startScriptPath", "guiPath", "workspace"}
+             and type(auto["schemaVersion"]) is int and auto["schemaVersion"] == 1,
+             "frozen-autostart-input-schema")
+        for key, role in (("snapshotScriptPath", "snapshotScript"), ("powerShellPath", "powerShell"),
+                          ("migrationScriptPath", "migrationScript"), ("startScriptPath", "startScript"),
+                          ("guiPath", "gui")):
+            need(path(auto[key]) == role_paths[role], "same-autostart-source-role")
+        # No reboot command is a role: readiness-reboot is the only reboot submitter.
+        need(roles["powerShell"] == PS, "fixed-existing-os-command-roles")
+        need(path(config["trafficInputPath"]) in files, "postboot-traffic-initial-data-pin")
+        workspace = path(inputs["workspace"])
+        need(workspace == path(auto["workspace"]), "same-original-postboot-workspace")
+        directories = {path(pin["path"]) for pin in request["directoryPins"]}
+        if action == "windows-preboot-reboot":
+            need(workspace.parent == path(request["operationRoot"]) and workspace not in directories,
+                 "fresh-private-preboot-workspace")
+        else:
+            need(workspace.is_relative_to(path(request["context"]["localAppData"]))
+                 and workspace != path(request["context"]["localAppData"])
+                 and not workspace.is_relative_to(path(request["operationRoot"]))
+                 and workspace in directories and set(workspace.parents) <= directories,
+                 "initial-pinned-persistent-postboot-workspace")
+            need(path(config["checkpointPath"]) in files, "original-preboot-checkpoint-native-pin")
+        need(type(inputs["productVersion"]) is str
+             and re.fullmatch(r"(?:[1-9]|1[0-9])\.(?:[0-9]|1[0-9])\.(?:[0-9]|1[0-9])",
+                              inputs["productVersion"]) and inputs["productVersion"] != "2.2.13",
+             "postboot-current-product-version")
     elif action in {"msi-install", "msi-reset"}:
         reset = {"uninstallProductCode", "uninstallLogPath", "uninstallRoot"} if action == "msi-reset" else set()
         need(set(inputs) == {"msiPath", "installerLogPath"} | reset, "msi-worker-input-schema")
@@ -328,6 +411,8 @@ def worker_request(common, action, **inputs):
         fields = {"cliPath", "workspace", "productVersion", "casesPath", "harnessPath"}
         if action == "document-acceptance":
             fields.add("documentAcceptance")
+            if "responsiveWork" in inputs:
+                fields.add("responsiveWork")
         need(set(inputs) == fields,
              "cli-worker-input-schema")
         need(all(path(inputs[name]) in files for name in ("cliPath", "casesPath", "harnessPath")),
@@ -381,6 +466,48 @@ def worker_request(common, action, **inputs):
                  and temp != path(inputs["workspace"])
                  and temp in {path(item["path"]) for item in request["directoryPins"]},
                  "document-dedicated-temp-directory-pin")
+            if "responsiveWork" not in inputs:
+                case = path(inputs["casesPath"])
+                case_pin = next(pin for pin in request["filePins"] if path(pin["path"]) == case)
+                need(case.name != DOCUMENT_RESPONSIVE_CASE[0]
+                     and case_pin["sha256"] != DOCUMENT_RESPONSIVE_CASE[1],
+                     "responsive-cases-require-responsive-work")
+            if "responsiveWork" in inputs:
+                work = inputs["responsiveWork"]
+                need(type(work) is dict and set(work) == DOCUMENT_RESPONSIVE_FIELDS
+                     and type(work["schemaVersion"]) is int and work["schemaVersion"] == 1,
+                     "responsive-finite-input-schema")
+                work_contexts = work["contexts"]
+                need(type(work_contexts) is list and len(work_contexts) == 2
+                     and all(type(value) is str for value in work_contexts)
+                     and len(set(work_contexts)) == 2
+                     and all(str(uuid.UUID(value)) == value for value in work_contexts)
+                     and not set(work_contexts).intersection(contexts)
+                     and request["operationId"] not in work_contexts,
+                     "responsive-disjoint-canonical-contexts")
+                work_paths = {key: path(work[key]) for key in DOCUMENT_RESPONSIVE_FIELDS
+                              - {"schemaVersion", "contexts"}}
+                other = {*sources, path(inputs["cliPath"]), path(inputs["harnessPath"])}
+                need(len(other) == 6 and len(set(work_paths.values())) == 9
+                     and set(work_paths.values()) <= files
+                     and not set(work_paths.values()).intersection(other),
+                     "responsive-distinct-held-role-paths")
+                need(work_paths["largeRoutingInputPath"] == large,
+                     "responsive-same-document-large-input")
+                pins = {path(pin["path"]): pin for pin in request["filePins"]}
+                case = path(inputs["casesPath"])
+                need(case.name == DOCUMENT_RESPONSIVE_CASE[0]
+                     and pins[case]["sha256"] == DOCUMENT_RESPONSIVE_CASE[1],
+                     "responsive-fixed-document-cases-source")
+                for key, (name, digest) in DOCUMENT_RESPONSIVE_SOURCES.items():
+                    source = work_paths[key]
+                    need(source.name == name and pins[source]["sha256"] == digest,
+                         "responsive-fixed-producer-source-" + key)
+                distinct = {*work_paths.values(), *sources,
+                            path(inputs["cliPath"]), path(inputs["harnessPath"])}
+                identities = [(pins[value]["nativeIdentity"]["volumeSerial"],
+                               pins[value]["nativeIdentity"]["fileIndex"]) for value in distinct]
+                need(len(set(identities)) == len(distinct), "responsive-native-role-alias")
     request.update(action=action, **inputs)
     data(request)
     return request

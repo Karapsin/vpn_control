@@ -1,0 +1,48 @@
+{
+  "cause": "The installed jpackage launcher (OpenJDK 17.0.21) restarts itself on essentially every Windows launch: the launcher the owner starts creates a child launcher of the same image in the same console, with inherited handles and a kill-on-close job, waits for it, ignores Ctrl+C and exits with its code; the child runs the JVM. So a stream client's console holds three members, and the client exits only after its child.",
+  "execution": "Only module definitions run. Logical kernel and guest peers answer in the recorded shapes; no process, console, socket or Win32 call is made.",
+  "fixtures": {
+    "owner-known-failure.before.source": {
+      "origin": "agent_tools/windows_ordinary_process_owner.py as integrated on 263dcb0640788e675b11699170d7fe5c4cff3bf9 by the reboot, proxy-lifecycle and public-update round, before the fix. main(), Child and the run() path of the two CLI actions are those of ce2bc4073f1df377e3fc03b5ac47170b06f5bd6d's owner, which ran natively; the other differences touch only document-acceptance.",
+      "sha256": "3037a3e13b177d09fccd11bc54c2ec5f5659a78ce8e77d1e180f314ae9255b62",
+      "sizeBytes": 51046
+    },
+    "streaming-console-fence.before.source": {
+      "origin": "agent_tools/windows_streaming_cli_cases.py, unchanged from the module that ran natively (the same bytes at ce2bc4073f1df377e3fc03b5ac47170b06f5bd6d and 263dcb0640788e675b11699170d7fe5c4cff3bf9), before the fix.",
+      "sha256": "4b34a0bb6b695ae3dedd932fecdd68d8b0fc53b827baef8e370e08f8367c8d92",
+      "sizeBytes": 18059
+    }
+  },
+  "nativeFailures": [
+    {
+      "caseFailure": "owned-console-helper-failed",
+      "date": "2026-11-08",
+      "errorClass": "AssertionError",
+      "helperRefusal": "only-two-owned-console-members",
+      "jobOutcome": "job_exit_unknown:owner-parked",
+      "liveChildren": [
+        "serve",
+        "stream-status-json"
+      ],
+      "operation": "866c885f",
+      "parkReason": "scenario-failure-with-retained-child",
+      "scenario": "windows-streaming-client-interrupt",
+      "thirdMemberIdentityRecorded": false
+    },
+    {
+      "caseFailure": "human-exit-code",
+      "date": "2026-11-08",
+      "errorClass": "AssertionError",
+      "failingCommand": "--if-revision 43 routing set direct-domains [\"Example.test\"] (human)",
+      "jobOutcome": "job_exit_unknown:owner-parked",
+      "liveChildren": [
+        "serve"
+      ],
+      "operation": "98c8c95a",
+      "parkReason": "scenario-failure-with-retained-child",
+      "productAnswer": "INVALID_ARGUMENT on stderr, exit 1; the quoted argument reached the JVM unquoted, a product defect fixed separately",
+      "scenario": "windows-disconnected-cli-config"
+    }
+  ],
+  "schemaVersion": 1
+}

@@ -1,0 +1,76 @@
+{
+  "files": {
+    "real-msi-schedule.json": {
+      "bytes": 2628,
+      "note": "InstallExecuteSequence rows and the absence of a LaunchCondition table, read offline from two CI MSIs. Property values and summary codes are synthetic stand-ins; only the product name, upgrade code and version are real.",
+      "sha256": "2ff62b44069a694cb8f982fce8a4ca490a52a6a09d646d8ea094e4509caf6d60"
+    },
+    "system-run.before.ps1": {
+      "bytes": 12736,
+      "note": "agent_tools/windows_scenario_system_run.ps1.template exactly as committed at 0f5f368057a95d9de90b68a82edc5c87c2f2ac50: its status names only the last sixteen worker event kinds.",
+      "sha256": "a68bdc1cf7611203089bc60d55692039892650092b5c8f1201790f43c9c698e9"
+    },
+    "update-cases.before.source": {
+      "bytes": 44432,
+      "note": "agent_tools/windows_public_updater/update_cases.py exactly as committed at 0f5f368057a95d9de90b68a82edc5c87c2f2ac50: locations add before source set current-locations, and on with --if-revision.",
+      "sha256": "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78"
+    },
+    "windows-ordinary-task.before.source": {
+      "bytes": 40387,
+      "note": "agent_tools/windows_ordinary_task.py exactly as committed at 0f5f368057a95d9de90b68a82edc5c87c2f2ac50: its tree roles admit installed-app but not installed-application.",
+      "sha256": "fafcd99cc7f0ddbba290155952deb23c6e104bcc3583f401c751598542b6111c"
+    }
+  },
+  "realMsiFacts": "Both packages list the same 36 tables in _Tables, with no LaunchCondition table and no LaunchConditions action in InstallExecuteSequence; the rows above are identical in both.",
+  "realMsiReads": [
+    {
+      "ciSourceSha": "30b264af",
+      "package": "vpn-control-2.2.16.msi",
+      "sha256": "c0412e1fbc20a5148ca0dba69d7071e680a8fb9e773bcce685047eec09d9650d"
+    },
+    {
+      "ciSourceSha": "d24c19047ec15689948404ede40f50c5ec284e77",
+      "package": "vpn-control-2.2.13.msi",
+      "sha256": "8167212cb412c0e0d1c3ad1d60f12fdbc5477043725fd35484bdf6b46db25fb6"
+    }
+  ],
+  "realMsiTables": [
+    "AdminExecuteSequence",
+    "AdminUISequence",
+    "AdvtExecuteSequence",
+    "AppSearch",
+    "Binary",
+    "CheckBox",
+    "Component",
+    "Control",
+    "ControlCondition",
+    "ControlEvent",
+    "CreateFolder",
+    "CustomAction",
+    "Dialog",
+    "Directory",
+    "EventMapping",
+    "Feature",
+    "FeatureComponents",
+    "File",
+    "Icon",
+    "InstallExecuteSequence",
+    "InstallUISequence",
+    "ListBox",
+    "Media",
+    "MsiFileHash",
+    "Property",
+    "RadioButton",
+    "RegLocator",
+    "Registry",
+    "RemoveFile",
+    "Shortcut",
+    "Signature",
+    "TextStyle",
+    "UIText",
+    "Upgrade",
+    "WixRemoveFolderEx",
+    "_Validation"
+  ],
+  "schemaVersion": 1
+}

@@ -353,9 +353,26 @@ class NativeScenarioExecutionTest(unittest.TestCase):
             changed["scenarioId"] = name
             with self.assertRaisesRegex(execution.ScenarioExecutionError, "allowlisted"):
                 execution.ScenarioPlan.from_mapping(changed)
+        updates = {"windows-public-update." + variant for variant in (
+            "public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
+            "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "different-admin",
+            "wait-client-loss", "installer-wait-client-loss")}
         self.assertEqual(frozenset({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install",
                                     "windows-msi-base-reset", "windows-packaged-cli-smoke", "windows-disconnected-cli-config",
-                                    "windows-streaming-client-interrupt"}), execution.WINDOWS_SCENARIOS)
+                                    "windows-streaming-client-interrupt", "windows-autostart-migration.pre", "windows-autostart-migration.post",
+                                    "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post", "windows-reboot-explicit-off.pre",
+                                    "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
+                                    *("windows-proxy-lifecycle." + variant for variant in (
+                                        "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated",
+                                        "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")), *updates}),
+                         execution.WINDOWS_SCENARIOS)
+        for name in ("windows-proxy-lifecycle", "windows-proxy-lifecycle.no-tray-close", "windows-proxy-lifecycle.scheduled-refresh",
+                     "windows-proxy-lifecycle.restart-deny", "windows-public-update.transport-loss", "windows-public-update",
+                     "windows-public-update.public-ready.extra"):
+            changed = self.windows_request()
+            changed["scenarioId"] = name
+            with self.assertRaisesRegex(execution.ScenarioExecutionError, "allowlisted"):
+                execution.ScenarioPlan.from_mapping(changed)
 
     def test_windows_private_journal_is_explicitly_unsupported_before_path_access(self):
         with tempfile.TemporaryDirectory() as raw:

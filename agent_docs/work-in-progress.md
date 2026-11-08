@@ -4,7 +4,7 @@ This section is the one current parity ledger. Everything below it is retained
 history. Scope is Windows, the user's last parity decision (2026-10-19). Linux,
 Android and macOS native and visual work stay deferred and open, never passed.
 
-## State (2026-11-08)
+## State (2026-11-09)
 
 - Source: the paused checkout's parity commit `a9aed701` is merged into `dev` on
   top of `17587717`, with the paused worktree's reviewed paths ported byte for byte.
@@ -14,15 +14,18 @@ Android and macOS native and visual work stay deferred and open, never passed.
   reviewed UAC prompt. There is no new generic executor. The newer private
   composition (`final-freeze-v3`, 598 paths) was reviewed: 22 paths are taken,
   most of them adapted, in a later commit, and the rest is reported to the user.
-- Fixture: clone `7bb1f0c0` of image `637199a5` runs, qualified and secured, with
-  no alias, screen profiles or lease and job namespaces. It is enrolled only
-  after the sources settle. The Arch host rebooted on 2026-11-07 and stopped the
-  earlier clone `34e354eb`; its disk and stale reservation stay as they are. The
-  user allows up to four clones in parallel, each running its scenarios in
-  sequence.
-- Product acceptance: 0 of 22 matrix rows pass and the app is on no fixture. Old
-  receipts in the paused checkout are not current. The ported scenario tools have
-  never run natively, and no tracked code launches them yet.
+- Fixture: clones `be766f0c`, `66ad4aad` and `a218e890` of image `637199a5` run,
+  qualified and secured, with Python 3.13.15 and no package, and with no alias,
+  screen profiles or lease and job namespaces. They are enrolled only after the
+  sources settle. Arch host reboots on 2026-11-07 and 2026-11-08 stopped the
+  earlier clones; their disks and stale running reservations stay as they are.
+  Those reservations leave room for three running clones, not the four the user
+  allows: the reviewed release refuses them, because their lease evidence is not
+  terminal, and none is fabricated. Each clone runs its scenarios in sequence.
+- Product acceptance: 0 of 22 matrix rows pass, and no package is installed on
+  the running clones. Old receipts in the paused checkout are not current. The
+  scenario route has run natively for the qualification row, the setup rows and
+  the first family; nothing is recorded in the matrix yet.
 - Private evidence root: `.runtime/windows-parity-20261107/`.
 
 ## Remaining, in order
@@ -54,10 +57,23 @@ Android and macOS native and visual work stay deferred and open, never passed.
    parent launcher and used only when re-quoting them reproduces exactly what `main`
    received), and the owner parks on known failures while its
    own children run. By user decision the two blocked clones are stopped with their
-   disks kept, and two fresh clones replace them.
-   Still to add: the taken tools, the reboot allowance and the remaining families
-   (proxy, updater with its collector stage, documents, TUN, reboot). Fix the tool
-   defects the review predicted, each with RED and GREEN when proven.
+   disks kept, and two fresh clones replace them. Both tool defects are fixed with
+   RED and GREEN: the console fence admits exactly the launcher's own restart
+   child, and a known case failure in these two rows closes what the owner started
+   and exits 1 instead of parking. The product fix and its follow-up are in
+   `86a6d163` and `04ca7553`; the family reruns on an MSI built from them.
+   Integrated offline on 2026-11-09, not yet run natively: the taken tools, the
+   reviewed idle allowance for declared product processes, the reboot rows
+   (autostart migration, reboot reconnect, explicit off, query owner GUI
+   reconnect, document responsive), the proxy-lifecycle rows, and the
+   public-update rows with the SYSTEM collector stage (three update variants are
+   admitted so far; the UAC, grant and fault variants refuse before any journal
+   until their native prerequisites are proven).
+   Still to add: document acceptance and cold documents, TUN, ssh-import-routing,
+   dns-ws-ssh-cache-resources, pipe-storage-races, the GUI half of
+   gui-cli-transfer, the matrix observation helper, and an in-guest build for the
+   complete `:desktopApp:test` and the local visual capture. Fix the tool defects
+   the review predicted, each with RED and GREEN when proven.
 3. Build the same-source package pair, enroll the fixture and re-prove status,
    display wake, lease and counter, direct and then MCP. By user decision, all
    scenarios run in sequence on one VM, updates may chain on it, and sign-in and

@@ -427,6 +427,10 @@ class DispatchPeer:
         self.request = dict(action=action, cliPath="held-cli.exe", casesPath="held-cases.py",
             harnessPath="held-harness.py", workspace=str(self.root / "workspace"),
             productVersion="2.2.14")
+        # Declared held-role metadata only; no native admission is claimed.
+        self.by_path = {str(Path(self.request["casesPath"])).casefold(): types.SimpleNamespace(
+            path=Path(self.request["casesPath"]),
+            record={"sha256": "6e2eba7d8ebf59b1e3c331c63ac3224fc48a195906b08a5e4c0014eb2740b3eb"})}
         cases = types.SimpleNamespace()
         def run(*args):
             self.trace.append(("finite-run", args))
@@ -921,24 +925,32 @@ class StreamingConsoleHelperTests(unittest.TestCase):
     """Explicit logical kernel peers only; no Windows ABI/console qualification."""
     def kernel_peer(self, *, birth=123, session=7, live=True, extra=False,
                     closing_change=False, submit=True):
-        state = dict(signals=0, closes=0, members=0)
+        state = dict(signals=0, closes=0, members=0, others=[], cursor=0)
         class Call:
             def __init__(self, function): self.function = function
             def __call__(self, *args): return self.function(*args)
         kernel = types.SimpleNamespace()
+        # Inert integers: never passed to a real Win32 function. 909 is a foreign member,
+        # not the client's restart child: another parent and another image.
+        rows = [(101, 303, "vpn-control-cli.exe"), (505, 303, "python.exe"), (909, 1, "conhost.exe")]
+        images = {707: r"C:\Program Files\VPN Control\vpn-control-cli.exe", 708: r"C:\Windows\System32\conhost.exe"}
         def opened(access, inherit, pid):
-            self.assertEqual((0x101000, False, 101), (access, inherit, pid))
-            return 707  # Inert integer: never passed to a real Win32 function.
+            self.assertEqual((0x101000, False), (access, inherit))
+            self.assertIn(pid, (101, 909))
+            return {101: 707, 909: 708}[pid]
         def closed(handle):
-            self.assertEqual(707, handle)
-            state["closes"] += 1
+            self.assertIn(handle, (707, 708, 808))
+            if handle == 707:
+                state["closes"] += 1
+            else:
+                state["others"].append(handle)
             return 1
         def times(handle, creation, *_):
-            self.assertEqual(707, handle)
-            creation._obj.dwLowDateTime, creation._obj.dwHighDateTime = birth, 0
+            self.assertIn(handle, (707, 708))
+            creation._obj.dwLowDateTime, creation._obj.dwHighDateTime = birth if handle == 707 else birth + 1, 0
             return 1
         def session_id(pid, result):
-            self.assertIn(pid, (101, 505, 303, 404))
+            self.assertIn(pid, (101, 505, 303, 404, 909))
             result._obj.value = session
             return 1
         def members(values, bound):
@@ -951,12 +963,30 @@ class StreamingConsoleHelperTests(unittest.TestCase):
             self.assertEqual((0, 0), (event, group))
             state["signals"] += 1
             return int(submit)
+        def snapshot(flags, pid):
+            self.assertEqual((2, 0), (flags, pid))
+            return 808
+        def entry(handle, item):
+            self.assertEqual(808, handle)
+            if state["cursor"] >= len(rows):
+                return 0
+            item._obj.pid, item._obj.parentPid, item._obj.name = rows[state["cursor"]]
+            state["cursor"] += 1
+            return 1
+        def first(handle, item):
+            state["cursor"] = 0
+            return entry(handle, item)
+        def image(handle, flags, text, length):
+            text.value = images[handle]
+            length._obj.value = len(images[handle])
+            return 1
         methods = dict(OpenProcess=opened, CloseHandle=closed, GetProcessTimes=times,
             WaitForSingleObject=lambda *_: 0x102 if live else 0,
             ProcessIdToSessionId=session_id, FreeConsole=lambda: 1,
             AttachConsole=lambda pid: int(pid == 101), GetConsoleProcessList=members,
             SetConsoleCtrlHandler=lambda *args: int(args == (None, True)),
-            GenerateConsoleCtrlEvent=signal)
+            GenerateConsoleCtrlEvent=signal, CreateToolhelp32Snapshot=snapshot,
+            Process32FirstW=first, Process32NextW=entry, QueryFullProcessImageNameW=image)
         for name, method in methods.items(): setattr(kernel, name, Call(method))
         return kernel, state
 
@@ -970,10 +1000,14 @@ class StreamingConsoleHelperTests(unittest.TestCase):
                 root / "child-0001.ctrl-c.intent.json")
 
     def test_exact_birth_session_live_and_two_member_console_required_before_signal(self):
-        controls = (("positive", {}), ("birth", {"birth": 124}),
-            ("session", {"session": 8}), ("terminal", {"live": False}),
-            ("foreign-member", {"extra": True}), ("closing-change", {"closing_change": True}))
-        for label, options in controls:
+        # A third member is admitted only as the client's own restart child
+        # (test_windows_cli_native_failures); this foreign one still refuses.
+        controls = (("positive", {}, None), ("birth", {"birth": 124}, "exact-console-process-live-birth"),
+            ("session", {"session": 8}, "ordinary-console-session"),
+            ("terminal", {"live": False}, "exact-console-process-live-birth"),
+            ("foreign-member", {"extra": True}, "only-owned-console-members"),
+            ("closing-change", {"closing_change": True}, "console-membership-closing-changed"))
+        for label, options, reason in controls:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 kernel, state = self.kernel_peer(**options)
@@ -981,11 +1015,13 @@ class StreamingConsoleHelperTests(unittest.TestCase):
                     receipt = self.helper(kernel, root)
                     self.assertEqual("signal-submitted", receipt["state"])
                     self.assertEqual([101, 505], receipt["consolePids"])
+                    self.assertIsNone(receipt["restartChild"])
                     self.assertEqual(1, receipt["signalAttempts"])
                 else:
-                    with self.assertRaises(AssertionError): self.helper(kernel, root)
+                    with self.assertRaisesRegex(AssertionError, "^" + reason + "$"): self.helper(kernel, root)
                 self.assertEqual(1 if label == "positive" else 0, state["signals"])
                 self.assertEqual(1, state["closes"])
+                self.assertEqual(label == "foreign-member", 708 in state["others"])
 
     def test_uncertain_signal_keeps_create_only_intent_and_blocks_second_effect(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1247,10 +1283,17 @@ class DedicatedDispatchPeer:
     def __init__(self, root):
         self.root, self.operation = root, "2c731e91-c158-4e8a-b779-54076ce85229"
         self.calls, self.by_path, self.children = [], {}, []
-        self.request = {"workspace": str(root / "workspace"), "productVersion": "2.2.14"}
+        self.request = {"workspace": str(root / "workspace"), "productVersion": "2.2.14",
+                        "cliPath": str(self.SOURCE_ROOT / "vpn-control-cli.exe")}
         self.result, self.case_error, self.release_error = 0, None, None
         self.modules = {}
         self.inputs = None
+
+    def child(self, label, argv):
+        """Only the installed launcher's --help and --version: a completed call with no custody to keep."""
+        self.calls.append(("child", label))
+        output = {"--help": "Usage: vpn-control-cli\n", "--version": "VPN Control " + self.request["productVersion"] + "\n"}[argv[-1]]
+        return types.SimpleNamespace(completed=lambda: subprocess.CompletedProcess(argv, 0, output, ""))
 
     def source(self, name, canonical):
         path = str(self.SOURCE_ROOT / name)
@@ -1585,6 +1628,9 @@ class DedicatedCleanupCausalControls(unittest.TestCase):
         before = types.ModuleType("_whole_initial_dedicated_dispatcher")
         before.__file__ = str(path)
         exec(compile(raw, str(path), "exec"), before.__dict__)
+        # Later fixes moved the lifecycle pins; the RED stays the draft's own cleanup, not a pin refusal.
+        before.RUNTIME_SHA = dedicated_driver.RUNTIME_SHA
+        before.CASE_SHA["windows-proxy-lifecycle"] = before.UPDATE_MODULES["lifecycle"] = dedicated_driver.CASE_SHA["windows-proxy-lifecycle"]
         name = "test_gui_actors_are_observed_state_and_intentional_crash_is_preserved"
         with mock.patch.dict(globals(), {"dedicated_driver": before}):
             result = unittest.TestResult(); DedicatedDriverControls(name).run(result)
@@ -2176,6 +2222,207 @@ class ProtectedOsPowerShellRegressionTests(unittest.TestCase):
         self.assertIn("causal-fixed-real-PinIdentity-msiexec-links2-GREEN", names)
         self.assertIn("fixed-generic-Identity-links2-refuses", names)
         self.assertIn("generic-one-link-still-accepted", names)
+
+
+class DocumentResponsiveDispatchTests(unittest.TestCase):
+    """Synthetic admission/retained-child peers only; no task/native effects."""
+    def request(self):
+        common, _, worker = synthetic_request()
+        source = PureWindowsPath(worker['path']).parent
+        root = PureWindowsPath(common['operationRoot'])
+        cli = source / 'vpn-control.exe'
+        case = source / task.DOCUMENT_RESPONSIVE_CASE[0]
+        harness = source / 'pinned-harness.py'
+        document = {'schemaVersion': 1, 'clientPath': str(source / 'windows_document_client.py'),
+            'windowsPath': str(source / 'windows_document_windows.py'),
+            'racePath': str(source / 'windows_document_export_race.py'),
+            'largeRoutingInputPath': str(source / 'large-routing.json'),
+            'spoolTempParent': str(root / 'document-temp'),
+            'contexts': [str(uuid.UUID(int=1000 + value)) for value in range(52)],
+            'endpointPinBeforeObservation': None}
+        work = {'schemaVersion': 1,
+            **{key: str(source / role[0]) for key, role in task.DOCUMENT_RESPONSIVE_SOURCES.items()},
+            'certificatePath': str(source / 'fixture-cert.pem'), 'privateKeyPath': str(source / 'fixture-key.pem'),
+            'trustStorePath': str(source / 'fixture-trust.p12'),
+            'contexts': [str(uuid.UUID(int=2000)), str(uuid.UUID(int=2001))],
+            'largeRoutingInputPath': document['largeRoutingInputPath']}
+        files = {str(cli): '0' * 64, str(case): task.DOCUMENT_RESPONSIVE_CASE[1], str(harness): '1' * 64,
+            str(source / 'windows_document_cli_cases.py'): '6e2eba7d8ebf59b1e3c331c63ac3224fc48a195906b08a5e4c0014eb2740b3eb'}
+        for key in ('clientPath', 'windowsPath', 'racePath', 'largeRoutingInputPath'):
+            files[document[key]] = '2' * 64
+        for key, value in work.items():
+            if key not in ('schemaVersion', 'contexts'):
+                files[value] = task.DOCUMENT_RESPONSIVE_SOURCES.get(key, ('', '3' * 64))[1]
+        for path, digest in files.items():
+            common['filePins'].append(pin(path, size=10 * 1024 * 1024 + 1 if path == document['largeRoutingInputPath'] else 1, digest=digest))
+        common['directoryPins'].append(pin(document['spoolTempParent'], directory=True))
+        for number, record in enumerate(common['filePins'], 10):
+            record['nativeIdentity']['fileIndex'] = number
+        inputs = {'cliPath': str(cli), 'workspace': str(root / 'workspace'), 'productVersion': '2.2.14',
+                  'casesPath': str(case), 'harnessPath': str(harness),
+                  'documentAcceptance': document, 'responsiveWork': work}
+        return common, inputs
+
+    def mutations(self):
+        return (
+            ('bool-schema', lambda c, v: v['responsiveWork'].update(schemaVersion=True)),
+            ('extra-field', lambda c, v: v['responsiveWork'].update(success=True)),
+            ('reserved-context', lambda c, v: v['responsiveWork']['contexts'].__setitem__(0, v['documentAcceptance']['contexts'][0])),
+            ('operation-context', lambda c, v: v['responsiveWork']['contexts'].__setitem__(0, c['operationId'])),
+            ('duplicate-context', lambda c, v: v['responsiveWork']['contexts'].__setitem__(1, v['responsiveWork']['contexts'][0])),
+            ('wrong-cases-role', lambda c, v: v.update(casesPath=v['documentAcceptance']['clientPath'])),
+            ('wrong-producer-role', lambda c, v: v['responsiveWork'].update(fixtureWorkerPath=v['responsiveWork']['socksSourcePath'])),
+            ('source-drift', lambda c, v: next(p for p in c['filePins'] if p['path'] == v['responsiveWork']['casesPath']).update(sha256='f' * 64)),
+            ('different-large', lambda c, v: v['responsiveWork'].update(largeRoutingInputPath=v['responsiveWork']['certificatePath'])),
+            ('native-alias', lambda c, v: next(p for p in c['filePins'] if p['path'] == v['responsiveWork']['privateKeyPath'])['nativeIdentity'].update(fileIndex=next(p for p in c['filePins'] if p['path'] == v['responsiveWork']['certificatePath'])['nativeIdentity']['fileIndex'])),
+        )
+
+    def test_closed_optional_document_schema_and_negative_roles(self):
+        common, inputs = self.request()
+        value = task.worker_request(common, 'document-acceptance', **inputs)
+        self.assertEqual(value['responsiveWork'], inputs['responsiveWork'])
+        old = copy.deepcopy(inputs); old.pop('responsiveWork')
+        old['casesPath'] = str(PureWindowsPath(inputs['casesPath']).with_name('windows_document_cli_cases.py'))
+        self.assertNotIn('responsiveWork', task.worker_request(common, 'document-acceptance', **old))
+        missing = copy.deepcopy(inputs); missing.pop('responsiveWork')
+        with self.assertRaisesRegex(ValueError, 'responsive-cases-require-responsive-work'):
+            task.worker_request(common, 'document-acceptance', **missing)
+        with self.assertRaises(ValueError):
+            task.worker_request(common, 'streaming-client-interrupt', **inputs)
+        for label, change in self.mutations():
+            with self.subTest(label=label):
+                c, v = copy.deepcopy(common), copy.deepcopy(inputs); change(c, v)
+                with self.assertRaises((ValueError, KeyError)):
+                    task.worker_request(c, 'document-acceptance', **v)
+
+    def worker(self, common, inputs):
+        owner = object.__new__(process_owner.Owner)
+        owner.operation = common['operationId']
+        owner.request = {**common, **inputs, 'action': 'document-acceptance'}
+        owner.guard = mock.Mock()
+        owner.by_path = {str(PureWindowsPath(p['path'])).casefold(): types.SimpleNamespace(
+            path=PureWindowsPath(p['path']), record=p, digest=mock.Mock(return_value=b'declared-held-source')) for p in common['filePins']}
+        return owner
+
+    def test_worker_revalidates_serialized_source_roles_before_effect(self):
+        common, inputs = self.request()
+        with mock.patch.object(process_owner, 'absolute', side_effect=PureWindowsPath):
+            owner = self.worker(common, inputs)
+            owner.validate_responsive_work()
+            expected = 15  # Nine work roles plus four document modules and CLI/harness.
+            self.assertEqual(sum(pin.digest.call_count for pin in owner.by_path.values()), expected)
+            self.assertEqual(owner.guard.call_count, 2)
+            for label, change in self.mutations():
+                with self.subTest(label=label):
+                    c, v = copy.deepcopy(common), copy.deepcopy(inputs); change(c, v)
+                    owner = self.worker(c, v)
+                    with self.assertRaises((process_owner.Refused, ValueError, KeyError)):
+                        owner.validate_responsive_work()
+                    self.assertEqual(sum(pin.digest.call_count for pin in owner.by_path.values()), 0)
+
+    def test_same_held_document_module_configures_immediately_before_original_serve(self):
+        common, inputs = self.request()
+        with tempfile.TemporaryDirectory(prefix='responsive-dispatch-interface-') as root:
+            owner = object.__new__(process_owner.Owner)
+            owner.root = Path(root)
+            owner.request = {**common, **inputs, 'action': 'document-acceptance', 'workspace': str(Path(root) / 'workspace')}
+            owner.children = []; trace = []; identity = str(uuid.UUID(int=3000))
+            owner.environment = {}
+            owner.by_path = {str(Path(inputs['casesPath'])).casefold(): types.SimpleNamespace(
+                path=Path(inputs['casesPath']), record={'sha256': task.DOCUMENT_RESPONSIVE_CASE[1]})}
+            owner.validate_responsive_work = lambda: trace.append('revalidate')
+            owner.event = lambda *args: None
+            def configure(actual, workspace):
+                self.assertIs(actual, owner);trace.append('configure')
+            def run(actual, workspace, controller, harness):
+                self.assertIs(actual, owner);self.assertEqual(controller, identity)
+                self.assertIs(harness, held_harness.__dict__);trace.append('run')
+            held_cases = types.SimpleNamespace(configure_launch=configure, run=run)
+            held_harness = types.SimpleNamespace(marker='same-held-harness')
+            def module(path, name):
+                trace.append('module-cases' if path == inputs['casesPath'] else 'module-harness')
+                return held_cases if path == inputs['casesPath'] else held_harness
+            owner.module = module
+            def child(label, argv):
+                trace.append(label)
+                value = types.SimpleNamespace(process=types.SimpleNamespace(poll=lambda: None),
+                    completed=lambda: types.SimpleNamespace(returncode=0, stderr='', stdout='Usage:' if label == 'help' else inputs['productVersion']),
+                    wait=lambda: {'exitCode': 0})
+                owner.children.append(value);return value
+            owner.child = child
+            def invoke(workspace, *argv):
+                trace.append('quit' if argv[-1] == 'quit' else 'status')
+                return types.SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
+                    'schemaVersion':1,'code':'OK','ok':True,'final':True,'controllerId':identity,
+                    'data':{'runtimeRunning':False}}))
+            owner.invoke = invoke
+            with mock.patch.object(process_owner, 'absolute', side_effect=Path):
+                self.assertEqual(owner.run(), 0)
+            self.assertEqual(trace, ['revalidate','module-cases','help','version','revalidate','configure','serve',
+                'status','module-harness','run','status','quit'])
+            # The known responsive module cannot use the old no-work form.
+            saved = owner.request.pop('responsiveWork'); before = list(trace)
+            with mock.patch.object(process_owner, 'absolute', side_effect=Path):
+                with self.assertRaisesRegex(process_owner.Refused, 'responsive-cases-require-responsive-work'):
+                    owner.run()
+            self.assertEqual(trace, before)
+            owner.request['responsiveWork'] = saved
+            # A malformed serialized action is refused before module/probe/effect.
+            owner.request['action'] = 'qualification'
+            with self.assertRaises(process_owner.Refused):owner.run()
+            self.assertEqual(trace[-1], 'quit')
+
+
+class RebootAndRoleTableTests(unittest.TestCase):
+    """The planner and owner hold one table each of the same fixed sources."""
+    def test_owner_and_planner_tables_are_equal_and_name_current_bytes(self):
+        from agent_tools import windows_postboot_source_roles as roles
+        self.assertEqual(task.POSTBOOT_ROLES, roles.ROLES)
+        self.assertEqual(task.POSTBOOT_ACTION_PHASES, process_owner._POSTBOOT_ACTION_PHASES)
+        self.assertEqual(task.DOCUMENT_RESPONSIVE_CASE, process_owner.DOCUMENT_RESPONSIVE_CASE)
+        self.assertEqual(task.DOCUMENT_RESPONSIVE_SOURCES, process_owner.DOCUMENT_RESPONSIVE_SOURCES)
+        self.assertEqual(task.DOCUMENT_RESPONSIVE_FIELDS, process_owner.DOCUMENT_RESPONSIVE_FIELDS)
+        entry = {"sourceRoles": "agent_tools/windows_postboot_source_roles.py", "postbootAction": "agent_tools/windows_postboot_action.py",
+                 "prebootAction": "agent_tools/windows_preboot_action.py", "startupCollector": "agent_tools/windows_postboot_startup_actors.ps1"}
+        for role, relative in entry.items():
+            raw = (ROOT / relative).read_bytes()
+            self.assertEqual({"sha256": hashlib.sha256(raw).hexdigest(), "sizeBytes": len(raw)}, process_owner._POSTBOOT_ENTRY_SOURCES[role])
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), task.POSTBOOT_ROLE_HASHES[role])
+        self.assertEqual(roles.ROLES - set(task.POSTBOOT_ROLE_HASHES), {"gui", "powerShell", "runtimeAuthority"},
+                         "only the installed product's own files go unpinned by digest here")
+        for key, (name, digest) in task.DOCUMENT_RESPONSIVE_SOURCES.items():
+            found = [path for path in (ROOT / "agent_tools" / name, ROOT / "scripts/integration" / name) if path.exists()]
+            self.assertEqual(1, len(found), key)
+            self.assertEqual(digest, hashlib.sha256(found[0].read_bytes()).hexdigest(), key)
+        self.assertEqual(task.DOCUMENT_RESPONSIVE_CASE[1],
+                         hashlib.sha256((ROOT / "agent_tools" / task.DOCUMENT_RESPONSIVE_CASE[0]).read_bytes()).hexdigest())
+
+    def test_no_reboot_command_is_a_role(self):
+        from agent_tools import windows_postboot_source_roles as roles
+        self.assertNotIn("shutdown", task.POSTBOOT_ROLES)
+        self.assertFalse({"externalHost", "externalAdapter", "logonAdmission", "shutdown"} & roles.ROLES)
+        for relative in ("agent_tools/windows_preboot_action.py", "agent_tools/windows_postboot_action.py",
+                         "agent_tools/windows_autostart_reboot.py", "agent_tools/windows_postboot_source_roles.py"):
+            text = (ROOT / relative).read_text()
+            self.assertNotIn("shutdown.exe", text.lower(), relative)
+            self.assertNotIn("/home/", text, relative)
+
+    def test_the_updater_installed_application_tree_role_is_accepted(self):
+        # windows_public_updater/update_receipts.py leases the tree under the role installed-application.
+        common, _, _ = synthetic_request()
+        root = PureWindowsPath(common["context"]["localAppData"]) / "vpn-control"
+        tree_file = root / "vpn-control.exe"
+        common["directoryPins"].append(pin(root, directory=True))
+        common["filePins"].append(pin(tree_file))
+        for role in ("installed-app", "installed-application"):
+            with self.subTest(role=role):
+                request = copy.deepcopy(common)
+                request["treePins"] = [{"role": role, "root": str(root), "files": ["vpn-control.exe"]}]
+                task.validate_closure(request)
+        request = copy.deepcopy(common)
+        request["treePins"] = [{"role": "installed-anything", "root": str(root), "files": ["vpn-control.exe"]}]
+        with self.assertRaisesRegex(ValueError, "tree-role-schema"):
+            task.validate_closure(request)
 
 
 if __name__ == "__main__":

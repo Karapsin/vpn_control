@@ -263,7 +263,18 @@ agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.
 /agent_tools/tests/fixtures/windows_native_packet_recipe/** -text
 /agent_tools/tests/fixtures/windows_ordinary_task/** -text
 /agent_tools/tests/fixtures/windows_owned_desktop/** -text
+/agent_tools/tests/fixtures/windows_public_update_defects/** -text
 /agent_tools/tests/fixtures/windows_public_updater/** -text
 /agent_tools/tests/fixtures/windows_system_collector/** -text
 # Pinned by byte in the main input bridge fixture provenance.
 scripts/capture_visual_windows_qemu.py -text
+# Reboot and responsive roles: the planner and owner pin these by digest and the guest gets their exact bytes.
+/agent_tools/windows_autostart_snapshot.ps1 -text
+/agent_tools/windows_autostart_create_highest_fixture.ps1 -text
+/agent_tools/windows_autostart_task_start.ps1 -text
+/agent_tools/windows_postboot_startup_actors.ps1 -text
+/agent_tools/tests/fixtures/windows_product_allowance/** -text
+# The reboot, responsive and proxy-lifecycle rows publish these to the guest, where each is checked by its hash.
+/scripts/windows_broker_fixture_observer.py -text
+/scripts/integration/socks_http_fixture.py -text
+/scripts/integration/https_subscription_relay_fixture.py -text

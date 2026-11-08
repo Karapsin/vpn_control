@@ -136,9 +136,12 @@
   "legacyDecisionHelperIsNotInputAuthority": true,
   "production": {
     "agent_tools/windows_lifecycle_cases.py": {
-      "bytes": 41291,
+      "bytes": 44588,
+      "currentRoleAdjustment": "GUI windows are looked up on the JVM a relaunching launcher started, and a frontend crash ends that JVM through the handle that identified it. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/lifecycle_cases.py",
-      "sha256": "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b"
+      "originalSourceBytes": 41291,
+      "originalSourceSha256": "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b",
+      "sha256": "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795"
     },
     "agent_tools/windows_lifecycle_runtime_fixture_worker.py": {
       "bytes": 8779,
@@ -146,9 +149,12 @@
       "sha256": "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a"
     },
     "agent_tools/windows_lifecycle_runtime_stages.py": {
-      "bytes": 25377,
+      "bytes": 26404,
+      "currentRoleAdjustment": "start_runtime sets the source to current-locations before adding locations, and capture_proxy_actors finds the runtime under the JVM a relaunching launcher started. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/runtime_stages.py",
-      "sha256": "147f2114b0ce554e85669b770b836d7927f775f6009795ceb308b6e57bc5fbd9"
+      "originalSourceBytes": 25377,
+      "originalSourceSha256": "147f2114b0ce554e85669b770b836d7927f775f6009795ceb308b6e57bc5fbd9",
+      "sha256": "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"
     },
     "agent_tools/windows_lifecycle_scheduled_fixture_worker.py": {
       "bytes": 5883,
@@ -171,9 +177,12 @@
       "sha256": "a95e3724e73c0f3a11e462bb0ad6321eaf493f8553e5fd90806be61a224dec19"
     },
     "agent_tools/windows_runtime_branch_cases.py": {
-      "bytes": 34698,
+      "bytes": 34972,
+      "currentRoleAdjustment": "The sibling census names the owner's relaunched JVM beside its launcher. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-runtime-branches-private-preparation-v2/runtime_branch_cases.py",
-      "sha256": "0b90fef622d8f0511aaf391209096db987a1d696e376283d056388c5c6493cb0"
+      "originalSourceBytes": 34698,
+      "originalSourceSha256": "0b90fef622d8f0511aaf391209096db987a1d696e376283d056388c5c6493cb0",
+      "sha256": "a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e"
     },
     "agent_tools/windows_runtime_tcp_listeners.ps1": {
       "bytes": 1095,

@@ -59,13 +59,18 @@ _MAX_EVIDENCE = 8 * 1024 * 1024
 _SUBMIT_SECONDS = 180
 _OBSERVE_SECONDS = 60
 _EVIDENCE_NAME = re.compile(r"evidence-[0-9]{1,6}\.zip\Z")
+# windows_uac_decision writes exactly these fields in a known input's terminal.
+_DECISION_FIELDS = frozenset({"state", "operationId", "attempt", "decision", "prompt", "promptClosed", "approvalSucceeded",
+                              "productOutcomeProved", "replayAllowed"})
 _BIRTH = re.compile(r"(?:linux:([1-9][0-9]*)|darwin:([0-9]+):([0-9]+))\Z")
 
 _OWNER = ("agent_tools/windows_ordinary_task_owner.ps1", "owner", "powershell")
 _WORKER = ("agent_tools/windows_ordinary_process_owner.py", "worker", "data")
 _HARNESS = (("scripts/test_packaged_cli.py", "harness", "data"),
             ("scripts/windows_install_admission_diagnostic.py", "diagnostic", "data"))
-_STAGES = tuple(stage for stage in host_job.STAGE_ORDER if stage != "installed")
+# "declare" belongs to a reboot preboot alone, "installed" to the installer rows.
+_ALL_STAGES = tuple(stage for stage in host_job.STAGE_ORDER if stage != "declare")
+_STAGES = tuple(stage for stage in _ALL_STAGES if stage != "installed")
 
 
 def _worker_row(evidence: str, action: str, keys: tuple[str, ...], files: tuple[tuple[str, str, str], ...], *,
@@ -75,10 +80,132 @@ def _worker_row(evidence: str, action: str, keys: tuple[str, ...], files: tuple[
             "package": package, "priorInstall": prior,
             "readPins": (host_job.POWERSHELL_PATH, *((host_job.MSIEXEC_PATH,) if msiexec else ())), "subfolders": (),
             "expectedExit": 0, "expectedStreams": {}, "rawStreamLimitBytes": 16 * 1024 * 1024, "deadlineSeconds": deadline,
-            "stages": host_job.STAGE_ORDER if package else _STAGES}
+            "stages": _ALL_STAGES if package else _STAGES}
 
 
 _BASE = {"role": "basePackage", "leaf": "package.msi"}
+# The reboot actions' fixed sources; their roles are windows_postboot_source_roles.ROLES less the installed ones.
+_REBOOT_FILES = (
+    ("agent_tools/windows_postboot_source_roles.py", "sourceRoles", "data"),
+    ("agent_tools/windows_postboot_action.py", "postbootAction", "data"),
+    ("agent_tools/windows_preboot_action.py", "prebootAction", "data"),
+    ("agent_tools/windows_autostart_reboot.py", "autostart", "data"),
+    ("agent_tools/windows_lifecycle_cases.py", "lifecycle", "data"),
+    ("agent_tools/windows_runtime_branch_cases.py", "runtime", "data"),
+    ("agent_tools/windows_lifecycle_runtime_stages.py", "runtimeStages", "data"),
+    ("scripts/windows_broker_fixture_observer.py", "observer", "data"),
+    ("agent_tools/windows_lifecycle_traffic_worker.py", "trafficWorker", "data"),
+    ("scripts/integration/socks_http_fixture.py", "upstreamFixture", "data"),
+    ("agent_tools/windows_runtime_tcp_listeners.ps1", "listenerScript", "data"),
+    ("agent_tools/windows_autostart_snapshot.ps1", "snapshotScript", "data"),
+    ("agent_tools/windows_autostart_create_highest_fixture.ps1", "migrationScript", "data"),
+    ("agent_tools/windows_autostart_task_start.ps1", "startScript", "data"),
+    ("agent_tools/windows_postboot_startup_actors.ps1", "startupCollector", "data"),
+)
+_REBOOT_STAGES = {"pre": tuple(stage for stage in host_job.STAGE_ORDER if stage != "installed"), "post": _STAGES, "none": _STAGES}
+
+
+def _reboot_row(name, phase, scenario):
+    """One side of a reboot scenario. A preboot leaves the app running from its autostart task and declares it;
+    readiness-reboot runs between; the postboot is a new operation naming its preboot through scenarioInput."""
+    row = _worker_row("product", "windows-postboot-final" if phase == "post" else "windows-preboot-reboot", ("targetPackage",),
+                      _REBOOT_FILES, prior=True, deadline=3600)
+    row.update(stages=_REBOOT_STAGES[phase], reboot={"phase": phase, "scenario": scenario,
+                                                     "preboot": name + ".pre" if phase == "post" else None})
+    return row
+
+
+# windows-proxy-lifecycle.<variant>: exactly the variants windows_ordinary_dedicated_driver accepts for this action.
+PROXY_VARIANTS = ("gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel",
+                  "generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")
+_PROXY_BRANCH_VARIANTS = frozenset({"generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off"})
+_PROXY_FILES = (("agent_tools/windows_ordinary_dedicated_driver.py", "driver", "data"), ("agent_tools/windows_lifecycle_cases.py", "cases", "data"),
+                ("agent_tools/windows_lifecycle_runtime_stages.py", "runtime", "data"), ("scripts/windows_broker_fixture_observer.py", "observer", "data"),
+                ("agent_tools/windows_lifecycle_runtime_fixture_worker.py", "fixture", "data"),
+                ("scripts/integration/socks_http_fixture.py", "socks", "data"), ("scripts/integration/https_subscription_relay_fixture.py", "https", "data"))
+_PROXY_TRAFFIC = (("agent_tools/windows_lifecycle_traffic_worker.py", "traffic", "data"),)
+_PROXY_BRANCH = (("agent_tools/windows_runtime_branch_cases.py", "branches", "data"), ("agent_tools/windows_runtime_tcp_listeners.ps1", "listener", "data"))
+
+
+def _proxy_row(variant: str) -> dict[str, Any]:
+    """The driver's roles as published files, and the files the job makes for the literal harness (windows_scenario_proxy)."""
+    branch = variant in _PROXY_BRANCH_VARIANTS
+    traffic = branch or variant == "gui-pending"
+    row = _worker_row("product", "windows-proxy-lifecycle", ("targetPackage",),
+                      _PROXY_FILES + (_PROXY_TRAFFIC if traffic else ()) + (_PROXY_BRANCH if branch else ()), prior=True, deadline=3600)
+    row.update(proxy={"variant": variant},
+               generated=(("harness", "proxy-harness.py"), ("certificate", "proxy-localhost.pem"), ("privateKey", "proxy-localhost.key"),
+                          ("trustStore", "proxy-trust.jks"), *((("trafficInput", "proxy-traffic.json"),) if traffic else ())),
+               extracted=(("runtimeTool", "sing-box.exe"),))
+    return row
+
+
+# windows-public-update: the dedicated driver, its update module roles and, for a row with a SYSTEM
+# collector, the collector's own sources and the caller's close hold. Subfolders keep the siblings
+# each module expects: windows_public_updater beside the driver, windows_system_collector beside it too.
+_UPDATE_FILES = (("agent_tools/windows_ordinary_dedicated_driver.py", "driver", "data"),
+                 ("agent_tools/windows_public_updater/update_cases.py", "cases", "data"),
+                 ("agent_tools/windows_public_updater/update_receipts.py", "receipts", "data"),
+                 ("agent_tools/windows_public_updater/update_fixture_server.py", "server", "data"),
+                 ("agent_tools/windows_public_updater/native_collector.py", "collector", "data"),
+                 ("agent_tools/windows_lifecycle_cases.py", "lifecycle", "data"),
+                 ("scripts/fixture_environment.py", "fixture_environment", "data"),
+                 ("scripts/macos_packaging_jdk_preflight.py", "macos_packaging_jdk_preflight", "data"),
+                 ("scripts/prepare_desktop_update_fixture.py", "prepare_desktop_update_fixture", "data"),
+                 ("scripts/windows_broker_fixture_observer.py", "broker_observer", "data"))
+_COLLECTOR_FILES = (("agent_tools/windows_system_collector/caller_hold.py", "caller_hold", "data"),
+                    ("agent_tools/windows_system_collector/hold_protocol.py", "hold_protocol", "data"),
+                    ("agent_tools/windows_system_collector/collector_contract.py", "collector_contract", "data"),
+                    ("agent_tools/windows_system_collector/system_collector_worker.py", "system_worker", "data"),
+                    ("agent_tools/windows_system_collector/native_primitives.py", "native_primitives", "data"),
+                    ("agent_tools/windows_system_collector/ordinary_task_guard.ps1", "task_guard", "data"),
+                    ("agent_tools/windows_system_collector/system_collector_native.cs", "native_bridge", "data"))
+# The variants update_cases.VARIANTS accepts, less transport-loss, which it refuses itself.
+UPDATE_VARIANTS = ("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled",
+                   "participating-copy-lock", "protected-storage-rejected", "native-install-failed", "success-off",
+                   "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss")
+_NO_SYSTEM = ("public-ready", "download-cancelled", "checksum-rejected")
+# Refused before any journal, each with what is missing. A grant's authorization stage observes the elevated helper
+# coordinator and its original-user worker as live actors, and terminal-actors after a handoff needs both again; no
+# stage of this job discovers them, so no collector proves the helper image and the approving SID.
+_UPDATE_REFUSED = {
+    "install-cancelled": "windows_scenario_update_grant_unproven",
+    "participating-copy-lock": "windows_scenario_update_grant_unproven",
+    "success-off": "windows_scenario_update_grant_unproven",
+    "success-reconnect": "windows_scenario_update_grant_unproven",
+    "different-admin": "windows_scenario_update_grant_unproven",
+    "wait-client-loss": "windows_scenario_update_grant_unproven",
+    "installer-wait-client-loss": "windows_scenario_update_grant_unproven",
+    # No producer: the product's MSIs carry no LaunchCondition table for the failing-MSI derivation, and nothing
+    # creates or removes a counterfeit protected-storage root.
+    "native-install-failed": "windows_scenario_update_fault_unavailable",
+    "protected-storage-rejected": "windows_scenario_update_fault_unavailable",
+    # The pinned collector chain takes its request only in the O:SYD:P form, but a file the publisher creates and then
+    # protects reads back O:SYD:PAI natively, so publish ends collector_file_policy. And its terminal-actors stage reads
+    # the product's not-started disposition as SYSTEM, while the product writes that file for its owner alone and
+    # nothing enables SeBackupPrivilege. Both a request writer and a reader have to be proved natively first.
+    "uac-denied": "windows_scenario_update_collector_unproven",
+}
+# The stages each variant's owner asks a SYSTEM collector for, the last one behind the caller's close hold.
+_UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "terminal-actors")}
+
+
+def _update_row(variant: str) -> dict[str, Any]:
+    stages, final = _UPDATE_COLLECTORS.get(variant, ((), None))
+    row = _worker_row("product", "windows-public-update", ("targetPackage", "fixtureReceipt"),
+                      (*_UPDATE_FILES, *(_COLLECTOR_FILES if stages else ())), prior=True, deadline=3600)
+    row["update"] = {"variant": variant, "collectorStages": stages, "finalStage": final}
+    row["refusal"] = _UPDATE_REFUSED.get(variant)
+    if variant not in _NO_SYSTEM:
+        deny = variant == "uac-denied"
+        # windows_uac_decision.ROWS answers each prompt; collect joins a deny row's own input terminal.
+        row["uac"] = {"prompt": "install-helper", "decision": "deny" if deny else "approve",
+                      "event": {"install-cancelled": "update-install-cancel-requested-before-authorization",
+                                "installer-wait-client-loss": "update-installer-wait-client-lost"}.get(variant, "update-uac-action-pending")}
+        row["denyJoin"] = deny
+    return row
+
+
 # One row per closed name. A later name is a row here plus its stages in the host job.
 # setup rows prepare the one VM and never count as matrix evidence; product rows claim
 # installed-package only from the receipt facts public_evidence reads.
@@ -114,7 +241,7 @@ RECIPES: dict[str, dict[str, Any]] = {
         "expectedStreams": {},
         "rawStreamLimitBytes": 1024 * 1024,
         "deadlineSeconds": 3600,
-        "stages": host_job.STAGE_ORDER,
+        "stages": _ALL_STAGES,
     },
     "windows-msi-base-install": _worker_row("setup", "msi-install", ("basePackage",), (), package=_BASE, msiexec=True, deadline=7200),
     # The VM's way back to a clean base: remove the one registered product by its code, install the admitted base.
@@ -126,15 +253,31 @@ RECIPES: dict[str, dict[str, Any]] = {
     "windows-streaming-client-interrupt": _worker_row(
         "product", "streaming-client-interrupt", ("targetPackage",),
         (("agent_tools/windows_streaming_cli_cases.py", "cases", "data"), *_HARNESS), prior=True, deadline=7200),
+    "windows-autostart-migration.pre": _reboot_row("windows-autostart-migration", "pre", "autostart-migration"),
+    "windows-autostart-migration.post": _reboot_row("windows-autostart-migration", "post", "autostart-migration"),
+    "windows-reboot-reconnect.pre": _reboot_row("windows-reboot-reconnect", "pre", "reconnect"),
+    "windows-reboot-reconnect.post": _reboot_row("windows-reboot-reconnect", "post", "reconnect"),
+    "windows-reboot-explicit-off.pre": _reboot_row("windows-reboot-explicit-off", "pre", "explicit-off"),
+    "windows-reboot-explicit-off.post": _reboot_row("windows-reboot-explicit-off", "post", "explicit-off"),
+    # Rebootless: a query starts a transient owner that never connects, then a GUI restores intent once.
+    "windows-query-owner-gui-reconnect": _reboot_row("windows-query-owner-gui-reconnect", "none", "query-first"),
+    **{"windows-proxy-lifecycle." + variant: _proxy_row(variant) for variant in PROXY_VARIANTS},
+    **{"windows-public-update." + variant: _update_row(variant) for variant in UPDATE_VARIANTS},
 }
 SETUP_OR_COMPONENT = frozenset({"setup", "component"})
 INPUT_SCHEMA = "vpn-control.windows-scenario.input"
 _INPUT_FIELDS = frozenset({"schema", "schemaVersion", "scenarioId", "correlationId", "deploymentId", "sourceSha", "productVersion",
                            "artifactSetId", "priorInstall"})
+# Only a postboot row's input names its preboot; no other row's input has the field.
+# An update row also names the version it updates from and the earlier install of its target that recorded the tree.
+_UPDATE_INPUT_FIELDS = frozenset({"baseVersion", "targetInstall"})
 _MAX_INPUT_BYTES = 4096
 # Fixed admission per package role: the registry kind, and for desktop packages the frozen-set source.
-PACKAGE_KINDS = {"pythonInstaller": "test-toolchain-installer", "basePackage": "desktop-package", "targetPackage": "desktop-package"}
+PACKAGE_KINDS = {"pythonInstaller": "test-toolchain-installer", "basePackage": "desktop-package", "targetPackage": "desktop-package",
+                 "fixtureReceipt": "desktop-update-fixture-receipt"}
 _MAX_PACKAGE_BYTES = 1024 * 1024 * 1024
+_MAX_RECEIPT_BYTES = 1024 * 1024
+_FIXTURE_URL = "https://github.com/Karapsin/vpn_control/releases/download/disposable-desktop-fixture/"
 
 
 class NativeScenarioWindowsError(ValueError):
@@ -217,7 +360,10 @@ def scenario_input(root: Path | str, plan: native_scenario_execution.ScenarioPla
         value = json.loads(raw)
     except (OSError, ValueError):
         raise NativeScenarioWindowsError("windows_scenario_input_invalid") from None
-    _need(hashlib.sha256(raw).hexdigest() == artifact["sha256"] and isinstance(value, dict) and set(value) == _INPUT_FIELDS,
+    postboot = (row.get("reboot") or {}).get("phase") == "post"
+    fields = (_INPUT_FIELDS | (_UPDATE_INPUT_FIELDS if row.get("update") else frozenset())
+              | (frozenset({"priorPreboot"}) if postboot else frozenset()))
+    _need(hashlib.sha256(raw).hexdigest() == artifact["sha256"] and isinstance(value, dict) and set(value) == fields,
           "windows_scenario_input_invalid")
     prior = value["priorInstall"]
     _need(value["schema"] == INPUT_SCHEMA and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1
@@ -230,7 +376,47 @@ def scenario_input(root: Path | str, plan: native_scenario_execution.ScenarioPla
           "windows_scenario_input_invalid")
     if row["priorInstall"]:
         _canonical_uuid(prior, "windows_scenario_input_invalid")
+    if postboot:
+        _canonical_uuid(value["priorPreboot"], "windows_scenario_input_invalid")
+        _need(value["priorPreboot"] not in {plan.correlation_id, prior}, "windows_scenario_input_invalid")
+    if row.get("update"):
+        base, target = value["baseVersion"], value["targetInstall"]
+        _need(isinstance(base, str) and host_job._VERSION.fullmatch(base) is not None, "windows_scenario_input_invalid")
+        # The planner keeps the expanded cases off the 2.2.13 baseline, and an update needs an older base.
+        _need(base != "2.2.13", "windows_scenario_update_base_baseline")
+        _need(tuple(map(int, base.split("."))) < tuple(map(int, value["productVersion"].split("."))), "windows_scenario_update_not_newer")
+        _need(_canonical_uuid(target, "windows_scenario_input_invalid") not in {plan.correlation_id, prior}, "windows_scenario_input_invalid")
     return value
+
+
+def fixture_receipt(path: Path, artifact: Mapping[str, Any], value: Mapping[str, Any], target: Mapping[str, Any]) -> dict[str, Any]:
+    """The CI fixture pair's receipt, which the guest's update server reads: one source built twice, its target
+    the admitted target package, its manifest the one asset served. The base build is never installed from here."""
+    try:
+        raw = path.read_bytes()
+        receipt = json.loads(raw)
+        _need(hashlib.sha256(raw).hexdigest() == artifact["sha256"] and type(receipt) is dict, "windows_scenario_fixture_receipt")
+        base, built = receipt["builds"]
+        manifest = receipt["manifest"]
+        asset = manifest["assets"][0]
+        version = value["productVersion"]
+        _need(receipt["testOnly"] is True and receipt["productionTrustChanged"] is False and receipt["architecture"] == "x86_64"
+              and re.fullmatch(r"[0-9a-f]{64}", receipt["sourceFingerprint"]) is not None
+              and base["label"] == "base" and built["label"] == "target"
+              and base["sourceFingerprint"] == built["sourceFingerprint"] == receipt["sourceFingerprint"]
+              and re.fullmatch(r"[0-9a-f]{64}", built["codeFingerprint"]) is not None and base["codeFingerprint"] == built["codeFingerprint"]
+              and built["version"] == version and host_job._VERSION.fullmatch(base["version"]) is not None
+              and tuple(map(int, base["version"].split("."))) < tuple(map(int, version.split(".")))
+              and manifest["assets"] == built["assets"] and len(manifest["assets"]) == 1
+              and manifest["buildNumber"] == host_job.version_build(version) and manifest["releaseTag"] == host_job.FIXTURE_RELEASE
+              and set(asset) == {"platform", "architecture", "packageType", "displayVersion", "fileName", "downloadUrl", "sha256", "sizeBytes"}
+              and asset["platform"] == "windows" and asset["architecture"] == "x86_64" and asset["packageType"] == "msi"
+              and asset["displayVersion"] == version and host_job._FIXTURE_FILE.fullmatch(asset["fileName"]) is not None
+              and asset["downloadUrl"] == _FIXTURE_URL + asset["fileName"]
+              and asset["sha256"] == target["sha256"] and asset["sizeBytes"] == target["bytes"], "windows_scenario_fixture_receipt")
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
+        raise NativeScenarioWindowsError("windows_scenario_fixture_receipt") from None
+    return {"fileName": asset["fileName"], "sourceFingerprint": receipt["sourceFingerprint"]}
 
 
 def admitted_packages(root: Path | str, plan: native_scenario_execution.ScenarioPlan, row: Mapping[str, Any],
@@ -251,7 +437,11 @@ def admitted_packages(root: Path | str, plan: native_scenario_execution.Scenario
                   "windows_scenario_python_installer")
         else:
             _need(value is not None and artifact.get("sourceSha") == value["sourceSha"], "windows_scenario_package_source")
-            _need(path.suffix.lower() == ".msi", "windows_scenario_package_kind")
+            if role == "fixtureReceipt":
+                _need(path.suffix.lower() == ".json" and artifact["size"] <= _MAX_RECEIPT_BYTES, "windows_scenario_package_kind")
+                fixture_receipt(path, artifact, value, packages["targetPackage"])
+            else:
+                _need(path.suffix.lower() == ".msi", "windows_scenario_package_kind")
             try:
                 frozen = native_artifact_reuse.artifact_set_verify_readonly(root, value["artifactSetId"])
             except (OSError, ValueError):
@@ -264,14 +454,23 @@ def admitted_packages(root: Path | str, plan: native_scenario_execution.Scenario
     return packages
 
 
+def staged_roles(row: Mapping[str, Any]) -> tuple[str, ...]:
+    """The admitted packages a row pushes into the guest, staged on the host before its job exists."""
+    if row.get("update"):
+        return ("targetPackage", "fixtureReceipt")
+    return (row["package"]["role"],) if row["package"] else ()
+
+
 def _admit(root: Path | str, request: Mapping[str, Any],
            bundle_resolver: Callable[[native_scenario_execution.ScenarioPlan], Path | str]) -> tuple[dict[str, Any], Any, Any, dict[str, Any]]:
     if not isinstance(request, Mapping):
         raise NativeScenarioWindowsError("windows_scenario_request_invalid")
     row = _row(request.get("scenarioId"))
+    # A row whose evidence has no producer yet is closed, named and refused here, before any journal.
+    _need(row.get("refusal") is None, str(row.get("refusal")))
     # An expired prompt ends as the same public CANCELLED as Esc, so a deny row would pass with no decision at all.
-    # It is admitted only once collect joins the decision's own input terminal.
-    _need((row.get("uac") or {}).get("decision") != "deny", "windows_scenario_deny_needs_decision_join")
+    # It is admitted only where collect joins the decision's own input terminal.
+    _need((row.get("uac") or {}).get("decision") != "deny" or row.get("denyJoin") is True, "windows_scenario_deny_needs_decision_join")
     plan = native_scenario_execution.ScenarioPlan.from_mapping(request)
     _canonical_uuid(plan.correlation_id, "windows_scenario_correlation_invalid")
     _canonical_uuid(plan.environment, "windows_scenario_environment_invalid")
@@ -336,8 +535,13 @@ def render_program(plan: native_scenario_execution.ScenarioPlan, binding: Mappin
                 "row": row, "files": entries, "stopAfter": stop_after,
                 "artifactDirectory": str(PurePosixPath(target["home"]) / _ARTIFACT_PARENT),
                 "packages": {role: {"sha256": item["sha256"], "bytes": item["bytes"]} for role, item in (packages or {}).items()},
-                "product": None if value is None else {"sourceSha": value["sourceSha"], "productVersion": value["productVersion"]},
-                "prior": {} if value is None or value["priorInstall"] is None else {"install": value["priorInstall"]}}
+                "product": None if value is None else {"sourceSha": value["sourceSha"], "productVersion": value["productVersion"],
+                                                       **({"baseVersion": value["baseVersion"]} if row.get("update") else {})},
+                "prior": {**({} if value is None or value["priorInstall"] is None else {
+                    "install": value["priorInstall"], **({"targetInstall": value["targetInstall"]} if row.get("update") else {})}),
+                          **({"preboot": value["priorPreboot"]} if value is not None and "priorPreboot" in value else {})}}
+    if row.get("update"):
+        job_plan["administrator"] = binding["setup"]["administrator"]  # The account a grant approves with; its SID is read in the guest.
     payload = gzip.compress(json.dumps({path: base64.b64encode(raw).decode("ascii") for path, raw in raw_files.items()},
                                        sort_keys=True).encode("ascii"), mtime=0)
     text = raw_files[_HOST_JOB_PATH].decode("utf-8")
@@ -431,6 +635,20 @@ try:os.link(temporary,target)
 except FileExistsError:pass
 os.unlink(temporary);d=os.open(directory,os.O_RDONLY);os.fsync(d);os.close(d)
 print(json.dumps({"state":"staged" if present() else "differs"}))'''
+
+# The decision's own input terminal, read from the VM root it was written under. Two token arguments, no source.
+_READ_DECISION = r'''import json,os,re,stat,sys
+root,decision=sys.argv[1:]
+try:
+ if re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',decision) is None:raise ValueError()
+ fd=os.open(os.path.join(root,'windows-uac',decision,'input.terminal.json'),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+ try:
+  info=os.fstat(fd)
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o600 or not 0<info.st_size<=65536: raise ValueError()
+  raw=os.read(fd,65537)
+ finally: os.close(fd)
+ print(json.dumps({"state":"read","value":json.loads(raw)},separators=(",",":")))
+except Exception: print(json.dumps({"state":"unavailable"},separators=(",",":")))'''
 
 _PULL = r'''import base64,json,os,stat,sys
 job,name,offset,length=sys.argv[1:]
@@ -571,14 +789,17 @@ class NativeScenarioWindowsDriver:
         return native_scenario_execution.JobIdentity("windows-" + plan.correlation_id, pid if type(pid) is int else None,
                                                      ticks if type(pid) is int else None, receipt)
 
-    def _stage(self, config: Any, plan: native_scenario_execution.ScenarioPlan, package: Mapping[str, Any], directory: Path) -> None:
+    def _stage(self, config: Any, plan: native_scenario_execution.ScenarioPlan, package: Mapping[str, Any], directory: Path,
+               role: str = "package") -> None:
         """The package reaches the host's artifact cache before the job exists; a matching copy is kept, never resent."""
         arguments = (package["sha256"], str(package["bytes"]))
-        found = self._send(config, plan.host, _py(_STAGE, *arguments, "check"), seconds=_OBSERVE_SECONDS, keep=directory / "stage-check")
+        # The first role keeps the names a single package always had.
+        suffix = "" if role in ("package", "basePackage", "pythonInstaller", "targetPackage") else "-" + role
+        found = self._send(config, plan.host, _py(_STAGE, *arguments, "check"), seconds=_OBSERVE_SECONDS, keep=directory / ("stage-check" + suffix))
         _need(found is not None and found.get("state") in ("present", "absent"), "windows_scenario_stage_unavailable")
         if found["state"] == "present":
             return
-        staged = self._send(config, plan.host, _py(_STAGE, *arguments, "write"), seconds=_STAGE_SECONDS, keep=directory / "stage-write",
+        staged = self._send(config, plan.host, _py(_STAGE, *arguments, "write"), seconds=_STAGE_SECONDS, keep=directory / ("stage-write" + suffix),
                             stdin_path=Path(package["localPath"]))
         _need(staged is not None and staged.get("state") == "staged", "windows_scenario_stage_unavailable")
 
@@ -595,12 +816,13 @@ class NativeScenarioWindowsDriver:
         config = ssh_transport.load_config(self.configuration_root)
         # The admission deadline clips every call under it, so it is the sum of their own budgets:
         # a slow but in-budget staging never shortens the prepare or submit into an unknown outcome.
-        seconds = self.timeout_seconds + 2 * _SUBMIT_SECONDS + (_OBSERVE_SECONDS + _STAGE_SECONDS if row["package"] else 0)
+        roles = staged_roles(row)
+        seconds = self.timeout_seconds + 2 * _SUBMIT_SECONDS + (_OBSERVE_SECONDS + _STAGE_SECONDS) * len(roles)
         with self._admitted(config, plan, seconds):
             target = self._send(config, plan.host, _py(_TARGET), seconds=self.timeout_seconds, keep=directory / "target")
             _need(target is not None, "windows_scenario_target_unavailable")
-            if row["package"]:
-                self._stage(config, plan, packages[row["package"]["role"]], directory)
+            for role in roles:
+                self._stage(config, plan, packages[role], directory, role)
             source, data = render_program(plan, binding, bundle, verified, target, stop_after=self.stop_after,
                                           value=value, packages=packages)
             program = {"language": "python3", "source": source, "args": [], "cwd": target["home"], "targetContext": target}
@@ -692,8 +914,12 @@ class NativeScenarioWindowsDriver:
             status = self._read_job_file(plan, program["dataDirectory"], "status.json")
         except (OSError, ValueError, ssh_transport.SshConfigError):
             return None
-        pending = status.get("pendingKinds") if isinstance(status, Mapping) else None
-        return "uac-pending:" + uac["prompt"] + ":" + uac["decision"] if isinstance(pending, list) and uac["event"] in pending else None
+        # The run template reports the row's prompt event from every event, not a recent window, and the host job
+        # adds the decision's input terminal once it exists: until then the prompt is pending.
+        pending = status.get("uacEvents") if isinstance(status, Mapping) else None
+        decided = isinstance(status, Mapping) and status.get("uacDecision") is not None
+        return ("uac-pending:" + uac["prompt"] + ":" + uac["decision"]
+                if isinstance(pending, list) and uac["event"] in pending and not decided else None)
 
     def uac_context(self, plan: native_scenario_execution.ScenarioPlan) -> dict[str, Any]:
         """The operation root and SIDs this job's context stage retained. Holds no QMP or QGA socket and takes no lock."""
@@ -716,11 +942,33 @@ class NativeScenarioWindowsDriver:
                     return None
                 raw = base64.b64decode(reply["receipt"], validate=True)
                 summary = self._summary(plan, raw, reply.get("jobExit"))
+                if summary is not None and not self._decision_joined(config, plan, summary):
+                    return None  # A deny row passes only with its decision's own terminal; until then it is unknown.
                 if summary is not None:
                     self._pull_evidence(config, plan, data, json.loads(raw).get("evidence"))
         except (OSError, ValueError, KeyError, TypeError, ssh_transport.SshConfigError):
             return None
         return summary
+
+    def _decision_joined(self, config: Any, plan: native_scenario_execution.ScenarioPlan, summary: dict[str, Any]) -> bool:
+        """A passed deny row joins its decision's input terminal: input-ack-only, deny, the prompt closed.
+
+        An expired prompt ends as the same public CANCELLED as Esc, so the receipt alone cannot tell a deny from no answer.
+        """
+        uac = _row(plan.scenario_id).get("uac") or {}
+        if uac.get("decision") != "deny" or summary["result"] != "passed":
+            return True
+        decision = str(uuid.uuid5(uuid.UUID(plan.correlation_id), "windows-uac-decision"))
+        root = _binding(self.root, plan)["spec"]["root"]
+        reply = self._send(config, plan.host, _py(_READ_DECISION, root, decision), seconds=_OBSERVE_SECONDS)
+        value = reply.get("value") if isinstance(reply, Mapping) and reply.get("state") == "read" else None
+        joined = (isinstance(value, Mapping) and set(value) == _DECISION_FIELDS and value["state"] == "input-ack-only"
+                  and value["operationId"] == decision and value["decision"] == "deny" and value["prompt"] == uac["prompt"]
+                  and value["promptClosed"] is True and value["approvalSucceeded"] is False and value["productOutcomeProved"] is False
+                  and value["replayAllowed"] is False and type(value["attempt"]) is int)
+        if joined:
+            summary["windows"]["uacDecision"] = "deny-acknowledged-prompt-closed"
+        return joined
 
     def _summary(self, plan: native_scenario_execution.ScenarioPlan, raw: bytes, job_exit: Any) -> dict[str, Any] | None:
         receipt = json.loads(raw)

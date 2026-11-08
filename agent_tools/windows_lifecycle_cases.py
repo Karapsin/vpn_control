@@ -188,20 +188,58 @@ class GuiWindows:
         require(bool(self.user.PostMessageW(hwnd, 0x0010, 0, 0)), "exact-window-close-submission")
 
 
-def window_state(owner, child, native, windows):
+def relaunched_frontends(owner, child, native, launcher, access=0x101000):
+    """Open each child of a GUI launcher; the JVM is the one of its own image, born after it.
+
+    A jpackage launcher whose PATH lacks its app folder starts itself again and waits: its
+    windows belong to that second process. A launcher that did not relaunch is its own JVM.
+    Returns every opened process and the at most one JVM; the caller closes them. Callers
+    opt in with ``relaunching``: the packaged product's launchers relaunch, so
+    gui_continuity always does; without it the launcher is taken to be its own JVM.
+    """
+    opened, found = [], []
+    try:
+        for entry in native.processes():
+            if entry["parentPid"] != child.pid:
+                continue
+            process = native.open_process(entry["pid"], access)
+            opened.append(process)
+            value = process.describe()
+            if (process.wait() == 258 and value["creationFileTime"] >= launcher["creationFileTime"]
+                    and ntpath.normcase(value["image"]) == ntpath.normcase(launcher["image"])
+                    and value["sha256"] == launcher["sha256"]):
+                require(value["token"]["sid"] == owner.request["context"]["ordinarySid"]
+                        and value["token"]["sessionId"] == owner.request["context"]["ordinarySessionId"]
+                        and value["token"]["elevated"] == 0, "ordinary-frontend-jvm-token")
+                found.append((process, {"pid": entry["pid"], **value}))
+        require(len(found) <= 1, "one-relaunched-frontend-jvm")
+    except BaseException:
+        for process in opened:
+            process.__exit__(None, None, None)
+        raise
+    return opened, (found[0] if found else None)
+
+
+def window_state(owner, child, native, windows, relaunching=False):
     record = gui_record(owner, child, native)
-    records = windows.windows(child.pid)
+    opened, frontend = relaunched_frontends(owner, child, native, record) if relaunching else ([], None)
+    try:
+        pids = [child.pid] + ([] if frontend is None else [frontend[1]["pid"]])
+        records = [row for pid in pids for row in windows.windows(pid)]
+    finally:
+        for process in opened:
+            process.__exit__(None, None, None)
     gui_record(owner, child, native)
-    owner.event("lifecycle-gui-windows", {"actor": record, "windows": records,
-                 "windowContentOrGuiCallbackProven": False})
+    owner.event("lifecycle-gui-windows", {"actor": record, "frontendJvm": None if frontend is None else frontend[1],
+                 "windows": records, "windowContentOrGuiCallbackProven": False})
     return records
 
 
-def await_window(owner, child, native, windows, visible, seconds=30):
+def await_window(owner, child, native, windows, visible, seconds=30, relaunching=False):
     require(type(visible) is bool and 0 < seconds <= 60, "finite-window-observation")
     until = time.monotonic() + seconds
     while True:
-        records = window_state(owner, child, native, windows)
+        records = window_state(owner, child, native, windows, relaunching)
         main = [row for row in records if row["width"] >= 500 and row["height"] >= 300]
         selected = [row for row in main if row["visible"] is visible]
         if visible and len(selected) == 1:
@@ -213,12 +251,12 @@ def await_window(owner, child, native, windows, visible, seconds=30):
         time.sleep(0.1)
 
 
-def start_gui(owner, workspace, identity, gui_path, native, windows):
+def start_gui(owner, workspace, identity, gui_path, native, windows, relaunching=False):
     owner.guard()
     require(str(Path(gui_path)).casefold() in owner.by_path, "installed-gui-source-pin")
     before = read(owner, workspace, identity, "status")
     child = owner.child("lifecycle-gui", [gui_path, "--state-dir", str(workspace)])
-    main = await_window(owner, child, native, windows, True)
+    main = await_window(owner, child, native, windows, True, relaunching=relaunching)
     after = read(owner, workspace, identity, "status")
     require(after["configurationRevision"] == before["configurationRevision"]
             and after["data"] == before["data"], "gui-attach-changed-owner-runtime")
@@ -227,29 +265,42 @@ def start_gui(owner, workspace, identity, gui_path, native, windows):
     return child
 
 
-def close_window(owner, child, hwnd, native, windows):
-    records = window_state(owner, child, native, windows)
+def close_window(owner, child, hwnd, native, windows, relaunching=False):
+    records = window_state(owner, child, native, windows, relaunching)
     matches = [row for row in records if row["hwnd"] == hwnd and row["visible"]]
     require(len(matches) == 1, "exact-current-visible-window")
     gui_record(owner, child, native)
     require(not getattr(child, "_lifecycle_close_attempted", False), "window-close-already-attempted")
     child._lifecycle_close_attempted = True
     owner.event("lifecycle-wm-close-intent", {"pid": child.pid, "birthFileTimeUtc": child.birth,
-                 "hwnd": hwnd, "oneEffect": True, "replayAllowed": False})
-    windows.close(hwnd, child.pid)  # One WM_CLOSE only. Close-to-tray may hide, not detach.
+                 "windowPid": matches[0]["pid"], "hwnd": hwnd, "oneEffect": True, "replayAllowed": False})
+    windows.close(hwnd, matches[0]["pid"])  # One WM_CLOSE only. Close-to-tray may hide, not detach.
 
 
-def crash_frontend(owner, child, native):
-    """Deliberate frontend termination, only by its retained original child handle."""
-    gui_record(owner, child, native)
+def crash_frontend(owner, child, native, relaunching=False):
+    """Deliberate frontend termination of the process that runs the GUI.
+
+    That is the JVM a relaunching launcher started, through the very handle that identified
+    it, or the launcher's own retained handle when it is its own JVM. The launcher then
+    ends with its JVM's code, so the original child's terminal still carries the crash.
+    """
+    record = gui_record(owner, child, native)
     require(not getattr(child, "_lifecycle_crash_attempted", False), "frontend-crash-already-attempted")
-    child._lifecycle_crash_attempted = True
-    owner.event("lifecycle-frontend-crash-intent", {"pid": child.pid,
-                 "birthFileTimeUtc": child.birth, "originalHandleRetained": True,
-                 "exitCode": CRASH_EXIT, "replayAllowed": False})
-    terminate = native.api(native.k, "TerminateProcess", W.BOOL, [W.HANDLE, W.UINT])
-    if not terminate(int(child.process._handle), CRASH_EXIT):
-        owner.park("original-frontend-termination-outcome-unknown")
+    # Terminate, query and synchronize: the handle that proves the JVM is the one that ends it.
+    opened, frontend = relaunched_frontends(owner, child, native, record, 0x101001) if relaunching else ([], None)
+    try:
+        child._lifecycle_crash_attempted = True
+        owner.event("lifecycle-frontend-crash-intent", {"pid": child.pid,
+                     "birthFileTimeUtc": child.birth, "originalHandleRetained": True,
+                     "frontendJvm": None if frontend is None else frontend[1],
+                     "exitCode": CRASH_EXIT, "replayAllowed": False})
+        terminate = native.api(native.k, "TerminateProcess", W.BOOL, [W.HANDLE, W.UINT])
+        handle = int(child.process._handle) if frontend is None else frontend[0].handle
+        if not terminate(handle, CRASH_EXIT):
+            owner.park("original-frontend-termination-outcome-unknown")
+    finally:
+        for process in opened:
+            process.__exit__(None, None, None)
     terminal = child.wait()
     require(terminal["exitCode"] == CRASH_EXIT and all(terminal["eof"].values()),
             "original-frontend-crash-terminal")
@@ -411,21 +462,22 @@ def gui_continuity(owner, workspace, identity, inputs):
         stable("lifecycle-" + label + "-stable")
         actions.append({"action": label, "startedAt": started, "finishedAt": finished})
         return value
-    gui = action("attach", lambda: start_gui(owner, workspace, identity, inputs["guiPath"], native, windows))
+    # The packaged GUI launcher relaunches itself: its JVM owns the windows and is what a crash ends.
+    gui = action("attach", lambda: start_gui(owner, workspace, identity, inputs["guiPath"], native, windows, relaunching=True))
     def visibility(visible):
         read(owner, workspace, identity, "gui", "show" if visible else "hide")
-        return await_window(owner, gui, native, windows, visible)
+        return await_window(owner, gui, native, windows, visible, relaunching=True)
     action("hide", lambda: visibility(False))
     action("show", lambda: visibility(True))
     action("repeat-show", lambda: visibility(True))
-    main = await_window(owner, gui, native, windows, True)
+    main = await_window(owner, gui, native, windows, True, relaunching=True)
     def close_to_tray():
-        close_window(owner, gui, main["hwnd"], native, windows)
-        return await_window(owner, gui, native, windows, False)
+        close_window(owner, gui, main["hwnd"], native, windows, relaunching=True)
+        return await_window(owner, gui, native, windows, False, relaunching=True)
     action("wm-close-to-tray", close_to_tray)
     action("show-after-close", lambda: visibility(True))
-    action("frontend-crash", lambda: crash_frontend(owner, gui, native))
-    gui = action("reopen", lambda: start_gui(owner, workspace, identity, inputs["guiPath"], native, windows))
+    action("frontend-crash", lambda: crash_frontend(owner, gui, native, relaunching=True))
+    gui = action("reopen", lambda: start_gui(owner, workspace, identity, inputs["guiPath"], native, windows, relaunching=True))
     terminal = traffic.wait()
     require(terminal["exitCode"] == 0 and all(terminal["eof"].values()), "traffic-original-child-terminal")
     stdout = (owner.root / f"child-{traffic.ordinal:04d}.stdout.raw").read_text(encoding="utf-8")

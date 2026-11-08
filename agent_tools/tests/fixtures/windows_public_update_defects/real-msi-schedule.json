@@ -1,0 +1,213 @@
+{
+ "schemaVersion": 1,
+ "summary": {
+  "7": {
+   "type": 30,
+   "value": "x64;1033"
+  },
+  "9": {
+   "type": 30,
+   "value": "{44444444-5555-4666-8777-888888888888}"
+  }
+ },
+ "tables": {
+  "InstallExecuteSequence": {
+   "columns": [
+    [
+     "Action",
+     "s72"
+    ],
+    [
+     "Condition",
+     "S255"
+    ],
+    [
+     "Sequence",
+     "I2"
+    ]
+   ],
+   "rows": [
+    [
+     "AppSearch",
+     null,
+     "50"
+    ],
+    [
+     "CostFinalize",
+     null,
+     "1000"
+    ],
+    [
+     "CostInitialize",
+     null,
+     "800"
+    ],
+    [
+     "CreateFolders",
+     null,
+     "3700"
+    ],
+    [
+     "CreateShortcuts",
+     null,
+     "4500"
+    ],
+    [
+     "FileCost",
+     null,
+     "900"
+    ],
+    [
+     "FindRelatedProducts",
+     null,
+     "25"
+    ],
+    [
+     "InstallFiles",
+     null,
+     "4000"
+    ],
+    [
+     "InstallFinalize",
+     null,
+     "6600"
+    ],
+    [
+     "InstallInitialize",
+     null,
+     "1500"
+    ],
+    [
+     "InstallValidate",
+     null,
+     "1400"
+    ],
+    [
+     "JpSetARPCOMMENTS",
+     "Not Installed",
+     "1001"
+    ],
+    [
+     "JpSetARPCONTACT",
+     "Not Installed",
+     "1002"
+    ],
+    [
+     "JpSetARPINSTALLLOCATION",
+     "Not Installed",
+     "1003"
+    ],
+    [
+     "JpSetARPSIZE",
+     "Not Installed",
+     "1004"
+    ],
+    [
+     "MigrateFeatureStates",
+     null,
+     "1200"
+    ],
+    [
+     "ProcessComponents",
+     null,
+     "1600"
+    ],
+    [
+     "PublishFeatures",
+     null,
+     "6300"
+    ],
+    [
+     "PublishProduct",
+     null,
+     "6400"
+    ],
+    [
+     "RegisterProduct",
+     null,
+     "6100"
+    ],
+    [
+     "RegisterUser",
+     null,
+     "6000"
+    ],
+    [
+     "RemoveExistingProducts",
+     null,
+     "798"
+    ],
+    [
+     "RemoveFiles",
+     null,
+     "3500"
+    ],
+    [
+     "RemoveFolders",
+     null,
+     "3600"
+    ],
+    [
+     "RemoveRegistryValues",
+     null,
+     "2600"
+    ],
+    [
+     "RemoveShortcuts",
+     null,
+     "3200"
+    ],
+    [
+     "UnpublishFeatures",
+     null,
+     "1800"
+    ],
+    [
+     "ValidateProductID",
+     null,
+     "700"
+    ],
+    [
+     "WixRemoveFoldersEx",
+     null,
+     "799"
+    ],
+    [
+     "WriteRegistryValues",
+     null,
+     "5000"
+    ]
+   ]
+  },
+  "Property": {
+   "columns": [
+    [
+     "Property",
+     "s72"
+    ],
+    [
+     "Value",
+     "l0"
+    ]
+   ],
+   "rows": [
+    [
+     "ProductCode",
+     "{33333333-4444-4555-8666-777777777777}"
+    ],
+    [
+     "ProductName",
+     "vpn-control"
+    ],
+    [
+     "ProductVersion",
+     "2.2.16"
+    ],
+    [
+     "UpgradeCode",
+     "{7A5E0A8E-2A7A-4BAF-9F2A-5FB2C3529AF2}"
+    ]
+   ]
+  }
+ }
+}

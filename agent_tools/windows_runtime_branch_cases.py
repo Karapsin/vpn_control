@@ -451,11 +451,18 @@ def start_sibling(owner,state,inputs,runtime,observer):
     return sibling
 
 
+def owner_roles(actual):
+    """The serve launcher and, when it relaunched itself, the JVM that runs the product: both are its image."""
+    roles={'owner':actual['owner']}
+    if actual['jvm']['pid']!=actual['owner']['pid']:roles['ownerJvm']=actual['jvm']
+    return roles
+
+
 def off_with_sibling_survivor(owner,state,inputs,runtime,cases,observer,sibling,gui_actor=None):
     inputs_guard(owner,state,inputs)
     require(sibling is owner.runtime_case_sibling and not sibling['stopAttempted'],'original-owned-sibling-role')
     actual=current_actor(owner,state,inputs,runtime,observer);sibling_actor=actor_of_child(owner,sibling['child'],inputs,observer)
-    expected={'owner':actual['owner'],'productRuntime':actual['runtime'],'siblingRuntime':sibling_actor}
+    expected={**owner_roles(actual),'productRuntime':actual['runtime'],'siblingRuntime':sibling_actor}
     if gui_actor is not None:expected['gui']=gui_actor
     opening=census(owner,observer,expected)
     original=OriginalRuntimeExit(owner,observer,actual['runtime'])

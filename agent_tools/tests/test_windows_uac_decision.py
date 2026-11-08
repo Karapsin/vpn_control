@@ -1330,18 +1330,28 @@ class StatusTokenTests(DriverBase):
 
     def test_the_token_appears_only_once_the_owner_published_its_event(self):
         driver = self.started()
-        self.ssh.job_files["status.json"] = {"pendingKinds": ["child-intent"]}
+        self.ssh.job_files["status.json"] = {"pendingKinds": ["child-intent"], "uacEvents": []}
         with mock.patch.dict(windows.RECIPES, {self.request()["scenarioId"]: self.row}):
             result = self.executor(driver).status(self.operation)
             self.assertEqual("original_owner_running", result["reason"])
-            self.ssh.job_files["status.json"] = {"pendingKinds": ["child-intent", "scoped-tun-awaiting-current-input"]}
+            self.ssh.job_files["status.json"] = {"pendingKinds": ["child-intent"] * 16, "uacEvents": ["scoped-tun-awaiting-current-input"]}
             result = self.executor(driver).status(self.operation)
             self.assertEqual(("submitted", "uac-pending:vpn-broker:deny"), (result["state"], result["reason"]))
+
+    def test_the_token_lasts_until_the_decision_has_its_input_terminal(self):
+        driver = self.started()
+        with mock.patch.dict(windows.RECIPES, {self.request()["scenarioId"]: self.row}):
+            # The recent window alone no longer decides: sixteen later events can push the prompt out of it.
+            self.ssh.job_files["status.json"] = {"pendingKinds": ["scoped-tun-awaiting-current-input"], "uacEvents": []}
+            self.assertEqual("original_owner_running", self.executor(driver).status(self.operation)["reason"])
+            self.ssh.job_files["status.json"] = {"uacEvents": ["scoped-tun-awaiting-current-input"],
+                                                 "uacDecision": {"state": "input-ack-only", "decision": "deny", "prompt": "vpn-broker", "promptClosed": True}}
+            self.assertEqual("original_owner_running", self.executor(driver).status(self.operation)["reason"])
 
     def test_a_missing_or_malformed_status_file_proves_nothing(self):
         driver = self.started()
         with mock.patch.dict(windows.RECIPES, {self.request()["scenarioId"]: self.row}):
-            for value in (None, {"pendingKinds": "scoped-tun-awaiting-current-input"}, ["x"]):
+            for value in (None, {"uacEvents": "scoped-tun-awaiting-current-input"}, ["x"]):
                 with self.subTest(value=value):
                     self.ssh.job_files["status.json"] = value
                     self.assertEqual("original_owner_running", self.executor(driver).status(self.operation)["reason"])
@@ -1500,7 +1510,7 @@ class FakeCli:
         if words == ["off"]:
             self.running = False
             return self.envelope()
-        if words == ["settings", "set", "mode", "proxy-only"] or words == ["locations", "select", "location-1"]:
+        if words in (["settings", "set", "mode", "proxy-only"], ["source", "set", "current-locations"], ["locations", "select", "location-1"]):
             return self.envelope()
         if words[:3] == ["locations", "add", "--input"]:
             return self.envelope(id="location-1")

@@ -1,0 +1,12 @@
+{
+  "failure": "The idle census adds protected_processes for every vpn-control.exe and sing-box.exe, so readiness-reboot refuses whenever the app runs, even one a passed preboot row started through its autostart task and declared.",
+  "nativeEvidence": false,
+  "schemaVersion": 1,
+  "sources": {
+    "idle.before.source": {
+      "bytes": 10298,
+      "origin": "agent_tools/readiness_windows_idle.py at 0f5f368057a95d9de90b68a82edc5c87c2f2ac50",
+      "sha256": "0dc8d2f1f4908183e9c42304b6969fc675404328b938d66d51d464e22ac206a7"
+    }
+  }
+}

@@ -170,10 +170,36 @@ public static class VpnScenarioMsiRegistration {
   if($lookup.Rc -ne 0){$lookup=[VpnScenarioMsiRegistration]::Read($product.Code,$product.Sid,$product.Context,'ProductName')}
   if($lookup.Rc -ne 0){$unnamed=$unnamed+1;if($unnamedCodes.Count -lt 16){$unnamedCodes.Add([int]$lookup.Rc)};continue}
   if($lookup.Value -cne $name){continue}
-  $rows.Add([ordered]@{productCode=$product.Code;context=[int]$product.Context;productName=$name;version=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'VersionString');installLocation=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'InstallLocation')})
+  $rows.Add([ordered]@{productCode=$product.Code;context=[int]$product.Context;productName=$name;version=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'VersionString');installLocation=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'InstallLocation');packageCode=[VpnScenarioMsiRegistration]::Info($product.Code,$product.Sid,$product.Context,'PackageCode')})
   if($rows.Count -gt 8){throw 'PUB_MSI_ROWS'}
  }
  return [ordered]@{products=@($rows.ToArray());scan=[ordered]@{considered=$considered;unnamed=$unnamed;unnamedCodes=@($unnamedCodes.ToArray())}}
+}
+function Extract-Runtime($jars,[string]$installed,[string]$target) {
+ # The installed product's own bundled runtime: the one jar of its app folder that holds the entry, held while
+ # it is read, and the entry written create-only into the workspace with the owned file ACL, then held.
+ Add-Type -AssemblyName System.IO.Compression
+ Assert-ProfileTree $installed
+ Assert-OwnedPath $target
+ if($target -cne ($m.workspace+'\sing-box.exe')){throw 'PUB_RUNTIME_TARGET'}
+ $entryName='bin/windows-amd64/sing-box.exe';$app=$installed+'\app\';$found=[Collections.Generic.List[string]]::new()
+ foreach($jar in @($jars)){
+  if(-not $jar.StartsWith($app,[StringComparison]::Ordinal) -or -not $jar.EndsWith('.jar',[StringComparison]::Ordinal) -or $jar.Substring($app.Length).Contains('\')){throw 'PUB_RUNTIME_JAR'}
+  $stream=[IO.File]::Open($jar,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+  try{$zip=[IO.Compression.ZipArchive]::new($stream,[IO.Compression.ZipArchiveMode]::Read,$true);try{if($null -ne $zip.GetEntry($entryName)){$found.Add($jar)}}finally{$zip.Dispose()}}finally{$stream.Dispose()}
+ }
+ if($found.Count -ne 1){throw 'PUB_RUNTIME_ENTRY_COUNT'}
+ $jarPin=New-ReadPin $found[0];$held=$files[$files.Count-1].stream;$writer=$null;$zip=$null
+ try{
+  $held.Position=0;$zip=[IO.Compression.ZipArchive]::new($held,[IO.Compression.ZipArchiveMode]::Read,$true);$entry=$zip.GetEntry($entryName)
+  $writer=[IO.File]::Open($target,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+  Set-OwnedFileAcl $target
+  $source=$entry.Open();try{$source.CopyTo($writer)}finally{$source.Dispose()}
+  if($writer.Length -ne $entry.Length -or $writer.Length -lt 1){throw 'PUB_RUNTIME_ENTRY_LENGTH'}
+  $writer.Flush($true)
+ }finally{if($null -ne $writer){$writer.Dispose()};if($null -ne $zip){$zip.Dispose()}}
+ Assert-OwnedAcl $target $false 0x1200a9
+ return [ordered]@{jarPin=$jarPin;filePin=(New-ReadPin $target);entry=$entryName}
 }
 function New-EvidenceZip([int]$number) {
  # Closed top-level names only: this listing never enters a folder, and
@@ -200,6 +226,73 @@ function New-EvidenceZip([int]$number) {
  }finally{$output.Dispose()}
  return [ordered]@{schemaVersion=1;state='ordinary-evidence-zip';operationId=$m.operationId;zipPath=$path;zipBytes=$zipBytes;zipSha256=$zipHash;entries=$count}
 }
+function New-GeneratedFile([string]$path,[byte[]]$bytes) {
+ # Bytes made here never cross the wire; only their pin does.
+ Assert-OwnedPath $path
+ $writer=[IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+ try{Set-OwnedFileAcl $path;$writer.Write($bytes,0,$bytes.Length);$writer.Flush($true)}finally{$writer.Dispose()}
+ Assert-OwnedAcl $path $false 0x1200a9
+ return (New-ReadPin $path)
+}
+function Pem-Bytes([string]$label,[byte[]]$bytes) {
+ $text=[Convert]::ToBase64String($bytes);$lines=[Collections.Generic.List[string]]::new()
+ for($at=0;$at -lt $text.Length;$at+=64){$lines.Add($text.Substring($at,[Math]::Min(64,$text.Length-$at)))}
+ return [Text.Encoding]::ASCII.GetBytes('-----BEGIN '+$label+"-----`n"+($lines -join "`n")+"`n-----END "+$label+"-----`n")
+}
+function New-FixtureTls {
+ # A self-signed github.com leaf for the fixture's own CONNECT tunnel: its key is made and kept in the guest.
+ $folder=Join-Path $m.workspace 'update-tls'
+ $rsa=[Security.Cryptography.RSACng]::new(3072);$der=$null;$key=$null
+ try{
+  $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=github.com',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
+  $names=[Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder]::new();$names.AddDnsName('github.com');$request.CertificateExtensions.Add($names.Build($false))
+  $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false,$false,0,$true))
+  $usage=[Security.Cryptography.OidCollection]::new();[void]$usage.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.1'))
+  $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($usage,$false))
+  $now=[DateTimeOffset]::UtcNow;$leaf=$request.CreateSelfSigned($now.AddMinutes(-5),$now.AddHours(24))
+  try{$der=$leaf.RawData}finally{$leaf.Dispose()}
+  $key=$rsa.Key.Export([Security.Cryptography.CngKeyBlobFormat]::Pkcs8PrivateBlob)
+  $certificate=New-GeneratedFile (Join-Path $folder 'server-cert.pem') (Pem-Bytes 'CERTIFICATE' $der)
+  $keyPin=New-GeneratedFile (Join-Path $folder 'server-key.pem') (Pem-Bytes 'PRIVATE KEY' $key)
+ }finally{if($null -ne $key){[Array]::Clear($key,0,$key.Length)};$rsa.Dispose()}
+ return [ordered]@{certificateDer=[Convert]::ToBase64String($der);certificatePin=$certificate;privateKeyPin=$keyPin}
+}
+function Seal-ReadOnly([string]$path) {
+ # prepare_desktop_update_fixture.load_resources serves a target package only while it stays read-only.
+ Assert-OwnedPath $path;if($path -cnotlike ($m.workspace+'\mcp-update-fixture-*\content\packages\target\*.msi')){throw 'PUB_SEAL_PATH'}
+ [IO.File]::SetAttributes($path,([IO.File]::GetAttributes($path) -bor [IO.FileAttributes]::ReadOnly))
+ return (New-ReadPin $path)
+}
+function Read-Bounded([string]$path,[int]$limit) {
+ $f=[IO.File]::Open($path,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+ try{
+  if($f.Length -gt $limit){throw 'PUB_OBSERVE_BOUND'}
+  $b=New-Object byte[] ([int]$f.Length);$at=0
+  while($at -lt $b.Length){$n=$f.Read($b,$at,$b.Length-$at);if($n -le 0){throw 'PUB_OBSERVE_SHORT_READ'};$at+=$n}
+  return [Convert]::ToBase64String($b)
+ }finally{$f.Dispose()}
+}
+function Get-CollectorObservation {
+ # Read only: the task's first two events, every child intent and start, the stdout of closed children and,
+ # once asked, the product workspace's not-started disposition file with its pin.
+ $observed=[ordered]@{};$names=@(Get-ChildItem -LiteralPath $m.operationRoot -File -Force|ForEach-Object {$_.Name}|Sort-Object)
+ $picked=@($names|Where-Object {$_ -cmatch '\A(?:task-event-00000[01]-(?:submission-intent|submitted)|event-[0-9]{6}-child-(?:intent|started))\.json\z'})
+ if($picked.Count -gt 256){throw 'PUB_OBSERVE_COUNT'}
+ foreach($name in $picked){$observed[$name]=Read-Bounded (Join-Path $m.operationRoot $name) 65536}
+ foreach($name in @($names|Where-Object {$_ -cmatch '\Aevent-[0-9]{6}-child-intent\.json\z'})){
+  $intent=[Text.UTF8Encoding]::new($false,$true).GetString([Convert]::FromBase64String($observed[$name]))|ConvertFrom-Json
+  if(@($m.childStdoutLabels) -ccontains [string]$intent.value.label){
+   $raw='child-{0:D4}.stdout.raw' -f [int]$intent.value.child
+   if($names -ccontains $raw){$observed[$raw]=Read-Bounded (Join-Path $m.operationRoot $raw) 65536}
+  }
+ }
+ $dispositions=@()
+ if($m.readDisposition -and [IO.Directory]::Exists($m.productWorkspace)){
+  if($m.productWorkspace -cne ($m.operationRoot+'\workspace')){throw 'PUB_OBSERVE_WORKSPACE'}
+  $dispositions=@(Get-ChildItem -LiteralPath $m.productWorkspace -File -Force|Where-Object {$_.Name -cmatch '\A\.install-not-started-[a-f0-9]{64}\.json\z'}|Select-Object -First 4|ForEach-Object {New-ReadPin $_.FullName})
+ }
+ return [ordered]@{files=$observed;dispositions=@($dispositions)}
+}
 $r=$null
 try{
  Assert-Context
@@ -211,11 +304,15 @@ try{
   foreach($path in @($m.workspace,$m.operationRoot)){if(Test-Path -LiteralPath $path){throw 'PUB_ROOT_EXISTS'}}
   [VpnCreateArtifactDirectory]::CreateExclusive($m.workspace,(Directory-Sddl '0x1200a9'))
   [void](Hold-Directory $m.workspace $null);Assert-OwnedAcl $m.workspace $true 0x1200a9
-  foreach($name in @($m.subfolders)){
-   if($name -cnotmatch '\A[A-Za-z0-9_-]{1,64}\z'){throw 'PUB_SUBFOLDER_NAME'}
-   $folder=Join-Path $m.workspace $name
-   [VpnCreateArtifactDirectory]::CreateExclusive($folder,(Directory-Sddl '0x1200a9'))
-   [void](Hold-Directory $folder $null);Assert-OwnedAcl $folder $true 0x1200a9
+  # Parents come first; a nested name is at most four closed components, all under the workspace.
+  $rows=[Collections.Generic.List[object]]::new()
+  foreach($name in @($m.subfolders)){if($null -ne $name){$rows.Add(@{name=[string]$name;rights='0x1200a9';mask=0x1200a9})}}
+  foreach($name in @($m.privateSubfolders)){if($null -ne $name){$rows.Add(@{name=[string]$name;rights='FA';mask=0x1f01ff})}}
+  foreach($row in $rows){
+   if($row.name -cnotmatch '\A[A-Za-z0-9_-]{1,64}(?:\\[A-Za-z0-9_-]{1,64}){0,3}\z'){throw 'PUB_SUBFOLDER_NAME'}
+   $folder=Join-Path $m.workspace $row.name
+   [VpnCreateArtifactDirectory]::CreateExclusive($folder,(Directory-Sddl $row.rights))
+   [void](Hold-Directory $folder $null);Assert-OwnedAcl $folder $true $row.mask
   }
   [VpnCreateArtifactDirectory]::CreateExclusive($m.operationRoot,(Directory-Sddl '0x1301bf'))
   [void](Hold-Directory $m.operationRoot $null);Assert-OwnedAcl $m.operationRoot $true 0x1301bf
@@ -240,7 +337,11 @@ try{
  }elseif($m.action -ceq 'installer-signer'){$r=[ordered]@{schemaVersion=1;state='ordinary-installer-signer';operationId=$m.operationId;signer=(Get-InstallerSigner $m.installerPath)}
  }elseif($m.action -ceq 'msi-properties'){$r=[ordered]@{schemaVersion=1;state='ordinary-msi-properties';operationId=$m.operationId;package=(Get-MsiProperties $m.packagePath)}
  }elseif($m.action -ceq 'msi-registration'){$found=@(Get-MsiRegistration $m.productName);if($found.Count -ne 1){throw 'PUB_MSI_OUTPUT'};$r=[ordered]@{schemaVersion=1;state='ordinary-msi-registration';operationId=$m.operationId;products=@($found[0].products);scan=$found[0].scan}
+ }elseif($m.action -ceq 'runtime-extract'){$r=[ordered]@{schemaVersion=1;state='ordinary-runtime-extracted';operationId=$m.operationId;runtime=(Extract-Runtime $m.jarPaths $m.installedRoot $m.runtimePath)}
  }elseif($m.action -ceq 'evidence-zip'){$r=New-EvidenceZip ([int]$m.evidenceNumber)
+ }elseif($m.action -ceq 'fixture-tls'){$r=[ordered]@{schemaVersion=1;state='ordinary-fixture-tls';operationId=$m.operationId;tls=(New-FixtureTls)}
+ }elseif($m.action -ceq 'seal-readonly'){$r=[ordered]@{schemaVersion=1;state='ordinary-sealed-readonly';operationId=$m.operationId;filePin=(Seal-ReadOnly $m.sealPath)}
+ }elseif($m.action -ceq 'collector-observe'){$r=[ordered]@{schemaVersion=1;state='ordinary-collector-observation';operationId=$m.operationId;observation=(Get-CollectorObservation)}
  }else{throw 'PUB_ACTION'}
  Assert-Context
  $r.kernelBootIdentifier=$m.kernelBootIdentifier;$r.systemToken=$m.systemToken;$r.allHeldAndNamedPinsClosing=$true;$r.productOperation=$false;$r.taskOperation=$false

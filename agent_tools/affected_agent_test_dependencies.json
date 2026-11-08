@@ -8567,7 +8567,8 @@
       "sourceSha256": [
         "bff6cf6a7f4a31fac577b23d41566e4e5caeae279daed9cf08b743699b06ff10",
         "c0a54c33b2ebb0160ce1d37a8145fb15e3aabf80aab37460fac2d2891862555c",
-        "1abcc54c49db744cc1a1224a26dcb355689163f61620652bb4c9a24eda4066dc"
+        "1abcc54c49db744cc1a1224a26dcb355689163f61620652bb4c9a24eda4066dc",
+        "d20ab61268f24ab3a761597a7936b44abc6fc130cac0bc7e559dff14331db533"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {
@@ -12503,7 +12504,7 @@
       ]
     },
     "agent_tools/tests/test_windows_ordinary_task.py": {
-      "reason": "Authentic original task XML, original source text, native policy receipt and provenance are finite inputs. The old PowerShell launcher is text only: its one exact TOKEN_TASK_XML policy if-statement is extracted for the historical validator causal test, never the task/MSI/source launcher. Current three-owner inventory consumes those exact source bytes; synthetic runtime, installer, request and temp paths are planner data. No directory, runtime, native executable or profile source authority is granted. An authenticated complete original Python planner is compiled only to invoke its original validate_task_policy for the extra-action counterfactual; its inventory, render and native launch functions remain uncalled. The finite action/console/read-bound extension imports current retained owner and disconnected cases. Popen/thread/birth are explicit inert constructor peers, never native process or Win32 acceptance. The authentic complete d00ab Python cases fixture compiles definitions only; only Cases.output runs against disposable real TempFS inputs, with finite file-read tripwires. Current dependency tests analyze only this fixed scope inventory; no runtime, profile, package or opaque-loader authority is added. The reviewed combined successor imports the exact document/streaming modules. Narrow action and launch-order tests use only retained callback/native-pin peers and real disposable directory inputs; logical kernel peers make no Win32 or socket calls and never claim native EOF. No updater, lifecycle, environment, profile or package selector is granted. Two authenticated complete historical private document clients compile definitions only; their receive/Client methods use only in-memory connectors/streams for exact EOF/primary/secondary before/fixed controls. No network socket, native action or additional source is used. The authenticated complete original ordinary owner is definitions-only; only its unbound Owner.run executes with declared child/module/response peers on the existing fixed-source route to test propagation of known nonzero serve termination. No Native/Pin constructor or native actor is used. The dedicated successor adds only two fixed actions and four fixed proxy variants, never a generic updater/lifecycle selector. Exact reviewed body bytes are read into declared pin/module/hold/response peers; no native body or SYSTEM actor is run by these interface controls. A pure literal harness is AST-checked before the existing held-module loader. One complete initial private dispatcher beforeimage compiles definitions only and runs the same intentional-GUI-crash cleanup oracle against retained terminal peers. These controls do not replace upstream whole-body causal enrollment or actual DIRECT/native/MCP acceptance. The protected OS-file role invokes the actual current Native identity/security/read_blocks and Pin custody code against explicitly declared GetFileInformationByHandle/CreateFileW/ReadFile/GetSecurityInfo/conversion peers. They populate the actual ctypes Info class and retain real Python byte hashing; no Win32 API, executable, guest, token, network, process, package, profile or native actor is used. Two byte-authenticated complete prior Python files compile definitions only; their original Native.identity/Pin.current and planner validate_pin reproduce the links=2 policy refusal. Original native raw OS evidence is referenced separately and is not minted or replayed by these portable controls. Only the exact two fixed OS paths may have positive links under actual TI protected writer policy; all staged/runtime/asset/request/script pins retain the generic single-link decision. Exact pinned identity/security, held+named closure, bytes/SHA, and after-read closure remain mandatory. The original canonical OS28 routine, including PowerShell38 method cases, remains registered. Driver interface controls do not substitute for separately registered updater89 whole-body controls or other source families.",
+      "reason": "Authentic original task XML, original source text, native policy receipt and provenance are finite inputs. The old PowerShell launcher is text only: its one exact TOKEN_TASK_XML policy if-statement is extracted for the historical validator causal test, never the task/MSI/source launcher. Current three-owner inventory consumes those exact source bytes; synthetic runtime, installer, request and temp paths are planner data. No directory, runtime, native executable or profile source authority is granted. An authenticated complete original Python planner is compiled only to invoke its original validate_task_policy for the extra-action counterfactual; its inventory, render and native launch functions remain uncalled. The finite action/console/read-bound extension imports current retained owner and disconnected cases. Popen/thread/birth are explicit inert constructor peers, never native process or Win32 acceptance. The authentic complete d00ab Python cases fixture compiles definitions only; only Cases.output runs against disposable real TempFS inputs, with finite file-read tripwires. Current dependency tests analyze only this fixed scope inventory; no runtime, profile, package or opaque-loader authority is added. The reviewed combined successor imports the exact document/streaming modules. Narrow action and launch-order tests use only retained callback/native-pin peers and real disposable directory inputs; logical kernel peers make no Win32 or socket calls and never claim native EOF. No updater, lifecycle, environment, profile or package selector is granted. Two authenticated complete historical private document clients compile definitions only; their receive/Client methods use only in-memory connectors/streams for exact EOF/primary/secondary before/fixed controls. No network socket, native action or additional source is used. The authenticated complete original ordinary owner is definitions-only; only its unbound Owner.run executes with declared child/module/response peers on the existing fixed-source route to test propagation of known nonzero serve termination. No Native/Pin constructor or native actor is used. The dedicated successor adds only two fixed actions and four fixed proxy variants, never a generic updater/lifecycle selector. Exact reviewed body bytes are read into declared pin/module/hold/response peers; no native body or SYSTEM actor is run by these interface controls. A pure literal harness is AST-checked before the existing held-module loader. One complete initial private dispatcher beforeimage compiles definitions only and runs the same intentional-GUI-crash cleanup oracle against retained terminal peers. These controls do not replace upstream whole-body causal enrollment or actual DIRECT/native/MCP acceptance. The protected OS-file role invokes the actual current Native identity/security/read_blocks and Pin custody code against explicitly declared GetFileInformationByHandle/CreateFileW/ReadFile/GetSecurityInfo/conversion peers. They populate the actual ctypes Info class and retain real Python byte hashing; no Win32 API, executable, guest, token, network, process, package, profile or native actor is used. Two byte-authenticated complete prior Python files compile definitions only; their original Native.identity/Pin.current and planner validate_pin reproduce the links=2 policy refusal. Original native raw OS evidence is referenced separately and is not minted or replayed by these portable controls. Only the exact two fixed OS paths may have positive links under actual TI protected writer policy; all staged/runtime/asset/request/script pins retain the generic single-link decision. Exact pinned identity/security, held+named closure, bytes/SHA, and after-read closure remain mandatory. The original canonical OS28 routine, including PowerShell38 method cases, remains registered. Driver interface controls do not substitute for separately registered updater89 whole-body controls or other source families. The reboot and responsive table tests hash only the four fixed reboot entry sources and the responsive case and producer sources the planner and owner name, by those fixed names.",
       "scopes": [
         "agent_tools/windows_ordinary_task.py",
         "agent_tools/windows_ordinary_process_owner.py",
@@ -12554,13 +12555,22 @@
         "agent_tools/tests/fixtures/windows_ordinary_task/dedicated-driver-cleanup.before.source",
         "agent_tools/tests/fixtures/windows_ordinary_task/dedicated-driver-cleanup.provenance.json",
         "agent_tools/windows_runtime_branch_cases.py",
-        "agent_tools/windows_runtime_tcp_listeners.ps1"
+        "agent_tools/windows_runtime_tcp_listeners.ps1",
+        "agent_tools/windows_postboot_source_roles.py",
+        "agent_tools/windows_postboot_action.py",
+        "agent_tools/windows_preboot_action.py",
+        "agent_tools/windows_postboot_startup_actors.ps1",
+        "agent_tools/windows_autostart_reboot.py",
+        "agent_tools/windows_document_responsive_cli_cases.py",
+        "agent_tools/windows_document_responsive_cases.py",
+        "agent_tools/windows_document_gated_https_fixture.py"
       ],
       "sourceSha256": [
         "0f17c83d95f1e860ca153d0d72e8ab1d0597ff7f8159713b27778acb6caa19ae",
         "7eec9a18d85e4ad2c5d7f93b2a9af8cf10d8ac80fa07e54b69eb69186785bbe6",
         "b1b0feaa7e7e0e6e434a9fbaf66af0c97535bb880a9c0baf9681fe565e0b62a1",
-        "c88802c47c1488a4dd734aaef9762dc10faaac46d116862bbabb5ac0ca51d522"
+        "c88802c47c1488a4dd734aaef9762dc10faaac46d116862bbabb5ac0ca51d522",
+        "5a0326a9fba4cc87dcc961f9f1c55f3f4dd878461fc73383eee20d0acc061bd6"
       ]
     },
     "agent_tools/tests/test_windows_original_vm_selector.py": {
@@ -12687,6 +12697,20 @@
         "6f35b9430f09753d8803c7335b7dbef796f0119c024390bec6b697ba2f0ab68d"
       ]
     },
+    "agent_tools/tests/test_windows_public_update_defects.py": {
+      "reason": "Reviewed actual test body: hash-checked before-image fixtures of the planner and the update case module (compiled from their held bytes) and of the SYSTEM run template (run by PowerShell where one exists), their provenance, and a synthetic MSI schedule snapshot, each read by its fixed fixture name; the current run template is read by its fixed path; no other file is read.",
+      "scopes": [
+        "agent_tools/tests/fixtures/windows_public_update_defects/provenance.json",
+        "agent_tools/tests/fixtures/windows_public_update_defects/real-msi-schedule.json",
+        "agent_tools/tests/fixtures/windows_public_update_defects/system-run.before.ps1",
+        "agent_tools/tests/fixtures/windows_public_update_defects/update-cases.before.source",
+        "agent_tools/tests/fixtures/windows_public_update_defects/windows-ordinary-task.before.source",
+        "agent_tools/windows_scenario_system_run.ps1.template"
+      ],
+      "sourceSha256": [
+        "32802f17c89deb506d254b8dfeef645a72dfe13de5592fc43821c1af401c40b5"
+      ]
+    },
     "agent_tools/tests/test_windows_public_updater.py": {
       "reason": "Finite exact-SHA whole sources are opened once, compiled from those held complete bytes and rechecked by full generation/digest through suite close. Original full body TestCases run with declared peers; named whole prior modules run the same positive oracles with actual assertion RED/current GREEN. Temporary/native input paths are peer data, not repository read authority. No directory source scope or ambient source selector is accepted.",
       "scopes": [
@@ -12701,7 +12725,8 @@
       ],
       "sourceSha256": [
         "c049fe0d94e7762e2c67be86530dc0e57b09075064985a5159c77d9df003aa5e",
-        "fa53088f2a094b31d8adfa0f82f0644e19fd34d30ba1386b93331cc1def25578"
+        "fa53088f2a094b31d8adfa0f82f0644e19fd34d30ba1386b93331cc1def25578",
+        "139624624a4a9499c59b857191a591ff8d0917e22762c560f15982a0a7ef84de"
       ]
     },
     "agent_tools/tests/test_windows_python_fixture_io.py": {
@@ -13194,7 +13219,8 @@
         "scripts/windows_broker_fixture_observer.py"
       ],
       "sourceSha256": [
-        "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b"
+        "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b",
+        "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795"
       ]
     },
     "agent_tools/windows_lifecycle_runtime_fixture_worker.py": {
@@ -13227,7 +13253,7 @@
       ]
     },
     "agent_tools/windows_ordinary_dedicated_driver.py": {
-      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. Scheduled, no-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks.",
+      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. Scheduled, no-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks. A reviewed oracle failure in a proxy row closes what the row started by its own public steps, once, and exits 1; unknown errors, open children and TUN rows still park.",
       "scopes": [
         "agent_tools/windows_public_updater/update_cases.py",
         "agent_tools/windows_public_updater/update_receipts.py",
@@ -13252,7 +13278,8 @@
       "sourceSha256": [
         "ea432e878b863c5d28165d010f974dd03cfc11574e2948c2234171a1af74dbb8",
         "1b4aa32f0c370d49278c57dc79d48246e3c2e22d0d51620b2b88ce1cd8021048",
-        "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb"
+        "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb",
+        "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13269,7 +13296,8 @@
       ],
       "sourceSha256": [
         "939f33f84c3c35c404e65dfb887107354e086710aa1c7ba077b7082f8d1b17b1",
-        "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78"
+        "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78",
+        "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c"
       ]
     },
     "agent_tools/windows_system_collector/caller_hold.py": {
@@ -13353,7 +13381,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "b574531af91ec7c160388a980d08a5bbd43c4a3f55faaeb11335147b8ea60a43",
+    "agent_tools/readiness_vm_dispatch.json": "4fd9f979360b7eb39890fdcbccbe51176dab13c92dfba0beba77c629049262d9",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

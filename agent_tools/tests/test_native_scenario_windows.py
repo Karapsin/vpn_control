@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -40,6 +41,9 @@ from agent_tools.tests.test_native_vm_spec import request as vm_request
 ROOT = Path(__file__).resolve().parents[2]
 MACHINE = "33333333-4444-4555-8666-777777777777"
 SCENARIO = "windows-ordinary-qualification"
+PROXY_ROWS = tuple("windows-proxy-lifecycle." + variant for variant in (
+    "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
+    "prepare-failure", "commit-readiness-failure", "sibling-off"))
 HOME = "/home/fixture-owner"
 TARGET = {"kind": "ssh", "uid": 1000, "principal": "fixture-owner", "home": HOME, "bootId": "22222222-3333-4444-8555-666666666666"}
 OWNER = {"pid": 4242, "birth": "linux:987654"}
@@ -80,6 +84,9 @@ class FakeSsh:
         self.pulls = 0
         self.staged = {}
         self.stdin = None
+        self.job_files = {}
+        self.decision = None
+        self.decision_reads = []
 
     def _marker(self, operation):
         return json.dumps({"schemaVersion": 1, "operationId": operation, "scenarioExit": self.exit_code, "failure": None}).encode() + b"\n"
@@ -100,6 +107,12 @@ class FakeSsh:
             if len(raw) == size and hashlib.sha256(raw).hexdigest() == digest:
                 self.staged[digest] = raw
             return "stage-write", {"state": "staged" if digest in self.staged else "differs"}
+        if program == windows._READ_JOB_FILE:
+            value = self.job_files.get(command[6])
+            return "read-job-file", {"state": "unavailable"} if value is None else {"state": "read", "value": value}
+        if program == windows._READ_DECISION:
+            self.decision_reads.append(tuple(command[5:7]))
+            return "read-decision", {"state": "unavailable"} if self.decision is None else {"state": "read", "value": self.decision}
         if program == windows._PULL:
             self.pulls += 1
             offset, length = int(command[7]), int(command[8])
@@ -270,7 +283,10 @@ class TableTests(unittest.TestCase):
     def test_the_closed_names_agree_everywhere(self):
         self.assertEqual(set(windows.RECIPES), set(execution.WINDOWS_SCENARIOS))
         self.assertEqual({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install", "windows-msi-base-reset",
-                          "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt"}, set(windows.RECIPES))
+                          "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
+                          "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
+                          "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
+                          *PROXY_ROWS, *("windows-public-update." + variant for variant in windows.UPDATE_VARIANTS)}, set(windows.RECIPES))
         for name, row in windows.RECIPES.items():
             self.assertEqual(frozenset(row["artifactKeys"]), ssh_driver.SCENARIO_ARTIFACT_KEYS[name])
             self.assertIn(name, execution._SCENARIOS)
@@ -282,21 +298,70 @@ class TableTests(unittest.TestCase):
         classes = {name: row["evidenceClass"] for name, row in windows.RECIPES.items()}
         self.assertEqual({"windows-ordinary-qualification": "component", "windows-python-install": "setup", "windows-msi-base-install": "setup",
                           "windows-msi-base-reset": "setup", "windows-packaged-cli-smoke": "product", "windows-disconnected-cli-config": "product",
-                          "windows-streaming-client-interrupt": "product"}, classes)
+                          "windows-streaming-client-interrupt": "product",
+                          **{name: "product" for name in ("windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
+                          "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect")},
+                          **{name: "product" for name in PROXY_ROWS},
+                          **{"windows-public-update." + variant: "product" for variant in windows.UPDATE_VARIANTS}}, classes)
         for name, row in windows.RECIPES.items():
             with self.subTest(name=name):
                 packages = [key for key in row["artifactKeys"] if key in windows.PACKAGE_KINDS]
-                self.assertEqual(row["evidenceClass"] == "product", packages == ["targetPackage"] and row["priorInstall"] is True)
+                expected = ["targetPackage", "fixtureReceipt"] if row.get("update") else ["targetPackage"]
+                self.assertEqual(row["evidenceClass"] == "product", packages == expected and row["priorInstall"] is True)
                 self.assertEqual(row["package"] is not None, row["evidenceClass"] == "setup")
                 self.assertEqual("installed" in row["stages"], row["evidenceClass"] == "setup")
+                self.assertEqual("declare" in row["stages"], (row.get("reboot") or {}).get("phase") == "pre")
+
+    def test_reboot_rows_pair_each_postboot_with_its_preboot(self):
+        rows = {name: row for name, row in windows.RECIPES.items() if row.get("reboot")}
+        self.assertEqual({"windows-autostart-migration": "autostart-migration", "windows-reboot-reconnect": "reconnect",
+                          "windows-reboot-explicit-off": "explicit-off"},
+                         {name[:-4]: row["reboot"]["scenario"] for name, row in rows.items() if name.endswith(".pre")})
+        for name, row in rows.items():
+            with self.subTest(name=name):
+                phase = row["reboot"]["phase"]
+                self.assertEqual("windows-postboot-final" if phase == "post" else "windows-preboot-reboot", row["workerAction"])
+                self.assertEqual(name[:-5] + ".pre" if phase == "post" else None, row["reboot"]["preboot"])
+                if phase == "post":
+                    self.assertEqual(rows[row["reboot"]["preboot"]]["reboot"]["scenario"], row["reboot"]["scenario"])
+                roles = {role for _, role, _ in row["guestFiles"]} - {"owner", "worker"}
+                self.assertEqual(planner.POSTBOOT_ROLES - {"gui", "powerShell", "runtimeAuthority"}, roles)
+        self.assertEqual({"phase": "none", "scenario": "query-first", "preboot": None}, rows["windows-query-owner-gui-reconnect"]["reboot"])
 
     def test_the_worker_doors_are_constants_of_their_rows(self):
         casing = {name: [relative for relative, role, _ in row["guestFiles"] if role == "cases"] for name, row in windows.RECIPES.items()}
         self.assertEqual({"windows-disconnected-cli-config": ["agent_tools/windows_disconnected_cli_cases.py"],
-                          "windows-streaming-client-interrupt": ["agent_tools/windows_streaming_cli_cases.py"]},
+                          "windows-streaming-client-interrupt": ["agent_tools/windows_streaming_cli_cases.py"],
+                          **{name: ["agent_tools/windows_lifecycle_cases.py"] for name in PROXY_ROWS},
+                          **{"windows-public-update." + variant: ["agent_tools/windows_public_updater/update_cases.py"]
+                             for variant in windows.UPDATE_VARIANTS}},
                          {name: files for name, files in casing.items() if files})
         self.assertEqual({"windows-packaged-cli-smoke"}, {name for name, row in windows.RECIPES.items() if row["workerAction"] == "qualification"})
         self.assertEqual({"windows-ordinary-qualification"}, {name for name, row in windows.RECIPES.items() if "qualificationArguments" in row})
+
+    def test_proxy_rows_are_the_dedicated_drivers_variants_with_the_builders_files(self):
+        from agent_tools import windows_ordinary_dedicated_driver as dedicated
+        from agent_tools import windows_scenario_proxy as proxy
+        self.assertEqual(set(windows.PROXY_VARIANTS), dedicated.PROXY_VARIANTS | dedicated.BRANCH_VARIANTS)
+        self.assertEqual(windows.PROXY_VARIANTS, proxy.VARIANTS)
+        self.assertEqual(windows._PROXY_BRANCH_VARIANTS, dedicated.BRANCH_VARIANTS)
+        self.assertFalse({"no-tray-close", "scheduled-refresh", "restart-deny"} & set(windows.PROXY_VARIANTS), "the driver refuses these")
+        for variant in windows.PROXY_VARIANTS:
+            with self.subTest(variant=variant):
+                row = windows.RECIPES["windows-proxy-lifecycle." + variant]
+                self.assertEqual(("product", "python-worker", "windows-proxy-lifecycle", True, None),
+                                 (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"]))
+                self.assertEqual({"variant": variant}, row["proxy"])
+                self.assertEqual(tuple((role, proxy.GENERATED[role]) for role in proxy.generated_roles(variant)), row["generated"])
+                self.assertEqual(((proxy.RUNTIME_ROLE, proxy.RUNTIME_LEAF),), row["extracted"])
+                roles = {role for _, role, _ in row["guestFiles"]}
+                self.assertEqual(variant in proxy.TRAFFIC_VARIANTS, "traffic" in roles)
+                self.assertEqual(variant in dedicated.BRANCH_VARIANTS, {"branches", "listener"} <= roles)
+                leaves = [relative.rsplit("/", 1)[1] for relative, _, _ in row["guestFiles"]] + [leaf for _, leaf in row["generated"] + row["extracted"]]
+                self.assertEqual(len(leaves), len(set(leaves)), "every published file has its own leaf in the workspace")
+                named = [role for _, role, _ in row["guestFiles"]] + [role for role, _ in row["generated"] + row["extracted"]]
+                self.assertEqual(len(named), len(set(named)), "every published file has its own role")
+                self.assertNotIn("qualificationArguments", row)
 
     def test_the_qualification_doors_are_constants_of_the_row(self):
         row = windows.RECIPES["windows-ordinary-qualification"]
@@ -333,7 +398,7 @@ class PublicEvidenceTests(unittest.TestCase):
 
     def test_a_product_row_needs_every_real_fact(self):
         digest = "b" * 64
-        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt", *PROXY_ROWS):
             complete = {"scenarioId": scenario, "state": "terminal", "collectionState": "complete",
                         "artifactIds": {"bundleManifest": "sha256-" + "a" * 64, "scenarioInput": "sha256-" + "c" * 64, "targetPackage": "sha256-" + digest},
                         "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": digest}}}
@@ -807,7 +872,7 @@ class FamilyDriverBase(DriverBase):
 class PackageAdmissionTests(FamilyDriverBase):
     def test_every_new_row_admits_before_any_journal(self):
         for scenario in ("windows-python-install", "windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke",
-                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt", *PROXY_ROWS):
             with self.subTest(scenario=scenario):
                 self.assertEqual(windows.RECIPES[scenario], windows.admit_start(self.root, self.family_request(scenario), self.resolver))
                 self.assertFalse(self.journal.exists())
@@ -832,7 +897,7 @@ class PackageAdmissionTests(FamilyDriverBase):
             "changed-bytes": (changed["artifactId"], "windows_scenario_package_unavailable"),
             "unregistered": ("sha256-" + "e" * 64, "windows_scenario_package_unavailable"),
         }
-        for scenario in ("windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke"):
+        for scenario in ("windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke", "windows-proxy-lifecycle.gui-pending"):
             for name, (artifact, reason) in cases.items():
                 with self.subTest(scenario=scenario, case=name):
                     self.assert_refused(self.family_request(scenario, package=artifact), reason)
@@ -848,7 +913,7 @@ class PackageAdmissionTests(FamilyDriverBase):
     def test_an_input_naming_another_version_than_its_frozen_set_is_refused_before_any_journal(self):
         # The set was frozen with gradle.properties' 2.2.15; a well-formed input naming any other version is mislabelled.
         for scenario in ("windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke",
-                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt", "windows-proxy-lifecycle.sibling-off"):
             for version in ("2.2.16", "2.2.14", "3.0.0"):
                 with self.subTest(scenario=scenario, version=version):
                     self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, productVersion=version)),
@@ -865,11 +930,60 @@ class PackageAdmissionTests(FamilyDriverBase):
         for name, change in cases.items():
             with self.subTest(case=name):
                 self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, **change)), "windows_scenario_input_invalid")
+        # A proxy row runs on an installed package: no prior install, its own operation or a malformed one refuse before any journal.
+        for scenario in PROXY_ROWS:
+            for name in ("no-prior", "own-prior", "bad-prior", "other-scenario"):
+                with self.subTest(scenario=scenario, case=name):
+                    change = cases[name] if name != "other-scenario" else {"scenarioId": "windows-proxy-lifecycle.generated"
+                                                                           if scenario.endswith(".gui-pending") else "windows-proxy-lifecycle.gui-pending"}
+                    self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, **change)), "windows_scenario_input_invalid")
         self.assert_refused(self.family_request("windows-msi-base-install", value=self.scenario_input("windows-msi-base-install", priorInstall=self.prior)),
                             "windows_scenario_input_invalid")
         kind = self.register(json.dumps({"schema": windows.INPUT_SCHEMA}).encode(), "input.json", "native-scenario-input")["artifactId"]
         self.assert_refused(self.family_request(scenario, value=kind), "windows_scenario_input_invalid")
         self.assert_refused(self.family_request(scenario, value="sha256-" + "d" * 64), "windows_scenario_input_unavailable")
+
+    def test_only_a_postboot_input_names_its_preboot(self):
+        preboot = str(uuid.uuid4())
+        post = "windows-reboot-reconnect.post"
+        self.assertEqual("product", windows.admit_start(self.root, self.family_request(post, value=self.scenario_input(post, priorPreboot=preboot)),
+                                                        self.resolver)["evidenceClass"])
+        for name, change in (("absent", None), ("null", None.__class__), ("own", self.operation), ("install", self.prior), ("word", "preboot")):
+            with self.subTest(case=name):
+                value = {} if change is None else {"priorPreboot": None if change is None.__class__ else change}
+                self.assert_refused(self.family_request(post, value=self.scenario_input(post, **value)), "windows_scenario_input_invalid")
+        for scenario in ("windows-reboot-reconnect.pre", "windows-query-owner-gui-reconnect", "windows-packaged-cli-smoke"):
+            with self.subTest(scenario=scenario):
+                self.assertIsNotNone(windows.admit_start(self.root, self.family_request(scenario), self.resolver))
+                self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, priorPreboot=preboot)),
+                                    "windows_scenario_input_invalid")
+
+    def test_a_postboot_job_names_its_preboot_and_nothing_else_does(self):
+        bundle, verified = windows.verified_bundle(self.root, self.plan_for("windows-reboot-reconnect.post"), self.resolver)
+        preboot = str(uuid.uuid4())
+        for scenario, value, prior in (("windows-reboot-reconnect.post", {"priorPreboot": preboot}, {"install": self.prior, "preboot": preboot}),
+                                       ("windows-reboot-reconnect.pre", {}, {"install": self.prior})):
+            with self.subTest(scenario=scenario):
+                plan = self.plan_for(scenario)
+                source, _ = windows.render_program(plan, windows._binding(self.root, plan), bundle, verified, TARGET,
+                                                   value={**self.input_value(scenario), **value}, packages={})
+                job_plan = ast.literal_eval(re.search(r"^PLAN=(.*)$", source, re.M)[1])
+                self.assertEqual(prior, job_plan["prior"])
+                self.assertEqual(windows.RECIPES[scenario]["reboot"], job_plan["row"]["reboot"])
+
+    def plan_for(self, scenario):
+        return native_scenario_execution_plan(self, scenario)
+
+    def input_value(self, scenario):
+        return {"schema": windows.INPUT_SCHEMA, "schemaVersion": 1, "scenarioId": scenario, "correlationId": self.operation,
+                "deploymentId": MACHINE, "sourceSha": self.head, "productVersion": "2.2.15", "artifactSetId": self.set_id,
+                "priorInstall": self.prior}
+
+
+def native_scenario_execution_plan(case, scenario):
+    request = case.family_request(scenario, value=case.scenario_input(scenario, **(
+        {"priorPreboot": str(uuid.uuid4())} if scenario.endswith(".post") else {})))
+    return execution.ScenarioPlan.from_mapping(request)
 
 
 class PackageSubmitTests(FamilyDriverBase):
@@ -897,12 +1011,18 @@ class PackageSubmitTests(FamilyDriverBase):
         self.assertEqual(["target", "stage-check", "prepare", "submit"], self.ssh.calls, "a staged copy is never sent again")
 
     def test_product_rows_send_no_package_and_name_their_prior_install(self):
-        self.executor().start(self.family_request("windows-packaged-cli-smoke"))
-        self.assertEqual(["target", "prepare", "submit"], self.ssh.calls)
-        plan = self.program_plan()
-        self.assertEqual({"install": self.prior}, plan["prior"])
-        self.assertEqual(["targetPackage"], list(plan["packages"]))
-        self.assertTrue(plan["row"]["priorInstall"])
+        for scenario in ("windows-packaged-cli-smoke", "windows-proxy-lifecycle.commit-readiness-failure"):
+            with self.subTest(scenario=scenario):
+                self.operation = str(uuid.uuid4())
+                self.ssh.calls.clear()
+                self.executor().start(self.family_request(scenario))
+                self.assertEqual(["target", "prepare", "submit"], self.ssh.calls)
+                plan = self.program_plan()
+                self.assertEqual({"install": self.prior}, plan["prior"])
+                self.assertEqual(["targetPackage"], list(plan["packages"]))
+                self.assertTrue(plan["row"]["priorInstall"])
+                self.assertEqual(scenario, plan["scenarioId"])
+                self.assertEqual(json.loads(json.dumps(windows.RECIPES[scenario])), plan["row"], "the job gets the closed row, nothing else")
 
     def test_every_call_keeps_its_whole_budget_inside_the_one_submit_admission(self):
         # A slow but in-budget staging must not clip the prepare or submit after it into an unknown outcome.
@@ -1106,6 +1226,259 @@ raise SystemExit(0)
         self.assertEqual(["started"], self.starts.read_text().splitlines(), "one job, one start")
         with self.assertRaisesRegex(ValueError, "windows_scenario_job_already_exists"):
             driver.submit(self.plan())
+
+
+UPDATE = "windows-public-update."
+
+
+class UpdateTableTests(unittest.TestCase):
+    def test_the_variants_are_the_ones_the_case_module_accepts(self):
+        from agent_tools.windows_public_updater import update_cases
+        self.assertEqual(set(update_cases.VARIANTS) - {"transport-loss"}, set(windows.UPDATE_VARIANTS))
+        self.assertIn("transport-loss", update_cases.VARIANTS, "the case module refuses it itself")
+
+    def test_only_rows_with_a_producer_for_their_evidence_are_admitted(self):
+        refusals = {variant: windows.RECIPES[UPDATE + variant]["refusal"] for variant in windows.UPDATE_VARIANTS}
+        self.assertEqual({"public-ready", "download-cancelled", "checksum-rejected"},
+                         {variant for variant, reason in refusals.items() if reason is None})
+        self.assertEqual({"uac-denied"}, {variant for variant, reason in refusals.items() if reason == "windows_scenario_update_collector_unproven"})
+        self.assertEqual({"install-cancelled", "participating-copy-lock", "success-off", "success-reconnect", "different-admin", "wait-client-loss",
+                          "installer-wait-client-loss"},
+                         {variant for variant, reason in refusals.items() if reason == "windows_scenario_update_grant_unproven"})
+        self.assertEqual({"native-install-failed", "protected-storage-rejected"},
+                         {variant for variant, reason in refusals.items() if reason == "windows_scenario_update_fault_unavailable"})
+
+    def test_the_rows_agree_with_the_dedicated_driver_and_the_decision_table(self):
+        from agent_tools import windows_ordinary_dedicated_driver as dedicated
+        from agent_tools import windows_uac_decision as uac
+        for variant in windows.UPDATE_VARIANTS:
+            row = windows.RECIPES[UPDATE + variant]
+            with self.subTest(variant=variant):
+                self.assertEqual(variant in dedicated.NO_SYSTEM, "uac" not in row, "a row with no SYSTEM collector raises no prompt")
+                if "uac" in row:
+                    table = uac.ROWS[UPDATE + variant]
+                    self.assertEqual((table["prompt"], table["decision"], table["event"]), (row["uac"]["prompt"], row["uac"]["decision"], row["uac"]["event"]))
+                stages, final = row["update"]["collectorStages"], row["update"]["finalStage"]
+                finals = dedicated.FINAL_TERMINAL | dedicated.FINAL_RETURNED
+                self.assertTrue(final is None or variant in finals)
+                if row["refusal"] is None:
+                    self.assertEqual(final is not None, variant in finals)
+                roles = {role for _, role, _ in row["guestFiles"]}
+                self.assertEqual(bool(stages), {"caller_hold", "hold_protocol", "collector_contract", "system_worker"} <= roles)
+                self.assertTrue({"driver", "cases", "receipts", "server", "collector", "lifecycle"} <= roles)
+                for relative, _, _ in row["guestFiles"]:
+                    self.assertTrue(host_job._BUNDLE_PATH.fullmatch(relative), relative)
+        self.assertEqual((("before-install", "terminal-actors"), "terminal-actors"),
+                         tuple(windows.RECIPES[UPDATE + "uac-denied"]["update"][key] for key in ("collectorStages", "finalStage")))
+
+    def test_the_collector_modules_are_the_contract_roles(self):
+        from agent_tools.windows_system_collector import collector_contract as contract
+        row = windows.RECIPES[UPDATE + "uac-denied"]
+        files = {role: relative for relative, role, _ in row["guestFiles"]}
+        for role, name in host_job.COLLECTOR_MODULES.items():
+            digest = hashlib.sha256((ROOT / files[name]).read_bytes()).hexdigest()
+            expected = {**contract.FIXED, "collector": contract.COLLECTORS["update"]}.get(role)
+            if expected is not None:
+                self.assertEqual(expected, digest, role)
+        self.assertEqual(set(host_job.UPDATE_MODULE_ROLES), {role for role in files if role in host_job.UPDATE_MODULE_ROLES})
+
+
+class UpdateBase(FamilyDriverBase):
+    """A fixture pair's target and receipt, frozen together; the base was installed earlier by a family row."""
+
+    def setUp(self):
+        super().setUp()
+        self.target_install = str(uuid.uuid4())
+        self.receipt = self.register(json.dumps(self.fixture_receipt()).encode(), "fixture-receipt.json", "desktop-update-fixture-receipt", source=self.head)
+        self.update_set = self.freeze([self.msi, self.receipt])
+
+    def fixture_receipt(self, **changes):
+        msi = self.msi["path"].read_bytes()
+
+        def asset(version, sha):
+            name = "vpn-control-" + version + ".msi"
+            return {"platform": "windows", "architecture": "x86_64", "packageType": "msi", "displayVersion": version, "fileName": name,
+                    "downloadUrl": windows._FIXTURE_URL + name, "sha256": sha, "sizeBytes": len(msi)}
+        target = asset("2.2.15", hashlib.sha256(msi).hexdigest())
+        value = {"schemaVersion": 1, "testOnly": True, "productionTrustChanged": False, "sourceFingerprint": "f" * 64, "nativeOs": "Windows-11",
+                 "architecture": "x86_64",
+                 "builds": [{"label": "base", "version": "2.2.14", "sourceFingerprint": "f" * 64, "codeFingerprint": "c" * 64, "assets": [asset("2.2.14", "e" * 64)]},
+                            {"label": "target", "version": "2.2.15", "sourceFingerprint": "f" * 64, "codeFingerprint": "c" * 64, "assets": [target]}],
+                 "manifest": {"schemaVersion": 1, "buildNumber": host_job.version_build("2.2.15"), "releaseTag": "disposable-desktop-fixture",
+                              "releaseNotesUrl": "https://github.com/Karapsin/vpn_control/releases/tag/disposable-desktop-fixture", "assets": [target]}}
+        value.update(changes)
+        return value
+
+    def update_input(self, variant, **changes):
+        value = {"artifactSetId": self.update_set, "baseVersion": "2.2.14", "targetInstall": self.target_install, **changes}
+        return self.scenario_input(UPDATE + variant, **value)
+
+    def update_request(self, variant, *, receipt=None, value=None, target=None):
+        artifacts = {"bundleManifest": "sha256-" + self.bundle_hash, "scenarioInput": value or self.update_input(variant),
+                     "targetPackage": target or self.msi["artifactId"], "fixtureReceipt": receipt or self.receipt["artifactId"]}
+        return self.request(scenarioId=UPDATE + variant, artifactIds=artifacts)
+
+
+class UpdateAdmissionTests(UpdateBase):
+    def test_the_admitted_rows_pass_admission_before_any_journal(self):
+        for variant in ("public-ready", "download-cancelled", "checksum-rejected"):
+            with self.subTest(variant=variant):
+                self.assertEqual(windows.RECIPES[UPDATE + variant], windows.admit_start(self.root, self.update_request(variant), self.resolver))
+                self.assertFalse(self.journal.exists())
+
+    def test_every_other_row_is_refused_before_any_journal_with_what_it_lacks(self):
+        for variant in windows.UPDATE_VARIANTS:
+            reason = windows.RECIPES[UPDATE + variant]["refusal"]
+            if reason is not None:
+                with self.subTest(variant=variant):
+                    self.assert_refused(self.update_request(variant), reason)
+
+    def test_the_input_names_an_older_base_and_the_earlier_install_of_its_target(self):
+        variant = "public-ready"
+        for change, reason in (({"baseVersion": "2.2.13"}, "windows_scenario_update_base_baseline"),
+                               ({"baseVersion": "2.2.15"}, "windows_scenario_update_not_newer"),
+                               ({"baseVersion": "2.3.0"}, "windows_scenario_update_not_newer"),
+                               ({"baseVersion": "2.2"}, "windows_scenario_input_invalid"),
+                               ({"targetInstall": self.operation}, "windows_scenario_input_invalid"),
+                               ({"targetInstall": self.prior}, "windows_scenario_input_invalid"),
+                               ({"targetInstall": "install"}, "windows_scenario_input_invalid")):
+            with self.subTest(change=change):
+                self.assert_refused(self.update_request(variant, value=self.update_input(variant, **change)), reason)
+        plain = self.scenario_input(UPDATE + variant, artifactSetId=self.update_set)
+        self.assert_refused(self.update_request(variant, value=plain), "windows_scenario_input_invalid")
+
+    def test_the_receipt_must_describe_the_admitted_target_package(self):
+        variant = "public-ready"
+        good = self.fixture_receipt()
+        target = good["manifest"]["assets"][0]
+        cases = {"other-digest": {"sha256": "0" * 64}, "other-size": {"sizeBytes": 1}, "other-version": {"displayVersion": "2.2.16"},
+                 "path-name": {"fileName": "..\\vpn-control.msi"}, "other-url": {"downloadUrl": "https://example.invalid/x.msi"}}
+        for name, change in cases.items():
+            with self.subTest(case=name):
+                asset = dict(target, **change)
+                builds = [good["builds"][0], dict(good["builds"][1], assets=[asset])]
+                receipt = self.register(json.dumps(self.fixture_receipt(builds=builds, manifest=dict(good["manifest"], assets=[asset]))).encode(),
+                                        "fixture-receipt.json", "desktop-update-fixture-receipt", source=self.head)
+                fixture_set = self.freeze([self.msi, receipt])
+                self.assert_refused(self.update_request(variant, receipt=receipt["artifactId"], value=self.update_input(variant, artifactSetId=fixture_set)),
+                                    "windows_scenario_fixture_receipt")
+        for name, receipt_value in (("two-sources", self.fixture_receipt(builds=[dict(good["builds"][0], sourceFingerprint="d" * 64), good["builds"][1]])),
+                                    ("two-codes", self.fixture_receipt(builds=[dict(good["builds"][0], codeFingerprint="d" * 64), good["builds"][1]])),
+                                    ("base-not-older", self.fixture_receipt(builds=[dict(good["builds"][0], version="2.2.15"), good["builds"][1]])),
+                                    ("production-trust", self.fixture_receipt(productionTrustChanged=True))):
+            with self.subTest(case=name):
+                receipt = self.register(json.dumps(receipt_value).encode(), "fixture-receipt.json", "desktop-update-fixture-receipt", source=self.head)
+                fixture_set = self.freeze([self.msi, receipt])
+                self.assert_refused(self.update_request(variant, receipt=receipt["artifactId"], value=self.update_input(variant, artifactSetId=fixture_set)),
+                                    "windows_scenario_fixture_receipt")
+        loose = self.register(json.dumps(self.fixture_receipt(nativeOs="Windows-loose")).encode(), "fixture-receipt.json", "desktop-update-fixture-receipt",
+                              source=self.head)
+        self.assert_refused(self.update_request(variant, receipt=loose["artifactId"]), "windows_scenario_package_not_frozen")
+        foreign = self.register(json.dumps(self.fixture_receipt(nativeOs="Windows-foreign")).encode(), "fixture-receipt.json",
+                                "desktop-update-fixture-receipt", source="f" * 40)
+        self.assert_refused(self.update_request(variant, receipt=foreign["artifactId"]), "windows_scenario_package_source")
+        kind = self.register(json.dumps(self.fixture_receipt(nativeOs="Windows-kind")).encode(), "fixture-receipt.json", "fixture-receipt", source=self.head)
+        self.assert_refused(self.update_request(variant, receipt=kind["artifactId"]), "windows_scenario_package_kind")
+
+    def test_the_deny_row_is_refused_until_its_collector_can_take_a_request_and_read_the_disposition(self):
+        """Natively a published file reads back O:SYD:PAI, which the pinned collector refuses as its request, and SYSTEM
+        cannot open the product's owner-only not-started disposition. Either one leaves the row unable to pass."""
+        self.assert_refused(self.update_request("uac-denied"), "windows_scenario_update_collector_unproven")
+
+    def test_a_deny_row_needs_collect_to_join_its_decision(self):
+        row = dict(windows.RECIPES[UPDATE + "uac-denied"], denyJoin=False, refusal=None)
+        with mock.patch.dict(windows.RECIPES, {UPDATE + "uac-denied": row}):
+            self.assert_refused(self.update_request("uac-denied"), "windows_scenario_deny_needs_decision_join")
+
+
+class UpdateSubmitTests(UpdateBase):
+    def program_plan(self):
+        program = json.loads(self.root.joinpath(*windows._LOCAL_STATE, self.operation, "program.json").read_text())
+        for node in ast.parse(program["program"]["source"]).body:
+            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "PLAN":
+                return ast.literal_eval(node.value)
+
+    def test_target_and_receipt_are_staged_and_the_job_names_its_base_and_target_install(self):
+        self.assertEqual("submitted", self.executor().start(self.update_request("public-ready"))["state"])
+        self.assertEqual(["target", "stage-check", "stage-write", "stage-check", "stage-write", "prepare", "submit"], self.ssh.calls)
+        plan = self.program_plan()
+        self.assertEqual({"targetPackage", "fixtureReceipt"}, set(plan["packages"]))
+        for role, artifact in (("targetPackage", self.msi), ("fixtureReceipt", self.receipt)):
+            self.assertEqual(artifact["path"].read_bytes(), self.ssh.staged[plan["packages"][role]["sha256"]])
+        self.assertEqual({"sourceSha": self.head, "productVersion": "2.2.15", "baseVersion": "2.2.14"}, plan["product"])
+        self.assertEqual({"install": self.prior, "targetInstall": self.target_install}, plan["prior"])
+        self.assertEqual("recoveryadmin", plan["administrator"])
+        self.assertNotIn(str(self.sources), json.dumps(plan))
+
+
+def supposing_the_deny_row(test):
+    """The deny row's token and join stay in the driver for the day its collector is proved; admission refuses it today."""
+    patcher = mock.patch.dict(windows.RECIPES, {UPDATE + "uac-denied": dict(windows.RECIPES[UPDATE + "uac-denied"], refusal=None)})
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
+class UpdateObservationTests(UpdateBase):
+    def setUp(self):
+        super().setUp()
+        supposing_the_deny_row(self)
+        self.executor().start(self.update_request("uac-denied"))
+        self.status_file = HOME + "/.cache/vpn-control-windows-scenarios/" + MACHINE + "/" + self.operation
+
+    def status(self, value):
+        self.ssh.job_files["status.json"] = value
+        return self.executor().status(self.operation)["reason"]
+
+    def test_the_prompt_stays_pending_from_every_event_until_its_decision_is_known(self):
+        token = "uac-pending:install-helper:deny"
+        self.assertEqual("original_owner_running", self.status({"pendingKinds": [], "uacEvents": []}))
+        # Sixteen child events after the prompt's: the recent window no longer names it, the sticky list does.
+        window = ["child-started", "child-intent"] * 8
+        self.assertEqual(token, self.status({"pendingKinds": window, "uacEvents": ["update-uac-action-pending"], "uacDecision": None}))
+        self.assertEqual("original_owner_running", self.status({"pendingKinds": ["update-uac-action-pending"], "uacEvents": []}),
+                         "only the sticky list counts")
+        decided = {"state": "input-ack-only", "decision": "deny", "prompt": "install-helper", "promptClosed": True}
+        self.assertEqual("original_owner_running", self.status({"pendingKinds": window, "uacEvents": ["update-uac-action-pending"], "uacDecision": decided}))
+        self.assertEqual(1, self.ssh.submits)
+
+
+class UpdateCollectionTests(UpdateBase):
+    def setUp(self):
+        super().setUp()
+        supposing_the_deny_row(self)
+        self.executor().start(self.update_request("uac-denied"))
+        self.decision = str(uuid.uuid5(uuid.UUID(self.operation), "windows-uac-decision"))
+
+    def job_receipt(self, exit_code=0):
+        plan = {"scenarioId": UPDATE + "uac-denied", "operationId": self.operation, "machine": MACHINE, "bundleHash": self.bundle_hash}
+        value = host_job.build_receipt(plan, exit_code=exit_code, stage="receipt", failure=None, guest_programs=40)
+        return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+
+    def terminal(self, **changes):
+        return {"state": "input-ack-only", "operationId": self.decision, "attempt": 1, "decision": "deny", "prompt": "install-helper",
+                "promptClosed": True, "approvalSucceeded": False, "productOutcomeProved": False, "replayAllowed": False, **changes}
+
+    def test_a_passed_deny_row_completes_only_with_its_decision_terminal(self):
+        self.finished(raw=self.job_receipt())
+        for decision in (None, self.terminal(promptClosed=False), self.terminal(decision="approve"), self.terminal(state="input-outcome-unknown"),
+                         self.terminal(operationId=str(uuid.uuid4())), self.terminal(extra="x")):
+            with self.subTest(decision=decision):
+                self.ssh.decision = decision
+                result = self.executor().status(self.operation)
+                self.assertEqual(("unknown", "terminal_collection_unverified"), (result["state"], result["reason"]))
+                self.assertNotIn("scenarioEvidence", result)
+        self.ssh.decision = self.terminal()
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "passed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual("deny-acknowledged-prompt-closed", result["scenarioEvidence"]["windows"]["uacDecision"])
+        self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1], "the VM root the decision was written under")
+        self.assertEqual({"evidenceClass": "installed-package-unproven", "productAction": True}, windows.public_evidence(result))
+
+    def test_a_failed_deny_row_needs_no_join(self):
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1))
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual([], self.ssh.decision_reads)
 
 
 if __name__ == "__main__":
