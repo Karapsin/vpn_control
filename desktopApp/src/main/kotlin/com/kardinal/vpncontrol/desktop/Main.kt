@@ -108,7 +108,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlin.system.exitProcess
 
-fun main(rawArgs: Array<String>) {
+fun main(launcherArgs: Array<String>) {
+    // A restarted Windows jpackage launcher mangles its arguments; nothing reads them before this.
+    val rawArgs = DesktopWindowsLauncherArguments.forMain(launcherArgs)
     // Pure parsing precedes admission; no workspace IO, owner/bootstrap or GUI work does.
     val invocation = DesktopWorkspacePaths.parse(rawArgs.toList()).getOrElse {
         if (desktopCliWantsJson(rawArgs.toList())) {

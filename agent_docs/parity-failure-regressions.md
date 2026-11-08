@@ -996,6 +996,24 @@ A native failure. The replies are `.runtime/windows-parity-20261107/direct/statu
 | The MSI reader returned a list, because PowerShell returns everything a function does not capture | `test_windows_scenario_host_job.PublisherFunctionOutputTests.test_the_msi_reader_has_no_bare_method_call_statement` | `Get-MsiProperties` called the COM `$view.Execute()` and `$view.Close()` as bare statements, so their output joined its result and `package` became a list. RED on the template at `ce2bc407` (both bare calls); GREEN discards both. The next native install (operation `67902930`) passed the publish stage and ran `msiexec`. |
 | The SYSTEM registration reader missed a per-user install | `test_windows_scenario_host_job.RegistrationReaderTests`, `FamilyJobTests.test_a_registration_read_that_could_not_name_products_says_so` | `msiexec` installed 2.2.16 per user, unmanaged, for the ordinary SID (its log: status 0, `ARPINSTALLLOCATION` set), yet the after-install read found no row: `installed_registration_differs`, then `installed_product_state:count_0` on a reset (operation `d811bdc4`), which refused before any task. The reader enumerated each context by the user's SID, named products by `ProductName` and silently dropped any product whose name it could not read. It now enumerates every user and context at once (`S-1-1-0`, 7) and reads `InstalledProductName`, as the natively proven reader in `windows_tertiary_guest_stage.py` does, and it reports how many products it considered and which name reads failed. A wrong count names both. RED on the template at `ce2bc407`. |
 
+### Windows CLI arguments after the launcher restart (2026-11-08)
+
+A native product failure. On the Windows 11 guest the installed 2.2.16 CLI (runtime
+17.0.21) answered `INVALID_ARGUMENT` to the family's `routing set direct-domains`
+with `["Example.test"]`, which Python passed correctly (operation `98c8c95a`:
+`.runtime/windows-parity-20261107/family/diag/evidence-98c8c95a/`, events 1521
+to 1525 and `child-0299.stderr.raw`). Since JDK 17.0.10 (JDK-8301247) the
+jpackage launcher restarts itself whenever PATH lacks `<image>\app`, and its
+Executor quotes only values holding a space or tab, so `main` received
+`[Example.test]`. An empty value disappears the same way, and a quoted value
+ending in a backslash swallows the values after it. macOS and Linux are
+unaffected. Before-images and the RED/GREEN Gradle output are under
+`.runtime/fix-cli-args/` of the fix clone.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The restarted Windows launcher handed `main` re-quoted arguments | `DesktopWindowsLauncherArgumentsTest.windowsMainHandsTheCliTheJsonArrayTheUserTypedAfterTheLauncherRestart` and `windowsMainHandsTheCliTheEmptyNameTheUserTypedAfterTheLauncherRestart`, with the escape, restart-model, refusal and detection cases of the same class | `main` first takes the waiting parent's command line: only from a parent with the same image, born earlier, and only when jpackage's re-quoting of it reproduces exactly what `main` received. Anything else keeps the received arguments. RED with HEAD's `Main.kt` and the unfixed handoff (arguments passed on unchanged): the native `[Example.test]`, and `--name` left without its empty value. GREEN: `["Example.test"]`, which the CLI parser and the routing logic accept as `example.test`, and `--name ""`. Removing any guard (image, birth, reproduction, platform), or accepting an equal creation time, turns its case RED. The JNA reads (NtQueryInformationProcess, QueryFullProcessImageNameW, GetProcessTimes, CommandLineToArgvW) cannot run on the Mac, so the family's routing case needs a native rerun. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

@@ -498,6 +498,12 @@ macOS CLI runs the bundled binary directly, not `open`, with no Dock/window for
 headless commands; preserve signing and runtime lookup. Linux must run without
 DISPLAY/WAYLAND, retaining installed TUN/capability and direct-probe behavior.
 
+On Windows the jpackage launcher restarts itself and re-quotes its arguments
+without escaping them (JDK 17.0.10+). `main` first recovers the original
+arguments from that waiting parent's command line, so JSON values such as
+`routing set direct-domains JSON_ARRAY` and empty values pass unchanged. It uses
+them only when re-quoting them reproduces exactly what `main` received.
+
 ## Android Adapter Work
 
 Move authoritative coordination to an application-scoped session shared by GUI,

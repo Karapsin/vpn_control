@@ -50,7 +50,9 @@ Android and macOS native and visual work stay deferred and open, never passed.
    disconnected and streaming rows each parked their owner and blocked their clone:
    the jpackage Windows launcher restarts itself, so a third process shares the
    console and arguments containing `"` arrive mangled (a product defect, fixed in
-   the CLI entry by user decision), and the owner parks on known failures while its
+   `main` by user decision: the original arguments are recovered from the waiting
+   parent launcher and used only when re-quoting them reproduces exactly what `main`
+   received), and the owner parks on known failures while its
    own children run. By user decision the two blocked clones are stopped with their
    disks kept, and two fresh clones replace them.
    Still to add: the taken tools, the reboot allowance and the remaining families
