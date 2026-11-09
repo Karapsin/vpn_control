@@ -177,7 +177,8 @@
         "748841ba33bd7e3a8d58d6cff249305095dfa8dff14fc908ec30ec72219f1ee3",
         "902afbf12b0fb1fc9b3900f7f1af63abac658517f90c3c830e4e71946590621a",
         "2bb3629f16546472c7d5adee7f4db60f692998f57d6ebb03e8d50d64f8c4b145",
-        "ddc0b780428760e9de644488ebbd024c7daa458d7f341b473c8f5a46ebec91fb"
+        "ddc0b780428760e9de644488ebbd024c7daa458d7f341b473c8f5a46ebec91fb",
+        "64446372a3f60f0617776996b61bb3750860bee654028bb472934ede0cb1616f"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -8186,7 +8187,7 @@
       ]
     },
     "agent_tools/tests/test_lease_provider_policy.py": {
-      "reason": "Only authenticated literal old policy source/JSON are staged under fixed temp filenames; actual declared policy is read at fixed MANIFEST_PATH. Complete current facade fixture supplies controlled original socket/owner dependencies.",
+      "reason": "Only authenticated literal old policy source/JSON are staged under fixed temp filenames; actual declared policy is read at fixed MANIFEST_PATH. Complete current facade fixture supplies controlled original socket/owner dependencies. The closed Windows deployment reservation release joins the same original-operation group and is popped like the UAC decision.",
       "scopes": [
         "agent_tools/readiness_lease_workflow.py",
         "agent_tools/tool_action_policy.py",
@@ -8200,7 +8201,8 @@
       "sourceSha256": [
         "d5d9a7d74bba18f01a09df695a3730ac062d3cea1bab0bb557f72335d3112f5f",
         "7d909b47ffa61b670fe4cfb77590dea2160b1d839f08ca0190f1ab2d5a23efe9",
-        "218b0b76c3a18ea80c219b4c935bd7e09ed60da395ec05bc9f4557f12a0416cf"
+        "218b0b76c3a18ea80c219b4c935bd7e09ed60da395ec05bc9f4557f12a0416cf",
+        "b2ff44ac4f7d6e9cbf607fa70d35d1ebf673ec1d6e2c1ca71239eaa223c9abd3"
       ]
     },
     "agent_tools/tests/test_lease_provider_policy_runtime.py": {
@@ -13069,6 +13071,25 @@
         "48472708c99e1dc11dcc7de419528985e1e211d6bbc2a247ee9aca104c41c90d"
       ]
     },
+    "agent_tools/tests/test_windows_vm_deploy_release.py": {
+      "reason": "Imports the new release module by one literal name, so the unfixed tool reports it missing instead of failing to load the suite. Physical private coordinator state with the real unchanged start, admission, status, stop and reservation ledger; only the host boot epoch, census and original instance replies are simulated. The causal pair drives the public CLI route on a private root with inert readiness admission; no VM, SSH or MCP transport is reached. These explicit scopes are its complete repository inputs.",
+      "scopes": [
+        "agent_tools/mcp_server.py",
+        "agent_tools/native_environment.py",
+        "agent_tools/readiness_vm_dispatch.json",
+        "agent_tools/readiness_vm_dispatch.py",
+        "agent_tools/tests/route_adapter.py",
+        "agent_tools/tests/test_native_vm_spec.py",
+        "agent_tools/tool_action_policy.json",
+        "agent_tools/tool_action_policy.py",
+        "agent_tools/windows_vm_deploy.py",
+        "agent_tools/windows_vm_reservation_release.py",
+        "agent_tools/windows_vm_resources.py"
+      ],
+      "sourceSha256": [
+        "706c705f4a21fa82e006139b9a117cdf47a4c8a397a4b6d1694c4233a328ea99"
+      ]
+    },
     "agent_tools/tests/test_windows_vm_guest.py": {
       "reason": "Compile actual fixed qualification/security functions with physical create-only receipts/seed files and finite QGA/registry epoch IO seams. No credential mutation is claimed by these unit controls.",
       "scopes": [
@@ -13393,7 +13414,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "87531abb1a2f0d297e6665eb5909bb1856c368677b94c7f40945b236b7fb3554",
+    "agent_tools/readiness_vm_dispatch.json": "82b3a16f0367ad460e4f212a035213a4552a6fcb8b20da11cb300281d2ebb272",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",
@@ -13595,7 +13616,7 @@
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.before.source": "21a0185c5bee3d0ec6045a64ba319ab396f4aceabd82f8b981cbd2aa503121b3",
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.fixed.source": "d761bc4c8e4c581af05559d27855562e9324d86b8839e5b63eac7eb9927cda5b",
     "agent_tools/tests/fixtures/windows_wts_info_class/observe.before.source": "6ea19c6ffd6e53190df564f4ec56bc9772d60a663ad2820ea08dc2a4ed0f5e50",
-    "agent_tools/tool_action_policy.json": "9690f3ca655da921fa9a461c65c800899030d60c0926072cfa7a951ba65a1c8d",
+    "agent_tools/tool_action_policy.json": "0d34ce4cbcf981da22d5b39cf0bb18718db1912eed792cd704a7fb8165af4821",
     "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5",
     "scripts/tests/fixtures/visual_target_before/bootstrap_windows_visual_vm.sh.source": "855a6b625b00a5411cd8b9dd7832cf23a824fa5e52e7ef294d87447100a298ae",
     "scripts/tests/fixtures/visual_target_before/mark_windows_visual_vm_ready.sh.source": "4eeb3e2ee6d01e78503052a6ce2496195a02d55cb7fe120b723a136effea9a13",

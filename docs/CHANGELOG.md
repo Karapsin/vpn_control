@@ -9,6 +9,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Bind every desktop free-port probe and port check to the loopback, so starting a connection, Find Best, validation and SSH-routed subscription downloads no longer trigger a Windows Defender Firewall prompt for VPN Control.
 - Keep OneDrive from updating itself on Windows test fixtures: the fixture update policy sets OneDrive's PreventNetworkTrafficPreUserSignIn before the first logon and disables every OneDrive update task.
 - Attach a desktop GUI reopened right after a GUI crash or exit at once, instead of exiting without a window until the dead GUI's lease expires.
+- Windows test clones that were stopped or ended by a host reboot can give their host-memory reservation back with windows-vm-deploy-release, so a new clone's start is no longer refused for memory no VM uses.
 
 ## 2.2.17 - 2026-11-09
 

@@ -227,6 +227,7 @@ protocol traffic; CLI function calls alone are not equivalent to that proof.
 | `windows-vm-deploy-start` | `spec`, `setup`, `credentialFile` | Create-only blank VM with capacity reservation and immutable original intent. |
 | `windows-vm-deploy-status` | `deploymentId`, `credentialFile` | Observe the original instance or positive original-actor absence after stop. |
 | `windows-vm-deploy-stop` | `deploymentId`, `credentialFile` | Consume one stop intent after exact original actor reidentification; never replay. |
+| `windows-vm-deploy-release` | `deploymentId`, `credentialFile` | Release this deployment's own running reservation on fresh proof that its VM cannot run; never stops, never replays. |
 | `windows-vm-deploy-qualify` | `deploymentId`, `operationId`, `credentialFile` | One fixed read-only guest setup/account query, with a retained guest PID. |
 | `windows-vm-deploy-qualify-status` | Same qualification inputs | Collect that original PID/terminal; never submit another query. |
 | `windows-vm-deploy-secure` | `deploymentId`, `operationId`, `credentialFile` | After qualification, rotate the setup administrator secret, disable automatic logon/task and remove credential-bearing setup media/caches. |
@@ -416,6 +417,37 @@ exception text. Reservation admission refusal reports BLOCKED with
 Specialize stages a protected SYSTEM task; guest-agent MSI waits for completed
 Windows setup. Installed-OS locale and ordinary autologon are explicit answer-file
 settings; a running QEMU alone does not establish that they completed.
+
+`windows-vm-deploy-release` releases a stopped or rebooted-away deployment's exact
+own reservation. It lives in its own module, `windows_vm_reservation_release`, which
+only reads and calls `windows_vm_deploy`, `native_environment` and
+`windows_vm_resources`, whose bytes the Windows readiness source pins and frozen
+sign-in packets bind. It reads the deployment's own start
+intent and private `reservation.private.json`, `running-reservation.private.json`
+and `boot-result.private.json`, and touches only the inventory row with exactly
+that identity. It needs one of two fresh proofs that the VM cannot run.
+(a) Clean absence on the reservation's own host boot: a fresh resource census of
+that boot lists no original QEMU, and the read-only status (never a stop) reports
+`stopped-observed` with `positiveAbsence` for the bound original QEMU and swtpm;
+status itself refuses any other boot with `instance_host_epoch`.
+(b) Ended host epoch: a fresh census reports another `hostBootId` than the
+reservation's and no original QEMU. A reboot ends every VM of the old epoch and a
+deployment is create-only, so (b) neither needs nor replays a stop, including one
+that ended UNKNOWN. Anything else is BLOCKED with a finite `release_*` reason and
+releases nothing: an unknown or unreachable observation, a running instance, a
+foreign or mismatched identity, a pending row, an inventory that changed after
+its pre-observation digest, or another release of the same deployment in
+progress. With the digest unchanged under the inventory lock, it retains
+`.rag_index/windows-vm-deploy-releases/<deploymentId>.authorized.<correlation>.json`,
+marks the row's job absent with a correlated terminal receipt and releases it
+through `native_environment.release_environment`; the terminal is
+`<deploymentId>.released.json`. Each attempt's request, census, status and result
+are under `.runtime/windows-vm-deploy-releases/<correlation>/`. A repeat returns
+the retained terminal (`idempotent: true`). After a lost reply it reconciles by
+reading: a row gone after this action's own authorization is `released` with
+`reconciled: true`. It never releases twice and never replays. Start is unchanged:
+a start that admission refused before any VM effect may run again after a
+release, with its original setup and credential file.
 
 The 36 old Windows VM setup/preflight actions listed in
 `agent_tools/windows_vm_setup_policy.py` return

@@ -91,6 +91,10 @@ class LeaseProviderPolicyTests(unittest.TestCase):
         owners = [group for group in actual['groups'] if 'windows-uac-decision' in group.get('actions', {})]
         self.assertEqual(1, len(owners))
         self.assertEqual('vm_workflow:windows-uac-decision', owners[0]['actions'].pop('windows-uac-decision'))
+        # A later reviewed action in the same group: the closed Windows deployment reservation release.
+        owners = [group for group in actual['groups'] if 'windows-vm-deploy-release' in group.get('actions', {})]
+        self.assertEqual(1, len(owners))
+        self.assertEqual('vm_workflow:windows-vm-deploy-status', owners[0]['actions'].pop('windows-vm-deploy-release'))
         self.assertEqual(before, actual)
         self.assertEqual(PROVIDERS, set(variants))
 

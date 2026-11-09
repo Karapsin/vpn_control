@@ -529,6 +529,7 @@
         "windows-update-fixture-guest-create-abort": "vm_workflow:windows-update-fixture-guest-create-abort-status",
         "windows-vm-deploy-frame": "vm_workflow:windows-vm-deploy-frame-collect",
         "windows-vm-deploy-qualify": "vm_workflow:windows-vm-deploy-qualify-status",
+        "windows-vm-deploy-release": "vm_workflow:windows-vm-deploy-status",
         "windows-vm-deploy-secure": "vm_workflow:windows-vm-deploy-secure-status"
       }
     },
