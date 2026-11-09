@@ -91,6 +91,7 @@ agent_tools/tests/fixtures/windows_standard_token/*.ps1 -text
 /agent_tools/tests/fixtures/windows_jobs_observer_framing/** -text
 /agent_tools/tests/fixtures/windows_jobs_default_owner/** -text
 /agent_tools/tests/fixtures/windows_desktop_background_roles/** -text
+/agent_tools/tests/fixtures/windows_console_session_roles/** -text
 /scripts/tests/fixtures/visual_target_before/** -text
 /agent_tools/tests/fixtures/recovery_checkout_extended/attributes.before -text
 /agent_tools/tests/fixtures/windows_job_ack_guidance/** -text

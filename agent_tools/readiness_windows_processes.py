@@ -94,6 +94,28 @@ function Test-RecoveryPublishedPackage([object]$native,[string]$ordinary,[string
 function Test-RecoveryWidgetPackage([object]$native,[string]$ordinary) {
  return [bool](Test-RecoveryPublishedPackage $native $ordinary 'Microsoft.WidgetsPlatformRuntime' 'WidgetService\WidgetService.exe')
 }
+function Test-RecoveryComServer([object]$p,[object]$native,[string]$ordinary,[UInt32]$console,[string]$family,[string]$image,[string]$arguments) {
+ # A Windows component's COM server for the ordinary session: its Windows-signed
+ # package family, its exact image and COM arguments, a Microsoft signature, the
+ # ordinary owner, and the live session-0 System32 svchost.exe that started it.
+ try {
+  if([UInt32]$p.SessionId -ne $console -or $native.packageError -ne 0 -or [string]$native.package -notmatch ('^'+[regex]::Escape($family)+'_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__cw5n1h2txyewy$')){return $false}
+  if(-not [string]::Equals([string]$native.image,$image,[StringComparison]::OrdinalIgnoreCase) -or -not [string]::Equals([string]$p.CommandLine,('"'+$image+'" '+$arguments),[StringComparison]::OrdinalIgnoreCase) -or -not (Test-RecoveryMicrosoftSignature $image)){return $false}
+  $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
+  if($owner.ReturnValue -ne 0 -or -not [string]::Equals([string]$owner.Sid,$ordinary,[StringComparison]::OrdinalIgnoreCase)){return $false}
+  $parentId=[UInt32]$p.ParentProcessId
+  if(-not $RecoveryRoleProcessMap.ContainsKey($parentId)){return $false}
+  $parent=$RecoveryRoleProcessMap[$parentId];$parentNative=[RecoveryProcessIdentity]::Read($parentId)
+  $parentCreation=if($null -eq $parent.CreationDate){''}else{$parent.CreationDate.ToUniversalTime().ToFileTimeUtc().ToString()}
+  $serviceHost=$env:SystemRoot+'\System32\svchost.exe'
+  return [bool]([string]$parent.Name -eq 'svchost.exe' -and [UInt32]$parent.SessionId -eq 0 -and [RecoveryProcessIdentity]::Image($parentNative,'svchost.exe',$parentCreation) -and [string]::Equals([string]$parentNative.image,$serviceHost,[StringComparison]::OrdinalIgnoreCase) -and [UInt64]$parentNative.birth -le [UInt64]$native.birth -and (Test-RecoveryMicrosoftSignature $serviceHost))
+ }catch{return $false}
+}
+function Test-RecoveryDashboardWidgetService([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
+ # The widget board's service where the Web Experience package itself carries it.
+ if($native.packageError -ne 0 -or [string]$native.package -notmatch '^MicrosoftWindows\.Client\.WebExperience_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__cw5n1h2txyewy$'){return $false}
+ return [bool](Test-RecoveryComServer $p $native $ordinary $console 'MicrosoftWindows.Client.WebExperience' ($env:ProgramFiles+'\WindowsApps\'+$native.package+'\Dashboard\WidgetService.exe') '-RegisterProcessAsComServer -Embedding')
+}
 function Test-RecoveryStoreExtension([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
  # The Store's desktop extension, briefly after a sign-in. It is package-signed with
  # no embedded signature, so its identity is the verified package and the session owner.
@@ -138,12 +160,14 @@ function Test-RecoveryUnconfiguredOneDrive([object]$p,[object]$native,[string]$o
 }
 function Test-RecoveryUnconfiguredOneDriveSync([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
  # The helper of the same unconfigured per-user OneDrive: no account, its own
- # version folder and its one setup argument. Anything else stays unknown.
+ # version folder and its one setup argument, alone or after its own quoted
+ # image, as its launchers start it. Anything else stays unknown.
  if([UInt32]$p.SessionId -ne $console){return $false}
  $metadata=Get-RecoveryOneDriveMetadata $p $ordinary
  if($null -eq $metadata -or $metadata.hiveLoaded -ne $true -or $metadata.accountsKnown -ne $true -or $metadata.configuredFieldsAbsent -ne $true -or -not [string]::Equals($metadata.ownerSid,$ordinary,[StringComparison]::OrdinalIgnoreCase) -or [string]::IsNullOrEmpty($metadata.profileRoot)){return $false}
  $pattern='^'+[regex]::Escape($metadata.profileRoot+'\AppData\Local\Microsoft\OneDrive\')+'[0-9]+(\.[0-9]+){3}\\OneDrive\.Sync\.Service\.exe$'
- if([string]$native.image -notmatch $pattern -or -not [string]::Equals([string]$p.CommandLine,('"'+$native.image+'" /silentConfig'),[StringComparison]::OrdinalIgnoreCase)){return $false}
+ $commandLine=[string]$p.CommandLine
+ if([string]$native.image -notmatch $pattern -or -not ([string]::Equals($commandLine,'/silentConfig',[StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($commandLine,('"'+$native.image+'" /silentConfig'),[StringComparison]::OrdinalIgnoreCase))){return $false}
  return [bool](Test-RecoveryMicrosoftSignature $native.image)
 }
 function Test-RecoveryWebView([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
@@ -231,7 +255,8 @@ function Test-RecoveryExtraRole([object]$p,[object]$native,[string]$ordinary,[UI
  if($name -eq 'msedgewebview2.exe'){return [bool](Test-RecoveryWebView $p $native $ordinary $console)}
  if($name -eq 'OneDrive.exe'){return [bool](Test-RecoveryUnconfiguredOneDrive $p $native $ordinary $console)}
  if($name -eq 'OneDrive.Sync.Service.exe'){return [bool](Test-RecoveryUnconfiguredOneDriveSync $p $native $ordinary $console)}
- if($name -eq 'WidgetService.exe' -and $session -eq $console){return [bool](Test-RecoveryWidgetPackage $native $ordinary)}
+ if($name -eq 'WidgetService.exe' -and $session -eq $console){return [bool]((Test-RecoveryWidgetPackage $native $ordinary) -or (Test-RecoveryDashboardWidgetService $p $native $ordinary $console))}
+ if($name -eq 'AppActions.exe'){return [bool](Test-RecoveryComServer $p $native $ordinary $console 'MicrosoftWindows.Client.CBS' ($env:SystemRoot+'\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\AppActions.exe') '-Embedding')}
  $shape=$false
  if($name -eq 'wlms.exe' -and $session -eq 0){$shape=($path -eq ($env:SystemRoot+'\System32\wlms\wlms.exe'))}
  elseif($name -eq 'DefenderSessionHelper.exe' -and $native.protection -eq 3){$shape=($path -match ('^'+[regex]::Escape($env:ProgramData+'\Microsoft\Windows Defender\Platform\')+'[0-9.]+-[0-9]+\\DefenderSessionHelper\.exe$'))}

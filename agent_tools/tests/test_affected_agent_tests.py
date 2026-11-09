@@ -595,7 +595,8 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
             'agent_tools.tests.test_windows_preexec_inventory_clr',
             'agent_tools.tests.test_windows_defender_service_roles.NativeWindowsDefenderServiceTests',
             'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_complete_before_RED_fixed_desktop_roles_GREEN',
-            'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_target_parent_package_account_and_configured_mismatches_block'])
+            'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_target_parent_package_account_and_configured_mismatches_block',
+            'agent_tools.tests.test_windows_console_session_roles'])
         self._assert_command_covers_unaffected(raw, name)
 
 

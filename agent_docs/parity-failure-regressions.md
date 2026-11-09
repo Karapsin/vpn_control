@@ -1162,6 +1162,41 @@ is the same 59 tests on the fix, OK on both.
 | A failure inside `start_runtime` parked the owner over a known outcome | `test_windows_proxy_lifecycle`: `StartFailureTests` | The `AssertionError` of the refused add was raised inside `start_runtime`, before `run_lifecycle`'s known-failure route, so the fixture and the serve kept running and the clone was consumed. Once its serve answers as its controller, `start_runtime` keeps the partial state the closing needs on the owner (`runtime_start_state`: workspace, controller, inputs, fixture, ready record, serve), and `run_lifecycle` sends an `AssertionError` from the start to `known_failure`, unchanged: status, off only while status shows the runtime running, the fixture's own stop record, quit, exit 1. The refused step is never sent again. TUN rows take the same route at start: no TUN stage has begun there, so no pending location, restart, prompt or broker exists, and the fixture and serve are all there is to close; a TUN row's failure after its stages begin still keeps its own ends. A failure before the serve's controller answered (the fixture's ready record, the serve's readiness) and any error that is not an `AssertionError` (an unreadable reply) still escape and park. The real driver, stage and closing run over the world, so the stage's record and the driver's route are covered together. RED on `74f80d15`: the refused add escapes `run_lifecycle` (three tests). Each half is needed on its own: the unfixed driver with the fixed stage, and the fixed driver with the stage's record removed, each fail the same three tests, the runtime-on case at its own `one-exact-owned-proxy-runtime`. |
 | The first read of a product-written output compared the path's stat with the handle's | `test_windows_output_reads` | `routing export --output` (human) exited 0 with 184 stdout bytes, and `Cases.output` refused the file with `output-changed-during-read`. That oracle required the path's `lstat` before the open and after the read to equal the handle's `fstat` in dev, inode, mode, size, write and creation time. On Windows, CPython can answer a path stat from the directory entry (`GetFileInformationByName`), whose size and times may lag the file's own while another handle, a scanner's for one, is open: the cause is a hypothesis, unproven natively, and which field differed is unknown. Change is now judged on the handle's stats before and after the read and on the byte count; the path stat gives only the type and the name's identity (volume and file id), which a directory entry holds as the file's own reference. Each refusal names its check and field (`output-changed-during-read:identity-open-ino`, `:handle-size`, `:count-size`, ...), and a passing read records the path-stat fields that differed as `pathStatLag`. The same comparison was in the document fixture worker's `read_exact` (`work-input-closing:<check>`) and the responsive cases' `raw_child` (`original-public-raw-join:<check>`), and the work-event read compared a path size with the bytes read; all now use the handle. The tests model the split over real files: one file's path stat reports a stale size or write time while its handle is current. A file that grows, or whose write time moves, through another handle during the read, and a name that denotes another file at opening or at closing, are still refused. RED on `74f80d15`: each split is refused, except the write-time split of the work-event read, which compared only a size, and no refusal names its check; the refusal controls pass there too. Native only: whether the guest's path stat lags, and in which field; the next run's `pathStatLag` shows it. |
 
+### Idle census roles of image 637199a5 (native, 2026-11-09)
+
+The enrollment of NV3 (clone `a218e890`) stopped at its full idle census `6d2447bc`: three
+refusals in three minutes with `unknown_jobs`, for `OneDrive.exe` and `WidgetService.exe`
+in console session 2. A read-only role probe of NV4 (clone `9059be98`, never signed in by
+the tools; operation `8c7ef46c`) found `AppActions.exe`, `OneDrive.Sync.Service.exe` and
+`WidgetService.exe` unknown there. Evidence is under
+`.runtime/windows-parity-20261107/enroll-a218e890/` and `roles-9059be98/`. The unfixed
+roles and census of `74f80d15` and a synthetic projection of the facts are tracked in
+`fixtures/windows_console_session_roles/`. `test_windows_console_session_roles` composes the
+whole census as production does (the module's native reader with only its six OS calls
+answered, the roles, `ALLOWANCE` and `_OBSERVE`): the unfixed program reproduces NV4's
+unknown set exactly (RED), the fixed one knows all four roles (GREEN), and 36 controls that
+differ from the native facts by one fact stay unknown while the two forms of the 2026-11-06
+probe stay known. That program runs in Windows PowerShell only on the Windows runner. It
+also ran under PowerShell 7.4.20 on the Mac with two non-Windows seams, where removing any
+one of eight checks of the new rules turned exactly that check's controls known.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The widget board's service of the Web Experience package had no rule | `test_windows_console_session_roles` (`NativeConsoleSessionCensusTests`, Windows only; `ConsoleSessionRoleSourceTests` everywhere) | On this image `WidgetService.exe` runs from `MicrosoftWindows.Client.WebExperience_424.1301.270.9_x64__cw5n1h2txyewy\Dashboard\`, not from `Microsoft.WidgetsPlatformRuntime`, as a COM server (`-RegisterProcessAsComServer -Embedding`) started by a session-0 `svchost.exe`. `Test-RecoveryComServer` requires the Windows-signed package family from the process token, the exact image under its install folder, the exact COM arguments, a Microsoft Authenticode signature, the ordinary owner SID, the console session, and a live session-0 System32 `svchost.exe` parent that is Microsoft-signed and born no later. The Widgets Platform Runtime rule is unchanged. |
+| `AppActions.exe` had no rule | as above | The `MicrosoftWindows.Client.CBS` COM server in `SystemApps` (`-Embedding`), with the same parent as the widget service; the same checks with its own family, image and arguments. |
+| The unconfigured OneDrive's sync helper started without its image on the command line | as above | NV4 read `/silentConfig` alone; the 2026-11-06 probe read `"<image>" /silentConfig`. The rule accepts exactly these two forms; its folder, account, owner, session and signature checks are unchanged. Its parent had exited in both probes, so it has no parent check. |
+| `OneDrive.exe` unknown on NV3 only | none: unresolved; the `ONEDRIVE_*` controls pin the unchanged rule | Already unknown in census `5f5acb26`, six hours after logon and before the first sign-in, so the sign-in is not the cause. NV4's `OneDrive.exe` (`" /updateInstalled /background"`, parent exited) passes the rule, which reads neither command line nor parent. What it does read, and so what can differ: the `Accounts` slot names, the slot and value-name counts, the seven configured-account field names, the owner and profile lookups, the exact image path and the signature. NV3 kept no role facts, so the cause is unproven, nothing is relaxed, and NV3 stays blocked by `OneDrive.exe` until a read-only probe of those names shows it. |
+
+Finding, no change: NV4's `OneDrive.exe` started 155 s after logon with `/updateInstalled`,
+the argument OneDrive's update installer passes when it restarts it, from a parent that had
+already exited. The fixture user's OneDrive is `26.198.1011.0006`, a 2026 build, while the
+image's Administrator profile keeps the 2025 build `25.087.0506.0001`, and the fixture
+user's `OneDrive Standalone Update Task` is `Ready` while the Administrator's is `Disabled`.
+`UPDATE_POLICY` disables only the update tasks that exist when it runs; nothing stops
+OneDrive from registering the fixture user's task later, when it installs or updates itself
+for that user. Whether NV4's run changed the installed build is unproven: its startup task
+still names `26.198.1011.0006`, as on 2026-11-06.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

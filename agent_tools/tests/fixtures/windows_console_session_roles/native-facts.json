@@ -1,0 +1,343 @@
+{
+ "consoleSession": 2,
+ "earlierClone": {
+  "label": "Role probe of 2026-11-06 (operation 8c3755d0) on an earlier clone of the same image, whose rules accepted the quoted sync form",
+  "roles": [
+   {
+    "commandLine": "\"C:\\Users\\fixtureuser\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe\" /background",
+    "image": "C:\\Users\\fixtureuser\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe",
+    "name": "OneDrive.exe",
+    "parent": {
+     "birth": "134383986530950398",
+     "identityValid": true,
+     "image": "C:\\Windows\\explorer.exe",
+     "name": "explorer.exe",
+     "pid": 5552,
+     "session": 1
+    }
+   },
+   {
+    "commandLine": "\"C:\\Users\\fixtureuser\\AppData\\Local\\Microsoft\\OneDrive\\26.198.1011.0006\\OneDrive.Sync.Service.exe\" /silentConfig",
+    "image": "C:\\Users\\fixtureuser\\AppData\\Local\\Microsoft\\OneDrive\\26.198.1011.0006\\OneDrive.Sync.Service.exe",
+    "name": "OneDrive.Sync.Service.exe",
+    "parent": {
+     "birth": "",
+     "identityValid": false,
+     "image": "",
+     "name": "",
+     "pid": 10952,
+     "session": 0
+    }
+   }
+  ]
+ },
+ "freshClone": {
+  "blockers": [
+   "unknown_jobs"
+  ],
+  "knownControls": [
+   [
+    "CrossDeviceResume.exe",
+    2
+   ],
+   [
+    "OneDrive.exe",
+    2
+   ],
+   [
+    "Widgets.exe",
+    2
+   ]
+  ],
+  "label": "NV4: autologon session of a clone never signed in by the tools; census 45f127d9, role probe 8fdbbf3b (operation 8c7ef46c)",
+  "observedUtc": "2026-11-09T01:57:36Z",
+  "oneDriveTasks": [
+   {
+    "arguments": [
+     "/reporting"
+    ],
+    "execute": [
+     "%localappdata%\\Microsoft\\OneDrive\\OneDriveStandaloneUpdater.exe"
+    ],
+    "name": "OneDrive Reporting Task-S-1-5-21-1-2-3-1000",
+    "state": "Ready",
+    "userId": "fixtureuser"
+   },
+   {
+    "arguments": [
+     "/reporting"
+    ],
+    "execute": [
+     "%localappdata%\\Microsoft\\OneDrive\\OneDriveStandaloneUpdater.exe"
+    ],
+    "name": "OneDrive Reporting Task-S-1-5-21-1-2-3-500",
+    "state": "Ready",
+    "userId": "Administrator"
+   },
+   {
+    "arguments": [
+     ""
+    ],
+    "execute": [
+     "%localappdata%\\Microsoft\\OneDrive\\OneDriveStandaloneUpdater.exe"
+    ],
+    "name": "OneDrive Standalone Update Task-S-1-5-21-1-2-3-1000",
+    "state": "Ready",
+    "userId": "fixtureuser"
+   },
+   {
+    "arguments": [
+     ""
+    ],
+    "execute": [
+     "%localappdata%\\Microsoft\\OneDrive\\OneDriveStandaloneUpdater.exe"
+    ],
+    "name": "OneDrive Standalone Update Task-S-1-5-21-1-2-3-500",
+    "state": "Disabled",
+    "userId": "Administrator"
+   },
+   {
+    "arguments": [
+     "/startInstances"
+    ],
+    "execute": [
+     "C:\\Users\\fixtureuser\\AppData\\Local\\Microsoft\\OneDrive\\26.198.1011.0006\\OneDriveLauncher.exe"
+    ],
+    "name": "OneDrive Startup Task-S-1-5-21-1-2-3-1000",
+    "state": "Ready",
+    "userId": "fixtureuser"
+   },
+   {
+    "arguments": [
+     "/startInstances"
+    ],
+    "execute": [
+     "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\OneDrive\\25.087.0506.0001\\OneDriveLauncher.exe"
+    ],
+    "name": "OneDrive Startup Task-S-1-5-21-1-2-3-500",
+    "state": "Ready",
+    "userId": "Administrator"
+   }
+  ],
+  "roles": [
+   {
+    "birth": "134386589364213030",
+    "children": [],
+    "commandLine": "\"C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\AppActions.exe\" -Embedding",
+    "image": "C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\AppActions.exe",
+    "microsoftPublisher": true,
+    "name": "AppActions.exe",
+    "ownerSid": "S-1-5-21-1-2-3-1000",
+    "packageError": 0,
+    "packageFullName": "MicrosoftWindows.Client.CBS_1000.26100.234.0_x64__cw5n1h2txyewy",
+    "parent": {
+     "birth": "134386587646649602",
+     "identityValid": true,
+     "image": "C:\\Windows\\System32\\svchost.exe",
+     "name": "svchost.exe",
+     "pid": 320,
+     "session": 0
+    },
+    "pid": 10036,
+    "protection": 4294967294,
+    "services": [],
+    "session": 2,
+    "signatureValid": true
+   },
+   {
+    "birth": "134386589380995759",
+    "children": [],
+    "commandLine": " /updateInstalled /background",
+    "image": "C:\\Users\\fixtureuser\\AppData\\Local\\Microsoft\\OneDrive\\OneDrive.exe",
+    "microsoftPublisher": true,
+    "name": "OneDrive.exe",
+    "ownerSid": "S-1-5-21-1-2-3-1000",
+    "packageError": 15700,
+    "packageFullName": "",
+    "parent": {
+     "birth": "",
+     "identityValid": false,
+     "image": "",
+     "name": "",
+     "pid": 1452,
+     "session": 0
+    },
+    "pid": 9156,
+    "protection": 4294967294,
+    "services": [],
+    "session": 2,
+    "signatureValid": true
+   },
+   {
+    "birth": "134386589407662115",
+    "children": [],
+    "commandLine": "/silentConfig",
+    "image": "C:\\Users\\fixtureuser\\AppData\\Local\\Microsoft\\OneDrive\\26.198.1011.0006\\OneDrive.Sync.Service.exe",
+    "microsoftPublisher": true,
+    "name": "OneDrive.Sync.Service.exe",
+    "ownerSid": "S-1-5-21-1-2-3-1000",
+    "packageError": 15700,
+    "packageFullName": "",
+    "parent": {
+     "birth": "",
+     "identityValid": false,
+     "image": "",
+     "name": "",
+     "pid": 1452,
+     "session": 0
+    },
+    "pid": 10136,
+    "protection": 4294967294,
+    "services": [],
+    "session": 2,
+    "signatureValid": true
+   },
+   {
+    "birth": "134386590870671257",
+    "children": [],
+    "commandLine": "\"C:\\Program Files\\WindowsApps\\MicrosoftWindows.Client.WebExperience_424.1301.270.9_x64__cw5n1h2txyewy\\Dashboard\\widgetservice.exe\" -RegisterProcessAsComServer -Embedding",
+    "image": "C:\\Program Files\\WindowsApps\\MicrosoftWindows.Client.WebExperience_424.1301.270.9_x64__cw5n1h2txyewy\\Dashboard\\WidgetService.exe",
+    "microsoftPublisher": true,
+    "name": "WidgetService.exe",
+    "ownerSid": "S-1-5-21-1-2-3-1000",
+    "packageError": 0,
+    "packageFullName": "MicrosoftWindows.Client.WebExperience_424.1301.270.9_x64__cw5n1h2txyewy",
+    "parent": {
+     "birth": "134386587646649602",
+     "identityValid": true,
+     "image": "C:\\Windows\\System32\\svchost.exe",
+     "name": "svchost.exe",
+     "pid": 320,
+     "session": 0
+    },
+    "pid": 724,
+    "protection": 4294967294,
+    "services": [],
+    "session": 2,
+    "signatureValid": true
+   }
+  ],
+  "sessionFlags": 1,
+  "sessionLogonUtc": "2026-11-09T00:46:22Z",
+  "shellPid": 6416,
+  "unknown": [
+   [
+    "AppActions.exe",
+    2
+   ],
+   [
+    "OneDrive.Sync.Service.exe",
+    2
+   ],
+   [
+    "WidgetService.exe",
+    2
+   ]
+  ]
+ },
+ "image": "637199a5",
+ "ordinarySid": "S-1-5-21-1-2-3-1000",
+ "profileRoot": "C:\\Users\\fixtureuser",
+ "schemaVersion": 1,
+ "signedInClone": {
+  "censuses": [
+   {
+    "blockers": [
+     "unknown_jobs"
+    ],
+    "console": 2,
+    "file": "observe.json",
+    "observedUtc": "2026-11-09T01:04:25Z",
+    "operation": "5f5acb26",
+    "sessionFlags": 1,
+    "sessionLogonUtc": "2026-11-08T18:50:27Z",
+    "sessionState": 0,
+    "unknown": [
+     [
+      "OneDrive.exe",
+      2
+     ],
+     [
+      "WidgetService.exe",
+      2
+     ]
+    ]
+   },
+   {
+    "blockers": [
+     "unknown_jobs"
+    ],
+    "console": 2,
+    "file": "facts-01.json",
+    "observedUtc": "2026-11-09T01:49:57Z",
+    "operation": "6d2447bc",
+    "sessionFlags": 1,
+    "sessionLogonUtc": "2026-11-08T18:50:27Z",
+    "sessionState": 0,
+    "unknown": [
+     [
+      "OneDrive.exe",
+      2
+     ],
+     [
+      "WidgetService.exe",
+      2
+     ]
+    ]
+   },
+   {
+    "blockers": [
+     "unknown_jobs"
+    ],
+    "console": 2,
+    "file": "facts-02.json",
+    "observedUtc": "2026-11-09T01:51:50Z",
+    "operation": "6d2447bc",
+    "sessionFlags": 1,
+    "sessionLogonUtc": "2026-11-08T18:50:27Z",
+    "sessionState": 0,
+    "unknown": [
+     [
+      "OneDrive.exe",
+      2
+     ],
+     [
+      "WidgetService.exe",
+      2
+     ]
+    ]
+   },
+   {
+    "blockers": [
+     "unknown_jobs"
+    ],
+    "console": 2,
+    "file": "facts-03.json",
+    "observedUtc": "2026-11-09T01:53:40Z",
+    "operation": "6d2447bc",
+    "sessionFlags": 1,
+    "sessionLogonUtc": "2026-11-08T18:50:27Z",
+    "sessionState": 0,
+    "unknown": [
+     [
+      "OneDrive.exe",
+      2
+     ],
+     [
+      "WidgetService.exe",
+      2
+     ]
+    ]
+   }
+  ],
+  "firstSignIn": {
+   "lockedFlags": 0,
+   "lockedObservedUtc": "2026-11-09T01:18:13Z",
+   "operation": "8ad829da",
+   "readyFlags": 1,
+   "readyObservedUtc": "2026-11-09T01:20:01Z",
+   "sameLogon": true
+  },
+  "label": "NV3: the same autologon session, censused before and after the first sign-in, a lease and a counter; no role facts were read"
+ }
+}
