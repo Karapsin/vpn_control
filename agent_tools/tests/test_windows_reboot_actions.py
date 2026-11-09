@@ -1,8 +1,9 @@
 """The whole preboot and postboot action bodies over one declared product world, offline.
 
 The real action, autostart and source-role modules run; the product CLI, Task Scheduler,
-native census, listener query, traffic sampler and upstream are declared peers. Nothing
-here proves a Windows behaviour: it keeps a typo in an action body off a guest.
+native census, listener query, traffic sampler and upstream are declared peers. The CLI
+takes a location link only when ProxyLinkParser, read from its Kotlin source, dispatches
+it. Nothing here proves a Windows behaviour: it keeps a typo in an action body off a guest.
 """
 import base64
 from pathlib import Path, PureWindowsPath
@@ -20,6 +21,7 @@ from agent_tools import windows_ordinary_process_owner as process_owner
 from agent_tools import windows_postboot_action as postboot
 from agent_tools import windows_postboot_source_roles as source_roles
 from agent_tools import windows_preboot_action as preboot
+from agent_tools.tests import product_link_schemes as product_links
 
 SID = "S-1-5-21-1-2-3-1000"
 GUI = r"C:\Users\recovery\AppData\Local\vpn-control\vpn-control.exe"
@@ -181,8 +183,12 @@ class World:
                 body = self.status()
             elif tail[:2] == ["locations", "list"]:
                 body = {"locations": list(self.locations)}
-            elif tail[:2] == ["locations", "add"]:
-                self.locations.append({"id": "location-" + self.controller, "name": "Owned Reboot"})
+            elif tail[:3] == ["locations", "add", "--input"]:
+                # LocationConfigs.parseLocationInput: a link ProxyLinkParser does not dispatch is INVALID_ARGUMENT.
+                link = Path(tail[3]).read_text(encoding="utf-8").strip()
+                if not product_links.dispatched(link):
+                    return child.end(1, self.envelope(code="INVALID_ARGUMENT"))
+                self.locations.append({"id": "location-" + self.controller, "name": link.rsplit("#", 1)[1].replace("%20", " ")})
             elif tail[:2] == ["settings", "set"] and tail[2] == "autostart":
                 self.task = "limited" if tail[3] == "true" else "absent"
             elif tail == ["on"]:
@@ -446,6 +452,18 @@ class PrebootActionTests(WorldCase):
                 order = [" ".join(tail) for label, tail in owner.world.trace if label == "public-cli"]
                 first = lambda text: next(number for number, line in enumerate(order) if text in line)
                 self.assertLess(first("source set current-locations"), first("locations add"), "the source is set before the first location")
+
+    def test_a_profile_the_product_parser_refuses_is_a_known_refusal_that_retires_the_serve(self):
+        # Native 6a0a73b8 met this in the proxy rows: the owner answers a socks5:// location INVALID_ARGUMENT.
+        owner = self.owner("reconnect")
+        publish = owner.modules["runtimeStages"].publish
+        owner.modules["runtimeStages"] = types.SimpleNamespace(
+            publish=lambda who, path, raw: publish(who, path, raw.replace(b"socks://", b"socks5://")))
+        with self.assertRaisesRegex(ValueError, "^postboot-public-known-terminal$"):
+            preboot.run_preboot(owner, owner.config, source_roles, postboot)
+        self.assertEqual([], owner.world.locations)
+        self.assertEqual([], [child.label for child in owner.children if child.terminal is None], "its own serve answered the quit")
+        self.assertEqual(1, [kind for kind, _ in owner.events].count("preboot-refusal-quit-intent"))
 
     def test_the_query_row_starts_a_transient_owner_by_a_config_query_and_never_reboots_or_declares(self):
         # status with no owner never starts one (DesktopCli noStartupOperations). The body polled status, so it parked.

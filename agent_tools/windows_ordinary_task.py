@@ -42,7 +42,7 @@ ACTION_FIELDS = {"pythonRuntime", "action", "msiPath", "installerLogPath", "unin
                  "uninstallLogPath", "uninstallRoot", "qualificationArgv",
                  "expectedExitCode", "cliPath", "workspace", "productVersion", "casesPath",
                  "harnessPath", "documentAcceptance", "postbootAcceptance", "responsiveWork", "bootstrap"}
-DEDICATED_DRIVER_SHA = "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256"
+DEDICATED_DRIVER_SHA = "320d79d5cc920e0c93cd31cd0a5ce32f3a68f7736a88ff7fbc228ae90b6edf1d"
 DEDICATED_CASES = {
     "windows-public-update": ("windows_public_updater/update_cases.py", "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c"),
     "windows-proxy-lifecycle": ("windows_lifecycle_cases.py", "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795"),
@@ -54,7 +54,7 @@ POSTBOOT_ACTION_PHASES = {"windows-preboot-reboot": "preboot-reboot", "windows-p
 POSTBOOT_SCENARIOS = {"windows-preboot-reboot": frozenset({"reconnect", "explicit-off", "autostart-migration", "query-first"}),
                       "windows-postboot-final": frozenset({"reconnect", "explicit-off", "autostart-migration"})}
 POSTBOOT_RUNTIME_AUTHORITY = ("app", "native", "windows-amd64", "native-helpers.json")
-POSTBOOT_ROLE_HASHES = {'autostart': 'fa3da7a4c9b507b9c7114cdf39bbf853a2c6d2bfa085f0707a8a3ba22be0b0ca', 'lifecycle': 'e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795', 'listenerScript': '1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928', 'migrationScript': 'c984104461806c2f3fa4b74a4260acf48ef9f66524149a01cc4f67b2a305104d', 'observer': '6d08edf9e57b09e98ce80d414b2ac12da4f39eb82e27cd2a3f06d9f900e04dcb', 'postbootAction': '8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771', 'prebootAction': 'c55b4eecb097e011996c65a54c3237c28e9003f449852d7d60bf1bbb8467c6f9', 'runtime': 'a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e', 'runtimeStages': '5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a', 'snapshotScript': 'ece980bb211e52349c4623fd941e217c5c1f1d4e854efd0f7765cbdc5eba2cb2', 'sourceRoles': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'startScript': '9f7b4b5ad3ffa7743bd9961463cb0d38ef791b0d8191313984e0f74bf0a9d502', 'startupCollector': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'trafficWorker': 'c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d', 'upstreamFixture': '50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210'}
+POSTBOOT_ROLE_HASHES = {'autostart': 'fa3da7a4c9b507b9c7114cdf39bbf853a2c6d2bfa085f0707a8a3ba22be0b0ca', 'lifecycle': 'e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795', 'listenerScript': '1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928', 'migrationScript': 'c984104461806c2f3fa4b74a4260acf48ef9f66524149a01cc4f67b2a305104d', 'observer': '6d08edf9e57b09e98ce80d414b2ac12da4f39eb82e27cd2a3f06d9f900e04dcb', 'postbootAction': '8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771', 'prebootAction': '6c6e73890c0502ef983ea9155087a98f3c3a643f116d2ae813c05b7b2f17d18e', 'runtime': 'a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e', 'runtimeStages': '0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e', 'snapshotScript': 'ece980bb211e52349c4623fd941e217c5c1f1d4e854efd0f7765cbdc5eba2cb2', 'sourceRoles': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'startScript': '9f7b4b5ad3ffa7743bd9961463cb0d38ef791b0d8191313984e0f74bf0a9d502', 'startupCollector': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'trafficWorker': 'c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d', 'upstreamFixture': '50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210'}
 POSTBOOT_ROLES = frozenset(['autostart', 'gui', 'lifecycle', 'listenerScript', 'migrationScript', 'observer', 'postbootAction', 'powerShell', 'prebootAction', 'runtime', 'runtimeAuthority', 'runtimeStages', 'snapshotScript', 'sourceRoles', 'startScript', 'startupCollector', 'trafficWorker', 'upstreamFixture'])
 
 DOCUMENT_RESPONSIVE_CASE = (
@@ -63,9 +63,9 @@ DOCUMENT_RESPONSIVE_CASE = (
 )
 
 DOCUMENT_RESPONSIVE_SOURCES = {
-    "casesPath": ("windows_document_responsive_cases.py", "678f1a92c68a5a545760c6bf4d22ee7271262d5e6099681d679cd6a808e1c173"),
-    "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"),
-    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "9f6c274aba0d49e9ff3c036087d0a229ad96582d47ef7392da9f8d523be7e976"),
+    "casesPath": ("windows_document_responsive_cases.py", "750bf3925e867c7560fd869ce523b9fd95ca7d7d51de451bb208b771ae8995a5"),
+    "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"),
+    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "205a1bdd79fa3c2d0df3d3f3cf4746132ed78d09500d4947a4ab6bb177f63e9c"),
     "socksSourcePath": ("socks_http_fixture.py", "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"),
     "httpsSourcePath": ("https_subscription_relay_fixture.py", "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"),
 }

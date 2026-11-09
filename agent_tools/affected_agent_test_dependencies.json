@@ -13253,7 +13253,7 @@
       ]
     },
     "agent_tools/windows_ordinary_dedicated_driver.py": {
-      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. Scheduled, no-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks. A reviewed oracle failure in a proxy row closes what the row started by its own public steps, once, and exits 1; unknown errors, open children and TUN rows still park.",
+      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. Scheduled, no-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks. A reviewed oracle failure in a proxy row closes what the row started by its own public steps, once, and exits 1; unknown errors, open children and TUN rows still park. The same closing also takes an oracle failure inside start_runtime once its serve answered, TUN rows included, since no prompt or broker exists before their stages begin; a failure before that still parks.",
       "scopes": [
         "agent_tools/windows_public_updater/update_cases.py",
         "agent_tools/windows_public_updater/update_receipts.py",
@@ -13279,7 +13279,8 @@
         "ea432e878b863c5d28165d010f974dd03cfc11574e2948c2234171a1af74dbb8",
         "1b4aa32f0c370d49278c57dc79d48246e3c2e22d0d51620b2b88ce1cd8021048",
         "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb",
-        "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256"
+        "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256",
+        "320d79d5cc920e0c93cd31cd0a5ce32f3a68f7736a88ff7fbc228ae90b6edf1d"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13381,7 +13382,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "ba950b743992e811901cfa7c27d30200981724799334cf7bd579714d42105b1c",
+    "agent_tools/readiness_vm_dispatch.json": "b47e6c6c17dcd82baa609ed31758567678dd62d8efc8f6149fe088dffdc83de3",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

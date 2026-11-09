@@ -20,7 +20,16 @@ def need(ok,reason):
     if not ok:raise ValueError(reason)
 def encoded(v):return (json.dumps(v,sort_keys=True,separators=(',',':'))+'\n').encode()
 def sha(raw):return hashlib.sha256(raw).hexdigest()
-def generation(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def unchanged(opened,held,named,count,reason):
+    """Change is the handle's own; the name gives only its type and identity, each refusal its check and field.
+
+    A Windows path stat can come from the directory entry, whose size and times may lag the
+    handle's while another handle is open; the volume and file id it names never lag."""
+    need(stat.S_ISREG(named.st_mode) and not getattr(named,'st_file_attributes',0)&0x400,reason+':name-type')
+    for field in ('dev','ino'):need(getattr(named,'st_'+field)==getattr(held,'st_'+field),reason+':identity-'+field)
+    for field in ('dev','ino','mode','uid','gid','nlink','size','mtime_ns','ctime_ns'):
+        need(getattr(opened,'st_'+field)==getattr(held,'st_'+field),reason+':handle-'+field)
+    need(count==held.st_size,reason+':count-size')
 
 def read_exact(path,limit):
     fd=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0));s=os.fstat(fd)
@@ -32,7 +41,7 @@ def read_exact(path,limit):
             if not block:break
             blocks.append(block);remaining-=len(block)
         raw=b''.join(blocks)
-        need(len(raw)==s.st_size and generation(os.fstat(fd))==generation(os.stat(path,follow_symlinks=False))==generation(s),'work-input-closing')
+        unchanged(s,os.fstat(fd),os.stat(path,follow_symlinks=False),len(raw),'work-input-closing')
         return raw
     finally:os.close(fd)
 

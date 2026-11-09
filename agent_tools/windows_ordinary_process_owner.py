@@ -31,7 +31,7 @@ else:
 
 
 # Equal to the planner's tables; regenerated after every leaf edit.
-_POSTBOOT_ENTRY_SOURCES = {'sourceRoles': {'sha256': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'sizeBytes': 6945}, 'postbootAction': {'sha256': '8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771', 'sizeBytes': 29231}, 'prebootAction': {'sha256': 'c55b4eecb097e011996c65a54c3237c28e9003f449852d7d60bf1bbb8467c6f9', 'sizeBytes': 9349}, 'startupCollector': {'sha256': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'sizeBytes': 2875}}
+_POSTBOOT_ENTRY_SOURCES = {'sourceRoles': {'sha256': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'sizeBytes': 6945}, 'postbootAction': {'sha256': '8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771', 'sizeBytes': 29231}, 'prebootAction': {'sha256': '6c6e73890c0502ef983ea9155087a98f3c3a643f116d2ae813c05b7b2f17d18e', 'sizeBytes': 9455}, 'startupCollector': {'sha256': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'sizeBytes': 2875}}
 _POSTBOOT_ACTION_PHASES = {"windows-preboot-reboot": "preboot-reboot", "windows-postboot-final": "postboot-final"}
 
 DOCUMENT_RESPONSIVE_CASE = (
@@ -40,9 +40,9 @@ DOCUMENT_RESPONSIVE_CASE = (
 )
 
 DOCUMENT_RESPONSIVE_SOURCES = {
-    "casesPath": ("windows_document_responsive_cases.py", "678f1a92c68a5a545760c6bf4d22ee7271262d5e6099681d679cd6a808e1c173"),
-    "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"),
-    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "9f6c274aba0d49e9ff3c036087d0a229ad96582d47ef7392da9f8d523be7e976"),
+    "casesPath": ("windows_document_responsive_cases.py", "750bf3925e867c7560fd869ce523b9fd95ca7d7d51de451bb208b771ae8995a5"),
+    "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"),
+    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "205a1bdd79fa3c2d0df3d3f3cf4746132ed78d09500d4947a4ab6bb177f63e9c"),
     "socksSourcePath": ("socks_http_fixture.py", "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"),
     "httpsSourcePath": ("https_subscription_relay_fixture.py", "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"),
 }
@@ -789,7 +789,7 @@ class Owner:
         if action in {"windows-public-update", "windows-proxy-lifecycle"}:
             driver_path = str(Path(__file__).with_name("windows_ordinary_dedicated_driver.py"))
             pin = self.by_path[str(absolute(driver_path)).casefold()]
-            require(pin.record["sha256"] == "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256",
+            require(pin.record["sha256"] == "320d79d5cc920e0c93cd31cd0a5ce32f3a68f7736a88ff7fbc228ae90b6edf1d",
                     "held-fixed-dedicated-driver-source")
             driver = self.module(driver_path, "_owned_fixed_dedicated_driver")
             return driver.run(self, action)

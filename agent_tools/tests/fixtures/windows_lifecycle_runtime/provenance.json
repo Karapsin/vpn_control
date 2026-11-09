@@ -149,12 +149,12 @@
       "sha256": "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a"
     },
     "agent_tools/windows_lifecycle_runtime_stages.py": {
-      "bytes": 26404,
-      "currentRoleAdjustment": "start_runtime sets the source to current-locations before adding locations, and capture_proxy_actors finds the runtime under the JVM a relaunching launcher started. originalPath/originalSourceSha256 retain the source-exact historical copy.",
+      "bytes": 26772,
+      "currentRoleAdjustment": "start_runtime sets the source to current-locations before adding its locations as socks:// links, the scheme the product's parser takes, keeps on the owner the partial state a known-failure closing needs once its serve answered, and capture_proxy_actors finds the runtime under the JVM a relaunching launcher started. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/runtime_stages.py",
       "originalSourceBytes": 25377,
       "originalSourceSha256": "147f2114b0ce554e85669b770b836d7927f775f6009795ceb308b6e57bc5fbd9",
-      "sha256": "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"
+      "sha256": "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"
     },
     "agent_tools/windows_lifecycle_scheduled_fixture_worker.py": {
       "bytes": 5883,

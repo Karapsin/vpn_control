@@ -2,10 +2,11 @@
 
 A small Windows world stands in for the guest: a process table where a jpackage launcher
 starts itself again and waits for that JVM, a product CLI with the source rule of
-DesktopAppService.saveControlLocation, real files under a temporary root and a fake clock.
+DesktopAppService.saveControlLocation and the link rule of ProxyLinkParser (read from its
+Kotlin source), real files under a temporary root and a fake clock.
 The world models what the repository's own native records show (a relaunched launcher
-pair of one image; a fresh workspace that reads a subscription); nothing here proves a
-Windows behaviour.
+pair of one image; a fresh workspace that reads a subscription; INVALID_ARGUMENT for a
+socks5:// location); nothing here proves a Windows behaviour.
 """
 import base64
 import hashlib
@@ -30,6 +31,7 @@ from agent_tools import windows_lifecycle_runtime_stages as runtime_stages
 from agent_tools import windows_ordinary_dedicated_driver as dedicated_driver
 from agent_tools import windows_runtime_branch_cases as branch_cases
 from agent_tools import windows_scenario_proxy as proxy
+from agent_tools.tests import product_link_schemes as product_links
 from scripts import windows_broker_fixture_observer as observer_module
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -268,6 +270,21 @@ class Traffic(Child):
         return super().wait()
 
 
+class Fixture(Child):
+    """The owned fixture worker: it ends 0 on its own exact stop record, as windows_lifecycle_runtime_fixture_worker does."""
+
+    def __init__(self, owner, label, argv, process, config):
+        super().__init__(owner, label, argv, process)
+        self.config = config
+
+    def wait(self):
+        control = Path(self.config["controlFile"])
+        stop = {"schemaVersion": 1, "operationId": self.config["operationId"], "action": "stop-owned-fixture"}
+        if self.terminal is None and self.os_process.exit_code is None and control.exists() and json.loads(control.read_bytes()) == stop:
+            self.os_process.end(0)
+        return super().wait()
+
+
 class Product:
     """The packaged CLI and its owner: envelopes, the source rule, and runtime processes."""
 
@@ -280,6 +297,8 @@ class Product:
         self.running, self.runtime = False, None
         self.jvm = None
         self.calls = []
+        # A command a test makes the owner refuse with a code, or answer with a reply that is not JSON.
+        self.refusals, self.garbled = {}, set()
 
     def envelope(self, code="OK", **data):
         return {"schemaVersion": 1, "controllerId": self.identity, "requestId": str(uuid.uuid4()), "code": code,
@@ -305,6 +324,10 @@ class Product:
             if int(words[1]) != self.revision:
                 return 1, self.envelope("CONFLICT")
             words = words[2:]
+        if tuple(words[:2]) in self.garbled:
+            return 0, "VPN Control: a reply that is not JSON\n"
+        if tuple(words[:2]) in self.refusals:
+            return 1, self.envelope(self.refusals[tuple(words[:2])])
         if words == ["status"]:
             return 0, self.status()
         if words == ["locations", "list"]:
@@ -318,6 +341,9 @@ class Product:
             if self.source != "current-locations":
                 return 1, self.envelope("READ_ONLY_SOURCE")
             link = Path(words[3]).read_text(encoding="utf-8").strip()
+            # LocationConfigs.parseLocationInput: a link ProxyLinkParser does not dispatch is INVALID_ARGUMENT.
+            if not product_links.dispatched(link):
+                return 1, self.envelope("INVALID_ARGUMENT")
             self.locations.append(link.rsplit("#", 1)[1].replace("%20", " "))
             self.revision += 1
             return 0, self.envelope()
@@ -394,10 +420,12 @@ class Owner:
         self.root, self.world = root, world
         self.operation = str(uuid.uuid4())
         self.request = {"context": {"ordinarySid": SID, "ordinarySessionId": SESSION}, "workspace": str(root / "workspace"),
-                        "cliPath": CLI, "pythonRuntime": {"interpreterPath": PYTHON}, "operationId": self.operation}
+                        "cliPath": CLI, "pythonRuntime": {"interpreterPath": PYTHON}, "operationId": self.operation,
+                        "productVersion": PRODUCT_VERSION}
         self.children, self.events, self.environment, self.by_path = [], [], {}, {}
         self.native = FileNative(self)
         self.product = Product(world, self)
+        self.ready_changes = {}  # What a test makes the fixture's ready record say otherwise.
 
     def guard(self):
         pass
@@ -421,18 +449,23 @@ class Owner:
             first, jvm = self.world.spawn(None, GUI, GUI_SHA, launcher=True)
             self.world.windows[jvm.pid] = [{"hwnd": jvm.pid * 16, "pid": jvm.pid, "visible": True, "width": 900, "height": 640}]
             return Child(self, label, argv, first)
+        if argv[0] == CLI and argv[3:] in (["--help"], ["--version"]):
+            # The installed launcher's static probe answers and ends before any owner state exists.
+            output = "Usage: vpn-control-cli [OPTIONS] COMMAND\n" if argv[3] == "--help" else "VPN Control " + PRODUCT_VERSION + "\n"
+            return Child(self, label, argv, completed=subprocess.CompletedProcess(argv, 0, output, ""))
         if argv[0] == CLI:
             code, body = self.product.run(argv[3:])
-            return Child(self, label, argv, completed=subprocess.CompletedProcess(argv, code, json.dumps(body), ""))
+            stdout = body if type(body) is str else json.dumps(body)
+            return Child(self, label, argv, completed=subprocess.CompletedProcess(argv, code, stdout, ""))
         if argv[0] == PYTHON and label == "lifecycle-traffic":
             return Traffic(self, label, argv)
         if argv[0] == PYTHON and label == "owned-runtime-fixture":
             config = json.loads(Path(argv[-1]).read_bytes())
             ready = {"operationId": config["operationId"], "httpsHost": "localhost", "httpsPort": 24443, "advertisedSocksHost": "127.0.0.1",
-                     "advertisedSocksPort": 23456, "trafficUrl": "https://localhost:24443/traffic"}
+                     "advertisedSocksPort": 23456, "trafficUrl": "https://localhost:24443/traffic", **self.ready_changes}
             Path(config["readyFile"]).write_bytes((json.dumps(ready) + "\n").encode())
             first, _ = self.world.spawn(None, PYTHON, "4" * 64)
-            return Child(self, label, argv, first)
+            return Fixture(self, label, argv, first, config)
         if argv[0] == TOOL:
             first, _ = self.world.spawn(None, TOOL, RUNTIME_SHA)
             return Child(self, label, argv, first)
@@ -619,6 +652,44 @@ class SourceOrderTests(WorldBase):
         self.assertEqual(self.owner.product.runtime.pid, state["actors"]["runtime"]["pid"])
         self.assertEqual(self.owner.product.jvm.pid, state["actors"]["jvm"]["pid"])
         self.assertNotIn("JAVA_TOOL_OPTIONS", self.owner.environment, "the trust options reached only the serve child")
+
+    def test_each_owned_location_is_a_socks_link_the_product_parser_takes(self):
+        # Native 6a0a73b8: the owner answered INVALID_ARGUMENT to the socks5:// profile of Owned A, inside start_runtime.
+        with mock.patch.object(runtime_stages, "os", NtOs()), mock.patch.object(runtime_stages, "time", Clock()):
+            runtime_stages.start_runtime(self.owner, self.inputs(), observer(self.world))
+        adds = [call for call in self.owner.product.calls if "add" in call]
+        self.assertEqual(2, len(adds), "each owned location is added once")
+        for call in adds:
+            link = Path(call[-1]).read_text(encoding="utf-8")
+            self.assertTrue(product_links.dispatched(link), link)
+            self.assertTrue(link.lower().startswith("socks://127.0.0.1:23456#"), "a SOCKS location for the fixture's SOCKS5 port")
+        self.assertEqual(["Owned A", "Owned B"], self.owner.product.locations)
+
+
+class LinkRuleTests(WorldBase):
+    """The fake product takes a location link only when the product's own parser dispatches its scheme."""
+
+    def add(self, text):
+        path = self.root / ("profile-" + uuid.uuid4().hex + ".txt")
+        path.write_text(text, encoding="utf-8")
+        self.owner.product.source = "current-locations"
+        return self.owner.product.run(["--json", "--if-revision", str(self.owner.product.revision), "locations", "add", "--input", str(path)])
+
+    def test_the_fake_product_refuses_a_scheme_its_parser_does_not_dispatch(self):
+        schemes = product_links.schemes()
+        self.assertIn("socks://", schemes)
+        self.assertNotIn("socks5://", schemes)
+        revision = self.owner.product.revision
+        code, body = self.add("socks5://127.0.0.1:23456#Owned%20A\n")
+        # The reply of operation 6a0a73b8: exit 1, a final INVALID_ARGUMENT, the revision unchanged.
+        self.assertEqual((1, "INVALID_ARGUMENT", False, True, revision),
+                         (code, body["code"], body["ok"], body["final"], body["configurationRevision"]))
+        self.assertEqual([], self.owner.product.locations)
+        for link in ("socks://127.0.0.1:23456#Owned%20A\n", "  SOCKS://127.0.0.1:23456#Owned%20B"):
+            with self.subTest(link=link):
+                code, body = self.add(link)
+                self.assertEqual((0, "OK"), (code, body["code"]))
+        self.assertEqual(["Owned A", "Owned B"], self.owner.product.locations)
 
 
 class DriverOwner:
@@ -917,6 +988,133 @@ class KnownFailureTests(unittest.TestCase):
         cases.read = refusing_once
         self.assertEqual(1, self.run_driver(owner, cases))
         self.assertEqual(2, owner.calls.count(("public", "quit")))
+
+
+class StartOwner(Owner):
+    """The dedicated driver's owner over the world: reviewed sources held at their digests, the real stage module."""
+    SOURCE = DriverOwner.SOURCE
+    source = DriverOwner.source
+
+    def __init__(self, root, world):
+        super().__init__(root, world)
+        self.raw_limit = 16 * 1024 * 1024
+        self.loaded = []
+
+    def module(self, path, name):
+        self.loaded.append(name)
+        return {"_owned_dedicated_runtime_stages": runtime_stages, "_owned_dedicated_proxy_observer": observer(self.world)}[name]
+
+
+class StartFailureTests(WorldBase):
+    """A reviewed oracle that fails inside start_runtime, through the real driver, stage and closing over the world."""
+
+    def setUp(self):
+        super().setUp()
+        self.owner = StartOwner(self.root, self.world)
+        for patcher in (mock.patch.object(runtime_stages, "os", NtOs()), mock.patch.object(runtime_stages, "time", Clock())):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def harness(self, variant="find-best-success"):
+        owner = self.owner
+        workspace = owner.request["workspace"]
+        material = {"certificatePath": "C:\\W\\cert.pem", "privateKeyPath": "C:\\W\\key.pem", "trustStorePath": "C:\\W\\trust.jks"}
+        for path in material.values():
+            owner.pin(path, "5" * 64)
+        runtime = {"schemaVersion": 1, "workspace": workspace, "fixtureRoot": str(self.root / "fixture"), "operationId": owner.operation,
+                   "fixtureWorkerPath": owner.source("agent_tools/windows_lifecycle_runtime_fixture_worker.py"),
+                   "socksSourcePath": owner.source("scripts/integration/socks_http_fixture.py"),
+                   "httpsSourcePath": owner.source("scripts/integration/https_subscription_relay_fixture.py"), **material,
+                   "runtimeImagePath": str(Path(workspace) / "runtime" / "tools" / "sing-box.exe"), "runtimeSha256": RUNTIME_SHA,
+                   "installedAdmissionArtifactId": "installed", "materialAdmissionArtifactId": "material",
+                   "ordinaryContextArtifactId": "context", "fixtureBody": "owned", "maxFixtureSeconds": 1800}
+        inputs = {"schemaVersion": 1, "variant": variant, "sourceSha": "a" * 40, "gui": None, "runtime": runtime,
+                  "modules": {"runtime": owner.source("agent_tools/windows_lifecycle_runtime_stages.py"),
+                              "observer": owner.source("scripts/windows_broker_fixture_observer.py")}}
+        if variant in dedicated_driver.TUN_VARIANTS:
+            inputs["modules"]["tun"] = owner.source("agent_tools/windows_tun_stages.py")
+            inputs["tun"] = {"schemaVersion": 1, "variant": variant}
+        return types.SimpleNamespace(LIFECYCLE_INPUTS=inputs, SYSTEM_COLLECTOR_CLOSE_HOLD=None)
+
+    def run_driver(self, variant="find-best-success", harness=None):
+        return dedicated_driver.run_lifecycle(self.owner, lifecycle_cases, harness or self.harness(variant))
+
+    def commands(self):
+        """The commands the product received, without their JSON, controller and revision flags; an add without its path."""
+        found = []
+        for call in self.owner.product.calls:
+            words = list(call[1:])
+            if words[:1] == ["--controller-id"]:
+                words = words[2:]
+            if words[:1] == ["--if-revision"]:
+                words = words[2:]
+            found.append(tuple(words[:2]) if words[:2] == ["locations", "add"] else tuple(words))
+        return found
+
+    def known(self):
+        return [value for kind, value in self.owner.events if kind == "dedicated-proxy-lifecycle-known-failure"]
+
+    def assert_closed(self):
+        self.assertTrue(all(child.terminal is not None for child in self.owner.children), "every child the row started has ended")
+        self.assertEqual(0, self.owner.product.jvm.exit_code, "the serve's owner quit")
+        self.assertTrue((self.root / "fixture" / "stop.json").exists(), "the fixture ended on its own stop record")
+        self.assertEqual(1, self.commands().count(("quit",)))
+
+    def test_a_refused_owned_location_closes_the_fixture_and_serve_and_ends_one(self):
+        # Native 6a0a73b8: `locations add` answered INVALID_ARGUMENT inside start_runtime, and the AssertionError
+        # left the fixture and serve running, so the owner parked over an outcome that was known.
+        self.owner.product.refusals[("locations", "add")] = "INVALID_ARGUMENT"
+        self.assertEqual(1, self.run_driver())
+        commands = self.commands()
+        self.assertEqual(1, commands.count(("locations", "add")), "the refused add is never sent again")
+        # The closing's status, then the fixture stop's own status, then quit; no off for a runtime that never ran.
+        self.assertEqual([("status",), ("status",), ("quit",)], commands[commands.index(("locations", "add")) + 1:])
+        self.assert_closed()
+        self.assertEqual([("runtime-public-cli-exit-stderr", 0)], [(value["reason"], value["fixtureExitCode"]) for value in self.known()])
+
+    def test_a_start_that_fails_with_its_runtime_on_turns_it_off_before_the_closing_quits(self):
+        harness = self.harness()
+        harness.LIFECYCLE_INPUTS["runtime"]["runtimeSha256"] = "9" * 64  # The runtime the owner started is not the admitted one.
+        self.assertEqual(1, self.run_driver(harness=harness))
+        commands = self.commands()
+        self.assertEqual([("status",), ("status",), ("off",), ("status",), ("status",), ("quit",)], commands[commands.index(("on",)) + 1:])
+        self.assertFalse(self.owner.product.running)
+        self.assertEqual(0, self.owner.product.runtime.exit_code)
+        self.assert_closed()
+        self.assertEqual(["one-exact-owned-proxy-runtime"], [value["reason"] for value in self.known()])
+
+    def test_a_tun_row_whose_start_fails_closes_the_same_way_before_any_tun_stage(self):
+        # Nothing of TUN has begun at start: no pending B and no restart, so no prompt or broker is left to its stages.
+        self.owner.product.refusals[("locations", "add")] = "INVALID_ARGUMENT"
+        self.assertEqual(1, self.run_driver("restart-deny"))
+        self.assertNotIn("_owned_dedicated_tun_stages", self.owner.loaded)
+        self.assertEqual(["restart-deny"], [value["variant"] for value in self.known()])
+        self.assert_closed()
+
+    def test_a_start_that_fails_before_its_serve_exists_still_escapes_and_closes_nothing(self):
+        self.owner.ready_changes["operationId"] = str(uuid.uuid4())  # A ready record of another operation.
+        with self.assertRaisesRegex(AssertionError, "^actual-runtime-fixture-endpoints$"):
+            self.run_driver()
+        self.assertNotIn("serve", [child.label for child in self.owner.children])
+        self.assertEqual([], self.owner.product.calls)
+        self.assertIsNone(getattr(self.owner, "runtime_start_state", None))
+        self.assertEqual(["owned-runtime-fixture"], [child.label for child in self.owner.children if child.terminal is None])
+
+    def test_a_serve_whose_controller_was_never_admitted_still_escapes_and_closes_nothing(self):
+        self.owner.product.running = True  # A fresh workspace that reports a running runtime is no owner this row started.
+        with self.assertRaisesRegex(AssertionError, "^fresh-runtime-owner-readiness$"):
+            self.run_driver()
+        self.assertEqual([("status",)], self.commands())
+        self.assertIsNone(getattr(self.owner, "runtime_start_state", None))
+        self.assertEqual(["owned-runtime-fixture", "serve"], [child.label for child in self.owner.children if child.terminal is None])
+
+    def test_an_unknown_error_after_the_serve_answered_still_escapes_and_closes_nothing(self):
+        self.owner.product.garbled.add(("locations", "list"))
+        with self.assertRaises(json.JSONDecodeError):
+            self.run_driver()
+        self.assertFalse({("off",), ("quit",)} & set(self.commands()))
+        self.assertFalse((self.root / "fixture" / "stop.json").exists())
+        self.assertEqual(["owned-runtime-fixture", "serve"], [child.label for child in self.owner.children if child.terminal is None])
 
 
 class InstalledVersionTests(unittest.TestCase):

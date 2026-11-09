@@ -98,9 +98,10 @@ def _run_preboot(owner,config,source_roles,postboot):
         return postboot.public(owner,workspace,identity,'--if-revision',str(current['configurationRevision']),*args)[0]
     listed,_=postboot.public(owner,workspace,identity,'locations','list')
     need(listed['data']['locations']==[],'empty-owned-preboot-workspace')
-    # A no-credential profile for the in-guest upstream on its fixed loopback port.
+    # A no-credential profile for the in-guest upstream on its fixed loopback port. ProxyLinkParser
+    # takes socks://; the owner answers any other scheme, socks5:// too, INVALID_ARGUMENT.
     profile=rt.publish(owner,owner.root/'postboot-owned-proxy.txt',
-        f'socks5://127.0.0.1:{source_roles.UPSTREAM_PORT}#Owned%20Reboot\n'.encode())
+        f'socks://127.0.0.1:{source_roles.UPSTREAM_PORT}#Owned%20Reboot\n'.encode())
     # A fresh workspace reports subscription: the source is set before the first location is added.
     mutate('source','set','current-locations');mutate('locations','add','--input',str(profile));mutate('locations','select','Owned Reboot')
     mutate('routing','set','ignore-rules','true');mutate('settings','set','mode','proxy-only')

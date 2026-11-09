@@ -194,6 +194,11 @@ def start_runtime(owner, inputs, observer):
             if time.monotonic() >= until:
                 owner.park("runtime-owner-readiness-unknown-no-replay")
             time.sleep(0.1)
+    # The serve now answers as its controller. Its closing needs only these, so they are kept on the owner
+    # before any oracle: one that fails before this start returns is closed like a later one, never parked.
+    state = {"workspace": workspace, "identity": identity, "inputs": inputs, "fixture": fixture,
+        "ready": ready, "serve": serve}
+    owner.runtime_start_state = state
     def guarded(*tail):
         before = result(owner, workspace, identity, "status")
         return result(owner, workspace, identity, "--if-revision", str(before["configurationRevision"]), *tail)
@@ -201,7 +206,8 @@ def start_runtime(owner, inputs, observer):
     guarded("source", "set", "current-locations")
     require(result(owner, workspace, identity, "locations", "list")["data"]["locations"] == [], "empty-runtime-location-population")
     for name in ("Owned A", "Owned B"):
-        link = f"socks5://127.0.0.1:{ready['advertisedSocksPort']}#{name.replace(' ', '%20')}\n".encode()
+        # ProxyLinkParser takes socks://; the owner answers any other scheme, socks5:// too, INVALID_ARGUMENT.
+        link = f"socks://127.0.0.1:{ready['advertisedSocksPort']}#{name.replace(' ', '%20')}\n".encode()
         path = publish(owner, owner.root / (name.replace(" ", "-") + ".txt"), link)
         guarded("locations", "add", "--input", str(path))
     guarded("locations", "select", "Owned A")
@@ -216,9 +222,8 @@ def start_runtime(owner, inputs, observer):
             "actual-runtime-on-result")
     native = observer.WindowsNative()
     actors = capture_proxy_actors(owner, serve, native, inputs["runtimeImagePath"], inputs["runtimeSha256"])
-    state = {"workspace": workspace, "identity": identity, "inputs": inputs, "fixture": fixture,
-        "ready": ready, "serve": serve, "modeOrdinal": 0, "actors": actors, "openingStatus": status,
-        "runtimeArtifact": {key: inputs[key] for key in ("installedAdmissionArtifactId", "runtimeImagePath", "runtimeSha256")}}
+    state.update(modeOrdinal=0, actors=actors, openingStatus=status,
+        runtimeArtifact={key: inputs[key] for key in ("installedAdmissionArtifactId", "runtimeImagePath", "runtimeSha256")})
     if not hasattr(owner, "runtime_fixture_states"):
         owner.runtime_fixture_states = []
     owner.runtime_fixture_states.append(state)

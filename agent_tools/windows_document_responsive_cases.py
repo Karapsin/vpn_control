@@ -4,7 +4,7 @@ No import-time effect. No new product API/transport or SSH interruption. Reached
 through the planner's closed responsiveWork input and the owner's document action.
 """
 from __future__ import annotations
-import base64,hashlib,json,os,time,uuid
+import base64,hashlib,json,os,stat,time,uuid
 from pathlib import Path
 
 CAP=1024*1024
@@ -16,7 +16,16 @@ def need(ok,reason):
     if not ok:raise AssertionError(reason)
 def encoded(v):return(json.dumps(v,sort_keys=True,separators=(',',':'))+'\n').encode()
 def sha(raw):return hashlib.sha256(raw).hexdigest()
-def generation(s):return(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+def unchanged(opened,held,named,count,reason):
+    """Change is the handle's own; the name gives only its type and identity, each refusal its check and field.
+
+    A Windows path stat can come from the directory entry, whose size and times may lag the
+    handle's while another handle is open; the volume and file id it names never lag."""
+    need(stat.S_ISREG(named.st_mode) and not getattr(named,'st_file_attributes',0)&0x400,reason+':name-type')
+    for field in ('dev','ino'):need(getattr(named,'st_'+field)==getattr(held,'st_'+field),reason+':identity-'+field)
+    for field in ('dev','ino','mode','uid','gid','nlink','size','mtime_ns','ctime_ns'):
+        need(getattr(opened,'st_'+field)==getattr(held,'st_'+field),reason+':handle-'+field)
+    need(count==held.st_size,reason+':count-size')
 
 def fresh_contexts(owner,contexts,client=None):
     reserved=owner.request['documentAcceptance']['contexts']
@@ -40,8 +49,8 @@ def raw_child(owner,child):
         with path.open('rb')as f:
             before=os.fstat(f.fileno());need(before.st_size==t['counts'][name]<=CAP,'public-observation-bound')
             value=f.read(CAP+1);after=os.fstat(f.fileno())
-        need(generation(before)==generation(after)==generation(path.stat(follow_symlinks=False))
-             and len(value)==t['counts'][name] and sha(value)==t['sha256'][name],'original-public-raw-join')
+        unchanged(before,after,path.stat(follow_symlinks=False),len(value),'original-public-raw-join')
+        need(len(value)==t['counts'][name] and sha(value)==t['sha256'][name],'original-public-raw-join:terminal')
         values[name]=value
     owner.guard();return values
 
@@ -160,8 +169,10 @@ class WorkLease:
                 self.guard()
                 if time.monotonic()>=deadline:self.owner.park('original-owned-work-event-unobserved',{'phase':phase,'suffix':suffix})
                 time.sleep(.05)
-            size=path.stat().st_size;need(size<=16384,'work-event-byte-bound')
-            raw=path.read_bytes();need(len(raw)==size,'work-event-read-count')
+            # The size is the handle's own: a Windows path stat may lag it (see unchanged).
+            with path.open('rb')as stream:
+                held=os.fstat(stream.fileno());need(held.st_size<=16384,'work-event-byte-bound')
+                raw=stream.read(16385);need(len(raw)==held.st_size==os.fstat(stream.fileno()).st_size,'work-event-read-count')
             pin=self.runtime.OwnedData(self.owner,path,sha(raw));pin.current();value=json.loads(raw)
             need(value['schemaVersion']==1 and value['operationId']==self.owner.operation and value['phase']==phase
                  and value['pid']==self.child.pid and value['requestOrdinal']==1

@@ -27,7 +27,7 @@ UPDATE_MODULES = {
     "lifecycle": CASE_SHA["windows-proxy-lifecycle"],
     "collector": "246bb5e7110fe5fdad986e3cf082683934070195098730bf79ab86e0fd0296b2",
 }
-RUNTIME_SHA = "5096a34741089df9b2c22148a1b8e1bac778530d972af6bd8b95519bdf44028a"
+RUNTIME_SHA = "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"
 FIXTURE_WORKER_SHA = "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a"
 SOCKS_SHA = "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"
 HTTPS_SHA = "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"
@@ -335,7 +335,16 @@ def run_lifecycle(owner, cases, harness):
         branches = owner.module(inputs["modules"]["branches"], "_owned_dedicated_runtime_branches")
     runtime.validate_inputs(owner, inputs["runtime"])
     installed_version(owner)
-    state = runtime.start_runtime(owner, inputs["runtime"], observer)
+    try:
+        state = runtime.start_runtime(owner, inputs["runtime"], observer)
+    except AssertionError as error:
+        # Once its serve answered as a controller, the start kept what the closing needs: a reviewed
+        # oracle that failed there is closed like a later one. No TUN stage has begun, so a TUN row
+        # has no prompt or broker yet and closes the same way. Before that it still parks.
+        started = getattr(owner, "runtime_start_state", None)
+        if started is None:
+            raise
+        return known_failure(owner, cases, runtime, branches, observer, started, inputs, error)
     workspace, identity = state["workspace"], state["identity"]
     try:
         if inputs["variant"] in TUN_VARIANTS:

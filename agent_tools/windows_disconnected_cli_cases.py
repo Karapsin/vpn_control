@@ -30,6 +30,27 @@ def require(value, reason):
         raise AssertionError(reason)
 
 
+def read_unchanged(opening, admission, held, closing, count, reason):
+    """Refuse a read whose file changed or whose name came to denote another file, naming the check and field.
+
+    A Windows path stat can come from the directory entry (CPython's GetFileInformationByName
+    path), whose size and times may lag the file's own while another handle, a scanner's for
+    one, is open. So change is judged on the handle's stats before and after the read and on the
+    byte count against the held size. The path stats give only the name's identity at opening
+    and at closing: the volume and file id a directory entry names are the file's own and never
+    lag. Returns the path-stat fields that differed from the handle's, which such a lag explains.
+    """
+    for check, named, handle in (("open", opening, admission), ("close", closing, held)):
+        for field in ("dev", "ino"):
+            require(getattr(named, "st_" + field) == getattr(handle, "st_" + field),
+                    reason + ":identity-" + check + "-" + field)
+    for field in ("dev", "ino", "mode", "size", "mtime_ns", "ctime_ns"):
+        require(getattr(admission, "st_" + field) == getattr(held, "st_" + field), reason + ":handle-" + field)
+    require(count == held.st_size, reason + ":count-size")
+    return sorted({field for named in (opening, closing) for field in ("mode", "size", "mtime_ns", "ctime_ns")
+                   if getattr(named, "st_" + field) != getattr(held, "st_" + field)})
+
+
 def human_error_is(stderr, code):
     """A human failure opens with its code, alone or as `CODE: reason` from the argument parser."""
     first = stderr.splitlines()[:1]
@@ -172,14 +193,12 @@ class Cases:
             require(len(before) <= MAX_CASE_FILE_BYTES, "output-grew-past-read-bound")
             held = os.fstat(stream.fileno())
             closing = path.lstat()
-            fields = lambda value: (value.st_dev, value.st_ino, value.st_mode,
-                value.st_size, value.st_mtime_ns, value.st_ctime_ns)
-            require(fields(opening) == fields(admission) == fields(held) == fields(closing)
-                    and len(before) == held.st_size, "output-changed-during-read")
+            # The path stat may lag the handle's (native 1ee00956): only the handle shows a change.
+            lag = read_unchanged(opening, admission, held, closing, len(before), "output-changed-during-read")
         result = {"bytes": len(before), "sha256": hashlib.sha256(before).hexdigest(),
                   "content": before}
         self.record("output", {"path": str(path), "bytes": result["bytes"],
-                    "sha256": result["sha256"]})
+                    "sha256": result["sha256"], "pathStatLag": lag})
         return result
 
     def group(self, name, **facts):
