@@ -1222,13 +1222,27 @@ module in `document-cold-input.json`.
 A known case failure in these rows closes what the owner started and ends 1. The
 harness's oracle failure and the modules' own `document-` codes count only after
 every client socket closed, every export relay stopped and the persistence and
-spool fixtures were released. Their own failures park inside them. The case module
-releases its endpoint and workspace observers, so the product removes its
-descriptor at the quit. A reopened serve is quit like the original. On a known
+spool fixtures were released. Their own failures park inside them. An OS refusal
+of the harness's own fixture before the product takes part in that step is such a
+code, `document-<fixture>-fixture-refused:<step>:<code>`, where the code is the
+Win32 error, else `errno-<n>`: the export races' folders, positive rename probe,
+relay listener and descriptor (`race`; a listening relay has accepted nothing yet
+and is closed first), the persistence fault's hold of `workspace.json` and its
+recovery leaf (`persistence`; released first, so the product can persist at the
+quit) and the no-overwrite export's observer of the operation root (`export`). The
+race's positive rename probe retries only access denied (5) and sharing violations
+(32), at most six attempts in under 4 s, and journals each attempt in
+`document-race-rename-probe`; the product's own race step stays one attempt. The
+case module releases its endpoint and workspace observers, so the product removes
+its descriptor at the quit. A reopened serve is quit like the original. On a known
 failure and on a pass alike, a GUI-started owner is ended by one journaled quit
 and must exit within 120 s, or the owner parks (`document-gui-owner-exit-unknown`).
-Anything else parks as before. Evidence is that of every product row:
-`installed-package` only from a passed, unstopped run whose registration,
+Anything else parks as before. The shared worker's `owner-parked.json` and its
+`known-failure-closing`, `owner-terminal` and `child-no-process` events name the
+failure in `failure`: the error class, an OS error's `winerror` and `errno`, and at
+most 12 innermost frames outside the standard library as `<file>:<line>`, with its
+cause one level deep, never a message, path or value. Evidence is that of every
+product row: `installed-package` only from a passed, unstopped run whose registration,
 installed tree and `--version` held.
 
 Known before any native run: the publisher's two new actions, the LOCAL SERVICE

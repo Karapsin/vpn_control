@@ -150,6 +150,50 @@ def encoded(value):
                        ensure_ascii=False) + "\n").encode("utf-8", "strict")
 
 
+# A failure record keeps names and numbers only, never a message, argument, path or local value.
+FAILURE_FRAMES = 12
+
+
+def failure_detail(error):
+    """What failed and where, finite and private-safe, for every park and known-failure record.
+
+    The exception class, an OS error's winerror and errno, and the innermost FAILURE_FRAMES frames
+    outside the standard library as "<file basename>:<line>", outermost first. On the guest those
+    are the agent_tools modules this owner runs and the held harness. Its cause (explicit, else the
+    error it was raised while handling) is recorded the same way, one level deep. A parked value that
+    is not an exception, such as a state dict, records its type only. This never raises: a record it
+    could not build names only the class, so the park or event it belongs to is still written.
+    """
+    def record(value):
+        result = {"errorClass": type(value).__name__, "winerror": None, "errno": None, "frames": []}
+        if isinstance(value, BaseException):
+            for name in ("winerror", "errno"):
+                code = getattr(value, name, None)
+                result[name] = code if type(code) is int else None
+            frames, trace = [], value.__traceback__
+            while trace is not None:
+                module = trace.tb_frame.f_globals.get("__name__")
+                source = trace.tb_frame.f_code.co_filename
+                if (type(module) is str and module.partition(".")[0] not in sys.stdlib_module_names
+                        and type(source) is str and not source.startswith("<")):
+                    frames.append("%s:%s" % (PureWindowsPath(source).name, trace.tb_lineno))
+                trace = trace.tb_next
+            result["frames"] = frames[-FAILURE_FRAMES:]
+        return result
+    if error is None:
+        return None
+    try:
+        detail = record(error)
+        cause = None
+        if isinstance(error, BaseException):
+            cause = error.__cause__ if error.__cause__ is not None else (
+                None if error.__suppress_context__ else error.__context__)
+        detail["cause"] = record(cause) if cause is not None else None
+        return detail
+    except Exception as failure:
+        return {"errorClass": type(error).__name__, "detailUnavailable": type(failure).__name__}
+
+
 def _unreadable(error):
     raise error
 
@@ -435,7 +479,8 @@ class Child:
         except BaseException as error:
             if self.process is not None:
                 owner.park("post-start-admission-unknown", error)
-            owner.event("child-no-process", {"child": self.ordinal, "errorClass": type(error).__name__})
+            owner.event("child-no-process", {"child": self.ordinal, "errorClass": type(error).__name__,
+                                             "failure": failure_detail(error)})
             raise
 
     def _pump(self, name):
@@ -464,13 +509,14 @@ class Child:
         except BaseException as error:
             # Retain original pipe, file and unwritten chunk in this namespace.
             # Never claim EOF, close a live pipe, or restart this reader/child.
-            self.errors[name] = {"errorClass": type(error).__name__, "message": str(error)}
+            self.errors[name] = {"errorClass": type(error).__name__, "message": str(error), "error": error}
 
     def observe(self):
         if self.terminal is not None:
             return self.terminal
         if self.errors:
-            self.owner.park("raw-capture-unknown", self.errors)
+            # The park records the first failed stream's own error; every stream's entry stays on this child.
+            self.owner.park("raw-capture-unknown", list(self.errors.values())[0]["error"])
         code = self.process.poll()
         if code is None or not all(self.eof.values()):
             return None
@@ -609,6 +655,7 @@ class Owner:
             data = encoded({"schemaVersion": 1, "operationId": self.operation,
                 "state": "unknown", "reason": reason,
                 "errorClass": type(error).__name__ if error is not None else None,
+                "failure": failure_detail(error),
                 "children": [{"ordinal": child.ordinal, "pid": child.pid,
                     "birthFileTimeUtc": child.birth, "eof": child.eof} for child in self.children],
                 "originalNamespaceRetained": True, "replayAllowed": False})
@@ -918,6 +965,7 @@ class Owner:
             if not pin.directory:
                 pin.digest()
         self.event("owner-terminal", {"exitCode": code, "errorClass": type(error).__name__ if error else None,
+            "failure": failure_detail(error) if error else None,
             "allOriginalChildrenTerminalAndEof": True, "sourceClosing": True,
             "fullWindowsAcceptance": False})
         for pin in reversed(self.pins):
@@ -1024,7 +1072,8 @@ def close_known_failure(owner, workspace, identity, serve, error):
         serves = [child for child in serves if not quits_after(child)]
         serves.sort(key=lambda child: child is serve)  # A case's second serve first, the one the streams poll last.
         owner.event("known-failure-closing", {"action": owner.request["action"], "reason": reason,
-            "errorClass": type(error).__name__, "quit": [child.ordinal for child in serves],
+            "errorClass": type(error).__name__, "failure": failure_detail(error),
+            "quit": [child.ordinal for child in serves],
             "caseQuit": [child.ordinal for child in awaited],
             "ownClose": [child.ordinal for child in streams], "exited": [child.ordinal for child in ended],
             "replayAllowed": False})

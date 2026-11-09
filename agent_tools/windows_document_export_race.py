@@ -66,11 +66,20 @@ class ExportRelay:
         owner.document_export_relays.append(self)
         self.barrier, self.release, self.stop = threading.Event(), threading.Event(), threading.Event()
         self.errors, self.connections, self.threads = [], [], []
-        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        self.listener.bind(("127.0.0.1", 0)); self.listener.listen(8); self.listener.settimeout(.2)
-        self.port = self.listener.getsockname()[1]
+        self.listener = None
         self.thread = threading.Thread(target=self.accept, daemon=True)
+        try:
+            self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            self.listener.bind(("127.0.0.1", 0)); self.listener.listen(8); self.listener.settimeout(.2)
+            self.port = self.listener.getsockname()[1]
+        except OSError:
+            # Nothing was accepted and no thread started: the harness's own listener closes here,
+            # and the relay reads stopped to the owner's closing.
+            self.stop.set()
+            if self.listener is not None:
+                self.listener.close()
+            raise
         self.thread.start()
 
     def accept(self):
@@ -129,6 +138,95 @@ class ExportRelay:
         self.listener.close()
 
 
+# The harness's positive rename probe is retried only while the OS reports its own just-created
+# folder held (access denied or a sharing violation, as a short-lived scanner handle can cause):
+# at most six attempts in under 4 s, each recorded. The product is not running yet. The product's
+# race step below stays one attempt.
+RENAME_PROBE_DELAYS = (0.1, 0.25, 0.5, 1.0, 2.0)
+HELD_WIN32 = (5, 32)
+
+
+def rename_probe(source, target, step, attempts):
+    """One rename of the harness's own fixture; another attempt only while the OS reports it held."""
+    started = time.monotonic()
+    for attempt, delay in enumerate((*RENAME_PROBE_DELAYS, None), 1):
+        try:
+            source.rename(target)
+        except OSError as error:
+            winerror, number = getattr(error, "winerror", None), getattr(error, "errno", None)
+            attempts.append({"step": step, "attempt": attempt,
+                             "elapsedMs": int((time.monotonic() - started) * 1000),
+                             "errorClass": type(error).__name__,
+                             "winerror": winerror if type(winerror) is int else None,
+                             "errno": number if type(number) is int else None})
+            if delay is None or winerror not in HELD_WIN32:
+                raise
+            time.sleep(delay)
+        else:
+            attempts.append({"step": step, "attempt": attempt,
+                             "elapsedMs": int((time.monotonic() - started) * 1000),
+                             "errorClass": None, "winerror": None, "errno": None})
+            return
+
+
+def prepare_fixture(owner, client, module, windows, mode, parent, renamed, proxy):
+    """The harness's own fixture, before the product takes part: folders, rename probe, relay, descriptor.
+
+    An OS refusal of any of these steps (an OSError, or the Win32 open refusal NativeOpenError) is the
+    known failure document-race-fixture-refused:<step>:<code> (windows.fixture_refused). First an open
+    descriptor handle and a listening relay are closed: the product's child has not started, so the
+    relay has accepted nothing of it. A relay that cannot be closed parks. Any other error propagates
+    as before, after the same closing.
+    """
+    step, relay, held, attempts = "absences", None, None, []
+    try:
+        need(not parent.exists() and not renamed.exists() and not proxy.exists(), "document-race-before-absences")
+        step = "mkdir-parent"; parent.mkdir()
+        step = "mkdir-proxy"; proxy.mkdir()
+        # Prove this actual ordinary context can rename this fixture before the
+        # product opens it. The temporary witness handle must be closed first.
+        step = "probe-open"
+        probe = windows.Held(owner.native, parent, directory=True)
+        initial = probe.current(); probe.close()
+        try:
+            step = "rename-away"; rename_probe(parent, renamed, step, attempts)
+            step = "rename-back"; rename_probe(renamed, parent, step, attempts)
+        finally:
+            owner.event("document-race-rename-probe", {"mode": mode, "attempts": attempts,
+                "renamed": any(row["step"] == "rename-away" and row["errorClass"] is None for row in attempts),
+                "restored": any(row["step"] == "rename-back" and row["errorClass"] is None for row in attempts),
+                "productStarted": False})
+        step = "probe-reopen"
+        probe = windows.Held(owner.native, parent, directory=True)
+        need(probe.current() == initial, "document-race-rename-positive-identity"); probe.close()
+        step = "relay-listen"
+        relay = ExportRelay(owner, client, module)
+        descriptor = dict(client._endpoint, schemaVersion=1, port=relay.port)
+        descriptor_path = proxy / "activation.port"
+        raw = module.dump(descriptor).encode()
+        step = "descriptor-create"
+        windows.create_sid_private_new(owner.native, descriptor_path, raw,
+                                       owner.request["context"]["ordinarySid"])
+        step = "descriptor-hold"
+        held = windows.Held(owner.native, descriptor_path)
+        descriptor_pin = held.pin()
+        windows.endpoint_private_acl(owner.native, held.handle,
+                                     owner.request["context"]["ordinarySid"])
+        return relay, held, descriptor_pin
+    except BaseException as error:
+        try:
+            if held is not None and not held.closed:
+                held.close()
+            if relay is not None:
+                relay.close_known()
+        except BaseException as closing:
+            owner.park("document-race-fixture-closing-unknown", closing)
+        known = windows.fixture_refused("race", step, error)
+        if known is error:
+            raise
+        raise known from error
+
+
 def run_public_export_race(owner, workspace, identity, client, module, windows, harness, mode):
     need(os.name == "nt" and mode in ("parent", "destination"), "document-race-finite-mode")
     owner.guard(); client.guard()
@@ -136,26 +234,9 @@ def run_public_export_race(owner, workspace, identity, client, module, windows, 
     parent = base / ("document-race-" + mode)
     renamed = base / ("document-race-" + mode + "-moved")
     proxy = base / ("document-export-client-" + mode)
-    need(not parent.exists() and not renamed.exists() and not proxy.exists(), "document-race-before-absences")
-    parent.mkdir(); proxy.mkdir()
-    # Prove this actual ordinary context can rename this fixture before the
-    # product opens it. The temporary witness handle must be closed first.
-    probe = windows.Held(owner.native, parent, directory=True)
-    initial = probe.current(); probe.close()
-    parent.rename(renamed); renamed.rename(parent)
-    probe = windows.Held(owner.native, parent, directory=True)
-    need(probe.current() == initial, "document-race-rename-positive-identity"); probe.close()
     destination = parent / "routing 東京 export.json"
-    relay = ExportRelay(owner, client, module)
-    descriptor = dict(client._endpoint, schemaVersion=1, port=relay.port)
-    descriptor_path = proxy / "activation.port"
-    raw = module.dump(descriptor).encode()
-    windows.create_sid_private_new(owner.native, descriptor_path, raw,
-                                   owner.request["context"]["ordinarySid"])
-    held_descriptor = windows.Held(owner.native, descriptor_path)
-    descriptor_pin = held_descriptor.pin()
-    windows.endpoint_private_acl(owner.native, held_descriptor.handle,
-                                 owner.request["context"]["ordinarySid"])
+    relay, held_descriptor, descriptor_pin = prepare_fixture(owner, client, module, windows, mode,
+                                                             parent, renamed, proxy)
     owner.document_export_relay = relay
     owner.document_export_descriptor = held_descriptor
     child = owner.child("document-public-export-race-" + mode, [owner.request["cliPath"],

@@ -1,0 +1,49 @@
+{
+  "cause": "Unproven natively. The owner recorded only the class, PermissionError. By the preserved code it was raised by the harness's own export-race fixture before the product's export child started: windows_document_export_race.py:145, the first rename of the positive probe (parent.rename(renamed)), which a sharing violation (WinError 32) or access denied (WinError 5) surfaces as, or lines 69 to 71 through line 149, the relay's own loopback listener (WSAEACCES 10013 maps to errno 13). The folders left cannot tell these two apart: a probe that renamed away and back leaves the same names. The second rename cannot be it: it would have left document-race-parent-moved. Nothing else in that window raises PermissionError: the probe's handles and the descriptor use ctypes and raise RuntimeError codes, and lexical() resolves without strict, which swallows access denied and sharing violations.",
+  "execution": "Only module definitions run. The owner runs with the inert guest of test_windows_cli_native_failures and test_windows_document_acceptance; the race's Windows module, its loopback listener and the OS rename are logical peers over real temporary folders. No process, listener, Win32 call or VM is involved.",
+  "fixtures": {
+    "document-native-fixture.before.source": {
+      "defect": "persistence_fault held the product's workspace.json and created and held the empty recovery leaf outside any closing, and private_export_no_overwrite opened its observer of the operation root the same way: an OS refusal of these harness steps before the product's request parked the owner, or left the primary held through the closing's quit. Not reached natively.",
+      "origin": "agent_tools/windows_document_native.py at f76e02fcd82b8389d7c1a8267678fa5599eb2866, the same bytes the native row ran (bundle-2df348bd).",
+      "sha256": "ba23df4d014d0b131e2c7bb7b41b49816df3ca4b13fd8ff1430c293c1729bec9",
+      "sizeBytes": 30382
+    },
+    "export-race-fixture.before.source": {
+      "defect": "run_public_export_race made its folders, renamed its parent away and back, opened its relay listener and wrote its descriptor outside any closing, so an OS refusal of these harness steps before the product's export child parked the owner as an unknown product state, and a failure once the relay listened left it running.",
+      "origin": "agent_tools/windows_document_export_race.py at f76e02fcd82b8389d7c1a8267678fa5599eb2866, the same bytes the native row ran (bundle-2df348bd).",
+      "sha256": "182d08b2f839519aeaced8dfeabb79d033bd96c4b1f62dd495fa4322a89b546e",
+      "sizeBytes": 11264
+    },
+    "owner-park-record.before.source": {
+      "defect": "park(), main()'s parks and the known-failure, owner-terminal and child-no-process records named only the error class; a raw-capture park named a dict.",
+      "origin": "agent_tools/windows_ordinary_process_owner.py at f76e02fcd82b8389d7c1a8267678fa5599eb2866. The native row ran 70ed16cc's owner (sha256 691f8393d9d4daa366f8cdbb44cbfe3a4a123fc390d132db268aa102c72e0344), which differs only in the dedicated-driver digest literal of line 792, never read by document-acceptance.",
+      "sha256": "6f3b9e77d72c89e2167d427eebde0373e90bd00ac725a4f8aadcf0309e1b755d",
+      "sizeBytes": 61540
+    }
+  },
+  "nativeFailures": [
+    {
+      "clone": "be766f0c",
+      "date": "2026-11-09",
+      "defenderRealTimeProtection": true,
+      "errorClass": "PermissionError",
+      "guestFoldersAfterwards": {
+        "document-export-client-parent": "present",
+        "document-export-client-parent/activation.port": "absent",
+        "document-race-parent": "present",
+        "document-race-parent-moved": "absent"
+      },
+      "jobOutcome": "job_exit_unknown:owner-parked",
+      "lastEvent": "event-002630-document-large-import-readback",
+      "liveChildren": [
+        "serve"
+      ],
+      "operation": "2df348bd-6878-41c8-8061-60c87f7e301e",
+      "package": "2.2.17 of 70ed16cc",
+      "parkReason": "scenario-failure-with-retained-child",
+      "route": "direct",
+      "scenario": "windows-document-acceptance"
+    }
+  ],
+  "schemaVersion": 1
+}

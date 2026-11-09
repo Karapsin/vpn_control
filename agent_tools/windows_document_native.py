@@ -33,6 +33,33 @@ class NativeOpenError(RuntimeError):
         super().__init__("document-native-file-open-refused")
 
 
+def fixture_refused(fixture, step, error):
+    """The known failure of a harness fixture step the OS refused before the product took part in it.
+
+    An OSError or a refused native open becomes document-<fixture>-fixture-refused:<step>:<code>,
+    a finite code the case module's closing counts as known; anything else is returned unchanged.
+    """
+    if not isinstance(error, (OSError, NativeOpenError)):
+        return error
+    winerror, number = getattr(error, "winerror", None), getattr(error, "errno", None)
+    code = winerror if type(winerror) is int else "errno-%d" % number if type(number) is int else "none"
+    return RuntimeError("document-%s-fixture-refused:%s:%s" % (fixture, step, code))
+
+
+def release_refused(owner, held, error, fixture, step):
+    """Close the fixture's own handles that opened, then raise its known failure, or park if one cannot close."""
+    try:
+        for value in held:
+            if value is not None and not value.closed:
+                value.close()
+    except BaseException as closing:
+        owner.park("document-" + fixture + "-fixture-closing-unknown", closing)
+    known = fixture_refused(fixture, step, error)
+    if known is error:
+        raise error
+    raise known from error
+
+
 class Held:
     def __init__(self, native, path, directory=False, write=False, share=1):
         self.native, self.path, self.directory = native, lexical(path), directory
@@ -255,11 +282,20 @@ def persistence_fault(owner, workspace, client, module, request_id, context, bef
     owner.document_workspace_handle.current()
     recovery = workspace / "workspace-recovery.json"
     need(not recovery.exists(), "document-recovery-before-absence")
-    primary = Held(owner.native, workspace / "workspace.json")
-    before = primary.pin()
-    with recovery.open("xb") as target:
-        target.flush(); os.fsync(target.fileno())
-    reserve = Held(owner.native, recovery)
+    # The fixture before the request is the harness's own: an OS refusal there releases what it
+    # holds, so the product can persist at the closing's quit, and is a known failure.
+    primary = reserve = None
+    step = "primary-hold"
+    try:
+        primary = Held(owner.native, workspace / "workspace.json")
+        before = primary.pin()
+        step = "recovery-create"
+        with recovery.open("xb") as target:
+            target.flush(); os.fsync(target.fileno())
+        step = "recovery-hold"
+        reserve = Held(owner.native, recovery)
+    except BaseException as error:
+        release_refused(owner, (reserve, primary), error, "persistence", step)
     owner.document_persistence_fault = {"primary": primary, "recovery": reserve}
     try:
         request = module.request_document(client.owner, request_id, "settings.set",
@@ -446,7 +482,10 @@ def private_export_no_overwrite(owner, workspace, identity, destination, harness
     destination = lexical(destination)
     need(destination.parent == lexical(owner.root) and not destination.exists(),
          "document-export-exact-new-owned-leaf")
-    parent = Held(owner.native, destination.parent, directory=True, share=3)
+    try:
+        parent = Held(owner.native, destination.parent, directory=True, share=3)
+    except BaseException as error:
+        release_refused(owner, (), error, "export", "parent-hold")
     first = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity,
         "routing", "export", "--output", str(destination)))
     need(first["controllerId"] == identity and first["final"] is True, "document-export-owner-result")
