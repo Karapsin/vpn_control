@@ -10,6 +10,9 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Keep OneDrive from updating itself on Windows test fixtures: the fixture update policy sets OneDrive's PreventNetworkTrafficPreUserSignIn before the first logon and disables every OneDrive update task.
 - Attach a desktop GUI reopened right after a GUI crash or exit at once, instead of exiting without a window until the dead GUI's lease expires.
 - Windows test clones that were stopped or ended by a host reboot can give their host-memory reservation back with windows-vm-deploy-release, so a new clone's start is no longer refused for memory no VM uses.
+- Windows document rows close a test fixture the OS refused as a named known failure instead of blocking the clone, and owner parks name the failing line and Windows error.
+- Add the Windows scheduled-refresh owner row, which proves a scheduled subscription refresh in the owner with no GUI attached.
+- Admit the Windows update deny and grant rows (uac-denied, success-off, wait-client-loss, installer-wait-client-loss) with SYSTEM collectors that find the installer's actors and read the owner-only disposition through a journaled backup-privilege open.
 
 ## 2.2.17 - 2026-11-09
 
