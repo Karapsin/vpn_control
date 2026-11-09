@@ -6801,7 +6801,7 @@
       ]
     },
     "agent_tools/tests/fixtures/windows_system_collector/current_collector_body.py": {
-      "reason": "Exact complete current or authentic prior test body. Only finite loader/path declarations are adapted in executable body copies; preserved .source archives remain unexecuted. Every TestCase method remains identical except explicit prior-source path substitutions recorded by the body-preservation receipt. Inputs use declared peers. Tempfile HTTP asset reads and native actor/path data do not expand repository source authority.",
+      "reason": "Exact complete current or authentic prior test body. Only finite loader/path declarations are adapted in executable body copies; preserved .source archives remain unexecuted. Every TestCase method remains identical except explicit prior-source path substitutions recorded by the body-preservation receipt. Inputs use declared peers. Tempfile HTTP asset reads and native actor/path data do not expand repository source authority. The request pin's DACL takes the form collector_contract.file_policy admits, O:SYD:PAI since the update-grant change; nothing else in the body changed.",
       "scopes": [
         "agent_tools/windows_artifact_transfer.py",
         "agent_tools/windows_qga_transfer.py",
@@ -6813,7 +6813,8 @@
         "agent_tools/windows_system_collector/system_collector_worker.py"
       ],
       "sourceSha256": [
-        "e923c6deab7cf358dc8f4eeeea10ef9a3c1276422d0e669848b07d314ac36bc2"
+        "e923c6deab7cf358dc8f4eeeea10ef9a3c1276422d0e669848b07d314ac36bc2",
+        "d68f904655389c1b907f330dc7969c892b64ff54faccd98956fcd8c98eff0dc3"
       ]
     },
     "agent_tools/tests/fixtures/windows_system_collector/current_final_body.py": {
@@ -6871,13 +6872,14 @@
       ]
     },
     "agent_tools/tests/fixtures/windows_system_collector/oracle_interpreter_guard.py": {
-      "reason": "Finite whole-source interpreter-restoration causal oracle, restricted to the current collector test namespace or authenticated complete unfixed before source; retained real local Python child, no native/network/VM actions.",
+      "reason": "Finite whole-source interpreter-restoration causal oracle, restricted to the current collector test namespace or authenticated complete unfixed before source; retained real local Python child, no native/network/VM actions. Before the authenticated before source runs, only its ROWS pins of current sources a later fix changed are rebound to their current digests; before-images and originals keep their exact pins.",
       "scopes": [
         "agent_tools/tests/test_windows_system_collector.py",
         "agent_tools/tests/fixtures/windows_system_collector/oracle-cleanup.before.source"
       ],
       "sourceSha256": [
-        "1c3c4acbcf88ec35d8ee27af7c53196d85694269725e34b6a4a9946d14bc5407"
+        "1c3c4acbcf88ec35d8ee27af7c53196d85694269725e34b6a4a9946d14bc5407",
+        "75fee7d6ac34054484c17b1ea00cede1ced32fac0504c85682fec5e3755719c8"
       ]
     },
     "agent_tools/tests/fixtures/windows_system_collector/originals/causal_controls.py.source": {
@@ -11777,7 +11779,8 @@
       ],
       "sourceSha256": [
         "5fa0ca6b5e1c4c3d25b8c1103f32e393225e36888f7e57c88b42e4523d4bb1a6",
-        "4403c1a00b3ec47635255585e27d13902d1ed7467e1e9defb26d36c1bce9ddf9"
+        "4403c1a00b3ec47635255585e27d13902d1ed7467e1e9defb26d36c1bce9ddf9",
+        "efd4b74ec1a67c564667a2f89c2d2b5ee269c1d8ff3dad088814a4297ba8bf4c"
       ]
     },
     "agent_tools/tests/test_windows_fixture_checkout_bytes.py": {
@@ -12731,7 +12734,8 @@
       "sourceSha256": [
         "c049fe0d94e7762e2c67be86530dc0e57b09075064985a5159c77d9df003aa5e",
         "fa53088f2a094b31d8adfa0f82f0644e19fd34d30ba1386b93331cc1def25578",
-        "139624624a4a9499c59b857191a591ff8d0917e22762c560f15982a0a7ef84de"
+        "139624624a4a9499c59b857191a591ff8d0917e22762c560f15982a0a7ef84de",
+        "5a4b6d7a08b5fd09fbd23d7663f22b8ef1a288af9e3d937bd84cd9ab4a967e62"
       ]
     },
     "agent_tools/tests/test_windows_python_fixture_io.py": {
@@ -12921,7 +12925,8 @@
       "sourceSha256": [
         "8357285fc9cd2094bca956e428a0ef477741c951509c5eb67b16be247af546ee",
         "a7d3e8f0e8dd68f23a88f7620296d01d29c8cd626e16a7bd5b1fe6f7836d8233",
-        "d6c749e6b34aa5f5e439556bc945cf5e19fa06677fcf07e93a5faf76d0324def"
+        "d6c749e6b34aa5f5e439556bc945cf5e19fa06677fcf07e93a5faf76d0324def",
+        "70c6db2ed0dca349cc59ca63a0c091d7db8050c1b16f4c33a26affdb072e2027"
       ]
     },
     "agent_tools/tests/test_windows_system_collector_owner_source.py": {
@@ -12937,7 +12942,8 @@
       "sourceSha256": [
         "ea81278485e8455dc240494963521c86d112328c343f193837e80e7739399f9e",
         "89e2f67ef252a4e6406e2e600320297613df56c83d23800a8d14f979ec6bc67d",
-        "1ab71e249eb80a4da96f0e77dbbfecdedb96aca2301d749d1ab2477ef6c521de"
+        "1ab71e249eb80a4da96f0e77dbbfecdedb96aca2301d749d1ab2477ef6c521de",
+        "fd3a45eee136a06e5455471485a69434c0aae01a30c21a797fb25f28cf1df94b"
       ]
     },
     "agent_tools/tests/test_windows_system_collector_owner_source_loader.py": {
@@ -12989,7 +12995,8 @@
       "sourceSha256": [
         "3489560f0b7432dccc4092997183b2a45ad688206f2816052db9278fd309ade5",
         "bcdfdb8e1680f7e9f6a3eb263bb87702dea39406dddb2af6957f1faf7e094278",
-        "3b9c6be01dd692d1ae2d29e6e41f8432f751ff6c006bce18db3792f7ea2a0466"
+        "3b9c6be01dd692d1ae2d29e6e41f8432f751ff6c006bce18db3792f7ea2a0466",
+        "7ca4ac67a42baaa3bdb4d1073cc74dcf38c54a91804bd26365cb59afae55e180"
       ]
     },
     "agent_tools/tests/test_windows_system_image_inquiry.py": {
@@ -13315,7 +13322,8 @@
         "e0db1ae744e4e6702accf31cbaeab6af410f9af8702f693d6f0fbe982d850453",
         "d73a489cb050c0a0977a3957d77df59f94bcb4dee3ef39fa5d0e06441d5875e3",
         "f83e477d29a176d620eb6db4c60d72e3ff4f1d2c8152ad4fc241d6f3c63f276b",
-        "24a2ae0562be6a009ad621e0c9ff2e6507f97dfa5d3233d042ea15f50da8a3c9"
+        "24a2ae0562be6a009ad621e0c9ff2e6507f97dfa5d3233d042ea15f50da8a3c9",
+        "0d6863fa7d6ada26916ba12e6e77425cb091e75b75c8c0680000f69208d7aea7"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13345,7 +13353,8 @@
       ],
       "sourceSha256": [
         "6a6fbbe73e8d70db247656af330a8a4de9b2119a181ae4e3af5d0757dc8f0ef5",
-        "0ccae3314fc03765c0568417531486ede523c7ea3aeecf22829d2d08fdd2da44"
+        "0ccae3314fc03765c0568417531486ede523c7ea3aeecf22829d2d08fdd2da44",
+        "51a165023d867b7097cb75675f7a938ad683a0c188c88388a7ac0f5b16d851d1"
       ]
     },
     "scripts/check_ci_failure_discovery.py": {
@@ -13417,7 +13426,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "1d14a7a7dbaf7f9c1f30cd1281c16972dfa10a0192acc27b738a2302b75bf112",
+    "agent_tools/readiness_vm_dispatch.json": "3823781c7a25233f9d4441157f4ea10fd18a2054de5d1d7046e3fc18b3341ef5",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

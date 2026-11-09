@@ -161,8 +161,7 @@ _TUN_SAMPLER = (("agent_tools/windows_tun_direct_sampler.py", "sampler", "data")
 _TUN_REFUSED = {
     # The approved broker runs elevated as the approving administrator, so only the TUN SYSTEM collector's ready and off
     # records (windows_tun_native_observer) prove its image, its SID and its exact child. No stage of this job discovers the
-    # broker and its runtime for that collector's request, the pinned chain takes the request only as O:SYD:P while files
-    # this route publishes read back O:SYD:PAI, and the dedicated driver has no TUN close hold or record handoff.
+    # broker and its runtime for that collector's request, and the dedicated driver has no TUN close hold or record handoff.
     "restart-grant": "windows_scenario_tun_grant_unproven",
     "find-best-grant": "windows_scenario_tun_grant_unproven",
     # Find Best validates every candidate before it prepares the broker, so its prompt follows the pending event by an
@@ -212,29 +211,32 @@ UPDATE_VARIANTS = ("public-ready", "download-cancelled", "checksum-rejected", "u
                    "participating-copy-lock", "protected-storage-rejected", "native-install-failed", "success-off",
                    "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss")
 _NO_SYSTEM = ("public-ready", "download-cancelled", "checksum-rejected")
-# Refused before any journal, each with what is missing. A grant's authorization stage observes the elevated helper
-# coordinator and its original-user worker as live actors, and terminal-actors after a handoff needs both again; no
-# stage of this job discovers them, so no collector proves the helper image and the approving SID.
+# Refused before any journal, each with exactly what is still missing.
 _UPDATE_REFUSED = {
-    "install-cancelled": "windows_scenario_update_grant_unproven",
-    "participating-copy-lock": "windows_scenario_update_grant_unproven",
-    "success-off": "windows_scenario_update_grant_unproven",
-    "success-reconnect": "windows_scenario_update_grant_unproven",
-    "different-admin": "windows_scenario_update_grant_unproven",
-    "wait-client-loss": "windows_scenario_update_grant_unproven",
-    "installer-wait-client-loss": "windows_scenario_update_grant_unproven",
+    # The cancelled job's coordinator and worker live only from the approval to the product's own CANCELLED, which
+    # follows the cancel the owner already sent, and the product keeps no record of the coordinator (its
+    # input-custody.json is written on success alone). terminal-actors needs both identities and no stage can see them.
+    "install-cancelled": "windows_scenario_update_cancel_actors_unobserved",
+    # The host job passes no fault inputs, so update_cases refuses its blocking copy, and no stage serves fault-ready
+    # with the participating copy's actor.
+    "participating-copy-lock": "windows_scenario_update_copy_lock_fixture_unavailable",
+    # The host job passes initialIntent off with no loopback connection profile and no traffic inputs.
+    "success-reconnect": "windows_scenario_update_reconnect_fixture_unavailable",
+    # The fixture has one administrator account (windows_vm_unattend: user and administrator), the decision approves
+    # only with final-administrator.secret, and the context reads only that account's SID. A second approving
+    # administrator needs a second Administrators account, its credential and a decision row that types it.
+    "different-admin": "windows_scenario_update_second_administrator_unavailable",
     # No producer: the product's MSIs carry no LaunchCondition table for the failing-MSI derivation, and nothing
     # creates or removes a counterfeit protected-storage root.
     "native-install-failed": "windows_scenario_update_fault_unavailable",
     "protected-storage-rejected": "windows_scenario_update_fault_unavailable",
-    # The pinned collector chain takes its request only in the O:SYD:P form, but a file the publisher creates and then
-    # protects reads back O:SYD:PAI natively, so publish ends collector_file_policy. And its terminal-actors stage reads
-    # the product's not-started disposition as SYSTEM, while the product writes that file for its owner alone and
-    # nothing enables SeBackupPrivilege. Both a request writer and a reader have to be proved natively first.
-    "uac-denied": "windows_scenario_update_collector_unproven",
 }
-# The stages each variant's owner asks a SYSTEM collector for, the last one behind the caller's close hold.
-_UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "terminal-actors")}
+# The stages each variant's owner asks a SYSTEM collector for, the last one behind the caller's close hold. A grant's
+# before-install also finds the controller the helper will name, authorization the live coordinator and worker,
+# terminal-actors their exit beside the protected terminal and returned-cleanup the returned owner's exit.
+_GRANT_STAGES = ("before-install", "authorization", "terminal-actors", "returned-cleanup")
+_UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "terminal-actors"),
+                      **{variant: (_GRANT_STAGES, "returned-cleanup") for variant in ("success-off", "wait-client-loss", "installer-wait-client-loss")}}
 
 
 def _update_row(variant: str) -> dict[str, Any]:

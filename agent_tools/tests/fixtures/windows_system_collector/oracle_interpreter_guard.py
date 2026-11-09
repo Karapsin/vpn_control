@@ -1,5 +1,6 @@
 """Whole genuine barrier-pair isolation/restoration oracle; local inert child only."""
 from pathlib import Path
+import ast
 import hashlib
 import json
 import os
@@ -14,6 +15,24 @@ CURRENT = ROOT / 'agent_tools/tests/test_windows_system_collector.py'
 BEFORE = Path(__file__).with_name('oracle-cleanup.before.source')
 OBSERVATION = {}
 CHILDREN = []
+
+
+def rebind_current_pins(raw):
+    """Later fixes moved the pins of current sources the before namespace loads. Only those ROWS values are rebound to
+    the current digests; a before-image or an original keeps its exact pin, and no other byte changes."""
+    text = raw.decode('utf-8')
+    rows = next(ast.literal_eval(node.value) for node in ast.parse(text).body
+                if isinstance(node, ast.Assign) and [getattr(t, 'id', None) for t in node.targets] == ['ROWS'])
+    for relative, pinned in sorted(rows.items()):
+        if '/before/' in relative or '/originals/' in relative or relative.endswith('.before.source'):
+            continue
+        current = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+        if current != pinned:
+            old, new = repr(relative) + ': ' + repr(pinned), repr(relative) + ': ' + repr(current)
+            if text.count(old) != 1:
+                raise ValueError('oracle-pin-rebind:' + relative)
+            text = text.replace(old, new)
+    return text.encode('utf-8')
 
 
 class InterpreterRestorationTest(unittest.TestCase):
@@ -31,6 +50,8 @@ class InterpreterRestorationTest(unittest.TestCase):
             self.assertEqual(generation(source.stat()), opening)
         if source == BEFORE.resolve():
             self.assertEqual(expected, 'a7d3e8f0e8dd68f23a88f7620296d01d29c8cd626e16a7bd5b1fe6f7836d8233')
+            # Its RED stays the harness's own cleanup, not a pin refusal of a source a later fix changed.
+            raw = rebind_current_pins(raw)
         module = types.ModuleType('_actual_whole_collector_cleanup_oracle')
         # Original canonical path is the explicit ROOT-data binding for both
         # whole namespaces. No function/class/assertion source is rewritten.

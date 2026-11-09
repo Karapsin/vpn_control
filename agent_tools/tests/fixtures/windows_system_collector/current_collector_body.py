@@ -110,7 +110,7 @@ def inputs(scope='update',with_hold=False):
         'machineGuid':context['machineGuid'],'hardwareUuid':context['hardwareUuid']},'ordinarySid':SID,
         'powerShellPath':E.POWERSHELL_PATH,'sourceWorkspace':parent}
     rec=pin(request['requestPath'],C.request_digest(request),size=len(C.encoded(request)))
-    rec['security']={'ownerSid':'S-1-5-18','sddl':'O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'}
+    rec['security']={'ownerSid':'S-1-5-18','sddl':'O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'}
     return request,rec,guest
 
 
@@ -290,7 +290,7 @@ class RenderTests(unittest.TestCase):
         present={x['path'] for x in r['directoryPins']}
         for parent in PureWindowsPath(new).parents:
             if str(parent) not in present:r['directoryPins'].append(pin(str(parent),directory=True));present.add(str(parent))
-        dacl='O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'
+        dacl='O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+SID+')'
         for item in r['filePins']:
             if item['path']==new:item['security']['sddl']=dacl
         p=pin(r['requestPath'],C.request_digest(r),size=len(C.encoded(r)));p['security']['sddl']=dacl

@@ -1069,9 +1069,7 @@ Refused before any journal: `restart-grant` and `find-best-grant` with
 approving administrator, so only the TUN SYSTEM collector's ready and off records
 (`windows_tun_native_observer`) prove its image, its SID and its exact child. No
 stage of this job discovers the broker and its runtime for that collector's
-request, the pinned chain takes its request file only as `O:SYD:P` while files this
-route publishes read back `O:SYD:PAI`, and the dedicated driver has no TUN close
-hold or record handoff. So `scoped-elevation`, `scoped-uac-tun-traffic`, the VPN half
+request, and the dedicated driver has no TUN close hold or record handoff. So `scoped-elevation`, `scoped-uac-tun-traffic`, the VPN half
 of `exact-child-stop`, the TUN fault half of `prepare-commit-recovery` and the TUN
 config halves of `generated-custom-config` and `large-config` have no admitted row.
 The stages already close a grant that brought no TUN up (its prompt expired, or a
@@ -1138,31 +1136,83 @@ builds the trust store on the host from the public certificate only. It reads th
 base's MSI registration with the reader the first native installs proved (one
 enumeration of every user and context, by `InstalledProductName`), which also
 reports each row's package code. Admitted: `public-ready`, `download-cancelled` and
-`checksum-rejected`, which raise no prompt and need no SYSTEM collector. Refused
-before any journal:
+`checksum-rejected`, which raise no prompt and need no SYSTEM collector;
+`uac-denied`, whose collector serves `before-install` and `terminal-actors`; and
+the grant rows `success-off`, `wait-client-loss` and `installer-wait-client-loss`,
+whose collector serves `before-install`, `authorization`, `terminal-actors` and
+`returned-cleanup`. Refused before any journal, each with what it still lacks:
 
-- the seven grant variants (`install-cancelled`, `participating-copy-lock`,
-  `success-off`, `success-reconnect`, `different-admin`, `wait-client-loss`,
-  `installer-wait-client-loss`) with `windows_scenario_update_grant_unproven`. No
-  stage of this job discovers the elevated helper coordinator and its worker, so
-  no collector proves the helper image and the approving SID.
+- `install-cancelled` with `windows_scenario_update_cancel_actors_unobserved`. The
+  cancelled job's coordinator and worker live only from the approval to the
+  product's own `CANCELLED`, which follows the cancel the owner already sent, and
+  the product keeps no record of the coordinator (its `input-custody.json` is
+  written on success alone), so no stage can name the actors `terminal-actors`
+  needs.
+- `participating-copy-lock` with
+  `windows_scenario_update_copy_lock_fixture_unavailable`. The job passes no fault
+  inputs, so the case refuses its blocking copy, and no stage serves `fault-ready`.
+- `success-reconnect` with `windows_scenario_update_reconnect_fixture_unavailable`.
+  The job passes `initialIntent` off with no loopback connection profile and no
+  traffic inputs.
+- `different-admin` with `windows_scenario_update_second_administrator_unavailable`.
+  The fixture has one administrator account, the decision approves only with
+  `final-administrator.secret`, and the context reads only that account's SID. It
+  needs a second Administrators account, its credential and a decision row that
+  types it.
 - `native-install-failed` and `protected-storage-rejected` with
   `windows_scenario_update_fault_unavailable`. Nothing produces their faults: the
   product's MSIs carry no LaunchCondition table to fault, and nothing creates or
   removes a counterfeit protected-storage root.
-- `uac-denied` with `windows_scenario_update_collector_unproven`. Its SYSTEM
-  collector cannot run natively yet. The pinned collector chain takes its request
-  file only as `O:SYD:P(...)`, but a file the publisher creates and then protects
-  reads back `O:SYD:PAI(...)` (every native `worker-request.json` pin so far), so
-  the job would end at publish with `collector_file_policy`. Its `terminal-actors`
-  stage also reads the product's not-started disposition as SYSTEM, while the
-  product writes that file for its owner alone and nothing on this route enables
-  `SeBackupPrivilege`. Both a request writer and a reader have to be proved
-  natively before the row is admitted.
 
-The job keeps the collector stage engine for that day. A row with collector
-stages serves `before-install` and then `terminal-actors` behind the caller's
-close hold, inside its run. The owner names each need with an
+The publisher writes each collector request and then protects it with
+`SetAccessControl`, so it reads back
+`O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;<user>)`: every native
+`worker-request.json` pin did. The contract, the SYSTEM bootstrap and the release
+program take exactly that form, and the release program checks the release it
+publishes against it. The job reads the owner's pin, published the same way, before
+any task: any other form ends at publish with `collector_file_policy`. A collector
+root must read back `O:SYD:PAI(A;OICI;...)` or the job ends at publish with
+`collector_root_policy`, so a guest whose explicitly described files lose the
+auto-inherited flag stops there too, before any task.
+
+The product writes `.install-not-started-<hash>.json` for its owner alone
+(`O:<user>G:<user>D:P(A;;FA;;;<user>)`). That ACL is the product's design, and no
+tool changes it. The publisher's `Read-BackupPin` and the collector's
+`native_collector.backup_open` read it as SYSTEM by enabling `SeBackupPrivilege` on
+their own thread's impersonation token for one open (`GENERIC_READ|READ_CONTROL`,
+share read, `FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT`). They then
+disable it and revert before reading a byte, and the process token never changes.
+Every open is journaled. The publisher's two per disposition are kept in the job's
+`collectors/terminal-actors/backup-reads.json` and counted in the receipt's
+`update.backupReads`. The collector's is in its observation's `notStartedBackupRead`
+and a `native-collector-backup-read` event. A journal with the privilege still on, a
+failed revert or a changed process token is never used (`collector_backup_read`,
+`backup-privilege-not-dropped`, `backup-open-refused`).
+
+A grant row's `collector-observe` also takes a SYSTEM census of one installed image
+(`VpnScenarioObserver.Census`). The census covers every process of that image leaf,
+each described through its own handle: creation time, image path and SHA-256,
+argv, token SID, elevation and session, and parent. It also reads the job's own
+product records. `before-install` finds the controller the installer helper will
+name: the serve the owner started, or the one child of the same image its launcher
+relaunched into (`collector_owner_serve`, `collector_owner_child`). `authorization`
+takes exactly one live coordinator (`install-coordinator <job> <owner pid> <owner
+birth>`, elevated as the approving administrator) and one live worker
+(`install-user`, unelevated as the ordinary user, born after the coordinator), both
+in the ordinary session. Both must run the helper whose digest and size the
+installed `native-helpers.json` declares; the job reads that at publish and ends
+there with `installed_install_helper` if they differ. Authorization also reads the
+worker's `worker-ready.json`. A mismatch ends with
+`collector_<role>_count_<n>`, `collector_<role>_identity`, `collector_<role>_token`
+or `collector_worker_generation`. Their parents are recorded in `update.installer`,
+never required. `terminal-actors` asks for the same two again beside the protected
+`status.json`. `returned-cleanup` asks for the owner the case recorded in its
+`update-returned-cleanup-expected-actors` event (`collector_returned_actors`,
+`collector_returned_actor`). Each of these refusals leaves the owner waiting, so the
+job ends UNKNOWN with its own code and the fence open.
+
+A row with collector stages serves them in order, inside its run, the last behind
+the caller's close hold. The owner names each need with an
 `update-native-observation-needed` event. The job renders the collector from
 `windows_system_collector`, runs it on the stdin route and then releases the hold.
 It serves a need only while the run is open and the same status names no parked
@@ -1173,8 +1223,8 @@ returns, ends UNKNOWN with the fence open. The status keeps
 decision's input terminal exists, however many events follow it. Collect passes
 a deny row only when that terminal reads `input-ack-only`, `deny`,
 `install-helper` and `promptClosed: true`. Without it the collection stays
-`unknown`. Update rows never claim installed-package evidence, because no
-`--version` runs under the ordinary token there.
+`unknown`. Update rows never claim installed-package evidence: the job matches only
+the base's installed tree before the run, never the tree a grant leaves.
 
 Nothing in this family has reached a guest yet. The guest's Windows PowerShell
 5.1 still has to prove the TLS pair (`CertificateRequest`, `RSACng` export), and
@@ -1455,9 +1505,9 @@ and the row review on stderr, or exits 1 with a finite refusal, including
 `windows_matrix_evidence_unavailable` for evidence it cannot write; record by passing
 the printed object to `matrix-record`. Today no Windows requirement can pass.
 `windows-installer-lifecycle` maps all eight scenarios, but only to update and reboot
-rows: every update variant it names is refused at admission (the grant and fault
-variants, and `uac-denied` until its collector is proved), and update rows never claim
-installed-package evidence. The other Windows requirements each have an unmapped
+rows: each update variant it names is refused at admission or, where admitted
+(`uac-denied`, `success-off`, `wait-client-loss`, `installer-wait-client-loss`),
+claims no installed-package evidence. The other Windows requirements each have an unmapped
 scenario, and the 12 scenarios naming an update row, `operation-progress-cancellation`
 among them, cannot pass either.
 
@@ -1501,9 +1551,8 @@ nothing sent) permits another submit; any other refusal, such as no prompt
 within the 30 s gate, leaves the prompt to expire, and a repeat returns that
 refusal with no packet. A deny row is admitted at `scenario-start` only where
 collect joins the decision's input terminal, because an expired prompt ends as the
-same public `CANCELLED` as Esc. `windows-scoped-tun.restart-deny` is the deny row
-admitted today; `windows-public-update.uac-denied` has that join but is refused for
-its collector (above).
+same public `CANCELLED` as Esc. `windows-scoped-tun.restart-deny` and
+`windows-public-update.uac-denied` are the deny rows admitted today.
 
 Proof comes before any key: reviewed pixel crops of a QMP frame and a SYSTEM
 census of `consent.exe` (one, System32, signed by Microsoft Windows, parent

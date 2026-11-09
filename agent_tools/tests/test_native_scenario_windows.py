@@ -1404,15 +1404,16 @@ class UpdateTableTests(unittest.TestCase):
         self.assertIn("transport-loss", update_cases.VARIANTS, "the case module refuses it itself")
 
     def test_only_rows_with_a_producer_for_their_evidence_are_admitted(self):
+        """Each refused row names exactly what it still lacks; every stage of an admitted row is tooled."""
         refusals = {variant: windows.RECIPES[UPDATE + variant]["refusal"] for variant in windows.UPDATE_VARIANTS}
-        self.assertEqual({"public-ready", "download-cancelled", "checksum-rejected"},
-                         {variant for variant, reason in refusals.items() if reason is None})
-        self.assertEqual({"uac-denied"}, {variant for variant, reason in refusals.items() if reason == "windows_scenario_update_collector_unproven"})
-        self.assertEqual({"install-cancelled", "participating-copy-lock", "success-off", "success-reconnect", "different-admin", "wait-client-loss",
-                          "installer-wait-client-loss"},
-                         {variant for variant, reason in refusals.items() if reason == "windows_scenario_update_grant_unproven"})
-        self.assertEqual({"native-install-failed", "protected-storage-rejected"},
-                         {variant for variant, reason in refusals.items() if reason == "windows_scenario_update_fault_unavailable"})
+        self.assertEqual({**dict.fromkeys(("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "success-off",
+                                           "wait-client-loss", "installer-wait-client-loss")),
+                          "install-cancelled": "windows_scenario_update_cancel_actors_unobserved",
+                          "participating-copy-lock": "windows_scenario_update_copy_lock_fixture_unavailable",
+                          "success-reconnect": "windows_scenario_update_reconnect_fixture_unavailable",
+                          "different-admin": "windows_scenario_update_second_administrator_unavailable",
+                          "native-install-failed": "windows_scenario_update_fault_unavailable",
+                          "protected-storage-rejected": "windows_scenario_update_fault_unavailable"}, refusals)
 
     def test_the_rows_agree_with_the_dedicated_driver_and_the_decision_table(self):
         from agent_tools import windows_ordinary_dedicated_driver as dedicated
@@ -1436,6 +1437,10 @@ class UpdateTableTests(unittest.TestCase):
                     self.assertTrue(host_job._BUNDLE_PATH.fullmatch(relative), relative)
         self.assertEqual((("before-install", "terminal-actors"), "terminal-actors"),
                          tuple(windows.RECIPES[UPDATE + "uac-denied"]["update"][key] for key in ("collectorStages", "finalStage")))
+        for variant in ("success-off", "wait-client-loss", "installer-wait-client-loss"):
+            self.assertEqual((("before-install", "authorization", "terminal-actors", "returned-cleanup"), "returned-cleanup"),
+                             tuple(windows.RECIPES[UPDATE + variant]["update"][key] for key in ("collectorStages", "finalStage")))
+            self.assertEqual("approve", windows.RECIPES[UPDATE + variant]["uac"]["decision"])
 
     def test_the_collector_modules_are_the_contract_roles(self):
         from agent_tools.windows_system_collector import collector_contract as contract
@@ -1583,10 +1588,15 @@ class UpdateAdmissionTests(UpdateBase):
         kind = self.register(json.dumps(self.fixture_receipt(nativeOs="Windows-kind")).encode(), "fixture-receipt.json", "fixture-receipt", source=self.head)
         self.assert_refused(self.update_request(variant, receipt=kind["artifactId"]), "windows_scenario_package_kind")
 
-    def test_the_deny_row_is_refused_until_its_collector_can_take_a_request_and_read_the_disposition(self):
-        """Natively a published file reads back O:SYD:PAI, which the pinned collector refuses as its request, and SYSTEM
-        cannot open the product's owner-only not-started disposition. Either one leaves the row unable to pass."""
-        self.assert_refused(self.update_request("uac-denied"), "windows_scenario_update_collector_unproven")
+    def test_the_deny_row_and_the_tooled_grant_rows_are_admitted_before_any_journal(self):
+        """The chain now takes its request in the O:SYD:PAI form the publisher's files read back, terminal-actors reads the
+        owner-only disposition through the backup privilege alone, and the job discovers a grant's coordinator, worker
+        and returned owner for its stages. At 70ed16cc the deny row was refused windows_scenario_update_collector_unproven
+        and the grant rows windows_scenario_update_grant_unproven."""
+        for variant in ("uac-denied", "success-off", "wait-client-loss", "installer-wait-client-loss"):
+            with self.subTest(variant=variant):
+                self.assertEqual(windows.RECIPES[UPDATE + variant], windows.admit_start(self.root, self.update_request(variant), self.resolver))
+                self.assertFalse(self.journal.exists())
 
     def test_a_deny_row_needs_collect_to_join_its_decision(self):
         row = dict(windows.RECIPES[UPDATE + "uac-denied"], denyJoin=False, refusal=None)
@@ -1614,17 +1624,9 @@ class UpdateSubmitTests(UpdateBase):
         self.assertNotIn(str(self.sources), json.dumps(plan))
 
 
-def supposing_the_deny_row(test):
-    """The deny row's token and join stay in the driver for the day its collector is proved; admission refuses it today."""
-    patcher = mock.patch.dict(windows.RECIPES, {UPDATE + "uac-denied": dict(windows.RECIPES[UPDATE + "uac-denied"], refusal=None)})
-    patcher.start()
-    test.addCleanup(patcher.stop)
-
-
 class UpdateObservationTests(UpdateBase):
     def setUp(self):
         super().setUp()
-        supposing_the_deny_row(self)
         self.executor().start(self.update_request("uac-denied"))
         self.status_file = HOME + "/.cache/vpn-control-windows-scenarios/" + MACHINE + "/" + self.operation
 
@@ -1648,7 +1650,6 @@ class UpdateObservationTests(UpdateBase):
 class UpdateCollectionTests(UpdateBase):
     def setUp(self):
         super().setUp()
-        supposing_the_deny_row(self)
         self.executor().start(self.update_request("uac-denied"))
         self.decision = str(uuid.uuid5(uuid.UUID(self.operation), "windows-uac-decision"))
 

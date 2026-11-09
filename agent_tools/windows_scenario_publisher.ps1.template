@@ -365,11 +365,135 @@ function Invoke-PrincipalProbe {
  $after=$null;try{$after=Get-EndpointFacts $endpoint}catch{$after=$null}
  return [ordered]@{endpoint=$endpoint;before=$before;after=$after;task=$task;probe=$probe}
 }
+function Add-ObserverType {
+ # Compiled only for a collector observation that needs it: a process census of one installed image, and the
+ # SeBackupPrivilege open of a product file its owner alone may read. Nothing here starts, stops or writes.
+ if($null -ne ('VpnScenarioObserver' -as [type])){return}
+ Add-Type -TypeDefinition @'
+using System;using System.IO;using System.Text;using System.Globalization;using System.Collections.Generic;using System.ComponentModel;using System.Runtime.InteropServices;using System.Security.Cryptography;using System.Security.Principal;using Microsoft.Win32.SafeHandles;
+public static class VpnScenarioObserver {
+ [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr CreateToolhelp32Snapshot(uint flags,uint pid);
+ [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)]static extern bool Process32FirstW(IntPtr snapshot,ref Entry entry);
+ [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)]static extern bool Process32NextW(IntPtr snapshot,ref Entry entry);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool CloseHandle(IntPtr handle);
+ [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetProcessTimes(IntPtr process,out long created,out long exited,out long kernel,out long user);
+ [DllImport("kernel32.dll")]static extern uint WaitForSingleObject(IntPtr handle,uint milliseconds);
+ [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)]static extern bool QueryFullProcessImageNameW(IntPtr process,uint flags,StringBuilder text,ref int size);
+ [DllImport("kernel32.dll")]static extern IntPtr GetCurrentThread();
+ [DllImport("kernel32.dll")]static extern IntPtr GetCurrentProcess();
+ [DllImport("kernel32.dll")]static extern IntPtr LocalFree(IntPtr memory);
+ [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode)]static extern SafeFileHandle CreateFileW(string path,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool OpenThreadToken(IntPtr thread,uint access,bool openAsSelf,out IntPtr token);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool GetTokenInformation(IntPtr token,int kind,IntPtr data,int size,out int needed);
+ [DllImport("advapi32.dll",SetLastError=true,CharSet=CharSet.Unicode)]static extern bool LookupPrivilegeValueW(string system,string name,out long luid);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool AdjustTokenPrivileges(IntPtr token,bool disableAll,ref Privilege state,int size,IntPtr previous,IntPtr returned);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool ImpersonateSelf(int level);
+ [DllImport("advapi32.dll",SetLastError=true)]static extern bool RevertToSelf();
+ [DllImport("ntdll.dll")]static extern int NtQueryInformationProcess(IntPtr process,int kind,IntPtr data,int size,out int returned);
+ [DllImport("shell32.dll",SetLastError=true,CharSet=CharSet.Unicode)]static extern IntPtr CommandLineToArgvW(string line,out int count);
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]struct Entry {public uint size,usage,pid;public IntPtr heap;public uint module,threads,parent;public int priority;public uint flags;[MarshalAs(UnmanagedType.ByValTStr,SizeConst=260)]public string name;}
+ [StructLayout(LayoutKind.Sequential,Pack=4)]struct Privilege {public uint count;public long luid;public uint attributes;}
+ public sealed class Opened {public SafeFileHandle Handle;public Dictionary<string,object> Journal;}
+ static void Win(bool ok){if(!ok)throw new Win32Exception(Marshal.GetLastWin32Error());}
+ static int Scalar(IntPtr token,int kind){IntPtr b=Marshal.AllocHGlobal(4);try{int n;Win(GetTokenInformation(token,kind,b,4,out n));return Marshal.ReadInt32(b);}finally{Marshal.FreeHGlobal(b);}}
+ // A privilege in one token: 0 absent, 1 present and disabled, 2 enabled.
+ static int State(IntPtr token,long luid){int n;GetTokenInformation(token,3,IntPtr.Zero,0,out n);if(n<4||n>65536)throw new InvalidOperationException("PUB_BACKUP_PRIVILEGE_QUERY");IntPtr b=Marshal.AllocHGlobal(n);
+  try{Win(GetTokenInformation(token,3,b,n,out n));int count=Marshal.ReadInt32(b);if(count<0||4+12*count>n)throw new InvalidOperationException("PUB_BACKUP_PRIVILEGE_QUERY");
+   for(int i=0;i<count;i++){if(Marshal.ReadInt64(b,4+12*i)==luid)return (Marshal.ReadInt32(b,12+12*i)&2)!=0?2:1;}return 0;}finally{Marshal.FreeHGlobal(b);}}
+ static int ProcessState(long luid){IntPtr t;Win(OpenProcessToken(GetCurrentProcess(),8,out t));try{return State(t,luid);}finally{CloseHandle(t);}}
+ // SeBackupPrivilege enabled on this thread's own impersonation token for one read-only backup open, then dropped and
+ // reverted before any byte is read. The process token never changes; every transition is journaled.
+ public static Opened BackupOpen(string path){
+  long luid;Win(LookupPrivilegeValueW(null,"SeBackupPrivilege",out luid));
+  var j=new Dictionary<string,object>();j["privilege"]="SeBackupPrivilege";j["scope"]="thread-impersonation";j["access"]=0x80020000L;j["share"]=1;j["flags"]=0x02200000;
+  int before=ProcessState(luid);j["processStateBefore"]=before;j["enabledForOpen"]=false;j["disabledAfterOpen"]=false;j["reverted"]=false;j["openError"]=null;j["processStateAfter"]=null;
+  if(before<1)throw new InvalidOperationException("PUB_BACKUP_PRIVILEGE_ABSENT");
+  SafeFileHandle handle=null;
+  Win(ImpersonateSelf(2));
+  try{
+   IntPtr t;Win(OpenThreadToken(GetCurrentThread(),0x28,true,out t));
+   try{
+    var on=new Privilege{count=1,luid=luid,attributes=2};
+    bool enabled=AdjustTokenPrivileges(t,false,ref on,0,IntPtr.Zero,IntPtr.Zero)&&Marshal.GetLastWin32Error()==0&&State(t,luid)==2;j["enabledForOpen"]=enabled;
+    if(enabled){handle=CreateFileW(path,0x80020000,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);j["openError"]=handle.IsInvalid?Marshal.GetLastWin32Error():0;}
+   }finally{var off=new Privilege{count=1,luid=luid,attributes=0};j["disabledAfterOpen"]=AdjustTokenPrivileges(t,false,ref off,0,IntPtr.Zero,IntPtr.Zero)&&Marshal.GetLastWin32Error()==0&&State(t,luid)==1;CloseHandle(t);}
+  }finally{j["reverted"]=RevertToSelf();}
+  if(!(bool)j["reverted"]||!(bool)j["disabledAfterOpen"]){if(handle!=null)handle.Dispose();throw new InvalidOperationException("PUB_BACKUP_PRIVILEGE_NOT_DROPPED");}
+  int after=ProcessState(luid);j["processStateAfter"]=after;
+  if(handle==null||handle.IsInvalid||after!=before){int code=j["openError"]==null?0:(int)j["openError"];if(handle!=null)handle.Dispose();throw new InvalidOperationException("PUB_BACKUP_OPEN:CreateFile:"+code.ToString(CultureInfo.InvariantCulture));}
+  return new Opened{Handle=handle,Journal=j};
+ }
+ static string Image(IntPtr process){var text=new StringBuilder(32768);int size=text.Capacity;Win(QueryFullProcessImageNameW(process,0,text,ref size));return text.ToString(0,size);}
+ static string CommandLine(IntPtr process){int size=65552;IntPtr b=Marshal.AllocHGlobal(size);try{int got;if(NtQueryInformationProcess(process,60,b,size,out got)!=0)throw new InvalidOperationException("PUB_CENSUS_COMMAND_LINE");
+  int length=(ushort)Marshal.ReadInt16(b);return Marshal.PtrToStringUni(Marshal.ReadIntPtr(b,IntPtr.Size),length/2);}finally{Marshal.FreeHGlobal(b);}}
+ static string[] Argv(string line){int n;IntPtr a=CommandLineToArgvW(line,out n);if(a==IntPtr.Zero)throw new Win32Exception(Marshal.GetLastWin32Error());
+  try{if(n<1||n>16)throw new InvalidOperationException("PUB_CENSUS_ARGV");var v=new string[n];for(int i=0;i<n;i++)v[i]=Marshal.PtrToStringUni(Marshal.ReadIntPtr(a,i*IntPtr.Size));return v;}finally{LocalFree(a);}}
+ static Dictionary<string,object> Token(IntPtr process){IntPtr t;Win(OpenProcessToken(process,8,out t));
+  try{var r=new Dictionary<string,object>();using(var id=new WindowsIdentity(t)){r["sid"]=id.User.Value;}r["sessionId"]=Scalar(t,12);r["elevationType"]=Scalar(t,18);r["elevated"]=Scalar(t,20);return r;}finally{CloseHandle(t);}}
+ static Dictionary<string,object> Parent(uint pid){var r=new Dictionary<string,object>();r["pid"]=(long)pid;r["openError"]=null;r["alive"]=null;r["creationFileTime"]=null;r["image"]=null;
+  IntPtr h=OpenProcess(0x101000,false,pid);if(h==IntPtr.Zero){r["openError"]=Marshal.GetLastWin32Error();return r;}
+  try{long c,e,k,u;Win(GetProcessTimes(h,out c,out e,out k,out u));r["creationFileTime"]=c.ToString(CultureInfo.InvariantCulture);r["alive"]=WaitForSingleObject(h,0)==258;
+   try{r["image"]=Image(h);}catch(Win32Exception){r["image"]=null;}}finally{CloseHandle(h);}return r;}
+ // One process, read through its own handle: a process id cannot be reused while that handle stays open.
+ static Dictionary<string,object> Describe(uint pid,uint parent){var r=new Dictionary<string,object>();
+  foreach(string key in new string[]{"openError","creationFileTime","alive","image","argv","token","imageSha256","imageSizeBytes","parent"})r[key]=null;r["pid"]=(long)pid;r["parentPid"]=(long)parent;
+  IntPtr h=OpenProcess(0x101000,false,pid);if(h==IntPtr.Zero){r["openError"]=Marshal.GetLastWin32Error();return r;}
+  try{long c,e,k,u;Win(GetProcessTimes(h,out c,out e,out k,out u));r["creationFileTime"]=c.ToString(CultureInfo.InvariantCulture);
+   if(WaitForSingleObject(h,0)!=258){r["alive"]=false;return r;}
+   string image=Image(h);r["image"]=image;r["argv"]=Argv(CommandLine(h));r["token"]=Token(h);
+   using(var file=new FileStream(image,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)){using(var sha=SHA256.Create()){r["imageSha256"]=BitConverter.ToString(sha.ComputeHash(file)).Replace("-","").ToLowerInvariant();}r["imageSizeBytes"]=file.Length;}
+   r["parent"]=Parent(parent);r["alive"]=WaitForSingleObject(h,0)==258;}finally{CloseHandle(h);}return r;}
+ public static List<Dictionary<string,object>> Census(string image){string leaf=Path.GetFileName(image);var rows=new List<uint[]>();
+  IntPtr s=CreateToolhelp32Snapshot(2,0);if(s==new IntPtr(-1))throw new Win32Exception(Marshal.GetLastWin32Error());
+  try{var e=new Entry();e.size=(uint)Marshal.SizeOf(typeof(Entry));bool ok=Process32FirstW(s,ref e);
+   while(ok){if(String.Equals(e.name,leaf,StringComparison.OrdinalIgnoreCase))rows.Add(new uint[]{e.pid,e.parent});ok=Process32NextW(s,ref e);}
+   if(Marshal.GetLastWin32Error()!=18)throw new Win32Exception(Marshal.GetLastWin32Error());}finally{CloseHandle(s);}
+  if(rows.Count>16)throw new InvalidOperationException("PUB_CENSUS_BOUND");
+  var found=new List<Dictionary<string,object>>();foreach(uint[] row in rows)found.Add(Describe(row[0],row[1]));return found;}
+}
+'@ -ReferencedAssemblies @('System','System.Core')
+}
+function Read-BackupPin([string]$path) {
+ # The product grants this file to its owner alone, so SYSTEM opens it only through BackupOpen: held, hashed, and its
+ # name opened again the same way, so the pin is the file the path names. Both opens are journaled.
+ $first=$null;$second=$null;$streams=[Collections.Generic.List[object]]::new()
+ try{
+  $first=[VpnScenarioObserver]::BackupOpen($path)
+  $held=[IO.FileStream]::new($first.Handle,[IO.FileAccess]::Read,4096,$false);$streams.Add($held)
+  if($held.Length -gt 4096){throw 'PUB_BACKUP_BOUND'}
+  $s=[OrdinaryNativeFacts]::Security($first.Handle);$id=As-Object ([OrdinaryNativeFacts]::Identity($first.Handle,$false))
+  $record=[pscustomobject]@{path=$path;nativeIdentity=$id;security=[pscustomobject]@{ownerSid=$s[0];sddl=$s[1]};sha256=(Read-Hash $held)}
+  $second=[VpnScenarioObserver]::BackupOpen($path)
+  $named=[IO.FileStream]::new($second.Handle,[IO.FileAccess]::Read,4096,$false);$streams.Add($named)
+  Assert-NativeIdentity ([OrdinaryNativeFacts]::Identity($second.Handle,$false)) $id
+  $n=[OrdinaryNativeFacts]::Security($second.Handle);if($n[0] -cne $s[0] -or $n[1] -cne $s[1]){throw 'PUB_BACKUP_NAMED_SECURITY'}
+  if((Read-Hash $named) -cne $record.sha256 -or (Read-Hash $held) -cne $record.sha256){throw 'PUB_BACKUP_DIGEST'}
+  Assert-NativeIdentity ([OrdinaryNativeFacts]::Identity($first.Handle,$false)) $id
+  return [ordered]@{filePin=$record;backupReads=@($first.Journal,$second.Journal)}
+ }finally{foreach($stream in $streams){$stream.Dispose()};foreach($opened in @($first,$second)){if($null -ne $opened -and -not $opened.Handle.IsClosed){$opened.Handle.Dispose()}}}
+}
+function Get-ProcessCensus($census) {
+ # Read only: every process of one exact installed image, each described through its own handle.
+ $image=[string]$census.image
+ if($image -cnotlike ($m.localAppData+'\vpn-control\*') -or $image.Contains('\..') -or $image -cnotmatch '\\vpn-control(?:-cli|-install-helper)?\.exe\z'){throw 'PUB_CENSUS_IMAGE'}
+ Add-ObserverType
+ return @([VpnScenarioObserver]::Census($image))
+}
+function Assert-ProductPin([string]$path) {
+ # Only the job's own worker-ready record and its protected receipt, both readable by SYSTEM as the product writes them.
+ $job='[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+ if($path -cnotmatch ('\A'+[regex]::Escape($m.localAppData+'\vpn-control-install-inputs\')+$job+'\\worker-ready\.json\z') -and $path -cnotmatch ('\AC:\\ProgramData\\vpn-control-install-jobs\\'+$job+'\\status\.json\z')){throw 'PUB_PRODUCT_PIN_PATH'}
+}
 function Get-CollectorObservation {
- # Read only: the task's first two events, every child intent and start, the stdout of closed children and,
- # once asked, the product workspace's not-started disposition file with its pin.
+ # Read only: the task's first two events, every child intent and start, the stdout of closed children and, once
+ # asked, the case's record of the returned actors, the product workspace's not-started disposition through
+ # Read-BackupPin, a census of one installed image and the job's own product records with their pins.
  $observed=[ordered]@{};$names=@(Get-ChildItem -LiteralPath $m.operationRoot -File -Force|ForEach-Object {$_.Name}|Sort-Object)
- $picked=@($names|Where-Object {$_ -cmatch '\A(?:task-event-00000[01]-(?:submission-intent|submitted)|event-[0-9]{6}-child-(?:intent|started))\.json\z'})
+ $kinds='task-event-00000[01]-(?:submission-intent|submitted)|event-[0-9]{6}-child-(?:intent|started)'
+ if($m.returnedActors){$kinds+='|event-[0-9]{6}-update-returned-cleanup-expected-actors'}
+ $picked=@($names|Where-Object {$_ -cmatch ('\A(?:'+$kinds+')\.json\z')})
  if($picked.Count -gt 256){throw 'PUB_OBSERVE_COUNT'}
  foreach($name in $picked){$observed[$name]=Read-Bounded (Join-Path $m.operationRoot $name) 65536}
  foreach($name in @($names|Where-Object {$_ -cmatch '\Aevent-[0-9]{6}-child-intent\.json\z'})){
@@ -382,9 +506,13 @@ function Get-CollectorObservation {
  $dispositions=@()
  if($m.readDisposition -and [IO.Directory]::Exists($m.productWorkspace)){
   if($m.productWorkspace -cne ($m.operationRoot+'\workspace')){throw 'PUB_OBSERVE_WORKSPACE'}
-  $dispositions=@(Get-ChildItem -LiteralPath $m.productWorkspace -File -Force|Where-Object {$_.Name -cmatch '\A\.install-not-started-[a-f0-9]{64}\.json\z'}|Select-Object -First 4|ForEach-Object {New-ReadPin $_.FullName})
+  $found=@(Get-ChildItem -LiteralPath $m.productWorkspace -File -Force|Where-Object {$_.Name -cmatch '\A\.install-not-started-[a-f0-9]{64}\.json\z'}|Select-Object -First 4)
+  if($found.Count -gt 0){Add-ObserverType}
+  $dispositions=@($found|ForEach-Object {Read-BackupPin $_.FullName})
  }
- return [ordered]@{files=$observed;dispositions=@($dispositions)}
+ $census=@();if($null -ne $m.census){$census=@(Get-ProcessCensus $m.census)}
+ $productPins=@(foreach($path in @($m.productPins)){if($null -ne $path){Assert-ProductPin ([string]$path);New-ReadPin ([string]$path)}})
+ return [ordered]@{files=$observed;dispositions=@($dispositions);census=@($census);productPins=@($productPins)}
 }
 $r=$null
 try{

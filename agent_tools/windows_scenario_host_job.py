@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import io
 import json
+import ntpath
 import os
 from pathlib import Path, PureWindowsPath
 import re
@@ -98,7 +99,16 @@ INVENTORY_NAME = "installed-inventory.json"
 COLLECTOR_RAW_LIMIT = 65536
 COLLECTOR_BUDGET_SECONDS = 1800
 COLLECTOR_ROOT_SDDL = "O:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;{sid})"  # collector_contract.root_policy
-COLLECTOR_FILE_SDDL = "O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;{sid})"  # collector_contract.file_policy
+# collector_contract.file_policy: the form a file the publisher protects with SetAccessControl reads back natively.
+COLLECTOR_FILE_SDDL = "O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;{sid})"
+# The installer helper of the installed base: the elevated coordinator and its original-user worker run this one image.
+INSTALL_HELPER = ("app", "native", "windows-amd64", "vpn-control-install-helper.exe")
+INSTALL_HELPER_OPERATIONS = ["validate-only", "install-user", "install-coordinator"]  # DesktopWindowsInstallHelperAdmission
+INSTALL_ROLES = (("coordinator", "install-coordinator"), ("worker", "install-user"))
+INSTALL_JOBS = PROGRAM_DATA + "\\vpn-control-install-jobs"
+INSTALL_INPUTS = "vpn-control-install-inputs"
+CENSUS_LIMIT = 16
+RETURNED_ACTORS_EVENT = "update-returned-cleanup-expected-actors"
 # The nine module roles of one SYSTEM collector request, by the guest file role that carries each.
 COLLECTOR_MODULES = {"holdProtocol": "hold_protocol", "taskGuard": "task_guard", "nativeBridge": "native_bridge",
                      "native": "native_primitives", "receipts": "receipts", "observer": "broker_observer",
@@ -657,6 +667,156 @@ def runtime_authority(raw, digest):
     return authority["runtimeSha256"]
 
 
+def install_helper(raw, digest, pin):
+    """The installer helper as the product build declares it in the installed native-helpers.json whose exact bytes its
+    tree pin holds: the artifact's digest and size must be the installed helper's own pin, with the operations, machine
+    and load policy DesktopWindowsPackagedHelperAdmission admits."""
+    if len(raw) > AUTHORITY_BYTES or _sha(raw) != digest:
+        raise ValueError("install_helper_manifest_bytes")
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique)
+    artifacts = value.get("artifacts") if type(value) is dict else None
+    found = [item for item in artifacts if type(item) is dict and item.get("name") == INSTALL_HELPER[-1]] if type(artifacts) is list else []
+    if (len(found) != 1 or found[0].get("sha256") != pin["sha256"] or found[0].get("sizeBytes") != pin["nativeIdentity"]["sizeBytes"]
+            or found[0].get("operations") != INSTALL_HELPER_OPERATIONS or found[0].get("machine") != "AMD64"
+            or found[0].get("clrHeader") is not False or found[0].get("dependentLoadFlags") != 0x800):
+        raise ValueError("install_helper_manifest")
+    return {"path": pin["path"], "sha256": pin["sha256"], "sizeBytes": pin["nativeIdentity"]["sizeBytes"]}
+
+
+def _same_path(left, right):
+    return type(left) is str and type(right) is str and ntpath.normcase(ntpath.normpath(left)) == ntpath.normcase(ntpath.normpath(right))
+
+
+def census_rows(value):
+    """The publisher's SYSTEM process census, in its closed shape: each process of the image it was asked for, described
+    through its own handle. A process that could not be opened or is no longer running carries only its ids."""
+    fields = {"pid", "parentPid", "openError", "creationFileTime", "alive", "image", "argv", "token", "imageSha256", "imageSizeBytes",
+              "parent"}
+    if type(value) is not list or len(value) > CENSUS_LIMIT:
+        raise ValueError("collector_census_shape")
+    rows = []
+    for item in value:
+        if (type(item) is not dict or set(item) != fields or type(item["pid"]) is not int or not 0 < item["pid"] < 2 ** 32
+                or type(item["parentPid"]) is not int or not 0 <= item["parentPid"] < 2 ** 32):
+            raise ValueError("collector_census_shape")
+        if item["openError"] is not None or item["alive"] is not True:
+            if (item["openError"] is not None and type(item["openError"]) is not int) or item["alive"] not in (None, False):
+                raise ValueError("collector_census_shape")
+            rows.append({"pid": item["pid"], "parentPid": item["parentPid"], "live": False})
+            continue
+        token, parent = item["token"], item["parent"]
+        if (not isinstance(item["creationFileTime"], str) or re.fullmatch(r"[1-9][0-9]{0,19}", item["creationFileTime"]) is None
+                or not isinstance(item["image"], str) or type(item["argv"]) is not list or len(item["argv"]) > 16
+                or not all(isinstance(value, str) for value in item["argv"])
+                or not isinstance(item["imageSha256"], str) or _SHA256.fullmatch(item["imageSha256"]) is None
+                or type(item["imageSizeBytes"]) is not int or type(token) is not dict
+                or set(token) != {"sid", "sessionId", "elevated", "elevationType"} or not isinstance(token["sid"], str)
+                or not all(type(token[key]) is int for key in ("sessionId", "elevated", "elevationType"))
+                or type(parent) is not dict or set(parent) != {"pid", "openError", "alive", "creationFileTime", "image"}
+                or parent["pid"] != item["parentPid"]):
+            raise ValueError("collector_census_shape")
+        rows.append({**item, "creationFileTime": int(item["creationFileTime"]), "live": True})
+    return rows
+
+
+def backup_journal(value):
+    """One SeBackupPrivilege open of an owner-only product file as the publisher journaled it: the privilege enabled on
+    its own thread's impersonation token for that one open, with backup semantics and read access only, then dropped
+    and reverted, the process token's own state unchanged."""
+    fields = {"privilege", "scope", "processStateBefore", "processStateAfter", "enabledForOpen", "disabledAfterOpen", "reverted",
+              "openError", "access", "share", "flags"}
+    if (type(value) is not dict or set(value) != fields or value["privilege"] != "SeBackupPrivilege" or value["scope"] != "thread-impersonation"
+            or value["processStateBefore"] not in (1, 2) or value["processStateAfter"] != value["processStateBefore"]
+            or value["enabledForOpen"] is not True or value["disabledAfterOpen"] is not True or value["reverted"] is not True
+            or value["openError"] != 0 or value["access"] != 0x80020000 or value["share"] != 1 or value["flags"] != 0x02200000):
+        raise ValueError("collector_backup_read")
+    return value
+
+
+def owner_process(rows, serve, cli, sid, session):
+    """The process the product runs its controller in, which the installer helper names as its owner.
+
+    The census of the CLI image must hold the serve the owner started, as it recorded it. The installed jpackage
+    launcher relaunches itself once into a child of the same image that runs the JVM; with no such child the serve
+    is the controller. Nothing else of that image may be the serve's child.
+    """
+    def ordinary(row):
+        return (row["live"] and _same_path(row["image"], cli) and row["token"]["sid"] == sid and row["token"]["elevated"] == 0
+                and row["token"]["sessionId"] == session)
+    served = [row for row in rows if row["pid"] == serve["pid"]]
+    if len(served) != 1 or not ordinary(served[0]) or served[0]["creationFileTime"] != serve["creationFileTime"]:
+        raise ValueError("collector_owner_serve")
+    children = [row for row in rows if row["parentPid"] == serve["pid"] and row["pid"] != serve["pid"]]
+    if not children:
+        return {"pid": serve["pid"], "creationFileTime": serve["creationFileTime"], "relaunched": False}
+    if len(children) != 1 or not ordinary(children[0]) or children[0]["creationFileTime"] <= serve["creationFileTime"]:
+        raise ValueError("collector_owner_child")
+    return {"pid": children[0]["pid"], "creationFileTime": children[0]["creationFileTime"], "relaunched": True}
+
+
+def install_actors(rows, *, helper, job, owner, administrator_sid, sid, session):
+    """The installer job's elevated coordinator and its original-user worker, live, from one SYSTEM census.
+
+    Exactly one live process of the admitted helper image per role runs with this job and this owner as its arguments.
+    The coordinator runs elevated as the approving administrator, the worker unelevated as the ordinary user, both in
+    the ordinary session, and the worker was born after its coordinator. Their parents are recorded, never assumed:
+    AppInfo should give the coordinator the owner that asked for it, and the secondary logon service the worker its
+    coordinator. Returns the collector request's actors and the facts a receipt keeps.
+    """
+    found = {}
+    for role, verb in INSTALL_ROLES:
+        matches = [row for row in rows if row["live"] and len(row["argv"]) == 5 and row["argv"][1] == verb and row["argv"][2] == job]
+        if len(matches) != 1:
+            raise ValueError("collector_" + role + "_count_" + str(min(len(matches), 9)))
+        row = matches[0]
+        if (not _same_path(row["image"], helper["path"]) or row["imageSha256"] != helper["sha256"]
+                or row["imageSizeBytes"] != helper["sizeBytes"] or row["argv"][3:] != [str(owner["pid"]), str(owner["creationFileTime"])]):
+            raise ValueError("collector_" + role + "_identity")
+        principal, elevated = (administrator_sid, 1) if role == "coordinator" else (sid, 0)
+        if row["token"]["sid"] != principal or row["token"]["elevated"] != elevated or row["token"]["sessionId"] != session:
+            raise ValueError("collector_" + role + "_token")
+        found[role] = row
+    coordinator, worker = found["coordinator"], found["worker"]
+    if worker["creationFileTime"] <= coordinator["creationFileTime"] or worker["pid"] == coordinator["pid"]:
+        raise ValueError("collector_worker_generation")
+    actors = {role: {"pid": row["pid"], "creationFileTime": row["creationFileTime"], "image": helper["path"], "sha256": helper["sha256"],
+                     "sid": row["token"]["sid"], "sessionId": session} for role, row in found.items()}
+
+    def parent(row, expected):
+        record = row["parent"]
+        known = record["alive"] is True and record["openError"] is None
+        return {"pid": row["parentPid"], "alive": known,
+                "matches": row["parentPid"] == expected["pid"] and (not known or record["creationFileTime"] == str(expected["creationFileTime"]))}
+    facts = {"helperSha256": helper["sha256"], "owner": owner,
+             "coordinator": {"pid": coordinator["pid"], "creationFileTime": coordinator["creationFileTime"], "sid": coordinator["token"]["sid"],
+                             "elevated": 1, "elevationType": coordinator["token"]["elevationType"], "sessionId": session,
+                             "argv0MatchesImage": _same_path(coordinator["argv"][0], helper["path"]), "parent": parent(coordinator, owner)},
+             "worker": {"pid": worker["pid"], "creationFileTime": worker["creationFileTime"], "sid": worker["token"]["sid"],
+                        "elevated": 0, "elevationType": worker["token"]["elevationType"], "sessionId": session,
+                        "argv0MatchesImage": _same_path(worker["argv"][0], helper["path"]),
+                        "parent": parent(worker, {"pid": coordinator["pid"], "creationFileTime": coordinator["creationFileTime"]})}}
+    return actors, facts
+
+
+def returned_actors(value, *, need, installed, target_files, sid, session):
+    """The returned owner, and GUI where the case kept one, exactly as the case recorded them before returned-cleanup."""
+    if (type(value) is not dict or set(value) != {"actors", "jobId", "operationId"} or value["jobId"] != need.get("jobId")
+            or value["operationId"] != need.get("productOperationId") or type(value["actors"]) is not dict
+            or set(value["actors"]) not in ({"owner"}, {"owner", "gui"})):
+        raise ValueError("collector_returned_actors")
+    prefix = installed.rstrip("\\") + "\\"
+    for actor in value["actors"].values():
+        image = actor.get("image") if type(actor) is dict else None
+        relative = image[len(prefix):].replace("\\", "/") if isinstance(image, str) and image.casefold().startswith(prefix.casefold()) else None
+        record = next((item for name, item in target_files.items() if relative is not None and name.casefold() == relative.casefold()), None)
+        if (type(actor) is not dict or set(actor) != {"pid", "creationFileTime", "image", "sha256", "sid", "sessionId"}
+                or type(actor["pid"]) is not int or not 0 < actor["pid"] < 2 ** 32 or type(actor["creationFileTime"]) is not int
+                or actor["creationFileTime"] <= 0 or relative is None or relative.casefold() not in ("vpn-control.exe", "vpn-control-cli.exe") or record is None
+                or actor["sha256"] != record["sha256"] or actor["sid"] != sid or actor["sessionId"] != session):
+            raise ValueError("collector_returned_actor")
+    return value["actors"]
+
+
 def reboot_inputs(row, paths, product, *, runtime_authority, preboot=None):
     """A reboot row's closed request: every role a fixed file of this bundle or of the installed product.
 
@@ -913,6 +1073,10 @@ class Job:
         self.update = self.row.get("update")
         self.collected = {}
         self.target_install = self.update_pins = self.harness_pin = self.administrator_sid = None
+        # A grant row's installer helper, the product's controller process and the installer job's two live actors, each
+        # as a SYSTEM census found it; and every SeBackupPrivilege read of an owner-only product file, as journaled.
+        self.install_helper = self.update_owner = self.install_actors = self.install_facts = None
+        self.backup_reads = []
         self.fixture_file = self.fixture_fingerprint = self.certificate_sha256 = None
         self.document = self.row.get("document")
         self.principal = None  # The LOCAL SERVICE probe of the acceptance row: None until claimed, then its outcome.
@@ -1804,10 +1968,14 @@ class Job:
         a refusal found after launch would leave its owner waiting for good.
         """
         sid = self.context["ordinarySid"]
-        # The collector request is published as the owner was. Natively such a file reads back O:SYD:PAI, which the pinned
-        # chain refuses, so a collector row ends here; the driver refuses those rows until a request writer is proved.
+        # The collector request is published as the owner was, so the owner's own pin shows the form the request will read
+        # back with: O:SYD:PAI natively, which the pinned chain now takes. Any other form ends the row here, before a task.
         if self.update["collectorStages"] and self.file_pins["owner"]["security"] != {"ownerSid": "S-1-5-18", "sddl": COLLECTOR_FILE_SDDL.format(sid=sid)}:
             raise KnownFailure("collector_file_policy")
+        if "authorization" in self.update["collectorStages"]:
+            # A grant's coordinator and worker run the base install's helper: the digest and size its own installed
+            # native-helpers.json declares, which must be what the installed tree pin of the helper holds.
+            self.install_helper = self._install_helper()
         try:
             receipt_raw = b"".join(self._chunks(self.plan["packages"]["fixtureReceipt"]))
         except (OSError, ValueError):
@@ -1898,6 +2066,20 @@ class Job:
         if pins[0]["sha256"] != preboot["checkpointSha256"]:
             raise KnownFailure("preboot_checkpoint_changed")
         self.preboot_pins = {"directories": directories, "checkpoint": pins[0]}
+
+    def _install_helper(self):
+        """The base install's helper image: its tree pin, and the product build's own record of it in the installed
+        native-helpers.json, read once over the agent against that file's tree pin. Read-only, before any task."""
+        held = {pin["path"].casefold(): pin for pin in self.installed_tree["filePins"]}
+        root = self.paths["installed"]
+        helper = held.get((root + "\\" + "\\".join(INSTALL_HELPER)).casefold())
+        manifest = held.get((root + "\\" + "\\".join(RUNTIME_AUTHORITY)).casefold())
+        if helper is None or manifest is None:
+            raise KnownFailure("installed_install_helper")
+        try:
+            return install_helper(self.read_guest_file(manifest["path"], AUTHORITY_BYTES), manifest["sha256"], helper)
+        except Exception:  # Read-only: a lost reply or other bytes changed nothing in the guest.
+            raise KnownFailure("installed_install_helper") from None
 
     def _runtime_extract(self, proxy):
         """The installed product's bundled runtime, from the one pinned jar that holds it, into the workspace."""
@@ -2209,11 +2391,12 @@ class Job:
             except Unknown:
                 raise
             except Exception as error:
-                # Its owner still waits for this evidence; nothing here can end that wait.
-                raise Unknown("collector_stage_failed:" + token(stage) + ":" + token(error if isinstance(error, KnownFailure) else type(error).__name__)) from None
+                # Its owner still waits for this evidence; nothing here can end that wait. A check's own finite code
+                # crosses, such as collector_coordinator_token; any other error only by its class name.
+                raise Unknown("collector_stage_failed:" + token(stage) + ":" + token(error if isinstance(error, KnownFailure) else self._receipt_check(error))) from None
 
     def _collector_stage(self, stage, need):
-        observed = self._collector_observe(stage)
+        observed = self._collector_observe(stage, need)
         collector = collector_operation(self.op, stage)
         root = self.paths["collector:" + stage]
         request = self._collector_request(stage, need, collector, root, observed)
@@ -2230,20 +2413,45 @@ class Job:
             record["release"] = self._collector_release(stage, request, pin, proof, terminal, source, result)
         return record
 
-    def _collector_observe(self, stage):
-        """The task's actors, the children the stage names and, for a denied install, the product's own refusal.
+    def _grant(self):
+        """A row whose owner hands a committed install to the helper: its collectors observe that installer job."""
+        return "authorization" in self.update["collectorStages"]
 
-        The product writes that refusal for its owner alone, and this SYSTEM read enables no SeBackupPrivilege, so
-        natively it is refused; the driver refuses uac-denied until a reader that may open it is proved.
+    def _install_job(self, need):
+        """The installer job a grant's stages observe: named by the authorization need, the same in every later one."""
+        job = need.get("jobId")
+        if not isinstance(job, str) or _UUID.fullmatch(job) is None:
+            raise ValueError("collector_job_unnamed")
+        if self.install_actors is not None and job != self.install_facts["jobId"]:
+            raise ValueError("collector_job_changed")
+        return job
+
+    def _collector_observe(self, stage, need):
+        """The task's actors and what this stage reads, read only, as SYSTEM.
+
+        before-install of a grant: a census of the CLI image, which holds the serve and the controller it relaunched into.
+        authorization: a census of the base install's helper image and the job's worker-ready record. terminal-actors of a
+        denied install: the install child's reply and the product's not-started disposition, which the product grants its
+        owner alone, so the publisher opens it through SeBackupPrivilege, enabled on its own thread for that open only;
+        after a handoff, the job's protected receipt. returned-cleanup: the case's own record of the actors it expects gone.
         """
-        terminal_stage = stage == "terminal-actors"
-        value, required = self._publisher("collector-observe-" + stage, "collector-observe",
-                                          childStdoutLabels=["one-public-update-install"] if terminal_stage else [],
-                                          readDisposition=terminal_stage, productWorkspace=self.paths["productWorkspace"])
+        grant, deny = self._grant(), stage == "terminal-actors" and not self._grant()
+        fields = {"childStdoutLabels": ["one-public-update-install"] if deny else [], "readDisposition": deny,
+                  "productWorkspace": self.paths["productWorkspace"], "census": None, "productPins": [],
+                  "returnedActors": stage == "returned-cleanup"}
+        if stage == "before-install" and grant:
+            fields["census"] = {"image": self.paths["cli"]}
+        elif stage == "authorization":
+            fields["census"] = {"image": self.install_helper["path"]}
+            fields["productPins"] = [self.context["localAppData"] + "\\" + INSTALL_INPUTS + "\\" + self._install_job(need) + "\\worker-ready.json"]
+        elif stage == "terminal-actors" and grant:
+            fields["productPins"] = [INSTALL_JOBS + "\\" + self._install_job(need) + "\\status.json"]
+        value, required = self._publisher("collector-observe-" + stage, "collector-observe", **fields)
         observation = value.get("observation")
-        if set(value) != required | {"observation"} or value["state"] != "ordinary-collector-observation" or type(observation) is not dict:
+        if (set(value) != required | {"observation"} or value["state"] != "ordinary-collector-observation" or type(observation) is not dict
+                or set(observation) != {"files", "dispositions", "census", "productPins"}):
             raise ValueError("collector_observation")
-        files = {name: base64.b64decode(raw, validate=True) for name, raw in (observation.get("files") or {}).items()}
+        files = {name: base64.b64decode(raw, validate=True) for name, raw in (observation["files"] or {}).items()}
 
         def event(name, kind):
             item = json.loads(files[name], object_pairs_hook=_unique)
@@ -2269,10 +2477,32 @@ class Job:
             name = "child-%04d.stdout.raw" % child["child"]
             if name in files:
                 stdout[label] = files[name]
-        dispositions = observation.get("dispositions") or []
+        returned = [event(name, RETURNED_ACTORS_EVENT)["value"] for name in sorted(files)
+                    if re.fullmatch(r"event-[0-9]{6}-" + RETURNED_ACTORS_EVENT + r"\.json", name)]
+        planner = self._load("windows_ordinary_task")
+        dispositions, reads = [], []
+        for record in observation["dispositions"] or []:
+            if type(record) is not dict or set(record) != {"filePin", "backupReads"} or type(record["backupReads"]) is not list or len(record["backupReads"]) != 2:
+                raise ValueError("collector_disposition")
+            planner.validate_pin(record["filePin"])
+            reads.extend(backup_journal(item) for item in record["backupReads"])
+            dispositions.append(record["filePin"])
+        pins = observation["productPins"] or []
+        if type(pins) is not list or [pin.get("path") if type(pin) is dict else None for pin in pins] != fields["productPins"]:
+            raise ValueError("collector_product_pins")
+        for pin in pins:
+            planner.validate_pin(pin)
+        census = None if fields["census"] is None else census_rows(observation["census"])
+        if fields["census"] is None and observation["census"] not in (None, []):
+            raise ValueError("collector_census_unasked")
+        self.backup_reads.extend(reads)
+        if reads:
+            # The publisher's own journal of every SeBackupPrivilege open it made for this stage, as validated above.
+            self._keep("collectors/" + stage + "/backup-reads.json", (json.dumps(reads, sort_keys=True) + "\n").encode())
         return {"owner": {"pid": intent["ownerPid"], "birth": intent["ownerBirthFileTimeUtc"]},
                 "worker": {"pid": submitted["value"]["pid"], "birth": submitted["value"]["birthFileTimeUtc"]},
-                "children": labels, "stdout": stdout, "dispositions": dispositions}
+                "children": labels, "stdout": stdout, "dispositions": dispositions, "census": census, "productPins": pins,
+                "returned": returned}
 
     def _collector_request(self, stage, need, collector, root, observed):
         """One request the frozen contract admits: the task's live actors, its exact pins and this stage's inputs only."""
@@ -2298,13 +2528,35 @@ class Job:
         context = {"bootIdentifier": self.context["bootIdentifier"], "ordinarySid": sid, "ordinarySessionId": session,
                    "localAppData": self.context["localAppData"], "workspace": self.paths["productWorkspace"],
                    "approvingAdminSid": self.administrator_sid}
-        actors, inputs = {}, {}
+        actors, inputs, helper, facts = {}, {}, None, None
+
+        def product_file(pin):
+            return {"path": pin["path"], "sha256": pin["sha256"], "sizeBytes": pin["nativeIdentity"]["sizeBytes"]}
         if stage == "before-install":
             serve = observed["children"].get("update-public-serve")
             cli = next(pin for pin in self.installed_tree["filePins"] if pin["path"] == self.paths["cli"])
             if serve is None:
                 raise ValueError("collector_owner_unobserved")
             actors["owner"] = actor(serve.get("pid"), serve.get("birthFileTimeUtc"), self.paths["cli"], cli["sha256"])
+            if self._grant():
+                # The coordinator and worker name the process the product's controller runs in: found here, while it lives.
+                owner = owner_process(observed["census"], actors["owner"], self.paths["cli"], sid, session)
+        elif stage == "authorization":
+            if self.update_owner is None:
+                raise ValueError("collector_owner_unknown")
+            job = self._install_job(need)
+            actors, facts = install_actors(observed["census"], helper=self.install_helper, job=job, owner=self.update_owner,
+                                           administrator_sid=self.administrator_sid, sid=sid, session=session)
+            facts["jobId"] = job
+            inputs["workerReady"] = product_file(observed["productPins"][0])
+            helper = self.install_helper["sha256"]
+        elif stage == "terminal-actors" and self._grant():
+            # After a handoff: the authorization stage's own actors, which must now both be gone, and the protected terminal.
+            if self.install_actors is None:
+                raise ValueError("collector_actors_unknown")
+            self._install_job(need)
+            actors = json.loads(json.dumps(self.install_actors))
+            inputs["protectedReceipt"] = product_file(observed["productPins"][0])
         elif stage == "terminal-actors":
             # A denied prompt starts no installer: the product's own not-started record joins its public reply.
             reply = json.loads(observed["stdout"]["one-public-update-install"], object_pairs_hook=_unique)
@@ -2314,8 +2566,13 @@ class Job:
                 raise ValueError("collector_terminal_unobserved")
             self._load("windows_ordinary_task").validate_pin(disposition[0])
             context.update(originControllerId=reply["controllerId"], originRequestId=reply["requestId"])
-            inputs["notStartedDisposition"] = {"path": disposition[0]["path"], "sha256": disposition[0]["sha256"],
-                                               "sizeBytes": disposition[0]["nativeIdentity"]["sizeBytes"]}
+            inputs["notStartedDisposition"] = product_file(disposition[0])
+        elif stage == "returned-cleanup":
+            if self.install_actors is None or len(observed["returned"]) != 1:
+                raise ValueError("collector_returned_unobserved")
+            self._install_job(need)
+            actors = returned_actors(observed["returned"][0], need=need, installed=self.paths["installed"],
+                                     target_files=self.target_install["files"], sid=sid, session=session)
         else:
             raise ValueError("collector_stage")
         hold = None
@@ -2337,10 +2594,16 @@ class Job:
                                         "context": context, "jobId": need.get("jobId"), "productOperationId": need.get("productOperationId"),
                                         "actors": actors, "fileInputs": inputs, "faultBinding": {}, "programData": PROGRAM_DATA,
                                         "evidenceRoot": self.paths["evidenceRoot"], "ordinaryWorkerPid": observed["worker"]["pid"],
-                                        "ordinaryWorkerBirth": observed["worker"]["birth"], "expectedHelperSha256": None},
+                                        "ordinaryWorkerBirth": observed["worker"]["birth"], "expectedHelperSha256": helper},
                    "rawStreamLimitBytes": COLLECTOR_RAW_LIMIT, "ordinaryTask": task, "closeHold": hold}
         contract.validate(request, {"contract": self.file_pins["collector_contract"]["sha256"], "worker": self.file_pins["system_worker"]["sha256"]},
                           self._lower_context())
+        if stage == "before-install" and self._grant():
+            self.update_owner = owner
+            self._keep("collectors/before-install/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
+        if stage == "authorization":
+            self.install_actors, self.install_facts = actors, facts
+            self._keep("collectors/authorization/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
         return request
 
     def _lower_context(self):
@@ -2633,7 +2896,8 @@ class Job:
                 # installed tree and --version under the ordinary token (the worker's own static probe,
                 # the dedicated driver's before a proxy row's runtime, or the harness) all held.
                 # A job stopped before its task matched the first two but never ran --version.
-                # An update row runs no --version unless an install reached its terminal, which no admitted variant does.
+                # An update row claims none: the job matched the base's tree before the run, never the target's after
+                # a grant's install; the case's own registration and --version checks stay in its evidence.
                 claimed = (code == EXIT_PASSED and self.row["evidenceClass"] == "product" and self.installed_matched
                            and self.task_checked and self.plan.get("stopAfter") is None and not self.update)
                 windows = {"installedPackage": claimed, "packageSha256": self.package_target()["sha256"] if claimed else None}
@@ -2648,6 +2912,12 @@ class Job:
                                          "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],
                                                                                               "released": record["release"] is not None})
                                                         for stage, record in sorted(self.collected.items())}}
+                    # What the first native runs must show: the installer's live actors as a SYSTEM census found them,
+                    # their parents as recorded, and how many owner-only product files were read through SeBackupPrivilege.
+                    if self.install_facts is not None:
+                        receipt["update"]["installer"] = self.install_facts
+                    if self.backup_reads:
+                        receipt["update"]["backupReads"] = len(self.backup_reads)
                 raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
                 if len(raw) > RECEIPT_BYTES:
                     raise ValueError("receipt_bound")

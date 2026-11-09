@@ -25,17 +25,17 @@ UPDATE_MODULES = {
     "prepare_desktop_update_fixture": "8612730c46fff65aad2ee101edf86f7f4afc93550e9eb1340c88fffb5acc175b",
     "broker_observer": "6d08edf9e57b09e98ce80d414b2ac12da4f39eb82e27cd2a3f06d9f900e04dcb",
     "lifecycle": CASE_SHA["windows-proxy-lifecycle"],
-    "collector": "246bb5e7110fe5fdad986e3cf082683934070195098730bf79ab86e0fd0296b2",
+    "collector": "5a38ac02dd120d755a1d7bff25d8d0cd5fbf438c5fb52e57db15c45e335807a2",
 }
 RUNTIME_SHA = "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"
 FIXTURE_WORKER_SHA = "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a"
 SOCKS_SHA = "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"
 HTTPS_SHA = "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"
 TRAFFIC_SHA = "c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d"
-CALLER_SHA = "0ccae3314fc03765c0568417531486ede523c7ea3aeecf22829d2d08fdd2da44"
-PROTOCOL_SHA = "b8dac389ad80345109d6e8678c45347224ef2c6c9da634ccbe82ab6ac3a064ad"
-CONTRACT_SHA = "73e085f69894421e0cf22b0eeff7770a0bbbb739144016c4a2a1be23382db317"
-SYSTEM_WORKER_SHA = "2d7abfe107eb7fe8683be6e22413126453a27c5574a5a343bdc2484d88dc720a"
+CALLER_SHA = "51a165023d867b7097cb75675f7a938ad683a0c188c88388a7ac0f5b16d851d1"
+PROTOCOL_SHA = "b0e197fc68b077d5ea3a0f55338249b7b9a02e53d6f1da689367cbd1bf4f9335"
+CONTRACT_SHA = "a00dd01e2515f23b11d4eb21cafc67e2c45a20a4043e261d66a52845802620eb"
+SYSTEM_WORKER_SHA = "323e2550b7efa53f93382efa366cfcf4cbf9e870b34a6578447b68128b2327fc"
 NO_SYSTEM = frozenset({"public-ready", "download-cancelled", "checksum-rejected"})
 FINAL_TERMINAL = frozenset({"uac-denied", "install-cancelled"})
 FINAL_RETURNED = frozenset({"participating-copy-lock", "native-install-failed", "success-off",

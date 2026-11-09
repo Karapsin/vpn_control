@@ -52,7 +52,7 @@ try{$request=$reader.ReadToEnd()|ConvertFrom-Json}finally{$reader.Dispose()}
 $releaseBytes=[Convert]::FromBase64String('@@RELEASE_BASE64@@')
 $release=([Text.UTF8Encoding]::new($false,$true)).GetString($releaseBytes)|ConvertFrom-Json
 if($request.operationId -cne '@@OPERATION@@' -or $release.collectorOperationId -cne $request.operationId -or $request.closeHold.releasePath -cne (Join-Path $request.operationRoot 'close-release.json') -or $release.collectorRequestSha256 -cne $requestRecord.sha256 -or $release.bootIdentifier -cne $request.context.bootIdentifier){throw 'ACK_FIXED_REQUEST_RELEASE_JOIN'}
-$required='O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+$request.context.ordinarySid+')'
+$required='O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+$request.context.ordinarySid+')'
 if($requestRecord.security.ownerSid -cne 'S-1-5-18' -or $requestRecord.security.sddl -cne $required){throw 'ACK_MACHINE_REQUEST_POLICY'}
 foreach($record in $request.directoryPins){$p=@{record=$record;directory=$true;handle=[ScFacts]::OpenDirectory($record.path)};$script:C.pins.Add($p);Assert-Pin $p}
 foreach($record in $request.filePins){[void](Add-FilePin $record)}

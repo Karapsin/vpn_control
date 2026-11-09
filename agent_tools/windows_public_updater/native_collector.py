@@ -4,6 +4,9 @@ The sole VM operator executes collect_and_publish once for an explicit stage,
 inside an admitted source-bound SYSTEM observer. It does not launch, terminate,
 elevate, install, cancel, delete, repair ACLs, select an arbitrary process, or query
 Win32_Product. The only write is its own CreateNew machine-protected evidence.
+Its only privilege use is SeBackupPrivilege, which SYSTEM holds disabled: enabled
+on this thread's own impersonation token for the one backup-semantics read-only
+open of the product's owner-only not-started disposition, then dropped and journaled.
 The public updater and GUI/controller remain the original ordinary principal.
 """
 from __future__ import annotations
@@ -44,6 +47,143 @@ def bounded_file(owner, receipts, record, maximum):
         return raw, lease.opening
     finally:
         lease.close()
+
+
+BACKUP_PRIVILEGE = "SeBackupPrivilege"
+_READ_ACCESS, _READ_SHARE, _BACKUP_FLAGS = 0x80020000, 1, 0x02200000  # GENERIC_READ|READ_CONTROL; share read; backup, no reparse
+
+
+class _Luid(ctypes.Structure):
+    _fields_ = [("low", W.DWORD), ("high", W.LONG)]
+
+
+class _Privileges(ctypes.Structure):
+    _fields_ = [("count", W.DWORD), ("luid", _Luid), ("attributes", W.DWORD)]
+
+
+def _api(library, name, result, arguments):
+    function = getattr(library, name)
+    function.restype, function.argtypes = result, arguments
+    return function
+
+
+def _privilege_state(native, token, luid):
+    """0 absent, 1 present and disabled, 2 enabled, in one token's own TokenPrivileges."""
+    query = _api(native.a, "GetTokenInformation", W.BOOL, (W.HANDLE, ctypes.c_int, W.LPVOID, W.DWORD, ctypes.POINTER(W.DWORD)))
+    needed = W.DWORD()
+    query(token, 3, None, 0, ctypes.byref(needed))
+    require(4 <= needed.value <= 65536, "backup-privilege-query-bound")
+    buffer = ctypes.create_string_buffer(needed.value)
+    require(query(token, 3, buffer, len(buffer), ctypes.byref(needed)), "backup-privilege-query")
+    count = int.from_bytes(buffer.raw[:4], "little")
+    require(4 + 12 * count <= len(buffer), "backup-privilege-query-shape")
+    for index in range(count):
+        low, high, attributes = (int.from_bytes(buffer.raw[4 + 12 * index + at:8 + 12 * index + at], "little", signed=at == 4)
+                                 for at in (0, 4, 8))
+        if (low, high) == (luid.low, luid.high):
+            return 2 if attributes & 2 else 1
+    return 0
+
+
+def backup_open(native, path):
+    """Open one file its product grants to its owner alone, as SYSTEM, for reading.
+
+    SeBackupPrivilege is enabled on this thread's own impersonation token for this one open with backup semantics and
+    read access only, then disabled and reverted before any byte is read; the process token never changes. Every
+    transition is returned for the journal. A failed revert is unknown, never a read.
+    """
+    k, a = native.k, native.a
+    lookup = _api(a, "LookupPrivilegeValueW", W.BOOL, (W.LPCWSTR, W.LPCWSTR, ctypes.POINTER(_Luid)))
+    impersonate = _api(a, "ImpersonateSelf", W.BOOL, (ctypes.c_int,))
+    revert = _api(a, "RevertToSelf", W.BOOL, ())
+    current_thread = _api(k, "GetCurrentThread", W.HANDLE, ())
+    current_process = _api(k, "GetCurrentProcess", W.HANDLE, ())
+    open_thread = _api(a, "OpenThreadToken", W.BOOL, (W.HANDLE, W.DWORD, W.BOOL, ctypes.POINTER(W.HANDLE)))
+    open_process = _api(a, "OpenProcessToken", W.BOOL, (W.HANDLE, W.DWORD, ctypes.POINTER(W.HANDLE)))
+    adjust = _api(a, "AdjustTokenPrivileges", W.BOOL, (W.HANDLE, W.BOOL, ctypes.POINTER(_Privileges), W.DWORD, W.LPVOID, W.LPVOID))
+    create = _api(k, "CreateFileW", W.HANDLE, (W.LPCWSTR, W.DWORD, W.DWORD, W.LPVOID, W.DWORD, W.DWORD, W.HANDLE))
+    close = _api(k, "CloseHandle", W.BOOL, (W.HANDLE,))
+    luid = _Luid()
+    require(lookup(None, BACKUP_PRIVILEGE, ctypes.byref(luid)), "backup-privilege-lookup")
+
+    def process_state():
+        token = W.HANDLE()
+        require(open_process(current_process(), 8, ctypes.byref(token)), "backup-process-token")
+        try:
+            return _privilege_state(native, token, luid)
+        finally:
+            close(token)
+    before = process_state()
+    require(before in (1, 2), "backup-privilege-absent")
+    journal = {"privilege": BACKUP_PRIVILEGE, "scope": "thread-impersonation", "path": path, "access": _READ_ACCESS,
+               "share": _READ_SHARE, "flags": _BACKUP_FLAGS, "processStateBefore": before, "enabledForOpen": False,
+               "disabledAfterOpen": False, "reverted": False, "openError": None, "processStateAfter": None}
+    handle = None
+    require(impersonate(2), "backup-impersonate-self")
+    try:
+        token = W.HANDLE()
+        require(open_thread(current_thread(), 0x28, True, ctypes.byref(token)), "backup-thread-token")
+        try:
+            ctypes.set_last_error(0)
+            enable = _Privileges(1, luid, 2)
+            journal["enabledForOpen"] = (bool(adjust(token, False, ctypes.byref(enable), 0, None, None))
+                                         and ctypes.get_last_error() == 0 and _privilege_state(native, token, luid) == 2)
+            if journal["enabledForOpen"]:
+                ctypes.set_last_error(0)
+                value = create(path, _READ_ACCESS, _READ_SHARE, None, 3, _BACKUP_FLAGS, None)
+                if value in (None, ctypes.c_void_p(-1).value):
+                    journal["openError"] = ctypes.get_last_error()
+                else:
+                    handle, journal["openError"] = value, 0
+        finally:
+            ctypes.set_last_error(0)
+            disable = _Privileges(1, luid, 0)
+            journal["disabledAfterOpen"] = (bool(adjust(token, False, ctypes.byref(disable), 0, None, None))
+                                            and ctypes.get_last_error() == 0 and _privilege_state(native, token, luid) == 1)
+            close(token)
+    finally:
+        journal["reverted"] = bool(revert())
+    if not journal["reverted"] or not journal["disabledAfterOpen"]:
+        # This thread may still carry the privilege: no byte of the file is read and the collection ends here.
+        if handle is not None:
+            close(handle)
+        raise RuntimeError("backup-privilege-not-dropped")
+    journal["processStateAfter"] = process_state()
+    if handle is None or journal["processStateAfter"] != before or not journal["enabledForOpen"]:
+        if handle is not None:
+            close(handle)
+        raise OSError(journal["openError"] or 0, "backup-open-refused")
+    return handle, journal
+
+
+def backup_bounded_file(owner, receipts, record, maximum):
+    """One exact owner-only product file through backup_open: its bytes, held identity and the privilege journal."""
+    require(type(record) is dict and set(record) == {"path", "sha256", "sizeBytes"}
+            and type(record["sizeBytes"]) is int and 0 < record["sizeBytes"] <= maximum
+            and re.fullmatch(r"[a-f0-9]{64}", record["sha256"]), "exact-native-observation-file")
+    path = str(receipts.canonical_path(record["path"]))
+    native = owner.native
+    handle, journal = backup_open(native, path)
+    try:
+        final = _api(native.k, "GetFinalPathNameByHandleW", W.DWORD, (W.HANDLE, W.LPWSTR, W.DWORD, W.DWORD))
+        text = ctypes.create_unicode_buffer(32768)
+        count = final(handle, text, len(text), 0)
+        require(0 < count < len(text) and text.value.startswith("\\\\?\\")
+                and text.value[4:].casefold() == path.casefold(), "backup-held-canonical-file")
+        opening = {"path": path, "nativeIdentity": native.identity(handle), "security": native.security(handle)}
+        raw = bytearray()
+        for block in native.read_blocks(handle):
+            raw.extend(block)
+            require(len(raw) <= maximum, "exact-read-byte-bound")
+        require({"path": path, "nativeIdentity": native.identity(handle), "security": native.security(handle)} == opening,
+                "held-read-generation-changed")
+        require(len(raw) == record["sizeBytes"] and hashlib.sha256(raw).hexdigest() == record["sha256"],
+                "native-observation-file-changed")
+    finally:
+        native.k.CloseHandle(handle)
+    owner.event("native-collector-backup-read", {"backupRead": journal, "sizeBytes": len(raw),
+                                                 "sha256": hashlib.sha256(raw).hexdigest(), "readOnly": True})
+    return bytes(raw), opening, journal
 
 
 def collect(request, collection_owner, receipts, observer):
@@ -129,7 +269,9 @@ def collect(request, collection_owner, receipts, observer):
             observations["workerResult"] = result
             observations["workerResultNativeFile"] = identity
         if "notStartedDisposition" in files:
-            raw, identity = bounded_file(collection_owner, receipts, files["notStartedDisposition"], 4096)
+            # The product writes it O:<owner>G:<owner>D:P(A;;FA;;;<owner>): SYSTEM opens it only through backup_open.
+            raw, identity, backup = backup_bounded_file(collection_owner, receipts, files["notStartedDisposition"], 4096)
+            observations["notStartedBackupRead"] = backup
             disposition = json.loads(raw)
             require(disposition.get("disposition") == "NOT_STARTED" and disposition.get("jobId") == request["jobId"]
                     and disposition.get("controllerId") == context["originControllerId"]

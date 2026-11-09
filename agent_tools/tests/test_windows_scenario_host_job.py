@@ -2516,6 +2516,56 @@ JOB_ID = "88888888-9999-4aaa-8bbb-cccccccccccc"
 PRODUCT_OPERATION = "99999999-aaaa-4bbb-8ccc-dddddddddddd"
 BASE = "2.2.14"
 ADMIN_SID = "S-1-5-21-1-2-3-500"
+# A grant row's guest: the base install's helper and the product build's record of it, and the processes a SYSTEM census
+# of the CLI and helper images finds: the serve the owner started, the JVM it relaunched into, the job's coordinator,
+# elevated as the approving administrator, and its original-user worker.
+HELPER_RELATIVE = "app/native/windows-amd64/vpn-control-install-helper.exe"
+MANIFEST_RELATIVE = "app/native/windows-amd64/native-helpers.json"
+HELPER_BYTES = b"MZ fake vpn-control-install-helper"
+CLI_PATH = INSTALLED_ROOT + "\\vpn-control-cli.exe"
+HELPER_PATH = INSTALLED_ROOT + "\\" + HELPER_RELATIVE.replace("/", "\\")
+SERVE_PID, JVM_PID, COORDINATOR_PID, WORKER_PID, RETURNED_PID = 903, 913, 921, 922, 950
+SERVE_BIRTH, JVM_BIRTH, COORDINATOR_BIRTH, WORKER_BIRTH = 134368653065000004, 134368653065000006, 134368653065000020, 134368653065000021
+SESSION = 2
+WORKER_READY = PROFILE + "\\AppData\\Local\\vpn-control-install-inputs\\" + JOB_ID + "\\worker-ready.json"
+PROTECTED_RECEIPT = "C:\\ProgramData\\vpn-control-install-jobs\\" + JOB_ID + "\\status.json"
+BACKUP_JOURNAL = {"privilege": "SeBackupPrivilege", "scope": "thread-impersonation", "access": 0x80020000, "share": 1, "flags": 0x02200000,
+                  "processStateBefore": 1, "enabledForOpen": True, "disabledAfterOpen": True, "reverted": True, "openError": 0,
+                  "processStateAfter": 1}
+
+
+def helper_manifest(helper=HELPER_BYTES, **changes):
+    """native-helpers.json as scripts/windows_native_helpers.py writes it, naming the installer helper's own bytes."""
+    artifact = {"name": "vpn-control-install-helper.exe", "sha256": hashlib.sha256(helper).hexdigest(), "sizeBytes": len(helper),
+                "minimumWindowsBuild": 22621, "operations": ["validate-only", "install-user", "install-coordinator"], "machine": "AMD64",
+                "sections": [], "clrHeader": False, "imports": [], "delayImports": [], "dependentLoadFlags": 2048, **changes}
+    broker = dict(artifact, name="vpn-control-vpn-broker.exe", operations=["authenticated-runtime-channel"])
+    return (json.dumps({"schemaVersion": 1, "policySha256": "e" * 64, "artifacts": [artifact, broker],
+                        "runtimeAuthority": {"runtimeSha256": "d" * 64, "runtimeSizeBytes": 41943040, "authoritySourceSha256": "f" * 64}},
+                       indent=2, sort_keys=True) + "\n").encode()
+
+
+def process_row(pid, parent, birth, image, argv, sid, elevated, *, image_bytes, parent_row=None):
+    """One process as the publisher's census describes it through its own handle (VpnScenarioObserver.Describe)."""
+    return {"pid": pid, "parentPid": parent, "openError": None, "creationFileTime": str(birth), "alive": True, "image": image,
+            "argv": list(argv), "token": {"sid": sid, "sessionId": SESSION, "elevated": elevated, "elevationType": 2 if elevated else 1},
+            "imageSha256": hashlib.sha256(image_bytes).hexdigest(), "imageSizeBytes": len(image_bytes),
+            "parent": parent_row or {"pid": parent, "openError": 87, "alive": None, "creationFileTime": None, "image": None}}
+
+
+def grant_processes():
+    """The serve the owner started and the JVM it relaunched into; then the job's coordinator, whose parent the owner was
+    and which has exited at the handoff, and the worker whose parent is the coordinator. Both name the JVM as owner."""
+    cli = b"exe:" + BASE.encode()
+    owner = [str(JVM_PID), str(JVM_BIRTH)]
+    return [process_row(SERVE_PID, 902, SERVE_BIRTH, CLI_PATH, [CLI_PATH, "--state-dir", "w", "serve"], SID, 0, image_bytes=cli),
+            process_row(JVM_PID, SERVE_PID, JVM_BIRTH, CLI_PATH, [CLI_PATH, "--state-dir", "w", "serve"], SID, 0, image_bytes=cli,
+                        parent_row={"pid": SERVE_PID, "openError": None, "alive": True, "creationFileTime": str(SERVE_BIRTH), "image": CLI_PATH}),
+            process_row(COORDINATOR_PID, JVM_PID, COORDINATOR_BIRTH, HELPER_PATH, [HELPER_PATH, "install-coordinator", JOB_ID, *owner], ADMIN_SID, 1,
+                        image_bytes=HELPER_BYTES),
+            process_row(WORKER_PID, COORDINATOR_PID, WORKER_BIRTH, HELPER_PATH, [HELPER_PATH, "install-user", JOB_ID, *owner], SID, 0,
+                        image_bytes=HELPER_BYTES, parent_row={"pid": COORDINATOR_PID, "openError": None, "alive": True,
+                                                              "creationFileTime": str(COORDINATOR_BIRTH), "image": HELPER_PATH})]
 
 
 def encoded(value):
@@ -2523,24 +2573,33 @@ def encoded(value):
 
 
 class UpdateQga(FakeQga):
-    """The same wire peer, plus what an update row's owner and SYSTEM collector would leave: the owner asks for
-    before-install, then terminal-actors once the first stage was served, and its task ends after the release."""
+    """The same wire peer, plus what an update row's owner and SYSTEM collector would leave: the owner asks for each of its
+    stages once the one before was served, and its task ends after the release.
+
+    A SYSTEM open of the product's owner-only not-started disposition is refused unless the rendered publisher reads it
+    through Read-BackupPin, the template's SeBackupPrivilege reader: that is the guest this fake stands for. Nothing here
+    proves what that reader does on Windows; test_windows_update_grant_collectors runs it only where Windows runs it."""
 
     def __init__(self):
         super().__init__()
-        self.collectors, self.releases, self.served = [], [], []
+        self.collectors, self.releases, self.served, self.request_pins = [], [], [], []
         self.run_pid = None
         self.run_polls = None  # Polls before the SYSTEM run returns; by default it waits on its collectors.
         self.needs = ["before-install", "terminal-actors"]
         self.parked_files = []  # What the run's status names as parked.
         self.verified = {}
         self.disposition = b'{"disposition":"NOT_STARTED"}'
-        # The product writes its not-started disposition for its owner alone, and a SYSTEM open without an enabled
-        # SeBackupPrivilege is refused: nothing on this route enables it. True only where a test supposes a reader.
-        self.system_reads_owner_only = False
+        self.source = ""
+        self.installed_tree = (sorted({*self.installed_tree[0], HELPER_RELATIVE, MANIFEST_RELATIVE}),
+                               sorted({*self.installed_tree[1], "app/native", "app/native/windows-amd64"}))
+        self.guest_data.update({HELPER_PATH: HELPER_BYTES, INSTALLED_ROOT + "\\" + MANIFEST_RELATIVE.replace("/", "\\"): helper_manifest()})
+        self.processes = grant_processes()
+        self.product_files = {}
+        self.returned = None  # The case's record of the actors it expects gone before returned-cleanup.
 
     def _guest_exec(self, arguments):
         source = base64.b64decode(arguments["input-data"]).decode("ascii")
+        self.source = source
         if "$RequestPinBase64=" in source or "$releaseBytes=" in source:
             if arguments["path"] != job.POWERSHELL_PATH or arguments["arg"] != list(job.GUEST_ARGUMENTS):
                 raise AssertionError("guest-exec shape changed")
@@ -2565,8 +2624,9 @@ class UpdateQga(FakeQga):
         if arguments["path"].endswith("\\scenario-status.json") and arguments["mode"] == "rb":
             served = [kind for kind, _ in self.programs if kind == "collector"]
             needs = self.needs[:len(served) + 1]
-            values = {"before-install": {"jobId": None, "productOperationId": None},
-                      "terminal-actors": {"jobId": JOB_ID, "productOperationId": PRODUCT_OPERATION}}
+            installer = {"jobId": JOB_ID, "productOperationId": PRODUCT_OPERATION}
+            values = {"before-install": {"jobId": None, "productOperationId": None}, "authorization": installer,
+                      "terminal-actors": installer, "returned-cleanup": installer}
             self.files[arguments["path"]] = json.dumps({"schemaVersion": 1, "poll": len(self.calls), "pendingKinds": [],
                                                         "parkedFiles": list(self.parked_files),
                                                         "uacEvents": ["update-uac-action-pending"] if served else [],
@@ -2630,7 +2690,7 @@ class UpdateQga(FakeQga):
                      "task-event-000001-submitted.json": event(1, "submitted", {"pid": 902, "birthFileTimeUtc": "134368653065000003",
                                                                                 "originalHandleRetained": True}, True),
                      "event-000002-child-intent.json": event(2, "child-intent", {"child": 0, "label": "update-public-serve", "argv": ["cli", "serve"]}),
-                     "event-000003-child-started.json": event(3, "child-started", {"child": 0, "pid": 903, "birthFileTimeUtc": "134368653065000004"}),
+                     "event-000003-child-started.json": event(3, "child-started", {"child": 0, "pid": SERVE_PID, "birthFileTimeUtc": str(SERVE_BIRTH)}),
                      "event-000004-child-intent.json": event(4, "child-intent", {"child": 1, "label": "public-cli", "argv": ["cli", "status"]})}
             dispositions = []
             if "one-public-update-install" in m["childStdoutLabels"]:
@@ -2639,13 +2699,27 @@ class UpdateQga(FakeQga):
                 files["child-0005.stdout.raw"] = base64.b64encode(json.dumps({"schemaVersion": 1, "ok": False, "code": "CANCELLED", "final": True,
                                                                               "controllerId": "controller-1", "requestId": "request-1",
                                                                               "operationId": PRODUCT_OPERATION}).encode()).decode()
+            if m.get("returnedActors") and self.returned is not None:
+                files["event-000040-update-returned-cleanup-expected-actors.json"] = event(40, "update-returned-cleanup-expected-actors", self.returned)
             if m["readDisposition"]:
-                # DesktopWindowsExportFile creates it O:<owner>G:<owner>D:P(A;;FA;;;<owner>): no ACE for SYSTEM.
-                if not self.system_reads_owner_only:
+                # DesktopWindowsExportFile creates it O:<owner>G:<owner>D:P(A;;FA;;;<owner>): no ACE for SYSTEM. Only the
+                # template's SeBackupPrivilege reader opens it, and it opens the name twice.
+                if "ForEach-Object {Read-BackupPin $_.FullName}" not in self.source:
                     return {"exited": True, "exitcode": 1, "err-data": base64.b64encode(b"Access to the path is denied.").decode()}
-                dispositions.append(self._pin(m["productWorkspace"] + "\\.install-not-started-" + "a" * 64 + ".json", raw=self.disposition,
-                                              security={"ownerSid": SID, "sddl": "O:" + SID + "D:P(A;;FA;;;" + SID + ")"}))
-            reply.update(state="ordinary-collector-observation", observation={"files": files, "dispositions": dispositions})
+                dispositions.append({"filePin": self._pin(m["productWorkspace"] + "\\.install-not-started-" + "a" * 64 + ".json", raw=self.disposition,
+                                                          security={"ownerSid": SID, "sddl": "O:" + SID + "D:P(A;;FA;;;" + SID + ")"}),
+                                     "backupReads": [dict(BACKUP_JOURNAL), dict(BACKUP_JOURNAL)]})
+            census = []
+            if m.get("census") is not None:
+                leaf = m["census"]["image"].rsplit("\\", 1)[-1].casefold()  # Census matches the snapshot's image leaf, as the C# does.
+                census = [json.loads(json.dumps(row)) for row in self.processes if row["image"].rsplit("\\", 1)[-1].casefold() == leaf]
+            pins = []
+            for path in m.get("productPins") or []:
+                if path not in self.product_files:
+                    return {"exited": True, "exitcode": 1, "err-data": base64.b64encode(b"Could not find file.").decode()}
+                pins.append(self._pin(path, raw=self.product_files[path], security={"ownerSid": "S-1-5-32-544", "sddl": "O:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GR;;;BU)"}))
+            reply.update(state="ordinary-collector-observation", observation={"files": files, "dispositions": dispositions, "census": census,
+                                                                              "productPins": pins})
         return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
 
     def _request(self, source, pattern):
@@ -2655,6 +2729,7 @@ class UpdateQga(FakeQga):
     def _collector(self, source, pid):
         pin, request = self._request(source, r"\$RequestPinBase64='([A-Za-z0-9+/=]+)'")
         self.collectors.append(request)
+        self.request_pins.append(pin)
         worker = {"pid": 6000 + len(self.collectors), "birthFileTimeUtc": "134368653065000010", "image": request["pythonRuntime"]["interpreterPath"]}
         hold, caller = request["closeHold"], None
         if hold is not None:
@@ -2760,12 +2835,32 @@ class UpdateFamilyBase(FamilyBase):
         code = job.run_job(self.rt, plan, self.files)
         return plan, code, self.receipt(plan)
 
-    def suppose_collector_inputs(self):
-        """A guest that does not exist yet: a request file in the pinned O:SYD:P form and a SYSTEM reader of the product's
-        owner-only disposition. The driver refuses uac-denied until both are proved natively; these tests run the
-        collector stage engine as if they were."""
-        self.qga.endpoint_form = "P"
-        self.qga.system_reads_owner_only = True
+    def suppose_the_request_form(self, form=None):
+        """Guest files that read back in the form the job takes for its collector request, or in another one."""
+        self.qga.endpoint_form = form or job.COLLECTOR_FILE_SDDL.split("(", 1)[0][len("O:SYD:"):]
+
+    def grant_guest(self, target):
+        """What a grant's product and owner leave for its four stages: the worker's ready record, the protected terminal
+        and the case's own record of the returned owner, whose image is the target install's GUI."""
+        ready = {"version": 2, "jobId": JOB_ID, "pid": WORKER_PID, "creationFileTime": WORKER_BIRTH, "principalSid": SID,
+                 "helperSha256": hashlib.sha256(HELPER_BYTES).hexdigest()}
+        self.qga.needs = ["before-install", "authorization", "terminal-actors", "returned-cleanup"]
+        self.qga.product_files = {WORKER_READY: json.dumps(ready, separators=(",", ":")).encode(),
+                                  PROTECTED_RECEIPT: ('{"version":1,"jobId":"' + JOB_ID + '","sequence":6,"phase":"Succeeded","code":"OK"}').encode()}
+        files = json.loads((self.machine_data / target / job.INVENTORY_NAME).read_bytes())["files"]
+        self.qga.returned = {"actors": {"owner": {"pid": RETURNED_PID, "creationFileTime": 134368653065000040, "image": INSTALLED_ROOT + "\\vpn-control.exe",
+                                                  "sha256": files["vpn-control.exe"]["sha256"], "sid": SID, "sessionId": SESSION}},
+                             "jobId": JOB_ID, "operationId": PRODUCT_OPERATION}
+
+    def forget(self, plan):
+        """An UNKNOWN job keeps the fake VM refusing new ones: a subtest's own job, its fence and open programs go."""
+        shutil.rmtree(plan["dataDirectory"])
+        for path in self.vm.glob("direct-guest-*.intent.json"):
+            if not path.with_name(path.name[:-len(".intent.json")] + ".terminal.json").exists():
+                path.unlink()
+        self.qga.programs.clear()
+        self.qga.collectors.clear()
+        self.qga.releases.clear()
 
 
 class UpdateFamilyTests(UpdateFamilyBase):
@@ -2810,9 +2905,9 @@ class UpdateFamilyTests(UpdateFamilyBase):
 
     def test_a_deny_row_serves_both_collector_stages_inside_the_run_and_releases_the_hold(self):
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         plan, code, receipt = self.run_update("uac-denied", base, target)
         self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual(2, receipt["update"]["backupReads"], "the disposition's held and named opens, each through SeBackupPrivilege")
         kinds = self.qga.kinds()
         run = kinds.index("system-run")
         self.assertEqual(["collector-observe", "endpoints", "verify", "collector", "collector-observe", "endpoints", "verify", "collector",
@@ -2840,7 +2935,6 @@ class UpdateFamilyTests(UpdateFamilyBase):
 
     def test_the_collector_program_is_the_rendered_template_on_the_stdin_route(self):
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         self.run_update("uac-denied", base, target)
         for kind, source in self.qga.programs:
             if kind in {"collector", "collector-release"}:
@@ -2855,7 +2949,6 @@ class UpdateFamilyTests(UpdateFamilyBase):
     @unittest.skipUnless(POWERSHELL, "PowerShell parser unavailable; hosted Windows and Linux runners have one")
     def test_the_collector_and_release_programs_parse(self):
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         self.run_update("uac-denied", base, target)
         sources = [(kind, source) for kind, source in self.qga.programs if kind in {"collector", "collector-release"}]
         self.assertEqual(["collector", "collector", "collector-release"], [kind for kind, _ in sources])
@@ -2871,7 +2964,6 @@ class UpdateFamilyTests(UpdateFamilyBase):
 
     def test_a_stage_the_row_cannot_serve_ends_unknown_with_the_fence_open(self):
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         self.qga.needs = ["authorization"]
         plan, code, receipt = self.run_update("uac-denied", base, target)
         self.assertEqual((3, "collector_stage_unserved:authorization"), (code, receipt["failure"]))
@@ -2880,7 +2972,6 @@ class UpdateFamilyTests(UpdateFamilyBase):
 
     def test_a_collector_that_never_returns_is_unknown_and_nothing_follows_it(self):
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         original = self.qga._collector
 
         def parked(source, pid):
@@ -2912,33 +3003,79 @@ class UpdateFamilyTests(UpdateFamilyBase):
         self.assertEqual((1, "collector_root_policy"), (code, receipt["failure"]))
         self.assertNotIn("system-run", self.qga.kinds())
 
-    def test_a_published_file_reads_back_auto_inherited_so_a_collector_row_stops_before_its_task(self):
-        """The native form. The pinned collector chain takes its request only as O:SYD:P, and the publisher's files read
-        back O:SYD:PAI, so the row ends at publish as a known failure: no owner ever waits on a refused request."""
+    def test_the_collector_takes_its_request_in_the_form_the_publisher_writes(self):
+        """Natively a file the publisher creates and then protects with SetAccessControl reads back O:SYD:PAI (every
+        worker-request.json pin of eight runs). The pinned chain took its request only as O:SYD:P, so the row ended at
+        publish with collector_file_policy; it now takes exactly that native form, and the deny row runs through."""
         base, target = self.prepared()
+        self.assertEqual("PAI", self.qga.endpoint_form, "the fake guest reads back the native form")
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual(2, len(self.qga.request_pins))
+        for pin in self.qga.request_pins:
+            self.assertEqual({"ownerSid": "S-1-5-18", "sddl": "O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;" + SID + ")"}, pin["security"])
+
+    def test_a_request_in_any_other_form_stops_the_row_before_its_task(self):
+        """O:SYD:P, the form the chain demanded at 70ed16cc and that no writer of this route produces, ends at publish."""
+        base, target = self.prepared()
+        self.suppose_the_request_form("P")
         plan, code, receipt = self.run_update("uac-denied", base, target)
         self.assertEqual((1, "collector_file_policy", "publish"), (code, receipt["failure"], receipt["stage"]))
         self.assertNotIn("system-run", self.qga.kinds())
         self.assertTrue(self.fence(plan, ".terminal.json").exists(), "a known failure closes the fence")
 
-    def test_system_cannot_open_the_owner_only_disposition_so_terminal_actors_ends_unknown(self):
-        """Even past publish, terminal-actors reads the product's not-started disposition as SYSTEM, and the product
-        grants that file to its owner alone. The owner is still waiting on that stage, so the job ends UNKNOWN."""
+    def test_the_owner_only_disposition_is_read_through_the_backup_privilege_alone(self):
+        """terminal-actors opens .install-not-started-*.json as SYSTEM. The product creates it
+        O:<owner>G:<owner>D:P(A;;FA;;;<owner>), so only an open with SeBackupPrivilege enabled and backup semantics
+        reads it: the template's Read-BackupPin, whose two opens are journaled and kept."""
         base, target = self.prepared()
-        self.qga.endpoint_form = "P"  # Supposed: only the reader is missing here.
         plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        final = self.qga.collectors[-1]["collectorRequest"]
+        self.assertEqual(["notStartedDisposition"], list(final["fileInputs"]))
+        self.assertEqual(hashlib.sha256(self.qga.disposition).hexdigest(), final["fileInputs"]["notStartedDisposition"]["sha256"])
+        self.assertEqual(2, receipt["update"]["backupReads"])
+        kept = Path(plan["dataDirectory"]) / "collectors" / "terminal-actors" / "backup-reads.json"
+        self.assertEqual([BACKUP_JOURNAL, BACKUP_JOURNAL], json.loads(kept.read_bytes()), "both journals, kept for the first native read")
+
+    def test_a_publisher_without_the_backup_reader_leaves_terminal_actors_unknown(self):
+        """The 70ed16cc reader, New-ReadPin, opens the disposition with no privilege: refused while the owner waits."""
+        base, target = self.prepared()
+        reader = "ForEach-Object {Read-BackupPin $_.FullName}"
+        template = self.files["agent_tools/windows_scenario_publisher.ps1.template"].decode("ascii")
+        self.assertEqual(1, template.count(reader))
+        self.files["agent_tools/windows_scenario_publisher.ps1.template"] = template.replace(reader, "ForEach-Object {New-ReadPin $_.FullName}").encode("ascii")
+        plan, code, receipt = self.run_update("uac-denied", base, target, files={
+            path: {"sha256": hashlib.sha256(raw).hexdigest(), "sizeBytes": len(raw)} for path, raw in self.files.items()})
         self.assertEqual((3, "collector_stage_failed:terminal-actors:publisher_refused:collector-observe-terminal-actors"),
                          (code, receipt["failure"]))
         kinds = self.qga.kinds()
         self.assertEqual(1, kinds.count("collector"), "before-install only")
         self.assertNotIn("collector-release", kinds)
-        self.assertNotIn("evidence-zip", kinds[kinds.index("system-run"):], "the run is still open")
         self.assertFalse(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_backup_read_that_kept_the_privilege_or_changed_the_process_token_is_never_used(self):
+        base, target = self.prepared()
+        plan = None
+        for change in ({"disabledAfterOpen": False}, {"reverted": False}, {"processStateAfter": 2}, {"processStateBefore": 0, "processStateAfter": 0},
+                       {"scope": "process"}, {"access": 0x80000000 | 0x40000000}, {"flags": 0x00200000}, {"openError": 5}):
+            with self.subTest(change=change):
+                self.qga.programs.clear()
+                self.qga.collectors.clear()
+                original = dict(BACKUP_JOURNAL)
+                BACKUP_JOURNAL.update(change)
+                try:
+                    plan, code, receipt = self.run_update("uac-denied", base, target)
+                    self.assertEqual((3, "collector_stage_failed:terminal-actors:collector_backup_read"), (code, receipt["failure"]))
+                    self.assertEqual(1, self.qga.kinds().count("collector"))
+                finally:
+                    BACKUP_JOURNAL.clear()
+                    BACKUP_JOURNAL.update(original)
+                    self.forget(plan)
 
     def test_a_need_beside_a_parked_file_starts_nothing(self):
         """A parked owner is reported and never touched: its status may still name a need it asked for before parking."""
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         self.qga.needs, self.qga.parked_files = ["before-install"], ["owner-parked.json"]
         self.qga.run_state, self.qga.run_polls = "owner-parked", 2
         plan, code, receipt = self.run_update("uac-denied", base, target)
@@ -2952,7 +3089,6 @@ class UpdateFamilyTests(UpdateFamilyBase):
         """The last status copy is read after the run returned, here at its deadline. A need in it is never served:
         nothing starts for an owner the run has stopped watching."""
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         self.qga.needs = ["before-install"]
         self.qga.run_state, self.qga.run_polls = "deadline", 0
         plan, code, receipt = self.run_update("uac-denied", base, target)
@@ -2983,7 +3119,6 @@ class UpdateFamilyTests(UpdateFamilyBase):
 
     def test_the_status_copy_names_the_decision_once_its_terminal_exists(self):
         base, target = self.prepared()
-        self.suppose_collector_inputs()
         plan = self.update_plan("uac-denied", base, target)
         decision = job.decision_id(plan["operationId"])
         directory = self.vm / "windows-uac" / decision
@@ -2997,6 +3132,219 @@ class UpdateFamilyTests(UpdateFamilyBase):
         status = json.loads((Path(plan["dataDirectory"]) / "status.json").read_bytes())
         self.assertEqual({"state": "input-ack-only", "decision": "deny", "prompt": "install-helper", "promptClosed": True}, status["uacDecision"])
         self.assertEqual(["update-uac-action-pending"], status["uacEvents"])
+
+    def test_a_grant_row_discovers_its_installer_actors_and_serves_every_stage(self):
+        """A grant's owner waits on four SYSTEM stages. before-install finds the controller the serve relaunched into;
+        authorization the job's coordinator, elevated as the approving administrator, and its original-user worker, live,
+        with the worker's ready record; terminal-actors asks for both again beside the protected terminal; returned-cleanup
+        for the returned owner the case recorded. At 70ed16cc no stage discovered the actors: the row was refused."""
+        base, target = self.prepared()
+        helper = hashlib.sha256(HELPER_BYTES).hexdigest()
+        coordinator = {"pid": COORDINATOR_PID, "creationFileTime": COORDINATOR_BIRTH, "image": HELPER_PATH, "sha256": helper, "sid": ADMIN_SID,
+                       "sessionId": SESSION}
+        worker = {"pid": WORKER_PID, "creationFileTime": WORKER_BIRTH, "image": HELPER_PATH, "sha256": helper, "sid": SID, "sessionId": SESSION}
+        for variant in ("success-off", "wait-client-loss", "installer-wait-client-loss"):
+            with self.subTest(variant=variant):
+                self.qga.programs.clear()
+                self.qga.collectors.clear()
+                self.qga.releases.clear()
+                self.grant_guest(target)
+                plan, code, receipt = self.run_update(variant, base, target)
+                self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+                kinds = self.qga.kinds()
+                run = kinds.index("system-run")
+                self.assertEqual(["collector-observe", "endpoints", "verify", "collector"] * 4 + ["collector-release"], kinds[run + 1:run + 18])
+                before, authorization, terminal, cleanup = self.qga.collectors
+                self.assertEqual(["before-install", "authorization", "terminal-actors", "returned-cleanup"],
+                                 [request["collectorRequest"]["stage"] for request in self.qga.collectors])
+                request = authorization["collectorRequest"]
+                self.assertEqual({"coordinator": coordinator, "worker": worker}, request["actors"])
+                self.assertEqual(helper, request["expectedHelperSha256"])
+                self.assertEqual((JOB_ID, PRODUCT_OPERATION, ADMIN_SID), (request["jobId"], request["productOperationId"], request["context"]["approvingAdminSid"]))
+                ready = self.qga.product_files[WORKER_READY]
+                self.assertEqual({"workerReady": {"path": WORKER_READY, "sha256": hashlib.sha256(ready).hexdigest(), "sizeBytes": len(ready)}},
+                                 request["fileInputs"])
+                self.assertEqual(request["actors"], terminal["collectorRequest"]["actors"], "the same two actors, which must now be gone")
+                self.assertEqual([PROTECTED_RECEIPT], [item["path"] for item in terminal["collectorRequest"]["fileInputs"].values()])
+                self.assertEqual(["protectedReceipt"], list(terminal["collectorRequest"]["fileInputs"]))
+                self.assertEqual(self.qga.returned["actors"], cleanup["collectorRequest"]["actors"])
+                self.assertEqual([None, None, None], [item["closeHold"] for item in (before, authorization, terminal)])
+                self.assertEqual("returned-cleanup", cleanup["closeHold"]["stage"])
+                self.assertEqual([job.collector_operation(plan["operationId"], "returned-cleanup")],
+                                 [release["collectorOperationId"] for release in self.qga.releases])
+                installer = receipt["update"]["installer"]
+                self.assertEqual({"pid": JVM_PID, "creationFileTime": JVM_BIRTH, "relaunched": True}, installer["owner"])
+                self.assertEqual((ADMIN_SID, 1, 2, SESSION), tuple(installer["coordinator"][key] for key in ("sid", "elevated", "elevationType", "sessionId")))
+                self.assertEqual((SID, 0, 1, SESSION), tuple(installer["worker"][key] for key in ("sid", "elevated", "elevationType", "sessionId")))
+                self.assertEqual({"pid": JVM_PID, "alive": False, "matches": True}, installer["coordinator"]["parent"], "AppInfo's parent: the owner")
+                self.assertEqual({"pid": COORDINATOR_PID, "alive": True, "matches": True}, installer["worker"]["parent"], "seclogon's parent: the coordinator")
+                self.assertEqual((JOB_ID, helper), (installer["jobId"], installer["helperSha256"]))
+                inputs, hold = self.harness(plan)
+                self.assertEqual(ADMIN_SID, inputs["approvingAdminSid"])
+                self.assertEqual("returned-cleanup", hold["stage"])
+                for stage in ("before-install", "authorization"):
+                    self.assertTrue((Path(plan["dataDirectory"]) / "collectors" / stage / "census.json").exists())
+                self.assertLessEqual(len((Path(plan["dataDirectory"]) / "scenario-receipt.json").read_bytes()), job.RECEIPT_BYTES)
+
+    def test_authorization_takes_only_the_jobs_own_live_coordinator_and_worker(self):
+        """Every refusal leaves the owner waiting on authorization, so it is UNKNOWN with its own finite code and no
+        collector program for that stage."""
+        base, target = self.prepared()
+
+        def extra_coordinator(rows):
+            rows.append({**json.loads(json.dumps(rows[2])), "pid": 930})
+        cases = (("collector_coordinator_token", lambda rows: rows[2]["token"].update(elevated=0)),
+                 ("collector_coordinator_token", lambda rows: rows[2]["token"].update(sid=SID)),
+                 ("collector_coordinator_token", lambda rows: rows[2]["token"].update(sessionId=1)),
+                 ("collector_worker_token", lambda rows: rows[3]["token"].update(sid=ADMIN_SID, elevated=1)),
+                 ("collector_worker_token", lambda rows: rows[3]["token"].update(elevated=1)),
+                 ("collector_coordinator_identity", lambda rows: rows[2].update(imageSha256="0" * 64)),
+                 ("collector_coordinator_identity", lambda rows: rows[2].update(image=PROFILE + "\\Downloads\\vpn-control-install-helper.exe")),
+                 ("collector_worker_identity", lambda rows: rows[3]["argv"].__setitem__(3, str(SERVE_PID))),
+                 ("collector_worker_identity", lambda rows: rows[3]["argv"].__setitem__(4, str(JVM_BIRTH + 1))),
+                 ("collector_coordinator_count_2", extra_coordinator),
+                 ("collector_coordinator_count_0", lambda rows: rows[2].update(alive=False)),
+                 ("collector_coordinator_count_0", lambda rows: rows[2].update(openError=5, alive=None)),
+                 ("collector_worker_count_0", lambda rows: rows.pop(3)),
+                 ("collector_worker_count_0", lambda rows: rows[3]["argv"].__setitem__(2, PRODUCT_OPERATION)),
+                 ("collector_worker_generation", lambda rows: rows[3].update(creationFileTime=str(COORDINATOR_BIRTH - 1))))
+        for reason, change in cases:
+            with self.subTest(reason=reason, change=change):
+                self.grant_guest(target)
+                self.qga.processes = grant_processes()
+                change(self.qga.processes)
+                plan, code, receipt = self.run_update("success-off", base, target)
+                try:
+                    self.assertEqual((3, "collector_stage_failed:authorization:" + reason), (code, receipt["failure"]))
+                    self.assertEqual(["before-install"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
+                    self.assertFalse(self.fence(plan, ".terminal.json").exists())
+                finally:
+                    self.forget(plan)
+
+    def test_before_install_finds_the_controller_the_helper_will_name(self):
+        base, target = self.prepared()
+        cases = (("collector_owner_serve", lambda rows: rows.pop(0)),
+                 ("collector_owner_serve", lambda rows: rows[0].update(creationFileTime=str(SERVE_BIRTH + 1))),
+                 ("collector_owner_serve", lambda rows: rows[0]["token"].update(elevated=1)),
+                 ("collector_owner_child", lambda rows: rows.append({**json.loads(json.dumps(rows[1])), "pid": 914})),
+                 ("collector_owner_child", lambda rows: rows[1].update(creationFileTime=str(SERVE_BIRTH - 1))),
+                 ("collector_owner_child", lambda rows: rows[1]["token"].update(sid=ADMIN_SID)))
+        for reason, change in cases:
+            with self.subTest(reason=reason, change=change):
+                self.grant_guest(target)
+                self.qga.processes = grant_processes()
+                change(self.qga.processes)
+                plan, code, receipt = self.run_update("success-off", base, target)
+                try:
+                    self.assertEqual((3, "collector_stage_failed:before-install:" + reason), (code, receipt["failure"]))
+                    self.assertEqual([], self.qga.collectors)
+                finally:
+                    self.forget(plan)
+        # A serve that never relaunched is its own controller: the helper must name the serve itself.
+        self.grant_guest(target)
+        self.qga.processes = [row for row in grant_processes() if row["pid"] != JVM_PID]
+        for row in self.qga.processes:
+            if row["argv"][1:2] in (["install-coordinator"], ["install-user"]):
+                row["argv"][3:] = [str(SERVE_PID), str(SERVE_BIRTH)]
+        plan, code, receipt = self.run_update("success-off", base, target)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual({"pid": SERVE_PID, "creationFileTime": SERVE_BIRTH, "relaunched": False}, receipt["update"]["installer"]["owner"])
+
+    def test_later_stages_take_only_the_authorized_job_and_the_cases_own_returned_owner(self):
+        base, target = self.prepared()
+        files = json.loads((self.machine_data / target / job.INVENTORY_NAME).read_bytes())["files"]
+        for stage, reason, change in (
+                ("returned-cleanup", "collector_returned_actor", lambda q: q.returned["actors"]["owner"].update(sid=ADMIN_SID)),
+                ("returned-cleanup", "collector_returned_actor", lambda q: q.returned["actors"]["owner"].update(sha256="0" * 64)),
+                ("returned-cleanup", "collector_returned_actor", lambda q: q.returned["actors"]["owner"].update(image=INSTALLED_ROOT + "\\app\\x.exe")),
+                ("returned-cleanup", "collector_returned_actors", lambda q: q.returned.update(jobId=PRODUCT_OPERATION)),
+                ("returned-cleanup", "collector_returned_actors", lambda q: q.returned["actors"].update(tray=q.returned["actors"]["owner"])),
+                ("returned-cleanup", "collector_returned_unobserved", lambda q: setattr(q, "returned", None)),
+                ("terminal-actors", "publisher_refused:collector-observe-terminal-actors", lambda q: q.product_files.pop(PROTECTED_RECEIPT))):
+            with self.subTest(stage=stage, reason=reason):
+                self.grant_guest(target)
+                change(self.qga)
+                plan, code, receipt = self.run_update("success-off", base, target)
+                try:
+                    self.assertEqual((3, "collector_stage_failed:" + stage + ":" + reason), (code, receipt["failure"]))
+                finally:
+                    self.forget(plan)
+
+    def test_the_real_collector_takes_every_request_a_grant_builds(self):
+        """native_collector.collect, the pinned SYSTEM collector's own code, over each request this job built, with the
+        guest's processes and product files as the fake reports them: every stage is admitted and observes its actors."""
+        import importlib.util
+        from agent_tools.windows_public_updater import native_collector, update_receipts
+        spec = importlib.util.spec_from_file_location("_grant_observer", ROOT / "scripts/windows_broker_fixture_observer.py")
+        observer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(observer)
+        base, target = self.prepared()
+        self.grant_guest(target)
+        plan, code, receipt = self.run_update("success-off", base, target)
+        self.assertEqual(0, code)
+        cli = self.harness(plan)[0]["baseInventory"]["vpn-control-cli.exe"]["sha256"]
+        live = {SERVE_PID, COORDINATOR_PID, WORKER_PID}
+
+        class Process:
+            def __init__(self, row):
+                self.row = row
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return False
+            def times(self):
+                return {"creationFileTime": int(self.row["creationFileTime"])}
+            def wait(self):
+                return 258
+            def describe(self):
+                sha = cli if self.row["image"] == CLI_PATH else self.row["imageSha256"]
+                return {"image": self.row["image"], "creationFileTime": int(self.row["creationFileTime"]), "exitFileTime": 0,
+                        "token": dict(self.row["token"]), "sha256": sha, "sizeBytes": self.row["imageSizeBytes"]}
+
+        class Native:
+            def open_process(self, pid, access):
+                rows = [row for row in self.rows if row["pid"] == pid and pid in live]
+                if not rows:
+                    raise observer.ProcessAbsent("absent")
+                return Process(rows[0])
+        Native.rows = self.qga.processes
+        observing = types.SimpleNamespace(WindowsNative=Native, require_identity=observer.require_identity, observe_exit=observer.observe_exit)
+
+        class File:
+            def __init__(self, owner, path, directory=False, replaceable=False):
+                self.raw = test.qga.product_files[path]
+                security = ({"ownerSid": "S-1-5-32-544", "sddl": "O:BAD:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GR;;;BU)"} if path == PROTECTED_RECEIPT
+                            else {"ownerSid": SID, "sddl": "O:" + SID + "D:P(A;;FA;;;" + SID + ")(A;;GR;;;BA)(A;;GR;;;SY)"})
+                self.opening = {"path": path, "nativeIdentity": {"sizeBytes": len(self.raw)}, "security": security}
+            def read(self, maximum):
+                return self.raw
+            def close(self):
+                pass
+        test = self
+        for request in self.qga.collectors:
+            stage = request["collectorRequest"]["stage"]
+            if stage in ("terminal-actors", "returned-cleanup"):
+                live.clear()  # Both installer actors and the returned owner have exited by then.
+            owner = types.SimpleNamespace(native=types.SimpleNamespace(boot_identifier=lambda: request["context"]["bootIdentifier"],
+                                                                       token=lambda: {"sid": "S-1-5-18", "elevation": 1}),
+                                          guard=lambda: None,
+                                          by_path={str(Path(native_collector.__file__)).casefold(): types.SimpleNamespace(
+                                              record={"sha256": request["collectorRequest"]["collectorSourceSha256"]})})
+            with self.subTest(stage=stage), mock.patch.object(update_receipts, "FileObservation", File):
+                value = native_collector.collect(request["collectorRequest"], owner, update_receipts, observing)
+                observations = value["observations"]
+                if stage == "before-install":
+                    self.assertEqual(SERVE_PID, observations["ordinaryOwner"]["pid"])
+                elif stage == "authorization":
+                    self.assertEqual((ADMIN_SID, 1), (observations["coordinator"]["token"]["sid"], observations["coordinator"]["token"]["elevated"]))
+                    self.assertEqual((SID, 0), (observations["originalUserWorker"]["token"]["sid"], observations["originalUserWorker"]["token"]["elevated"]))
+                    self.assertEqual(WORKER_PID, observations["workerReady"]["record"]["pid"])
+                    self.assertEqual(request["collectorRequest"]["actors"], observations["actorExpectations"])
+                elif stage == "terminal-actors":
+                    self.assertEqual("SUCCEEDED", observations["protectedReceipt"]["phase"])
+                    self.assertTrue(all(item["originalAbsent"] for item in observations["actorExitObservations"]))
+                else:
+                    self.assertTrue(observations["ownerOriginalAbsent"])
 
 
 DOCUMENT_ROWS = ("windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",

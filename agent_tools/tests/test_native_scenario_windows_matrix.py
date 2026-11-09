@@ -583,11 +583,13 @@ class TableTests(unittest.TestCase):
         self.assertEqual({"msi-installer", "public-update", "operation-progress-cancellation", "traffic-continuity", "msi-uac-grant-denial",
                           "ordinary-elevated-owner", "different-approving-admin", "original-user-worker", "participating-copy-locks",
                           "protected-storage-adversarial", "next-owner-recovery", "reconnect-off-preserved"}, named)
-        # The installer lifecycle maps every scenario, but each update variant it names is refused at admission today.
+        # The installer lifecycle maps every scenario. The deny row and the grant rows whose stages are all tooled are
+        # admitted, the others are refused at admission, and an admitted one still proves nothing: no installed-package.
         lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
         self.assertTrue(all(lifecycle.values()))
-        self.assertEqual(set(), {row for rows in lifecycle.values() for row in rows
-                                 if row.startswith("windows-public-update.") and windows.RECIPES[row]["refusal"] is None})
+        self.assertEqual({"windows-public-update." + variant for variant in ("uac-denied", "success-off", "wait-client-loss", "installer-wait-client-loss")},
+                         {row for rows in lifecycle.values() for row in rows
+                          if row.startswith("windows-public-update.") and windows.RECIPES[row]["refusal"] is None})
 
     def test_the_document_tun_and_responsive_rows_prove_only_what_their_evidence_holds(self):
         named = {row: sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if row in rows)

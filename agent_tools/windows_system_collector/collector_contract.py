@@ -11,7 +11,7 @@ import re
 import uuid
 
 FIXED = {
-    'holdProtocol': 'b8dac389ad80345109d6e8678c45347224ef2c6c9da634ccbe82ab6ac3a064ad',
+    'holdProtocol': 'b0e197fc68b077d5ea3a0f55338249b7b9a02e53d6f1da689367cbd1bf4f9335',
     'taskGuard': '8105ad57f5140e6caef6fd21848f34d1684a00ca7c9e54ce64908211260844c1',
     'nativeBridge': '88ad6bbbf8b309bb641017d035bdf6688d37ac5d6e506bcffd4122203850a955',
     'native': 'ee28050bd0e33166956cc4f4ac68ca10cc89c30c01ae93468379895fee268a18',
@@ -19,11 +19,11 @@ FIXED = {
     'observer': '6d08edf9e57b09e98ce80d414b2ac12da4f39eb82e27cd2a3f06d9f900e04dcb',
 }
 COLLECTORS = {
-    'update': '246bb5e7110fe5fdad986e3cf082683934070195098730bf79ab86e0fd0296b2',
+    'update': '5a38ac02dd120d755a1d7bff25d8d0cd5fbf438c5fb52e57db15c45e335807a2',
     'tun': 'e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135',
 }
 TASK_OWNER_SHA='ba9afe8db7e35b18c380327534a884f3e284a11ff5f7bffb660685dc4dca86b6'
-CALLER_HOLD_SHA='0ccae3314fc03765c0568417531486ede523c7ea3aeecf22829d2d08fdd2da44'
+CALLER_HOLD_SHA='51a165023d867b7097cb75675f7a938ad683a0c188c88388a7ac0f5b16d851d1'
 PYTHON_REQUIRED = {'python.exe','python313.dll','Lib/os.py','Lib/subprocess.py',
                    'Lib/threading.py','Lib/json/__init__.py','Lib/ctypes/__init__.py','DLLs/_ctypes.pyd'}
 
@@ -197,7 +197,10 @@ def root_policy(security, ordinary_sid):
 
 
 def file_policy(security, ordinary_sid):
-    expected='O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+ordinary_sid+')'
+    # The form a request file reads back natively: the publisher protects it with SetAccessControl, which marks the
+    # DACL auto-inherited (O:SYD:PAI on every native worker-request.json pin). SYSTEM owner, protected DACL, these three
+    # explicit ACEs and no inherited one. Every file created in a collector root in root_policy's form reads back so too.
+    expected='O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+ordinary_sid+')'
     require(security=={'ownerSid':'S-1-5-18','sddl':expected},'collector-machine-writer-file-policy')
 
 

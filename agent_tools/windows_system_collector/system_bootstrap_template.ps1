@@ -74,7 +74,7 @@ if($requestPin.stream.Length -gt 4194304){throw 'SYSTEM_REQUEST_BOUND'}
 $requestPin.stream.Position=0;$reader=[IO.StreamReader]::new($requestPin.stream,[Text.UTF8Encoding]::new($false,$true),$false,65536,$true)
 try{$script:C.request=$reader.ReadToEnd()|ConvertFrom-Json}finally{$reader.Dispose()}
 $r=$script:C.request;$script:C.root=$r.operationRoot
-$requiredFilePolicy='O:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+$r.context.ordinarySid+')'
+$requiredFilePolicy='O:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x1200a9;;;'+$r.context.ordinarySid+')'
 if($requestRecord.security.ownerSid -cne 'S-1-5-18' -or $requestRecord.security.sddl -cne $requiredFilePolicy){throw 'SC_MACHINE_REQUEST_FILE_POLICY'}
 if($r.schemaVersion -ne 1 -or $r.operationId -cne '@@OPERATION@@' -or $r.ordinaryTaskOperationId -cne '@@ORDINARY_OPERATION@@' -or $r.scope -cne '@@SCOPE@@' -or $r.requestPath -cne $requestRecord.path){throw 'SYSTEM_REQUEST_OPERATION_JOIN'}
 if(@($r.filePins).Count -gt 4096 -or @($r.directoryPins).Count -gt 1024){throw 'SYSTEM_PIN_CAPACITY'}
