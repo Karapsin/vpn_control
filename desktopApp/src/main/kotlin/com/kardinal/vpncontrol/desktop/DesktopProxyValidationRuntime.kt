@@ -18,7 +18,6 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
 import java.net.URL
@@ -281,7 +280,7 @@ class DesktopProxyValidationRuntime(
         settings: DesktopValidationSettings,
     ): ProfileBenchmark {
         Files.createDirectories(baseDir)
-        val port = allocateListenPort()
+        val port = DesktopLoopback.freePort()
         val configJson = DesktopProxyConfigFactory.buildProxyOnlyConfig(
             profile = candidate.profile.withResolvedValidationServer(candidate.resolvedServerAddress),
             dns = dnsSettings,
@@ -403,12 +402,6 @@ class DesktopProxyValidationRuntime(
             }
         }
         return false
-    }
-
-    private fun allocateListenPort(): Int {
-        ServerSocket(0).use { socket ->
-            return socket.localPort
-        }
     }
 
     private fun inspectResponseCode(url: String, responseCode: Int, bodyPreview: String): String {

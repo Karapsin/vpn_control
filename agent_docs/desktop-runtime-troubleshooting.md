@@ -42,6 +42,7 @@ Windows checks:
 - VPN mode needs Administrator privileges.
 - If proxy-only works but VPN mode does not, inspect `runtime-sing-box.log` for Wintun, route, or permission errors.
 - Autostart can launch without a UAC prompt only if the installed startup mechanism grants the needed privileges.
+- VPN Control listens only on the loopback (`CONFIG-012`). A Windows Defender Firewall prompt to allow network access for VPN Control or `vpn-control-cli.exe` is a product defect, not a step to approve; record the operation and the time it appeared.
 
 macOS:
 

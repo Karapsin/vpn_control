@@ -12,7 +12,6 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
 import java.nio.file.Files
@@ -137,7 +136,7 @@ private class DesktopHomeSshBootstrapProxy(
         block: (Int) -> T,
     ): T {
         Files.createDirectories(baseDir)
-        val port = ServerSocket(0).use { it.localPort }
+        val port = DesktopLoopback.freePort()
         val config = Files.createTempFile(baseDir, "home-ssh-bootstrap-", ".json")
         val log = Files.createTempFile(baseDir, "home-ssh-bootstrap-", ".log")
         val binary = singBoxResolver.resolve() ?: error(singBoxResolver.missingMessage())

@@ -5,7 +5,6 @@ package com.kardinal.vpncontrol.desktop
 import com.kardinal.vpncontrol.data.SingBoxRouteDnsBuilder
 import java.io.IOException
 import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.Path
@@ -24,7 +23,7 @@ internal class DesktopDirectProbeProxy(
 ) {
     suspend fun <T> useProxy(block: suspend (Int) -> T): T {
         Files.createDirectories(baseDir)
-        val port = ServerSocket(0).use { it.localPort }
+        val port = DesktopLoopback.freePort()
         val configFile = Files.createTempFile(baseDir, "direct-probe-", ".json")
         val logFile = Files.createTempFile(baseDir, "direct-probe-", ".log")
         val sourceBinary = singBoxResolver.resolve() ?: error(singBoxResolver.missingMessage())

@@ -6,6 +6,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 ## Unreleased
 
 - Add the Windows document, cold-document, responsive, scoped-TUN deny and SSH import scenario rows and the matrix observation that records them.
+- Bind every desktop free-port probe and port check to the loopback, so starting a connection, Find Best, validation and SSH-routed subscription downloads no longer trigger a Windows Defender Firewall prompt for VPN Control.
 
 ## 2.2.17 - 2026-11-09
 

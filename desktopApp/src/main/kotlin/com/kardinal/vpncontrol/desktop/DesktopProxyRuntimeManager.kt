@@ -12,7 +12,6 @@ import com.kardinal.vpncontrol.model.ProxyProtocol
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
 import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.Path
@@ -203,11 +202,11 @@ class DesktopProxyRuntimeManager(
         directory: Path,
     ): DesktopRuntimeLaunch {
         DesktopWorkspacePaths.createDirectories(baseDir)
-        val managementPort = activeVerificationPort?.takeIf { it in 1..65535 } ?: allocateListenPort()
+        val managementPort = activeVerificationPort?.takeIf { it in 1..65535 } ?: DesktopLoopback.freePort()
         val userProxyPort = when {
             appMode != AppMode.PROXY_ONLY -> managementPort
             profile.protocol == ProxyProtocol.CUSTOM -> managementPort
-            else -> allocateListenPort(excluding = managementPort)
+            else -> DesktopLoopback.freePort(excluding = managementPort)
         }
         val homeRoute = homeSshRouteSettings.takeIf { it.enabled }?.let { settings ->
             HomeSshRouteRuntimeOptions(
@@ -360,13 +359,6 @@ class DesktopProxyRuntimeManager(
         }
     }
 
-    private fun allocateListenPort(excluding: Int? = null): Int {
-        while (true) {
-            val candidate = ServerSocket(0).use { socket -> socket.localPort }
-            if (candidate != excluding) return candidate
-        }
-    }
-
     private suspend fun waitForPort(child: DesktopRuntimeProcess, port: Int): Boolean {
         repeat(20) {
             if (child.isAlive != true) {
@@ -467,7 +459,7 @@ class DesktopProxyRuntimeManager(
             status = DesktopPreflightStatus.SKIP,
             detail = "VPN mode does not open a local proxy port",
         )
-        return if (isPortAvailable(port)) {
+        return if (DesktopLoopback.isPortAvailable(port)) {
             DesktopPreflightCheck(
                 name = "active verification port",
                 status = DesktopPreflightStatus.PASS,
@@ -483,7 +475,7 @@ class DesktopProxyRuntimeManager(
     }
 
     private fun localProxyPortCheck(name: String, port: Int): DesktopPreflightCheck {
-        return if (isPortAvailable(port)) {
+        return if (DesktopLoopback.isPortAvailable(port)) {
             DesktopPreflightCheck(name, DesktopPreflightStatus.PASS, "127.0.0.1:$port is available")
         } else {
             DesktopPreflightCheck(
@@ -512,16 +504,6 @@ class DesktopProxyRuntimeManager(
                 detail = error.message ?: "$baseDir is not writable",
             )
         }
-    }
-
-    private fun isPortAvailable(port: Int): Boolean {
-        return runCatching {
-            ServerSocket().use { socket ->
-                socket.reuseAddress = false
-                socket.bind(InetSocketAddress("127.0.0.1", port))
-            }
-            true
-        }.getOrDefault(false)
     }
 
     private fun runCommand(

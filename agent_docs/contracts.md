@@ -78,6 +78,7 @@ Contract IDs are stable. Update an existing contract when behavior changes, add 
 - **CONFIG-009 — Routing defaults.** No default rules are added. With `ignoreRules=true`, all eligible traffic uses VPN. With `ignoreRules=false` and no Android app assignments, all apps use VPN. Configured direct-domain suffixes bypass VPN/proxy.
 - **CONFIG-010 — Direct probe rule placement.** Desktop VPN config injects direct-probe process rules only in VPN mode and before DNS hijack rules.
 - **CONFIG-011 — Find Best parity.** Android and desktop evaluate supported subscription candidates with shared selection logic where possible; results do not depend on whether VPN is currently active.
+- **CONFIG-012 — Loopback-only listeners.** Generated sing-box inbounds listen on `127.0.0.1` on every platform. Every socket the desktop app itself listens on binds the loopback: free-port probes and port checks bind `127.0.0.1` through `DesktopLoopback`, and the control endpoint binds the JVM loopback address. A wildcard listen, even a momentary port probe, makes Windows Defender Firewall ask to allow network access; that prompt is a defect, not a step to approve. Inbounds written in a custom configuration keep the address their author gave.
 
 ## Localization Contracts
 

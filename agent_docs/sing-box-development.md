@@ -1,6 +1,6 @@
 # sing-box Development
 
-Authoritative networking behavior is in `contracts.md`, especially `CONFIG-001` through `CONFIG-011`, `PRODUCT-003`, `PRODUCT-004`, and the applicable platform contracts. This document only maps owners, tests, and the protocol-change procedure.
+Authoritative networking behavior is in `contracts.md`, especially `CONFIG-001` through `CONFIG-012`, `PRODUCT-003`, `PRODUCT-004`, and the applicable platform contracts. This document only maps owners, tests, and the protocol-change procedure.
 
 ## Owner Files
 
@@ -11,6 +11,7 @@ Authoritative networking behavior is in `contracts.md`, especially `CONFIG-001` 
 | Secure endpoint parsing | shared core secure-DNS parser and tests |
 | Android inbounds, app assignments, VPN wrappers | `app/src/main/java/com/kardinal/vpncontrol/data/SingBoxConfigFactory.kt` |
 | Desktop inbounds, direct probes, mode wrappers | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFactory.kt` |
+| Desktop free-port probes and port checks (loopback only) | `desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopLoopback.kt` |
 | Subscription/direct-link parsing | parser facade and implementations listed in `architecture.md` |
 
 ## Primary Contract Tests
@@ -26,6 +27,7 @@ desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigFac
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopProxyConfigParityTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopDirectProbeRoutingTest.kt
 desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopFindBestServiceTest.kt
+desktopApp/src/test/kotlin/com/kardinal/vpncontrol/desktop/DesktopLoopbackListenerTest.kt
 ```
 
 ## Adding Or Changing A Protocol
