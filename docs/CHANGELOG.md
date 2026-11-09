@@ -13,6 +13,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Read the installed Windows package code from its cached package, name a failed publisher's own refusal code, and run the Windows idle census tests as production composes the census.
 - Publish socks:// proxy locations, close a proxy row whose start failed, and judge Windows guest file reads on the handle.
 - Recognize the Web Experience widget service, the CBS app actions server and OneDrive's sync helper in the Windows idle census.
+- Expect the second serve's already-running line on stderr, as the product writes it, in the Windows proxy lifecycle rows.
 
 ## 2.2.16 - 2026-11-08
 

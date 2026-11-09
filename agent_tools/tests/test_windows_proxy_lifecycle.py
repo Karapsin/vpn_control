@@ -299,6 +299,9 @@ class Product:
         self.calls = []
         # A command a test makes the owner refuse with a code, or answer with a reply that is not JSON.
         self.refusals, self.garbled = {}, set()
+        # A second serve while this owner runs: DesktopExistingService.adopt, exit 0, its line on stderr
+        # as every headless-controller line (DesktopHeadlessController.handleArgs, writeDesktopCliLine(System.err)).
+        self.adoption = (0, "", "VPN Control is already running.\n")
 
     def envelope(self, code="OK", **data):
         return {"schemaVersion": 1, "controllerId": self.identity, "requestId": str(uuid.uuid4()), "code": code,
@@ -372,6 +375,10 @@ class Product:
             if self.running:
                 self.runtime.end(0)
                 self.running = False
+            # An explicit off is remembered: the next start of this workspace does not reconnect.
+            workspace = Path(self.owner.request["workspace"])
+            workspace.mkdir(exist_ok=True)
+            (workspace / "workspace.json").write_text(json.dumps({"resume_connection_on_launch": False}), encoding="utf-8")
             return 0, self.envelope()
         if words == ["quit"]:
             self.jvm.end(0)
@@ -441,6 +448,10 @@ class Owner:
         return observer(self.world)
 
     def child(self, label, argv, **_):
+        if argv[0] == CLI and argv[-1] == "serve" and self.product.jvm is not None and self.product.jvm.exit_code is None:
+            # The workspace lock is held: this serve adopts the running owner and ends at once.
+            code, stdout, stderr = self.product.adoption
+            return Child(self, label, argv, completed=subprocess.CompletedProcess(argv, code, stdout, stderr))
         if argv[0] == CLI and argv[-1] == "serve":
             first, jvm = self.world.spawn(None, CLI, LAUNCHER_SHA, launcher=True)
             self.product.jvm = jvm
@@ -690,6 +701,44 @@ class LinkRuleTests(WorldBase):
                 code, body = self.add(link)
                 self.assertEqual((0, "OK"), (code, body["code"]))
         self.assertEqual(["Owned A", "Owned B"], self.owner.product.locations)
+
+
+class DisconnectedServeTests(WorldBase):
+    """off_proxy_and_disconnected_serve over the world: explicit off, then a second serve on the same workspace."""
+    LINE = "VPN Control is already running.\n"
+
+    def off_and_second_serve(self):
+        serve = self.serve()
+        workspace = Path(self.owner.request["workspace"])
+        actors = runtime_stages.capture_proxy_actors(self.owner, serve, self.world.native(),
+                                                     str(workspace / "runtime" / "tools" / "sing-box.exe"), RUNTIME_SHA)
+        return lifecycle_cases.off_proxy_and_disconnected_serve(self.owner, workspace, self.owner.product.identity,
+                                                               observer(self.world), actors["owner"], actors["runtime"])
+
+    def second(self):
+        found = [child for child in self.owner.children if child.label == "lifecycle-second-serve"]
+        self.assertEqual(1, len(found), "one second serve")
+        value = found[0].completed()
+        return value.returncode, value.stdout, value.stderr
+
+    def test_the_existing_owners_line_on_stderr_is_the_known_result(self):
+        # Native b3d71dca: child 40 printed nothing on stdout and this one line on stderr, then exited 0.
+        result = self.off_and_second_serve()
+        self.assertEqual((0, "", self.LINE), self.second())
+        self.assertFalse(result["closing"]["data"]["runtimeRunning"])
+        self.assertIsNone(self.owner.product.jvm.exit_code, "the second serve left the original owner running")
+        self.assertIn("explicit-off-disconnected-serve-observed", [kind for kind, _ in self.owner.events])
+
+    def test_stdout_output_a_second_line_or_a_nonzero_exit_still_refuses(self):
+        for name, reply in (("line-on-stdout", (0, self.LINE, "")), ("stdout-beside-the-line", (0, "{}\n", self.LINE)),
+                            ("second-stderr-line", (0, "", "Picked up JAVA_TOOL_OPTIONS: -Dx=y\n" + self.LINE)),
+                            ("existing-owner-refused", (2, "", "OUTCOME_UNKNOWN\n")), ("nonzero-exit", (2, "", self.LINE))):
+            with self.subTest(name=name):
+                self.setUp()
+                self.owner.product.adoption = reply
+                with self.assertRaisesRegex(AssertionError, "^second-serve-existing-owner-result$"):
+                    self.off_and_second_serve()
+                self.assertEqual(reply, self.second())
 
 
 class DriverOwner:

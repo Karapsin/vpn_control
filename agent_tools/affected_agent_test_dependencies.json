@@ -13220,7 +13220,8 @@
       ],
       "sourceSha256": [
         "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b",
-        "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795"
+        "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795",
+        "ebb6ade5603ff577fb7855c56d61a47e944204264767de5148e03d2fc6d2aa76"
       ]
     },
     "agent_tools/windows_lifecycle_runtime_fixture_worker.py": {
@@ -13280,7 +13281,8 @@
         "1b4aa32f0c370d49278c57dc79d48246e3c2e22d0d51620b2b88ce1cd8021048",
         "d2770a858f0991f51939e536439d9fb408e218f81f11462c58c95f843dd0c9fb",
         "f14d00d51137a9d0fb83299d4155e5d63e8194cbb27944493e802fa2249cc256",
-        "320d79d5cc920e0c93cd31cd0a5ce32f3a68f7736a88ff7fbc228ae90b6edf1d"
+        "320d79d5cc920e0c93cd31cd0a5ce32f3a68f7736a88ff7fbc228ae90b6edf1d",
+        "e0db1ae744e4e6702accf31cbaeab6af410f9af8702f693d6f0fbe982d850453"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13382,7 +13384,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "b47e6c6c17dcd82baa609ed31758567678dd62d8efc8f6149fe088dffdc83de3",
+    "agent_tools/readiness_vm_dispatch.json": "f75cd663c328a73eacf6232e877aa13e16994a6b476ff777852afa2e3ce031ea",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

@@ -13,7 +13,7 @@ import re
 
 CASE_SHA = {
     "windows-public-update": "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c",
-    "windows-proxy-lifecycle": "e64d37e12b3b69cbf4d360eadd7644322aa82cbd33e2214f025a738a07401795",
+    "windows-proxy-lifecycle": "ebb6ade5603ff577fb7855c56d61a47e944204264767de5148e03d2fc6d2aa76",
 }
 CASE_NAME = {"windows-public-update": "windows_public_updater/update_cases.py",
              "windows-proxy-lifecycle": "windows_lifecycle_cases.py"}

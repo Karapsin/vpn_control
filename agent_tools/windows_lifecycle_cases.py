@@ -680,8 +680,11 @@ def off_proxy_and_disconnected_serve(owner, workspace, identity, observer, owner
             "explicit-off-durable-intent")
     second = owner.child("lifecycle-second-serve", [owner.request["cliPath"],
                          "--state-dir", str(workspace), "serve"]).completed()
-    require(second.returncode == 0 and second.stderr == ""
-            and second.stdout.splitlines() == ["VPN Control is already running."],
+    # The lock is held, so serve adopts the running owner (DesktopExistingService.adopt) and exits 0.
+    # Every headless-controller line goes to stderr: DesktopHeadlessController.handleArgs prints through
+    # writeDesktopCliLine(System.err, ...), one line ending in LF (native b3d71dca, child 40).
+    require(second.returncode == 0 and second.stdout == ""
+            and second.stderr == "VPN Control is already running.\n",
             "second-serve-existing-owner-result")
     final = read(owner, workspace, identity, "status")
     require(final["data"] == closing["data"] and final["configurationRevision"] == closing["configurationRevision"],
