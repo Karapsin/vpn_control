@@ -980,7 +980,10 @@ material in the product's JVM, GUI windows, close-to-tray and the crash path are
 proved only offline. The loopback fixture keeps its 0.25 s TLS
 handshake bound, which a slow guest JVM could miss; a find-best row would then end
 a known failure, not UNKNOWN. The `gui-pending` sampler runs about six minutes,
-so a longer GUI sequence also ends a known failure. The fixture's lease is
+so a longer GUI sequence also ends a known failure. Its reopen follows the
+deliberate crash at once, as a user would. An owner that still refuses that
+attach, as 2.2.16 did for up to 15 s (operation `90dd6d45`), ends the row a
+known failure, `gui-attach-refused-by-owner`. The fixture's lease is
 1,800 s, the most the runtime stages allow, while the row deadline is 3,600 s: a
 row whose work after its fixture started outlives the lease loses its fixture and
 ends a known failure.

@@ -20,6 +20,9 @@ import time
 
 
 CRASH_EXIT = 0xE0421001
+# A GUI whose attach the owner refuses prints this one line on stdout and returns from main (Main.kt), so its
+# JVM, and the jpackage launcher that waits for it and exits with its code, both exit 0 before any window.
+GUI_ATTACH_REFUSED = b"UNAVAILABLE: could not attach graphical frontend.\n"
 
 
 def require(value, reason):
@@ -235,10 +238,29 @@ def window_state(owner, child, native, windows, relaunching=False):
     return records
 
 
+def ended_gui(owner, child):
+    """The GUI launcher the case started has ended: refuse, naming the owner's refusal of its attach.
+
+    Only exit 0 with exactly GUI_ATTACH_REFUSED on stdout and nothing on stderr is that refusal. Nothing
+    is started again: the caller's closing collects the rest.
+    """
+    require(child in owner.children and child.label == "lifecycle-gui", "original-gui-child-handle-required")
+    terminal = child.wait()
+    streams = [(owner.root / f"child-{child.ordinal:04d}.{name}.raw").read_bytes() for name in ("stdout", "stderr")]
+    refused = (terminal["exitCode"] == 0 and terminal["eof"] == {"stdout": True, "stderr": True}
+               and streams == [GUI_ATTACH_REFUSED, b""])
+    owner.event("lifecycle-gui-ended", {"child": child.ordinal, "pid": child.pid, "birthFileTimeUtc": child.birth,
+                 "terminal": terminal, "ownerRefusedAttach": refused, "replayAllowed": False})
+    require(not refused, "gui-attach-refused-by-owner")
+    require(False, "original-gui-child-handle-required")
+
+
 def await_window(owner, child, native, windows, visible, seconds=30, relaunching=False):
     require(type(visible) is bool and 0 < seconds <= 60, "finite-window-observation")
     until = time.monotonic() + seconds
     while True:
+        if child.process is not None and child.process.poll() is not None:
+            ended_gui(owner, child)
         records = window_state(owner, child, native, windows, relaunching)
         main = [row for row in records if row["width"] >= 500 and row["height"] >= 300]
         selected = [row for row in main if row["visible"] is visible]
@@ -477,6 +499,8 @@ def gui_continuity(owner, workspace, identity, inputs):
     action("wm-close-to-tray", close_to_tray)
     action("show-after-close", lambda: visibility(True))
     action("frontend-crash", lambda: crash_frontend(owner, gui, native, relaunching=True))
+    # Reopened at once, as a user would: its attach retires the held lease of a frontend whose captured process is
+    # gone (DesktopControllerOwner.execute). An owner that refuses it ends this as gui-attach-refused-by-owner.
     gui = action("reopen", lambda: start_gui(owner, workspace, identity, inputs["guiPath"], native, windows, relaunching=True))
     terminal = traffic.wait()
     require(terminal["exitCode"] == 0 and all(terminal["eof"].values()), "traffic-original-child-terminal")

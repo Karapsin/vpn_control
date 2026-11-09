@@ -139,12 +139,12 @@
   "legacyDecisionHelperIsNotInputAuthority": true,
   "production": {
     "agent_tools/windows_lifecycle_cases.py": {
-      "bytes": 44877,
-      "currentRoleAdjustment": "GUI windows are looked up on the JVM a relaunching launcher started, and a frontend crash ends that JVM through the handle that identified it. The explicit-off second serve's existing-owner line is read on stderr, where the product prints every headless-controller line. originalPath/originalSourceSha256 retain the source-exact historical copy.",
+      "bytes": 46549,
+      "currentRoleAdjustment": "GUI windows are looked up on the JVM a relaunching launcher started, and a frontend crash ends that JVM through the handle that identified it. The explicit-off second serve's existing-owner line is read on stderr, where the product prints every headless-controller line. A GUI launcher that ends before its window is collected where it ended, and the product's attach refusal is named as such. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/lifecycle_cases.py",
       "originalSourceBytes": 41291,
       "originalSourceSha256": "337ada172eb6001806b36a6a2a315740ee0dd57b00716bdc458037b76184053b",
-      "sha256": "ebb6ade5603ff577fb7855c56d61a47e944204264767de5148e03d2fc6d2aa76"
+      "sha256": "9a965b3db065ca98bdfa8c63cccaa059e676cf53a49c6705cf648e0989a3f987"
     },
     "agent_tools/windows_lifecycle_runtime_fixture_worker.py": {
       "bytes": 8779,

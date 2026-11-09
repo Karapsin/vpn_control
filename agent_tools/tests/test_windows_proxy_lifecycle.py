@@ -3,10 +3,13 @@
 A small Windows world stands in for the guest: a process table where a jpackage launcher
 starts itself again and waits for that JVM, a product CLI with the source rule of
 DesktopAppService.saveControlLocation and the link rule of ProxyLinkParser (read from its
-Kotlin source), real files under a temporary root and a fake clock.
+Kotlin source), the owner's one frontend lease (its lease, heartbeat and the attach-refusal
+line read from the Kotlin source), which the fixed owner releases on the next ATTACH once the
+captured frontend is gone, real files under a temporary root and a fake clock.
 The world models what the repository's own native records show (a relaunched launcher
 pair of one image; a fresh workspace that reads a subscription; INVALID_ARGUMENT for a
-socks5:// location); nothing here proves a Windows behaviour.
+socks5:// location; a GUI reopened seconds after a crash refused its attach by the owner of
+2.2.16); nothing here proves a Windows behaviour.
 """
 import base64
 import hashlib
@@ -52,6 +55,26 @@ SOURCE_PATHS = ("agent_tools/windows_lifecycle_runtime_stages.py", "scripts/wind
                 "agent_tools/windows_runtime_branch_cases.py", "agent_tools/windows_runtime_tcp_listeners.ps1",
                 "agent_tools/windows_tun_stages.py")
 SOURCES = {}
+DESKTOP = ROOT / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop"
+LEASE_SOURCE = DESKTOP / "DesktopOwnerFrontendLifecycle.kt"
+CONNECTION_SOURCE = DESKTOP / "DesktopGuiOwnerConnection.kt"
+MAIN_SOURCE = DESKTOP / "Main.kt"
+
+
+def product_frontend():
+    """The owner's frontend lease and heartbeat in seconds, and what a GUI whose attach failed prints.
+
+    Read from the product source at every call, never copied: LEASE_MILLIS, the default
+    heartbeatMillis of DesktopGuiOwnerConnection.connect, and the line main prints with
+    desktopCliPrintLine (stdout, one LF) before it returns when that connect fails.
+    """
+    lease = re.findall(r"\bconst val LEASE_MILLIS = ([0-9_]+)L\b", LEASE_SOURCE.read_text(encoding="utf-8"))
+    heartbeat = re.findall(r"\n {12}heartbeatMillis: Long = ([0-9_]+)L,\n", CONNECTION_SOURCE.read_text(encoding="utf-8"))
+    refusal = re.findall(r"DesktopGuiOwnerConnection\.connect\([^\n]*\n {4}\}\.getOrElse \{\n(?: {8}[^\n]*\n)*?"
+                         r" {8}desktopCliPrintLine\(\"([^\"\\]+)\"\)\n {8}return\n {4}\}\n", MAIN_SOURCE.read_text(encoding="utf-8"))
+    if len(lease) != 1 or len(heartbeat) != 1 or len(refusal) != 1:
+        raise AssertionError("the frontend lease, heartbeat or attach refusal is not where the fake product reads it")
+    return int(lease[0].replace("_", "")) / 1000, int(heartbeat[0].replace("_", "")) / 1000, (refusal[0] + "\n").encode()
 
 
 def source_bytes():
@@ -71,6 +94,7 @@ class Process:
         world.clock += 1
         self.created = 133000000000000000 + world.clock
         self.exit_code = None
+        self.ended_at = None  # The fake clock's time when it ended.
         self.waits_for_child = waits_for_child
 
     @property
@@ -81,7 +105,7 @@ class Process:
         """A launcher that waits for its JVM ends with that JVM's code."""
         if self.exit_code is not None:
             return
-        self.exit_code = code
+        self.exit_code, self.ended_at = code, self.world.now()
         for other in self.world.processes:
             if other.exit_code is None and other.waits_for_child and self.parent == other.pid and other.created <= self.created:
                 other.end(code)
@@ -128,6 +152,7 @@ class World:
         self.windows = {}
         self.terminated = []
         self.k = types.SimpleNamespace()
+        self.now = lambda: None  # An Owner gives the world its fake clock.
 
     def spawn(self, parent, image, sha256, *, launcher=False):
         """One process; a launcher of the product relaunches itself and its JVM does the work."""
@@ -212,6 +237,8 @@ class Clock:
         return self.now
 
     def sleep(self, seconds):
+        if seconds < 0:
+            raise ValueError("sleep length must be non-negative")  # As time.sleep refuses it.
         self.now += max(seconds, 0.05)
 
 
@@ -295,7 +322,7 @@ class Product:
         self.revision = 1
         self.source = "subscription"  # DesktopStateStore: a fresh workspace reads a subscription.
         self.locations, self.selected = [], None
-        self.running, self.runtime = False, None
+        self.running, self.runtime, self.active = False, None, None
         self.jvm = None
         self.calls = []
         # A command a test makes the owner refuse with a code, or answer with a reply that is not JSON.
@@ -303,16 +330,98 @@ class Product:
         # A second serve while this owner runs: DesktopExistingService.adopt, exit 0, its line on stderr
         # as every headless-controller line (DesktopHeadlessController.handleArgs, writeDesktopCliLine(System.err)).
         self.adoption = (0, "", "VPN Control is already running.\n")
+        # The owner's one frontend lease, (JVM, attached at, identity captured), and the JVM holding frontend.lock.
+        self.frontend, self.frontend_lock = None, None
+        self.lease_seconds, self.heartbeat_seconds, refusal = product_frontend()
+        # Main.kt when its attach fails: that line on stdout and a normal return, so exit 0 for JVM and launcher.
+        self.attach_refusal = (0, refusal, b"")
+        # The fixed owner (DesktopControllerOwner.execute): an ATTACH that finds another frontend's lease first lets
+        # revokeIfCapturedProcessDead release it when the generation captured at that frontend's attach is gone.
+        # False is the owner of 2.2.16 (native 90dd6d45), which answered BUSY until the dead lease expired.
+        self.revoke_dead_on_attach = True
+        # Whether the owner captured an attaching frontend's identity (controlInstallFrontend read its endpoint).
+        self.capture_identity = True
+        self.launches = []  # Every GUI start, the case's or the owner's own, with its outcome.
 
     def envelope(self, code="OK", **data):
+        # A pending restart: the selected location is not the running one (DesktopAppService.hasPendingRuntimeChanges).
         return {"schemaVersion": 1, "controllerId": self.identity, "requestId": str(uuid.uuid4()), "code": code,
-                "final": True, "ok": code == "OK", "configurationRevision": self.revision, "restartRequired": False,
-                "data": data}
+                "final": True, "ok": code == "OK", "configurationRevision": self.revision,
+                "restartRequired": self.running and self.selected != self.active, "data": data}
 
     def status(self):
         return self.envelope(runtimeRunning=self.running, activeMode="proxy-only" if self.running else None,
                              runtimeId="runtime-1" if self.running else None, runtimeStartedAt=1 if self.running else None,
-                             activeLocationId=self.selected if self.running else None, selectedLocationId=self.selected)
+                             activeLocationId=self.active if self.running else None, selectedLocationId=self.selected)
+
+    def registration(self):
+        """DesktopOwnerFrontendLifecycle.registration, its expire() first.
+
+        A live frontend touches its lease every heartbeat (DesktopGuiOwnerConnection), so only a
+        dead one's runs out: lease_seconds after its last touch.
+        """
+        if self.frontend is not None:
+            jvm, attached, _ = self.frontend
+            now = self.owner.clock.now
+            last = now if jvm.exit_code is None else jvm.ended_at
+            touched = attached + self.heartbeat_seconds * ((last - attached) // self.heartbeat_seconds)
+            if now - touched >= self.lease_seconds:
+                self.frontend = None
+        return None if self.frontend is None else self.frontend[0]
+
+    def launch_frontend(self, parent):
+        """One GUI start as Main.kt runs it; returns its launcher, its JVM and their stdout and stderr bytes.
+
+        DesktopFrontendInstance.start takes the workspace's frontend.lock; while a live frontend holds it,
+        the start only asks that one to show and returns. Otherwise DesktopGuiOwnerConnection.connect
+        attaches. The fixed owner first releases a held lease whose captured frontend is gone (the world's
+        processes are never UNKNOWN); any other held lease answers the ATTACH BUSY
+        (DesktopOwnerFrontendLifecycle.execute). The launcher ends with its JVM's code.
+        """
+        launcher, jvm = self.world.spawn(parent, GUI, GUI_SHA, launcher=True)
+        now, holder = self.owner.clock.now, self.frontend_lock
+        if holder is not None and holder.exit_code is None:
+            for row in self.world.windows.get(holder.pid, []):
+                row["visible"] = True
+            jvm.end(0)
+            outcome, streams = "showed-existing", (b"", b"")
+        else:
+            self.frontend_lock = jvm
+            held = self.registration()
+            if held is not None and self.revoke_dead_on_attach and self.frontend[2] and held.exit_code is not None:
+                self.frontend = held = None
+            if held is not None:
+                code, stdout, stderr = self.attach_refusal
+                jvm.end(code)
+                outcome, streams = "attach-refused", (stdout, stderr)
+            else:
+                self.frontend = (jvm, now, self.capture_identity)
+                self.world.windows[jvm.pid] = [{"hwnd": jvm.pid * 16, "pid": jvm.pid, "visible": True, "width": 900, "height": 640}]
+                outcome, streams = "attached", (b"", b"")
+        self.launches.append({"launcher": launcher, "jvm": jvm, "at": now, "parent": parent, "outcome": outcome})
+        return launcher, jvm, streams
+
+    def visibility(self, show):
+        """DesktopGuiVisibilityControl.execute over the registered frontend.
+
+        A dead frontend's lease: its identity probe finds no frontend, so show retires that exact lease
+        and hide answers UNAVAILABLE. No lease: hide is NOT_FOUND, and show makes the owner start a
+        frontend itself (launchDesktopFrontend, as its JVM's child).
+        """
+        frontend = self.registration()
+        if frontend is not None and frontend.exit_code is not None:
+            if not show:
+                return 2, self.envelope("UNAVAILABLE")
+            self.frontend = frontend = None
+        if frontend is None:
+            if not show:
+                return 1, self.envelope("NOT_FOUND")
+            _, frontend, _ = self.launch_frontend(self.jvm.pid)
+            if self.registration() is not frontend:
+                raise AssertionError("the world does not model a frontend the owner started that did not attach")
+        for row in self.world.windows.get(frontend.pid, []):
+            row["visible"] = show
+        return 0, self.envelope()
 
     def run(self, words):
         self.calls.append(tuple(words))
@@ -360,28 +469,34 @@ class Product:
             self.revision += 1
             return 0, self.envelope()
         if words == ["on"]:
+            # DesktopCliCommandExecutor.cliTurnOn: a running runtime only reports its status, pending change or not.
             if not self.running:
-                image = str(Path(self.owner.request["workspace"]) / "runtime" / "tools" / "sing-box.exe")
+                workspace = Path(self.owner.request["workspace"])
+                image = str(workspace / "runtime" / "tools" / "sing-box.exe")
                 self.runtime, _ = self.world.spawn(self.jvm.pid, image, RUNTIME_SHA)
-                self.running = True
+                self.running, self.active = True, self.selected
+                # DesktopStateStore's runtime-config.json, with the mixed-in inbound of DesktopProxyConfigFactory.
+                workspace.mkdir(exist_ok=True)
+                (workspace / "runtime-config.json").write_text(json.dumps({"inbounds": [
+                    {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 41000}]}))
             return 0, self.envelope()
         if words[:1] == ["gui"] and words[1:] in (["show"], ["hide"]):
-            # The owner asks its attached frontends; their windows are the JVMs' windows.
-            for process in self.world.processes:
-                if process.image == GUI and process.exit_code is None:
-                    for row in self.world.windows.get(process.pid, []):
-                        row["visible"] = words[1] == "show"
-            return 0, self.envelope()
+            return self.visibility(words[1] == "show")
         if words == ["off"]:
             if self.running:
                 self.runtime.end(0)
-                self.running = False
+                self.running, self.active = False, None
             # An explicit off is remembered: the next start of this workspace does not reconnect.
             workspace = Path(self.owner.request["workspace"])
             workspace.mkdir(exist_ok=True)
             (workspace / "workspace.json").write_text(json.dumps({"resume_connection_on_launch": False}), encoding="utf-8")
             return 0, self.envelope()
         if words == ["quit"]:
+            # quitForControl: the owner closes its attached frontend, which exits 0 (finishDesktopFrontendProcess).
+            frontend = self.registration()
+            if frontend is not None and frontend.exit_code is None:
+                frontend.end(0)
+            self.frontend = None
             self.jvm.end(0)
             return 0, self.envelope()
         raise AssertionError("closed product command " + repr(words))
@@ -431,6 +546,8 @@ class Owner:
                         "cliPath": CLI, "pythonRuntime": {"interpreterPath": PYTHON}, "operationId": self.operation,
                         "productVersion": PRODUCT_VERSION}
         self.children, self.events, self.environment, self.by_path = [], [], {}, {}
+        self.clock = Clock()  # The cases' own waits run on it when a test patches their time; so do the product's leases.
+        world.now = lambda: self.clock.now
         self.native = FileNative(self)
         self.product = Product(world, self)
         self.ready_changes = {}  # What a test makes the fixture's ready record say otherwise.
@@ -458,9 +575,11 @@ class Owner:
             self.product.jvm = jvm
             return Child(self, label, argv, first)
         if argv[0] == GUI:
-            first, jvm = self.world.spawn(None, GUI, GUI_SHA, launcher=True)
-            self.world.windows[jvm.pid] = [{"hwnd": jvm.pid * 16, "pid": jvm.pid, "visible": True, "width": 900, "height": 640}]
-            return Child(self, label, argv, first)
+            first, _, streams = self.product.launch_frontend(None)
+            child = Child(self, label, argv, first)
+            for name, value in zip(("stdout", "stderr"), streams):
+                (self.root / f"child-{child.ordinal:04d}.{name}.raw").write_bytes(value)
+            return child
         if argv[0] == CLI and argv[3:] in (["--help"], ["--version"]):
             # The installed launcher's static probe answers and ends before any owner state exists.
             output = "Usage: vpn-control-cli [OPTIONS] COMMAND\n" if argv[3] == "--help" else "VPN Control " + PRODUCT_VERSION + "\n"
@@ -583,9 +702,7 @@ class LauncherPairTests(WorldBase):
         """gui_continuity's inputs around a running runtime A, as the dedicated driver derives them."""
         serve = self.serve()
         workspace = Path(self.owner.request["workspace"])
-        workspace.mkdir()
-        config = workspace / "runtime-config.json"
-        config.write_text(json.dumps({"inbounds": [{"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 41000}]}))
+        config = workspace / "runtime-config.json"  # The product's own, written by its on.
         image = str(workspace / "runtime" / "tools" / "sing-box.exe")
         actors = runtime_stages.capture_proxy_actors(self.owner, serve, self.world.native(), image, RUNTIME_SHA)
         paths = {"guiPath": GUI, "observerPath": "C:\\W\\observer.py", "trafficWorkerPath": "C:\\W\\traffic.py", "trafficInputPath": "C:\\W\\traffic.json"}
@@ -639,6 +756,125 @@ class LauncherPairTests(WorldBase):
         self.assertEqual([jvm.pid], self.world.terminated, "the JVM that runs the GUI ends, through the handle that identified it")
         self.assertEqual(lifecycle_cases.CRASH_EXIT, jvm.exit_code)
         self.assertEqual([], [held for held in self.world.handles.values() if held.process is jvm], "no handle to the JVM stays open")
+
+
+class FrontendReattachTests(WorldBase):
+    """A GUI reopened right after a crash attaches: the fixed owner releases the crashed frontend's lease on its ATTACH.
+
+    Native 90dd6d45 met the owner of 2.2.16: the reopen started 5 to 8 s after the crash, the owner answered its
+    ATTACH BUSY while the dead lease ran on, its JVM printed the product's attach-refusal line and returned, its
+    launcher exited 0 before any window, and gui_record refused with original-gui-child-handle-required.
+    """
+
+    def continuity(self):
+        inputs = LauncherPairTests.continuity_inputs(self)
+        with mock.patch.object(lifecycle_cases, "time", self.owner.clock), mock.patch.object(lifecycle_cases, "GuiWindows", self.world.gui_windows):
+            return lifecycle_cases.gui_continuity(self.owner, Path(inputs["stateDir"]), inputs["controllerId"], inputs)
+
+    def case_launches(self):
+        return [launch for launch in self.owner.product.launches if launch["parent"] is None]
+
+    def gui(self):
+        return self.owner.child("lifecycle-gui", [GUI, "--state-dir", self.owner.request["workspace"]])
+
+    def streams(self, child):
+        return [(self.root / f"child-{child.ordinal:04d}.{name}.raw").read_bytes() for name in ("stdout", "stderr")]
+
+    def test_the_fake_owner_releases_a_captured_dead_frontends_lease_on_the_next_attach(self):
+        lease, heartbeat, line = product_frontend()
+        self.assertEqual((15, 5, b"UNAVAILABLE: could not attach graphical frontend.\n"), (lease, heartbeat, line))
+        self.serve()
+        product = self.owner.product
+        first = self.gui()
+        self.world.live(first.pid + 4).end(lifecycle_cases.CRASH_EXIT)
+        reopened = self.gui()
+        self.assertIsNone(reopened.process.poll(), "attached at once, its captured predecessor gone")
+        self.assertIs(product.launches[-1]["jvm"], product.registration())
+        # A second start while that one runs only asks it to show (DESKTOP-001), and ends at once without output.
+        again = self.gui()
+        self.assertEqual((0, [b"", b""]), (again.process.poll(), self.streams(again)))
+        self.assertEqual(["attached", "attached", "showed-existing"], [launch["outcome"] for launch in product.launches])
+
+    def test_a_dead_frontend_the_owner_cannot_prove_gone_keeps_its_lease_until_it_expires(self):
+        # Uncaptured, or the owner of 2.2.16, which released no dead lease on ATTACH. The last touch was the heartbeat at
+        # 5 s, so the lease runs out 13 s after the death at 7 s.
+        for name in ("uncaptured", "owner-of-2.2.16"):
+            with self.subTest(name=name):
+                self.setUp()
+                _, _, line = product_frontend()
+                self.serve()
+                product, clock = self.owner.product, self.owner.clock
+                if name == "uncaptured":
+                    product.capture_identity = False
+                else:
+                    product.revoke_dead_on_attach = False
+                first = self.gui()
+                jvm = self.world.live(first.pid + 4)
+                clock.now += 7
+                jvm.end(lifecycle_cases.CRASH_EXIT)
+                clock.now += 12.5
+                early = self.gui()
+                self.assertEqual((0, [line, b""]), (early.process.poll(), self.streams(early)), "refused before any window")
+                self.assertIs(jvm, product.registration(), "the dead frontend still holds its lease")
+                clock.now += 1
+                self.assertIsNone(self.gui().process.poll())
+                self.assertEqual(["attached", "attach-refused", "attached"], [launch["outcome"] for launch in product.launches])
+
+    def test_the_reopen_right_after_the_crash_attaches(self):
+        result = self.continuity()
+        launches = self.case_launches()
+        self.assertEqual(["attached", "attached"], [launch["outcome"] for launch in launches])
+        self.assertEqual(launches[0]["jvm"].ended_at, launches[1]["at"], "reopened at the crash, as a user would, with no wait")
+        self.assertIs(launches[1]["jvm"], self.owner.product.registration(), "the reopened GUI is the attached frontend")
+        self.assertIs(launches[1]["launcher"], result["guiChild"].os_process)
+        self.assertNotIn("lifecycle-gui-ended", [kind for kind, _ in self.owner.events])
+
+    def test_an_owner_that_still_refuses_is_named_and_never_started_again(self):
+        self.owner.product.revoke_dead_on_attach = False  # The owner of 2.2.16, which native 90dd6d45 met.
+        with self.assertRaisesRegex(AssertionError, "^gui-attach-refused-by-owner$"):
+            self.continuity()
+        self.assertEqual(["attached", "attach-refused"], [launch["outcome"] for launch in self.case_launches()])
+        reopened = [child for child in self.owner.children if child.label == "lifecycle-gui"][1]
+        self.assertEqual(0, reopened.terminal["exitCode"], "its terminal was taken where it ended")
+        ended = [value for kind, value in self.owner.events if kind == "lifecycle-gui-ended"]
+        self.assertEqual([(reopened.ordinal, True)], [(value["child"], value["ownerRefusedAttach"]) for value in ended])
+        self.assertEqual(product_frontend()[2], lifecycle_cases.GUI_ATTACH_REFUSED, "the case names the product's own line")
+
+    def test_a_launcher_that_ended_any_other_way_keeps_the_original_refusal(self):
+        _, _, line = product_frontend()
+        for name, reply in (("nonzero-exit", (1, line, b"")), ("stderr-beside-the-line", (0, line, b"Picked up JAVA_TOOL_OPTIONS: -Dx=y\n")),
+                            ("a-second-line", (0, line + line, b"")), ("no-output", (0, b"", b"")), ("line-on-stderr", (0, b"", line))):
+            with self.subTest(name=name):
+                self.setUp()
+                self.owner.product.revoke_dead_on_attach = False
+                self.owner.product.attach_refusal = reply
+                with self.assertRaisesRegex(AssertionError, "^original-gui-child-handle-required$"):
+                    self.continuity()
+                self.assertEqual(["attached", "attach-refused"], [launch["outcome"] for launch in self.case_launches()])
+
+    def test_a_frontend_the_owner_started_is_never_taken_for_the_reopened_gui(self):
+        real, identity = lifecycle_cases.crash_frontend, self.owner.product.identity
+
+        def crash_then_show(owner, child, native, relaunching=False):
+            terminal = real(owner, child, native, relaunching=relaunching)
+            # A gui show now: the owner retires the dead frontend's lease and starts a frontend itself.
+            code, body = self.owner.product.run(["--json", "--controller-id", identity, "gui", "show"])
+            self.assertEqual((0, "OK"), (code, body["code"]))
+            return terminal
+        with mock.patch.object(lifecycle_cases, "crash_frontend", crash_then_show):
+            with self.assertRaisesRegex(AssertionError, "^original-gui-child-handle-required$"):
+                self.continuity()
+        owned = [launch for launch in self.owner.product.launches if launch["parent"] == self.owner.product.jvm.pid]
+        self.assertEqual(["attached"], [launch["outcome"] for launch in owned])
+        self.assertEqual(["attached", "showed-existing"], [launch["outcome"] for launch in self.case_launches()])
+        self.assertIsNone(owned[0]["jvm"].exit_code, "the case neither crashed nor closed the frontend it did not start")
+        named = set()
+        for kind, value in self.owner.events:
+            if kind in ("lifecycle-gui-windows", "lifecycle-gui-attached"):
+                named.add(value["actor"]["pid"])
+            if kind == "lifecycle-gui-windows" and value["frontendJvm"] is not None:
+                named.add(value["frontendJvm"]["pid"])
+        self.assertFalse(named & {owned[0]["launcher"].pid, owned[0]["jvm"].pid})
 
 
 class SourceOrderTests(WorldBase):
@@ -1124,7 +1360,8 @@ class StartOwner(Owner):
 
     def module(self, path, name):
         self.loaded.append(name)
-        return {"_owned_dedicated_runtime_stages": runtime_stages, "_owned_dedicated_proxy_observer": observer(self.world)}[name]
+        return {"_owned_dedicated_runtime_stages": runtime_stages, "_owned_dedicated_proxy_observer": observer(self.world),
+                "_owned_windows_lifecycle_observer": observer(self.world)}[name]
 
 
 class StartFailureTests(WorldBase):
@@ -1240,6 +1477,63 @@ class StartFailureTests(WorldBase):
         self.assertFalse({("off",), ("quit",)} & set(self.commands()))
         self.assertFalse((self.root / "fixture" / "stop.json").exists())
         self.assertEqual(["owned-runtime-fixture", "serve"], [child.label for child in self.owner.children if child.terminal is None])
+
+
+class GuiPendingRowTests(WorldBase):
+    """The dedicated driver's gui-pending path, start to quit, through the real driver, stage and cases over the world."""
+
+    def setUp(self):
+        super().setUp()
+        self.owner = StartOwner(self.root, self.world)
+        for patcher in (mock.patch.object(runtime_stages, "os", NtOs()), mock.patch.object(runtime_stages, "time", Clock()),
+                        mock.patch.object(lifecycle_cases, "time", self.owner.clock),
+                        mock.patch.object(lifecycle_cases, "GuiWindows", self.world.gui_windows)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def run_row(self):
+        harness = StartFailureTests.harness(self, "gui-pending")
+        owner = self.owner
+        owner.pin(GUI, GUI_SHA)
+        owner.pin(CLI, LAUNCHER_SHA)
+        owner.pin("C:\\W\\proxy-traffic.json", "6" * 64)
+        harness.LIFECYCLE_INPUTS["gui"] = {"schemaVersion": 1, "guiPath": GUI,
+            "trafficWorkerPath": owner.source("agent_tools/windows_lifecycle_traffic_worker.py"), "trafficInputPath": "C:\\W\\proxy-traffic.json",
+            "installedAdmissionArtifactId": "installed", "fixtureAdmissionArtifactId": "fixture", "sourceArtifactId": "source",
+            "frontendCrashScenario": "exact-owned-original-gui-handle", "trayAdmissionArtifactId": "tray-unproven"}
+        return dedicated_driver.run_lifecycle(owner, lifecycle_cases, harness)
+
+    def guis(self):
+        return [child for child in self.owner.children if child.label == "lifecycle-gui"]
+
+    def test_the_row_reopens_at_once_runs_its_pending_selection_and_closes_known(self):
+        # With the fixed owner. Native 90dd6d45, on the owner of 2.2.16, ended at its reopen: exit 1, known failure
+        # original-gui-child-handle-required.
+        result = self.run_row()
+        self.assertEqual([], [value["reason"] for kind, value in self.owner.events if kind == "dedicated-proxy-lifecycle-known-failure"])
+        self.assertEqual(0, result)
+        self.assertIn("dedicated-proxy-lifecycle-known-closed", [kind for kind, _ in self.owner.events])
+        self.assertEqual(["attached", "attached"], [launch["outcome"] for launch in self.owner.product.launches])
+        self.assertEqual([lifecycle_cases.CRASH_EXIT, 0], [child.terminal["exitCode"] for child in self.guis()],
+                         "the crashed GUI keeps its crash; the quit closed the reopened one")
+        self.assertIsNone(self.owner.product.frontend)
+        commands = StartFailureTests.commands(self)
+        pending = commands.index(("locations", "select", "Owned B"))
+        self.assertEqual([("locations", "select", "Owned B"), ("on",), ("locations", "select", "Owned A")],
+                         [command for command in commands[pending:] if command[0] in ("locations", "on")])
+        self.assertLess(pending, commands.index(("off",)))
+        self.assertEqual(1, commands.count(("quit",)))
+        self.assertTrue(all(child.terminal is not None for child in self.owner.children))
+
+    def test_a_reopen_the_owner_refused_ends_the_row_one_with_everything_closed(self):
+        self.owner.product.revoke_dead_on_attach = False  # The owner of 2.2.16.
+        self.assertEqual(1, self.run_row())
+        known = [value for kind, value in self.owner.events if kind == "dedicated-proxy-lifecycle-known-failure"]
+        self.assertEqual(["gui-attach-refused-by-owner"], [value["reason"] for value in known])
+        self.assertEqual([lifecycle_cases.CRASH_EXIT, 0], [child.terminal["exitCode"] for child in self.guis()])
+        self.assertEqual(2, len(self.guis()), "the refused reopen is never started again")
+        self.assertTrue(all(child.terminal is not None for child in self.owner.children))
+        self.assertEqual(1, StartFailureTests.commands(self).count(("quit",)))
 
 
 class InstalledVersionTests(unittest.TestCase):

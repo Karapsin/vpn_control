@@ -18,6 +18,11 @@ internal class DesktopControllerOwner(
     val service: DesktopAppService,
     val controllerId: String = UUID.randomUUID().toString(),
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /** How an ATTACH observes the captured frontend of a lease it finds held; only GONE releases that lease. */
+    private val observeFrontend: (DesktopFrontendProcessIdentity) -> DesktopFrontendProcessObservation =
+        ::desktopFrontendProcessObservation,
+    /** The frontend lease's own clock, as DesktopOwnerFrontendLifecycle reads it. */
+    frontendNowMillis: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : AutoCloseable, ControlSession {
     init { service.bindRuntimeResourceOwner(controllerId) }
 
@@ -59,7 +64,7 @@ internal class DesktopControllerOwner(
 
     internal val frontends = DesktopOwnerFrontendLifecycle(controllerId, scope,
         initialize = { session.initialize { service.resumePreviousConnectionIfNeeded() } },
-        metadata = service::controlMetadata)
+        metadata = service::controlMetadata, nowMillis = frontendNowMillis)
     private data class InstallExitFrontend(val correlation: DesktopInstallCorrelation,
         val frontend: DesktopFrontendProcessIdentity?, val observer: kotlinx.coroutines.Job? = null)
     private val installExitMonitor = Any()
@@ -100,10 +105,19 @@ internal class DesktopControllerOwner(
         when {
             command is DesktopCliCommand.ControlServe -> serveForControl(command)
             command is DesktopCliCommand.ControlFrontendLease -> {
+                fun installing() = command.action == DesktopFrontendLeaseAction.ATTACH && session.operationSnapshot().any {
+                    it.operation == ControlOperationId.UPDATES_INSTALL && !it.phase.terminal }
+                // An ATTACH may find the lease of a frontend that crashed or exited. As at quit, only the exact
+                // generation captured at that frontend's attach, proven gone, is released, and no process is
+                // observed under this monitor; a live, unknown or uncaptured one keeps its lease until expiry.
+                val held = synchronized(this) {
+                    if (command.action != DesktopFrontendLeaseAction.ATTACH || installing() || !command.valid() ||
+                        command.controllerId != controllerId) null
+                    else frontends.registration()?.takeIf { it != command.frontendId }
+                }
+                if (held != null) frontends.revokeIfCapturedProcessDead(held) { it.isDefinitelyGone(observeFrontend) }
                 val response = synchronized(this) {
-                    if (command.action == DesktopFrontendLeaseAction.ATTACH && session.operationSnapshot().any {
-                            it.operation == ControlOperationId.UPDATES_INSTALL && !it.phase.terminal })
-                        DesktopCliResponse.failure("BUSY") else frontends.execute(command)
+                    if (installing()) DesktopCliResponse.failure("BUSY") else frontends.execute(command)
                 }
                 if (response.success && command.action == DesktopFrontendLeaseAction.ATTACH)
                     service.controlInstallFrontend(command.frontendId).getOrNull()?.let { identity ->
