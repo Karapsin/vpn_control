@@ -19,8 +19,10 @@ import time
 
 PROXY_VARIANTS = ("gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel")
 BRANCH_VARIANTS = ("generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")
-VARIANTS = PROXY_VARIANTS + BRANCH_VARIANTS
-TRAFFIC_VARIANTS = frozenset({"gui-pending", *BRANCH_VARIANTS})
+# The owner's own scheduled refresh with no GUI attached: windows_lifecycle_scheduled_cases and the sampler.
+SCHEDULED_VARIANTS = ("scheduled-refresh",)
+VARIANTS = PROXY_VARIANTS + BRANCH_VARIANTS + SCHEDULED_VARIANTS
+TRAFFIC_VARIANTS = frozenset({"gui-pending", *BRANCH_VARIANTS, *SCHEDULED_VARIANTS})
 # windows-scoped-tun.<variant>: the same action and runtime, plus windows_tun_stages; a grant adds the direct sampler.
 TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")
 TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant"})
@@ -173,8 +175,12 @@ def fixture_body(operation):
 
 
 def traffic_input(variant, operation):
-    """The sampler's own input; the cases replace the port with the product's live mixed listener."""
-    count, interval = (1800, 0.2) if variant == "gui-pending" else (8, 0.05)
+    """The sampler's own input; the cases replace the port with the product's live mixed listener.
+
+    A scheduled refresh runs one five-minute interval after the case's manual refresh, and the case waits two minutes
+    past that: 1,800 samples a quarter second apart (the worker's most), started after the case's own on, run past it.
+    """
+    count, interval = {"gui-pending": (1800, 0.2), "scheduled-refresh": (1800, 0.25)}.get(variant, (8, 0.05))
     value = {"schemaVersion": 1, "mixedPort": 1, "expectedBodyHex": fixture_body(operation).encode("ascii").hex(),
              "sampleCount": count, "intervalSeconds": interval, "ioTimeoutSeconds": 5}
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
@@ -223,6 +229,11 @@ def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions
                         "installedAdmissionArtifactId": admissions["installed"], "fixtureAdmissionArtifactId": admissions["fixture"],
                         "sourceArtifactId": admissions["source"], "frontendCrashScenario": FRONTEND_CRASH,
                         "trayAdmissionArtifactId": TRAY_UNPROVEN}
+    if variant in SCHEDULED_VARIANTS:
+        value["modules"]["scheduled"] = paths["file:scheduled"]
+        value["scheduled"] = {"schemaVersion": 1, "guiPath": paths["installed"] + "\\vpn-control.exe",
+                              "trafficWorkerPath": paths["file:traffic"], "trafficInputPath": paths["file:trafficInput"],
+                              "installedAdmissionArtifactId": admissions["installed"], "fixtureAdmissionArtifactId": admissions["fixture"]}
     if variant in BRANCH_VARIANTS:
         value["modules"]["branches"] = paths["file:branches"]
         value["branch"] = {"schemaVersion": 1, "fixtureRuntimeToolPath": paths["file:" + RUNTIME_ROLE],

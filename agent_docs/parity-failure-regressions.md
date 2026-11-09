@@ -1408,6 +1408,48 @@ production bytes (`.runtime/red-f76e02fc` of the fix clone, `build-docs-harness`
 | A harness fixture step the OS refused parked the clone as an unknown product state | `HarnessFixtureFailureTests` (`test_a_refused_rename_probe_closes_as_the_named_harness_failure`, `test_a_refused_relay_listener_is_closed_and_known`, `test_a_refused_descriptor_closes_the_listening_relay_first`, `test_a_refused_persistence_fixture_releases_its_holds_and_closes_known`, `test_a_refused_export_parent_hold_is_known`, `test_fixture_refused_names_only_os_refusals`) and the controls in `test_what_is_not_a_harness_os_refusal_keeps_its_old_end` | An `OSError`, or a refused native open, of the race's own fixture before its export child starts is the known failure `document-race-fixture-refused:<step>:<code>`, the code being the Win32 error, else `errno-<n>`. The steps: `absences`, `mkdir-parent`, `mkdir-proxy`, `probe-open`, `rename-away`, `rename-back`, `probe-reopen`, `relay-listen`, `descriptor-create`, `descriptor-hold`. The CLI cases' `close_known` counts it, so the owner quits its serve once and ends 1. A listening relay has accepted nothing of the product yet, so it and an open descriptor handle are closed before any failure of those steps propagates, a `document-` code such as `document-private-create-new` included, which then closes known as well; a relay that cannot be closed parks (`document-race-fixture-closing-unknown`). A listener that fails to open closes itself and reads stopped. The scan of the other document modules found the same window twice in `windows_document_native.py`: `persistence_fault` held `workspace.json` and created and held the empty recovery leaf before its request, and `private_export_no_overwrite` opened its observer of the operation root before the first export. They are now `document-persistence-fixture-refused:<step>:<code>` (`primary-hold`, `recovery-create`, `recovery-hold`), after releasing the holds so the product can persist at the quit, and `document-export-fixture-refused:parent-hold:<code>`. The CLI and cold cases open no fixture of their own; the responsive cases have no known-failure closing and still park by design. A failure once the product's child started, a refusal that is not the OS's (the owner's native identity check) and any error not named by the module's own codes still park. RED on the `f76e02fc` bytes: each parks, the race with the native signature (`scenario-failure-with-retained-child`, `PermissionError`), the relay still listening, the primary still held. GREEN: exit 1 with the named code, one quit and every fixture handle closed. |
 | The positive rename probe had one attempt | `test_a_folder_held_only_briefly_is_renamed_on_a_later_attempt_and_every_attempt_is_recorded`, `test_a_refused_rename_probe_closes_as_the_named_harness_failure`, `test_what_is_not_a_harness_os_refusal_keeps_its_old_end` | Decision: the probe exists to prove that the ordinary context can rename its own fixture before the product opens it. A short-lived handle of another process on the just-created folder, a real-time scan for one, refuses an attempt without disproving that. The probe now retries access denied (5) and sharing violations (32) only, at most six attempts in under 4 s (0.1, 0.25, 0.5, 1 and 2 s apart), and journals every attempt in `document-race-rename-probe` (step, attempt, elapsed ms, class, `winerror`, `errno`), on success too. Any other code is not retried. The product's race step, the rename while the product holds the folder, is unchanged and stays one attempt. RED on the `f76e02fc` race: the first refusal parks. GREEN: after a 32 and a 5 the third attempt renames, the folder is restored, and the race starts the product's export child, whose early exit still parks (`document-public-export-race-unknown`) with the relay and descriptor kept. Native only: whether the folder was held, by what, and for how long; the next run's probe event shows it. |
 
+### Windows owner-lifecycle rows, offline build (2026-11-09)
+
+Before any VM contact, on `f76e02fc`. `MATRIX_SCENARIOS` mapped `close-detach-traffic`,
+`scheduled-without-gui` (`windows-owner-lifecycle`) and `gui-attach-detach`
+(`windows-native-cli`) to no row: design.md wants `PRX(no-tray-close)` and
+`PRX(scheduled-refresh)`, which the dedicated driver refused. These are review gaps,
+not native failures. The RED tree is `git archive f76e02fc` with only the new and
+updated test modules and the new case module (which has no unfixed version) copied
+in; `red_green.py` and its logs for Python 3.14 and 3.12 are under
+`.runtime/owner-rows/` of the build clone (`build-owner-rows`).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| No row could prove scheduled work in the owner with no GUI | `test_windows_scheduled_refresh`: `ScheduledRowTests.test_the_row_observes_one_scheduled_refresh_with_no_gui_and_closes_known` and `test_a_run_first_seen_final_is_bracketed_by_the_listing_before_it`, `AdmissionTests`; `test_windows_proxy_lifecycle.HarnessTests.test_every_variant_the_driver_accepts_has_an_admitted_harness`; `test_native_scenario_windows` `TableTests` and `PackageAdmissionTests.test_every_new_row_admits_before_any_journal`; `test_native_scenario_windows_matrix.TableTests.test_the_table_names_every_windows_scenario_and_only_built_rows`; `test_native_scenario_execution.NativeScenarioExecutionTest.test_windows_names_are_closed`; controls: `ScheduledControlTests` (12) | New row `windows-proxy-lifecycle.scheduled-refresh`, mapped to `scheduled-without-gui` alone. Its case module `windows_lifecycle_scheduled_cases.py` is a new pinned driver role (`SCHEDULED_SHA`), so `windows_lifecycle_cases.py`, the runtime stages and every other row's pins are unchanged. After `start_runtime` it turns proxy A off, adds the fixture's own subscription, refreshes it once, runs its one location, starts the same traffic worker (1,800 samples, 0.25 s), proves no frontend (`gui hide` NOT_FOUND, `DesktopGuiVisibilityControl`) and no installed GUI process, arms a five-minute custom policy and reads `operations list` until the owner's own `subscriptions.refresh` with a `scheduled-refresh:` request ID (`DesktopHeadlessSession`) is final; then the oracles of the tool doc: terminal OK, the same runtime, location and actors (DESKTOP-005), still no GUI, the subscription refreshed, every product fetch (`VPNControlDesktop/1.0`) inside the run's bracket, and samples before, during and after it. The world's product models the scheduler, the ledger, the fetches and the revision-guard rule read from `DesktopControlSupport.kt`. Each control makes the product answer wrong once (no run, a failed run, a restart, a stop, a pending change, no fetch, no manual fetch, another controller's run, dropped traffic, an attached frontend, a running GUI) and the row ends 1 with everything closed and the policy off; a run still open at its deadline parks. RED on `f76e02fc`, Python 3.14 and 3.12 alike: 36 tests, 6 failures and 20 errors: 15 are the driver's `dedicated-finite-proxy-variants-only` (the row in both of its timings, its 12 controls and the guard check), one the admission's `windows_scenario_not_allowlisted`, and the rest the closed name lists, the missing `SCHEDULED_*` driver roles and `scheduled-without-gui` still unmapped; the two `NoTrayCloseDecisionTests` pass on both trees. GREEN: 36 OK on both. |
+
+Decision, not a fix: `close-detach-traffic` and `gui-attach-detach` stay mapped to no
+row. A GUI window's close detaches only without a tray (`Main.kt` `onCloseRequest`
+calls `detachFrontend` when `canHideToTray` is false), and on Windows the tray is
+available as soon as AWT takes the icon: `DesktopTray.kt` `AwtTrayHandle.installTrayIcon`
+calls `markAvailable()` on every platform but Linux without observing a notification
+area. No setting (`ControlSettingsLogic.writableKeys`), GUI flag (`--autostart`,
+`--tray`, `--minimized` only start hidden) or command (`gui show`, `gui hide`) turns
+the tray off, and every other GUI exit quits or hands off its owner. So no public path
+produces `no-tray-close`, and `gui-pending`'s crash is the only detach a Windows row
+can make; DESKTOP-001 names a detach apart from a crash. `NoTrayCloseDecisionTests` (2)
+read those facts from the product source and turn RED if any changes. The older
+`windows_no_tray_desktop.py` cannot place a GUI on its private desktop either: the
+Owner's `owned_desktop` seam passes only a `handle_list` startup attribute, and
+Python's `subprocess` has no `lpDesktop`, so the child starts on the parent's desktop.
+Whether AWT on a desktop without `Shell_TrayWnd` still adds its icon, which would hide
+a closed window into no tray (DESKTOP-002), is unproven: only a native run with such a
+child could show it.
+
+Not changed here: `windows_lifecycle_runtime_stages.scheduled_setup_and_observe`, never
+run and called by no row, sends `--if-revision` with `subscriptions refresh`, which
+`DesktopCli` answers UNSUPPORTED (`SUBSCRIPTIONS_REFRESH` is not in
+`revisionGuardOperations`), and observes through `windows_lifecycle_cases.scheduled_refresh`
+and a curl collector. The new row replaces both; removing them would move the
+runtime-stage and lifecycle-case pins of the proxy, document, reboot and update rows.
+`ScheduledRowTests.test_no_write_this_row_makes_carries_a_guard_the_product_refuses`
+keeps the new row from repeating it.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

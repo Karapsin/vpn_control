@@ -123,23 +123,28 @@ def _reboot_row(name, phase, scenario):
 
 
 # windows-proxy-lifecycle.<variant>: exactly the variants windows_ordinary_dedicated_driver accepts for this action.
+# scheduled-refresh is the owner's own scheduled subscription refresh with no GUI (windows_lifecycle_scheduled_cases).
+# There is no no-tray-close: on Windows no public setting, flag or command leaves a GUI without a tray (MATRIX_SCENARIOS).
 PROXY_VARIANTS = ("gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel",
-                  "generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")
+                  "generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh")
 _PROXY_BRANCH_VARIANTS = frozenset({"generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off"})
+_PROXY_SCHEDULED_VARIANTS = frozenset({"scheduled-refresh"})
 _PROXY_FILES = (("agent_tools/windows_ordinary_dedicated_driver.py", "driver", "data"), ("agent_tools/windows_lifecycle_cases.py", "cases", "data"),
                 ("agent_tools/windows_lifecycle_runtime_stages.py", "runtime", "data"), ("scripts/windows_broker_fixture_observer.py", "observer", "data"),
                 ("agent_tools/windows_lifecycle_runtime_fixture_worker.py", "fixture", "data"),
                 ("scripts/integration/socks_http_fixture.py", "socks", "data"), ("scripts/integration/https_subscription_relay_fixture.py", "https", "data"))
 _PROXY_TRAFFIC = (("agent_tools/windows_lifecycle_traffic_worker.py", "traffic", "data"),)
 _PROXY_BRANCH = (("agent_tools/windows_runtime_branch_cases.py", "branches", "data"), ("agent_tools/windows_runtime_tcp_listeners.ps1", "listener", "data"))
+_PROXY_SCHEDULED = (("agent_tools/windows_lifecycle_scheduled_cases.py", "scheduled", "data"),)
 
 
 def _proxy_row(variant: str) -> dict[str, Any]:
     """The driver's roles as published files, and the files the job makes for the literal harness (windows_scenario_proxy)."""
-    branch = variant in _PROXY_BRANCH_VARIANTS
-    traffic = branch or variant == "gui-pending"
+    branch, scheduled = variant in _PROXY_BRANCH_VARIANTS, variant in _PROXY_SCHEDULED_VARIANTS
+    traffic = branch or scheduled or variant == "gui-pending"
     row = _worker_row("product", "windows-proxy-lifecycle", ("targetPackage",),
-                      _PROXY_FILES + (_PROXY_TRAFFIC if traffic else ()) + (_PROXY_BRANCH if branch else ()), prior=True, deadline=3600)
+                      _PROXY_FILES + (_PROXY_TRAFFIC if traffic else ()) + (_PROXY_BRANCH if branch else ())
+                      + (_PROXY_SCHEDULED if scheduled else ()), prior=True, deadline=3600)
     row.update(proxy={"variant": variant},
                generated=(("harness", "proxy-harness.py"), ("certificate", "proxy-localhost.pem"), ("privateKey", "proxy-localhost.key"),
                           ("trustStore", "proxy-trust.jks"), *((("trafficInput", "proxy-traffic.json"),) if traffic else ())),
@@ -1147,7 +1152,10 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         # TUN(approve) and UPD(success-off). The TUN grant rows exist but are refused at admission (windows_scenario_tun_grant_unproven).
         "scoped-elevation": (),
         "headless-serve": (_SMK, _P + "find-best-success"),
-        "gui-attach-detach": (),  # PRX(gui-pending) and PRX(no-tray-close), which the dedicated driver refuses.
+        # design.md: PRX(gui-pending, no-tray-close). gui-pending proves an attach, a crash and the at-once re-attach
+        # under one sampler and one runtime, but a crash is no detach (DESKTOP-001 names them apart), and on Windows a GUI
+        # detaches only when it closes without a tray, which no row can produce (close-detach-traffic): still missing.
+        "gui-attach-detach": (),
         "runtime-owner": (_P + "sibling-off",),
         "traffic-continuity": (_P + "gui-pending", _U + "success-reconnect"),
         "find-best": (_P + "find-best-success", _P + "find-best-verification-failure", _P + "find-best-cancel"),
@@ -1182,10 +1190,13 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
     "windows-owner-lifecycle": {
         "attach-traffic": (_P + "gui-pending",),
         "hide-show-traffic": (_P + "gui-pending",),
-        "close-detach-traffic": (),  # PRX(gui-pending) and PRX(no-tray-close), which the dedicated driver refuses.
+        # design.md: PRX(gui-pending, no-tray-close). A close detaches only without a tray (Main.kt onCloseRequest), and on
+        # Windows the product marks its tray available as soon as AWT takes the icon (DesktopTray.kt AwtTrayHandle), with
+        # no setting, flag or command that turns it off: no row can make PRX(no-tray-close). gui-pending's close hides.
+        "close-detach-traffic": (),
         "gui-crash-traffic": (_P + "gui-pending",),
         "cli-disconnect-long-work": (_RSP,),
-        "scheduled-without-gui": (),  # PRX(scheduled-refresh), which the dedicated driver refuses.
+        "scheduled-without-gui": (_P + "scheduled-refresh",),
         "missing-owner-status-no-start": (_SMK, _CFG),
         "static-discovery-no-workspace": (_SMK, _CFG),
         "transient-query-owner": (_SMK, _QRY),

@@ -83,6 +83,8 @@ _SCENARIOS = {
         # The scoped-TUN rows add the TUN stages and, for a grant, the direct sampler.
         "agent_tools/windows_tun_stages.py",
         "agent_tools/windows_tun_direct_sampler.py",
+        # The scheduled-refresh row: the owner's own scheduled refresh with no GUI, sampled by the traffic worker above.
+        "agent_tools/windows_lifecycle_scheduled_cases.py",
         # The public-update rows: the dedicated driver, its eight module roles and close hold,
         # and the SYSTEM collector the host job renders and runs; the driver, lifecycle cases and observer are above.
         "agent_tools/windows_public_updater/update_cases.py",

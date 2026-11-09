@@ -1,4 +1,4 @@
-"""Closed DIRECT updater and four proxy-lifecycle dispatchers.
+"""Closed DIRECT updater and five proxy-lifecycle dispatchers.
 
 Reviewed bodies keep their own original serve and cleanup. No callable, source
 selector, physical input or SYSTEM launcher is accepted from a caller.
@@ -51,6 +51,11 @@ TUN_SHA = "8eabdd41e8b98e55166d43541b09a3ec3a4c85d8e421b9e7195875b68f50b65d"
 SAMPLER_SHA = "c1caaac8cbb29c415c1a1bf6ba098716062ccb1978c01ae4a17934bc55597433"  # A grant's direct TUN sampler
 BRANCH_SHA = "a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e"
 LISTENER_SHA = "1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928"
+# The owner's own scheduled refresh with no GUI (windows_lifecycle_scheduled_cases), sampled by the same traffic worker.
+SCHEDULED_VARIANTS = frozenset({"scheduled-refresh"})
+SCHEDULED_SHA = "25aa7f14fdf5928006bf95a3f3fc8cd07e6c6d460ebbe2b44ac7b84fbb3877c2"
+SCHEDULED_FIELDS = frozenset({"schemaVersion", "guiPath", "trafficWorkerPath", "trafficInputPath", "installedAdmissionArtifactId",
+                              "fixtureAdmissionArtifactId"})
 
 
 def require(value, reason):
@@ -179,11 +184,13 @@ def run_update(owner, cases, harness):
 def lifecycle_inputs(owner, value):
     fields = {"schemaVersion", "variant", "sourceSha", "modules", "runtime", "gui"}
     require(type(value) is dict and type(value.get("variant")) is str
-            and (value["variant"] in PROXY_VARIANTS | BRANCH_VARIANTS or value["variant"] in TUN_VARIANTS and "tun" in value),
+            and (value["variant"] in PROXY_VARIANTS | BRANCH_VARIANTS | SCHEDULED_VARIANTS
+                 or value["variant"] in TUN_VARIANTS and "tun" in value),
             "dedicated-finite-proxy-variants-only")
     branch = value["variant"] in BRANCH_VARIANTS
     tun = value["variant"] in TUN_VARIANTS
-    require(set(value) == fields | ({"branch"} if branch else {"tun"} if tun else set())
+    scheduled = value["variant"] in SCHEDULED_VARIANTS
+    require(set(value) == fields | ({"branch"} if branch else {"tun"} if tun else {"scheduled"} if scheduled else set())
             and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1,
             "dedicated-proxy-input-schema")
     # The stages pick restart or find-best, deny or grant, from their own inputs: they must name this variant.
@@ -196,6 +203,8 @@ def lifecycle_inputs(owner, value):
         roles["branches"] = BRANCH_SHA
     if tun:
         roles["tun"] = TUN_SHA
+    if scheduled:
+        roles["scheduled"] = SCHEDULED_SHA
     module_roles(owner, value["modules"], roles)
     runtime_inputs = value["runtime"]
     require(type(runtime_inputs) is dict and type(runtime_inputs.get("schemaVersion")) is int
@@ -234,6 +243,21 @@ def lifecycle_inputs(owner, value):
                     "dedicated-pinned-gui-input")
     else:
         require(gui is None, "dedicated-find-best-has-no-gui-input")
+    if scheduled:
+        inputs = value["scheduled"]
+        require(type(inputs) is dict and set(inputs) == SCHEDULED_FIELDS and type(inputs["schemaVersion"]) is int
+                and inputs["schemaVersion"] == 1 and all(type(inputs[name]) is str and inputs[name] for name in SCHEDULED_FIELDS - {"schemaVersion"}),
+                "dedicated-scheduled-input-fields")
+        require(inputs["installedAdmissionArtifactId"] == runtime_inputs["installedAdmissionArtifactId"],
+                "dedicated-scheduled-same-admission-references")
+        held_source(owner, inputs["trafficWorkerPath"], TRAFFIC_SHA)
+        # The GUI the census looks for is the installed launcher's own sibling, held like the rest of the tree.
+        gui_path = PureWindowsPath(inputs["guiPath"])
+        require(gui_path.name.casefold() == "vpn-control.exe" and gui_path.parent == PureWindowsPath(owner.request["cliPath"]).parent,
+                "dedicated-scheduled-installed-gui-role")
+        for name in ("guiPath", "trafficInputPath"):
+            key = str(PureWindowsPath(inputs[name])).casefold()
+            require(key in owner.by_path and not owner.by_path[key].directory, "dedicated-scheduled-pinned-input")
     if branch:
         inputs = value["branch"]
         names = {"schemaVersion", "fixtureRuntimeToolPath", "runtimeSha256", "listenerScriptPath",
@@ -390,6 +414,11 @@ def run_lifecycle(owner, cases, harness):
                 str(workspace / "runtime-config.json"), observer.WindowsNative(),
                 state["actors"]["owner"], state["actors"]["runtime"])
             actors = state["actors"]
+        elif inputs["variant"] in SCHEDULED_VARIANTS:
+            # Proxy A goes off, an owned subscription's location runs instead, and its scheduled refresh is observed
+            # with no GUI; the runtime it leaves is the one this row's own explicit off below stops.
+            scheduled = owner.module(inputs["modules"]["scheduled"], "_owned_dedicated_scheduled_cases")
+            actors = scheduled.run(owner, state, inputs["scheduled"], runtime, cases, observer)["actors"]
         elif inputs["variant"] in BRANCH_VARIANTS:
             if inputs["variant"] in CONFIG_VARIANTS:
                 branches.config_case(owner, state, inputs["branch"], runtime, cases, observer, inputs["variant"])

@@ -945,9 +945,11 @@ does the proxy rows'.
 `windows-proxy-lifecycle.<variant>` has one row per variant
 `windows_ordinary_dedicated_driver.py` accepts for that action: `gui-pending`,
 `find-best-success`, `find-best-verification-failure`, `find-best-cancel`,
-`generated`, `custom`, `large`, `prepare-failure`, `commit-readiness-failure` and
-`sibling-off`. `no-tray-close` and `scheduled-refresh` have no row, because the
-driver refuses them. Inputs are those of every product row: the bundle manifest,
+`generated`, `custom`, `large`, `prepare-failure`, `commit-readiness-failure`,
+`sibling-off` and `scheduled-refresh`. `no-tray-close` has no row: a GUI window's
+close detaches only without a tray (`Main.kt`), and on Windows the product marks its
+tray available as soon as AWT takes the icon (`DesktopTray.kt`), with no setting,
+flag or command that turns it off. Inputs are those of every product row: the bundle manifest,
 `targetPackage`, and a `scenarioInput` whose `priorInstall` names the passed
 `windows-msi-base-install` or `windows-msi-base-reset` of that same package on
 this VM. An absent, malformed or self-referencing `priorInstall` refuses before
@@ -955,8 +957,9 @@ any journal; one that names no passed install of this package on this VM is
 refused by the job with exit 2, after the journal and before any guest effect.
 The job publishes the driver's reviewed roles (driver, lifecycle cases,
 runtime stages, observer, fixture worker, both loopback fixtures, and for
-`gui-pending` and the six branch variants the traffic sampler, with the branch
-cases and listener script for the branch variants). It extracts the bundled
+`gui-pending`, `scheduled-refresh` and the six branch variants the traffic sampler,
+with the branch cases and listener script for the branch variants and
+`windows_lifecycle_scheduled_cases.py` for `scheduled-refresh`). It extracts the bundled
 `sing-box.exe` from the one installed jar that holds it, through a pin equal to
 the installed tree's, and makes a literal harness, a self-signed `localhost`
 certificate and key, a JKS trust store and the sampler's input. The key is made on
@@ -987,6 +990,38 @@ known failure, `gui-attach-refused-by-owner`. The fixture's lease is
 1,800 s, the most the runtime stages allow, while the row deadline is 3,600 s: a
 row whose work after its fixture started outlives the lease loses its fixture and
 ends a known failure.
+
+`scheduled-refresh` proves scheduled work in the owner with no GUI. It never starts
+a GUI. After the runtime stages started proxy A, it turns A off and waits for its
+runtime to exit, sets `refresh.policy off`, adds one subscription for the fixture's
+own `https://localhost:<port>/subscription`, makes it the source, refreshes it once
+by hand, selects its one location, sets `refresh.find-best-after-refresh false` and
+`refresh.custom-hours` to five minutes (the product's shortest interval), and turns
+on. The sampler then runs 1,800 samples a quarter second apart against the product's
+mixed port. With the owner answering `gui hide` NOT_FOUND (no frontend registered)
+and no live process of the installed `vpn-control.exe`, it reads `operations list`,
+sets `refresh.policy custom` and polls `operations list` once a second, until a new
+`subscriptions.refresh` of this controller with a `scheduled-refresh:` request ID is
+final, or two minutes after one interval from the manual refresh. Its bracket runs
+from the start of the last listing without that operation to the return of the
+listing that shows it final. The oracles: `operations status` of it is OK and final;
+status shows the same runtime, location and mode, with no restart required; the owner
+and runtime processes are the same; still no frontend and no GUI process; the
+subscription's refresh status is OK with one cached location; and every fixture
+ledger GET of `/subscription` with the product's `VPNControlDesktop/1.0` since the
+baseline listing lies inside the bracket, with at least one. The policy then goes
+off, and the sampler's samples must cover the bracket before, during and after, all
+successful. The row's own explicit off, second serve, fixture stop and quit follow,
+as for every non-branch variant. A known failure after arming turns the policy off
+before the closing; a run still open at the deadline parks. Revision guards go only
+to the writes `DesktopControlSupport.revisionGuardOperations` takes them for: never
+to `subscriptions refresh`. Known before any native run: the product's real time
+from the manual refresh to the scheduled run, the refresh's route through the active
+runtime (`ACTIVE_SESSION` of `DesktopSubscriptionDownloadClient`) to the fixture, and
+whether a refresh of an unchanged subscription leaves the runtime untouched on
+Windows are proved only offline. The scheduled run comes five minutes after the
+manual refresh, and the sampler alone, at 1,800 samples a quarter second apart,
+takes about eight minutes before the closing starts.
 
 `windows-scoped-tun.<variant>` has one row per variant `windows_tun_stages.py`
 accepts: `restart-deny`, `restart-grant`, `find-best-deny` and `find-best-grant`.
@@ -1345,8 +1380,10 @@ design.md adapter steps 4-8 with the names the code accepts: all 48 Windows
 scenarios and the 16 Windows document scenarios. A scenario whose design rows are not
 all built, or whose only row declares procedures still to do, maps to `()` and stays
 missing: the TUN grant (`TUN(approve)`), fault and config rows (the two grant rows
-exist but are refused at admission), `no-tray-close` and `scheduled-refresh` (the
-dedicated driver refuses both), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
+exist but are refused at admission), `close-detach-traffic` and `gui-attach-detach`
+(design.md's `no-tray-close`: no Windows GUI closes without a tray, so no row can
+detach one; `gui-pending` proves an attach, a crash and the re-attach after it, and
+DESKTOP-001 names a detach apart from a crash), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
 is refused before any journal), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
 scenario), the SSH relay transfer and stdin import of `ssh-import-routing`, and
@@ -1356,8 +1393,9 @@ where design.md step 8 adds it; the second real principal of
 `wrong-principal-owner-context-kind` is the DOC row's own LOCAL SERVICE probe: a DOC
 run passes only with it observed denied, and one whose probe proved no denial fails
 that scenario alone (`failed-principal`, below). RSP also names `cli-disconnect-long-work` and its part of
-`operation-progress-cancellation`, and `windows-scoped-tun.restart-deny` names
-`denial-preserves-active-a`. A built row proves its part only with a passed run
+`operation-progress-cancellation`, `windows-scoped-tun.restart-deny` names
+`denial-preserves-active-a`, and `windows-proxy-lifecycle.scheduled-refresh` names
+`scheduled-without-gui` alone. A built row proves its part only with a passed run
 through each route, and every row named for a scenario must. The observation reads each journal without collecting, so call
 `scenario-status` for every row first, then it classifies each row:
 

@@ -70,7 +70,7 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_postboot_startup_actors.ps1",
                 "agent_tools/windows_scenario_proxy.py", "agent_tools/windows_ordinary_dedicated_driver.py",
                 "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "scripts/integration/https_subscription_relay_fixture.py",
-                "agent_tools/windows_tun_stages.py", "agent_tools/windows_tun_direct_sampler.py",
+                "agent_tools/windows_tun_stages.py", "agent_tools/windows_tun_direct_sampler.py", "agent_tools/windows_lifecycle_scheduled_cases.py",
                 "agent_tools/windows_public_updater/update_cases.py", "agent_tools/windows_public_updater/update_receipts.py",
                 "agent_tools/windows_public_updater/update_fixture_server.py", "agent_tools/windows_public_updater/native_collector.py",
                 "scripts/fixture_environment.py", "scripts/macos_packaging_jdk_preflight.py", "scripts/prepare_desktop_update_fixture.py",
@@ -2307,6 +2307,13 @@ class ProxyFamilyTests(ProxyFamilyBase):
                 if variant == "gui-pending":
                     self.assertEqual(INSTALLED_ROOT + "\\vpn-control.exe", inputs["gui"]["guiPath"])
                     self.assertIn(inputs["gui"]["guiPath"], pins, "the GUI is the installed tree's own pinned launcher")
+                self.assertEqual(variant == "scheduled-refresh", "scheduled" in inputs)
+                if "scheduled" in inputs:
+                    # The GUI the census looks for is the installed tree's own pinned launcher; the sampler input is the job's.
+                    self.assertEqual(INSTALLED_ROOT + "\\vpn-control.exe", inputs["scheduled"]["guiPath"])
+                    for key in ("guiPath", "trafficWorkerPath", "trafficInputPath"):
+                        self.assertIn(inputs["scheduled"][key], pins)
+                    self.assertEqual(workspace + "\\windows_lifecycle_scheduled_cases.py", inputs["modules"]["scheduled"])
                 for path in (*inputs["modules"].values(), inputs["runtime"]["fixtureWorkerPath"], inputs["runtime"]["socksSourcePath"],
                              inputs["runtime"]["httpsSourcePath"], inputs["runtime"]["certificatePath"], inputs["runtime"]["trustStorePath"]):
                     self.assertIn(path, pins, "every file the harness names is held by the worker")

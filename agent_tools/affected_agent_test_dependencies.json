@@ -8572,7 +8572,8 @@
         "c0a54c33b2ebb0160ce1d37a8145fb15e3aabf80aab37460fac2d2891862555c",
         "1abcc54c49db744cc1a1224a26dcb355689163f61620652bb4c9a24eda4066dc",
         "d20ab61268f24ab3a761597a7936b44abc6fc130cac0bc7e559dff14331db533",
-        "b73dde19ac16f046ecf06a141ad27f26f23edda1673e58a5fcc50a26aa76473c"
+        "b73dde19ac16f046ecf06a141ad27f26f23edda1673e58a5fcc50a26aa76473c",
+        "5c632f56f416b54673ab6a4f4208e4c6d95d17ec1edebc8a78b40bb91b46c487"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {
@@ -13281,7 +13282,7 @@
       ]
     },
     "agent_tools/windows_ordinary_dedicated_driver.py": {
-      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. Scheduled, no-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks. A reviewed oracle failure in a proxy row closes what the row started by its own public steps, once, and exits 1; unknown errors, open children and TUN rows still park. The same closing also takes an oracle failure inside start_runtime once its serve answered, TUN rows included, since no prompt or broker exists before their stages begin; a failure before that still parks. On the scenario route the restart-deny inputs are the job's own and name the runtime's installed admission, context and product config, which the driver joins; the stages are passed the observer for their closing census, and a census that finds anything scoped left behind parks. A TUN refusal before the stages ask for the restart, a final refusal of the request itself, or an oracle failure once the stages show the operation settled (the denial's own code, a known end such as a refused preparation or a cancelled grant, or a grant's exact off) closes the proxy like any known failure, with the census after its off, and exits 1; any other failure after the request still parks. A grant's direct sampler is the reviewed sibling windows_tun_direct_sampler.py, held at its exact digest.",
+      "reason": "Only windows-public-update and windows-proxy-lifecycle enter this fixed source-bound dispatcher. Cases have fixed sibling filenames and exact reviewed hashes; helper roles have exact byte pins. The harness is two immutable literal constants, not executable source or callbacks. Updater roles are the exact reviewed eight modules; proxy lifecycle has only four variants and exact fixture/traffic producers. Caller/hold protocol keep their exact sibling names. Protected roots, workspaces, credentials, certificates, data files, actors, request paths and admission IDs are runtime data, never source selectors. No-tray, autostart, LogonUI, arbitrary environment and generic source hooks are not exposed. One scheduled variant, scheduled-refresh, loads only the exact pinned windows_lifecycle_scheduled_cases role with its own literal inputs (the installed GUI sibling of the CLI it looks for, and the exact traffic worker and its input); it changes the product only through public CLI calls, never starts a GUI, and turns its refresh policy off before its own closing; a scheduled run still open at its deadline parks. Parent SYSTEM wrapper is not loaded here. Six additional named proxy-only configuration/failure/sibling variants use exact0b90 and listener1b62 source pins plus strict nine-field data. No no-tray/autostart/input action is added; the old four paths retain their original continuity meaning. One scoped TUN variant, restart-deny, loads only the exact pinned windows_tun_stages role with its own literal tun inputs naming that same variant; restart-grant waits for the collector stage. A proven cancelled update grant closes and exits 1; protected storage always parks. A reviewed oracle failure in a proxy row closes what the row started by its own public steps, once, and exits 1; unknown errors, open children and TUN rows still park. The same closing also takes an oracle failure inside start_runtime once its serve answered, TUN rows included, since no prompt or broker exists before their stages begin; a failure before that still parks. On the scenario route the restart-deny inputs are the job's own and name the runtime's installed admission, context and product config, which the driver joins; the stages are passed the observer for their closing census, and a census that finds anything scoped left behind parks. A TUN refusal before the stages ask for the restart, a final refusal of the request itself, or an oracle failure once the stages show the operation settled (the denial's own code, a known end such as a refused preparation or a cancelled grant, or a grant's exact off) closes the proxy like any known failure, with the census after its off, and exits 1; any other failure after the request still parks. A grant's direct sampler is the reviewed sibling windows_tun_direct_sampler.py, held at its exact digest.",
       "scopes": [
         "agent_tools/windows_public_updater/update_cases.py",
         "agent_tools/windows_public_updater/update_receipts.py",
@@ -13302,7 +13303,8 @@
         "agent_tools/windows_runtime_branch_cases.py",
         "agent_tools/windows_runtime_tcp_listeners.ps1",
         "agent_tools/windows_tun_stages.py",
-        "agent_tools/windows_tun_direct_sampler.py"
+        "agent_tools/windows_tun_direct_sampler.py",
+        "agent_tools/windows_lifecycle_scheduled_cases.py"
       ],
       "sourceSha256": [
         "ea432e878b863c5d28165d010f974dd03cfc11574e2948c2234171a1af74dbb8",
@@ -13312,7 +13314,8 @@
         "320d79d5cc920e0c93cd31cd0a5ce32f3a68f7736a88ff7fbc228ae90b6edf1d",
         "e0db1ae744e4e6702accf31cbaeab6af410f9af8702f693d6f0fbe982d850453",
         "d73a489cb050c0a0977a3957d77df59f94bcb4dee3ef39fa5d0e06441d5875e3",
-        "f83e477d29a176d620eb6db4c60d72e3ff4f1d2c8152ad4fc241d6f3c63f276b"
+        "f83e477d29a176d620eb6db4c60d72e3ff4f1d2c8152ad4fc241d6f3c63f276b",
+        "24a2ae0562be6a009ad621e0c9ff2e6507f97dfa5d3233d042ea15f50da8a3c9"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13414,7 +13417,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "82b3a16f0367ad460e4f212a035213a4552a6fcb8b20da11cb300281d2ebb272",
+    "agent_tools/readiness_vm_dispatch.json": "1d14a7a7dbaf7f9c1f30cd1281c16972dfa10a0192acc27b738a2302b75bf112",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

@@ -570,7 +570,7 @@ class TableTests(unittest.TestCase):
                                 + ["windows-scoped-vpn:" + item for item in ("scoped-uac-tun-traffic", "prepare-commit-recovery", "exact-child-stop",
                                                                              "generated-custom-config", "large-config", "dns-ws-ssh-cache-resources",
                                                                              "pipe-storage-races")]
-                                + ["windows-owner-lifecycle:" + item for item in ("close-detach-traffic", "scheduled-without-gui")]
+                                + ["windows-owner-lifecycle:close-detach-traffic"]
                                 + ["document-persistence-transfer:" + item for item in ("cache-digest-bytes", "gui-cli-transfer")]),
                          unmapped)
         # The SSH row declares a relayed transfer and a stdin key import still to do, so it proves no scenario alone.

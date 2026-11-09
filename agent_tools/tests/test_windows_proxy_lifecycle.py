@@ -53,7 +53,7 @@ SOURCE_PATHS = ("agent_tools/windows_lifecycle_runtime_stages.py", "scripts/wind
                 "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "scripts/integration/socks_http_fixture.py",
                 "scripts/integration/https_subscription_relay_fixture.py", "agent_tools/windows_lifecycle_traffic_worker.py",
                 "agent_tools/windows_runtime_branch_cases.py", "agent_tools/windows_runtime_tcp_listeners.ps1",
-                "agent_tools/windows_tun_stages.py")
+                "agent_tools/windows_tun_stages.py", "agent_tools/windows_lifecycle_scheduled_cases.py")
 SOURCES = {}
 DESKTOP = ROOT / "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop"
 LEASE_SOURCE = DESKTOP / "DesktopOwnerFrontendLifecycle.kt"
@@ -1583,7 +1583,8 @@ class HarnessTests(unittest.TestCase):
                            ("fixture", "windows_lifecycle_runtime_fixture_worker.py"), ("socks", "socks_http_fixture.py"),
                            ("https", "https_subscription_relay_fixture.py"), ("traffic", "windows_lifecycle_traffic_worker.py"),
                            ("branches", "windows_runtime_branch_cases.py"), ("listener", "windows_runtime_tcp_listeners.ps1"),
-                           (proxy.RUNTIME_ROLE, proxy.RUNTIME_LEAF), *proxy.GENERATED.items()):
+                           ("scheduled", "windows_lifecycle_scheduled_cases.py"), (proxy.RUNTIME_ROLE, proxy.RUNTIME_LEAF),
+                           *proxy.GENERATED.items()):
             paths["file:" + role] = workspace + "\\" + leaf
         return paths
 
@@ -1596,7 +1597,8 @@ class HarnessTests(unittest.TestCase):
         sources = {"file:runtime": "agent_tools/windows_lifecycle_runtime_stages.py", "file:observer": "scripts/windows_broker_fixture_observer.py",
                    "file:fixture": "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "file:socks": "scripts/integration/socks_http_fixture.py",
                    "file:https": "scripts/integration/https_subscription_relay_fixture.py", "file:traffic": "agent_tools/windows_lifecycle_traffic_worker.py",
-                   "file:branches": "agent_tools/windows_runtime_branch_cases.py", "file:listener": "agent_tools/windows_runtime_tcp_listeners.ps1"}
+                   "file:branches": "agent_tools/windows_runtime_branch_cases.py", "file:listener": "agent_tools/windows_runtime_tcp_listeners.ps1",
+                   "file:scheduled": "agent_tools/windows_lifecycle_scheduled_cases.py"}
         by_path = {}
         for key, relative in sources.items():
             body = source_bytes()[relative]
@@ -1611,13 +1613,15 @@ class HarnessTests(unittest.TestCase):
                                                                  record={"sha256": hashlib.sha256(raw).hexdigest(), "nativeIdentity": {"sizeBytes": len(raw)}})
         loaded = types.ModuleType("_proxy_harness_" + variant.replace("-", "_"))
         exec(compile(raw, harness_path, "exec"), loaded.__dict__)
-        owner = types.SimpleNamespace(by_path=by_path, request={"harnessPath": harness_path}, operation=self.OPERATION,
+        owner = types.SimpleNamespace(by_path=by_path, request={"harnessPath": harness_path, "cliPath": paths["installed"] + "\\vpn-control-cli.exe"},
+                                      operation=self.OPERATION,
                                       raw_limit=16 * 1024 * 1024, module=lambda path, name: loaded)
         harness = dedicated_driver.literal_harness(owner, "windows-proxy-lifecycle")
         return raw, dedicated_driver.lifecycle_inputs(owner, harness.LIFECYCLE_INPUTS), paths
 
     def test_every_variant_the_driver_accepts_has_an_admitted_harness(self):
-        self.assertEqual(set(proxy.VARIANTS), set(dedicated_driver.PROXY_VARIANTS | dedicated_driver.BRANCH_VARIANTS))
+        self.assertEqual(set(proxy.VARIANTS), set(dedicated_driver.PROXY_VARIANTS | dedicated_driver.BRANCH_VARIANTS
+                                                  | dedicated_driver.SCHEDULED_VARIANTS))
         for variant in proxy.VARIANTS:
             with self.subTest(variant=variant):
                 raw, inputs, paths = self.admitted(variant)
@@ -1626,6 +1630,12 @@ class HarnessTests(unittest.TestCase):
                 self.assertEqual(paths["productWorkspace"] + "\\runtime\\tools\\sing-box.exe", inputs["runtime"]["runtimeImagePath"])
                 self.assertEqual(variant == "gui-pending", inputs["gui"] is not None)
                 self.assertEqual(variant in dedicated_driver.BRANCH_VARIANTS, "branch" in inputs)
+                self.assertEqual(variant in dedicated_driver.SCHEDULED_VARIANTS, "scheduled" in inputs)
+                if "scheduled" in inputs:
+                    # The census looks for the installed launcher's own GUI sibling; the sampler is the same worker.
+                    self.assertEqual((paths["installed"] + "\\vpn-control.exe", paths["file:traffic"], paths["file:trafficInput"]),
+                                     tuple(inputs["scheduled"][key] for key in ("guiPath", "trafficWorkerPath", "trafficInputPath")))
+                    self.assertEqual(paths["file:scheduled"], inputs["modules"]["scheduled"])
                 self.assertEqual(1800, inputs["runtime"]["maxFixtureSeconds"])
 
     def test_a_mutated_harness_is_refused_by_the_driver(self):
@@ -1644,8 +1654,9 @@ class HarnessTests(unittest.TestCase):
                 worker.validate(value)
                 self.assertEqual(proxy.fixture_body(self.OPERATION).encode().hex(), value["expectedBodyHex"])
         self.assertEqual(("harness", "certificate", "privateKey", "trustStore"), proxy.generated_roles("find-best-cancel"))
+        # No row can make a Windows GUI close without a tray, so there is no no-tray-close variant.
         with self.assertRaisesRegex(ValueError, "proxy_variant"):
-            proxy.generated_roles("scheduled-refresh")
+            proxy.generated_roles("no-tray-close")
 
 
 class MaterialTests(unittest.TestCase):
