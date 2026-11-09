@@ -298,8 +298,9 @@ delivery entry point. Ownership, protected data, causal regressions, durable
 original handles and unknown-outcome guards apply in both native phases.
 
 Apply `TEST-007` to order that work: give each new or changed row one direct
-first-contact run as soon as its tooling exists, fix what it finds, and land
-tool patches between those runs. Run the direct-then-MCP pairs that count as
+first-contact run as soon as its tooling exists, on a non-evidence build of the
+candidate such as its push-build package, fix what it finds, and land tool
+patches between those runs. Run the direct-then-MCP pairs that count as
 evidence only in one final sweep, after the candidate package and the scenario
 tooling are frozen, and land no change while an MCP twin is in flight.
 
