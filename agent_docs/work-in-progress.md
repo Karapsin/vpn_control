@@ -69,10 +69,18 @@ Android and macOS native and visual work stay deferred and open, never passed.
    public-update rows with the SYSTEM collector stage (three update variants are
    admitted so far; the UAC, grant and fault variants refuse before any journal
    until their native prerequisites are proven).
-   Still to add: document acceptance and cold documents, TUN, ssh-import-routing,
-   dns-ws-ssh-cache-resources, pipe-storage-races, the GUI half of
-   gui-cli-transfer, the matrix observation helper, and an in-guest build for the
-   complete `:desktopApp:test` and the local visual capture. Fix the tool defects
+   Integrated offline on 2026-11-09 (round 2b), not yet run natively: the
+   document rows (`windows-document-acceptance`, `windows-document-cold.<variant>`
+   and `windows-document-responsive`), the scoped-TUN rows (only `restart-deny` is
+   admitted), the ssh-import-routing row
+   (`windows-disconnected-cli-config.ssh-import-routing`), the route marker and
+   the matrix observation helper. The SSH row proves part of ssh-import-routing,
+   so the matrix maps that scenario to no row yet.
+   Still to add: the TUN grant collector route, the SSH relay transfer and stdin
+   key import of ssh-import-routing, the subscription cache fixture of
+   cache-digest-bytes, dns-ws-ssh-cache-resources, pipe-storage-races, the GUI
+   half of gui-cli-transfer, and an in-guest build for the complete
+   `:desktopApp:test` and the local visual capture. Fix the tool defects
    the review predicted, each with RED and GREEN when proven.
 3. Build the same-source package pair, enroll the fixture and re-prove status,
    display wake, lease and counter, direct and then MCP. By user decision, all

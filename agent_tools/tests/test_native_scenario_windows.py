@@ -44,6 +44,12 @@ SCENARIO = "windows-ordinary-qualification"
 PROXY_ROWS = tuple("windows-proxy-lifecycle." + variant for variant in (
     "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
     "prepare-failure", "commit-readiness-failure", "sibling-off"))
+DOCUMENT_ROWS = ("windows-document-acceptance", *("windows-document-cold." + variant for variant in (
+    "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")))
+# The responsive row runs the same document action with its responsiveWork; cache-bytes is refused before any journal.
+RESPONSIVE_ROW = "windows-document-responsive"
+ADMITTED_DOCUMENT_ROWS = (*DOCUMENT_ROWS[:-1], RESPONSIVE_ROW)
+TUN_ROWS = tuple("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant"))
 HOME = "/home/fixture-owner"
 TARGET = {"kind": "ssh", "uid": 1000, "principal": "fixture-owner", "home": HOME, "bootId": "22222222-3333-4444-8555-666666666666"}
 OWNER = {"pid": 4242, "birth": "linux:987654"}
@@ -284,9 +290,12 @@ class TableTests(unittest.TestCase):
         self.assertEqual(set(windows.RECIPES), set(execution.WINDOWS_SCENARIOS))
         self.assertEqual({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install", "windows-msi-base-reset",
                           "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
+                          "windows-disconnected-cli-config.ssh-import-routing",
                           "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
                           "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
-                          *PROXY_ROWS, *("windows-public-update." + variant for variant in windows.UPDATE_VARIANTS)}, set(windows.RECIPES))
+                          *PROXY_ROWS, *TUN_ROWS, *("windows-public-update." + variant for variant in windows.UPDATE_VARIANTS), *DOCUMENT_ROWS,
+                          RESPONSIVE_ROW},
+                         set(windows.RECIPES))
         for name, row in windows.RECIPES.items():
             self.assertEqual(frozenset(row["artifactKeys"]), ssh_driver.SCENARIO_ARTIFACT_KEYS[name])
             self.assertIn(name, execution._SCENARIOS)
@@ -298,11 +307,12 @@ class TableTests(unittest.TestCase):
         classes = {name: row["evidenceClass"] for name, row in windows.RECIPES.items()}
         self.assertEqual({"windows-ordinary-qualification": "component", "windows-python-install": "setup", "windows-msi-base-install": "setup",
                           "windows-msi-base-reset": "setup", "windows-packaged-cli-smoke": "product", "windows-disconnected-cli-config": "product",
-                          "windows-streaming-client-interrupt": "product",
+                          "windows-streaming-client-interrupt": "product", "windows-disconnected-cli-config.ssh-import-routing": "product",
                           **{name: "product" for name in ("windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
                           "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect")},
-                          **{name: "product" for name in PROXY_ROWS},
-                          **{"windows-public-update." + variant: "product" for variant in windows.UPDATE_VARIANTS}}, classes)
+                          **{name: "product" for name in PROXY_ROWS + TUN_ROWS},
+                          **{"windows-public-update." + variant: "product" for variant in windows.UPDATE_VARIANTS},
+                          **{name: "product" for name in (*DOCUMENT_ROWS, RESPONSIVE_ROW)}}, classes)
         for name, row in windows.RECIPES.items():
             with self.subTest(name=name):
                 packages = [key for key in row["artifactKeys"] if key in windows.PACKAGE_KINDS]
@@ -332,11 +342,20 @@ class TableTests(unittest.TestCase):
         casing = {name: [relative for relative, role, _ in row["guestFiles"] if role == "cases"] for name, row in windows.RECIPES.items()}
         self.assertEqual({"windows-disconnected-cli-config": ["agent_tools/windows_disconnected_cli_cases.py"],
                           "windows-streaming-client-interrupt": ["agent_tools/windows_streaming_cli_cases.py"],
-                          **{name: ["agent_tools/windows_lifecycle_cases.py"] for name in PROXY_ROWS},
+                          "windows-disconnected-cli-config.ssh-import-routing": ["agent_tools/windows_ssh_import_routing_cases.py"],
+                          **{name: ["agent_tools/windows_lifecycle_cases.py"] for name in PROXY_ROWS + TUN_ROWS},
                           **{"windows-public-update." + variant: ["agent_tools/windows_public_updater/update_cases.py"]
-                             for variant in windows.UPDATE_VARIANTS}},
+                             for variant in windows.UPDATE_VARIANTS},
+                          "windows-document-acceptance": ["agent_tools/windows_document_cli_cases.py"],
+                          **{name: ["agent_tools/windows_document_cold_cases.py"] for name in DOCUMENT_ROWS[1:]},
+                          RESPONSIVE_ROW: ["agent_tools/windows_document_responsive_cli_cases.py"]},
                          {name: files for name, files in casing.items() if files})
         self.assertEqual({"windows-packaged-cli-smoke"}, {name for name, row in windows.RECIPES.items() if row["workerAction"] == "qualification"})
+        # The SSH variant keeps the disconnected row's owner action, harness and deadline door; only its case module differs.
+        variant, base = windows.RECIPES["windows-disconnected-cli-config.ssh-import-routing"], windows.RECIPES["windows-disconnected-cli-config"]
+        self.assertEqual({key: value for key, value in base.items() if key not in ("guestFiles", "deadlineSeconds")},
+                         {key: value for key, value in variant.items() if key not in ("guestFiles", "deadlineSeconds")})
+        self.assertEqual([item for item in base["guestFiles"] if item[1] != "cases"], [item for item in variant["guestFiles"] if item[1] != "cases"])
         self.assertEqual({"windows-ordinary-qualification"}, {name for name, row in windows.RECIPES.items() if "qualificationArguments" in row})
 
     def test_proxy_rows_are_the_dedicated_drivers_variants_with_the_builders_files(self):
@@ -386,6 +405,57 @@ class TableTests(unittest.TestCase):
             self.assertIsNone(windows._exit_marker(raw, operation))
 
 
+class DocumentTableTests(unittest.TestCase):
+    def test_the_document_rows_are_the_document_action_with_one_fixed_case_module_each(self):
+        from agent_tools import windows_document_cold_cases as cold
+        self.assertEqual(set(cold.VARIANTS) | {"cache-bytes"}, set(windows.DOCUMENT_COLD_VARIANTS))
+        for name in DOCUMENT_ROWS:
+            with self.subTest(name=name):
+                row = windows.RECIPES[name]
+                variant = None if name == "windows-document-acceptance" else name.split(".", 1)[1]
+                self.assertEqual(("product", "python-worker", "document-acceptance", True, None),
+                                 (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"]))
+                self.assertEqual({"variant": variant, "principalProbe": variant is None, "rootSubfolders": ("document-temp",)}, row["document"])
+                self.assertEqual(["owner", "worker", "cases", "client", "windows", "race", "harness", "diagnostic"],
+                                 [role for _, role, _ in row["guestFiles"]])
+                self.assertEqual((host_job.POWERSHELL_PATH,), row["readPins"])
+                self.assertEqual("windows_scenario_document_cache_fixture_unavailable" if variant == "cache-bytes" else None, row["refusal"])
+                generated = dict(row.get("generated", ()))
+                self.assertEqual({} if variant is None else {"coldInput": "document-cold-input.json",
+                                                            **({"legacyInput": "document-legacy-newline.json"} if variant == "legacy-newline" else {})},
+                                 generated)
+                self.assertNotIn("qualificationArguments", row)
+                self.assertNotIn("uac", row)
+
+    def test_the_responsive_row_is_the_document_action_with_the_sources_its_work_pins_and_its_own_tls_files(self):
+        row = windows.RECIPES[RESPONSIVE_ROW]
+        self.assertEqual(("product", "python-worker", "document-acceptance", True, None, None),
+                         (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"], row["refusal"]))
+        self.assertEqual({"variant": "responsive", "principalProbe": False, "rootSubfolders": ("document-temp",)}, row["document"],
+                         "only the acceptance row probes a second principal")
+        files = {role: relative for relative, role, _ in row["guestFiles"]}
+        self.assertEqual(["owner", "worker", "cases", "client", "windows", "race", "harness", "diagnostic", "responsive", "runtime",
+                          "workFixture", "socks", "https"], [role for _, role, _ in row["guestFiles"]])
+        # The case module and every responsiveWork source are the files the planner and the owner pin by name and digest.
+        self.assertEqual(planner.DOCUMENT_RESPONSIVE_CASE[0], files["cases"].rsplit("/", 1)[1])
+        self.assertEqual({key: name for key, (name, _) in planner.DOCUMENT_RESPONSIVE_SOURCES.items()},
+                         {key: files[role].rsplit("/", 1)[1] for key, role in (("casesPath", "responsive"), ("runtimeStagesPath", "runtime"),
+                                                                              ("fixtureWorkerPath", "workFixture"), ("socksSourcePath", "socks"),
+                                                                              ("httpsSourcePath", "https"))})
+        self.assertEqual((("certificate", "document-work-localhost.pem"), ("privateKey", "document-work-localhost.key"),
+                          ("trustStore", "document-work-trust.jks")), tuple(tuple(item) for item in row["generated"]))
+        self.assertEqual({"certificatePath", "privateKeyPath", "trustStorePath"},
+                         planner.DOCUMENT_RESPONSIVE_FIELDS - {"schemaVersion", "contexts", "largeRoutingInputPath",
+                                                               *planner.DOCUMENT_RESPONSIVE_SOURCES},
+                         "the job makes exactly the three files the work names that no bundle file supplies")
+        leaves = [relative.rsplit("/", 1)[1] for relative in files.values()] + [leaf for _, leaf in row["generated"]]
+        self.assertEqual(len(leaves), len(set(leaves)), "every guest file of the row has its own name in the workspace")
+        self.assertEqual((host_job.POWERSHELL_PATH,), row["readPins"])
+        self.assertEqual(3600, row["deadlineSeconds"])
+        for absent in ("qualificationArguments", "uac", "proxy", "update", "reboot", "extracted"):
+            self.assertNotIn(absent, row)
+
+
 class PublicEvidenceTests(unittest.TestCase):
     def test_a_component_row_never_claims_installed_package(self):
         claim = {"scenarioId": SCENARIO, "state": "terminal", "collectionState": "complete",
@@ -398,7 +468,8 @@ class PublicEvidenceTests(unittest.TestCase):
 
     def test_a_product_row_needs_every_real_fact(self):
         digest = "b" * 64
-        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt", *PROXY_ROWS):
+        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt", *PROXY_ROWS,
+                         *ADMITTED_DOCUMENT_ROWS):
             complete = {"scenarioId": scenario, "state": "terminal", "collectionState": "complete",
                         "artifactIds": {"bundleManifest": "sha256-" + "a" * 64, "scenarioInput": "sha256-" + "c" * 64, "targetPackage": "sha256-" + digest},
                         "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": digest}}}
@@ -572,6 +643,28 @@ class SubmitTests(DriverBase):
         self.assertEqual(0, self.ssh.submits)
         delegate = ssh_driver.NativeScenarioSshDriver(self.root, self.resolver)._windows(self.plan())
         self.assertIsNone(delegate.stop_after, "the MCP route cannot ask for a partial job")
+        self.assertEqual(("mcp", "direct"), (delegate.route, self.driver().route))
+        with self.assertRaisesRegex(ValueError, "windows_scenario_route_invalid"):
+            self.driver(route="other")
+
+    def test_submit_records_its_route_before_any_connection(self):
+        delegate = lambda: ssh_driver.NativeScenarioSshDriver(self.root, self.resolver)
+        for route, driver in (("direct", self.driver), ("mcp", delegate)):
+            with self.subTest(route=route):
+                self.operation = str(uuid.uuid4())
+                path = self.root.joinpath(*windows._LOCAL_STATE, self.operation, windows.ROUTE_NAME)
+                first = []
+                run = self.ssh.run
+
+                def checked(argv, **options):
+                    first.append(path.exists())
+                    return run(argv, **options)
+                with mock.patch.object(self.ssh, "run", side_effect=checked):
+                    self.assertEqual("submitted", self.executor(driver()).start(self.request())["state"])
+                self.assertTrue(first and first[0], "the route exists before the first connection")
+                self.assertEqual({"schemaVersion": 1, "correlationId": self.operation, "route": route}, json.loads(path.read_text()))
+                self.assertEqual(0o600, stat.S_IMODE(path.stat().st_mode))
+                self.assertEqual(route, windows._route(self.root, self.operation))
 
     def test_direct_stop_after_reaches_the_job_plan(self):
         self.executor(self.driver(stop_after="context")).start(self.request())
@@ -872,7 +965,8 @@ class FamilyDriverBase(DriverBase):
 class PackageAdmissionTests(FamilyDriverBase):
     def test_every_new_row_admits_before_any_journal(self):
         for scenario in ("windows-python-install", "windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke",
-                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt", *PROXY_ROWS):
+                         "windows-disconnected-cli-config", "windows-streaming-client-interrupt", "windows-disconnected-cli-config.ssh-import-routing",
+                         *PROXY_ROWS, "windows-scoped-tun.restart-deny", *ADMITTED_DOCUMENT_ROWS):
             with self.subTest(scenario=scenario):
                 self.assertEqual(windows.RECIPES[scenario], windows.admit_start(self.root, self.family_request(scenario), self.resolver))
                 self.assertFalse(self.journal.exists())
@@ -919,6 +1013,17 @@ class PackageAdmissionTests(FamilyDriverBase):
                     self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, productVersion=version)),
                                         "windows_scenario_package_version")
         self.assertEqual("2.2.15", reuse.artifact_set_verify_readonly(self.root, self.set_id).get("productVersion"))
+
+    def test_a_document_row_needs_its_prior_install_and_cache_bytes_says_what_it_lacks(self):
+        self.assert_refused(self.family_request("windows-document-cold.cache-bytes"), "windows_scenario_document_cache_fixture_unavailable")
+        for scenario in ADMITTED_DOCUMENT_ROWS:
+            for name, change in (("no-prior", {"priorInstall": None}), ("own-prior", {"priorInstall": self.operation}),
+                                 ("bad-prior", {"priorInstall": "prior"}), ("other-row", {"scenarioId": "windows-packaged-cli-smoke"}),
+                                 ("variant-field", {"variant": "cold-reopen"})):
+                with self.subTest(scenario=scenario, case=name):
+                    self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, **change)), "windows_scenario_input_invalid")
+            with self.subTest(scenario=scenario, case="package"):
+                self.assert_refused(self.family_request(scenario, package=self.installer["artifactId"]), "windows_scenario_package_kind")
 
     def test_the_scenario_input_must_name_this_operation_and_nothing_else(self):
         scenario = "windows-disconnected-cli-config"
@@ -1011,7 +1116,8 @@ class PackageSubmitTests(FamilyDriverBase):
         self.assertEqual(["target", "stage-check", "prepare", "submit"], self.ssh.calls, "a staged copy is never sent again")
 
     def test_product_rows_send_no_package_and_name_their_prior_install(self):
-        for scenario in ("windows-packaged-cli-smoke", "windows-proxy-lifecycle.commit-readiness-failure"):
+        for scenario in ("windows-packaged-cli-smoke", "windows-proxy-lifecycle.commit-readiness-failure", "windows-disconnected-cli-config.ssh-import-routing",
+                         *ADMITTED_DOCUMENT_ROWS):
             with self.subTest(scenario=scenario):
                 self.operation = str(uuid.uuid4())
                 self.ssh.calls.clear()
@@ -1228,6 +1334,63 @@ raise SystemExit(0)
             driver.submit(self.plan())
 
 
+class ScopedTunTableTests(unittest.TestCase):
+    """windows-scoped-tun.<variant>: the TUN stages' own variants on the proxy-lifecycle action, each prompt answered
+    only by windows-uac-decision, and only a row whose evidence proves its requirement admitted."""
+
+    def test_the_rows_are_the_stages_variants_on_the_proxy_action(self):
+        from agent_tools import windows_scenario_proxy as proxy
+        from agent_tools import windows_tun_stages as stages
+        self.assertEqual(set(windows.TUN_VARIANTS), set(stages.VARIANTS))
+        self.assertEqual(windows.TUN_VARIANTS, proxy.TUN_VARIANTS)
+        for variant in windows.TUN_VARIANTS:
+            row = windows.RECIPES["windows-scoped-tun." + variant]
+            with self.subTest(variant=variant):
+                self.assertEqual(("product", "python-worker", "windows-proxy-lifecycle", True, None),
+                                 (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"]))
+                self.assertEqual(({"variant": variant}, {"variant": variant}), (row["proxy"], row["tun"]))
+                self.assertEqual(tuple((role, proxy.GENERATED[role]) for role in proxy.generated_roles(variant)), row["generated"])
+                files = {relative: role for relative, role, _ in row["guestFiles"]}
+                proxy_files = {relative: role for relative, role, _ in windows._PROXY_FILES}
+                grant = variant.endswith("-grant")
+                self.assertEqual({**proxy_files, "agent_tools/windows_tun_stages.py": "tun",
+                                  **({"agent_tools/windows_tun_direct_sampler.py": "sampler"} if grant else {}),
+                                  "agent_tools/windows_ordinary_task_owner.ps1": "owner", "agent_tools/windows_ordinary_process_owner.py": "worker"}, files)
+                self.assertNotIn("traffic", files.values(), "a TUN row samples only through its TUN, never through the SOCKS worker")
+                leaves = [relative.rsplit("/", 1)[1] for relative in files] + [leaf for _, leaf in row["generated"] + row["extracted"]]
+                self.assertEqual(len(leaves), len(set(leaves)))
+
+    def test_only_the_restart_denial_is_admitted_and_each_other_row_names_what_it_lacks(self):
+        refusals = {variant: windows.RECIPES["windows-scoped-tun." + variant]["refusal"] for variant in windows.TUN_VARIANTS}
+        self.assertEqual({"restart-deny": None, "restart-grant": "windows_scenario_tun_grant_unproven",
+                          "find-best-grant": "windows_scenario_tun_grant_unproven",
+                          "find-best-deny": "windows_scenario_tun_find_best_unproven"}, refusals)
+
+    def test_each_prompt_is_the_decision_tables_and_a_denial_joins_its_terminal(self):
+        from agent_tools import windows_ordinary_dedicated_driver as dedicated
+        from agent_tools import windows_uac_decision as uac
+        for variant in windows.TUN_VARIANTS:
+            name = "windows-scoped-tun." + variant
+            row = windows.RECIPES[name]
+            with self.subTest(variant=variant):
+                self.assertEqual(name in uac.ROWS, "uac" in row, "a prompt reaches a guest only where the decision table answers it")
+                if "uac" in row:
+                    table = uac.ROWS[name]
+                    self.assertEqual(("vpn-broker", table["decision"], table["event"]), (row["uac"]["prompt"], row["uac"]["decision"], row["uac"]["event"]))
+                    self.assertEqual("deny" if variant.endswith("-deny") else "approve", row["uac"]["decision"])
+                    self.assertEqual(variant.endswith("-deny"), row["denyJoin"])
+                # Only the admitted row reaches the dedicated driver, which takes no grant until the collector stage exists.
+                self.assertEqual(row["refusal"] is None, variant in dedicated.TUN_VARIANTS)
+
+    def test_the_tun_files_and_the_collector_pin_are_in_the_bundle(self):
+        from agent_tools.windows_system_collector import collector_contract as contract
+        for relative in ("agent_tools/windows_tun_stages.py", "agent_tools/windows_tun_direct_sampler.py",
+                         "agent_tools/windows_system_collector/collector_contract.py"):
+            self.assertIn(relative, bundles._SCENARIOS[windows.BUNDLE_SCENARIO_ID])
+        self.assertEqual(contract.COLLECTORS["tun"], hashlib.sha256((ROOT / "agent_tools/windows_tun_native_observer.py").read_bytes()).hexdigest(),
+                         "collectorSourceSha256 names the TUN observer the pinned contract admits")
+
+
 UPDATE = "windows-public-update."
 
 
@@ -1281,6 +1444,43 @@ class UpdateTableTests(unittest.TestCase):
             if expected is not None:
                 self.assertEqual(expected, digest, role)
         self.assertEqual(set(host_job.UPDATE_MODULE_ROLES), {role for role in files if role in host_job.UPDATE_MODULE_ROLES})
+
+
+class ScopedTunAdmissionTests(FamilyDriverBase):
+    def test_every_refused_row_is_refused_before_any_journal(self):
+        for variant in ("restart-grant", "find-best-grant", "find-best-deny"):
+            with self.subTest(variant=variant):
+                self.assert_refused(self.family_request("windows-scoped-tun." + variant), windows.RECIPES["windows-scoped-tun." + variant]["refusal"])
+
+    def test_a_deny_variant_without_a_decision_join_is_refused_whatever_its_refusal(self):
+        # find-best-deny has no decision row: with its refusal lifted, an expired prompt's CANCELLED would pass as its denial.
+        name = "windows-scoped-tun.find-best-deny"
+        self.assertNotIn("uac", windows.RECIPES[name])
+        for row in (dict(windows.RECIPES[name], refusal=None),
+                    dict(windows.RECIPES[name], refusal=None, uac={"prompt": "vpn-broker", "decision": "deny", "event": "x"}, denyJoin=False)):
+            with self.subTest(row=sorted(row)), mock.patch.dict(windows.RECIPES, {name: row}):
+                self.assert_refused(self.family_request(name), "windows_scenario_deny_needs_decision_join")
+
+    def test_the_denial_job_reads_its_administrator_and_nothing_names_its_inputs(self):
+        scenario = "windows-scoped-tun.restart-deny"
+        self.assertEqual(windows.RECIPES[scenario], windows.admit_start(self.root, self.family_request(scenario), self.resolver))
+        plan = native_scenario_execution_plan(self, scenario)
+        bundle, verified = windows.verified_bundle(self.root, plan, self.resolver)
+        source, _ = windows.render_program(plan, windows._binding(self.root, plan), bundle, verified, TARGET,
+                                           value=self.input_value(scenario), packages={})
+        job_plan = ast.literal_eval(re.search(r"^PLAN=(.*)$", source, re.M)[1])
+        self.assertEqual(windows._binding(self.root, plan)["setup"]["administrator"], job_plan["administrator"])
+        self.assertEqual({"install": self.prior}, job_plan["prior"])
+        self.assertEqual({"variant": "restart-deny"}, job_plan["row"]["tun"])
+        # The typed input carries no TUN field: the stage inputs are the job's own.
+        for name in ("uacDecisionId", "expectedApprovingAdminSid", "collectorSourceSha256", "variant"):
+            with self.subTest(field=name):
+                self.assert_refused(self.family_request(scenario, value=self.scenario_input(scenario, **{name: "x"})), "windows_scenario_input_invalid")
+
+    def input_value(self, scenario):
+        return {"schema": windows.INPUT_SCHEMA, "schemaVersion": 1, "scenarioId": scenario, "correlationId": self.operation,
+                "deploymentId": MACHINE, "sourceSha": self.head, "productVersion": "2.2.15", "artifactSetId": self.set_id,
+                "priorInstall": self.prior}
 
 
 class UpdateBase(FamilyDriverBase):

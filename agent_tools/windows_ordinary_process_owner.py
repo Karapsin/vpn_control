@@ -789,7 +789,7 @@ class Owner:
         if action in {"windows-public-update", "windows-proxy-lifecycle"}:
             driver_path = str(Path(__file__).with_name("windows_ordinary_dedicated_driver.py"))
             pin = self.by_path[str(absolute(driver_path)).casefold()]
-            require(pin.record["sha256"] == "e0db1ae744e4e6702accf31cbaeab6af410f9af8702f693d6f0fbe982d850453",
+            require(pin.record["sha256"] == "d73a489cb050c0a0977a3957d77df59f94bcb4dee3ef39fa5d0e06441d5875e3",
                     "held-fixed-dedicated-driver-source")
             driver = self.module(driver_path, "_owned_fixed_dedicated_driver")
             return driver.run(self, action)
@@ -855,14 +855,30 @@ class Owner:
             harness = self.module(self.request["harnessPath"], "_owned_pinned_package_cli_harness")
             try:
                 cases.run(self, workspace, identity, harness.__dict__)
-            except AssertionError as error:
+            except (AssertionError, RuntimeError) as error:
                 # A case oracle fails only after the child it checked exited, so in these actions
                 # no child process the owner started has an open outcome, and the product answers
                 # a quit BUSY while a mutation is in flight: the owner closes its children and the
                 # job ends 1. Any other error or action keeps every child for the park.
-                if action in KNOWN_FAILURE_ACTIONS:
+                if action in KNOWN_FAILURE_ACTIONS and isinstance(error, AssertionError):
                     close_known_failure(self, workspace, identity, serve, error)
+                # A document case module that defines close_known owns its finite oracle failures: it
+                # releases its own observers and names the owner still running only when no socket,
+                # relay, held fixture or other child is uncertain. Otherwise every original stays for the park.
+                closing = getattr(cases, "close_known", None) if action == "document-acceptance" else None
+                known = closing(self, error, serve, identity) if closing is not None else None
+                if known is not None:
+                    close_known_failure(self, workspace, known[1], known[0], error)
                 raise
+        reopened = getattr(self, "document_reopened_owner", None) if action == "document-acceptance" else None
+        if reopened is not None:
+            # A cold case quit the original serve through the same public quit and opened the same workspace
+            # once more, by a serve or by the installed GUI: that owner is the one this action closes.
+            require(serve.terminal is not None and serve.terminal["exitCode"] == 0
+                    and reopened["child"] in self.children and reopened["child"].terminal is None
+                    and reopened["controllerId"] != identity and type(reopened["controllerId"]) is str,
+                    "document-reopened-owner")
+            serve, identity = reopened["child"], reopened["controllerId"]
         safe_quit_status = self.invoke(workspace, "--json", "--controller-id", identity, "status")
         status = json.loads(safe_quit_status.stdout)
         require(safe_quit_status.returncode == 0 and safe_quit_status.stderr == ""
@@ -875,8 +891,17 @@ class Owner:
         require(quit_result.returncode == 0 and quit_result.stderr == ""
                 and quit_body["controllerId"] == identity and quit_body["final"] is True,
                 "explicit-pinned-quit-not-acknowledged")
-        serve_terminal = serve.wait()
+        if reopened is not None and reopened.get("gui") is True:
+            # The installed GUI ends with its own controller: it gets the closing's 120 s, then the owner parks.
+            serve_terminal = _await_known_exit(self, serve, None, "document-gui-owner-exit-unknown")
+        else:
+            serve_terminal = serve.wait()
         require(serve_terminal["exitCode"] == 0, "original-serve-exit-not-zero")
+        if reopened is not None and reopened.get("gui") is True:
+            # The GUI's own controller is its child, not the owner's: it releases the endpoint as it ends.
+            released_until = time.monotonic() + 30
+            while (workspace / "activation.port").exists() and time.monotonic() < released_until:
+                time.sleep(0.2)
         require(not (workspace / "activation.port").exists(), "original-owner-endpoint-not-released")
         if result is not None:
             cases.assert_fixed_behavior(result)  # Authentic baseline RED AFTER retained witness/known cleanup.
@@ -985,13 +1010,18 @@ def close_known_failure(owner, workspace, identity, serve, error):
                 owner.park("known-failure-child-outcome-open", error)
         # Every quit a case sent went through this owner, so its custody names it, and its answer
         # may have been unknown (TIMEOUT, OUTCOME_UNKNOWN): that serve is awaited, never quit again.
+        # Only a quit sent after a serve started can have reached it: a workspace reopened by a later
+        # serve, after its first owner was quit, is quit like any other.
         case_quits = {}
         for child in owner.children:
             argv = tuple(child.argv)
             if len(argv) > 3 and argv[:2] == (cli, "--state-dir") and argv[-1] == "quit":
                 case_quits.setdefault(argv[2].casefold(), []).append(child.ordinal)
-        awaited = [child for child in serves if child.argv[2].casefold() in case_quits]
-        serves = [child for child in serves if child.argv[2].casefold() not in case_quits]
+
+        def quits_after(child):
+            return [ordinal for ordinal in case_quits.get(child.argv[2].casefold(), ()) if ordinal > child.ordinal]
+        awaited = [child for child in serves if quits_after(child)]
+        serves = [child for child in serves if not quits_after(child)]
         serves.sort(key=lambda child: child is serve)  # A case's second serve first, the one the streams poll last.
         owner.event("known-failure-closing", {"action": owner.request["action"], "reason": reason,
             "errorClass": type(error).__name__, "quit": [child.ordinal for child in serves],
@@ -1003,7 +1033,7 @@ def close_known_failure(owner, workspace, identity, serve, error):
         for child in awaited:
             terminal = _await_known_exit(owner, child, error, "known-failure-case-quit-exit-unknown")
             owner.event("known-failure-serve-closed", {"child": child.ordinal, "controllerId": None,
-                "caseQuitChildren": case_quits[child.argv[2].casefold()], "terminal": terminal,
+                "caseQuitChildren": quits_after(child), "terminal": terminal,
                 "endpointReleased": not (Path(child.argv[2]) / "activation.port").exists()})
         for child in serves:
             _quit_known_serve(owner, child, identity if child is serve else None, error)

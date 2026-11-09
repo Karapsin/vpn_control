@@ -35,15 +35,19 @@ _COLLECTION_LIMIT = 8_192  # Existing fixed collector transport bound.
 WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a variant sits in its dotted name.
     "windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install", "windows-msi-base-reset",
     "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
-    "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
+    "windows-disconnected-cli-config.ssh-import-routing", "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
     "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
     *("windows-proxy-lifecycle." + variant for variant in (
         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",
         "prepare-failure", "commit-readiness-failure", "sibling-off")),
+    *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")),
     *("windows-public-update." + variant for variant in (
         "public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
         "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "different-admin",
-        "wait-client-loss", "installer-wait-client-loss"))})
+        "wait-client-loss", "installer-wait-client-loss")),
+    "windows-document-acceptance",
+    *("windows-document-cold." + variant for variant in ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),
+    "windows-document-responsive"})
 _COLLECTED_SCENARIOS = {"linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
 _SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
 

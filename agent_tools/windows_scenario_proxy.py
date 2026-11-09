@@ -1,8 +1,10 @@
-"""Generated guest files of the windows-proxy-lifecycle family.
+"""Generated guest files of the windows-proxy-lifecycle family and its windows-scoped-tun rows.
 
 Pure functions of the row's variant, the operation's guest paths and the installed
 runtime's digest: the literal harness the dedicated driver reads, the TLS material of
-the in-guest loopback fixture and the traffic sampler's input. The host job publishes
+the in-guest loopback fixture and the traffic sampler's input. A TUN row's stage inputs
+come only from this job: its context stage's administrator SID, the one UAC decision
+of its operation and the pinned TUN collector source. The host job publishes
 what they return and pins it like any other file. Standard library only: no listener,
 no process and no clock but the one passed in. The private key exists only in the job's
 memory and the guest workspace (ProgramData, read-only for the ordinary user): QGA wire
@@ -19,9 +21,13 @@ PROXY_VARIANTS = ("gui-pending", "find-best-success", "find-best-verification-fa
 BRANCH_VARIANTS = ("generated", "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")
 VARIANTS = PROXY_VARIANTS + BRANCH_VARIANTS
 TRAFFIC_VARIANTS = frozenset({"gui-pending", *BRANCH_VARIANTS})
+# windows-scoped-tun.<variant>: the same action and runtime, plus windows_tun_stages; a grant adds the direct sampler.
+TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")
+TUN_GRANT_VARIANTS = frozenset({"restart-grant", "find-best-grant"})
+PROGRAM_DATA = "C:\\ProgramData"
 # Role -> workspace leaf of every file this module writes; the trafficInput role only where a sampler runs.
 GENERATED = {"harness": "proxy-harness.py", "certificate": "proxy-localhost.pem", "privateKey": "proxy-localhost.key",
-             "trustStore": "proxy-trust.jks", "trafficInput": "proxy-traffic.json"}
+             "trustStore": "proxy-trust.jks", "trafficInput": "proxy-traffic.json", "samplerInput": "tun-direct-traffic.json"}
 RUNTIME_ROLE, RUNTIME_LEAF = "runtimeTool", "sing-box.exe"
 RUNTIME_ENTRY = "bin/windows-amd64/sing-box.exe"  # DesktopSingBoxResolver's bundled resource.
 POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -36,9 +42,11 @@ _SMALL_PRIMES = tuple(p for p in range(3, 2000, 2) if all(p % q for q in range(3
 
 
 def generated_roles(variant):
+    if variant in TUN_VARIANTS:
+        return ("harness", "certificate", "privateKey", "trustStore", *(("samplerInput",) if variant in TUN_GRANT_VARIANTS else ()))
     if variant not in VARIANTS:
         raise ValueError("proxy_variant")
-    return tuple(role for role in GENERATED if role != "trafficInput" or variant in TRAFFIC_VARIANTS)
+    return tuple(role for role in GENERATED if role not in ("trafficInput", "samplerInput") or role == "trafficInput" and variant in TRAFFIC_VARIANTS)
 
 
 def _der(tag, body):
@@ -172,9 +180,31 @@ def traffic_input(variant, operation):
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
 
 
-def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions):
+def sampler_input(operation):
+    """windows_tun_direct_sampler's input: the owned upstream's body, read back over plain HTTP through the TUN."""
+    value = {"schemaVersion": 1, "expectedBodyHex": fixture_body(operation).encode("ascii").hex(), "sampleCount": 8,
+             "intervalSeconds": 0.25, "ioTimeoutSeconds": 5}
+    return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+
+
+def tun_inputs(variant, *, paths, admissions, tun):
+    """windows_tun_stages' closed inputs: the context stage's administrator SID, the one UAC decision of this
+    operation and the pinned TUN collector source, beside the paths and admissions of this same row."""
+    if type(tun) is not dict or set(tun) != {"administratorSid", "decisionId", "collectorSourceSha256"}:
+        raise ValueError("tun_inputs")
+    value = {"schemaVersion": 1, "variant": variant, "pendingLocation": "Owned B",
+             "runtimeConfigPath": paths["productWorkspace"] + "\\runtime-config.json", "guiPath": paths["installed"] + "\\vpn-control.exe",
+             "installedAdmissionArtifactId": admissions["installed"], "ordinaryContextArtifactId": admissions["context"],
+             "expectedApprovingAdminSid": tun["administratorSid"], "uacDecisionId": tun["decisionId"], "programData": PROGRAM_DATA,
+             "collectorSourceSha256": tun["collectorSourceSha256"]}
+    if variant in TUN_GRANT_VARIANTS:
+        value.update(samplerPath=paths["file:sampler"], samplerInputPath=paths["file:samplerInput"])
+    return value
+
+
+def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions, tun=None):
     """The literal harness: one docstring and the two constants the dedicated driver allows."""
-    if variant not in VARIANTS:
+    if variant not in VARIANTS + TUN_VARIANTS or (tun is not None) != (variant in TUN_VARIANTS):
         raise ValueError("proxy_variant")
     workspace = paths["productWorkspace"]
     runtime = {"schemaVersion": 1, "workspace": workspace, "fixtureRoot": paths["operationRoot"] + "\\fixture",
@@ -200,18 +230,24 @@ def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions
                            "powerShellPath": POWERSHELL, "trafficWorkerPath": paths["file:traffic"],
                            "trafficInputPath": paths["file:trafficInput"], "installedAdmissionArtifactId": admissions["installed"],
                            "ordinaryContextArtifactId": admissions["context"]}
-    text = ('"""Literal inputs of windows-proxy-lifecycle.' + variant + ' for one operation; no other statement runs."""\n'
+    if variant in TUN_VARIANTS:
+        value["modules"]["tun"] = paths["file:tun"]
+        value["tun"] = tun_inputs(variant, paths=paths, admissions=admissions, tun=tun)
+    family = "windows-scoped-tun." if variant in TUN_VARIANTS else "windows-proxy-lifecycle."
+    text = ('"""Literal inputs of ' + family + variant + ' for one operation; no other statement runs."""\n'
             "LIFECYCLE_INPUTS = " + ascii(value) + "\nSYSTEM_COLLECTOR_CLOSE_HOLD = None\n")
     return text.encode("ascii")
 
 
-def files(variant, *, operation, paths, runtime_sha256, source_sha, admissions, tls):
+def files(variant, *, operation, paths, runtime_sha256, source_sha, admissions, tls, tun=None):
     """Every generated file of one row, by role, from material made once by ``material``."""
     found = {"harness": harness(variant, operation=operation, paths=paths, runtime_sha256=runtime_sha256,
-                                source_sha=source_sha, admissions=admissions),
+                                source_sha=source_sha, admissions=admissions, tun=tun),
              "certificate": tls["certificate"], "privateKey": tls["privateKey"], "trustStore": tls["trustStore"]}
     if variant in TRAFFIC_VARIANTS:
         found["trafficInput"] = traffic_input(variant, operation)
+    if variant in TUN_GRANT_VARIANTS:
+        found["samplerInput"] = sampler_input(operation)
     if tuple(found) != generated_roles(variant):
         raise ValueError("proxy_generated_roles")
     return found

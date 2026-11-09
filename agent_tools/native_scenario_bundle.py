@@ -58,6 +58,7 @@ _SCENARIOS = {
         "agent_tools/windows_scenario_qualification_child.ps1",
         "agent_tools/windows_disconnected_cli_cases.py",
         "agent_tools/windows_streaming_cli_cases.py",
+        "agent_tools/windows_ssh_import_routing_cases.py",
         "scripts/test_packaged_cli.py",
         "scripts/windows_install_admission_diagnostic.py",
         "agent_tools/windows_postboot_source_roles.py",
@@ -79,6 +80,9 @@ _SCENARIOS = {
         "agent_tools/windows_ordinary_dedicated_driver.py",
         "agent_tools/windows_lifecycle_runtime_fixture_worker.py",
         "scripts/integration/https_subscription_relay_fixture.py",
+        # The scoped-TUN rows add the TUN stages and, for a grant, the direct sampler.
+        "agent_tools/windows_tun_stages.py",
+        "agent_tools/windows_tun_direct_sampler.py",
         # The public-update rows: the dedicated driver, its eight module roles and close hold,
         # and the SYSTEM collector the host job renders and runs; the driver, lifecycle cases and observer are above.
         "agent_tools/windows_public_updater/update_cases.py",
@@ -98,6 +102,17 @@ _SCENARIOS = {
         "agent_tools/windows_system_collector/native_primitives.py",
         "agent_tools/windows_system_collector/ordinary_task_guard.ps1",
         "agent_tools/windows_system_collector/system_collector_native.cs",
+        # The document rows: their case modules and the client, Windows and export-race modules they name.
+        "agent_tools/windows_document_cli_cases.py",
+        "agent_tools/windows_document_cold_cases.py",
+        "agent_tools/windows_document_client.py",
+        "agent_tools/windows_document_native.py",
+        "agent_tools/windows_document_export_race.py",
+        # The responsive row: its case module, the responsive cases and the gated HTTPS work fixture; the runtime
+        # stages and both fixture producers are above.
+        "agent_tools/windows_document_responsive_cli_cases.py",
+        "agent_tools/windows_document_responsive_cases.py",
+        "agent_tools/windows_document_gated_https_fixture.py",
     ),
 }
 

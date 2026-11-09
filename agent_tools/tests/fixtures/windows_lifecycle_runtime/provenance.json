@@ -123,9 +123,12 @@
       "sha256": "e6f318b6b346fcb8d6932b26dabf28bbc0f1d3f5fcf71bd0ab425626ac3b24f1"
     },
     "agent_tools/tests/fixtures/windows_lifecycle_runtime/stages/controls.source": {
-      "bytes": 18117,
+      "bytes": 16755,
+      "currentRoleAdjustment": "TunDecisionCases checks the route's one UAC decision instead of the removed frame handoff (bind_reviewed_decision), and begin takes the observer. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v2/qualify_stages.py",
-      "sha256": "897638264d70518a412fb822301e885c5d271e6a472ef625db69ca43e9190054"
+      "originalSourceBytes": 18117,
+      "originalSourceSha256": "897638264d70518a412fb822301e885c5d271e6a472ef625db69ca43e9190054",
+      "sha256": "4ea1924d893057b548f2b2825e101d6a5934b1fb767ef297e57b8c282212a932"
     },
     "agent_tools/tests/fixtures/windows_lifecycle_runtime/tun_stages.context.before.source": {
       "bytes": 14775,
@@ -198,12 +201,12 @@
       "sha256": "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"
     },
     "agent_tools/windows_tun_stages.py": {
-      "bytes": 16011,
-      "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. originalPath/originalSourceSha256 retain the source-exact historical copy.",
+      "bytes": 22698,
+      "currentRoleAdjustment": "Finish waits 300 s, past the prompt's lifetime, and a known CANCELLED on a grant is a known failure. On the scenario route every input is the job's own: the frame handoff is gone, uacDecisionId is windows-uac-decision's one decision for this operation, and a closing census and a direct sampler are added. A final refusal of the request, a final code the variant does not expect or a cancelled grant is a known end that settles the lease for its closing census, and a denial must keep pending B selected. originalPath/originalSourceSha256 retain the source-exact historical copy.",
       "originalPath": "/Users/karapsin_de/projects/vpn_control/.runtime/windows-parity-20261019/windows-product-runner/windows-lifecycle-private-preparation-v3/tun_stages.py",
       "originalSourceBytes": 15407,
       "originalSourceSha256": "aca0ca635e813b57b3c1047ad32dc619bf059c5909b50145078d379b32c93a9a",
-      "sha256": "b672958650ced3cfd676400b1e497715d6ffbe5dad19893b272fb3137de9e12e"
+      "sha256": "8eabdd41e8b98e55166d43541b09a3ec3a4c85d8e421b9e7195875b68f50b65d"
     }
   },
   "schemaVersion": 1,

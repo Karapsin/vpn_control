@@ -1,0 +1,19 @@
+{
+  "execution": "Only module definitions run. The relay is exercised over socket pairs with a logical owner peer, and the owner with the inert guest of test_windows_cli_native_failures; no process, console, listener or Win32 call is made.",
+  "fixtures": {
+    "export-race.before.source": {
+      "defect": "is_export_read parsed every transfer command as JSON. The product's export acknowledgement is the plain text ack:<id>:<sha256> (DesktopControlDocuments.downloadExport), so the relay raised JSONDecodeError, dropped the acknowledgement, and close_known() refused with document-relay-closing: the parent race parked its owner on every run.",
+      "origin": "agent_tools/windows_document_export_race.py at ea670fe4bf720cb0ea8601844a2fe185206b000a, before the fix. Never run natively: no row called it.",
+      "sha256": "a098b1aae0b50eefda4e3f9a436711e228adf6b61d0dc7c4bacc2baced538db1",
+      "sizeBytes": 10934
+    },
+    "owner-document-park.before.source": {
+      "defect": "document-acceptance caught only AssertionError around its case module, so a document case's own finite oracle failure (a RuntimeError naming its document- code) parked the owner with only its serve running, as the two CLI rows did before round 2a closed them.",
+      "origin": "agent_tools/windows_ordinary_process_owner.py at ea670fe4bf720cb0ea8601844a2fe185206b000a, before the fix. Never run natively for document-acceptance.",
+      "sha256": "2bb86fa358da1742c470d1354065eb3a9d3dcee46b629c689b6baca18b6a011a",
+      "sizeBytes": 59170
+    }
+  },
+  "nativeFailures": [],
+  "source": "Predicted by the review (spec.md, defects predicted by the reviews) and proved offline here; no native run reached either path."
+}

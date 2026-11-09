@@ -47,7 +47,8 @@ FAILURE_VARIANTS = frozenset({"prepare-failure", "commit-readiness-failure"})
 BRANCH_VARIANTS = CONFIG_VARIANTS | FAILURE_VARIANTS | {"sibling-off"}
 # restart-grant waits for the collector stage: an approved grant ends only with its native ready record.
 TUN_VARIANTS = frozenset({"restart-deny"})
-TUN_SHA = "b672958650ced3cfd676400b1e497715d6ffbe5dad19893b272fb3137de9e12e"
+TUN_SHA = "8eabdd41e8b98e55166d43541b09a3ec3a4c85d8e421b9e7195875b68f50b65d"
+SAMPLER_SHA = "c1caaac8cbb29c415c1a1bf6ba098716062ccb1978c01ae4a17934bc55597433"  # A grant's direct TUN sampler
 BRANCH_SHA = "a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e"
 LISTENER_SHA = "1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928"
 
@@ -201,6 +202,19 @@ def lifecycle_inputs(owner, value):
             and runtime_inputs["schemaVersion"] == 1
             and runtime_inputs.get("operationId") == owner.operation,
             "dedicated-original-runtime-operation")
+    if tun:
+        # The stages check the rest; these name the same install, context and product config as the runtime's.
+        require(value["tun"].get("installedAdmissionArtifactId") == runtime_inputs.get("installedAdmissionArtifactId")
+                and value["tun"].get("ordinaryContextArtifactId") == runtime_inputs.get("ordinaryContextArtifactId")
+                and type(runtime_inputs.get("workspace")) is str
+                and value["tun"].get("runtimeConfigPath") == str(PureWindowsPath(runtime_inputs["workspace"]) / "runtime-config.json"),
+                "dedicated-tun-same-admission-references")
+        if value["variant"].endswith("grant"):
+            # A grant's sampler runs under the pinned interpreter: the reviewed bytes, the bundle's own beside this driver.
+            sampler = value["tun"].get("samplerPath")
+            require(type(sampler) is str and PureWindowsPath(sampler) == PureWindowsPath(__file__).parent / "windows_tun_direct_sampler.py",
+                    "dedicated-tun-sampler-role")
+            held_source(owner, sampler, SAMPLER_SHA)
     for key, sha in (("fixtureWorkerPath", FIXTURE_WORKER_SHA), ("socksSourcePath", SOCKS_SHA),
                      ("httpsSourcePath", HTTPS_SHA)):
         held_source(owner, runtime_inputs[key], sha)
@@ -264,7 +278,15 @@ def installed_version(owner):
     require(not workspace.exists(), "dedicated-static-launch-created-owner-state")
 
 
-def known_failure(owner, cases, runtime, branches, observer, state, inputs, error):
+def tun_census(owner, tun, lease, observer):
+    """A TUN row's closing census after its own off. Anything scoped left behind parks with everything else kept."""
+    try:
+        tun.closing(owner, lease, observer)
+    except AssertionError as error:
+        owner.park("dedicated-tun-scoped-state-left-behind", error)
+
+
+def known_failure(owner, cases, runtime, branches, observer, state, inputs, error, census=None):
     """A reviewed oracle failed after its own public call returned, so the outcome is known.
 
     The row closes what it started by the same public steps as a pass and ends 1. The
@@ -273,6 +295,7 @@ def known_failure(owner, cases, runtime, branches, observer, state, inputs, erro
     quit: an off that left the runtime running, or a quit that was refused, is issued
     once more. A fixture that already ended keeps its own terminal. A child whose
     outcome is still open, or any closing step that does not end as it must, parks.
+    A TUN row's census reads right after the off, as in a pass, before anything else closes.
     """
     workspace, identity = state["workspace"], state["identity"]
     reason = str(error)[:120]
@@ -292,6 +315,8 @@ def known_failure(owner, cases, runtime, branches, observer, state, inputs, erro
         cases.read(owner, workspace, identity, "off")
         require(cases.read(owner, workspace, identity, "status")["data"]["runtimeRunning"] is False,
                 "dedicated-known-failure-product-off")
+    if census is not None:
+        census()
     if sibling is not None and sibling["child"] is not None and sibling["child"].terminal is None:
         branches.close_sibling(owner, state, inputs["branch"], runtime, observer, sibling)
     # A sibling that never started leaves only file handles, which close with this process.
@@ -346,11 +371,14 @@ def run_lifecycle(owner, cases, harness):
             raise
         return known_failure(owner, cases, runtime, branches, observer, started, inputs, error)
     workspace, identity = state["workspace"], state["identity"]
+    tun = lease = None
+    outcome = {}
     try:
         if inputs["variant"] in TUN_VARIANTS:
             # The deny row has no collector: active A must survive the prompt unchanged.
             tun = owner.module(inputs["modules"]["tun"], "_owned_dedicated_tun_stages")
-            tun.finish(owner, tun.begin(owner, state, inputs["tun"], runtime, cases), runtime, cases, observer)
+            lease = tun.begin(owner, state, inputs["tun"], runtime, cases, observer)
+            outcome = tun.finish(owner, lease, runtime, cases, observer)
             actors = state["actors"]
         elif inputs["variant"] == "gui-pending":
             gui = dict(inputs["gui"], stateDir=str(workspace), controllerId=identity,
@@ -384,13 +412,19 @@ def run_lifecycle(owner, cases, harness):
         if inputs["variant"] not in BRANCH_VARIANTS:
             cases.off_proxy_and_disconnected_serve(owner, workspace, identity, observer,
                 actors["owner"], actors["runtime"])
+        if tun is not None:
+            tun_census(owner, tun, lease, observer)  # No broker, scoped runtime, private stage or TUN route is left.
         runtime.stop_fixture(owner, state)
         cases.read(owner, workspace, identity, "quit")
     except AssertionError as error:
-        # A TUN row's prompt and broker are its stages' to close; it keeps their own known ends.
-        if inputs["variant"] in TUN_VARIANTS:
+        # From a TUN row's request until its stages show the operation settled, its operation, prompt and broker are
+        # theirs to close: it parks. A refusal before the request, a final refusal of the request itself, or a failure
+        # once settled left only the row's proxy, which closes like any other; once settled, its census follows the off.
+        if inputs["variant"] in TUN_VARIANTS and getattr(owner, "tun_operation_requested", False) \
+                and (lease is None or not tun.settled(lease)):
             raise
-        return known_failure(owner, cases, runtime, branches, observer, state, inputs, error)
+        census = None if lease is None or lease.get("closed") else lambda: tun_census(owner, tun, lease, observer)
+        return known_failure(owner, cases, runtime, branches, observer, state, inputs, error, census)
     originals = [state["serve"], *(child for child in owner.children if child.label == "lifecycle-gui")]
     for child in originals:
         terminal = child.wait()
@@ -401,9 +435,13 @@ def run_lifecycle(owner, cases, harness):
         require(all(type(child.terminal) is dict and child.terminal.get("eof") == {"stdout": True, "stderr": True}
                     for child in owner.children), "dedicated-runtime-all-original-child-eof")
     require(not (workspace / "activation.port").exists(), "dedicated-original-endpoint-released")
+    # A TUN outcome the stages proved known but not the variant's own (a cancelled grant, a refused preparation)
+    # closed by the same steps as a pass and ends 1.
+    known = outcome.get("knownFailure") or ("cancelled" if outcome.get("cancelled") else None)
     owner.event("dedicated-proxy-lifecycle-known-closed", {"variant": inputs["variant"],
-        "controllerId": identity, "sourceSha": inputs["sourceSha"], "nativeAcceptanceComplete": False})
-    return 0
+        "controllerId": identity, "sourceSha": inputs["sourceSha"], "nativeAcceptanceComplete": False,
+        **({"knownFailure": known} if known else {})})
+    return 1 if known else 0
 
 
 def run(owner, action):

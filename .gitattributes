@@ -258,6 +258,7 @@ agent_tools/tests/fixtures/ssh_acceptance_close_audit/actual-collected-terminal.
 /agent_tools/windows_system_collector/*.cs -text
 
 # Windows parity causal fixtures authenticate exact preserved bytes across checkouts.
+/agent_tools/tests/fixtures/windows_document_acceptance/** -text
 /agent_tools/tests/fixtures/windows_failing_msi_consumer/** -text
 /agent_tools/tests/fixtures/windows_lifecycle_runtime/** -text
 /agent_tools/tests/fixtures/windows_main_input_bridge/** -text

@@ -9,6 +9,7 @@ by correlation and the job is never submitted twice.
 """
 from __future__ import annotations
 
+import argparse
 import ast
 import base64
 from contextlib import contextmanager
@@ -21,6 +22,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -63,6 +65,11 @@ _EVIDENCE_NAME = re.compile(r"evidence-[0-9]{1,6}\.zip\Z")
 _DECISION_FIELDS = frozenset({"state", "operationId", "attempt", "decision", "prompt", "promptClosed", "approvalSucceeded",
                               "productOutcomeProved", "replayAllowed"})
 _BIRTH = re.compile(r"(?:linux:([1-9][0-9]*)|darwin:([0-9]+):([0-9]+))\Z")
+# The public route that started a job, recorded in its private local state before any connection.
+ROUTES = frozenset({"direct", "mcp"})
+ROUTE_NAME = "route.json"
+_JOURNALS = (".rag_index", "native-scenario-executions")
+_MATRIX_EVIDENCE = (".rag_index", "native-acceptance-evidence")
 
 _OWNER = ("agent_tools/windows_ordinary_task_owner.ps1", "owner", "powershell")
 _WORKER = ("agent_tools/windows_ordinary_process_owner.py", "worker", "data")
@@ -140,6 +147,41 @@ def _proxy_row(variant: str) -> dict[str, Any]:
     return row
 
 
+# windows-scoped-tun.<variant>: windows_tun_stages through the same action and runtime as the proxy rows. Active proxy A,
+# pending VPN B, then an async restart or find-best raises the vpn-broker prompt, which only windows-uac-decision answers.
+TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")
+_TUN_FILES = (("agent_tools/windows_tun_stages.py", "tun", "data"),)
+_TUN_SAMPLER = (("agent_tools/windows_tun_direct_sampler.py", "sampler", "data"),)
+# Refused before any journal, each with what is missing.
+_TUN_REFUSED = {
+    # The approved broker runs elevated as the approving administrator, so only the TUN SYSTEM collector's ready and off
+    # records (windows_tun_native_observer) prove its image, its SID and its exact child. No stage of this job discovers the
+    # broker and its runtime for that collector's request, the pinned chain takes the request only as O:SYD:P while files
+    # this route publishes read back O:SYD:PAI, and the dedicated driver has no TUN close hold or record handoff.
+    "restart-grant": "windows_scenario_tun_grant_unproven",
+    "find-best-grant": "windows_scenario_tun_grant_unproven",
+    # Find Best validates every candidate before it prepares the broker, so its prompt follows the pending event by an
+    # unmeasured time that the decision's 30 s gate may not cover; the decision table has no find-best row.
+    "find-best-deny": "windows_scenario_tun_find_best_unproven",
+}
+
+
+def _tun_row(variant: str) -> dict[str, Any]:
+    """A proxy-lifecycle row plus the TUN stages, the decision of its prompt and, for a grant, the direct sampler."""
+    grant = variant.endswith("-grant")
+    row = _worker_row("product", "windows-proxy-lifecycle", ("targetPackage",),
+                      _PROXY_FILES + _TUN_FILES + (_TUN_SAMPLER if grant else ()), prior=True, deadline=3600)
+    row.update(proxy={"variant": variant}, tun={"variant": variant},
+               generated=(("harness", "proxy-harness.py"), ("certificate", "proxy-localhost.pem"), ("privateKey", "proxy-localhost.key"),
+                          ("trustStore", "proxy-trust.jks"), *((("samplerInput", "tun-direct-traffic.json"),) if grant else ())),
+               extracted=(("runtimeTool", "sing-box.exe"),), refusal=_TUN_REFUSED.get(variant))
+    if not variant.startswith("find-best"):
+        # windows_uac_decision.ROWS answers the restart prompt; collect joins a deny row's own input terminal.
+        row["uac"] = {"prompt": "vpn-broker", "decision": "approve" if grant else "deny", "event": "scoped-tun-awaiting-current-input"}
+        row["denyJoin"] = not grant
+    return row
+
+
 # windows-public-update: the dedicated driver, its update module roles and, for a row with a SYSTEM
 # collector, the collector's own sources and the caller's close hold. Subfolders keep the siblings
 # each module expects: windows_public_updater beside the driver, windows_system_collector beside it too.
@@ -206,6 +248,53 @@ def _update_row(variant: str) -> dict[str, Any]:
     return row
 
 
+# The document family: the shared worker's document-acceptance action with one fixed case module per row, the three
+# document modules that action names and the public harness. The publisher makes the large routing document in the
+# guest from a fixed recipe the job checks, and one spool parent under the operation root.
+_DOCUMENT_FILES = (("agent_tools/windows_document_client.py", "client", "data"),
+                   ("agent_tools/windows_document_native.py", "windows", "data"),
+                   ("agent_tools/windows_document_export_race.py", "race", "data"), *_HARNESS)
+# windows-document-cold.<variant>: the cold module's variants, and cache-bytes, which has no producer yet. gui-owner is
+# the CLI's transfer through a GUI-started owner, never gui-cli-transfer: the GUI's own import and export have no tool.
+DOCUMENT_COLD_VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")
+# The committed subscription cache is filled only by a refresh from a subscription source, and this route has no
+# in-guest subscription fixture for a document row: refused before any journal, with what is missing.
+_DOCUMENT_REFUSED = {"cache-bytes": "windows_scenario_document_cache_fixture_unavailable"}
+
+
+def _document_row(cases: str, variant: str | None = None) -> dict[str, Any]:
+    row = _worker_row("product", "document-acceptance", ("targetPackage",), ((cases, "cases", "data"), *_DOCUMENT_FILES),
+                      prior=True, deadline=7200 if variant is None else 3600)
+    # Only the acceptance row probes a second principal: its owner opens the window during the expiry wait.
+    row["document"] = {"variant": variant, "principalProbe": variant is None, "rootSubfolders": (host_job.DOCUMENT_TEMP,)}
+    if variant is not None:
+        row["generated"] = (*((("legacyInput", host_job.DOCUMENT_LEGACY_INPUT),) if variant == "legacy-newline" else ()),
+                            ("coldInput", host_job.DOCUMENT_COLD_INPUT))
+    row["refusal"] = _DOCUMENT_REFUSED.get(variant)
+    return row
+
+
+# windows-document-responsive: the same action, document modules and harness with the responsive case module, plus the
+# responsiveWork sources the planner and owner pin by digest (DOCUMENT_RESPONSIVE_SOURCES): the responsive cases, the
+# runtime stages they borrow, the gated HTTPS work fixture and its two producers. The job makes the fixture's localhost
+# TLS material as it does the proxy rows'. No principal probe: only the acceptance row runs one.
+_RESPONSIVE_CASES = ("agent_tools/windows_document_responsive_cli_cases.py", "cases", "data")
+_RESPONSIVE_FILES = (("agent_tools/windows_document_responsive_cases.py", "responsive", "data"),
+                     ("agent_tools/windows_lifecycle_runtime_stages.py", "runtime", "data"),
+                     ("agent_tools/windows_document_gated_https_fixture.py", "workFixture", "data"),
+                     ("scripts/integration/socks_http_fixture.py", "socks", "data"),
+                     ("scripts/integration/https_subscription_relay_fixture.py", "https", "data"))
+
+
+def _responsive_row() -> dict[str, Any]:
+    row = _worker_row("product", "document-acceptance", ("targetPackage",), (_RESPONSIVE_CASES, *_DOCUMENT_FILES, *_RESPONSIVE_FILES),
+                      prior=True, deadline=3600)
+    row["document"] = {"variant": host_job.DOCUMENT_RESPONSIVE, "principalProbe": False, "rootSubfolders": (host_job.DOCUMENT_TEMP,)}
+    row["generated"] = host_job.RESPONSIVE_TLS
+    row["refusal"] = None
+    return row
+
+
 # One row per closed name. A later name is a row here plus its stages in the host job.
 # setup rows prepare the one VM and never count as matrix evidence; product rows claim
 # installed-package only from the receipt facts public_evidence reads.
@@ -253,6 +342,11 @@ RECIPES: dict[str, dict[str, Any]] = {
     "windows-streaming-client-interrupt": _worker_row(
         "product", "streaming-client-interrupt", ("targetPackage",),
         (("agent_tools/windows_streaming_cli_cases.py", "cases", "data"), *_HARNESS), prior=True, deadline=7200),
+    # A closed variant of the disconnected row: the same owner action and harness with its own case module,
+    # SSH key import, the SSH Routing truth table and route choice, and routing import with their guards.
+    "windows-disconnected-cli-config.ssh-import-routing": _worker_row(
+        "product", "disconnected-cli-config", ("targetPackage",),
+        (("agent_tools/windows_ssh_import_routing_cases.py", "cases", "data"), *_HARNESS), prior=True, deadline=7200),
     "windows-autostart-migration.pre": _reboot_row("windows-autostart-migration", "pre", "autostart-migration"),
     "windows-autostart-migration.post": _reboot_row("windows-autostart-migration", "post", "autostart-migration"),
     "windows-reboot-reconnect.pre": _reboot_row("windows-reboot-reconnect", "pre", "reconnect"),
@@ -262,7 +356,12 @@ RECIPES: dict[str, dict[str, Any]] = {
     # Rebootless: a query starts a transient owner that never connects, then a GUI restores intent once.
     "windows-query-owner-gui-reconnect": _reboot_row("windows-query-owner-gui-reconnect", "none", "query-first"),
     **{"windows-proxy-lifecycle." + variant: _proxy_row(variant) for variant in PROXY_VARIANTS},
+    **{"windows-scoped-tun." + variant: _tun_row(variant) for variant in TUN_VARIANTS},
     **{"windows-public-update." + variant: _update_row(variant) for variant in UPDATE_VARIANTS},
+    "windows-document-acceptance": _document_row("agent_tools/windows_document_cli_cases.py"),
+    **{"windows-document-cold." + variant: _document_row("agent_tools/windows_document_cold_cases.py", variant)
+       for variant in DOCUMENT_COLD_VARIANTS},
+    "windows-document-responsive": _responsive_row(),
 }
 SETUP_OR_COMPONENT = frozenset({"setup", "component"})
 INPUT_SCHEMA = "vpn-control.windows-scenario.input"
@@ -469,8 +568,11 @@ def _admit(root: Path | str, request: Mapping[str, Any],
     # A row whose evidence has no producer yet is closed, named and refused here, before any journal.
     _need(row.get("refusal") is None, str(row.get("refusal")))
     # An expired prompt ends as the same public CANCELLED as Esc, so a deny row would pass with no decision at all.
-    # It is admitted only where collect joins the decision's own input terminal.
-    _need((row.get("uac") or {}).get("decision") != "deny" or row.get("denyJoin") is True, "windows_scenario_deny_needs_decision_join")
+    # It is admitted only where collect joins the decision's own input terminal. A row is a deny row by its decision
+    # or by its name, so a "-deny" variant with no decision row is refused here too.
+    uac = row.get("uac") or {}
+    deny = uac.get("decision") == "deny" or str(request.get("scenarioId")).endswith("-deny")
+    _need(not deny or uac.get("decision") == "deny" and row.get("denyJoin") is True, "windows_scenario_deny_needs_decision_join")
     plan = native_scenario_execution.ScenarioPlan.from_mapping(request)
     _canonical_uuid(plan.correlation_id, "windows_scenario_correlation_invalid")
     _canonical_uuid(plan.environment, "windows_scenario_environment_invalid")
@@ -540,7 +642,7 @@ def render_program(plan: native_scenario_execution.ScenarioPlan, binding: Mappin
                 "prior": {**({} if value is None or value["priorInstall"] is None else {
                     "install": value["priorInstall"], **({"targetInstall": value["targetInstall"]} if row.get("update") else {})}),
                           **({"preboot": value["priorPreboot"]} if value is not None and "priorPreboot" in value else {})}}
-    if row.get("update"):
+    if row.get("update") or row.get("tun"):
         job_plan["administrator"] = binding["setup"]["administrator"]  # The account a grant approves with; its SID is read in the guest.
     payload = gzip.compress(json.dumps({path: base64.b64encode(raw).decode("ascii") for path, raw in raw_files.items()},
                                        sort_keys=True).encode("ascii"), mtime=0)
@@ -717,18 +819,24 @@ def _exit_marker(stdout: bytes, operation: str) -> dict[str, Any] | None:
 
 
 class NativeScenarioWindowsDriver:
-    """Private adapter. ``stop_after`` is constructor wiring for the direct script, never request data."""
+    """Private adapter. ``stop_after`` is constructor wiring for the direct script, never request data.
+
+    ``route`` is wiring too: ``mcp`` only from native_scenario_ssh, the delegate mcp_server builds, and
+    ``direct`` for a script that builds this driver itself. Submit records it before any connection.
+    """
 
     def __init__(self, repository_root: Path | str, bundle_resolver: Callable[[native_scenario_execution.ScenarioPlan], Path | str],
                  timeout_seconds: int = 30, ssh_binary: str = "ssh", configuration_root: Path | str | None = None,
-                 *, stop_after: str | None = None):
+                 *, stop_after: str | None = None, route: str = "direct"):
         _need(stop_after is None or stop_after in host_job.STOP_AFTER, "windows_scenario_stop_after_invalid")
+        _need(route in ROUTES, "windows_scenario_route_invalid")
         self.root = Path(repository_root).resolve()
         self.configuration_root = Path(configuration_root).resolve() if configuration_root is not None else self.root
         self.bundle_resolver = bundle_resolver
         self.timeout_seconds = timeout_seconds
         self.ssh_binary = ssh_binary
         self.stop_after = stop_after
+        self.route = route
 
     def _local(self, plan: native_scenario_execution.ScenarioPlan) -> Path:
         return self.configuration_root.joinpath(*_LOCAL_STATE, plan.correlation_id)
@@ -813,6 +921,9 @@ class NativeScenarioWindowsDriver:
             os.mkdir(directory, 0o700)  # Create-only: a second submit of this correlation stops here.
         except FileExistsError:
             raise NativeScenarioWindowsError("windows_scenario_job_already_exists") from None
+        # Which public route started this job; the matrix needs a direct and an MCP twin of every row.
+        _create_private(directory / ROUTE_NAME, json.dumps({"schemaVersion": 1, "correlationId": plan.correlation_id,
+                                                            "route": self.route}, sort_keys=True).encode())
         config = ssh_transport.load_config(self.configuration_root)
         # The admission deadline clips every call under it, so it is the sum of their own budgets:
         # a slow but in-budget staging never shortens the prepare or submit into an unknown outcome.
@@ -1011,3 +1122,420 @@ class NativeScenarioWindowsDriver:
             offset += len(part)
         _need(offset == evidence["bytes"] and digest.hexdigest() == evidence["sha256"], "windows_scenario_evidence_changed")
         _create_private(target, b"".join(parts))
+
+
+# The matrix. One reviewed table, built from design.md adapter steps 4-8 with the row names the code accepts:
+# each Windows-applicable requirement scenario and the rows whose passed direct and MCP runs together prove it.
+# () is a scenario no built row proves yet, which stays missing; its comment names what design.md wants.
+# windows-visual stays on visual_platform and visual_review; android-48m-heap is no Windows scenario.
+_U, _P = "windows-public-update.", "windows-proxy-lifecycle."
+_SMK, _CFG, _STR, _QRY = ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
+                          "windows-query-owner-gui-reconnect")
+_DOC, _RSP, _CLD = "windows-document-acceptance", "windows-document-responsive", "windows-document-cold."
+MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
+    "windows-native-cli": {
+        "msi-installer": (_U + "success-off", _U + "native-install-failed"),
+        "public-update": (_U + "public-ready", _U + "download-cancelled", _U + "checksum-rejected", _U + "wait-client-loss",
+                          _U + "success-off"),
+        "packaged-public-cli": (_SMK, _CFG),
+        "stdout-stderr-exit": (_CFG, _STR),
+        "unicode-space-path": (_SMK, _CFG),
+        "config-parity": (_CFG, _P + "generated", _P + "custom", _P + "large"),
+        # RSP brings the owner-held refresh's status, cancel and wait; UPD(install-cancelled) is refused at admission today.
+        "operation-progress-cancellation": (_CFG, _STR, _RSP, _P + "find-best-cancel", _U + "download-cancelled", _U + "install-cancelled"),
+        "ordinary-user": (_CFG, _P + "find-best-success"),
+        # TUN(approve) and UPD(success-off). The TUN grant rows exist but are refused at admission (windows_scenario_tun_grant_unproven).
+        "scoped-elevation": (),
+        "headless-serve": (_SMK, _P + "find-best-success"),
+        "gui-attach-detach": (),  # PRX(gui-pending) and PRX(no-tray-close), which the dedicated driver refuses.
+        "runtime-owner": (_P + "sibling-off",),
+        "traffic-continuity": (_P + "gui-pending", _U + "success-reconnect"),
+        "find-best": (_P + "find-best-success", _P + "find-best-verification-failure", _P + "find-best-cancel"),
+        # CFG.ssh-import-routing proves import, the SSH Routing truth table and route choice, and records what it leaves:
+        # a refresh through a real relay, connected and disconnected, and a stdin key import. No row does those yet.
+        "ssh-import-routing": (),
+    },
+    "windows-visual": {"scene-capture": (), "geometry-contrast": (), "agent-verdict": ()},
+    "windows-installer-lifecycle": {
+        "msi-uac-grant-denial": (_U + "success-off", _U + "uac-denied", _U + "install-cancelled"),
+        "ordinary-elevated-owner": (_U + "success-off", _U + "success-reconnect"),
+        "different-approving-admin": (_U + "different-admin",),
+        "original-user-worker": (_U + "success-off", _U + "different-admin"),
+        "participating-copy-locks": (_U + "participating-copy-lock",),
+        "protected-storage-adversarial": (_U + "protected-storage-rejected",),
+        "next-owner-recovery": (_U + "success-off", _U + "wait-client-loss", _U + "installer-wait-client-loss"),
+        "reconnect-off-preserved": (_U + "success-off", _U + "success-reconnect", "windows-reboot-reconnect.pre",
+                                    "windows-reboot-reconnect.post"),
+    },
+    "windows-scoped-vpn": {
+        "standard-user-gui-proxy": (_P + "gui-pending",),
+        "scoped-uac-tun-traffic": (),  # TUN(approve): the grant rows are refused at admission (windows_scenario_tun_grant_unproven).
+        "denial-preserves-active-a": ("windows-scoped-tun.restart-deny",),
+        "prepare-commit-recovery": (),  # PRX(prepare-failure, commit-readiness-failure) and TUN(fault), which has no row.
+        "exact-child-stop": (),  # PRX(sibling-off) and TUN(approve), whose grant rows are refused at admission.
+        "generated-custom-config": (),  # PRX(generated, custom) and TUN(config).
+        "large-config": (),  # PRX(large) and TUN(config).
+        "dns-ws-ssh-cache-resources": (),  # Reserved: no case module.
+        "pipe-storage-races": (),  # Reserved: no case module.
+        "ordinary-autostart-migration": ("windows-autostart-migration.pre", "windows-autostart-migration.post"),
+    },
+    "windows-owner-lifecycle": {
+        "attach-traffic": (_P + "gui-pending",),
+        "hide-show-traffic": (_P + "gui-pending",),
+        "close-detach-traffic": (),  # PRX(gui-pending) and PRX(no-tray-close), which the dedicated driver refuses.
+        "gui-crash-traffic": (_P + "gui-pending",),
+        "cli-disconnect-long-work": (_RSP,),
+        "scheduled-without-gui": (),  # PRX(scheduled-refresh), which the dedicated driver refuses.
+        "missing-owner-status-no-start": (_SMK, _CFG),
+        "static-discovery-no-workspace": (_SMK, _CFG),
+        "transient-query-owner": (_SMK, _QRY),
+        "disconnected-serve": (_P + "gui-pending",),
+        "explicit-off-intent": (_P + "gui-pending", "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post"),
+        "query-owner-gui-reconnect": (_QRY,),
+    },
+    # Limited: android-48m-heap is no Windows scenario (MATRIX_LIMITED).
+    "document-persistence-transfer": {
+        "large-import-readback": (_DOC, _CFG),
+        "exact-retry-no-op": (_DOC,),
+        "retained-result-export": (_DOC, _CFG),
+        "cold-independent-reopen": (_CLD + "cold-reopen",),
+        "protobuf-newline-compatibility": (_CLD + "legacy-newline",),
+        # CLD(cache-bytes) is a closed name refused before any journal: no in-guest subscription fixture fills the cache.
+        "cache-digest-bytes": (),
+        "failed-persistence": (_DOC,),
+        "mutable-input-resource-failure": (_DOC,),
+        # The second real principal is DOC's own LOCAL SERVICE probe: a DOC row passes only with it observed denied, and
+        # a DOC run whose owner passed but whose probe proved no denial fails this scenario alone (MATRIX_PRINCIPAL).
+        "wrong-principal-owner-context-kind": (_DOC,),
+        "expiry-forged-id-hash-length": (_DOC,),
+        "interruption-response-loss": (_DOC,),
+        "responsive-status-cancel": (_RSP,),
+        "private-no-overwrite-export": (_DOC, _CFG),
+        "racing-parent-destination": (_DOC,),
+        "unicode-surrogate": (_DOC, _CFG),
+        # The GUI's own file-picker import and export have no tool. CLD(gui-owner) is only the CLI half and never counts.
+        "gui-cli-transfer": (),
+    },
+}
+# A shared requirement Windows can only partly prove: recorded as limited, its other platforms' scenarios missing.
+MATRIX_LIMITED = {"document-persistence-transfer": ("android-48m-heap",)}
+# The one verdict on the product a job reaches after its owner passed: the acceptance row's LOCAL SERVICE probe that proved
+# no denial of the owner-private endpoint (document_principal_not_denied). Such a run is failed-principal, a failure of
+# this scenario alone; for the row's other scenarios it never counts, and it holds a pass only of this requirement.
+MATRIX_PRINCIPAL = {"document-persistence-transfer": "wrong-principal-owner-context-kind"}
+_PRINCIPAL_FAILURE = "document_principal_not_denied"
+_COLLECTION_FINAL_UNKNOWN = frozenset({"collector_output_limit"})  # Overflow stays unknown; other misses may collect later.
+# The durable job's own final UNKNOWNs (durable_remote_job.observe): an owner gone without a terminal, a host boot since
+# submit, a terminal whose stream overflowed. A missed read or any other reason may still settle on the next status.
+_DURABLE_FINAL_UNKNOWN = frozenset({"original_owner_missing", "boot_changed", "output_overflow"})
+
+
+def _matrix_module():
+    try:
+        from . import native_acceptance_matrix
+    except ImportError:  # pragma: no cover - script-style fallback
+        import native_acceptance_matrix  # type: ignore[no-redef]
+    return native_acceptance_matrix
+
+
+def _matrix_requirement(requirement_id: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    _need(isinstance(requirement_id, str) and requirement_id in MATRIX_SCENARIOS, "windows_matrix_requirement_unknown")
+    matrix = _matrix_module()
+    try:
+        requirements = matrix.load_requirements()
+    except matrix.NativeAcceptanceMatrixError:
+        raise NativeScenarioWindowsError("windows_matrix_ledger_unavailable") from None
+    requirement = requirements[requirement_id]
+    applicable = [name for name in requirement["requiredScenarios"] if name not in MATRIX_LIMITED.get(requirement_id, ())]
+    _need(set(MATRIX_SCENARIOS[requirement_id]) == set(applicable), "windows_matrix_table_differs")
+    return requirement, requirements
+
+
+def _route(root: Path, correlation: str) -> str | None:
+    try:
+        value = _read_private(root.joinpath(*_LOCAL_STATE, correlation, ROUTE_NAME))
+    except (OSError, ValueError):
+        return None
+    if (isinstance(value, dict) and set(value) == {"schemaVersion", "correlationId", "route"} and value["schemaVersion"] == 1
+            and value["correlationId"] == correlation and value["route"] in ROUTES):
+        return value["route"]
+    return None
+
+
+def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
+    """One row as the matrix reads it, from its journal, its input and its route only; nothing is collected."""
+    try:
+        record = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), None)._read(correlation)
+    except (native_scenario_execution.ScenarioExecutionError, OSError, ValueError):
+        record = None
+    _need(record is not None, "windows_matrix_journal_unavailable:" + correlation)
+    plan = native_scenario_execution.ScenarioPlan.from_mapping(record["plan"])
+    _need(plan.scenario_id in RECIPES, "windows_matrix_not_windows_row:" + correlation)
+    row = RECIPES[plan.scenario_id]
+    facts = {"correlationId": correlation, "scenarioId": plan.scenario_id, "deploymentId": plan.environment,
+             "route": _route(root, correlation), "classification": "setup", "receiptSha256": None,
+             "exitCode": record.get("exitCode"), "stage": None, "failure": None}
+    if row["evidenceClass"] in SETUP_OR_COMPONENT:
+        return facts
+    try:
+        value = scenario_input(root, plan, row)
+    except NativeScenarioWindowsError:
+        raise NativeScenarioWindowsError("windows_matrix_input_unavailable:" + correlation) from None
+    facts.update(sourceSha=value["sourceSha"], productVersion=value["productVersion"], artifactSetId=value["artifactSetId"],
+                 packages=sorted(plan.artifact_ids[key] for key in ("targetPackage", "fixtureReceipt") if key in plan.artifact_ids),
+                 targetPackage=plan.artifact_ids["targetPackage"])
+    collection = record.get("collection") or {}
+    if record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and collection.get("state") == "complete":
+        summary = json.loads(collection["rawJson"])
+        raw = summary["actualReceiptRaw"]
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        _need(digest == summary["actualReceiptSha256"], "windows_matrix_receipt_changed:" + correlation)
+        receipt = json.loads(raw)
+        task = receipt.get("task") if isinstance(receipt.get("task"), dict) else {}
+        facts.update(receiptSha256=digest, stage=host_job.token(receipt.get("stage")) if receipt.get("stage") else None,
+                     failure=host_job.token(receipt.get("failure")) if receipt.get("failure") else None)
+        public = public_evidence(native_scenario_execution.ScenarioExecutor._public(record))
+        if receipt.get("stoppedAfter") is not None:
+            kind = "stopped"
+        elif receipt.get("result") == "passed":
+            kind = "passed" if public["evidenceClass"] == "installed-package" else "installed-package-unproven"
+        elif receipt.get("result") == "failed":
+            # A verdict on the installed product needs its task to have run, and is the owner's own: its exit 1, which a
+            # case oracle failure ends with. An earlier stop is the row's setup; a failure after the task (the task journal,
+            # the command line read, the evidence copy, the declaration, another exit) is the harness's.
+            if task.get("state") != "task-finished":
+                kind = "failed-before-task"
+            elif receipt.get("failure") == "task_exit_code" and all(type(task.get(key)) is int and task[key] == 1
+                                                                   for key in ("ownerExitCode", "terminalExitCode")):
+                kind = "failed"
+            elif (receipt.get("failure") == _PRINCIPAL_FAILURE and (row.get("document") or {}).get("principalProbe") is True
+                  and all(type(task.get(key)) is int and task[key] == row["expectedExit"] for key in ("ownerExitCode", "terminalExitCode"))):
+                # The owner passed, and the row's own LOCAL SERVICE probe proved no denial: the product's verdict on its
+                # owner-private endpoint (MATRIX_PRINCIPAL). The probe's other ends are the harness's.
+                kind = "failed-principal"
+            else:
+                kind = "failed-after-task"
+        else:
+            raise NativeScenarioWindowsError("windows_matrix_receipt_changed:" + correlation)
+    elif record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and record["exitCode"] == host_job.EXIT_REFUSED:
+        kind = "refused"  # Refused before any guest effect: no claim of any kind.
+    elif (record["state"] == native_scenario_execution.ExecutionState.UNKNOWN.value
+          and (record["lastReason"].startswith("job_exit_unknown:") or record["lastReason"] in _DURABLE_FINAL_UNKNOWN)
+          or record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value
+          and collection.get("reason") in _COLLECTION_FINAL_UNKNOWN):
+        kind = "unknown"
+    else:
+        raise NativeScenarioWindowsError("windows_matrix_row_unsettled:" + correlation)
+    facts["classification"] = kind
+    return facts
+
+
+def _matrix_row_state(rows: list[Mapping[str, Any]], name: str, principal: bool = False) -> str:
+    """A row proves its part only with a passed direct run and a passed MCP run; a failure or an unknown wins.
+
+    A failed-principal run fails only the scenario its probe proves (principal); for any other it never counts.
+    """
+    found = [row for row in rows if row["scenarioId"] == name]
+    kinds = {row["classification"] for row in found}
+    if "failed" in kinds or principal and "failed-principal" in kinds:
+        return "failed"
+    if "unknown" in kinds:
+        return "unknown"
+    routes = {row["route"] for row in found if row["classification"] == "passed"}
+    return "passed" if ROUTES <= routes else "missing"
+
+
+def matrix_review(root: Path | str, requirement_id: str, correlation_ids: Any) -> dict[str, Any]:
+    """Read only: each named row's class and route, and the state of every scenario of one requirement."""
+    requirement, _ = _matrix_requirement(requirement_id)
+    root = Path(root).resolve()
+    _need(isinstance(correlation_ids, (list, tuple)) and 0 < len(correlation_ids) <= 256
+          and len(set(correlation_ids)) == len(correlation_ids), "windows_matrix_correlations_invalid")
+    for correlation in correlation_ids:
+        _canonical_uuid(correlation, "windows_matrix_correlations_invalid")
+    rows = [_matrix_row(root, correlation) for correlation in correlation_ids]
+    product = [row for row in rows if row["classification"] != "setup"]
+    # One package: every product row names the same source, version, frozen set and target package.
+    for key, reason in (("sourceSha", "windows_matrix_mixed_source"), ("productVersion", "windows_matrix_mixed_source"),
+                        ("artifactSetId", "windows_matrix_mixed_source"), ("targetPackage", "windows_matrix_mixed_package")):
+        _need(len({row[key] for row in product}) <= 1, reason)
+    scenarios = {}
+    for scenario, names in MATRIX_SCENARIOS[requirement_id].items():
+        if not names or any(name not in RECIPES for name in names):
+            scenarios[scenario] = "unmapped"
+            continue
+        principal = MATRIX_PRINCIPAL.get(requirement_id) == scenario
+        states = {_matrix_row_state(rows, name, principal) for name in names}
+        scenarios[scenario] = next((state for state in ("failed", "unknown", "missing") if state in states), "passed")
+    return {"requirementId": requirement_id, "platform": requirement["platform"], "rows": rows, "scenarios": scenarios,
+            "package": None if not product else {key: product[0][key] for key in ("sourceSha", "productVersion", "artifactSetId",
+                                                                                     "targetPackage")}}
+
+
+def _settled_runs(root: Path, names: set[str], target: str) -> list[dict[str, Any]]:
+    """Every settled run of these rows on this target package, named or not, read from the journals alone.
+
+    A run still unsettled has no outcome to record yet; any other refusal of a matching run refuses the scan.
+    """
+    journals = root.joinpath(*_JOURNALS)
+    executor = native_scenario_execution.ScenarioExecutor(journals, None)
+    try:
+        paths = sorted(journals.glob("*.json"))
+    except OSError:
+        raise NativeScenarioWindowsError("windows_matrix_journals_unavailable") from None
+    runs = []
+    for path in paths:
+        correlation = path.name[:-len(".json")]
+        try:
+            _canonical_uuid(correlation, "windows_matrix_correlations_invalid")
+            record = executor._read(correlation)
+        except (NativeScenarioWindowsError, native_scenario_execution.ScenarioExecutionError, OSError, ValueError):
+            continue  # Not a scenario journal of a readable row.
+        if (record is None or record["plan"]["scenarioId"] not in names
+                or record["plan"]["artifactIds"].get("targetPackage") != target):
+            continue
+        try:
+            runs.append(_matrix_row(root, correlation))
+        except NativeScenarioWindowsError as error:
+            if not str(error).startswith("windows_matrix_row_unsettled:"):
+                raise
+    return runs
+
+
+def _recorded_rows(root: Path, earlier: list[Mapping[str, Any]], requirement_id: str, source: str) -> set[str]:
+    """The rows every recorded observation of this requirement and source named, retracted or not."""
+    matrix = _matrix_module()
+    named: set[str] = set()
+    for item in earlier:
+        if (item["requirementId"] != requirement_id or item["originalSourceSHA"] != source
+                or not item["evidencePath"].startswith("/".join(_MATRIX_EVIDENCE) + "/")):
+            continue
+        try:
+            matrix._verify_evidence(root, item["evidencePath"], item["evidenceHash"])
+            document = json.loads(root.joinpath(*PurePosixPath(item["evidencePath"]).parts).read_bytes())
+            named.update(row["correlationId"] for row in document["rows"])
+        except (matrix.NativeAcceptanceMatrixError, OSError, ValueError, KeyError, TypeError):
+            continue  # Evidence that no longer verifies names no row.
+    return named
+
+
+def _matrix_evidence(root: Path, requirement_id: str, document: Mapping[str, Any]) -> tuple[str, str]:
+    matrix = _matrix_module()
+    raw = (json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("ascii")
+    digest = hashlib.sha256(raw).hexdigest()
+    name = requirement_id + "-" + digest[:12] + ".json"
+    path = root.joinpath(*_MATRIX_EVIDENCE, name)
+    try:
+        _private_directory(path.parent)
+        if not os.path.lexists(path):
+            # The ledger's own publish: a synced private temporary file linked create-only under the name, so an
+            # interrupted write never leaves part of a document there.
+            matrix._exclusive_write(path, raw)
+    except (matrix.NativeAcceptanceMatrixError, OSError):
+        if not os.path.lexists(path):
+            raise NativeScenarioWindowsError("windows_matrix_evidence_unavailable") from None
+    # Create-only: the same document again is the same evidence; anything else under its name refuses.
+    try:
+        same = native_scenario_bundle._hash(path) == digest
+    except OSError:
+        same = False
+    _need(same, "windows_matrix_evidence_differs")
+    return "/".join((*_MATRIX_EVIDENCE, name)), digest
+
+
+def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: Any, reviewer_attestation: str) -> dict[str, Any]:
+    """The matrix-record input for one requirement, from collected rows; it records nothing itself.
+
+    A passed observation needs every scenario of the requirement passed: each of its rows passed directly and through
+    MCP, all on one package, and every settled failed or unknown run of those rows on that package, named or not,
+    already in a recorded observation of the requirement. A failed or unknown row yields a failed or unknown
+    observation at once. Setup, stopped, refused, installed-package-unproven, failed-before-task and failed-after-task
+    rows never count. A failed-principal run is a failed one of its MATRIX_PRINCIPAL scenario alone, and of no other.
+    The attestation is the coordinator's, never this code's.
+    """
+    _need(isinstance(reviewer_attestation, str) and reviewer_attestation.strip() and len(reviewer_attestation) <= 240,
+          "windows_matrix_attestation_invalid")
+    root = Path(root).resolve()
+    review = matrix_review(root, requirement_id, correlation_ids)
+    requirement, requirements = _matrix_requirement(requirement_id)
+    matrix = _matrix_module()
+    states = review["scenarios"]
+    results = {name: state for name, state in states.items() if state in ("failed", "unknown")}
+    limited = MATRIX_LIMITED.get(requirement_id, ())
+    if results:
+        result = "failed" if "failed" in results.values() else "unknown"
+        missing = sorted(set(requirement["requiredScenarios"]) - set(results))
+    else:
+        open_scenarios = [name for name, state in states.items() if state != "passed"]
+        _need(not open_scenarios, "windows_matrix_incomplete:" + str(len(open_scenarios)))
+        result, results, missing = "passed", dict(states), list(limited)
+    counted = {name for scenario in results for name in MATRIX_SCENARIOS[requirement_id][scenario]}
+    rows = [row for row in review["rows"] if row["scenarioId"] in counted and row["classification"] != "setup"]
+    package = review["package"]
+    _need(package is not None and rows, "windows_matrix_incomplete:" + str(len(states)))
+    source = package["sourceSha"]
+    if result == "passed":
+        try:
+            directory = matrix._existing_directory(root)
+            earlier = [] if directory is None else matrix._records_read_only(directory, requirements)
+            retracted = set() if directory is None else matrix._read_retractions(directory, requirements)
+        except (matrix.NativeAcceptanceMatrixError, OSError):
+            raise NativeScenarioWindowsError("windows_matrix_ledger_unavailable") from None
+        # Recorded once: a passed record of this requirement and source that was not retracted refuses another.
+        _need(not any(item["requirementId"] == requirement_id and item["originalSourceSHA"] == source and item["result"] == "passed"
+                      and item["receiptId"] not in retracted for item in earlier), "windows_matrix_already_recorded")
+        # Failed or unknown at once, so none is left out: a pass waits until every settled failed or unknown run of a
+        # counted row on this package is in a recorded observation of this requirement, where it stands beside the pass.
+        recorded = _recorded_rows(root, earlier, requirement_id, source)
+        holding = {"failed", "unknown"} | ({"failed-principal"} if requirement_id in MATRIX_PRINCIPAL else set())
+        unrecorded = sorted(run["correlationId"] for run in _settled_runs(root, counted, package["targetPackage"])
+                            if run["classification"] in holding and run["correlationId"] not in recorded)
+        _need(not unrecorded, "windows_matrix_unrecorded_outcome:" + "".join(unrecorded[:1]))
+    artifacts = sorted({artifact for row in rows for artifact in row["packages"]})
+    scope = "limited" if limited else "full-native"
+    deployments = sorted({row["deploymentId"] for row in rows})
+    environment = "windows-qemu-" + (deployments[0] if len(deployments) == 1 else
+                                     str(len(deployments)) + "-clones-" + hashlib.sha256(",".join(deployments).encode()).hexdigest()[:12])
+    document = {"schema": "vpn-control.windows-matrix-evidence", "schemaVersion": 1, "requirementId": requirement_id,
+                "platform": requirement["platform"], "result": result, "evidenceScope": scope, "package": package,
+                "immutableArtifactIDs": artifacts, "scenarios": states,
+                "rowsByScenario": {name: list(MATRIX_SCENARIOS[requirement_id][name]) for name in results},
+                "rows": [{key: row.get(key) for key in ("correlationId", "scenarioId", "deploymentId", "route", "classification",
+                                                        "receiptSha256", "exitCode", "stage", "failure")} for row in review["rows"]]}
+    path, digest = _matrix_evidence(root, requirement_id, document)
+    observation = {"requirementId": requirement_id, "platform": requirement["platform"], "originalSourceSHA": source,
+                   "immutableArtifactIDs": artifacts, "evidencePath": path, "evidenceHash": digest, "environment": environment,
+                   "result": result, "scenarioResults": results, "missingEvidence": missing,
+                   "nextFixedCommand": "none" if result == "passed" else "inspect-evidence",
+                   "reviewerAttestation": reviewer_attestation, "evidenceScope": scope}
+    try:
+        matrix._stored_observation(observation, requirements)
+        matrix._verify_evidence(root, path, digest)
+        matrix._verify_artifacts_readonly(root, artifacts, requirement["platform"], source, scope)
+    except (matrix.NativeAcceptanceMatrixError, OSError, ValueError) as error:
+        raise NativeScenarioWindowsError("windows_matrix_record_invalid") from error
+    return observation
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Print one matrix observation for review: the record input on stdout, the row review on stderr. Records nothing."""
+    parser = argparse.ArgumentParser(prog="native_scenario_windows")
+    actions = parser.add_subparsers(dest="action", required=True)
+    observe = actions.add_parser("matrix-observation")
+    observe.add_argument("--root", default=str(Path(__file__).resolve().parents[1]))
+    observe.add_argument("--requirement", required=True)
+    observe.add_argument("--reviewer-attestation", required=True)
+    observe.add_argument("correlation", nargs="+")
+    options = parser.parse_args(argv)
+    try:
+        print(json.dumps(matrix_review(options.root, options.requirement, options.correlation), indent=2, sort_keys=True), file=sys.stderr)
+        observation = matrix_observation(options.root, options.requirement, options.correlation, options.reviewer_attestation)
+    except NativeScenarioWindowsError as error:
+        print(json.dumps({"refused": str(error)}), file=sys.stderr)
+        return 1
+    print(json.dumps(observation, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

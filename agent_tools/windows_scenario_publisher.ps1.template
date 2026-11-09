@@ -284,6 +284,87 @@ function Read-Bounded([string]$path,[int]$limit) {
   return [Convert]::ToBase64String($b)
  }finally{$f.Dispose()}
 }
+function New-DocumentInput {
+ # The document rows' large routing document, made here from a fixed recipe in the product's own export form.
+ # The job recomputes its bytes from the same recipe and refuses any other digest.
+ $b=[Text.StringBuilder]::new(11534336)
+ [void]$b.Append("{`n  `"type`": `"vpn_control_routing_rules`",`n  `"version`": 7,`n  `"exported_at`": `"2026-01-01T00:00:00Z`",`n  `"rules`": {`n    `"ignore_rules`": false,`n    `"block_quic_udp_443`": false,`n    `"proxy_packages`": [],`n    `"direct_domain_suffixes`": [")
+ for($n=0;$n -lt 320000;$n++){if($n -gt 0){[void]$b.Append(',')};[void]$b.Append("`n      `"d").Append($n.ToString('D7',[Globalization.CultureInfo]::InvariantCulture)).Append('.document.invalid"')}
+ [void]$b.Append("`n    ]`n  }`n}")
+ return (New-GeneratedFile (Join-Path $m.workspace 'document-large-routing.json') ([Text.Encoding]::ASCII.GetBytes($b.ToString())))
+}
+function Get-EndpointFacts([string]$path) {
+ # Directory metadata only: SYSTEM is not in the owner-private descriptor's DACL and never opens it.
+ $i=[IO.FileInfo]::new($path);$i.Refresh();if(-not $i.Exists){return [ordered]@{exists=$false}}
+ $c=[Globalization.CultureInfo]::InvariantCulture
+ return [ordered]@{exists=$true;sizeBytes=[long]$i.Length;creationFileTime=$i.CreationTimeUtc.ToFileTimeUtc().ToString($c);lastWriteFileTime=$i.LastWriteTimeUtc.ToFileTimeUtc().ToString($c)}
+}
+function Is-TaskAbsent($record){
+ # The run template's own proof that a task is absent: HRESULT 0x80070002 anywhere in the chain, nothing else.
+ $x=$record.Exception
+ while($null -ne $x){if($x.HResult -eq -2147024894){return $true};$x=$x.InnerException}
+ return $false
+}
+function Invoke-PrincipalProbe {
+ # One LOCAL SERVICE task, a different real principal, opens the live owner-private endpoint for reading. It always
+ # replies, and the reply says what may still exist: as in the run template, registered is set before registering and
+ # ran before Run. Only a task that never ran, or whose instance was seen to end, is deleted, and it counts as deleted
+ # only when it then reads absent. Anything else stays exactly as it is: the job ends unknown and the next probe refuses.
+ $endpoint=$m.operationRoot+'\workspace\activation.port';$name='VpnControlPrincipalProbe-'+$m.operationId
+ $results=Join-Path $m.workspace 'principal-probe';$result=Join-Path $results 'probe.json'
+ $task=[ordered]@{registered=$false;principalSid=$null;logonType=$null;ran=$false;ended=$false;finished=$false;lastTaskResult=$null;deleted=$false;resultRemoved=$false;code=$null}
+ $before=$null;$probe=$null;$created=$false;$folder=$null
+ try{
+  if($m.probeSource -isnot [string] -or $m.probeSource.Length -gt 8192 -or $m.probeSource.Contains([string][char]0)){throw 'PUB_PROBE_SOURCE'}
+  $found=@(Get-ChildItem -LiteralPath $m.operationRoot -File -Force|Where-Object {$_.Name -cmatch '\Aevent-[0-9]{6}-document-principal-window\.json\z'})
+  if($found.Count -ne 1){throw 'PUB_PROBE_WINDOW'}
+  $window=[Text.UTF8Encoding]::new($false,$true).GetString([Convert]::FromBase64String((Read-Bounded $found[0].FullName 65536)))|ConvertFrom-Json
+  if($window.operationId -cne $m.operationId -or [string]$window.value.endpoint.path -cne $endpoint){throw 'PUB_PROBE_WINDOW'}
+  $expected=[ordered]@{exists=$true;sizeBytes=[long]$window.value.endpoint.nativeIdentity.sizeBytes;creationFileTime=[string]$window.value.endpoint.nativeIdentity.creationFileTime;lastWriteFileTime=[string]$window.value.endpoint.nativeIdentity.lastWriteFileTime}
+  $service=New-Object -ComObject 'Schedule.Service';$service.Connect();$folder=$service.GetFolder('\')
+  if(@($folder.GetTasks(1)|Where-Object {$_.Name -clike 'VpnControlPrincipalProbe-*'}).Count -ne 0){throw 'PUB_PROBE_TASK_LEFTOVER'}
+  $before=Get-EndpointFacts $endpoint
+  if(($before|ConvertTo-Json -Compress) -cne ($expected|ConvertTo-Json -Compress)){throw 'PUB_PROBE_ENDPOINT_NOT_LIVE'}
+  [VpnCreateArtifactDirectory]::CreateExclusive($results,'O:SYG:SYD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;LS)');$created=$true
+  # A probe that throws, or a result write that fails, still leaves the refusal it caused when it can.
+  $wrapper="`$ErrorActionPreference='Stop';`$p='"+$result+"';`$e=[Text.UTF8Encoding]::new(`$false);try{[IO.File]::WriteAllText(`$p,(& {"+$m.probeSource+"}|Out-String).Trim(),`$e)}catch{[IO.File]::WriteAllText(`$p,(@{state='refused';code=([string]`$_.Exception.Message)}|ConvertTo-Json -Compress),`$e)}"
+  $account=([Security.Principal.SecurityIdentifier]'S-1-5-19').Translate([Security.Principal.NTAccount]).Value
+  $definition=$service.NewTask(0);$definition.Settings.ExecutionTimeLimit='PT2M';$definition.Settings.MultipleInstances=2
+  $definition.Settings.DisallowStartIfOnBatteries=$false;$definition.Settings.StopIfGoingOnBatteries=$false
+  $definition.Principal.LogonType=5;$definition.Principal.RunLevel=0
+  $action=$definition.Actions.Create(0);$action.Path='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+  $action.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand '+[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($wrapper))
+  $task.registered=$true
+  $registered=$folder.RegisterTaskDefinition($name,$definition,2,$account,$null,5,$null)
+  $uid=[string]$registered.Definition.Principal.UserId
+  $task.principalSid=$(if($uid -cmatch '\AS-1-'){([Security.Principal.SecurityIdentifier]$uid).Value}else{([Security.Principal.NTAccount]$uid).Translate([Security.Principal.SecurityIdentifier]).Value})
+  $task.logonType=[int]$registered.Definition.Principal.LogonType
+  if($task.principalSid -cne 'S-1-5-19' -or $task.logonType -ne 5){throw 'PUB_PROBE_PRINCIPAL'}
+  $task.ran=$true
+  $null=$registered.Run($null)
+  # Ended: no instance, and either its result is written or the task reports a final result, not
+  # ready (0x41300), running (0x41301), never run (0x41303) or queued (0x41325).
+  $until=[DateTime]::UtcNow.AddSeconds(120)
+  while(-not $task.ended -and [DateTime]::UtcNow -lt $until){
+   $task.ended=([int]$registered.GetInstances(0).Count -eq 0 -and ([IO.File]::Exists($result) -or @(267008,267009,267011,267045) -notcontains [int]$registered.LastTaskResult))
+   if(-not $task.ended){[Threading.Thread]::Sleep(250)}
+  }
+  if($task.ended){
+   $task.lastTaskResult=[int]$registered.LastTaskResult;$task.finished=[IO.File]::Exists($result)
+   if($task.finished){$probe=[Text.UTF8Encoding]::new($false,$true).GetString([Convert]::FromBase64String((Read-Bounded $result 8192)))|ConvertFrom-Json}
+  }
+ }catch{$task.code=[string]$_.Exception.Message;if($task.code.Length -gt 200){$task.code=$task.code.Substring(0,200)}}
+ if($task.registered -and ($task.ended -or -not $task.ran)){
+  try{$folder.DeleteTask($name,0)}catch{}
+  try{$null=$folder.GetTask($name)}catch{$task.deleted=(Is-TaskAbsent $_)}
+ }
+ if($created -and (-not $task.registered -or $task.deleted)){
+  try{if([IO.File]::Exists($result)){[IO.File]::Delete($result)};[IO.Directory]::Delete($results)}catch{}
+  $task.resultRemoved=-not [IO.Directory]::Exists($results)
+ }
+ $after=$null;try{$after=Get-EndpointFacts $endpoint}catch{$after=$null}
+ return [ordered]@{endpoint=$endpoint;before=$before;after=$after;task=$task;probe=$probe}
+}
 function Get-CollectorObservation {
  # Read only: the task's first two events, every child intent and start, the stdout of closed children and,
  # once asked, the product workspace's not-started disposition file with its pin.
@@ -328,6 +409,13 @@ try{
   }
   [VpnCreateArtifactDirectory]::CreateExclusive($m.operationRoot,(Directory-Sddl '0x1301bf'))
   [void](Hold-Directory $m.operationRoot $null);Assert-OwnedAcl $m.operationRoot $true 0x1301bf
+  # Closed one-level folders the ordinary owner uses under its own root, such as a document row's spool parent.
+  foreach($name in @($m.rootSubfolders)){
+   if($null -eq $name){continue};if([string]$name -cnotmatch '\A[a-z][a-z0-9-]{0,31}\z'){throw 'PUB_SUBFOLDER_NAME'}
+   $folder=Join-Path $m.operationRoot $name
+   [VpnCreateArtifactDirectory]::CreateExclusive($folder,(Directory-Sddl '0x1301bf'))
+   [void](Hold-Directory $folder $null);Assert-OwnedAcl $folder $true 0x1301bf
+  }
   $r=[ordered]@{schemaVersion=1;state='ordinary-publication-initialized';operationId=$m.operationId;workspace=$m.workspace;operationRoot=$m.operationRoot;createNew=$true;directoryPins=@($pins|ForEach-Object {$_.record})}
  }elseif($m.action -ceq 'endpoints'){
   $created=[Collections.Generic.List[object]]::new()
@@ -353,6 +441,8 @@ try{
  }elseif($m.action -ceq 'evidence-zip'){$r=New-EvidenceZip ([int]$m.evidenceNumber)
  }elseif($m.action -ceq 'fixture-tls'){$r=[ordered]@{schemaVersion=1;state='ordinary-fixture-tls';operationId=$m.operationId;tls=(New-FixtureTls)}
  }elseif($m.action -ceq 'seal-readonly'){$r=[ordered]@{schemaVersion=1;state='ordinary-sealed-readonly';operationId=$m.operationId;filePin=(Seal-ReadOnly $m.sealPath)}
+ }elseif($m.action -ceq 'document-input'){$r=[ordered]@{schemaVersion=1;state='ordinary-document-input';operationId=$m.operationId;filePin=(New-DocumentInput)}
+ }elseif($m.action -ceq 'principal-probe'){$r=[ordered]@{schemaVersion=1;state='ordinary-principal-probe';operationId=$m.operationId;principal=(Invoke-PrincipalProbe)}
  }elseif($m.action -ceq 'collector-observe'){$r=[ordered]@{schemaVersion=1;state='ordinary-collector-observation';operationId=$m.operationId;observation=(Get-CollectorObservation)}
  }else{throw 'PUB_ACTION'}
  Assert-Context

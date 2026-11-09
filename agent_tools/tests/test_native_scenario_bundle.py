@@ -65,9 +65,10 @@ class NativeScenarioBundleTest(unittest.TestCase):
         self.windows_repository()
         destination = self.root.parent / "windows"
         receipt = prepare_bundle(self.root, "windows-scenario-driver", destination)
-        # The reboot rows added fifteen sources, the proxy rows four more and the public-update rows seventeen,
-        # two levels deep under scripts/integration among them.
-        self.assertEqual(49, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
+        # The reboot rows added fifteen sources, the proxy rows four more, the public-update rows seventeen, the
+        # document rows five, the scoped-TUN rows two, the SSH import row its case module and the responsive row
+        # three, two levels deep under scripts/integration among them.
+        self.assertEqual(60, len(verify_bundle(self.root, destination, receipt["manifestSha256"])["files"]))
         self.assertEqual({"agent_tools", "scripts", MANIFEST_NAME}, {item.name for item in destination.iterdir()})
         self.assertTrue((destination / "scripts/integration/socks_http_fixture.py").is_file(), "a nested script moves with its top-level name")
         self.assertEqual([], list(self.root.parent.glob("native-scenario-stage-*")))

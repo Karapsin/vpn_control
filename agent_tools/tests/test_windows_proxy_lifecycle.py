@@ -13,7 +13,7 @@ import hashlib
 import json
 import ntpath
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import random
 import re
 import shutil
@@ -32,6 +32,7 @@ from agent_tools import windows_ordinary_dedicated_driver as dedicated_driver
 from agent_tools import windows_runtime_branch_cases as branch_cases
 from agent_tools import windows_scenario_proxy as proxy
 from agent_tools.tests import product_link_schemes as product_links
+from agent_tools import windows_tun_stages as tun_stages
 from scripts import windows_broker_fixture_observer as observer_module
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -952,16 +953,88 @@ class KnownFailureTests(unittest.TestCase):
         self.assertNotIn(("public", "quit"), owner.calls)
         self.assertEqual(1, owner.calls.count("find-best"))
 
-    def test_a_tun_row_keeps_its_own_known_ends(self):
-        owner, cases, _ = driver_world(self, "find-best-success", fail_at="tun-finish")
+    CLEAN = {"brokers": [], "runtimes": [], "stages": [], "routes": []}
+
+    def tun_world(self, begin, finish, *, fail_at=None, found=None):
+        """The real settled and closing of windows_tun_stages over a declared census; begin and finish are the row's."""
+        owner, cases, _ = driver_world(self, "find-best-success", fail_at=fail_at)
         owner.inputs["variant"] = "restart-deny"
-        owner.inputs["tun"] = {"schemaVersion": 1, "variant": "restart-deny"}
+        runtime = owner.inputs["runtime"]
+        runtime["workspace"] = str(self.root / "workspace")
+        owner.inputs["tun"] = {"schemaVersion": 1, "variant": "restart-deny", "installedAdmissionArtifactId": "installed",
+                               "ordinaryContextArtifactId": "context", "runtimeConfigPath": str(PureWindowsPath(runtime["workspace"]) / "runtime-config.json")}
         owner.inputs["modules"]["tun"] = owner.source("agent_tools/windows_tun_stages.py")
+
+        def closing(owner_, lease, observer):
+            owner.calls.append("tun-closing")
+            with mock.patch.object(tun_stages, "census", lambda inputs, observer, exclude=(): dict(found or self.CLEAN)):
+                return tun_stages.closing(owner_, lease, observer)
         owner.modules["_owned_dedicated_tun_stages"] = types.SimpleNamespace(
-            begin=lambda *args: "lease", finish=lambda *args: (_ for _ in ()).throw(AssertionError("tun-finish")))
+            begin=lambda *args: begin(owner), finish=finish, closing=closing, settled=lambda lease: tun_stages.settled(lease))
+        return owner, cases
+
+    def tun_lease(self, owner):
+        """A lease as windows_tun_stages.begin leaves it: the restart asked for, its operation open until finish."""
+        owner.tun_operation_requested = True
+        lease = {"inputs": {"variant": "restart-deny", "programData": "C:\\ProgramData"}, "baseline": dict(self.CLEAN), "finished": False}
+        owner.tun_operation_leases = [lease]
+        return lease
+
+    @staticmethod
+    def denied(owner, lease, *args):
+        """What the real finish leaves for a denial: the product's own final CANCELLED, A intact, the lease finished."""
+        lease["finished"] = True
+        return {"terminal": {"code": "CANCELLED"}, "status": {}, "nativeRecord": None}
+
+    def test_a_tun_row_keeps_its_own_known_ends(self):
+        owner, cases = self.tun_world(self.tun_lease, lambda *args: (_ for _ in ()).throw(AssertionError("tun-finish")))
         with self.assertRaisesRegex(AssertionError, "tun-finish"):
             self.run_driver(owner, cases)
         self.assertNotIn(("public", "off"), owner.calls)
+        self.assertNotIn("tun-closing", owner.calls, "an unknown TUN outcome parks with nothing closed or read as clean")
+
+    def test_a_failure_once_the_denial_settled_closes_with_its_census_after_the_off(self):
+        # The denial's final code was read with A intact: nothing of the TUN is open, so a later oracle closes like any other.
+        owner, cases = self.tun_world(self.tun_lease, self.denied, fail_at="off-and-disconnected-serve")
+        self.assertEqual(1, self.run_driver(owner, cases))
+        calls = owner.calls
+        self.assertLess(calls.index("off-and-disconnected-serve"), calls.index(("public", "off")))
+        self.assertLess(calls.index(("public", "off")), calls.index("tun-closing"), "the census reads after the off, as in a pass")
+        self.assertLess(calls.index("tun-closing"), calls.index("stop-fixture"))
+        self.assertLess(calls.index("stop-fixture"), calls.index(("public", "quit")))
+        self.assertEqual(1, calls.count("tun-closing"))
+        self.assertTrue(owner.tun_operation_leases[0]["closed"])
+        self.assertTrue(all(child.terminal is not None for child in owner.children))
+        failures = [call[1] for call in calls if isinstance(call, tuple) and call[0] == "dedicated-proxy-lifecycle-known-failure"]
+        self.assertEqual(["original-operation-unexpected-terminal"], [value["reason"] for value in failures])
+
+    def test_a_failure_after_the_census_closes_without_reading_it_again(self):
+        owner, cases = self.tun_world(self.tun_lease, self.denied, fail_at="stop-fixture")
+        self.assertEqual(1, self.run_driver(owner, cases))
+        self.assertEqual(1, owner.calls.count("tun-closing"))
+        self.assertIn(("public", "quit"), owner.calls)
+
+    def test_anything_scoped_left_behind_parks_with_the_rest_kept(self):
+        # In a pass the census follows the explicit off; after a known failure it follows the closing's own off.
+        left = dict(self.CLEAN, routes=[["GetIpAddrTable", "172.19.250.1"]])
+        for fail_at in (None, "off-and-disconnected-serve"):
+            with self.subTest(fail_at=fail_at):
+                owner, cases = self.tun_world(self.tun_lease, self.denied, fail_at=fail_at, found=left)
+                with self.assertRaisesRegex(Parked, "^dedicated-tun-scoped-state-left-behind$"):
+                    self.run_driver(owner, cases)
+                self.assertEqual(1, owner.calls.count("tun-closing"))
+                self.assertNotIn("stop-fixture", owner.calls)
+                self.assertNotIn(("public", "quit"), owner.calls)
+
+    def test_a_tun_refusal_before_its_request_closes_the_proxy_like_any_known_failure(self):
+        # Nothing was asked of the broker yet: a stray broker or another active state refuses, and only the row's proxy runs.
+        owner, cases = self.tun_world(lambda owner: (_ for _ in ()).throw(AssertionError("scoped-tun-clean-before-row")),
+                                      lambda *args: self.fail("finish after a refused begin"))
+        self.assertEqual(1, self.run_driver(owner, cases))
+        self.assertEqual([("public", "status"), ("public", "off"), ("public", "status"), ("public", "quit")],
+                         [call for call in owner.calls if isinstance(call, tuple) and call[0] == "public"])
+        self.assertNotIn("tun-closing", owner.calls)
+        self.assertTrue(all(child.terminal is not None for child in owner.children))
 
     @staticmethod
     def lease(owner):
@@ -1082,7 +1155,10 @@ class StartFailureTests(WorldBase):
                               "observer": owner.source("scripts/windows_broker_fixture_observer.py")}}
         if variant in dedicated_driver.TUN_VARIANTS:
             inputs["modules"]["tun"] = owner.source("agent_tools/windows_tun_stages.py")
-            inputs["tun"] = {"schemaVersion": 1, "variant": variant}
+            # The driver joins a TUN row's inputs to the runtime's own install, context and product config before any start.
+            inputs["tun"] = {"schemaVersion": 1, "variant": variant, "installedAdmissionArtifactId": runtime["installedAdmissionArtifactId"],
+                             "ordinaryContextArtifactId": runtime["ordinaryContextArtifactId"],
+                             "runtimeConfigPath": str(PureWindowsPath(workspace) / "runtime-config.json")}
         return types.SimpleNamespace(LIFECYCLE_INPUTS=inputs, SYSTEM_COLLECTOR_CLOSE_HOLD=None)
 
     def run_driver(self, variant="find-best-success", harness=None):

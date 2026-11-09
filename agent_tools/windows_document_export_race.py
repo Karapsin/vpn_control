@@ -47,8 +47,12 @@ def is_export_read(value, module, owner):
     if not value.startswith(module.TRANSFER):
         return False
     envelope = module.load(value[len(module.TRANSFER):])
-    need(set(envelope) == {"owner", "context", "kind", "command"}
-         and envelope["owner"] == owner, "document-relay-transfer-binding")
+    need(type(envelope) is dict and set(envelope) == {"owner", "context", "kind", "command"}
+         and envelope["owner"] == owner and type(envelope["command"]) is str, "document-relay-transfer-binding")
+    # The product's own order (DesktopControlDocuments.handle): an acknowledgement is the plain
+    # text ack:<id>:<sha256>, never a JSON command, and it is relayed unchanged like any other frame.
+    if envelope["command"].startswith("ack:"):
+        return False
     command = module.load(envelope["command"])
     return envelope["kind"] == "export" and command.get("action") == "read" and command.get("offset") == 0
 

@@ -10,6 +10,9 @@ from pathlib import Path
 import time
 import uuid
 
+# The error types of this module's own finite document- codes; the harness's AssertionError is known too.
+KNOWN_ERRORS = ("RuntimeError", "Refused")
+
 
 def need(value, code):
     if not value:
@@ -86,6 +89,7 @@ def run(owner, workspace, identity, harness):
          "document-same-disconnected-installed-owner")
     native_endpoint_pin = windows.observe_endpoint(owner, workspace, identity)
     client = windows.admit_endpoint(owner, workspace, identity, native_endpoint_pin, module)
+    owner.document_client = client  # Its open sockets decide whether a later failure is known.
     # Transfer capacity must be tested before deliberately retaining an expiry
     # entry or a mutable-spool failure. No active borrowed entries are evicted.
     windows.resource_capacity(owner, client, module, contexts[8:41])
@@ -106,17 +110,34 @@ def run(owner, workspace, identity, harness):
         contexts[48], routing, original["configurationRevision"])
     need(loss["state"] == "known-final" and loss["result"]["code"] == "OK",
          "document-loss-remains-unreconciled-no-replay")
-    windows.private_export_no_overwrite(owner, workspace, identity,
-        Path(owner.root) / "document export 東京.json", harness)
+    exported = Path(owner.root) / "document export 東京.json"
+    windows.private_export_no_overwrite(owner, workspace, identity, exported, harness)
+    readback = windows.Held(owner.native, exported)
+    exported_bytes = readback.bytes(64 * 1024 * 1024)
+    readback.close()
+    need(semantic_routing(exported_bytes) == semantic_routing(data), "document-large-import-readback")
+    owner.event("document-large-import-readback", {"inputSha256": source.record["sha256"], "inputBytes": len(data),
+        "exportBytes": len(exported_bytes), "semanticComparison": "type-version-rules-excluding-exported_at"})
     race.run_public_export_race(owner, workspace, identity, client, module, windows, harness, "parent")
     race.run_public_export_race(owner, workspace, identity, client, module, windows, harness, "destination")
+    # The serve's endpoint stays live through the idle wait below: the job's SYSTEM program runs one
+    # LOCAL SERVICE probe against it in this window (a different real principal), and the owner never waits on it.
+    owner.event("document-principal-window", {"endpoint": {k: native_endpoint_pin[k] for k in ("path", "nativeIdentity", "sha256")},
+        "controllerId": identity, "differentPrincipal": "S-1-5-19", "ownerWaits": False})
+    # At least a minute of this quiet wait follows the window, so the job's 5 s status polls see it
+    # among the last sixteen events however long the transfers above took.
+    window_until = time.monotonic_ns() + 60_000_000_000
+
+    def idle():
+        return (time.monotonic_ns() - expiry["startedMonotonicNs"] < 301_000_000_000
+                or time.monotonic_ns() < window_until)
     # Real idle time, not clock injection, is used against the installed store.
-    while time.monotonic_ns() - expiry["startedMonotonicNs"] < 301_000_000_000:
+    while idle():
         owner.event("document-expiry-pending", {"context": expiry["context"],
             "elapsedSeconds": (time.monotonic_ns() - expiry["startedMonotonicNs"]) // 1_000_000_000,
             "originalEntryRetained": True, "replayAllowed": False})
         for _ in range(30):
-            if time.monotonic_ns() - expiry["startedMonotonicNs"] >= 301_000_000_000: break
+            if not idle(): break
             time.sleep(1)
     module.finish_expiry(client, expiry)
     current = harness["envelope"](owner.invoke(workspace, "--json", "status"))
@@ -159,3 +180,49 @@ def run(owner, workspace, identity, harness):
         "productProtobufStoreOnWindows": False}
     owner.event("document-authenticated-segment-finished", outcome)
     return outcome
+
+
+def semantic_routing(raw):
+    """A routing document as the product compares it: type, version and rules, never exported_at."""
+    value = json.loads(raw.decode("utf-8", "strict"))
+    need(type(value) is dict and value.get("type") == "vpn_control_routing_rules" and type(value.get("rules")) is dict,
+         "document-routing-document-shape")
+    return {key: value.get(key) for key in ("type", "version", "rules")}
+
+
+def _held_open(value):
+    return value is not None and not getattr(value, "closed", True)
+
+
+def close_known(owner, error, serve, identity):
+    """A finite document oracle failure with nothing in flight: release this module's observers, name the owner.
+
+    Known only for the harness's AssertionError on a completed public call and this module's own
+    document- codes raised as RuntimeError (need) or the client's Refused, after every exchange
+    closed its socket, every export relay stopped, and the persistence
+    and spool fixtures were released. Their own failures already park inside them. The open
+    endpoint and workspace observers are closed so the product removes its descriptor on quit.
+    Returns (serve, identity) for the owner's closing, or None to keep every original for the park.
+    """
+    try:
+        client = getattr(owner, "document_client", None)
+        relays = getattr(owner, "document_export_relays", [])
+        fixtures = [*(getattr(owner, "document_persistence_fault", None) or {}).values(),
+                    *(value for key, value in (getattr(owner, "document_spool_fault", None) or {}).items()
+                      if key in ("root", "payload", "writer"))]
+        name = type(error).__name__
+        if (not (name == "AssertionError" or name in KNOWN_ERRORS and str(error).startswith("document-"))
+                or (client is not None and (client.original_sockets or (client.last_exchange or {}).get("secondary")))
+                or any(not relay.stop.is_set() or relay.connections or relay.thread.is_alive() for relay in relays)
+                or any(_held_open(value) for value in fixtures)
+                or _held_open(getattr(owner, "document_export_descriptor", None))):
+            return None
+        for name in ("document_endpoint_handle", "document_workspace_handle"):
+            held = getattr(owner, name, None)
+            if _held_open(held):
+                held.close()
+        owner.event("document-known-failure-observers-released", {"reason": str(error)[:120],
+            "socketsOpen": 0, "relaysOpen": 0, "fixturesHeld": 0, "replayAllowed": False})
+        return serve, identity
+    except Exception as closing:
+        owner.park("document-known-failure-release-unknown", closing)

@@ -3,6 +3,10 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
+## Unreleased
+
+- Add the Windows document, cold-document, responsive, scoped-TUN deny and SSH import scenario rows and the matrix observation that records them.
+
 ## 2.2.17 - 2026-11-09
 
 - Add the first Windows scenario family (Python and MSI setup, packaged CLI smoke, disconnected CLI and streaming rows) and the closed Windows UAC decision action.

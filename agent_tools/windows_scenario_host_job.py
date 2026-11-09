@@ -146,6 +146,25 @@ _EVENT_NAME = re.compile(r"event-[0-9]{6}-([a-z0-9-]{1,80})\.json\Z")
 AUTOSTART_INTENTS = frozenset({"autostart-public-toggle-intent", "autostart-highest-fixture-intent", "product-autostart-start-intent"})
 # readiness-reboot's own VM-root journal: the only reboot submitter's record of the reboot a postboot follows.
 _RECOVERY_INTENT = re.compile(r"readiness-recovery-([0-9a-f]{64})\.intent\.json\Z")
+# The document rows: the shared worker's document-acceptance action, a large routing document the publisher makes
+# in the guest from a fixed recipe, one spool parent under the operation root, and, for the acceptance row, one
+# LOCAL SERVICE probe the job runs while the owner's serve holds its endpoint.
+DOCUMENT_INPUT_LEAF = "document-large-routing.json"
+DOCUMENT_INPUT_ENTRIES = 320000
+DOCUMENT_TEMP = "document-temp"
+DOCUMENT_CONTEXTS = 52
+DOCUMENT_COLD_INPUT = "document-cold-input.json"
+DOCUMENT_LEGACY_INPUT = "document-legacy-newline.json"
+# windows-document-responsive: the same action with the responsive case module and its responsiveWork, two transfer
+# contexts of its own, and the work fixture's self-signed localhost certificate, key and trust store, made here as the
+# proxy rows' are (windows_scenario_proxy.material) and published beside the bundle files.
+DOCUMENT_RESPONSIVE = "responsive"
+RESPONSIVE_CONTEXTS = 2
+RESPONSIVE_TLS = (("certificate", "document-work-localhost.pem"), ("privateKey", "document-work-localhost.key"),
+                  ("trustStore", "document-work-trust.jks"))
+PRINCIPAL_WINDOW = "document-principal-window"
+LOCAL_SERVICE = "S-1-5-19"
+_DOMAIN_BOUNDARY = re.compile(r"[,\n\r\t ]")
 _ROUND_TRIP_UTC = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]{1,7}))?Z\Z")
 
 
@@ -355,6 +374,9 @@ def layout(operation, context, row):
              "allowance": workspace + "\\" + ALLOWANCE_LEAF}
     if row.get("reboot"):
         paths["file:trafficInput"] = workspace + "\\" + TRAFFIC_LEAF
+    if row.get("document"):
+        paths.update(documentInput=workspace + "\\" + DOCUMENT_INPUT_LEAF, documentTemp=root + "\\" + DOCUMENT_TEMP,
+                     principalEndpoint=root + "\\workspace\\activation.port")
     for relative, role, _ in row["guestFiles"]:
         # A file of an update bundle subfolder keeps that one folder, where its siblings expect it; any other file,
         # scripts/integration ones included, sits flat in the workspace.
@@ -499,6 +521,113 @@ def traffic_input():
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
 
 
+def document_input(entries=DOCUMENT_INPUT_ENTRIES):
+    """The document rows' large routing document, byte for byte what the publisher's document-input action writes:
+    the product's own export form (RoutingRulesTransfer.writeExport) with a fixed timestamp and unique suffixes."""
+    head = ('{\n  "type": "vpn_control_routing_rules",\n  "version": 7,\n  "exported_at": "2026-01-01T00:00:00Z",\n  "rules": {\n'
+            '    "ignore_rules": false,\n    "block_quic_udp_443": false,\n    "proxy_packages": [],\n    "direct_domain_suffixes": [')
+    body = ",".join('\n      "d%07d.document.invalid"' % number for number in range(entries))
+    return (head + body + "\n    ]\n  }\n}").encode("ascii")
+
+
+def normalized_suffixes(values):
+    """RoutingRulesCharacterImport's domain entries: each string split at , LF CR tab and space, trimmed, a leading
+    *. and outer dots removed, lower-cased, first occurrence kept. A legacy newline-joined entry is many domains."""
+    found = {}
+    for value in values:
+        for token in _DOMAIN_BOUNDARY.split(value):
+            token = token.strip()
+            token = token[2:] if token.startswith("*.") else token
+            token = token.lstrip(".").rstrip(".").lower()
+            if token:
+                found.setdefault(token, None)
+    return list(found)
+
+
+LEGACY_ENTRIES = ("alpha.legacy.invalid\nbeta.legacy.invalid\r\ngamma.legacy.invalid",
+                  "*.Delta.Legacy.Invalid\tepsilon.legacy.invalid,zeta.legacy.invalid",
+                  "alpha.legacy.invalid", " .eta.legacy.invalid. ", "\n\r\n")
+
+
+def legacy_newline_input():
+    """A routing document whose domain entries are legacy joined lists, as an older store kept them in one string."""
+    value = {"type": "vpn_control_routing_rules", "version": 7, "rules": {"ignore_rules": False, "block_quic_udp_443": False,
+             "proxy_packages": [], "direct_domain_suffixes": list(LEGACY_ENTRIES)}}
+    return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("ascii")
+
+
+def routing_semantic_sha256(suffixes):
+    """What the product's export of these rules is compared by: type, version and rules, never exported_at."""
+    value = {"type": "vpn_control_routing_rules", "version": 7, "rules": {"ignore_rules": False, "block_quic_udp_443": False,
+             "proxy_packages": [], "direct_domain_suffixes": list(suffixes)}}
+    return _sha(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii"))
+
+
+def document_contexts(operation):
+    """The 52 reserved transfer contexts the document action names: canonical, distinct and never the operation's own."""
+    return [str(uuid.uuid5(uuid.UUID(operation), "windows-document-context-%02d" % number)) for number in range(DOCUMENT_CONTEXTS)]
+
+
+def responsive_contexts(operation):
+    """The responsive cases' own two transfer contexts: canonical, distinct, and never one of the 52 or the operation."""
+    return [str(uuid.uuid5(uuid.UUID(operation), "windows-document-responsive-context-%d" % number)) for number in range(RESPONSIVE_CONTEXTS)]
+
+
+def document_inputs(row, paths, product, operation):
+    """The one document-acceptance request a row may run: its fixed case module, the three document modules, the
+    public harness, the guest-made large document and the spool parent; nothing else. The responsive row adds its
+    responsiveWork: the responsive cases, the runtime stages, the work fixture and its two producers, the TLS files
+    this job made, two contexts of its own and the same large document."""
+    inputs = {"cliPath": paths["cli"], "workspace": paths["productWorkspace"], "productVersion": product["productVersion"],
+              "casesPath": paths["file:cases"], "harnessPath": paths["file:harness"],
+              "documentAcceptance": {"schemaVersion": 1, "clientPath": paths["file:client"], "windowsPath": paths["file:windows"],
+                                     "racePath": paths["file:race"], "largeRoutingInputPath": paths["documentInput"],
+                                     "spoolTempParent": paths["documentTemp"], "contexts": document_contexts(operation),
+                                     "endpointPinBeforeObservation": None}}
+    if row["document"]["variant"] == DOCUMENT_RESPONSIVE:
+        inputs["responsiveWork"] = {
+            "schemaVersion": 1, "casesPath": paths["file:responsive"], "runtimeStagesPath": paths["file:runtime"],
+            "fixtureWorkerPath": paths["file:workFixture"], "socksSourcePath": paths["file:socks"], "httpsSourcePath": paths["file:https"],
+            "certificatePath": paths["file:certificate"], "privateKeyPath": paths["file:privateKey"],
+            "trustStorePath": paths["file:trustStore"], "contexts": responsive_contexts(operation),
+            "largeRoutingInputPath": paths["documentInput"]}
+    return inputs
+
+
+def cold_input(row, paths, operation):
+    """The cold module's literal input: its variant, the document it imports and the digest its export must have."""
+    variant = row["document"]["variant"]
+    if variant == "legacy-newline":
+        source, suffixes = paths["file:legacyInput"], normalized_suffixes(LEGACY_ENTRIES)
+    else:
+        source, suffixes = paths["documentInput"], ["d%07d.document.invalid" % number for number in range(DOCUMENT_INPUT_ENTRIES)]
+    value = {"schemaVersion": 1, "variant": variant, "operationId": operation, "routingInputPath": source,
+             "expectedSemanticSha256": routing_semantic_sha256(suffixes), "expectedSuffixCount": len(suffixes)}
+    return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+
+
+def principal_outcome(found):
+    """The receipt's principal part from one principal-probe reply, or UNKNOWN while its task may still exist.
+
+    The publisher sets registered before registering and ran before Run, so a reply naming either must show
+    the task read absent, and a task that ran must also have been seen to end. One that never ran was refused.
+    """
+    task, result = found["task"], found["probe"]
+    registered, ran = task.get("registered") is True, task.get("ran") is True
+    if (registered or ran) and (task.get("deleted") is not True or ran and task.get("ended") is not True):
+        raise Unknown("principal_probe_task_open")
+    if not ran:
+        return {"state": "refused"}
+    live = found.get("before") == found.get("after") and (found.get("before") or {}).get("exists") is True
+    denied = (type(result) is dict and result.get("state") == "observed" and result.get("actualSid") == LOCAL_SERVICE
+              and result.get("accessDenied") is True and result.get("credentialOpened") is False and result.get("win32Error") == 5
+              and result.get("credentialBytesRead") == 0 and task.get("principalSid") == LOCAL_SERVICE and task.get("logonType") == 5)
+    reason = None if denied and live and task.get("resultRemoved") is True else (
+        "window_closed" if not live else "result_missing" if result is None else "not_denied" if not denied else "result_left")
+    return {"state": "observed" if reason is None else "failed", "reason": reason,
+            "principalSid": task.get("principalSid"), "win32Error": result.get("win32Error") if type(result) is dict else None}
+
+
 def boot_filetime(text):
     """A guest boot as readiness reports it, LastBootUpTime in UTC round-trip form, as the FILETIME the context program reads."""
     found = _ROUND_TRIP_UTC.fullmatch(text) if isinstance(text, str) else None
@@ -613,10 +742,12 @@ def product_declaration(op, machine, context, paths, hashes, events, scenario):
     return declaration, name
 
 
-def worker_inputs(row, paths, product, *, product_code=None, runtime_authority=None, preboot=None):
+def worker_inputs(row, paths, product, *, product_code=None, runtime_authority=None, preboot=None, operation=None):
     """The one worker request a row may run. casesPath and qualificationArgv come only from here."""
     if row.get("reboot"):
         return reboot_inputs(row, paths, product, runtime_authority=runtime_authority, preboot=preboot)
+    if row.get("document"):
+        return document_inputs(row, paths, product, operation)
     action = row["workerAction"]
     if action in {"msi-install", "msi-reset"}:
         inputs = {"msiPath": paths["file:package"], "installerLogPath": paths["msiLog"]}
@@ -783,6 +914,8 @@ class Job:
         self.collected = {}
         self.target_install = self.update_pins = self.harness_pin = self.administrator_sid = None
         self.fixture_file = self.fixture_fingerprint = self.certificate_sha256 = None
+        self.document = self.row.get("document")
+        self.principal = None  # The LOCAL SERVICE probe of the acceptance row: None until claimed, then its outcome.
 
     # QGA and journal helpers.
     def _keep(self, relative, raw):
@@ -1200,7 +1333,8 @@ class Job:
     def stage_context(self):
         guest = self._load("readiness_windows_guest")
         native = fragments(self._bundle_source(OWNER_SOURCE), self._load("windows_artifact_transfer"))["NATIVE"]
-        administrator = self.plan["administrator"] if self.update else None
+        # An update or TUN row reads the SID of the account its prompt would be approved with.
+        administrator = self.plan["administrator"] if self.update or self.row.get("tun") else None
         terminal, _ = self.guest_program("context", self._rendered(lambda: context_source(guest, self.plan["user"], native, administrator)))
         try:
             value = decode_stdout(terminal)
@@ -1249,7 +1383,8 @@ class Job:
                                                    sort_keys=True) + "\n").encode())
 
     # Stage 3.
-    def _publisher(self, label, action, **fields):
+    def _publisher(self, label, action, *, unknown=None, **fields):
+        """One SYSTEM publisher program. An action whose effect may outlive a failed program names its UNKNOWN code."""
         emitter = self._load("windows_artifact_transfer")
         m = {"schemaVersion": 1, "action": action, "operationId": self.op, "ordinarySid": self.context["ordinarySid"],
              "kernelBootIdentifier": self.context["bootIdentifier"], "systemToken": self.system_token,
@@ -1264,9 +1399,9 @@ class Job:
             limit = MAX_STDOUT_BYTES if action in {"read-pins", "read-directories", "list-tree", "collector-observe"} else PUBLISHER_OUTPUT_BYTES
             return wrap_output(emitter._boot_bound(template, self.raw_context), limit)
         terminal, pid = self.guest_program(label, self._rendered(render))
-        return self._protocol(label, terminal, pid, m)
+        return self._protocol(label, terminal, pid, m, unknown)
 
-    def _protocol(self, label, terminal, pid, m):
+    def _protocol(self, label, terminal, pid, m, unknown=None):
         emitter = self._load("windows_artifact_transfer")
         try:
             value = emitter.decode_guest_result({"transport": "inline"}, decode_stdout(terminal), self.raw_context, pid)
@@ -1278,6 +1413,9 @@ class Job:
                 raise ValueError("publisher_result_context")
             return value, required
         except (ValueError, TypeError, KeyError):
+            # Without its reply, such a program may have left what it made; only the boot prelude's refusal ran nothing.
+            if unknown is not None and not refused_before_effects(terminal):
+                raise Unknown(unknown) from None
             raise KnownFailure("publisher_refused:" + token(label) + self._publisher_code(terminal)) from None
 
     def _publisher_code(self, terminal):
@@ -1318,8 +1456,12 @@ class Job:
         subfolders = [name for name, rights in folders if rights == "0x1200a9"]
         private = [name for name, rights in folders if rights == "FA"]
         fields = {"privateSubfolders": private} if private else {}
+        roots = list((self.document or {}).get("rootSubfolders", ()))
+        if roots:
+            fields["rootSubfolders"] = roots
         value, required = self._publisher("publish-initialize", "initialize", existingDirectories=existing, subfolders=subfolders, **fields)
-        expected = [*existing, self.workspace, *(self.workspace + "\\" + name for name in subfolders + private), self.operation_root]
+        expected = [*existing, self.workspace, *(self.workspace + "\\" + name for name in subfolders + private), self.operation_root,
+                    *(self.operation_root + "\\" + name for name in roots)]
         pins = value.get("directoryPins")
         try:
             if (set(value) != required | {"workspace", "operationRoot", "createNew", "directoryPins"}
@@ -1332,6 +1474,7 @@ class Job:
             by_path = {pin["path"]: pin for pin in pins}
             if (by_path[self.workspace]["security"] not in self._directory_security("0x1200a9")
                     or by_path[self.operation_root]["security"] not in self._directory_security("0x1301bf")
+                    or any(by_path[self.operation_root + "\\" + name]["security"] not in self._directory_security("0x1301bf") for name in roots)
                     or any(by_path[self.workspace + "\\" + name]["security"] not in self._directory_security(rights) for name, rights in folders)):
                 raise ValueError("publisher_owned_root_security")
         except (ValueError, TypeError, KeyError, AttributeError):
@@ -1461,10 +1604,12 @@ class Job:
 
     def _pin_bound(self, trees):
         """The worker request holds the most pins of a row: its fixed pins and every tree, counted before any tree pin."""
-        # An update row adds its fixture receipt and package, three TLS files and the harness.
+        # An update row adds its fixture receipt and package, three TLS files and the harness; a document row the
+        # document the publisher makes in the guest, which joins self.generated only after this bound.
         files = (len(self.read_pins) + sum(1 for _, role, _ in self.row["guestFiles"] if role != "owner")
                  + int("package" in self.file_pins) + len(self.generated) + int(self.prior_preboot is not None)
-                 + len(self.row.get("generated", ())) + len(self.row.get("extracted", ())) + (6 if self.update else 0))
+                 + len(self.row.get("generated", ())) + len(self.row.get("extracted", ())) + (6 if self.update else 0)
+                 + int(bool(self.document) and "documentInput" not in self.generated))
         directories = len(self.directory_pins) + 2 * int(self.prior_preboot is not None)
         for root, listing in trees:
             tree_files, tree_directories = self._tree_paths(root, listing)
@@ -1633,6 +1778,8 @@ class Job:
                     self._reboot_pins(installed)
             if self.row.get("proxy"):
                 self._proxy_files()
+            if self.document:
+                self._document_files()
         if (self.row.get("package") or {}).get("role") == "basePackage":
             self.msi = self._msi_properties()
             self.registered = self._registration("publish-registration")
@@ -1790,9 +1937,14 @@ class Job:
                       "context": "windows-context-" + _sha(planner.data(self.context)),
                       "fixture": "proxy-fixture-" + self.plan["files"]["agent_tools/windows_lifecycle_runtime_fixture_worker.py"]["sha256"],
                       "source": "sha256-" + self.plan["bundleHash"]}
+        # A TUN row's stage inputs: this context's administrator SID, this operation's one UAC decision and the TUN
+        # collector source the pinned contract names. None of them comes from a caller.
+        tun = None if not self.row.get("tun") else {
+            "administratorSid": self.administrator_sid, "decisionId": decision_id(self.op),
+            "collectorSourceSha256": self._load("windows_system_collector/collector_contract").COLLECTORS["tun"]}
         try:
             generated = proxy.files(variant, operation=self.op, paths=self.paths, runtime_sha256=runtime["sha256"],
-                                    source_sha=self.plan["product"]["sourceSha"], admissions=admissions, tls=tls)
+                                    source_sha=self.plan["product"]["sourceSha"], admissions=admissions, tls=tls, tun=tun)
         except (ValueError, KeyError):
             raise KnownFailure("proxy_files_unbuilt") from None
         if [role for role, _ in self.row["generated"]] != list(generated):
@@ -1800,6 +1952,41 @@ class Job:
         targets = [{"role": role, "path": self.paths["file:" + role], "bytes": len(raw), "sha256": _sha(raw), "kind": "data", "raw": raw}
                    for role, raw in generated.items()]
         self.file_pins.update(self._publish_files(targets, "publish-proxy"))
+
+    def _document_files(self):
+        """The guest-made large document, checked against the job's own recipe, a cold row's literal inputs, and the
+        responsive row's TLS material, made here as the proxy rows' is: the key lives only in this job's memory and the
+        guest workspace."""
+        planner = self._load("windows_ordinary_task")
+        value, required = self._publisher("publish-document-input", "document-input")
+        pin = value.get("filePin")
+        try:
+            if set(value) != required | {"filePin"} or value["state"] != "ordinary-document-input":
+                raise ValueError("publisher_document_receipt")
+            planner.validate_pin(pin)
+            if pin["path"] != self.paths["documentInput"] or pin["security"] not in self._file_security():
+                raise ValueError("publisher_document_receipt")
+        except (ValueError, TypeError, KeyError):
+            raise KnownFailure("publisher_document_receipt") from None
+        expected = document_input()
+        if pin["sha256"] != _sha(expected) or pin["nativeIdentity"]["sizeBytes"] != len(expected):
+            raise KnownFailure("document_input_recipe")
+        self.file_pins["documentInput"], self.generated["documentInput"] = pin, True
+        variant = self.document["variant"]
+        if variant is None:
+            return
+        targets = []
+        if variant == DOCUMENT_RESPONSIVE:
+            tls = self._load("windows_scenario_proxy").material(secrets.randbits, time.time())
+            targets += [(role, tls[role]) for role, _ in RESPONSIVE_TLS]
+        else:
+            if variant == "legacy-newline":
+                targets.append(("legacyInput", legacy_newline_input()))
+            targets.append(("coldInput", cold_input(self.row, self.paths, self.op)))
+        if [role for role, _ in self.row["generated"]] != [role for role, _ in targets]:
+            raise KnownFailure("document_files_not_the_row")
+        self.file_pins.update(self._publish_files([{"role": role, "path": self.paths["file:" + role], "bytes": len(raw), "sha256": _sha(raw),
+                                                    "kind": "data", "raw": raw} for role, raw in targets], "publish-document"))
 
     # Stage 4.
     def stage_requests(self):
@@ -1859,7 +2046,7 @@ class Job:
                 closed = update_worker_inputs(paths, self.plan["product"])
             else:
                 closed = worker_inputs(row, paths, self.plan.get("product"), product_code=code, runtime_authority=self.runtime_authority,
-                                       preboot=self.prior_preboot)
+                                       preboot=self.prior_preboot, operation=self.op)
             worker_common = planner.common_request(self.context, self.op, self.operation_root, worker_files, worker_directories,
                                                    worker_trees, limit, runtime)
             requests["worker"] = planner.worker_request(worker_common, row["workerAction"], **closed)
@@ -1906,6 +2093,39 @@ class Job:
         os.replace(temporary, self.data / "status.json")
         if self.update and serve and value.get("parkedFiles") == []:
             self._serve_needs(value.get("nativeNeeds"))
+        if ((self.document or {}).get("principalProbe") and serve and self.principal is None and value.get("parkedFiles") == []
+                and type(value.get("pendingKinds")) is list and PRINCIPAL_WINDOW in value["pendingKinds"]):
+            self._principal_probe()
+
+    def _principal_probe(self):
+        """One LOCAL SERVICE task opens the live owner-private endpoint; the owner never waits on it.
+
+        A probe the job cannot render never reaches the guest, and the publisher's boot refusal runs
+        nothing: both are refused. Otherwise only the publisher's reply tells what may still exist, so a
+        program that ends without it, like a reply that leaves a task possibly registered, is UNKNOWN.
+        """
+        self.principal = {"state": "claimed"}  # Claimed before any program, so a later poll never serves it twice.
+        try:
+            probe = self._load("windows_document_native").principal_refusal_powershell(
+                self.paths["principalEndpoint"], self.context["ordinarySid"], LOCAL_SERVICE, 0)
+        except Exception:  # Nothing reached the guest: this row's probe is refused, the run goes on.
+            self.principal = {"state": "refused"}
+            return
+        try:
+            value, required = self._publisher("document-principal-probe", "principal-probe", unknown="principal_probe_unreadable",
+                                              probeSource=probe)
+        except KnownFailure:
+            self.principal = {"state": "refused"}
+            return
+        found = value.get("principal")
+        try:
+            if (set(value) != required | {"principal"} or value["state"] != "ordinary-principal-probe" or type(found) is not dict
+                    or type(found["task"]) is not dict or "probe" not in found):
+                raise ValueError("shape")
+            self._keep("principal-probe.json", (json.dumps(found, sort_keys=True) + "\n").encode())
+        except (ValueError, TypeError, KeyError):
+            raise Unknown("principal_probe_unreadable") from None
+        self.principal = principal_outcome(found)
 
     def _uac_decision(self):
         """The decision's own input terminal in the VM root, read only; None until it exists."""
@@ -2309,6 +2529,10 @@ class Job:
             raise Unknown(state if state in _OPEN_RUN_STATES else "system_run_state_unrecognized")
         self._check_task(value)
         self.task_checked = True
+        if (self.document or {}).get("principalProbe"):
+            state = (self.principal or {}).get("state")
+            if state != "observed":
+                raise KnownFailure("document_principal_" + ("unserved" if state is None else state if state != "failed" else self.principal["reason"]))
 
     def _check_task(self, value):
         def need(condition, code):
@@ -2417,6 +2641,8 @@ class Job:
                                         task=self.task, evidence=self.evidence, guest_programs=self.programs,
                                         installed=self.installed, python=self.python_facts, windows=windows, preboot=self.preboot,
                                         reboot=self._reboot_receipt(code) if self.row.get("reboot") else None)
+                if self.document:
+                    receipt["document"] = {"variant": self.document["variant"], "principal": self.principal}
                 if self.update:
                     receipt["update"] = {"variant": self.update["variant"],
                                          "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],

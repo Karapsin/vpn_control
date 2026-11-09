@@ -767,9 +767,11 @@ four actions. `host` names the VM host and `environment` the deployment UUID, an
 `native_scenario_windows.RECIPES`: `windows-ordinary-qualification`, a harmless
 component row with no product and no package; three setup rows
 (`windows-python-install`, `windows-msi-base-install`, `windows-msi-base-reset`);
-three product rows (`windows-packaged-cli-smoke`, `windows-disconnected-cli-config`,
-`windows-streaming-client-interrupt`); and the reboot, proxy-lifecycle and thirteen
-`windows-public-update.<variant>` rows below. A name lands only with its case
+four product rows (`windows-packaged-cli-smoke`, `windows-disconnected-cli-config`,
+its variant `windows-disconnected-cli-config.ssh-import-routing` and
+`windows-streaming-client-interrupt`); and the reboot, proxy-lifecycle, four
+`windows-scoped-tun.<variant>`, thirteen `windows-public-update.<variant>` and six
+document rows below. A name lands only with its case
 module; the package rows have offline regressions, and their first native runs are
 still their direct proof. The adapter refuses before any journal unless the name,
 host, deployment, artifact keys and every bundle byte match this checkout, so a
@@ -834,8 +836,9 @@ registration with that product code and version, installed in the install folder
 count equal to the recorded ones (`installed_tree_differs`). The installed
 application is pinned only in the worker request, so an MSI may replace its files.
 The Python and installed trees are listed first and counted with the request's
-fixed pins: above 4,096 file or 1,024 directory pins the row ends with the known
-failure `worker_pin_bound`, before any tree pin and before any task.
+fixed pins, a document row's guest-made document among them: above 4,096 file or
+1,024 directory pins the row ends with the known failure `worker_pin_bound`,
+before any tree pin and before any task.
 
 `windows-python-install` refuses when the Python tree already exists
 (`python_tree_present`). `windows-msi-base-install` refuses when any vpn-control
@@ -935,8 +938,9 @@ The order on one VM: package and install setup, then `.pre`, collect,
 current-boot declaration (see `readiness_windows_idle.ALLOWANCE`); `consent.exe`, the
 CLI and every undeclared process still block. Known gaps: the GUI tray, natively
 unproven process shapes and the start of the task from a standard user are first
-native contact; `windows-document-responsive` has its tools but no row yet, because
-its TLS certificate, key and trust store have no producer.
+native contact. `windows-document-responsive`, whose TLS certificate, key and trust
+store had no producer, is now a document row (below): the job makes them as it
+does the proxy rows'.
 
 `windows-proxy-lifecycle.<variant>` has one row per variant
 `windows_ordinary_dedicated_driver.py` accepts for that action: `gui-pending`,
@@ -980,6 +984,95 @@ so a longer GUI sequence also ends a known failure. The fixture's lease is
 1,800 s, the most the runtime stages allow, while the row deadline is 3,600 s: a
 row whose work after its fixture started outlives the lease loses its fixture and
 ends a known failure.
+
+`windows-scoped-tun.<variant>` has one row per variant `windows_tun_stages.py`
+accepts: `restart-deny`, `restart-grant`, `find-best-deny` and `find-best-grant`.
+Each is a `windows-proxy-lifecycle` row with the same inputs (bundle manifest,
+`targetPackage`, a `scenarioInput` naming its `priorInstall`) plus the TUN stages; a
+grant row also carries `windows_tun_direct_sampler.py` and its input. The stages'
+inputs come only from the job: the context stage reads the SID of the deployment's
+administrator account (`expectedApprovingAdminSid`), `uacDecisionId` is
+`windows_uac_decision.decision_id` of the operation, which the stages recompute,
+`collectorSourceSha256` is the TUN collector source the pinned collector contract
+names, and the install, context and runtime-config references are the runtime's
+own, which the driver joins. The paused lane's frame handoff
+(`bind_reviewed_decision`) is gone. The row starts active proxy A on the in-guest
+loopback fixture, records what it would leave behind (broker processes, product
+runtimes it did not start, `ProgramData\vpn-control-vpn-*` stages and IPv4 routes
+or addresses on the generated TUN subnet `172.19.250.0/30`), refuses if a broker or
+TUN route already exists, makes Owned B pending in VPN mode without touching A,
+then asks for an `--async` restart or Find Best. The owner publishes
+`scoped-tun-awaiting-current-input` once; `scenario-status` then reports
+`uac-pending:vpn-broker:<decision>`.
+
+Admitted: `restart-deny`, for `denial-preserves-active-a`. The scripted client
+answers `windows-uac-decision` with prompt `vpn-broker` and decision `deny` (one Esc).
+The product must end the operation `CANCELLED` or `PERMISSION_DENIED` with A's
+runtime, location, mode and config bytes unchanged, B still selected and pending,
+and the owner and runtime unelevated. The row then turns A off, and a closing
+census, read as the ordinary user, requires no `vpn-control-vpn-broker.exe`
+process, no `sing-box.exe` it started, no new private stage and no TUN route or
+address. Collect passes the row only with the decision's own input terminal (deny,
+prompt closed). Known ends:
+a refusal before the request (a broker or TUN route already present, a changed
+A) closes the proxy and ends 1. So does a final refusal of the request itself from
+the row's own controller (an exit 1 or 130 code such as `BUSY`, or the job's own end
+before its reply) and, after the request, a final code the variant does not expect,
+such as a refused preparation before any prompt; each only with A intact, B still
+selected and a clean census. Once the operation has settled (the denial's own code,
+or one of those known ends), a later oracle failure closes like any proxy known
+failure, with the census right after the closing's off. A census that finds anything
+left behind parks with everything else kept. Anything else parks and ends UNKNOWN: a
+lost, transport or foreign reply to the request, or any failure while the operation
+is still open.
+
+Refused before any journal: `restart-grant` and `find-best-grant` with
+`windows_scenario_tun_grant_unproven`. The approved broker runs elevated as the
+approving administrator, so only the TUN SYSTEM collector's ready and off records
+(`windows_tun_native_observer`) prove its image, its SID and its exact child. No
+stage of this job discovers the broker and its runtime for that collector's
+request, the pinned chain takes its request file only as `O:SYD:P` while files this
+route publishes read back `O:SYD:PAI`, and the dedicated driver has no TUN close
+hold or record handoff. So `scoped-elevation`, `scoped-uac-tun-traffic`, the VPN half
+of `exact-child-stop`, the TUN fault half of `prepare-commit-recovery` and the TUN
+config halves of `generated-custom-config` and `large-config` have no admitted row.
+The stages already close a grant that brought no TUN up (its prompt expired, or a
+final code it does not expect) by the census alone, and the driver holds a grant's
+direct sampler at its reviewed digest, beside itself.
+`find-best-deny` is refused with `windows_scenario_tun_find_best_unproven`: Find
+Best validates every candidate before it prepares the broker, so its prompt follows
+the pending event by an unmeasured time the decision's 30 s gate may not cover, and
+the decision table has no find-best row. Admission treats any `-deny` name as a deny
+row, so without a decision row and its join it stays refused even if that refusal
+is lifted.
+
+The direct sampler is the TUN traffic tool: plain HTTP to `198.18.0.1:80` with no
+SOCKS step, under the ordinary token, answered by the row's own loopback upstream
+(`socks_http_fixture.py`, through the runtime fixture). The stages run it only
+between a grant's ready record and its off. Without the TUN that address would
+leave the guest, so it is never a negative control.
+
+Two scoped-VPN scenarios still have no row. `dns-ws-ssh-cache-resources` must show,
+with an approved broker: the captured config keeps `path` only in URL contexts
+(`https` and `h3` DNS servers, `ws`, `http` and `httpupgrade` transports, the `http`
+outbound; anything else is refused by the ordinary capture before any prompt);
+`experimental.cache_file` runs from the broker's protected per-job stage
+(`ProgramData\vpn-control-vpn-<job>`, its correlation journal in the workspace
+before the prompt) and is published back to the user's path after off; a managed
+SSH key reaches the broker inline while the persisted runtime config keeps
+`private_key_path` and never gains `private_key`; and captured resources, such as
+a local rule set, are what the runtime reads even after the original changes, with
+every stage removed after off. The guest cannot host an SSH endpoint without a
+download or a Windows feature (OpenSSH Server is an optional feature, and Python's
+standard library has no SSH server), so SSH traffic cannot be proved there.
+`pipe-storage-races` must show, with an approved broker: a stage path the ordinary
+user creates first (predictable only for a job with a mutable resource, from its
+pre-prompt correlation journal) is refused with `CONFLICT`, never deleted,
+followed or written, with A and pending B intact; and during a session the broker's
+single-instance pipe refuses a second same-user client (`ERROR_PIPE_BUSY`) and a
+same-name instance (`ERROR_ACCESS_DENIED`). A connect-first racer before admission
+is not deterministic, so the peer-PID checks stay with the product's own tests. Both
+need the same approved-broker evidence as the grant rows, so neither has a name yet.
 
 `windows-public-update.<variant>` runs one `update_cases` variant through the
 dedicated driver as the ordinary user. The update server, its CONNECT proxy and
@@ -1053,6 +1146,290 @@ install record has no package code and no installed inventory, so the job refuse
 it before its fence (`prior_install_other_package`, `target_install_other_package`,
 `target_install_inventory`).
 
+The document rows run the shared worker's `document-acceptance` action on the
+installed package: `windows-document-acceptance` with
+`windows_document_cli_cases.py`, and `windows-document-cold.<variant>` with
+`windows_document_cold_cases.py`. Their inputs are those of every product row:
+the bundle manifest, `targetPackage`, and a `scenarioInput` whose `priorInstall`
+names the passed `windows-msi-base-install` or `windows-msi-base-reset` of that
+package on this VM; the same refusals apply before any journal and in the job.
+All of them can share one installed base. The job publishes the case module, the
+client, Windows and export-race modules and the public harness, creates one spool
+parent, `<operation root>\document-temp`, through the SYSTEM publisher, and names
+52 contexts derived from the operation. The large routing document (11,200,239
+bytes, 320,000 unique suffixes in the product's own export form) is made in the
+guest by the publisher's `document-input` action from a fixed recipe. The job
+computes the same bytes and refuses any other digest with the known failure
+`document_input_recipe` before any task. No document bytes are tracked.
+
+`windows-document-acceptance` covers exact retry and committed no-op, retained
+results, response loss, failed persistence, the transfer capacity, protocol
+adversaries (forged ID, hash and length, wrong owner, context and kind, invalid
+UTF-8 and split Unicode), the private no-overwrite export and its large-import
+readback, both export races, idle expiry and the mutated spool. For
+wrong-principal-owner-context-kind it also probes a second real principal. While
+its serve holds the owner-private `activation.port`, the owner journals
+`document-principal-window` and begins its 301 s idle wait. Between two status
+polls the job runs the publisher's `principal-probe` action once. It registers a
+task for LOCAL SERVICE (`S-1-5-19`, logon type 5), which runs
+`windows_document_native.principal_refusal_powershell` and must get access
+denied (Win32 error 5) when it opens the descriptor for reading. The descriptor's
+directory facts must equal the owner's pin before and after. The action always
+replies with what may still exist: as in the run template, the task counts as
+registered before `RegisterTaskDefinition` and as run before `Run`. Only a task
+that never ran, or whose instance was seen to end (no instance, and its result
+written or a final `LastTaskResult`), is deleted, and it counts as deleted only
+when it then reads absent (`0x80070002`); its result folder goes with it. A probe
+task left by an earlier run refuses the action before anything is created. The
+owner never waits on the probe, and keeps the window open for at least a minute
+of its quiet wait so that a 5 s status poll sees it. A row whose owner passed
+still fails unless the probe was observed: `document_principal_unserved`,
+`_refused` (no task ran: also when the job cannot render the probe, or the
+publisher's boot check refused before any effect), `_not_denied`,
+`_window_closed`, `_result_missing` (the task ended without a readable result)
+or `_result_left`. The matrix reads only `_not_denied` as the product's verdict
+(`failed-principal`); the others are the harness's. A probe program that ends without its reply, a reply that
+cannot be read, and a task that may still be registered or running end the job
+UNKNOWN with the fence open (`principal_probe_unreadable`,
+`principal_probe_task_open`). The receipt's `document` part holds the variant and
+the probe's outcome.
+
+The cold variants import one document through the public CLI, export it and
+compare it, then quit the original serve through the same public quit. An
+independent owner then opens the same workspace, and the export is compared
+again. Comparisons use the export's type, version and rules, never `exported_at`,
+against the digest the job computes from the same recipe and places beside the
+module in `document-cold-input.json`.
+
+- `cold-reopen` (cold-independent-reopen): the large document, reopened by a new
+  serve.
+- `legacy-newline` (protobuf-newline-compatibility): a small document whose
+  domain entries are legacy LF-, CRLF-, tab-, comma- and space-joined lists, which
+  the product splits and normalizes as `RoutingRulesCharacterImport` does.
+- `gui-owner`: the installed GUI reopens the workspace and starts its own
+  controller, and the CLI imports and exports the large document through that
+  GUI-started owner. It needs no UI input. It is only the CLI half of
+  gui-cli-transfer: the GUI's own file picker import and export have no tool, so
+  gui-cli-transfer stays open and a passed `gui-owner` never counts for it.
+- `cache-bytes` is refused before any journal
+  (`windows_scenario_document_cache_fixture_unavailable`). The committed
+  subscription cache is filled only by a refresh from a subscription source, and no
+  in-guest subscription fixture serves a document row yet.
+
+A known case failure in these rows closes what the owner started and ends 1. The
+harness's oracle failure and the modules' own `document-` codes count only after
+every client socket closed, every export relay stopped and the persistence and
+spool fixtures were released. Their own failures park inside them. The case module
+releases its endpoint and workspace observers, so the product removes its
+descriptor at the quit. A reopened serve is quit like the original. On a known
+failure and on a pass alike, a GUI-started owner is ended by one journaled quit
+and must exit within 120 s, or the owner parks (`document-gui-owner-exit-unknown`).
+Anything else parks as before. Evidence is that of every product row:
+`installed-package` only from a passed, unstopped run whose registration,
+installed tree and `--version` held.
+
+Known before any native run: the publisher's two new actions, the LOCAL SERVICE
+task (registration, run, its end as `GetInstances` and `LastTaskResult` report
+it, its deletion read back as absent, the descriptor DACL's denial and directory
+facts read as SYSTEM), the product's spool admission of a SYSTEM-created parent,
+the 11 MB transfers and the GUI owner's exit and endpoint release are proved only
+offline. The probe function's own control flow runs offline under PowerShell
+against a fake scheduler (`PrincipalProbeProgramTests`), never against Windows.
+
+`windows-document-responsive` runs the same `document-acceptance` action with
+`windows_document_responsive_cli_cases.py` and the request's `responsiveWork`: the
+responsive cases, the runtime stages they borrow, the gated HTTPS work fixture and
+its SOCKS and HTTPS producers (each pinned by name and digest in the planner and
+the owner), the fixture's TLS files, two transfer contexts of its own and the same
+guest-made large document. Its inputs and refusals are those of the other document
+rows, and it can share their installed base. After the document passed its recipe
+check and before any task, the job makes the fixture's self-signed `localhost`
+certificate, key and JKS trust store with the proxy rows' producer
+(`windows_scenario_proxy.material`); the key lives only in the job's memory and the
+guest workspace, as theirs does. Before `serve`, the owner starts the work fixture
+as its child, and only `serve` gets the scoped trust options. For each of two owned
+dormant subscriptions served by that fixture, the owner holds a reference to the
+large document while a refresh runs: an `--async` refresh whose status, wait
+timeout and cancel end `CANCELLED` (responsive-status-cancel), and a synchronous
+refresh whose own client is terminated once while the owner's work goes on to `OK`
+and caches its location (cli-disconnect-long-work). The row has no principal probe,
+and its receipt's `document` part is `{variant: responsive, principal: null}`.
+Evidence is that of every product row. The responsive cases define no
+`close_known`, so any failure in them parks the owner (inside the long-work cases as
+`document-responsive-longwork-unqualified-originals-retained`), the job ends UNKNOWN
+and the clone is blocked. Run it only after the document rows that close their
+known failures, on a clone that can be spared. Known before any native run: the work
+fixture under the ordinary user, the product's trust of the generated store through
+the scoped JVM options, the refreshes through the gated fixture, the cancel's
+`CANCELLED` with exit 130, the terminated client's exit and the owner's surviving
+work are proved only offline (`test_windows_document_responsive`; the job's request
+and refusals in `test_windows_scenario_host_job.ResponsiveFamilyTests`).
+
+`windows-disconnected-cli-config.ssh-import-routing` is a closed variant of the
+disconnected row: the same owner action, harness, inputs and evidence rule, with its
+own case module, `agent_tools/windows_ssh_import_routing_cases.py`, run on the
+installed CLI under the ordinary token. A reviewed oracle failure closes known and
+ends 1, as in the disconnected row. Its groups, in order:
+
+- `ssh-routing-needs-key`: on a fresh owner `ssh key status` is false, and enabling
+  SSH Routing without a key is refused whole.
+- `ssh-key-import`: a first import commits once; the same key again, JSON and human,
+  is a no-op; a stale revision and another owner epoch answer `CONFLICT`; a bare
+  revision, `--async` and `--secret` are refused by the parser; text that is no key,
+  encrypted PKCS#8 and PEM keys, an empty stdin and a missing file answer
+  `INVALID_ARGUMENT`. No refusal changes the revision or the stored key, and a second
+  key replaces the first through the human renderer. The product's private
+  credential file holds exactly the last accepted key, and no key line appears in
+  `workspace.json`, `settings show`, `logs` or a diagnostics report.
+- `ssh-routing-settings`: with a key, each rule of the SSH Routing truth table (no
+  host key, an unsupported algorithm, a user in the host, port 0, a relay port out
+  of range, a blank user) refuses the whole patch; a scheme, a trailing slash, a
+  comment and a duplicate host key are saved normalized; the same patch again is a
+  no-op; a stale `settings set` answers `CONFLICT`.
+- `routing-import`: an import, JSON and human retries as no-ops, the same three
+  guards, unrecognized, malformed and plain-text documents and an empty stdin
+  refused unchanged, a private file export that never overwrites, raw stdout, and
+  the export imported back as a no-op.
+- `ssh-routing-selection`: two loopback sockets of the worker itself stand for an SSH
+  server and a subscription origin, so all traffic stays in the guest and the
+  owner's child custody is unchanged. With SSH Routing on and no session, a
+  subscription refresh must dial the SSH endpoint (first line `SSH-2.0-`) and never
+  fall back to the origin; with it off, the same refresh must reach the origin (a TLS
+  ClientHello) and not the SSH endpoint. Neither endpoint answers, so both refreshes
+  fail: only the route is proved.
+
+Key material is made in the guest at run time: fresh random bytes in an unencrypted
+OpenSSH ed25519 container that no server trusts, written only into the operation's
+fixture folder, which evidence never collects. No event, assertion message or
+argument carries it, and every reply is checked not to echo it; a product defect that
+echoed it would put only that disposable key in the collected raw streams. Not
+proved by this row: a transfer through a real SSH relay (the image has no SSH server,
+and fixtures never install Windows features) and a positive stdin import (every
+owner child's stdin is empty). Its last event names both as `remainingProcedures`,
+so the matrix maps `ssh-import-routing` to no row: this row alone never passes or
+fails that scenario. Unknown until its first native run: whether the
+runtime's SSH dial reaches a loopback server with `auto_detect_interface`, the
+refresh's failure code and reason, and loopback listeners of the worker and the
+runtime under the guest firewall. Offline, `test_windows_ssh_import_routing_cases`
+drives the module against an in-memory product that answers in the recorded CLI
+shapes, and each modelled product defect stops it with its own reason.
+
+Every Windows job records the public route that started it, before any connection,
+in `.rag_index/native-scenario-windows/<correlationId>/route.json`: `mcp` when the
+driver is the delegate `native_scenario_ssh` builds for `mcp_server`, `direct` when a
+script builds `NativeScenarioWindowsDriver` itself. A job started before this marker
+has none and counts as neither twin.
+
+`native_scenario_windows.matrix_observation(root, requirementId, correlationIds,
+reviewerAttestation)` turns collected rows into the exact input of
+`vm_workflow matrix-record`; it records nothing, and the attestation is always the
+coordinator's argument. `MATRIX_SCENARIOS` is the one reviewed table, built from
+design.md adapter steps 4-8 with the names the code accepts: all 48 Windows
+scenarios and the 16 Windows document scenarios. A scenario whose design rows are not
+all built, or whose only row declares procedures still to do, maps to `()` and stays
+missing: the TUN grant (`TUN(approve)`), fault and config rows (the two grant rows
+exist but are refused at admission), `no-tray-close` and `scheduled-refresh` (the
+dedicated driver refuses both), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
+is refused before any journal), the GUI half of `gui-cli-transfer`
+(`windows-document-cold.gui-owner` is only its CLI half and is named for no
+scenario), the SSH relay transfer and stdin import of `ssh-import-routing`, and
+`windows-visual`, which stays on `visual_platform` and `visual_review`. The other
+document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`) or RSP, with CFG
+where design.md step 8 adds it; the second real principal of
+`wrong-principal-owner-context-kind` is the DOC row's own LOCAL SERVICE probe: a DOC
+run passes only with it observed denied, and one whose probe proved no denial fails
+that scenario alone (`failed-principal`, below). RSP also names `cli-disconnect-long-work` and its part of
+`operation-progress-cancellation`, and `windows-scoped-tun.restart-deny` names
+`denial-preserves-active-a`. A built row proves its part only with a passed run
+through each route, and every row named for a scenario must. The observation reads each journal without collecting, so call
+`scenario-status` for every row first, then it classifies each row:
+
+- `passed`: terminal, collection complete, unstopped, and installed-package by the
+  rule above.
+- `installed-package-unproven`, `stopped`, `refused` (exit 2, no receipt), `setup`,
+  `failed-before-task` (a known failure before the owner's task ran) and
+  `failed-after-task` never count. `failed-after-task` is a known failure of the
+  harness once the task finished: the task journal (`task_events`), the command line
+  read (`task_command_line`), the evidence copy after a passed task (`evidence_*`),
+  a preboot declaration, a task exit other than the owner's own 1, or a LOCAL SERVICE
+  probe the harness did not complete (`document_principal_unserved`, `_refused`,
+  `_window_closed`, `_result_missing`, `_result_left`).
+- `failed`: the owner's own failure, `task_exit_code` with owner and terminal exit
+  code 1, which a case oracle failure ends with; recorded at once. The receipt cannot
+  tell a case oracle from the owner's own precondition, so review the events first.
+- `failed-principal`: a DOC run whose owner passed (owner and terminal exit code 0)
+  and whose LOCAL SERVICE probe then proved no denial of the owner-private endpoint
+  (`document_principal_not_denied`): the product's verdict, recorded at once. It fails
+  `wrong-principal-owner-context-kind` alone (`MATRIX_PRINCIPAL`); for DOC's other
+  scenarios that run never counts. The receipt cannot tell an endpoint the probe
+  opened from a probe that ran under another identity or met another error, so review
+  the job's `principal-probe.json` first.
+- `unknown`: the job's own UNKNOWN exit (`job_exit_unknown:*`), the durable job's
+  final UNKNOWNs (`original_owner_missing`, `boot_changed` after a host reboot,
+  `output_overflow`) or a collection over its bound, recorded at once.
+
+Anything else, a running job, another unknown reason such as a missed read, or a
+terminal job not yet collected, refuses the whole observation as
+`windows_matrix_row_unsettled`. Every product row must name one source, version,
+frozen set and target package (`windows_matrix_mixed_source`,
+`windows_matrix_mixed_package`). A failed or unknown row yields a `failed` or
+`unknown` observation of its own scenarios (a `failed-principal` run, of
+`wrong-principal-owner-context-kind` alone), the rest listed in `missingEvidence`, with
+`inspect-evidence` next. A `passed` observation needs every applicable scenario passed
+(`windows_matrix_incomplete:<open>` otherwise), is refused while an unretracted passed
+record of that requirement and source exists, and is refused as
+`windows_matrix_unrecorded_outcome:<correlationId>` while any settled `failed` or
+`unknown` run of a counted row on that target package (for
+`document-persistence-transfer` also a `failed-principal` one), named or not, is missing from
+every recorded observation of the requirement and source. So a failure or an unknown
+is recorded before the pass, which then stands beside it as `conflicting` until a
+reviewer retracts one with a reason. A run still unsettled has no outcome yet and does
+not hold the pass. `document-persistence-transfer` is `limited`, with
+`android-48m-heap` missing. The evidence is create-only at
+`.rag_index/native-acceptance-evidence/<requirement>-<sha12>.json`, published as the
+ledger publishes a receipt (a synced temporary file linked under its name, so an
+interrupted write leaves nothing there): each row's classification, route, receipt
+SHA-256 and failure token, and each scenario's state. `immutableArtifactIDs` are the
+target package and any fixture receipt of the counted rows, verified read-only for
+the platform and the package source; `environment` is `windows-qemu-<deployment>`, or
+`windows-qemu-<n>-clones-<digest>` for several clones. For review,
+`python3 -m agent_tools.native_scenario_windows matrix-observation --requirement <id>
+--reviewer-attestation "<text>" <correlationId>...` prints the observation on stdout
+and the row review on stderr, or exits 1 with a finite refusal, including
+`windows_matrix_ledger_unavailable` for a ledger it cannot read and
+`windows_matrix_evidence_unavailable` for evidence it cannot write; record by passing
+the printed object to `matrix-record`. Today no Windows requirement can pass.
+`windows-installer-lifecycle` maps all eight scenarios, but only to update and reboot
+rows: every update variant it names is refused at admission (the grant and fault
+variants, and `uac-denied` until its collector is proved), and update rows never claim
+installed-package evidence. The other Windows requirements each have an unmapped
+scenario, and the 12 scenarios naming an update row, `operation-progress-cancellation`
+among them, cannot pass either.
+
+`matrix-status` counts a record only when its `originalSourceSHA`, the package's
+source commit, is the checked-out HEAD, or through an equivalence link to HEAD. A link
+exists only for a complete passed full-native record, never for a limited, failed or
+unknown one, and not while any other record of that requirement and source is
+partial, failed or unknown, retracted or not. Between the source and HEAD every
+changed path must be documentation (`README.md`, `docs/`, `agent_docs/`), tests
+(`tests/`, `agent_tools/tests/`) or a noncritical `agent_tools/*.py`, with no
+`package`, `packaging`, `release`, `native`, `runtime`, `workflow`, `build`,
+`gradle` or `fixture` in its path, and every other path byte-identical, with no rename,
+mode change or symlink. A change to `native_scenario_windows.py` or any other
+`*native*` or `*runtime*` tool, to `mcp_server.py`, the matrix or registry modules, a
+JSON manifest such as `affected_agent_test_dependencies.json` or
+`readiness_vm_dispatch.json`, a PowerShell template, `scripts/`, `.gitattributes`,
+`gradle.properties` (a version roll) or product code therefore ends every link. When
+only eligible paths changed, from a clean checkout at HEAD call
+`vm_workflow matrix-equivalence-record` with the receipt ID, the target package's
+frozen `artifactSetId`, `targetSourceSHA` HEAD and an attestation, once per record and
+HEAD, then finish its `requiredCurrentChecks`: exact-SHA CI for HEAD, and the changed
+tool tests when tests or tools changed. Any other change needs a new package built
+from a commit after it, a new frozen set and base install, and every row again
+directly and through MCP; the old records stay historical. A failed or unknown record,
+retracted or not, blocks every later link of its requirement and source, which is why
+`failed` is only the owner's own exit 1 and a harness failure is never recorded.
+
 #### Windows UAC decision
 
 `vm_workflow windows-uac-decision` takes exactly `host`, `environment`,
@@ -1069,8 +1446,9 @@ nothing sent) permits another submit; any other refusal, such as no prompt
 within the 30 s gate, leaves the prompt to expire, and a repeat returns that
 refusal with no packet. A deny row is admitted at `scenario-start` only where
 collect joins the decision's input terminal, because an expired prompt ends as the
-same public `CANCELLED` as Esc. `windows-public-update.uac-denied` has that join
-but is refused today for its collector (above).
+same public `CANCELLED` as Esc. `windows-scoped-tun.restart-deny` is the deny row
+admitted today; `windows-public-update.uac-denied` has that join but is refused for
+its collector (above).
 
 Proof comes before any key: reviewed pixel crops of a QMP frame and a SYSTEM
 census of `consent.exe` (one, System32, signed by Microsoft Windows, parent

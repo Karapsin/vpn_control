@@ -359,16 +359,25 @@ class NativeScenarioExecutionTest(unittest.TestCase):
             "wait-client-loss", "installer-wait-client-loss")}
         self.assertEqual(frozenset({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install",
                                     "windows-msi-base-reset", "windows-packaged-cli-smoke", "windows-disconnected-cli-config",
-                                    "windows-streaming-client-interrupt", "windows-autostart-migration.pre", "windows-autostart-migration.post",
+                                    "windows-streaming-client-interrupt", "windows-disconnected-cli-config.ssh-import-routing",
+                                    "windows-autostart-migration.pre", "windows-autostart-migration.post",
                                     "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post", "windows-reboot-explicit-off.pre",
                                     "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
                                     *("windows-proxy-lifecycle." + variant for variant in (
                                         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated",
-                                        "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")), *updates}),
+                                        "custom", "large", "prepare-failure", "commit-readiness-failure", "sibling-off")),
+                                    *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")),
+                                    *updates,
+                                    "windows-document-acceptance", *("windows-document-cold." + variant for variant in (
+                                        "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),
+                                    "windows-document-responsive"}),
                          execution.WINDOWS_SCENARIOS)
         for name in ("windows-proxy-lifecycle", "windows-proxy-lifecycle.no-tray-close", "windows-proxy-lifecycle.scheduled-refresh",
+                     "windows-disconnected-cli-config.other", "windows-streaming-client-interrupt.ssh-import-routing",
                      "windows-proxy-lifecycle.restart-deny", "windows-public-update.transport-loss", "windows-public-update",
-                     "windows-public-update.public-ready.extra"):
+                     "windows-public-update.public-ready.extra", "windows-document-cold", "windows-document-cold.cache",
+                     "windows-document-acceptance.gui-owner", "windows-document-cold.gui-transfer", "windows-document-responsive.cancel",
+                     "windows-document-acceptance.responsive"):
             changed = self.windows_request()
             changed["scenarioId"] = name
             with self.assertRaisesRegex(execution.ScenarioExecutionError, "allowlisted"):

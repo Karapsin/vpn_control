@@ -1,8 +1,9 @@
 """The durable job's stages, journals and exit rules over one shared fake guest agent.
 
-The fake models the wire, not Windows: nothing here proves a PowerShell behaviour. The
-flat journals are judged by the real host_work classifier, and the real emitter and
-planner build and read every program and request.
+The fake models the wire, not Windows: nothing here proves a PowerShell behaviour on
+Windows. The flat journals are judged by the real host_work classifier, and the real
+emitter and planner build and read every program and request. PrincipalProbeProgramTests
+alone runs one template function's control flow under PowerShell, against a fake scheduler.
 """
 import ast
 import importlib.util
@@ -30,6 +31,7 @@ from agent_tools import native_scenario_bundle as bundles
 from agent_tools import native_scenario_execution as execution
 from agent_tools import native_scenario_windows as driver
 from agent_tools import windows_artifact_transfer as emitter
+from agent_tools import windows_document_native as document_native
 from agent_tools import windows_ordinary_task as planner
 from agent_tools import windows_scenario_host_job as job
 from agent_tools.tests.test_readiness_windows_guest import facts
@@ -57,7 +59,8 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_ordinary_task_owner.ps1", "agent_tools/windows_artifact_transfer.py", "agent_tools/readiness_windows_guest.py",
                 "agent_tools/windows_scenario_publisher.ps1.template", "agent_tools/windows_scenario_system_run.ps1.template",
                 "agent_tools/windows_scenario_qualification_child.ps1", "agent_tools/windows_disconnected_cli_cases.py",
-                "agent_tools/windows_streaming_cli_cases.py", "scripts/test_packaged_cli.py", "scripts/windows_install_admission_diagnostic.py",
+                "agent_tools/windows_streaming_cli_cases.py", "agent_tools/windows_ssh_import_routing_cases.py",
+                "scripts/test_packaged_cli.py", "scripts/windows_install_admission_diagnostic.py",
                 "agent_tools/windows_postboot_source_roles.py", "agent_tools/windows_postboot_action.py", "agent_tools/windows_preboot_action.py",
                 "agent_tools/windows_autostart_reboot.py", "agent_tools/windows_lifecycle_cases.py", "agent_tools/windows_runtime_branch_cases.py",
                 "agent_tools/windows_lifecycle_runtime_stages.py", "scripts/windows_broker_fixture_observer.py",
@@ -67,6 +70,7 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_postboot_startup_actors.ps1",
                 "agent_tools/windows_scenario_proxy.py", "agent_tools/windows_ordinary_dedicated_driver.py",
                 "agent_tools/windows_lifecycle_runtime_fixture_worker.py", "scripts/integration/https_subscription_relay_fixture.py",
+                "agent_tools/windows_tun_stages.py", "agent_tools/windows_tun_direct_sampler.py",
                 "agent_tools/windows_public_updater/update_cases.py", "agent_tools/windows_public_updater/update_receipts.py",
                 "agent_tools/windows_public_updater/update_fixture_server.py", "agent_tools/windows_public_updater/native_collector.py",
                 "scripts/fixture_environment.py", "scripts/macos_packaging_jdk_preflight.py", "scripts/prepare_desktop_update_fixture.py",
@@ -76,7 +80,11 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_system_collector/release_template.ps1",
                 "agent_tools/windows_system_collector/system_collector_worker.py",
                 "agent_tools/windows_system_collector/native_primitives.py", "agent_tools/windows_system_collector/ordinary_task_guard.ps1",
-                "agent_tools/windows_system_collector/system_collector_native.cs")
+                "agent_tools/windows_system_collector/system_collector_native.cs",
+                "agent_tools/windows_document_cli_cases.py", "agent_tools/windows_document_cold_cases.py",
+                "agent_tools/windows_document_client.py", "agent_tools/windows_document_native.py",
+                "agent_tools/windows_document_export_race.py", "agent_tools/windows_document_responsive_cli_cases.py",
+                "agent_tools/windows_document_responsive_cases.py", "agent_tools/windows_document_gated_https_fixture.py")
 PYTHON_ROOT = PROFILE + "\\AppData\\Local\\Programs\\Python\\Python313"
 INSTALLED_ROOT = PROFILE + "\\AppData\\Local\\vpn-control"
 OLD_CODE = "{11111111-2222-4333-8444-555555555555}"
@@ -264,6 +272,7 @@ class FakeQga:
             pins.append(directory(m["workspace"], "0x1200a9"))
             pins.extend(directory(m["workspace"] + "\\" + name, "0x1200a9") for name in m["subfolders"])
             pins.append(directory(m["operationRoot"], "0x1301bf"))
+            pins.extend(directory(m["operationRoot"] + "\\" + name, "0x1301bf") for name in m.get("rootSubfolders", []))
             reply.update(state="ordinary-publication-initialized", workspace=m["workspace"], operationRoot=m["operationRoot"], createNew=True, directoryPins=pins)
         elif action == "endpoints":
             created = []
@@ -1265,6 +1274,11 @@ class SourceTests(Base):
                                       ("initialize", "initialize-update", {"existingDirectories": job.ancestors([instance.workspace, instance.operation_root, job.POWERSHELL_PATH]),
                                                                            "subfolders": [name for name, rights in folders if rights == "0x1200a9"],
                                                                            "privateSubfolders": [name for name, rights in folders if rights == "FA"]}),
+                                      ("initialize", "initialize-document", {"existingDirectories": job.ancestors([instance.workspace, instance.operation_root, job.POWERSHELL_PATH]),
+                                                                             "subfolders": [], "rootSubfolders": [job.DOCUMENT_TEMP]}),
+                                      ("document-input", "document-input", {}),
+                                      ("principal-probe", "principal-probe", {"probeSource": document_native.principal_refusal_powershell(
+                                          instance.operation_root + "\\workspace\\activation.port", SID, job.LOCAL_SERVICE, 0)}),
                                       ("seal-readonly", "seal-readonly", {"sealPath": fixture + "\\content\\packages\\target\\vpn-control-" + "9" * 40 + ".msi"}),
                                       ("fixture-tls", "fixture-tls", {}),
                                       ("collector-observe", "collector-observe", {"childStdoutLabels": ["one-public-update-install"], "readDisposition": True,
@@ -1295,7 +1309,8 @@ class SourceTests(Base):
 
     def test_sources_are_ascii_and_within_the_largest_proven_bound(self):
         sources = self.rendered()
-        self.assertEqual({"context", "initialize", "initialize-update", "seal-readonly", "fixture-tls", "collector-observe", "endpoints", "verify", "read-pins",
+        self.assertEqual({"context", "initialize", "initialize-update", "initialize-document", "seal-readonly", "fixture-tls", "collector-observe",
+                          "document-input", "principal-probe", "endpoints", "verify", "read-pins",
                           "read-directories", "list-tree", "installer-signer", "msi-properties", "msi-registration", "runtime-extract", "evidence", "run"},
                          set(sources))
         for name, source in sources.items():
@@ -1516,7 +1531,8 @@ class FamilyJobTests(FamilyBase):
         self.assertNotIn(job.MSIEXEC_PATH, {pin["path"] for pin in seen["bootstrap"]["filePins"]})
         self.assertEqual([], self.pins_under(seen["bootstrap"], INSTALLED_ROOT))
 
-        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt"):
+        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
+                         "windows-disconnected-cli-config.ssh-import-routing"):
             with self.subTest(scenario=scenario):
                 plan, code, receipt, kinds = self.run_family(scenario, prior=install)
                 self.assertEqual((0, None), (code, receipt["failure"]))
@@ -1534,8 +1550,11 @@ class FamilyJobTests(FamilyBase):
                                       INSTALLED_ROOT + "\\vpn-control-cli.exe", "--expected-version", VERSION], seen["worker"]["qualificationArgv"])
                     self.assertNotIn("casesPath", seen["worker"])
                 else:
-                    self.assertEqual(scenario.removeprefix("windows-"), seen["worker"]["action"])
-                    self.assertEqual(workspace + "\\" + ("windows_disconnected_cli_cases.py" if "disconnected" in scenario else "windows_streaming_cli_cases.py"),
+                    # The SSH row is a variant of the disconnected row: the same owner action, its own case module.
+                    self.assertEqual(scenario.removeprefix("windows-").split(".")[0], seen["worker"]["action"])
+                    self.assertEqual(workspace + "\\" + {"windows-disconnected-cli-config": "windows_disconnected_cli_cases.py",
+                                                         "windows-streaming-client-interrupt": "windows_streaming_cli_cases.py",
+                                                         "windows-disconnected-cli-config.ssh-import-routing": "windows_ssh_import_routing_cases.py"}[scenario],
                                      seen["worker"]["casesPath"])
                     self.assertEqual(root + "\\workspace", seen["worker"]["workspace"])
                     self.assertNotIn("qualificationArgv", seen["worker"])
@@ -1808,7 +1827,8 @@ class WorkerClosedDoorTests(FamilyBase):
         plan, base = self.captured("windows-msi-base-install")
         install = plan["operationId"]
         captures = {"windows-msi-base-install": base}
-        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt", "windows-msi-base-reset"):
+        for scenario in ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt", "windows-msi-base-reset",
+                         "windows-disconnected-cli-config.ssh-import-routing"):
             captures[scenario] = self.captured(scenario, None if scenario.endswith("reset") else install)[1]
         installed_pin = dict(captures["windows-packaged-cli-smoke"][1]["worker"]["filePins"][-1])
 
@@ -1847,6 +1867,10 @@ class WorkerClosedDoorTests(FamilyBase):
             "windows-disconnected-cli-config": {"cases-path": worker(lambda w: w.update(casesPath=w["harnessPath"])),
                                                 "free-argv": worker(lambda w: w.update(qualificationArgv=["cmd.exe"])),
                                                 "workspace": worker(lambda w: w.update(workspace=w["workspace"] + "-other"))},
+            "windows-disconnected-cli-config.ssh-import-routing": {"cases-path": worker(lambda w: w.update(casesPath=w["harnessPath"])),
+                "disconnected-cases": worker(lambda w: w.update(casesPath=w["casesPath"].replace("windows_ssh_import_routing_cases.py",
+                                                                                                  "windows_disconnected_cli_cases.py"))),
+                "action": worker(lambda w: w.update(action="streaming-client-interrupt"))},
             "windows-streaming-client-interrupt": {"cases-path": worker(lambda w: w.update(casesPath=w["harnessPath"])),
                                                    "action": worker(lambda w: w.update(action="disconnected-cli-config"))},
         }
@@ -2373,6 +2397,114 @@ class ProxyFamilyTests(ProxyFamilyBase):
         }
 
 
+class TunQga(FakeQga):
+    """The same peer; a TUN row's context also reads the administrator its prompt would be approved with."""
+
+    def _guest_exec(self, arguments):
+        self.admin_requested = "administratorSid=" in base64.b64decode(arguments["input-data"]).decode("ascii")
+        return super()._guest_exec(arguments)
+
+    def _context(self):
+        terminal = super()._context()
+        if not self.admin_requested:
+            return terminal
+        value = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
+        value["administratorSid"] = TUN_ADMIN_SID
+        return {"exited": True, "exitcode": 0, "out-data": out_data(value)}
+
+
+TUN_ADMIN_SID = "S-1-5-21-1-2-3-500"
+
+
+class HeldPin:
+    """A worker request pin as the dedicated driver holds it: the published bytes, read back."""
+
+    def __init__(self, pin, raw):
+        self.record, self.raw, self.directory = pin, raw, False
+
+    def digest(self, return_bytes=False, maximum=0):
+        return self.raw if return_bytes else self.record["sha256"]
+
+
+class ScopedTunFamilyTests(ProxyFamilyBase):
+    """windows-scoped-tun.restart-deny on the fake VM: the proxy family's job plus the TUN stages, every stage input the job's own."""
+
+    def setUp(self):
+        super().setUp()
+        self.qga = TunQga()
+        files, directories = self.qga.installed_tree
+        self.qga.installed_tree = (sorted(files + ["app/desktopApp.jar", "app/skiko-awt.jar"]), directories)
+        self.rt = FakeRuntime(self.vm, self.qga)
+
+    def run_tun(self, variant, install, **changes):
+        plan = self.family_plan("windows-scoped-tun." + variant, prior=install)
+        plan.update(administrator="recoveryadmin", **changes)
+        self.addCleanup(self.forget_modules, plan["operationId"])
+        start = len(self.qga.programs)
+        code = job.run_job(self.rt, plan, self.files)
+        return plan, code, self.receipt(plan), self.qga.programs[start:]
+
+    def test_the_denial_row_publishes_the_stages_with_inputs_from_this_job_alone(self):
+        from agent_tools import windows_ordinary_dedicated_driver as dedicated
+        from agent_tools import windows_tun_stages as stages
+        from agent_tools.windows_system_collector import collector_contract as contract
+        install, base = self.install_base()
+        plan, code, receipt, programs = self.run_tun("restart-deny", install)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+        kinds = [kind for kind, _ in programs]
+        self.assertLess(kinds.index("runtime-extract"), kinds.index("system-run"))
+        self.assertIn("administratorSid=", programs[kinds.index("context")][1], "the context reads the approving administrator's SID")
+        run = program_input(programs[kinds.index("system-run")][1])
+        self.assertEqual(["scoped-tun-awaiting-current-input"], run["uacKinds"], "the status reports the prompt event the client polls for")
+        workspace, operation = job.WORKSPACE_PREFIX + plan["operationId"], plan["operationId"]
+        root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + operation
+        worker = self.qga.requests_seen[-1]["worker"]
+        self.assertEqual(("windows-proxy-lifecycle", workspace + "\\windows_lifecycle_cases.py", workspace + "\\proxy-harness.py"),
+                         (worker["action"], worker["casesPath"], worker["harnessPath"]))
+        inputs = proxy_inputs(self.qga.files[workspace + "\\proxy-harness.py"])["LIFECYCLE_INPUTS"]
+        tun = inputs["tun"]
+        self.assertEqual(set(stages.FIELDS), set(tun), "a denial carries no sampler")
+        self.assertEqual({"schemaVersion": 1, "variant": "restart-deny", "pendingLocation": "Owned B",
+                          "runtimeConfigPath": root + "\\workspace\\runtime-config.json", "guiPath": INSTALLED_ROOT + "\\vpn-control.exe",
+                          "installedAdmissionArtifactId": "sha256-" + self.packages["targetPackage"]["sha256"],
+                          "ordinaryContextArtifactId": inputs["runtime"]["ordinaryContextArtifactId"],
+                          "expectedApprovingAdminSid": TUN_ADMIN_SID, "uacDecisionId": job.decision_id(operation),
+                          "programData": "C:\\ProgramData", "collectorSourceSha256": contract.COLLECTORS["tun"]}, tun)
+        self.assertEqual(stages.decision_id(operation), tun["uacDecisionId"], "the stages recompute the same one decision")
+        self.assertEqual(workspace + "\\windows_tun_stages.py", inputs["modules"]["tun"])
+        pins = {pin["path"]: pin for pin in worker["filePins"]}
+        for path in (*inputs["modules"].values(), tun["guiPath"]):
+            self.assertIn(path, pins, "every file the stages name is held by the worker")
+        self.assertNotIn(workspace + "\\windows_tun_direct_sampler.py", pins)
+        planner.validate_closure(worker)
+        # The dedicated driver admits these inputs exactly as published, with the joins it checks.
+        owner = types.SimpleNamespace(operation=operation, raw_limit=16 * 1024 * 1024,
+                                      by_path={path.casefold(): HeldPin(pin, self.qga.files.get(path, b"")) for path, pin in pins.items()})
+        self.assertIs(inputs, dedicated.lifecycle_inputs(owner, inputs))
+        self.assertEqual([], self.classify()["unresolved"])
+
+    def test_the_stage_inputs_follow_this_job_and_no_other(self):
+        install, _ = self.install_base()
+        first, _, _, _ = self.run_tun("restart-deny", install)
+        second, code, _, _ = self.run_tun("restart-deny", install)
+        self.assertEqual(0, code)
+        values = [proxy_inputs(self.qga.files[job.WORKSPACE_PREFIX + plan["operationId"] + "\\proxy-harness.py"])["LIFECYCLE_INPUTS"]["tun"]
+                  for plan in (first, second)]
+        self.assertEqual([job.decision_id(first["operationId"]), job.decision_id(second["operationId"])], [value["uacDecisionId"] for value in values])
+        self.assertNotEqual(values[0]["uacDecisionId"], values[1]["uacDecisionId"])
+
+    def test_a_context_without_the_administrator_sid_never_reaches_publish(self):
+        install, _ = self.install_base()
+        self.qga.admin_requested = False
+        original = self.qga._context
+        self.qga._context = lambda: FakeQga._context(self.qga)  # The guest answered without the account's SID.
+        plan, code, receipt, programs = self.run_tun("restart-deny", install)
+        self.qga._context = original
+        self.assertEqual((1, "context_unreadable"), (code, receipt["failure"]))
+        self.assertEqual(["context"], [kind for kind, _ in programs])
+
+
 JOB_ID = "88888888-9999-4aaa-8bbb-cccccccccccc"
 PRODUCT_OPERATION = "99999999-aaaa-4bbb-8ccc-dddddddddddd"
 BASE = "2.2.14"
@@ -2460,6 +2592,7 @@ class UpdateQga(FakeQga):
             pins.extend(directory(m["workspace"] + "\\" + name, "0x1200a9", "PAI" if name.startswith("system-collector-") else "P") for name in m["subfolders"])
             pins.extend(directory(m["workspace"] + "\\" + name, "FA") for name in m.get("privateSubfolders", []))
             pins.append(directory(m["operationRoot"], "0x1301bf"))
+            pins.extend(directory(m["operationRoot"] + "\\" + name, "0x1301bf") for name in m.get("rootSubfolders", []))
             reply.update(state="ordinary-publication-initialized", workspace=m["workspace"], operationRoot=m["operationRoot"], createNew=True, directoryPins=pins)
         elif action == "verify":
             terminal = super()._publisher(m, pid)
@@ -2857,6 +2990,621 @@ class UpdateFamilyTests(UpdateFamilyBase):
         status = json.loads((Path(plan["dataDirectory"]) / "status.json").read_bytes())
         self.assertEqual({"state": "input-ack-only", "decision": "deny", "prompt": "install-helper", "promptClosed": True}, status["uacDecision"])
         self.assertEqual(["update-uac-action-pending"], status["uacEvents"])
+
+
+DOCUMENT_ROWS = ("windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",
+                 "windows-document-cold.gui-owner")
+
+
+class DocumentQga(FakeQga):
+    """The same wire peer, plus what the document rows ask of it: the guest-made document, one operation-root folder,
+    and the LOCAL SERVICE probe the job runs while the run's status names the owner's window."""
+
+    def __init__(self):
+        super().__init__()
+        self.document_bytes = job.document_input()
+        self.window = True  # The run's status names the owner's principal window.
+        self.probe_reply = None
+        self.probe_exit = None  # The probe program ends with this exit and no reply, as a throw in it does.
+        self.probe_terminal = None  # Or with this whole terminal.
+        self.probes = []
+
+    def _guest_exec(self, arguments):
+        source = base64.b64decode(arguments["input-data"]).decode("ascii")
+        m = program_input(source)
+        if m is not None and "taskName" in m and m["scenarioId"].startswith("windows-document-"):
+            status = {"poll": 1, "lastEventOrdinal": 40, "parkedFiles": [],
+                      "pendingKinds": ["document-expiry-pending", job.PRINCIPAL_WINDOW] if self.window else ["document-expiry-pending"]}
+            self.files[m["workspace"] + "\\scenario-status.json"] = json.dumps(status).encode()
+        return super()._guest_exec(arguments)
+
+    def _publisher(self, m, pid):
+        action = m["action"]
+        if action not in ("document-input", "principal-probe"):
+            return super()._publisher(m, pid)
+        reply = {"schemaVersion": 1, "operationId": m["operationId"], "kernelBootIdentifier": m["kernelBootIdentifier"], "systemToken": m["systemToken"],
+                 "allHeldAndNamedPinsClosing": True, "productOperation": False, "taskOperation": False, "bootstrapOpening": self._actor(pid),
+                 "bootstrapClosing": self._actor(pid), "guestBootClosing": True, "bootstrapActorClosing": True}
+        if action == "document-input":
+            path = m["workspace"] + "\\" + job.DOCUMENT_INPUT_LEAF
+            self.files[path] = self.document_bytes
+            reply.update(state="ordinary-document-input", filePin=self._pin(path, raw=self.document_bytes, security=self.file_security()))
+        else:
+            self.probes.append(m)
+            if self.probe_terminal is not None:
+                return self.probe_terminal
+            if self.probe_exit is not None:
+                return {"exited": True, "exitcode": self.probe_exit, "err-data": base64.b64encode(b"Exception calling \"DeleteTask\"").decode()}
+            facts = {"exists": True, "sizeBytes": 120, "creationFileTime": FILETIME, "lastWriteFileTime": FILETIME}
+            principal = {"endpoint": m["operationRoot"] + "\\workspace\\activation.port", "before": facts, "after": dict(facts),
+                         "task": {"registered": True, "principalSid": job.LOCAL_SERVICE, "logonType": 5, "ran": True, "ended": True, "finished": True,
+                                  "lastTaskResult": 0, "deleted": True, "resultRemoved": True, "code": None},
+                         "probe": {"state": "observed", "actualSid": job.LOCAL_SERVICE, "actualSessionId": 0, "accessDenied": True,
+                                   "credentialOpened": False, "credentialBytesRead": 0, "socketOpened": False,
+                                   "authenticatedCommandSent": False, "win32Error": 5}}
+            if self.probe_reply is not None:
+                self.probe_reply(principal)
+            reply.update(state="ordinary-principal-probe", principal=principal)
+        return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
+
+
+class DocumentFamilyBase(FamilyBase):
+    def setUp(self):
+        super().setUp()
+        self.qga = DocumentQga()
+        self.rt = FakeRuntime(self.vm, self.qga)
+        self.qga.polls_before_exit = 2  # The run's status is read between polls, where the probe is served.
+
+
+class DocumentFamilyTests(DocumentFamilyBase):
+    def captured(self, scenario, prior, calls):
+        original = job.assert_closed
+
+        def record(row, requests, expected):
+            calls.append(json.loads(json.dumps([row, requests, expected])))
+            return original(row, requests, expected)
+        with mock.patch.object(job, "assert_closed", record):
+            return self.run_family(scenario, prior=prior)
+
+    def test_every_document_row_runs_on_one_installed_base_and_refuses_each_mutated_request(self):
+        install, base = self.install_base()
+        tree, calls, captures = base["installed"]["treeSha256"], [], {}
+        for scenario in DOCUMENT_ROWS:
+            with self.subTest(scenario=scenario):
+                plan, code, receipt, kinds = self.captured(scenario, install, calls)
+                captures[scenario] = calls[-1]
+                self.assertEqual((0, None), (code, receipt["failure"]))
+                self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+                self.assertEqual(tree, receipt["installed"]["treeSha256"], "a document row leaves the one base as it found it")
+                variant = driver.RECIPES[scenario]["document"]["variant"]
+                self.assertEqual(variant, receipt["document"]["variant"])
+                self.assertLess(kinds.index("document-input"), kinds.index("system-run"), "the document exists before any task")
+                worker, workspace = self.qga.requests_seen[-1]["worker"], job.WORKSPACE_PREFIX + plan["operationId"]
+                root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+                document = worker["documentAcceptance"]
+                self.assertEqual(("document-acceptance", root + "\\workspace", INSTALLED_ROOT + "\\vpn-control-cli.exe", VERSION,
+                                  workspace + "\\test_packaged_cli.py"),
+                                 (worker["action"], worker["workspace"], worker["cliPath"], worker["productVersion"], worker["harnessPath"]))
+                cases = "windows_document_cli_cases.py" if variant is None else "windows_document_cold_cases.py"
+                self.assertEqual(workspace + "\\" + cases, worker["casesPath"])
+                self.assertEqual({"schemaVersion": 1, "clientPath": workspace + "\\windows_document_client.py",
+                                  "windowsPath": workspace + "\\windows_document_native.py", "racePath": workspace + "\\windows_document_export_race.py",
+                                  "largeRoutingInputPath": workspace + "\\document-large-routing.json", "spoolTempParent": root + "\\document-temp",
+                                  "contexts": job.document_contexts(plan["operationId"]), "endpointPinBeforeObservation": None}, document)
+                self.assertEqual(52, len(set(document["contexts"]) - {plan["operationId"]}))
+                pins = {pin["path"]: pin for pin in worker["filePins"]}
+                self.assertEqual(hashlib.sha256(job.document_input()).hexdigest(), pins[document["largeRoutingInputPath"]]["sha256"])
+                self.assertIn(root + "\\document-temp", {pin["path"] for pin in worker["directoryPins"]})
+                planner.validate_closure(worker)
+                self.assertEqual([], self.pins_under(self.qga.requests_seen[-1]["bootstrap"], INSTALLED_ROOT))
+                if variant is None:
+                    self.assertEqual({"state": "observed", "reason": None, "principalSid": job.LOCAL_SERVICE, "win32Error": 5},
+                                     receipt["document"]["principal"])
+                    probe = self.qga.probes[-1]["probeSource"]
+                    self.assertIn("'" + job.LOCAL_SERVICE + "'", probe)
+                    self.assertIn("'" + root + "\\workspace\\activation.port'", probe)
+                else:
+                    self.assertIsNone(receipt["document"]["principal"], "only the acceptance row probes a second principal")
+                    value = json.loads(self.qga.files[workspace + "\\" + job.DOCUMENT_COLD_INPUT])
+                    self.assertEqual((variant, plan["operationId"]), (value["variant"], value["operationId"]))
+                    self.assertIn(value["routingInputPath"], pins)
+                    if variant == "legacy-newline":
+                        self.assertEqual(workspace + "\\" + job.DOCUMENT_LEGACY_INPUT, value["routingInputPath"])
+                        self.assertEqual(7, value["expectedSuffixCount"])
+                    else:
+                        self.assertEqual((document["largeRoutingInputPath"], job.DOCUMENT_INPUT_ENTRIES),
+                                         (value["routingInputPath"], value["expectedSuffixCount"]))
+        self.assertEqual([], self.classify()["unresolved"])
+        self.assertEqual(1, len(self.qga.probes), "one probe, for the acceptance row only")
+        for scenario, captured in captures.items():
+            job.assert_closed(*captured)
+            for name, change in self.mutations().items():
+                with self.subTest(scenario=scenario, change=name):
+                    row, requests, expected = json.loads(json.dumps(captured))
+                    change(row, requests, expected)
+                    with self.assertRaisesRegex(job.KnownFailure, "requests_not_closed"):
+                        job.assert_closed(row, requests, expected)
+
+    @staticmethod
+    def mutations():
+        """Each change a caller might try on a built document request; every one must be refused."""
+        def document(change):
+            return lambda row, requests, expected: change(requests["worker"]["documentAcceptance"])
+
+        def worker(change):
+            return lambda row, requests, expected: change(requests["worker"])
+        return {
+            "cases-is-harness": worker(lambda w: w.update(casesPath=w["harnessPath"])),
+            "responsive-cases": worker(lambda w: w.update(casesPath=w["casesPath"].rsplit("\\", 1)[0] + "\\windows_document_responsive_cli_cases.py")),
+            "action": worker(lambda w: w.update(action="disconnected-cli-config")),
+            "free-argv": worker(lambda w: w.update(qualificationArgv=["cmd.exe"])),
+            "large-input": document(lambda d: d.update(largeRoutingInputPath=d["clientPath"])),
+            "temp-parent": document(lambda d: d.update(spoolTempParent=d["spoolTempParent"] + "-other")),
+            "context": document(lambda d: d["contexts"].__setitem__(0, "66666666-7777-4888-8999-aaaaaaaaaaaa")),
+            "client": document(lambda d: d.update(clientPath=d["racePath"])),
+            "responsive-work": worker(lambda w: w.update(responsiveWork={"schemaVersion": 1})),
+            "extra-pin": worker(lambda w: w["filePins"].append(dict(w["filePins"][0], path="C:\\Windows\\System32\\cmd.exe"))),
+            "bootstrap-mode": lambda row, requests, expected: requests["bootstrap"]["bootstrap"].update(mode="qualification"),
+            "no-worker": lambda row, requests, expected: requests.update(worker=None),
+        }
+
+    def test_a_guest_document_other_than_the_recipe_is_a_known_failure_before_any_task(self):
+        install, _ = self.install_base()
+        self.qga.document_bytes = job.document_input(entries=10)
+        for scenario in DOCUMENT_ROWS:
+            with self.subTest(scenario=scenario):
+                plan, code, receipt, kinds = self.run_family(scenario, prior=install)
+                self.assertEqual((1, "document_input_recipe"), (code, receipt["failure"]))
+                self.assertNotIn("system-run", kinds)
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+    def test_a_document_row_needs_a_passed_install_of_its_own_package(self):
+        foreign = self.run_family("windows-ordinary-qualification")[0]["operationId"]
+        for scenario in DOCUMENT_ROWS:
+            for prior in (str(uuid.uuid4()), foreign):
+                with self.subTest(scenario=scenario, prior=prior):
+                    plan, code, receipt, kinds = self.run_family(scenario, prior=prior)
+                    self.assertEqual((2, "prior_install_unavailable", []), (code, receipt["failure"], kinds))
+                    self.assertFalse(self.fence(plan, ".intent.json").exists(), "a refused job anchors nothing")
+
+    def probe_outcome(self, **changes):
+        install, _ = self.install_base()
+        for name, value in changes.items():
+            setattr(self.qga, name, value)
+        return self.run_family("windows-document-acceptance", prior=install)
+
+    def test_a_probe_that_proves_no_denial_by_another_principal_fails_the_row(self):
+        def change(path, value):
+            def apply(principal):
+                target = principal
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = value
+            return apply
+
+        def task(**values):
+            def apply(principal):
+                principal["task"].update(values)
+                if not values.get("finished", True):
+                    principal["probe"] = None
+            return apply
+        nothing = dict(registered=False, principalSid=None, logonType=None, ran=False, ended=False, finished=False, lastTaskResult=None,
+                       deleted=False, resultRemoved=False, code="PUB_PROBE_TASK_LEFTOVER")
+        cases = {"unserved": ({"window": False}, "document_principal_unserved"),
+                 # The publisher refused before registering anything, and says so in its reply.
+                 "refused": ({"probe_reply": task(**nothing)}, "document_principal_refused"),
+                 # Registered, refused before Run, and then read absent: nothing ran.
+                 "never-ran": ({"probe_reply": task(ran=False, ended=False, finished=False, lastTaskResult=None, code="PUB_PROBE_PRINCIPAL")},
+                               "document_principal_refused"),
+                 # Its instance ended without a readable result; the ended task was deleted and reads absent.
+                 "result-missing": ({"probe_reply": task(finished=False, lastTaskResult=1)}, "document_principal_result_missing"),
+                 "opened": ({"probe_reply": change(("probe", "accessDenied"), False)}, "document_principal_not_denied"),
+                 "same-principal": ({"probe_reply": change(("probe", "actualSid"), SID)}, "document_principal_not_denied"),
+                 "other-error": ({"probe_reply": change(("probe", "win32Error"), 2)}, "document_principal_not_denied"),
+                 "probe-refused": ({"probe_reply": change(("probe",), {"state": "refused", "code": "DOCUMENT_DIFFERENT_PRINCIPAL_CONTEXT"})},
+                                   "document_principal_not_denied"),
+                 "window-closed": ({"probe_reply": change(("after", "exists"), False)}, "document_principal_window_closed"),
+                 "result-left": ({"probe_reply": change(("task", "resultRemoved"), False)}, "document_principal_result_left")}
+        for name, (changes, failure) in cases.items():
+            with self.subTest(case=name):
+                self.qga = DocumentQga()
+                self.rt = FakeRuntime(self.vm, self.qga)
+                self.qga.polls_before_exit = 2
+                self.qga.registration, self.qga.trees = [], {PYTHON_ROOT: self.qga.python_tree}
+                plan, code, receipt, kinds = self.probe_outcome(**changes)
+                self.assertEqual((1, failure), (code, receipt["failure"]))
+                self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+                self.assertTrue(self.fence(plan, ".terminal.json").exists(), "a known failure closes its fence")
+
+    def test_a_probe_the_job_cannot_render_never_reaches_the_guest(self):
+        loaded = job.Job._load
+
+        def load(instance, name):
+            module = loaded(instance, name)
+            if name == "windows_document_native":
+                module.principal_refusal_powershell = lambda *arguments: (_ for _ in ()).throw(RuntimeError("document-principal-probe-actual-distinct-inputs"))
+            return module
+        with mock.patch.object(job.Job, "_load", load):
+            plan, code, receipt, kinds = self.probe_outcome()
+        self.assertEqual((1, "document_principal_refused"), (code, receipt["failure"]))
+        self.assertNotIn("principal-probe", kinds)
+        self.assertTrue(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_probe_reply_of_another_shape_is_unknown(self):
+        plan, code, receipt, kinds = self.probe_outcome(probe_reply=lambda principal: principal.update(task=["registered"]))
+        self.assertEqual((3, "principal_probe_unreadable"), (code, receipt["failure"]))
+        self.assertFalse(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_probe_task_left_registered_is_unknown_and_keeps_the_fence_open(self):
+        def left(**values):
+            def apply(principal):
+                principal["task"].update(values)
+                principal["probe"] = None
+            return apply
+        cases = {"still-running": dict(ended=False, finished=False, deleted=False, lastTaskResult=None, resultRemoved=False),
+                 "delete-refused": dict(deleted=False, resultRemoved=False),
+                 "run-refused": dict(ended=False, finished=False, lastTaskResult=None, deleted=False, resultRemoved=False,
+                                     code="Exception calling \"Run\""),
+                 # A reply claiming a deleted task that ran but was never seen to end proves nothing either.
+                 "deleted-not-ended": dict(ended=False, finished=False, lastTaskResult=None)}
+        for name, values in cases.items():
+            with self.subTest(case=name):
+                # An UNKNOWN exit blocks every later job on its VM, by design: each case is its own clone.
+                self.vm = self.work / ("vm-" + name)
+                self.vm.mkdir(mode=0o700)
+                self.machine_data = self.work / ("home-" + name) / ".cache/vpn-control-windows-scenarios" / MACHINE
+                self.qga = DocumentQga()
+                self.rt = FakeRuntime(self.vm, self.qga)
+                self.qga.polls_before_exit = 2
+                self.qga.registration, self.qga.trees = [], {PYTHON_ROOT: self.qga.python_tree}
+                plan, code, receipt, kinds = self.probe_outcome(probe_reply=left(**values))
+                self.assertEqual((3, "principal_probe_task_open"), (code, receipt["failure"]))
+                self.assertFalse(self.fence(plan, ".terminal.json").exists())
+                self.assertNotIn("evidence-zip", kinds, "no copy while the run's own terminal is not saved")
+
+    def test_a_probe_program_that_ends_without_its_reply_is_unknown_and_keeps_the_fence_open(self):
+        # A throw anywhere in the program, such as a refused DeleteTask after the task ran, leaves no reply: the
+        # task may still be registered, so this can never be a known refusal that closes the fence.
+        plan, code, receipt, kinds = self.probe_outcome(probe_exit=1)
+        self.assertEqual((3, "principal_probe_unreadable"), (code, receipt["failure"]))
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+        self.assertFalse(self.fence(plan, ".terminal.json").exists(), "the fence stays open for reading the original")
+        self.assertNotIn("evidence-zip", kinds)
+
+    def test_the_publishers_own_boot_refusal_runs_nothing_and_is_a_known_refusal(self):
+        refusal = {"state": "refused-before-file-effects", "code": "GUEST_BOOT_OR_ACTOR_MISMATCH", "fileEffects": False,
+                   "productOperation": False, "taskOperation": False}
+        terminal = {"exited": True, "exitcode": 3, "out-data": base64.b64encode(json.dumps(refusal).encode()).decode()}
+        plan, code, receipt, kinds = self.probe_outcome(probe_terminal=terminal)
+        self.assertEqual((1, "document_principal_refused"), (code, receipt["failure"]))
+        self.assertTrue(self.fence(plan, ".terminal.json").exists())
+
+    def test_the_probe_is_served_once_and_never_beside_a_parked_owner(self):
+        install, _ = self.install_base()
+        self.qga.polls_before_exit = 5
+        plan, code, receipt, kinds = self.run_family("windows-document-acceptance", prior=install)
+        self.assertEqual((0, 1), (code, kinds.count("principal-probe")))
+        original = self.qga._guest_exec
+
+        def parked(arguments):
+            reply = original(arguments)
+            for path in [path for path in self.qga.files if path.endswith("\\scenario-status.json")]:
+                value = json.loads(self.qga.files[path])
+                self.qga.files[path] = json.dumps({**value, "parkedFiles": ["owner-parked.json"]}).encode()
+            return reply
+        self.qga._guest_exec = parked
+        plan, code, receipt, kinds = self.run_family("windows-document-acceptance", prior=install)
+        self.assertNotIn("principal-probe", kinds)
+        self.assertEqual((1, "document_principal_unserved"), (code, receipt["failure"]))
+
+    def test_the_cold_inputs_are_the_rows_own_recipes(self):
+        self.assertEqual(["alpha.legacy.invalid", "beta.legacy.invalid", "gamma.legacy.invalid", "delta.legacy.invalid",
+                          "epsilon.legacy.invalid", "zeta.legacy.invalid", "eta.legacy.invalid"], job.normalized_suffixes(job.LEGACY_ENTRIES))
+        raw = job.document_input()
+        self.assertTrue(10 * 1024 * 1024 < len(raw) <= 64 * 1024 * 1024)
+        value = json.loads(raw)
+        self.assertEqual((job.DOCUMENT_INPUT_ENTRIES, "d0000000.document.invalid", "2026-01-01T00:00:00Z"),
+                         (len(value["rules"]["direct_domain_suffixes"]), value["rules"]["direct_domain_suffixes"][0], value["exported_at"]))
+        self.assertEqual(value["rules"]["direct_domain_suffixes"], job.normalized_suffixes(value["rules"]["direct_domain_suffixes"]),
+                         "the large document is already normalized, so its export compares equal")
+        semantic = {key: value[key] for key in ("type", "version", "rules")}
+        self.assertEqual(hashlib.sha256(json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                         job.routing_semantic_sha256(value["rules"]["direct_domain_suffixes"]))
+        contexts = job.document_contexts("33333333-4444-4555-8666-777777777777")
+        self.assertEqual((52, contexts), (len(set(contexts)), job.document_contexts("33333333-4444-4555-8666-777777777777")))
+
+
+class DocumentPinBoundTests(DocumentFamilyBase):
+    """The guest-made document is one of a document row's worker pins, so the joint bound counts it before either tree."""
+
+    def grown(self, python_files):
+        self.qga = DocumentQga()
+        self.rt = FakeRuntime(self.vm, self.qga)
+        self.qga.polls_before_exit = 2
+        files, directories = self.qga.python_tree
+        self.qga.python_tree = (files + ["Lib/site/m%05d.py" % number for number in range(python_files)], directories + ["Lib/site"])
+        self.qga.trees[PYTHON_ROOT] = self.qga.python_tree
+        files, directories = self.qga.installed_tree
+        self.qga.installed_tree = (files + ["app/lib%04d.jar" % number for number in range(380)], directories)
+        install, _ = self.install_base()
+        return self.run_family("windows-document-acceptance", prior=install)
+
+    def test_the_document_input_counts_toward_the_joint_bound_before_any_tree_pin(self):
+        plan, code, receipt, _ = self.grown(0)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        spare = job.FILE_PIN_LIMIT - len(self.qga.requests_seen[-1]["worker"]["filePins"])
+        plan, code, receipt, _ = self.grown(spare)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual(job.FILE_PIN_LIMIT, len(self.qga.requests_seen[-1]["worker"]["filePins"]), "exactly at the bound runs")
+        plan, code, receipt, kinds = self.grown(spare + 1)
+        self.assertEqual((1, "worker_pin_bound"), (code, receipt["failure"]))
+        self.assertEqual(["read-pins"], [kind for kind in kinds if kind in {"read-pins", "read-directories"}], "only the fixed OS pins were read")
+        self.assertNotIn("system-run", kinds)
+
+
+RESPONSIVE_ROW = "windows-document-responsive"
+
+
+class ResponsiveFamilyTests(DocumentFamilyBase):
+    """windows-document-responsive on the document peer: the document action with its responsiveWork, whose TLS
+    material the job makes as it does the proxy rows'."""
+
+    def setUp(self):
+        super().setUp()
+        self.material_calls = []
+        loaded = job.Job._load
+
+        def load(instance, name):
+            module = loaded(instance, name)
+            if name == "windows_scenario_proxy":
+                module.material = lambda randbits, now: self.material_calls.append((randbits, now)) or proxy_tls()
+            return module
+        patcher = mock.patch.object(job.Job, "_load", load)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_responsive_row_runs_on_one_installed_base_with_its_work_and_refuses_each_mutated_request(self):
+        install, base = self.install_base()
+        tls, calls, original = proxy_tls(), [], job.assert_closed
+
+        def record(row, requests, expected):
+            calls.append(json.loads(json.dumps([row, requests, expected])))
+            return original(row, requests, expected)
+        with mock.patch.object(job, "assert_closed", record):
+            plan, code, receipt, kinds = self.run_family(RESPONSIVE_ROW, prior=install)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+        self.assertEqual(base["installed"]["treeSha256"], receipt["installed"]["treeSha256"], "the row leaves the one base as it found it")
+        self.assertEqual({"variant": "responsive", "principal": None}, receipt["document"])
+        self.assertEqual([], self.qga.probes, "only the acceptance row probes a second principal")
+        self.assertLess(kinds.index("document-input"), kinds.index("system-run"), "the document and the TLS files exist before any task")
+        self.assertEqual(1, len(self.material_calls))
+        self.assertIs(job.secrets.randbits, self.material_calls[-1][0], "the key comes from the host's own CSPRNG")
+        seen = self.qga.requests_seen[-1]
+        worker, workspace = seen["worker"], job.WORKSPACE_PREFIX + plan["operationId"]
+        root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+        self.assertEqual(("document-acceptance", workspace + "\\windows_document_responsive_cli_cases.py", workspace + "\\test_packaged_cli.py",
+                          root + "\\workspace", INSTALLED_ROOT + "\\vpn-control-cli.exe", VERSION),
+                         (worker["action"], worker["casesPath"], worker["harnessPath"], worker["workspace"], worker["cliPath"],
+                          worker["productVersion"]))
+        document, work = worker["documentAcceptance"], worker["responsiveWork"]
+        self.assertEqual({"schemaVersion": 1, "clientPath": workspace + "\\windows_document_client.py",
+                          "windowsPath": workspace + "\\windows_document_native.py", "racePath": workspace + "\\windows_document_export_race.py",
+                          "largeRoutingInputPath": workspace + "\\document-large-routing.json", "spoolTempParent": root + "\\document-temp",
+                          "contexts": job.document_contexts(plan["operationId"]), "endpointPinBeforeObservation": None}, document)
+        self.assertEqual({"schemaVersion": 1, "casesPath": workspace + "\\windows_document_responsive_cases.py",
+                          "runtimeStagesPath": workspace + "\\windows_lifecycle_runtime_stages.py",
+                          "fixtureWorkerPath": workspace + "\\windows_document_gated_https_fixture.py",
+                          "socksSourcePath": workspace + "\\socks_http_fixture.py",
+                          "httpsSourcePath": workspace + "\\https_subscription_relay_fixture.py",
+                          "certificatePath": workspace + "\\document-work-localhost.pem", "privateKeyPath": workspace + "\\document-work-localhost.key",
+                          "trustStorePath": workspace + "\\document-work-trust.jks", "contexts": job.responsive_contexts(plan["operationId"]),
+                          "largeRoutingInputPath": document["largeRoutingInputPath"]}, work)
+        self.assertEqual(2, len(set(work["contexts"]) - set(document["contexts"]) - {plan["operationId"]}), "two contexts of its own")
+        pins = {pin["path"]: pin for pin in worker["filePins"]}
+        for role, leaf in job.RESPONSIVE_TLS:
+            self.assertEqual(tls[role], self.qga.files[workspace + "\\" + leaf])
+            self.assertEqual(hashlib.sha256(tls[role]).hexdigest(), pins[workspace + "\\" + leaf]["sha256"])
+        # The worker holds the very sources the planner and the owner pin by name and digest.
+        self.assertEqual(planner.DOCUMENT_RESPONSIVE_CASE, (worker["casesPath"].rsplit("\\", 1)[1], pins[worker["casesPath"]]["sha256"]))
+        for key, expected in planner.DOCUMENT_RESPONSIVE_SOURCES.items():
+            self.assertEqual(expected, (work[key].rsplit("\\", 1)[1], pins[work[key]]["sha256"]), key)
+        self.assertEqual(hashlib.sha256(job.document_input()).hexdigest(), pins[document["largeRoutingInputPath"]]["sha256"])
+        self.assertIn(root + "\\document-temp", {pin["path"] for pin in worker["directoryPins"]})
+        planner.validate_closure(worker)
+        self.assertEqual([], self.pins_under(seen["bootstrap"], INSTALLED_ROOT), "installed pins live only in the worker request")
+        self.assertNotIn(work["privateKeyPath"], {pin["path"] for pin in seen["bootstrap"]["filePins"]}, "only the worker holds the key")
+        self.assertEqual([], self.classify()["unresolved"])
+        captured = calls[-1]
+        job.assert_closed(*captured)
+        for name, change in self.mutations().items():
+            with self.subTest(change=name):
+                row, requests, expected = json.loads(json.dumps(captured))
+                change(row, requests, expected)
+                with self.assertRaisesRegex(job.KnownFailure, "requests_not_closed"):
+                    job.assert_closed(row, requests, expected)
+
+    @staticmethod
+    def mutations():
+        """Each change a caller might try on the built responsive request; every one must be refused."""
+        def work(change):
+            return lambda row, requests, expected: change(requests["worker"]["responsiveWork"])
+
+        def worker(change):
+            return lambda row, requests, expected: change(requests["worker"])
+        return {
+            "acceptance-cases": worker(lambda w: w.update(casesPath=w["casesPath"].rsplit("\\", 1)[0] + "\\windows_document_cli_cases.py")),
+            "no-work": worker(lambda w: w.pop("responsiveWork")),
+            "partial-work": worker(lambda w: w.update(responsiveWork={"schemaVersion": 1})),
+            "action": worker(lambda w: w.update(action="disconnected-cli-config")),
+            "free-argv": worker(lambda w: w.update(qualificationArgv=["cmd.exe"])),
+            "work-cases-is-harness": lambda row, requests, expected: requests["worker"]["responsiveWork"].update(
+                casesPath=requests["worker"]["harnessPath"]),
+            "fixture-is-socks": work(lambda r: r.update(fixtureWorkerPath=r["socksSourcePath"])),
+            "certificate-is-key": work(lambda r: r.update(certificatePath=r["privateKeyPath"])),
+            "trust-store": work(lambda r: r.update(trustStorePath=r["trustStorePath"] + ".other")),
+            "large-input": work(lambda r: r.update(largeRoutingInputPath=r["certificatePath"])),
+            "reserved-context": lambda row, requests, expected: requests["worker"]["responsiveWork"]["contexts"].__setitem__(
+                0, requests["worker"]["documentAcceptance"]["contexts"][0]),
+            "extra-field": work(lambda r: r.update(argv=["cmd.exe"])),
+            "temp-parent": lambda row, requests, expected: requests["worker"]["documentAcceptance"].update(
+                spoolTempParent=requests["worker"]["documentAcceptance"]["spoolTempParent"] + "-other"),
+            "extra-pin": worker(lambda w: w["filePins"].append(dict(w["filePins"][0], path="C:\\Windows\\System32\\cmd.exe"))),
+            "bootstrap-mode": lambda row, requests, expected: requests["bootstrap"]["bootstrap"].update(mode="qualification"),
+            "no-worker": lambda row, requests, expected: requests.update(worker=None),
+        }
+
+    def test_the_responsive_row_needs_a_passed_install_of_its_own_package_before_any_journal(self):
+        foreign = self.run_family("windows-ordinary-qualification")[0]["operationId"]
+        for name, prior in (("missing", None), ("unknown", str(uuid.uuid4())), ("foreign", foreign)):
+            with self.subTest(prior=name):
+                plan, code, receipt, kinds = self.run_family(RESPONSIVE_ROW, prior=prior)
+                self.assertEqual((2, "prior_install_unavailable", []), (code, receipt["failure"], kinds))
+                self.assertFalse(self.fence(plan, ".intent.json").exists(), "a refused job anchors nothing")
+        self.assertEqual([], self.material_calls, "a refused row makes no key")
+
+    def test_a_guest_document_other_than_the_recipe_is_a_known_failure_before_any_key_or_task(self):
+        install, _ = self.install_base()
+        self.qga.document_bytes = job.document_input(entries=10)
+        plan, code, receipt, kinds = self.run_family(RESPONSIVE_ROW, prior=install)
+        self.assertEqual((1, "document_input_recipe"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+        self.assertEqual([], self.material_calls, "the document is checked before the TLS material is made")
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+
+# The publisher's probe function under PowerShell, against a fake Task Scheduler. Each fake call does what its
+# mode says; the registered action's own encoded program is what a started instance runs. Windows-only .NET
+# types (SID translation, the publisher's directory creator) are stand-ins, so nothing here touches a real host.
+PROBE_FAKES = r'''
+using System;using System.Collections.Generic;using System.IO;using System.Runtime.InteropServices;
+public sealed class ProbeFakeSid {readonly string v;public ProbeFakeSid(string value){v=value;}public string Value{get{return v;}}
+ public ProbeFakeAccount Translate(Type type){return new ProbeFakeAccount(v=="S-1-5-19"?"NT AUTHORITY\\LOCAL SERVICE":v);}}
+public sealed class ProbeFakeAccount {readonly string v;public ProbeFakeAccount(string value){v=value;}public string Value{get{return v;}}
+ public ProbeFakeSid Translate(Type type){return new ProbeFakeSid(v=="NT AUTHORITY\\LOCAL SERVICE"?"S-1-5-19":v);}}
+public static class VpnCreateArtifactDirectory {public static void CreateExclusive(string path,string sddl){if(Directory.Exists(path)||File.Exists(path))throw new IOException("exists");Directory.CreateDirectory(path);}}
+public sealed class ProbeFakeSettings {public string ExecutionTimeLimit;public int MultipleInstances;public bool DisallowStartIfOnBatteries,StopIfGoingOnBatteries;}
+public sealed class ProbeFakePrincipal {public int LogonType,RunLevel;public string UserId;}
+public sealed class ProbeFakeAction {public string Path,Arguments;}
+public sealed class ProbeFakeActions {public List<ProbeFakeAction> Items=new List<ProbeFakeAction>();public ProbeFakeAction Create(int kind){var a=new ProbeFakeAction();Items.Add(a);return a;}}
+public sealed class ProbeFakeDefinition {public ProbeFakeSettings Settings=new ProbeFakeSettings();public ProbeFakePrincipal Principal=new ProbeFakePrincipal();public ProbeFakeActions Actions=new ProbeFakeActions();}
+public sealed class ProbeFakeInstances {public int Count;}
+public sealed class ProbeFakeTask {public string Name;public ProbeFakeDefinition Definition;public int LastTaskResult=267011;public int Running;
+ public object Run(object parameters){ProbeFake.Runs++;if(ProbeFake.Mode=="run-throws")ProbeFake.Fail(-2147467259);ProbeFake.OnRun(this);return null;}
+ public ProbeFakeInstances GetInstances(int flags){return new ProbeFakeInstances{Count=Running};}}
+public sealed class ProbeFakeFolder {
+ public ProbeFakeTask[] GetTasks(int flags){return new List<ProbeFakeTask>(ProbeFake.Tasks.Values).ToArray();}
+ public ProbeFakeTask RegisterTaskDefinition(string name,ProbeFakeDefinition definition,int flags,string user,object password,int logon,object sddl){
+  if(ProbeFake.Mode=="register-throws")ProbeFake.Fail(-2147024891);
+  definition.Principal.UserId=ProbeFake.Mode=="other-principal"?"S-1-5-20":"S-1-5-19";ProbeFake.User=user;
+  var task=new ProbeFakeTask{Name=name,Definition=definition};ProbeFake.Tasks[name]=task;return task;}
+ public void DeleteTask(string name,int flags){
+  if(ProbeFake.Mode=="delete-throws")ProbeFake.Fail(-2147024891);
+  if(ProbeFake.Mode=="lookup-denied")return;
+  if(!ProbeFake.Tasks.Remove(name))ProbeFake.Fail(-2147024894);}
+ public ProbeFakeTask GetTask(string name){
+  if(ProbeFake.Mode=="lookup-denied")ProbeFake.Fail(-2147024891);
+  ProbeFakeTask task;if(ProbeFake.Tasks.TryGetValue(name,out task))return task;ProbeFake.Fail(-2147024894);return null;}}
+public sealed class ProbeFakeService {public void Connect(){}public ProbeFakeFolder GetFolder(string path){return ProbeFake.Folder;}public ProbeFakeDefinition NewTask(int flags){return new ProbeFakeDefinition();}}
+public static class ProbeFake {public static string Mode,User;public static int Runs;public static Dictionary<string,ProbeFakeTask> Tasks=new Dictionary<string,ProbeFakeTask>();
+ public static ProbeFakeFolder Folder=new ProbeFakeFolder();public static Action<ProbeFakeTask> OnRun;
+ public static void Reset(string mode){Mode=mode;User=null;Runs=0;Tasks.Clear();if(mode=="leftover")Tasks["VpnControlPrincipalProbe-earlier"]=new ProbeFakeTask{Name="VpnControlPrincipalProbe-earlier"};}
+ public static void Fail(int hresult){throw new COMException("fake scheduler",hresult);}}
+'''
+PROBE_DRIVER = r'''
+function New-Object([string]$TypeName,[object[]]$ArgumentList,[string]$ComObject){
+ if($ComObject -ceq 'Schedule.Service'){return [ProbeFakeService]::new()}
+ if($ComObject){throw 'PROBE_FAKE_COM'}
+ return ,(Microsoft.PowerShell.Utility\New-Object -TypeName $TypeName -ArgumentList $ArgumentList)
+}
+[ProbeFake]::OnRun=[Action[ProbeFakeTask]]{param($task)
+ if([ProbeFake]::Mode -cne 'ended-without-result'){
+  $task.Running=1
+  $text=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String(($task.Definition.Actions.Items[0].Arguments -csplit ' ')[-1]))
+  & ([scriptblock]::Create($text))
+ }
+ $task.Running=0;$task.LastTaskResult=$(if([ProbeFake]::Mode -ceq 'ended-without-result'){1}else{0})
+}
+$out=[ordered]@{}
+foreach($mode in $modes){
+ $case=Join-Path $base $mode;$operationRoot=Join-Path $case 'root';$workspace=Join-Path $case 'workspace'
+ [void][IO.Directory]::CreateDirectory($operationRoot);[void][IO.Directory]::CreateDirectory($workspace)
+ $source=$(if($mode -ceq 'probe-refuses'){"throw 'DOCUMENT_DIFFERENT_PRINCIPAL_CONTEXT'"}else{$probeSource})
+ $m=[pscustomobject]@{operationId='33333333-4444-4555-8666-777777777777';operationRoot=$operationRoot;workspace=$workspace;probeSource=$source}
+ $endpoint=$m.operationRoot+'\workspace\activation.port';[IO.File]::WriteAllText($endpoint,'{"port":1}')
+ $facts=Get-EndpointFacts $endpoint
+ $window=[ordered]@{operationId=$m.operationId;value=[ordered]@{endpoint=[ordered]@{path=$endpoint;nativeIdentity=[ordered]@{sizeBytes=$facts.sizeBytes;creationFileTime=$facts.creationFileTime;lastWriteFileTime=$facts.lastWriteFileTime}}}}
+ [IO.File]::WriteAllText((Join-Path $operationRoot 'event-000041-document-principal-window.json'),($window|ConvertTo-Json -Depth 6 -Compress))
+ [ProbeFake]::Reset($mode);$reply=$null;$threw=$null
+ try{$reply=Invoke-PrincipalProbe}catch{$threw=[string]$_.Exception.Message}
+ $out[$mode]=[ordered]@{reply=$reply;threw=$threw;tasksLeft=@([ProbeFake]::Tasks.Keys);runs=[ProbeFake]::Runs;user=[ProbeFake]::User;resultFolderLeft=[IO.Directory]::Exists((Join-Path $workspace 'principal-probe'))}
+}
+[Console]::Out.Write(($out|ConvertTo-Json -Depth 8 -Compress))
+'''
+PROBE_OBSERVED = ("[ordered]@{state='observed';actualSid='S-1-5-19';actualSessionId=0;accessDenied=$true;credentialOpened=$false;"
+                  "credentialBytesRead=0;socketOpened=$false;authenticatedCommandSent=$false;win32Error=5}|ConvertTo-Json -Compress")
+
+
+def principal_probe_program(template, modes, base):
+    """The template's own probe function, Read-Bounded and Get-EndpointFacts, compiled after the stand-ins exist."""
+    def between(start, end):
+        return template[template.index(start):template.index(end)]
+    quoted = lambda value: "'" + value.replace("'", "''") + "'"
+    body = ("$modes=@(" + ",".join(quoted(mode) for mode in modes) + ");$base=" + quoted(str(base)) + ";$probeSource=" + quoted(PROBE_OBSERVED) + "\n"
+            + between("function Read-Bounded(", "function New-DocumentInput") + between("function Get-EndpointFacts(", "function Get-CollectorObservation")
+            + PROBE_DRIVER)
+    return ("$ErrorActionPreference='Stop'\nAdd-Type -TypeDefinition @'\n" + PROBE_FAKES + "\n'@\n"
+            "$accelerators=[psobject].Assembly.GetType('System.Management.Automation.TypeAccelerators')\n"
+            "$accelerators::Add('Security.Principal.SecurityIdentifier',[ProbeFakeSid]);$accelerators::Add('Security.Principal.NTAccount',[ProbeFakeAccount])\n"
+            ". ([scriptblock]::Create(@'\n" + body + "\n'@))\n")
+
+
+class PrincipalProbeProgramTests(unittest.TestCase):
+    """What the probe's reply says may still exist, as the job reads it, for each scheduler outcome."""
+
+    @unittest.skipUnless(POWERSHELL and os.name != "nt", "PowerShell with no real Task Scheduler behind it; hosted Linux runners have one")
+    def test_the_reply_names_every_task_that_may_still_exist_and_only_an_absent_one_is_known(self):
+        name = "VpnControlPrincipalProbe-33333333-4444-4555-8666-777777777777"
+        expected = {
+            # mode: (tasks left, result folder left, task facts, the job's reading)
+            "observed": ([], False, dict(registered=True, ran=True, ended=True, finished=True, deleted=True, resultRemoved=True, code=None),
+                         {"state": "observed", "reason": None, "principalSid": job.LOCAL_SERVICE, "win32Error": 5}),
+            "probe-refuses": ([], False, dict(registered=True, ran=True, ended=True, finished=True, deleted=True, resultRemoved=True),
+                              {"state": "failed", "reason": "not_denied", "principalSid": job.LOCAL_SERVICE, "win32Error": None}),
+            # The instance ended without a result: an ended task is deleted, and its outcome is known.
+            "ended-without-result": ([], False, dict(ran=True, ended=True, finished=False, lastTaskResult=1, deleted=True, resultRemoved=True),
+                                     {"state": "failed", "reason": "result_missing", "principalSid": job.LOCAL_SERVICE, "win32Error": None}),
+            # A refused delete, or a lookup that cannot say absent, leaves a task that may exist: never a known outcome.
+            "delete-throws": ([name], True, dict(ran=True, ended=True, deleted=False, resultRemoved=False), "principal_probe_task_open"),
+            "lookup-denied": ([name], True, dict(ran=True, ended=True, deleted=False, resultRemoved=False), "principal_probe_task_open"),
+            # A Run that throws may still have started its instance: nothing is deleted.
+            "run-throws": ([name], True, dict(registered=True, ran=True, ended=False, deleted=False), "principal_probe_task_open"),
+            # Before any task ran: a leftover refuses before anything is created, and a registered task that never ran is removed.
+            "leftover": (["VpnControlPrincipalProbe-earlier"], False, dict(registered=False, ran=False, code="PUB_PROBE_TASK_LEFTOVER"), {"state": "refused"}),
+            "register-throws": ([], False, dict(registered=True, ran=False, deleted=True, resultRemoved=True), {"state": "refused"}),
+            "other-principal": ([], False, dict(registered=True, ran=False, deleted=True, resultRemoved=True, code="PUB_PROBE_PRINCIPAL"), {"state": "refused"}),
+        }
+        template = (ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text(encoding="ascii")
+        with tempfile.TemporaryDirectory(prefix="principal-probe-") as directory:
+            program = Path(directory) / "probe.ps1"
+            program.write_text(principal_probe_program(template, list(expected), Path(directory) / "cases"), encoding="ascii")
+            done = subprocess.run([str(POWERSHELL), "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(program)],
+                                  stdin=subprocess.DEVNULL, capture_output=True, timeout=300)
+        self.assertEqual(0, done.returncode, done.stderr.decode("utf-8", "replace"))
+        observed = json.loads(done.stdout)
+        for mode, (left, folder, facts, reading) in expected.items():
+            with self.subTest(mode=mode):
+                row = observed[mode]
+                self.assertIsNone(row["threw"], "the probe always replies")
+                task = row["reply"]["task"]
+                self.assertEqual((left, folder, facts), (row["tasksLeft"], row["resultFolderLeft"], {key: task.get(key, "absent") for key in facts}))
+                if mode not in ("leftover", "register-throws"):
+                    self.assertEqual("NT AUTHORITY\\LOCAL SERVICE", row["user"], "registered for LOCAL SERVICE")
+                if type(reading) is str:
+                    with self.assertRaisesRegex(job.Unknown, reading):
+                        job.principal_outcome(row["reply"])
+                else:
+                    self.assertEqual(reading, job.principal_outcome(row["reply"]))
 
 
 class TrustStoreTests(unittest.TestCase):

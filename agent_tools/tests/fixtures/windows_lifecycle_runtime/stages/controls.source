@@ -74,7 +74,7 @@ class RuntimeCases(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError,'runtime-native-inputs-pending'):
             runtime.start_runtime(N(),{'schemaVersion':1},N())
         with self.assertRaisesRegex(AssertionError,'scoped-tun-native-inputs-pending'):
-            tun.begin(N(),{}, {'schemaVersion':1},N(),N())
+            tun.begin(N(),{}, {'schemaVersion':1},N(),N(),N())
         with self.assertRaisesRegex(ValueError,'tun-native-request-pending'):
             collector.validate({},N())
 
@@ -175,43 +175,22 @@ class DesktopCases(unittest.TestCase):
 
 
 class TunDecisionCases(unittest.TestCase):
-    def values(self):
-        operation,original,controller,task,boot,nonce,frame=[str(uuid.uuid4()) for _ in range(7)]
-        accepted={'operationId':operation,'requestId':original};context={'bootIdentifier':boot,'ordinarySessionId':2}
-        owner=N(request={'operationId':task,'context':context},event=lambda *_:None)
-        lease={'decisionConsumed':False,'finished':False,'accepted':accepted,
-            'inputs':{'variant':'restart-deny','currentMainInputAdmissionArtifactId':'input-receipt',
-                'expectedApprovingAdminSid':'admin'},'state':{'identity':controller,'workspace':'owned'}}
-        owner.tun_operation_leases=[lease]
-        challenge={'schemaVersion':1,'ordinaryTaskOperationId':task,'productOperationId':operation,
-            'originRequestId':original,'controllerId':controller,'bootIdentifier':boot,
-            'inputAdmissionArtifactId':'input-receipt','qemuIdentity':{'pid':10,'startTicks':100},
-            'consentActor':{'pid':44,'creationFileTime':123,'image':'C:\\Windows\\System32\\consent.exe',
-                'sha256':'a'*64,'sid':'S-1-5-18','sessionId':2},'stage':'current-product-credential-uac',
-            'nonce':nonce,'frameId':frame,'frameSha256':'b'*64,'observedAtMonotonic':100,
-            'expectedApprovingAdminSid':'admin'}
-        decision={key:challenge[key] for key in ('schemaVersion','productOperationId','stage','nonce','frameId','frameSha256')}
-        decision.update(action='deny',openedFrameArtifactId='actually-opened-frame')
-        def result(*_):return {'data':{'operations':[{'id':operation,'requestId':original,'final':False}]}}
-        return owner,lease,challenge,decision,N(result=result)
+    def test_the_route_names_one_decision_and_no_frame_handoff_remains(self):
+        # windows-uac-decision answers the prompt; the stages only check its one decision for this operation.
+        self.assertFalse(hasattr(tun,'bind_reviewed_decision'))
+        task=str(uuid.uuid4())
+        self.assertEqual(str(uuid.uuid5(uuid.UUID(task),'windows-uac-decision')),tun.decision_id(task))
+        self.assertNotEqual(tun.decision_id(task),tun.decision_id(str(uuid.uuid4())))
 
-    def test_exact_review_handoff_consumed_once_and_performs_no_input(self):
-        values=self.values()
-        with patch.object(tun.time,'monotonic',return_value=105):
-            receipt=tun.bind_reviewed_decision(*values)
-            self.assertFalse(receipt['physicalInputPerformed'])
-            with self.assertRaisesRegex(AssertionError,'unconsumed-job'):
-                tun.bind_reviewed_decision(*values)
-
-    def test_stale_foreign_or_boolean_authority_refuses_without_consuming(self):
-        for mutate in (lambda c,d:c.update(frameSha256='wrong'),
-                       lambda c,d:d.update(promptVerified=True),
-                       lambda c,d:c.update(observedAtMonotonic=80),
-                       lambda c,d:d.update(action='grant')):
-            owner,lease,c,d,r=self.values();mutate(c,d)
-            with patch.object(tun.time,'monotonic',return_value=105),self.assertRaises(AssertionError):
-                tun.bind_reviewed_decision(owner,lease,c,d,r)
-            self.assertFalse(lease['decisionConsumed'])
+    def test_begin_refuses_any_decision_but_this_operations_before_any_read(self):
+        task=str(uuid.uuid4());gui='C:\\Installed\\vpn-control.exe'
+        owner=N(request={'operationId':task,'context':{'ordinarySid':'S-1-5-21-1-2-3-1001'}},by_path={gui.casefold():N()})
+        inputs={'schemaVersion':1,'variant':'restart-deny','pendingLocation':'Owned B','runtimeConfigPath':'C:\\Owned\\state\\runtime-config.json',
+            'guiPath':gui,'installedAdmissionArtifactId':'sha256-'+'a'*64,'ordinaryContextArtifactId':'windows-context-'+'b'*64,
+            'expectedApprovingAdminSid':'S-1-5-21-1-2-3-500','uacDecisionId':tun.decision_id(str(uuid.uuid4())),
+            'programData':'C:\\ProgramData','collectorSourceSha256':'c'*64}
+        with self.assertRaisesRegex(AssertionError,'scoped-tun-route-decision'):
+            tun.begin(owner,{},inputs,N(),N(),N())
 
 
 class TunCustodyCases(unittest.TestCase):

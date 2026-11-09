@@ -12,7 +12,7 @@ import inspect
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import shutil
 import subprocess
@@ -1797,23 +1797,112 @@ class CancelledGrantDriverTests(unittest.TestCase):
             dedicated_driver.run(self.owner, "windows-public-update")
         self.assertNotIn("dedicated-update-grant-cancelled-known", [call[0] for call in self.owner.calls if isinstance(call, tuple)])
 
-    def tun_owner(self, variant, *, finish, inner=None):
+    def tun_owner(self, variant, *, finish, inner=None, begin=None, closing=None, **changes):
         state, _ = self.owner.lifecycle("find-best-success")
         self.owner.inputs["variant"] = variant
+        runtime = self.owner.inputs["runtime"]
+        runtime.update(workspace=str(self.owner.root / "workspace"), ordinaryContextArtifactId="peer-context")
         path = self.owner.source("windows_tun_stages.py", "agent_tools/windows_tun_stages.py")
         self.owner.inputs["modules"]["tun"] = path
-        self.owner.inputs["tun"] = {"schemaVersion": 1, "variant": variant if inner is None else inner}
-        self.owner.modules[path] = types.SimpleNamespace(begin=lambda *args: self.owner.calls.append(("tun-begin", args[2])) or "lease", finish=finish)
+        # The join the driver checks; windows_tun_stages.begin checks the rest of the closed set.
+        self.owner.inputs["tun"] = {"schemaVersion": 1, "variant": variant if inner is None else inner,
+                                    "installedAdmissionArtifactId": runtime["installedAdmissionArtifactId"], "ordinaryContextArtifactId": "peer-context",
+                                    "runtimeConfigPath": str(PureWindowsPath(runtime["workspace"]) / "runtime-config.json"), **changes}
+        self.owner.modules[path] = types.SimpleNamespace(
+            begin=begin or (lambda *args: self.owner.calls.append(("tun-begin", args[2]["variant"], args[5].WindowsNative())) or "lease"),
+            finish=finish, closing=closing or (lambda *args: self.owner.calls.append(("tun-closing", args[1], args[2].WindowsNative()))),
+            settled=lambda lease: tun_stages.settled(lease))
         self.owner.harness({"LIFECYCLE_INPUTS": self.owner.inputs, "SYSTEM_COLLECTOR_CLOSE_HOLD": None})
         return state
+
+    def sampler(self):
+        """The bundle's own direct sampler, beside the driver, at its reviewed bytes."""
+        return self.owner.source("windows_tun_direct_sampler.py", "agent_tools/windows_tun_direct_sampler.py")
+
+    def lease(self, variant):
+        """A lease as windows_tun_stages.begin leaves it: the request sent, its operation open until finish."""
+        self.owner.calls.append(("tun-begin", variant))
+        self.owner.tun_operation_requested = True
+        lease = {"inputs": {"variant": variant, "programData": "C:\\ProgramData"}, "finished": False,
+                 "baseline": {"brokers": [], "runtimes": [], "stages": [], "routes": []}}
+        self.owner.tun_operation_leases = [lease]
+        return lease
+
+    def census_closing(self, owner, lease, observer):
+        """The real closing of windows_tun_stages over a clean declared census."""
+        self.owner.calls.append(("tun-closing", lease["inputs"]["variant"]))
+        with mock.patch.object(tun_stages, "census", lambda inputs, observer, exclude=(): {"brokers": [], "runtimes": [], "stages": [], "routes": []}):
+            return tun_stages.closing(owner, lease, observer)
 
     def test_a_deny_row_closes_the_runtime_and_passes(self):
         self.tun_owner("restart-deny", finish=lambda *args: {"terminal": {"code": "CANCELLED"}})
         self.assertEqual(0, dedicated_driver.run(self.owner, "windows-proxy-lifecycle"))
         calls = self.owner.calls
-        self.assertLess(calls.index(("tun-begin", {"schemaVersion": 1, "variant": "restart-deny"})), calls.index("stop-fixture"))
+        begin = calls.index(("tun-begin", "restart-deny", "declared-native-peer"))
+        off = next(index for index, call in enumerate(calls) if isinstance(call, tuple) and call[0] == "off-actors")
+        # Nothing scoped is left behind: the census reads after the public off and before the fixture stops.
+        self.assertLess(begin, off)
+        self.assertLess(off, calls.index(("tun-closing", "lease", "declared-native-peer")))
+        self.assertLess(calls.index(("tun-closing", "lease", "declared-native-peer")), calls.index("stop-fixture"))
         self.assertIn(("public", "quit"), calls)
         self.assertIn(("wait", "serve", 0), calls)
+
+    def test_a_known_tun_end_that_is_not_the_variants_own_closes_by_its_census_and_exits_one(self):
+        # Each end as the real finish leaves it, closed by the real closing: a denial's refused preparation, and a grant
+        # whose prompt expired, which brought no TUN up and so has no off of its own. The driver admits that grant here
+        # only to reach the path its collector stage will open.
+        from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer
+        for variant, code, outcome, known in (("restart-deny", "RUNTIME_FAILED", {"knownFailure": "RUNTIME_FAILED"}, "RUNTIME_FAILED"),
+                                              ("restart-grant", "CANCELLED", {"cancelled": True}, "cancelled")):
+            with self.subTest(variant=variant), mock.patch.object(dedicated_driver, "TUN_VARIANTS", frozenset({"restart-deny", "restart-grant"})):
+                self.owner = DedicatedDispatchPeer(self.owner.root)
+
+                def finish(owner, lease, *args, code=code, outcome=outcome):
+                    lease.update(finished=True, knownEnd=code)
+                    return {"terminal": {"code": code}, "status": {}, "nativeRecord": None, **outcome}
+                self.tun_owner(variant, finish=finish, begin=lambda *args, variant=variant: self.lease(variant), closing=self.census_closing,
+                               **({"samplerPath": self.sampler()} if variant.endswith("grant") else {}))
+                self.assertEqual(1, dedicated_driver.run(self.owner, "windows-proxy-lifecycle"))
+                calls = self.owner.calls
+                off = next(index for index, call in enumerate(calls) if isinstance(call, tuple) and call[0] == "off-actors")
+                self.assertLess(off, calls.index(("tun-closing", variant)))
+                self.assertLess(calls.index(("tun-closing", variant)), calls.index("stop-fixture"))
+                self.assertTrue(self.owner.tun_operation_leases[0]["closed"])
+                self.assertIn(("public", "quit"), calls)
+                closed = [call[1] for call in calls if isinstance(call, tuple) and call[0] == "dedicated-proxy-lifecycle-known-closed"]
+                self.assertEqual([known], [value.get("knownFailure") for value in closed])
+
+    def test_a_grant_runs_only_the_reviewed_sampler_beside_the_driver(self):
+        # The sampler is the one helper a grant executes; like every other role it is held at its reviewed digest.
+        from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer, DedicatedPinPeer
+        beside = str(DedicatedDispatchPeer.SOURCE_ROOT / "windows_tun_direct_sampler.py")
+        elsewhere = str(DedicatedDispatchPeer.SOURCE_ROOT / "other" / "windows_tun_direct_sampler.py")
+        reviewed = Path(tun_stages.__file__).with_name("windows_tun_direct_sampler.py")
+        cases = (("other-bytes", beside, b"print('another sampler')\n", "dedicated-reviewed-source-pin"),
+                 ("elsewhere", elsewhere, reviewed.read_bytes(), "dedicated-tun-sampler-role"),
+                 ("absent", None, None, "dedicated-tun-sampler-role"))
+        with mock.patch.object(dedicated_driver, "TUN_VARIANTS", frozenset({"restart-deny", "restart-grant"})):
+            for name, path, raw, reason in cases:
+                with self.subTest(case=name):
+                    self.owner = DedicatedDispatchPeer(self.owner.root)
+                    if path is not None:
+                        self.owner.by_path[path.casefold()] = DedicatedPinPeer(path, raw)
+                    self.tun_owner("restart-grant", finish=lambda *args: {}, **({} if path is None else {"samplerPath": path}))
+                    with self.assertRaisesRegex(ValueError, "^" + reason + "$"):
+                        dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
+                    self.assertNotIn("start-runtime", self.owner.calls)
+        self.assertEqual(hashlib.sha256(reviewed.read_bytes()).hexdigest(), dedicated_driver.SAMPLER_SHA)
+
+    def test_tun_inputs_naming_another_install_context_or_config_start_nothing(self):
+        from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer
+        for name, value in (("installedAdmissionArtifactId", "other-package"), ("ordinaryContextArtifactId", "other-context"),
+                            ("runtimeConfigPath", "C:\\Other\\runtime-config.json")):
+            with self.subTest(field=name):
+                self.owner = DedicatedDispatchPeer(self.owner.root)
+                self.tun_owner("restart-deny", finish=lambda *args: {}, **{name: value})
+                with self.assertRaisesRegex(ValueError, "^dedicated-tun-same-admission-references$"):
+                    dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
+                self.assertNotIn("start-runtime", self.owner.calls)
 
     def test_a_tun_grant_waits_for_its_collector_and_starts_nothing(self):
         # An approved grant ends only with its native ready record; without one it would park over VPN B and a live broker.
@@ -1889,14 +1978,16 @@ class TunFinishTests(unittest.TestCase):
                     return types.SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({**common, "operationId": test.OPERATION, "final": False, "code": "ACCEPTED"}))
                 return types.SimpleNamespace(returncode=exit_code, stderr="", stdout=json.dumps({**common, "ok": exit_code == 0, "operationId": test.OPERATION, "final": True, "code": code}))
         self.events = []
-        self.status = {"runtimeRunning": True, "activeLocationId": "a", "activeMode": "proxy-only", "runtimeId": "r", "runtimeStartedAt": "t", "configuredMode": "vpn"}
+        self.status = {"runtimeRunning": True, "activeLocationId": "a", "activeMode": "proxy-only", "runtimeId": "r", "runtimeStartedAt": "t", "configuredMode": "vpn",
+                       "selectedLocationId": "b"}
         owner = Owner()
         return owner
 
     def lease(self, owner, variant):
         lease = {"state": {"workspace": "w", "identity": self.IDENTITY, "actors": {"owner": "o", "runtime": "r"}},
                  "inputs": {"variant": variant, "runtimeConfigPath": "c"}, "accepted": {"operationId": self.OPERATION, "controllerId": self.IDENTITY, "code": "ACCEPTED", "final": False, "requestId": self.OPERATION},
-                 "before": {"data": dict(self.status)}, "activeConfig": types.SimpleNamespace(initial={"sizeBytes": 1, "sha256": "s"}), "finished": False}
+                 "before": {"data": dict(self.status)}, "pending": {"data": dict(self.status)},
+                 "activeConfig": types.SimpleNamespace(initial={"sizeBytes": 1, "sha256": "s"}), "finished": False}
         owner.tun_operation_leases = [lease]
         return lease
 
@@ -1929,6 +2020,22 @@ class TunFinishTests(unittest.TestCase):
         owner = self.owner(final_at=1.0)
         with self.assertRaisesRegex(AssertionError, "actual-tun-native-file-required"):
             self.finish(owner, self.lease(owner, "restart-grant"))
+
+    def test_a_refused_preparation_on_a_denial_is_a_known_end_not_a_parked_owner(self):
+        # No prompt ever came: the product's own final RUNTIME_FAILED, active A intact and nothing scoped started.
+        owner = self.owner(final_at=1.0, code="RUNTIME_FAILED", exit_code=1)
+        lease = self.lease(owner, "restart-deny")
+        lease["inputs"]["programData"] = "C:\\ProgramData"
+        lease["state"]["actors"] = {"owner": {"pid": 1}, "runtime": {"pid": 2}}
+        lease["baseline"] = {"brokers": [], "runtimes": [], "stages": [], "routes": []}
+        cases = types.SimpleNamespace(config_bytes=lambda path: {"sizeBytes": 1, "sha256": "s"}, exact_actor=lambda *args, **kw: None)
+        observer = types.SimpleNamespace(WindowsNative=lambda: types.SimpleNamespace(processes=lambda: [{"pid": 2, "parentPid": 1, "name": "sing-box.exe"}]))
+        with mock.patch.object(tun_stages, "os", types.SimpleNamespace(name="nt", environ={}, listdir=lambda path: ["Microsoft"])), \
+                mock.patch.object(tun_stages, "tun_routes", lambda: [], create=True):
+            result = tun_stages.finish(owner, lease, runtime_stages, cases, observer)
+        self.assertEqual("RUNTIME_FAILED", result["knownFailure"])
+        self.assertEqual([], self.parked)
+        self.assertIn("scoped-tun-unexpected-terminal-known", self.events)
 
     def test_a_prompt_past_every_bound_still_parks(self):
         owner = self.owner(final_at=10000.0)
