@@ -31,6 +31,66 @@
    }
   ]
  },
+ "firewallPrompt": {
+  "blockers": [
+   "unknown_jobs"
+  ],
+  "knownControls": [
+   [
+    "AppActions.exe",
+    2
+   ],
+   [
+    "OneDrive.Sync.Service.exe",
+    2
+   ],
+   [
+    "OneDrive.exe",
+    2
+   ],
+   [
+    "WidgetService.exe",
+    2
+   ]
+  ],
+  "label": "NV4 later: census d82d82a4 after a proxy row whose product bound a wildcard listening socket, so the Windows Defender Firewall allow-access prompt stayed open; role probe 3a0442dc (operation 7e74021a)",
+  "observedUtc": "2026-11-09T06:22:47Z",
+  "roles": [
+   {
+    "birth": "134386655186715976",
+    "children": [],
+    "commandLine": "C:\\Windows\\System32\\PickerHost.Exe FirewallNotificationDialogServer -Embedding",
+    "image": "C:\\Windows\\System32\\PickerHost.exe",
+    "microsoftPublisher": true,
+    "name": "PickerHost.exe",
+    "ownerSid": "S-1-5-21-1-2-3-1000",
+    "packageError": 15700,
+    "packageFullName": "",
+    "parent": {
+     "birth": "134386587646649602",
+     "identityValid": true,
+     "image": "C:\\Windows\\System32\\svchost.exe",
+     "name": "svchost.exe",
+     "pid": 320,
+     "session": 0
+    },
+    "pid": 6752,
+    "protection": 4294967294,
+    "services": [],
+    "session": 2,
+    "signatureValid": true
+   }
+  ],
+  "rolesSourceSha256": "6adbd6899106b3907ec4eca8f0a3371534084b0a3c9052b810af959f2d130455",
+  "sessionFlags": 1,
+  "sessionLogonUtc": "2026-11-09T00:46:22Z",
+  "unknown": [
+   [
+    "PickerHost.exe",
+    2
+   ]
+  ]
+ },
  "freshClone": {
   "blockers": [
    "unknown_jobs"

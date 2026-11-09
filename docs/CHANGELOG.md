@@ -3,7 +3,7 @@
 Release notes for VPN Control. New non-documentation changes accumulate under
 `Unreleased` until the repository version policy rolls them into a release section.
 
-## Unreleased
+## 2.2.17 - 2026-11-09
 
 - Add the first Windows scenario family (Python and MSI setup, packaged CLI smoke, disconnected CLI and streaming rows) and the closed Windows UAC decision action.
 - Fix the Windows scenario MSI property and registration readers found on first native contact, and name each failed receipt check.
@@ -14,6 +14,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Publish socks:// proxy locations, close a proxy row whose start failed, and judge Windows guest file reads on the handle.
 - Recognize the Web Experience widget service, the CBS app actions server and OneDrive's sync helper in the Windows idle census.
 - Expect the second serve's already-running line on stderr, as the product writes it, in the Windows proxy lifecycle rows.
+- Recognize an open Windows Defender Firewall prompt's dialog server in the Windows idle census.
 
 ## 2.2.16 - 2026-11-08
 

@@ -1201,6 +1201,27 @@ OneDrive from registering the fixture user's task later, when it installs or upd
 for that user. Whether NV4's run changed the installed build is unproven: its startup task
 still names `26.198.1011.0006`, as on 2026-11-06.
 
+### Windows Defender Firewall prompt in the idle census (native, 2026-11-09)
+
+After a proxy row on NV4 (clone `9059be98`) whose `on` made the product bind a wildcard
+listening socket (a product defect, fixed separately by binding loopback), its plain census
+`d82d82a4` had one unknown process, `PickerHost.exe` in console session 2. The read-only
+role probe `3a0442dc` (operation `7e74021a`) found the COM server of the Windows Defender
+Firewall's allow-access prompt, which stays open until answered, so the full idle census
+refuses `unknown_jobs` and the clone can be neither enrolled nor rebooted. That census ran
+the roles of `f80b3378` (alias pin `6adbd689`) and knew `AppActions.exe`,
+`OneDrive.Sync.Service.exe` and `WidgetService.exe`: the first native run of the rows above.
+Evidence is under `.runtime/windows-parity-20261107/enroll-9059be98/`. Those roles are
+tracked as `fixtures/windows_console_session_roles/processes-firewall.before.source`, and
+the facts joined the same synthetic projection. Under PowerShell 7.4.20 on the Mac, with the
+same two seams, both unfixed programs reproduced their native sets, and removing any one of
+the prompt rule's five checks, or the shared owner or parent check, turned exactly that
+check's controls known.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The firewall's allow-access prompt had no rule | `test_windows_console_session_roles` (`NativeConsoleSessionCensusTests.test_first_fix_census_leaves_the_firewall_prompt_unknown_RED_and_the_fixed_census_knows_it_GREEN` and the `PICKER_*` controls, Windows only; `ConsoleSessionRoleSourceTests` everywhere) | `Test-RecoveryFirewallPrompt` requires the image `%SystemRoot%\System32\PickerHost.exe` exactly, the command line `<that image> FirewallNotificationDialogServer -Embedding` and nothing else (case-insensitive; the native line spells `PickerHost.Exe`), no package (`packageError` 15700), a Microsoft Authenticode signature, the ordinary owner SID and the console session. It then takes the owner and parent tail of `Test-RecoveryComServer`, now `Test-RecoveryServiceStarted`: a live session-0 System32 `svchost.exe` parent with a valid identity, Microsoft-signed and born no later. A quoted image, another server, and a missing or extra argument stay unknown. The unfixed census over the later session, the four roles and the prompt, reproduces `d82d82a4`'s unknown set exactly (RED); the fixed one knows it (GREEN); 14 `PICKER_*` controls stay unknown. The probe recorded only that the signer is one of the three accepted Microsoft publishers, so the rule uses the shared signature check, not one subject. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

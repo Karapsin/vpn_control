@@ -1,17 +1,22 @@
 {
-  "failure": "On image 637199a5 the full idle census refused with unknown_jobs: AppActions.exe, OneDrive.Sync.Service.exe and WidgetService.exe in the console session of a never-signed-in clone, and OneDrive.exe and WidgetService.exe in the console session of a signed-in clone, before and after its first sign-in.",
+  "failure": "On image 637199a5 the full idle census refused with unknown_jobs: AppActions.exe, OneDrive.Sync.Service.exe and WidgetService.exe in the console session of a never-signed-in clone, and OneDrive.exe and WidgetService.exe in the console session of a signed-in clone, before and after its first sign-in. Later the never-signed-in clone refused for PickerHost.exe alone: the Windows Defender Firewall allow-access prompt, open after a proxy row bound a wildcard listening socket.",
   "nativeEvidence": true,
   "schemaVersion": 1,
   "sources": {
     "idle.before.source": {
       "bytes": 14923,
-      "origin": "agent_tools/readiness_windows_idle.py at 74f80d15eca7626905d0a843c43de2a8d259219c, the census composed with them",
+      "origin": "agent_tools/readiness_windows_idle.py at 74f80d15eca7626905d0a843c43de2a8d259219c, the census composed with both, unchanged at 3e19d794e638a85294a903dbc2397c811c95ebd1",
       "sha256": "018beb2718b5dc2a536a3e82a87a79e5da4e5156f3546fc8f66c51d71784aef1"
     },
     "native-facts.json": {
-      "bytes": 8483,
-      "origin": "bounded synthetic projection of the 2026-11-09 role probe 8fdbbf3b and census 45f127d9 of a never-signed-in clone, the censuses 5f5acb26 and 6d2447bc of a signed-in clone, and the 2026-11-06 role probe 8c3755d0",
-      "sha256": "a4fa963fb1a97a0a7b1dcea9a06f66576ed9b25547d9768ca24eb47b7218bf40"
+      "bytes": 9920,
+      "origin": "bounded synthetic projection of the 2026-11-09 role probe 8fdbbf3b and census 45f127d9 of a never-signed-in clone, the censuses 5f5acb26 and 6d2447bc of a signed-in clone, the 2026-11-06 role probe 8c3755d0, and the later census d82d82a4 and role probe 3a0442dc of the never-signed-in clone",
+      "sha256": "837a8bfd396073218c7121f54b97128e8ca3745cca41245706efa36763aa9f21"
+    },
+    "processes-firewall.before.source": {
+      "bytes": 24098,
+      "origin": "agent_tools/readiness_windows_processes.py at 3e19d794e638a85294a903dbc2397c811c95ebd1, the roles census d82d82a4 ran when it left the firewall prompt unknown",
+      "sha256": "6adbd6899106b3907ec4eca8f0a3371534084b0a3c9052b810af959f2d130455"
     },
     "processes.before.source": {
       "bytes": 21082,
@@ -20,5 +25,5 @@
     }
   },
   "synthetic": "Every SID is synthetic (S-1-5-21-1-2-3-1000 for the ordinary account, S-1-5-21-1-2-3-500 for Administrator); machine GUIDs, host paths, computer names and account registry values are not kept.",
-  "unproven": "Why OneDrive.exe was unknown on the signed-in clone: its census keeps only name, pid, session and verdict, and no role facts were read there. The rule is unchanged for it."
+  "unproven": "Why OneDrive.exe was unknown on the signed-in clone: its census keeps only name, pid, session and verdict, and no role facts were read there. The rule is unchanged for it. The firewall prompt's exact Authenticode subject: the probe recorded only that it is one of the three accepted Microsoft publishers."
 }

@@ -94,6 +94,17 @@ function Test-RecoveryPublishedPackage([object]$native,[string]$ordinary,[string
 function Test-RecoveryWidgetPackage([object]$native,[string]$ordinary) {
  return [bool](Test-RecoveryPublishedPackage $native $ordinary 'Microsoft.WidgetsPlatformRuntime' 'WidgetService\WidgetService.exe')
 }
+function Test-RecoveryServiceStarted([object]$p,[object]$native,[string]$ordinary) {
+ # The ordinary owner, and the live session-0 System32 svchost.exe that started it.
+ $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
+ if($owner.ReturnValue -ne 0 -or -not [string]::Equals([string]$owner.Sid,$ordinary,[StringComparison]::OrdinalIgnoreCase)){return $false}
+ $parentId=[UInt32]$p.ParentProcessId
+ if(-not $RecoveryRoleProcessMap.ContainsKey($parentId)){return $false}
+ $parent=$RecoveryRoleProcessMap[$parentId];$parentNative=[RecoveryProcessIdentity]::Read($parentId)
+ $parentCreation=if($null -eq $parent.CreationDate){''}else{$parent.CreationDate.ToUniversalTime().ToFileTimeUtc().ToString()}
+ $serviceHost=$env:SystemRoot+'\System32\svchost.exe'
+ return [bool]([string]$parent.Name -eq 'svchost.exe' -and [UInt32]$parent.SessionId -eq 0 -and [RecoveryProcessIdentity]::Image($parentNative,'svchost.exe',$parentCreation) -and [string]::Equals([string]$parentNative.image,$serviceHost,[StringComparison]::OrdinalIgnoreCase) -and [UInt64]$parentNative.birth -le [UInt64]$native.birth -and (Test-RecoveryMicrosoftSignature $serviceHost))
+}
 function Test-RecoveryComServer([object]$p,[object]$native,[string]$ordinary,[UInt32]$console,[string]$family,[string]$image,[string]$arguments) {
  # A Windows component's COM server for the ordinary session: its Windows-signed
  # package family, its exact image and COM arguments, a Microsoft signature, the
@@ -101,14 +112,18 @@ function Test-RecoveryComServer([object]$p,[object]$native,[string]$ordinary,[UI
  try {
   if([UInt32]$p.SessionId -ne $console -or $native.packageError -ne 0 -or [string]$native.package -notmatch ('^'+[regex]::Escape($family)+'_[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+_x64__cw5n1h2txyewy$')){return $false}
   if(-not [string]::Equals([string]$native.image,$image,[StringComparison]::OrdinalIgnoreCase) -or -not [string]::Equals([string]$p.CommandLine,('"'+$image+'" '+$arguments),[StringComparison]::OrdinalIgnoreCase) -or -not (Test-RecoveryMicrosoftSignature $image)){return $false}
-  $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
-  if($owner.ReturnValue -ne 0 -or -not [string]::Equals([string]$owner.Sid,$ordinary,[StringComparison]::OrdinalIgnoreCase)){return $false}
-  $parentId=[UInt32]$p.ParentProcessId
-  if(-not $RecoveryRoleProcessMap.ContainsKey($parentId)){return $false}
-  $parent=$RecoveryRoleProcessMap[$parentId];$parentNative=[RecoveryProcessIdentity]::Read($parentId)
-  $parentCreation=if($null -eq $parent.CreationDate){''}else{$parent.CreationDate.ToUniversalTime().ToFileTimeUtc().ToString()}
-  $serviceHost=$env:SystemRoot+'\System32\svchost.exe'
-  return [bool]([string]$parent.Name -eq 'svchost.exe' -and [UInt32]$parent.SessionId -eq 0 -and [RecoveryProcessIdentity]::Image($parentNative,'svchost.exe',$parentCreation) -and [string]::Equals([string]$parentNative.image,$serviceHost,[StringComparison]::OrdinalIgnoreCase) -and [UInt64]$parentNative.birth -le [UInt64]$native.birth -and (Test-RecoveryMicrosoftSignature $serviceHost))
+  return [bool](Test-RecoveryServiceStarted $p $native $ordinary)
+ }catch{return $false}
+}
+function Test-RecoveryFirewallPrompt([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
+ # The Windows Defender Firewall "allow access" prompt, which stays until answered:
+ # the unpackaged System32 picker host started for that one dialog server only.
+ # Every other picker server stays unknown.
+ try {
+  $image=$env:SystemRoot+'\System32\PickerHost.exe'
+  if([UInt32]$p.SessionId -ne $console -or $native.packageError -ne 15700 -or -not [string]::IsNullOrEmpty([string]$native.package)){return $false}
+  if(-not [string]::Equals([string]$native.image,$image,[StringComparison]::OrdinalIgnoreCase) -or -not [string]::Equals([string]$p.CommandLine,($image+' FirewallNotificationDialogServer -Embedding'),[StringComparison]::OrdinalIgnoreCase) -or -not (Test-RecoveryMicrosoftSignature $image)){return $false}
+  return [bool](Test-RecoveryServiceStarted $p $native $ordinary)
  }catch{return $false}
 }
 function Test-RecoveryDashboardWidgetService([object]$p,[object]$native,[string]$ordinary,[UInt32]$console) {
@@ -257,6 +272,7 @@ function Test-RecoveryExtraRole([object]$p,[object]$native,[string]$ordinary,[UI
  if($name -eq 'OneDrive.Sync.Service.exe'){return [bool](Test-RecoveryUnconfiguredOneDriveSync $p $native $ordinary $console)}
  if($name -eq 'WidgetService.exe' -and $session -eq $console){return [bool]((Test-RecoveryWidgetPackage $native $ordinary) -or (Test-RecoveryDashboardWidgetService $p $native $ordinary $console))}
  if($name -eq 'AppActions.exe'){return [bool](Test-RecoveryComServer $p $native $ordinary $console 'MicrosoftWindows.Client.CBS' ($env:SystemRoot+'\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\AppActions.exe') '-Embedding')}
+ if($name -eq 'PickerHost.exe'){return [bool](Test-RecoveryFirewallPrompt $p $native $ordinary $console)}
  $shape=$false
  if($name -eq 'wlms.exe' -and $session -eq 0){$shape=($path -eq ($env:SystemRoot+'\System32\wlms\wlms.exe'))}
  elseif($name -eq 'DefenderSessionHelper.exe' -and $native.protection -eq 3){$shape=($path -match ('^'+[regex]::Escape($env:ProgramData+'\Microsoft\Windows Defender\Platform\')+'[0-9.]+-[0-9]+\\DefenderSessionHelper\.exe$'))}

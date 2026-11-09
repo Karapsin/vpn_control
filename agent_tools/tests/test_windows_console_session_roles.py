@@ -1,12 +1,14 @@
 """Image 637199a5's Microsoft console-session roles are known only by their whole identity.
 
-Native contact of 2026-11-09: the full idle census refused with unknown_jobs on two
-clones of the image. The fixture keeps the unfixed roles and census byte for byte and a
-synthetic projection of the native facts. On Windows the whole census, composed as
-production composes it (the module's own native reader with only its OS calls answered,
-the roles, ALLOWANCE and _OBSERVE), runs in Windows PowerShell: the unfixed program
-reproduces the native unknown set (RED), the fixed one knows every role (GREEN), and each
-control that differs from the native facts by one fact stays unknown.
+Native contacts of 2026-11-09: the full idle census refused with unknown_jobs on two
+clones of the image, and later on the never-signed-in one for the Windows Defender
+Firewall prompt alone. The fixture keeps the unfixed roles of both contacts and their
+census byte for byte, and a synthetic projection of the native facts. On Windows the
+whole census, composed as production composes it (the module's own native reader with
+only its OS calls answered, the roles, ALLOWANCE and _OBSERVE), runs in Windows
+PowerShell: each unfixed program reproduces its native unknown set (RED), the fixed one
+knows every role (GREEN), and each control that differs from the native facts by one
+fact stays unknown.
 """
 import hashlib,json,os,re,shutil,subprocess,tempfile,types,unittest
 from pathlib import Path
@@ -20,8 +22,9 @@ OTHER_SID='S-1-5-21-1-2-3-1001'
 
 
 def before():
+    """The roles that refused first, the roles the firewall census ran, and their census."""
     provenance=json.loads((FIXTURE/'provenance.json').read_bytes());modules=[]
-    for filename in ('processes.before.source','idle.before.source'):
+    for filename in ('processes.before.source','processes-firewall.before.source','idle.before.source'):
         raw=(FIXTURE/filename).read_bytes()
         if hashlib.sha256(raw).hexdigest()!=provenance['sources'][filename]['sha256']:raise ValueError('console_roles_before_changed')
         module=types.ModuleType('agent_tools._console_roles_before');module.__package__='agent_tools';module.__file__=str(FIXTURE/filename)
@@ -86,18 +89,27 @@ function Test-Known($census,[string]$name){$rows=@($census.processes|Where-Objec
 '''
 
 
+def add_process(variable,name,row):
+    return (' Add-Process $'+variable+' '+literal(name)+' '+str(row['parent']['pid'])+' $Console $'+variable+'Image '+literal(row['birth'])+' '+str(row['protection'])
+            +' '+literal(row['packageFullName'])+' $Account '+literal(row['commandLine'])+'\n $script:Signers[$'+variable+'Image]=$Microsoft')
+
+
 def world(value):
-    """The fresh clone's console session as the native role probe read it."""
+    """The never-signed-in clone's console session as its two native role probes read it:
+    Reset-World is the session of census 45f127d9; Add-FirewallPrompt adds the prompt that
+    census d82d82a4 found beside the same four roles."""
     roles={row['name']:row for row in value['freshClone']['roles']}
+    prompt=value['firewallPrompt']['roles'][0]
     host=roles['AppActions.exe']['parent']
-    if roles['WidgetService.exe']['parent']!=host or host['name']!='svchost.exe' or host['session']!=0 or not host['identityValid']:
+    if roles['WidgetService.exe']['parent']!=host or prompt['parent']!=host or host['name']!='svchost.exe' or host['session']!=0 or not host['identityValid']:
         raise ValueError('console_roles_parent_changed')
     names={'AppActions.exe':'AppActions','WidgetService.exe':'WidgetService','OneDrive.exe':'OneDrive','OneDrive.Sync.Service.exe':'Sync'}
     lines=['$Account='+literal(value['ordinarySid'])+';$ProfileRoot='+literal(value['profileRoot'])+';$Console=[UInt32]'+str(value['consoleSession']),
            "$sessionFacts=@{machine='machine';boot='boot';expectedSid=$Account;ordinary=$true;console=$Console}",
            '$Q=[string][char]34;$Microsoft='+literal(MICROSOFT)+';$Contoso='+literal('CN=Contoso, O=Contoso, C=US')+';$OtherSid='+literal(OTHER_SID),
            # The session's shell, by the census's explorer pid, is a parent the user could start from.
-           '$ServiceHost=[UInt32]'+str(host['pid'])+';$ServiceHostImage='+literal(host['image'])+';$Shell=[UInt32]'+str(value['freshClone']['shellPid'])]
+           '$ServiceHost=[UInt32]'+str(host['pid'])+';$ServiceHostImage='+literal(host['image'])+';$Shell=[UInt32]'+str(value['freshClone']['shellPid']),
+           '$Picker=[UInt32]'+str(prompt['pid'])+';$PickerImage='+literal(prompt['image'])]
     for name,variable in names.items():lines.append('$'+variable+'=[UInt32]'+str(roles[name]['pid'])+';$'+variable+'Image='+literal(roles[name]['image']))
     lines.append('function Reset-World {')
     lines.append(' $script:Census=@();$script:Owners=@{};$script:Signers=@{};[RecoveryProcessIdentity]::Rows.Clear()')
@@ -105,18 +117,19 @@ def world(value):
     lines.append(" Add-Process $ServiceHost 'svchost.exe' 0 0 $ServiceHostImage "+literal(host['birth'])+" 0 '' 'S-1-5-18' ''")
     lines.append(" Add-Process $Shell 'explorer.exe' 0 $Console ($env:SystemRoot+'\\explorer.exe') '134386587900000000' 0 '' $Account ''")
     lines.append(" $script:Signers[$ServiceHostImage]="+literal(WINDOWS))
-    for name,variable in names.items():
-        row=roles[name]
+    for row in [*roles.values(),prompt]:
         if row['ownerSid']!=value['ordinarySid'] or row['session']!=value['consoleSession'] or not(row['signatureValid'] and row['microsoftPublisher']):
             raise ValueError('console_roles_fact_changed')
-        lines.append(' Add-Process $'+variable+' '+literal(name)+' '+str(row['parent']['pid'])+' $Console $'+variable+'Image '+literal(row['birth'])+' '+str(row['protection'])
-                     +' '+literal(row['packageFullName'])+' $Account '+literal(row['commandLine']))
-        lines.append(' $script:Signers[$'+variable+'Image]=$Microsoft')
+    for name,variable in names.items():lines.append(add_process(variable,name,roles[name]))
+    lines.append('}')
+    lines.append('function Add-FirewallPrompt {')
+    lines.append(add_process('Picker','PickerHost.exe',prompt))
     lines.append('}')
     return '\n'.join(lines)+'\n'
 
 
 # Each control differs from the native facts by one fact; True means it must stay known.
+# Every control runs in the later session, with the firewall prompt beside the four roles.
 # $Q is a double quote, $Contoso a foreign signer and $OtherSid another account.
 MOVE_PACKAGE=r";$row=[RecoveryProcessIdentity]::Rows[$WidgetService];$row[0]=$row[0].Replace($from,$to);$row[3]=$row[3].Replace($from,$to);(Get-Row $WidgetService).CommandLine=(Get-Row $WidgetService).CommandLine.Replace($from,$to);$script:Signers[$row[0]]=$Microsoft"
 CONTROLS=(
@@ -156,6 +169,20 @@ CONTROLS=(
   ('SYNC_CONFIGURED_ACCOUNT','OneDrive.Sync.Service.exe',r"$script:OneDriveMetadata=$null",False),
   ('ONEDRIVE_CONFIGURED_ACCOUNT','OneDrive.exe',r"$script:OneDriveMetadata=$null",False),
   ('ONEDRIVE_VERSIONED_IMAGE','OneDrive.exe',r"$image=$OneDriveImage.Replace('\OneDrive\OneDrive.exe','\OneDrive\26.198.1011.0006\OneDrive.exe');[RecoveryProcessIdentity]::Rows[$OneDrive][0]=$image;$script:Signers[$image]=$Microsoft",False),
+  ('PICKER_IMAGE_ELSEWHERE','PickerHost.exe',r"[RecoveryProcessIdentity]::Rows[$Picker][0]=$PickerImage.Replace('\System32\','\SysWOW64\')",False),
+  ('PICKER_QUOTED_IMAGE','PickerHost.exe',r"(Get-Row $Picker).CommandLine=($Q+$PickerImage+$Q+' FirewallNotificationDialogServer -Embedding')",False),
+  ('PICKER_PACKAGED','PickerHost.exe',r"[RecoveryProcessIdentity]::Rows[$Picker][3]='MicrosoftWindows.Client.CBS_1000.26100.234.0_x64__cw5n1h2txyewy'",False),
+  ('PICKER_UNSIGNED','PickerHost.exe',r"$script:Signers.Remove($PickerImage)",False),
+  ('PICKER_OTHER_PUBLISHER','PickerHost.exe',r"$script:Signers[$PickerImage]=$Contoso",False),
+  ('PICKER_OTHER_OWNER','PickerHost.exe',r"$script:Owners[$Picker]=$OtherSid",False),
+  ('PICKER_OTHER_SESSION','PickerHost.exe',r"(Get-Row $Picker).SessionId=3",False),
+  ('PICKER_SHELL_PARENT','PickerHost.exe',r"(Get-Row $Picker).ParentProcessId=$Shell",False),
+  ('PICKER_PARENT_GONE','PickerHost.exe',r"(Get-Row $Picker).ParentProcessId=1452",False),
+  ('PICKER_PARENT_YOUNGER','PickerHost.exe',r"Set-Birth $ServiceHost '134386655186715986'",False),
+  ('PICKER_OTHER_SERVER','PickerHost.exe',r"(Get-Row $Picker).CommandLine=($PickerImage+' OtherPickerServer -Embedding')",False),
+  ('PICKER_NO_SERVER','PickerHost.exe',r"(Get-Row $Picker).CommandLine=($PickerImage+' -Embedding')",False),
+  ('PICKER_MISSING_ARGUMENT','PickerHost.exe',r"(Get-Row $Picker).CommandLine=($PickerImage+' FirewallNotificationDialogServer')",False),
+  ('PICKER_EXTRA_ARGUMENT','PickerHost.exe',r"(Get-Row $Picker).CommandLine=($PickerImage+' FirewallNotificationDialogServer -Embedding /extra')",False),
   # The forms the 2026-11-06 probe read on an earlier clone of the image stay known.
   ('SYNC_QUOTED_FORM','OneDrive.Sync.Service.exe',r"(Get-Row $Sync).CommandLine=($Q+$SyncImage+$Q+' /silentConfig')",True),
   ('ONEDRIVE_LOGON_FORM','OneDrive.exe',r"(Get-Row $OneDrive).CommandLine=($Q+$OneDriveImage+$Q+' /background');(Get-Row $OneDrive).ParentProcessId=$Shell",True),
@@ -167,21 +194,28 @@ def census_function(observe):
     return 'function Invoke-Census {\n'+observe.replace(OUTPUT,'return $result')+'\n}\n'
 
 
+def phase(roles,census):
+    return roles+'\nfunction Get-RecoveryOneDriveMetadata { return $script:OneDriveMetadata }\n'+census.ALLOWANCE+census_function(census._OBSERVE)
+
+
 def program(value=None):
-    """One ASCII program: the unfixed census, then the fixed one, then every control."""
+    """One ASCII program: each unfixed census in its own native session, then the fixed
+    census in both sessions, then every control."""
     value=facts() if value is None else value
-    old_processes,old_idle=before()
-    if old_processes.NATIVE!=processes.NATIVE:raise ValueError('console_roles_native_changed')
+    old_processes,firewall_processes,old_idle=before()
+    if not old_processes.NATIVE==firewall_processes.NATIVE==processes.NATIVE:raise ValueError('console_roles_native_changed')
     source=PRELUDE+boundary(processes.NATIVE)+WORLD+world(value)
-    source+="foreach($id in @($ServiceHost,$Shell,$AppActions,$WidgetService,$OneDrive,$Sync)){if($id -eq [UInt32]$PID){throw 'HARNESS_PID_COLLISION'}}\n"
-    source+=old_processes._ROLES+'\nfunction Get-RecoveryOneDriveMetadata { return $script:OneDriveMetadata }\n'+old_idle.ALLOWANCE+census_function(old_idle._OBSERVE)
-    source+='Reset-World;$before=Invoke-Census\n'
-    source+=processes._ROLES+'\nfunction Get-RecoveryOneDriveMetadata { return $script:OneDriveMetadata }\n'+idle.ALLOWANCE+census_function(idle._OBSERVE)
-    source+='Reset-World;$fixed=Invoke-Census\n$controls=[ordered]@{}\n'
+    source+="foreach($id in @($ServiceHost,$Shell,$AppActions,$WidgetService,$OneDrive,$Sync,$Picker)){if($id -eq [UInt32]$PID){throw 'HARNESS_PID_COLLISION'}}\n"
+    source+=phase(old_processes._ROLES,old_idle)+'Reset-World;$before=Invoke-Census\n'
+    source+=phase(firewall_processes._ROLES,old_idle)+'Reset-World;Add-FirewallPrompt;$firewallBefore=Invoke-Census\n'
+    source+=phase(processes._ROLES,idle)+'Reset-World;$fixed=Invoke-Census\nReset-World;Add-FirewallPrompt;$firewallFixed=Invoke-Census\n$controls=[ordered]@{}\n'
     for label,target,change,_ in CONTROLS:
-        source+='Reset-World;$RecoveryRoleSignatures.Clear();'+change+';$controls['+literal(label)+']=Test-Known (Invoke-Census) '+literal(target)+'\n'
-    source+=("[Console]::WriteLine((@{beforeUnknown=@(Get-Unknown $before);beforeBlockers=@($before.blockers);fixedUnknown=@(Get-Unknown $fixed);"
-             "fixedBlockers=@($fixed.blockers);controls=$controls}|ConvertTo-Json -Depth 4 -Compress))\n")
+        source+='Reset-World;Add-FirewallPrompt;$RecoveryRoleSignatures.Clear();'+change+';$controls['+literal(label)+']=Test-Known (Invoke-Census) '+literal(target)+'\n'
+    source+=("[Console]::WriteLine((@{beforeUnknown=@(Get-Unknown $before);beforeBlockers=@($before.blockers);"
+             "firewallBeforeUnknown=@(Get-Unknown $firewallBefore);firewallBeforeBlockers=@($firewallBefore.blockers);"
+             "fixedUnknown=@(Get-Unknown $fixed);fixedBlockers=@($fixed.blockers);"
+             "firewallFixedUnknown=@(Get-Unknown $firewallFixed);firewallFixedBlockers=@($firewallFixed.blockers);"
+             "controls=$controls}|ConvertTo-Json -Depth 4 -Compress))\n")
     source.encode('ascii')
     return source
 
@@ -191,21 +225,23 @@ def listed(value):
 
 
 def observed_rule_gaps(roles):
-    """Static oracle of the three identities the native census could not place."""
+    """Static oracle of the four identities the native censuses could not place."""
     gaps=[]
     if re.search(r"\$name -eq 'AppActions\.exe'",roles)is None:gaps.append('AppActions.exe')
     if "'MicrosoftWindows.Client.WebExperience'" not in roles or "'\\Dashboard\\WidgetService.exe'" not in roles:gaps.append('WidgetService.exe')
     if "[string]::Equals($commandLine,'/silentConfig'," not in roles:gaps.append('OneDrive.Sync.Service.exe')
+    if re.search(r"\$name -eq 'PickerHost\.exe'",roles)is None or "' FirewallNotificationDialogServer -Embedding'" not in roles:gaps.append('PickerHost.exe')
     return gaps
 
 
 class ConsoleSessionRoleSourceTests(unittest.TestCase):
     def test_the_fixture_binds_the_whole_unfixed_sources_and_a_synthetic_native_projection(self):
-        old_processes,old_idle=before()
+        old_processes,firewall_processes,old_idle=before()
         provenance=json.loads((FIXTURE/'provenance.json').read_bytes())
-        self.assertEqual('agent_tools/readiness_windows_processes.py',provenance['sources']['processes.before.source']['origin'].split(' ')[0])
+        for name in ('processes.before.source','processes-firewall.before.source'):
+            self.assertEqual('agent_tools/readiness_windows_processes.py',provenance['sources'][name]['origin'].split(' ')[0])
         # Only the roles changed: the native reader and the census are those that ran.
-        self.assertEqual(old_processes.NATIVE,processes.NATIVE)
+        self.assertEqual(old_processes.NATIVE,processes.NATIVE);self.assertEqual(firewall_processes.NATIVE,processes.NATIVE)
         self.assertEqual((old_idle.ALLOWANCE,old_idle._OBSERVE),(idle.ALLOWANCE,idle._OBSERVE))
         raw=(FIXTURE/'native-facts.json').read_text(encoding='ascii')
         self.assertEqual({'S-1-5-21-1-2-3-1000','S-1-5-21-1-2-3-500'},set(re.findall(r'S-1-5-21-[0-9-]+[0-9]',raw)))
@@ -221,23 +257,32 @@ class ConsoleSessionRoleSourceTests(unittest.TestCase):
         # OneDrive.exe was already unknown in the census before the first sign-in.
         self.assertLess(signed['censuses'][0]['observedUtc'],signed['firstSignIn']['lockedObservedUtc'])
         self.assertTrue(signed['firstSignIn']['sameLogon'])
+        # The firewall census ran exactly the preserved roles, which knew the four earlier roles.
+        prompt=value['firewallPrompt']
+        self.assertEqual(([['PickerHost.exe',2]],['unknown_jobs']),(prompt['unknown'],prompt['blockers']))
+        self.assertEqual([['AppActions.exe',2],['OneDrive.Sync.Service.exe',2],['OneDrive.exe',2],['WidgetService.exe',2]],prompt['knownControls'])
+        self.assertEqual(json.loads((FIXTURE/'provenance.json').read_bytes())['sources']['processes-firewall.before.source']['sha256'],prompt['rolesSourceSha256'])
 
     def test_the_unfixed_rules_lack_each_observed_identity_and_the_current_rules_name_it(self):
-        old_processes,_=before()
-        self.assertEqual(['AppActions.exe','WidgetService.exe','OneDrive.Sync.Service.exe'],observed_rule_gaps(old_processes._ROLES))
+        old_processes,firewall_processes,_=before()
+        self.assertEqual(['AppActions.exe','WidgetService.exe','OneDrive.Sync.Service.exe','PickerHost.exe'],observed_rule_gaps(old_processes._ROLES))
+        self.assertEqual(['PickerHost.exe'],observed_rule_gaps(firewall_processes._ROLES))
         self.assertEqual([],observed_rule_gaps(processes._ROLES))
 
-    def test_the_harness_runs_both_whole_census_programs_over_the_native_facts(self):
-        old_processes,old_idle=before();source=program()
-        self.assertEqual(1,source.count(old_processes._ROLES));self.assertEqual(1,source.count(processes._ROLES))
-        self.assertEqual(2,source.count(idle.ALLOWANCE));self.assertEqual(2,source.count(idle._OBSERVE.replace(OUTPUT,'return $result')))
+    def test_the_harness_runs_every_whole_census_program_over_the_native_facts(self):
+        old_processes,firewall_processes,old_idle=before();source=program()
+        for roles in (old_processes._ROLES,firewall_processes._ROLES,processes._ROLES):self.assertEqual(1,source.count(roles))
+        self.assertEqual(3,source.count(idle.ALLOWANCE));self.assertEqual(3,source.count(idle._OBSERVE.replace(OUTPUT,'return $result')))
         self.assertEqual(1,source.count('[Console]::WriteLine('))
         self.assertLess(source.index(old_processes._ROLES),source.index('$before=Invoke-Census'))
-        self.assertLess(source.index('$before=Invoke-Census'),source.index(processes._ROLES))
-        for row in facts()['freshClone']['roles']:
+        self.assertLess(source.index('$before=Invoke-Census'),source.index(firewall_processes._ROLES))
+        self.assertLess(source.index(firewall_processes._ROLES),source.index('$firewallBefore=Invoke-Census'))
+        self.assertLess(source.index('$firewallBefore=Invoke-Census'),source.index(processes._ROLES))
+        value=facts()
+        for row in value['freshClone']['roles']+value['firewallPrompt']['roles']:
             for fact in (row['image'],row['birth'],row['packageFullName'],row['commandLine']):self.assertIn(literal(fact),source)
         kinds={'IMAGE','PACKAGE','PUBLISHER','UNSIGNED','OWNER','SESSION','PARENT','ARGUMENT'}
-        for prefix in ('APPACTIONS','WIDGET','SYNC'):
+        for prefix in ('APPACTIONS','WIDGET','SYNC','PICKER'):
             covered={kind for kind in kinds for label,_,_,known in CONTROLS if label.startswith(prefix+'_')and kind in label and not known}
             self.assertEqual(kinds-({'PACKAGE','PARENT'}if prefix=='SYNC'else set()),covered,prefix)
 
@@ -259,6 +304,12 @@ class NativeConsoleSessionCensusTests(unittest.TestCase):
         self.assertEqual(sorted(name for name,_ in facts()['freshClone']['unknown']),listed(value['beforeUnknown']))
         self.assertIn('unknown_jobs',listed(value['beforeBlockers']))
         self.assertEqual([],listed(value['fixedUnknown']));self.assertNotIn('unknown_jobs',listed(value['fixedBlockers']))
+
+    def test_first_fix_census_leaves_the_firewall_prompt_unknown_RED_and_the_fixed_census_knows_it_GREEN(self):
+        value=self.value()
+        self.assertEqual(sorted(name for name,_ in facts()['firewallPrompt']['unknown']),listed(value['firewallBeforeUnknown']))
+        self.assertIn('unknown_jobs',listed(value['firewallBeforeBlockers']))
+        self.assertEqual([],listed(value['firewallFixedUnknown']));self.assertNotIn('unknown_jobs',listed(value['firewallFixedBlockers']))
 
     def test_each_control_one_fact_from_the_native_identity_stays_unknown(self):
         self.assertEqual({label:known for label,_,_,known in CONTROLS},self.value()['controls'])
