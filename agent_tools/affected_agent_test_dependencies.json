@@ -13023,16 +13023,18 @@
       ]
     },
     "agent_tools/tests/test_windows_update_policy.py": {
-      "reason": "Whole authenticated remote beforeimage from the fixed 2026-11-06 fixture directory with the current update policy, setup and receipt sources; nothing changes a machine policy.",
+      "reason": "Whole authenticated remote beforeimage from the fixed 2026-11-06 fixture directory with the current update policy, setup and receipt sources; nothing changes a machine policy. The OneDrive self-update regression reads its own pinned unfixed policy beforeimage from the windows_onedrive_update_policy fixture directory.",
       "scopes": [
         "agent_tools/tests/fixtures/windows_native_tools_20261106/",
+        "agent_tools/tests/fixtures/windows_onedrive_update_policy/",
         "agent_tools/windows_vm_unattend.py",
         "agent_tools/windows_vm_guest.py",
         "agent_tools/readiness_windows_remote.py",
         "agent_tools/readiness_windows.py"
       ],
       "sourceSha256": [
-        "a96ccd4ec4c182afeec322058c8e65b0cdbd2abfd13f323942530e15f873eb2e"
+        "a96ccd4ec4c182afeec322058c8e65b0cdbd2abfd13f323942530e15f873eb2e",
+        "b33f922dd20e1a1e0955a7f5d72000e0fd2f9e8f3f43525a0009717870c34035"
       ]
     },
     "agent_tools/tests/test_windows_visual_fixture.py": {
@@ -13389,7 +13391,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "83f644279c95d9284953bd7481aea9de5886b46da2753cd31dacce716ddda12f",
+    "agent_tools/readiness_vm_dispatch.json": "02455020d4512b3672b086c790207852e2c4c9df12a4559ed20892eddd04dbcd",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

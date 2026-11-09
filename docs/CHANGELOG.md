@@ -7,6 +7,7 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 - Add the Windows document, cold-document, responsive, scoped-TUN deny and SSH import scenario rows and the matrix observation that records them.
 - Bind every desktop free-port probe and port check to the loopback, so starting a connection, Find Best, validation and SSH-routed subscription downloads no longer trigger a Windows Defender Firewall prompt for VPN Control.
+- Keep OneDrive from updating itself on Windows test fixtures: the fixture update policy sets OneDrive's PreventNetworkTrafficPreUserSignIn before the first logon and disables every OneDrive update task.
 
 ## 2.2.17 - 2026-11-09
 

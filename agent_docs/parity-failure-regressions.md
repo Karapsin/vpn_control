@@ -1311,6 +1311,22 @@ are under `.runtime/` of the fix clone (`fix-loopback-ports`).
 | --- | --- | --- |
 | The app's free-port probes listened on every interface | `DesktopLoopbackListenerTest.everyListenerAndPortProbeOfTheAppBindsTheLoopbackOnly` (`:desktopApp:test`); control `DesktopLoopbackTest` | Ports were found with `ServerSocket(0)`, which binds the wildcard and listens: `DesktopProxyRuntimeManager.allocateListenPort` (twice on a proxy-only `on`, once on a VPN `on` without a verification port), `DesktopDirectProbeProxy.useProxy`, `DesktopProxyValidationRuntime.allocateListenPort` and the SSH bootstrap proxy of `DesktopSubscriptionDownloadClient`. Windows raises the prompt when a program without a rule listens beyond the loopback; sing-box itself listens on `127.0.0.1`, and the control endpoint already bound the loopback. All four now take `DesktopLoopback.freePort()`: `127.0.0.1`, with the same backlog (50), retry loop and exceptions; the `127.0.0.1` port check moved there unchanged (`CONFIG-012`). The test runs the real proxy-only `on`, direct probe, validation, SSH bootstrap and control endpoint in a child JVM whose `ServerSocket` factory records each bind's address and opens no OS socket. No sing-box resolves there, so no runtime starts, and the runtime's two inbound ports and the endpoint's port must come from recorded binds. RED on `3e19d794`: 1 test, 1 failure, five `0.0.0.0` binds (`DesktopProxyRuntimeManager.kt:365` twice, `DesktopDirectProbeProxy.kt:27`, `DesktopProxyValidationRuntime.kt:409`, `DesktopSubscriptionDownloadClient.kt:140`). GREEN on the fix: 1 test, no failure, every bind `127.0.0.1`. Native only: that a proxy `on` of a package built from the fix raises no firewall prompt, shown by the next proxy row on a fixed MSI and a clone without an open prompt. Not changed: Android's SSH bootstrap probe (`AndroidHomeSshBootstrapProxy`, `ServerSocket(0)`); Android has no such prompt. |
 
+### OneDrive self-update on Windows fixtures (native, 2026-11-09)
+
+The finding recorded under the idle census roles above, by user decision "disable updates".
+Read-only probe `3a0442dc` on clone `9059be98` (`roles-summary.json` of
+`.runtime/windows-parity-20261107/enroll-9059be98/roles-probe-3a0442dc-dca7-468c-b2d6-be20cebc57f2/`):
+the fixture user's `OneDrive Standalone Update Task-<SID>` is `Ready` and its OneDrive is
+`26.198.1011.0006`, restarted with `/updateInstalled /background`, while the Administrator's task,
+present when secure reapplied the policy, is `Disabled` with OneDrive `25.087.0506.0001`. OneDrive
+has no supported switch that stops its updates: the running sync app updates itself and registers
+its update task again for that user after the policy last ran. The unfixed policy is the
+beforeimage `agent_tools/tests/fixtures/windows_onedrive_update_policy/windows_vm_unattend.before.source`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The fixture user's unconfigured OneDrive updated itself and re-enabled its update task | `test_windows_update_policy.OneDriveSelfUpdateTests` | `UPDATE_POLICY` now sets `HKLM\SOFTWARE\Policies\Microsoft\OneDrive` `PreventNetworkTrafficPreUserSignIn=1` (Microsoft's policy: no network traffic, update checks included, and no automatic start until a user signs in to OneDrive; the fixture user never does) and disables `OneDrive*Standalone Update Task*` (per user, per machine, v2) instead of the per-user name only. Clones run the policy from `SetupComplete.cmd`, before the first logon, and secure reapplies it. RED on the beforeimage: 3 failures (two task names not disabled, no policy for the running app); GREEN 18 tests on Python 3.14 and 3.12. Native proof belongs to the next clone created from these sources: policy value set, the fixture user's update task `Disabled`, no `OneDrive.exe` running at idle, the image's build unchanged. Clones created before this change keep the old state. |
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

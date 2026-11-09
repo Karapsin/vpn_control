@@ -1,0 +1,19 @@
+{
+  "failure": "OneDrive self-update on Windows fixtures despite UPDATE_POLICY",
+  "nativeEvidence": {
+    "clone": "9059be98-c816-47bf-8cbd-e9e1439d4dc9",
+    "observed": [
+      "fixture user OneDrive 26.198.1011.0006 restarted with /updateInstalled /background",
+      "fixture user OneDrive Standalone Update Task-<SID> Ready; Administrator task Disabled; Administrator OneDrive 25.087.0506.0001"
+    ],
+    "probe": "roles-probe-3a0442dc-dca7-468c-b2d6-be20cebc57f2"
+  },
+  "schemaVersion": 1,
+  "sha256": {
+    "windows_vm_unattend.before.source": "9a6b467378ab000dc8692bb784cdd4558d7d7a3615af1817c42716a08ca93bfd"
+  },
+  "source": {
+    "commit": "b081beaedf276ae165c4c43c6a5ad86036d7499b",
+    "path": "agent_tools/windows_vm_unattend.py"
+  }
+}

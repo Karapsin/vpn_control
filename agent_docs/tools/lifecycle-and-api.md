@@ -299,8 +299,13 @@ Images never auto-encrypt. Release a template's own claim only after its
 Fixtures take no unexpected updates. `windows_vm_unattend.UPDATE_POLICY` runs
 in the fixture's first-boot initialize script and sets the machine policies for
 Windows Update (`NoAutoUpdate=1`, `NoAutoRebootWithLoggedOnUsers=1`) and the
-Store (`AutoDownload=2`), then disables the Edge and OneDrive updater tasks and
-the Edge updater services. It does not touch Defender. A failure there prints
+Store (`AutoDownload=2`), sets OneDrive's `PreventNetworkTrafficPreUserSignIn=1`,
+then disables the Edge updater tasks, every OneDrive update task (per user, per
+machine, v2) and the Edge updater services. It does not touch Defender. OneDrive
+has no supported switch that stops its updates: the running sync app updates
+itself and registers its update task again afterwards. The fixture user never
+signs in to OneDrive, so that policy, read before the first logon, keeps the
+unconfigured app from starting and checking for updates. A failure there prints
 `FIXTURE_UPDATE_POLICY_UNAPPLIED` to the transcript and does not stop setup.
 `windows-vm-deploy-qualify` requires only the `NoAutoUpdate` and `AutoDownload`
 values. Edge registers its update tasks after first setup, so

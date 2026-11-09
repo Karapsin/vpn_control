@@ -17,12 +17,19 @@ def parse_setup(value):
 # download, install or restart, no Store auto-download, no Edge updater, whose
 # own policy is honored only on managed machines, and no OneDrive self-update.
 # Defender signatures stay on.
-UPDATE_POLICY=r'''$windowsUpdate='HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU';$store='HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore'
-foreach($key in @($windowsUpdate,$store)){if(-not (Test-Path -LiteralPath $key)){New-Item -Path $key -Force | Out-Null}}
+# OneDrive has no supported switch that stops its updates: the running sync app
+# updates itself and registers its update task again for that user, after this
+# policy last ran. The fixture user never signs in to OneDrive, so Microsoft's
+# PreventNetworkTrafficPreUserSignIn keeps the unconfigured app from starting and
+# checking for updates, and every OneDrive update task (per user, per machine,
+# v2) is disabled where it exists.
+UPDATE_POLICY=r'''$windowsUpdate='HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU';$store='HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore';$oneDrive='HKLM:\SOFTWARE\Policies\Microsoft\OneDrive'
+foreach($key in @($windowsUpdate,$store,$oneDrive)){if(-not (Test-Path -LiteralPath $key)){New-Item -Path $key -Force | Out-Null}}
 New-ItemProperty -LiteralPath $windowsUpdate -Name NoAutoUpdate -PropertyType DWord -Value 1 -Force | Out-Null
 New-ItemProperty -LiteralPath $windowsUpdate -Name NoAutoRebootWithLoggedOnUsers -PropertyType DWord -Value 1 -Force | Out-Null
 New-ItemProperty -LiteralPath $store -Name AutoDownload -PropertyType DWord -Value 2 -Force | Out-Null
-foreach($task in @(Get-ScheduledTask -TaskPath '\' -ErrorAction SilentlyContinue | Where-Object {$_.TaskName -like 'MicrosoftEdgeUpdateTaskMachine*' -or $_.TaskName -like 'OneDrive Standalone Update Task-*'})){
+New-ItemProperty -LiteralPath $oneDrive -Name PreventNetworkTrafficPreUserSignIn -PropertyType DWord -Value 1 -Force | Out-Null
+foreach($task in @(Get-ScheduledTask -TaskPath '\' -ErrorAction SilentlyContinue | Where-Object {$_.TaskName -like 'MicrosoftEdgeUpdateTaskMachine*' -or $_.TaskName -like 'OneDrive*Standalone Update Task*'})){
  if($task.State -eq 'Running'){Stop-ScheduledTask -InputObject $task}
  Disable-ScheduledTask -InputObject $task | Out-Null
 }

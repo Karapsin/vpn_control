@@ -3,7 +3,7 @@
 The real guest effect is proved natively; these cases run the actual decisions of
 the packet, backend and fixture setup without a guest.
 """
-import ast,hashlib,json,os,sys,tempfile,types,unittest,uuid
+import ast,fnmatch,hashlib,json,os,re,sys,tempfile,types,unittest,uuid
 from pathlib import Path
 from unittest import mock
 from agent_tools import readiness_windows as windows,readiness_windows_processes as processes,readiness_windows_remote as remote,windows_vm_unattend as unattended
@@ -22,7 +22,7 @@ def binding():
 class PolicyTextTests(unittest.TestCase):
     def test_settings_cover_windows_update_store_and_edge_and_leave_defender(self):
         text=unattended.UPDATE_POLICY
-        for needed in ('NoAutoUpdate','NoAutoRebootWithLoggedOnUsers','WindowsStore','AutoDownload','MicrosoftEdgeUpdateTaskMachine*','OneDrive Standalone Update Task-*','Disable-ScheduledTask','edgeupdate','edgeupdatem'):self.assertIn(needed,text)
+        for needed in ('NoAutoUpdate','NoAutoRebootWithLoggedOnUsers','WindowsStore','AutoDownload','MicrosoftEdgeUpdateTaskMachine*','OneDrive*Standalone Update Task*','PreventNetworkTrafficPreUserSignIn','Disable-ScheduledTask','edgeupdate','edgeupdatem'):self.assertIn(needed,text)
         for forbidden in ('Defender','WinDefend','Stop-Service','wuauserv','Set-LocalUser','AutoAdminLogon','Restart-Computer'):self.assertNotIn(forbidden,text)
 
     def test_secure_reapplies_them_because_edge_registers_its_tasks_later(self):
@@ -39,6 +39,55 @@ class PolicyTextTests(unittest.TestCase):
         self.assertLess(unattended.INITIALIZE.index('Register-ScheduledTask'),unattended.INITIALIZE.index(unattended.UPDATE_POLICY))
         self.assertEqual(1,unattended.INITIALIZE.count('Stop-Transcript\n'),'creator derivation keeps its one marker')
         self.assertTrue(unattended.INITIALIZE.endswith('Stop-Transcript\n'))
+
+
+ONEDRIVE=Path(__file__).parent/'fixtures/windows_onedrive_update_policy'
+FIXTURE_SID='S-1-5-21-2366872467-928575313-3117144983-1004'
+# Names read natively (probe 3a0442dc on clone 9059be98) plus the per-machine and
+# v2 names of the same updater; reporting and startup tasks are not updaters.
+ONEDRIVE_UPDATE_TASKS=('OneDrive Standalone Update Task-'+FIXTURE_SID,'OneDrive Per-Machine Standalone Update Task','OneDrive Standalone Update Task v2')
+ONEDRIVE_OTHER_TASKS=('OneDrive Reporting Task-'+FIXTURE_SID,'OneDrive Startup Task-'+FIXTURE_SID)
+EDGE_TASKS=('MicrosoftEdgeUpdateTaskMachineCore{6D4F2C47-0F5B-4B5C-9C4C-3D2C1B0A9E8F}','MicrosoftEdgeUpdateTaskMachineUA{6D4F2C47-0F5B-4B5C-9C4C-3D2C1B0A9E8F}')
+
+
+def update_policy_of(raw):
+    tree=ast.parse(raw)
+    return next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and getattr(n.targets[0],'id','')=='UPDATE_POLICY')
+
+
+def onedrive_gaps(policy):
+    """Every way the fixture user's OneDrive can still update itself under this policy."""
+    lines=[line for line in policy.splitlines() if 'Get-ScheduledTask' in line]
+    if len(lines)!=1:return ['task-filter']
+    patterns=re.findall(r"\$_\.TaskName -like '([^']*)'",lines[0])
+    def disabled(name):return any(fnmatch.fnmatchcase(name.lower(),pattern.lower()) for pattern in patterns)
+    gaps=['task-not-disabled:'+name for name in ONEDRIVE_UPDATE_TASKS+EDGE_TASKS if not disabled(name)]
+    gaps+=['non-updater-disabled:'+name for name in ONEDRIVE_OTHER_TASKS if disabled(name)]
+    # The running sync app updates itself and registers its task again after the
+    # policy ran, so only a policy it reads before it starts closes that path.
+    applied=("$oneDrive='HKLM:\\SOFTWARE\\Policies\\Microsoft\\OneDrive'" in policy
+             and 'foreach($key in @($windowsUpdate,$store,$oneDrive))' in policy
+             and 'New-ItemProperty -LiteralPath $oneDrive -Name PreventNetworkTrafficPreUserSignIn -PropertyType DWord -Value 1 -Force | Out-Null\n' in policy)
+    if not applied:gaps.append('sync-app-self-update')
+    return gaps
+
+
+class OneDriveSelfUpdateTests(unittest.TestCase):
+    def test_before_policy_left_the_running_sync_app_free_to_update_itself(self):
+        raw=(ONEDRIVE/'windows_vm_unattend.before.source').read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),json.loads((ONEDRIVE/'provenance.json').read_bytes())['sha256']['windows_vm_unattend.before.source'])
+        self.assertEqual(['task-not-disabled:OneDrive Per-Machine Standalone Update Task','task-not-disabled:OneDrive Standalone Update Task v2','sync-app-self-update'],
+                         onedrive_gaps(update_policy_of(raw)))
+
+    def test_current_policy_closes_every_onedrive_update_path_and_keeps_edge(self):
+        self.assertEqual([],onedrive_gaps(unattended.UPDATE_POLICY))
+
+    def test_the_sync_app_reads_the_policy_before_the_fixture_users_first_logon(self):
+        # Clones run INITIALIZE from SetupComplete.cmd, before any logon; secure reapplies it.
+        from agent_tools import windows_vm_guest as guest
+        self.assertEqual(1,unattended.INITIALIZE.count('PreventNetworkTrafficPreUserSignIn'))
+        source=guest.secure_source({'imageName':'Windows 11 Pro','locale':'en-US','user':'fixtureuser','administrator':'fixtureadmin'},str(uuid.uuid4()))
+        self.assertEqual(1,source.count('PreventNetworkTrafficPreUserSignIn'))
 
 
 class PacketTests(unittest.TestCase):

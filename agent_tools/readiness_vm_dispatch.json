@@ -22487,7 +22487,7 @@
     "windows_vm_setup_keyboard_next": "200f86f50356763242d813c04c6104401bd4da3463e81ee0bd3f4cf07f68e48f",
     "windows_vm_setup_language_next": "987509c25ef36843d9dbae573bb3db37e124979d3a5c3fc80668133eabcc5c67",
     "windows_vm_swtpm_repair": "47190e2c3a0b0b2d56be4595904aa0b3c30c939aa5841c69850e1e263e24eca1",
-    "windows_vm_unattend": "9a6b467378ab000dc8692bb784cdd4558d7d7a3615af1817c42716a08ca93bfd",
+    "windows_vm_unattend": "df58042db81e036d89ad0496c5f7cdddd8fa4618b5abd386e87438c02c4c9c8f",
     "windows_vm_virt_firmware_install": "752863505733482fad930ec4b409c00beb5a705c0be581eba04e774f0691ef1a"
   }
 }
