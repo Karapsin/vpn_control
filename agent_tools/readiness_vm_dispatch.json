@@ -22612,7 +22612,7 @@
     "windows_msi_target_prepare": "c1700c90398d2c2b85a7d97215c72f8d07f86b5a019a85a59412e19d7432e1aa",
     "windows_msi_transfer_endpoint": "f55b9b48ab1aaa07cd7b5f35cf2a10f922037084627d0665ea3349d64521c13b",
     "windows_msiexec_service_diagnostic": "c36599d5fed2e141b9a928a319c77583a56062149646d20a546f324992b66838",
-    "windows_ordinary_task": "22bdb1ff498fc879a26e7a6a8478941ecd9c03664e01385ebe9b64b673dc1b1d",
+    "windows_ordinary_task": "81235a123f7212ef3dc40e55ae57fc88a24ddb2960a2c6f077edde500413adbf",
     "windows_parallel_vm_prepare": "4ce0aec013698919c762f291897b906252e6371e7fb50a14790e74e312ff3050",
     "windows_parallel_vm_prepare_transport": "d9e4ee3a6376a8d158fd61aecc577382a90d9434dff0d3a16fcec2f6e284f8bc",
     "windows_parallel_vm_source_inventory": "5d3a087ce2f14f4199948fe6e28715a52ca67ee964e98fe400b598bd2b539110",

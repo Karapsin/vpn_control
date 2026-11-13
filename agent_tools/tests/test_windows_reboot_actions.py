@@ -38,6 +38,70 @@ class Parked(BaseException):
     pass
 
 
+# The serve and children 17 to 26 of native operation f56f4a4c (windows-query-owner-gui-reconnect, installed 2.2.17
+# built from f31ab987), byte for byte from its evidence: its query owner is its own JVM, the runtime's direct parent.
+NATIVE_QUERY_FIRST = Path(__file__).parent / "fixtures/windows_query_owner_native/f56f4a4c-query-first.json"
+
+
+class Retained(BaseException):
+    """The first native step past the recorded census: the oracle retains the runtime it found."""
+
+
+class RecordedChild:
+    def __init__(self, owner, recorded):
+        self.owner, self.recorded, self.terminal = owner, recorded, None
+        self.ordinal, self.label, self.argv = recorded["child"], recorded["label"], tuple(recorded["argv"])
+        self.pid, self.birth = recorded["pid"], recorded["birthFileTimeUtc"]
+        self.process = types.SimpleNamespace(poll=lambda: None if self.terminal is None else self.terminal["exitCode"])
+
+    def wait(self):
+        self.terminal = {"exitCode": self.recorded["exitCode"], "eof": self.recorded["eof"], "pid": self.pid}
+        return self.terminal
+
+    def completed(self):
+        self.wait()
+        return types.SimpleNamespace(returncode=self.recorded["exitCode"], stdout=self.recorded["stdout"], stderr=self.recorded["stderr"])
+
+
+class RecordedOwner:
+    """Answers each child the case starts with the recorded one of the same argv, in the recorded order."""
+
+    def __init__(self, record):
+        self.recorded = {child["child"]: child for child in record["children"]}
+        self.order = sorted(number for number in self.recorded if number != 3)
+        self.children, self.events, self.reboot_effect = [], [], None
+        first = self.recorded[self.order[0]]["argv"]
+        self.request = {"cliPath": first[0], "workspace": first[2], "context": {"ordinarySid": SID, "ordinarySessionId": record["ordinarySessionId"]}}
+
+    def guard(self):
+        pass
+
+    def event(self, kind, value):
+        self.events.append((kind, value))
+
+    def park(self, reason, error=None):
+        raise Parked(reason)
+
+    def started(self, argv):
+        if len(self.children) == len(self.order):
+            raise AssertionError(("a child past the recorded evidence", argv))
+        recorded = self.recorded[self.order[len(self.children)]]
+        if list(argv) != recorded["argv"]:
+            raise AssertionError(("not the recorded child", recorded["child"], argv))
+        child = RecordedChild(self, recorded)
+        self.children.append(child)
+        return child
+
+    def invoke(self, workspace, *arguments, timeout=30):
+        return self.started([self.request["cliPath"], "--state-dir", str(workspace), *arguments]).completed()
+
+    def child(self, label, argv):
+        child = self.started(argv)
+        if child.label != label:
+            raise AssertionError(("not the recorded label", child.label, label))
+        return child
+
+
 class Pin:
     def __init__(self, path, raw=b"declared", directory=False):
         self.path, self.raw, self.directory = Path(path), raw, directory
@@ -84,7 +148,7 @@ class World:
     def __init__(self, owner, scenario):
         self.owner, self.scenario, self.trace = owner, scenario, []
         self.task, self.processes, self.intent, self.running, self.controller = "absent", {}, False, False, None
-        self.controller_jvm = None
+        self.controller_jvm, self.relaunch_transient, self.censuses = None, False, []
         self.fixture_refused = False  # The first native gate: a standard user may not register the legacy task.
         self.locations, self.revision, self.settings = [], 0, {"autostart": False}
         self.next_pid, self.visible, self.last_run = 500, True, None
@@ -120,11 +184,19 @@ class World:
         self.owner.native.ports[controller] = 41000
 
     def start_transient(self, cli):
-        """DesktopCli with no owner starts a headless controller for any operation but status, quit, gui hide."""
+        """DesktopCli with no owner starts a headless controller for any operation but status, quit, gui hide.
+
+        The native census of f56f4a4c recorded the controller with no same-image child, a parent PID that is no
+        longer a process, and the runtime as its direct child. This models why: the CLI launcher relaunches into
+        its JVM, which starts the controller with PATH already holding <image>\\app, so jpackage does not relaunch
+        the controller, and that JVM ends with the query. relaunch_transient models a controller launcher that
+        relaunched anyway."""
         workspace = self.owner.request["workspace"]
         argv = [GUI, "--headless-controller", "--state-dir", workspace]
-        launcher = self.spawn(GUI, argv, cli.pid)
-        self.controller_jvm = self.spawn(GUI, argv, launcher)
+        cli_jvm = self.spawn(CLI, list(cli.argv), cli.pid)
+        launcher = self.spawn(GUI, argv, cli_jvm)
+        self.controller_jvm = self.spawn(GUI, argv, launcher) if self.relaunch_transient else launcher
+        del self.processes[cli_jvm]
         self.controller, self.running = "transient-" + str(self.controller_jvm), False  # A transient owner never resumes.
         (Path(workspace) / "activation.port").write_text("{}")
 
@@ -217,6 +289,7 @@ class World:
             return child.end(0, json.dumps({"schemaVersion": 1, "taskPath": autostart.TASK, "instanceGuid": "{instance}"}))
         if script.endswith("startupCollector.data"):
             rows = [dict(row) for row in self.processes.values()]
+            self.censuses.append((child.label, rows))
             return child.end(0, json.dumps({"schemaVersion": 1, "collector": "prequery-native-startup-census", "pid": child.pid,
                                             "creationFileTime": child.birth, "sessionId": 2, "rows": rows}))
         if script.endswith("listenerScript.data"):
@@ -518,6 +591,107 @@ class PrebootActionTests(WorldCase):
         result, finished = self.main(owner, "windows-preboot-reboot")
         self.assertEqual((0, [0]), (result, finished))
         self.assertTrue(owner.world.processes, "the app runs on from its own autostart task")
+
+
+class QueryControllerCensusTests(WorldCase):
+    """The query-started controller of windows-query-owner-gui-reconnect, as the native census of f56f4a4c shows it.
+
+    On f31ab987 the case wanted a launcher with one JVM child of the same image under it, and raised
+    one-query-controller-jvm: the recorded controller has none, and sing-box is its direct child. The
+    product's launch path explains it: the query CLI's JVM starts the controller with PATH already
+    holding <image>\\app, so jpackage does not relaunch it.
+    """
+
+    def query_census(self, owner):
+        return next(rows for label, rows in owner.world.censuses if label == "query-first-census")
+
+    def test_the_recorded_native_census_reaches_the_runtime_of_a_controller_that_is_its_own_jvm(self):
+        record = json.loads(NATIVE_QUERY_FIRST.read_text(encoding="utf-8"))
+        # The module that ran is f31ab987's windows_postboot_action.py; each stream is the recorded one, byte for byte.
+        self.assertEqual(("f56f4a4c-3846-46b2-96d2-87a94db0982a", {"exitCode": 1, "errorClass": "ValueError"},
+                          "8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771"),
+                         (record["operation"], record["ownerTerminal"], record["ranPostbootAction"]["sha256"]))
+        for child in record["children"]:
+            self.assertEqual(child["sha256"], {name: hashlib.sha256(child[name].encode()).hexdigest() for name in ("stdout", "stderr")})
+        owner = RecordedOwner(record)
+        census = next(child for child in record["children"] if child["label"] == "query-first-census")
+        argv = census["argv"]
+        gui = argv[argv.index("-GuiPath") + 1]
+        lease = types.SimpleNamespace(paths={"powerShell": argv[0], "startupCollector": argv[6], "gui": gui}, runtime_sha256=lambda: RUNTIME)
+        serve = RecordedChild(owner, owner.recorded[3])
+        identity = json.loads(owner.recorded[18]["stdout"])["controllerId"]
+        state = {"workspace": Path(owner.request["workspace"]), "identity": identity, "serve": serve, "live": (serve, identity)}
+        retained = []
+
+        def actor(who, native, expected, role):
+            retained.append((dict(expected), role))
+            raise Retained()
+        with mock.patch.object(postboot, "Actor", actor):
+            try:
+                postboot.query_then_gui(owner, lease, source_roles, None, None, None, types.SimpleNamespace(WindowsNative=lambda: None), state)
+            except ValueError as refusal:
+                self.fail("the case refused the recorded native census: " + str(refusal))
+            except Retained:
+                pass
+        self.assertEqual(list(range(17, 27)), [child.ordinal for child in owner.children], "every recorded child, in order, and no other")
+        rows = json.loads(census["stdout"])["rows"]
+        controller = next(row for row in rows if row["argv"][1:2] == ["--headless-controller"])
+        self.assertEqual([], [row for row in rows if row["parentPid"] == controller["pid"] and row["image"] == gui], "no relaunched JVM")
+        self.assertNotIn(controller["parentPid"], [row["pid"] for row in rows], "its parent PID is no process of the census")
+        runtime = next(row for row in rows if row["image"].endswith("sing-box.exe"))
+        self.assertEqual(controller["pid"], runtime["parentPid"])
+        workspace = owner.request["workspace"]
+        self.assertEqual([({"pid": runtime["pid"], "creationFileTime": runtime["creationFileTime"],
+                            "image": str(PureWindowsPath(workspace) / "runtime" / "tools" / "sing-box.exe"), "sha256": RUNTIME,
+                            "sid": SID, "sessionId": 2}, "runtime")], retained)
+        self.assertIsNone(owner.reboot_effect)
+
+    def test_the_query_row_closes_known_where_the_controller_is_its_own_jvm(self):
+        owner = self.owner("query-first")
+        self.assertEqual(0, preboot.run_preboot(owner, owner.config, source_roles, postboot))
+        rows = self.query_census(owner)
+        controllers = [row for row in rows if row["argv"][1:2] == ["--headless-controller"]]
+        self.assertEqual(1, len(controllers), "the native shape: one controller row and no relaunched JVM")
+        self.assertNotIn(controllers[0]["parentPid"], [row["pid"] for row in rows])
+        traffic = next(value for kind, value in owner.events if kind == "postboot-query-first-traffic-observed")
+        runtime = next(row for row in rows if row["pid"] == traffic["runtimeActor"]["pid"])
+        self.assertEqual(controllers[0]["pid"], runtime["parentPid"], "the runtime the controller started itself")
+        self.assertTrue(all(child.terminal is not None for child in owner.children), "the owner can finish")
+
+    def test_a_controller_launcher_that_relaunched_is_still_followed_to_its_jvm(self):
+        owner = self.owner("query-first")
+        owner.world.relaunch_transient = True
+        self.assertEqual(0, preboot.run_preboot(owner, owner.config, source_roles, postboot))
+        rows = self.query_census(owner)
+        traffic = next(value for kind, value in owner.events if kind == "postboot-query-first-traffic-observed")
+        runtime = next(row for row in rows if row["pid"] == traffic["runtimeActor"]["pid"])
+        jvm = next(row for row in rows if row["pid"] == runtime["parentPid"])
+        launcher = next(row for row in rows if row["pid"] == jvm["parentPid"])
+        self.assertEqual((GUI, GUI, launcher["argv"]), (jvm["image"], launcher["image"], jvm["argv"]))
+
+    def test_a_second_relaunch_or_a_runtime_born_before_its_claimed_parent_is_never_taken(self):
+        def second_relaunch(world):
+            launcher = world.processes[world.controller_jvm]["parentPid"]
+            world.spawn(GUI, list(world.processes[launcher]["argv"]), launcher)
+
+        def stale_runtime(world):
+            controller = world.processes[world.controller_jvm]
+            runtime = next(row for row in world.processes.values() if row["image"].endswith("sing-box.exe"))
+            runtime["creationFileTime"] = controller["creationFileTime"] - 1  # Its real parent had the same PID earlier.
+        for change, relaunch, code in ((second_relaunch, True, "one-query-controller-jvm"), (stale_runtime, False, "one-reconnected-runtime")):
+            with self.subTest(code=code):
+                owner = self.owner("query-first")
+                owner.world.relaunch_transient = relaunch
+                start_gui = owner.world.start_gui
+
+                def changed_start(child, world=owner.world, start_gui=start_gui, change=change):
+                    start_gui(child)
+                    change(world)
+                owner.world.start_gui = changed_start
+                with self.assertRaisesRegex(ValueError, "^" + code + "$"):
+                    preboot.run_preboot(owner, owner.config, source_roles, postboot)
+                self.assertEqual([], [child.label for child in owner.children if child.terminal is None], "a known refusal retires the GUI")
+                self.assertNotIn("postboot-query-first-traffic-observed", [kind for kind, _ in owner.events])
 
 
 class PostbootActionTests(WorldCase):

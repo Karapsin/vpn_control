@@ -419,13 +419,19 @@ def query_then_gui(owner,lease,source_roles,auto,life,branches,observer,state):
     need(current['data']['activeMode']=='proxy-only' and current['controllerId']==transient,'gui-restores-intent-on-the-query-owner')
     _,rows,_=census(owner,lease,'query-first-census')
     same=lambda row,image:row['image'].casefold()==image.casefold()
+    # A parent PID outlives its process: only a row born at or after the parent is its child.
+    children=lambda parent,image:[row for row in rows if row['parentPid']==parent['pid'] and same(row,image)
+                                  and int(row['creationFileTime'])>=int(parent['creationFileTime'])]
     controllers=[row for row in rows if same(row,gui_path) and row['argv']==[gui_path,'--headless-controller','--state-dir',ws]]
     # A launcher and its same-image JVM child may share the argv: the launcher is the one whose parent is neither.
     controllers=[row for row in controllers if not any(other['pid']==row['parentPid'] for other in controllers)]
     need(len(controllers)==1,'one-query-started-controller')
-    jvm=[row for row in rows if row['parentPid']==controllers[0]['pid'] and same(row,gui_path)];need(len(jvm)==1,'one-query-controller-jvm')
+    # jpackage relaunches a launcher only while PATH lacks <image>\app. The query CLI's own JVM is such a relaunch and
+    # starts the controller with that PATH, so natively (f56f4a4c) the controller is its own JVM and the runtime's parent.
+    relaunched=children(controllers[0],gui_path);need(len(relaunched)<=1,'one-query-controller-jvm')
+    jvm=relaunched[0] if relaunched else controllers[0]
     runtime_image=str(PureWindowsPath(ws)/'runtime'/'tools'/'sing-box.exe')
-    runtimes=[row for row in rows if row['parentPid']==jvm[0]['pid'] and same(row,runtime_image)];need(len(runtimes)==1,'one-reconnected-runtime')
+    runtimes=children(jvm,runtime_image);need(len(runtimes)==1,'one-reconnected-runtime')
     ctx=owner.request['context'];row=runtimes[0]
     actor={'pid':row['pid'],'creationFileTime':row['creationFileTime'],'image':runtime_image,'sha256':lease.runtime_sha256(),
            'sid':ctx['ordinarySid'],'sessionId':ctx['ordinarySessionId']}

@@ -1,0 +1,304 @@
+{
+ "children": [
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "serve"
+   ],
+   "birthFileTimeUtc": "134387108658211473",
+   "child": 3,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "serve",
+   "pid": 8724,
+   "sha256": {
+    "stderr": "58902c5c5eaea6b6b39fc60067554fce25e9c21519e7d07dc99b9624e296b037",
+    "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   "stderr": "VPN Control headless service is ready.\n",
+   "stdout": ""
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "--controller-id",
+    "f5ba2b64-e3c4-47be-9147-dd3ba3747174",
+    "on"
+   ],
+   "birthFileTimeUtc": "134387109177925527",
+   "child": 17,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "public-cli",
+   "pid": 2720,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "9d9965b48aee6edf4e53412baab45ab0d789ff77327531127514476f36618a83"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":\"f5ba2b64-e3c4-47be-9147-dd3ba3747174\",\"requestId\":\"9828150d-0e29-4ab7-947a-6aa1571e4b68\",\"ok\":true,\"code\":\"OK\",\"message\":\"OK\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":\"eb99404a-2a1a-42ff-be70-d29564669462\",\"configurationRevision\":5,\"restartRequired\":false,\"data\":{},\"warnings\":[]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "--controller-id",
+    "f5ba2b64-e3c4-47be-9147-dd3ba3747174",
+    "status"
+   ],
+   "birthFileTimeUtc": "134387109229399334",
+   "child": 18,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "public-cli",
+   "pid": 760,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "96dfe26c13f56a8084972fb4516c49910e6ac25feb636710eb89f3dd42d400a1"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":\"f5ba2b64-e3c4-47be-9147-dd3ba3747174\",\"requestId\":\"aaa1a6c5-226a-4115-ba8d-a1805a87aaba\",\"ok\":true,\"code\":\"OK\",\"message\":\"\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":null,\"configurationRevision\":5,\"restartRequired\":false,\"data\":{\"runtimeRunning\":true,\"selectedLocationId\":\"8fe2e0a5b340a096fed08b1af7a1d9ef31148ae34783ebc6d9d402bcbe1eca96\",\"activeLocationId\":\"8fe2e0a5b340a096fed08b1af7a1d9ef31148ae34783ebc6d9d402bcbe1eca96\",\"configuredMode\":\"proxy-only\",\"activeMode\":\"proxy-only\",\"runtimeId\":\"a1f30486-5a33-4aef-bf76-e82a998834a9\",\"runtimeStartedAt\":1794237320292,\"restartRequired\":false},\"warnings\":[]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "--controller-id",
+    "f5ba2b64-e3c4-47be-9147-dd3ba3747174",
+    "quit"
+   ],
+   "birthFileTimeUtc": "134387109268300361",
+   "child": 19,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "public-cli",
+   "pid": 7628,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "c853f4fdcde2c6a35415069b65cdece9b96fceb6cd7a0dbca57213577ae484a0"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":\"f5ba2b64-e3c4-47be-9147-dd3ba3747174\",\"requestId\":\"757a4f4a-a064-4a56-a6d9-32f52ba7d158\",\"ok\":true,\"code\":\"OK\",\"message\":\"OK\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":\"eee0ea66-5716-4eae-9c5c-b2605b48d96f\",\"configurationRevision\":5,\"restartRequired\":false,\"data\":{},\"warnings\":[]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "status"
+   ],
+   "birthFileTimeUtc": "134387109314217544",
+   "child": 20,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 2,
+   "label": "public-cli",
+   "pid": 4024,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "0e1e2621fa1948091d3b9b57f9bbd3b25816def84fdd80648a30fe5c3da9c47b"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":null,\"requestId\":\"ec43b3a2-7d1d-4cf0-a5da-83015a47a3c5\",\"ok\":false,\"code\":\"UNAVAILABLE\",\"message\":\"UNAVAILABLE\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":null,\"configurationRevision\":0,\"restartRequired\":false,\"data\":{},\"warnings\":[\"OWNER_METADATA_UNAVAILABLE\"]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "locations",
+    "list"
+   ],
+   "birthFileTimeUtc": "134387109353751792",
+   "child": 21,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "public-cli",
+   "pid": 6888,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "6c4b4b979994c42273d4400a41e83b3b5ab2edca982090f1afc905773a0cc7cf"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":\"03e8d846-46e9-4241-bfdd-2c9d50fb3f09\",\"requestId\":\"90145886-964f-41de-a953-5ee230138dd6\",\"ok\":true,\"code\":\"OK\",\"message\":\"\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":null,\"configurationRevision\":0,\"restartRequired\":false,\"data\":{\"locations\":[{\"index\":1,\"name\":\"Owned Reboot\"}]},\"warnings\":[]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "--controller-id",
+    "03e8d846-46e9-4241-bfdd-2c9d50fb3f09",
+    "status"
+   ],
+   "birthFileTimeUtc": "134387109430585779",
+   "child": 22,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "public-cli",
+   "pid": 5572,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "760d3167b0b3666b39e5796cd592c7b316f1e198e568722427043eb9865363c3"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":\"03e8d846-46e9-4241-bfdd-2c9d50fb3f09\",\"requestId\":\"03bcc15c-cf15-4a34-aa86-41c0c030eda7\",\"ok\":true,\"code\":\"OK\",\"message\":\"\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":null,\"configurationRevision\":0,\"restartRequired\":false,\"data\":{\"runtimeRunning\":false,\"selectedLocationId\":\"0088620f12471f35703e33197bf8d8bde5feafb5ceefa11e6b6e15e99928c9cb\",\"activeLocationId\":null,\"configuredMode\":\"proxy-only\",\"activeMode\":null,\"runtimeId\":null,\"runtimeStartedAt\":null,\"restartRequired\":false},\"warnings\":[]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "--controller-id",
+    "03e8d846-46e9-4241-bfdd-2c9d50fb3f09",
+    "status"
+   ],
+   "birthFileTimeUtc": "134387109468308952",
+   "child": 23,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "public-cli",
+   "pid": 2628,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "8011ec260a3ded2018a7e2c1de60b6ad0d4b5bad3435452f03812fdc07ea7530"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":\"03e8d846-46e9-4241-bfdd-2c9d50fb3f09\",\"requestId\":\"44c02066-733b-41d3-94ef-89908475162c\",\"ok\":true,\"code\":\"OK\",\"message\":\"\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":null,\"configurationRevision\":0,\"restartRequired\":false,\"data\":{\"runtimeRunning\":false,\"selectedLocationId\":\"0088620f12471f35703e33197bf8d8bde5feafb5ceefa11e6b6e15e99928c9cb\",\"activeLocationId\":null,\"configuredMode\":\"proxy-only\",\"activeMode\":null,\"runtimeId\":null,\"runtimeStartedAt\":null,\"restartRequired\":false},\"warnings\":[]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace"
+   ],
+   "birthFileTimeUtc": "134387109499753307",
+   "child": 24,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "query-first-gui",
+   "pid": 3576,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   "stderr": "",
+   "stdout": ""
+  },
+  {
+   "argv": [
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "--state-dir",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "--json",
+    "--controller-id",
+    "03e8d846-46e9-4241-bfdd-2c9d50fb3f09",
+    "status"
+   ],
+   "birthFileTimeUtc": "134387109515287733",
+   "child": 25,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "public-cli",
+   "pid": 5388,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "eee194a2e1a18a018fba722dbcc5f010cd7ff1e8fa6ad830142e8f9dbd2892c3"
+   },
+   "stderr": "",
+   "stdout": "{\"schemaVersion\":1,\"controllerId\":\"03e8d846-46e9-4241-bfdd-2c9d50fb3f09\",\"requestId\":\"0abb361c-514f-4897-baab-50e5982a496f\",\"ok\":true,\"code\":\"OK\",\"message\":\"\",\"messageKey\":null,\"messageArgs\":[],\"final\":true,\"operationId\":null,\"configurationRevision\":0,\"restartRequired\":false,\"data\":{\"runtimeRunning\":true,\"selectedLocationId\":\"0088620f12471f35703e33197bf8d8bde5feafb5ceefa11e6b6e15e99928c9cb\",\"activeLocationId\":\"0088620f12471f35703e33197bf8d8bde5feafb5ceefa11e6b6e15e99928c9cb\",\"configuredMode\":\"proxy-only\",\"activeMode\":\"proxy-only\",\"runtimeId\":\"78980926-823c-485f-9dde-4d06ad41ac28\",\"runtimeStartedAt\":1794237352132,\"restartRequired\":false},\"warnings\":[]}\n"
+  },
+  {
+   "argv": [
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    "C:\\ProgramData\\VpnControlOrdinaryTask-f56f4a4c-3846-46b2-96d2-87a94db0982a\\windows_postboot_startup_actors.ps1",
+    "-GuiPath",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control.exe",
+    "-CliPath",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\vpn-control\\vpn-control-cli.exe",
+    "-Workspace",
+    "C:\\Users\\fixtureuser\\AppData\\Local\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\workspace",
+    "-ExpectedSession",
+    "2"
+   ],
+   "birthFileTimeUtc": "134387109547459684",
+   "child": 26,
+   "eof": {
+    "stderr": true,
+    "stdout": true
+   },
+   "exitCode": 0,
+   "label": "query-first-census",
+   "pid": 3584,
+   "sha256": {
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout": "f7cb4793d8614b158e3372f635f29edcc8a09411d6c3f60e49db2014d2d9ee34"
+   },
+   "stderr": "",
+   "stdout": "{\"rows\":[{\"argv\":[\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\vpn-control\\\\vpn-control.exe\",\"--headless-controller\",\"--state-dir\",\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\\\workspace\"],\"creationFileTime\":134387109365194635,\"pid\":3676,\"sessionId\":2,\"image\":\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\vpn-control\\\\vpn-control.exe\",\"parentPid\":4780},{\"argv\":[\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\vpn-control\\\\vpn-control.exe\",\"--state-dir\",\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\\\workspace\"],\"creationFileTime\":134387109499753307,\"pid\":3576,\"sessionId\":2,\"image\":\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\vpn-control\\\\vpn-control.exe\",\"parentPid\":4408},{\"argv\":[\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\vpn-control\\\\vpn-control.exe\",\"--state-dir\",\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\\\workspace\"],\"creationFileTime\":134387109499940080,\"pid\":1068,\"sessionId\":2,\"image\":\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\vpn-control\\\\vpn-control.exe\",\"parentPid\":3576},{\"argv\":[\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\\\workspace\\\\runtime\\\\tools\\\\sing-box.exe\",\"run\",\"-c\",\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\\\workspace\\\\runtime\\\\candidate-2191487279091642975\\\\config.json\"],\"creationFileTime\":134387109519087913,\"pid\":2528,\"sessionId\":2,\"image\":\"C:\\\\Users\\\\fixtureuser\\\\AppData\\\\Local\\\\VpnControlOrdinary-f56f4a4c-3846-46b2-96d2-87a94db0982a\\\\workspace\\\\runtime\\\\tools\\\\sing-box.exe\",\"parentPid\":3676}],\"creationFileTime\":134387109547459684,\"collector\":\"prequery-native-startup-census\",\"sessionId\":2,\"schemaVersion\":1,\"pid\":3584}\r\n"
+  }
+ ],
+ "installedPackage": {
+  "productVersion": "2.2.17",
+  "source": "f31ab98788959ee092bb01314020dd75a7162c93"
+ },
+ "operation": "f56f4a4c-3846-46b2-96d2-87a94db0982a",
+ "ordinarySessionId": 2,
+ "ownerTerminal": {
+  "errorClass": "ValueError",
+  "exitCode": 1
+ },
+ "ranPostbootAction": {
+  "sha256": "8eb8d4d694dd5b4b62fa86410ddb5e5810542be7a9753d1ac3a55b6ffa9f8771",
+  "sizeBytes": 29231
+ },
+ "scenario": "windows-query-owner-gui-reconnect",
+ "schemaVersion": 1
+}

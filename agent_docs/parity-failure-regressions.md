@@ -1711,6 +1711,47 @@ runs are under `.runtime/ssh-rows/` of the build clone.
 | The pinned HTTPS fixture's 0.25 s TLS handshake ended a JVM's first handshake through the relay | `test_windows_ssh_relay_fixture.OriginTests.test_the_pinned_fixtures_handshake_ends_after_a_quarter_second_without_a_client_hello` (the pinned fixture's own accept path) and `test_a_handshake_has_more_than_the_pinned_fixtures_quarter_second` | Found by the first interop run, whose origin was `https_subscription_relay_fixture`: the bootstrap fetch ended `SSLHandshakeException: Remote host terminated the handshake` with only the SOCKS handshake through the channel, and the connected fetch passed only on the JDK's second connection. The pinned fixture is unchanged; the relay row's origin is the relay module's `HttpsOrigin`, which gives a handshake 60 s. The control is RED by design: the pinned fixture refuses a client silent for 0.25 s. The second and third interop runs passed every step. |
 | Closing the relay waited on a thread blocked in a socket another thread had shut down and closed | `test_windows_ssh_relay_fixture.LifetimeTests.test_start_binds_two_listeners_and_stop_ssh_refuses_new_sessions_while_socks_stays` | Found in the module's first offline draft, which was never committed and not kept: on macOS neither a shutdown nor a close by another thread woke a SOCKS handler waiting on a socket pair with a timeout, and a closed descriptor number was reused at once, so `close(10)` returned False. Only the thread that owns a socket closes it now, every wait polls its stop flag every 0.25 s, and `stop_ssh` returns only after the listener's own thread closed the SSH port. |
 
+### First native query-owner row: the query's controller is its own JVM (2026-11-09)
+
+`windows-query-owner-gui-reconnect` (direct operation `f56f4a4c`, clone `31f97559`, installed
+2.2.17 built from `f31ab987`, tools of `f31ab987`) ended exit 1 with `ValueError` through its
+known-failure retirement, not parked: event 85 `preboot-refusal-quit-intent`, and the quit to the
+transient controller (child 27) ended GUI child 24 with 0. Evidence:
+`.runtime/windows-parity-20261107/family/diag/evidence-f56f4a4c/`. Every product step passed:
+`status` with no owner answered exit 2 `UNAVAILABLE` (child 20); `locations list` started the
+transient controller `03e8d846` (child 21); two statuses kept it disconnected (22, 23); the GUI
+(child 24, launcher 3576 with restart child JVM 1068) attached, and the next status (25) was
+running, proxy-only, on `03e8d846`. The census (child 26) lists `vpn-control.exe
+--headless-controller --state-dir <workspace>` pid 3676, whose parent 4780 is not in the census,
+with `sing-box.exe` 2528 as its direct child and no `vpn-control.exe` under it. The case then
+wanted exactly one same-image JVM child under that controller and raised
+`one-query-controller-jvm` on zero. A replay of the recorded children 17 to 26 through the
+`windows_postboot_action.py` of the run's bundle (sha256 `8eb8d4d6...`, the bytes of
+`f31ab987` and of `529cc610`) raises exactly there, with every earlier check passing. This is a
+tool defect. No contract fixes the controller's process shape, and the product's launch path
+explains the recorded one: the jpackage launcher relaunches only while PATH lacks `<image>\app`
+(the launcher restart entry above), and `DesktopHeadlessController.startForCliCommand` starts
+the controller from the CLI's JVM with the inherited PATH (`desktopAppChildProcess` removes only
+`_JPACKAGE_LAUNCHER`). That 4780 was that CLI JVM is inferred: no census ran while the query
+lived. The product met DESKTOP-004 (the transient start never connected; the GUI restored the
+intent once) and DESKTOP-008. The before-images and the RED, GREEN, mutation, replay and pin
+logs are under `.runtime/` of the fix clone
+(`.runtime/windows-parity-20261107/builders/fix-query-owner` of the recovery checkout); the patch
+and its report are under `.runtime/windows-parity-20261107/evidence/query-owner/`.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The query-started controller had to relaunch into a JVM child | `test_windows_reboot_actions.QueryControllerCensusTests`: `test_the_recorded_native_census_reaches_the_runtime_of_a_controller_that_is_its_own_jvm` (the recorded serve and children 17 to 26, `fixtures/windows_query_owner_native/f56f4a4c-query-first.json`, each stream checked against its recorded digest), `test_the_query_row_closes_known_where_the_controller_is_its_own_jvm`, and `PrebootActionTests.test_the_query_row_starts_a_transient_owner_by_a_config_query_and_never_reboots_or_declares`, now over the native shape; controls `test_a_controller_launcher_that_relaunched_is_still_followed_to_its_jvm`, `test_a_second_relaunch_or_a_runtime_born_before_its_claimed_parent_is_never_taken` | `query_then_gui` now takes the rule `capture_proxy_actors` already follows: a controller that did not relaunch is its own JVM, at most one same-image child born after it is its relaunched JVM, and the runtime is the one `sing-box.exe` born after that JVM under it. A parent PID outlives its process, so a child born before its claimed parent is never taken. The world's transient controller is now the recorded shape: the CLI's JVM starts it and ends with the query, leaving a stale parent PID. RED on isolated copies of `529cc610`, the base of this change, and of `f31ab987`, the tools that ran, each holding only the new test module and fixture, Python 3.14 and 3.12: `Ran 17 tests`, `FAILED (failures=2, errors=2)`, each `one-query-controller-jvm` (the stale-runtime control fails there for the same reason). GREEN: 17 OK on both. Three loosenings (no birth guard, no relaunch, no relaunch bound) each turn one named control RED. Pins renewed: the owner's `_POSTBOOT_ENTRY_SOURCES` and the planner's `POSTBOOT_ROLE_HASHES` (`postbootAction`), `readiness_vm_dispatch.json` `sourcePins.windows_ordinary_task`, and the selector's `nonPythonResources` entry for that manifest; no file of `readiness_windows._source_pins()` changed. Native only: the rest of the row past the census (traffic through the runtime under 3676, explicit off, runtime exit, the quit that ends the GUI, the closing census) on a direct rerun of these tools. The closing census waits only for the GUI child, while the product releases the controller's exit once the GUI acknowledges the quit, so the two exits race; that the controller is gone by then is expected, not proved. |
+
+Not fixed here, predicted from the same census: `product_tree` (the reboot rows' autostart tree)
+still wants `--headless-controller` to be a launcher with one JVM child. The GUI starts its
+controller through the same `startForCliCommand` (`DesktopGuiOwnerConnection.connect`) from its
+own JVM, itself a relaunch here (1068 under 3576), so that controller is expected not to relaunch
+either; `await_product` retries the refusal `one-controller-jvm-child` and parks after 120 s
+(`preboot-product-start-unresolved-no-replay`). Its fix moves the declared tree
+(`product_rows`, the host job's `DECLARED_ROLES` and parent pairs, and the postboot's retained
+actors), and it needs its own RED before the first `.pre` runs.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
