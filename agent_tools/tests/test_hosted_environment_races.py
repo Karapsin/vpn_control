@@ -14,22 +14,27 @@ fixtures and local children. Only the moment of one real event is chosen:
 - growing free space: a real file of the case's own filesystem is deleted
   before every observer sample after the first.
 
-The unfixed case must fail with the hosted trace itself. No SSH, VM, guest or
-network.
+The unfixed case must fail with the hosted trace itself. The preparation core's
+disk-budget case compared two samples in the same way; no hosted failure of it
+is on record, so its unfixed case must miss exactly that refusal. No SSH, VM,
+guest or network.
 """
-import contextlib,gc,hashlib,io,json,os,re,subprocess,tempfile,time,types,unittest,uuid
+import contextlib,gc,hashlib,io,json,os,re,shutil,subprocess,tempfile,time,types,unittest,uuid
 from pathlib import Path
 from unittest import mock
-from agent_tools import private_config_custody,windows_parallel_vm_source_inventory as inventory
+from agent_tools import private_config_custody,windows_parallel_vm_prepare as prepare,windows_parallel_vm_source_inventory as inventory
 from agent_tools.tests import test_ssh_owned_channel_retirement as retirement
+from agent_tools.tests import test_windows_parallel_vm_prepare as preparation
 from agent_tools.tests import test_windows_parallel_vm_source_inventory as source_inventory
 
 FIXTURE=Path(__file__).parent/'fixtures/hosted_environment_races'
 PROVENANCE=FIXTURE/'provenance.json'
 HIGH_FD='Fixed546RetirementTests.test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green'
 LOW_DISK='SourceInventoryTest.test_actual_destination_and_low_disk_refuse_without_hash'
+DISK_BUDGET='QemuPreparationTest.test_source_drift_and_disk_budget_refuse_before_any_namespace'
 DIAGNOSTIC=re.compile(r'descriptor window: pre-baseline collection finalized (\d+) earlier descriptors (\{.*\})\n')
 BEFOREIMAGES={'test_ssh_owned_channel_retirement.py':'test_ssh_owned_channel_retirement.py.before.source',
+              'test_windows_parallel_vm_prepare.py':'test_windows_parallel_vm_prepare.py.before.source',
               'test_windows_parallel_vm_source_inventory.py':'test_windows_parallel_vm_source_inventory.py.before.source'}
 
 
@@ -120,28 +125,36 @@ def run_high_fd(module,*,pairs=0,collect_before_child=0,stall_child=0,stall_seco
         if enabled:gc.enable()
 
 
-def run_low_disk(module,*,files=3,size=1<<20):
-    """One actual low-disk case while its filesystem really gains space.
+def run_while_space_grows(module,case,target,entry,sampled_root,*,files=3,size=1<<20):
+    """One actual case while its filesystem really gains space.
 
-    A real file beside the case's root is deleted before every observer sample
-    after the first, as any other process of the runner can do between two
-    samples. The gain is measured with the unprojected statvfs.
+    A real file beside the case's root is deleted before every call of the
+    sampling entry after the first, as any other process of the runner can do
+    between two samples. The gain is measured with the unprojected statvfs.
     """
-    owner,method=LOW_DISK.split('.')
-    sample=os.statvfs;observer=inventory.observe_source;entries=[];grown=[];devices=[];result=unittest.TestResult()
+    owner,method=case.split('.')
+    sample=os.statvfs;original=getattr(target,entry);entries=[];grown=[];devices=[];result=unittest.TestResult()
     with tempfile.TemporaryDirectory() as temporary:
         ballast=[Path(temporary)/('ballast-%d'%index) for index in range(files)]
         for path in ballast:path.write_bytes(b'\xa5'*size)
-        def observed(source,root,*args,**kwargs):
+        def entered(*args,**kwargs):
             entries.append(None)
             if len(entries)>1 and ballast:
-                devices.append((os.stat(temporary).st_dev,os.stat(root).st_dev))
+                root=sampled_root(*args);devices.append((os.stat(temporary).st_dev,os.stat(root).st_dev))
                 first=sample(root);ballast.pop().unlink();last=sample(root)
                 grown.append(last.f_bavail*last.f_frsize-first.f_bavail*first.f_frsize)
-            return observer(source,root,*args,**kwargs)
-        with mock.patch.object(inventory,'observe_source',observed):
+            return original(*args,**kwargs)
+        with mock.patch.object(target,entry,entered):
             getattr(module,owner)(method).run(result)
     return types.SimpleNamespace(result=result,entries=len(entries),grown=grown,devices=devices)
+
+
+def run_low_disk(module):
+    return run_while_space_grows(module,LOW_DISK,inventory,'observe_source',lambda source,root,*rest:root)
+
+
+def run_disk_budget(module):
+    return run_while_space_grows(module,DISK_BUDGET,prepare,'prepare_core',lambda scope,*rest:scope.template_root.parent)
 
 
 @unittest.skipUnless(os.name=='posix' and Path('/dev/fd').is_dir(),'POSIX descriptor table required')
@@ -177,26 +190,43 @@ class HighDescriptorCaseTests(unittest.TestCase):
 
     def test_the_beforeimages_are_the_hosted_generations(self):
         value=provenance();self.assertEqual({'agent_tools/tests/'+name for name in BEFOREIMAGES},set(value['sources']))
-        for current in (retirement,source_inventory):
+        for current in (retirement,preparation,source_inventory):
             module=before(current);self.assertEqual(current.__file__,module.__file__)
         self.assertEqual({'highDescriptor','lowDisk'},set(value['originalFailures']))
 
 
 @unittest.skipUnless(os.name=='posix','POSIX statvfs required')
 class LowDiskCaseTests(unittest.TestCase):
+    def assert_gain_reached_both(self,old,new):
+        # The same real gain reached both cases: one deleted megabyte before each later sample.
+        for run in (old,new):
+            self.assertTrue(run.grown and all(gain>0 for gain in run.grown),run.grown)
+            self.assertTrue(all(ballast==root for ballast,root in run.devices),run.devices)
+
+    def unfixed(self,run):
+        text=failures(run.result)
+        if run.result.skipped:self.skipTest(text)
+        if not run.grown or min(run.grown)<=0:
+            self.skipTest('this filesystem did not return a deleted megabyte before the next sample: %r'%run.grown)
+        self.assertEqual((1,1,0,2),(run.result.testsRun,len(run.result.failures),len(run.result.errors),run.entries),text)
+        return text
+
     def test_unfixed_case_fails_when_the_filesystem_gains_space_between_samples_and_the_current_case_passes(self):
-        old=run_low_disk(before(source_inventory));text=failures(old.result)
-        if not old.grown or min(old.grown)<=0:
-            self.skipTest('this filesystem did not return a deleted megabyte before the next sample: %r'%old.grown)
-        self.assertEqual((1,1,0,2),(old.result.testsRun,len(old.result.failures),len(old.result.errors),old.entries),text)
+        old=run_low_disk(before(source_inventory));text=self.unfixed(old)
         self.assertEqual(hosted('lowDisk'),frames(text),text)
         new=run_low_disk(source_inventory);text=failures(new.result)
         self.assertTrue(new.result.wasSuccessful(),text);self.assertEqual(1,new.result.testsRun,text)
-        for run in (old,new):
-            # The same real gain reached both cases: one deleted megabyte before each later sample.
-            self.assertTrue(run.grown and all(gain>0 for gain in run.grown),run.grown)
-            self.assertTrue(all(ballast==root for ballast,root in run.devices),run.devices)
-        self.assertGreater(len(new.grown),len(old.grown))
+        self.assert_gain_reached_both(old,new);self.assertGreater(len(new.grown),len(old.grown))
+
+    @unittest.skipUnless(shutil.which('qemu-img') and shutil.which('qemu-io'),'the preparation case needs qemu-img and qemu-io')
+    def test_unfixed_budget_peer_misses_its_refusal_when_the_filesystem_gains_space_and_the_current_case_passes(self):
+        old=run_disk_budget(before(preparation));text=self.unfixed(old)
+        # The budget gate passed on the gain; whatever stopped the core later is not the disk budget.
+        self.assertIn('    with self.assertRaisesRegex(ValueError, "copy-disk-budget"):\n',text)
+        self.assertRegex(text.rstrip('\n').splitlines()[-1],r'\AAssertionError: (ValueError not raised|"copy-disk-budget" does not match "[a-z-]+")\Z')
+        new=run_disk_budget(preparation);text=failures(new.result)
+        self.assertTrue(new.result.wasSuccessful(),text);self.assertEqual((1,[]),(new.result.testsRun,new.result.skipped),text)
+        self.assert_gain_reached_both(old,new)
 
 
 if __name__=='__main__':

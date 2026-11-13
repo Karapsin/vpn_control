@@ -184,10 +184,20 @@ class QemuPreparationTest(unittest.TestCase):
         self.assertFalse(self.scope.template_root.exists())
         self.source.write_bytes(self.source_bytes)
         self.pin["generation"] = inventory.generation(self.source.lstat())
+        # This filesystem is live: a gain between two samples passes the budget
+        # gate, so the core's sample is never compared with an earlier one.
         space = os.statvfs(self.root)
+        # Its own unprojected sample refuses a reserve the whole filesystem cannot hold.
         with self.assertRaisesRegex(ValueError, "copy-disk-budget"):
             prepare.prepare_core(self.scope, self.pin, self.correlation,
-                                 disk_reserve=space.f_bavail * space.f_frsize)
+                                 disk_reserve=space.f_blocks * space.f_frsize)
+        # One actual sample, handed to the core as the one it takes: a reserve of
+        # every available byte leaves no room for the copy.
+        with patch.object(prepare.os, "statvfs", return_value=space) as sampled:
+            with self.assertRaisesRegex(ValueError, "copy-disk-budget"):
+                prepare.prepare_core(self.scope, self.pin, self.correlation,
+                                     disk_reserve=space.f_bavail * space.f_frsize)
+        sampled.assert_called_once_with(self.scope.template_root.parent)
         self.assertFalse(self.scope.template_root.exists())
 
     def test_whole_core_refuses_earlier_overlay_mutation_during_second_info(self):

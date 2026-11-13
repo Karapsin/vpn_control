@@ -3,14 +3,15 @@
     "highDescriptor": "Confirmed mechanism: the unfixed reader records ValueError only if its first step runs and select() gets a descriptor of at least FD_SETSIZE. The inner child takes the lowest free numbers for its null device and its two pipe pairs, so four numbers below the table are enough for select() to work. Earlier serial cases leave such numbers pending: PrivateConfigCustody owners reachable only through MagicMock call records (PlannedArgv <- BoundInlineArgv <- tuple <- _Call <- _CallList), closed silently by __del__; each case of test_ssh_gateway_tmux_reconciliation_status, two modules earlier in that shard, leaves 30 or 40. On CPython 3.12 _fixed546_inner_source() calls inspect.getsource() on a class, which parses the whole 61 KB beforeimage with ast.parse; the first automatic collection of the case runs right after it, between the outer and the inner capture (10 of 10 runs here; CPython 3.14 reads __firstlineno__ and collects there in 0 of 10). Both hosted failures are at the inner capture. Inferred, not observed: that the hosted collection reached those owners' generation; the hosted runs lasted longer up to the failure than a complete pass, which a collection of an older generation explains and a normal run does not. The stalled budget fails the same assertion and cannot be excluded.",
     "lowDisk": "Confirmed mechanism: the observer and the case take separate statvfs samples of a filesystem that other actors change. Here 20000 back-to-back sample pairs, with nothing done by the sampling process, showed 10 gains and 35 losses. Neither the observer nor its test changed since cc2873b5, and the three commits before 529cc610 touch neither; they add test modules, which moves the shard partition. Not known: which actor freed space on the hosted runner inside that window."
   },
-  "controlledRegression": "agent_tools.tests.test_hosted_environment_races runs each actual case from its whole beforeimage and from the current module, with real fixtures and local children. Descriptors: one real custody pair reachable only from a cycle is pending, automatic collection is off, and one full collection runs before the second child is created. Stall: that child's first poll sleeps .1 s. Free space: a real megabyte beside the case's root is deleted before every observer entry after the first, and the gain is measured with the unprojected statvfs. Unfixed: each case fails with the hosted trace itself (frames, lines, source text and message; only checkout paths and position markers are normalized). Current: each case passes, and the window names exactly the planted descriptors it finalized before the table was filled. A control runs the unfixed high-descriptor case with the same collection and nothing pending: it passes.",
+  "controlledRegression": "agent_tools.tests.test_hosted_environment_races runs each actual case from its whole beforeimage and from the current module, with real fixtures and local children. Descriptors: one real custody pair reachable only from a cycle is pending, automatic collection is off, and one full collection runs before the second child is created. Stall: that child's first poll sleeps .1 s. Free space: a real megabyte beside the case's root is deleted before every observer entry after the first, and the gain is measured with the unprojected statvfs. Unfixed: each case fails with the hosted trace itself (frames, lines, source text and message; only checkout paths and position markers are normalized). Current: each case passes, and the window names exactly the planted descriptors it finalized before the table was filled. A control runs the unfixed high-descriptor case with the same collection and nothing pending: it passes. The disk-budget peer runs under the same free-space event. Unfixed, its budget refusal is missed: the gate passes on the gain and the core stops later with another code (source-lock-birth here). Current, it passes.",
   "earlierFailureLogSha256": "94f090f63ebe9b1e2bbc4bc5410963447f1c55b55accfe39681a62490b92a13f",
-  "failingEvidence": "Unfixed tree (529cc610 agent_tools plus only this regression and its fixtures), CPython 3.12.13 and 3.14.3: python -m unittest agent_tools.tests.test_hosted_environment_races runs 4 tests with failures=3, each at the assertion that the current case passes, carrying AssertionError: False is not true twice and AssertionError: ValueError not raised once.",
+  "failingEvidence": "Unfixed tree (529cc610 agent_tools plus only this regression and its fixtures), CPython 3.12.13 and 3.14.3: python -m unittest agent_tools.tests.test_hosted_environment_races runs 5 tests with failures=4, each at the assertion that the current case passes, carrying AssertionError: False is not true twice AssertionError: ValueError not raised once and AssertionError: \"copy-disk-budget\" does not match \"source-lock-birth\" once.",
   "failureTypes": {
+    "diskBudgetPeer": "The same two-sample comparison in the preparation core's case: it reserves every available byte it sampled, so a gain of at least the 198144-byte source between the samples passes the budget gate.",
     "highDescriptor": "A case that fills the descriptor table to prove a select() range defect assumes that no lower number comes back while the table is held and that its .08 s real-time budget lasts until the first readiness step. Neither holds in a serial worker: a cyclic collection inside the case runs finalizers of earlier cases that close descriptors, and a stalled runner can spend the budget first. Either way the unfixed owner records no ValueError and the rescue seam's first assertion fails.",
     "lowDisk": "A case samples the live filesystem's available bytes and requires the observer's later sample not to exceed it by one byte. Any gain between the two samples admits the request, so no refusal is raised."
   },
-  "fix": "Tests only. The high-descriptor case opens the shared descriptor_window before it fills the table (pending garbage is finalized, the automatic collector stays off until the table is released, earlier descriptors are named on stderr), asserts before every capture that the lowest free number is above the table and in the rescue seam that the child's own descriptors are, and gives the unfixed owner a clock that counts each thread's own reads, so exactly two readiness steps run whatever the wall clock does. The low-disk case no longer compares two samples: the observer's own unprojected sample refuses a minimum above the filesystem's capacity, and one actual sample handed to the observer refuses a single missing byte and admits exactly the bytes it reports. No product source changes.",
+  "fix": "Tests only. The high-descriptor case opens the shared descriptor_window before it fills the table (pending garbage is finalized, the automatic collector stays off until the table is released, earlier descriptors are named on stderr), asserts before every capture that the lowest free number is above the table and in the rescue seam that the child's own descriptors are, and gives the unfixed owner a clock that counts each thread's own reads, so exactly two readiness steps run whatever the wall clock does. The low-disk case no longer compares two samples: the observer's own unprojected sample refuses a minimum above the filesystem's capacity, and one actual sample handed to the observer refuses a single missing byte and admits exactly the bytes it reports. No product source changes. The preparation core's disk-budget case compared two samples in the same way and takes the same two refusals: a reserve above the filesystem's capacity on the core's own sample, and a reserve of every available byte on one actual sample handed to the core.",
   "kind": "whole-test-module-beforeimages",
   "localReproductions": [
     {
@@ -47,6 +48,13 @@
       "host": "this macOS arm64 host",
       "python": "3.12.13 and 3.14.3",
       "result": "unfixed: 13 and 17 of 400 fail with the thread, 3 and 10 of 400 without it, all AssertionError: ValueError not raised. Current: 0 of 400 in all four loops."
+    },
+    {
+      "by": "this fix",
+      "command": "the disk-budget case 150 times in one process, with the same writing and deleting thread, and without",
+      "host": "this macOS arm64 host",
+      "python": "3.12.13 and 3.14.3",
+      "result": "unfixed: 5 and 4 of 150 (3.12.13) and 2 of 150 (3.14.3) fail with the thread, 1 and 0 of 150 (3.12.13) and 0 of 150 (3.14.3) without it, all AssertionError: \"copy-disk-budget\" does not match \"source-lock-birth\". Current: 0 of 150 in all four loops."
     }
   ],
   "nativeEvidenceLimit": "Hosted-runner test-harness behaviour only; no SSH, VM, guest or product native behaviour is involved or claimed. Which of the two high-descriptor triggers the hosted runner met is not recorded by the run. The next Linux Fast Checks run shows the cases green in the hosted shard order, and the window line names any earlier descriptors pending at the high-descriptor case.",
@@ -102,8 +110,8 @@
       "traceSha256": "d78ff6b69f0a4588bd5de930bb6961d68db44f7c16d7b4209aa66ae09b0c209f"
     }
   },
-  "passingEvidence": "This tree, both interpreters: the same command runs 4 tests, OK.",
-  "routineSuite": "agent_tools.tests.test_hosted_environment_races runs in the affected agent-test stage of the managed pre-push tier and in the Fast Checks agent shards whenever the selector reaches it, including changes to either peer, descriptor_window.py, private_config_custody.py, windows_parallel_vm_source_inventory.py, these beforeimages or this provenance.",
+  "passingEvidence": "This tree, both interpreters: the same command runs 5 tests, OK.",
+  "routineSuite": "agent_tools.tests.test_hosted_environment_races runs in the affected agent-test stage of the managed pre-push tier and in the Fast Checks agent shards whenever the selector reaches it, including changes to either peer, descriptor_window.py, private_config_custody.py, windows_parallel_vm_source_inventory.py, windows_parallel_vm_prepare.py, these beforeimages or this provenance.",
   "schemaVersion": 1,
   "sourceBaseline": "529cc6106160bd5b85a25d261ad2f9a68570306d (pushed dev commit of Fast Checks run 42656925414)",
   "sources": {
@@ -112,6 +120,13 @@
       "case": "Fixed546RetirementTests.test_whole_high_fd_reader_writer_red_and_scalable_outer_inner_green",
       "sourceBytes": 135196,
       "sourceSha256": "6794b8d22abd1e807f419f1e8589275dac6753dff666f63b9fa37e10144f9562"
+    },
+    "agent_tools/tests/test_windows_parallel_vm_prepare.py": {
+      "beforeimage": "test_windows_parallel_vm_prepare.py.before.source",
+      "case": "QemuPreparationTest.test_source_drift_and_disk_budget_refuse_before_any_namespace",
+      "hostedFailure": "none on record; found by running the case in a loop while fixing the low-disk case",
+      "sourceBytes": 13642,
+      "sourceSha256": "29ed0b543308da5613600b0c47c343ac5848b5a4f15d3dfa7904a6dcb0bf1a6d"
     },
     "agent_tools/tests/test_windows_parallel_vm_source_inventory.py": {
       "beforeimage": "test_windows_parallel_vm_source_inventory.py.before.source",

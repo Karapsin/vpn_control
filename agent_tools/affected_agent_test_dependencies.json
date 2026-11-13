@@ -8235,14 +8235,16 @@
       ]
     },
     "agent_tools/tests/test_hosted_environment_races.py": {
-      "reason": "Executes only the authenticated whole 529cc610 beforeimages named in its provenance, each in a ModuleType whose __file__ is the current public peer, plus the current peers it imports. One planted real cyclic PrivateConfigCustody pair with one in-case collection, one slow poll of a harmless local child, and one real megabyte deleted beside the case's root reproduce the hosted traces of the unfixed cases; the current cases pass under the same events. The beforeimage names are a finite literal map checked against the provenance hashes and sizes. No SSH, VM, guest or network action.",
+      "reason": "Executes only the authenticated whole 529cc610 beforeimages named in its provenance, each in a ModuleType whose __file__ is the current public peer, plus the current peers it imports. One planted real cyclic PrivateConfigCustody pair with one in-case collection, one slow poll of a harmless local child, and one real megabyte deleted beside the case's root reproduce the hosted traces of the unfixed cases and the same refusal miss of their disk-budget peer; the current cases pass under the same events. The beforeimage names are a finite literal map checked against the provenance hashes and sizes. No SSH, VM, guest or network action.",
       "scopes": [
         "agent_tools/tests/fixtures/hosted_environment_races/provenance.json",
         "agent_tools/tests/fixtures/hosted_environment_races/test_ssh_owned_channel_retirement.py.before.source",
-        "agent_tools/tests/fixtures/hosted_environment_races/test_windows_parallel_vm_source_inventory.py.before.source"
+        "agent_tools/tests/fixtures/hosted_environment_races/test_windows_parallel_vm_source_inventory.py.before.source",
+        "agent_tools/tests/fixtures/hosted_environment_races/test_windows_parallel_vm_prepare.py.before.source"
       ],
       "sourceSha256": [
-        "39a6bb4ac66aa33bd235679aae0aa4cf0697aef22a21d9048963fa2f9490b4d9"
+        "39a6bb4ac66aa33bd235679aae0aa4cf0697aef22a21d9048963fa2f9490b4d9",
+        "969a0503bd1f55806f2a876b27dbd8fe1db5c303b4a554ec801208f8b8572dca"
       ]
     },
     "agent_tools/tests/test_inventory_fd_baseline.py": {
