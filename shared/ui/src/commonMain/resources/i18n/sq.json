@@ -95,7 +95,7 @@
   "APP_MODE_ANDROID_VPN_FOOTER": "Modaliteti VPN ruton trafikun përmes Android VpnService.",
   "APP_MODE_DESKTOP_VPN_DETAIL": "Çaktivizoje për të përdorur vetëm proxy-n lokal.",
   "APP_MODE_DESKTOP_PROXY_DETAIL": "Aktivizoje për të rutuar trafikun desktop përmes modalitetit VPN/TUN.",
-  "APP_MODE_DESKTOP_CHANGE_WARNING": "Ndryshimi i modalitetit gjatë lidhjes nuk e ndalon sesionin aktual. Rinisni lidhjen për të zbatuar modalitetin e ri.",
+  "APP_MODE_DESKTOP_CHANGE_WARNING": "Ndryshimi i modalitetit gjatë lidhjes nuk e ndalon sesionin aktual. Rinis lidhjen për të zbatuar modalitetin e ri.",
   "REFRESH_DESCRIPTION_ALL": "Funksionon vetëm kur Burimi i profilit është vendosur në Abonim. Aplikacioni do të rishkarkojë periodikisht çdo abonim të ruajtur dhe do të përditësojë listën e bashkuar të vendndodhjeve.",
   "REFRESH_DESCRIPTION_SELECTED": "Funksionon vetëm kur Burimi i profilit është vendosur në Abonim. Aplikacioni do të rishkarkojë periodikisht abonimin e zgjedhur dhe do të përditësojë listën e vendndodhjeve të ruajtura.",
   "REFRESH_DESCRIPTION_DESKTOP": "Ndërsa aplikacioni desktop është i hapur, ai mund të rishkarkojë periodikisht {0} dhe të përditësojë vendndodhjet në cache.",
@@ -285,7 +285,7 @@
   "HOME_SSH_PENDING": "restart pending",
   "ACTIVE_CONNECTION_LOCATION": "Vendndodhja aktive: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Vendndodhja aktive: e padisponueshme",
-  "CONNECTION_RESTART_PENDING": "Rinisni lidhjen për të zbatuar ndryshimet e ruajtura.",
+  "CONNECTION_RESTART_PENDING": "Rinis lidhjen për të zbatuar ndryshimet e ruajtura.",
   "CONNECTION_RESTART_UNKNOWN": "Nuk dihet nëse nevojitet rinisje.",
   "REFRESH_STATUS_UNAVAILABLE": "Gjendja e rifreskimit nuk është e disponueshme"
 }

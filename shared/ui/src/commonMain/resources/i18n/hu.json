@@ -95,7 +95,7 @@
   "APP_MODE_ANDROID_VPN_FOOTER": "A VPN mód az Android VpnService szolgáltatáson keresztül irányítja a forgalmat.",
   "APP_MODE_DESKTOP_VPN_DETAIL": "Kapcsold ki, ha csak a helyi proxyt szeretnéd használni.",
   "APP_MODE_DESKTOP_PROXY_DETAIL": "Kapcsold be, ha az asztali forgalmat VPN/TUN módban szeretnéd irányítani.",
-  "APP_MODE_DESKTOP_CHANGE_WARNING": "Ha kapcsolódás közben módot váltasz, az aktuális munkamenet nem áll le. Az új mód alkalmazásához indítsa újra a kapcsolatot.",
+  "APP_MODE_DESKTOP_CHANGE_WARNING": "Ha kapcsolódás közben módot váltasz, az aktuális munkamenet nem áll le. Az új mód alkalmazásához indítsd újra a kapcsolatot.",
   "REFRESH_DESCRIPTION_ALL": "Csak akkor működik, ha a Profilforrás Előfizetésre van állítva. Az alkalmazás időnként újra letölti az összes mentett előfizetést, és frissíti az egyesített helylistát.",
   "REFRESH_DESCRIPTION_SELECTED": "Csak akkor működik, ha a Profilforrás Előfizetésre van állítva. Az alkalmazás időnként újra letölti a kiválasztott előfizetést, és frissíti a mentett helylistát.",
   "REFRESH_DESCRIPTION_DESKTOP": "Amíg az asztali alkalmazás nyitva van, időnként újra letöltheti ezt: {0}, és frissítheti a gyorsítótárazott helyeket.",
@@ -285,7 +285,7 @@
   "HOME_SSH_PENDING": "restart pending",
   "ACTIVE_CONNECTION_LOCATION": "Aktív hely: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktív hely: nem érhető el",
-  "CONNECTION_RESTART_PENDING": "A mentett módosítások alkalmazásához indítsa újra a kapcsolatot.",
+  "CONNECTION_RESTART_PENDING": "A mentett módosítások alkalmazásához indítsd újra a kapcsolatot.",
   "CONNECTION_RESTART_UNKNOWN": "Nem ismert, hogy szükséges-e az újraindítás.",
   "REFRESH_STATUS_UNAVAILABLE": "A frissítés állapota nem érhető el"
 }

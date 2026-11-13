@@ -95,7 +95,7 @@
   "APP_MODE_ANDROID_VPN_FOOTER": "Moda VPN trafîkê bi rêya Android VpnService rê dike.",
   "APP_MODE_DESKTOP_VPN_DETAIL": "Bigire da ku tenê proxyya herêmî bi kar bîne.",
   "APP_MODE_DESKTOP_PROXY_DETAIL": "Veke da ku trafîka desktopê bi moda VPN/TUN rê bike.",
-  "APP_MODE_DESKTOP_CHANGE_WARNING": "Guhertina modê dema girêdayî yî danişîna niha ranawestîne. Ji bo sepandina moda nû girêdanê ji nû ve bidin destpêkirin.",
+  "APP_MODE_DESKTOP_CHANGE_WARNING": "Guhertina modê dema girêdayî yî danişîna niha ranawestîne. Ji bo sepandina moda nû girêdanê ji nû ve bide destpêkirin.",
   "REFRESH_DESCRIPTION_ALL": "Tenê dema Çavkaniya profîlê li Abonetî hatibe danîn dixebite. Sepan dê her abonetiyeke tomarkirî bi navber ji nû ve dadixe û lîsteya cihên yekbûyî nû dike.",
   "REFRESH_DESCRIPTION_SELECTED": "Tenê dema Çavkaniya profîlê li Abonetî hatibe danîn dixebite. Sepan dê abonetiya hilbijartî bi navber ji nû ve dadixe û lîsteya cihên tomarkirî nû dike.",
   "REFRESH_DESCRIPTION_DESKTOP": "Dema sepana desktopê vekirî be, ew dikare {0} bi navber ji nû ve dadixe û cihên cachekirî nû bike.",
@@ -285,7 +285,7 @@
   "HOME_SSH_PENDING": "restart pending",
   "ACTIVE_CONNECTION_LOCATION": "Cihê çalak: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Cihê çalak: ne berdest e",
-  "CONNECTION_RESTART_PENDING": "Ji bo sepandina guhertinên tomarkirî girêdanê ji nû ve bidin destpêkirin.",
+  "CONNECTION_RESTART_PENDING": "Ji bo sepandina guhertinên tomarkirî girêdanê ji nû ve bide destpêkirin.",
   "CONNECTION_RESTART_UNKNOWN": "Nayê zanîn ka ji nû ve destpêkirin pêwîst e an na.",
   "REFRESH_STATUS_UNAVAILABLE": "Rewşa nûkirinê ne berdest e"
 }

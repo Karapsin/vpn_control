@@ -95,7 +95,7 @@
   "APP_MODE_ANDROID_VPN_FOOTER": "VPN-režiim suunab liikluse läbi Android VpnService.",
   "APP_MODE_DESKTOP_VPN_DETAIL": "Lülita välja, et kasutada ainult kohalikku proxyt.",
   "APP_MODE_DESKTOP_PROXY_DETAIL": "Lülita sisse, et suunata töölaua liiklus läbi VPN/TUN-režiimi.",
-  "APP_MODE_DESKTOP_CHANGE_WARNING": "Režiimi muutmine ühenduse ajal ei peata praegust seanssi. Uue režiimi rakendamiseks taaskäivitage ühendus.",
+  "APP_MODE_DESKTOP_CHANGE_WARNING": "Režiimi muutmine ühenduse ajal ei peata praegust seanssi. Uue režiimi rakendamiseks taaskäivita ühendus.",
   "REFRESH_DESCRIPTION_ALL": "Töötab ainult siis, kui profiili allikaks on tellimus. Rakendus laadib perioodiliselt kõik salvestatud tellimused uuesti alla ja uuendab ühendatud asukohtade loendit.",
   "REFRESH_DESCRIPTION_SELECTED": "Töötab ainult siis, kui profiili allikaks on tellimus. Rakendus laadib perioodiliselt valitud tellimuse uuesti alla ja uuendab salvestatud asukohtade loendit.",
   "REFRESH_DESCRIPTION_DESKTOP": "Kui töölauarakendus on avatud, saab see perioodiliselt uuesti alla laadida {0} ja uuendada vahemällu salvestatud asukohti.",
@@ -285,7 +285,7 @@
   "HOME_SSH_PENDING": "restart pending",
   "ACTIVE_CONNECTION_LOCATION": "Aktiivne asukoht: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Aktiivne asukoht: pole saadaval",
-  "CONNECTION_RESTART_PENDING": "Salvestatud muudatuste rakendamiseks taaskäivitage ühendus.",
+  "CONNECTION_RESTART_PENDING": "Salvestatud muudatuste rakendamiseks taaskäivita ühendus.",
   "CONNECTION_RESTART_UNKNOWN": "Pole teada, kas taaskäivitamine on vajalik.",
   "REFRESH_STATUS_UNAVAILABLE": "Värskenduse olek pole saadaval"
 }

@@ -95,7 +95,7 @@
   "APP_MODE_ANDROID_VPN_FOOTER": "Modul VPN direcționează traficul prin Android VpnService.",
   "APP_MODE_DESKTOP_VPN_DETAIL": "Dezactivează pentru a folosi doar proxy-ul local.",
   "APP_MODE_DESKTOP_PROXY_DETAIL": "Activează pentru a direcționa traficul desktop prin modul VPN/TUN.",
-  "APP_MODE_DESKTOP_CHANGE_WARNING": "Schimbarea modului în timp ce ești conectat nu oprește sesiunea curentă. Reporniți conexiunea pentru a aplica noul mod.",
+  "APP_MODE_DESKTOP_CHANGE_WARNING": "Schimbarea modului în timp ce ești conectat nu oprește sesiunea curentă. Repornește conexiunea pentru a aplica noul mod.",
   "REFRESH_DESCRIPTION_ALL": "Funcționează doar când Sursa profilului este setată la Abonament. Aplicația va redescărca periodic fiecare abonament salvat și va actualiza lista de locații îmbinată.",
   "REFRESH_DESCRIPTION_SELECTED": "Funcționează doar când Sursa profilului este setată la Abonament. Aplicația va redescărca periodic abonamentul selectat și va actualiza lista de locații salvată.",
   "REFRESH_DESCRIPTION_DESKTOP": "Cât timp aplicația desktop este deschisă, poate redescărca periodic {0} și poate actualiza locațiile din cache.",
@@ -285,7 +285,7 @@
   "HOME_SSH_PENDING": "restart pending",
   "ACTIVE_CONNECTION_LOCATION": "Locație activă: {0}",
   "ACTIVE_CONNECTION_UNKNOWN": "Locație activă: indisponibilă",
-  "CONNECTION_RESTART_PENDING": "Reporniți conexiunea pentru a aplica modificările salvate.",
+  "CONNECTION_RESTART_PENDING": "Repornește conexiunea pentru a aplica modificările salvate.",
   "CONNECTION_RESTART_UNKNOWN": "Nu se știe dacă este necesară repornirea.",
   "REFRESH_STATUS_UNAVAILABLE": "Starea reîmprospătării nu este disponibilă"
 }
