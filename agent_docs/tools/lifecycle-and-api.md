@@ -234,6 +234,8 @@ protocol traffic; CLI function calls alone are not equivalent to that proof.
 | `windows-vm-deploy-secure-status` | Same secure-operation inputs | Collect the original guest operation and finish only its proven post-success media cleanup; never change the password again. |
 | `windows-vm-deploy-frame` | `deploymentId`, `operationId` | Capture one owned console PNG and return a verified private coordinator file. |
 | `windows-vm-deploy-frame-collect` | Same frame inputs | Return that exact saved frame again, without another capture. |
+| `windows-desktop-test-start` | `deploymentId`, `operationId`, `sourceCommit` | One complete `:desktopApp:test` of that 40-hex local commit in the owned fixture, as its ordinary user; one durable job, never replayed. See [In-guest desktop tests](#in-guest-desktop-tests). |
+| `windows-desktop-test-status` | `deploymentId`, `operationId` | Observe that original job; once it ends, copy back its XML results, console log and summary. Never submits. |
 
 Reusable generalized images (Python API in `agent_tools/windows_vm_deploy.py`;
 no MCP action yet). `create(root, spec, setup, credentialFile)` lists the
@@ -616,6 +618,72 @@ end, a new explicit correlation may create a new channel. Selection and builders
 refuse expired channels without automatic fallback. Native MCP equivalence remains
 a separate acceptance gate; local fixture and Windows-like import checks do not
 prove actual Windows installation or connection recovery.
+
+### In-guest desktop tests
+
+`agent_tools/windows_desktop_test.py` runs one complete `./gradlew
+:desktopApp:test` of an exact local commit inside an owned Windows fixture and
+keeps every XML result and skip. Its only inputs are `deploymentId`,
+`operationId` and a 40-hex `sourceCommit`. The tool makes the source archive
+itself with `git archive`: no working tree, filter or line-ending conversion,
+so LFS files stay pointers. No command, argument, path or toolchain choice is
+accepted.
+
+1. `prepare` (direct only; coordinator network, no VM):
+   `.agent_venv/bin/python -m agent_tools.windows_desktop_test prepare
+   --source-commit <sha>`. It downloads the CI toolchain, Temurin 17.0.21+9
+   Windows x64 and Gradle 8.10.2. Each is used only after its pinned size and
+   sha256 match. It then archives the commit. Once per build-definition digest,
+   it exports the offline dependency repository: the commit's own wrapper runs
+   `:desktopApp:vcdtExportResolution` in a fresh private Gradle home, with the
+   Compose and Skiko natives replaced by their Windows x64 variants, and the
+   download cache becomes a deterministic Maven-layout zip. The repository has
+   no Gradle dependency verification, so the guest never downloads anything.
+   A cache built for macOS would lack the Windows natives. A failed export
+   keeps its console log in `.runtime/windows-desktop-test/export-failures/`.
+2. `start` (`vm_workflow windows-desktop-test-start`, or the direct `start
+   --deployment-id --operation-id --source-commit`) refuses before any
+   journal: a foreign deployment (a `windowsUacVisual` clone or an image
+   template), an existing operation, an unknown commit and an unprepared one.
+   It stages the four archives into the VM host's content-addressed cache.
+   Then it submits one durable host job under `ScenarioExecutor`, journaled
+   in `.rag_index/windows-desktop-test-executions`. A lost reply is recovered
+   with status on the same operation; a start is never sent twice.
+3. In the guest, the host job (`windows_desktop_test_host_job` over the
+   scenario host job) first checks the profile drive's free space. It publishes
+   the archives as pinned endpoints and runs the pinned runner
+   (`windows_desktop_test_guest`) through the ordinary task's `qualification`
+   worker action. The runner works as the fixture user in their interactive
+   session and is never elevated. It verifies each archive and extracts into
+   `%USERPROFILE%\vcdt-<first 8 of operationId>`. The wrapper's own
+   distribution folder is seeded and marked installed. The source's
+   `gradle-wrapper.jar` runs with `--offline --no-daemon` and an init script
+   that replaces every repository with the extracted one, inside a
+   kill-on-close job object, at normal priority. `ANDROID_HOME` names a missing
+   folder and the test JVMs get `user.home` inside the work folder. The runner
+   compares the product processes, the product state folders and the names in
+   the profile before and after. It zips
+   `desktopApp/build/test-results/test` with the console log and deletes its
+   work folder. After the owner exits, one identity-checked SYSTEM program
+   deletes the pushed archives. Nothing touches Windows Update or the Store.
+   Gradle gets 2.5 hours and the whole task 3.5 hours. The ordinary task's
+   owner writes a pending event every 30 seconds and the run collector
+   refuses a 512th, so an ordinary task that runs past about 4 h 15 min ends
+   UNKNOWN.
+4. `status` observes the original job. While the job runs, the reason is
+   `desktop_test_running:<stage>:<seconds>s`. Once the job ends, status copies
+   the receipt, runner summary, results zip and evidence zip to
+   `.runtime/windows-desktop-test/operations/<operationId>/` and writes
+   `summary.json`. The summary holds:
+   - `toolOutcome`, with `failedStage` naming the stage of a tool failure;
+   - `testOutcome`: `passed`, `failed`, `build-failed`, `timed-out` or `not-run`;
+   - totals, per-class counts, skipped and failed tests;
+   - the JDK release, the Gradle version, the commit and the archive digests;
+   - hygiene: work folder and archive cleanup, guest disk space, and any new
+     name the run left in the profile.
+
+A failing test is a completed tool run with `testOutcome: failed`. An UNKNOWN
+job exit is still read and summarized, as `toolOutcome: unknown`.
 
 ### Receipt-bound channel keeper
 

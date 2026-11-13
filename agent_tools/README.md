@@ -285,6 +285,7 @@ content-bound receipt.
 | Startup, API, retained channels, keeper, checks and delivery | [Lifecycle and API](../agent_docs/tools/lifecycle-and-api.md) |
 | Native input, source context, private hosts, credentials and fixture preparation | [Platform evidence](../agent_docs/tools/visual-and-platform-evidence.md) |
 | Typed acceptance adapters, artifact/matrix custody and fixed historical CP117 recovery | [Parity recipes and historical reconciliation](../agent_docs/tools/parity-worker-recipes.md) |
+| A complete `:desktopApp:test` inside an owned Windows fixture | [In-guest desktop tests](../agent_docs/tools/lifecycle-and-api.md#in-guest-desktop-tests) |
 | Current GUI/CLI parity next action and original operation/lease custody | [Current ledger](../agent_docs/work-in-progress.md), [active brief](../agent_docs/parity-solo-plan.md) |
 | Exact full pre-migration tool guide | [Historical snapshot](../agent_docs/archive/parity/2026-10-14/tool-guide-original.md) |
 
