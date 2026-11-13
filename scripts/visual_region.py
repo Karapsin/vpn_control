@@ -267,7 +267,8 @@ def crop_frames(
     """Crop step for a scene whose surface was located inside a VM: full frames in, region evidence out.
 
     ``region`` comes from the capture route: the target's native identity and its rectangle in
-    framebuffer pixels. The first of two consecutive frames with identical crops is published.
+    framebuffer pixels. The first frame whose crop equals the previous frame's crop (the later
+    frame of the first identical pair) is published, and that full frame is kept.
     """
     if region.get("schema_version") != SCHEMA_VERSION or region.get("platform") != platform or region.get("scene") != scene_id:
         raise RegionEvidenceError("region input must be schema 1 for the requested platform and scene")
