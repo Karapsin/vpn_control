@@ -73,6 +73,17 @@ class DesktopWindowsPinSharingTest {
         assertTrue(volume.live().isEmpty())
     }
 
+    @Test fun aRuntimeResourceAdmissionLetsOtherProgramsRenameIntoItsFolderChain() {
+        // DesktopWindowsResourceAdmission.capture holds every folder from the volume root to a resource's folder in
+        // the user's workspace while it admits the resource, as the broker's PinParents does under the same token.
+        val volume = SharingVolume(SID)
+        val chain = CHAIN.take(3) + "C:\\Users\\東京\\.vpn-control-desktop"
+        for (folder in chain) volume.opens += SharingVolume.Open(folder, 0,
+            SharingVolume.fileRights(DesktopWindowsResourceAdmission.FOLDER_PIN_ACCESS), DesktopWindowsResourceAdmission.FOLDER_PIN_SHARE)
+        volume.assertOthersMayAddEntries(chain)
+        volume.assertPinnedAgainstRenameAndDeletion(chain)
+    }
+
     companion object {
         const val SID = "S-1-5-21-1-2-3-1001"
         const val SYSTEM = "S-1-5-18"

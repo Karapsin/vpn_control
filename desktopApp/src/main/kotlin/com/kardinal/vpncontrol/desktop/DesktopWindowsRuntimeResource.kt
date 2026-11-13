@@ -131,6 +131,12 @@ internal class DesktopWindowsRuntimeResource(
 
 /** Direct original-token filesystem inspection; no shell, helper, key bytes or cache read. */
 internal object DesktopWindowsResourceAdmission {
+    // Every folder from the volume root to the resource's folder stays pinned while it is admitted. Listing access
+    // takes part in sharing and nothing shares delete, so none is renamed or deleted meanwhile. Writes stay shared:
+    // other programs keep renaming into these folders ([MS-FSA] 2.1.5.15.12), as with the broker's PinParents.
+    internal const val FOLDER_PIN_ACCESS = 0x81
+    internal const val FOLDER_PIN_SHARE = 3
+
     fun capture(requested: Path): DesktopWindowsResourceDestination = withParent(requested) { _, destination -> destination }
 
     fun captureScopeRecord(requested: Path, scopeId: String): DesktopWindowsResourceScopeRecord = withParent(requested) { api, destination ->
@@ -163,7 +169,7 @@ internal object DesktopWindowsResourceAdmission {
         try {
             var identity: String? = null
             for (directory in generateSequence(parent) { it.parent }.toList().asReversed()) {
-                val handle = native.CreateFileW(WString(directory.toString()), 0x81, 1, null, 3, 0x02200000, null)
+                val handle = native.CreateFileW(WString(directory.toString()), FOLDER_PIN_ACCESS, FOLDER_PIN_SHARE, null, 3, 0x02200000, null)
                 if (handle == WinBase.INVALID_HANDLE_VALUE || handle.pointer == WinBase.INVALID_HANDLE_VALUE.pointer)
                     throw WindowsInstallNativeFailure(Kernel32.INSTANCE.GetLastError())
                 handles += handle
