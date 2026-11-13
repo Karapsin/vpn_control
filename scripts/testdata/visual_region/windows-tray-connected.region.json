@@ -42,7 +42,7 @@
   ],
   "stable_frame": {"attempts": 2, "max_attempts": 20, "interval_ms": 250},
   "occlusion": {
-    "phases": ["before", "after"],
+    "phases": ["before", "during", "after"],
     "checks": [
       {"label": "tray-menu", "region": [320, 160, 512, 369], "reference": "0x32", "occluders": []},
       {"label": "tray-icon", "region": [1092, 756, 1116, 796], "reference": "0x33", "occluders": []}

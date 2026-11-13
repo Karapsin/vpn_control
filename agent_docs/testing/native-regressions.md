@@ -215,8 +215,10 @@ cleanup still require direct native proof and matching MCP retesting.
 modeled 1280x800 desktop on every host: the taskbar clock and a desktop shortcut
 change on every capture outside the target region, a remaining `System Properties`
 dialog refuses only where it covers the region (before any image is published),
-and caret-like changes, lost foreground or focus, unconverged placement, ambiguous
-or missing targets and unstable icons are refused with named reasons. It also pins
+a backdrop left above its target and a window shown only while the published pair
+was taken are refused as occluded, and caret-like changes, lost foreground or focus,
+unconverged placement, ambiguous or missing targets and unstable icons are refused
+with named reasons. It also pins
 the region record to the golden file that `scripts/test_visual_platform.py`
 validates. It runs in ordinary desktop tests. Real Windows window enumeration, DWM
 bounds, `Shell_NotifyIconGetRect`, foreground and session settings remain covered

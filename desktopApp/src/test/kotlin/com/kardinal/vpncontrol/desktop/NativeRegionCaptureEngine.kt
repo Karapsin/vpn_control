@@ -161,6 +161,9 @@ internal class RegionCaptureEngine(
                 capture = {
                     val frame = desktop.captureScreen(screen)
                     lastFrame = frame
+                    // A census follows every capture, so both frames of the published pair are
+                    // bracketed: a window shown only while they were taken is refused as well.
+                    requireUnoccluded(sceneId, "during", desktop.census(), checks)
                     val image = composeRegionImage(frame, screen, parts.map { it.rect }, layout)
                     CapturedRegion(frame, image, rgbPixels(image))
                 },

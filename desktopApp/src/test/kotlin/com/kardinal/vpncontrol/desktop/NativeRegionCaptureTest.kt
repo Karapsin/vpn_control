@@ -231,6 +231,25 @@ class NativeRegionCaptureTest {
     }
 
     @Test
+    fun aWindowShownOnlyWhileThePublishedPairIsTakenIsRefused() {
+        // The census ran only before the first and after the last capture, so a tooltip or toast
+        // that covered the region in both captures of the published pair, and was gone by the
+        // final census, was published inside the scene image.
+        val output = Files.createTempDirectory("vpn-control-region-transient")
+        try {
+            val desktop = FakeDesktop().apply { transientDuringStablePair = true }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { desktop.captureWizard(output) }
+            assertEquals(RegionCaptureRefusal.OCCLUDED, refusal.refusal)
+            assertTrue("tooltips_class32" in refusal.detail)
+            assertFalse(Files.exists(output.resolve("windows-msi.png")))
+            val frame = ImageIO.read(output.resolve("windows-msi.frame.png").toFile())
+            assertEquals(TOOLTIP_RGB, frame.getRGB(250, 110) and 0xFFFFFF, "the kept frame shows the occluder")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun stableFrameNeedsTwoConsecutiveIdenticalCaptures() {
         var captures = 0
         val frames = listOf("loading", "painted", "painted")
@@ -449,15 +468,17 @@ class NativeRegionCaptureTest {
         var foregroundRefused = false
         var focusInside = true
         var stackingRefused = false
+        var transientDuringStablePair = false
         var captures = 0
         val cuesShown = mutableListOf<Long>()
         val stacked = mutableListOf<Pair<Long, Long>>()
         private var foreground = 0L
+        private var transient: NativeWindow? = null
 
         override fun screen() = screen
         override fun workArea() = workArea
         override fun scale() = 1.0 to 1.0
-        override fun census(): List<NativeWindow> = listOfNotNull(residue) + windows
+        override fun census(): List<NativeWindow> = listOfNotNull(transient, residue) + windows
         override fun window(handle: Long) = windows.firstOrNull { it.handle == handle }
         override fun disableTransitions(handle: Long) = true
         override fun showKeyboardCues(handle: Long) {
@@ -487,6 +508,11 @@ class NativeRegionCaptureTest {
 
         override fun captureScreen(screen: RegionRect): BufferedImage {
             captures++
+            // A tooltip shown from the first capture until right after the second one.
+            if (transientDuringStablePair && captures == 1) {
+                transient = nativeWindow(0x50, pid = 9, className = "tooltips_class32", title = "tooltip",
+                    bounds = RegionRect(200, 100, 360, 130))
+            }
             val image = BufferedImage(screen.width, screen.height, BufferedImage.TYPE_INT_RGB)
             for (y in 0 until screen.height) for (x in 0 until screen.width) image.setRGB(x, y, (x / 5 shl 16) or (y / 4 shl 8) or 0x80)
             // Desktop shortcut label and taskbar clock: different on every capture (runner drift, real time).
@@ -499,12 +525,14 @@ class NativeRegionCaptureTest {
                     "backdrop" -> WindowsRegionScenes.BACKDROP_RGB
                     "menu" -> MENU_RGB
                     "System Properties" -> 0xF0F0F0
+                    "tooltip" -> TOOLTIP_RGB
                     else -> continue
                 }
                 fill(image, window.bounds, color)
             }
             if (blinkingCaret) fill(image, RegionRect(200, 100, 201, 116), if (captures % 2 == 0) 0 else 0xFFFFFF)
             if (windows.any { it.title == "taskbar" }) fill(image, ICON_RECT, ICON_RGB)
+            if (transientDuringStablePair && captures == 2) transient = null
             return image
         }
 
@@ -572,6 +600,7 @@ class NativeRegionCaptureTest {
         const val WIZARD_RGB = 0xF3F3F3
         const val MENU_RGB = 0x121F2D
         const val ICON_RGB = 0x2A8FD0
+        const val TOOLTIP_RGB = 0xFFFFE1
         val ICON_RECT = RegionRect(1092, 756, 1116, 796)
         const val GOLDEN_TRAY_RECORD = "scripts/testdata/visual_region/windows-tray-connected.region.json"
     }

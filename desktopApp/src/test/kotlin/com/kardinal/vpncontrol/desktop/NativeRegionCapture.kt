@@ -610,7 +610,7 @@ internal fun regionRecord(
 private fun sizeJson(first: Int, second: Int): JsonArray = JsonArray(listOf(JsonPrimitive(first), JsonPrimitive(second)))
 
 internal fun occlusionJson(checks: List<OcclusionCheck>): JsonObject = buildJsonObject {
-    put("phases", JsonArray(listOf(JsonPrimitive("before"), JsonPrimitive("after"))))
+    put("phases", JsonArray(listOf(JsonPrimitive("before"), JsonPrimitive("during"), JsonPrimitive("after"))))
     put("checks", JsonArray(checks.map { check ->
         buildJsonObject {
             put("label", check.label)
