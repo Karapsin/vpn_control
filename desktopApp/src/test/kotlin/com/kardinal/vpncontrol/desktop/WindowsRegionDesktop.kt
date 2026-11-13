@@ -140,7 +140,11 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
         val children = mutableListOf<WinDef.HWND>()
         user32.EnumChildWindows(hwnd(handle), WinUser.WNDENUMPROC { child, _ -> children += child; true }, null)
         return children.map { child ->
-            NativeControl(handleOf(child), className(child), windowText(child), user.GetDlgCtrlID(child), user32.IsWindowVisible(child))
+            NativeControl(
+                handleOf(child), className(child), windowText(child), user.GetDlgCtrlID(child),
+                visible = user32.IsWindowVisible(child),
+                enabled = user32.IsWindowEnabled(child),
+            )
         }
     }
 

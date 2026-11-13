@@ -22,7 +22,7 @@ internal interface RegionReadinessProbes {
     /** SendMessageTimeout(WM_NULL, SMTO_ABORTIFHUNG) returned within [timeoutMillis]. */
     fun answersWithin(handle: Long, timeoutMillis: Int): Boolean
 
-    /** Every descendant window (EnumChildWindows) with its class, caption, control ID and visibility. */
+    /** Every descendant window (EnumChildWindows) with its class, caption, control ID, visibility and enabled state. */
     fun childWindows(handle: Long): List<NativeControl>
 
     /** The client rectangle in screen coordinates, or null when it cannot be read. */
@@ -119,7 +119,11 @@ internal class RegionCaptureEngine(
         throw refusal
     }
 
-    /** Locates a window by native identity and places its visible frame canonically. */
+    /**
+     * Locates a window by native identity and places its visible frame canonically. A window that
+     * does not yet show its role's controls is not the scene's page: WixUI shows PrepareDlg, titled
+     * like the wizard but with Next disabled, until the Welcome page replaces it as a new window.
+     */
     fun placeWindow(
         sceneId: String,
         role: String,
@@ -128,7 +132,11 @@ internal class RegionCaptureEngine(
         move: (Long, PlacementMove, Boolean) -> Unit,
         maxPolls: Int = 80,
     ): LocatedPart = keepingRefusedMoment {
-        val found = awaitTarget(sceneId, rule, maxPolls, desktop::census) { desktop.pause(250) }
+        val readiness = WindowsRegionScenes.readiness(role)
+        val found = awaitTarget(
+            sceneId, rule, maxPolls, desktop::census,
+            unready = { window -> readiness.unreadyPage { desktop.childWindows(window.handle) } },
+        ) { desktop.pause(250) }
         val transitionsDisabled = desktop.disableTransitions(found.handle)
         val placed = placeCanonically(
             sceneId,
@@ -156,6 +164,7 @@ internal class RegionCaptureEngine(
             targetHandle = found.handle,
             keyboardCues = true,
             current = { desktop.window(found.handle)?.takeIf(NativeWindow::paints)?.bounds },
+            readiness = readiness,
         )
     }
 
@@ -304,12 +313,11 @@ internal class RegionCaptureEngine(
         }
         val controls = if (rule.controls.isEmpty()) emptyList() else {
             val census = desktop.childWindows(part.targetHandle)
-            val missing = rule.controls.filter { wanted -> census.none(wanted::matches) }
+            val missing = rule.missingControls(census)
             if (missing.isNotEmpty()) {
                 refuseRegion(
                     sceneId, RegionCaptureRefusal.CONTROLS_MISSING,
-                    "$window lacks ${missing.joinToString { it.describe() }} $phase; its child windows: " +
-                        census.joinToString("; ") { it.describe() }.ifEmpty { "none" },
+                    "$window lacks ${missing.joinToString { it.describe() }} $phase; its child windows: ${describeControls(census)}",
                 )
             }
             rule.controls.map { wanted -> census.first(wanted::matches) }

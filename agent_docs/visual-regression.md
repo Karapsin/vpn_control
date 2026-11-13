@@ -177,7 +177,7 @@ surface's own region (`VISUAL-002`). The decisions live in `NativeRegionCapture.
 | --- | --- | --- | --- |
 | `windows-window-frame` | The app's own top-level window (its AWT handle, this process), frame included | DWM extended frame bounds | Visible frame 1000x720 at 140,16 |
 | `windows-open-dialog`, `windows-save-dialog` | The `#32770` dialog of this process with the fixture title, owned by the app window | DWM extended frame bounds | Visible frame 640x460 at 160,60 |
-| `windows-msi`, `windows-update-installer` | The visible top-level `... Setup` window of the `msiexec` process the test started | DWM extended frame bounds | Moved to 160,60; intrinsic size |
+| `windows-msi`, `windows-update-installer` | The visible top-level `... Setup` window of the `msiexec` process the test started, once its page offers an enabled Next (not WixUI's PrepareDlg) | DWM extended frame bounds | Moved to 160,60; intrinsic size |
 | `windows-tray-disconnected`, `windows-tray-connected` | The AWT tray popup window, then the notification icon from `Shell_NotifyIconGetRect` (AWT message window and `TrayIcon.id`) | Menu region, 8 px gap, icon rectangle, stacked left-aligned on black | Menu moved to 320,160; icon promoted out of the Windows 11 overflow and verified in the visible notification area, shell-placed |
 | `windows-uac` | The consent window on the secure desktop, located in the guest by the prompt route | Crop of the retained full VM frame | Placed by Windows |
 
@@ -220,8 +220,13 @@ A quiet frame is not a ready target. Before the stable-frame loop (up to 12 chec
 and again before publishing, every part's window must answer: `IsHungAppWindow` is false and a
 `WM_NULL` `SendMessageTimeout` with `SMTO_ABORTIFHUNG` returns within 2 s (`target-not-responding`;
 for the notification icon this is the taskbar). File dialogs must show their `IDOK` and `IDCANCEL`
-buttons, and the installer wizard its Next and Cancel buttons, in the native child-window census
-(`target-controls-missing`, whose detail lists that census). A pair in which a part's region, or a
+buttons, and the installer wizard its Next and Cancel buttons with Next enabled (`IsWindowEnabled`),
+in the native child-window census (`target-controls-missing`, whose detail lists that census and
+marks hidden and disabled controls). WixUI first shows PrepareDlg under the same `... Setup` title,
+with the same buttons but Next disabled while the installer costs, and then replaces it with the
+Welcome page as a new window. A window that lacks its role's controls is therefore not located at
+all: the wait for the target continues until the page that shows them replaces it, and ends in
+`target-controls-missing` if the last census still shows such a page. A pair in which a part's region, or a
 window's client area, is one flat colour (for example only the `#404040` backdrop) has not painted:
 the loop keeps capturing and refuses `target-not-painted` if it ends on such a pair.
 

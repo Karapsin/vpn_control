@@ -179,22 +179,34 @@ internal fun selectTarget(census: List<NativeWindow>, rule: TargetRule): TargetS
     }
 }
 
-/** Polls censuses until exactly one painting window has the rule's identity. */
+/**
+ * Polls censuses until exactly one painting window has the rule's identity and [unready] (why the
+ * window is not yet the scene's page, or null) accepts it. A window that is not ready is waited
+ * past like a missing one: WixUI's PrepareDlg has the wizard's identity but not its enabled Next.
+ */
 internal fun awaitTarget(
     sceneId: String,
     rule: TargetRule,
     maxPolls: Int,
     census: () -> List<NativeWindow>,
+    unready: (NativeWindow) -> String? = { null },
     pause: () -> Unit,
 ): NativeWindow {
     require(maxPolls >= 1)
     var last: TargetSelection = TargetSelection.Missing(emptyList())
+    var notReady: String? = null
     for (poll in 1..maxPolls) {
         last = selectTarget(census(), rule)
-        if (last is TargetSelection.Found) return last.window
+        notReady = (last as? TargetSelection.Found)?.let { unready(it.window) }
+        if (last is TargetSelection.Found && notReady == null) return last.window
         if (poll < maxPolls) pause()
     }
     when (val outcome = last) {
+        is TargetSelection.Found -> refuseRegion(
+            sceneId,
+            RegionCaptureRefusal.CONTROLS_MISSING,
+            "${rule.kind} (${rule.locator()}) was not ready after $maxPolls censuses: ${outcome.window.describe()} $notReady",
+        )
         is TargetSelection.Ambiguous -> refuseRegion(
             sceneId,
             RegionCaptureRefusal.TARGET_AMBIGUOUS,
@@ -208,7 +220,6 @@ internal fun awaitTarget(
                 outcome.nonPainting.takeIf { it.isNotEmpty() }
                     ?.joinToString("; ", prefix = "; hidden matches: ") { it.describe() }.orEmpty(),
         )
-        is TargetSelection.Found -> error("unreachable")
     }
 }
 
@@ -388,16 +399,26 @@ internal data class NativeControl(
     val text: String,
     val controlId: Int,
     val visible: Boolean,
+    /** IsWindowEnabled: a disabled control is drawn greyed and takes no input. */
+    val enabled: Boolean,
 ) {
-    fun describe(): String = "$className id=$controlId '$text'" + if (visible) "" else " (hidden)"
+    fun describe(): String {
+        val states = listOfNotNull("hidden".takeUnless { visible }, "disabled".takeUnless { enabled })
+        return "$className id=$controlId '$text'" + if (states.isEmpty()) "" else states.joinToString(", ", " (", ")")
+    }
 }
 
-/** A visible child control a dialog must show: its window class plus its control ID or caption. */
+/**
+ * A visible child control a dialog must show: its window class plus its control ID or caption,
+ * and, when [enabled], an enabled one.
+ */
 internal data class ControlRule(
     val label: String,
     val className: String,
     val controlId: Int? = null,
     val caption: String? = null,
+    /** The control must also be enabled (IsWindowEnabled), not only visible. */
+    val enabled: Boolean = false,
 ) {
     init {
         require((controlId == null) != (caption == null)) { "a control rule names either a control ID or a caption" }
@@ -405,12 +426,15 @@ internal data class ControlRule(
 
     /** Captions compare without their access-key ampersand ("&Next" is Next). */
     fun matches(control: NativeControl): Boolean =
-        control.visible && control.className.equals(className, ignoreCase = true) &&
+        control.visible && (!enabled || control.enabled) && control.className.equals(className, ignoreCase = true) &&
             (controlId == null || control.controlId == controlId) &&
             (caption == null || control.text.replace("&", "").trim().equals(caption, ignoreCase = true))
 
-    fun describe(): String = "$label ($className ${controlId?.let { "id=$it" } ?: "'$caption'"})"
+    fun describe(): String = "$label ($className ${controlId?.let { "id=$it" } ?: "'$caption'"}${if (enabled) ", enabled" else ""})"
 }
+
+/** A child-window census as a refusal detail lists it. */
+internal fun describeControls(census: List<NativeControl>): String = census.joinToString("; ") { it.describe() }.ifEmpty { "none" }
 
 /**
  * What must hold for a part before the stable-frame loop and again before its image is published.
@@ -425,7 +449,22 @@ internal data class PartReadiness(
     val controls: List<ControlRule> = emptyList(),
     /** A notification icon, which must lie in the visible notification area (notifyIconPlacementFailure). */
     val notificationIcon: Boolean = false,
-)
+) {
+    /** The required controls that [census] does not show. */
+    fun missingControls(census: List<NativeControl>): List<ControlRule> = controls.filter { wanted -> census.none(wanted::matches) }
+
+    /**
+     * Why a located window is not yet this part's page, or null: a window that lacks a required
+     * control is waited past while the target is located (awaitTarget), not placed.
+     */
+    fun unreadyPage(census: () -> List<NativeControl>): String? {
+        if (controls.isEmpty()) return null
+        val children = census()
+        val missing = missingControls(children)
+        if (missing.isEmpty()) return null
+        return "lacks ${missing.joinToString { it.describe() }}; its child windows: ${describeControls(children)}"
+    }
+}
 
 internal data class PartOffset(val x: Int, val y: Int) {
     fun json(): JsonArray = JsonArray(listOf(JsonPrimitive(x), JsonPrimitive(y)))
@@ -788,9 +827,13 @@ internal object WindowsRegionScenes {
         ControlRule("cancel-button", "Button", controlId = 2),
     )
 
-    /** WixUI's welcome page offers Next and Cancel; MSI assigns no fixed control IDs. */
+    /**
+     * WixUI's welcome page offers an enabled Next and Cancel; MSI assigns no fixed control IDs.
+     * PrepareDlg, shown first under the same "[ProductName] Setup" title while the installer costs,
+     * has the same visible buttons with Back and Next disabled, so Next must be enabled.
+     */
     val installerWizardControls = listOf(
-        ControlRule("next-button", "Button", caption = "Next"),
+        ControlRule("next-button", "Button", caption = "Next", enabled = true),
         ControlRule("cancel-button", "Button", caption = "Cancel"),
     )
 
@@ -803,7 +846,7 @@ internal object WindowsRegionScenes {
         else -> PartReadiness()
     }
 
-    /** WixUI titles every wizard page "[ProductName] Setup". */
+    /** WixUI titles every wizard page "[ProductName] Setup", PrepareDlg included. */
     const val INSTALLER_TITLE_SUFFIX = " Setup"
     const val FILE_DIALOG_CLASS = "#32770"
     const val AWT_TRAY_MESSAGE_WINDOW_CLASS = "SunAwtTrayIcon"

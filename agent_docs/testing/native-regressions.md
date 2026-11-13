@@ -221,7 +221,9 @@ unconverged placement, ambiguous or missing targets and unstable icons are refus
 with named reasons. A stable pair is not taken as readiness: a hung or silent
 target (before the loop or only while the pair was taken), a region that is only
 the backdrop or a flat client area, and a dialog or wizard without its expected
-child controls are refused, not published. Tray promotion fails closed: a missing
+child controls are refused, not published. A wizard page whose Next is disabled
+(WixUI's PrepareDlg, titled like the wizard) is neither located nor passed by the
+readiness gate, and the Welcome page that replaces it is published. Tray promotion fails closed: a missing
 `NotifyIconSettings` key or entry, a value that does not read back, and an icon
 rectangle on the overflow chevron, in the flyout or outside the visible
 notification area are refused as `tray-icon-not-promoted`, with the promotion

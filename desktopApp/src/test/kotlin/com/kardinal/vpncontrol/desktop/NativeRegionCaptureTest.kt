@@ -259,6 +259,7 @@ class NativeRegionCaptureTest {
             val desktop = FakeDesktop()
             desktop.windows += nativeWindow(0x2A, pid = 700, className = "MsiDialogCloseClass", title = "vpn-control Setup",
                 bounds = RegionRect(40, 20, 1240, 740))
+            desktop.children[WIZARD] = WIZARD_BUTTONS
             val engine = RegionCaptureEngine(desktop, "windows", buildJsonObject {})
             val refusal = assertFailsWith<RegionCaptureRefusedException> {
                 engine.placeWindow(
@@ -375,6 +376,75 @@ class NativeRegionCaptureTest {
             val complete = output.resolve("complete")
             FakeDesktop().captureDialog(complete)
             assertTrue(Files.exists(complete.resolve("windows-open-dialog.png")), "a dialog showing IDOK and IDCANCEL is published")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aStablePreparingWizardPageIsRefusedInsteadOfPublishedAsTheInstaller() {
+        // WixUI shows PrepareDlg first: titled "[ProductName] Setup" like the Welcome page, with the
+        // same visible Next and Cancel, but Next disabled while the installer costs. Its static page
+        // answered, painted and gave identical pairs, so it was published as windows-msi.
+        val output = Files.createTempDirectory("vpn-control-region-prepare")
+        try {
+            val desktop = FakeDesktop().apply { preparePageCensuses = Int.MAX_VALUE }
+            val failure = assertFailsWith<IllegalStateException> {
+                runRegionCaptureScenes(desktop, "windows", emptyList(), listOf("windows-msi"), output) { _, _ ->
+                    desktop.captureWizard(output)
+                }
+            }
+            val refusal = failure.suppressed.single() as RegionCaptureRefusedException
+            assertEquals("target-controls-missing", refusal.refusal.reason)
+            assertTrue("was not ready after 80 censuses" in refusal.detail, refusal.detail)
+            assertTrue("lacks next-button (Button 'Next', enabled)" in refusal.detail, refusal.detail)
+            assertTrue("Button id=701 '&Next' (disabled)" in refusal.detail, "the refusal lists the child-window census")
+            assertFalse(Files.exists(output.resolve("windows-msi.png")), "the preparing page is never published")
+            assertEquals("target-controls-missing", refusalReason(output, "windows-msi"))
+            val frame = ImageIO.read(output.resolve("windows-msi.frame.png").toFile())
+            assertEquals(PREPARE_RGB, frame.getRGB(600, 400) and 0xFFFFFF, "the kept frame shows the preparing page")
+            assertEquals(WIZARD_START, desktop.window(PREPARE)!!.bounds, "the preparing page is never placed")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun theWelcomePageThatReplacesThePreparingPageIsPublished() {
+        // MSI destroys the modeless PrepareDlg when it creates the Welcome page, a new window. A
+        // capture that had taken PrepareDlg as the wizard lost its target and refused the scene.
+        val output = Files.createTempDirectory("vpn-control-region-welcome")
+        try {
+            val desktop = FakeDesktop().apply { preparePageCensuses = 3 }
+            val record = desktop.captureWizard(output)
+            val part = record["parts"]!!.jsonArray.single().jsonObject
+            assertEquals("0x2A", part["target"]!!.jsonObject["handle"]!!.jsonPrimitive.content, "the Welcome page, not PrepareDlg")
+            assertEquals(listOf(160, 60, 653, 446), part["rect"]!!.jsonArray.map { it.jsonPrimitive.int })
+            assertEquals(WIZARD_RGB, ImageIO.read(output.resolve("windows-msi.png").toFile()).getRGB(10, 10) and 0xFFFFFF)
+            val ready = record["readiness"]!!.jsonObject["parts"]!!.jsonArray.single().jsonObject
+            assertEquals(listOf("Button id=701 '&Next'", "Button id=702 'Cancel'"), ready["controls"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertNull(desktop.window(PREPARE), "PrepareDlg was replaced, never captured")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aWizardPageWhoseNextIsDisabledFailsTheReadinessGate() {
+        // The gate before the stable-frame loop and before publishing matched Next and Cancel by
+        // caption and visibility only, so a page whose Next is disabled passed it.
+        val output = Files.createTempDirectory("vpn-control-region-gate")
+        try {
+            val desktop = FakeDesktop().apply {
+                preparePageCensuses = Int.MAX_VALUE
+                showPreparePage()
+            }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { desktop.captureInstallerPage(output, PREPARE) }
+            assertEquals("target-controls-missing", refusal.refusal.reason)
+            assertTrue("lacks next-button (Button 'Next', enabled) before the stable-frame loop" in refusal.detail, refusal.detail)
+            assertFalse(Files.exists(output.resolve("windows-msi.png")))
+            assertEquals("target-controls-missing", refusalReason(output, "windows-msi"))
+            assertEquals(1, desktop.captures, "no stable-frame capture is taken, only the refused moment's frame")
         } finally {
             output.toFile().deleteRecursively()
         }
@@ -762,10 +832,17 @@ class NativeRegionCaptureTest {
         private var foreground = 0L
         private var transient: NativeWindow? = null
 
+        /**
+         * Censuses in which WixUI's PrepareDlg (Next disabled) is the installer's page; the next one
+         * shows the Welcome page instead, a new window, because MSI destroys the modeless PrepareDlg.
+         */
+        var preparePageCensuses = 0
+        private var censusCount = 0
+
         override fun isHungAppWindow(handle: Long) =
             handle in hung || (handle == WIZARD && wizardHangsAfterCapture?.let { captures >= it } == true)
         override fun answersWithin(handle: Long, timeoutMillis: Int) = handle !in silent && !isHungAppWindow(handle)
-        override fun childWindows(handle: Long) = children[handle].orEmpty()
+        override fun childWindows(handle: Long) = if (window(handle) == null) emptyList() else children[handle].orEmpty()
         override fun clientArea(handle: Long): RegionRect? = window(handle)?.let { window ->
             val bounds = window.bounds
             if (window.title in FRAMED_TITLES) RegionRect(bounds.left, bounds.top + CAPTION, bounds.right, bounds.bottom) else bounds
@@ -815,7 +892,14 @@ class NativeRegionCaptureTest {
         override fun screen() = screen
         override fun workArea() = workArea
         override fun scale() = 1.0 to 1.0
-        override fun census(): List<NativeWindow> = listOfNotNull(transient, residue) + windows
+        override fun census(): List<NativeWindow> {
+            censusCount++
+            val prepare = windows.indexOfFirst { it.handle == PREPARE }
+            if (prepare >= 0 && censusCount > preparePageCensuses) windows[prepare] = installerPage(WIZARD)
+            return stack()
+        }
+        /** Everything stacked on the desktop, topmost first; painting a capture is not a census. */
+        private fun stack(): List<NativeWindow> = listOfNotNull(transient, residue) + windows
         override fun window(handle: Long) = windows.firstOrNull { it.handle == handle }
         override fun disableTransitions(handle: Long) = true
         override fun showKeyboardCues(handle: Long) {
@@ -856,9 +940,10 @@ class NativeRegionCaptureTest {
             fill(image, RegionRect(0, 460, 80, 480), 0x111111 * (captures % 15))
             fill(image, RegionRect(1180, 760, 1240, 796), 0x0F0F0F * (captures % 16))
             // Stacked from the bottom: everything below the backdrop is hidden inside the region.
-            for (window in census().asReversed()) {
+            for (window in stack().asReversed()) {
                 when (window.title) {
-                    "vpn-control Setup" -> paintWizard(image, window.bounds)
+                    "vpn-control Setup" ->
+                        if (window.handle == PREPARE) paintFramed(image, window.bounds, PREPARE_RGB) else paintWizard(image, window.bounds)
                     DIALOG_TITLE -> paintFramed(image, window.bounds, DIALOG_RGB)
                     "backdrop" -> fill(image, window.bounds, WindowsRegionScenes.BACKDROP_RGB)
                     "menu" -> {
@@ -881,9 +966,17 @@ class NativeRegionCaptureTest {
             return image
         }
 
+        /** One page of the msiexec wizard (pid 700), where MSI first shows it. */
+        private fun installerPage(handle: Long) =
+            nativeWindow(handle, pid = 700, className = "MsiDialogCloseClass", title = "vpn-control Setup", bounds = WIZARD_START)
+
+        fun showPreparePage() {
+            windows += installerPage(PREPARE)
+            children.putIfAbsent(PREPARE, PREPARE_BUTTONS)
+        }
+
         fun captureWizard(output: Path): JsonObject {
-            windows += nativeWindow(0x2A, pid = 700, className = "MsiDialogCloseClass", title = "vpn-control Setup",
-                bounds = RegionRect(393, 181, 886, 567))
+            if (preparePageCensuses > 0) showPreparePage() else windows += installerPage(WIZARD)
             children.putIfAbsent(WIZARD, WIZARD_BUTTONS)
             val engine = RegionCaptureEngine(this, "windows", sessionJson())
             val part = engine.placeWindow(
@@ -894,6 +987,21 @@ class NativeRegionCaptureTest {
             )
             windows.add(0, nativeWindow(0x2B, pid = 100, title = "backdrop", bounds = part.rect.expanded(WindowsRegionScenes.BACKDROP_MARGIN)))
             return engine.capture("windows-msi", output, listOf(part.copy(backdropHandle = 0x2B)), part.targetHandle)
+        }
+
+        /** An installer page handed to the capture as already located, so only the capture's own gates decide. */
+        fun captureInstallerPage(output: Path, handle: Long): JsonObject {
+            val page = checkNotNull(window(handle))
+            val part = LocatedPart(
+                role = "installer-wizard",
+                target = page.identity("installer-wizard", "pid=700 title-suffix=' Setup'"),
+                rect = page.bounds,
+                placement = buildJsonObject { put("canonical", WindowsRegionScenes.installerWizard.json()) },
+                targetHandle = handle,
+                keyboardCues = true,
+                current = { window(handle)?.takeIf(NativeWindow::paints)?.bounds },
+            )
+            return RegionCaptureEngine(this, "windows", sessionJson()).capture("windows-msi", output, listOf(part), handle)
         }
 
         /** The import dialog of this process, owned by the application window, sized canonically. */
@@ -999,21 +1107,33 @@ class NativeRegionCaptureTest {
         const val ICON_RGB = 0x2A8FD0
         const val TOOLTIP_RGB = 0xFFFFE1
         const val CAPTION = 8
+        const val PREPARE_RGB = 0xECECEC
         const val WIZARD = 0x2AL
+        /** WixUI's PrepareDlg, the installer's first "Setup" page. */
+        const val PREPARE = 0x29L
         const val DIALOG = 0x40L
         const val DIALOG_TITLE = "Import VPN Control configuration"
         val FRAMED_TITLES = setOf("vpn-control Setup", DIALOG_TITLE)
+        /** Where MSI first shows a wizard page, before the capture places it. */
+        val WIZARD_START = RegionRect(393, 181, 886, 567)
         val WIZARD_BUTTONS = listOf(
-            NativeControl(0x2A01, "Button", "&Back", 700, true),
-            NativeControl(0x2A02, "Button", "&Next", 701, true),
-            NativeControl(0x2A03, "Button", "Cancel", 702, true),
-            NativeControl(0x2A04, "Static", "Welcome to the vpn-control Setup Wizard", 703, true),
+            NativeControl(0x2A01, "Button", "&Back", 700, true, enabled = false),
+            NativeControl(0x2A02, "Button", "&Next", 701, true, enabled = true),
+            NativeControl(0x2A03, "Button", "Cancel", 702, true, enabled = true),
+            NativeControl(0x2A04, "Static", "Welcome to the vpn-control Setup Wizard", 703, true, enabled = true),
+        )
+        /** PrepareDlg shows the Welcome page's buttons, with Back and Next disabled while the installer costs. */
+        val PREPARE_BUTTONS = listOf(
+            NativeControl(0x2901, "Button", "&Back", 700, true, enabled = false),
+            NativeControl(0x2902, "Button", "&Next", 701, true, enabled = false),
+            NativeControl(0x2903, "Button", "Cancel", 702, true, enabled = true),
+            NativeControl(0x2904, "Static", "Please wait while the Setup Wizard prepares to guide you through the installation.", 703, true, enabled = true),
         )
         val DIALOG_BUTTONS = listOf(
-            NativeControl(0x4001, "Button", "&Open", 1, true),
-            NativeControl(0x4002, "Button", "Cancel", 2, true),
-            NativeControl(0x4003, "Button", "&Help", 0x40E, false),
-            NativeControl(0x4004, "ComboBoxEx32", "", 0x47C, true),
+            NativeControl(0x4001, "Button", "&Open", 1, true, enabled = true),
+            NativeControl(0x4002, "Button", "Cancel", 2, true, enabled = true),
+            NativeControl(0x4003, "Button", "&Help", 0x40E, false, enabled = true),
+            NativeControl(0x4004, "ComboBoxEx32", "", 0x47C, true, enabled = true),
         )
         val ICON_RECT = RegionRect(1092, 756, 1116, 796)
         /** The promoted-icon toolbar; the overflow chevron sits just left of it, the clock right of it. */
