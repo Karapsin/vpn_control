@@ -255,7 +255,7 @@ internal class DesktopWindowsTransferPins private constructor(
                     for (name in ancestry.children(parentPath).take(4096)) {
                         if (name.isBlank() || name in setOf(".", "..") || name.any { it in "\\/:\u0000" }) continue
                         val child = runCatching {
-                            native.open(parentPath.trimEnd('\\') + "\\" + name, WindowsInstallNative.INSPECT, shareDelete = false)
+                            native.open(parentPath.trimEnd('\\') + "\\" + name, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
                         }.getOrNull() ?: continue
                         var retained = false
                         try {
@@ -263,7 +263,7 @@ internal class DesktopWindowsTransferPins private constructor(
                             require(info.disk && info.attributes and 0x400 == 0 && info.reparseTag == 0)
                             require(ancestry.canonicalPath(child).substringBeforeLast('\\') == canonicalParent) { "Unlinked transfer witness" }
                             // The child was opened with FILE_READ_DATA/LIST_DIRECTORY and without
-                            // write/delete sharing. Recheck the linked parent after it cannot empty.
+                            // delete sharing. Recheck the linked parent after it cannot empty.
                             verify(native.inspect(parentHandle), sid, ancestorPinnedNonEmpty = true)
                             require(ancestry.canonicalPath(parentHandle).trimEnd('\\') == canonicalParent)
                             retained = true
@@ -275,7 +275,9 @@ internal class DesktopWindowsTransferPins private constructor(
                     error("Unpinned mutable transfer ancestor")
                 }
                 fun pin(): WindowsInstallNative.Handle {
-                    val handle = native.open(prefix, WindowsInstallNative.INSPECT, shareDelete = false)
+                    // Every folder from the volume root to the spool parent (%TEMP% by default) stays pinned
+                    // while the transfer lives. It shares writes: other programs keep renaming into them.
+                    val handle = native.open(prefix, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
                     handles += handle
                     val info = native.inspect(handle)
                     try { verify(info, sid) }

@@ -6,9 +6,14 @@ import kotlin.test.*
 
 class DesktopWindowsInstallRequestTest {
     @Test fun ancestryPinsRequestDataReadSoWindowsActuallyEnforcesSharingDenials() {
-        val pin = windowsInstallOpenOptions(WindowsInstallNative.INSPECT, false, false)
+        val pin = windowsInstallOpenOptions(WindowsInstallNative.PINNED_DIRECTORY, false, false)
         assertEquals(1, pin.rights and 1, "Metadata-only handles do not enforce deny-delete sharing")
-        assertEquals(1, pin.share)
+        assertEquals(3, pin.share, "Folder pins deny deletion only, never other programs' renames into them")
+        assertFails { windowsInstallOpenOptions(WindowsInstallNative.PINNED_DIRECTORY, shareDelete = true, create = false) }
+        assertFails { windowsInstallOpenOptions(WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false, create = true) }
+        val image = windowsInstallOpenOptions(WindowsInstallNative.INSPECT, false, false)
+        assertEquals(1, image.rights and 1)
+        assertEquals(1, image.share, "Image, helper and manifest pins also deny writers")
     }
 
     @Test fun immutableInputPinsNeverPermitConcurrentWritesOrDeletion() {

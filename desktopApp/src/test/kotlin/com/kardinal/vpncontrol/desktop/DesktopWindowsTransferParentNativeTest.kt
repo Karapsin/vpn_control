@@ -2,6 +2,8 @@ package com.kardinal.vpncontrol.desktop
 
 import com.sun.jna.Platform
 import com.sun.jna.platform.win32.Advapi32Util
+import com.sun.jna.platform.win32.Kernel32
+import com.sun.jna.platform.win32.WinBase
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.AclEntry
@@ -29,6 +31,57 @@ class DesktopWindowsTransferParentNativeTest {
             assertContentEquals("東京".toByteArray(), spool.read(0, 6))
         } finally { spool.erase() }
         Files.move(parent, root.resolve("released-parent"))
+    }
+    /** Native document row 83484649: a pin refused every other program's rename into the folders it held. */
+    @Test fun nativeTransferPinsLetOtherProgramsRenameAndLinkIntoPinnedFoldersButNeverMoveThem() = fixture { root ->
+        val pinned = Files.createDirectory(root.resolve("pinned"))
+        val outside = Files.createTempDirectory("transfer-native-outside-")
+        try {
+            // The product's own pins: the folder, its parent and every ancestor up to the volume root.
+            val pins = DesktopWindowsTransferPins.open(pinned.toAbsolutePath().toString(),
+                JnaWindowsInstallAdmission().currentSid(), JnaWindowsInstallNative())
+            try {
+                assertFails { Files.delete(pinned) } // empty, so only the pin can refuse its deletion
+                assertFails { Files.move(pinned, root.resolve("renamed")) }
+                // MoveFileExW and CreateHardLinkW open the folder of the new name for FILE_ADD_FILE.
+                Files.move(Files.writeString(outside.resolve("file.txt"), "file"), pinned.resolve("file.txt"))
+                Files.createLink(pinned.resolve("file-link.txt"), pinned.resolve("file.txt"))
+                Files.move(Files.createDirectory(outside.resolve("folder")), pinned.resolve("folder"))
+                Files.move(Files.writeString(outside.resolve("parent.txt"), "parent"), root.resolve("parent.txt"))
+                Files.move(root.resolve("parent.txt"), root.resolve("parent-renamed.txt"))
+                assertFails { Files.move(pinned, root.resolve("renamed")) }
+                assertEquals(setOf("file.txt", "file-link.txt", "folder"), Files.list(pinned).use { paths ->
+                    paths.map { it.fileName.toString() }.toList().toSet() })
+            } finally { pins.close() }
+            Files.move(pinned, root.resolve("released"))
+        } finally { Files.walk(outside).use { it.sorted(Comparator.reverseOrder()).forEach(Files::delete) } }
+    }
+    @Test fun nativeAdmissionDirectoryPinsLetOtherProgramsRenameIntoTheFolder() = fixture { root ->
+        val empty = Files.createDirectory(root.resolve("admitted-empty"))
+        val folder = Files.createDirectory(root.resolve("admitted"))
+        val admission = JnaWindowsInstallAdmission()
+        val handles = listOf(admission.openDirectory(empty.toString()), admission.openDirectory(folder.toString()))
+        try {
+            assertFails { Files.delete(empty) }
+            Files.move(Files.writeString(root.resolve("source.txt"), "source"), folder.resolve("moved.txt"))
+            assertFails { Files.move(folder, root.resolve("admitted-renamed")) }
+        } finally { handles.asReversed().forEach(admission::close) }
+        Files.delete(empty)
+        assertTrue(Files.isRegularFile(folder.resolve("moved.txt")))
+    }
+    /** The rule behind 83484649, shown on the OS: a folder handle that denies write sharing refuses renames into it. */
+    @Test fun nativeFolderHandleDenyingWriteSharingRefusesRenamesIntoTheFolder() = fixture { root ->
+        val folder = Files.createDirectory(root.resolve("read-sharing-only"))
+        // The unfixed pin, written out: LIST_DIRECTORY | READ_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE, share read,
+        // OPEN_EXISTING, BACKUP_SEMANTICS | OPEN_REPARSE_POINT.
+        val strict = Kernel32.INSTANCE.CreateFile(folder.toString(), 0x00120081, 1, null, 3, 0x02200000, null)
+        assertNotEquals(WinBase.INVALID_HANDLE_VALUE.pointer, strict.pointer)
+        try {
+            val source = Files.writeString(root.resolve("refused.txt"), "refused")
+            assertFailsWith<java.nio.file.FileSystemException> { Files.move(source, folder.resolve("refused.txt")) }
+            Files.writeString(folder.resolve("created.txt"), "created") // creating by path opens no folder
+        } finally { assertTrue(Kernel32.INSTANCE.CloseHandle(strict)) }
+        Files.move(root.resolve("refused.txt"), folder.resolve("refused.txt"))
     }
     @Test fun nativeMutableAncestorRetainsNonemptyWitnessWithoutPublicPayloadRights() = fixture { root ->
         val parent = Files.createDirectory(root.resolve("metadata-writable"))

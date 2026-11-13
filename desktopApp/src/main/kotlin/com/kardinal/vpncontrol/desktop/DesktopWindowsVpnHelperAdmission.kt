@@ -60,6 +60,7 @@ internal object DesktopWindowsPackagedHelperAdmission {
         val applicationHandles = mutableListOf<WindowsInstallNative.Handle>()
         val applicationNative = object : WindowsAdmissionNative by native {
             override fun openDirectory(path: String) = native.openDirectory(path).also { applicationHandles += it }
+            override fun openFile(path: String) = native.openFile(path).also { applicationHandles += it }
             override fun openGate(path: String) = native.openGate(path).also { applicationHandles += it }
             override fun close(handle: WindowsInstallNative.Handle) {
                 native.close(handle)
@@ -126,7 +127,7 @@ internal object DesktopWindowsPackagedHelperAdmission {
             }
             // Native process queries may return a short leaf spelling. Pin that exact query
             // before resolving its canonical name; a string expansion cannot prove identity.
-            val queried = native.openDirectory(DesktopWindowsInstallJobBackend.canonical(process.image))
+            val queried = native.openFile(DesktopWindowsInstallJobBackend.canonical(process.image))
             handles += queried
             originalImage = queried
             trusted(queried, false, false)
@@ -145,7 +146,8 @@ internal object DesktopWindowsPackagedHelperAdmission {
                 paths += path
             }
             fun pin(path: String, directory: Boolean, parent: WindowsInstallNative.Handle? = null): WindowsInstallNative.Handle {
-                val file = native.openDirectory(path)
+                // The helper and manifest are verified and then launched elevated: their pins deny writers.
+                val file = if (directory) native.openDirectory(path) else native.openFile(path)
                 handles += file // Ownership precedes every inspection and rejected-parent cleanup.
                 physical(file, directory)
                 if (parent != null) {
@@ -199,7 +201,7 @@ internal object DesktopWindowsPackagedHelperAdmission {
                 @Synchronized override fun verifyStartedProcess(process: WinNT.HANDLE) {
                     assertOpen()
                     // This path comes from the retained ShellExecute process, not a PID lookup.
-                    val peer = native.openDirectory(native.processImage(process))
+                    val peer = native.openFile(native.processImage(process))
                     handles += peer
                     trusted(peer, false, false)
                     require(native.identity(peer) == expectedIdentity && native.canonicalPath(peer) == expectedCanonical) {

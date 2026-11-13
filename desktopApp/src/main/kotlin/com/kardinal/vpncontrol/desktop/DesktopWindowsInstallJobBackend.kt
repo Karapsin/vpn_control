@@ -37,7 +37,7 @@ internal class DesktopWindowsInstallJobBackend(
     }
 
     private fun openDirectory(path: String, strict: Boolean): Pin {
-        val handle = native.open(path, WindowsInstallNative.INSPECT, shareDelete = false)
+        val handle = native.open(path, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
         try {
             val kind = if (strict) WindowsInstallTrust.Kind.DIRECTORY else WindowsInstallTrust.Kind.ANCESTOR
             val info = native.inspect(handle)
@@ -58,7 +58,7 @@ internal class DesktopWindowsInstallJobBackend(
         for (name in ancestry.children(path).take(4096)) {
             if (name.isBlank() || name in setOf(".", "..") || name.any { it in "\\/:\u0000" }) continue
             val child = runCatching {
-                native.open(path.trimEnd('\\') + "\\" + name, WindowsInstallNative.INSPECT, shareDelete = false)
+                native.open(path.trimEnd('\\') + "\\" + name, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
             }.getOrNull() ?: continue
             var retained = false
             try {
@@ -271,8 +271,14 @@ internal interface WindowsInstallNative {
     fun delete(handle: Handle)
     fun close(handle: Handle)
     companion object {
+        // INSPECT: an object pin that denies writers and (unless asked) deleters: images, helpers,
+        // manifests, the endpoint descriptor and exact private lookups.
         const val INSPECT = 0; const val READ = 1; const val READ_WRITE = 2; const val DELETE = 3
         /** Existing immutable input only: deny write/delete sharing for the retained handle lifetime. */
         const val PINNED_READ = 4
+        /** Retained folder pin (ancestry, or a non-emptiness witness): lists and shares read and write,
+         *  never delete. Nobody can rename or delete the pinned object while it is held, and other
+         *  programs may still create, rename or hard-link entries into the folder. */
+        const val PINNED_DIRECTORY = 5
     }
 }

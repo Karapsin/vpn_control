@@ -54,9 +54,11 @@ internal object DesktopWindowsInstallAdmission {
             var previous: WindowsInstallNative.Handle? = null
             var previousCanonical: String? = null
             for ((index, path) in paths.withIndex()) {
-                // INSPECT includes READ_DATA and denies write/delete sharing. Each retained
-                // linked child also prevents its parent becoming an empty reparse target.
-                val handle = native.openDirectory(path)
+                // Held for the process lifetime. Every pin includes READ_DATA and denies delete
+                // sharing; each retained linked child also prevents its parent becoming an empty
+                // reparse target. Folders share writes, so other programs still rename into the
+                // home folder of a per-user installation; the image itself also denies writers.
+                val handle = if (index == paths.lastIndex) native.openFile(path) else native.openDirectory(path)
                 handles += handle
                 physicalInfo(handle, directory = index != paths.lastIndex)
                 val canonical = native.canonicalPath(handle)
@@ -198,7 +200,10 @@ internal object DesktopWindowsInstallAdmission {
 internal interface WindowsAdmissionNative {
     fun currentSid(): String
     fun programData(): String
+    /** Folder pin, or a non-emptiness witness of either kind: WindowsInstallNative.PINNED_DIRECTORY. */
     fun openDirectory(path: String): WindowsInstallNative.Handle
+    /** Image, helper or manifest pin that also denies writers: WindowsInstallNative.INSPECT. */
+    fun openFile(path: String): WindowsInstallNative.Handle
     fun openGate(path: String): WindowsInstallNative.Handle
     fun inspect(handle: WindowsInstallNative.Handle): WindowsInstallInfo
     fun persistentAcl(handle: WindowsInstallNative.Handle): Boolean

@@ -187,6 +187,7 @@ class DesktopWindowsVpnAdmissionTest {
         override fun currentSid() = SID
         override fun programData() = "C:\\ProgramData"
         override fun openDirectory(path: String) = Handle(path).also { handles += it }
+        override fun openFile(path: String) = openDirectory(path)
         override fun inspect(handle: WindowsInstallNative.Handle): WindowsInstallInfo {
             val path = (handle as Handle).path
             return transform(path, WindowsInstallInfo(directory = true, owner = "S-1-5-18",

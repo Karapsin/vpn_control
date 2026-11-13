@@ -13,8 +13,10 @@ import com.sun.jna.platform.win32.WinNT
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.win32.StdCallLibrary
 
-/** Direct native calls only: normal GUI/CLI admission starts no shell, compiler or elevation helper. */
-internal class JnaWindowsInstallAdmission : WindowsAdmissionNative {
+/** Direct native calls only: normal GUI/CLI admission starts no shell, compiler or elevation helper.
+ * [pins] replaces the native adapter for the pins' opens alone, so deterministic tests can judge the
+ * sharing each retained admission pin requests; production passes none. */
+internal class JnaWindowsInstallAdmission(private val pins: WindowsInstallNative? = null) : WindowsAdmissionNative {
     private val files = JnaWindowsInstallNative()
     private val extra: Api by lazy { check(Platform.isWindows()); Native.load("kernel32", Api::class.java) }
     override fun currentSid(): String {
@@ -25,7 +27,10 @@ internal class JnaWindowsInstallAdmission : WindowsAdmissionNative {
         finally { Kernel32.INSTANCE.CloseHandle(token.value) }
     }
     override fun programData() = files.programData()
-    override fun openDirectory(path: String) = files.open(path, WindowsInstallNative.INSPECT, shareDelete = false)
+    // A process holds its admission for its lifetime, the folders of its installation included
+    // (%LOCALAPPDATA%\vpn-control for the per-user package): folder pins must share writes.
+    override fun openDirectory(path: String) = (pins ?: files).open(path, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
+    override fun openFile(path: String) = (pins ?: files).open(path, WindowsInstallNative.INSPECT, shareDelete = false)
     override fun children(path: String): List<String> = java.nio.file.Files.newDirectoryStream(java.nio.file.Path.of(path)).use { entries ->
         // Bounded discovery only; inability to find a witness fails closed, never weakens policy.
         entries.asSequence().take(4096).map { it.fileName.toString() }.toList()

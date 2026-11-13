@@ -100,7 +100,7 @@ class DesktopWindowsInstallJobNativeTest {
             scoped(path); delegate.createDirectory(path, sddl(), allowExisting)
         }
         override fun open(path: String, access: Int, shareDelete: Boolean, createSddl: String?): WindowsInstallNative.Handle {
-            if (access != WindowsInstallNative.INSPECT) scoped(path)
+            if (access != WindowsInstallNative.INSPECT && access != WindowsInstallNative.PINNED_DIRECTORY) scoped(path)
             return delegate.open(path, access, shareDelete, createSddl?.let { sddl() })
         }
         override fun inspect(handle: WindowsInstallNative.Handle): WindowsInstallInfo {

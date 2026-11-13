@@ -39,6 +39,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
     override fun open(path: String, access: Int, shareDelete: Boolean, createSddl: String?): WindowsInstallNative.Handle {
         // FILE_FLAG_OPEN_REPARSE_POINT classifies the object itself, including junctions/mountpoints.
         // Every ancestor was opened separately and remains pinned without FILE_SHARE_DELETE.
+        // Folder pins (PINNED_DIRECTORY) share writes, so other programs still rename entries into them.
         val options = windowsInstallOpenOptions(access, shareDelete, createSddl != null)
         fun opened(attributes: WinBase.SECURITY_ATTRIBUTES?): WindowsInstallNative.Handle {
             val opened = kernel.CreateFile(path, options.rights, options.share, attributes, options.creation,
@@ -300,8 +301,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
 
     internal fun publishExportNoReplace(value: WindowsInstallNative.Handle, leaf: String) {
         // The partial is already a sibling of the destination. NT's leaf-only form
-        // resolves against that file's retained parent without reopening a directory
-        // for write access, which would conflict with our strict ancestry pins.
+        // resolves against that file's retained parent and opens no folder by path.
         windowsExportRenameInfo(leaf, Native.POINTER_SIZE).use { info ->
             renameSibling(value, info)
         }
@@ -317,8 +317,8 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
 
     override fun rename(handle: WindowsInstallNative.Handle, directory: WindowsInstallNative.Handle, name: String) {
         require(name == DesktopInstallJobNames.STATUS)
-        // Same-directory NT rename avoids reopening our strictly pinned parent for
-        // write access. Check handle-resolved volume paths before using a leaf name.
+        // Same-directory NT rename opens no folder by path; it resolves against the
+        // receipt's retained parent. Check handle-resolved volume paths before using a leaf name.
         require(retainedExportDirectory(handle).substringBeforeLast('\\') ==
             retainedExportDirectory(directory).trimEnd('\\')) { "Unlinked installer receipt" }
         // FileRenameInformationEx (Windows 10 1709+) preserves already-open receipt
@@ -380,16 +380,24 @@ internal fun windowsInstallStatusRenameInfo(pointerSize: Int): Memory =
 internal data class WindowsInstallOpenOptions(val rights: Int, val share: Int, val creation: Int, val flags: Int)
 internal fun windowsInstallOpenOptions(access: Int, shareDelete: Boolean, create: Boolean): WindowsInstallOpenOptions {
     require(access != WindowsInstallNative.PINNED_READ || (!shareDelete && !create))
+    require(access != WindowsInstallNative.PINNED_DIRECTORY || (!shareDelete && !create))
     val rights = 0x00120080 or when (access) {
-        // Windows does not enforce data/delete sharing against metadata-only handles.
+        // Windows does not enforce data/delete sharing against metadata-only handles ([MS-FSA] 2.1.5.1.2.2).
         // FILE_LIST_DIRECTORY/FILE_READ_DATA makes retained ancestry/witness pins participate.
-        WindowsInstallNative.INSPECT -> 1
+        WindowsInstallNative.INSPECT, WindowsInstallNative.PINNED_DIRECTORY -> 1
         WindowsInstallNative.READ, WindowsInstallNative.PINNED_READ -> 1
         WindowsInstallNative.READ_WRITE -> if (create) 0x40000003 else 3
         WindowsInstallNative.DELETE -> 0x00010000
         else -> error("Invalid installer access")
     }
-    // Directory pins additionally deny direct write handles (including reparse mutation).
+    // No pin shares DELETE unless asked, so nobody can rename or delete a pinned object while it is held.
+    // Object pins (INSPECT, PINNED_READ) also deny writers. Folder pins share writes: a rename or hard link
+    // by path opens the folder of the new name for FILE_ADD_FILE or FILE_ADD_SUBDIRECTORY ([MS-FSA]
+    // 2.1.5.15.12, 2.1.5.15.7), so a folder pin that denied write sharing refused every other program's
+    // rename into %TEMP%, the home folder or C:\, and kept no part of the folder's identity: creating an
+    // entry opens no folder, and FSCTL_SET_REPARSE_POINT needs only FILE_WRITE_ATTRIBUTES, which takes no
+    // part in sharing. What keeps a pinned folder from becoming a junction is its retained child: a
+    // non-empty folder takes none ([MS-FSA] 2.1.5.10.37).
     // Cancellation readers/writers must share data writes with their cooperating retained handle.
     val immutable = access == WindowsInstallNative.INSPECT || access == WindowsInstallNative.PINNED_READ
     return WindowsInstallOpenOptions(rights, 1 or (if (immutable) 0 else 2) or

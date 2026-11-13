@@ -66,6 +66,30 @@ class DesktopWindowsInstallAdmissionNativeTest {
         }
     }
 
+    /** A process holds this for its lifetime: the folders of a per-user installation include the home folder. */
+    @Test fun admissionLetsOtherProgramsRenameIntoItsFoldersButKeepsItsImageFromWritersAndMoves() {
+        assumeTrue(Platform.isWindows())
+        val root = Files.createTempDirectory("admission-renames-東京")
+        val launcher = root.resolve("vpn-control-cli.exe")
+        val outside = Files.createTempFile("admission-outside-", ".txt")
+        try {
+            Files.write(launcher, "inert native admission fixture".toByteArray(), StandardOpenOption.CREATE_NEW)
+            DesktopWindowsInstallAdmission.enter(launcher).use {
+                // MoveFileExW opens the folder of the new name for FILE_ADD_FILE.
+                Files.move(outside, root.resolve("moved.txt"))
+                Files.move(root.resolve("moved.txt"), root.resolve("renamed.txt"))
+                // The coordinator's readiness probe opens the image for writing; the pin refuses it.
+                assertFails { FileChannel.open(launcher, StandardOpenOption.WRITE).close() }
+                assertFails { Files.move(launcher, root.resolve("moved.exe")) }
+                assertFails { Files.move(root, root.resolveSibling(root.fileName.toString() + "-moved")) }
+            }
+            assertTrue(Files.isRegularFile(root.resolve("renamed.txt")))
+        } finally {
+            Files.deleteIfExists(outside)
+            Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+        }
+    }
+
     @Test fun exactNativeUnicodeIdentityIsStableAcrossCaseAliasesAndRepeatedCalls() {
         assumeTrue(Platform.isWindows())
         val root = Files.createTempDirectory("admission-東京")

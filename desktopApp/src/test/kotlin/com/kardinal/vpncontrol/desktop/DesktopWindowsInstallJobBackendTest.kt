@@ -136,8 +136,9 @@ class DesktopWindowsInstallJobBackendTest {
         val created = windowsInstallOpenOptions(WindowsInstallNative.READ_WRITE, false, true)
         assertNotEquals(0, created.rights and 0x40000000)
         assertEquals(1, created.creation) // CREATE_NEW
-        val ancestor = windowsInstallOpenOptions(WindowsInstallNative.INSPECT, false, false)
-        assertEquals(1, ancestor.share) // deny write and delete handles throughout retained ancestry
+        val ancestor = windowsInstallOpenOptions(WindowsInstallNative.PINNED_DIRECTORY, false, false)
+        assertEquals(3, ancestor.share) // deny delete handles throughout retained ancestry, never renames into it
+        assertEquals(1, windowsInstallOpenOptions(WindowsInstallNative.INSPECT, false, false).share) // object pins deny writers
     }
     @Test fun protectedAncestorsRemainPinnedUntilLastChildFileCloses() {
         val native = FakeNative()

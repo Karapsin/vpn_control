@@ -103,8 +103,11 @@ class DesktopWindowsTransferPinsTest {
         assertFalse(witness.closed)
         pins.close()
         assertTrue(native.opened.all { it.closed })
-        val rights = windowsInstallOpenOptions(WindowsInstallNative.INSPECT, false, false)
-        assertEquals(1, rights.share)
+        // Ancestors and the witness take part in sharing (READ_DATA) and never share deletion; they share
+        // writes so that other programs still rename into the folders (DesktopWindowsPinSharingTest).
+        assertEquals(setOf(WindowsInstallNative.PINNED_DIRECTORY), native.opened.dropLast(1).map { it.access }.toSet())
+        val rights = windowsInstallOpenOptions(WindowsInstallNative.PINNED_DIRECTORY, false, false)
+        assertEquals(3, rights.share)
         assertNotEquals(0, rights.rights and 1)
     }
 

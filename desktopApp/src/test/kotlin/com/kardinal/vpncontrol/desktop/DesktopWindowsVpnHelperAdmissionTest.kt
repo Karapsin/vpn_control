@@ -31,6 +31,21 @@ class DesktopWindowsVpnHelperAdmissionTest {
         assertTrue(fake.admission.handles.all { it.closed })
     }
 
+    @Test fun imagesHelperAndManifestDenyWritersWhileTheirFoldersOnlyDenyDeletion() {
+        // Folders take WindowsInstallNative.PINNED_DIRECTORY (other programs still rename into them); the
+        // helper is verified and then launched elevated, so it and its manifest keep denying writers.
+        val fake = Fake()
+        val lease = DesktopWindowsVpnHelperAdmission.retain(RUNTIME, 1024, fake)
+        try {
+            val windows = "C:\\Apps\\VPN\\app\\native\\windows-amd64"
+            assertEquals(setOf(OWNER_IMAGE, HELPER_PATH, "$windows\\native-helpers.json"), fake.fileOpens.toSet())
+            assertTrue(fake.folderOpens.containsAll(listOf("C:\\", "C:\\Apps", "C:\\Apps\\VPN", "C:\\Apps\\VPN\\app",
+                "C:\\Apps\\VPN\\app\\native", windows, "C:\\ProgramData", "C:\\ProgramData\\vpn-control-install-jobs")))
+            assertTrue(fake.folderOpens.none { it.endsWith(".exe") || it.endsWith(".json") }, fake.folderOpens.toString())
+        } finally { lease.close() }
+        assertTrue(fake.admission.handles.all { it.closed })
+    }
+
     @Test fun canonicalOwnerMustMatchTheRetainedQueriedLeaf() {
         for (canonical in listOf(OWNER_IMAGE, "C:\\Apps\\VPN\\java.exe")) {
             val fake = Fake().apply {
@@ -295,9 +310,17 @@ class DesktopWindowsVpnHelperAdmissionTest {
             return DesktopWindowsNativeOwnerImage(image, if (processReads > 1) ownerAfterFirstRead ?: owner() else owner())
         }
         override fun processImage(process: WinNT.HANDLE): String { peerHandle = process; return peerImage }
+        val folderOpens = mutableListOf<String>()
+        val fileOpens = mutableListOf<String>()
         override fun openDirectory(path: String): WindowsInstallNative.Handle {
             onOpen(path)
+            folderOpens += path
             return admission.openDirectory(path)
+        }
+        override fun openFile(path: String): WindowsInstallNative.Handle {
+            onOpen(path)
+            fileOpens += path
+            return admission.openFile(path)
         }
         override fun read(handle: WindowsInstallNative.Handle, limit: Int) = manifest.copyOf()
         override fun machine(handle: WindowsInstallNative.Handle) = machine

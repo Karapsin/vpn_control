@@ -340,6 +340,7 @@ class DesktopWindowsInstallAdmissionTest {
             if (path.endsWith("vpn-control-install-jobs")) directoryFailure?.let { throw it }
             return Handle(path, false).also { handles += it }
         }
+        override fun openFile(path: String): WindowsInstallNative.Handle = openDirectory(path)
         override fun openGate(path: String): WindowsInstallNative.Handle {
             if (absentGate) throw WindowsInstallNativeFailure(2)
             return Handle(path, true).also { handles += it }
