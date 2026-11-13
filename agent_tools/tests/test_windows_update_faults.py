@@ -15,7 +15,9 @@ and for the case module a public CLI, an owner and a file system of its own belo
 from __future__ import annotations
 
 import ast
+import base64
 import copy
+import gzip
 import hashlib
 import json
 from pathlib import Path, PureWindowsPath
@@ -33,7 +35,7 @@ from agent_tools.tests.test_native_scenario_windows import UpdateBase as Admissi
 from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer, DedicatedParked
 from agent_tools.tests.test_windows_scenario_host_job import (
     ADMIN_SID, BASE, HELPER_BYTES, HELPER_PATH, INSTALLED_ROOT, JOB_ID, PRODUCT_OPERATION, PROFILE, PROTECTED_RECEIPT,
-    RETURNED_PID, SESSION, SID, UpdateFamilyBase, UpdateQga, VERSION, WORKER_BIRTH, WORKER_PID, WORKER_READY, process_row,
+    RETURNED_PID, SESSION, SID, UpdateFamilyBase, UpdateQga, VERSION, WORKER_BIRTH, WORKER_PID, WORKER_READY, out_data, process_row,
 )
 from agent_tools.windows_public_updater import update_cases
 
@@ -308,7 +310,14 @@ class CounterfeitQga(UpdateQga):
             if found is None:
                 self.trees.pop(job.INSTALL_JOBS)
         if m["action"] == "collector-observe" and m.get("census") is not None and m["census"]["image"] == HELPER_PATH:
-            self.processes = self.helper_censuses.pop(0) if len(self.helper_censuses) > 1 else self.helper_censuses[0]
+            # The publisher matches the process snapshot's own leaf name, so a process it could not open (no image read)
+            # is listed too: this census is set whole rather than filtered by each row's image.
+            rows = self.helper_censuses.pop(0) if len(self.helper_censuses) > 1 else self.helper_censuses[0]
+            self.processes = []
+            terminal = super()._publisher(m, pid)
+            reply = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
+            reply["observation"]["census"] = json.loads(json.dumps(rows))
+            return {**terminal, "out-data": out_data(reply)}
         return super()._publisher(m, pid)
 
 
@@ -316,6 +325,13 @@ def helper_rows():
     """A coordinator that refused the root has gone; its original-user worker still polls until its own deadline."""
     owner = ["913", "134368653065000006"]
     return [process_row(WORKER_PID, 921, WORKER_BIRTH, HELPER_PATH, [HELPER_PATH, "install-user", JOB_ID, *owner], SID, 0, image_bytes=HELPER_BYTES)]
+
+
+def unopened_rows():
+    """A process of the helper image's name that the SYSTEM census listed but could not open: only its ids, as the
+    publisher's Describe reports one. It may be the worker itself, so it is not yet gone."""
+    return [{"pid": WORKER_PID, "parentPid": 921, "openError": 5, "creationFileTime": None, "alive": None, "image": None, "argv": None,
+             "token": None, "imageSha256": None, "imageSizeBytes": None, "parent": None}]
 
 
 class CounterfeitJobTests(UpdateFamilyBase):
@@ -367,6 +383,29 @@ class CounterfeitJobTests(UpdateFamilyBase):
         self.assertEqual((job.EXIT_UNKNOWN, "counterfeit_installer_actors_live:1"), (code, receipt["failure"]))
         self.assertEqual(["before-install", "fault-ready"], [request["collectorRequest"]["stage"] for request in self.qga.collectors],
                          "terminal-actors is never served while an installer actor lives")
+        self.assertFalse(self.fence(plan, ".terminal.json").exists(), "the fence stays open")
+
+    def test_a_helper_process_the_census_could_not_open_is_waited_for(self):
+        """Only a census that lists no process of the helper image at all ends the wait."""
+        self.qga.helper_censuses = [unopened_rows(), []]
+        plan, code, receipt = self.counterfeit()
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual((2, 1), (receipt["update"]["fault"]["helperPolls"], receipt["update"]["fault"]["helperProcessesSeen"]))
+
+    def test_a_helper_process_the_census_never_opens_keeps_the_outcome_unknown(self):
+        self.qga.helper_censuses = [unopened_rows()]
+        plan, code, receipt = self.counterfeit()
+        self.assertEqual((job.EXIT_UNKNOWN, "counterfeit_installer_actors_live:1"), (code, receipt["failure"]))
+        self.assertEqual(["before-install", "fault-ready"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
+        self.assertFalse(self.fence(plan, ".terminal.json").exists(), "the fence stays open")
+
+    def test_a_helper_process_listed_again_at_terminal_actors_leaves_the_outcome_open(self):
+        """terminal-actors takes the census once more: any process of the helper image there, opened or not, means the
+        product may still act, so no collector is served and the owner keeps waiting."""
+        self.qga.helper_censuses = [[], unopened_rows()]
+        plan, code, receipt = self.counterfeit()
+        self.assertEqual((job.EXIT_UNKNOWN, "collector_stage_failed:terminal-actors:collector_counterfeit_terminal"), (code, receipt["failure"]))
+        self.assertEqual(["before-install", "fault-ready"], [request["collectorRequest"]["stage"] for request in self.qga.collectors])
         self.assertFalse(self.fence(plan, ".terminal.json").exists(), "the fence stays open")
 
     def test_a_known_failure_keeps_what_system_listed_after_the_task(self):

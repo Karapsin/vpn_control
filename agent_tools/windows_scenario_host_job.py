@@ -3028,18 +3028,19 @@ class Job:
 
         A coordinator that refused the counterfeit root exits at once; its original-user worker keeps polling for the
         job's receipt until its own ten-minute authorization deadline. While any helper process lives, an installer
-        actor's outcome is open, so the stage waits; past HELPER_SETTLE_SECONDS the owner keeps waiting and the job ends
+        actor's outcome is open, so the stage waits. A process the census lists but could not open counts as living
+        until a later census no longer lists it. Past HELPER_SETTLE_SECONDS the owner keeps waiting and the job ends
         UNKNOWN with its fence open. Then the root is listed as SYSTEM for the receipt. Read only throughout.
         """
         deadline, polls, seen = self.rt.monotonic() + HELPER_SETTLE_SECONDS, 0, 0
         while True:
             polls += 1
-            live = [row for row in self._helper_census("counterfeit-settle-" + str(polls)) if row["live"]]
-            seen = max(seen, len(live))
-            if not live:
+            rows = self._helper_census("counterfeit-settle-" + str(polls))
+            seen = max(seen, len(rows))
+            if not rows:
                 break
             if self.rt.monotonic() >= deadline:
-                raise Unknown("counterfeit_installer_actors_live:" + str(min(len(live), 9)))
+                raise Unknown("counterfeit_installer_actors_live:" + str(min(len(rows), 9)))
             self.rt.sleep(HELPER_SETTLE_POLL_SECONDS)
         self.fault_facts.update(helperPolls=polls, helperProcessesSeen=seen,
                                 rootAtTerminal=self._listing("counterfeit-terminal", self.paths["counterfeitRoot"]))
@@ -3249,7 +3250,7 @@ class Job:
             # the stage waited for, taken again here), and the counterfeit root and canary SYSTEM reads beside them.
             reply = json.loads(observed["stdout"]["one-public-update-install"], object_pairs_hook=_unique)
             if (type(reply) is not dict or not isinstance(reply.get("controllerId"), str) or reply.get("operationId") != need.get("productOperationId")
-                    or need.get("jobId") is not None or any(row["live"] for row in observed["census"])):
+                    or need.get("jobId") is not None or observed["census"]):
                 raise ValueError("collector_counterfeit_terminal")
             self._keep("collectors/terminal-actors/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
             fault = self._fault_inputs()

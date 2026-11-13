@@ -1449,12 +1449,14 @@ make itself:
 `fault-ready` proves the root and canary as SYSTEM: user-owned, refused by the
 machine policy, the canary's bytes. The product must refuse the root: OUTCOME_UNKNOWN,
 since its only store of the job is the root it refused, or a definite RUNTIME_FAILED
-or PERMISSION_DENIED. `terminal-actors` is served only once a SYSTEM census finds no
-process of the installed helper image. The coordinator that refused the root exits
-at once, but its original-user worker polls until its own ten-minute authorization
-deadline; past 900 s the job ends UNKNOWN with
-`counterfeit_installer_actors_live`. That stage then proves as SYSTEM the root and
-canary exactly as at `fault-ready`, and the job lists the root again.
+or PERMISSION_DENIED. `terminal-actors` is served only once a SYSTEM census lists no
+process of the installed helper image's name at all; one it lists but cannot open
+still counts. The coordinator that refused the root exits at once, but its
+original-user worker polls until its own ten-minute authorization deadline; past
+900 s the job ends UNKNOWN with `counterfeit_installer_actors_live`. That stage takes
+the census once more, and a process listed there leaves the owner waiting (UNKNOWN,
+`collector_counterfeit_terminal`). It then proves as SYSTEM the root and canary
+exactly as at `fault-ready`, and the job lists the root again.
 
 The case settles the run (`settle_counterfeit`):
 
