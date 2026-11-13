@@ -5,6 +5,10 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 
 ## Unreleased
 
+- Windows agent tools: UAC review capture and visual prompt route, region capture of OS-owned visual scenes, no-tray close and SSH relay transfer rows, document holder census, query-owner process-tree fixes, and two hosted-runner test races closed.
+
+## 2.2.18 - 2026-11-13
+
 - Add the Windows document, cold-document, responsive, scoped-TUN deny and SSH import scenario rows and the matrix observation that records them.
 - Bind every desktop free-port probe and port check to the loopback, so starting a connection, Find Best, validation and SSH-routed subscription downloads no longer trigger a Windows Defender Firewall prompt for VPN Control.
 - Keep OneDrive from updating itself on Windows test fixtures: the fixture update policy sets OneDrive's PreventNetworkTrafficPreUserSignIn before the first logon and disables every OneDrive update task.
@@ -13,6 +17,8 @@ Release notes for VPN Control. New non-documentation changes accumulate under
 - Windows document rows close a test fixture the OS refused as a named known failure instead of blocking the clone, and owner parks name the failing line and Windows error.
 - Add the Windows scheduled-refresh owner row, which proves a scheduled subscription refresh in the owner with no GUI attached.
 - Admit the Windows update deny and grant rows (uac-denied, success-off, wait-client-loss, installer-wait-client-loss) with SYSTEM collectors that find the installer's actors and read the owner-only disposition through a journaled backup-privilege open.
+- Windows: other programs can again rename and link files into folders VPN Control keeps open (its installation, the home folder, AppData, %TEMP%) while the app runs, transfers data or keeps VPN mode connected, for example git config --global.
+- Menus and dialogs now use the app's navy surfaces, settings-menu subtitles are readable, and the VPN / Proxy Mode dialog says the current session continues until you restart the connection, with corrected translations and a fixed Direct Domains example.
 
 ## 2.2.17 - 2026-11-09
 
