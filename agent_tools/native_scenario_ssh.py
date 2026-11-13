@@ -36,6 +36,7 @@ SCENARIO_ARTIFACT_KEYS = {
     "windows-disconnected-cli-config": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
     "windows-streaming-client-interrupt": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
     "windows-disconnected-cli-config.ssh-import-routing": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
+    "windows-disconnected-cli-config.ssh-relay-transfer": frozenset({"bundleManifest", "scenarioInput", "targetPackage"}),
     **{name: frozenset({"bundleManifest", "scenarioInput", "targetPackage"}) for name in (
         "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
         "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect")},

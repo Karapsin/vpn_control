@@ -59,6 +59,9 @@ _SCENARIOS = {
         "agent_tools/windows_disconnected_cli_cases.py",
         "agent_tools/windows_streaming_cli_cases.py",
         "agent_tools/windows_ssh_import_routing_cases.py",
+        # The SSH relay row: its case module and the in-guest relay; the SOCKS location fixture is below.
+        "agent_tools/windows_ssh_relay_cases.py",
+        "agent_tools/windows_ssh_relay_fixture.py",
         "scripts/test_packaged_cli.py",
         "scripts/windows_install_admission_diagnostic.py",
         "agent_tools/windows_postboot_source_roles.py",

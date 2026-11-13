@@ -172,6 +172,11 @@ DOCUMENT_RESPONSIVE = "responsive"
 RESPONSIVE_CONTEXTS = 2
 RESPONSIVE_TLS = (("certificate", "document-work-localhost.pem"), ("privateKey", "document-work-localhost.key"),
                   ("trustStore", "document-work-trust.jks"))
+# windows-disconnected-cli-config.ssh-relay-transfer: the in-guest SSH relay row's subscription origin serves a
+# localhost certificate the serve's JVM trusts through scoped options; its key and trust store are made here the
+# same way and published beside the bundle files. The case module names them by these leaves.
+SSH_RELAY_TLS = (("certificate", "ssh-relay-localhost.pem"), ("privateKey", "ssh-relay-localhost.key"),
+                 ("trustStore", "ssh-relay-trust.jks"))
 PRINCIPAL_WINDOW = "document-principal-window"
 LOCAL_SERVICE = "S-1-5-19"
 _DOMAIN_BOUNDARY = re.compile(r"[,\n\r\t ]")
@@ -1944,6 +1949,8 @@ class Job:
                 self._proxy_files()
             if self.document:
                 self._document_files()
+            if self.row.get("sshRelay"):
+                self._ssh_relay_files()
         if (self.row.get("package") or {}).get("role") == "basePackage":
             self.msi = self._msi_properties()
             self.registered = self._registration("publish-registration")
@@ -2169,6 +2176,16 @@ class Job:
             raise KnownFailure("document_files_not_the_row")
         self.file_pins.update(self._publish_files([{"role": role, "path": self.paths["file:" + role], "bytes": len(raw), "sha256": _sha(raw),
                                                     "kind": "data", "raw": raw} for role, raw in targets], "publish-document"))
+
+    def _ssh_relay_files(self):
+        """The SSH relay row's origin certificate, key and trust store, made as the responsive row's are: the key
+        lives only in this job's memory and the guest workspace."""
+        tls = self._load("windows_scenario_proxy").material(secrets.randbits, time.time())
+        targets = [(role, tls[role]) for role, _ in SSH_RELAY_TLS]
+        if [role for role, _ in self.row["generated"]] != [role for role, _ in targets]:
+            raise KnownFailure("ssh_relay_files_not_the_row")
+        self.file_pins.update(self._publish_files([{"role": role, "path": self.paths["file:" + role], "bytes": len(raw), "sha256": _sha(raw),
+                                                    "kind": "data", "raw": raw} for role, raw in targets], "publish-ssh-relay"))
 
     # Stage 4.
     def stage_requests(self):

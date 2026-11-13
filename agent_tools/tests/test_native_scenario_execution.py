@@ -360,6 +360,7 @@ class NativeScenarioExecutionTest(unittest.TestCase):
         self.assertEqual(frozenset({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install",
                                     "windows-msi-base-reset", "windows-packaged-cli-smoke", "windows-disconnected-cli-config",
                                     "windows-streaming-client-interrupt", "windows-disconnected-cli-config.ssh-import-routing",
+                                    "windows-disconnected-cli-config.ssh-relay-transfer",
                                     "windows-autostart-migration.pre", "windows-autostart-migration.post",
                                     "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post", "windows-reboot-explicit-off.pre",
                                     "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
@@ -375,6 +376,7 @@ class NativeScenarioExecutionTest(unittest.TestCase):
                          execution.WINDOWS_SCENARIOS)
         for name in ("windows-proxy-lifecycle", "windows-proxy-lifecycle.no-tray", "windows-proxy-lifecycle.scheduled",
                      "windows-disconnected-cli-config.other", "windows-streaming-client-interrupt.ssh-import-routing",
+                     "windows-streaming-client-interrupt.ssh-relay-transfer", "windows-disconnected-cli-config.ssh-relay",
                      "windows-proxy-lifecycle.restart-deny", "windows-public-update.transport-loss", "windows-public-update",
                      "windows-public-update.public-ready.extra", "windows-document-cold", "windows-document-cold.cache",
                      "windows-document-acceptance.gui-owner", "windows-document-cold.gui-transfer", "windows-document-responsive.cancel",

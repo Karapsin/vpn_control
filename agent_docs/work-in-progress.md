@@ -74,10 +74,12 @@ Android and macOS native and visual work stay deferred and open, never passed.
    and `windows-document-responsive`), the scoped-TUN rows (only `restart-deny` is
    admitted), the ssh-import-routing row
    (`windows-disconnected-cli-config.ssh-import-routing`), the route marker and
-   the matrix observation helper. The SSH row proves part of ssh-import-routing,
-   so the matrix maps that scenario to no row yet.
-   Still to add: the TUN grant collector route, the SSH relay transfer and stdin
-   key import of ssh-import-routing, the subscription cache fixture of
+   the matrix observation helper. Built offline after round 2b, not yet run
+   natively: the SSH relay row
+   (`windows-disconnected-cli-config.ssh-relay-transfer`) with its in-guest SSH
+   relay, a stdin key import and refreshes through the relay, connected and
+   disconnected; the matrix maps ssh-import-routing to the two SSH rows.
+   Still to add: the TUN grant collector route, the subscription cache fixture of
    cache-digest-bytes, dns-ws-ssh-cache-resources, pipe-storage-races, the GUI
    half of gui-cli-transfer, and an in-guest build for the complete
    `:desktopApp:test` and the local visual capture. Fix the tool defects

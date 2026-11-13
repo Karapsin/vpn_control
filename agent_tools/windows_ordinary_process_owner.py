@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PureWindowsPath
+import stat
 import struct
 import subprocess
 import sys
@@ -56,6 +57,8 @@ DOCUMENT_RESPONSIVE_FIELDS = {"schemaVersion", "casesPath", "runtimeStagesPath",
 # case oracle failure there is a known failure the owner closes (close_known_failure).
 KNOWN_FAILURE_ACTIONS = frozenset({"disconnected-cli-config", "streaming-client-interrupt"})
 KNOWN_FAILURE_EXIT_SECONDS = 120
+# A public call may read one file the case wrote under the operation root as its stdin; nothing else is ever fed.
+STDIN_MAX_BYTES = 64 * 1024
 
 _PROTECTED_OS_PATHS = frozenset({
     r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
@@ -587,10 +590,34 @@ class DesktopProcess:
         return self.returncode
 
 
+def stdin_source(owner, value):
+    """One regular file under the operation root, opened read-only, as a public call's whole stdin.
+
+    The case wrote it (a fixture folder is never collected), so its bytes are never journaled: the intent names
+    only their count. The child reads to its end; any other child keeps an empty stdin.
+    """
+    path = absolute(value)
+    require(path.is_relative_to(owner.root) and path != owner.root, "stdin-outside-operation-root")
+    named = path.lstat()
+    require(stat.S_ISREG(named.st_mode) and not getattr(named, "st_file_attributes", 0) & 0x400
+            and named.st_nlink == 1 and named.st_size <= STDIN_MAX_BYTES, "stdin-not-regular-bounded-file")
+    source = path.open("rb")
+    try:
+        # Sized by the handle the child inherits, as the case modules read their files.
+        held = os.fstat(source.fileno())
+        require(stat.S_ISREG(held.st_mode) and held.st_nlink == 1 and held.st_size == named.st_size,
+                "stdin-changed-before-start")
+    except BaseException:
+        source.close()
+        raise
+    return source, held.st_size
+
+
 class Child:
-    def __init__(self, owner, label, argv, *, new_console=False, owned_desktop=None):
+    def __init__(self, owner, label, argv, *, new_console=False, owned_desktop=None, stdin=None):
         require(type(new_console) is bool, "explicit-child-console-mode")
         require(owned_desktop is None or not new_console, "owned-desktop-console-conflict")
+        require(stdin is None or not new_console and owned_desktop is None, "stdin-console-conflict")
         if owned_desktop is not None:
             require(getattr(owned_desktop, "owner", None) is owner
                     and any(held is owned_desktop for held in getattr(owner, "no_tray_desktop_leases", ())),
@@ -609,13 +636,19 @@ class Child:
         require(len(line.encode("utf-16le")) // 2 + 1 <= 32767, "windows-command-length")
         require(len(encoded({"path": self.argv[0], "arg": list(self.argv[1:])})) <= 60000,
                 "json-command-bound")
+        source, size = stdin_source(owner, stdin) if stdin is not None else (None, None)
         self.ordinal = len(owner.children)
         owner.children.append(self)  # Custody exists BEFORE native submission.
         owner.event("child-intent", {"child": self.ordinal, "label": label, "argv": list(argv),
-            "consoleCreation": "new" if new_console else "none"})
-        for name in self.eof:
-            path = owner.root / f"child-{self.ordinal:04d}.{name}.raw"
-            self.streams[name] = path.open("xb", buffering=0)
+            "consoleCreation": "new" if new_console else "none", **({"stdinBytes": size} if source is not None else {})})
+        try:
+            for name in self.eof:
+                path = owner.root / f"child-{self.ordinal:04d}.{name}.raw"
+                self.streams[name] = path.open("xb", buffering=0)
+        except BaseException:
+            if source is not None:
+                source.close()
+            raise
         try:
             desktop = None
             if owned_desktop is not None:
@@ -631,10 +664,14 @@ class Child:
                 # Retain the Popen object BEFORE its constructor can obtain a native
                 # child handle, including an exception after CreateProcess succeeds.
                 self.process = subprocess.Popen.__new__(subprocess.Popen)
-                subprocess.Popen.__init__(self.process, self.argv, stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=owner.root,
-                    env=owner.environment, creationflags=(subprocess.CREATE_NEW_CONSOLE if new_console
-                        else subprocess.CREATE_NO_WINDOW), close_fds=True)
+                try:
+                    subprocess.Popen.__init__(self.process, self.argv, stdin=source if source is not None else subprocess.DEVNULL,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=owner.root,
+                        env=owner.environment, creationflags=(subprocess.CREATE_NEW_CONSOLE if new_console
+                            else subprocess.CREATE_NO_WINDOW), close_fds=True)
+                finally:
+                    if source is not None:
+                        source.close()  # The child holds its own inherited handle; the owner keeps none open.
             self.pid = self.process.pid
             for name in self.eof:
                 thread = threading.Thread(target=self._pump, args=(name,),
@@ -841,9 +878,9 @@ class Owner:
             # of the failed mutation, assertion sequence, source or child occurs.
             time.sleep(1)
 
-    def child(self, label, argv, *, new_console=False, owned_desktop=None):
+    def child(self, label, argv, *, new_console=False, owned_desktop=None, stdin=None):
         require(str(absolute(argv[0])).casefold() in self.by_path, "child-executable-not-pinned")
-        return Child(self, label, argv, new_console=new_console, owned_desktop=owned_desktop)
+        return Child(self, label, argv, new_console=new_console, owned_desktop=owned_desktop, stdin=stdin)
 
     def module(self, path, name):
         pin = self.by_path[str(absolute(path)).casefold()]
@@ -878,11 +915,12 @@ class Owner:
                    "logSecurity": self.native.security(log_handle)})
         return terminal
 
-    def invoke(self, workspace, *arguments, timeout=30):
+    def invoke(self, workspace, *arguments, timeout=30, stdin=None):
         # timeout is an observer notice, never subprocess.run(timeout=...).
         del timeout
-        return self.child("public-cli", [self.request["cliPath"], "--state-dir",
-                                         str(workspace), *arguments]).completed()
+        argv = [self.request["cliPath"], "--state-dir", str(workspace), *arguments]
+        child = self.child("public-cli", argv) if stdin is None else self.child("public-cli", argv, stdin=stdin)
+        return child.completed()
 
     def validate_responsive_work(self):
         """Closed optional document form, checked against original held pins."""
@@ -1017,7 +1055,12 @@ class Owner:
         workspace = absolute(self.request["workspace"])
         require(workspace.parent == self.root and not workspace.exists(), "fresh-isolated-workspace")
         launcher = self.request["cliPath"]
-        cases = None
+        cases = launch = None
+        if action in KNOWN_FAILURE_ACTIONS:
+            # A CLI case module may scope JVM options to the one serve before it starts, as a responsive document
+            # case does; the owner removes them again right after that serve starts.
+            cases = self.module(self.request["casesPath"], "_owned_native_" + action.replace("-", "_"))
+            launch = getattr(cases, "configure_launch", None)
         if action == "document-acceptance":
             if "responsiveWork" in self.request:
                 self.validate_responsive_work()
@@ -1037,10 +1080,14 @@ class Owner:
             if "responsiveWork" in self.request:
                 self.validate_responsive_work()
             cases.configure_launch(self, workspace)
-        serve = self.child("serve", [launcher, "--state-dir", str(workspace), "serve"])
-        if "responsiveWork" in self.request:
-            # The scoped trust options reach only this serve: no later child ever inherits them.
-            self.environment.pop("JAVA_TOOL_OPTIONS", None)
+        if launch is not None:
+            launch(self, workspace)
+        try:
+            serve = self.child("serve", [launcher, "--state-dir", str(workspace), "serve"])
+        finally:
+            if "responsiveWork" in self.request or launch is not None:
+                # The scoped trust options reach only this serve: no later child ever inherits them.
+                self.environment.pop("JAVA_TOOL_OPTIONS", None)
         identity = None
         ready_until = time.monotonic() + 30
         while time.monotonic() < ready_until:

@@ -767,8 +767,9 @@ four actions. `host` names the VM host and `environment` the deployment UUID, an
 `native_scenario_windows.RECIPES`: `windows-ordinary-qualification`, a harmless
 component row with no product and no package; three setup rows
 (`windows-python-install`, `windows-msi-base-install`, `windows-msi-base-reset`);
-four product rows (`windows-packaged-cli-smoke`, `windows-disconnected-cli-config`,
-its variant `windows-disconnected-cli-config.ssh-import-routing` and
+five product rows (`windows-packaged-cli-smoke`, `windows-disconnected-cli-config`,
+its variants `windows-disconnected-cli-config.ssh-import-routing` and
+`windows-disconnected-cli-config.ssh-relay-transfer`, and
 `windows-streaming-client-interrupt`); and the reboot, proxy-lifecycle, four
 `windows-scoped-tun.<variant>`, thirteen `windows-public-update.<variant>` and six
 document rows below. A name lands only with its case
@@ -1521,16 +1522,82 @@ OpenSSH ed25519 container that no server trusts, written only into the operation
 fixture folder, which evidence never collects. No event, assertion message or
 argument carries it, and every reply is checked not to echo it; a product defect that
 echoed it would put only that disposable key in the collected raw streams. Not
-proved by this row: a transfer through a real SSH relay (the image has no SSH server,
-and fixtures never install Windows features) and a positive stdin import (every
-owner child's stdin is empty). Its last event names both as `remainingProcedures`,
-so the matrix maps `ssh-import-routing` to no row: this row alone never passes or
-fails that scenario. Unknown until its first native run: whether the
-runtime's SSH dial reaches a loopback server with `auto_detect_interface`, the
-refresh's failure code and reason, and loopback listeners of the worker and the
-runtime under the guest firewall. Offline, `test_windows_ssh_import_routing_cases`
-drives the module against an in-memory product that answers in the recorded CLI
-shapes, and each modelled product defect stops it with its own reason.
+proved by this row: a transfer through a real SSH relay and a positive stdin import
+(every child of its owner has an empty stdin). Its last event names both as
+`remainingProcedures`; `windows-disconnected-cli-config.ssh-relay-transfer` (below)
+does both, and the matrix maps `ssh-import-routing` to the two rows together. Unknown
+until its first native run: whether the runtime's SSH dial reaches a loopback server
+with `auto_detect_interface`, the refresh's failure code and reason, and loopback
+listeners of the worker and the runtime under the guest firewall. Offline,
+`test_windows_ssh_import_routing_cases` drives the module against an in-memory
+product that answers in the recorded CLI shapes, and each modelled product defect
+stops it with its own reason.
+
+`windows-disconnected-cli-config.ssh-relay-transfer` is the second closed variant:
+the same owner action, harness and known-failure closing, with its case module
+`agent_tools/windows_ssh_relay_cases.py`, the relay
+`agent_tools/windows_ssh_relay_fixture.py`, the pinned
+`scripts/integration/socks_http_fixture.py` and three files the job makes in the
+guest as for the responsive row (`windows_scenario_proxy.material`): a localhost
+certificate, its key and a trust store. Everything stays in the guest. The guest has
+no SSH server, sing-box 1.13.4 has no SSH inbound ("unknown inbound type: ssh") and
+fixtures install no Windows feature, so the relay is a standard-library SSH server of
+this repository, written for what the product's sing-box ssh outbound
+(`golang.org/x/crypto/ssh`) needs: curve25519-sha256 with strict key exchange, an
+ssh-ed25519 host key, chacha20-poly1305@openssh.com, publickey authentication of one
+user with one ed25519 key, and direct-tcpip channels to its own loopback SOCKS5 relay
+alone (`HomeSshRouteConfigBuilder`'s home egress), which connects loopback
+destinations only. Its primitives are pinned by RFC 7748, 8032 and 8439 vectors, and
+on one Mac's loopback the bundled sing-box revision, with the product's bootstrap
+configuration and a reduced proxy-only runtime, fetched through it from a JDK 17
+`HttpURLConnection` built as `DesktopSubscriptionDownloadClient.execute` builds it.
+The owner gives the row two doors: `configure_launch` scopes the serve's JVM to the
+trust store (`JAVA_TOOL_OPTIONS`, removed again right after the serve starts), and a
+public call may take one file the case wrote under the operation root as its whole
+stdin (the intent records only its byte count). Its groups, in order:
+
+- `ssh-stdin-key-import`: `ssh key import --input -` on stdin commits a fresh
+  ed25519 key once; the same key again, JSON and human, is a no-op; text that is no
+  key, an empty stdin and an encrypted PKCS#8 key answer `INVALID_ARGUMENT` and change
+  nothing; a second key replaces the first. The credential folder holds exactly
+  `home-ssh-private-key` with the trimmed key and one LF, owned by the ordinary user
+  with a DACL of one explicit full-access ACE for that user
+  (`DesktopHomeSshCredentialStore.restrictToCurrentUser`), and no key line appears in
+  any CLI reply, `workspace.json` or a diagnostics report.
+- `ssh-relay-disconnected`: with SSH Routing on and no session, a refresh succeeds
+  (`OK`, one location, the row `OK` with one cached location) through one new relay
+  session that proved the imported key, one direct-tcpip channel to the relay port
+  and one SOCKS connect to the origin; the origin saw exactly one GET. No
+  `home-ssh-bootstrap-*` file and no `sing-box.exe` under the workspace remain.
+- `ssh-relay-connected`: proxy-only `on` through a location served by the SOCKS
+  fixture, with the runtime chained through the relay (CONFIG-004); the runtime's
+  candidate holds a byte-equal, owner-only copy of the key. A refresh succeeds
+  through the runtime's own session, and its only SOCKS connect is to the location,
+  never to the origin. `off` leaves no candidate and no runtime.
+- `ssh-relay-after-disconnect`: the disconnected refresh again succeeds through a new
+  bootstrap session.
+- `ssh-relay-host-key-mismatch`: with another host key pinned, the refresh ends exit 1
+  `RUNTIME_FAILED` with data `REFRESH_FAILED` and failure reason `CONNECTIVITY`, the
+  relay saw one session that stopped at its key exchange, no origin request was
+  made and the row keeps its cached location; the right pin is applied again.
+- `ssh-relay-stopped`: once the relay's SSH listener is closed, the refresh ends the
+  same way with no session, channel, SOCKS connect or origin request.
+
+The envelope says `RUNTIME_FAILED` because `REFRESH_FAILED` is no `ControlCode`
+(`DesktopOperationRunner.complete`); `CONNECTIVITY` is what sing-box 1.13.4 and the
+JDK gave on loopback, where sing-box closes the CONNECT when its SSH dial fails and
+`HttpURLConnection` reads a `SocketException`. A failure while connected first sends
+the public `off`, so the owner's closing finds the owner disconnected; an `off` that
+fails leaves the owner's own closing to park. Offline,
+`test_windows_ssh_relay_cases` drives the module against an in-memory product and
+relay, `test_windows_ssh_relay_fixture` the relay over socket pairs, and
+`test_windows_owner_stdin_launch` the two owner doors. Unknown until its first native
+run: whether the Windows CLI's launcher restart passes stdin on to the JVM, the
+credential and key-copy DACL as Windows writes it, the bootstrap's and the runtime's
+SSH dial to a loopback relay with `auto_detect_interface`, the JDK's exception on
+Windows when a CONNECT is closed, whether `on` verifies `validation.test-url` through
+the chain, the speed of the relay's Python ciphers on a guest, and the firewall with
+loopback listeners of the worker, the bootstrap and the runtime.
 
 Every Windows job records the public route that started it, before any connection,
 in `.rag_index/native-scenario-windows/<correlationId>/route.json`: `mcp` when the
@@ -1549,8 +1616,9 @@ missing: the TUN grant (`TUN(approve)`), fault and config rows (the two grant ro
 exist but are refused at admission), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
 is refused before any journal), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
-scenario), the SSH relay transfer and stdin import of `ssh-import-routing`, and
-`windows-visual`, which stays on `visual_platform` and `visual_review`. The other
+scenario), and `windows-visual`, which stays on `visual_platform` and
+`visual_review`. `ssh-import-routing` names the SSH row and the SSH relay row
+together. The other
 document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`) or RSP, with CFG
 where design.md step 8 adds it; the second real principal of
 `wrong-principal-owner-context-kind` is the DOC row's own LOCAL SERVICE probe: a DOC

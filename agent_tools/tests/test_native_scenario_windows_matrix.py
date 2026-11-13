@@ -27,6 +27,7 @@ MACHINE = "33333333-4444-4555-8666-777777777777"
 OTHER_MACHINE = "33333333-4444-4555-8666-888888888888"
 HOME = "/home/fixture-owner"
 SMK, SSH, CFG = "windows-packaged-cli-smoke", "windows-disconnected-cli-config.ssh-import-routing", "windows-disconnected-cli-config"
+RLY = "windows-disconnected-cli-config.ssh-relay-transfer"
 REVIEW = "Coordinator reviewed every receipt of this set."
 NATIVE = matrix.load_requirements()["windows-native-cli"]["requiredScenarios"]
 # A synthetic table that a complete set can satisfy: ten scenarios on the smoke row, five on the SSH row.
@@ -378,15 +379,24 @@ class FailedAndUnknownTests(MatrixBase):
         status = next(row for row in matrix.matrix_status(self.root, self.source)["requirements"] if row["requirementId"] == "windows-native-cli")
         self.assertEqual("conflicting", status["status"], "the recorded failure still stands beside the pass")
 
-    def test_with_the_real_table_the_ssh_row_proves_no_scenario_alone(self):
-        # The row declares a relayed transfer and a stdin import still to do, so ssh-import-routing stays unmapped.
+    def test_with_the_real_table_ssh_import_routing_needs_both_ssh_rows(self):
+        # The SSH row leaves a relayed transfer and a stdin key import to the relay row, which does both: the scenario
+        # passes only with each row passed through both routes, and a failure of either row is its own at once.
         with mock.patch.dict(windows.MATRIX_SCENARIOS, {"windows-native-cli": MATRIX_REAL["windows-native-cli"]}):
-            self.assert_refused([self.row(SSH, "direct", "failed")], "windows_matrix_incomplete:15")
-            # Smoke and CLI config rows prove packaged-public-cli and unicode-space-path only.
+            # Smoke and CLI config rows prove packaged-public-cli and unicode-space-path only; the SSH row alone, nothing.
             complete = [self.row(name, route) for name in (SMK, CFG, SSH) for route in ("direct", "mcp")]
             self.assert_refused(complete, "windows_matrix_incomplete:13")
             review = windows.matrix_review(self.root, "windows-native-cli", complete)
-            self.assertEqual("unmapped", review["scenarios"]["ssh-import-routing"])
+            self.assertEqual("missing", review["scenarios"]["ssh-import-routing"])
+            relay = [self.row(RLY, route) for route in ("direct", "mcp")]
+            self.assertEqual("missing", windows.matrix_review(self.root, "windows-native-cli", complete[:4] + relay)["scenarios"]["ssh-import-routing"])
+            review = windows.matrix_review(self.root, "windows-native-cli", complete + relay)
+            self.assertEqual("passed", review["scenarios"]["ssh-import-routing"])
+            self.assert_refused(complete + relay, "windows_matrix_incomplete:12")
+            for row in (SSH, RLY):
+                with self.subTest(row=row):
+                    observation = self.observe([self.row(row, "direct", "failed")])
+                    self.assertEqual(("failed", {"ssh-import-routing": "failed"}), (observation["result"], observation["scenarioResults"]))
 
 
 class PrincipalVerdictTests(MatrixBase):
@@ -565,15 +575,20 @@ class TableTests(unittest.TestCase):
         self.assertEqual({"android-48m-heap"}, set(requirements["document-persistence-transfer"]["requiredScenarios"])
                          - set(MATRIX_REAL["document-persistence-transfer"]))
         unmapped = sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if not rows)
-        self.assertEqual(sorted(["windows-native-cli:" + item for item in ("scoped-elevation", "ssh-import-routing")]
+        self.assertEqual(sorted(["windows-native-cli:" + item for item in ("scoped-elevation",)]
                                 + ["windows-visual:" + item for item in ("scene-capture", "geometry-contrast", "agent-verdict")]
                                 + ["windows-scoped-vpn:" + item for item in ("scoped-uac-tun-traffic", "prepare-commit-recovery", "exact-child-stop",
                                                                              "generated-custom-config", "large-config", "dns-ws-ssh-cache-resources",
                                                                              "pipe-storage-races")]
                                 + ["document-persistence-transfer:" + item for item in ("cache-digest-bytes", "gui-cli-transfer")]),
                          unmapped)
-        # The SSH row declares a relayed transfer and a stdin key import still to do, so it proves no scenario alone.
-        self.assertFalse([scenario for table in MATRIX_REAL.values() for scenario, rows in table.items() if SSH in rows])
+        # The SSH row declares a relayed transfer and a stdin key import still to do, which the relay row does: they prove
+        # ssh-import-routing together and nothing else, and each is a product row admitted today.
+        self.assertEqual((SSH, RLY), MATRIX_REAL["windows-native-cli"]["ssh-import-routing"])
+        self.assertEqual({SSH: ["windows-native-cli:ssh-import-routing"], RLY: ["windows-native-cli:ssh-import-routing"]},
+                         {row: sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if row in rows)
+                          for row in (SSH, RLY)})
+        self.assertEqual([None, None], [windows.RECIPES[row].get("refusal") for row in (SSH, RLY)])
 
     def test_no_update_row_can_prove_a_scenario_today(self):
         # The host job never claims installed-package for an update row, so a scenario naming one stays unproven.

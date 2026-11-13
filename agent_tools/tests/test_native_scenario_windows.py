@@ -290,7 +290,7 @@ class TableTests(unittest.TestCase):
         self.assertEqual(set(windows.RECIPES), set(execution.WINDOWS_SCENARIOS))
         self.assertEqual({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install", "windows-msi-base-reset",
                           "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
-                          "windows-disconnected-cli-config.ssh-import-routing",
+                          "windows-disconnected-cli-config.ssh-import-routing", "windows-disconnected-cli-config.ssh-relay-transfer",
                           "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
                           "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
                           *PROXY_ROWS, *TUN_ROWS, *("windows-public-update." + variant for variant in windows.UPDATE_VARIANTS), *DOCUMENT_ROWS,
@@ -308,6 +308,7 @@ class TableTests(unittest.TestCase):
         self.assertEqual({"windows-ordinary-qualification": "component", "windows-python-install": "setup", "windows-msi-base-install": "setup",
                           "windows-msi-base-reset": "setup", "windows-packaged-cli-smoke": "product", "windows-disconnected-cli-config": "product",
                           "windows-streaming-client-interrupt": "product", "windows-disconnected-cli-config.ssh-import-routing": "product",
+                          "windows-disconnected-cli-config.ssh-relay-transfer": "product",
                           **{name: "product" for name in ("windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
                           "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect")},
                           **{name: "product" for name in PROXY_ROWS + TUN_ROWS},
@@ -343,6 +344,7 @@ class TableTests(unittest.TestCase):
         self.assertEqual({"windows-disconnected-cli-config": ["agent_tools/windows_disconnected_cli_cases.py"],
                           "windows-streaming-client-interrupt": ["agent_tools/windows_streaming_cli_cases.py"],
                           "windows-disconnected-cli-config.ssh-import-routing": ["agent_tools/windows_ssh_import_routing_cases.py"],
+                          "windows-disconnected-cli-config.ssh-relay-transfer": ["agent_tools/windows_ssh_relay_cases.py"],
                           **{name: ["agent_tools/windows_lifecycle_cases.py"] for name in PROXY_ROWS + TUN_ROWS},
                           **{"windows-public-update." + variant: ["agent_tools/windows_public_updater/update_cases.py"]
                              for variant in windows.UPDATE_VARIANTS},
@@ -356,6 +358,18 @@ class TableTests(unittest.TestCase):
         self.assertEqual({key: value for key, value in base.items() if key not in ("guestFiles", "deadlineSeconds")},
                          {key: value for key, value in variant.items() if key not in ("guestFiles", "deadlineSeconds")})
         self.assertEqual([item for item in base["guestFiles"] if item[1] != "cases"], [item for item in variant["guestFiles"] if item[1] != "cases"])
+        # The SSH relay variant keeps the same action, inputs and harness; it adds the relay, the pinned SOCKS location
+        # fixture and the origin's TLS material the job makes, and nothing else.
+        relay = windows.RECIPES["windows-disconnected-cli-config.ssh-relay-transfer"]
+        self.assertEqual({key: value for key, value in base.items() if key not in ("guestFiles", "deadlineSeconds")},
+                         {key: value for key, value in relay.items() if key not in ("guestFiles", "deadlineSeconds", "generated", "sshRelay", "refusal")})
+        self.assertEqual((("agent_tools/windows_ssh_relay_cases.py", "cases", "data"), ("agent_tools/windows_ssh_relay_fixture.py", "relay", "data"),
+                          ("scripts/integration/socks_http_fixture.py", "socks", "data")) + windows._HARNESS, relay["guestFiles"][2:])
+        self.assertEqual((host_job.SSH_RELAY_TLS, {"variant": "relay-transfer"}, None, 7200),
+                         (relay["generated"], relay["sshRelay"], relay["refusal"], relay["deadlineSeconds"]))
+        leaves = [relative.rsplit("/", 1)[1] for relative, _, _ in relay["guestFiles"]] + [leaf for _, leaf in relay["generated"]]
+        self.assertEqual(len(leaves), len(set(leaves)), "every published file has its own leaf in the workspace")
+        self.assertEqual({"windows-disconnected-cli-config.ssh-relay-transfer"}, {name for name, row in windows.RECIPES.items() if row.get("sshRelay")})
         self.assertEqual({"windows-ordinary-qualification"}, {name for name, row in windows.RECIPES.items() if "qualificationArguments" in row})
 
     def test_proxy_rows_are_the_dedicated_drivers_variants_with_the_builders_files(self):
@@ -968,9 +982,19 @@ class FamilyDriverBase(DriverBase):
 
 
 class PackageAdmissionTests(FamilyDriverBase):
+    def test_the_ssh_relay_row_is_admitted_with_the_artifacts_of_the_ssh_import_row(self):
+        # The same scenario input and target package as the ssh-import-routing row, under the relay row's own name.
+        relay, ssh = "windows-disconnected-cli-config.ssh-relay-transfer", "windows-disconnected-cli-config.ssh-import-routing"
+        request = self.family_request(ssh, value=self.scenario_input(ssh, scenarioId=relay))
+        request["scenarioId"] = relay
+        admitted = windows.admit_start(self.root, request, self.resolver)  # Before f31ab987's table knew the name: not allowlisted.
+        self.assertEqual(windows.RECIPES[relay], admitted)
+        self.assertFalse(self.journal.exists())
+
     def test_every_new_row_admits_before_any_journal(self):
         for scenario in ("windows-python-install", "windows-msi-base-install", "windows-msi-base-reset", "windows-packaged-cli-smoke",
                          "windows-disconnected-cli-config", "windows-streaming-client-interrupt", "windows-disconnected-cli-config.ssh-import-routing",
+                         "windows-disconnected-cli-config.ssh-relay-transfer",
                          *PROXY_ROWS, "windows-scoped-tun.restart-deny", *ADMITTED_DOCUMENT_ROWS):
             with self.subTest(scenario=scenario):
                 self.assertEqual(windows.RECIPES[scenario], windows.admit_start(self.root, self.family_request(scenario), self.resolver))
@@ -1122,7 +1146,7 @@ class PackageSubmitTests(FamilyDriverBase):
 
     def test_product_rows_send_no_package_and_name_their_prior_install(self):
         for scenario in ("windows-packaged-cli-smoke", "windows-proxy-lifecycle.commit-readiness-failure", "windows-disconnected-cli-config.ssh-import-routing",
-                         *ADMITTED_DOCUMENT_ROWS):
+                         "windows-disconnected-cli-config.ssh-relay-transfer", *ADMITTED_DOCUMENT_ROWS):
             with self.subTest(scenario=scenario):
                 self.operation = str(uuid.uuid4())
                 self.ssh.calls.clear()

@@ -62,6 +62,7 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_scenario_publisher.ps1.template", "agent_tools/windows_scenario_system_run.ps1.template",
                 "agent_tools/windows_scenario_qualification_child.ps1", "agent_tools/windows_disconnected_cli_cases.py",
                 "agent_tools/windows_streaming_cli_cases.py", "agent_tools/windows_ssh_import_routing_cases.py",
+                "agent_tools/windows_ssh_relay_cases.py", "agent_tools/windows_ssh_relay_fixture.py",
                 "scripts/test_packaged_cli.py", "scripts/windows_install_admission_diagnostic.py",
                 "agent_tools/windows_postboot_source_roles.py", "agent_tools/windows_postboot_action.py", "agent_tools/windows_preboot_action.py",
                 "agent_tools/windows_autostart_reboot.py", "agent_tools/windows_lifecycle_cases.py", "agent_tools/windows_runtime_branch_cases.py",
@@ -4427,6 +4428,102 @@ class ProductionBindingTests(Base):
         self.assertEqual([], self.qga.calls)
         self.assertFalse(Path(plan["dataDirectory"]).exists())
         self.assertEqual({"intent.json", "qga.sock"}, {path.name for path in self.vm.iterdir()})
+
+
+RELAY_ROW = "windows-disconnected-cli-config.ssh-relay-transfer"
+
+
+class SshRelayFamilyTests(FamilyBase):
+    """windows-disconnected-cli-config.ssh-relay-transfer: the disconnected action and its closed inputs, with the relay,
+    the pinned SOCKS location fixture and the origin's TLS material the job makes as for the responsive row."""
+
+    def setUp(self):
+        super().setUp()
+        self.material_calls = []
+        loaded = job.Job._load
+
+        def load(instance, name):
+            module = loaded(instance, name)
+            if name == "windows_scenario_proxy":
+                module.material = lambda randbits, now: self.material_calls.append((randbits, now)) or proxy_tls()
+            return module
+        patcher = mock.patch.object(job.Job, "_load", load)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_relay_row_runs_on_one_installed_base_with_its_files_and_refuses_each_mutated_request(self):
+        install, base = self.install_base()
+        tls, calls, original = proxy_tls(), [], job.assert_closed
+
+        def record(row, requests, expected):
+            calls.append(json.loads(json.dumps([row, requests, expected])))
+            return original(row, requests, expected)
+        with mock.patch.object(job, "assert_closed", record):
+            plan, code, receipt, kinds = self.run_family(RELAY_ROW, prior=install)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+        self.assertEqual(base["installed"]["treeSha256"], receipt["installed"]["treeSha256"], "the row leaves the one base as it found it")
+        self.assertEqual(1, len(self.material_calls))
+        self.assertIs(job.secrets.randbits, self.material_calls[-1][0], "the key comes from the host's own CSPRNG")
+        seen = self.qga.requests_seen[-1]
+        worker, workspace = seen["worker"], job.WORKSPACE_PREFIX + plan["operationId"]
+        root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+        # The planner admits it as any disconnected row: exactly the five CLI inputs, nothing the case could steer.
+        self.assertEqual({"action": "disconnected-cli-config", "cliPath": INSTALLED_ROOT + "\\vpn-control-cli.exe",
+                          "workspace": root + "\\workspace", "productVersion": VERSION,
+                          "casesPath": workspace + "\\windows_ssh_relay_cases.py", "harnessPath": workspace + "\\test_packaged_cli.py"},
+                         {key: worker[key] for key in ("action", "cliPath", "workspace", "productVersion", "casesPath", "harnessPath")})
+        self.assertEqual(set(planner.COMMON_FIELDS) | {"pythonRuntime", "action", "cliPath", "workspace", "productVersion", "casesPath",
+                                                       "harnessPath"}, set(worker))
+        pins = {pin["path"]: pin for pin in worker["filePins"]}
+        for relative in ("agent_tools/windows_ssh_relay_cases.py", "agent_tools/windows_ssh_relay_fixture.py",
+                         "scripts/integration/socks_http_fixture.py"):
+            leaf = workspace + "\\" + relative.rsplit("/", 1)[1]
+            self.assertEqual(hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(), pins[leaf]["sha256"], relative)
+        for role, leaf in job.SSH_RELAY_TLS:
+            self.assertEqual(tls[role], self.qga.files[workspace + "\\" + leaf])
+            self.assertEqual(hashlib.sha256(tls[role]).hexdigest(), pins[workspace + "\\" + leaf]["sha256"])
+        bootstrap = {pin["path"] for pin in seen["bootstrap"]["filePins"]}
+        self.assertNotIn(workspace + "\\ssh-relay-localhost.key", bootstrap, "only the worker holds the key")
+        self.assertEqual([], self.pins_under(seen["bootstrap"], INSTALLED_ROOT), "installed pins live only in the worker request")
+        planner.validate_closure(worker)
+        captured = calls[-1]
+        job.assert_closed(*captured)
+        tls_pin = workspace + "\\ssh-relay-trust.jks"
+
+        def worker_change(change):
+            return lambda row, requests, expected: change(requests["worker"])
+        for name, change in {
+                "import-routing-cases": worker_change(lambda w: w.update(casesPath=w["casesPath"].rsplit("\\", 1)[0] + "\\windows_ssh_import_routing_cases.py")),
+                "cases-is-relay": worker_change(lambda w: w.update(casesPath=w["casesPath"].rsplit("\\", 1)[0] + "\\windows_ssh_relay_fixture.py")),
+                "action": worker_change(lambda w: w.update(action="streaming-client-interrupt")),
+                "no-trust-store": worker_change(lambda w: w.__setitem__("filePins", [pin for pin in w["filePins"] if pin["path"] != tls_pin])),
+                "other-trust-store": worker_change(lambda w: next(pin for pin in w["filePins"] if pin["path"] == tls_pin).update(sha256="4" * 64)),
+                "extra-input": worker_change(lambda w: w.update(responsiveWork={"schemaVersion": 1})),
+                "extra-pin": worker_change(lambda w: w["filePins"].append(dict(w["filePins"][0], path="C:\\Windows\\System32\\cmd.exe"))),
+                "no-worker": lambda row, requests, expected: requests.update(worker=None)}.items():
+            with self.subTest(change=name):
+                row, requests, expected = json.loads(json.dumps(captured))
+                change(row, requests, expected)
+                with self.assertRaisesRegex(job.KnownFailure, "requests_not_closed"):
+                    job.assert_closed(row, requests, expected)
+
+    def test_the_relay_row_needs_a_passed_install_of_its_own_package_before_any_journal(self):
+        foreign = self.run_family("windows-ordinary-qualification")[0]["operationId"]
+        for name, prior in (("missing", None), ("unknown", str(uuid.uuid4())), ("foreign", foreign)):
+            with self.subTest(prior=name):
+                plan, code, receipt, kinds = self.run_family(RELAY_ROW, prior=prior)
+                self.assertEqual((2, "prior_install_unavailable", []), (code, receipt["failure"], kinds))
+                self.assertFalse(self.fence(plan, ".intent.json").exists(), "a refused job anchors nothing")
+        self.assertEqual([], self.material_calls, "a refused row makes no key")
+
+    def test_a_row_whose_generated_roles_differ_ends_before_any_task(self):
+        install, _ = self.install_base()
+        changed = dict(driver.RECIPES[RELAY_ROW], generated=job.SSH_RELAY_TLS[:2])
+        with mock.patch.dict(driver.RECIPES, {RELAY_ROW: changed}):
+            plan, code, receipt, kinds = self.run_family(RELAY_ROW, prior=install)
+        self.assertEqual((1, "ssh_relay_files_not_the_row"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds, "no task ran")
 
 
 if __name__ == "__main__":

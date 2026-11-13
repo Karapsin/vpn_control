@@ -35,7 +35,7 @@ _COLLECTION_LIMIT = 8_192  # Existing fixed collector transport bound.
 WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a variant sits in its dotted name.
     "windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install", "windows-msi-base-reset",
     "windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
-    "windows-disconnected-cli-config.ssh-import-routing", "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
+    "windows-disconnected-cli-config.ssh-import-routing", "windows-disconnected-cli-config.ssh-relay-transfer", "windows-autostart-migration.pre", "windows-autostart-migration.post", "windows-reboot-reconnect.pre", "windows-reboot-reconnect.post",
     "windows-reboot-explicit-off.pre", "windows-reboot-explicit-off.post", "windows-query-owner-gui-reconnect",
     *("windows-proxy-lifecycle." + variant for variant in (
         "gui-pending", "find-best-success", "find-best-verification-failure", "find-best-cancel", "generated", "custom", "large",

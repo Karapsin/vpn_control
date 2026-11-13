@@ -306,6 +306,21 @@ def _responsive_row() -> dict[str, Any]:
     return row
 
 
+# windows-disconnected-cli-config.ssh-relay-transfer: the same owner action and harness as the disconnected rows, its own
+# case module, the in-guest SSH relay fixture (an SSH server and its home SOCKS relay), the pinned SOCKS fixture as the
+# selected location, and the origin's localhost certificate, key and trust store, which the job makes as for the
+# responsive row. The case module scopes the serve's JVM to that store and imports its key on stdin.
+_SSH_RELAY_FILES = (("agent_tools/windows_ssh_relay_cases.py", "cases", "data"),
+                    ("agent_tools/windows_ssh_relay_fixture.py", "relay", "data"),
+                    ("scripts/integration/socks_http_fixture.py", "socks", "data"), *_HARNESS)
+
+
+def _ssh_relay_row() -> dict[str, Any]:
+    row = _worker_row("product", "disconnected-cli-config", ("targetPackage",), _SSH_RELAY_FILES, prior=True, deadline=7200)
+    row.update(generated=host_job.SSH_RELAY_TLS, sshRelay={"variant": "relay-transfer"}, refusal=None)
+    return row
+
+
 # One row per closed name. A later name is a row here plus its stages in the host job.
 # setup rows prepare the one VM and never count as matrix evidence; product rows claim
 # installed-package only from the receipt facts public_evidence reads.
@@ -358,6 +373,9 @@ RECIPES: dict[str, dict[str, Any]] = {
     "windows-disconnected-cli-config.ssh-import-routing": _worker_row(
         "product", "disconnected-cli-config", ("targetPackage",),
         (("agent_tools/windows_ssh_import_routing_cases.py", "cases", "data"), *_HARNESS), prior=True, deadline=7200),
+    # A stdin key import and refreshes through a real in-guest SSH relay: disconnected, connected, after disconnecting,
+    # with an unpinned relay host key and with the relay stopped.
+    "windows-disconnected-cli-config.ssh-relay-transfer": _ssh_relay_row(),
     "windows-autostart-migration.pre": _reboot_row("windows-autostart-migration", "pre", "autostart-migration"),
     "windows-autostart-migration.post": _reboot_row("windows-autostart-migration", "post", "autostart-migration"),
     "windows-reboot-reconnect.pre": _reboot_row("windows-reboot-reconnect", "pre", "reconnect"),
@@ -1143,6 +1161,7 @@ _U, _P = "windows-public-update.", "windows-proxy-lifecycle."
 _SMK, _CFG, _STR, _QRY = ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
                           "windows-query-owner-gui-reconnect")
 _DOC, _RSP, _CLD = "windows-document-acceptance", "windows-document-responsive", "windows-document-cold."
+_SSH, _RLY = "windows-disconnected-cli-config.ssh-import-routing", "windows-disconnected-cli-config.ssh-relay-transfer"
 MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
     "windows-native-cli": {
         "msi-installer": (_U + "success-off", _U + "native-install-failed"),
@@ -1166,9 +1185,9 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         "runtime-owner": (_P + "sibling-off",),
         "traffic-continuity": (_P + "gui-pending", _U + "success-reconnect"),
         "find-best": (_P + "find-best-success", _P + "find-best-verification-failure", _P + "find-best-cancel"),
-        # CFG.ssh-import-routing proves import, the SSH Routing truth table and route choice, and records what it leaves:
-        # a refresh through a real relay, connected and disconnected, and a stdin key import. No row does those yet.
-        "ssh-import-routing": (),
+        # SSH proves import, the SSH Routing truth table and route choice; RLY a stdin key import and refreshes through a
+        # real in-guest relay, connected and disconnected, an unpinned host key and a stopped relay without fallback.
+        "ssh-import-routing": (_SSH, _RLY),
     },
     "windows-visual": {"scene-capture": (), "geometry-contrast": (), "agent-verdict": ()},
     "windows-installer-lifecycle": {
