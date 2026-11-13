@@ -2351,6 +2351,61 @@ manifest lists, through `VPN_CONTROL_TEST_DOTNET`, and skips without it.
 Native only: extraction and `dotnet --version` on Windows, the seed restore with the win-x64 SDK,
 the 24 tests' own outcome, and the user's NuGet migration folder comparison.
 
+### Update rows never claim installed-package, offline (2026-11-13)
+
+Built offline in the clone `build-update-counting` on `b809c279`; nothing here has run natively.
+GAP-UPD of the 2026-11-13 coverage audit: `Job._finish` claimed installed-package only for a row
+that was `not self.update`, and nothing read what an update task left installed, so every
+`windows-public-update.*` run stayed `installed-package-unproven`. The twelve scenarios that name
+update rows could never pass `matrix-status`: all eight of windows-installer-lifecycle, and
+msi-installer, public-update, operation-progress-cancellation and traffic-continuity of
+windows-native-cli. The 17 recorded native update runs (public-ready, download-cancelled and
+checksum-rejected: eleven on S_T, six on S_T2) each passed, and before its task each matched
+the registration and tree of S_B that its input's base reset recorded. None read what its task
+left and none ran `--version`, so under the rule below all 17 stay unproven and need a rerun. The six S_T2 runs and the two installs they
+name (base reset `c3da662a`, target install `c693352b`) are the fixture
+`fixtures/windows_update_native/st2-update-runs.json`: the input byte for byte, the route and
+the receipt with its context set to null. The originals are named there by digest and kept
+under `.runtime/update-counting/native/` of the clone, beside the RED, GREEN, pin and selector
+logs. RED ran in a worktree of `b809c279` holding only the new and changed test modules and the
+fixture, one unittest process per failure type, on Python 3.14 and 3.12 with identical counts
+(subtests included).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Update rows never claimed installed-package | `test_windows_scenario_host_job.UpdateInstalledTests` (five tests), `UpdateFamilyTests.test_a_no_system_row_runs_the_case_with_its_fixture_and_no_collector`; `test_native_scenario_windows.PublicEvidenceTests.test_an_update_row_claims_the_package_its_variant_ends_with`, `TableTests.test_setup_rows_are_never_evidence_and_product_rows_name_their_package`, `UpdateTableTests.test_each_row_ends_with_the_package_its_case_leaves_and_reads_it_back`; `test_native_scenario_windows_matrix.UpdateRowTests.test_a_passed_update_run_counts_with_the_package_read_after_its_task`, `test_the_update_scenarios_pass_matrix_status_once_their_rows_are_proven`, `RecordedNativeUpdateTests.test_the_recorded_runs_count_with_what_the_fixed_job_writes_after_the_task`, `TableTests.test_the_update_rows_prove_their_scenarios_through_what_they_read_back` | The row table now names what a passed variant leaves (`update.ends`): the target for `update_cases.SUCCESS_VARIANTS` (success-off, success-reconnect, different-admin, wait-client-loss, installer-wait-client-loss), the base for every other. Every update row has the `installed` stage. After the task, the job reads the registration and the complete installed tree as an installer row reads what it installed (`_registration`, `_listed`, `_tree`). It names the result by the one declared install it exactly is (product code, version, package code, tree digest and count): the target install the input names, or the base install it started from. A passed row that read another package ends `update_installed_differs:<role or check>` and claims nothing. Otherwise it claims that package: the target after a granted install, whose `--version` the case asks after the update, or the base, unchanged, whose `--version` the driver now asks first. A known failure after the task was deleted, such as a grant whose prompt ended CANCELLED, is read back the same way and named beside the failure. A lost reply of that read leaves the outcome unknown with the fence open. `public_evidence` takes, for an update row, the package its variant ends with. RED (13 tests): `FAILED (failures=52)`. GREEN: OK. |
+| The record did not bind the base the update started from | `RecordedNativeUpdateTests.test_the_recorded_runs_stay_unproven_and_their_record_names_the_base_they_started_from`, `UpdateRowTests.test_a_failed_update_run_names_the_package_it_left`, `test_an_update_run_without_its_bound_proof_never_counts` | The base, S_B of `32d32706`, is a package of another source, so it cannot be an artifact of the record (`_verify_artifacts` needs the record's source). `_matrix_row` binds it through the base install's own collected journal on the same clone. That journal must be a passed `windows-msi-base-install` or `-reset` whose admitted `basePackage` is the package its receipt recorded, at the input's `baseVersion`, and its recorded install must be exactly what the update found before its task. The target's install is bound the same way. Each update row's evidence entry names `baseInstall`, `basePackage`, `targetInstall` and `installedPackage`, a failed row's too. An update run counts only when the package read after its task is one of those installs, its variant's own, claimed exactly. Anything else stays `installed-package-unproven`, and so does every receipt the job wrote before this. On `b809c279` an unbound target claim passed and no entry named a base. RED (3 tests): `FAILED (failures=11)`. GREEN: OK. |
+| The update route asked the base for no `--version` under the ordinary token | `test_windows_ordinary_task.DedicatedDriverControls.test_an_update_asks_the_installed_base_for_its_version_before_any_hold_or_case`, `test_an_update_whose_launcher_reports_another_version_never_arms_or_runs_its_case` | `run_update` now calls `installed_version`, the lifecycle route's `--help` and `--version` of the installed launcher, before any hold or case. The launcher here is the base, the request's `productVersion`. A launcher that reports another version ends the row 1 before the update. RED (2 tests): `FAILED (failures=13)`. GREEN: OK. |
+
+Control: `UpdateInstalledTests.test_a_task_that_never_finished_or_never_ran_is_never_read_back`
+passes before and after. A parked owner, or a job stopped at publish, is never read back.
+
+No new collector was needed. The reads after the task are the publisher actions the installer
+rows already use (`msi-registration`, `list-tree`, `read-directories`, `read-pins`), natively
+proven after `msiexec` installs. Pins renewed to a fixpoint: the planner's
+`DEDICATED_DRIVER_SHA`, the owner's held-driver literal, the selector's reviewed driver versions
+(appended), the `readiness_vm_dispatch.json` `sourcePins` of `windows_ordinary_task`,
+`windows_scenario_host_job` and `native_scenario_windows`, and the selector's entry for that
+manifest. No file of `readiness_windows._source_pins()` changed.
+
+Native only:
+
+- The four reads after an update task.
+- The base's `--version` on the update route.
+- That the registration after the product's own upgrade is exactly one per-user row of the
+  target.
+- That the tree after that upgrade is the one a clean `msiexec` install of the target recorded
+  (the case already requires the same membership and bytes).
+- Every grant stage.
+
+The next update discovery run must show, after `system-run`, the programs `after-registration`,
+`after-installed-tree`, `after-installed-directories-1` and `after-installed-read-pins-1` before
+`evidence-zip-1`. In its evidence, the children `help` and `version` must come before
+`update-public-serve`, with the base version in the version child's stdout. In its receipt,
+`update.baseInstall` and `targetInstall` must equal its input's, and `installedAfter` must be
+the base install's recorded facts (role `base`) or, after a grant, the target install's (role
+`target`), with `windows` claiming that package.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
