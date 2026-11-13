@@ -2449,6 +2449,74 @@ rebased commit: OK for every type on both. The logs are under
 `.runtime/tun-base/logs/redgreen/` of that clone, copied to
 `.runtime/windows-parity-20261107/evidence/tun-grant/rebased/` of the recovery checkout.
 
+### Windows scoped-TUN grant, review of `e65f8814`, offline (2026-11-13)
+
+An independent review of the rebased grant commit `e65f8814` found five failure types its
+regressions did not cover, and three rows of the section above whose RED never reached the
+defect they name. `bcfa0322` closes them on top of `e65f8814` in `builders/tun-base`;
+nothing here has run natively. RED for each new type ran in an archive of `e65f8814`
+holding the final test modules (`.runtime/tun-base/red-e65f8814`). The section above's
+types re-ran in the archive of `9a8db1e5` holding the final test modules
+(`.runtime/tun-base/red-9a8db1e5`). Three more REDs ran in an archive of `bcfa0322` with one
+unfixed rule put back at a time (`.runtime/tun-base/mixed-bcfa0322`, written by
+`mixed_variants.py`). Each type ran in one unittest process, on Python 3.14 and 3.12, with
+identical counts (subtests included); GREEN on `bcfa0322` was OK for every type on both.
+The logs are under `.runtime/tun-base/logs/review/redgreen/` of that clone, copied to
+`.runtime/windows-parity-20261107/evidence/tun-grant/review/` of the recovery checkout.
+The new regressions run in the selector's pre-push agent tier and in Fast Checks; the two
+Windows tests of the last row run in the Windows readiness native step.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A grant whose prompt the decision never answered was collected as the product's failure | `test_native_scenario_windows.TunGrantDecisionTests.test_a_grant_cancelled_by_its_prompt_fails_the_product_only_after_its_typed_approval`; `test_windows_tun_grant.TunGrantFamilyTests`: `test_a_failed_grant_receipt_names_the_known_end_its_owner_closed_with`, `test_the_grant_serves_its_one_collector_inside_the_run_and_releases_the_hold`; controls `TunGrantDecisionTests.test_a_failed_grant_needs_no_join`, `test_a_grant_that_failed_by_another_known_end_needs_no_join` | A final refusal of `windows-uac-decision` (a black display, a prompt later than its 30 s gate) types nothing, the prompt expires, and the product answers the restart `CANCELLED` with A kept. The stages close that as the known end `scoped-tun-grant-cancelled-known`, the driver retires the unused hold and exits 1, and collect, which read the decision only for a passed grant, settled the run `failed`: a failure of the product, which under TEST-007 blocks its requirement on that package. The receipt now names the owner's own known end, `tun.knownEnd`: the `knownFailure` of the driver's one `dedicated-proxy-lifecycle-known-closed` event in the evidence copy (`cancelled`, another code, none, or `unread`). Collect settles a grant that failed by `cancelled` only with the decision's terminal of a typed approval and a closed prompt (`approve-acknowledged-prompt-closed`); without it the run stays unsettled, as a deny row's pass does. Any other failure still needs no join. RED (3 tests): failures=12, errors=1: the cancelled grant was collected `failed` with no decision read, and no receipt named a known end. The controls pass on the unfixed source too. GREEN: OK. |
+| The grant's off record took an exit that came before the product's own off | `test_windows_tun_stages.OffTests`: `test_the_off_is_asked_only_while_the_products_own_tun_runtime_runs`, `test_an_original_that_ended_before_the_off_was_asked_for_is_no_exact_off`, `test_an_exact_off_is_proven_by_both_exits_after_the_request` | The SYSTEM collector publishes the off record once both original handles signal, whatever ended them. `finish_off` checked only that they signaled and their creation times, and `begin_off` read nothing before the off, so a runtime that crashed after the last sample counted as the product's exact off. `begin_off` now requires the product's status to show its runtime running in VPN mode and takes the guest clock (`GetSystemTimePreciseAsFileTime`) just before the off. `finish_off` requires both originals' `exitFileTime` (the observer's `GetProcessTimes`) to be after it. RED (3 tests): failures=6: the off went out over a runtime that had ended, and exits before the off, or at the same instant, were accepted. GREEN: OK. Native only: both clocks on the fixture; a backward step of the guest clock between them fails closed and parks. |
+| `exact-child-stop` counted a grant that has no sibling to spare | `test_native_scenario_windows_matrix.ExactChildStopTests.test_the_grant_and_sibling_off_pairs_never_pass_the_exact_child_stop`; `TableTests`: `test_the_table_names_every_windows_scenario_and_only_built_rows`, `test_the_document_tun_and_responsive_rows_prove_only_what_their_evidence_holds`; `test_windows_tun_stages.OffTests.test_the_exact_off_claims_no_sibling_it_never_had` | The matrix mapped `exact-child-stop` to `sibling-off` and the restart grant. `sibling-off` shows only that the unelevated proxy off spares a live sibling. No unrelated runtime runs beside the grant, and its closing census requires only that the runtimes left are a subset of the baseline, so an elevated broker that stopped every `sing-box.exe` by image would pass it as well; the off event's `noBroadProcessStop: True` was a constant. The scenario maps to `()` again until a grant variant keeps an owned sibling runtime alive through the product's off (T8), and the event says `siblingSurvivalObserved: false`. RED (4 tests): failures=4: passed direct and MCP pairs of the two rows passed the scenario, the table mapped it, and the event claimed no broad stop. GREEN: OK. |
+| The direct sampler could reach its target through the guest's default route once the TUN was gone | `test_windows_tun_stages.DirectSamplerTests`: `test_with_the_tun_address_gone_the_real_socket_sends_nothing`, `test_every_sample_is_bound_to_the_generated_tun_address`, `test_each_sample_is_plain_http_to_the_benchmark_address_with_no_socks_step` | The only gate before the sampler's plain HTTP to `198.18.0.1:80` was the ready record, read once before it. Nothing tied a connection to the TUN, so a TUN gone after that record (a crashed runtime, a broker that ended its job) would send each sample out of the guest's default route, which on an unrestricted clone is the VM host's network. Each connection is now bound to the TUN's own address, `172.19.250.1` (`DesktopProxyConfigFactory`), before it connects. The first test runs the real sampler on real sockets: its own loopback listener as the target and an unassigned TEST-NET-1 address as the source, so nothing leaves the host. RED (3 tests): failures=3: unbound, both samples reached the listener with no TUN address to leave from (`0 != 2`), and no connection named a source. GREEN: OK; the bind fails and nothing is sent. Native only: Windows' strong host send on the fixture, under which a packet from `172.19.250.1` leaves only through the interface holding it, and that the samples still pass through the TUN with the bind. |
+| No CI job compiled the publisher's observer type | `test_affected_agent_tests.WindowsNativeCausalEnrollmentTests`: `test_every_windows_test_of_the_publishers_observer_type_runs_in_windows_ci`, `test_readiness_native_step_runs_explicit_unaffected_controls` | Windows CI runs agent tests only through the explicit include lists of its native steps. None named `test_windows_tun_grant.WindowsCensusTests` or `test_windows_update_grant_collectors.WindowsReaderTests.test_the_publisher_backup_open_and_census`, the only tests that compile and run the template's `Add-ObserverType`: the census that the TUN grant and every update row load, and the update rows' backup reader. The Windows readiness native step of `.github/workflows/windows-desktop.yml` now runs both. The regression finds every test of those modules that loads the type through `observer_function` and requires the step to name it. RED (2 tests, the `e65f8814` workflow): failures=2. GREEN: OK. Neither Windows test has run yet: their first run is the next Windows Desktop Package run of a pushed SHA, and the census test's RED on the `9a8db1e5` template also needs a Windows host. |
+
+Corrections to the section above. The driver row's RED never reached the unfixed driver:
+its `DriverGrantTests` errored in `setUp` on the driver's `time` module, and the shared
+peers on `TUN_COLLECTOR_SHA`, both new in the fix. The tests now take the clock and the
+collector digest from what both sources have: the driver's `time` attribute, created where
+it is missing, and `collector_contract.COLLECTORS["tun"]`. On `9a8db1e5` that type (15
+tests) now gives failures=13, errors=25, and the causes are the unfixed driver's own:
+`proxy-has-no-system-collector` for each grant that carries its hold (21 times),
+`dedicated-finite-proxy-variants-only` for one without, no `tun_record` and no
+`TUN_GRANT_VARIANTS` (one test each), and a harness that takes no hold (12). The
+approve-join and profile-gate REDs above failed on the grant's admission refusal, not on
+their own defects. In the archive of `bcfa0322` with only the `9a8db1e5` rule that a deny
+row alone joins its decision, the approve-join type (4 tests) gives failures=7, errors=1: a
+passed grant settled with no approval terminal in each of the seven decision cases. With
+only the profile gate removed, the profile-gate test fails with `ValueError not raised`: a
+grant admitted with no profile. The publisher type in the same archive with only the
+`9a8db1e5` template fails as before, failures=2 (skipped=1), ending
+`collector_stage_failed:tun:publisher_refused:collector-observe-tun:PUB_CENSUS_IMAGE`.
+Every other type of the section above gave its recorded counts again with the final test
+modules. Two notes above no longer hold: a grant whose prompt expired is not collected as a
+failed run (the first row of this section), and `exact-child-stop` is not mapped to the
+grant (the third).
+
+Deferred, with what each needs:
+
+- A product failure after the grant's TUN came up (its traffic, its off, its census) parks
+  the owner. The SYSTEM collector keeps waiting on the live broker and runtime handles, and
+  the job's synchronous collector program ends UNKNOWN at its 1800 s budget
+  (`guest_program_deadline:collector-tun`), with no evidence copy. UNKNOWN blocks the
+  requirement like a failed run, so nothing passes, but the run is not classed as the
+  product's failure. A known end needs a change to the SYSTEM collector chain that the
+  update rows share, whose park rule was reviewed: `caller_hold.driver_completed` accepts
+  only result 0, and `system_collector_worker` waits only for both handles to signal. That
+  is the coordinator's decision. What the product's own off does after each such failure,
+  and how long it takes, needs native runs.
+- The publisher's PowerShell observation (`Get-ProcessCensus`, `Get-CollectorObservation`
+  with `tunNeed`, `Assert-ProductPin`) still runs only in the fake peer that follows the
+  template's text. Executing it needs Windows PowerShell: a Windows-only test that renders
+  the collector-observe program over a temporary operation root (two task events, one need
+  event, a child event it must skip, the workspace's `runtime-config.json`) with a copied
+  broker image that starts a child, run in the readiness native step, RED with the
+  `9a8db1e5` template and GREEN on HEAD, on a Windows host. `WindowsCensusTests` covers only
+  the C# census it calls.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
