@@ -500,9 +500,11 @@ class CaseTests(unittest.TestCase):
         self.enterContext(mock.patch.object(fixture, "openssh_private_key", remember))
         self.enterContext(mock.patch.object(cases, "ORIGIN_CONTEXT", lambda certificate, key: "origin-context"))
         self.enterContext(mock.patch.object(cases, "CENSUS_SECONDS", 0.3))  # A left runtime is refused at this bound.
+        # The settle that only describes left bootstrap files; create=True keeps the module before it runnable.
+        self.enterContext(mock.patch.object(cases, "LEFTOVER_SETTLE_SECONDS", 0.3, create=True))
         self.count = 0
 
-    def run_cases(self, *defects):
+    def run_cases(self, *defects, census=None):
         self.count += 1
         product = Product(defects)
         workspace = self.root / ("workspace-" + str(self.count))
@@ -511,7 +513,8 @@ class CaseTests(unittest.TestCase):
         operation.mkdir()
         owner = Owner(operation, product, workspace)
         self.owner, self.state, self.product = owner, state, product
-        with mock.patch.object(cases, "SECURITY", product.security_of), mock.patch.object(cases, "RUNTIMES", product.runtimes):
+        runtimes = census(product) if census is not None else product.runtimes
+        with mock.patch.object(cases, "SECURITY", product.security_of), mock.patch.object(cases, "RUNTIMES", runtimes):
             cases.run(owner, workspace, state["id"], {})
         return owner, state
 
@@ -551,6 +554,7 @@ class CaseTests(unittest.TestCase):
         self.assertEqual({}, self.product.processes)
         imports = [stdin for command, stdin in self.product.calls if command == "ssh key import"]
         self.assertEqual([True] * 7, imports, "every key import of this row reads stdin")
+        self.assertNotIn("ssh-relay-bootstrap-leftovers", [event["kind"] for event in owner.events])
 
     def test_no_key_line_reaches_an_event_or_a_top_level_file(self):
         owner, _ = self.run_cases()
@@ -591,6 +595,89 @@ class CaseTests(unittest.TestCase):
                 relay = next(iter(FakeRelay.by_port.values()), None)
                 self.assertTrue(relay is None or relay.closed, "the relay closes on every end")
                 self.assertIsNone(self.state["runtime"], "a runtime this module started is off before the owner's closing")
+
+    # Native run 584d9f4c-20c1-4e10-a485-4ae5f2c2b535 (package 2.2.17) ended "bootstrap-files-left" right after the first
+    # HOME_RELAY refresh, and its evidence said nothing about which files were left, how old they were, whether the
+    # bootstrap's sing-box still ran, or whether they went away later.
+
+    def leftover_event(self):
+        values = [event["value"] for event in self.owner.events if event["kind"] == "ssh-relay-bootstrap-leftovers"]
+        self.assertEqual(1, len(values), "one description of the bootstrap files left")
+        return values[0]
+
+    def test_left_bootstrap_files_are_named_sized_and_aged_and_the_row_fails(self):
+        with self.assertRaises(AssertionError) as caught:
+            self.run_cases("bootstrap-files-left")
+        self.assertEqual("bootstrap-files-left", str(caught.exception))
+        value = self.leftover_event()
+        self.assertEqual({"atVerdict", "settleSeconds", "afterSettle", "verdict"}, set(value))
+        self.assertEqual(("bootstrap-files-left", 0.3), (value["verdict"], value["settleSeconds"]))
+        for phase in ("atVerdict", "afterSettle"):
+            rows = value[phase]["files"]
+            self.assertEqual(["home-ssh-bootstrap-1.json", "home-ssh-bootstrap-1.log"], [row["name"] for row in rows], phase)
+            self.assertEqual((2, 0), (value[phase]["count"], value[phase]["runtimes"]), phase)
+            for row in rows:
+                self.assertEqual((True, True, 2), (row["present"], row["regular"], row["bytes"]), phase)
+                self.assertTrue(0 <= row["writtenSecondsAgo"] < 60, phase)
+        kinds = [event["kind"] for event in self.owner.events]
+        self.assertLess(kinds.index("ssh-relay-bootstrap-leftovers"), kinds.index("ssh-relay-fixtures-closed"))
+        groups = [event["value"]["group"] for event in self.owner.events if event["kind"] == "ssh-relay-group-complete"]
+        self.assertEqual(["ssh-stdin-key-import"], groups, "the first HOME_RELAY refresh is the one judged")
+
+    def test_files_a_holder_lets_go_of_after_the_first_look_still_fail_the_row(self):
+        # The settle only describes: what the product left when it answered fails the row even if it goes away later.
+        # A settle before the verdict would pass here, since the next look after the first finds nothing.
+        original, seen = cases.runtime_entries, []
+
+        def entries(c):
+            if seen:
+                for path in (c.workspace / "runtime").glob("home-ssh-bootstrap-*"):
+                    path.unlink()
+            names = original(c)
+            if any(name.startswith("home-ssh-bootstrap-") for name in names):
+                seen.append(names)
+            return names
+        with mock.patch.object(cases, "runtime_entries", entries), self.assertRaises(AssertionError) as caught:
+            self.run_cases("bootstrap-files-left")
+        self.assertEqual("bootstrap-files-left", str(caught.exception))
+        self.assertEqual(1, len(seen), "files were seen at one look only")
+        value = self.leftover_event()
+        self.assertEqual(2, value["atVerdict"]["count"])
+        self.assertEqual([("home-ssh-bootstrap-1.json", True), ("home-ssh-bootstrap-1.log", True)],
+                         [(row["name"], row["present"]) for row in value["atVerdict"]["files"]], "described at the verdict")
+        self.assertEqual({"files": [], "count": 0, "runtimes": 0}, value["afterSettle"])
+        self.assertEqual("bootstrap-files-left", value["verdict"])
+
+    def test_a_bootstrap_process_left_with_its_files_is_counted_beside_them(self):
+        with self.assertRaises(AssertionError) as caught:
+            self.run_cases("bootstrap-files-left", "bootstrap-process-left")
+        self.assertEqual("bootstrap-files-left", str(caught.exception), "the files are judged first, as before")
+        value = self.leftover_event()
+        self.assertEqual((2, 1, 2, 1), (value["atVerdict"]["count"], value["atVerdict"]["runtimes"],
+                                        value["afterSettle"]["count"], value["afterSettle"]["runtimes"]))
+
+    def test_a_census_that_fails_while_describing_keeps_the_verdict(self):
+        def census(product):
+            def runtimes(root):
+                if any(Path(root, "runtime").glob("home-ssh-bootstrap-*")):
+                    raise AssertionError("runtime-census-unavailable")
+                return product.runtimes(root)
+            return runtimes
+        with self.assertRaises(AssertionError) as caught:
+            self.run_cases("bootstrap-files-left", census=census)
+        self.assertEqual("bootstrap-files-left", str(caught.exception))
+        value = self.leftover_event()
+        self.assertEqual((None, None), (value["atVerdict"]["runtimes"], value["afterSettle"]["runtimes"]))
+        self.assertEqual(2, value["afterSettle"]["count"])
+
+    def test_the_description_holds_metadata_only(self):
+        # A left configuration names the relay and the key's path: no row carries its bytes or a digest of them.
+        with self.assertRaises(AssertionError):
+            self.run_cases("bootstrap-files-left")
+        value = self.leftover_event()
+        for row in value["atVerdict"]["files"] + value["afterSettle"]["files"]:
+            self.assertTrue({"name", "present", "regular", "bytes", "writtenSecondsAgo"} <= set(row)
+                            <= {"name", "present", "regular", "bytes", "writtenSecondsAgo", "createdSecondsAgo"}, row)
 
     def test_a_failure_while_connected_turns_the_runtime_off_through_the_public_off(self):
         with self.assertRaises(AssertionError) as caught:

@@ -19,7 +19,9 @@ own SSH session); a refresh while connected (ACTIVE_SESSION: the runtime's manag
 location and the SSH chain); a refresh after disconnecting; a relay whose host key is not the pinned one; and,
 with the relay stopped, a refresh that fails without a direct fallback and keeps the last good cache. Each
 refresh is checked against the relay's own record, and the exact failure code comes from sing-box 1.13.4 and the
-JDK on loopback (the ledger's SSH relay rows), not from a guess.
+JDK on loopback (the ledger's SSH relay rows), not from a guess. A bootstrap file left once the product answered a
+refresh fails the row at once; only after that verdict does a bounded settle describe the files by name, size and age,
+with the live runtimes, never by their bytes (bootstrap_left).
 """
 from __future__ import annotations
 
@@ -45,6 +47,9 @@ RUNTIME_LEAF = "sing-box.exe"
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_REPLY_BYTES = 64 * 1024
 CENSUS_SECONDS = 10
+BOOTSTRAP_PREFIX = "home-ssh-bootstrap-"
+LEFTOVER_SETTLE_SECONDS = 10  # Describes bootstrap files left at the verdict; it never delays or changes the verdict.
+MAX_LEFTOVER_ROWS = 16
 TOKYO = "\u6771\u4eac"
 KEY = "\u9375"
 
@@ -437,10 +442,70 @@ def runtimes_settle(c, expected):
         time.sleep(0.25)
 
 
+def bootstrap_names(c):
+    return [name for name in runtime_entries(c) if name.startswith(BOOTSTRAP_PREFIX)]
+
+
+def leftover_rows(c, names):
+    """Each left bootstrap file by name, size and age, read by lstat alone: a left configuration names the relay and the
+    key's path, so its bytes are never opened."""
+    folder, now, rows = c.workspace / "runtime", time.time(), []
+    for name in names[:MAX_LEFTOVER_ROWS]:
+        try:
+            held = (folder / name).lstat()
+        except OSError as error:
+            rows.append({"name": name, "present": False, "error": type(error).__name__})
+            continue
+        row = {"name": name, "present": True, "regular": stat.S_ISREG(held.st_mode), "bytes": held.st_size,
+               "writtenSecondsAgo": round(now - held.st_mtime, 3)}
+        birth = getattr(held, "st_birthtime", None)
+        if birth is not None:
+            row["createdSecondsAgo"] = round(now - birth, 3)
+        rows.append(row)
+    return rows
+
+
+def leftover_census(c, names):
+    """The files first, then the product's live runtimes under the workspace (a bootstrap still running holds them)."""
+    files = leftover_rows(c, names)
+    try:
+        runtimes = len(RUNTIMES(c.workspace))
+    except AssertionError:
+        runtimes = None  # A census that cannot run describes nothing; the verdict stands.
+    return {"files": files, "count": len(names), "runtimes": runtimes}
+
+
+def bootstrap_left(c):
+    """No bootstrap file may be left once the product answered the refresh, judged at the first look with no settle.
+
+    DesktopHomeSshBootstrapProxy.useProxy ends its sing-box and deletes its files before the download returns, and the
+    bootstrap exists only to carry that one download while no runtime is active (CONFIG-004: the intentional direct
+    exception; CONFIG-005: an active runtime's management inbound carries it otherwise), so the refresh's final reply is
+    the product's word that the bootstrap is gone. A settle before the verdict would pass a product that answers before
+    its cleanup ends, or one whose single refused deletion a holder later makes moot. The settle after the verdict only
+    describes it: names, sizes and ages at the verdict, the product's live runtimes under the workspace, and whether the
+    files were still there at the bound, which tells files the product never removed from files a holder let go of later.
+    """
+    names = bootstrap_names(c)
+    if not names:
+        return
+    first = leftover_census(c, names)
+    remaining, until = names, time.monotonic() + LEFTOVER_SETTLE_SECONDS
+    while remaining and time.monotonic() < until:
+        time.sleep(0.25)
+        try:
+            remaining = bootstrap_names(c)
+        except OSError:
+            break
+    c.record("bootstrap-leftovers", {"atVerdict": first, "settleSeconds": LEFTOVER_SETTLE_SECONDS,
+                                     "afterSettle": leftover_census(c, remaining), "verdict": "bootstrap-files-left"})
+    raise AssertionError("bootstrap-files-left")
+
+
 def leftovers(c, connected):
     """What a refresh left: no bootstrap file, no runtime candidate unless connected, and exactly the runtimes due."""
+    bootstrap_left(c)
     entries = runtime_entries(c)
-    require(not any(name.startswith("home-ssh-bootstrap-") for name in entries), "bootstrap-files-left")
     candidates = [name for name in entries if name.startswith("candidate-")]
     require(len(candidates) == (1 if connected else 0), "runtime-candidates-left" if not connected else "runtime-candidate-count")
     require(len(runtimes_settle(c, 1 if connected else 0)) == (1 if connected else 0),

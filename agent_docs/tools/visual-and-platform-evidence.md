@@ -1581,6 +1581,12 @@ stdin (the intent records only its byte count). Its groups, in order:
   session that proved the imported key, one direct-tcpip channel to the relay port
   and one SOCKS connect to the origin; the origin saw exactly one GET. No
   `home-ssh-bootstrap-*` file and no `sing-box.exe` under the workspace remain.
+  The product ends the bootstrap and deletes its files before the download
+  returns, so a file left once the refresh answered fails the row at once
+  (`bootstrap-files-left`), with no settle before the verdict. A bounded settle
+  after it only describes the failure in `ssh-relay-bootstrap-leftovers`: each
+  left file's name, size and age, the live runtimes under the workspace, and
+  whether the files were still there at the bound; their bytes are never read.
 - `ssh-relay-connected`: proxy-only `on` through a location served by the SOCKS
   fixture, with the runtime chained through the relay (CONFIG-004); the runtime's
   candidate holds a byte-equal, owner-only copy of the key. A refresh succeeds
