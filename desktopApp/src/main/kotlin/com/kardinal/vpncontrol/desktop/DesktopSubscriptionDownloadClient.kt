@@ -2,7 +2,6 @@ package com.kardinal.vpncontrol.desktop
 
 import com.kardinal.vpncontrol.SubscriptionDownloadRoute
 import com.kardinal.vpncontrol.SubscriptionDownloadRouteLogic
-import com.kardinal.vpncontrol.data.HomeSshRouteConfigBuilder
 import com.kardinal.vpncontrol.data.HomeSshRouteRuntimeOptions
 import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.shared.storageapi.FetchedSubscriptionContent
@@ -12,12 +11,8 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.net.Socket
 import java.net.URL
-import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -124,50 +119,5 @@ class DesktopSubscriptionDownloadClient(
         } finally {
             connection.disconnect()
         }
-    }
-}
-
-private class DesktopHomeSshBootstrapProxy(
-    private val baseDir: Path,
-    private val singBoxResolver: DesktopSingBoxResolver,
-) {
-    suspend fun <T> useProxy(
-        options: HomeSshRouteRuntimeOptions,
-        block: (Int) -> T,
-    ): T {
-        Files.createDirectories(baseDir)
-        val port = DesktopLoopback.freePort()
-        val config = Files.createTempFile(baseDir, "home-ssh-bootstrap-", ".json")
-        val log = Files.createTempFile(baseDir, "home-ssh-bootstrap-", ".log")
-        val binary = singBoxResolver.resolve() ?: error(singBoxResolver.missingMessage())
-        var process: Process? = null
-        try {
-            Files.writeString(config, HomeSshRouteConfigBuilder.buildBootstrapProxyConfig(options, port).toString())
-            process = ProcessBuilder(binary.path.toString(), "run", "-c", config.toString())
-                .directory(baseDir.toFile())
-                .redirectErrorStream(true)
-                .redirectOutput(log.toFile())
-                .start()
-            require(waitForPort(process, port)) { "SSH relay did not become ready" }
-            return block(port)
-        } finally {
-            process?.destroy()
-            if (process?.waitFor(2, TimeUnit.SECONDS) == false) process?.destroyForcibly()
-            runCatching { Files.deleteIfExists(config) }
-            runCatching { Files.deleteIfExists(log) }
-        }
-    }
-
-    private suspend fun waitForPort(process: Process?, port: Int): Boolean {
-        repeat(30) {
-            if (process?.isAlive != true) return false
-            try {
-                Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 300) }
-                return true
-            } catch (_: java.io.IOException) {
-                delay(100)
-            }
-        }
-        return false
     }
 }
