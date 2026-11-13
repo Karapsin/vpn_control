@@ -63,4 +63,42 @@ class DesktopTrayWindowStateTest {
         assertFalse(state.trayAvailable)
         assertFalse(state.canHideToTray)
     }
+
+    @Test
+    fun lostTrayShowsTheWindowAndComesBackWithoutHidingIt() {
+        val hidden = initialDesktopTrayWindowState(
+            startInTray = true,
+            traySupported = true,
+        ).withTrayAvailable()
+        assertFalse(hidden.windowVisible)
+
+        val lost = hidden.withTrayLost()
+
+        assertTrue(lost.windowVisible)
+        assertFalse(lost.canHideToTray)
+        assertTrue(lost.traySupported)
+        assertTrue(lost.withHideWindowRequested().windowVisible)
+        assertTrue(lost.withCloseRequestHiddenToTray().windowVisible)
+
+        val back = lost.withTrayAvailable()
+
+        assertTrue(back.canHideToTray)
+        assertTrue(back.windowVisible)
+    }
+
+    @Test
+    fun closeOrHideNeedsTheTrayHostAtThatMoment() {
+        val available = initialDesktopTrayWindowState(
+            startInTray = false,
+            traySupported = true,
+        ).withTrayAvailable()
+
+        assertTrue(available.canHideToTrayNow(trayHostPresent = true))
+        assertFalse(available.canHideToTrayNow(trayHostPresent = false))
+        assertFalse(
+            initialDesktopTrayWindowState(startInTray = false, traySupported = true)
+                .canHideToTrayNow(trayHostPresent = true),
+        )
+        assertFalse(available.withTrayUnavailable().canHideToTrayNow(trayHostPresent = true))
+    }
 }

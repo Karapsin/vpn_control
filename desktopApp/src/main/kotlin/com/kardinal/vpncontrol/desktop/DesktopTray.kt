@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import com.sun.jna.platform.win32.User32
 import dorkbox.systemTray.MenuItem as DorkboxMenuItem
 import dorkbox.systemTray.Separator as DorkboxSeparator
 import dorkbox.systemTray.SystemTray as DorkboxSystemTray
@@ -53,6 +54,8 @@ private const val TrayInstallRetryDelayMillis = 1_000
 private const val TrayInstallMaxAttempts = 60
 private const val LinuxAwtTrayVisibilityCheckDelayMillis = 500
 private const val LinuxAwtTrayVisibilityMaxMisses = 6
+private const val NotificationAreaWatchDelayMillis = 1_000
+private const val WindowsNotificationAreaClass = "Shell_TrayWnd"
 
 @Composable
 internal fun DesktopTrayIcon(
@@ -71,6 +74,7 @@ internal fun DesktopTrayIcon(
     onExit: () -> Unit,
     onTrayAvailable: () -> Unit = {},
     onTrayUnavailable: () -> Unit = {},
+    onTrayLost: () -> Unit = {},
 ) {
     val currentAppTitle = rememberUpdatedState(appTitle)
     val currentMenuState = rememberUpdatedState(
@@ -97,7 +101,14 @@ internal fun DesktopTrayIcon(
 
     DisposableEffect(Unit) {
         val disposed = AtomicBoolean(false)
-        AsyncDesktopTrayBackendInstaller(createDesktopTrayBackendInstaller()).install(
+        val installer = createDesktopTrayBackendInstaller(
+            onLost = {
+                SwingUtilities.invokeLater {
+                    if (!disposed.get()) onTrayLost()
+                }
+            },
+        )
+        AsyncDesktopTrayBackendInstaller(installer).install(
             appTitle = { currentAppTitle.value },
             menuState = { currentMenuState.value },
             onAvailable = {
@@ -134,6 +145,41 @@ internal fun isDesktopTraySupported(): Boolean {
         DesktopTrayPlatform.MacOs,
         DesktopTrayPlatform.Other,
         -> isAwtDesktopTraySupported()
+    }
+}
+
+/**
+ * Whether the place a tray icon is shown in exists for this process now. Only Windows asks it
+ * ([desktopTrayHost]): elsewhere the backend's own answer confirms the icon (DESKTOP-002, PLATFORM-006).
+ */
+internal fun interface DesktopTrayHost {
+    fun present(): Boolean
+}
+
+internal fun desktopTrayHost(platform: DesktopTrayPlatform = desktopTrayPlatform()): DesktopTrayHost {
+    return when (platform) {
+        DesktopTrayPlatform.Windows -> WindowsNotificationArea
+        DesktopTrayPlatform.Linux,
+        DesktopTrayPlatform.MacOs,
+        DesktopTrayPlatform.Other,
+        -> DesktopTrayHost { true }
+    }
+}
+
+/**
+ * The notification area of this process's own Windows desktop.
+ *
+ * Shell_NotifyIcon hands an icon to the Shell_TrayWnd window of the calling thread's desktop and fails where
+ * there is none. The JDK's tray peer drops that answer (awt_TrayIcon.cpp: AwtTrayIcon::Create sends NIM_ADD
+ * through SendTrayMessage and ignores the BOOL it returns), so java.awt.SystemTray.add returns and getTrayIcons
+ * lists the icon on a desktop with no notification area at all. FindWindowW searches the calling thread's
+ * desktop too, and every thread of this process is on the desktop the process started on.
+ */
+internal object WindowsNotificationArea : DesktopTrayHost {
+    override fun present(): Boolean {
+        return runCatching {
+            User32.INSTANCE.FindWindow(WindowsNotificationAreaClass, null) != null
+        }.getOrDefault(false)
     }
 }
 
@@ -259,14 +305,14 @@ internal class AsyncDesktopTrayBackendInstaller(
     }
 }
 
-private fun createDesktopTrayBackendInstaller(): DesktopTrayBackendInstaller {
+private fun createDesktopTrayBackendInstaller(onLost: () -> Unit): DesktopTrayBackendInstaller {
     val backends = selectDesktopTrayBackendKinds(
         linuxPreference = detectLinuxTrayBackendPreference(),
     )
         .map { kind ->
             when (kind) {
                 DesktopTrayBackendKind.NativeLinux -> NativeLinuxTrayBackend()
-                DesktopTrayBackendKind.Awt -> AwtTrayBackend()
+                DesktopTrayBackendKind.Awt -> AwtTrayBackend(onLost = onLost)
             }
         }
     return DesktopTrayBackendInstaller(backends)
@@ -399,7 +445,10 @@ private class DesktopTrayHandleHolder {
     }
 }
 
-private class AwtTrayBackend : DesktopTrayBackend {
+internal class AwtTrayBackend(
+    private val retryPolicy: TrayRegistrationRetryPolicy = TrayRegistrationRetryPolicy(),
+    private val onLost: () -> Unit = {},
+) : DesktopTrayBackend {
     override fun install(
         appTitle: () -> String,
         menuState: () -> TrayMenuState,
@@ -411,18 +460,37 @@ private class AwtTrayBackend : DesktopTrayBackend {
             popup = TrayPopupController(),
             onAvailable = onAvailable,
             onUnavailable = onUnavailable,
+            onLost = onLost,
         )
+        val target = AwtTrayRegistrationTarget(
+            appTitle = appTitle,
+            popup = handle.popup,
+            menuState = menuState,
+        )
+        val onInstalled: (TrayIcon) -> Unit = { icon ->
+            handle.installTrayIcon(icon)
+            handle.update(appTitle(), menuState())
+        }
+        if (desktopTrayPlatform() == DesktopTrayPlatform.Windows) {
+            val notificationArea = NotificationAreaTrayRegistration(
+                target = target,
+                area = WindowsNotificationArea,
+                scheduler = SwingTrayRetryScheduler,
+                retryPolicy = retryPolicy,
+                onInstalled = onInstalled,
+                onAvailable = handle::markAvailable,
+                onUnavailable = handle::markUnavailable,
+                onLost = handle::markLost,
+            )
+            handle.notificationArea = notificationArea
+            notificationArea.start()
+            return handle
+        }
         val trayRegistration = RetryingTrayRegistration(
-            target = AwtTrayRegistrationTarget(
-                appTitle = appTitle,
-                popup = handle.popup,
-                menuState = menuState,
-            ),
+            target = target,
             scheduler = SwingTrayRetryScheduler,
-            onInstalled = { icon ->
-                handle.installTrayIcon(icon)
-                handle.update(appTitle(), menuState())
-            },
+            retryPolicy = retryPolicy,
+            onInstalled = onInstalled,
             onUnavailable = handle::markUnavailable,
         )
         handle.registration = trayRegistration
@@ -435,8 +503,10 @@ private class AwtTrayHandle(
     val popup: TrayPopupController,
     private val onAvailable: () -> Unit,
     private val onUnavailable: () -> Unit,
+    private val onLost: () -> Unit,
 ) : DesktopTrayHandle {
     var registration: RetryingTrayRegistration<TrayIcon>? = null
+    var notificationArea: NotificationAreaTrayRegistration<TrayIcon>? = null
     private var trayIcon: TrayIcon? = null
     private var linuxTrayMonitorTimer: Timer? = null
     private var disposed = false
@@ -454,12 +524,17 @@ private class AwtTrayHandle(
     fun installTrayIcon(icon: TrayIcon) {
         if (disposed) return
         trayIcon = icon
-        if (desktopTrayPlatform() != DesktopTrayPlatform.Linux) {
-            markAvailable()
-            return
+        when (desktopTrayPlatform()) {
+            DesktopTrayPlatform.Linux -> {
+                startLinuxTrayMonitor()
+                checkLinuxTrayVisibility()
+            }
+            // AWT lists an icon on Windows whatever the shell answered: NotificationAreaTrayRegistration decides.
+            DesktopTrayPlatform.Windows -> Unit
+            DesktopTrayPlatform.MacOs,
+            DesktopTrayPlatform.Other,
+            -> markAvailable()
         }
-        startLinuxTrayMonitor()
-        checkLinuxTrayVisibility()
     }
 
     fun markUnavailable() {
@@ -468,10 +543,16 @@ private class AwtTrayHandle(
         onUnavailable()
     }
 
-    private fun markAvailable() {
+    fun markAvailable() {
         if (disposed || available) return
         available = true
         onAvailable()
+    }
+
+    fun markLost() {
+        if (disposed || !available) return
+        available = false
+        onLost()
     }
 
     private fun startLinuxTrayMonitor() {
@@ -528,6 +609,8 @@ private class AwtTrayHandle(
         linuxTrayMonitorTimer = null
         registration?.dispose()
         registration = null
+        notificationArea?.dispose()
+        notificationArea = null
         trayIcon = null
     }
 }
@@ -937,6 +1020,78 @@ internal class RetryingTrayRegistration<T>(
         if (disposed || unavailableReported || installedIcon != null) return
         unavailableReported = true
         runCatching { onUnavailable() }
+    }
+}
+
+/**
+ * The Windows tray icon's registration, decided by the notification area and not by what AWT lists (see
+ * [WindowsNotificationArea]). An attempt offers the icon only while [area] is present, and the attempts end as
+ * [RetryingTrayRegistration]'s do, with [onUnavailable] after the last. Once the icon is in, [area] is read again
+ * every [watchDelayMillis] for as long as the registration lives, and the tray is available only while it is
+ * present: [onLost] when it went away (Explorer ended or is restarting), [onAvailable] again once it is back. AWT
+ * keeps its icon meanwhile and adds it again when the new Explorer broadcasts TaskbarCreated (awt_TrayIcon.cpp,
+ * AwtTrayIcon::WmTaskbarCreated).
+ */
+internal class NotificationAreaTrayRegistration<T>(
+    target: TrayRegistrationTarget<T>,
+    private val area: DesktopTrayHost,
+    private val scheduler: TrayRetryScheduler,
+    retryPolicy: TrayRegistrationRetryPolicy = TrayRegistrationRetryPolicy(),
+    private val watchDelayMillis: Int = NotificationAreaWatchDelayMillis,
+    private val onInstalled: (T) -> Unit = {},
+    private val onAvailable: () -> Unit = {},
+    onUnavailable: () -> Unit = {},
+    private val onLost: () -> Unit = {},
+) {
+    @Volatile
+    private var disposed = false
+    private var available = false
+    private var watch: TrayRetryHandle? = null
+    private val registration = RetryingTrayRegistration(
+        target = object : TrayRegistrationTarget<T> {
+            override fun install(): TrayInstallResult<T> {
+                return if (areaPresent()) target.install() else TrayInstallResult.RetryableFailure
+            }
+
+            override fun remove(icon: T) {
+                target.remove(icon)
+            }
+        },
+        scheduler = scheduler,
+        retryPolicy = retryPolicy,
+        onInstalled = { icon ->
+            runCatching { onInstalled(icon) }
+            follow()
+        },
+        onUnavailable = onUnavailable,
+    )
+
+    val installedIcon: T?
+        get() = registration.installedIcon
+
+    fun start() {
+        registration.start()
+    }
+
+    fun dispose() {
+        disposed = true
+        watch?.cancel()
+        watch = null
+        registration.dispose()
+    }
+
+    private fun areaPresent(): Boolean = runCatching { area.present() }.getOrDefault(false)
+
+    private fun follow() {
+        if (disposed) return
+        val present = areaPresent()
+        if (present != available) {
+            available = present
+            runCatching { if (present) onAvailable() else onLost() }
+        }
+        val next = scheduler.schedule(watchDelayMillis) { follow() }
+        watch = next
+        if (disposed) next.cancel()
     }
 }
 

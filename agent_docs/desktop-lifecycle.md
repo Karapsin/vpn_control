@@ -5,7 +5,7 @@ Authoritative lifecycle behavior is `DESKTOP-001` through `DESKTOP-008` in `cont
 | Contract | Primary Owner Areas | Main Coverage |
 | --- | --- | --- |
 | `DESKTOP-001` | `DesktopSingleInstanceLock`, activation server/events | `DesktopSingleInstanceLockTest`, `DesktopActivationEventsTest` |
-| `DESKTOP-002` | `Main.kt`, `DesktopTrayController`, tray availability state | `DesktopTrayWindowStateTest`, `DesktopSmokeTestTest`, visual tray scenes |
+| `DESKTOP-002` | `Main.kt`, `DesktopTray.kt` (Windows: `WindowsNotificationArea`, `NotificationAreaTrayRegistration`), tray availability state | `DesktopTrayWindowStateTest`, `DesktopTrayNotificationAreaTest`, Windows-only `DesktopTrayNotificationAreaNativeTest`, `DesktopSmokeTestTest`, visual tray scenes, native row `windows-proxy-lifecycle.no-tray-close` |
 | `DESKTOP-003` | `DesktopAutostartManager`, startup arguments, tray state | `DesktopAutostartManagerTest`, `DesktopTrayWindowStateTest`, reboot smoke |
 | `DESKTOP-004` | workspace mapper/store, app service startup | `DesktopAppServiceTest`, workspace mapper tests, reboot smoke |
 | `DESKTOP-005` | auto-refresh scheduler and subscription refresh service | `DesktopAutoRefreshSchedulerTest`, `DesktopAppServiceTest` |

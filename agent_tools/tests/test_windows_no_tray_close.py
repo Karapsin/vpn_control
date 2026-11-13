@@ -4,12 +4,14 @@ The world's guest gains its desktops: Default with Explorer's Shell_TrayWnd, and
 through declared user32, advapi32 and kernel32 peers. A window lives on the desktop its process started on, a thread
 moves only through SetThreadDesktop, an empty desktop lists no window (EnumDesktopWindows answers FALSE without an
 error), and a window message passes only between threads of one desktop. The product gains what the row reads from
-the Kotlin source: the GUI's tray decision (DesktopTray.kt: a tray AWT supports is available once AWT takes the icon,
-and a refused icon is retried every TrayInstallRetryDelayMillis up to TrayInstallMaxAttempts), Main.kt's close and its
-gui hide handler, and the owner's frontend lease, which a detaching GUI releases. Whether AWT takes an icon on a
-desktop with no Shell_TrayWnd is a JDK fact this world cannot know: it is the switch icon_without_tray_host, and each
-answer runs. Every row runs through the real dedicated driver, runtime stages, lifecycle cases and no-tray module.
-Nothing here proves a Windows behaviour.
+the Kotlin source: the GUI's tray decision (DesktopTray.kt: on Windows an attempt offers the icon only while the GUI's
+own desktop has a Shell_TrayWnd, attempts are retried every TrayInstallRetryDelayMillis up to TrayInstallMaxAttempts,
+and the tray is available only while that window is there), Main.kt's close and its gui hide handler, which ask for it
+again, and the owner's frontend lease, which a detaching GUI releases. What AWT does with an icon on a desktop with no
+Shell_TrayWnd is the switch icon_without_tray_host: run 6c7250f6 saw it taken. The decision of 2.2.17, available once
+AWT takes the icon, stays as the product switch tray_decision "awt-list" for the oracle's controls. Every row runs
+through the real dedicated driver, runtime stages, lifecycle cases and no-tray module. Nothing here proves a Windows
+behaviour.
 """
 import ctypes
 import hashlib
@@ -39,15 +41,28 @@ EXPLORER = 4
 PRIVATE, DEFAULT, STATION = 42, 43, 50
 SECURITY = b"O:S-1-5-21-1-2-3-1000D:P(A;;GA;;;SY)(A;;GA;;;S-1-5-21-1-2-3-1000)"
 # The product rules the fake GUI follows, each pinned where the source states it.
+AREA = r'\nprivate const val WindowsNotificationAreaClass = "Shell_TrayWnd"\n'
+PROBED = (r"internal object WindowsNotificationArea : DesktopTrayHost \{\n\s+override fun present\(\): Boolean \{\n"
+          r"\s+return runCatching \{\n\s+User32\.INSTANCE\.FindWindow\(WindowsNotificationAreaClass, null\) != null\n")
+WINDOWS = (r"if \(desktopTrayPlatform\(\) == DesktopTrayPlatform\.Windows\) \{\n\s+val notificationArea = "
+           r"NotificationAreaTrayRegistration\(\n\s+target = target,\n\s+area = WindowsNotificationArea,\n")
+GATED = r"return if \(areaPresent\(\)\) target\.install\(\) else TrayInstallResult\.RetryableFailure\n"
 INSTALL = (r"fun installTrayIcon\(icon: TrayIcon\) \{\n\s+if \(disposed\) return\n\s+trayIcon = icon\n"
-           r"\s+if \(desktopTrayPlatform\(\) != DesktopTrayPlatform\.Linux\) \{\n\s+markAvailable\(\)\n\s+return\n")
+           r"\s+when \(desktopTrayPlatform\(\)\) \{\n\s+DesktopTrayPlatform\.Linux -> \{\n\s+startLinuxTrayMonitor\(\)\n"
+           r"\s+checkLinuxTrayVisibility\(\)\n\s+\}\n\s+//[^\n]*\n\s+DesktopTrayPlatform\.Windows -> Unit\n")
+FOLLOWED = (r"val present = areaPresent\(\)\n\s+if \(present != available\) \{\n\s+available = present\n"
+            r"\s+runCatching \{ if \(present\) onAvailable\(\) else onLost\(\) \}\n")
 TAKEN = (r"tray\.add\(trayIcon\)\n\s+if \(tray\.trayIcons\.any \{ it === trayIcon \}\) \{\n\s+TrayInstallResult\.Installed\(trayIcon\)")
 RETRIED = (r"TrayInstallResult\.RetryableFailure -> handleRetryableFailure\(\)[\s\S]*?"
            r"if \(attempts >= retryPolicy\.maxAttempts\) \{\n\s+reportUnavailable\(\)")
-CLOSE = (r"onCloseRequest = \{\n\s+if \(trayWindowState\.canHideToTray\) \{\n\s+trayWindowState = trayWindowState\."
-         r"withCloseRequestHiddenToTray\(\)\n\s+\} else \{\n\s+detachFrontend\(\)\n")
-HIDE = r"if \(!shown && !trayWindowState\.canHideToTray\) com\.kardinal\.vpncontrol\.model\.ControlCode\.UNSUPPORTED\n"
+CLOSE = (r"onCloseRequest = \{\n\s+if \(trayWindowState\.canHideToTrayNow\(trayHost\.present\(\)\)\) \{\n"
+         r"\s+trayWindowState = trayWindowState\.withCloseRequestHiddenToTray\(\)\n\s+\} else \{\n\s+detachFrontend\(\)\n")
+HIDE = (r"if \(!shown && !trayWindowState\.canHideToTrayNow\(trayHost\.present\(\)\)\) "
+        r"com\.kardinal\.vpncontrol\.model\.ControlCode\.UNSUPPORTED\n")
+HOST = r"\n\s+val trayHost = remember \{ desktopTrayHost\(\) \}\n"
 CAN_HIDE = r"val canHideToTray: Boolean\n\s+get\(\) = traySupported && trayAvailable\n"
+CAN_HIDE_NOW = (r"fun DesktopTrayWindowState\.canHideToTrayNow\(trayHostPresent: Boolean\): Boolean \{\n"
+                r"\s+return canHideToTray && trayHostPresent\n")
 UNAVAILABLE = r"fun DesktopTrayWindowState\.withTrayUnavailable\(\): DesktopTrayWindowState \{\n\s+return copy\(\n\s+traySupported = false,"
 
 
@@ -56,11 +71,15 @@ def kotlin(relative):
 
 
 def tray_rules():
-    """TrayInstallMaxAttempts and TrayInstallRetryDelayMillis in seconds, read where DesktopTray.kt sets them."""
+    """TrayInstallMaxAttempts and TrayInstallRetryDelayMillis in seconds, read where DesktopTray.kt sets them.
+
+    Only with the Windows decision there: no icon offered without Shell_TrayWnd, available only while it is there.
+    """
     tray = kotlin("desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopTray.kt")
     attempts = re.findall(r"\nprivate const val TrayInstallMaxAttempts = ([0-9_]+)\n", tray)
     delay = re.findall(r"\nprivate const val TrayInstallRetryDelayMillis = ([0-9_]+)\n", tray)
-    if len(attempts) != 1 or len(delay) != 1 or not re.search(INSTALL, tray) or not re.search(TAKEN, tray) or not re.search(RETRIED, tray):
+    rules = (AREA, PROBED, WINDOWS, GATED, INSTALL, FOLLOWED, TAKEN, RETRIED)
+    if len(attempts) != 1 or len(delay) != 1 or not all(re.search(rule, tray) for rule in rules):
         raise AssertionError("the tray decision is not where the fake GUI reads it")
     return int(attempts[0].replace("_", "")), int(delay[0].replace("_", "")) / 1000
 
@@ -262,7 +281,8 @@ class NoTrayProduct(world.Product):
     def __init__(self, world_, owner):
         super().__init__(world_, owner)
         self.attempts, self.delay = tray_rules()
-        self.icon_without_tray_host = "refused"  # What AWT does with an icon where no Shell_TrayWnd is.
+        self.icon_without_tray_host = "taken"  # What AWT does with an icon where no Shell_TrayWnd is (run 6c7250f6).
+        self.tray_decision = "notification-area"  # DesktopTray.kt's, per tray_rules; "awt-list" is that of 2.2.17.
         self.close_fault = None
         self.next_desktop = "Default"
         self.frontends = {}
@@ -282,11 +302,14 @@ class NoTrayProduct(world.Product):
         return launcher, jvm, streams
 
     def tray_available_at(self, jvm):
-        """When trayAvailable turns true: at AWT's first take where a tray host exists; otherwise per the JDK switch."""
+        """When trayAvailable turns true: at the first attempt where a tray host exists. Without one, the product's
+        decision offers no icon and is never available; the 2.2.17 decision follows the JDK switch instead."""
         state = self.frontends[jvm.pid]
         first = state["launched"] + 0.5
         if state["desktop"] == "Default":
             return first
+        if self.tray_decision == "notification-area":
+            return None
         return {"refused": None, "taken": first, "late": first + (self.attempts // 2 - 1) * self.delay}[self.icon_without_tray_host]
 
     def can_hide(self, jvm):
@@ -524,6 +547,21 @@ class NoTrayRowTests(NoTrayBase):
         self.assertEqual(1, self.commands().count(("off",)))
         self.assert_closed()
 
+    def assert_no_tray_whatever_awt_answers(self, answer):
+        # DesktopTray.kt offers no icon where the desktop has no Shell_TrayWnd: AWT's answer never reaches the decision.
+        self.owner.product.icon_without_tray_host = answer
+        self.assertEqual(0, self.run_row())
+        self.assertEqual("UNSUPPORTED", self.events("no-tray-close-detach-observed")[0]["decision"]["code"])
+
+    def test_with_awt_taking_the_icon_as_run_6c7250f6_saw_the_product_has_no_tray(self):
+        self.assert_no_tray_whatever_awt_answers("taken")
+
+    def test_with_awt_taking_the_icon_at_a_later_retry_the_product_has_no_tray(self):
+        self.assert_no_tray_whatever_awt_answers("late")
+
+    def test_with_awt_refusing_the_icon_the_product_has_no_tray(self):
+        self.assert_no_tray_whatever_awt_answers("refused")
+
 
     def test_a_window_destroyed_while_it_was_listed_is_no_window_of_the_desktop(self):
         self.guest.destroyed = [0xDEAD0]
@@ -544,18 +582,21 @@ class NoTrayControlTests(NoTrayBase):
     """A wrong product answer ends the row 1 with everything it started closed; nothing is sent again."""
 
     def test_a_gui_that_takes_its_icon_without_a_tray_host_hides_into_none_and_fails_named(self):
-        # What DesktopTray.kt does on Windows if AWT takes the icon where no Shell_TrayWnd exists.
-        self.owner.product.icon_without_tray_host = "taken"
+        # The decision of 2.2.17 with AWT taking the icon where no Shell_TrayWnd exists: run 6c7250f6, event for event.
+        self.owner.product.tray_decision = "awt-list"
         self.assert_known_failure("gui-hidden-without-usable-tray", "decision-probe")
+        self.assertEqual([("OK", 0)], [(value["code"], value["exitCode"]) for value in self.events("no-tray-decision-probe-answer")])
         self.assertEqual(["gui-hide-probe"], [value["step"] for value in self.events("no-tray-gui-hidden")])
         self.assertEqual([], self.guest.posted, "no close after the product hid its window")
         self.assertEqual(0, self.gui().terminal["exitCode"], "the closing's quit ended the hidden GUI")
 
     def test_a_tray_taken_only_at_a_later_retry_is_still_caught_after_the_settle(self):
+        self.owner.product.tray_decision = "awt-list"
         self.owner.product.icon_without_tray_host = "late"
         self.assert_known_failure("gui-hidden-without-usable-tray", "decision-probe")
 
     def test_a_probe_before_the_last_install_attempt_would_have_passed_that_product(self):
+        self.owner.product.tray_decision = "awt-list"
         self.owner.product.icon_without_tray_host = "late"
         attempts, delay = tray_rules()
         with mock.patch.object(desktop, "SETTLE_SECONDS", (attempts // 2 - 10) * delay):
@@ -730,7 +771,9 @@ class NoTrayDecisionTests(unittest.TestCase):
         main = kotlin("desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/Main.kt")
         self.assertRegex(main, CLOSE)
         self.assertRegex(main, HIDE)
+        self.assertRegex(main, HOST)
         self.assertRegex(main, CAN_HIDE)
+        self.assertRegex(main, CAN_HIDE_NOW)
         self.assertRegex(main, UNAVAILABLE)
         application = kotlin("desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/DesktopFrontendApplication.kt")
         self.assertRegex(application, r"teardown\(\)\n[\s\S]*?terminate\(0\)\n}", "a detached frontend tears down, then exits 0")

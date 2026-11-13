@@ -219,6 +219,7 @@ private fun DesktopApplication(
             ),
         )
     }
+    val trayHost = remember { desktopTrayHost() }
     var exitRequested by remember { mutableStateOf(false) }
     var commandFailure by remember { mutableStateOf<com.kardinal.vpncontrol.model.ControlCode?>(null) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
@@ -341,13 +342,16 @@ private fun DesktopApplication(
             onTrayUnavailable = {
                 trayWindowState = trayWindowState.withTrayUnavailable()
             },
+            onTrayLost = {
+                trayWindowState = trayWindowState.withTrayLost()
+            },
         )
     }
 
     Window(
         visible = trayWindowState.windowVisible,
         onCloseRequest = {
-            if (trayWindowState.canHideToTray) {
+            if (trayWindowState.canHideToTrayNow(trayHost.present())) {
                 trayWindowState = trayWindowState.withCloseRequestHiddenToTray()
             } else {
                 detachFrontend()
@@ -357,7 +361,7 @@ private fun DesktopApplication(
     ) {
         DisposableEffect(window, visibility, trayWindowState.canHideToTray) {
             visibility.install { shown ->
-                if (!shown && !trayWindowState.canHideToTray) com.kardinal.vpncontrol.model.ControlCode.UNSUPPORTED
+                if (!shown && !trayWindowState.canHideToTrayNow(trayHost.present())) com.kardinal.vpncontrol.model.ControlCode.UNSUPPORTED
                 else {
                     trayWindowState = if (shown) trayWindowState.withWindowShown() else trayWindowState.withHideWindowRequested()
                     window.isVisible = shown
@@ -454,6 +458,27 @@ internal fun DesktopTrayWindowState.withTrayUnavailable(): DesktopTrayWindowStat
         hideOnFirstTrayAvailable = false,
         windowVisible = true,
     )
+}
+
+/**
+ * The tray's host went away after the tray was available (Windows: the notification area; Explorer ended or is
+ * restarting). Nothing may stay hidden in it: the window is shown, and the tray stays supported to be available
+ * again once its host is back.
+ */
+internal fun DesktopTrayWindowState.withTrayLost(): DesktopTrayWindowState {
+    return copy(
+        trayAvailable = false,
+        hideOnFirstTrayAvailable = false,
+        windowVisible = true,
+    )
+}
+
+/**
+ * Whether a close or a gui hide may put the window into the tray at this moment: a tray confirmed available whose
+ * host is still there ([desktopTrayHost]). Otherwise a close detaches and a hide is refused (DESKTOP-002).
+ */
+internal fun DesktopTrayWindowState.canHideToTrayNow(trayHostPresent: Boolean): Boolean {
+    return canHideToTray && trayHostPresent
 }
 
 internal fun DesktopTrayWindowState.withCloseRequestHiddenToTray(): DesktopTrayWindowState {
