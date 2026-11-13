@@ -206,7 +206,8 @@ never compared) and `<scene>.region.json` (target identity, rectangle, image off
 placement, backdrop, stable-frame attempts, occlusion checks, cursor, foreground and focus, session
 settings). `capture-local` checks the record and that every part equals its rectangle in the frame,
 then stamps both files' hashes and the record into `capture-<provider>.json`; `verify` refuses a
-Windows OS-owned scene without that evidence. A refused scene keeps `<scene>.frame.png` and
+Windows OS-owned scene without that evidence. A refused scene keeps `<scene>.frame.png`, the full
+screen at the moment of refusal taken before the scene closes its surfaces, and
 `<scene>.refusal.json` with its named reason: `non-canonical-display`, `target-missing`,
 `target-ambiguous`, `placement-not-converged`, `outside-work-area`, `target-not-foreground`,
 `cursor-not-parked`, `occluded`, `target-moved`, `unstable-frame`, `tray-icon-unavailable`,

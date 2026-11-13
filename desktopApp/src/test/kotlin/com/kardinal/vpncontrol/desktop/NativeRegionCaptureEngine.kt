@@ -66,6 +66,21 @@ internal class RegionCaptureEngine(
     private val platform: String,
     private val session: JsonObject,
 ) {
+    /**
+     * Runs [block] while the scene's surfaces are still open: a refusal raised inside it keeps the
+     * full screen of that moment, so its evidence never shows a desktop the scene already closed.
+     */
+    fun <T> keepingRefusedMoment(block: () -> T): T = try {
+        block()
+    } catch (refusal: RegionCaptureRefusedException) {
+        if (refusal.frame == null) {
+            runCatching { desktop.captureScreen(desktop.screen()) }
+                .onSuccess { refusal.frame = it }
+                .onFailure(refusal::addSuppressed)
+        }
+        throw refusal
+    }
+
     /** Locates a window by native identity and places its visible frame canonically. */
     fun placeWindow(
         sceneId: String,
@@ -74,7 +89,7 @@ internal class RegionCaptureEngine(
         canonical: CanonicalPlacement,
         move: (Long, PlacementMove, Boolean) -> Unit,
         maxPolls: Int = 80,
-    ): LocatedPart {
+    ): LocatedPart = keepingRefusedMoment {
         val found = awaitTarget(sceneId, rule, maxPolls, desktop::census) { desktop.pause(250) }
         val transitionsDisabled = desktop.disableTransitions(found.handle)
         val placed = placeCanonically(
@@ -90,7 +105,7 @@ internal class RegionCaptureEngine(
             move = { plan, resize -> move(found.handle, plan, resize) },
             pause = { desktop.pause(150) },
         )
-        return LocatedPart(
+        LocatedPart(
             role = role,
             target = placed.window.identity(rule.kind, rule.locator()),
             rect = placed.expected,
@@ -209,7 +224,8 @@ internal class RegionCaptureEngine(
             Files.writeString(output.resolve(regionRecordName(sceneId)), regionJson.encodeToString(JsonObject.serializer(), record) + "\n")
             return record
         } catch (refusal: RegionCaptureRefusedException) {
-            writeRefusal(output, sceneId, refusal, lastFrame)
+            if (refusal.frame == null) refusal.frame = lastFrame
+            writeRefusal(output, sceneId, refusal)
             throw refusal
         }
     }
@@ -222,16 +238,19 @@ internal class RegionCaptureEngine(
         }),
     )
 
-    /** Records a refusal raised before [capture] (for example while locating or placing a target). */
+    /**
+     * Records a refusal raised before [capture] (for example while locating or placing a target),
+     * with the frame [keepingRefusedMoment] kept before the scene closed its surfaces.
+     */
     fun recordRefusal(output: Path, refusal: RegionCaptureRefusedException) {
-        if (!Files.exists(output.resolve("${refusal.sceneId}.refusal.json"))) writeRefusal(output, refusal.sceneId, refusal, null)
+        if (!Files.exists(output.resolve("${refusal.sceneId}.refusal.json"))) writeRefusal(output, refusal.sceneId, refusal)
     }
 
     /** Keeps the frame of the refused moment and the named reason for the reviewer. */
-    private fun writeRefusal(output: Path, sceneId: String, refusal: RegionCaptureRefusedException, frame: BufferedImage?) {
+    private fun writeRefusal(output: Path, sceneId: String, refusal: RegionCaptureRefusedException) {
         runCatching {
             Files.createDirectories(output)
-            val diagnostic = frame ?: desktop.captureScreen(desktop.screen())
+            val diagnostic = refusal.frame ?: desktop.captureScreen(desktop.screen()).also { refusal.frame = it }
             writePng(diagnostic, output.resolve(regionFrameName(sceneId)))
             Files.writeString(
                 output.resolve("$sceneId.refusal.json"),

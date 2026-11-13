@@ -250,6 +250,37 @@ class NativeRegionCaptureTest {
     }
 
     @Test
+    fun aRefusalBeforeCaptureKeepsTheFrameOfTheRefusedMoment() {
+        // Placement refusals propagate through the scene's finally blocks (msiexec killed, dialogs
+        // and windows disposed) before the scene loop records them, so the kept "diagnostic" frame
+        // showed the torn-down desktop instead of the refused surface.
+        val output = Files.createTempDirectory("vpn-control-region-refused-moment")
+        try {
+            val desktop = FakeDesktop()
+            desktop.windows += nativeWindow(0x2A, pid = 700, className = "MsiDialogCloseClass", title = "vpn-control Setup",
+                bounds = RegionRect(40, 20, 1240, 740))
+            val engine = RegionCaptureEngine(desktop, "windows", buildJsonObject {})
+            val refusal = assertFailsWith<RegionCaptureRefusedException> {
+                engine.placeWindow(
+                    "windows-msi", "installer-wizard",
+                    TargetRule("installer-wizard", processId = 700, titleSuffix = WindowsRegionScenes.INSTALLER_TITLE_SUFFIX),
+                    WindowsRegionScenes.installerWizard,
+                    { _, _, _ -> error("an oversized wizard must not be moved") },
+                )
+            }
+            assertEquals(RegionCaptureRefusal.OUTSIDE_WORK_AREA, refusal.refusal)
+            desktop.windows.clear()
+            engine.recordRefusal(output, refusal)
+            val frame = ImageIO.read(output.resolve("windows-msi.frame.png").toFile())
+            assertEquals(WIZARD_RGB, frame.getRGB(600, 400) and 0xFFFFFF, "the kept frame shows the refused wizard")
+            val reason = Json.parseToJsonElement(Files.readString(output.resolve("windows-msi.refusal.json"))).jsonObject["reason"]
+            assertEquals("outside-work-area", reason!!.jsonPrimitive.content)
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun stableFrameNeedsTwoConsecutiveIdenticalCaptures() {
         var captures = 0
         val frames = listOf("loading", "painted", "painted")

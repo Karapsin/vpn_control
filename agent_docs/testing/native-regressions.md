@@ -218,7 +218,8 @@ dialog refuses only where it covers the region (before any image is published),
 a backdrop left above its target and a window shown only while the published pair
 was taken are refused as occluded, and caret-like changes, lost foreground or focus,
 unconverged placement, ambiguous or missing targets and unstable icons are refused
-with named reasons. It also pins
+with named reasons; a refusal keeps the frame of its own moment, not the desktop
+left after the scene closed its surfaces. It also pins
 the region record to the golden file that `scripts/test_visual_platform.py`
 validates. It runs in ordinary desktop tests. Real Windows window enumeration, DWM
 bounds, `Shell_NotifyIconGetRect`, foreground and session settings remain covered

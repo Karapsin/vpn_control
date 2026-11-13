@@ -217,14 +217,17 @@ class DesktopNativeVisualCaptureTest {
             }
         }
         try {
-            val handle = awtHandle(backdrop)
-            awaitTarget(
-                sceneId,
-                TargetRule("capture-backdrop", handle = handle, processId = region.desktop.processId),
-                40,
-                region.desktop::census,
-            ) { region.desktop.pause(100) }
-            block(part.copy(backdropHandle = handle))
+            // A refusal keeps the frame of its moment, before the backdrop and the target close.
+            region.engine.keepingRefusedMoment {
+                val handle = awtHandle(backdrop)
+                awaitTarget(
+                    sceneId,
+                    TargetRule("capture-backdrop", handle = handle, processId = region.desktop.processId),
+                    40,
+                    region.desktop::census,
+                ) { region.desktop.pause(100) }
+                block(part.copy(backdropHandle = handle))
+            }
         } finally {
             onEventThread {
                 backdrop.isVisible = false
@@ -305,7 +308,13 @@ class DesktopNativeVisualCaptureTest {
      * (Shell_NotifyIconGetRect). Their union would include the taskbar between them, other icons
      * and possibly the clock, so the union is never captured.
      */
-    private fun captureWindowsTray(region: WindowsRegion, sceneId: String, popup: Window, helper: Window, output: Path) {
+    private fun captureWindowsTray(
+        region: WindowsRegion,
+        sceneId: String,
+        popup: Window,
+        helper: Window,
+        output: Path,
+    ) = region.engine.keepingRefusedMoment {
         val desktop = region.desktop
         val menu = region.engine.placeWindow(
             sceneId,
@@ -323,29 +332,32 @@ class DesktopNativeVisualCaptureTest {
         val (before, identity) = desktop.trayIconRect(icon)
         val promotion = desktop.promoteTrayIcon(id)
         try {
-            val taskbar = desktop.taskbar() ?: refuseRegion(
-                sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "no visible ${WindowsRegionScenes.TASKBAR_CLASS}",
-            )
-            val (iconRect, reads) = awaitIconRect(sceneId, 40, taskbar.bounds, { desktop.trayIconRect(icon).first }) {
-                desktop.pause(250)
-            }
-            val iconPart = LocatedPart(
-                role = "tray-icon",
-                target = JsonObject(identity + ("taskbar" to taskbar.identity("taskbar", "class=${WindowsRegionScenes.TASKBAR_CLASS}"))),
-                rect = iconRect,
-                placement = buildJsonObject {
-                    put("policy", "shell-placed")
-                    put("rect_before_promotion", before?.json() ?: JsonNull)
-                    put("promotion", promotion?.let { "${it.original} -> ${it.capture}" } ?: "not-applied")
-                    put("reads", reads)
-                },
-                targetHandle = taskbar.handle,
-                keyboardCues = false,
-                current = { desktop.trayIconRect(icon).first },
-            )
-            withRegionBackdrop(region, sceneId, menu) { backedMenu ->
-                // The helper window takes focus so neither the menu nor the taskbar shows focus.
-                region.engine.capture(sceneId, output, listOf(backedMenu, iconPart), awtHandle(helper))
+            // A refusal keeps the frame of its moment before the icon's promotion is restored.
+            region.engine.keepingRefusedMoment {
+                val taskbar = desktop.taskbar() ?: refuseRegion(
+                    sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "no visible ${WindowsRegionScenes.TASKBAR_CLASS}",
+                )
+                val (iconRect, reads) = awaitIconRect(sceneId, 40, taskbar.bounds, { desktop.trayIconRect(icon).first }) {
+                    desktop.pause(250)
+                }
+                val iconPart = LocatedPart(
+                    role = "tray-icon",
+                    target = JsonObject(identity + ("taskbar" to taskbar.identity("taskbar", "class=${WindowsRegionScenes.TASKBAR_CLASS}"))),
+                    rect = iconRect,
+                    placement = buildJsonObject {
+                        put("policy", "shell-placed")
+                        put("rect_before_promotion", before?.json() ?: JsonNull)
+                        put("promotion", promotion?.let { "${it.original} -> ${it.capture}" } ?: "not-applied")
+                        put("reads", reads)
+                    },
+                    targetHandle = taskbar.handle,
+                    keyboardCues = false,
+                    current = { desktop.trayIconRect(icon).first },
+                )
+                withRegionBackdrop(region, sceneId, menu) { backedMenu ->
+                    // The helper window takes focus so neither the menu nor the taskbar shows focus.
+                    region.engine.capture(sceneId, output, listOf(backedMenu, iconPart), awtHandle(helper))
+                }
             }
         } finally {
             promotion?.restore?.invoke()

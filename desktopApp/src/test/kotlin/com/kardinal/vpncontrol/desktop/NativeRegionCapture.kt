@@ -44,7 +44,10 @@ internal class RegionCaptureRefusedException(
     val sceneId: String,
     val refusal: RegionCaptureRefusal,
     val detail: String,
-) : IllegalStateException("$sceneId: infrastructure failure [${refusal.reason}]: $detail")
+) : IllegalStateException("$sceneId: infrastructure failure [${refusal.reason}]: $detail") {
+    /** Full screen of the refused moment, taken before the scene closes its surfaces. */
+    var frame: BufferedImage? = null
+}
 
 internal fun refuseRegion(sceneId: String, refusal: RegionCaptureRefusal, detail: String): Nothing =
     throw RegionCaptureRefusedException(sceneId, refusal, detail)
