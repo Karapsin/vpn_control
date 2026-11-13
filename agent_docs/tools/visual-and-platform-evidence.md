@@ -1133,15 +1133,18 @@ left behind parks with everything else kept. Anything else parks and ends UNKNOW
 lost, transport or foreign reply to the request, or any failure while the operation
 is still open.
 
-Admitted: `restart-grant`, for `scoped-uac-tun-traffic`, the TUN half of
-`exact-child-stop` (beside `windows-proxy-lifecycle.sibling-off`) and the TUN half of
+Admitted: `restart-grant`, for `scoped-uac-tun-traffic` and the TUN half of
 `scoped-elevation` (beside `windows-public-update.success-off`, which counts with the
-target its job reads back after the task, as every update row does). Admission refuses it with
+target its job reads back after the task, as every update row does). It does not prove
+the TUN half of `exact-child-stop`: no unrelated runtime runs beside it, so its off
+record cannot show the elevated stop spares one the way `sibling-off` shows it for the
+proxy off, and that scenario stays unmapped until a grant variant keeps an owned
+sibling runtime alive through the product's off. Admission refuses it with
 `windows_scenario_uac_profile_unreviewed` unless the deployment holds a reviewed
 `vpn-broker` profile that `windows_uac_decision`'s own load admits: without one the
-decision refuses and the prompt expires into the grant's `CANCELLED`, a failed run.
-A deny row needs none, since its run is the prompt `windows-uac-review` captures the
-profile's frame from. The approved broker runs elevated as the approving
+decision refuses and the prompt expires into the grant's `CANCELLED`, a run that can
+only stay unsettled. A deny row needs none, since its run is the prompt
+`windows-uac-review` captures the profile's frame from. The approved broker runs elevated as the approving
 administrator, so only its TUN SYSTEM collector (`windows_tun_native_observer`, the
 contract's `COLLECTORS["tun"]`) proves it. The row carries that collector, the
 receipts module and the update rows' collector chain, and its harness names the
@@ -1171,17 +1174,28 @@ publishes the ready record, and once both privileged handles signal after the
 product's own off, the off record; then it waits for the owner's hold. Folder and
 file must be machine-written, and the stages join both records to the lease and
 the product source the row runs (which the worker request does not carry).
-Between the records the direct sampler runs, then the product's own `off`; the off
-record proves exactly the approved broker and runtime ended, with no broad process
-stop. The closing census, the fixture stop and quit follow; the driver then hands
-its result to the hold, which the job's release program frees. The receipt keeps
-`tun.collectors` and `tun.broker` (controller, broker, runtime, parents, the
-console). Collect passes the row only with the decision's own input terminal
-(approve, prompt closed): the receipt proves the approved broker, not who typed the
-credential. A grant whose prompt expired (`CANCELLED`) or that ended with a code it
-does not expect closes by its census alone and ends 1, its hold retired unused,
-since no collector was asked. Once its collector was asked, any failure parks:
-the collector waits on the hold, which only a passed driver releases.
+Between the records the direct sampler runs. The product's own `off` goes out only
+while the product's status still shows its TUN runtime running in VPN mode, and the
+stages take the guest's clock just before it; the off record counts only when both
+original handles signaled with exit times after that moment, since the collector
+publishes off once both signal for any reason, a crash included. It proves exactly the
+approved broker and runtime ended after the product's off, not that the elevated stop
+spared any other process. The closing census, the fixture stop and quit follow; the
+driver then hands its result to the hold, which the job's release program frees. The
+receipt keeps `tun.collectors`, `tun.broker` (controller, broker, runtime, parents,
+the console) and `tun.knownEnd`, the known end the owner's own journal in the evidence
+copy names (`cancelled`, an unexpected code, none, or `unread`). Collect passes the row
+only with the decision's own input terminal (approve, prompt closed): the receipt
+proves the approved broker, not who typed the credential. A grant whose prompt expired
+(`CANCELLED`) or that ended with a code it does not expect closes by its census alone
+and ends 1, its hold retired unused, since no collector was asked. Collect settles a
+grant that failed by that `CANCELLED` only with the decision's terminal of a typed
+approval and a closed prompt, the product's failure; a prompt the decision never typed
+into expires into the same `CANCELLED`, so without that terminal the run stays
+unsettled, as a deny row's pass does, and never stands as a failure of the product.
+Once its collector was asked, any failure parks: the collector waits on the hold,
+which only a passed driver releases, so a product failure after the TUN came up ends
+UNKNOWN, which blocks its requirement like a failed run.
 
 Refused before any journal: `find-best-grant` and `find-best-deny`, with
 `windows_scenario_tun_find_best_unproven`: Find Best validates every candidate
@@ -1198,7 +1212,10 @@ The direct sampler is the TUN traffic tool: plain HTTP to `198.18.0.1:80` with n
 SOCKS step, under the ordinary token, answered by the row's own loopback upstream
 (`socks_http_fixture.py`, through the runtime fixture). The stages run it only
 between a grant's ready record and its off. Without the TUN that address would
-leave the guest, so it is never a negative control.
+leave the guest, so it is never a negative control, and each connection is bound to
+the TUN's own address, `172.19.250.1`, before it connects: under Windows' strong host
+send a packet from that address leaves only through the interface that holds it, and
+once the TUN is gone the bind itself fails and nothing is sent.
 
 Two scoped-VPN scenarios still have no row. `dns-ws-ssh-cache-resources` must show,
 with an approved broker: the captured config keeps `path` only in URL contexts
@@ -1678,7 +1695,8 @@ coordinator's argument. `MATRIX_SCENARIOS` is the one reviewed table, built from
 design.md adapter steps 4-8 with the names the code accepts: all 48 Windows
 scenarios and the 16 Windows document scenarios. A scenario whose design rows are not
 all built, or whose only row declares procedures still to do, maps to `()` and stays
-missing: the TUN fault and config rows (no variant exists), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
+missing: the TUN fault and config rows (no variant exists), `exact-child-stop` (no grant variant keeps a sibling
+runtime through its off, so its TUN half has no row), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
 is refused before any journal), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
 scenario), and `windows-visual`, which stays on `visual_platform` and
@@ -1691,8 +1709,8 @@ run passes only with it observed denied, and one whose probe proved no denial fa
 that scenario alone (`failed-principal`, below). RSP also names `cli-disconnect-long-work` and its part of
 `operation-progress-cancellation`, `windows-scoped-tun.restart-deny` names
 `denial-preserves-active-a`, `windows-scoped-tun.restart-grant` names
-`scoped-uac-tun-traffic` and, beside its other half, `exact-child-stop` and
-`scoped-elevation`, `windows-proxy-lifecycle.scheduled-refresh` names
+`scoped-uac-tun-traffic` and, beside its other half, `scoped-elevation`,
+`windows-proxy-lifecycle.scheduled-refresh` names
 `scheduled-without-gui` alone, and `windows-proxy-lifecycle.no-tray-close` names
 `close-detach-traffic` alone and `gui-attach-detach` with `gui-pending`: that row
 proves the attach, a crash and the re-attach, and DESKTOP-001 names a detach apart

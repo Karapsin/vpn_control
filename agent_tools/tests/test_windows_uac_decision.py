@@ -37,6 +37,7 @@ from agent_tools import windows_ordinary_dedicated_driver as dedicated_driver
 from agent_tools import windows_lifecycle_runtime_stages as runtime_stages
 from agent_tools import windows_tun_stages as tun_stages
 from agent_tools import windows_uac_decision as decision
+from agent_tools.windows_system_collector import collector_contract
 from agent_tools.tests.test_native_scenario_windows import Base as ScenarioBase, DriverBase, FakeSsh
 from agent_tools.tests.test_native_vm_spec import request as vm_request
 from agent_tools.tests.test_windows_idle_receipt_classes import Receipts, current_source
@@ -2307,7 +2308,7 @@ class CancelledGrantDriverTests(unittest.TestCase):
         self.owner.inputs["tun"] = {"schemaVersion": 1, "variant": variant if inner is None else inner,
                                     "installedAdmissionArtifactId": runtime["installedAdmissionArtifactId"], "ordinaryContextArtifactId": "peer-context",
                                     "runtimeConfigPath": str(PureWindowsPath(runtime["workspace"]) / "runtime-config.json"),
-                                    **({"collectorSourceSha256": dedicated_driver.TUN_COLLECTOR_SHA} if variant.endswith("grant") else {}), **changes}
+                                    **({"collectorSourceSha256": collector_contract.COLLECTORS["tun"]} if variant.endswith("grant") else {}), **changes}
         self.owner.modules[path] = types.SimpleNamespace(
             begin=begin or (lambda *args: self.owner.calls.append(("tun-begin", args[2]["variant"], args[5].WindowsNative())) or "lease"),
             finish=finish, closing=closing or (lambda *args: self.owner.calls.append(("tun-closing", args[1], args[2].WindowsNative()))),

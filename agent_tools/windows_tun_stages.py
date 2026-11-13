@@ -50,6 +50,15 @@ def settled(lease):
                                           or lease.get('offFinished') is True)
 
 
+def guest_filetime():
+    """The guest's UTC system time as a FILETIME (100 ns since 1601): the clock GetProcessTimes stamps an exit with."""
+    import ctypes
+    value=ctypes.c_ulonglong(0)
+    ctypes.windll.kernel32.GetSystemTimePreciseAsFileTime(ctypes.byref(value))
+    require(value.value>0,'scoped-tun-guest-clock')
+    return value.value
+
+
 def tun_routes(subnet=TUN_SUBNET):
     """IPv4 routes and addresses on the generated TUN subnet, from the IP helper tables a standard user reads."""
     import ctypes
@@ -284,31 +293,46 @@ def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
 
 
 def begin_off(owner,lease,runtime):
-    require(lease in owner.tun_operation_leases and lease['finished']
+    require(lease in owner.tun_operation_leases and lease['finished'] and lease.get('nativeReady') is not None
             and lease['inputs']['variant'].endswith('grant') and not lease.get('offRequested'),
             'scoped-tun-explicit-off-once')
-    lease['offRequested']=True
     state=lease['state']
+    # The product's own view right before its off: the TUN runtime it started still runs. A runtime that ended by itself
+    # (a crash after the last sample, say) leaves an off that stops nothing of the product's: no exact stop to prove.
+    before=runtime.result(owner,state['workspace'],state['identity'],'status')
+    require(before['data']['runtimeRunning'] is True and before['data']['activeMode']=='vpn',
+            'scoped-tun-runtime-ended-before-off')
+    # The guest clock just before the off goes out: finish_off takes only originals that exited after it.
+    lease.update(offRequested=True,offRequestedFileTime=guest_filetime())
     # Product owns retirement of the exact elevated child; no process kill.
     terminal=runtime.result(owner,state['workspace'],state['identity'],'off')
     status=runtime.result(owner,state['workspace'],state['identity'],'status')
     require(status['data']['runtimeRunning'] is False,'scoped-tun-public-off-runtime-still-running')
     lease['offTerminal']=terminal
-    owner.event('scoped-tun-awaiting-exact-off-observation',{'accepted':lease['accepted'],
-        'offTerminal':terminal,'status':status,'originalNativeCustodyMustBeRetained':True})
+    owner.event('scoped-tun-awaiting-exact-off-observation',{'accepted':lease['accepted'],'statusBeforeOff':before,
+        'offRequestedFileTime':lease['offRequestedFileTime'],'offTerminal':terminal,'status':status,
+        'originalNativeCustodyMustBeRetained':True})
     return terminal
 
 
 def finish_off(owner,lease,file_record,receipts):
-    require(lease.get('offRequested') and not lease.get('offFinished'),'scoped-tun-original-off-stage')
+    require(lease.get('offRequested') and not lease.get('offFinished') and type(lease.get('offRequestedFileTime')) is int,
+            'scoped-tun-original-off-stage')
     record=read_native_record(owner,lease,file_record,receipts,'off')
     rows=record['originalProcesses']
     require(len(rows)==2 and {row['role'] for row in rows}=={'helperActor','runtimeActor'}
             and all(row['originalHandleSignaled'] is True and row['times']['creationFileTime']==row['creationFileTime']
                     for row in rows), 'scoped-tun-original-process-handles-not-proven-terminal')
+    # The collector publishes off once both original handles signal, for whatever reason: only an exit after the
+    # product's own off was asked for is that off's. One that ended before it (a crash) is no exact stop.
+    requested=lease['offRequestedFileTime']
+    require(all(type(row['times'].get('exitFileTime')) is int and row['times']['exitFileTime']>requested for row in rows),
+            'scoped-tun-original-ended-before-the-off')
     lease['offFinished']=True
-    owner.event('scoped-tun-exact-off-observed',{'offTerminal':lease['offTerminal'],'record':record,
-        'noBroadProcessStop':True,'originalOwnerCleanupStillRequired':True})
+    # This proves the off ended exactly these two originals after it was asked for. It cannot show the elevated stop
+    # spared an unrelated runtime: none runs beside the grant (exact-child-stop stays unmapped for TUN).
+    owner.event('scoped-tun-exact-off-observed',{'offTerminal':lease['offTerminal'],'offRequestedFileTime':requested,
+        'record':record,'exitedAfterOffRequest':True,'siblingSurvivalObserved':False,'originalOwnerCleanupStillRequired':True})
     return record
 
 

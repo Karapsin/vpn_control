@@ -3,7 +3,10 @@
 The pattern of scripts/run_desktop_vpn_integration.py. It runs under the ordinary token only
 while the row's own TUN is proven up, so each connection is captured by that TUN and answered
 by the row's loopback upstream. It opens no listener and is never a negative control: without
-the TUN this address would leave the guest. Standard library only.
+the TUN this address would leave the guest. So every connection is bound to the TUN's own
+address before it connects: Windows sends by the strong host model, so a packet from that
+address leaves only through the interface that holds it, and once the TUN is gone the bind
+itself fails and nothing is sent. Standard library only.
 """
 import json
 import math
@@ -12,11 +15,13 @@ import sys
 import time
 
 TARGET = ("198.18.0.1", 80)
+# DesktopProxyConfigFactory's generated TUN address, 172.19.250.1/30 (windows_tun_stages.TUN_SUBNET), any local port.
+SOURCE = ("172.19.250.1", 0)
 REQUEST = b"GET /probe HTTP/1.1\r\nHost: 198.18.0.1\r\nConnection: close\r\n\r\n"
 
 
 def sample(expected, timeout, connect=socket.create_connection):
-    with connect(TARGET, timeout=timeout) as stream:
+    with connect(TARGET, timeout=timeout, source_address=SOURCE) as stream:
         stream.settimeout(timeout)
         stream.sendall(REQUEST)
         raw = b""

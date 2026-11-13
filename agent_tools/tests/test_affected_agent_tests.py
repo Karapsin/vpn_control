@@ -596,8 +596,39 @@ class WindowsNativeCausalEnrollmentTests(unittest.TestCase):
             'agent_tools.tests.test_windows_defender_service_roles.NativeWindowsDefenderServiceTests',
             'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_complete_before_RED_fixed_desktop_roles_GREEN',
             'agent_tools.tests.test_windows_desktop_background.NativeWindowsDesktopBackgroundTests.test_target_parent_package_account_and_configured_mismatches_block',
-            'agent_tools.tests.test_windows_console_session_roles'])
+            'agent_tools.tests.test_windows_console_session_roles',
+            'agent_tools.tests.test_windows_tun_grant.WindowsCensusTests',
+            'agent_tools.tests.test_windows_update_grant_collectors.WindowsReaderTests.test_the_publisher_backup_open_and_census'])
         self._assert_command_covers_unaffected(raw, name)
+
+    def test_every_windows_test_of_the_publishers_observer_type_runs_in_windows_ci(self):
+        """The publisher template's C# observer (Add-ObserverType: the census and the backup reader every update row's and
+        the TUN grant's collector-observe loads) is compiled and run only by Windows-only tests, and Windows CI runs agent
+        tests only through the explicit include lists of its native steps. Each test that runs that type must be named in
+        the readiness native step, or no automated check ever compiles it."""
+        root = Path(__file__).resolve().parents[2]
+        name = 'Verify Windows readiness native causal guards'
+        command = _native_causal_commands((root / '.github/workflows/windows-desktop.yml').read_bytes(), (name,))[name]
+        included = command[command.index('--include') + 1:]
+        found = []
+        # The modules that load the template's observer type through observer_function (test_windows_update_grant_collectors).
+        for stem, raw in (('test_windows_tun_grant', (root / 'agent_tools/tests/test_windows_tun_grant.py').read_text(encoding='utf-8')),
+                          ('test_windows_update_grant_collectors',
+                           (root / 'agent_tools/tests/test_windows_update_grant_collectors.py').read_text(encoding='utf-8'))):
+            tree = ast.parse(raw)
+            for node in tree.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for method in node.body:
+                    if isinstance(method, ast.FunctionDef) and method.name.startswith('test_') and any(
+                            isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == 'observer_function'
+                            for call in ast.walk(method)):
+                        found.append('.'.join(('agent_tools.tests', stem, node.name, method.name)))
+        self.assertEqual(['agent_tools.tests.test_windows_tun_grant.WindowsCensusTests.test_a_census_with_children_also_names_what_the_image_started',
+                          'agent_tools.tests.test_windows_update_grant_collectors.WindowsReaderTests.test_the_publisher_backup_open_and_census'],
+                         found)
+        self.assertEqual([], [test for test in found if not any(test == item or test.startswith(item + '.') for item in included)],
+                         'a Windows test of the publisher observer type that no Windows CI step runs')
 
 
 class DocumentationResourceSelectionTests(unittest.TestCase):

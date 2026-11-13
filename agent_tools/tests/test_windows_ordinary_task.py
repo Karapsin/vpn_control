@@ -1258,6 +1258,7 @@ class DocumentCausalRetentionTests(unittest.TestCase):
 
 from agent_tools import windows_ordinary_dedicated_driver as dedicated_driver
 from agent_tools.windows_system_collector import hold_protocol as dedicated_protocol
+from agent_tools.windows_system_collector import collector_contract as dedicated_contract
 
 
 class DedicatedParked(BaseException):
@@ -1384,7 +1385,7 @@ class DedicatedDispatchPeer:
         return {"schemaVersion": 1, "collectorOperationId": "f2217b3c-82c1-4862-bab8-09b8498e7929",
                 "collectorRoot": r"C:\ProgramData\VpnControlOrdinaryTask-2c731e91-c158-4e8a-b779-54076ce85229\system-collector-f2217b3c-82c1-4862-bab8-09b8498e7929",
                 "scope": "tun", "stage": "off", "sourceSha": "a" * 40, "systemContractSourceSha256": dedicated_driver.CONTRACT_SHA,
-                "systemWorkerSourceSha256": dedicated_driver.SYSTEM_WORKER_SHA, "collectorSourceSha256": dedicated_driver.TUN_COLLECTOR_SHA,
+                "systemWorkerSourceSha256": dedicated_driver.SYSTEM_WORKER_SHA, "collectorSourceSha256": dedicated_contract.COLLECTORS["tun"],
                 "receiptsPath": path}
 
     def harness(self, values):

@@ -167,6 +167,8 @@ TRAFFIC_LEAF = "traffic-input.json"
 UPSTREAM_TOKEN = "vpn-control-reboot-upstream"  # windows_postboot_source_roles.UPSTREAM_TOKEN
 DECLARED_ROLES = ("guiLauncher", "gui", "controllerLauncher", "controller", "runtime")
 _EVENT_NAME = re.compile(r"event-[0-9]{6}-([a-z0-9-]{1,80})\.json\Z")
+# A TUN grant's known end as the dedicated driver names it: "cancelled", or a ControlCode final code.
+_KNOWN_END = re.compile(r"(?:cancelled|[A-Z][A-Z_]{1,40})\Z")
 AUTOSTART_INTENTS = frozenset({"autostart-public-toggle-intent", "autostart-highest-fixture-intent", "product-autostart-start-intent"})
 # readiness-reboot's own VM-root journal: the only reboot submitter's record of the reboot a postboot follows.
 _RECOVERY_INTENT = re.compile(r"readiness-recovery-([0-9a-f]{64})\.intent\.json\Z")
@@ -1604,6 +1606,25 @@ class Job:
         phase = self.row["reboot"]["phase"]
         return {"phase": phase, "autostart": autostart, "preboot": (self.plan.get("prior") or {}).get("preboot") if phase == "post" else None,
                 "readinessReboot": self.readiness_reboot}
+
+    def _tun_known_end(self):
+        """A TUN grant's own known end, as its owner's journal in the evidence copy names it: the knownFailure of the
+        driver's one dedicated-proxy-lifecycle-known-closed event ("cancelled" for the product's CANCELLED of the request,
+        which an unanswered prompt also ends in, or the unexpected terminal code), None when no known end closed the row,
+        "unread" when the copy cannot say. Read only; it never changes the job's exit."""
+        if self.evidence is None:
+            return "unread"
+        try:
+            raw = (self.data / self.evidence["name"]).read_bytes()
+            if _sha(raw) != self.evidence["sha256"]:
+                return "unread"
+            closed = [value["value"] for _, value in evidence_events(raw) if value["kind"] == "dedicated-proxy-lifecycle-known-closed"]
+        except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile):
+            return "unread"
+        if len(closed) > 1 or closed and type(closed[0]) is not dict:
+            return "unread"
+        known = closed[0].get("knownFailure") if closed else None
+        return known if known is None or type(known) is str and _KNOWN_END.fullmatch(known) else "unread"
 
     def _prior_root(self, prior):
         """The preboot's own operation root, under the profile its receipt recorded."""
@@ -3243,7 +3264,8 @@ class Job:
                     receipt["tun"] = {"variant": self.row["tun"]["variant"],
                                       "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],
                                                                                            "released": record["release"] is not None})
-                                                     for stage, record in sorted(self.collected.items())}}
+                                                     for stage, record in sorted(self.collected.items())},
+                                      "knownEnd": self._tun_known_end()}
                     if self.tun_facts is not None:
                         receipt["tun"]["broker"] = self.tun_facts
                 raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")

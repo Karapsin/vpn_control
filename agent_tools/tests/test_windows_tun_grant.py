@@ -54,6 +54,8 @@ WORKER_PID, SERVE_PID, JVM_PID, BROKER_PID, CONHOST_PID, RUNTIME_PID = 902, 903,
 WORKER_BIRTH, SERVE_BIRTH, JVM_BIRTH = 134368653065000003, 134368653065000004, 134368653065000006
 BROKER_BIRTH, CONHOST_BIRTH, RUNTIME_BIRTH = 134368653065000030, 134368653065000031, 134368653065000032
 CONFIG = b'{"inbounds":[{"type":"tun"}]}'
+# The guest FILETIME the stages take just before the product's own off, and the exit time GetProcessTimes reports after it.
+OFF_ASKED, OFF_EXITED = 134368653080000000, 134368653080000420
 
 
 def sha(raw):
@@ -253,8 +255,10 @@ class DriverGrantTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+        # The driver's own clock only, created where an unfixed driver has none: these tests then reach its run() and its refusal.
+        clock = types.SimpleNamespace(sleep=lambda seconds: self.owner.calls.append(("sleep", seconds)))
         for patcher in (mock.patch.object(dedicated_driver, "__file__", str(DedicatedDispatchPeer.SOURCE_ROOT / "windows_ordinary_dedicated_driver.py")),
-                        mock.patch.object(dedicated_driver.time, "sleep", lambda seconds: self.owner.calls.append(("sleep", seconds)))):
+                        mock.patch.object(dedicated_driver, "time", clock, create=True)):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.owner = DedicatedDispatchPeer(self.root)
@@ -271,7 +275,7 @@ class DriverGrantTests(unittest.TestCase):
         owner.inputs["modules"]["tun"] = path
         owner.inputs["tun"] = {"schemaVersion": 1, "variant": variant, "installedAdmissionArtifactId": runtime["installedAdmissionArtifactId"],
                                "ordinaryContextArtifactId": "peer-context", "runtimeConfigPath": str(PureWindowsPath(runtime["workspace"]) / "runtime-config.json"),
-                               "collectorSourceSha256": dedicated_driver.TUN_COLLECTOR_SHA,
+                               "collectorSourceSha256": contract.COLLECTORS["tun"],
                                "samplerPath": owner.source("windows_tun_direct_sampler.py", "agent_tools/windows_tun_direct_sampler.py")}
         self.records = GrantRecords(owner.calls)
         self.hold_inputs = owner.tun_grant(self.records)
@@ -342,7 +346,7 @@ class DriverGrantTests(unittest.TestCase):
         self.assertEqual([{"stage": "tun", "jobId": None, "productOperationId": PRODUCT_OPERATION, "originRequestId": REQUEST_ID,
                            "controllerId": "peer-controller", "serve": {"pid": SERVE_PID, "birthFileTimeUtc": str(SERVE_BIRTH)},
                            "ordinaryTaskOperationId": self.OPERATION, "evidenceFile": self.EVIDENCE + "\\ready.json",
-                           "collectorSourceSha256": dedicated_driver.TUN_COLLECTOR_SHA, "resubmitAllowed": False}], need, "asked once")
+                           "collectorSourceSha256": contract.COLLECTORS["tun"], "resubmitAllowed": False}], need, "asked once")
         self.assertLess(calls.index((dedicated_driver.NATIVE_NEED, need[0])), calls.index(("ready-handed", sha(b'{"stage":"ready"}'))))
         self.assertEqual(2, calls.count(("sleep", 0.2)), "a record not there yet is pending, never a failure")
         handed = self.events("scoped-tun-native-record-handed")
@@ -399,7 +403,7 @@ class DriverGrantTests(unittest.TestCase):
                     self.assertNotIn("wait-release", self.owner.calls)
 
     def test_the_ready_record_is_asked_for_once_and_the_off_record_only_after_it(self):
-        lease = {"inputs": {"variant": "restart-grant", "programData": "C:\\ProgramData", "collectorSourceSha256": dedicated_driver.TUN_COLLECTOR_SHA},
+        lease = {"inputs": {"variant": "restart-grant", "programData": "C:\\ProgramData", "collectorSourceSha256": contract.COLLECTORS["tun"]},
                  "state": {"identity": "peer-controller", "serve": types.SimpleNamespace(pid=SERVE_PID, birth=str(SERVE_BIRTH))},
                  "accepted": {"operationId": PRODUCT_OPERATION, "requestId": REQUEST_ID}}
         self.owner.operation = self.OPERATION
@@ -444,8 +448,8 @@ class DriverGrantTests(unittest.TestCase):
     def test_only_the_restart_grant_reaches_the_collector_route(self):
         self.assertEqual(frozenset({"restart-grant"}), dedicated_driver.TUN_GRANT_VARIANTS)
         self.assertEqual(frozenset({"restart-deny", "restart-grant"}), dedicated_driver.TUN_VARIANTS)
-        self.assertEqual(contract.COLLECTORS["tun"], dedicated_driver.TUN_COLLECTOR_SHA)
-        self.assertEqual(sha((ROOT / "agent_tools/windows_tun_native_observer.py").read_bytes()), dedicated_driver.TUN_COLLECTOR_SHA)
+        self.assertEqual(contract.COLLECTORS["tun"], getattr(dedicated_driver, "TUN_COLLECTOR_SHA", None))
+        self.assertEqual(sha((ROOT / "agent_tools/windows_tun_native_observer.py").read_bytes()), contract.COLLECTORS["tun"])
         self.owner = DedicatedDispatchPeer(self.root)
         self.grant(variant="find-best-grant")
         with self.assertRaisesRegex(ValueError, "^dedicated-finite-proxy-variants-only$"):
@@ -567,6 +571,34 @@ class TunGrantQga(UpdateQga):
         return {"exited": True, "exitcode": 0, "out-data": out_data(proof)}
 
 
+def owner_journal(m, events):
+    """The evidence copy as the publisher zips it: the owner's own event files, one per event, with its operation."""
+    import io
+    import zipfile
+    memory = io.BytesIO()
+    with zipfile.ZipFile(memory, "w") as archive:
+        for ordinal, (kind, value) in enumerate(events):
+            archive.writestr("event-%06d-%s.json" % (ordinal, kind), json.dumps(
+                {"schemaVersion": 1, "operationId": m["operationId"], "ordinal": ordinal, "kind": kind, "value": value}, sort_keys=True))
+        archive.writestr("child-0000.stdout.raw", b"")
+    return memory.getvalue()
+
+
+def closed(**known):
+    """The dedicated driver's last lifecycle event: a pass, or a known end it closed by the same steps (knownFailure)."""
+    return ("dedicated-proxy-lifecycle-known-closed", {"variant": "restart-grant", "controllerId": CONTROLLER, "sourceSha": "a" * 40,
+                                                       "nativeAcceptanceComplete": False, **known})
+
+
+AWAITING = ("scoped-tun-awaiting-current-input", {"variant": "restart-grant", "inputNotPerformedByThisAdapter": True, "replayAllowed": False})
+GRANT_PASSED = (AWAITING, ("scoped-tun-public-outcome", {"variant": "restart-grant", "terminal": {"code": "OK"}}),
+                ("scoped-tun-exact-off-observed", {"exitedAfterOffRequest": True}), closed())
+GRANT_CANCELLED = (AWAITING, ("scoped-tun-grant-cancelled-known", {"variant": "restart-grant", "terminal": {"code": "CANCELLED", "final": True},
+                                                                   "knownFailure": True, "replayAllowed": False}),
+                   ("scoped-tun-closing-census", {"replayAllowed": False}), closed(knownFailure="cancelled"),
+                   ("dedicated-tun-grant-hold-retired", {"result": 1, "collectorRequested": False, "replayAllowed": False}))
+
+
 class TunGrantFamilyTests(FamilyBase):
     """windows-scoped-tun.restart-grant on the fake VM: the proxy family's job, the TUN stages, and its one collector stage
     served inside the run when the owner asks for the ready record."""
@@ -574,6 +606,7 @@ class TunGrantFamilyTests(FamilyBase):
     def setUp(self):
         super().setUp()
         self.qga = TunGrantQga()
+        self.qga.evidence_factory = lambda m: owner_journal(m, GRANT_PASSED)
         self.rt = FakeRuntime(self.vm, self.qga)
         loaded = job.Job._load
 
@@ -645,6 +678,7 @@ class TunGrantFamilyTests(FamilyBase):
         tun = receipt["tun"]
         self.assertEqual(("restart-grant", {"tun": {"requestSha256": self.qga.request_pins[0]["sha256"], "released": True}}),
                          (tun["variant"], tun["collectors"]))
+        self.assertIsNone(tun.get("knownEnd", "absent"), "a pass closed with no known end")
         self.assertEqual({"pid": JVM_PID, "creationFileTime": JVM_BIRTH, "relaunched": True}, tun["broker"]["controller"])
         self.assertEqual(({"pid": JVM_PID, "alive": True, "matches": True}, ["conhost.exe"]), (tun["broker"]["broker"]["parent"], tun["broker"]["auxiliary"]))
         self.assertTrue((Path(plan["dataDirectory"]) / "collectors" / "tun" / "census.json").exists())
@@ -681,7 +715,9 @@ class TunGrantFamilyTests(FamilyBase):
                 return 0 if self.row["pid"] in signaled else 258
 
             def times(self):
-                return {"creationFileTime": int(self.row["creationFileTime"])}
+                # GetProcessTimes: a live process has no exit time; one the product's own off ended exited after it was asked.
+                return {"creationFileTime": int(self.row["creationFileTime"]), "exitFileTime": OFF_EXITED if self.row["pid"] in signaled else 0,
+                        "kernelTime100ns": 1, "userTime100ns": 1}
 
             def modules(self):
                 return [{"base": 1, "path": "C:\\Windows\\System32\\ntdll.dll"}]
@@ -747,7 +783,7 @@ class TunGrantFamilyTests(FamilyBase):
             with self.subTest(stage=value["stage"]):
                 read = tun_stages.read_native_record(reader, lease, {"path": path, "sha256": sha(raw), "sizeBytes": len(raw)}, receipts, value["stage"])
                 self.assertEqual(json.loads(raw), read)
-        lease.update(offRequested=True, offTerminal={"code": "OK"})
+        lease.update(offRequested=True, offRequestedFileTime=OFF_ASKED, offTerminal={"code": "OK"})
         reader.tun_operation_leases, reader.event = [lease], lambda kind, value: None
         raw = update_receipts.encoded(off)
 
@@ -829,6 +865,27 @@ class TunGrantFamilyTests(FamilyBase):
                 path.unlink()
         self.qga.collectors.clear()
         self.qga.releases.clear()
+
+    def test_a_failed_grant_receipt_names_the_known_end_its_owner_closed_with(self):
+        """A grant whose prompt expired, because the decision never typed, fails by the product's own CANCELLED like one
+        the product cancelled after a typed approval: the planner tells them apart by the decision's terminal, and only for
+        the known end the owner's own journal names (_decision_joined). The job reads that name from the evidence copy."""
+        install, _ = self.install_base()
+        oracle = (AWAITING, ("dedicated-proxy-lifecycle-known-failure-closing", {"variant": "restart-grant", "reason": "x"}),
+                  ("dedicated-proxy-lifecycle-known-failure", {"variant": "restart-grant", "reason": "x", "closed": True}))
+        unexpected = (AWAITING, ("scoped-tun-unexpected-terminal-known", {"variant": "restart-grant", "terminal": {"code": "RUNTIME_FAILED"}}),
+                      closed(knownFailure="RUNTIME_FAILED"))
+        for name, journal, expected in (("cancelled", GRANT_CANCELLED, "cancelled"), ("unexpected-terminal", unexpected, "RUNTIME_FAILED"),
+                                        ("oracle-failure", oracle, None), ("twice", (*GRANT_CANCELLED, closed()), "unread"),
+                                        ("other-name", (closed(knownFailure="cancelled; drop"),), "unread"), ("no-zip", None, "unread")):
+            with self.subTest(case=name):
+                self.qga.needs, self.qga.task_exit = [], 1  # No TUN came up, so no collector is asked; the owner exits 1.
+                self.qga.evidence_factory = (lambda m: b"PK not a zip") if journal is None else (lambda m, journal=journal: owner_journal(m, journal))
+                plan, code, receipt, kinds = self.run_grant(install)
+                self.assertEqual((1, "task_exit_code", "failed", "evidence-zip"), (code, receipt["failure"], receipt["result"], kinds[-1]))
+                self.assertEqual(expected, receipt["tun"].get("knownEnd", "absent"))
+                self.assertNotIn("collector", kinds)
+                self.forget(plan)
 
     def test_the_deny_row_keeps_no_collector_hold_or_folder(self):
         row = windows.RECIPES["windows-scoped-tun.restart-deny"]

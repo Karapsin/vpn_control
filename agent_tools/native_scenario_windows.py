@@ -623,9 +623,10 @@ def _admit(root: Path | str, request: Mapping[str, Any],
     _canonical_uuid(plan.correlation_id, "windows_scenario_correlation_invalid")
     _canonical_uuid(plan.environment, "windows_scenario_environment_invalid")
     # A TUN grant's prompt is answered only by windows-uac-decision, with this deployment's reviewed profile of that prompt.
-    # Without one its decision refuses and the prompt expires into the grant's CANCELLED, a failed run: the row fails
-    # closed here instead, before any journal. A deny row needs none to start: its run is the prompt windows-uac-review
-    # captures the profile's frame from, and an unanswered denial stays unsettled rather than failed.
+    # Without one its decision refuses and the prompt expires into the grant's CANCELLED, a run that can only stay
+    # unsettled (_decision_joined): the row fails closed here instead, before any journal. A deny row needs none to
+    # start: its run is the prompt windows-uac-review captures the profile's frame from, and an unanswered denial stays
+    # unsettled rather than failed.
     _need(uac.get("decision") != "approve" or not row.get("tun") or _reviewed_profile(root, plan.environment, uac["prompt"]),
           "windows_scenario_uac_profile_unreviewed")
     _need(set(plan.artifact_ids) == set(row["artifactKeys"]), "windows_scenario_artifacts_invalid")
@@ -1127,26 +1128,34 @@ class NativeScenarioWindowsDriver:
                     return None
                 raw = base64.b64decode(reply["receipt"], validate=True)
                 summary = self._summary(plan, raw, reply.get("jobExit"))
-                if summary is not None and not self._decision_joined(config, plan, summary):
-                    return None  # A deny row or a TUN grant passes only with its decision's own terminal; until then unknown.
+                if summary is not None and not self._decision_joined(config, plan, summary, json.loads(raw)):
+                    # A deny row or a TUN grant passes, and a grant fails by its CANCELLED, only with its decision's own
+                    # terminal; until then unknown.
+                    return None
                 if summary is not None:
                     self._pull_evidence(config, plan, data, json.loads(raw).get("evidence"))
         except (OSError, ValueError, KeyError, TypeError, ssh_transport.SshConfigError):
             return None
         return summary
 
-    def _decision_joined(self, config: Any, plan: native_scenario_execution.ScenarioPlan, summary: dict[str, Any]) -> bool:
+    def _decision_joined(self, config: Any, plan: native_scenario_execution.ScenarioPlan, summary: dict[str, Any],
+                         receipt: Mapping[str, Any]) -> bool:
         """A passed deny row, or a passed TUN grant, joins its decision's input terminal: input-ack-only, its own answer,
-        the prompt closed.
+        the prompt closed. So does a grant that failed only by the product's CANCELLED of its request.
 
         An expired prompt ends as the same public CANCELLED as Esc, so the receipt alone cannot tell a deny from no answer.
         A grant's receipt proves the approved broker ran as the approving administrator, but not who typed the
-        credential: the join names the reviewed decision as the one approval.
+        credential: the join names the reviewed decision as the one approval. A grant's prompt that expired because the
+        decision never typed ends in that same CANCELLED, a known end the driver exits 1 with: its failure is the
+        product's only after a typed approval closed the prompt. Without that terminal it stays unsettled, as a deny
+        row's pass does, rather than stand as a failure of the product. Any other failure needs no join.
         """
         row = _row(plan.scenario_id)
         uac = row.get("uac") or {}
-        joined_answer = uac.get("decision") == "deny" or (uac.get("decision") == "approve" and row.get("approveJoin") is True)
-        if not joined_answer or summary["result"] != "passed":
+        grant = uac.get("decision") == "approve" and row.get("approveJoin") is True
+        tun = receipt.get("tun") if isinstance(receipt.get("tun"), Mapping) else {}
+        cancelled = grant and summary["result"] == "failed" and tun.get("knownEnd") == "cancelled"
+        if not (uac.get("decision") == "deny" or grant) or (summary["result"] != "passed" and not cancelled):
             return True
         decision = str(uuid.uuid5(uuid.UUID(plan.correlation_id), "windows-uac-decision"))
         root = _binding(self.root, plan)["spec"]["root"]
@@ -1255,13 +1264,15 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
     "windows-scoped-vpn": {
         "standard-user-gui-proxy": (_P + "gui-pending",),
         # TUN(approve): the reviewed approval, the broker and its runtime found elevated by the SYSTEM collector, traffic
-        # through the TUN only between its ready and off records.
+        # through the TUN only between its ready and off records, and both originals ended after the product's own off.
         "scoped-uac-tun-traffic": (_T + "restart-grant",),
         "denial-preserves-active-a": (_T + "restart-deny",),
         "prepare-commit-recovery": (),  # PRX(prepare-failure, commit-readiness-failure) and TUN(fault), which has no row.
-        # PRX(sibling-off) and TUN(approve): the product's own off ends exactly the approved broker and runtime, whose
-        # original handles the collector's off record shows signaled, with no broad process stop.
-        "exact-child-stop": (_P + "sibling-off", _T + "restart-grant"),
+        # PRX(sibling-off) and TUN(approve). The restart grant's off record shows exactly the approved broker and runtime
+        # ended after the product's own off was asked for, but no unrelated runtime runs beside it, so it cannot show the
+        # elevated stop spares one, which is what sibling-off shows for the proxy off. The TUN half needs a grant variant
+        # with an owned sibling runtime that outlives the product's off (T8); until then the scenario stays missing.
+        "exact-child-stop": (),
         "generated-custom-config": (),  # PRX(generated, custom) and TUN(config).
         "large-config": (),  # PRX(large) and TUN(config).
         "dns-ws-ssh-cache-resources": (),  # Reserved: no case module.

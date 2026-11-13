@@ -407,6 +407,23 @@ class FailedAndUnknownTests(MatrixBase):
                     self.assertEqual(("failed", {"ssh-import-routing": "failed"}), (observation["result"], observation["scenarioResults"]))
 
 
+class ExactChildStopTests(MatrixBase):
+    """windows-scoped-vpn with its real table: passed direct and MCP pairs of PRX(sibling-off) and the TUN restart grant.
+
+    sibling-off shows a proxy off spares a live sibling runtime. The grant's off record shows its broker and runtime ended
+    after the product's own off, but no unrelated runtime runs beside it, so a broker that stopped every sing-box.exe by
+    image would pass it as well: together they never prove the elevated stop is exact."""
+
+    def test_the_grant_and_sibling_off_pairs_never_pass_the_exact_child_stop(self):
+        rows = [self.row(name, route) for name in ("windows-proxy-lifecycle.sibling-off", "windows-scoped-tun.restart-grant")
+                for route in ("direct", "mcp")]
+        review = windows.matrix_review(self.root, "windows-scoped-vpn", rows)
+        self.assertEqual(["passed"] * 4, [row["classification"] for row in review["rows"]])
+        self.assertEqual("passed", review["scenarios"]["scoped-uac-tun-traffic"], "the grant's own scenario passes with its pair")
+        self.assertEqual("unmapped", review["scenarios"]["exact-child-stop"], "no row shows the TUN off spares a sibling")
+        self.assert_refused(rows, "windows_matrix_incomplete:9", "windows-scoped-vpn")
+
+
 class PrincipalVerdictTests(MatrixBase):
     """The acceptance row's LOCAL SERVICE probe judges the product after its owner passed and exited 0."""
 
@@ -852,8 +869,8 @@ class TableTests(unittest.TestCase):
                          - set(MATRIX_REAL["document-persistence-transfer"]))
         unmapped = sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if not rows)
         self.assertEqual(sorted(["windows-visual:" + item for item in ("scene-capture", "geometry-contrast", "agent-verdict")]
-                                + ["windows-scoped-vpn:" + item for item in ("prepare-commit-recovery", "generated-custom-config", "large-config",
-                                                                             "dns-ws-ssh-cache-resources", "pipe-storage-races")]
+                                + ["windows-scoped-vpn:" + item for item in ("prepare-commit-recovery", "exact-child-stop", "generated-custom-config",
+                                                                             "large-config", "dns-ws-ssh-cache-resources", "pipe-storage-races")]
                                 + ["document-persistence-transfer:" + item for item in ("cache-digest-bytes", "gui-cli-transfer")]),
                          unmapped)
         # The SSH row declares a relayed transfer and a stdin key import still to do, which the relay row does: they prove
@@ -896,13 +913,13 @@ class TableTests(unittest.TestCase):
                          MATRIX_REAL["windows-native-cli"]["operation-progress-cancellation"])
         self.assertIsNotNone(windows.RECIPES["windows-public-update.install-cancelled"]["refusal"])
         # The admitted TUN rows count for what their evidence holds: the denial for its own scenario; the restart grant for
-        # the approved TUN's traffic, its exact child stop beside PRX(sibling-off) and its half of scoped elevation beside
-        # UPD(success-off). The find-best rows are refused at admission and name no scenario.
+        # the approved TUN's traffic and its half of scoped elevation beside UPD(success-off). It runs no sibling runtime, so
+        # it cannot show its elevated off spares one: exact-child-stop stays missing (ExactChildStopTests). The find-best
+        # rows are refused at admission and name no scenario.
         self.assertEqual({"windows-scoped-tun.restart-deny": ["windows-scoped-vpn:denial-preserves-active-a"],
-                          "windows-scoped-tun.restart-grant": ["windows-native-cli:scoped-elevation", "windows-scoped-vpn:exact-child-stop",
-                                                               "windows-scoped-vpn:scoped-uac-tun-traffic"]},
+                          "windows-scoped-tun.restart-grant": ["windows-native-cli:scoped-elevation", "windows-scoped-vpn:scoped-uac-tun-traffic"]},
                          {row: scenarios for row, scenarios in named.items() if row.startswith("windows-scoped-tun.") and scenarios})
-        self.assertEqual(("windows-proxy-lifecycle.sibling-off", "windows-scoped-tun.restart-grant"), MATRIX_REAL["windows-scoped-vpn"]["exact-child-stop"])
+        self.assertEqual((), MATRIX_REAL["windows-scoped-vpn"]["exact-child-stop"])
         self.assertEqual(("windows-scoped-tun.restart-grant", "windows-public-update.success-off"), MATRIX_REAL["windows-native-cli"]["scoped-elevation"])
         # gui-owner is only the CLI half of gui-cli-transfer, and cache-bytes is refused before any journal: both stay missing.
         self.assertEqual([], named["windows-document-cold.gui-owner"] + named["windows-document-cold.cache-bytes"])

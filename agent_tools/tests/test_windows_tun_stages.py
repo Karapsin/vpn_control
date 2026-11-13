@@ -1,6 +1,7 @@
 """Scoped-TUN stages on the Windows scenario route, their direct sampler and their generated inputs, all offline.
 
-No socket, process, route table or guest is touched: every native boundary is a declared fake.
+No process, route table or guest is touched: every native boundary is a declared fake. One sampler test uses real
+sockets of its own, a loopback listener and an unassigned TEST-NET-1 source address, so nothing leaves the host.
 """
 from __future__ import annotations
 
@@ -65,8 +66,8 @@ class DirectSamplerTests(unittest.TestCase):
     def run_sampler(self, replies, **changes):
         streams, connects, sleeps, rows = [], [], [], []
 
-        def connect(address, timeout):
-            connects.append((address, timeout))
+        def connect(address, timeout, source_address=None):
+            connects.append((address, timeout, source_address))
             reply = replies[len(connects) - 1]
             if isinstance(reply, Exception):
                 raise reply
@@ -78,7 +79,7 @@ class DirectSamplerTests(unittest.TestCase):
     def test_each_sample_is_plain_http_to_the_benchmark_address_with_no_socks_step(self):
         code, rows, connects, streams, sleeps = self.run_sampler([response(BODY.encode())] * 3)
         self.assertEqual(0, code)
-        self.assertEqual([(("198.18.0.1", 80), 5)] * 3, connects)
+        self.assertEqual([(("198.18.0.1", 80), 5, ("172.19.250.1", 0))] * 3, connects)
         for stream in streams:
             self.assertEqual(b"GET /probe HTTP/1.1\r\nHost: 198.18.0.1\r\nConnection: close\r\n\r\n", stream.sent)
             self.assertFalse(stream.sent.startswith(b"\x05"), "no SOCKS greeting: the TUN, not a proxy port, carries it")
@@ -109,6 +110,50 @@ class DirectSamplerTests(unittest.TestCase):
                        {"expectedBodyHex": "00" * 4097}, {"schemaVersion": 2}, {"mixedPort": 1080}):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "direct-sampler-input"):
                 sampler.run(sampler_value(**change), lambda row: None, connect=None)
+
+    def test_every_sample_is_bound_to_the_generated_tun_address(self):
+        # The address DesktopProxyConfigFactory gives the TUN: the first host of TUN_SUBNET, the one the closing census reads.
+        network, bits = stages.TUN_SUBNET
+        first = socket.inet_ntoa((int.from_bytes(socket.inet_aton(network), "big") + 1).to_bytes(4, "big"))
+        self.assertEqual(((first, 0), 30), (getattr(sampler, "SOURCE", None), bits))
+        _, _, connects, _, _ = self.run_sampler([response(BODY.encode())] * 3)
+        self.assertEqual([(first, 0)] * 3, [source for _, _, source in connects], "no sample may pick its own source address")
+
+    def test_with_the_tun_address_gone_the_real_socket_sends_nothing(self):
+        """A TUN that went away after its ready record: the sampler's own socket, unpatched, must not reach the target.
+
+        The target is an owned loopback listener and the TUN address an unassigned TEST-NET-1 one, so nothing leaves this
+        host either way. Unbound (the e65f8814 sampler), the real connect reaches the listener as it would reach
+        198.18.0.1 through the guest's default route; bound, the bind itself fails and no connection is made."""
+        unassigned = ("192.0.2.1", 0)
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            probe.bind(unassigned)
+        except OSError:
+            pass
+        else:
+            self.skipTest("192.0.2.1 is assigned on this host")
+        finally:
+            probe.close()
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.addCleanup(listener.close)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        listener.settimeout(0.5)
+        rows = []
+        with mock.patch.object(sampler, "TARGET", listener.getsockname()), mock.patch.object(sampler, "SOURCE", unassigned, create=True):
+            code = sampler.run(sampler_value(sampleCount=2, ioTimeoutSeconds=1, intervalSeconds=0.02), rows.append)
+        accepted = []
+        try:
+            while True:
+                accepted.append(listener.accept()[0])
+        except OSError:
+            pass
+        for connection in accepted:
+            connection.close()
+        self.assertEqual(0, len(accepted), "a sample reached the target with no TUN address to leave from")
+        self.assertEqual(1, code)
+        self.assertEqual([(False, "OSError")] * 2, [(row["succeeded"], row["reason"]) for row in rows[:-1]])
 
 
 class Recorder:
@@ -616,6 +661,100 @@ class TrafficTests(StageWorld):
         self.assertEqual([], self.owner.children)
 
 
+class OffTests(StageWorld):
+    """The grant's own off and the collector's off record: the record shows both original handles signaled, and only an
+    exit after the product's off was asked for, while the product still ran its TUN runtime, is that off's."""
+    ASKED = 134368653070000000  # The guest FILETIME taken just before the off goes out.
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(stages, "guest_filetime", lambda: self.ASKED, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def granted(self):
+        lease = self.begin(self.inputs("restart-grant"))
+        lease.update(finished=True, nativeReady={"stage": "ready"})
+        # The TUN is up: B is active in VPN mode.
+        self.status.update(activeMode="vpn", configuredMode="vpn", activeLocationId="b", selectedLocationId="b", runtimeId="vpn-b")
+        return lease
+
+    def off_runtime(self):
+        runtime = self.runtime()
+        result = runtime.result
+
+        def asked(owner, workspace, identity, *arguments, **options):
+            if arguments[-1] == "off":
+                self.calls.append(arguments)
+                self.status.update(runtimeRunning=False)
+                return {"code": "OK", "final": True}
+            return result(owner, workspace, identity, *arguments, **options)
+        runtime.result = asked
+        return runtime
+
+    def off_record(self, helper_exit, runtime_exit):
+        def row(role, pid, created, exited):
+            return {"role": role, "pid": pid, "creationFileTime": created, "originalHandleSignaled": True,
+                    "times": {"creationFileTime": created, "exitFileTime": exited, "kernelTime100ns": 1, "userTime100ns": 1}}
+        return {"stage": "off", "originalProcesses": [row("helperActor", 931, self.ASKED - 500, helper_exit),
+                                                      row("runtimeActor", 933, self.ASKED - 400, runtime_exit)]}
+
+    def finish_off(self, lease, record):
+        with mock.patch.object(stages, "read_native_record", lambda owner, current, file_record, receipts, stage: record):
+            return stages.finish_off(self.owner, lease, {"path": "C:\\ProgramData\\tun-evidence-op\\off.json"}, object())
+
+    def test_the_off_is_asked_only_while_the_products_own_tun_runtime_runs(self):
+        for name, change in (("runtime-ended", {"runtimeRunning": False}), ("proxy-mode", {"activeMode": "proxy-only"})):
+            with self.subTest(case=name):
+                self.setUp()
+                lease = self.granted()
+                self.status.update(change)
+                with self.assertRaisesRegex(AssertionError, "^scoped-tun-runtime-ended-before-off$"):
+                    stages.begin_off(self.owner, lease, self.off_runtime())
+                self.assertNotIn(("off",), self.calls, "no off goes out over a runtime that already ended")
+                self.assertFalse(lease.get("offRequested"))
+                self.assertFalse(stages.settled(lease), "an open grant parks")
+
+    def test_an_original_that_ended_before_the_off_was_asked_for_is_no_exact_off(self):
+        # The collector publishes off once both handles signal, a crash included: a runtime that exited before the product's
+        # own off, or a broker that did, is no stop of that off's.
+        for name, helper, runtime in (("runtime-crashed", self.ASKED + 900, self.ASKED - 100),
+                                      ("broker-gone", self.ASKED - 1, self.ASKED + 800), ("same-instant", self.ASKED, self.ASKED + 1)):
+            with self.subTest(case=name):
+                self.setUp()
+                lease = self.granted()
+                stages.begin_off(self.owner, lease, self.off_runtime())
+                with self.assertRaisesRegex(AssertionError, "^scoped-tun-original-ended-before-the-off$"):
+                    self.finish_off(lease, self.off_record(helper, runtime))
+                self.assertFalse(lease.get("offFinished"))
+                self.assertFalse(stages.settled(lease), "an open grant parks")
+
+    def test_an_exact_off_is_proven_by_both_exits_after_the_request(self):
+        lease = self.granted()
+        stages.begin_off(self.owner, lease, self.off_runtime())
+        self.assertEqual([("status",), ("off",), ("status",)], self.calls[-3:], "the product's own status, then its off, then its status")
+        self.assertEqual(self.ASKED, lease["offRequestedFileTime"])
+        waiting = self.owner.events[-1]
+        self.assertEqual(("scoped-tun-awaiting-exact-off-observation", self.ASKED, True),
+                         (waiting[0], waiting[1]["offRequestedFileTime"], waiting[1]["statusBeforeOff"]["data"]["runtimeRunning"]))
+        record = self.off_record(self.ASKED + 10, self.ASKED + 20)
+        self.assertIs(record, self.finish_off(lease, record))
+        self.assertTrue(stages.settled(lease))
+        kind, value = self.owner.events[-1]
+        self.assertEqual("scoped-tun-exact-off-observed", kind)
+        self.assertEqual((self.ASKED, True), (value["offRequestedFileTime"], value["exitedAfterOffRequest"]))
+
+    def test_the_exact_off_claims_no_sibling_it_never_had(self):
+        # No unrelated runtime runs beside the grant, so its off record cannot show the elevated stop spared one: the event
+        # says so instead of claiming no broad process stop.
+        lease = self.granted()
+        stages.begin_off(self.owner, lease, self.off_runtime())
+        self.finish_off(lease, self.off_record(self.ASKED + 10, self.ASKED + 20))
+        value = self.owner.events[-1][1]
+        self.assertNotIn("noBroadProcessStop", value)
+        self.assertIs(False, value.get("siblingSurvivalObserved"))
+
+
 def ipv4(text):
     return socket.inet_aton(text)
 
@@ -745,7 +884,7 @@ class GeneratedInputTests(unittest.TestCase):
     def test_the_grant_sampler_expects_the_rows_own_upstream_body(self):
         value = json.loads(proxy.sampler_input("op-1"))
         self.assertEqual(proxy.fixture_body("op-1").encode().hex(), value["expectedBodyHex"])
-        self.assertEqual(0, sampler.run(value, lambda row: None, connect=lambda address, timeout: Stream(response(proxy.fixture_body("op-1").encode())),
+        self.assertEqual(0, sampler.run(value, lambda row: None, connect=lambda address, timeout, source_address=None: Stream(response(proxy.fixture_body("op-1").encode())),
                                         sleep=lambda seconds: None))
         files = proxy.files("restart-grant", operation="op-1", paths=self.PATHS, runtime_sha256="d" * 64, source_sha="e" * 40,
                             admissions=self.ADMISSIONS, tls={"certificate": b"c", "privateKey": b"k", "trustStore": b"t"}, tun=dict(self.TUN),

@@ -1475,9 +1475,11 @@ class TunGrantDecisionTests(FamilyDriverBase):
         self.executor().start(self.family_request(self.GRANT))
         self.decision = str(uuid.uuid5(uuid.UUID(self.operation), "windows-uac-decision"))
 
-    def job_receipt(self, exit_code=0):
+    def job_receipt(self, exit_code=0, known_end=None):
         plan = {"scenarioId": self.GRANT, "operationId": self.operation, "machine": MACHINE, "bundleHash": self.bundle_hash}
         value = host_job.build_receipt(plan, exit_code=exit_code, stage="receipt", failure=None, guest_programs=40)
+        # As the job's _finish adds it for a grant: its collectors, and the known end its owner's journal names.
+        value["tun"] = {"variant": "restart-grant", "collectors": {}, "knownEnd": known_end}
         return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
     def terminal(self, **changes):
@@ -1510,6 +1512,32 @@ class TunGrantDecisionTests(FamilyDriverBase):
         result = self.executor().status(self.operation)
         self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
         self.assertEqual([], self.ssh.decision_reads)
+
+    def test_a_grant_that_failed_by_another_known_end_needs_no_join(self):
+        # The product's own RUNTIME_FAILED, say, before any prompt: no decision could have caused it.
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1, known_end="RUNTIME_FAILED"))
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual([], self.ssh.decision_reads)
+
+    def test_a_grant_cancelled_by_its_prompt_fails_the_product_only_after_its_typed_approval(self):
+        """The product's CANCELLED of the grant's request, which the driver closes as a known end and exits 1 with. A prompt
+        the decision never typed into (a final refusal, a black display, a late prompt) expires into that same CANCELLED,
+        so the run is the product's failure only once the decision's own terminal shows the approval typed and the prompt
+        closed. Until then it stays unsettled, as a deny row's pass does, and no matrix scan counts it."""
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1, known_end="cancelled"))
+        for decision in (None, self.terminal(promptClosed=False), self.terminal(decision="deny"), self.terminal(state="input-outcome-unknown"),
+                         self.terminal(prompt="install-helper")):
+            with self.subTest(decision=decision):
+                self.ssh.decision = decision
+                result = self.executor().status(self.operation)
+                self.assertEqual(("unknown", "terminal_collection_unverified"), (result["state"], result["reason"]))
+                self.assertNotIn("scenarioEvidence", result)
+        self.ssh.decision = self.terminal()
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual("approve-acknowledged-prompt-closed", result["scenarioEvidence"]["windows"]["uacDecision"])
+        self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1])
 
 
 class UpdateTableTests(unittest.TestCase):
