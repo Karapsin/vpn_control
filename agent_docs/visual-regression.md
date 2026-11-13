@@ -204,8 +204,9 @@ region are identical, within 20 captures 250 ms apart; no fixed sleep is the rea
 Each scene writes `<scene>.png` (compared), `<scene>.frame.png` (the full screen of the same moment,
 never compared) and `<scene>.region.json` (target identity, rectangle, image offset, canonical
 placement, backdrop, stable-frame attempts, occlusion checks, cursor, foreground and focus, session
-settings). `capture-local` checks the record and that every part equals its rectangle in the frame,
-then stamps both files' hashes and the record into `capture-<provider>.json`; `verify` refuses a
+settings). `capture-local` checks the record, the fixed stacked layout, and that every part equals
+its rectangle in the frame, then stamps both files' hashes and the record into
+`capture-<provider>.json`; `verify` refuses a
 Windows OS-owned scene without that evidence. A refused scene keeps `<scene>.frame.png`, the full
 screen at the moment of refusal taken before the scene closes its surfaces, and
 `<scene>.refusal.json` with its named reason: `non-canonical-display`, `target-missing`,

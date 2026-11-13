@@ -159,6 +159,12 @@ def validate_record(record: dict[str, Any], *, scene_id: str, platform: str) -> 
             raise RegionEvidenceError(f"{label} overlaps another part in the scene image")
         placed.append(box)
         geometry.append((rect, offset))
+    # VISUAL-002: several surfaces are stacked in one fixed layout, as the Kotlin capture composes them.
+    size, offsets = stack_layout([(rect[2] - rect[0], rect[3] - rect[1]) for rect, _ in geometry])
+    if image_size != size or [offset for _, offset in geometry] != offsets:
+        raise RegionEvidenceError(
+            f"parts must be stacked top to bottom, left-aligned and {PART_GAP} px apart in a {size[0]}x{size[1]} image",
+        )
     stable = record["stable_frame"]
     if not isinstance(stable, dict):
         raise RegionEvidenceError("stable_frame must be an object")

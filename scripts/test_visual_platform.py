@@ -1919,6 +1919,11 @@ class WindowsRegionEvidenceTest(unittest.TestCase):
             "names": {"scene": "windows-update-installer"},
             "identity": {"parts": [{**self.record("windows-msi", (5, 4, 21, 16))["parts"][0], "target": {"kind": "installer-wizard"}}]},
             "screen": {"frame_size": [1280, 800]},
+            # VISUAL-002 stacks parts in one fixed layout; a shifted part with extra fill is not it.
+            "layout": {
+                "image_size": [16, 14],
+                "parts": [{**self.record("windows-msi", (5, 4, 21, 16))["parts"][0], "offset": [0, 2]}],
+            },
         }
         for name, changes in cases.items():
             with self.subTest(name), self.assertRaises(visual_region.RegionEvidenceError):
