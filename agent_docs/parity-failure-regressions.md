@@ -2040,6 +2040,75 @@ on Default: `gui-pending`'s `hide` and `wm-close-to-tray` steps, which passed in
 UNSUPPORTED and a detach. Those steps need Explorer's taskbar on the fixture session's Default desktop, which no row
 records yet.
 
+### SSH Routing bootstrap files left after a refresh (product and harness, from 584d9f4c, 2026-11-13)
+
+The first direct run of `windows-disconnected-cli-config.ssh-relay-transfer`, `584d9f4c` on package
+2.2.17, ended known failure `bootstrap-files-left` right after its first HOME_RELAY refresh answered
+`OK` with one location: events 237-248 of
+`.runtime/windows-scenarios/584d9f4c-20c1-4e10-a485-4ae5f2c2b535/evidence-1.zip` (sha256
+`1f87b003…`). The check ran after the `subscriptions list` that followed the reply (the list child
+started 9.0 s after the refresh child, the next status child 2.4 s after it), so the files outlived
+the product's final reply by at least a second; the serve quit with exit 0 and its stderr holds only
+the JVM options notice and the readiness line. The evidence names no file. On 450b8764 `DesktopHomeSshBootstrapProxy.useProxy`
+created `home-ssh-bootstrap-*.json` and `.log` in the runtime folder before it resolved sing-box and
+outside its `try`, sent sing-box's output to the log, and in `finally` called `destroy()`,
+`waitFor(2 s)` and, on a timeout, `destroyForcibly()` without waiting, then one
+`Files.deleteIfExists` per file inside `runCatching`. The causes, read from the code and the
+platform (the evidence cannot say which held): the log is the child's stdout and stderr through a
+handle the JVM opens sharing read and write only, so Windows refuses its deletion while any process
+holds it; the JDK's timed `waitFor`, `isAlive` and `onExit` answer from `GetExitCodeProcess`, and
+by the kernel's order of process exit the exit code can be set before the child's handles are closed
+(inferred, not observed; only the untimed `waitFor` waits for the process object), and after
+`destroyForcibly()` nothing waited; a scanner may open a file just written or closed; and whatever
+refused that one attempt, the refusal was swallowed and never retried, so the files stayed.
+Separately, on every platform a missing sing-box left two empty files. The configuration names the
+key by path (`private_key_path`) and holds no key material; it does hold the relay's host, port,
+user and pinned host keys. sing-box starts no child process for this configuration (its ssh outbound
+is Go code), so inheritance into a grandchild is not a cause.
+
+The bootstrap (`DesktopHomeSshBootstrapProxy.kt`) now resolves sing-box before it creates a file,
+discards sing-box's output (no log file), deletes the configuration as soon as sing-box listens and,
+with `DesktopBootstrapCleanup`, waits for the child's process object (the untimed `waitFor` on a
+daemon thread, at most 5 s after the stop) before it deletes, and retries, eight times over 3.2 s, a
+deletion the file system refuses (`FileSystemException`, which carries Windows' sharing violation and
+access denied) or whose name is still listed afterwards (a delete-pending name on a volume without
+POSIX delete semantics). Whatever still fails is one line on the owner's stderr (the serve's stderr,
+`headless.log` of an owner a CLI started) naming the file's leaf and the refusal, never a folder or
+the contents. The configuration stays owner-only on POSIX (`Files.createTempFile`); on Windows it
+keeps the profile's inherited ACL like the runtime's other configurations, since it holds no key.
+Android was checked (PRODUCT-002): its bootstrap already sends sing-box's output to `/dev/null` and
+writes its configuration to the app's private cache, where an open file never blocks an unlink, so
+the cause cannot occur there; it still creates the file before `SingBoxInstaller.resolveBinary`
+(a missing bundled library would leave one empty file) and ignores `delete()`'s result, recorded
+here as unchanged. The desktop direct-probe proxy (`DesktopDirectProbeProxy`) and the validation
+runtime (`DesktopProxyValidationRuntime.benchmarkCandidate`, whose configuration holds a
+location's credentials) keep the old pattern; no run has shown their files left.
+
+The row's `leftovers()` still fails at the first look after the reply: the product deletes before
+the download returns and the bootstrap exists only for that one download while no runtime is active
+(CONFIG-004's direct exception; an active runtime's management inbound carries it, CONFIG-005), so a
+settle before the verdict would pass a product that answers before its cleanup ends. Only after the
+verdict, `bootstrap_left` settles for at most 10 s and records `ssh-relay-bootstrap-leftovers`: each
+left file's name, size and age by `lstat`, the live runtimes under the workspace, and whether the
+files were still there at the bound. A census that fails keeps the verdict.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The bootstrap deleted each file once, at once, and swallowed a refusal, so a file the OS still held after the child was told to end stayed | `DesktopHomeSshBootstrapCleanupTest` (`:desktopApp:test`, POSIX): `deletionsRefusedUntilShortlyAfterTheBootstrapEndedLeaveNoBootstrapFile`, `aBootstrapThatIgnoresTerminationIsKilledAndAwaitedBeforeItsFilesAreDeleted`; `DesktopBootstrapCleanupTest` (14 cleanup decisions over fake processes and file systems, all platforms); Windows-only `DesktopHomeSshBootstrapCleanupNativeTest` | The first two drive the public download client with a stand-in sing-box that makes the runtime folder read-only until 0.4 s after it is gone, while the test answers the download as its proxy. RED on `450b8764`, which this public-API class compiles against unchanged (`:desktopApp:test`, the class alone: 4 tests, 4 failures): in these two the `.json` and the `.log` were both left once the download returned, for a child that ended at the request and for one killed after the 2 s grace. GREEN on the fix: 4 of 4; `DesktopBootstrapCleanupTest` 14 of 14 (refusals and still-listed names retried eight times over 3.2 s, the process object awaited although the exit code was set at the request, a kill after the grace, a child past the bound reported, reports without folder or contents); 25 tests in seven neighbouring classes (`DesktopLoopbackListenerTest`, the SSH key and persistence tests, the subscription service, refresh and CLI tests); the four Windows-only tests skip on macOS. Eight loosenings of the fix each turn named tests red: no retry (8 tests), a wait by the exit code instead of the process object (4), a kept log (4), no early deletion (2), files created before the resolve (1), reports dropped (4), no listing check after a deletion (2), no kill after the grace (2). |
+| A missing sing-box left two empty bootstrap files | `DesktopHomeSshBootstrapCleanupTest.aMissingSingBoxLeavesNoBootstrapFile` (all platforms) | RED on `450b8764` in the same run: an empty `.json` and `.log` left. GREEN: none. |
+| The configuration lived, and the log existed, for the whole download | `DesktopHomeSshBootstrapCleanupTest.theConfigurationIsGoneOnceTheBootstrapListensAndNoLogIsWritten`, `DesktopBootstrapCleanupTest.theBootstrapRuntimeKeepsNoOutputOnDisk` | Also pins that the configuration names the key by path, holds no key line and is `rw-------` on POSIX (true on both trees). RED on `450b8764` in the same run: both files present while the download ran. GREEN: none. |
+| `bootstrap-files-left` named no file and said nothing of its age, of a bootstrap still running or of a later release | `test_windows_ssh_relay_cases.CaseTests`: `test_left_bootstrap_files_are_named_sized_and_aged_and_the_row_fails`, `test_files_a_holder_lets_go_of_after_the_first_look_still_fail_the_row`, `test_a_bootstrap_process_left_with_its_files_is_counted_beside_them`, `test_a_census_that_fails_while_describing_keeps_the_verdict`, `test_the_description_holds_metadata_only` | RED on `450b8764`'s module with the final test bytes in an isolated `git archive` tree, Python 3.14 and 3.12 alike: `Ran 15 tests`, `FAILED (failures=5)`, each `one description of the bootstrap files left` (none was recorded); the ten earlier tests pass. GREEN: 15 OK on both. Three loosenings each turn named tests red: a settle before the verdict (5, among them the holder that lets go after the first look), no census (3), a census error that escapes (5). |
+
+Native only: Windows' refusal itself and its timing (sharing violation, exit code before the
+handles close, a scanner), shown by the Windows-only tests in the Windows package workflow's
+`:desktopApp:test` and by the row. The next direct discovery run on a package built from this
+fix must end with all six groups complete and no known failure; the serve's stderr must hold
+no `SSH Routing bootstrap:` line; and if a file is left again, `ssh-relay-bootstrap-leftovers`
+names it, with the runtimes, before `known-failure-closing`. Routine suites: `:desktopApp:test` in
+Fast Checks and every desktop package workflow, and `test_windows_ssh_relay_cases` in the affected
+agent tier. Logs, JUnit reports, the mutant summary and the beforeimages are under
+`.runtime/windows-parity-20261107/evidence/ssh-bootstrap-cleanup/`.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
