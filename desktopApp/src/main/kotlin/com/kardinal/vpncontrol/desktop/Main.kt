@@ -1623,7 +1623,7 @@ private fun DesktopAdditionalSettingsMenu(
                             strings.get(
                                 if (state.homeSshRouteSettings.enabled) UiText.SETTINGS_ENABLED else UiText.SETTINGS_DISABLED,
                             ) + if (state.homeSshRestartPending) " • ${strings.get(UiText.HOME_SSH_PENDING)}" else "",
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1640,7 +1640,7 @@ private fun DesktopAdditionalSettingsMenu(
                         Text(strings.get(UiText.SETTINGS_LANGUAGE))
                         Text(
                             strings.languageDisplayName(state.appLanguage, Locale.getDefault().language),
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1657,7 +1657,7 @@ private fun DesktopAdditionalSettingsMenu(
                         Text(strings.get(UiText.SETTINGS_START_ON_LOGIN))
                         Text(
                             if (state.startOnBootEnabled) strings.get(UiText.SETTINGS_ENABLED) else strings.get(UiText.SETTINGS_DISABLED),
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1681,7 +1681,7 @@ private fun DesktopAdditionalSettingsMenu(
                         Text(strings.get(UiText.SETTINGS_VPN_PROXY_MODE))
                         Text(
                             if (state.appMode == AppMode.VPN) strings.get(UiText.SETTINGS_VPN_MODE) else strings.get(UiText.SETTINGS_PROXY_ONLY),
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1711,7 +1711,7 @@ private fun DesktopAdditionalSettingsMenu(
                         Text(strings.get(UiText.IGNORE_RULES))
                         Text(
                             ignoreRulesDescription(state, showAppAssignments = false, strings = strings),
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1735,7 +1735,7 @@ private fun DesktopAdditionalSettingsMenu(
                         Text(strings.get(UiText.SETTINGS_SUBSCRIPTION_REFRESH))
                         Text(
                             "${strings.refreshPolicyDisplay(state.subscriptionRefreshPolicy, state.subscriptionRefreshCustomHours)} • $refreshScope",
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1752,7 +1752,7 @@ private fun DesktopAdditionalSettingsMenu(
                         Text(strings.get(UiText.SETTINGS_LOCATION_TEST))
                         Text(
                             strings.validationSummary(state.validationSettings),
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1769,7 +1769,7 @@ private fun DesktopAdditionalSettingsMenu(
                         Text(strings.get(UiText.SETTINGS_CUSTOM_DNS))
                         Text(
                             strings.get(state.dnsSettings.mode.uiText()),
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }
@@ -1791,7 +1791,7 @@ private fun DesktopAdditionalSettingsMenu(
                                     DesktopBuildInfo.current().displayVersion
                                 },
                             ),
-                            color = Color(0xFF4A6070),
+                            color = VpnControlColors.TextSecondary,
                             fontSize = 12.sp,
                         )
                     }

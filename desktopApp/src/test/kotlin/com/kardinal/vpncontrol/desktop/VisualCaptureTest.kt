@@ -61,6 +61,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Test
 
 class VisualCaptureTest {
@@ -168,6 +169,22 @@ class VisualCaptureTest {
             containers.zip(painted) { (sceneId, tag, _), color -> "$sceneId $tag #%06X".format(color) },
             "Menu and dialog containers must paint the UI-002 surfaces",
         )
+    }
+
+    /** The second line of each settings-menu item is normal text on the menu's surface (VISUAL-005). */
+    @Test
+    fun settingsMenuSubtitlesMeetNormalTextContrast() {
+        val items = listOf("settings-ssh", "settings-language", "settings-start-login", "settings-mode",
+            "settings-rules", "settings-refresh", "settings-validation", "settings-dns", "settings-update")
+        val contrasts = renderVisualScene("main-settings-menu-desktop") { image ->
+            items.associateWith { tag ->
+                val texts = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().textDescendants()
+                check(texts.size == 2) { "$tag must show a title and a subtitle, found ${texts.size} texts" }
+                measuredContrast(image, texts.last().boundsInWindow)
+            }
+        }
+        val low = contrasts.filterValues { it < 4.5 }
+        assertTrue(low.isEmpty(), "Settings menu subtitles below 4.5:1: $low")
     }
 
     private fun <T> renderVisualScene(sceneId: String, read: ComposeUiTest.(BufferedImage) -> T): T {
@@ -619,6 +636,11 @@ private fun SemanticsNode.firstTextDescendant(): SemanticsNode? {
     }
     return null
 }
+
+private fun SemanticsNode.textDescendants(): List<SemanticsNode> =
+    children.flatMap { it.textDescendants() }.ifEmpty {
+        if (config.getOrNull(SemanticsProperties.Text)?.isNotEmpty() == true) listOf(this) else emptyList()
+    }
 
 /** The most frequent color inside [bounds]: the container behind a text or an outlined field. */
 private fun dominantColor(image: BufferedImage, bounds: androidx.compose.ui.geometry.Rect): Int {
