@@ -160,8 +160,9 @@ namespace VpnScopedStorage {
    for(var directory=new DirectoryInfo(parent);directory!=null;directory=directory.Parent) paths.Push(directory.FullName);
    try {
     foreach(string path in paths) {
-     // Listing access plus deny-write/delete sharing pins both rename and reparse mutation.
-     var file=Open(path,0x81,1); pins.Handles.Add(file); Inspect(file,true);
+     // Listing access without delete sharing: no ancestor is renamed or deleted meanwhile. Writes stay shared, so
+     // other programs keep renaming into these folders ([MS-FSA] 2.1.5.15.12); no share mode stops reparse mutation.
+     var file=Open(path,0x81,3); pins.Handles.Add(file); Inspect(file,true);
     }
     Need(expected==null||Identity(Inspect(pins.Handles[pins.Handles.Count-1],true))==expected,"CONFLICT");
     return pins;
@@ -261,8 +262,7 @@ namespace VpnScopedStorage {
     for(int index=0;index<20;index++) Marshal.WriteByte(value,index,0);
     for(int index=0;index<16;index++) Marshal.WriteByte(status,index,0);
     Marshal.WriteInt32(value,16,name.Length); Marshal.Copy(name,0,IntPtr.Add(value,20),name.Length);
-    // NT's sibling form uses the source's retained parent. A Win32 full-path rename reopens that
-    // parent for write access and conflicts with the pins that prevent reparse/rename races.
+    // NT's sibling form resolves the leaf against the source's retained parent and opens no folder by path.
     // ReplaceIfExists remains false, preserving any destination introduced after admission.
     Need(NtSetInformationFile(file,status,value,(uint)length,10)==0,"PERSISTENCE_FAILED");
    } finally { Marshal.FreeHGlobal(status); Marshal.FreeHGlobal(value); }

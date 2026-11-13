@@ -358,9 +358,17 @@ public static class VpnInstallNative {
         } finally {LocalFree(descriptor);}
     }
 
+    // Folder pin or witness: no delete sharing, so it is never renamed or deleted while held. Writes stay
+    // shared: a rename or link into a folder by path opens it for FILE_ADD_FILE ([MS-FSA] 2.1.5.15.12).
     public static SafeFileHandle OpenDirectory(string path) {
         // Metadata-only handles do NOT prevent deletion despite a missing FILE_SHARE_DELETE.
         // FILE_LIST_DIRECTORY/FILE_READ_DATA activates the sharing guarantees used by pins.
+        SafeFileHandle file = CreateFileW(path, 1 | ReadControl | ReadAttributes, 3, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
+        if (file.IsInvalid) { file.Dispose(); throw new Win32Exception(Marshal.GetLastWin32Error()); }
+        return file;
+    }
+    // Executable pin: also denies writers, as TryReady relies on.
+    public static SafeFileHandle OpenFile(string path) {
         SafeFileHandle file = CreateFileW(path, 1 | ReadControl | ReadAttributes, 1, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
         if (file.IsInvalid) { file.Dispose(); throw new Win32Exception(Marshal.GetLastWin32Error()); }
         return file;
@@ -480,7 +488,7 @@ public static class VpnInstallNative {
         if (first==null || second==null || first.IsInvalid || second.IsInvalid) throw new ArgumentException("Installer object identity rejected");
         return String.Equals(ObjectIdentity(first,false),ObjectIdentity(second,false),StringComparison.Ordinal);
     }
-    // Retains an executable and its complete ancestry with no delete/write sharing.
+    // Retains an executable and its complete ancestry with no delete sharing; the executable also denies writers.
     // A child created while this pin is live cannot load a replacement at this
     // canonical path; comparison is object identity, never path text alone.
     public sealed class ImageObjectPin : IDisposable {
@@ -601,7 +609,7 @@ public static class VpnInstallNative {
         }
     }
     // Original-user records become visible only after their bytes are flushed and their writer is closed.
-    // A leaf-only rename retains the strict parent pins and never replaces an existing acknowledgment.
+    // A leaf-only rename retains the parent pins and never replaces an existing acknowledgment.
     public static void PublishPrivateRecord(string path, string principal, byte[] bytes) {
         string leaf=Path.GetFileName(path);
         if (leaf != "worker-ready.json" && leaf != "worker-result.json") throw new ArgumentException("Private record name rejected");
@@ -650,7 +658,7 @@ public static class VpnInstallNative {
             throw new ArgumentException("Installer receipt name rejected");
         Inspect(directory,true,false,null);
         string parent=ReceiptObjectPath(directory).TrimEnd('\\');
-        // Validate an existing destination while the strict parent excludes substitution.
+        // Validate an existing destination while the retained parent excludes substitution.
         try {
             using (SafeFileHandle target=OpenRead(Path.Combine(parent,"status.json"),false)) {
                 Inspect(target,false,false,null);

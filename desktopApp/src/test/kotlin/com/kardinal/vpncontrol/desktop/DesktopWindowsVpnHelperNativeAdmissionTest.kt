@@ -43,7 +43,7 @@ class DesktopWindowsVpnHelperNativeAdmissionTest {
             "/main:PackagedBrokerAdmissionProbe", "/r:System.dll", "/r:System.Core.dll", "/r:System.Web.Extensions.dll",
             "/out:$executable") + (names + "authority.cs").map { root.resolve(it).toString() }, "compile.log")
         val output = run(listOf(executable.toString()), "run.log")
-        assertTrue(output.lineSequence().any { it.trim() == "PACKAGED_BROKER_ADMISSION_OK:16" }, output)
+        assertTrue(output.lineSequence().any { it.trim() == "PACKAGED_BROKER_ADMISSION_OK:17" }, output)
         assertTrue(output.lineSequence().any { it.trim() == "PACKAGED_BROKER_ENTRY_FENCE_OK:6" }, output)
         (names + listOf("authority.cs", "fixture.exe", "compile.log", "run.log")).forEach { Files.delete(root.resolve(it)) }
         Files.delete(root)

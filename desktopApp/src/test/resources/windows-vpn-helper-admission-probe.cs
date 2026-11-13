@@ -75,6 +75,17 @@ public static class PackagedBrokerAdmissionProbe {
    }
    cases++;
   }
+  {
+   // Folders are pinned sharing writes (Open); the owner's and the broker's images deny writers (OpenFile).
+   var fake=new Fake();var lease=Retain(fake);
+   foreach(var handle in fake.Handles) {
+    if(handle.Kind=="process"||handle.Kind=="gate") continue;
+    bool image=handle.Path==Image||handle.Path==Helper;
+    Need(handle.Kind==(image ? "file" : "folder"),"Admission pinned "+handle.Path+" as a "+handle.Kind);
+   }
+   Need(fake.Handles.FindAll(value=>value.Kind=="file").Count==4,"Not every image was pinned against writers");
+   lease.Dispose();Need(fake.AllClosed,"Routing case leaked handles");cases++;
+  }
   return "PACKAGED_BROKER_ADMISSION_OK:"+cases;
  }
  public static string RunEntrypoint() {
@@ -112,8 +123,8 @@ public static class PackagedBrokerAdmissionProbe {
   catch(Exception error) { Console.Error.WriteLine(error);return 1; }
  }
  sealed class H : VpnPackagedBrokerAdmission.Handle {
-  internal readonly string Path;internal bool Closed;internal int CloseFailures;
-  internal H(string path) { Path=path; }
+  internal readonly string Path,Kind;internal bool Closed;internal int CloseFailures;
+  internal H(string path,string kind) { Path=path;Kind=kind; }
  }
  sealed class Fake : VpnPackagedBrokerAdmission.Native {
   internal readonly List<H> Handles=new List<H>(),Closed=new List<H>();
@@ -122,9 +133,9 @@ public static class PackagedBrokerAdmissionProbe {
   internal string OwnerImage=Image,ActualHelper=Helper,RejectParent;
   internal byte[] GateBytes=new byte[17];
   internal bool AllClosed { get { return Handles.TrueForAll(value=>value.Closed); } }
-  H Keep(string path) { var handle=new H(Plain(path));Handles.Add(handle);return handle; }
+  H Keep(string path,string kind) { var handle=new H(Plain(path),kind);Handles.Add(handle);return handle; }
   static string Plain(string path) { return path.StartsWith("\\\\?\\",StringComparison.Ordinal) ? path.Substring(4) : path; }
-  public VpnPackagedBrokerAdmission.Handle OpenOwner(uint pid) { return Keep("owner-process"); }
+  public VpnPackagedBrokerAdmission.Handle OpenOwner(uint pid) { return Keep("owner-process","process"); }
   public VpnPackagedBrokerAdmission.Owner ObserveOwner(VpnPackagedBrokerAdmission.Handle value) {
    Need(!((H)value).Closed,"Queried closed owner");OwnerReads++;
    bool changed=OwnerReads==2;
@@ -133,15 +144,17 @@ public static class PackagedBrokerAdmissionProbe {
     OwnerImage,Alive&&!(changed&&OwnerChange==3));
   }
   public string CurrentImage() { return ActualHelper; }
-  public VpnPackagedBrokerAdmission.Handle Open(string path) {
+  public VpnPackagedBrokerAdmission.Handle Open(string path) { return Pin(path,"folder"); }
+  public VpnPackagedBrokerAdmission.Handle OpenFile(string path) { return Pin(path,"file"); }
+  VpnPackagedBrokerAdmission.Handle Pin(string path,string kind) {
    path=Plain(path);
    if(path.EndsWith("vpn-control-install-jobs",StringComparison.Ordinal)&&MissingProduct) throw new Win32Exception(2);
-   H handle=Keep(path);if(Primary==null&&path==OwnerImage) Primary=handle;
+   H handle=Keep(path,kind);if(Primary==null&&path==OwnerImage) Primary=handle;
    if(path.EndsWith("witness",StringComparison.Ordinal)) handle.CloseFailures=WitnessCloseFailures;
    return handle;
   }
   public VpnPackagedBrokerAdmission.Handle OpenGate(string path) {
-   if(MissingGate) throw new Win32Exception(2);if(GateError!=0) throw new Win32Exception(GateError);return Keep(path);
+   if(MissingGate) throw new Win32Exception(2);if(GateError!=0) throw new Win32Exception(GateError);return Keep(path,"gate");
   }
   public string Canonical(VpnPackagedBrokerAdmission.Handle file) {
    string path=((H)file).Path;

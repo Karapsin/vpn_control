@@ -21,7 +21,10 @@ public static class VpnPackagedBrokerAdmission {
  // serialized request, JVM property, environment variable or manifest selects this seam.
  internal interface Native {
   Handle OpenOwner(uint pid);Owner ObserveOwner(Handle owner);string CurrentImage();
-  Handle Open(string path);Handle OpenGate(string path);
+  // Open pins a folder or witness and shares writes, so other programs keep renaming into the folders of the
+  // installation (and the home folder of a per-user one) while VPN mode runs. OpenFile pins an image and also
+  // denies writers. Neither shares deletion.
+  Handle Open(string path);Handle OpenFile(string path);Handle OpenGate(string path);
   string Canonical(Handle file);string Identity(Handle file);int Machine(Handle file);
   void Inspect(Handle file,bool directory,bool ancestor,string principal);
   void LinkedAncestor(Handle parent,Handle child,string principal);
@@ -75,7 +78,7 @@ public static class VpnPackagedBrokerAdmission {
    string query=PlainPath(owner.Image);
    // Pin the queried leaf before following its canonical spelling. The full linked
    // ancestry is admitted below, before opening a pipe or accepting runtime input.
-   Handle original=lease.Keep(native.Open(query));lease.PrimaryImage(original);native.Inspect(original,false,false,sid);
+   Handle original=lease.Keep(native.OpenFile(query));lease.PrimaryImage(original);native.Inspect(original,false,false,sid);
    string image=PlainPath(native.Canonical(original));string leaf=Path.GetFileName(image);
    Need(String.Equals(leaf,"vpn-control.exe",StringComparison.OrdinalIgnoreCase)||
         String.Equals(leaf,"vpn-control-cli.exe",StringComparison.OrdinalIgnoreCase),"UNAVAILABLE");
@@ -88,7 +91,7 @@ public static class VpnPackagedBrokerAdmission {
    string expected=root+"\\app\\native\\windows-amd64\\vpn-control-vpn-broker.exe";
    List<Handle> helper=PinAncestry(expected,false,sid,native,lease);
    Handle expectedHelper=helper[helper.Count-1];
-   Handle actualHelper=lease.Keep(native.Open(PlainPath(native.CurrentImage())));
+   Handle actualHelper=lease.Keep(native.OpenFile(PlainPath(native.CurrentImage())));
    native.Inspect(actualHelper,false,false,sid);
    Need(native.Machine(actualHelper)==0x8664&&native.Identity(actualHelper)==native.Identity(expectedHelper)&&
         native.Canonical(actualHelper)==native.Canonical(expectedHelper),"PERMISSION_DENIED");
@@ -132,7 +135,8 @@ public static class VpnPackagedBrokerAdmission {
   if(path.Length>3) foreach(string part in path.Substring(3).Split('\\')) { prefix=prefix.TrimEnd('\\')+"\\"+part;paths.Add(prefix); }
   var result=new List<Handle>();Handle previous=null;
   for(int index=0;index<paths.Count;index++) {
-   Handle file=lease.Keep(native.Open(paths[index]));
+   // The image that ends a file path denies writers; every folder shares writes.
+   Handle file=lease.Keep(!directory&&index==paths.Count-1 ? native.OpenFile(paths[index]) : native.Open(paths[index]));
    if(previous!=null) native.LinkedAncestor(previous,file,principal);
    if(index==paths.Count-1) {
     if(directory) TailAncestor(file,principal,native,lease);
@@ -221,6 +225,7 @@ public static class VpnPackagedBrokerAdmission {
   }
   public string CurrentImage() { return Image(GetCurrentProcess()); }
   public Handle Open(string path) { return new File(VpnInstallNative.OpenDirectory(path)); }
+  public Handle OpenFile(string path) { return new File(VpnInstallNative.OpenFile(path)); }
   public Handle OpenGate(string path) { FileStream stream=VpnInstallNative.OpenGate(path,false);return new File(stream.SafeFileHandle,stream); }
   public string Canonical(Handle handle) {
    var path=new StringBuilder(32768);uint count=GetFinalPathNameByHandleW(((File)handle).Value,path,32768,0);
