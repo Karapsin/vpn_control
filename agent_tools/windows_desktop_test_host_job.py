@@ -7,11 +7,13 @@ names from windows_scenario_host_job.
 
 Differences from a scenario row, all closed here:
 - the four admitted archives (source, JDK, Gradle, dependency repository) are pushed as pinned
-  publisher endpoints, in larger QGA chunks, after a read-only free-space check;
+  publisher endpoints, in larger QGA chunks, after a read-only free-space check and after the
+  Python tree the worker needs is listed and bounded;
 - the worker runs the pinned in-guest runner (windows_desktop_test_guest) through its existing
   ``qualification`` action, with the one argv built here;
 - after the task, the runner's summary and results zip are read back and kept beside the receipt;
-- the pushed archives are deleted by one identity-checked SYSTEM program, only after the owner exited.
+- the pushed archives are deleted by one identity-checked SYSTEM program once the exit is known and
+  nothing can hold them: after the owner exited, or after a known failure before any task launched.
 A failing test is data in the receipt; job exit 1 names a tool stage.
 """
 if globals().get("__package__"):  # Imported as a module; the rendered program already defines these names.
@@ -49,7 +51,8 @@ $r=[ordered]@{schemaVersion=1;state='desktop-test-disk-observed';operationId=$m.
 """
 
 # One exclusive DELETE handle per pushed archive, opened without following a reparse point; its volume,
-# file index and size must be the published pin's before the delete disposition is set on that handle.
+# file index and size must be the published pin's before the delete disposition is set on that handle. An
+# archive whose push or verification never completed has only its endpoint's volume and file index: sizeKnown false.
 CLEANUP_TEMPLATE = r"""$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 @@INPUT@@
 Add-Type -TypeDefinition @'
@@ -59,13 +62,13 @@ public static class VpnDesktopTestCleanup {
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern SafeFileHandle CreateFile(string path,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
  [DllImport("kernel32.dll",SetLastError=true)]static extern bool GetFileInformationByHandle(SafeFileHandle handle,out Info result);
  [DllImport("kernel32.dll",SetLastError=true)]static extern bool SetFileInformationByHandle(SafeFileHandle handle,int kind,ref byte value,uint size);
- public static string Delete(string path,uint volume,ulong index,ulong size){
+ public static string Delete(string path,uint volume,ulong index,ulong size,bool sizeKnown){
   SafeFileHandle h=CreateFile(path,0x10080,0,IntPtr.Zero,3,0x00200000,IntPtr.Zero);
   if(h.IsInvalid){int error=Marshal.GetLastWin32Error();h.Dispose();if(error==2||error==3)return "absent";if(error==32)return "held";throw new Win32Exception(error);}
   using(h){
    Info r;if(!GetFileInformationByHandle(h,out r))throw new Win32Exception(Marshal.GetLastWin32Error());
    if((r.Attributes&0x410)!=0||r.Links!=1)return "not-the-published-file";
-   if(r.Volume!=volume||((((ulong)r.IndexHigh)<<32)|r.IndexLow)!=index||((((ulong)r.SizeHigh)<<32)|r.SizeLow)!=size)return "not-the-published-file";
+   if(r.Volume!=volume||((((ulong)r.IndexHigh)<<32)|r.IndexLow)!=index||(sizeKnown&&((((ulong)r.SizeHigh)<<32)|r.SizeLow)!=size))return "not-the-published-file";
    byte delete=1;if(!SetFileInformationByHandle(h,4,ref delete,1))throw new Win32Exception(Marshal.GetLastWin32Error());
   }
   return "deleted";
@@ -76,7 +79,8 @@ $rows=[Collections.Generic.List[object]]::new()
 foreach($target in @($m.targets)){
  $path=[string]$target.path
  if(-not $path.StartsWith(([string]$m.workspace)+'\',[StringComparison]::Ordinal) -or $path.Substring(([string]$m.workspace).Length+1) -cnotmatch '\Adesktop-test-[a-z]+\.zip\z'){throw 'DESKTOP_CLEAN_TARGET'}
- $state=[VpnDesktopTestCleanup]::Delete($path,[uint32]$target.volumeSerial,[uint64]$target.fileIndex,[uint64]$target.sizeBytes)
+ if($target.sizeKnown -isnot [bool]){throw 'DESKTOP_CLEAN_SIZE_KNOWN'}
+ $state=[VpnDesktopTestCleanup]::Delete($path,[uint32]$target.volumeSerial,[uint64]$target.fileIndex,[uint64]$target.sizeBytes,[bool]$target.sizeKnown)
  $rows.Add([ordered]@{path=$path;state=$state})
 }
 $r=[ordered]@{schemaVersion=1;state='desktop-test-archives-cleaned';operationId=$m.operationId;targets=@($rows.ToArray());freeBytes=[long]([IO.DriveInfo]::new([string]$m.drive)).AvailableFreeSpace;productOperation=$false}
@@ -125,6 +129,7 @@ class DesktopTestJob(Job):
         self.runner_pin = self.runner = self.results = self.disk = self.summary_record = None
         self.cleanup = {"state": "not-started"}
         self.status_polls = 0
+        self.archive_endpoints = {}  # role -> the identity of the endpoint the publisher created for that archive
 
     def guest(self):
         return self._load("windows_desktop_test_guest")
@@ -213,6 +218,14 @@ class DesktopTestJob(Job):
         self._disk_space()
         read_paths = list(self.row["readPins"])
         self._initialize(read_paths)
+        # Read-only and before any byte of the archives is pushed: a fixture without the scenario Python, or a tree
+        # past the pin bound, refuses with nothing to delete.
+        python = self._listed("python", self.paths["python"], PYTHON_REQUIRED)
+        files, directories = self._tree_paths(self.paths["python"], python)
+        # The worker request holds every pin of the run: read pins, its sources, the archives, the runner request, the tree.
+        if (len(read_paths) + 2 + len(ARCHIVE_ROLES) + 1 + len(files) > FILE_PIN_LIMIT
+                or len(self.directory_pins) + len(directories) > DIRECTORY_PIN_LIMIT):
+            raise KnownFailure("worker_pin_bound")
         targets = []
         for relative, role, kind in self.row["guestFiles"]:
             raw = self.files[relative]
@@ -224,13 +237,29 @@ class DesktopTestJob(Job):
                             "sha256": package["sha256"], "kind": "data", "raw": package})
         self.file_pins = self._publish_files(targets, "publish")
         self.read_pins = self._read_pins(read_paths)
-        python = self._listed("python", self.paths["python"], PYTHON_REQUIRED)
-        files, directories = self._tree_paths(self.paths["python"], python)
-        # The worker request holds every pin of the run: read pins, its sources, the archives, the runner request, the tree.
-        if (len(self.read_pins) + 2 + len(ARCHIVE_ROLES) + 1 + len(files) > FILE_PIN_LIMIT
-                or len(self.directory_pins) + len(directories) > DIRECTORY_PIN_LIMIT):
-            raise KnownFailure("worker_pin_bound")
         self.python_tree = self._tree("python", self.paths["python"], "python-runtime", python)
+
+    def _publisher(self, label, action, *, unknown=None, **fields):
+        """The base publisher; an archive endpoint's identity is kept as it is created, so a push or verification
+        that fails afterwards still leaves each archive deletable by identity."""
+        value, required = super()._publisher(label, action, unknown=unknown, **fields)
+        if action == "endpoints":
+            self._note_archive_endpoints(fields.get("targets"), value.get("endpoints"))
+        return value, required
+
+    def _note_archive_endpoints(self, rows, created):
+        if type(rows) is not list or type(created) is not list or len(rows) != len(created):
+            return
+        for row, receipt in zip(rows, created):
+            role = row.get("role") if type(row) is dict else None
+            if role not in ARCHIVE_ROLES or role in self.archive_endpoints:
+                continue
+            pin = receipt.get("filePin") if type(receipt) is dict else None
+            identity = pin.get("nativeIdentity") if type(pin) is dict else None
+            if (type(identity) is dict and pin.get("path") == row.get("path") == self.paths["file:" + role]
+                    and type(identity.get("volumeSerial")) is int and type(identity.get("fileIndex")) is int):
+                self.archive_endpoints[role] = {"path": pin["path"], "volumeSerial": identity["volumeSerial"],
+                                                "fileIndex": identity["fileIndex"]}
 
     def runner_request(self):
         guest = self.guest()
@@ -258,7 +287,9 @@ class DesktopTestJob(Job):
         expected = {"operationId": self.op, "operationRoot": self.operation_root, "context": self.context, "owner": owner["path"],
                     "ownerSha256": owner["sha256"], "bootstrapTrees": [python["tree"]], "pythonRuntime": runtime, "worker": None,
                     "installedRoot": paths["installed"]}
-        worker_files = [*self.read_pins, *python["filePins"], self.file_pins["runner"],
+        # The worker admits its request only if that request pins its interpreter and its own source
+        # (windows_ordinary_process_owner.Owner: owner-interpreter-source-pins), as the scenario rows' module pins do.
+        worker_files = [*self.read_pins, *python["filePins"], self.file_pins["worker"], self.file_pins["runner"],
                         *(self.file_pins[role] for role in ARCHIVE_ROLES), self.runner_pin]
         worker_directories = [*self.directory_pins, *python["directoryPins"]]
         # The one argv: the admitted interpreter, isolated, the pinned runner and its pinned request.
@@ -341,14 +372,29 @@ class DesktopTestJob(Job):
         if summary["outcome"] != "completed":
             raise KnownFailure("desktop_runner:" + token(summary["failedStage"]) + ":" + token(summary["failure"]))
 
-    def stage_cleanup(self):
-        """Delete the pushed archives; the owner, the worker and the runner have all exited."""
+    def cleanup_targets(self):
+        """Every archive endpoint this job created: by its verified pin, size included, or, when its push or
+        verification did not complete, by the endpoint's volume and file index alone."""
         targets = []
         for role in ARCHIVE_ROLES:
-            pin = self.file_pins[role]
-            identity = pin["nativeIdentity"]
-            targets.append({"path": pin["path"], "volumeSerial": identity["volumeSerial"], "fileIndex": identity["fileIndex"],
-                            "sizeBytes": identity["sizeBytes"]})
+            pin = self.file_pins.get(role)
+            if pin is not None:
+                identity = pin["nativeIdentity"]
+                targets.append({"path": pin["path"], "volumeSerial": identity["volumeSerial"], "fileIndex": identity["fileIndex"],
+                                "sizeBytes": identity["sizeBytes"], "sizeKnown": True})
+            elif role in self.archive_endpoints:
+                targets.append({**self.archive_endpoints[role], "sizeBytes": 0, "sizeKnown": False})
+        return targets
+
+    def archives_released(self):
+        """Nothing can hold the archives any more: the owner exited, or no task was ever launched (a known failure
+        before the run, or a run refused before launch). Combined with a known exit and no open program."""
+        state = (self.task or {}).get("state")
+        return state in ("task-finished", "refused-before-launch") or self.task is None
+
+    def stage_cleanup(self):
+        """Delete the pushed archives; whatever ran from them has exited, or never started."""
+        targets = self.cleanup_targets()
 
         def decide(value):
             rows = value.get("targets")
@@ -411,8 +457,10 @@ class DesktopTestJob(Job):
             except Exception as error:
                 code = EXIT_UNKNOWN
                 failure = failure or token(error if isinstance(error, Unknown) else "unexpected:" + type(error).__name__)
-        # The archives go only once the owner exited and no outcome is open; a parked owner keeps everything.
-        if code in (EXIT_PASSED, EXIT_FAILED) and not self.program_open and (self.task or {}).get("state") == "task-finished":
+        # The archives go once the exit is known, no program is open and nothing can hold them: after the owner exited,
+        # and also after a known failure before any task launched (they were pushed, then the job stopped). An open
+        # outcome, a parked owner among them, keeps everything.
+        if code in KNOWN_EXITS and not self.program_open and self.archives_released() and self.cleanup_targets():
             self.stage = "cleanup"
             try:
                 self.stage_cleanup()
@@ -421,8 +469,10 @@ class DesktopTestJob(Job):
                     code, failure, failed_stage = EXIT_FAILED, token(error), "cleanup"
             except Exception as error:
                 self.cleanup = {"state": "unknown"}
-                code, failed_stage = EXIT_UNKNOWN, "cleanup"
-                failure = token(error if isinstance(error, Unknown) else "unexpected:" + type(error).__name__)
+                if code == EXIT_PASSED:
+                    failed_stage = "cleanup"
+                code = EXIT_UNKNOWN
+                failure = failure or token(error if isinstance(error, Unknown) else "unexpected:" + type(error).__name__)
         self.stage = "receipt" if code == EXIT_PASSED else failed_stage
         return self._finish(code, failure)
 

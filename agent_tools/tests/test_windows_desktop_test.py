@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 import uuid
@@ -62,6 +63,37 @@ XML_ALPHA = ('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="com.examp
 XML_BETA = ('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="com.example.BetaTest" tests="1" skipped="0" failures="1" '
             'errors="0" time="0.5">\n<testcase name="breaks" classname="com.example.BetaTest" time="0.5">\n'
             '<failure message="expected" type="java.lang.AssertionError">trace</failure>\n</testcase>\n</testsuite>\n')
+# Gradle 8.10.2's own console, captured from the pinned distribution offline against a file repository that lacks a
+# test runtime jar, then a whole module (.runtime/review-1113/offline-wording of the build clone); only the
+# repository location lines are shortened to a guest path.
+_TASKS = ("> Task :desktopApp:compileJava NO-SOURCE\n> Task :desktopApp:processResources NO-SOURCE\n> Task :desktopApp:classes UP-TO-DATE\n"
+          "> Task :desktopApp:compileTestJava\n> Task :desktopApp:processTestResources NO-SOURCE\n> Task :desktopApp:testClasses\n"
+          "> Task :desktopApp:test FAILED\n\nFAILURE: Build failed with an exception.\n\n* What went wrong:\n"
+          "Execution failed for task ':desktopApp:test'.\n> Could not resolve all files for configuration ':desktopApp:testRuntimeClasspath'.\n")
+_TRY = ("\n* Try:\n> Run with --stacktrace option to get the stack trace.\n> Run with --info or --debug option to get more log output.\n"
+        "> Run with --scan to get full insights.\n> Get more help at https://help.gradle.org.\n\n")
+MISSING_JAR_CONSOLE = (_TASKS + "   > Could not find lib-1.0.jar (org.example:lib:1.0).\n     Searched in the following locations:\n"
+                       "         file:/C:/Users/fixture/vcdt-0f1e2d3c/m/org/example/lib/1.0/lib-1.0.jar\n" + _TRY
+                       + "BUILD FAILED in 25s\n2 actionable tasks: 2 executed\n")
+MISSING_MODULE_CONSOLE = (_TASKS + "   > Could not find org.example:missing:1.0.\n     Searched in the following locations:\n"
+                          "       - file:/C:/Users/fixture/vcdt-0f1e2d3c/m/org/example/missing/1.0/missing-1.0.pom\n"
+                          "     Required by:\n         project :desktopApp\n" + _TRY + "BUILD FAILED in 22s\n2 actionable tasks: 1 executed, 1 up-to-date\n")
+
+
+def dotnet_xml(operation, program=None, error="CreateProcess error=2, The system cannot find the file specified"):
+    """Gradle's XML for a desktop test that could not start dotnet: <failure> with message=Throwable.toString()."""
+    program = program or "C:\\Users\\fixture\\vcdt-" + operation[:8] + "\\no-dotnet\\dotnet.exe"
+    message = ('java.io.IOException: Cannot run program "' + program + '" (in directory "C:\\Users\\fixture\\vcdt-' + operation[:8]
+               + '\\t\\vpn-output-native-1"): ' + error)
+    quoted = message.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+    case = ('<testcase name="{name}" classname="com.kardinal.vpncontrol.desktop.DesktopWindowsOutputNativeTest" time="0.01">\n'
+            '<failure message="' + quoted + '" type="java.io.IOException">' + quoted + '\n\tat java.base/java.lang.ProcessBuilder.start'
+            '(ProcessBuilder.java:1143)</failure>\n</testcase>\n')
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="com.kardinal.vpncontrol.desktop.DesktopWindowsOutputNativeTest" '
+            'tests="2" skipped="0" failures="2" errors="0" time="0.02">\n' + case.format(name="first") + case.format(name="second")
+            + '</testsuite>\n')
+
+
 ARTIFACTS = (("org.jetbrains.compose.desktop", "desktop-jvm-windows-x64", "1.7.0", "desktop-jvm-windows-x64-1.7.0.jar", b"compose windows"),
              ("org.jetbrains.skiko", "skiko-awt-runtime-windows-x64", "0.8.18", "skiko-awt-runtime-windows-x64-0.8.18.jar", b"skiko windows"),
              ("org.example", "lib", "1.0", "lib-1.0.pom", b"<project/>"))
@@ -117,12 +149,15 @@ class DesktopSsh(FakeSsh):
     def __init__(self, directory):
         super().__init__(directory)
         self.kept = {}
+        self.pull_hook = None  # (name, offset): runs as one chunk is read, so two readers can be interleaved.
 
     def respond(self, command):
         if command[:4] == ("python3", "-I", "-B", "-c") and command[4].startswith("exec(") and ast.literal_eval(command[4][5:-1]) == windows._PULL:
             self.pulls += 1
             raw = self.kept[command[6]]
             offset, length = int(command[7]), int(command[8])
+            if self.pull_hook is not None:
+                self.pull_hook(command[6], offset)
             return "pull", {"size": len(raw), "data": base64.b64encode(raw[offset:offset + length]).decode()}
         return super().respond(command)
 
@@ -405,6 +440,52 @@ class PrepareTests(RepositoryBase):
         self.assertEqual((b"Could not resolve all files\n", 0o600), (kept[0].read_bytes(), kept[0].stat().st_mode & 0o777))
 
 
+def pinned_gradle():
+    """The pinned distribution where the commit's own wrapper keeps it, and a JDK: the coordinator's export needs both."""
+    home = (Path.home() / ".gradle/wrapper/dists" / ("gradle-" + desktop.GRADLE["version"] + "-bin") / desktop.GRADLE["wrapperHash"]
+            / desktop.GRADLE["root"])
+    candidates = [os.environ.get("JAVA_HOME")]
+    try:
+        from agent_tools import local_build_environment
+        candidates.append(local_build_environment.apply(ROOT, {}).get("JAVA_HOME"))
+    except (OSError, ValueError):
+        pass
+    java = next((value for value in candidates if value and os.access(os.path.join(value, "bin", "java"), os.X_OK)), None)
+    launcher = home / "bin" / "gradle"
+    return (launcher, java) if os.name == "posix" and launcher.is_file() and java else (None, None)
+
+
+class ExportSelectionTests(unittest.TestCase):
+    """The export's init script under the pinned Gradle itself (offline, a fresh user home, the java plugin only) and
+    this checkout's gradle.properties: the regression the fake Gradle of PrepareTests cannot be."""
+
+    def test_the_export_task_is_selected_under_the_builds_configure_on_demand_and_nothing_else_is_configured(self):
+        launcher, java = pinned_gradle()
+        if launcher is None:
+            self.skipTest("needs the pinned Gradle in the wrapper's own dists folder and a JDK (the coordinator has both)")
+        properties = (ROOT / "gradle.properties").read_text(encoding="utf-8")
+        self.assertRegex(properties, r"(?m)^org\.gradle\.configureondemand=true$", "the setting this regression stands for")
+        with tempfile.TemporaryDirectory(prefix="vcdt-export-") as directory:
+            work = Path(directory)
+            project = work / "project"
+            for relative, text in (("settings.gradle", "rootProject.name = 'fixture'\ninclude ':desktopApp'\ninclude ':app'\n"),
+                                   ("gradle.properties", properties), ("desktopApp/build.gradle", "plugins { id 'java' }\n"),
+                                   # The Android app cannot configure without an SDK: the export must never configure it.
+                                   ("app/build.gradle", "throw new GradleException('vcdt fixture: :app was configured')\n")):
+                (project / relative).parent.mkdir(parents=True, exist_ok=True)
+                (project / relative).write_text(text, encoding="utf-8")
+            init = work / "export-dependencies.gradle"
+            init.write_text(desktop.EXPORT_INIT_SCRIPT, encoding="ascii")
+            environment = {key: value for key, value in os.environ.items() if key.upper() not in guest.REMOVED_ENVIRONMENT}
+            environment["JAVA_HOME"] = java
+            done = subprocess.run([str(launcher), "--offline", "--no-daemon", "--console=plain", "--gradle-user-home", str(work / "home"),
+                                   "--init-script", str(init), *guest.GRADLE_PROPERTIES, desktop.EXPORT_TASK], cwd=project, env=environment,
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=900, check=False)
+        output = done.stdout.decode("utf-8", "replace")
+        self.assertEqual(0, done.returncode, output[-4000:])
+        self.assertIn("> Task " + desktop.EXPORT_TASK + "\n", output)
+
+
 @unittest.skipUnless(os.name == "posix" and shutil.which("git"), "private journals are POSIX and a source is a git commit")
 class DriverBase(RepositoryBase):
     def setUp(self):
@@ -650,6 +731,93 @@ class StatusTests(DriverBase):
         self.assertEqual("passed", view["testOutcome"], "its results were still copied back")
         self.assertEqual(1, self.ssh.submits)
 
+    def test_a_dependency_the_offline_repository_lacks_is_the_tools_failure_though_gradle_names_the_test_task(self):
+        for console in (MISSING_JAR_CONSOLE, MISSING_MODULE_CONSOLE):
+            with self.subTest(console=console.splitlines()[-1]):
+                self.setUp()
+                self.finished(gradle_exit=1, xml=(), console=console.encode())
+                view = self.status()
+                self.assertEqual(("terminal", "failed", "gradle-dependencies", "not-run"),
+                                 (view["state"], view["toolOutcome"], view["failedStage"], view["testOutcome"]))
+
+    def test_tests_that_could_not_start_the_guests_absent_dotnet_are_reported_apart(self):
+        console = b"There were failing tests. See the report at: file:///C:/x/index.html\nBUILD FAILED in 9m\n"
+        self.finished(gradle_exit=1, xml=(XML_ALPHA, dotnet_xml(self.operation)), console=console)
+        view = self.status()
+        self.assertEqual(("completed", "passed-except-excluded", [], 2), (view["toolOutcome"], view["testOutcome"], view["failedTests"],
+                                                                          view.get("excludedTests")))
+        summary = json.loads((self.operation_directory() / "summary.json").read_text())
+        self.assertEqual([{"class": "com.kardinal.vpncontrol.desktop.DesktopWindowsOutputNativeTest", "name": name,
+                           "reason": "dotnet-sdk-not-provisioned"} for name in ("first", "second")], summary["excludedTests"])
+        self.assertEqual(2, summary["tests"]["failures"], "the totals stay Gradle's own")
+
+    def test_any_other_failure_to_start_a_program_still_fails_the_source(self):
+        console = b"There were failing tests. See the report at: file:///C:/x/index.html\nBUILD FAILED in 9m\n"
+        for xml in (dotnet_xml(self.operation, program="dotnet.exe"), dotnet_xml("99999999-0000-4000-8000-000000000000"),
+                    dotnet_xml(self.operation, error="CreateProcess error=5, Access is denied")):
+            with self.subTest(xml=xml[:60]):
+                self.setUp()
+                self.finished(gradle_exit=1, xml=(XML_ALPHA, xml), console=console)
+                view = self.status()
+                self.assertEqual(("completed", "failed", 2, 0), (view["toolOutcome"], view["testOutcome"], len(view["failedTests"]),
+                                                                 view.get("excludedTests", 0)))
+
+    def test_an_unknown_exit_whose_copy_back_was_cut_is_copied_back_by_a_later_status(self):
+        self.finished(exit_code=3, stage="cleanup", failure="guest_exec_status_lost:desktop-cleanup")
+        self.ssh.lost = {"pull"}
+        first = self.status()
+        self.assertEqual(("unknown", "incomplete"), (first["state"], first.get("copyBack")))
+        self.assertNotIn("toolOutcome", first, "nothing is summarized before every kept file is here")
+        self.assertEqual([], [path.name for path in self.operation_directory().glob("summary*.json")])
+        second = self.status()
+        self.assertEqual(("unknown", "unknown", "passed", 2), (second["state"], second["toolOutcome"], second["testOutcome"],
+                                                               second["tests"]["tests"]))
+        self.assertEqual(".runtime/windows-desktop-test/operations/" + self.operation + "/summary-unknown.json", second["summary"])
+        self.assertNotIn("copyBack", second)
+        pulls = self.ssh.pulls
+        self.assertEqual(second, self.status(), "copied back once, then only read")
+        self.assertEqual((pulls, 1), (self.ssh.pulls, self.ssh.submits))
+
+    def test_one_copy_back_at_a_time_so_two_status_reads_never_write_one_file(self):
+        # Two status reads of one UNKNOWN exit: the second starts while the first is between two chunks of the results,
+        # whose stored console makes them three chunks long.
+        console = b"> Task :desktopApp:test\n" + b"." * (2 * desktop._PULL_CHUNK + 4096) + b"\nBUILD SUCCESSFUL in 9m\n"
+        self.finished(exit_code=3, stage="cleanup", failure="guest_exec_status_lost:desktop-cleanup", console=console)
+        results = self.ssh.kept[guest.RESULTS_LEAF]
+        self.assertEqual(3, -(-len(results) // desktop._PULL_CHUNK))
+        first, second_at_chunk, first_wrote = threading.current_thread(), threading.Event(), threading.Event()
+        views, threads = [], []
+
+        def second_read():
+            try:
+                views.append(self.status())
+            except Exception as error:  # Two summaries created at once: the second create-only write fails.
+                views.append({"state": "raised", "copyBack": type(error).__name__})
+            finally:
+                second_at_chunk.set()
+
+        def hook(name, offset):
+            if name != guest.RESULTS_LEAF:
+                return
+            if threading.current_thread() is first and offset == desktop._PULL_CHUNK and not threads:
+                threads.append(threading.Thread(target=second_read, daemon=True))
+                threads[0].start()
+                second_at_chunk.wait(60)  # The second read reaches the results, or ends.
+            elif threading.current_thread() is not first and offset == 2 * desktop._PULL_CHUNK:
+                second_at_chunk.set()  # It appended the second chunk the first read is about to append as well.
+                first_wrote.wait(60)
+            elif threading.current_thread() is first and offset == 2 * desktop._PULL_CHUNK:
+                first_wrote.set()
+        self.ssh.pull_hook = hook
+        view = self.status()
+        threads[0].join(60)
+        self.assertEqual(1, len(views), "the second read returned")
+        self.assertEqual(("unknown", "busy"), (views[0]["state"], views[0].get("copyBack")), "the second read wrote nothing")
+        self.assertEqual(("unknown", "passed"), (view["toolOutcome"], view["testOutcome"]))
+        directory = self.operation_directory()
+        self.assertEqual(sha(results), sha((directory / guest.RESULTS_LEAF).read_bytes()))
+        self.assertEqual([], [path.name for path in directory.glob("*.partial")])
+
     def test_a_changed_results_file_is_never_kept(self):
         self.finished()
         self.ssh.kept[guest.RESULTS_LEAF] = self.ssh.kept[guest.RESULTS_LEAF][:-1] + b"!"
@@ -773,6 +941,11 @@ class ResultTests(unittest.TestCase):
         offline = desktop.classify_console("Could not resolve all files for configuration ':desktopApp:testRuntimeClasspath'.\n"
                                            "   > No cached version of org.example:lib:1.0 available for offline mode.\nBUILD FAILED\n")
         self.assertTrue(offline["offlineResolutionFailure"])
+        # The pinned Gradle names the test task for a missing jar and a missing module alike.
+        for console in (MISSING_JAR_CONSOLE, MISSING_MODULE_CONSOLE):
+            with self.subTest(console=console.splitlines()[-1]):
+                self.assertEqual({"build": "failed", "failingTask": ":desktopApp:test", "offlineResolutionFailure": True, "failingTests": False},
+                                 desktop.classify_console(console))
 
     def test_the_tool_outcome_and_the_test_outcome_are_apart(self):
         passed = {"totals": {"failures": 0, "errors": 0}}
@@ -782,6 +955,14 @@ class ResultTests(unittest.TestCase):
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTests": True}, failing, ("completed", None, "failed")),
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTask": ":desktopApp:compileTestKotlin"}, None, ("completed", None, "build-failed")),
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"offlineResolutionFailure": True}, None, ("failed", "gradle-dependencies", "not-run")),
+            # Gradle names the test task when it cannot resolve that task's runtime classpath: no test ran.
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"offlineResolutionFailure": True, "failingTask": ":desktopApp:test"}, None,
+             ("failed", "gradle-dependencies", "not-run")),
+            # Failing tests win over any resolution words a failing test printed.
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"offlineResolutionFailure": True, "failingTask": ":desktopApp:test",
+                                                                    "failingTests": True}, failing, ("completed", None, "failed")),
+            # A test JVM that ended without "There were failing tests": the source's failure.
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTask": ":desktopApp:test"}, None, ("completed", None, "failed")),
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": None, "deadline": True}, {}, None, ("completed", None, "timed-out")),
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 0}, {}, None, ("completed", None, "inconsistent")),
             ({"exitCode": 1, "stage": "results", "failure": "desktop_runner:extract-jdk:jdk-version"}, None, None, None,

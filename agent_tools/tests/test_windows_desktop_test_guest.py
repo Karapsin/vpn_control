@@ -30,7 +30,10 @@ mode = os.environ.get("VCDT_FAKE_MODE", "pass")
 record = {"argv": argv, "cwd": os.getcwd(), "env": {key: os.environ.get(key) for key in
           ("JAVA_HOME", "GRADLE_USER_HOME", "TEMP", "TMP", "ANDROID_HOME", "ANDROID_SDK_ROOT", "VPN_CONTROL_DESKTOP_TEST_REPOSITORY",
            "VPN_CONTROL_DESKTOP_TEST_HOME", "GRADLE_OPTS", "JAVA_TOOL_OPTIONS")},
-          "testHomeIsFolder": os.path.isdir(os.environ.get("VPN_CONTROL_DESKTOP_TEST_HOME", ""))}
+          "testHomeIsFolder": os.path.isdir(os.environ.get("VPN_CONTROL_DESKTOP_TEST_HOME", "")),
+          # What the desktop tests that build native probes would start, and whether it is there.
+          "dotnet": {"program": os.environ.get("VPN_CONTROL_TEST_DOTNET"), "root": os.environ.get("VPN_CONTROL_TEST_DOTNET_ROOT"),
+                     "programExists": os.path.lexists(os.environ.get("VPN_CONTROL_TEST_DOTNET") or "dotnet.exe")}}
 with open(os.environ["VCDT_FAKE_RECORD"], "w") as stream:
     json.dump(record, stream)
 results = os.path.join("desktopApp", "build", "test-results", "test")
@@ -326,6 +329,18 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(record["testHomeIsFolder"])
         self.assertIn("task.systemProperty('user.home', testHome)", guest.OFFLINE_INIT_SCRIPT)
         self.assertIn("System.getenv('" + guest.HOME_VARIABLE + "')", guest.OFFLINE_INIT_SCRIPT)
+
+    def test_the_build_gets_a_dotnet_that_does_not_exist_and_no_inherited_dotnet_root(self):
+        # A fixture user whose environment names an SDK of the fixture's own: CI's pinned SDK is not provisioned here.
+        dotnet = self.work / "fixture-sdk"
+        dotnet.mkdir()
+        (dotnet / "dotnet.exe").write_bytes(b"MZ")
+        with mock.patch.dict(os.environ, {"VPN_CONTROL_TEST_DOTNET": str(dotnet / "dotnet.exe"), "VPN_CONTROL_TEST_DOTNET_ROOT": str(dotnet)}):
+            code, _ = self.run_main()
+        self.assertEqual(0, code)
+        work = self.profile / ("vcdt-" + OPERATION[:8])
+        self.assertEqual({"program": str(work / "no-dotnet" / "dotnet.exe"), "root": None, "programExists": False},
+                         json.loads(self.record.read_text())["dotnet"])
 
     def test_the_test_jvms_home_goes_with_the_work_folder_and_anything_left_beside_it_is_named(self):
         code, summary = self.run_main()

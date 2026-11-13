@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from contextlib import contextmanager
 import gzip
 import hashlib
 import json
@@ -35,6 +36,11 @@ import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 from typing import Any, Callable, Mapping
+
+try:  # The coordinator is POSIX; Windows CI only imports this module.
+    import fcntl
+except ImportError:
+    fcntl = None
 
 from . import durable_remote_job, native_scenario_execution as execution, native_scenario_windows as windows
 from . import ssh_program_execution_remote as carrier
@@ -83,6 +89,14 @@ STAGING_STATE = (".rag_index", "windows-desktop-test-staging")
 REQUEST_SCHEMA = "vpn-control.windows-desktop-test.request"
 SUMMARY_SCHEMA = "vpn-control.windows-desktop-test.summary"
 DEPENDENCY_SCHEMA = "vpn-control.windows-desktop-test.dependencies"
+# Under operations/<operationId>/: the summary of a known job exit, the summary of an UNKNOWN one (written only
+# once every file its receipt names was copied back, and never in the way of a later terminal summary), and the
+# lease one copy-back or summary of the operation holds at a time.
+SUMMARY_LEAF = "summary.json"
+UNKNOWN_SUMMARY_LEAF = "summary-unknown.json"
+COPY_BACK_LOCK = ".copy-back.lock"
+# Test failures the guest environment causes by design (see guest.DOTNET_VARIABLE), reported apart from the source's.
+EXCLUDED_DOTNET = "dotnet-sdk-not-provisioned"
 # Build-definition files: the dependency repository of one digest serves every commit that shares them.
 _DEFINITION = re.compile(r"(?:.*/)?(?:[^/]+\.gradle\.kts|[^/]+\.gradle|gradle\.properties)\Z|gradle/(?!wrapper/gradle-wrapper\.jar\Z).+")
 _VERSION_LINE = re.compile(r"(?m)^vpnControlVersion=.*$")
@@ -101,6 +115,9 @@ _GIT = ("git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "-c", "filter.l
         "-c", "filter.lfs.required=false", "-c", "core.quotepath=false")
 # Coordinator-only: every artifact the Windows :desktopApp:test resolves, with the Windows Compose and
 # Skiko natives in place of this host's. Gradle downloads them into a fresh private user home.
+# The build's gradle.properties turns on configure-on-demand: Gradle then evaluates only the requested project
+# and its parents, looks the requested task up, and fires projectsEvaluated only after that. The export task is
+# therefore registered as :desktopApp itself is evaluated, and no other project is configured for it.
 EXPORT_INIT_SCRIPT = """// vpn-control windows-desktop-test: the Windows dependency set of :desktopApp:test, resolved on a coordinator.
 def windowsNative = { String group, String module ->
     if (group == 'org.jetbrains.compose.desktop' && module.startsWith('desktop-jvm-')) return 'desktop-jvm-windows-x64'
@@ -120,12 +137,13 @@ gradle.allprojects { project ->
         }
     }
 }
-gradle.projectsEvaluated {
-    def app = gradle.rootProject.project(':desktopApp')
-    app.tasks.register('vcdtExportResolution') {
-        dependsOn app.tasks.named('testClasses')
-        doLast {
-            ['testRuntimeClasspath', 'runtimeClasspath'].each { name -> app.configurations.getByName(name).resolve() }
+gradle.afterProject { evaluated ->
+    if (evaluated.path == ':desktopApp') {
+        evaluated.tasks.register('vcdtExportResolution') {
+            dependsOn evaluated.tasks.named('testClasses')
+            doLast {
+                ['testRuntimeClasspath', 'runtimeClasspath'].each { name -> evaluated.configurations.getByName(name).resolve() }
+            }
         }
     }
 }
@@ -543,6 +561,26 @@ def _operation_directory(root: Path, operation: str) -> Path:
     return root.joinpath(*STORE, "operations", operation)
 
 
+@contextmanager
+def copy_back_lease(root: Path, operation: str):
+    """One copy-back or summary of one operation at a time, across processes: the terminal collection, the
+    copy-back of an UNKNOWN exit and either summary. A held lease is refused, never waited on; status is read again."""
+    _need(fcntl is not None, "desktop_test_private_state_unsafe")
+    directory = _private_directory(_operation_directory(root, operation))
+    descriptor = os.open(directory / COPY_BACK_LOCK, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        info = os.fstat(descriptor)
+        _need(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and not stat.S_IMODE(info.st_mode) & 0o077,
+              "desktop_test_private_state_unsafe")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise DesktopTestError("desktop_test_copy_back_busy") from None
+        yield
+    finally:
+        os.close(descriptor)
+
+
 def _record(root: Path, operation: str) -> dict[str, Any] | None:
     path = _operation_directory(root, operation) / "request.json"
     if not path.exists():
@@ -688,11 +726,13 @@ class DesktopTestDriver(windows.NativeScenarioWindowsDriver):
             _need(isinstance(digest, str) and _SHA256.fullmatch(digest) is not None, "desktop_test_results_invalid")
         directory = _private_directory(_operation_directory(self.root, plan.correlation_id))
         chunks = sum(-(-size // _PULL_CHUNK) for _, size, _ in wanted)
-        config = ssh_transport.load_config(self.configuration_root)
         pulled = {}
-        with self._admitted(config, plan, min(7200, windows._OBSERVE_SECONDS + 30 * max(1, chunks))):
-            for name, size, digest in wanted:
-                pulled[name] = self._pull_one(config, plan, data, name, size, digest, directory)
+        # One writer of the operation's partial files: the terminal collection and an UNKNOWN exit's copy-back alike.
+        with copy_back_lease(self.root, plan.correlation_id):
+            config = ssh_transport.load_config(self.configuration_root)
+            with self._admitted(config, plan, min(7200, windows._OBSERVE_SECONDS + 30 * max(1, chunks))):
+                for name, size, digest in wanted:
+                    pulled[name] = self._pull_one(config, plan, data, name, size, digest, directory)
         return pulled
 
     def _pull_one(self, config, plan, data: str, name: str, size: int, digest: str, directory: Path) -> str:
@@ -782,8 +822,18 @@ def start(root: Path | str, inputs: Any, *, route: str = "direct", driver: Deskt
 
 
 # Results: the XML set as Gradle wrote it, the console log and the runner's summary, read back here.
-def parse_results(directory: Path) -> dict[str, Any]:
-    classes, skipped, failed = [], [], []
+def dotnet_absent(operation: str) -> re.Pattern:
+    """Gradle's failure message (Throwable.toString) of a test that could not start the runner's absent dotnet:
+    exactly that program in this operation's work folder, and Windows' file-not-found, nothing else."""
+    leaf = "\\".join((guest.WORK_PREFIX + operation[:8], *guest.DOTNET_ABSENT))
+    return re.compile(r'java\.io\.IOException: Cannot run program "[A-Za-z]:\\(?:[^"\\\r\n]+\\)*' + re.escape(leaf)
+                      + r'"(?: \(in directory "[^"\r\n]*"\))?: CreateProcess error=2, [^\r\n]*')
+
+
+def parse_results(directory: Path, operation: str | None = None) -> dict[str, Any]:
+    """Totals, classes, skips and failures. With the operation, a failure to start its absent dotnet is excluded."""
+    absent = dotnet_absent(operation) if operation is not None else None
+    classes, skipped, failed, excluded = [], [], [], []
     totals = {"classes": 0, "tests": 0, "failures": 0, "errors": 0, "skipped": 0, "timeSeconds": 0.0}
     for path in sorted(directory.rglob("*.xml")):
         raw = path.read_bytes()
@@ -814,16 +864,28 @@ def parse_results(directory: Path) -> dict[str, Any]:
                     skipped.append(identity)
                 for kind in ("failure", "error"):
                     element = case.find(kind)
-                    if element is not None:
+                    if element is None:
+                        continue
+                    if (absent is not None and element.get("type") == "java.io.IOException"
+                            and absent.fullmatch(element.get("message") or "") is not None):
+                        excluded.append({**identity, "reason": EXCLUDED_DOTNET})
+                    else:
                         failed.append({**identity, "kind": kind, "type": element.get("type")})
     totals["timeSeconds"] = round(totals["timeSeconds"], 3)
-    return {"totals": totals, "classes": classes, "skippedTests": skipped, "failedTests": failed}
+    return {"totals": totals, "classes": classes, "skippedTests": skipped, "failedTests": failed, "excludedTests": excluded}
+
+
+# A dependency the offline repository lacks. The pinned Gradle 8.10.2 heads every such failure "Could not resolve
+# all files|dependencies|artifacts for ..." (TypedResolveException), a missing jar and a missing module alike, and
+# for a test runtime dependency under "Execution failed for task ':desktopApp:test'" (its classpath is resolved as
+# the task starts), which is why outcome() reads this before the failing task.
+_OFFLINE_RESOLUTION = re.compile(r"No cached version of .{1,300} available for offline mode|Could not resolve all (?:files|dependencies|artifacts)"
+                                 r"|Could not resolve (?:plugin|artifact) |Plugin \[id: '[^']+'.{0,200}\] was not found")
 
 
 def classify_console(text: str) -> dict[str, Any]:
     failing = re.search(r"Execution failed for task '([^']+)'", text)
-    offline = re.search(r"No cached version of .{1,300} available for offline mode|Could not resolve all (?:files|dependencies|artifacts)"
-                        r"|Could not resolve (?:plugin|artifact) |Plugin \[id: '[^']+'.{0,200}\] was not found", text)
+    offline = _OFFLINE_RESOLUTION.search(text)
     return {"build": "successful" if "BUILD SUCCESSFUL" in text else "failed" if "BUILD FAILED" in text else "unknown",
             "failingTask": failing[1] if failing else None, "offlineResolutionFailure": offline is not None,
             "failingTests": "There were failing tests" in text}
@@ -841,18 +903,27 @@ def outcome(receipt: Mapping[str, Any], runner: Mapping[str, Any] | None, consol
     if isinstance(failure, str) and failure.startswith("desktop_runner:"):
         failed_stage = "runner:" + failure.split(":")[1]
     tests = (results or {}).get("totals")
+    failures = (results or {}).get("failedTests") or []
+    excluded = (results or {}).get("excludedTests") or []
+    console = console or {}
     if gradle.get("exitCode") is None and not gradle.get("deadline"):
         test_outcome = "not-run"
     elif gradle.get("deadline"):
         test_outcome = "timed-out"
     elif gradle["exitCode"] == 0:
         test_outcome = "passed" if tests is not None and tests["failures"] == 0 and tests["errors"] == 0 else "inconsistent"
-    elif (console or {}).get("failingTests") or (console or {}).get("failingTask") == ":desktopApp:test" or (
-            tests is not None and tests["failures"] + tests["errors"] > 0):
-        test_outcome = "failed"
-    elif (console or {}).get("offlineResolutionFailure"):
-        # A dependency the prepared repository lacks is this tool's failure, not the source's.
+    elif console.get("failingTests") or (tests is not None and tests["failures"] + tests["errors"] > 0):
+        # Tests ran and failed. When Gradle says so and every counted failure is a test that could not start the
+        # guest's absent .NET SDK, the source passed everything this guest can run.
+        only_excluded = (console.get("failingTests") and tests is not None and not failures and excluded
+                         and len(excluded) == tests["failures"] + tests["errors"])
+        test_outcome = "passed-except-excluded" if only_excluded else "failed"
+    elif console.get("offlineResolutionFailure"):
+        # No test ran: a dependency the prepared repository lacks is this tool's failure, not the source's, even
+        # when Gradle reports it as the test task's (its runtime classpath is resolved as the task starts).
         test_outcome, tool, failed_stage = "not-run", "failed", "gradle-dependencies"
+    elif console.get("failingTask") == ":desktopApp:test":
+        test_outcome = "failed"
     else:
         test_outcome = "build-failed"
     return {"toolOutcome": tool, "failedStage": failed_stage, "failure": failure if tool != "completed" else None,
@@ -860,11 +931,19 @@ def outcome(receipt: Mapping[str, Any], runner: Mapping[str, Any] | None, consol
 
 
 def finalize(root: Path, record: Mapping[str, Any], receipt_raw: bytes, *, job_known: bool) -> dict[str, Any]:
-    """The summary of one terminal operation, written once from the files already copied back."""
+    """The summary of one operation, written once from the files already copied back: summary.json for a known
+    job exit, summary-unknown.json for an UNKNOWN one. The caller has every file the receipt names."""
     directory = _operation_directory(root, record["operationId"])
-    summary_path = directory / "summary.json"
-    if summary_path.exists():
-        return json.loads(_read_private(summary_path))
+    summary_path = directory / (SUMMARY_LEAF if job_known else UNKNOWN_SUMMARY_LEAF)
+    with copy_back_lease(root, record["operationId"]):  # Read under it too: never half a summary being written.
+        if summary_path.exists():
+            return json.loads(_read_private(summary_path))
+        summary = _summarize(directory, record, receipt_raw, job_known=job_known)
+        _create_private(summary_path, _canonical(summary))
+    return summary
+
+
+def _summarize(directory: Path, record: Mapping[str, Any], receipt_raw: bytes, *, job_known: bool) -> dict[str, Any]:
     receipt = json.loads(receipt_raw)
     runner_path, results_path = directory / "desktop-test-summary.json", directory / "desktop-test-results.zip"
     runner = json.loads(_read_private(runner_path)) if runner_path.exists() else None
@@ -883,7 +962,7 @@ def finalize(root: Path, record: Mapping[str, Any], receipt_raw: bytes, *, job_k
                 finally:
                     shutil.rmtree(partial, ignore_errors=True)
             if (extracted / "test-results").exists():
-                results = parse_results(extracted / "test-results")
+                results = parse_results(extracted / "test-results", record["operationId"])
             log = extracted / guest.CONSOLE_LEAF
             if log.exists():
                 console = classify_console(log.read_text(encoding="utf-8", errors="replace"))
@@ -905,6 +984,7 @@ def finalize(root: Path, record: Mapping[str, Any], receipt_raw: bytes, *, job_k
                "gradle": {key: gradle.get(key) for key in ("exitCode", "seconds", "deadline", "leftoverProcesses", "consoleBytes")},
                "console": console, "tests": (results or {}).get("totals"), "classes": (results or {}).get("classes"),
                "skippedTests": (results or {}).get("skippedTests"), "failedTests": (results or {}).get("failedTests"),
+               "excludedTests": (results or {}).get("excludedTests"),
                "runner": {key: (runner or {}).get(key) for key in ("outcome", "failedStage", "failure", "stages", "seconds",
                                                                    "freeBytesBefore", "freeBytesAfter", "productProcessesBefore",
                                                                    "productProcessesAfter", "productState", "workRoot")},
@@ -915,7 +995,6 @@ def finalize(root: Path, record: Mapping[str, Any], receipt_raw: bytes, *, job_k
                          "resultsZip": results_path.name if results_path.exists() else None,
                          "resultsDirectory": "results/test-results" if results else None,
                          "consoleLog": "results/" + guest.CONSOLE_LEAF if console is not None else None}}
-    _create_private(summary_path, _canonical(summary))
     return summary
 
 
@@ -938,25 +1017,52 @@ def status(root: Path | str, inputs: Any, *, driver: DesktopTestDriver | None = 
     plan = execution.ScenarioPlan.from_mapping(record["plan"])
     complete = result.get("state") == "terminal" and result.get("collectionState") == "complete"
     unknown_exit = result.get("state") == "unknown" and str(result.get("reason", "")).startswith("job_exit_unknown")
-    if unknown_exit and not (directory / "summary.json").exists():
-        # An open outcome never authorizes a replay; its receipt and kept files are still read.
+    receipt_path = directory / "receipt.json"
+    copy_back, copy_back_failure = None, None
+    if unknown_exit and not (directory / UNKNOWN_SUMMARY_LEAF).exists():
+        # An open outcome never authorizes a replay; its receipt and kept files are still copied back, resuming a
+        # partial copy, and summarized only once every file the receipt names is here and verified. Until then each
+        # status tries again.
+        copy_back = "incomplete"
         try:
             terminal = driver.read_terminal(plan)
-            if terminal is not None and not (directory / "receipt.json").exists():
-                _create_private(directory / "receipt.json", terminal[0])
             if terminal is not None:
+                if receipt_path.exists():
+                    _need(_read_private(receipt_path) == terminal[0], "desktop_test_receipt_changed")
+                else:
+                    _create_private(receipt_path, terminal[0])
                 driver.pull(plan, json.loads(terminal[0]))
+                copy_back = "complete"
+        except DesktopTestError as error:
+            copy_back = "busy" if error.reason == "desktop_test_copy_back_busy" else "incomplete"
+            copy_back_failure = None if copy_back == "busy" else error.reason
         except (OSError, ValueError, KeyError, TypeError, ssh_transport.SshConfigError):
-            pass
-    if (complete or unknown_exit) and (directory / "receipt.json").exists():
-        summary = finalize(root, record, _read_private(directory / "receipt.json"), job_known=complete)
+            copy_back = "incomplete"
+    summary, leaf = None, None
+    try:
+        if complete and receipt_path.exists():
+            leaf = SUMMARY_LEAF
+            summary = finalize(root, record, _read_private(receipt_path), job_known=True)
+        elif unknown_exit and copy_back in (None, "complete") and receipt_path.exists():
+            leaf = UNKNOWN_SUMMARY_LEAF
+            summary = finalize(root, record, _read_private(receipt_path), job_known=False)
+    except DesktopTestError as error:
+        if error.reason != "desktop_test_copy_back_busy":
+            raise
+        summary, copy_back = None, "busy"  # Another status of this operation is summarizing it: read again.
+    if summary is not None:
         view.update(toolOutcome=summary["toolOutcome"], failedStage=summary["failedStage"], failure=summary["failure"],
                     testOutcome=summary["testOutcome"], tests=summary["tests"],
                     skippedTests=len(summary["skippedTests"] or []), failedTests=(summary["failedTests"] or [])[:20],
+                    excludedTests=len(summary.get("excludedTests") or []),
                     jdk=JDK["version"], gradle=GRADLE["version"], sourceArchiveSha256=record["archives"]["source"]["sha256"],
                     hygiene=summary["hygiene"],
                     files={key: (_relative(root, directory / value) if value else None) for key, value in summary["files"].items()},
-                    summary=_relative(root, directory / "summary.json"))
+                    summary=_relative(root, directory / leaf))
+    elif copy_back is not None:
+        view["copyBack"] = copy_back
+        if copy_back_failure is not None:
+            view["copyBackFailure"] = copy_back_failure
     return view
 
 

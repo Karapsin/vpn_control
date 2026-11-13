@@ -1,8 +1,11 @@
 """The desktop test host job over the scenario host job, against the scenario tests' one fake QGA peer.
 
 No VM, host or guest is contacted: FakeQga answers the publisher, the SYSTEM run and this job's two own
-programs, and its system run leaves what the in-guest runner would leave in the operation root.
+programs, and its system run leaves what the in-guest runner would leave in the operation root. The worker's
+own admission and the cleanup program's identity rule are modelled as the guest code states them.
 """
+import base64
+import gzip
 import hashlib
 import io
 import json
@@ -46,6 +49,9 @@ class DesktopQga(FakeQga):
         self.cleanup_state = "deleted"
         self.runner = "completed"
         self.results_raw = self._results()
+        self.identities = {}  # path -> (volume, file index) of the endpoint the publisher created there
+        self.cleanup_requests = []
+        self.worker_refusal = None
 
     @staticmethod
     def _results():
@@ -63,23 +69,43 @@ class DesktopQga(FakeQga):
                      "freeBytes": self.free_bytes, "totalBytes": 64 * 1024 ** 3, "productOperation": False, **actors}
             return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
         if m.get("action") == "desktop-cleanup":
+            # CLEANUP_TEMPLATE's rule: the file at the path must be the endpoint's (volume and file index), and its
+            # size the pin's unless the push never completed (sizeKnown false); an older target always had a size.
+            self.cleanup_requests.append([dict(target) for target in m["targets"]])
             rows = []
             for target in m["targets"]:
-                if self.cleanup_state == "deleted":
-                    self.files.pop(target["path"], None)
-                rows.append({"path": target["path"], "state": self.cleanup_state})
+                path, state = target["path"], self.cleanup_state
+                if path not in self.files:
+                    state = "absent"
+                elif (self.identities.get(path) != (target["volumeSerial"], target["fileIndex"])
+                      or (target.get("sizeKnown", True) and len(self.files[path]) != target["sizeBytes"])):
+                    state = "not-the-published-file"
+                elif state == "deleted":
+                    del self.files[path]
+                rows.append({"path": path, "state": state})
             reply = {"schemaVersion": 1, "state": "desktop-test-archives-cleaned", "operationId": m["operationId"], "targets": rows,
                      "freeBytes": self.free_bytes, "productOperation": False, **actors}
             return {"exited": True, "exitcode": 0, "out-data": out_data(reply)}
-        return super()._publisher(m, pid)
+        terminal = super()._publisher(m, pid)
+        if m.get("action") == "endpoints" and terminal.get("exitcode") == 0:
+            reply = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
+            for created in reply["endpoints"]:
+                identity = created["filePin"]["nativeIdentity"]
+                self.identities[created["filePin"]["path"]] = (identity["volumeSerial"], identity["fileIndex"])
+        return terminal
 
     def _system_run(self, m, pid):
-        terminal = super()._system_run(m, pid)
         bootstrap = json.loads(self.files[m["taskRequestPin"]["path"]])
         worker = json.loads(self.files[bootstrap["bootstrap"]["workerRequestPath"]])
+        # windows_ordinary_process_owner.Owner admits its request only if that request pins the interpreter and the
+        # worker's own source (owner-interpreter-source-pins); otherwise it exits 1 before any child, as the owner does.
+        pinned = {pin["path"].casefold() for pin in worker["filePins"]}
+        if not {bootstrap["bootstrap"]["pythonPath"].casefold(), bootstrap["bootstrap"]["workerPath"].casefold()} <= pinned:
+            self.worker_refusal, self.task_exit = "owner-interpreter-source-pins", 1
+        terminal = super()._system_run(m, pid)
         runner_request = json.loads(self.files[worker["qualificationArgv"][6]])
         root = runner_request["operationRoot"]
-        if self.runner == "missing" or self.run_state is not None:
+        if self.worker_refusal is not None or self.runner == "missing" or self.run_state is not None:
             return terminal
         results = self.results_raw
         digest = hashlib.sha256(results).hexdigest() if self.runner != "bad-hash" else "0" * 64
@@ -151,11 +177,18 @@ class DesktopJobTests(unittest.TestCase):
     def fence(self, plan):
         return self.vm / ("direct-guest-" + plan["operationId"] + ".terminal.json")
 
+    @staticmethod
+    def workspace(plan):
+        return "C:\\ProgramData\\VpnControlOrdinaryTask-" + plan["operationId"]
+
+    def archives_left(self, plan):
+        return sorted(path for path in self.qga.files if path.startswith(self.workspace(plan) + "\\desktop-test-"))
+
     def test_a_complete_run_publishes_runs_reads_back_and_cleans_in_order(self):
         plan, code, receipt = self.run_job()
         self.assertEqual(0, code, receipt["failure"])
         kinds = self.qga.kinds()
-        self.assertEqual(["context", "desktop-disk", "initialize", "endpoints", "verify", "read-pins"], kinds[:6])
+        self.assertEqual(["context", "desktop-disk", "initialize", "list-tree", "endpoints", "verify", "read-pins"], kinds[:7])
         self.assertEqual(["system-run", "evidence-zip", "desktop-cleanup"], kinds[-3:])
         self.assertEqual(("passed", "receipt", "vpn-control.windows-desktop-test.receipt"), (receipt["result"], receipt["stage"], receipt["schema"]))
         block = receipt["desktopTest"]
@@ -176,8 +209,24 @@ class DesktopJobTests(unittest.TestCase):
         workspace = "C:\\ProgramData\\VpnControlOrdinaryTask-" + plan["operationId"]
         self.assertEqual([workspace + "\\" + guest.ARCHIVE_LEAVES[role] for role in desktop_job.ARCHIVE_ROLES],
                          [target["path"] for target in cleanup["targets"]])
-        self.assertTrue(all(set(target) == {"path", "volumeSerial", "fileIndex", "sizeBytes"} for target in cleanup["targets"]))
+        self.assertTrue(all(set(target) == {"path", "volumeSerial", "fileIndex", "sizeBytes", "sizeKnown"} and target["sizeKnown"] is True
+                            for target in cleanup["targets"]))
         self.assertFalse(any(path.startswith(workspace + "\\desktop-test-") for path in self.qga.files))
+
+    def test_the_worker_request_pins_its_interpreter_its_own_source_and_every_input_it_reads(self):
+        plan, code, receipt = self.run_job()
+        self.assertEqual((0, None), (code, self.qga.worker_refusal), receipt["failure"])
+        seen = self.qga.requests_seen[-1]
+        worker, bootstrap = seen["worker"], seen["bootstrap"]["bootstrap"]
+        workspace = self.workspace(plan)
+        root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+        python = {PYTHON_ROOT + "\\" + name.replace("/", "\\") for name in self.qga.python_tree[0]}
+        self.assertEqual((PYTHON_ROOT + "\\python.exe", workspace + "\\windows_ordinary_process_owner.py"),
+                         (bootstrap["pythonPath"], bootstrap["workerPath"]))
+        self.assertEqual(sorted({job.POWERSHELL_PATH, *python, bootstrap["workerPath"], workspace + "\\windows_desktop_test_guest.py",
+                                 *(workspace + "\\" + guest.ARCHIVE_LEAVES[role] for role in desktop_job.ARCHIVE_ROLES),
+                                 root + "\\" + guest.REQUEST_LEAF}),
+                         sorted(pin["path"] for pin in worker["filePins"]), "the worker request's whole file closure")
 
     def test_the_worker_runs_only_the_pinned_runner_with_its_pinned_request(self):
         plan, code, _ = self.run_job()
@@ -228,6 +277,47 @@ class DesktopJobTests(unittest.TestCase):
         self.assertNotIn("desktop-cleanup", self.qga.kinds())
         self.assertEqual("not-started", receipt["desktopTest"]["cleanup"]["state"])
         self.assertFalse(self.fence(plan).exists(), "an open outcome never closes the fence")
+
+    def test_a_fixture_without_the_scenario_python_refuses_before_any_archive_is_pushed(self):
+        self.qga.trees = {}
+        plan, code, receipt = self.run_job()
+        self.assertEqual((1, "publish", "python_tree_absent"), (code, receipt["stage"], receipt["failure"]))
+        self.assertEqual(["context", "desktop-disk", "initialize", "list-tree"], self.qga.kinds()[:4])
+        self.assertNotIn("endpoints", self.qga.kinds())
+        self.assertEqual(([], []), (self.qga.write_sizes, self.archives_left(plan)), "nothing was pushed, so nothing is left")
+
+    def test_a_python_tree_past_the_worker_pin_bound_refuses_before_any_archive_is_pushed(self):
+        files, _ = self.qga.python_tree
+        self.qga.trees[PYTHON_ROOT] = (files, ["d%04d" % number for number in range(job.DIRECTORY_PIN_LIMIT)])
+        plan, code, receipt = self.run_job()
+        self.assertEqual((1, "publish", "worker_pin_bound"), (code, receipt["stage"], receipt["failure"]))
+        self.assertNotIn("endpoints", self.qga.kinds())
+        self.assertEqual(([], []), (self.qga.write_sizes, self.archives_left(plan)))
+
+    def test_a_run_refused_before_launch_still_deletes_the_pushed_archives(self):
+        self.qga.run_state = "refused-before-launch"
+        plan, code, receipt = self.run_job()
+        self.assertEqual((1, "run", "refused_before_launch:RUN_SYNTHETIC_CODE"), (code, receipt["stage"], receipt["failure"]))
+        self.assertEqual(["system-run", "evidence-zip", "desktop-cleanup"], self.qga.kinds()[-3:])
+        self.assertEqual(("complete", ["deleted"] * 4), (receipt["desktopTest"]["cleanup"]["state"], receipt["desktopTest"]["cleanup"]["archives"]))
+        self.assertTrue(all(target["sizeKnown"] for target in self.qga.cleanup_requests[-1]), "every archive was verified")
+        self.assertEqual([], self.archives_left(plan))
+        self.assertTrue(self.fence(plan).exists(), "a known failure still closes the fence")
+
+    def test_a_push_lost_inside_an_archive_deletes_every_archive_endpoint_by_its_identity(self):
+        # The guest files go first in 32 KiB chunks; the second archive write is the JDK's first chunk.
+        guest_chunks = sum(-(-len(self.files[relative]) // job.CHUNK_BYTES) for relative, _, _ in desktop.ROW["guestFiles"])
+        self.qga.lose = lambda command, kind, ordinal: (ValueError("lost") if command == "guest-file-write" and ordinal == guest_chunks + 2
+                                                        else None)
+        plan, code, receipt = self.run_job()
+        self.assertEqual((1, "publish", "guest_file_push_lost"), (code, receipt["stage"], receipt["failure"]))
+        self.assertIn("desktop-cleanup", self.qga.kinds(), "a known failure after the endpoints were made still cleans")
+        targets = self.qga.cleanup_requests[-1]
+        self.assertEqual([self.workspace(plan) + "\\" + guest.ARCHIVE_LEAVES[role] for role in desktop_job.ARCHIVE_ROLES],
+                         [target["path"] for target in targets])
+        self.assertEqual([False] * 4, [target["sizeKnown"] for target in targets], "no archive was verified: identity alone")
+        self.assertEqual(("complete", ["deleted"] * 4), (receipt["desktopTest"]["cleanup"]["state"], receipt["desktopTest"]["cleanup"]["archives"]))
+        self.assertEqual([], self.archives_left(plan))
 
     def test_too_little_guest_disk_refuses_before_anything_is_published(self):
         self.qga.free_bytes = 1024 ** 3

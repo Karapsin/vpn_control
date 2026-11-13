@@ -56,6 +56,12 @@ GRADLE_PROPERTIES = ("-Pkotlin.compiler.execution.strategy=in-process", "-Porg.g
 GRADLE_ARGUMENTS = ("--offline", "--no-daemon", "--console=plain", *GRADLE_PROPERTIES, ":desktopApp:test")
 REPOSITORY_VARIABLE = "VPN_CONTROL_DESKTOP_TEST_REPOSITORY"
 HOME_VARIABLE = "VPN_CONTROL_DESKTOP_TEST_HOME"
+# CI installs the pinned .NET SDK before :desktopApp:test; the guest gets none. The desktop tests that build their
+# native probes start the program this variable names (else dotnet.exe from PATH), so the runner names one that does
+# not exist in its work folder: those tests then fail to start it, the same way on every fixture, and no SDK the
+# fixture may have restores NuGet packages from the network. The coordinator reports exactly those failures apart.
+DOTNET_VARIABLE = "VPN_CONTROL_TEST_DOTNET"
+DOTNET_ABSENT = ("no-dotnet", "dotnet.exe")
 # Read by Gradle before any build script: every settings repository becomes the one extracted
 # repository (the build forbids project repositories). --offline then refuses any remote one a plugin
 # could still add. Test JVMs get user.home in the work folder, so what they write there (Skiko's
@@ -75,7 +81,8 @@ gradle.allprojects { project ->
 """
 REMOVED_ENVIRONMENT = frozenset({"JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "JAVA_OPTS", "GRADLE_OPTS",
                                  "GRADLE_USER_HOME", "CLASSPATH", "ANDROID_HOME", "ANDROID_SDK_ROOT", "PYTHONPATH",
-                                 "PYTHONHOME", REPOSITORY_VARIABLE, HOME_VARIABLE})
+                                 "PYTHONHOME", REPOSITORY_VARIABLE, HOME_VARIABLE, DOTNET_VARIABLE,
+                                 "VPN_CONTROL_TEST_DOTNET_ROOT"})
 PRODUCT_IMAGES = frozenset({"vpn-control.exe", "vpn-control-cli.exe", "sing-box.exe"})
 STATE_ROOTS = ((".vpn-control-desktop",), ("AppData", "Local", "vpn-control"))
 SOURCE_LIMITS = {"entries": 20000, "bytes": 2 * 1024 ** 3, "file": 512 * 1024 ** 2}
@@ -776,6 +783,7 @@ class Runner:
                            ANDROID_HOME=self.path("no-android-sdk"), ANDROID_SDK_ROOT=self.path("no-android-sdk"))
         environment[REPOSITORY_VARIABLE] = self.path("m")
         environment[HOME_VARIABLE] = self.path("h")
+        environment[DOTNET_VARIABLE] = self.path(*DOTNET_ABSENT)  # Never created: see DOTNET_VARIABLE.
         key = next((name for name in environment if name.upper() == "PATH"), "PATH")
         environment[key] = os.path.dirname(self.platform.java(self.jdk_home)) + os.pathsep + environment.get(key, "")
         return environment
