@@ -140,6 +140,7 @@ run_check python3 scripts/test_macos_fixture_frontend.py
 run_check python3 scripts/test_windows_launcher_utf8.py
 run_check python3 scripts/test_user_facing_terminology.py
 run_check python3 scripts/check_ui_theme.py
+run_check python3 scripts/test_check_ui_theme.py
 run_check python3 scripts/test_visual_regression.py
 run_check python3 scripts/test_visual_platform.py
 run_check python3 scripts/test_visual_target.py

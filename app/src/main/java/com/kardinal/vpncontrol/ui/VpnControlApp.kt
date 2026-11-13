@@ -1583,6 +1583,7 @@ private fun ImportMenuButton(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            containerColor = VpnControlColors.SurfaceElevated,
         ) {
             DropdownMenuItem(
                 modifier = Modifier.testTag("import-qr"),
@@ -1665,6 +1666,7 @@ private fun ExportMenuButton(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            containerColor = VpnControlColors.SurfaceElevated,
         ) {
             DropdownMenuItem(
                 modifier = Modifier.testTag("export-qr"),
@@ -1921,6 +1923,7 @@ private fun LocationsScreen(
     exportQrError?.let { message ->
         AlertDialog(
             onDismissRequest = { exportQrError = null },
+            containerColor = VpnControlColors.Surface,
             confirmButton = {
                 TextButton(
                     onClick = { exportQrError = null },
@@ -2667,6 +2670,7 @@ private fun RoutingRulesScreen(
     if (exportFailure) {
         AlertDialog(
             onDismissRequest = { exportFailure = false },
+            containerColor = VpnControlColors.Surface,
             confirmButton = { TextButton(onClick = { exportFailure = false }) { Text(strings.get(UiText.CLOSE)) } },
             title = { Text(strings.get(UiText.RULES_EXPORT_TITLE)) },
             text = { Text(strings.statusMessage(com.kardinal.vpncontrol.model.RoutingStatusMessages.routingRulesExportFailed())) },
@@ -2682,6 +2686,7 @@ private fun RoutingRulesScreen(
     exportQrError?.let { message ->
         AlertDialog(
             onDismissRequest = { exportQrError = null },
+            containerColor = VpnControlColors.Surface,
             confirmButton = {
                 TextButton(
                     onClick = { exportQrError = null },

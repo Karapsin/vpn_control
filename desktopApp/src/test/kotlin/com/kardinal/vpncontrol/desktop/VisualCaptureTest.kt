@@ -60,6 +60,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.test.assertEquals
 import org.junit.Test
 
 class VisualCaptureTest {
@@ -137,6 +138,64 @@ class VisualCaptureTest {
                     }
                 }
             }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * UI-002: dropdown menus paint the elevated surface and dialogs the base surface. The review of
+     * f31ab987 saw Material's defaults instead: #211F26 menus and a #2B2930 update dialog.
+     */
+    @Test
+    fun menusAndDialogsPaintTheContractSurfaces() {
+        val elevated = 0x1D2B3B
+        val base = 0x141F2D
+        val containers = listOf(
+            Triple("routing-import-menu-desktop", "import-file", elevated),
+            Triple("routing-export-menu-desktop", "export-file", elevated),
+            Triple("main-settings-menu-desktop", "settings-ssh", elevated),
+            Triple("update-checking", "update-progress", base),
+            Triple("profile-rename-dialog", "profile-rename-name", base),
+        )
+        val painted = containers.map { (sceneId, tag, _) ->
+            renderVisualScene(sceneId) { image ->
+                dominantColor(image, onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow)
+            }
+        }
+        assertEquals(
+            containers.map { (sceneId, tag, color) -> "$sceneId $tag #%06X".format(color) },
+            containers.zip(painted) { (sceneId, tag, _), color -> "$sceneId $tag #%06X".format(color) },
+            "Menu and dialog containers must paint the UI-002 surfaces",
+        )
+    }
+
+    private fun <T> renderVisualScene(sceneId: String, read: ComposeUiTest.(BufferedImage) -> T): T {
+        val directory = Files.createTempDirectory("vpn-control-visual-$sceneId")
+        val service = DesktopAppServiceFactory.createForTesting(DesktopStateStore(directory))
+        try {
+            val state = visualState(sceneId)
+            service.replaceStateForVisualCapture(state, visualLocations(), visualRuntimeStatusDetails(state))
+            var result: Result<T>? = null
+            runDesktopComposeUiTest(width = 1280, height = 800) {
+                compose = this
+                setContent {
+                    VpnControlTheme {
+                        DesktopVpnControlApp(
+                            windowProvider = { error("Native file dialogs are not used by visual tests") },
+                            service = service,
+                            onCheckAndDownloadUpdate = {},
+                            onDismissOrCancelUpdate = {},
+                            onInstallUpdate = {},
+                        )
+                    }
+                }
+                waitForIdle()
+                openSceneMenu(sceneId)
+                waitForIdle()
+                result = Result.success(read(captureScene(directory.resolve("$sceneId.png"), 1280, 800)))
+            }
+            return checkNotNull(result) { "$sceneId was not rendered" }.getOrThrow()
         } finally {
             directory.toFile().deleteRecursively()
         }
@@ -559,6 +618,19 @@ private fun SemanticsNode.firstTextDescendant(): SemanticsNode? {
         return this
     }
     return null
+}
+
+/** The most frequent color inside [bounds]: the container behind a text or an outlined field. */
+private fun dominantColor(image: BufferedImage, bounds: androidx.compose.ui.geometry.Rect): Int {
+    val left = bounds.left.toInt().coerceIn(0, image.width - 1)
+    val top = bounds.top.toInt().coerceIn(0, image.height - 1)
+    val right = kotlin.math.ceil(bounds.right.toDouble()).toInt().coerceIn(left + 1, image.width)
+    val bottom = kotlin.math.ceil(bounds.bottom.toDouble()).toInt().coerceIn(top + 1, image.height)
+    val counts = HashMap<Int, Int>()
+    for (y in top until bottom) {
+        for (x in left until right) counts.merge(image.getRGB(x, y) and 0xffffff, 1, Int::plus)
+    }
+    return counts.maxBy { it.value }.key
 }
 
 private fun measuredContrast(image: BufferedImage, bounds: androidx.compose.ui.geometry.Rect): Double {

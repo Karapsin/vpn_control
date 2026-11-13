@@ -37,6 +37,7 @@ fun AppUpdateDialog(
     )
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = VpnControlColors.Surface,
         title = { Text(strings.get(UiText.UPDATE_DIALOG_TITLE)) },
         text = {
             Column(

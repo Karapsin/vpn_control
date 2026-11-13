@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "finding": "agent visual review of f31ab98788959ee092bb01314020dd75a7162c93 (Windows), scenes routing-import-menu-desktop, routing-export-menu-desktop and update-checking",
+  "commit": "529cc6106160bd5b85a25d261ad2f9a68570306d",
+  "hash": "sha256 of the UTF-8 text with LF line endings",
+  "before": {
+    "VpnControlTheme.before.kt": {
+      "path": "shared/ui/src/commonMain/kotlin/com/kardinal/vpncontrol/shared/ui/VpnControlTheme.kt",
+      "blob": "46fc79baa2ff2dcd1d21f564f7c64c0a2e56f73e",
+      "lines": null,
+      "sha256": "9765fd3b54ed37c047fcacf33b4584b1cc105e4288fd4be23c43140ebd29ba74"
+    },
+    "AppUpdateDialog.before.kt": {
+      "path": "shared/ui/src/commonMain/kotlin/com/kardinal/vpncontrol/shared/ui/AppUpdateDialog.kt",
+      "blob": "4dedc5f1c8b24e85352bf0ee4efc8d6b5bf4bd58",
+      "lines": null,
+      "sha256": "58626a6a81ba58576754e31802006a30aafc6ee5a78c90676ffcc9ed1a0b3003"
+    },
+    "DesktopActionRow.before.kt": {
+      "path": "desktopApp/src/main/kotlin/com/kardinal/vpncontrol/desktop/Main.kt",
+      "blob": "adc9ad1ec9d0007b8b096d3d00deb4cc4fbb6e23",
+      "lines": [
+        2477,
+        2553
+      ],
+      "sha256": "9beea2956746da1ce576ee51ef4cdee3c93bfcecf1d5cfede8e1bbe5e771ca32"
+    }
+  }
+}

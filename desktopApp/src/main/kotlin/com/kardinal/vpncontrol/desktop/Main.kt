@@ -381,6 +381,7 @@ private fun DesktopApplication(
             commandFailure?.let { failure ->
                 AlertDialog(
                     onDismissRequest = { commandFailure = null },
+                    containerColor = VpnControlColors.Surface,
                     title = { Text(appStrings.get(UiText.STATUS)) },
                     text = { Text(failure.wireName) },
                     confirmButton = {
@@ -730,7 +731,7 @@ internal fun DesktopVpnControlApp(
         LocalLayoutDirection provides appLayoutDirection(appStrings.language),
     ) {
     dnsOpenFailure?.let { failure ->
-        AlertDialog(onDismissRequest = { dnsOpenFailure = null },
+        AlertDialog(onDismissRequest = { dnsOpenFailure = null }, containerColor = VpnControlColors.Surface,
             title = { Text(appStrings.get(UiText.STATUS)) }, text = { Text(failure.wireName) },
             confirmButton = { TextButton(onClick = { dnsOpenFailure = null }) { Text(appStrings.get(UiText.CLOSE)) } })
     }
@@ -1182,6 +1183,7 @@ private fun DesktopProfileContent(
     if (state.showProfileHistoryRenameDialog) {
         AlertDialog(
             onDismissRequest = onCloseSubscriptionRenameDialog,
+            containerColor = VpnControlColors.Surface,
             confirmButton = {
                 TextButton(
                     onClick = onSaveSubscriptionRename,
@@ -1610,6 +1612,7 @@ private fun DesktopAdditionalSettingsMenu(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            containerColor = VpnControlColors.SurfaceElevated,
         ) {
             DropdownMenuItem(
                 modifier = Modifier.testTag("settings-ssh"),
@@ -2500,6 +2503,7 @@ private fun DesktopActionRow(
             DropdownMenu(
                 expanded = showImportMenu,
                 onDismissRequest = { showImportMenu = false },
+                containerColor = VpnControlColors.SurfaceElevated,
             ) {
                 DropdownMenuItem(
                     modifier = Modifier.testTag("import-file"),
@@ -2530,6 +2534,7 @@ private fun DesktopActionRow(
             DropdownMenu(
                 expanded = showExportMenu,
                 onDismissRequest = { showExportMenu = false },
+                containerColor = VpnControlColors.SurfaceElevated,
             ) {
                 DropdownMenuItem(
                     modifier = Modifier.testTag("export-file"),

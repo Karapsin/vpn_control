@@ -35,23 +35,35 @@ object VpnControlColors {
     )
 }
 
+/**
+ * Every Material color role is defined from the fixed palette, so no component can fall back to a
+ * Material default. The surface roles take one of the two UI-002 surfaces: dialogs read
+ * `surfaceContainerHigh` and paint the base surface, dropdown menus read `surfaceContainer` and
+ * paint the elevated one.
+ */
 private val VpnControlColorScheme = darkColorScheme(
     primary = VpnControlColors.Primary,
     onPrimary = VpnControlColors.Navy950,
     primaryContainer = VpnControlColors.Navy700,
     onPrimaryContainer = VpnControlColors.TextPrimary,
+    inversePrimary = VpnControlColors.Navy700,
     secondary = VpnControlColors.Accent,
     onSecondary = VpnControlColors.Navy950,
     secondaryContainer = VpnControlColors.Navy800,
     onSecondaryContainer = VpnControlColors.TextPrimary,
     tertiary = VpnControlColors.Accent,
     onTertiary = VpnControlColors.Navy950,
+    tertiaryContainer = VpnControlColors.Navy800,
+    onTertiaryContainer = VpnControlColors.TextPrimary,
     background = VpnControlColors.Navy950,
     onBackground = VpnControlColors.TextPrimary,
     surface = VpnControlColors.Surface,
     onSurface = VpnControlColors.TextPrimary,
     surfaceVariant = VpnControlColors.SurfaceElevated,
     onSurfaceVariant = VpnControlColors.TextSecondary,
+    surfaceTint = VpnControlColors.Primary,
+    inverseSurface = VpnControlColors.TextSecondary,
+    inverseOnSurface = VpnControlColors.Navy950,
     outline = VpnControlColors.TextMuted,
     outlineVariant = VpnControlColors.Navy700,
     error = VpnControlColors.Error,
@@ -59,6 +71,13 @@ private val VpnControlColorScheme = darkColorScheme(
     errorContainer = VpnControlColors.Error.copy(alpha = 0.24f),
     onErrorContainer = VpnControlColors.TextPrimary,
     scrim = VpnControlColors.Navy950,
+    surfaceDim = VpnControlColors.Surface,
+    surfaceBright = VpnControlColors.SurfaceElevated,
+    surfaceContainerLowest = VpnControlColors.Surface,
+    surfaceContainerLow = VpnControlColors.Surface,
+    surfaceContainer = VpnControlColors.SurfaceElevated,
+    surfaceContainerHigh = VpnControlColors.Surface,
+    surfaceContainerHighest = VpnControlColors.SurfaceElevated,
 )
 
 private val VpnControlShapes = Shapes(
