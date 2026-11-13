@@ -43,8 +43,8 @@ WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a varia
     *("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")),
     *("windows-public-update." + variant for variant in (
         "public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
-        "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "different-admin",
-        "wait-client-loss", "installer-wait-client-loss")),
+        "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "success-explicit-off",
+        "different-admin", "wait-client-loss", "installer-wait-client-loss")),
     "windows-document-acceptance",
     *("windows-document-cold." + variant for variant in ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),
     "windows-document-responsive"})

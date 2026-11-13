@@ -10,7 +10,7 @@ import uuid
 EMPTY_SHA256 = hashlib.sha256(b'').hexdigest()
 RECEIPTS_SHA = '5e2e406b82d4a446ab971f27918b3b0f110e67e3eb8cae971b0bfe4256aa71ec'
 COLLECTORS = {
-    'update': '5a38ac02dd120d755a1d7bff25d8d0cd5fbf438c5fb52e57db15c45e335807a2',
+    'update': '900b0b571e5445f5679dad4dd6152373833949a99fe7fc2a746d975fd4419a74',
     'tun': 'e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135',
 }
 INPUT_FIELDS = frozenset(('schemaVersion', 'collectorOperationId', 'collectorRoot', 'scope', 'stage',

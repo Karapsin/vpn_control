@@ -20,12 +20,37 @@ import uuid
 
 VARIANTS = frozenset(("public-ready", "download-cancelled", "checksum-rejected", "uac-denied",
     "install-cancelled", "participating-copy-lock", "protected-storage-rejected", "native-install-failed",
-    "success-off", "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss", "transport-loss"))
+    "success-off", "success-reconnect", "success-explicit-off", "different-admin", "wait-client-loss", "installer-wait-client-loss",
+    "transport-loss"))
 INSTALL_VARIANTS = VARIANTS - {"public-ready", "download-cancelled", "checksum-rejected"}
-SUCCESS_VARIANTS = frozenset(("success-off", "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss", "transport-loss"))
+SUCCESS_VARIANTS = frozenset(("success-off", "success-reconnect", "success-explicit-off", "different-admin", "wait-client-loss",
+                              "installer-wait-client-loss", "transport-loss"))
 # A returned CANCELLED ends these known. The async installer wait needs a native terminal to rule out a
 # running helper, and protected storage leaves its counterfeit root behind, so both keep parking.
 GRANT_VARIANTS = INSTALL_VARIANTS - {"uac-denied", "install-cancelled", "installer-wait-client-loss", "protected-storage-rejected"}
+# Connected before the update: a loopback location through the case's own in-guest SOCKS upstream on its fixed port.
+# success-reconnect is updated connected, so its remembered intent is on. success-explicit-off turns that connected owner
+# off explicitly first (DESKTOP-004: explicit off clears the intent): its returned owner keeps a selected location that
+# carried traffic, and so could reconnect, and must not. success-off's fresh workspace has no location at all, so its
+# off intent is never tested by a returned owner that could connect.
+CONNECTED_VARIANTS = frozenset({"success-reconnect", "success-explicit-off"})
+CONNECTED_INTENT = {"success-reconnect": "reconnect", "success-explicit-off": "off"}
+UPSTREAM_FIELDS = frozenset({"schemaVersion", "sourcePath", "port", "token"})
+# ProxyLinkParser dispatches socks://, never socks5://: the owner answers any other scheme INVALID_ARGUMENT, as the proxy
+# rows met natively at their own locations add. The product renders socks:// as a SOCKS5 outbound.
+CONNECTION_PROFILE = re.compile(r"socks://127\.0\.0\.1:([0-9]{1,5})#Update%20fixture\n?")
+# The returned owner restores the remembered intent itself. It is read until its runtime runs, at most this long after it
+# first answers, and the whole outage from the handoff (the runtime stops before the commit) stays within the second
+# bound: the coordinator's own three-minute exit deadline, the install and the relaunch.
+RECONNECT_SECONDS = 180
+OUTAGE_SECONDS = 900
+# install-cancelled waits at most this long for its cancelled operation: a prompt the decision answers within its 90 s,
+# the coordinator's three-minute precommit deadline and a margin. A TIMEOUT then parks with the public reply kept.
+CANCEL_WAIT_SECONDS = 420
+# What a participating copy leaves the installer: its inventory stage never admits the copy, so the coordinator waits
+# out its exit deadline and publishes FAILED RUNTIME_FAILED beside this protected diagnostic
+# (VpnInstallHelperRoles.RunCoordinator, PublishProtectedPreinstallDiagnostic). It never stops the copy.
+COPY_LOCK_DIAGNOSTIC = {"version": 1, "stage": "INVENTORY", "kind": "OTHER"}
 
 
 def require(condition, code):
@@ -74,10 +99,10 @@ def validate_inputs(owner, value):
         "baseVersion", "targetVersion", "installedRoot", "guiPath", "baseInventory", "targetInventory",
         "baseRegistration", "targetRegistration", "programData", "evidenceRoot", "collectorSourceSha256",
         "ordinarySid", "ordinarySessionId", "approvingAdminSid", "initialIntent", "trafficInputs",
-        "faultInputs", "returnGuiRequired", "connectionFixturePath"}
+        "faultInputs", "returnGuiRequired", "connectionFixturePath", "upstreamFixture"}
     require(type(value) is dict and set(value) == required and value["schemaVersion"] == 1
             and value["variant"] in VARIANTS, "finite-update-input-schema")
-    require(all(value[k] is not None for k in required - {"trafficInputs", "connectionFixturePath", "approvingAdminSid"}),
+    require(all(value[k] is not None for k in required - {"trafficInputs", "connectionFixturePath", "approvingAdminSid", "upstreamFixture"}),
             "actual-updater-bindings-pending")
     require(re.fullmatch(r"[0-9a-f]{40}", value["sourceSha"])
             and re.fullmatch(r"[0-9a-f]{64}", value["sourceFingerprint"])
@@ -91,11 +116,26 @@ def validate_inputs(owner, value):
             and value["ordinarySessionId"] == owner.request["context"]["ordinarySessionId"]
             and value["initialIntent"] in {"off", "reconnect"} and type(value["returnGuiRequired"]) is bool,
             "actual-ordinary-updater-context")
-    if value["variant"] == "success-reconnect":
-        require(value["initialIntent"] == "reconnect" and type(value["trafficInputs"]) is dict,
+    if value["variant"] in CONNECTED_VARIANTS:
+        upstream = value["upstreamFixture"]
+        require(value["initialIntent"] == CONNECTED_INTENT[value["variant"]] and type(value["trafficInputs"]) is dict
+                and type(value["connectionFixturePath"]) is str and type(upstream) is dict,
                 "connected-variant-requires-live-traffic-fixture")
+        require(set(upstream) == UPSTREAM_FIELDS and upstream["schemaVersion"] == 1 and type(upstream["port"]) is int
+                and 1024 <= upstream["port"] <= 65535 and type(upstream["token"]) is str
+                and re.fullmatch(r"[A-Za-z0-9._-]{1,64}", upstream["token"]) is not None
+                and type(upstream["sourcePath"]) is str and upstream["sourcePath"].casefold() in owner.by_path,
+                "owned-loopback-upstream-fixture")
+        # windows_lifecycle_cases._update_probe's closed form: the sampler and its input are held before any effect.
+        traffic = value["trafficInputs"]
+        require(set(traffic) == {"schemaVersion", "trafficWorkerPath", "trafficInputPath", "fixtureAdmissionArtifactId",
+                                 "sourceArtifactId"} and traffic["schemaVersion"] == 1
+                and all(type(traffic[key]) is str and traffic[key] for key in traffic if key != "schemaVersion")
+                and all(traffic[key].casefold() in owner.by_path for key in ("trafficWorkerPath", "trafficInputPath")),
+                "held-update-traffic-inputs")
     else:
-        require(value["initialIntent"] == "off", "disconnected-variant-off-intent")
+        require(value["initialIntent"] == "off" and value["trafficInputs"] is None and value["connectionFixturePath"] is None
+                and value["upstreamFixture"] is None, "disconnected-variant-off-intent")
     require(value["baseVersion"] == owner.request["productVersion"], "admitted-public-base-product-version")
     if value["variant"] in INSTALL_VARIANTS:
         require(type(value["approvingAdminSid"]) is str and re.fullmatch(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+", value["approvingAdminSid"]),
@@ -180,7 +220,8 @@ def native_evidence(owner, inputs, modules, stage, *, job=None, operation=None):
     A new source/task cannot use an old evidence file because all four identities
     and exact stage/job/operation must match the current native record.
     """
-    require(stage in {"before-install", "authorization", "terminal-actors", "returned-gui", "fault-ready", "transport-restored", "returned-cleanup"}, "finite-native-evidence-stage")
+    require(stage in {"before-install", "cancel-actors", "authorization", "terminal-actors", "returned-gui", "fault-ready",
+                      "transport-restored", "returned-cleanup"}, "finite-native-evidence-stage")
     receipts = modules["receipts"]
     root = str(receipts.canonical_path(inputs["evidenceRoot"]))
     require(receipts.canonical_path(root).parent == receipts.canonical_path(inputs["programData"]), "native-evidence-exact-programdata-parent")
@@ -275,6 +316,131 @@ def terminate_exact_wait_client(owner, child, identity, operation):
     child.wait()
 
 
+def start_upstream(owner, upstream):
+    """The in-guest SOCKS upstream the loopback location names, on its fixed port: this owner's child until stopped."""
+    ready = owner.root / "update-upstream.ready"
+    require(not ready.exists(), "fresh-owned-upstream-ready-file")
+    child = owner.child("update-upstream", [owner.request["pythonRuntime"]["interpreterPath"], "-I", "-B", upstream["sourcePath"],
+        "--port", str(upstream["port"]), "--token", upstream["token"], "--ready-file", str(ready)])
+    owner.update_upstream = child  # Retained on every path: a live upstream is a live child of this owner.
+    until = time.monotonic() + 30
+    while not ready.exists():
+        require(child.process.poll() is None, "owned-upstream-ended-before-ready")
+        if time.monotonic() >= until:
+            owner.park("update-upstream-readiness-unknown-no-replay")
+        time.sleep(0.1)
+    time.sleep(0.2)
+    require(ready.read_text(encoding="utf-8").strip() == str(upstream["port"]) and child.process.poll() is None,
+            "owned-upstream-fixed-port")
+    owner.event("update-upstream-ready", {"child": child.ordinal, "pid": child.pid, "port": upstream["port"]})
+    return child
+
+
+def stop_upstream(owner, child):
+    """Exactly one journaled termination of the case's own upstream, then its known exit."""
+    require(child.terminal is None and child.process.poll() is None, "live-original-update-upstream")
+    owner.event("update-upstream-stop-intent", {"child": child.ordinal, "pid": child.pid, "birthFileTimeUtc": child.birth,
+                                                "replayAllowed": False})
+    child.process.terminate()
+    until = time.monotonic() + 15
+    while child.observe() is None:
+        if time.monotonic() >= until:
+            owner.park("update-upstream-stop-unknown-no-replay")
+        time.sleep(0.05)
+    owner.event("update-upstream-stopped", child.terminal)
+
+
+def await_reconnect(owner, workspace, identity, connected, handoff):
+    """The returned owner restores the remembered reconnect intent by itself: the same location in the same mode, a
+    runtime of its own, within both bounds. Nothing here asks it to connect, so a returned owner that stays off fails."""
+    answered = time.monotonic()
+    while True:
+        status = public(owner, workspace, identity, "status")
+        if status["data"].get("runtimeRunning") is True:
+            break
+        require(time.monotonic() - answered < RECONNECT_SECONDS, "returned-owner-reconnect-unbounded")
+        time.sleep(0.5)
+    restored = time.monotonic()
+    data, before = status["data"], connected["data"]
+    require(data.get("activeLocationId") == before.get("activeLocationId") and data.get("selectedLocationId") == before.get("selectedLocationId")
+            and data.get("activeMode") == "proxy-only", "returned-owner-restored-same-location")
+    require(restored - handoff <= OUTAGE_SECONDS, "update-reconnect-outage-unbounded")
+    owner.event("update-reconnect-restored", {"status": status, "secondsAfterHandoff": round(restored - handoff, 3),
+        "secondsAfterReturnedOwner": round(restored - answered, 3), "boundSeconds": OUTAGE_SECONDS,
+        "runtimeBefore": {key: before.get(key) for key in ("runtimeId", "runtimeStartedAt")},
+        "runtimeAfter": {key: data.get(key) for key in ("runtimeId", "runtimeStartedAt")}, "replayAllowed": False})
+    return status
+
+
+def await_off_kept(owner, workspace, identity, kept):
+    """The returned owner of an explicit off keeps it: read for as long as a reconnect is given, it never runs, and the
+    location it could connect to stays selected in the same mode. One read that runs fails the case."""
+    answered = time.monotonic()
+    reads = 0
+    while True:
+        status = public(owner, workspace, identity, "status")
+        reads += 1
+        data = status["data"]
+        require(data.get("runtimeRunning") is False, "returned-owner-explicit-off-kept")
+        require(data.get("selectedLocationId") == kept["data"].get("selectedLocationId") and data.get("configuredMode") == "proxy-only",
+                "returned-owner-explicit-off-same-selection")
+        if time.monotonic() - answered >= RECONNECT_SECONDS:
+            break
+        time.sleep(0.5)
+    owner.event("update-explicit-off-kept", {"status": status, "reads": reads, "watchedSeconds": round(time.monotonic() - answered, 3),
+                                             "boundSeconds": RECONNECT_SECONDS, "replayAllowed": False})
+    return status
+
+
+def preinstall_diagnostic(owner, inputs, receipts, job):
+    """The coordinator's protected pre-install diagnostic of one job, read as the ordinary owner reads its receipt."""
+    path = str(receipts.canonical_path(inputs["programData"]) / "vpn-control-install-jobs" / job / "preinstall-diagnostic.json")
+    value = receipts.FileObservation(owner, path)
+    try:
+        receipts.machine_security(value.opening["security"], False)
+        raw = value.read(4096)
+    finally:
+        value.close()
+    found = json.loads(raw)
+    owner.event("update-preinstall-diagnostic-observed", {"nativeFile": value.opening, "value": found,
+        "sha256": hashlib.sha256(raw).hexdigest(), "readOnly": True})
+    return found
+
+
+def helper_sha256(inputs):
+    """The installed base's installer helper, as the base inventory records it: the image both installer actors run."""
+    rows = [item for name, item in inputs["baseInventory"].items()
+            if name.casefold() == "app/native/windows-amd64/vpn-control-install-helper.exe"]
+    require(len(rows) == 1, "installed-base-install-helper")
+    return rows[0]["sha256"]
+
+
+def cancelled_installer_actors(watched, inputs, job):
+    """What the SYSTEM watch saw between the approval and the cancelled terminal: exactly the job's coordinator, elevated
+    as the approving administrator, and its original-user worker, unelevated, born after it; both gone, and no other
+    elevated helper left running. The watch was armed before the install was asked for, so it saw neither yet."""
+    helper = helper_sha256(inputs)
+    actors = watched.get("actors") if type(watched.get("actors")) is list else []
+    roles = {}
+    for row in actors:
+        require(type(row) is dict and row.get("role") in {"coordinator", "worker"} and row.get("role") not in roles,
+                "cancel-watch-one-actor-per-role")
+        roles[row["role"]] = row
+    require(watched.get("armedBeforeActors") is True and watched.get("complete") is True and watched.get("timedOut") is False
+            and watched.get("jobId") == job and set(roles) == {"coordinator", "worker"}, "cancel-watch-complete-job-actors")
+    coordinator, worker = roles["coordinator"], roles["worker"]
+    for row, sid, elevated in ((coordinator, inputs["approvingAdminSid"], 1), (worker, inputs["ordinarySid"], 0)):
+        require(row.get("jobId") == job and row.get("sha256") == helper and row.get("sid") == sid and row.get("elevated") == elevated
+                and row.get("sessionId") == inputs["ordinarySessionId"] and row.get("originalAbsent") is True,
+                "cancel-watch-" + row["role"] + "-identity")
+    require(type(worker.get("creationFileTime")) is int and type(coordinator.get("creationFileTime")) is int
+            and worker["creationFileTime"] > coordinator["creationFileTime"], "cancel-watch-worker-generation")
+    others = watched.get("others") if type(watched.get("others")) is list else None
+    require(others is not None and all(type(row) is dict and (row.get("elevated") != 1 or row.get("originalAbsent") is True)
+                                       for row in others), "cancel-watch-no-elevated-helper-left")
+    return {"coordinator": coordinator, "worker": worker, "others": len(others)}
+
+
 def _run_update(owner, harness):
     inputs = validate_inputs(owner, harness["UPDATE_INPUTS"])
     modules = load_modules(owner, inputs)
@@ -284,9 +450,12 @@ def _run_update(owner, harness):
     require(workspace.parent == owner.root and not workspace.exists(), "new-isolated-update-workspace")
     require(receipts.within(owner.request["cliPath"], inputs["installedRoot"])
             and receipts.within(inputs["guiPath"], inputs["installedRoot"]), "exact-installed-update-launchers")
+    connection = ([] if inputs["upstreamFixture"] is None else
+                  [inputs["upstreamFixture"]["sourcePath"], inputs["connectionFixturePath"], inputs["trafficInputs"]["trafficWorkerPath"],
+                   inputs["trafficInputs"]["trafficInputPath"]])
     owner.update_retained_source_paths = [*inputs["modules"].values(), owner.request["casesPath"],
         owner.request["harnessPath"], str(owner.pins[0].path), type(owner).guard.__code__.co_filename,
-        *[inputs["fixture"][x] for x in ("content", "state", "certificate", "privateKey", "trustStore")]]
+        *[inputs["fixture"][x] for x in ("content", "state", "certificate", "privateKey", "trustStore")], *connection]
     lease = receipts.InstalledApplicationLease(owner, inputs["installedRoot"], inputs["baseInventory"], inputs["targetInventory"])
     baseline_registration = receipts.installed_registration(inputs["baseRegistration"], owner.native)
     mode = "paced" if variant in {"download-cancelled", "wait-client-loss"} else "checksum-corrupt" if variant == "checksum-rejected" else "exact"
@@ -305,14 +474,17 @@ def _run_update(owner, harness):
     before = await_ready(owner, workspace, serve)
     identity = before["controllerId"]
     require(before["data"].get("runtimeRunning") is False, "fresh-update-owner-disconnected")
-    traffic_before = traffic_after = None
-    if inputs["initialIntent"] == "reconnect":
+    traffic_before = traffic_after = upstream_child = None
+    if variant in CONNECTED_VARIANTS:
         profile_path = inputs["connectionFixturePath"]
         require(type(profile_path) is str and profile_path.casefold() in owner.by_path,
                 "held-owned-loopback-connection-profile")
         profile = owner.by_path[profile_path.casefold()].digest(True).decode("utf-8", "strict")
-        require(re.fullmatch(r"socks5://127\.0\.0\.1:[0-9]{1,5}#Update%20fixture\n?", profile),
+        found = CONNECTION_PROFILE.fullmatch(profile)
+        require(found is not None and int(found[1]) == inputs["upstreamFixture"]["port"],
                 "owned-no-egress-socks-connection-profile")
+        # The location's upstream runs before any runtime names it, and stays until the returned owner is closed.
+        upstream_child = start_upstream(owner, inputs["upstreamFixture"])
         revision = before["configurationRevision"]
         mode = public(owner, workspace, identity, "settings", "set", "mode", "proxy-only", revision=revision)
         # A fresh workspace reads subscriptions, and locations add answers READ_ONLY_SOURCE there.
@@ -322,13 +494,23 @@ def _run_update(owner, harness):
             revision=source["configurationRevision"])
         location_id = added["data"].get("id")
         require(type(location_id) is str and location_id, "public-loopback-location-id")
-        public(owner, workspace, identity, "locations", "select", location_id,
+        selected = public(owner, workspace, identity, "locations", "select", location_id,
             revision=added["configurationRevision"])
+        # As the proxy rows' runtime, which carried traffic natively: every connection through the loopback location.
+        public(owner, workspace, identity, "routing", "set", "ignore-rules", "true", revision=selected["configurationRevision"])
         # Runtime commands take no revision guard: the product answers UNSUPPORTED to one.
         public(owner, workspace, identity, "on")
         traffic_before = modules["lifecycle"].prepare_update_traffic(owner, workspace, identity, inputs["trafficInputs"])
         before = public(owner, workspace, identity, "status")
-        require(before["data"].get("runtimeRunning") is True, "connected-update-fixture-active")
+        require(before["data"].get("runtimeRunning") is True and before["data"].get("activeLocationId") == location_id
+                and before["data"].get("activeMode") == "proxy-only", "connected-update-fixture-active")
+        if inputs["initialIntent"] == "off":
+            # The public explicit off, which clears the remembered intent; the location stays selected in its mode.
+            public(owner, workspace, identity, "off")
+            before = public(owner, workspace, identity, "status")
+            require(before["data"].get("runtimeRunning") is False and before["data"].get("selectedLocationId") == location_id
+                    and before["data"].get("configuredMode") == "proxy-only", "explicit-off-update-fixture-selected")
+            owner.event("update-explicit-off-before-update", {"status": before, "replayAllowed": False})
     receipts.preserve(owner, "update-baseline-context.json", {"status": before,
         "registration": baseline_registration, "variant": variant, "sourceSha": inputs["sourceSha"],
         "sourceFingerprint": inputs["sourceFingerprint"]})
@@ -417,6 +599,16 @@ def _run_update(owner, harness):
     if variant in {"protected-storage-rejected", "native-install-failed", "participating-copy-lock"}:
         fault = native_evidence(owner, inputs, modules, "fault-ready")
         require(fault.get("kind") == variant and fault.get("binding") == inputs["faultInputs"], "actual-finite-fault-preparation")
+        if variant == "participating-copy-lock":
+            # SYSTEM saw the very copy this owner started, live and unelevated as the ordinary user, running the
+            # installed launcher the installer must replace.
+            copy = fault.get("participatingCopy") if type(fault.get("participatingCopy")) is dict else {}
+            token = copy.get("token") if type(copy.get("token")) is dict else {}
+            require(copy.get("pid") == blocking_copy.pid and copy.get("creationFileTime") == int(blocking_copy.birth)
+                    and token.get("sid") == inputs["ordinarySid"] and token.get("elevated") == 0
+                    and token.get("sessionId") == inputs["ordinarySessionId"]
+                    and copy.get("sha256") == owner.by_path[owner.request["cliPath"].casefold()].record["sha256"],
+                    "native-participating-copy-actor")
     arguments = prepared.desktop_install_arguments(ready, inputs["targetVersion"],
         asynchronous=variant in {"install-cancelled", "installer-wait-client-loss"})
     install_child = owner.child("one-public-update-install", [owner.request["cliPath"], "--state-dir", str(workspace), *arguments])
@@ -466,17 +658,34 @@ def _run_update(owner, harness):
             "operationId": install_operation, "originalControllerId": identity,
             "freshPromptAction": "approve-current-prompt-after-cancellation-request",
             "replayAllowed": False})
-        cancelled = known_operation(owner, workspace, identity, install_operation, codes=("CANCELLED",))
+        # Bounded: a cancellation the product never ends comes back TIMEOUT, its reply kept in this child's own stream.
+        cancelled = json_result(owner.invoke(workspace, "--json", "--controller-id", identity, "--timeout-seconds",
+                                             str(CANCEL_WAIT_SECONDS), "operations", "wait", install_operation),
+                                codes=("CANCELLED",), final=True)
+        require(cancelled.get("controllerId") == identity, "same-authenticated-updater-owner")
         cancel_rows = public(owner, workspace, identity, "updates", "status")["data"].get("installations", [])
         cancel_matches = [x for x in cancel_rows if x.get("originControllerId") == identity
                           and x.get("operationId") == install_operation]
         require(len(cancel_matches) == 1 and cancel_matches[0].get("final") is True
                 and cancel_matches[0].get("installed") is False, "exact-cancelled-public-installation")
         cancel_job = receipts.canonical_uuid(cancel_matches[0].get("jobId"))
+        # The coordinator and worker live only from the approval to the product's own CANCELLED. The SYSTEM watch armed
+        # with before-install saw them both, live, and saw them go.
+        watched = native_evidence(owner, inputs, modules, "cancel-actors", job=cancel_job)
+        actors = cancelled_installer_actors(watched, inputs, cancel_job)
+        owner.event("update-install-cancel-actors-observed", {"jobId": cancel_job, "operationId": install_operation,
+            "coordinator": actors["coordinator"], "worker": actors["worker"], "otherHelperProcesses": actors["others"]})
         native_cancel = native_evidence(owner, inputs, modules, "terminal-actors",
             job=cancel_job, operation=install_operation)
         require(native_cancel.get("protectedReceipt", {}).get("phase") == "CANCELLED",
                 "native-cancellation-terminal-not-request-acceptance")
+        expected = native_cancel.get("actorExpectations") if type(native_cancel.get("actorExpectations")) is dict else {}
+        exits = native_cancel.get("actorExitObservations") if type(native_cancel.get("actorExitObservations")) is list else []
+        require(set(expected) == {"coordinator", "worker"}
+                and all(expected[role].get("pid") == actors[role]["pid"]
+                        and expected[role].get("creationFileTime") == actors[role]["creationFileTime"] for role in expected)
+                and len(exits) == 2 and all(type(x) is dict and x.get("originalAbsent") is True for x in exits),
+                "native-cancelled-installer-actors-known-closed")
         invariant_status(before, public(owner, workspace, identity, "status"))
         for pin in lease.files:
             pin.digest()
@@ -523,6 +732,8 @@ def _run_update(owner, harness):
         if before["data"].get("runtimeRunning") is True:
             public(owner, workspace, identity, "off")
         close_disconnected(owner, workspace, identity, serve, gui_child)
+        if upstream_child is not None:
+            stop_upstream(owner, upstream_child)
         fixture.close_known(all_update_operations_terminal=True)
         owner.update_cancelled_grant = {"variant": variant, "operationId": cancelled.get("operationId")}
         owner.event("update-grant-cancelled-known", {**owner.update_cancelled_grant, "knownFailure": True, "replayAllowed": False})
@@ -535,6 +746,7 @@ def _run_update(owner, harness):
         # UNKNOWN. Keep its controller, all pins and the fixture; no fake cleanup.
         owner.park("protected-storage-refused-requires-exact-native-reconciliation")
     accepted = receipts.handoff(result, identity)
+    handoff = time.monotonic()  # The runtime stopped before the commit this reply acknowledges.
     receipts.preserve(owner, "update-original-handoff.json", accepted)
     collector = receipts.ProtectedReceiptCollector(owner, inputs["programData"], accepted["data"]["jobId"])
     owner.update_collector = collector
@@ -566,8 +778,13 @@ def _run_update(owner, harness):
         lease.admit_observed_target(terminal, expected_phase=expected)
         receipts.installed_registration(inputs["baseRegistration"], owner.native)
         if variant == "participating-copy-lock":
-            require(terminal["code"] == "BUSY" and blocking_copy is not None,
-                    "participating-copy-gate-native-busy")
+            # The product's documented outcome: the copy is never stopped, the inventory stage never admits it, and the
+            # coordinator ends FAILED RUNTIME_FAILED at its exit deadline with the protected INVENTORY diagnostic. The
+            # copy this owner started is still running when that terminal is read; the owner then closes it itself.
+            require(terminal["code"] == "RUNTIME_FAILED" and blocking_copy is not None and blocking_copy.terminal is None
+                    and blocking_copy.process.poll() is None, "participating-copy-gate-native-failure")
+            require(preinstall_diagnostic(owner, inputs, receipts, terminal["jobId"]) == COPY_LOCK_DIAGNOSTIC,
+                    "participating-copy-inventory-diagnostic")
             close_disconnected(owner, blocking_workspace, blocking_status["controllerId"], blocking_copy)
         if variant == "native-install-failed":
             require(native_terminal.get("workerResult", {}).get("exitCode") not in {None, 0, 3010},
@@ -612,9 +829,13 @@ def _run_update(owner, harness):
         lifecycle = modules["lifecycle"]
         lifecycle.observe_existing_gui(owner, workspace, new_identity, gui_inputs,
             modules["broker_observer"], lifecycle.GuiWindows())
-    require(returned["data"].get("runtimeRunning") == (inputs["initialIntent"] == "reconnect"), "off-or-reconnect-intent-preserved")
     if inputs["initialIntent"] == "reconnect":
+        # A returned owner that answers before its resumed runtime runs is not yet a failure: it is read, bounded.
+        returned = await_reconnect(owner, workspace, new_identity, before, handoff)
         traffic_after = modules["lifecycle"].verify_update_traffic(owner, workspace, new_identity, inputs["trafficInputs"])
+    elif variant in CONNECTED_VARIANTS:
+        returned = await_off_kept(owner, workspace, new_identity, before)
+    require(returned["data"].get("runtimeRunning") == (inputs["initialIntent"] == "reconnect"), "off-or-reconnect-intent-preserved")
     if variant == "transport-loss":
         restored = native_evidence(owner, inputs, modules, "transport-restored", job=accepted["data"]["jobId"], operation=accepted["operationId"])
         require(restored.get("originalOrdinaryTaskOperationId") == owner.operation
@@ -628,8 +849,8 @@ def _run_update(owner, harness):
     # Returned owner/frontend were created by the product worker, not Owner.child.
     # Keep their actual native collector handles with the sole native operator.
     # No finalizer kills them or silently pretends they are original children.
-    if inputs["initialIntent"] == "reconnect":
-        modules["lifecycle"].cleanup_update_traffic(owner, traffic_before, traffic_after)
+    if traffic_before is not None:
+        modules["lifecycle"].cleanup_update_traffic(owner, *(item for item in (traffic_before, traffic_after) if item is not None))
     if returned["data"].get("runtimeRunning") is True:
         public(owner, workspace, new_identity, "off")
     public(owner, workspace, new_identity, "quit")
@@ -643,6 +864,8 @@ def _run_update(owner, harness):
             and native_cleanup.get("ownerOriginalAbsent") is True
             and ("gui" not in returned_actors or native_cleanup.get("guiOriginalAbsent") is True),
             "exact-returned-actors-known-closed")
+    if upstream_child is not None:
+        stop_upstream(owner, upstream_child)  # Every runtime that named it is off and its owner gone.
     fixture.close_known(all_update_operations_terminal=True)
     return 0
 

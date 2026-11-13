@@ -2806,6 +2806,24 @@ def encoded(value):
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
 
 
+def watch_observations(request, **changes):
+    """What native_collector.watch_cancelled_installer publishes for a cancelled install: armed before either actor, the job's
+    coordinator (AppInfo's child of the controller) and its worker (the coordinator's), each seen live and then gone."""
+    helper, controller = request["fileInputs"]["cancelWatchHelper"], request["actors"]["controller"]
+
+    def row(role, pid, parent, birth, sid, elevated):
+        return {"role": role, "pid": pid, "parentPid": parent, "creationFileTime": birth, "image": helper["path"], "sha256": helper["sha256"],
+                "sizeBytes": helper["sizeBytes"], "sid": sid, "sessionId": SESSION, "elevated": elevated, "elevationType": 2 if elevated else 1,
+                "verb": "install-coordinator" if role == "coordinator" else "install-user", "liveWhenSeen": True, "seenAfterSeconds": 41.5,
+                "jobId": JOB_ID, "argv0MatchesImage": True, "originalAbsent": True, "reason": "same-handle-signaled", "exitFileTime": birth + 900}
+    value = {"helper": dict(helper), "controller": {"pid": controller["pid"], "creationFileTime": controller["creationFileTime"]},
+             "armedBeforeActors": True, "actors": [row("coordinator", COORDINATOR_PID, JVM_PID, COORDINATOR_BIRTH, ADMIN_SID, 1),
+                                                    row("worker", WORKER_PID, COORDINATOR_PID, WORKER_BIRTH, SID, 0)],
+             "others": [], "missed": 0, "jobId": JOB_ID, "complete": True, "timedOut": False, "polls": 812, "watchedSeconds": 64.2}
+    value.update(changes)
+    return value
+
+
 class UpdateQga(FakeQga):
     """The same wire peer, plus what an update row's owner and SYSTEM collector would leave: the owner asks for each of its
     stages once the one before was served, and its task ends after the release.
@@ -2832,6 +2850,10 @@ class UpdateQga(FakeQga):
         self.returned = None  # The case's record of the actors it expects gone before returned-cleanup.
         self.update_effect = None  # What the product's own update leaves once a passed update task ends: None leaves the base.
         self.effect_pending = False
+        self.copy = None  # (pid, birth) of the participating copy the case started, as its child events record it.
+        self.watch = None  # What a cancel watch saw: the observations its before-install collector publishes after its own.
+        self.watch_polls = 0  # Status polls of the SYSTEM run's copy while the watch collector runs.
+        self.status_reads = []  # Which program, if any, was open while the status copy was read.
 
     def install(self, worker):
         """An update task's own effect is the product's installer, not msiexec's: whatever update_effect leaves, once the
@@ -2858,7 +2880,8 @@ class UpdateQga(FakeQga):
             kind = "collector-release" if "$releaseBytes=" in source else "collector"
             terminal = self._release(source, pid) if kind == "collector-release" else self._collector(source, pid)
             self.programs.append((kind, source))
-            self.pending[pid] = {"polls": 0, "terminal": terminal}
+            watching = kind == "collector" and "cancelWatchHelper" in self.collectors[-1]["collectorRequest"]["fileInputs"]
+            self.pending[pid] = {"polls": self.watch_polls if watching else 0, "terminal": terminal, "collector": kind == "collector"}
             return {"pid": pid}
         self.admin_requested = "administratorSid=" in source
         ack = super()._guest_exec(arguments)
@@ -2872,11 +2895,20 @@ class UpdateQga(FakeQga):
 
     def _guest_file_open(self, arguments):
         if arguments["path"].endswith("\\scenario-status.json") and arguments["mode"] == "rb":
-            served = [kind for kind, _ in self.programs if kind == "collector"]
-            needs = self.needs[:len(served) + 1]
+            open_collectors = [pid for pid, entry in self.pending.items() if entry.get("collector") and entry["polls"] > 0]
+            self.status_reads.append(bool(open_collectors))
+            served = len([kind for kind, _ in self.programs if kind == "collector"])
+            # The owner names each stage once it reads the one before. cancel-actors has no collector of its own: the owner
+            # asks for it after its before-install watch published it, then goes on to its next stage.
+            needs, asked = [], 0
+            for stage in self.needs:
+                if asked > served:
+                    break
+                needs.append(stage)
+                asked += stage != "cancel-actors"
             installer = {"jobId": JOB_ID, "productOperationId": PRODUCT_OPERATION}
             values = {"before-install": {"jobId": None, "productOperationId": None}, "authorization": installer,
-                      "terminal-actors": installer, "returned-cleanup": installer}
+                      "terminal-actors": installer, "returned-cleanup": installer, "cancel-actors": {"jobId": JOB_ID, "productOperationId": None}}
             self.files[arguments["path"]] = json.dumps({"schemaVersion": 1, "poll": len(self.calls), "pendingKinds": [],
                                                         "parkedFiles": list(self.parked_files),
                                                         "uacEvents": ["update-uac-action-pending"] if served else [],
@@ -2942,6 +2974,11 @@ class UpdateQga(FakeQga):
                      "event-000002-child-intent.json": event(2, "child-intent", {"child": 0, "label": "update-public-serve", "argv": ["cli", "serve"]}),
                      "event-000003-child-started.json": event(3, "child-started", {"child": 0, "pid": SERVE_PID, "birthFileTimeUtc": str(SERVE_BIRTH)}),
                      "event-000004-child-intent.json": event(4, "child-intent", {"child": 1, "label": "public-cli", "argv": ["cli", "status"]})}
+            if self.copy is not None:  # The participating copy, a second serve of the installed launcher the case started.
+                files["event-000006-child-intent.json"] = event(6, "child-intent", {"child": 3, "label": "participating-installed-copy",
+                                                                                   "argv": ["cli", "serve"]})
+                files["event-000007-child-started.json"] = event(7, "child-started", {"child": 3, "pid": self.copy[0],
+                                                                                     "birthFileTimeUtc": str(self.copy[1])})
             dispositions = []
             if "one-public-update-install" in m["childStdoutLabels"]:
                 files["event-000009-child-intent.json"] = event(9, "child-intent", {"child": 5, "label": "one-public-update-install", "argv": ["cli"]})
@@ -2997,12 +3034,29 @@ class UpdateQga(FakeQga):
             caller = {"ready": ready, "sha256": hashlib.sha256(raw).hexdigest(), "originalHandleRetained": True,
                       "nativeFile": {"path": hold["holdReadyPath"], "nativeIdentity": self._pin(hold["holdReadyPath"], raw=raw)["nativeIdentity"],
                                      "security": {"ownerSid": SID, "sddl": "O:" + SID + "D:P(A;;FA;;;" + SID + ")"}}}
+        publication = {"stage": request["collectorRequest"]["stage"], "noProductMutation": True}
+        asked = request["collectorRequest"]
+        if "cancelWatchHelper" in asked["fileInputs"] and self.watch is not None:
+            # native_collector.collect_and_publish of a cancel watch: before-install first, then the watch's own record,
+            # carried whole beside the bytes it was published as.
+            observations = self.watch(asked)
+            record = {"schemaVersion": 1, "ordinaryTaskOperationId": asked["ordinaryTaskOperationId"], "sourceSha": asked["sourceSha"],
+                      "collectorSourceSha256": asked["collectorSourceSha256"], "bootIdentifier": asked["context"]["bootIdentifier"],
+                      "stage": "cancel-actors", "jobId": observations["jobId"], "productOperationId": None, "observations": observations}
+            raw = encoded(record)
+
+            def published(stage, data):
+                return {"path": asked["evidenceRoot"] + "\\" + stage + ".json", "sizeBytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                        "createOnly": True, "readOnlyProductObservation": True}
+            publication = {"collector": published("cancel-actors", raw), "ordinaryTaskOperationId": asked["ordinaryTaskOperationId"],
+                           "jobId": observations["jobId"], "stage": "cancel-actors", "noProductMutation": True, "record": record,
+                           "first": {"collector": published("before-install", b"{}\n"), "stage": "before-install"}}
         result = {"schemaVersion": 1, "state": "collector-completed", "operationId": request["operationId"],
                   "ordinaryTaskOperationId": request["ordinaryTaskOperationId"], "scope": "update",
                   "collectorSourceSha256": request["modules"]["collector"]["sha256"],
                   "workerActor": {"pid": worker["pid"], "birthFileTimeUtc": worker["birthFileTimeUtc"], "image": worker["image"],
                                   "bootIdentifier": request["context"]["bootIdentifier"], "token": {"sid": "S-1-5-18", "sessionId": 0, "elevation": 1}},
-                  "publications": [{"stage": request["collectorRequest"]["stage"], "noProductMutation": True}],
+                  "publications": [publication],
                   "closing": {"sourceClosing": True, "files": len(request["filePins"]) + 1, "completeFileDigestSha256": "a" * 64}, "callerHold": caller}
         stdout = json.dumps(result).encode()
 
@@ -3017,7 +3071,7 @@ class UpdateQga(FakeQga):
                             "exitCode": 0, "bothEof": True, "originalHandleRetained": True},
                  "captures": [capture("stdout", stdout), capture("stderr", b"")], "sourceClosing": True, "productMutation": False,
                  "bootstrapOpening": self._actor(pid), "bootstrapClosing": self._actor(pid), "guestBootClosing": True, "bootstrapActorClosing": True}
-        if hold is None and self.run_pid in self.pending and len(self.collectors) == len(self.needs):
+        if hold is None and self.run_pid in self.pending and len(self.collectors) == len([stage for stage in self.needs if stage != "cancel-actors"]):
             self.pending[self.run_pid]["polls"] = 0
         return {"exited": True, "exitcode": 0, "out-data": out_data(proof)}
 
@@ -3734,6 +3788,228 @@ class UpdateInstalledTests(UpdateFamilyBase):
         self.assertEqual((0, "publish", None), (code, receipt["stoppedAfter"], receipt["update"].get("installedAfter")))
         self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
         self.assertNotIn("system-run", self.qga.kinds())
+
+
+COPY_PID, COPY_BIRTH = 960, 134368653065000030
+
+
+class UpdateVariantJobTests(UpdateFamilyBase):
+    """install-cancelled, success-reconnect, its explicit-off twin and participating-copy-lock: what the job publishes for each
+    and what each SYSTEM stage it serves names. At 9a8db1e5 the first three were refused before any journal, the twin did
+    not exist, and the job built none of it."""
+
+    def harness(self, plan):
+        raw = self.qga.files[job.WORKSPACE_PREFIX + plan["operationId"] + "\\update-harness.py"]
+        tree = ast.parse(raw.decode("utf-8"))
+        return [ast.literal_eval(node.value) for node in tree.body[1:]]
+
+    def stages(self):
+        return [request["collectorRequest"]["stage"] for request in self.qga.collectors]
+
+    def admits(self, plan, inputs):
+        """update_cases.validate_inputs over the worker's own pins: the harness is one the case module takes."""
+        from agent_tools.windows_public_updater import update_cases
+        worker = self.qga.requests_seen[-1]["worker"]
+        pins = {pin["path"].casefold(): types.SimpleNamespace(record=pin) for pin in worker["filePins"]}
+        owner = types.SimpleNamespace(request={"context": worker["context"], "productVersion": worker["productVersion"]}, by_path=pins)
+        self.assertIs(inputs, update_cases.validate_inputs(owner, inputs))
+        return worker
+
+    def test_the_connected_row_publishes_the_profile_upstream_and_sampler_input_its_case_connects_through(self):
+        """success-reconnect: the socks:// link of the case's own upstream on its fixed port (the scheme ProxyLinkParser
+        dispatches), that upstream's reviewed source, and the sampler with its input naming the upstream's body. At
+        9a8db1e5 the job passed initialIntent off with no profile and no traffic inputs, and the row was refused."""
+        from agent_tools import windows_ordinary_dedicated_driver as dedicated
+        base, target = self.prepared()
+        self.grant_guest(target)
+        plan, code, receipt = self.run_update("success-reconnect", base, target)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+        self.assertEqual(["before-install", "authorization", "terminal-actors", "returned-cleanup"], self.stages())
+        workspace = job.WORKSPACE_PREFIX + plan["operationId"]
+        inputs, hold = self.harness(plan)
+        self.assertEqual("returned-cleanup", hold["stage"])
+        self.assertEqual(("reconnect", workspace + "\\update-connection-profile.txt"), (inputs["initialIntent"], inputs["connectionFixturePath"]))
+        self.assertEqual(b"socks://127.0.0.1:41082#Update%20fixture\n", self.qga.files[inputs["connectionFixturePath"]])
+        self.assertEqual({"schemaVersion": 1, "sourcePath": workspace + "\\socks_http_fixture.py", "port": job.UPDATE_UPSTREAM_PORT,
+                          "token": job.UPDATE_UPSTREAM_TOKEN}, inputs["upstreamFixture"])
+        traffic = inputs["trafficInputs"]
+        self.assertEqual((workspace + "\\windows_lifecycle_traffic_worker.py", workspace + "\\update-traffic-input.json"),
+                         (traffic["trafficWorkerPath"], traffic["trafficInputPath"]))
+        sampled = json.loads(self.qga.files[traffic["trafficInputPath"]])
+        self.assertEqual((None, job.UPDATE_UPSTREAM_TOKEN.encode().hex()), (sampled["mixedPort"], sampled["expectedBodyHex"]),
+                         "the product's own mixed port at run time, the upstream's body")
+        worker = self.admits(plan, inputs)
+        pins = {pin["path"]: pin["sha256"] for pin in worker["filePins"]}
+        self.assertEqual((dedicated.SOCKS_SHA, dedicated.TRAFFIC_SHA), (pins[inputs["upstreamFixture"]["sourcePath"]], pins[traffic["trafficWorkerPath"]]),
+                         "the reviewed bytes the dedicated driver holds them to")
+        self.assertIn(inputs["connectionFixturePath"], pins)
+        self.assertIn(traffic["trafficInputPath"], pins)
+        self.assertEqual("update-upstream-" + dedicated.SOCKS_SHA, traffic["fixtureAdmissionArtifactId"])
+
+    def test_the_explicit_off_twin_is_connected_the_same_way_with_its_intent_off(self):
+        """success-explicit-off: the same profile, upstream and sampler as success-reconnect, so its owner connects before
+        it turns off; only the intent the case is to find after the update differs."""
+        base, target = self.prepared()
+        self.grant_guest(target)
+        plan, code, receipt = self.run_update("success-explicit-off", base, target)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+        self.assertEqual(["before-install", "authorization", "terminal-actors", "returned-cleanup"], self.stages())
+        workspace = job.WORKSPACE_PREFIX + plan["operationId"]
+        inputs, hold = self.harness(plan)
+        self.assertEqual("returned-cleanup", hold["stage"])
+        self.assertEqual(("off", workspace + "\\update-connection-profile.txt", job.UPDATE_UPSTREAM_PORT),
+                         (inputs["initialIntent"], inputs["connectionFixturePath"], inputs["upstreamFixture"]["port"]))
+        self.assertEqual(b"socks://127.0.0.1:41082#Update%20fixture\n", self.qga.files[inputs["connectionFixturePath"]])
+        self.assertEqual(workspace + "\\update-traffic-input.json", inputs["trafficInputs"]["trafficInputPath"])
+        self.admits(plan, inputs)
+
+    def test_a_disconnected_row_names_no_connection(self):
+        base, target = self.prepared()
+        self.grant_guest(target)
+        plan, code, receipt = self.run_update("success-off", base, target)
+        self.assertEqual(0, code)
+        inputs, _ = self.harness(plan)
+        self.assertEqual(("off", None, None, None, {}), (inputs["initialIntent"], inputs["trafficInputs"], inputs["connectionFixturePath"],
+                                                        inputs["upstreamFixture"], inputs["faultInputs"]))
+        self.admits(plan, inputs)
+
+    def copy_lock_guest(self, base, target):
+        """A participating copy: the second serve of the installed launcher the case started, which the coordinator never
+        stops; its terminal is FAILED RUNTIME_FAILED and the base stays. The case's own recovery serve is the returned owner,
+        running the base launcher."""
+        self.grant_guest(target)
+        self.qga.needs = ["before-install", "fault-ready", "authorization", "terminal-actors", "returned-cleanup"]
+        self.qga.update_effect = None
+        self.qga.copy = (COPY_PID, COPY_BIRTH)
+        self.qga.processes.append(process_row(COPY_PID, 902, COPY_BIRTH, CLI_PATH, [CLI_PATH, "--state-dir", "copy-lock-workspace", "serve"], SID, 0,
+                                              image_bytes=b"exe:" + BASE.encode()))
+        self.qga.product_files[PROTECTED_RECEIPT] = ('{"version":1,"jobId":"' + JOB_ID + '","sequence":6,"phase":"Failed","code":"RUNTIME_FAILED"}').encode()
+        files = json.loads((self.machine_data / base / job.INVENTORY_NAME).read_bytes())["files"]
+        self.qga.returned = {"actors": {"owner": {"pid": RETURNED_PID, "creationFileTime": 134368653065000040, "image": CLI_PATH,
+                                                  "sha256": files["vpn-control-cli.exe"]["sha256"], "sid": SID, "sessionId": SESSION}},
+                             "jobId": JOB_ID, "operationId": PRODUCT_OPERATION}
+
+    def test_the_copy_lock_row_names_the_copy_it_started_at_fault_ready_and_ends_with_its_base(self):
+        """fault-ready names exactly the copy the owner recorded, found live and unelevated in a SYSTEM census of the CLI image,
+        beside the row's own fault inputs; returned-cleanup takes the case's recovery owner on the base launcher. At 9a8db1e5
+        the job passed no fault inputs, served no fault-ready and checked a returned owner against the target alone."""
+        base, target = self.prepared()
+        self.copy_lock_guest(base, target)
+        plan, code, receipt = self.run_update("participating-copy-lock", base, target)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["basePackage"]["sha256"]}, receipt["windows"])
+        self.assertEqual(["before-install", "fault-ready", "authorization", "terminal-actors", "returned-cleanup"], self.stages())
+        inputs, hold = self.harness(plan)
+        root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+        self.assertEqual({"kind": "participating-copy-lock", "installedCliPath": CLI_PATH, "blockingWorkspace": root + "\\copy-lock-workspace"},
+                         inputs["faultInputs"])
+        fault = self.qga.collectors[1]["collectorRequest"]
+        cli = hashlib.sha256(b"exe:" + BASE.encode()).hexdigest()
+        self.assertEqual({"participatingCopy": {"pid": COPY_PID, "creationFileTime": COPY_BIRTH, "image": CLI_PATH, "sha256": cli, "sid": SID,
+                                                "sessionId": SESSION}}, fault["actors"])
+        self.assertEqual(inputs["faultInputs"], fault["faultBinding"], "the binding the collector checks is the case's own fault inputs")
+        self.assertEqual([None] * 4 + ["returned-cleanup"], [request["closeHold"] and request["closeHold"]["stage"] for request in self.qga.collectors])
+        self.assertEqual(self.qga.returned["actors"], self.qga.collectors[-1]["collectorRequest"]["actors"])
+        self.assertEqual({"role": "base", **self.installed_record(base)}, receipt["update"]["installedAfter"])
+        self.admits(plan, inputs)
+        self.assertTrue((Path(plan["dataDirectory"]) / "collectors" / "fault-ready" / "census.json").exists())
+
+    def test_fault_ready_takes_only_the_copy_the_case_started(self):
+        base, target = self.prepared()
+        for reason, change in (("collector_copy_unobserved", lambda q: setattr(q, "copy", None)),
+                               ("collector_participating_copy", lambda q: q.processes[-1]["token"].update(elevated=1)),
+                               ("collector_participating_copy", lambda q: q.processes[-1].update(creationFileTime=str(COPY_BIRTH + 1))),
+                               ("collector_participating_copy", lambda q: q.processes[-1].update(imageSha256="0" * 64)),
+                               ("collector_participating_copy", lambda q: q.processes.pop())):
+            with self.subTest(reason=reason):
+                self.qga.programs.clear()
+                self.qga.collectors.clear()
+                self.qga.releases.clear()
+                self.qga.processes = grant_processes()
+                self.copy_lock_guest(base, target)
+                change(self.qga)
+                plan, code, receipt = self.run_update("participating-copy-lock", base, target)
+                try:
+                    self.assertEqual((3, "collector_stage_failed:fault-ready:" + reason), (code, receipt["failure"]))
+                    self.assertEqual(["before-install"], self.stages())
+                finally:
+                    self.forget(plan)
+
+    def cancel_guest(self, **changes):
+        """install-cancelled: the before-install collector stays as a watch while the case cancels and the prompt is approved,
+        then publishes what it saw; the protected terminal is CANCELLED and the base stays."""
+        self.to_base()
+        # As update_cases asks: before-install, then cancel-actors once the watch published it, then terminal-actors.
+        self.qga.needs = ["before-install", "cancel-actors", "terminal-actors"]
+        self.qga.update_effect = None
+        self.qga.watch = lambda request: watch_observations(request, **changes)
+        self.qga.watch_polls = 3
+        self.qga.product_files = {PROTECTED_RECEIPT: ('{"version":1,"jobId":"' + JOB_ID + '","sequence":4,"phase":"Cancelled","code":"CANCELLED"}').encode()}
+
+    def test_a_cancelled_install_is_watched_from_before_install_and_terminal_actors_names_the_watched_pair(self):
+        """before-install names the controller found in the census and the installed helper: the collector publishes the
+        owner it saw, stays, and publishes cancel-actors. The job keeps that record, checks it, and terminal-actors asks for
+        exactly that coordinator and worker beside the protected CANCELLED. The status copy stays current meanwhile."""
+        base, target = self.prepared()
+        self.cancel_guest()
+        plan, code, receipt = self.run_update("install-cancelled", base, target)
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["basePackage"]["sha256"]}, receipt["windows"])
+        before, terminal = self.qga.collectors
+        helper = {"path": HELPER_PATH, "sha256": hashlib.sha256(HELPER_BYTES).hexdigest(), "sizeBytes": len(HELPER_BYTES)}
+        self.assertEqual({"cancelWatchHelper": helper}, before["collectorRequest"]["fileInputs"])
+        self.assertEqual(helper["sha256"], before["collectorRequest"]["expectedHelperSha256"])
+        self.assertEqual({"pid": JVM_PID, "creationFileTime": JVM_BIRTH}, {key: before["collectorRequest"]["actors"]["controller"][key]
+                                                                           for key in ("pid", "creationFileTime")})
+        self.assertIsNone(before["closeHold"])
+        self.assertEqual("terminal-actors", terminal["closeHold"]["stage"])
+        actors = terminal["collectorRequest"]["actors"]
+        self.assertEqual({"coordinator": (COORDINATOR_PID, COORDINATOR_BIRTH, ADMIN_SID), "worker": (WORKER_PID, WORKER_BIRTH, SID)},
+                         {role: (actor["pid"], actor["creationFileTime"], actor["sid"]) for role, actor in actors.items()})
+        self.assertEqual({"protectedReceipt": {"path": PROTECTED_RECEIPT, "sha256": hashlib.sha256(self.qga.product_files[PROTECTED_RECEIPT]).hexdigest(),
+                                               "sizeBytes": len(self.qga.product_files[PROTECTED_RECEIPT])}},
+                         terminal["collectorRequest"]["fileInputs"])
+        installer = receipt["update"]["installer"]
+        self.assertEqual((JOB_ID, True, 812), (installer["jobId"], installer["watch"]["armedBeforeActors"], installer["watch"]["polls"]))
+        self.assertEqual((ADMIN_SID, 1, SID, 0), (installer["coordinator"]["sid"], installer["coordinator"]["elevated"],
+                                                  installer["worker"]["sid"], installer["worker"]["elevated"]))
+        kept = json.loads((Path(plan["dataDirectory"]) / "collectors" / "before-install" / "cancel-actors.json").read_bytes())
+        self.assertEqual(("cancel-actors", JOB_ID), (kept["stage"], kept["jobId"]))
+        self.assertIn(True, self.qga.status_reads, "the status copy was read while the watch ran")
+        self.assertEqual({"role": "base", **self.installed_record(base)}, receipt["update"]["installedAfter"])
+        collectors = receipt["update"]["collectors"]
+        self.assertEqual(["before-install", "cancel-actors", "terminal-actors"], sorted(collectors),
+                         "the owner's cancel-actors need is the watch's own record, never an unserved stage")
+        self.assertEqual((collectors["before-install"]["requestSha256"], False), (collectors["cancel-actors"]["requestSha256"],
+                                                                                 collectors["cancel-actors"]["released"]))
+        self.assertEqual(2, len(self.qga.collectors), "no collector program serves cancel-actors")
+        inputs, hold = self.harness(plan)
+        self.assertEqual("terminal-actors", hold["stage"])
+        self.admits(plan, inputs)
+
+    def test_a_watch_record_that_proves_less_leaves_the_owner_waiting_unknown(self):
+        base, target = self.prepared()
+        cases = (("collector_cancel_watch_roles", {"actors": []}),
+                 ("collector_cancel_watch_incomplete", {"armedBeforeActors": False}),
+                 ("collector_cancel_watch_incomplete", {"timedOut": True}),
+                 ("collector_cancel_watch_incomplete", {"complete": False}),
+                 ("collector_cancel_watch_elevated_helper_left", {"others": [{"pid": 930, "elevated": 1, "originalAbsent": False}]}))
+        for reason, changes in cases:
+            with self.subTest(reason=reason):
+                self.qga.programs.clear()
+                self.qga.collectors.clear()
+                self.qga.releases.clear()
+                self.cancel_guest(**changes)
+                plan, code, receipt = self.run_update("install-cancelled", base, target)
+                try:
+                    self.assertEqual((3, "collector_stage_failed:before-install:" + reason), (code, receipt["failure"]))
+                    self.assertTrue((Path(plan["dataDirectory"]) / "collectors" / "before-install" / "cancel-actors.json").exists(),
+                                    "what the watch published is kept whatever it proves")
+                    self.assertFalse(self.fence(plan, ".terminal.json").exists())
+                finally:
+                    self.forget(plan)
 
 
 DOCUMENT_ROWS = ("windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",

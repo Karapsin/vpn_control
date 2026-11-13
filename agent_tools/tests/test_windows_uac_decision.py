@@ -1989,7 +1989,10 @@ class FakeCli:
             words.remove("--async")
         self.commands.append(words)
         if words == ["status"]:
-            return self.envelope(runtimeRunning=self.running, activeMode="proxy-only" if self.running else None, selectedLocationId=None, activeLocationId=None)
+            selected = "location-1" if ["locations", "select", "location-1"] in self.commands else None
+            configured = "proxy-only" if ["settings", "set", "mode", "proxy-only"] in self.commands else "vpn"
+            return self.envelope(runtimeRunning=self.running, activeMode="proxy-only" if self.running else None, selectedLocationId=selected,
+                                 activeLocationId=selected if self.running else None, configuredMode=configured)
         if words[:2] == ["updates", "transport-probe"]:
             return self.envelope()
         if words == ["updates", "check"]:
@@ -2010,7 +2013,8 @@ class FakeCli:
         if words == ["off"]:
             self.running = False
             return self.envelope()
-        if words in (["settings", "set", "mode", "proxy-only"], ["source", "set", "current-locations"], ["locations", "select", "location-1"]):
+        if words in (["settings", "set", "mode", "proxy-only"], ["source", "set", "current-locations"], ["locations", "select", "location-1"],
+                     ["routing", "set", "ignore-rules", "true"]):
             return self.envelope()
         if words[:3] == ["locations", "add", "--input"]:
             return self.envelope(id="location-1")
@@ -2024,7 +2028,17 @@ class FakeChild:
     def __init__(self, owner, label, argv, completed=None):
         self.owner, self.label, self.argv, self.completed_value = owner, label, tuple(argv), completed
         self.pid, self.birth, self.ordinal, self.terminal = 4100 + len(owner.children), "134368653065000001", len(owner.children), None
-        self.process = types.SimpleNamespace(poll=lambda: None if self.terminal is None else 0, _handle=1)
+        self.terminated = False
+        self.process = types.SimpleNamespace(poll=lambda: None if self.terminal is None else 0, _handle=1, terminate=self.terminate)
+        if label == "update-upstream":  # The upstream listens on its port and says so in its ready file.
+            Path(argv[argv.index("--ready-file") + 1]).write_text(argv[argv.index("--port") + 1], encoding="utf-8")
+
+    def terminate(self):
+        self.terminated = True
+        self.terminal = {"exitCode": 1, "eof": {"stdout": True, "stderr": True}}
+
+    def observe(self):
+        return self.terminal
 
     def wait(self):
         self.terminal = {"exitCode": 0, "eof": {"stdout": True, "stderr": True}}
@@ -2051,7 +2065,8 @@ class FakeUpdateOwner:
         self.environment = {}
         self.pins = [types.SimpleNamespace(path=Path("C:/owner"))]
         self.request = {"workspace": str(root / "workspace"), "cliPath": "C:\\app\\vpn-control-cli.exe", "casesPath": "C:\\s\\cases.py", "harnessPath": "C:\\s\\h.py",
-                        "productVersion": "2.2.15", "context": {"ordinarySid": SID, "ordinarySessionId": 2, "bootIdentifier": "boot"}}
+                        "productVersion": "2.2.15", "context": {"ordinarySid": SID, "ordinarySessionId": 2, "bootIdentifier": "boot"},
+                        "pythonRuntime": {"interpreterPath": "C:\\py\\python.exe"}}
         self.by_path = {key.casefold(): types.SimpleNamespace(record={"sha256": "c" * 64}) for key in
                         ("C:\\s\\receipts.py", "C:\\s\\server.py", "C:\\s\\env.py", "C:\\s\\jdk.py", "C:\\s\\prepare.py", "C:\\s\\observer.py", "C:\\s\\lifecycle.py", "C:\\s\\collector.py",
                          self.request["cliPath"])}
@@ -2094,7 +2109,10 @@ class Observation:
     def read(self, limit):
         stage = Path(str(self.path).replace("\\", "/")).stem
         inputs = self.owner.harness["UPDATE_INPUTS"]
-        observations = ({"kind": inputs["variant"], "binding": inputs["faultInputs"]} if stage == "fault-ready" else
+        copies = [child for child in self.owner.children if child.label == "participating-installed-copy"]
+        copy = {} if not copies else {"pid": copies[0].pid, "creationFileTime": int(copies[0].birth), "sha256": "c" * 64,
+                                      "token": {"sid": SID, "elevated": 0, "sessionId": 2}}
+        observations = ({"kind": inputs["variant"], "binding": inputs["faultInputs"], "participatingCopy": copy} if stage == "fault-ready" else
                         {"ordinaryOwner": {"token": {"sid": SID, "elevated": 0}, "pid": 4100, "creationFileTime": 134368653065000001,
                                            "image": "C:\\app\\vpn-control-cli.exe", "sha256": "c" * 64}})
         return json.dumps({"schemaVersion": 1, "ordinaryTaskOperationId": "2c731e91-c158-4e8a-b779-54076ce85229", "stage": stage, "sourceSha": "a" * 40,
@@ -2150,7 +2168,8 @@ class CancelledGrantUpdateTests(unittest.TestCase):
                   "baseVersion": "2.2.15", "targetVersion": "2.2.16", "installedRoot": "C:\\app", "guiPath": "C:\\app\\VPN.exe", "baseInventory": {"a": {"sizeBytes": 1, "sha256": "a" * 64}},
                   "targetInventory": {"a": {"sizeBytes": 1, "sha256": "b" * 64}}, "baseRegistration": {}, "targetRegistration": {}, "programData": "C:\\ProgramData",
                   "evidenceRoot": "C:\\ProgramData\\update-evidence-" + owner.operation, "collectorSourceSha256": "c" * 64, "ordinarySid": SID, "ordinarySessionId": 2,
-                  "approvingAdminSid": ADMIN, "initialIntent": "off", "trafficInputs": None, "faultInputs": {}, "returnGuiRequired": False, "connectionFixturePath": None}
+                  "approvingAdminSid": ADMIN, "initialIntent": "off", "trafficInputs": None, "faultInputs": {}, "returnGuiRequired": False, "connectionFixturePath": None,
+                  "upstreamFixture": None}
         owner.harness = {"UPDATE_INPUTS": inputs}
         return owner, fixture
 
@@ -2166,24 +2185,73 @@ class CancelledGrantUpdateTests(unittest.TestCase):
         self.assertEqual({"variant": "success-off", "operationId": "cccccccc-0000-4000-8000-000000000003"}, owner.update_cancelled_grant)
         self.assertIn("update-grant-cancelled-known", [kind for kind, _ in owner.events])
 
-    def test_a_cancelled_connected_grant_closes_its_sampler_and_turns_off_before_it_quits(self):
-        owner, fixture = self.harness("success-reconnect")
-        profile = "C:\\s\\profile.txt"
-        owner.by_path[profile.casefold()] = types.SimpleNamespace(record={"sha256": "c" * 64}, digest=lambda *_: b"socks5://127.0.0.1:1080#Update%20fixture\n")
+    def connect(self, owner, intent):
+        """The connected rows' inputs: the loopback profile, the case's own upstream and the sampler, all held."""
+        profile, upstream = "C:\\s\\profile.txt", "C:\\s\\socks_http_fixture.py"
+        traffic_inputs = {"schemaVersion": 1, "trafficWorkerPath": "C:\\s\\traffic.py", "trafficInputPath": "C:\\s\\traffic.json",
+                          "fixtureAdmissionArtifactId": "update-upstream-x", "sourceArtifactId": "sha256-y"}
+        owner.by_path[profile.casefold()] = types.SimpleNamespace(record={"sha256": "c" * 64}, digest=lambda *_: b"socks://127.0.0.1:41082#Update%20fixture\n")
+        for path in (upstream, traffic_inputs["trafficWorkerPath"], traffic_inputs["trafficInputPath"]):
+            owner.by_path[path.casefold()] = types.SimpleNamespace(record={"sha256": "c" * 64})
         sampler, traffic = {"child": "update-traffic-before"}, []
         owner.modules["C:\\s\\lifecycle.py"] = types.SimpleNamespace(
             prepare_update_traffic=lambda *args: traffic.append(("prepare", args[-1])) or sampler,
             cleanup_update_traffic=lambda _owner, *observations: traffic.append(("cleanup", owner.cli.running, observations)))
-        owner.harness["UPDATE_INPUTS"].update(initialIntent="reconnect", trafficInputs={"schemaVersion": 1}, connectionFixturePath=profile)
+        owner.harness["UPDATE_INPUTS"].update(initialIntent=intent, trafficInputs=traffic_inputs, connectionFixturePath=profile,
+                                              upstreamFixture={"schemaVersion": 1, "sourcePath": upstream, "port": 41082, "token": "vpn-control-update-upstream"})
+        return traffic_inputs, sampler, traffic
+
+    def test_a_cancelled_explicit_off_grant_quits_its_off_owner_and_stops_its_upstream(self):
+        """success-explicit-off: connected, then the public explicit off, before the install it asks for. Cancelled, its owner
+        is already off: the case closes the sampler and quits it with no second off, then stops its own upstream."""
+        owner, fixture = self.harness("success-explicit-off")
+        traffic_inputs, sampler, traffic = self.connect(owner, "off")
         with mock.patch.object(update_cases.time, "sleep"):
             result = update_cases.run_update(owner, owner.harness)
         self.assertEqual(1, result)
         self.assertIsNone(owner.parked)
-        self.assertEqual([("prepare", {"schemaVersion": 1}), ("cleanup", True, (sampler,))], traffic, "the sampler closes while connected, as on success")
+        commands = owner.cli.commands
+        self.assertEqual(1, commands.count(["off"]), "the explicit off alone")
+        self.assertLess(commands.index(["on"]), commands.index(["off"]))
+        self.assertLess(commands.index(["off"]), commands.index(["updates", "download"]), "turned off before the update is asked for")
+        self.assertEqual([("prepare", traffic_inputs), ("cleanup", False, (sampler,))], traffic, "sampled while connected, closed once off")
+        kept = [value for kind, value in owner.events if kind == "update-explicit-off-before-update"]
+        self.assertEqual([(False, "location-1", "proxy-only")], [(value["status"]["data"]["runtimeRunning"], value["status"]["data"]["selectedLocationId"],
+                                                               value["status"]["data"]["configuredMode"]) for value in kept])
+        upstreams = [child for child in owner.children if child.label == "update-upstream"]
+        self.assertEqual(1, len(upstreams))
+        self.assertTrue(upstreams[0].terminated)
+        self.assertTrue(fixture.closed)
+        self.assertTrue(all(child.terminal is not None for child in owner.children))
+        self.assertEqual({"variant": "success-explicit-off", "operationId": "cccccccc-0000-4000-8000-000000000003"}, owner.update_cancelled_grant)
+
+    def test_a_cancelled_connected_grant_closes_its_sampler_and_turns_off_before_it_quits(self):
+        owner, fixture = self.harness("success-reconnect")
+        profile, upstream = "C:\\s\\profile.txt", "C:\\s\\socks_http_fixture.py"
+        traffic_inputs = {"schemaVersion": 1, "trafficWorkerPath": "C:\\s\\traffic.py", "trafficInputPath": "C:\\s\\traffic.json",
+                          "fixtureAdmissionArtifactId": "update-upstream-x", "sourceArtifactId": "sha256-y"}
+        owner.by_path[profile.casefold()] = types.SimpleNamespace(record={"sha256": "c" * 64}, digest=lambda *_: b"socks://127.0.0.1:41082#Update%20fixture\n")
+        for path in (upstream, traffic_inputs["trafficWorkerPath"], traffic_inputs["trafficInputPath"]):
+            owner.by_path[path.casefold()] = types.SimpleNamespace(record={"sha256": "c" * 64})
+        sampler, traffic = {"child": "update-traffic-before"}, []
+        owner.modules["C:\\s\\lifecycle.py"] = types.SimpleNamespace(
+            prepare_update_traffic=lambda *args: traffic.append(("prepare", args[-1])) or sampler,
+            cleanup_update_traffic=lambda _owner, *observations: traffic.append(("cleanup", owner.cli.running, observations)))
+        owner.harness["UPDATE_INPUTS"].update(initialIntent="reconnect", trafficInputs=traffic_inputs, connectionFixturePath=profile,
+                                              upstreamFixture={"schemaVersion": 1, "sourcePath": upstream, "port": 41082, "token": "vpn-control-update-upstream"})
+        with mock.patch.object(update_cases.time, "sleep"):
+            result = update_cases.run_update(owner, owner.harness)
+        self.assertEqual(1, result)
+        self.assertIsNone(owner.parked)
+        self.assertEqual([("prepare", traffic_inputs), ("cleanup", True, (sampler,))], traffic, "the sampler closes while connected, as on success")
         commands = owner.cli.commands
         self.assertLess(commands.index(["on"]), commands.index(["off"]))
         self.assertLess(commands.index(["off"]), commands.index(["quit"]), "the runtime it connected is off before its owner quits")
         self.assertTrue(fixture.closed)
+        upstreams = [child for child in owner.children if child.label == "update-upstream"]
+        self.assertEqual(1, len(upstreams))
+        self.assertEqual(("-I", "-B", upstream, "--port", "41082", "--token", "vpn-control-update-upstream"), upstreams[0].argv[1:8])
+        self.assertTrue(upstreams[0].terminated, "the case's own upstream is stopped once its owner quit")
         self.assertTrue(all(child.terminal is not None for child in owner.children), "no child is left for the owner to park on")
         self.assertEqual({"variant": "success-reconnect", "operationId": "cccccccc-0000-4000-8000-000000000003"}, owner.update_cancelled_grant)
 

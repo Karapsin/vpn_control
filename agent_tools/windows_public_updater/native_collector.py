@@ -26,6 +26,15 @@ def require(condition, code):
 
 
 STAGES = frozenset(("before-install", "authorization", "terminal-actors", "returned-cleanup", "fault-ready"))
+# The record a cancel watch publishes after its before-install record; no request ever names it as its own stage.
+CANCEL_STAGE = "cancel-actors"
+# The watch outlives the prompt the decision answers within 90 s and the coordinator's three-minute precommit deadline.
+CANCEL_WATCH_SECONDS = 900
+CANCEL_WATCH_POLL_SECONDS = 0.05
+CANCEL_WATCH_GUARD_SECONDS = 2.0
+# An actor seen, then gone, with no second role after this long is all there will be.
+CANCEL_WATCH_SETTLE_SECONDS = 30.0
+_INSTALL_ROLES = {"install-coordinator": "coordinator", "install-user": "worker"}
 
 
 def actor(request, role, receipts, observer, native, *, elevated, sid):
@@ -232,6 +241,9 @@ def collect(request, collection_owner, receipts, observer):
         observations["ordinaryOwner"] = actor(request, "owner", receipts, observer, native, elevated=0, sid=sid)
         if "gui" in request["actors"]:
             observations["originalGui"] = actor(request, "gui", receipts, observer, native, elevated=0, sid=sid)
+        if cancel_watch_binding(request) is not None:
+            # The process the helper will name as its owner, live and unelevated as the ordinary user, before any prompt.
+            observations["controller"] = actor(request, "controller", receipts, observer, native, elevated=0, sid=sid)
     elif stage == "authorization":
         require(re.fullmatch(r"[a-f0-9]{64}", request["expectedHelperSha256"])
                 and request["actors"].get("worker", {}).get("sha256") == request["expectedHelperSha256"]
@@ -357,9 +369,157 @@ def _fault_observation(request, owner, receipts, observer, native):
     return actual
 
 
+def cancel_watch_binding(request):
+    """before-install of a cancelled install: the controller the helper will name and the installed helper's image.
+
+    Present only in that request: the job asks for the watch by naming the helper image beside the controller.
+    """
+    helper = request["fileInputs"].get("cancelWatchHelper") if type(request["fileInputs"]) is dict else None
+    if request["stage"] != "before-install" or helper is None:
+        return None
+    controller = request["actors"].get("controller")
+    require(type(helper) is dict and set(helper) == {"path", "sha256", "sizeBytes"} and type(helper["path"]) is str
+            and helper["sha256"] == request["expectedHelperSha256"] and re.fullmatch(r"[a-f0-9]{64}", helper["sha256"])
+            and type(helper["sizeBytes"]) is int and helper["sizeBytes"] > 0
+            and PureWindowsPath(helper["path"]).name.casefold() == "vpn-control-install-helper.exe"
+            and type(controller) is dict and type(controller.get("pid")) is int and controller["pid"] > 0
+            and type(controller.get("creationFileTime")) is int and controller["creationFileTime"] > 0, "cancel-watch-binding")
+    return {"helper": helper, "controller": {"pid": controller["pid"], "creationFileTime": controller["creationFileTime"]}}
+
+
+def command_line(native, process):
+    """One process's command line through its own handle, split as Windows splits it (CommandLineToArgvW)."""
+    query = _api(native.n, "NtQueryInformationProcess", W.LONG, (W.HANDLE, W.ULONG, W.LPVOID, W.ULONG, ctypes.POINTER(W.ULONG)))
+    size = 65552
+    buffer = ctypes.create_string_buffer(size)
+    returned = W.ULONG()
+    # ProcessCommandLineInformation: a UNICODE_STRING whose buffer follows it in the same output.
+    require(query(process.handle, 60, buffer, size, ctypes.byref(returned)) == 0 and 0 < returned.value <= size,
+            "cancel-watch-command-line")
+    length = int.from_bytes(buffer.raw[:2], "little")
+    address = ctypes.c_void_p.from_buffer(buffer, ctypes.sizeof(ctypes.c_void_p)).value
+    require(length % 2 == 0 and 0 < length <= size and address, "cancel-watch-command-line-shape")
+    split = _api(ctypes.WinDLL("shell32", use_last_error=True), "CommandLineToArgvW", ctypes.POINTER(W.LPWSTR),
+                 (W.LPCWSTR, ctypes.POINTER(ctypes.c_int)))
+    free = _api(native.k, "LocalFree", W.HLOCAL, (W.HLOCAL,))
+    count = ctypes.c_int()
+    argv = split(ctypes.wstring_at(address, length // 2), ctypes.byref(count))
+    require(bool(argv) and 1 <= count.value <= 16, "cancel-watch-argv")
+    try:
+        return [argv[index] for index in range(count.value)]
+    finally:
+        free(ctypes.cast(argv, W.HLOCAL))
+
+
+def _canonical_job(receipts, value):
+    try:
+        return receipts.canonical_uuid(value)
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def watch_cancelled_installer(request, collection_owner, receipts, observer, binding, *, clock=time.monotonic, sleep=time.sleep,
+                              read_argv=command_line):
+    """Read only, as SYSTEM: every process of the installed helper's image from before the install is asked for until the
+    cancelled job's two actors are gone, or the bound.
+
+    A process naming the controller as its owner (the product's argv: role, job, owner pid, owner birth) is described once,
+    live, through its own handle, which is then kept: its pid cannot be reused while it is held, and its exit is read from
+    that same handle. Any other helper process is recorded with its role word, and kept too while it is elevated. Nothing
+    is started, stopped, signalled or written; the caller publishes what this returns.
+    """
+    native = observer.WindowsNative()
+    helper, controller = binding["helper"], binding["controller"]
+    leaf = PureWindowsPath(helper["path"]).name.casefold()
+    owner_argv = [str(controller["pid"]), str(controller["creationFileTime"])]
+    started = guarded = clock()
+    held, actors, others, missed = {}, [], [], 0
+    armed, polls, last_exit, timed_out = None, 0, None, False
+    try:
+        while True:
+            polls += 1
+            now = clock()
+            if now - guarded >= CANCEL_WATCH_GUARD_SECONDS:
+                collection_owner.guard()
+                guarded = now
+            naming = 0
+            for entry in native.processes():
+                if entry["name"].casefold() != leaf or entry["pid"] in held:
+                    continue
+                if any(row["pid"] == entry["pid"] and row.get("held") is False for row in others):
+                    continue
+                try:
+                    process = native.open_process(entry["pid"], 0x101000)
+                except OSError:
+                    missed += 1  # Gone before it could be opened: counted, never described.
+                    continue
+                try:
+                    described = process.describe()
+                    argv = read_argv(native, process)
+                    live = process.wait() == 258
+                except (OSError, ValueError):
+                    process.__exit__(None, None, None)
+                    missed += 1
+                    continue
+                token = described["token"]
+                role = (_INSTALL_ROLES.get(argv[1]) if len(argv) == 5 and argv[3:5] == owner_argv
+                        and observer.same_path(described["image"], helper["path"]) else None)
+                row = {"pid": entry["pid"], "parentPid": entry["parentPid"], "creationFileTime": described["creationFileTime"],
+                       "image": described["image"], "sha256": described["sha256"], "sizeBytes": described["sizeBytes"],
+                       "sid": token["sid"], "sessionId": token["sessionId"], "elevated": token["elevated"],
+                       "elevationType": token["elevationType"], "verb": argv[1] if len(argv) > 1 else None,
+                       "liveWhenSeen": live, "seenAfterSeconds": round(clock() - started, 3)}
+                if role is not None:
+                    naming += 1
+                    row.update(role=role, jobId=_canonical_job(receipts, argv[2]),
+                               argv0MatchesImage=observer.same_path(argv[0], described["image"]))
+                    actors.append(row)
+                    held[entry["pid"]] = (process, row)
+                elif token["elevated"] == 1:
+                    others.append(row)
+                    held[entry["pid"]] = (process, row)
+                else:
+                    row["held"] = False
+                    others.append(row)
+                    process.__exit__(None, None, None)
+            if armed is None:
+                armed = naming
+            for pid, (process, row) in held.items():
+                if "originalAbsent" not in row and process.wait() == 0:
+                    row.update(originalAbsent=True, reason="same-handle-signaled", exitFileTime=process.times()["exitFileTime"])
+                    last_exit = clock()
+            exited = all(row.get("originalAbsent") is True for _, row in held.values())
+            roles = {row["role"] for row in actors}
+            now = clock()
+            if actors and exited and ({"coordinator", "worker"} <= roles or now - last_exit >= CANCEL_WATCH_SETTLE_SECONDS):
+                break
+            if now - started >= CANCEL_WATCH_SECONDS:
+                timed_out = True
+                break
+            sleep(CANCEL_WATCH_POLL_SECONDS)
+        collection_owner.guard()
+    finally:
+        for process, _ in held.values():
+            process.__exit__(None, None, None)
+    for _, row in held.values():
+        row.setdefault("originalAbsent", False)
+        row.setdefault("reason", None)
+        row.setdefault("exitFileTime", None)
+        row.pop("held", None)
+    for row in others:
+        row.pop("held", None)
+        row.setdefault("originalAbsent", None)
+    jobs = {row["jobId"] for row in actors}
+    complete = (not timed_out and sorted(row["role"] for row in actors) == ["coordinator", "worker"] and len(jobs) == 1
+                and None not in jobs and all(row["originalAbsent"] is True for row in actors))
+    return {"helper": helper, "controller": controller, "armedBeforeActors": armed == 0, "actors": actors, "others": others,
+            "missed": missed, "jobId": next(iter(jobs)) if complete else None, "complete": complete, "timedOut": timed_out,
+            "polls": polls, "watchedSeconds": round(clock() - started, 3)}
+
+
 def publish_machine_record(owner, receipts, root, stage, value):
     """Create only this operation's machine evidence directory and phase file."""
-    require(stage in STAGES and PureWindowsPath(root).name == "update-evidence-" + value["ordinaryTaskOperationId"],
+    require((stage in STAGES or stage == CANCEL_STAGE) and PureWindowsPath(root).name == "update-evidence-" + value["ordinaryTaskOperationId"],
             "one-fixed-machine-evidence-destination")
     native = owner.native
     require(native.token()["sid"] == "S-1-5-18", "machine-evidence-system-writer")
@@ -413,11 +573,23 @@ def publish_machine_record(owner, receipts, root, stage, value):
         directory.close()
 
 
-def collect_and_publish(request, collection_owner, receipts, observer):
+def collect_and_publish(request, collection_owner, receipts, observer, *, watch=None):
     value = collect(request, collection_owner, receipts, observer)
     root = str(receipts.canonical_path(request["evidenceRoot"]))
     require(receipts.canonical_path(root).parent == receipts.canonical_path(request["programData"]),
             "machine-evidence-under-current-programdata")
     result = publish_machine_record(collection_owner, receipts, root, request["stage"], value)
-    return {"collector": result, "ordinaryTaskOperationId": request["ordinaryTaskOperationId"],
-            "jobId": request["jobId"], "stage": request["stage"], "noProductMutation": True}
+    binding = cancel_watch_binding(request)
+    if binding is None:
+        return {"collector": result, "ordinaryTaskOperationId": request["ordinaryTaskOperationId"],
+                "jobId": request["jobId"], "stage": request["stage"], "noProductMutation": True}
+    # before-install is published, so the owner may ask for the install it cancels: from here this same process watches.
+    observations = (watch or watch_cancelled_installer)(request, collection_owner, receipts, observer, binding)
+    record = {**{key: value[key] for key in ("schemaVersion", "ordinaryTaskOperationId", "sourceSha", "collectorSourceSha256",
+                                             "bootIdentifier")},
+              "stage": CANCEL_STAGE, "jobId": observations["jobId"], "productOperationId": None, "observations": observations}
+    watched = publish_machine_record(collection_owner, receipts, root, CANCEL_STAGE, record)
+    # One publication for the worker's count: the watch's record, its full value, and the before-install one it followed.
+    return {"collector": watched, "ordinaryTaskOperationId": request["ordinaryTaskOperationId"], "jobId": observations["jobId"],
+            "stage": CANCEL_STAGE, "noProductMutation": True, "record": record,
+            "first": {"collector": result, "stage": request["stage"]}}

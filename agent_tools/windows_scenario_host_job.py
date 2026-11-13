@@ -129,7 +129,15 @@ _TUN_RUNTIME_IMAGE = re.compile(r"C:\\ProgramData\\vpn-control-vpn-[0-9a-f]{8}(?
                                 re.IGNORECASE)
 UPDATE_MODULE_ROLES = ("receipts", "server", "fixture_environment", "macos_packaging_jdk_preflight",
                        "prepare_desktop_update_fixture", "broker_observer", "lifecycle", "collector")
-OBSERVED_CHILDREN = ("update-public-serve", "one-public-update-install")
+OBSERVED_CHILDREN = ("update-public-serve", "one-public-update-install", "participating-installed-copy")
+# A connected update row's own SOCKS upstream: a fixed loopback port and body, apart from the reboot rows' 41081.
+UPDATE_UPSTREAM_PORT = 41082
+UPDATE_UPSTREAM_TOKEN = "vpn-control-update-upstream"
+# install-cancelled: its before-install collector stays as a SYSTEM watch and publishes this record after its own.
+CANCEL_STAGE = "cancel-actors"
+CANCEL_ACTOR_FIELDS = frozenset({"role", "pid", "parentPid", "creationFileTime", "image", "sha256", "sizeBytes", "sid", "sessionId",
+                                 "elevated", "elevationType", "verb", "liveWhenSeen", "seenAfterSeconds", "jobId", "argv0MatchesImage",
+                                 "originalAbsent", "reason", "exitFileTime"})
 # A collector stage for the update and TUN grant rows runs inside "run", driven by the
 # owner's update-native-observation-needed kind in the status file; see Job._on_status.
 # "installed" reads what an installer row left behind, before evidence is copied. "declare"
@@ -551,11 +559,16 @@ def bootstrap_inputs(row, paths, *, signer=None, worker_pin=None, encode=None):
     return {"mode": mode, **inputs}
 
 
-def traffic_input():
+def traffic_input(token=UPSTREAM_TOKEN):
     """The pinned traffic sampler input: the in-guest upstream's fixed body; the port is the product's, at run time."""
-    value = {"schemaVersion": 1, "mixedPort": None, "expectedBodyHex": UPSTREAM_TOKEN.encode("ascii").hex(), "sampleCount": 8,
+    value = {"schemaVersion": 1, "mixedPort": None, "expectedBodyHex": token.encode("ascii").hex(), "sampleCount": 8,
              "intervalSeconds": 0.1, "ioTimeoutSeconds": 2}
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+
+
+def update_traffic_input():
+    """A connected update row's sampler input: the body of its own upstream, before the update and after the reconnect."""
+    return traffic_input(UPDATE_UPSTREAM_TOKEN)
 
 
 def document_input(entries=DOCUMENT_INPUT_ENTRIES):
@@ -781,6 +794,17 @@ def owner_process(rows, serve, cli, sid, session):
     return {"pid": children[0]["pid"], "creationFileTime": children[0]["creationFileTime"], "relaunched": True}
 
 
+def participating_copy(rows, copy, cli, digest, sid, session):
+    """The participating copy in a SYSTEM census of the CLI image: exactly the serve the case started, as the owner recorded
+    it, live, unelevated as the ordinary user in its session, running the installed launcher's own bytes."""
+    found = [row for row in rows if row["pid"] == copy["pid"]]
+    if (len(found) != 1 or not found[0]["live"] or found[0]["creationFileTime"] != copy["creationFileTime"]
+            or not _same_path(found[0]["image"], cli) or found[0]["imageSha256"] != digest or found[0]["token"]["sid"] != sid
+            or found[0]["token"]["elevated"] != 0 or found[0]["token"]["sessionId"] != session):
+        raise ValueError("collector_participating_copy")
+    return found[0]
+
+
 def install_actors(rows, *, helper, job, owner, administrator_sid, sid, session):
     """The installer job's elevated coordinator and its original-user worker, live, from one SYSTEM census.
 
@@ -934,6 +958,65 @@ def tun_actors(rows, *, serve, worker, cli, broker, runtime_sha256, administrato
                          "stage": ntpath.basename(ntpath.dirname(runtime["image"])).casefold(), "parent": parent(runtime, found)},
              "auxiliary": sorted(ntpath.basename(row["image"]).casefold() for row in children if row is not runtime),
              "unreadChildren": sum(1 for row in named if not row["live"])}
+    return actors, facts
+
+
+def _encoded(value):
+    """update_receipts.encoded: the bytes a machine record is published as."""
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+
+
+def cancelled_install_actors(publication, *, operation, helper, owner, administrator_sid, sid, session):
+    """The cancel watch's record, carried whole in the before-install collector's one publication and equal to the bytes it
+    published: exactly one job's coordinator, elevated as the approving administrator, and its original-user worker,
+    unelevated and born after it, each running the admitted helper and naming this controller, seen live and then gone
+    through its own held handle; the watch armed before either existed, and no other elevated helper left running.
+    Returns terminal-actors' actors and the facts a receipt keeps."""
+    if (type(publication) is not dict or publication.get("stage") != CANCEL_STAGE or type(publication.get("record")) is not dict
+            or type(publication.get("first")) is not dict or publication["first"].get("stage") != "before-install"
+            or type(publication.get("collector")) is not dict):
+        raise ValueError("collector_cancel_watch_publication")
+    record, published = publication["record"], publication["collector"]
+    raw = _encoded(record)
+    if (published.get("sha256") != _sha(raw) or published.get("sizeBytes") != len(raw)
+            or set(record) != {"schemaVersion", "ordinaryTaskOperationId", "stage", "sourceSha", "collectorSourceSha256", "bootIdentifier",
+                               "jobId", "productOperationId", "observations"}
+            or record["stage"] != CANCEL_STAGE or record["ordinaryTaskOperationId"] != operation or record["productOperationId"] is not None):
+        raise ValueError("collector_cancel_watch_record")
+    watched, job = record["observations"], record["jobId"]
+    if (type(watched) is not dict or set(watched) != {"helper", "controller", "armedBeforeActors", "actors", "others", "missed", "jobId",
+                                                     "complete", "timedOut", "polls", "watchedSeconds"}
+            or watched["helper"] != helper or watched["controller"] != {"pid": owner["pid"], "creationFileTime": owner["creationFileTime"]}):
+        raise ValueError("collector_cancel_watch_binding")
+    if (watched["armedBeforeActors"] is not True or watched["complete"] is not True or watched["timedOut"] is not False
+            or not isinstance(job, str) or _UUID.fullmatch(job) is None or watched["jobId"] != job):
+        raise ValueError("collector_cancel_watch_incomplete")
+    rows = watched["actors"]
+    if type(rows) is not list or sorted(row.get("role") for row in rows if type(row) is dict) != ["coordinator", "worker"] or len(rows) != 2:
+        raise ValueError("collector_cancel_watch_roles")
+    found = {row["role"]: row for row in rows}
+    for role, principal, elevated in (("coordinator", administrator_sid, 1), ("worker", sid, 0)):
+        row = found[role]
+        if (set(row) != CANCEL_ACTOR_FIELDS or row["jobId"] != job or not _same_path(row["image"], helper["path"])
+                or row["sha256"] != helper["sha256"] or row["sizeBytes"] != helper["sizeBytes"] or row["sid"] != principal
+                or row["elevated"] != elevated or row["sessionId"] != session or row["originalAbsent"] is not True
+                or row["reason"] != "same-handle-signaled" or type(row["pid"]) is not int or type(row["creationFileTime"]) is not int
+                or type(row["exitFileTime"]) is not int or row["exitFileTime"] < row["creationFileTime"]):
+            raise ValueError("collector_cancel_watch_" + role)
+    coordinator, worker = found["coordinator"], found["worker"]
+    if worker["creationFileTime"] <= coordinator["creationFileTime"] or worker["pid"] == coordinator["pid"]:
+        raise ValueError("collector_worker_generation")
+    others = watched["others"]
+    if type(others) is not list or any(type(row) is not dict or row.get("elevated") == 1 and row.get("originalAbsent") is not True
+                                       for row in others):
+        raise ValueError("collector_cancel_watch_elevated_helper_left")
+    actors = {role: {"pid": row["pid"], "creationFileTime": row["creationFileTime"], "image": helper["path"], "sha256": helper["sha256"],
+                     "sid": row["sid"], "sessionId": session} for role, row in found.items()}
+    facts = {"helperSha256": helper["sha256"], "owner": owner, "jobId": job,
+             **{role: {key: row[key] for key in ("pid", "creationFileTime", "sid", "elevated", "elevationType", "sessionId", "parentPid",
+                                                   "argv0MatchesImage", "exitFileTime", "seenAfterSeconds")} for role, row in found.items()},
+             "watch": {"armedBeforeActors": True, "polls": watched["polls"], "watchedSeconds": watched["watchedSeconds"],
+                       "missed": watched["missed"], "otherHelperProcesses": len(others)}}
     return actors, facts
 
 
@@ -2128,10 +2211,12 @@ class Job:
         # back with: O:SYD:PAI natively, which the pinned chain now takes. Any other form ends the row here, before a task.
         if self.update["collectorStages"] and self.file_pins["owner"]["security"] != {"ownerSid": "S-1-5-18", "sddl": COLLECTOR_FILE_SDDL.format(sid=sid)}:
             raise KnownFailure("collector_file_policy")
-        if "authorization" in self.update["collectorStages"]:
-            # A grant's coordinator and worker run the base install's helper: the digest and size its own installed
-            # native-helpers.json declares, which must be what the installed tree pin of the helper holds.
+        if self._installs():
+            # A grant's coordinator and worker, and the ones a cancel watch sees, run the base install's helper: the digest
+            # and size its own installed native-helpers.json declares, which must be what the installed tree pin holds.
             self.install_helper = self._install_helper()
+        if self.update.get("connected"):
+            self._update_connection()
         try:
             receipt_raw = b"".join(self._chunks(self.plan["packages"]["fixtureReceipt"]))
         except (OSError, ValueError):
@@ -2161,6 +2246,16 @@ class Job:
         self.certificate_sha256 = _sha(certificate)
         self.update_pins = {"receipt": pins["fixture-receipt"], "target": sealed, "certificate": certificate_pin, "privateKey": key_pin,
                             "trustStore": trust}
+
+    def _update_connection(self):
+        """A connected row's loopback profile and its sampler's input, both naming the case's upstream: its fixed port in
+        the socks:// link the product's parser takes, and its fixed body."""
+        targets = (("connectionProfile", ("socks://127.0.0.1:%d#Update%%20fixture\n" % UPDATE_UPSTREAM_PORT).encode("ascii")),
+                   ("trafficInput", update_traffic_input()))
+        if [role for role, _ in self.row["generated"]] != [role for role, _ in targets]:
+            raise KnownFailure("update_files_not_the_row")
+        self.file_pins.update(self._publish_files([{"role": role, "path": self.paths["file:" + role], "bytes": len(raw), "sha256": _sha(raw),
+                                                    "kind": "data", "raw": raw} for role, raw in targets], "publish-update-connection"))
 
     def _sealed(self, pin):
         """The served package, now read-only: same bytes, same file, one more attribute."""
@@ -2536,16 +2631,20 @@ class Job:
         """UPDATE_INPUTS and the close hold, every value read from this VM, its prior installs or the admitted fixture."""
         paths, product, update, sid = self.paths, self.plan["product"], self.update, self.context["ordinarySid"]
         root = paths["installed"]
-        files = {pin["path"]: pin for pin in self.installed_tree["filePins"]}
-        base = {}
-        for name in self.installed_tree["tree"]["files"]:
-            pin = files[root + "\\" + name.replace("/", "\\")]
-            base[name] = {"sizeBytes": pin["nativeIdentity"]["sizeBytes"], "sha256": pin["sha256"]}
+        base = self._base_inventory()
 
         def registration(installed, version):
             return {"productCode": installed["productCode"], "principalSid": sid, "installContext": 2, "displayVersion": version,
                     "installLocation": root, "packageCode": installed["packageCode"]}
         installs = update["variant"] not in ("public-ready", "download-cancelled", "checksum-rejected")
+        # A connected row adds its location's upstream and the sampler of the traffic before the update and after it.
+        connected = update.get("connected") is True
+        traffic = None if not connected else {
+            "schemaVersion": 1, "trafficWorkerPath": paths["file:trafficWorker"], "trafficInputPath": paths["file:trafficInput"],
+            "fixtureAdmissionArtifactId": "update-upstream-" + self.file_pins["upstreamFixture"]["sha256"],
+            "sourceArtifactId": "sha256-" + self.plan["bundleHash"]}
+        upstream = None if not connected else {"schemaVersion": 1, "sourcePath": paths["file:upstreamFixture"], "port": UPDATE_UPSTREAM_PORT,
+                                               "token": UPDATE_UPSTREAM_TOKEN}
         inputs = {"schemaVersion": 1, "variant": update["variant"], "sourceSha": product["sourceSha"], "sourceFingerprint": self.fixture_fingerprint,
                   "modules": {role: paths["file:" + role] for role in UPDATE_MODULE_ROLES},
                   "fixture": {"fixtureId": fixture_id(self.op), "content": paths["fixtureContent"], "state": paths["fixtureState"],
@@ -2557,8 +2656,9 @@ class Job:
                   "targetRegistration": registration(self.target_install["installed"], product["productVersion"]),
                   "programData": PROGRAM_DATA, "evidenceRoot": paths["evidenceRoot"], "collectorSourceSha256": self.file_pins["collector"]["sha256"],
                   "ordinarySid": sid, "ordinarySessionId": self.context["ordinarySessionId"],
-                  "approvingAdminSid": self.administrator_sid if installs else None, "initialIntent": "off", "trafficInputs": None,
-                  "faultInputs": {}, "returnGuiRequired": False, "connectionFixturePath": None}
+                  "approvingAdminSid": self.administrator_sid if installs else None, "initialIntent": update["initialIntent"],
+                  "trafficInputs": traffic, "faultInputs": self._fault_inputs(), "returnGuiRequired": False,
+                  "connectionFixturePath": paths["file:connectionProfile"] if connected else None, "upstreamFixture": upstream}
         final = update["finalStage"]
         hold = None if final is None else {
             "schemaVersion": 1, "collectorOperationId": collector_operation(self.op, final), "collectorRoot": paths["collector:" + final],
@@ -2607,9 +2707,23 @@ class Job:
         pin = self._publish_files([{"role": role, "path": root + "\\collector-request.json", "bytes": len(raw), "sha256": _sha(raw),
                                     "kind": "data", "raw": raw}], role)[role]
         source = self._collector_source(request, pin)
-        terminal, pid = self.guest_program("collector-" + stage, source, budget=COLLECTOR_BUDGET_SECONDS)
+        watch = stage == "before-install" and self.update.get("cancelWatch") is True
+        # A cancel watch runs through the prompt and the install it cancels: the status copy stays current meanwhile, so a
+        # client sees the prompt event and its decision, and no other need is served until the watch returns.
+        terminal, pid = self.guest_program("collector-" + stage, source, budget=COLLECTOR_BUDGET_SECONDS,
+                                           on_poll=(lambda: self._on_status(serve=False)) if watch else None)
         proof = self._collector_proof("collector-" + stage, terminal, pid)
         result = self._validate_collector_child(stage, request, pin, proof)
+        if watch:
+            publication = result["publications"][0]
+            if type(publication) is dict and type(publication.get("record")) is dict:
+                self._keep("collectors/before-install/cancel-actors.json", _encoded(publication["record"]))
+            self.install_actors, self.install_facts = cancelled_install_actors(
+                publication, operation=self.op, helper=self.install_helper, owner=self.update_owner, administrator_sid=self.administrator_sid,
+                sid=self.context["ordinarySid"], session=self.context["ordinarySessionId"])
+            # The case asks for cancel-actors as for any stage (update-native-observation-needed), once this record exists.
+            # No collector of its own serves it: this before-install request already published it.
+            self.collected[CANCEL_STAGE] = {"operationId": collector, "requestSha256": pin["sha256"], "publications": 1, "release": None}
         record = {"operationId": collector, "requestSha256": pin["sha256"], "publications": len(result["publications"]), "release": None}
         if request["closeHold"] is not None:
             record["release"] = self._collector_release(stage, request, pin, proof, terminal, source, result)
@@ -2628,6 +2742,29 @@ class Job:
     def _grant(self):
         """A row whose owner hands a committed install to the helper: its collectors observe that installer job."""
         return "authorization" in self.update["collectorStages"]
+
+    def _installs(self):
+        """A row whose later stages name its installer job's actors: a grant's, found at authorization, or the ones a
+        cancelled install's before-install watch saw between the approval and the product's CANCELLED."""
+        return self._grant() or self.update.get("cancelWatch") is True
+
+    def _base_inventory(self):
+        """The installed base, file by file, as its tree pins hold it: what the update starts from."""
+        root, files = self.paths["installed"], {pin["path"]: pin for pin in self.installed_tree["filePins"]}
+        return {name: {"sizeBytes": files[root + "\\" + name.replace("/", "\\")]["nativeIdentity"]["sizeBytes"],
+                       "sha256": files[root + "\\" + name.replace("/", "\\")]["sha256"]} for name in self.installed_tree["tree"]["files"]}
+
+    def _end_files(self):
+        """The inventory of the package the variant ends with: a returned owner runs one of its two launchers."""
+        return self.target_install["files"] if self.update["ends"] == "target" else self._base_inventory()
+
+    def _fault_inputs(self):
+        """participating-copy-lock's fixed fault: a second serve of the installed launcher on its own workspace under this
+        operation's root, which the case starts and fault-ready names. No other row has fault inputs."""
+        if self.update["variant"] != "participating-copy-lock":
+            return {}
+        return {"kind": "participating-copy-lock", "installedCliPath": self.paths["cli"],
+                "blockingWorkspace": self.operation_root + "\\copy-lock-workspace"}
 
     def _install_job(self, need):
         """The installer job a grant's stages observe: named by the authorization need, the same in every later one."""
@@ -2650,19 +2787,20 @@ class Job:
         and of the scoped broker with every process it started, and the product's runtime config in its workspace.
         """
         tun = stage == TUN_STAGE
-        grant, deny = (False, False) if tun else (self._grant(), stage == "terminal-actors" and not self._grant())
+        installs, deny = (False, False) if tun else (self._installs(), stage == "terminal-actors" and not self._installs())
         fields = {"childStdoutLabels": ["one-public-update-install"] if deny else [], "readDisposition": deny,
                   "productWorkspace": self.paths["productWorkspace"], "census": None, "productPins": [],
                   "returnedActors": stage == "returned-cleanup"}
         if tun:
             fields.update(census=[{"image": self.paths["cli"]}, {"image": self.vpn_broker["path"], "children": True}],
                           productPins=[self.paths["productWorkspace"] + "\\runtime-config.json"], tunNeed=True)
-        elif stage == "before-install" and grant:
+        elif stage in ("before-install", "fault-ready") and (installs or stage == "fault-ready"):
+            # The CLI image: the serve and the controller it relaunched into, or the participating copy the case started.
             fields["census"] = {"image": self.paths["cli"]}
         elif stage == "authorization":
             fields["census"] = {"image": self.install_helper["path"]}
             fields["productPins"] = [self.context["localAppData"] + "\\" + INSTALL_INPUTS + "\\" + self._install_job(need) + "\\worker-ready.json"]
-        elif stage == "terminal-actors" and grant:
+        elif stage == "terminal-actors" and installs:
             fields["productPins"] = [INSTALL_JOBS + "\\" + self._install_job(need) + "\\status.json"]
         value, required = self._publisher("collector-observe-" + stage, "collector-observe", **fields)
         observation = value.get("observation")
@@ -2754,7 +2892,7 @@ class Job:
         context = {"bootIdentifier": self.context["bootIdentifier"], "ordinarySid": sid, "ordinarySessionId": session,
                    "localAppData": self.context["localAppData"], "workspace": self.paths["productWorkspace"],
                    "approvingAdminSid": self.administrator_sid}
-        actors, inputs, helper, facts = {}, {}, None, None
+        actors, inputs, helper, facts, fault = {}, {}, None, None, {}
 
         def product_file(pin):
             return {"path": pin["path"], "sha256": pin["sha256"], "sizeBytes": pin["nativeIdentity"]["sizeBytes"]}
@@ -2764,9 +2902,25 @@ class Job:
             if serve is None:
                 raise ValueError("collector_owner_unobserved")
             actors["owner"] = actor(serve.get("pid"), serve.get("birthFileTimeUtc"), self.paths["cli"], cli["sha256"])
-            if self._grant():
+            if self._installs():
                 # The coordinator and worker name the process the product's controller runs in: found here, while it lives.
                 owner = owner_process(observed["census"], actors["owner"], self.paths["cli"], sid, session)
+            if self.update.get("cancelWatch"):
+                # The collector observes that controller live, publishes before-install and stays: a SYSTEM watch of the
+                # installed helper's image for every process naming it, until the cancelled job's actors are gone.
+                actors["controller"] = actor(owner["pid"], str(owner["creationFileTime"]), self.paths["cli"], cli["sha256"])
+                inputs["cancelWatchHelper"] = dict(self.install_helper)
+                helper = self.install_helper["sha256"]
+        elif stage == "fault-ready":
+            # The participating copy: the second serve of the installed launcher the case started, live and unelevated as
+            # the ordinary user, named by the owner's own child record and found so in the census.
+            copy = observed["children"].get("participating-installed-copy")
+            cli = next(pin for pin in self.installed_tree["filePins"] if pin["path"] == self.paths["cli"])
+            if copy is None:
+                raise ValueError("collector_copy_unobserved")
+            actors["participatingCopy"] = actor(copy.get("pid"), copy.get("birthFileTimeUtc"), self.paths["cli"], cli["sha256"])
+            participating_copy(observed["census"], actors["participatingCopy"], self.paths["cli"], cli["sha256"], sid, session)
+            fault = self._fault_inputs()
         elif stage == "authorization":
             if self.update_owner is None:
                 raise ValueError("collector_owner_unknown")
@@ -2776,8 +2930,9 @@ class Job:
             facts["jobId"] = job
             inputs["workerReady"] = product_file(observed["productPins"][0])
             helper = self.install_helper["sha256"]
-        elif stage == "terminal-actors" and self._grant():
-            # After a handoff: the authorization stage's own actors, which must now both be gone, and the protected terminal.
+        elif stage == "terminal-actors" and self._installs():
+            # After a handoff: the authorization stage's own actors; after a cancelled install: the ones its watch saw. Both
+            # must now be gone, beside the protected terminal.
             if self.install_actors is None:
                 raise ValueError("collector_actors_unknown")
             self._install_job(need)
@@ -2797,8 +2952,10 @@ class Job:
             if self.install_actors is None or len(observed["returned"]) != 1:
                 raise ValueError("collector_returned_unobserved")
             self._install_job(need)
+            # A grant that succeeded returns the target's launcher; a known negative terminal the base's, which the case's
+            # own recovery serve runs: the inventory of the package the variant ends with.
             actors = returned_actors(observed["returned"][0], need=need, installed=self.paths["installed"],
-                                     target_files=self.target_install["files"], sid=sid, session=session)
+                                     target_files=self._end_files(), sid=sid, session=session)
         else:
             raise ValueError("collector_stage")
         hold = None
@@ -2818,15 +2975,17 @@ class Job:
                    "collectorRequest": {"schemaVersion": 1, "stage": stage, "ordinaryTaskOperationId": self.op,
                                         "sourceSha": self.plan["product"]["sourceSha"], "collectorSourceSha256": self.file_pins["collector"]["sha256"],
                                         "context": context, "jobId": need.get("jobId"), "productOperationId": need.get("productOperationId"),
-                                        "actors": actors, "fileInputs": inputs, "faultBinding": {}, "programData": PROGRAM_DATA,
+                                        "actors": actors, "fileInputs": inputs, "faultBinding": fault, "programData": PROGRAM_DATA,
                                         "evidenceRoot": self.paths["evidenceRoot"], "ordinaryWorkerPid": observed["worker"]["pid"],
                                         "ordinaryWorkerBirth": observed["worker"]["birth"], "expectedHelperSha256": helper},
                    "rawStreamLimitBytes": COLLECTOR_RAW_LIMIT, "ordinaryTask": task, "closeHold": hold}
         contract.validate(request, {"contract": self.file_pins["collector_contract"]["sha256"], "worker": self.file_pins["system_worker"]["sha256"]},
                           self._lower_context())
-        if stage == "before-install" and self._grant():
+        if stage == "before-install" and self._installs():
             self.update_owner = owner
             self._keep("collectors/before-install/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
+        if stage == "fault-ready":
+            self._keep("collectors/fault-ready/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
         if stage == "authorization":
             self.install_actors, self.install_facts = actors, facts
             self._keep("collectors/authorization/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())

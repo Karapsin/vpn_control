@@ -13,7 +13,7 @@ import time
 
 
 CASE_SHA = {
-    "windows-public-update": "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c",
+    "windows-public-update": "44ae2f9e3f6c9f988168ea0009b273c5abe259e056cc4d829bd9285b54e2a4b0",
     "windows-proxy-lifecycle": "9a965b3db065ca98bdfa8c63cccaa059e676cf53a49c6705cf648e0989a3f987",
 }
 CASE_NAME = {"windows-public-update": "windows_public_updater/update_cases.py",
@@ -26,21 +26,21 @@ UPDATE_MODULES = {
     "prepare_desktop_update_fixture": "8612730c46fff65aad2ee101edf86f7f4afc93550e9eb1340c88fffb5acc175b",
     "broker_observer": "6d08edf9e57b09e98ce80d414b2ac12da4f39eb82e27cd2a3f06d9f900e04dcb",
     "lifecycle": CASE_SHA["windows-proxy-lifecycle"],
-    "collector": "5a38ac02dd120d755a1d7bff25d8d0cd5fbf438c5fb52e57db15c45e335807a2",
+    "collector": "900b0b571e5445f5679dad4dd6152373833949a99fe7fc2a746d975fd4419a74",
 }
 RUNTIME_SHA = "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"
 FIXTURE_WORKER_SHA = "cc30090de39143e260ad1b5e33aea4c5da0de8557118ec1c3b323ccf14b52c7a"
 SOCKS_SHA = "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"
 HTTPS_SHA = "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"
 TRAFFIC_SHA = "c37423c7627e6972eff2b7d717904f9b07fdaeb5b1d880d1606559b58d2e2e2d"
-CALLER_SHA = "51a165023d867b7097cb75675f7a938ad683a0c188c88388a7ac0f5b16d851d1"
-PROTOCOL_SHA = "b0e197fc68b077d5ea3a0f55338249b7b9a02e53d6f1da689367cbd1bf4f9335"
-CONTRACT_SHA = "a00dd01e2515f23b11d4eb21cafc67e2c45a20a4043e261d66a52845802620eb"
-SYSTEM_WORKER_SHA = "323e2550b7efa53f93382efa366cfcf4cbf9e870b34a6578447b68128b2327fc"
+CALLER_SHA = "492ea5c97d8fdbff0c0cda68fed4ad35d8402ed6257b7c0107abc32f436a18b8"
+PROTOCOL_SHA = "a0fa7bd75f89062a7eb928afa64d5715b101811182a9e4a66a3d11a4013d7a77"
+CONTRACT_SHA = "e585148559a47731e0864e28d7a1b5ea99f997ca4f26a502782d5d9e81d365bd"
+SYSTEM_WORKER_SHA = "0d47eead9a733d7c98fc57e845836785497bc3be91a2b0f6cb61d7bef853cf9e"
 NO_SYSTEM = frozenset({"public-ready", "download-cancelled", "checksum-rejected"})
 FINAL_TERMINAL = frozenset({"uac-denied", "install-cancelled"})
 FINAL_RETURNED = frozenset({"participating-copy-lock", "native-install-failed", "success-off",
-    "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss"})
+    "success-reconnect", "success-explicit-off", "different-admin", "wait-client-loss", "installer-wait-client-loss"})
 PROXY_VARIANTS = frozenset({"gui-pending", "find-best-success",
     "find-best-verification-failure", "find-best-cancel"})
 CONFIG_VARIANTS = frozenset({"generated", "custom", "large"})
@@ -153,6 +153,14 @@ def run_update(owner, cases, harness):
     # The reviewed validator refuses transport-loss before any scenario effect.
     cases.validate_inputs(owner, inputs)
     module_roles(owner, inputs["modules"], UPDATE_MODULES)
+    if inputs.get("upstreamFixture") is not None:
+        # A connected variant's own SOCKS upstream and traffic sampler run as this owner's children: the reviewed bytes
+        # the proxy rows run, held; its profile and the sampler's input are held data.
+        held_source(owner, inputs["upstreamFixture"]["sourcePath"], SOCKS_SHA)
+        held_source(owner, inputs["trafficInputs"]["trafficWorkerPath"], TRAFFIC_SHA)
+        for name in (inputs["connectionFixturePath"], inputs["trafficInputs"]["trafficInputPath"]):
+            key = str(PureWindowsPath(name)).casefold()
+            require(key in owner.by_path and not owner.by_path[key].directory, "dedicated-update-connected-input")
     app = PureWindowsPath(inputs["installedRoot"])
     internal = [PureWindowsPath(__file__)]
     if inputs["variant"] in FINAL_TERMINAL | FINAL_RETURNED:

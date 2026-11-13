@@ -896,22 +896,36 @@ class TableTests(unittest.TestCase):
         # admitted, the others are refused at admission with what they lack.
         lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
         self.assertTrue(all(lifecycle.values()))
-        self.assertEqual({"windows-public-update." + variant for variant in ("uac-denied", "success-off", "wait-client-loss", "installer-wait-client-loss")},
+        self.assertEqual({"windows-public-update." + variant for variant in ("uac-denied", "success-off", "wait-client-loss", "installer-wait-client-loss",
+                                                                              "install-cancelled", "participating-copy-lock", "success-reconnect",
+                                                                              "success-explicit-off")},
                          {row for rows in lifecycle.values() for row in rows
                           if row.startswith("windows-public-update.") and windows.RECIPES[row]["refusal"] is None})
+
+    def test_reconnect_off_preserved_is_proven_only_by_owners_that_had_a_location_to_reconnect_to(self):
+        """PRODUCT-005: an update keeps the prior on or off intent. A returned owner shows it kept an off only where it had
+        a location it could reconnect to: success-off's fresh workspace has none, so no returned owner of it could run,
+        whatever intent it restored. Both update rows here are connected owners, one on and one explicitly off."""
+        rows = MATRIX_REAL["windows-installer-lifecycle"]["reconnect-off-preserved"]
+        updates = [row for row in rows if row.startswith("windows-public-update.")]
+        self.assertEqual(2, len(updates))
+        self.assertEqual({"off", "reconnect"}, {windows.RECIPES[row]["update"].get("initialIntent") for row in updates})
+        self.assertTrue(all(windows.RECIPES[row]["update"].get("connected") is True for row in updates))
+        self.assertNotIn("windows-public-update.success-off", rows)
+        self.assertEqual(["windows-reboot-reconnect.post", "windows-reboot-reconnect.pre"], sorted(set(rows) - set(updates)))
 
     def test_the_document_tun_and_responsive_rows_prove_only_what_their_evidence_holds(self):
         named = {row: sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if row in rows)
                  for row in windows.RECIPES}
         rsp, doc, cfg = "windows-document-responsive", "windows-document-acceptance", "windows-disconnected-cli-config"
         # design.md adapter steps 4, 7 and 8: RSP is responsive-status-cancel, cli-disconnect-long-work and its part of
-        # operation-progress-cancellation, whose other rows include an update variant refused at admission today.
+        # operation-progress-cancellation, whose other rows include the install cancelled while its prompt is up.
         self.assertEqual(["document-persistence-transfer:responsive-status-cancel", "windows-native-cli:operation-progress-cancellation",
                           "windows-owner-lifecycle:cli-disconnect-long-work"], named[rsp])
         self.assertEqual(("windows-disconnected-cli-config", "windows-streaming-client-interrupt", rsp, "windows-proxy-lifecycle.find-best-cancel",
                           "windows-public-update.download-cancelled", "windows-public-update.install-cancelled"),
                          MATRIX_REAL["windows-native-cli"]["operation-progress-cancellation"])
-        self.assertIsNotNone(windows.RECIPES["windows-public-update.install-cancelled"]["refusal"])
+        self.assertIsNone(windows.RECIPES["windows-public-update.install-cancelled"]["refusal"])
         # The admitted TUN rows count for what their evidence holds: the denial for its own scenario; the restart grant for
         # the approved TUN's traffic and its half of scoped elevation beside UPD(success-off). It runs no sibling runtime, so
         # it cannot show its elevated off spares one: exact-child-stop stays missing (ExactChildStopTests). The find-best

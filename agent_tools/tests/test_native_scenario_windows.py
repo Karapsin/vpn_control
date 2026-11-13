@@ -1562,10 +1562,8 @@ class UpdateTableTests(unittest.TestCase):
         """Each refused row names exactly what it still lacks; every stage of an admitted row is tooled."""
         refusals = {variant: windows.RECIPES[UPDATE + variant]["refusal"] for variant in windows.UPDATE_VARIANTS}
         self.assertEqual({**dict.fromkeys(("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "success-off",
-                                           "wait-client-loss", "installer-wait-client-loss")),
-                          "install-cancelled": "windows_scenario_update_cancel_actors_unobserved",
-                          "participating-copy-lock": "windows_scenario_update_copy_lock_fixture_unavailable",
-                          "success-reconnect": "windows_scenario_update_reconnect_fixture_unavailable",
+                                           "wait-client-loss", "installer-wait-client-loss", "install-cancelled",
+                                           "participating-copy-lock", "success-reconnect", "success-explicit-off")),
                           "different-admin": "windows_scenario_update_second_administrator_unavailable",
                           "native-install-failed": "windows_scenario_update_fault_unavailable",
                           "protected-storage-rejected": "windows_scenario_update_fault_unavailable"}, refusals)
@@ -1592,10 +1590,40 @@ class UpdateTableTests(unittest.TestCase):
                     self.assertTrue(host_job._BUNDLE_PATH.fullmatch(relative), relative)
         self.assertEqual((("before-install", "terminal-actors"), "terminal-actors"),
                          tuple(windows.RECIPES[UPDATE + "uac-denied"]["update"][key] for key in ("collectorStages", "finalStage")))
-        for variant in ("success-off", "wait-client-loss", "installer-wait-client-loss"):
+        for variant in ("success-off", "success-reconnect", "success-explicit-off", "wait-client-loss", "installer-wait-client-loss"):
             self.assertEqual((("before-install", "authorization", "terminal-actors", "returned-cleanup"), "returned-cleanup"),
                              tuple(windows.RECIPES[UPDATE + variant]["update"][key] for key in ("collectorStages", "finalStage")))
             self.assertEqual("approve", windows.RECIPES[UPDATE + variant]["uac"]["decision"])
+        # A cancel sent while the prompt is up: its prompt is approved, and its last stage is the watched actors' exit.
+        self.assertEqual((("before-install", "terminal-actors"), "terminal-actors", "approve"),
+                         (*(windows.RECIPES[UPDATE + "install-cancelled"]["update"][key] for key in ("collectorStages", "finalStage")),
+                          windows.RECIPES[UPDATE + "install-cancelled"]["uac"]["decision"]))
+        # A running participating copy: fault-ready names its actor before the install is asked for.
+        self.assertEqual((("before-install", "fault-ready", "authorization", "terminal-actors", "returned-cleanup"), "returned-cleanup"),
+                         tuple(windows.RECIPES[UPDATE + "participating-copy-lock"]["update"][key] for key in ("collectorStages", "finalStage")))
+
+    def test_only_the_connected_rows_carry_their_upstream_and_only_the_cancelled_install_watches(self):
+        """success-reconnect and its explicit-off twin alone carry the in-guest SOCKS upstream and the traffic sampler and
+        have the job write their loopback profile and the sampler input; only success-reconnect's returned owner is to
+        reconnect. install-cancelled alone asks before-install for the watch."""
+        connection = {"scripts/integration/socks_http_fixture.py": "upstreamFixture", "agent_tools/windows_lifecycle_traffic_worker.py": "trafficWorker"}
+        for variant in windows.UPDATE_VARIANTS:
+            row = windows.RECIPES[UPDATE + variant]
+            files = {relative: role for relative, role, _ in row["guestFiles"]}
+            with self.subTest(variant=variant):
+                connected = variant in ("success-reconnect", "success-explicit-off")
+                self.assertEqual((connected, variant == "install-cancelled"), (row["update"]["connected"], row["update"]["cancelWatch"]))
+                self.assertEqual("reconnect" if variant == "success-reconnect" else "off", row["update"]["initialIntent"])
+                self.assertEqual(connection if connected else {}, {relative: role for relative, role in files.items() if relative in connection})
+                generated = dict(row.get("generated", ()))
+                self.assertEqual(connected, {"connectionProfile", "trafficInput"} <= set(generated))
+                if connected:
+                    self.assertEqual({"connectionProfile": "update-connection-profile.txt", "trafficInput": "update-traffic-input.json"}, generated)
+                leaves = [relative.rsplit("/", 1)[1] for relative in files] + [leaf for _, leaf in row.get("generated", ()) + row.get("extracted", ())]
+                self.assertEqual(len(leaves), len(set(leaves)), "every guest leaf is one file")
+                for relative in files:
+                    self.assertTrue(host_job._BUNDLE_PATH.fullmatch(relative), relative)
+                    self.assertIn(relative, bundles._SCENARIOS[windows.BUNDLE_SCENARIO_ID], "the bundle carries every row file")
 
     def test_the_collector_modules_are_the_contract_roles(self):
         from agent_tools.windows_system_collector import collector_contract as contract
@@ -1786,6 +1814,16 @@ class UpdateAdmissionTests(UpdateBase):
         and returned owner for its stages. At 70ed16cc the deny row was refused windows_scenario_update_collector_unproven
         and the grant rows windows_scenario_update_grant_unproven."""
         for variant in ("uac-denied", "success-off", "wait-client-loss", "installer-wait-client-loss"):
+            with self.subTest(variant=variant):
+                self.assertEqual(windows.RECIPES[UPDATE + variant], windows.admit_start(self.root, self.update_request(variant), self.resolver))
+                self.assertFalse(self.journal.exists())
+
+    def test_the_cancel_watch_copy_lock_and_connected_rows_are_admitted_before_any_journal(self):
+        """install-cancelled has its SYSTEM cancel watch, participating-copy-lock its fault inputs and fault-ready actor, and
+        the connected rows their loopback profile, upstream and sampler. At 9a8db1e5 the first three were refused before
+        any journal (windows_scenario_update_cancel_actors_unobserved, _copy_lock_fixture_unavailable,
+        _reconnect_fixture_unavailable) and success-explicit-off was no scenario."""
+        for variant in ("install-cancelled", "participating-copy-lock", "success-reconnect", "success-explicit-off"):
             with self.subTest(variant=variant):
                 self.assertEqual(windows.RECIPES[UPDATE + variant], windows.admit_start(self.root, self.update_request(variant), self.resolver))
                 self.assertFalse(self.journal.exists())

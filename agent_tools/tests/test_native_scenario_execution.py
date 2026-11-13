@@ -355,8 +355,8 @@ class NativeScenarioExecutionTest(unittest.TestCase):
                 execution.ScenarioPlan.from_mapping(changed)
         updates = {"windows-public-update." + variant for variant in (
             "public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
-            "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "different-admin",
-            "wait-client-loss", "installer-wait-client-loss")}
+            "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "success-explicit-off",
+            "different-admin", "wait-client-loss", "installer-wait-client-loss")}
         self.assertEqual(frozenset({"windows-ordinary-qualification", "windows-python-install", "windows-msi-base-install",
                                     "windows-msi-base-reset", "windows-packaged-cli-smoke", "windows-disconnected-cli-config",
                                     "windows-streaming-client-interrupt", "windows-disconnected-cli-config.ssh-import-routing",

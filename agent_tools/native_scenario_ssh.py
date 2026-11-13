@@ -47,8 +47,8 @@ SCENARIO_ARTIFACT_KEYS = {
        for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")},
     **{"windows-public-update." + variant: frozenset({"bundleManifest", "scenarioInput", "targetPackage", "fixtureReceipt"})
        for variant in ("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled", "participating-copy-lock",
-                       "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect", "different-admin",
-                       "wait-client-loss", "installer-wait-client-loss")},
+                       "protected-storage-rejected", "native-install-failed", "success-off", "success-reconnect",
+                       "success-explicit-off", "different-admin", "wait-client-loss", "installer-wait-client-loss")},
     **{name: frozenset({"bundleManifest", "scenarioInput", "targetPackage"}) for name in (
         "windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",
         "windows-document-cold.gui-owner", "windows-document-cold.cache-bytes", "windows-document-responsive")},

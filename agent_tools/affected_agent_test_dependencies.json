@@ -8686,7 +8686,8 @@
         "b73dde19ac16f046ecf06a141ad27f26f23edda1673e58a5fcc50a26aa76473c",
         "5c632f56f416b54673ab6a4f4208e4c6d95d17ec1edebc8a78b40bb91b46c487",
         "ddf0f7b8224cd52ebec0f0ff0b1f7eecc6bbc035cfb4d7c4fbe8a79722f43117",
-        "c2ea34ab71939558eb0056d668e597027ed331067d785c58b9b62bae177680e1"
+        "c2ea34ab71939558eb0056d668e597027ed331067d785c58b9b62bae177680e1",
+        "c4fed8c5582308021e4ed0a081a851499f7c1fc698266ce3d64819c1af9fb4da"
       ]
     },
     "agent_tools/tests/test_native_scenario_ssh.py": {
@@ -12826,17 +12827,19 @@
       ]
     },
     "agent_tools/tests/test_windows_public_update_defects.py": {
-      "reason": "Reviewed actual test body: hash-checked before-image fixtures of the planner and the update case module (compiled from their held bytes) and of the SYSTEM run template (run by PowerShell where one exists), their provenance, and a synthetic MSI schedule snapshot, each read by its fixed fixture name; the current run template is read by its fixed path; no other file is read.",
+      "reason": "Reviewed actual test body: hash-checked before-image fixtures of the planner and of two versions of the update case module (compiled from their held bytes) and of the SYSTEM run template (run by PowerShell where one exists), their provenance, and a synthetic MSI schedule snapshot, each read by its fixed fixture name; the current run template is read by its fixed path; product_link_schemes reads ProxyLinkParser.kt by its own fixed path; no other file is read.",
       "scopes": [
         "agent_tools/tests/fixtures/windows_public_update_defects/provenance.json",
         "agent_tools/tests/fixtures/windows_public_update_defects/real-msi-schedule.json",
         "agent_tools/tests/fixtures/windows_public_update_defects/system-run.before.ps1",
         "agent_tools/tests/fixtures/windows_public_update_defects/update-cases.before.source",
+        "agent_tools/tests/fixtures/windows_public_update_defects/update-cases.variants-before.source",
         "agent_tools/tests/fixtures/windows_public_update_defects/windows-ordinary-task.before.source",
         "agent_tools/windows_scenario_system_run.ps1.template"
       ],
       "sourceSha256": [
-        "32802f17c89deb506d254b8dfeef645a72dfe13de5592fc43821c1af401c40b5"
+        "32802f17c89deb506d254b8dfeef645a72dfe13de5592fc43821c1af401c40b5",
+        "015eae97d7ddf93fab825b83daab92368fb465ee5b4d1243a3263cc688087982"
       ]
     },
     "agent_tools/tests/test_windows_public_updater.py": {
@@ -12855,7 +12858,8 @@
         "c049fe0d94e7762e2c67be86530dc0e57b09075064985a5159c77d9df003aa5e",
         "fa53088f2a094b31d8adfa0f82f0644e19fd34d30ba1386b93331cc1def25578",
         "139624624a4a9499c59b857191a591ff8d0917e22762c560f15982a0a7ef84de",
-        "5a4b6d7a08b5fd09fbd23d7663f22b8ef1a288af9e3d937bd84cd9ab4a967e62"
+        "5a4b6d7a08b5fd09fbd23d7663f22b8ef1a288af9e3d937bd84cd9ab4a967e62",
+        "ea84bdb3295a99a24ee4a79e92f0192cdf8d5da4ac0879306477c9f7bfa92dd0"
       ]
     },
     "agent_tools/tests/test_windows_python_fixture_io.py": {
@@ -13046,7 +13050,8 @@
         "8357285fc9cd2094bca956e428a0ef477741c951509c5eb67b16be247af546ee",
         "a7d3e8f0e8dd68f23a88f7620296d01d29c8cd626e16a7bd5b1fe6f7836d8233",
         "d6c749e6b34aa5f5e439556bc945cf5e19fa06677fcf07e93a5faf76d0324def",
-        "70c6db2ed0dca349cc59ca63a0c091d7db8050c1b16f4c33a26affdb072e2027"
+        "70c6db2ed0dca349cc59ca63a0c091d7db8050c1b16f4c33a26affdb072e2027",
+        "5085dfbedd4e297ceeb4f3d3f7d6a264b97d7592032845dde3e7d277f76f5ea6"
       ]
     },
     "agent_tools/tests/test_windows_system_collector_owner_source.py": {
@@ -13063,7 +13068,8 @@
         "ea81278485e8455dc240494963521c86d112328c343f193837e80e7739399f9e",
         "89e2f67ef252a4e6406e2e600320297613df56c83d23800a8d14f979ec6bc67d",
         "1ab71e249eb80a4da96f0e77dbbfecdedb96aca2301d749d1ab2477ef6c521de",
-        "fd3a45eee136a06e5455471485a69434c0aae01a30c21a797fb25f28cf1df94b"
+        "fd3a45eee136a06e5455471485a69434c0aae01a30c21a797fb25f28cf1df94b",
+        "c1c608b9e8f563d57e4fe26104166dd98e10eae90f1e709dfdbbab113653ee45"
       ]
     },
     "agent_tools/tests/test_windows_system_collector_owner_source_loader.py": {
@@ -13116,7 +13122,8 @@
         "3489560f0b7432dccc4092997183b2a45ad688206f2816052db9278fd309ade5",
         "bcdfdb8e1680f7e9f6a3eb263bb87702dea39406dddb2af6957f1faf7e094278",
         "3b9c6be01dd692d1ae2d29e6e41f8432f751ff6c006bce18db3792f7ea2a0466",
-        "7ca4ac67a42baaa3bdb4d1073cc74dcf38c54a91804bd26365cb59afae55e180"
+        "7ca4ac67a42baaa3bdb4d1073cc74dcf38c54a91804bd26365cb59afae55e180",
+        "955da98ca6c7f9b4f72ef956cce9d1a4a282830b1ec1bd60a0e6e5f1975d72c9"
       ]
     },
     "agent_tools/tests/test_windows_system_image_inquiry.py": {
@@ -13462,7 +13469,8 @@
         "c262507b18e2e06adf575feea735fa80fe4db1755ea27e8d07c8c59bdafb1f82",
         "2842ddf3763f5d4cacb10f291cb3d002f6f91a93ddbc7c8542c4070a96d5c692",
         "cfd209457a04eb78185598c249bd096d66f604db76d2863da2cd64e9999ac45b",
-        "93046ff2c1936544b408e2405352b341b48dfb92ec63c25dd97e653652d8795f"
+        "93046ff2c1936544b408e2405352b341b48dfb92ec63c25dd97e653652d8795f",
+        "4390fb0971ef6976ebcbcf882332f274c20cb1a21a306c916a22546a6cd69640"
       ]
     },
     "agent_tools/windows_public_updater/update_cases.py": {
@@ -13480,7 +13488,8 @@
       "sourceSha256": [
         "939f33f84c3c35c404e65dfb887107354e086710aa1c7ba077b7082f8d1b17b1",
         "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78",
-        "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c"
+        "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c",
+        "44ae2f9e3f6c9f988168ea0009b273c5abe259e056cc4d829bd9285b54e2a4b0"
       ]
     },
     "agent_tools/windows_system_collector/caller_hold.py": {
@@ -13493,7 +13502,8 @@
       "sourceSha256": [
         "6a6fbbe73e8d70db247656af330a8a4de9b2119a181ae4e3af5d0757dc8f0ef5",
         "0ccae3314fc03765c0568417531486ede523c7ea3aeecf22829d2d08fdd2da44",
-        "51a165023d867b7097cb75675f7a938ad683a0c188c88388a7ac0f5b16d851d1"
+        "51a165023d867b7097cb75675f7a938ad683a0c188c88388a7ac0f5b16d851d1",
+        "492ea5c97d8fdbff0c0cda68fed4ad35d8402ed6257b7c0107abc32f436a18b8"
       ]
     },
     "scripts/check_ci_failure_discovery.py": {
@@ -13565,7 +13575,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "62c2357c7bfcc4d2d918b343d124773e89b17f43754b52fcd223e4a5bd4c615e",
+    "agent_tools/readiness_vm_dispatch.json": "7043c0db4c89e66818b1afd5485991c4dcdbc50dee53db8700f5460d243e75f7",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

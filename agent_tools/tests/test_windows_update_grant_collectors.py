@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import functools
 import hashlib
 import json
 import os
@@ -26,6 +27,7 @@ from unittest import mock
 from agent_tools import windows_scenario_host_job as job
 from agent_tools.windows_public_updater import native_collector, update_receipts
 from agent_tools.windows_system_collector import collector_contract as contract
+from scripts import windows_broker_fixture_observer as broker_observer
 
 ROOT = Path(__file__).resolve().parents[2]
 COLLECTOR = ROOT / "agent_tools" / "windows_system_collector"
@@ -589,6 +591,205 @@ class InstallHelperTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "install_helper_manifest$"):
                 raw = self.manifest(**change)
                 job.install_helper(raw, hashlib.sha256(raw).hexdigest(), self.PIN)
+
+
+class Timeline:
+    """The guest's processes as a SYSTEM watch sees them: each census is one more tick. A process is live from its first
+    tick up to (not including) its last; a held handle reads its own exit. Every open handle is accounted for."""
+
+    def __init__(self, rows, *, clock_step=0.05):
+        self.rows, self.tick, self.now, self.step = rows, 0, 0.0, clock_step
+        self.open, self.opened, self.argv_reads = {}, [], []
+
+    def live(self, row):
+        return row["from"] <= self.tick and (row["until"] is None or self.tick < row["until"])
+
+    def native(self):
+        timeline = self
+
+        class Pin:
+            def __init__(self, row):
+                self.row, self.handle = row, len(timeline.opened) + 1
+                timeline.open[self.handle] = row["pid"]
+                timeline.opened.append(row["pid"])
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                timeline.open.pop(self.handle, None)
+
+            def times(self):
+                gone = not timeline.live(self.row)
+                return {"creationFileTime": self.row["birth"], "exitFileTime": self.row["birth"] + 500 if gone else 0,
+                        "kernelTime100ns": 0, "userTime100ns": 0}
+
+            def wait(self):
+                return 258 if timeline.live(self.row) else 0
+
+            def describe(self):
+                return {"image": self.row["image"], **self.times(), "token": dict(self.row["token"]),
+                        "sha256": self.row["sha256"], "sizeBytes": self.row["size"]}
+
+        class Native:
+            def processes(self):
+                timeline.tick += 1
+                return [{"pid": row["pid"], "parentPid": row["parent"], "name": row["image"].rsplit("\\", 1)[-1]}
+                        for row in timeline.rows if timeline.live(row)]
+
+            def open_process(self, pid, access):
+                rows = [row for row in timeline.rows if row["pid"] == pid and timeline.live(row)]
+                if not rows:
+                    raise broker_observer.ProcessAbsent("absent")
+                return Pin(rows[0])
+        return Native
+
+    def argv(self, native, process):
+        self.argv_reads.append(process.row["pid"])
+        return list(process.row["argv"])
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += self.step
+
+
+def watched_rows(changes=None):
+    """The serve and its JVM (the controller), then, after the approval, the job's coordinator and its worker, which the
+    product's CANCELLED ends: the coordinator a few ticks after the worker reads it."""
+    owner = [str(JVM), str(JVM_BIRTH)]
+    token = {"sid": SID, "sessionId": SESSION, "elevated": 0, "elevationType": 1}
+    rows = [{"pid": SERVE, "parent": 902, "birth": SERVE_BIRTH, "image": CLI, "argv": [CLI, "serve"], "token": token, "sha256": "c" * 64,
+             "size": 3, "from": 0, "until": None},
+            {"pid": JVM, "parent": SERVE, "birth": JVM_BIRTH, "image": CLI, "argv": [CLI, "serve"], "token": token, "sha256": "c" * 64,
+             "size": 3, "from": 0, "until": None},
+            {"pid": COORDINATOR, "parent": JVM, "birth": COORDINATOR_BIRTH, "image": HELPER, "argv": [HELPER, "install-coordinator", JOB, *owner],
+             "token": {"sid": ADMIN_SID, "sessionId": SESSION, "elevated": 1, "elevationType": 2}, "sha256": HELPER_RECORD["sha256"],
+             "size": len(HELPER_BYTES), "from": 4, "until": 9},
+            {"pid": WORKER, "parent": COORDINATOR, "birth": WORKER_BIRTH, "image": HELPER, "argv": [HELPER, "install-user", JOB, *owner],
+             "token": token, "sha256": HELPER_RECORD["sha256"], "size": len(HELPER_BYTES), "from": 5, "until": 8}]
+    for pid, fields in (changes or {}).items():
+        next(row for row in rows if row["pid"] == pid).update(fields)
+    return rows
+
+
+def watch_request(**changes):
+    """before-install of install-cancelled as the job builds it: the serve, the controller it relaunched into, and the
+    installed helper's image whose processes the watch follows."""
+    def actor(pid, birth):
+        return {"pid": pid, "creationFileTime": birth, "image": CLI, "sha256": "c" * 64, "sid": SID, "sessionId": SESSION}
+    value = {"schemaVersion": 1, "stage": "before-install", "ordinaryTaskOperationId": OPERATION, "sourceSha": "1" * 40,
+             "collectorSourceSha256": "2" * 64,
+             "context": {"bootIdentifier": BOOT, "ordinarySid": SID, "ordinarySessionId": SESSION, "localAppData": LOCAL,
+                         "workspace": WORKSPACE, "approvingAdminSid": ADMIN_SID},
+             "jobId": None, "productOperationId": None, "actors": {"owner": actor(SERVE, SERVE_BIRTH), "controller": actor(JVM, JVM_BIRTH)},
+             "fileInputs": {"cancelWatchHelper": dict(HELPER_RECORD)}, "faultBinding": {}, "programData": "C:\\ProgramData",
+             "evidenceRoot": "C:\\ProgramData\\update-evidence-" + OPERATION, "ordinaryWorkerPid": 4242,
+             "ordinaryWorkerBirth": "133000000000000002", "expectedHelperSha256": HELPER_RECORD["sha256"]}
+    value.update(changes)
+    return value
+
+
+class CancelWatchTests(unittest.TestCase):
+    """install-cancelled: the before-install collector publishes the owner it saw, then stays as a read-only SYSTEM watch of
+    the installed helper's image and publishes cancel-actors once the cancelled job's coordinator and worker are gone.
+    At 9a8db1e5 no stage could see them: they live only from the approval to the product's own CANCELLED."""
+
+    def collect(self, rows, request=None, *, step=0.05):
+        timeline = Timeline(rows, clock_step=step)
+        observer = types.SimpleNamespace(WindowsNative=timeline.native(), same_path=broker_observer.same_path,
+                                         require_identity=broker_observer.require_identity, observe_exit=broker_observer.observe_exit,
+                                         ProcessAbsent=broker_observer.ProcessAbsent)
+        request = request or watch_request()
+        guards = []
+        owner = types.SimpleNamespace(native=types.SimpleNamespace(boot_identifier=lambda: BOOT, token=lambda: {"sid": SYSTEM, "elevation": 1}),
+                                      by_path={str(Path(native_collector.__file__)).casefold(): types.SimpleNamespace(
+                                          record={"sha256": request["collectorSourceSha256"]})},
+                                      guard=lambda: guards.append(timeline.tick), event=lambda kind, value: None)
+        published = []
+
+        def publish(collection_owner, receipts, root, stage, value):
+            raw = update_receipts.encoded(value)
+            published.append((stage, json.loads(raw)))
+            return {"path": root + "\\" + stage + ".json", "sizeBytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+                    "createOnly": True, "readOnlyProductObservation": True}
+        # The watch's clock, pause and argv reader are its own keywords; at 9a8db1e5 there is no watch to give them to, and
+        # collect_and_publish publishes before-install alone.
+        watch = getattr(native_collector, "watch_cancelled_installer", None)
+        seam = {} if watch is None else {"watch": functools.partial(watch, clock=timeline.monotonic, sleep=timeline.sleep,
+                                                                    read_argv=timeline.argv)}
+        with mock.patch.object(native_collector, "publish_machine_record", publish):
+            result = native_collector.collect_and_publish(request, owner, update_receipts, observer, **seam)
+        return result, published, timeline, guards
+
+    def test_the_watch_publishes_both_actors_seen_live_and_gone_after_its_before_install_record(self):
+        result, published, timeline, guards = self.collect(watched_rows())
+        self.assertEqual(["before-install", "cancel-actors"], [stage for stage, _ in published], "before-install first, then the watch")
+        before, watched = (value for _, value in published)
+        self.assertEqual((SERVE, JVM), (before["observations"]["ordinaryOwner"]["pid"], before["observations"]["controller"]["pid"]))
+        self.assertEqual((JOB, None, "cancel-actors"), (watched["jobId"], watched["productOperationId"], watched["stage"]))
+        observed = watched["observations"]
+        self.assertEqual((True, True, False, JOB, [], 0), (observed["armedBeforeActors"], observed["complete"], observed["timedOut"],
+                                                          observed["jobId"], observed["others"], observed["missed"]))
+        actors = {row["role"]: row for row in observed["actors"]}
+        self.assertEqual({"coordinator": (COORDINATOR, COORDINATOR_BIRTH, ADMIN_SID, 1, JVM), "worker": (WORKER, WORKER_BIRTH, SID, 0, COORDINATOR)},
+                         {role: (row["pid"], row["creationFileTime"], row["sid"], row["elevated"], row["parentPid"]) for role, row in actors.items()})
+        self.assertTrue(all(row["originalAbsent"] is True and row["reason"] == "same-handle-signaled" and row["exitFileTime"] > row["creationFileTime"]
+                            and row["liveWhenSeen"] is True for row in actors.values()))
+        self.assertEqual(set(job.CANCEL_ACTOR_FIELDS), set(actors["coordinator"]), "the record's rows are the job's closed shape")
+        self.assertEqual({}, timeline.open, "every held handle is closed")
+        self.assertEqual("cancel-actors", result["stage"])
+        self.assertEqual(watched, result["record"], "the publication carries the record whole")
+        self.assertEqual(hashlib.sha256(update_receipts.encoded(watched)).hexdigest(), result["collector"]["sha256"])
+        self.assertEqual(timeline.tick, guards[-1], "the collector's own guard ran after the watch's last census")
+
+    def test_the_job_takes_exactly_what_the_watch_publishes(self):
+        result, _, _, _ = self.collect(watched_rows())
+        actors, facts = job.cancelled_install_actors(result, operation=OPERATION, helper=HELPER_RECORD, owner=OWNER,
+                                                     administrator_sid=ADMIN_SID, sid=SID, session=SESSION)
+        self.assertEqual({"coordinator": (COORDINATOR, COORDINATOR_BIRTH, ADMIN_SID), "worker": (WORKER, WORKER_BIRTH, SID)},
+                         {role: (actor["pid"], actor["creationFileTime"], actor["sid"]) for role, actor in actors.items()})
+        self.assertEqual((JOB, True), (facts["jobId"], facts["watch"]["armedBeforeActors"]))
+        changed = json.loads(json.dumps(result))
+        changed["record"]["observations"]["missed"] = 7  # Bytes other than the ones published.
+        with self.assertRaisesRegex(ValueError, "collector_cancel_watch_record"):
+            job.cancelled_install_actors(changed, operation=OPERATION, helper=HELPER_RECORD, owner=OWNER, administrator_sid=ADMIN_SID,
+                                         sid=SID, session=SESSION)
+
+    def test_a_watch_that_sees_no_actor_ends_at_its_bound_with_nothing_complete(self):
+        rows = watched_rows({COORDINATOR: {"from": 10 ** 9}, WORKER: {"from": 10 ** 9}})
+        result, published, timeline, _ = self.collect(rows, step=60.0)
+        observed = published[-1][1]["observations"]
+        self.assertEqual((True, False, None, []), (observed["timedOut"], observed["complete"], observed["jobId"], observed["actors"]))
+        self.assertGreaterEqual(observed["watchedSeconds"], native_collector.CANCEL_WATCH_SECONDS)
+        with self.assertRaisesRegex(ValueError, "collector_cancel_watch_incomplete"):
+            job.cancelled_install_actors(result, operation=OPERATION, helper=HELPER_RECORD, owner=OWNER, administrator_sid=ADMIN_SID,
+                                         sid=SID, session=SESSION)
+
+    def test_a_watch_armed_after_an_actor_says_so(self):
+        rows = watched_rows({COORDINATOR: {"from": 0}})
+        _, published, _, _ = self.collect(rows)
+        self.assertFalse(published[-1][1]["observations"]["armedBeforeActors"])
+
+    def test_other_helper_processes_are_recorded_and_an_elevated_one_is_held_to_its_exit(self):
+        other = {"pid": 940, "parent": 4, "birth": 134368653065000025, "image": HELPER, "argv": [HELPER, "validate-only"],
+                 "token": {"sid": SID, "sessionId": SESSION, "elevated": 0, "elevationType": 1}, "sha256": HELPER_RECORD["sha256"],
+                 "size": len(HELPER_BYTES), "from": 3, "until": 4}
+        stray = {**other, "pid": 941, "argv": [HELPER, "install-coordinator", JOB, "1", "2"], "from": 6, "until": 12,
+                 "token": {"sid": ADMIN_SID, "sessionId": SESSION, "elevated": 1, "elevationType": 2}}
+        _, published, timeline, _ = self.collect([*watched_rows(), other, stray])
+        observed = published[-1][1]["observations"]
+        self.assertEqual({940: (0, None), 941: (1, True)}, {row["pid"]: (row["elevated"], row["originalAbsent"]) for row in observed["others"]})
+        self.assertEqual(["coordinator", "worker"], sorted(row["role"] for row in observed["actors"]), "a stray naming another owner is no actor")
+        self.assertEqual({}, timeline.open)
+
+    def test_any_other_before_install_publishes_once_and_never_watches(self):
+        request = watch_request(fileInputs={}, actors={"owner": watch_request()["actors"]["owner"]}, expectedHelperSha256=None)
+        result, published, timeline, _ = self.collect(watched_rows(), request)
+        self.assertEqual(["before-install"], [stage for stage, _ in published])
+        self.assertEqual("before-install", result["stage"])
+        self.assertEqual([], timeline.argv_reads, "no helper process is ever read")
 
 
 def observer_function():

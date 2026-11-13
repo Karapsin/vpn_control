@@ -101,7 +101,7 @@ def _approve_update(variant):
 ROWS = {
     "windows-public-update.uac-denied": _update_row("deny", "update-uac-action-pending", "action", "deny-current-prompt", "uac-denied"),
     **{"windows-public-update." + variant: _approve_update(variant)
-       for variant in ("success-off", "success-reconnect", "different-admin", "wait-client-loss",
+       for variant in ("success-off", "success-reconnect", "success-explicit-off", "different-admin", "wait-client-loss",
                        "participating-copy-lock", "native-install-failed", "protected-storage-rejected")},
     "windows-public-update.install-cancelled": _update_row(
         "approve", "update-install-cancel-requested-before-authorization", "freshPromptAction",

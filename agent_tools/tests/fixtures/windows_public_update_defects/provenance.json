@@ -15,6 +15,11 @@
       "note": "agent_tools/windows_public_updater/update_cases.py exactly as committed at 0f5f368057a95d9de90b68a82edc5c87c2f2ac50: locations add before source set current-locations, and on with --if-revision.",
       "sha256": "c80ac9d0fda143f052672fcfbd7c9cba98c96f6d8e1a6b088732486494d7ae78"
     },
+    "update-cases.variants-before.source": {
+      "bytes": 44711,
+      "note": "agent_tools/windows_public_updater/update_cases.py exactly as committed at 9a8db1e517974f25469b8fdf8d25d7765cfaa981: a socks5:// connection profile the product's parser refuses, code BUSY demanded of a participating copy's terminal, and a cancelled install accepted with no observed installer actor.",
+      "sha256": "17ecb2f41b42a3988f6905fe6a426935564a48e17e776efe7c3a9dbf4f668f5c"
+    },
     "windows-ordinary-task.before.source": {
       "bytes": 40387,
       "note": "agent_tools/windows_ordinary_task.py exactly as committed at 0f5f368057a95d9de90b68a82edc5c87c2f2ac50: its tree roles admit installed-app but not installed-application.",

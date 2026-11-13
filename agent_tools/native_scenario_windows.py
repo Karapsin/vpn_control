@@ -223,19 +223,10 @@ _COLLECTOR_FILES = (("agent_tools/windows_system_collector/caller_hold.py", "cal
 # The variants update_cases.VARIANTS accepts, less transport-loss, which it refuses itself.
 UPDATE_VARIANTS = ("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "install-cancelled",
                    "participating-copy-lock", "protected-storage-rejected", "native-install-failed", "success-off",
-                   "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss")
+                   "success-reconnect", "success-explicit-off", "different-admin", "wait-client-loss", "installer-wait-client-loss")
 _NO_SYSTEM = ("public-ready", "download-cancelled", "checksum-rejected")
 # Refused before any journal, each with exactly what is still missing.
 _UPDATE_REFUSED = {
-    # The cancelled job's coordinator and worker live only from the approval to the product's own CANCELLED, which
-    # follows the cancel the owner already sent, and the product keeps no record of the coordinator (its
-    # input-custody.json is written on success alone). terminal-actors needs both identities and no stage can see them.
-    "install-cancelled": "windows_scenario_update_cancel_actors_unobserved",
-    # The host job passes no fault inputs, so update_cases refuses its blocking copy, and no stage serves fault-ready
-    # with the participating copy's actor.
-    "participating-copy-lock": "windows_scenario_update_copy_lock_fixture_unavailable",
-    # The host job passes initialIntent off with no loopback connection profile and no traffic inputs.
-    "success-reconnect": "windows_scenario_update_reconnect_fixture_unavailable",
     # The fixture has one administrator account (windows_vm_unattend: user and administrator), the decision approves
     # only with final-administrator.secret, and the context reads only that account's SID. A second approving
     # administrator needs a second Administrators account, its credential and a decision row that types it.
@@ -248,22 +239,50 @@ _UPDATE_REFUSED = {
 # The stages each variant's owner asks a SYSTEM collector for, the last one behind the caller's close hold. A grant's
 # before-install also finds the controller the helper will name, authorization the live coordinator and worker,
 # terminal-actors their exit beside the protected terminal and returned-cleanup the returned owner's exit.
+# install-cancelled cancels while its prompt is up, so its coordinator and worker live only from the approval to the
+# product's own CANCELLED: its before-install collector publishes the owner it saw and then stays as a SYSTEM watch of the
+# installed helper image, which records every process naming that controller, live, and their exits, and publishes
+# cancel-actors (native_collector.watch_cancelled_installer); terminal-actors then asks for exactly those two.
+# participating-copy-lock adds fault-ready between before-install and authorization: the running copy the case started.
 _GRANT_STAGES = ("before-install", "authorization", "terminal-actors", "returned-cleanup")
 _UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "terminal-actors"),
-                      **{variant: (_GRANT_STAGES, "returned-cleanup") for variant in ("success-off", "wait-client-loss", "installer-wait-client-loss")}}
+                      "install-cancelled": (("before-install", "terminal-actors"), "terminal-actors"),
+                      "participating-copy-lock": (("before-install", "fault-ready", "authorization", "terminal-actors", "returned-cleanup"),
+                                                  "returned-cleanup"),
+                      **{variant: (_GRANT_STAGES, "returned-cleanup")
+                         for variant in ("success-off", "success-reconnect", "success-explicit-off", "wait-client-loss",
+                                         "installer-wait-client-loss")}}
+# A connected row's own in-guest SOCKS upstream on its fixed loopback port and the sampler the case runs through the
+# product's mixed listener before the update and, where the returned owner reconnects, after it; the job writes the
+# loopback profile the location is added from and the sampler's input, both naming that port and body
+# (host_job Job._update_connection). success-reconnect is updated connected, its intent on. success-explicit-off is the
+# same connected owner turned off explicitly before the update: its returned owner keeps a location it could reconnect
+# to, and must stay off (DESKTOP-004, PRODUCT-005), which success-off's fresh workspace, with no location, never tests.
+_UPDATE_CONNECTED = frozenset({"success-reconnect", "success-explicit-off"})
+_UPDATE_RECONNECT = frozenset({"success-reconnect"})
+_UPDATE_CONNECTION_FILES = (("scripts/integration/socks_http_fixture.py", "upstreamFixture", "data"),
+                            ("agent_tools/windows_lifecycle_traffic_worker.py", "trafficWorker", "data"))
+_UPDATE_CONNECTION_GENERATED = (("connectionProfile", "update-connection-profile.txt"), ("trafficInput", "update-traffic-input.json"))
 # What a passed update row leaves installed: its target only after a granted install that succeeded
 # (update_cases.SUCCESS_VARIANTS less transport-loss, which the case refuses), otherwise the base it started from.
 # The job reads which after the task and claims installed-package for that one alone (host_job Job._update_after);
 # the matrix binds the claim to that install's own journal (_update_facts).
-_UPDATE_ENDS_WITH_TARGET = frozenset({"success-off", "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss"})
+_UPDATE_ENDS_WITH_TARGET = frozenset({"success-off", "success-reconnect", "success-explicit-off", "different-admin", "wait-client-loss",
+                                      "installer-wait-client-loss"})
 
 
 def _update_row(variant: str) -> dict[str, Any]:
     stages, final = _UPDATE_COLLECTORS.get(variant, ((), None))
+    connected = variant in _UPDATE_CONNECTED
     row = _worker_row("product", "windows-public-update", ("targetPackage", "fixtureReceipt"),
-                      (*_UPDATE_FILES, *(_COLLECTOR_FILES if stages else ())), prior=True, deadline=3600)
+                      (*_UPDATE_FILES, *(_COLLECTOR_FILES if stages else ()), *(_UPDATE_CONNECTION_FILES if connected else ())),
+                      prior=True, deadline=3600)
     row["update"] = {"variant": variant, "collectorStages": stages, "finalStage": final,
-                     "ends": "target" if variant in _UPDATE_ENDS_WITH_TARGET else "base"}
+                     "ends": "target" if variant in _UPDATE_ENDS_WITH_TARGET else "base",
+                     "connected": connected, "initialIntent": "reconnect" if variant in _UPDATE_RECONNECT else "off",
+                     "cancelWatch": variant == "install-cancelled"}
+    if connected:
+        row["generated"] = _UPDATE_CONNECTION_GENERATED
     row["stages"] = _ALL_STAGES  # "installed": the registration and tree the task left, read back as an installer row's are.
     row["refusal"] = _UPDATE_REFUSED.get(variant)
     if variant not in _NO_SYSTEM:
@@ -1230,7 +1249,8 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         "stdout-stderr-exit": (_CFG, _STR),
         "unicode-space-path": (_SMK, _CFG),
         "config-parity": (_CFG, _P + "generated", _P + "custom", _P + "large"),
-        # RSP brings the owner-held refresh's status, cancel and wait; UPD(install-cancelled) is refused at admission today.
+        # RSP brings the owner-held refresh's status, cancel and wait; UPD(install-cancelled) an install cancelled while its
+        # prompt is up, whose coordinator and worker a SYSTEM watch saw between the approval and the product's CANCELLED.
         "operation-progress-cancellation": (_CFG, _STR, _RSP, _P + "find-best-cancel", _U + "download-cancelled", _U + "install-cancelled"),
         "ordinary-user": (_CFG, _P + "find-best-success"),
         # TUN(approve) and UPD(success-off): each prompt is scoped to its one helper while the app stays unelevated. The
@@ -1258,7 +1278,10 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         "participating-copy-locks": (_U + "participating-copy-lock",),
         "protected-storage-adversarial": (_U + "protected-storage-rejected",),
         "next-owner-recovery": (_U + "success-off", _U + "wait-client-loss", _U + "installer-wait-client-loss"),
-        "reconnect-off-preserved": (_U + "success-off", _U + "success-reconnect", "windows-reboot-reconnect.pre",
+        # PRODUCT-005: the update keeps the prior intent. UPD(success-reconnect) a connected owner's on, and
+        # UPD(success-explicit-off) a connected owner's explicit off, whose returned owner has a location it could use.
+        # success-off is no row of it: its fresh workspace has no location, so no returned owner of it could reconnect.
+        "reconnect-off-preserved": (_U + "success-explicit-off", _U + "success-reconnect", "windows-reboot-reconnect.pre",
                                     "windows-reboot-reconnect.post"),
     },
     "windows-scoped-vpn": {
