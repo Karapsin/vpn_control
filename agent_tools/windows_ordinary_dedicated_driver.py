@@ -9,6 +9,7 @@ import ast
 import hashlib
 from pathlib import Path, PureWindowsPath
 import re
+import time
 
 
 CASE_SHA = {
@@ -45,10 +46,16 @@ PROXY_VARIANTS = frozenset({"gui-pending", "find-best-success",
 CONFIG_VARIANTS = frozenset({"generated", "custom", "large"})
 FAILURE_VARIANTS = frozenset({"prepare-failure", "commit-readiness-failure"})
 BRANCH_VARIANTS = CONFIG_VARIANTS | FAILURE_VARIANTS | {"sibling-off"}
-# restart-grant waits for the collector stage: an approved grant ends only with its native ready record.
-TUN_VARIANTS = frozenset({"restart-deny"})
-TUN_SHA = "8eabdd41e8b98e55166d43541b09a3ec3a4c85d8e421b9e7195875b68f50b65d"
+# restart-grant runs under the caller's close hold of its TUN SYSTEM collector, whose ready and off records this
+# driver hands to the stages. find-best has neither a decision row nor a measured prompt: its names stay refused.
+TUN_VARIANTS = frozenset({"restart-deny", "restart-grant"})
+TUN_GRANT_VARIANTS = frozenset({"restart-grant"})
+TUN_SHA = "c1a26e976b075851b7f73a8472701d5843a6912850378422635ae731a59a42be"
 SAMPLER_SHA = "c1caaac8cbb29c415c1a1bf6ba098716062ccb1978c01ae4a17934bc55597433"  # A grant's direct TUN sampler
+TUN_COLLECTOR_SHA = "e8510e0d2fe42a73e7c8a1c5550a18c6292293681fb10472abf2a668f3721135"  # windows_tun_native_observer: COLLECTORS["tun"]
+NATIVE_NEED = "update-native-observation-needed"  # The one native-need kind the SYSTEM run reports (windows_scenario_system_run).
+TUN_EVIDENCE = "tun-evidence-"  # windows_tun_native_observer.publish: its machine records under ProgramData
+TUN_RECORD_BYTES = 262144
 BRANCH_SHA = "a3292caa396c3efe4e8c8d44d989615c98bbb9e0418d12487964bf17c9b6601e"
 LISTENER_SHA = "1b62f857e627770be43057749f527128f573b89885590310ad51d95443c0b928"
 # The owner's own scheduled refresh with no GUI (windows_lifecycle_scheduled_cases), sampled by the same traffic worker.
@@ -327,6 +334,105 @@ def tun_census(owner, tun, lease, observer):
         owner.park("dedicated-tun-scoped-state-left-behind", error)
 
 
+def tun_hold(owner, inputs, hold_inputs):
+    """A grant's close hold, bound to this driver's pinned SYSTEM chain before any effect, and the receipts module its
+    record handoff reads with. Every other TUN or proxy row has no collector and no hold.
+
+    The grant's collector keeps its broker and runtime handles from its ready record to its off record and then waits
+    for this owner's hold: the owner never ends before that collector, and the collector never outlives the owner.
+    """
+    if inputs["variant"] not in TUN_GRANT_VARIANTS:
+        require(hold_inputs is None, "proxy-has-no-system-collector")
+        return None
+    root = PureWindowsPath(__file__).parent
+    protocol_path = str(root / "windows_system_collector" / "hold_protocol.py")
+    caller_path = str(root / "windows_system_collector" / "caller_hold.py")
+    receipts_path = str(root / "windows_public_updater" / "update_receipts.py")
+    held_source(owner, protocol_path, PROTOCOL_SHA)
+    held_source(owner, caller_path, CALLER_SHA)
+    held_source(owner, receipts_path, UPDATE_MODULES["receipts"])
+    protocol = owner.module(protocol_path, "_owned_dedicated_hold_protocol")
+    protocol.validate_inputs(hold_inputs, ordinary_task_operation_id=owner.operation)
+    require(hold_inputs["scope"] == "tun" and hold_inputs["stage"] == "off" and hold_inputs["sourceSha"] == inputs["sourceSha"]
+            and hold_inputs["systemContractSourceSha256"] == CONTRACT_SHA
+            and hold_inputs["systemWorkerSourceSha256"] == SYSTEM_WORKER_SHA
+            and hold_inputs["collectorSourceSha256"] == TUN_COLLECTOR_SHA == inputs["tun"]["collectorSourceSha256"]
+            and hold_inputs["receiptsPath"] == receipts_path,
+            "dedicated-exact-final-tun-collector-binding")
+    return {"inputs": hold_inputs, "callerPath": caller_path,
+            "receipts": owner.module(receipts_path, "_owned_dedicated_tun_receipts")}
+
+
+def tun_record(owner, lease, receipts, stage):
+    """One record of the grant's TUN SYSTEM collector as this owner hands it to the stages: its path, digest and size.
+
+    ready asks the host job for that collector, once, through the one native-need kind the SYSTEM run reports, naming
+    the product's own operation and this row's serve; off is the same collector's second record, which it writes once
+    the broker and its runtime both exited after the product's own off. A record not there yet is pending, never a
+    failure: the host job runs the collector between two polls of the run, while this owner waits. The folder and the
+    file must both be machine-written (SYSTEM or Administrators owned, protected, the ordinary user reading only); the
+    stages read the same bytes again and join them to this operation.
+    """
+    require(stage in {"ready", "off"} and lease["inputs"]["variant"] in TUN_GRANT_VARIANTS, "dedicated-tun-record-stage")
+    root = receipts.canonical_path(lease["inputs"]["programData"]) / (TUN_EVIDENCE + owner.operation)
+    path = str(root / (stage + ".json"))
+    if stage == "ready":
+        require(not getattr(owner, "tun_collector_requested", False), "dedicated-tun-collector-once")
+        serve = lease["state"]["serve"]
+        owner.tun_collector_requested = True  # Before the event: from its first byte on, the collector may hold this owner.
+        owner.event(NATIVE_NEED, {"stage": "tun", "jobId": None, "productOperationId": lease["accepted"]["operationId"],
+            "originRequestId": lease["accepted"]["requestId"], "controllerId": lease["state"]["identity"],
+            "serve": {"pid": serve.pid, "birthFileTimeUtc": serve.birth}, "ordinaryTaskOperationId": owner.operation,
+            "evidenceFile": path, "collectorSourceSha256": lease["inputs"]["collectorSourceSha256"], "resubmitAllowed": False})
+    else:
+        require(getattr(owner, "tun_collector_requested", False), "dedicated-tun-off-before-its-collector")
+    while True:
+        owner.guard()
+        try:
+            held = receipts.FileObservation(owner, path)
+        except OSError as error:
+            if getattr(error, "winerror", None) not in {2, 3, 32}:
+                raise
+            time.sleep(0.2)
+            continue
+        try:
+            folder = receipts.FileObservation(owner, str(root), directory=True)
+            try:
+                receipts.machine_security(folder.opening["security"], True)
+            finally:
+                folder.close()
+            receipts.machine_security(held.opening["security"], False)
+            raw = held.read(TUN_RECORD_BYTES)
+        finally:
+            held.close()
+        record = {"path": path, "sha256": hashlib.sha256(raw).hexdigest(), "sizeBytes": len(raw)}
+        owner.event("scoped-tun-native-record-handed", {"stage": stage, "nativeFile": held.opening, **record, "readOnly": True})
+        return record
+
+
+def close_hold(owner, hold, result):
+    """The driver's result, once a grant's hold is done with: released by its collector, or retired unused."""
+    if hold is None:
+        return result
+    if getattr(owner, "caller_collection_hold", None) is not hold:
+        owner.park("dedicated-original-caller-hold-replaced")
+    if not getattr(owner, "tun_collector_requested", False):
+        # No collector was asked (a refusal, a cancelled grant, a known end before the TUN came up): nothing waits on
+        # this hold, so it retires here; waiting for a release would park the clone over a known outcome.
+        if hold.state != "armed":
+            owner.park("dedicated-original-caller-hold-replaced")
+        owner.retired_collection_hold = hold
+        owner.caller_collection_hold = None
+        owner.event("dedicated-tun-grant-hold-retired", {"result": result, "collectorRequested": False, "replayAllowed": False})
+        return result
+    hold.driver_completed(result)
+    hold.wait_for_release()
+    if hold.state != "released":
+        owner.park("dedicated-original-collector-release-required")
+    require(type(result) is int and result == 0, "dedicated-known-driver-result-zero")
+    return result
+
+
 def known_failure(owner, cases, runtime, branches, observer, state, inputs, error, census=None):
     """A reviewed oracle failed after its own public call returned, so the outcome is known.
 
@@ -396,8 +502,8 @@ def known_failure(owner, cases, runtime, branches, observer, state, inputs, erro
 
 
 def run_lifecycle(owner, cases, harness):
-    require(harness.SYSTEM_COLLECTOR_CLOSE_HOLD is None, "proxy-has-no-system-collector")
     inputs = lifecycle_inputs(owner, harness.LIFECYCLE_INPUTS)
+    grant = tun_hold(owner, inputs, harness.SYSTEM_COLLECTOR_CLOSE_HOLD)
     runtime = owner.module(inputs["modules"]["runtime"], "_owned_dedicated_runtime_stages")
     observer = owner.module(inputs["modules"]["observer"], "_owned_dedicated_proxy_observer")
     branches = None
@@ -416,15 +522,32 @@ def run_lifecycle(owner, cases, harness):
             raise
         return known_failure(owner, cases, runtime, branches, observer, started, inputs, error)
     workspace, identity = state["workspace"], state["identity"]
-    tun = lease = None
+    tun = lease = hold = None
     outcome = {}
     try:
         if inputs["variant"] in TUN_VARIANTS:
             # The deny row has no collector: active A must survive the prompt unchanged.
             tun = owner.module(inputs["modules"]["tun"], "_owned_dedicated_tun_stages")
+            if grant is not None:
+                # Armed before the request. Until the TUN came up and its collector was asked, nothing waits on it.
+                caller = owner.module(grant["callerPath"], "_owned_dedicated_caller_hold")
+                hold = caller.CallerCollectionHold(owner, grant["inputs"])
             lease = tun.begin(owner, state, inputs["tun"], runtime, cases, observer)
-            outcome = tun.finish(owner, lease, runtime, cases, observer)
+            if grant is None:
+                outcome = tun.finish(owner, lease, runtime, cases, observer)
+            else:
+                receipts = grant["receipts"]
+                # The product source its collector's records name: the worker request carries none, the lease keeps it.
+                lease["sourceSha"] = inputs["sourceSha"]
+                outcome = tun.finish(owner, lease, runtime, cases, observer, receipts=receipts,
+                                     handoff=lambda current, stage: tun_record(owner, current, receipts, stage))
             actors = state["actors"]
+            if grant is not None and lease.get("nativeReady") is not None:
+                # The grant's TUN is up: traffic through it, then the product's own off of exactly that broker and runtime,
+                # which the same collector's off record proves signaled.
+                tun.traffic(owner, lease)
+                tun.begin_off(owner, lease, runtime)
+                tun.finish_off(owner, lease, tun_record(owner, lease, receipts, "off"), receipts)
         elif inputs["variant"] == "gui-pending":
             gui = dict(inputs["gui"], stateDir=str(workspace), controllerId=identity,
                 observerPath=inputs["modules"]["observer"], runtimeConfigPath=str(workspace / "runtime-config.json"),
@@ -464,7 +587,8 @@ def run_lifecycle(owner, cases, harness):
             runtime.find_best(owner, state, inputs["variant"].removeprefix("find-best-"))
             actors = runtime.capture_proxy_actors(owner, state["serve"], observer.WindowsNative(),
                 inputs["runtime"]["runtimeImagePath"], inputs["runtime"]["runtimeSha256"])
-        if inputs["variant"] not in BRANCH_VARIANTS:
+        if inputs["variant"] not in BRANCH_VARIANTS and not (grant is not None and lease.get("offFinished") is True):
+            # A grant's own off already ran; every other row still has proxy A up.
             cases.off_proxy_and_disconnected_serve(owner, workspace, identity, observer,
                 actors["owner"], actors["runtime"])
         if tun is not None:
@@ -478,8 +602,11 @@ def run_lifecycle(owner, cases, harness):
         if inputs["variant"] in TUN_VARIANTS and getattr(owner, "tun_operation_requested", False) \
                 and (lease is None or not tun.settled(lease)):
             raise
+        if getattr(owner, "tun_collector_requested", False):
+            # A grant's collector was asked: it waits on this owner's hold, which only a passed driver releases.
+            owner.park("dedicated-tun-failure-with-original-collector-hold", error)
         census = None if lease is None or lease.get("closed") else lambda: tun_census(owner, tun, lease, observer)
-        return known_failure(owner, cases, runtime, branches, observer, state, inputs, error, census)
+        return close_hold(owner, hold, known_failure(owner, cases, runtime, branches, observer, state, inputs, error, census))
     originals = [state["serve"], *(child for child in owner.children if child.label == "lifecycle-gui")]
     for child in originals:
         terminal = child.wait()
@@ -496,7 +623,8 @@ def run_lifecycle(owner, cases, harness):
     owner.event("dedicated-proxy-lifecycle-known-closed", {"variant": inputs["variant"],
         "controllerId": identity, "sourceSha": inputs["sourceSha"], "nativeAcceptanceComplete": False,
         **({"knownFailure": known} if known else {})})
-    return 1 if known else 0
+    # A grant whose collector was asked ends only with that collector's release of this owner's hold.
+    return close_hold(owner, hold, 1 if known else 0)
 
 
 def run(owner, action):

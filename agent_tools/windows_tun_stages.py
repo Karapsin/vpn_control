@@ -4,11 +4,12 @@ The product's original async job stays retained. This module cannot press UAC ke
 the closed windows-uac-decision action answers the vpn-broker prompt, and every input
 here comes from the row's own job plan and context stage, never from a caller. The
 decision it waits for is that action's one decision for this operation. A grant also
-needs the TUN SYSTEM collector's ready and off records; the direct sampler runs only
-between them. The closing census shows the row left no broker, scoped runtime, private
-stage or TUN route behind. From the request until the operation settles (a denial, a
-known end or a grant's exact off) a failure parks the owner; a final refusal of the
-request itself, with nothing changed, is a known end.
+needs the TUN SYSTEM collector's ready and off records, which the dedicated driver hands
+over (finish asks for ready only once the product's own operation ended OK); the direct
+sampler runs only between them. The closing census shows the row left no broker, scoped
+runtime, private stage or TUN route behind. From the request until the operation settles
+(a denial, a known end or a grant's exact off) a failure parks the owner; a final refusal
+of the request itself, with nothing changed, is a known end.
 """
 from __future__ import annotations
 import hashlib
@@ -196,10 +197,15 @@ def begin(owner, state, inputs, runtime, cases, observer):
 
 
 def read_native_record(owner, lease, file_record, receipts, expected_stage):
-    """Read a create-only machine-protected record from the actual SYS collector."""
+    """Read a create-only machine-protected record from the actual SYS collector.
+
+    Its source is the product source the row runs: the lifecycle inputs' own, which the dedicated driver keeps on the
+    lease. The ordinary worker request carries none; an owner request that does binds the same way.
+    """
     require(type(file_record) is dict and set(file_record)=={'path','sha256','sizeBytes'}
             and type(file_record['sizeBytes']) is int and 0<file_record['sizeBytes']<=262144,
             'scoped-tun-native-record-bound')
+    source=lease['sourceSha'] if 'sourceSha' in lease else owner.request['sourceSha']
     expected=receipts.canonical_path(lease['inputs']['programData']) / ('tun-evidence-'+owner.request['operationId']) / (expected_stage+'.json')
     require(receipts.canonical_path(file_record['path'])==expected, 'scoped-tun-exact-machine-record-destination')
     observation=receipts.FileObservation(owner,file_record['path'])
@@ -226,14 +232,16 @@ def read_native_record(owner, lease, file_record, receipts, expected_stage):
             and receipts.canonical_path(value['context']['programData'])
                 ==receipts.canonical_path(lease['inputs']['programData'])
             and value['collectorSourceSha256']==lease['inputs']['collectorSourceSha256']
-            and value['sourceSha']==owner.request['sourceSha'],
+            and value['sourceSha']==source,
             'scoped-tun-protected-native-operation-join')
     return value
 
 
-def finish(owner, lease, runtime, cases, observer, native_record=None, receipts=None):
+def finish(owner, lease, runtime, cases, observer, handoff=None, receipts=None):
+    """The public terminal of the row's own request. A grant whose TUN came up asks handoff(lease, 'ready') for its
+    SYSTEM collector's ready record only now: the collector finds the broker and its runtime only once they run."""
     require(lease in owner.tun_operation_leases and not lease['finished'],'scoped-tun-finish-once')
-    state=lease['state'];denied=lease['inputs']['variant'].endswith('deny')
+    state=lease['state'];denied=lease['inputs']['variant'].endswith('deny');native_record=None
     # The default wait parks at 120 s, about as long as a prompt lives, so it must outlast the prompt.
     # Every final code the stages know is read; one this variant does not expect is known only as checked below.
     terminal=runtime.finish_operation(owner,state,lease['accepted'],
@@ -252,8 +260,8 @@ def finish(owner, lease, runtime, cases, observer, native_record=None, receipts=
                 'status':status,'census':found,'knownFailure':True,'replayAllowed':False})
             return {'terminal':terminal,'status':status,'nativeRecord':None,'knownFailure':terminal['code']}
     else:
-        require(native_record is not None and receipts is not None,'actual-tun-native-file-required')
-        native_record=read_native_record(owner,lease,native_record,receipts,'ready')
+        require(handoff is not None and receipts is not None,'actual-tun-native-file-required')
+        native_record=read_native_record(owner,lease,handoff(lease,'ready'),receipts,'ready')
         require(native_record['stage']=='ready'
                 and native_record['productOperationId']==lease['accepted']['operationId'],
                 'actual-machine-protected-tun-ready-observation-required')

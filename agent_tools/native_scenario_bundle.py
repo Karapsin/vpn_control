@@ -83,9 +83,11 @@ _SCENARIOS = {
         "agent_tools/windows_ordinary_dedicated_driver.py",
         "agent_tools/windows_lifecycle_runtime_fixture_worker.py",
         "scripts/integration/https_subscription_relay_fixture.py",
-        # The scoped-TUN rows add the TUN stages and, for a grant, the direct sampler.
+        # The scoped-TUN rows add the TUN stages and, for a grant, the direct sampler and its TUN SYSTEM collector, which
+        # runs on the update rows' collector chain below.
         "agent_tools/windows_tun_stages.py",
         "agent_tools/windows_tun_direct_sampler.py",
+        "agent_tools/windows_tun_native_observer.py",
         # The scheduled-refresh row: the owner's own scheduled refresh with no GUI, sampled by the traffic worker above.
         "agent_tools/windows_lifecycle_scheduled_cases.py",
         # The no-tray-close row: the owned desktop with no notification area and its case, sampled by the same worker.

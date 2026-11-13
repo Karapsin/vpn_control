@@ -851,11 +851,9 @@ class TableTests(unittest.TestCase):
         self.assertEqual({"android-48m-heap"}, set(requirements["document-persistence-transfer"]["requiredScenarios"])
                          - set(MATRIX_REAL["document-persistence-transfer"]))
         unmapped = sorted(name + ":" + scenario for name, table in MATRIX_REAL.items() for scenario, rows in table.items() if not rows)
-        self.assertEqual(sorted(["windows-native-cli:" + item for item in ("scoped-elevation",)]
-                                + ["windows-visual:" + item for item in ("scene-capture", "geometry-contrast", "agent-verdict")]
-                                + ["windows-scoped-vpn:" + item for item in ("scoped-uac-tun-traffic", "prepare-commit-recovery", "exact-child-stop",
-                                                                             "generated-custom-config", "large-config", "dns-ws-ssh-cache-resources",
-                                                                             "pipe-storage-races")]
+        self.assertEqual(sorted(["windows-visual:" + item for item in ("scene-capture", "geometry-contrast", "agent-verdict")]
+                                + ["windows-scoped-vpn:" + item for item in ("prepare-commit-recovery", "generated-custom-config", "large-config",
+                                                                             "dns-ws-ssh-cache-resources", "pipe-storage-races")]
                                 + ["document-persistence-transfer:" + item for item in ("cache-digest-bytes", "gui-cli-transfer")]),
                          unmapped)
         # The SSH row declares a relayed transfer and a stdin key import still to do, which the relay row does: they prove
@@ -867,13 +865,14 @@ class TableTests(unittest.TestCase):
         self.assertEqual([None, None], [windows.RECIPES[row].get("refusal") for row in (SSH, RLY)])
 
     def test_the_update_rows_prove_their_scenarios_through_what_they_read_back(self):
-        # Twelve scenarios name update rows. Each update row reads back what its task left (its installed stage) and
-        # counts only with that package bound to its clone's install journal (UpdateRowTests).
+        # Thirteen scenarios name update rows, scoped-elevation among them beside the TUN grant. Each update row reads
+        # back what its task left (its installed stage) and counts only with that package bound to its clone's install
+        # journal (UpdateRowTests).
         named = {scenario for table in MATRIX_REAL.values() for scenario, rows in table.items()
                  if any(row.startswith("windows-public-update.") for row in rows)}
         self.assertEqual({"msi-installer", "public-update", "operation-progress-cancellation", "traffic-continuity", "msi-uac-grant-denial",
                           "ordinary-elevated-owner", "different-approving-admin", "original-user-worker", "participating-copy-locks",
-                          "protected-storage-adversarial", "next-owner-recovery", "reconnect-off-preserved"}, named)
+                          "protected-storage-adversarial", "next-owner-recovery", "reconnect-off-preserved", "scoped-elevation"}, named)
         self.assertTrue(all("installed" in windows.RECIPES[row]["stages"] for table in MATRIX_REAL.values() for rows in table.values()
                             for row in rows if row.startswith("windows-public-update.")))
         # The installer lifecycle maps every scenario. The deny row and the grant rows whose stages are all tooled are
@@ -896,9 +895,15 @@ class TableTests(unittest.TestCase):
                           "windows-public-update.download-cancelled", "windows-public-update.install-cancelled"),
                          MATRIX_REAL["windows-native-cli"]["operation-progress-cancellation"])
         self.assertIsNotNone(windows.RECIPES["windows-public-update.install-cancelled"]["refusal"])
-        # Only the admitted TUN denial counts, and only for its own scenario; the grant rows are refused at admission.
-        self.assertEqual({"windows-scoped-tun.restart-deny": ["windows-scoped-vpn:denial-preserves-active-a"]},
+        # The admitted TUN rows count for what their evidence holds: the denial for its own scenario; the restart grant for
+        # the approved TUN's traffic, its exact child stop beside PRX(sibling-off) and its half of scoped elevation beside
+        # UPD(success-off). The find-best rows are refused at admission and name no scenario.
+        self.assertEqual({"windows-scoped-tun.restart-deny": ["windows-scoped-vpn:denial-preserves-active-a"],
+                          "windows-scoped-tun.restart-grant": ["windows-native-cli:scoped-elevation", "windows-scoped-vpn:exact-child-stop",
+                                                               "windows-scoped-vpn:scoped-uac-tun-traffic"]},
                          {row: scenarios for row, scenarios in named.items() if row.startswith("windows-scoped-tun.") and scenarios})
+        self.assertEqual(("windows-proxy-lifecycle.sibling-off", "windows-scoped-tun.restart-grant"), MATRIX_REAL["windows-scoped-vpn"]["exact-child-stop"])
+        self.assertEqual(("windows-scoped-tun.restart-grant", "windows-public-update.success-off"), MATRIX_REAL["windows-native-cli"]["scoped-elevation"])
         # gui-owner is only the CLI half of gui-cli-transfer, and cache-bytes is refused before any journal: both stay missing.
         self.assertEqual([], named["windows-document-cold.gui-owner"] + named["windows-document-cold.cache-bytes"])
         documents = MATRIX_REAL["document-persistence-transfer"]

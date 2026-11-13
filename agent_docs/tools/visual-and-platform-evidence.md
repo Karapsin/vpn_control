@@ -1133,23 +1133,66 @@ left behind parks with everything else kept. Anything else parks and ends UNKNOW
 lost, transport or foreign reply to the request, or any failure while the operation
 is still open.
 
-Refused before any journal: `restart-grant` and `find-best-grant` with
-`windows_scenario_tun_grant_unproven`. The approved broker runs elevated as the
-approving administrator, so only the TUN SYSTEM collector's ready and off records
-(`windows_tun_native_observer`) prove its image, its SID and its exact child. No
-stage of this job discovers the broker and its runtime for that collector's
-request, and the dedicated driver has no TUN close hold or record handoff. So `scoped-elevation`, `scoped-uac-tun-traffic`, the VPN half
-of `exact-child-stop`, the TUN fault half of `prepare-commit-recovery` and the TUN
-config halves of `generated-custom-config` and `large-config` have no admitted row.
-The stages already close a grant that brought no TUN up (its prompt expired, or a
-final code it does not expect) by the census alone, and the driver holds a grant's
-direct sampler at its reviewed digest, beside itself.
-`find-best-deny` is refused with `windows_scenario_tun_find_best_unproven`: Find
-Best validates every candidate before it prepares the broker, so its prompt follows
-the pending event by an unmeasured time the decision's 30 s gate may not cover, and
-the decision table has no find-best row. Admission treats any `-deny` name as a deny
-row, so without a decision row and its join it stays refused even if that refusal
-is lifted.
+Admitted: `restart-grant`, for `scoped-uac-tun-traffic`, the TUN half of
+`exact-child-stop` (beside `windows-proxy-lifecycle.sibling-off`) and the TUN half of
+`scoped-elevation` (beside `windows-public-update.success-off`, which counts with the
+target its job reads back after the task, as every update row does). Admission refuses it with
+`windows_scenario_uac_profile_unreviewed` unless the deployment holds a reviewed
+`vpn-broker` profile that `windows_uac_decision`'s own load admits: without one the
+decision refuses and the prompt expires into the grant's `CANCELLED`, a failed run.
+A deny row needs none, since its run is the prompt `windows-uac-review` captures the
+profile's frame from. The approved broker runs elevated as the approving
+administrator, so only its TUN SYSTEM collector (`windows_tun_native_observer`, the
+contract's `COLLECTORS["tun"]`) proves it. The row carries that collector, the
+receipts module and the update rows' collector chain, and its harness names the
+collector's close hold (scope `tun`, stage `off`), which the dedicated driver binds
+to its pinned chain before any effect and arms before the request.
+
+The scripted client answers `uac-pending:vpn-broker:approve` with
+`windows-uac-decision` (prompt `vpn-broker`, decision `approve`). Once the product
+ends the operation `OK`, the stages ask the driver's handoff for the ready record:
+the driver publishes one `update-native-observation-needed` event (stage `tun`, the
+product's operation and request, its controller and the row's serve) and polls
+`ProgramData\tun-evidence-<operation>\ready.json`. Between two polls of the SYSTEM
+run the job serves that need. Its SYSTEM publisher reads the task's events and that
+need, a census of the CLI image and of `vpn-control-vpn-broker.exe` with every
+process it started, and the read pin of the workspace's `runtime-config.json`.
+`tun_actors` then requires exactly one serve (the worker's child, the owner's own
+record of it), its controller (the one CLI process it relaunched into, or itself),
+exactly one broker of the installed image the installed `native-helpers.json`
+declares, elevated as the approving administrator in the ordinary session, born
+after the controller, whose arguments name that controller, the ordinary SID and
+the runtime digest, and exactly one `sing-box.exe` that broker started, from a
+private `ProgramData\vpn-control-vpn-<uuid>` stage, with the runtime's own bytes,
+elevated the same. Parents are recorded, never assumed; the broker's console is
+recorded beside them. A census the job cannot take ends the job UNKNOWN with no
+collector. The collector holds the broker, runtime and controller handles,
+publishes the ready record, and once both privileged handles signal after the
+product's own off, the off record; then it waits for the owner's hold. Folder and
+file must be machine-written, and the stages join both records to the lease and
+the product source the row runs (which the worker request does not carry).
+Between the records the direct sampler runs, then the product's own `off`; the off
+record proves exactly the approved broker and runtime ended, with no broad process
+stop. The closing census, the fixture stop and quit follow; the driver then hands
+its result to the hold, which the job's release program frees. The receipt keeps
+`tun.collectors` and `tun.broker` (controller, broker, runtime, parents, the
+console). Collect passes the row only with the decision's own input terminal
+(approve, prompt closed): the receipt proves the approved broker, not who typed the
+credential. A grant whose prompt expired (`CANCELLED`) or that ended with a code it
+does not expect closes by its census alone and ends 1, its hold retired unused,
+since no collector was asked. Once its collector was asked, any failure parks:
+the collector waits on the hold, which only a passed driver releases.
+
+Refused before any journal: `find-best-grant` and `find-best-deny`, with
+`windows_scenario_tun_find_best_unproven`: Find Best validates every candidate
+before it prepares the broker, so its prompt follows the pending event by an
+unmeasured time the decision's 30 s gate may not cover, the decision table has no
+find-best row, and which location a Find Best in VPN mode leaves selected after a
+denial is unread. The grant's collector route is the restart grant's own. Admission
+treats any `-deny` name as a deny row, so without a decision row and its join it
+stays refused even if that refusal is lifted. The TUN fault half of
+`prepare-commit-recovery` and the TUN config halves of `generated-custom-config`
+and `large-config` still have no row.
 
 The direct sampler is the TUN traffic tool: plain HTTP to `198.18.0.1:80` with no
 SOCKS step, under the ordinary token, answered by the row's own loopback upstream
@@ -1177,7 +1220,7 @@ followed or written, with A and pending B intact; and during a session the broke
 single-instance pipe refuses a second same-user client (`ERROR_PIPE_BUSY`) and a
 same-name instance (`ERROR_ACCESS_DENIED`). A connect-first racer before admission
 is not deterministic, so the peer-PID checks stay with the product's own tests. Both
-need the same approved-broker evidence as the grant rows, so neither has a name yet.
+need case modules on the grant's collector route, so neither has a name yet.
 
 `windows-public-update.<variant>` runs one `update_cases` variant through the
 dedicated driver as the ordinary user. The update server, its CONNECT proxy and
@@ -1635,8 +1678,7 @@ coordinator's argument. `MATRIX_SCENARIOS` is the one reviewed table, built from
 design.md adapter steps 4-8 with the names the code accepts: all 48 Windows
 scenarios and the 16 Windows document scenarios. A scenario whose design rows are not
 all built, or whose only row declares procedures still to do, maps to `()` and stays
-missing: the TUN grant (`TUN(approve)`), fault and config rows (the two grant rows
-exist but are refused at admission), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
+missing: the TUN fault and config rows (no variant exists), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
 is refused before any journal), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
 scenario), and `windows-visual`, which stays on `visual_platform` and
@@ -1648,7 +1690,9 @@ where design.md step 8 adds it; the second real principal of
 run passes only with it observed denied, and one whose probe proved no denial fails
 that scenario alone (`failed-principal`, below). RSP also names `cli-disconnect-long-work` and its part of
 `operation-progress-cancellation`, `windows-scoped-tun.restart-deny` names
-`denial-preserves-active-a`, `windows-proxy-lifecycle.scheduled-refresh` names
+`denial-preserves-active-a`, `windows-scoped-tun.restart-grant` names
+`scoped-uac-tun-traffic` and, beside its other half, `exact-child-stop` and
+`scoped-elevation`, `windows-proxy-lifecycle.scheduled-refresh` names
 `scheduled-without-gui` alone, and `windows-proxy-lifecycle.no-tray-close` names
 `close-detach-traffic` alone and `gui-attach-detach` with `gui-pending`: that row
 proves the attach, a crash and the re-attach, and DESKTOP-001 names a detach apart

@@ -1373,6 +1373,20 @@ class DedicatedDispatchPeer:
         self.harness({"UPDATE_INPUTS": self.inputs, "SYSTEM_COLLECTOR_CLOSE_HOLD": hold_inputs})
         return hold_inputs
 
+    def tun_grant(self, receipts=None):
+        """A TUN grant's close hold, as the host job names it in the harness, and the sources the driver binds it to
+        before any effect: the caller hold and its protocol, and the receipts module of its record handoff, for which
+        ``receipts`` stands in."""
+        for name in ("caller_hold.py", "hold_protocol.py"):
+            self.source("windows_system_collector/" + name, "agent_tools/windows_system_collector/" + name)
+        path = self.source("windows_public_updater/update_receipts.py", "agent_tools/windows_public_updater/update_receipts.py")
+        self.modules[path] = receipts if receipts is not None else types.SimpleNamespace()
+        return {"schemaVersion": 1, "collectorOperationId": "f2217b3c-82c1-4862-bab8-09b8498e7929",
+                "collectorRoot": r"C:\ProgramData\VpnControlOrdinaryTask-2c731e91-c158-4e8a-b779-54076ce85229\system-collector-f2217b3c-82c1-4862-bab8-09b8498e7929",
+                "scope": "tun", "stage": "off", "sourceSha": "a" * 40, "systemContractSourceSha256": dedicated_driver.CONTRACT_SHA,
+                "systemWorkerSourceSha256": dedicated_driver.SYSTEM_WORKER_SHA, "collectorSourceSha256": dedicated_driver.TUN_COLLECTOR_SHA,
+                "receiptsPath": path}
+
     def harness(self, values):
         self.request["harnessPath"] = str(self.SOURCE_ROOT / "admitted-harness.py")
         raw = "\n".join(name + " = " + repr(value) for name, value in values.items()).encode()

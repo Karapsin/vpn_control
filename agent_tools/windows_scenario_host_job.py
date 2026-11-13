@@ -115,6 +115,18 @@ RETURNED_ACTORS_EVENT = "update-returned-cleanup-expected-actors"
 COLLECTOR_MODULES = {"holdProtocol": "hold_protocol", "taskGuard": "task_guard", "nativeBridge": "native_bridge",
                      "native": "native_primitives", "receipts": "receipts", "observer": "broker_observer",
                      "contract": "collector_contract", "worker": "system_worker", "collector": "collector"}
+# A TUN grant's collector: the same chain, with the proxy rows' own observer role and windows_tun_native_observer as its
+# collector. Its one stage, tun, publishes the ready record and, once the broker and its runtime exited after the
+# product's own off, the off record; its close hold is hold_protocol's tun scope, stage off.
+TUN_COLLECTOR_MODULES = {**COLLECTOR_MODULES, "observer": "observer"}
+TUN_STAGE = "tun"
+# The scoped VPN broker of the installed build, which native-helpers.json declares beside the installer helper, and the
+# runtime it stages under ProgramData for its job (windows-vpn-broker.cs: a private vpn-control-vpn-<uuid> folder).
+VPN_BROKER = ("app", "native", "windows-amd64", "vpn-control-vpn-broker.exe")
+VPN_BROKER_OPERATIONS = ["authenticated-runtime-channel"]  # DesktopWindowsVpnHelperAdmission
+_TUN_PIPE = re.compile(r"vpn-control-vpn-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
+_TUN_RUNTIME_IMAGE = re.compile(r"C:\\ProgramData\\vpn-control-vpn-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\sing-box\.exe\Z",
+                                re.IGNORECASE)
 UPDATE_MODULE_ROLES = ("receipts", "server", "fixture_environment", "macos_packaging_jdk_preflight",
                        "prepare_desktop_update_fixture", "broker_observer", "lifecycle", "collector")
 OBSERVED_CHILDREN = ("update-public-serve", "one-public-update-install")
@@ -413,6 +425,9 @@ def layout(operation, context, row):
                      evidenceRoot=PROGRAM_DATA + "\\update-evidence-" + operation)
         for stage in row["update"]["collectorStages"]:
             paths["collector:" + stage] = workspace + "\\system-collector-" + collector_operation(operation, stage)
+    # A TUN grant's one collector: its machine records go under ProgramData\tun-evidence-<operation> (the observer's own).
+    for stage in (row.get("tun") or {}).get("collectorStages", ()):
+        paths["collector:" + stage] = workspace + "\\system-collector-" + collector_operation(operation, stage)
     return paths
 
 
@@ -431,9 +446,12 @@ def decision_id(operation):
 
 
 def update_subfolders(operation, row):
-    """Closed folders of one update row, parents first, with the ordinary user's rights on each."""
+    """Closed folders of one update row or TUN grant, parents first, with the ordinary user's rights on each."""
     if not row.get("update"):
-        return []
+        stages = (row.get("tun") or {}).get("collectorStages", ())
+        # A TUN grant: the collector chain's two folders beside the driver, and its one collector root.
+        return [] if not stages else [*((name, "0x1200a9") for name in UPDATE_FOLDERS),
+                                      *(("system-collector-" + collector_operation(operation, stage), "0x1200a9") for stage in stages)]
     fixture = "mcp-update-fixture-" + fixture_id(operation)
     folders = [(name, "0x1200a9") for name in (*UPDATE_FOLDERS, UPDATE_TLS, fixture, fixture + "\\content",
                                                fixture + "\\content\\packages", fixture + "\\content\\packages\\target")]
@@ -824,6 +842,99 @@ def returned_actors(value, *, need, installed, target_files, sid, session):
     return value["actors"]
 
 
+def vpn_broker(raw, digest, pin):
+    """The scoped VPN broker as the product build declares it in the installed native-helpers.json whose exact bytes its
+    tree pin holds: the artifact's digest and size must be the installed broker's own pin, with the one operation,
+    machine and load policy DesktopWindowsVpnHelperAdmission admits."""
+    if len(raw) > AUTHORITY_BYTES or _sha(raw) != digest:
+        raise ValueError("vpn_broker_manifest_bytes")
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique)
+    artifacts = value.get("artifacts") if type(value) is dict else None
+    found = [item for item in artifacts if type(item) is dict and item.get("name") == VPN_BROKER[-1]] if type(artifacts) is list else []
+    if (len(found) != 1 or found[0].get("sha256") != pin["sha256"] or found[0].get("sizeBytes") != pin["nativeIdentity"]["sizeBytes"]
+            or found[0].get("operations") != VPN_BROKER_OPERATIONS or found[0].get("machine") != "AMD64"
+            or found[0].get("clrHeader") is not False or found[0].get("dependentLoadFlags") != 0x800):
+        raise ValueError("vpn_broker_manifest")
+    return {"path": pin["path"], "sha256": pin["sha256"], "sizeBytes": pin["nativeIdentity"]["sizeBytes"]}
+
+
+def tun_actors(rows, *, serve, worker, cli, broker, runtime_sha256, administrator_sid, sid, session):
+    """A TUN grant's controller, its approved broker and the broker's runtime, live, from one SYSTEM census.
+
+    The serve is the one the owner recorded, and the census must hold it as the worker's own child: live, the installed
+    CLI image, unelevated as the ordinary user in the ordinary session. The controller is the one CLI process the serve
+    relaunched into, or the serve itself. Exactly one broker of the installed image runs, elevated as the approving
+    administrator in the ordinary session, born after the controller, with the controller, the ordinary SID and the
+    bundled runtime's digest as its arguments, as DesktopWindowsVpnHelperAdmission builds them. Exactly one sing-box.exe
+    it started after it runs from a private stage of its own under ProgramData, elevated the same, with the runtime's
+    own bytes. Anything else it started (its console) is recorded. Parents are recorded, never assumed: AppInfo should
+    give the broker its controller. Returns the TUN collector request's three actors and the facts a receipt keeps.
+    """
+    def ordinary(row):
+        return (row["live"] and _same_path(row["image"], cli["path"]) and row["imageSha256"] == cli["sha256"] and row["token"]["sid"] == sid
+                and row["token"]["elevated"] == 0 and row["token"]["sessionId"] == session)
+
+    def elevated(row):
+        return row["token"]["sid"] == administrator_sid and row["token"]["elevated"] == 1 and row["token"]["sessionId"] == session
+    served = [row for row in rows if row["pid"] == serve["pid"]]
+    if (len(served) != 1 or not ordinary(served[0]) or served[0]["creationFileTime"] != serve["creationFileTime"]
+            or served[0]["parentPid"] != worker["pid"] or served[0]["creationFileTime"] <= worker["creationFileTime"]):
+        raise ValueError("collector_tun_serve")
+    relaunched = [row for row in rows if row["parentPid"] == serve["pid"] and row["pid"] != serve["pid"] and row["live"]
+                  and _same_path(row["image"], cli["path"])]
+    if len(relaunched) > 1 or any(not ordinary(row) or row["creationFileTime"] <= serve["creationFileTime"] for row in relaunched):
+        raise ValueError("collector_tun_controller")
+    controller = relaunched[0] if relaunched else served[0]
+    brokers = [row for row in rows if row["live"] and _same_path(row["image"], broker["path"])]
+    if len(brokers) != 1:
+        raise ValueError("collector_tun_broker_count_" + str(min(len(brokers), 9)))
+    found = brokers[0]
+    if (found["imageSha256"] != broker["sha256"] or found["imageSizeBytes"] != broker["sizeBytes"] or len(found["argv"]) != 6
+            or _TUN_PIPE.fullmatch(found["argv"][1]) is None
+            or found["argv"][2:] != [str(controller["pid"]), str(controller["creationFileTime"]), sid, runtime_sha256]):
+        raise ValueError("collector_tun_broker_identity")
+    if not elevated(found):
+        raise ValueError("collector_tun_broker_token")
+    if found["creationFileTime"] <= controller["creationFileTime"]:
+        raise ValueError("collector_tun_broker_generation")
+    # A parent PID outlives its process: only a process born after the broker is its child. One that could not be read
+    # or had exited is counted, never taken for the runtime, which must be found live.
+    named = [row for row in rows if row["parentPid"] == found["pid"] and row["pid"] != found["pid"]]
+    children = [row for row in named if row["live"] and row["creationFileTime"] > found["creationFileTime"]]
+    runtimes = [row for row in children if ntpath.basename(row["image"]).casefold() == "sing-box.exe"]
+    if len(runtimes) != 1:
+        raise ValueError("collector_tun_runtime_count_" + str(min(len(runtimes), 9)))
+    runtime = runtimes[0]
+    if (_TUN_RUNTIME_IMAGE.fullmatch(runtime["image"]) is None or runtime["imageSha256"] != runtime_sha256
+            or [part.casefold() for part in runtime["argv"][1:]] != ["run", "-c", "stdin"]):
+        raise ValueError("collector_tun_runtime_identity")
+    if not elevated(runtime):
+        raise ValueError("collector_tun_runtime_token")
+
+    def actor(row, image, digest, principal):
+        return {"pid": row["pid"], "creationFileTime": row["creationFileTime"], "image": image, "sha256": digest, "sid": principal,
+                "sessionId": session}
+
+    def parent(row, expected):
+        record = row["parent"]
+        known = record["alive"] is True and record["openError"] is None
+        return {"pid": row["parentPid"], "alive": known,
+                "matches": row["parentPid"] == expected["pid"] and (not known or record["creationFileTime"] == str(expected["creationFileTime"]))}
+    actors = {"ownerActor": actor(controller, cli["path"], cli["sha256"], sid),
+              "helperActor": actor(found, broker["path"], broker["sha256"], administrator_sid),
+              "runtimeActor": actor(runtime, runtime["image"], runtime_sha256, administrator_sid)}
+    facts = {"controller": {"pid": controller["pid"], "creationFileTime": controller["creationFileTime"], "relaunched": bool(relaunched)},
+             "broker": {"pid": found["pid"], "creationFileTime": found["creationFileTime"], "sid": administrator_sid, "elevated": 1,
+                        "elevationType": found["token"]["elevationType"], "sessionId": session, "sha256": broker["sha256"],
+                        "argv0MatchesImage": _same_path(found["argv"][0], broker["path"]), "parent": parent(found, controller)},
+             "runtime": {"pid": runtime["pid"], "creationFileTime": runtime["creationFileTime"], "sid": administrator_sid, "elevated": 1,
+                         "elevationType": runtime["token"]["elevationType"], "sessionId": session, "sha256": runtime_sha256,
+                         "stage": ntpath.basename(ntpath.dirname(runtime["image"])).casefold(), "parent": parent(runtime, found)},
+             "auxiliary": sorted(ntpath.basename(row["image"]).casefold() for row in children if row is not runtime),
+             "unreadChildren": sum(1 for row in named if not row["live"])}
+    return actors, facts
+
+
 def reboot_inputs(row, paths, product, *, runtime_authority, preboot=None):
     """A reboot row's closed request: every role a fixed file of this bundle or of the installed product.
 
@@ -1094,6 +1205,9 @@ class Job:
         # as a SYSTEM census found it; and every SeBackupPrivilege read of an owner-only product file, as journaled.
         self.install_helper = self.update_owner = self.install_actors = self.install_facts = None
         self.backup_reads = []
+        # A TUN grant's broker as the installed build declares it, the runtime digest it stages, and what its one
+        # collector stage's SYSTEM census found: controller, broker, runtime and their parents.
+        self.vpn_broker = self.tun_runtime_sha256 = self.tun_facts = None
         self.fixture_file = self.fixture_fingerprint = self.certificate_sha256 = None
         self.document = self.row.get("document")
         self.principal = None  # The LOCAL SERVICE probe of the acceptance row: None until claimed, then its outcome.
@@ -1662,8 +1776,8 @@ class Job:
             raise KnownFailure("publisher_initialize_receipt") from None
         # The SYSTEM collector refuses any other form of its root; read before any task, not when an owner waits on it.
         sid = self.context["ordinarySid"]
-        if self.update and any(by_path[self.paths["collector:" + stage]]["security"] != {"ownerSid": "S-1-5-18", "sddl": COLLECTOR_ROOT_SDDL.format(sid=sid)}
-                               for stage in self.update["collectorStages"]):
+        if any(by_path[self.paths["collector:" + stage]]["security"] != {"ownerSid": "S-1-5-18", "sddl": COLLECTOR_ROOT_SDDL.format(sid=sid)}
+               for stage in self._collector_stages()):
             raise KnownFailure("collector_root_policy")
         self.directory_pins = pins
         self.published = True
@@ -1959,6 +2073,8 @@ class Job:
                     self._reboot_pins(installed)
             if self.row.get("proxy"):
                 self._proxy_files()
+            if self._tun_grant():
+                self._publish_tun_grant()
             if self.document:
                 self._document_files()
             if self.row.get("sshRelay"):
@@ -2086,6 +2202,35 @@ class Job:
             raise KnownFailure("preboot_checkpoint_changed")
         self.preboot_pins = {"directories": directories, "checkpoint": pins[0]}
 
+    def _publish_tun_grant(self):
+        """A TUN grant's collector forms, its broker and the runtime that broker stages, all read before any task: its
+        owner waits on that collector with no deadline, so a refusal found after launch would leave it waiting for good.
+
+        The request is published as the owner was, so the owner's pin shows the form the collector will read it in; the
+        published observer is the collector the pinned contract names for scope tun; the broker is the one the installed
+        native-helpers.json declares, read once over the agent against its tree pin, and that same record's runtime
+        authority is the runtime this job extracted from the installed jar, the bytes the broker stages.
+        """
+        sid = self.context["ordinarySid"]
+        if self.file_pins["owner"]["security"] != {"ownerSid": "S-1-5-18", "sddl": COLLECTOR_FILE_SDDL.format(sid=sid)}:
+            raise KnownFailure("collector_file_policy")
+        if self.file_pins["collector"]["sha256"] != self._load("windows_system_collector/collector_contract").COLLECTORS["tun"]:
+            raise KnownFailure("tun_collector_source")
+        held = {pin["path"].casefold(): pin for pin in self.installed_tree["filePins"]}
+        root = self.paths["installed"]
+        broker = held.get((root + "\\" + "\\".join(VPN_BROKER)).casefold())
+        manifest = held.get((root + "\\" + "\\".join(RUNTIME_AUTHORITY)).casefold())
+        if broker is None or manifest is None:
+            raise KnownFailure("installed_vpn_broker")
+        try:
+            raw = self.read_guest_file(manifest["path"], AUTHORITY_BYTES)
+            found, authority = vpn_broker(raw, manifest["sha256"], broker), runtime_authority(raw, manifest["sha256"])
+        except Exception:  # Read-only: a lost reply or other bytes changed nothing in the guest.
+            raise KnownFailure("installed_vpn_broker") from None
+        if authority != self.file_pins[self._load("windows_scenario_proxy").RUNTIME_ROLE]["sha256"]:
+            raise KnownFailure("installed_runtime_authority")
+        self.vpn_broker, self.tun_runtime_sha256 = found, authority
+
     def _install_helper(self):
         """The base install's helper image: its tree pin, and the product build's own record of it in the installed
         native-helpers.json, read once over the agent against that file's tree pin. Read-only, before any task."""
@@ -2143,9 +2288,16 @@ class Job:
         tun = None if not self.row.get("tun") else {
             "administratorSid": self.administrator_sid, "decisionId": decision_id(self.op),
             "collectorSourceSha256": self._load("windows_system_collector/collector_contract").COLLECTORS["tun"]}
+        # A grant's close hold names its one collector before the task runs, from this job's own pins of its chain.
+        hold = None if not self._tun_grant() else {
+            "schemaVersion": 1, "collectorOperationId": collector_operation(self.op, TUN_STAGE),
+            "collectorRoot": self.paths["collector:" + TUN_STAGE], "scope": "tun", "stage": "off",
+            "sourceSha": self.plan["product"]["sourceSha"], "systemContractSourceSha256": self.file_pins["collector_contract"]["sha256"],
+            "systemWorkerSourceSha256": self.file_pins["system_worker"]["sha256"],
+            "collectorSourceSha256": self.file_pins["collector"]["sha256"], "receiptsPath": self.paths["file:receipts"]}
         try:
             generated = proxy.files(variant, operation=self.op, paths=self.paths, runtime_sha256=runtime["sha256"],
-                                    source_sha=self.plan["product"]["sourceSha"], admissions=admissions, tls=tls, tun=tun)
+                                    source_sha=self.plan["product"]["sourceSha"], admissions=admissions, tls=tls, tun=tun, hold=hold)
         except (ValueError, KeyError):
             raise KnownFailure("proxy_files_unbuilt") from None
         if [role for role, _ in self.row["generated"]] != list(generated):
@@ -2285,9 +2437,9 @@ class Job:
         """Read the fixed status file; a miss proves nothing and never ends the job.
 
         The host copy also says whether this scenario's UAC decision has its input terminal, so a prompt event
-        stays pending until then. An update row's collector need is served here, between two polls of the run,
-        and only while the run is open and the same status names no parked file: a parked owner is reported,
-        never touched, and once the run has returned nothing is started for its owner.
+        stays pending until then. An update row's or a TUN grant's collector need is served here, between two polls
+        of the run, and only while the run is open and the same status names no parked file: a parked owner is
+        reported, never touched, and once the run has returned nothing is started for its owner.
         """
         path = self.workspace + "\\scenario-status.json"
         try:
@@ -2302,7 +2454,7 @@ class Job:
         temporary = self.data / "status.json.new"
         temporary.write_bytes((json.dumps(value, sort_keys=True) + "\n").encode())
         os.replace(temporary, self.data / "status.json")
-        if self.update and serve and value.get("parkedFiles") == []:
+        if (self.update or self._tun_grant()) and serve and value.get("parkedFiles") == []:
             self._serve_needs(value.get("nativeNeeds"))
         if ((self.document or {}).get("principalProbe") and serve and self.principal is None and value.get("parkedFiles") == []
                 and type(value.get("pendingKinds")) is list and PRINCIPAL_WINDOW in value["pendingKinds"]):
@@ -2409,7 +2561,7 @@ class Job:
             if type(need) is not dict or type(need.get("stage")) is not str or need["stage"] in self.collected:
                 continue
             stage = need["stage"]
-            if stage not in self.update["collectorStages"]:
+            if stage not in self._collector_stages():
                 raise Unknown("collector_stage_unserved:" + token(stage))
             for key in ("jobId", "productOperationId"):
                 if need.get(key) is not None and (type(need[key]) is not str or _UUID.fullmatch(need[key]) is None):
@@ -2442,6 +2594,16 @@ class Job:
             record["release"] = self._collector_release(stage, request, pin, proof, terminal, source, result)
         return record
 
+    def _collector_stages(self):
+        """The SYSTEM collector stages this row's owner may ask for: an update row's, or a TUN grant's one."""
+        if self.update:
+            return self.update["collectorStages"]
+        return (self.row.get("tun") or {}).get("collectorStages", ())
+
+    def _tun_grant(self):
+        """A TUN row whose approved broker and runtime its one SYSTEM collector observes from ready to off."""
+        return not self.update and TUN_STAGE in self._collector_stages()
+
     def _grant(self):
         """A row whose owner hands a committed install to the helper: its collectors observe that installer job."""
         return "authorization" in self.update["collectorStages"]
@@ -2463,12 +2625,18 @@ class Job:
         denied install: the install child's reply and the product's not-started disposition, which the product grants its
         owner alone, so the publisher opens it through SeBackupPrivilege, enabled on its own thread for that open only;
         after a handoff, the job's protected receipt. returned-cleanup: the case's own record of the actors it expects gone.
+        tun, a TUN grant's one stage: the owner's native need in place of its child events, a census of the CLI image
+        and of the scoped broker with every process it started, and the product's runtime config in its workspace.
         """
-        grant, deny = self._grant(), stage == "terminal-actors" and not self._grant()
+        tun = stage == TUN_STAGE
+        grant, deny = (False, False) if tun else (self._grant(), stage == "terminal-actors" and not self._grant())
         fields = {"childStdoutLabels": ["one-public-update-install"] if deny else [], "readDisposition": deny,
                   "productWorkspace": self.paths["productWorkspace"], "census": None, "productPins": [],
                   "returnedActors": stage == "returned-cleanup"}
-        if stage == "before-install" and grant:
+        if tun:
+            fields.update(census=[{"image": self.paths["cli"]}, {"image": self.vpn_broker["path"], "children": True}],
+                          productPins=[self.paths["productWorkspace"] + "\\runtime-config.json"], tunNeed=True)
+        elif stage == "before-install" and grant:
             fields["census"] = {"image": self.paths["cli"]}
         elif stage == "authorization":
             fields["census"] = {"image": self.install_helper["path"]}
@@ -2528,13 +2696,21 @@ class Job:
         if reads:
             # The publisher's own journal of every SeBackupPrivilege open it made for this stage, as validated above.
             self._keep("collectors/" + stage + "/backup-reads.json", (json.dumps(reads, sort_keys=True) + "\n").encode())
+        # A TUN grant's owner asks once, naming the product's own operation of the need the status reported.
+        asked = [event(name, UPDATE_NEED)["value"] for name in sorted(files)
+                 if re.fullmatch(r"event-[0-9]{6}-" + UPDATE_NEED + r"\.json", name)] if tun else []
+        if tun and (len(asked) != 1 or asked[0].get("stage") != TUN_STAGE
+                    or asked[0].get("productOperationId") != need.get("productOperationId")):
+            raise ValueError("collector_tun_need")
         return {"owner": {"pid": intent["ownerPid"], "birth": intent["ownerBirthFileTimeUtc"]},
                 "worker": {"pid": submitted["value"]["pid"], "birth": submitted["value"]["birthFileTimeUtc"]},
                 "children": labels, "stdout": stdout, "dispositions": dispositions, "census": census, "productPins": pins,
-                "returned": returned}
+                "returned": returned, "need": asked[0] if tun else None}
 
     def _collector_request(self, stage, need, collector, root, observed):
         """One request the frozen contract admits: the task's live actors, its exact pins and this stage's inputs only."""
+        if stage == TUN_STAGE:
+            return self._tun_collector_request(collector, root, observed)
         contract = self._load("windows_system_collector/collector_contract")
         sid, session = self.context["ordinarySid"], self.context["ordinarySessionId"]
         python = self.python_tree
@@ -2635,6 +2811,75 @@ class Job:
             self._keep("collectors/authorization/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
         return request
 
+    def _tun_collector_request(self, collector, root, observed):
+        """A TUN grant's one request, which the frozen contract admits for scope tun and windows_tun_native_observer reads.
+
+        Its actors come from the SYSTEM census alone (tun_actors): the controller the owner's recorded serve leads to,
+        the broker elevated as the approving administrator that names that controller, and that broker's runtime. The
+        owner supplies only what binds the records to its lease: the product's operation and request, its controller ID
+        and its serve. The product config is the SYSTEM read pin of the workspace's runtime-config.json. The close hold
+        is the one the harness named before the task: scope tun, stage off.
+        """
+        contract = self._load("windows_system_collector/collector_contract")
+        sid, session = self.context["ordinarySid"], self.context["ordinarySessionId"]
+        python = self.python_tree
+        powershell = next(pin for pin in self.read_pins if pin["path"] == POWERSHELL_PATH)
+        interpreter = next(pin for pin in python["filePins"] if pin["path"] == self.paths["pythonExe"])
+
+        def actor(pid, birth, image, digest):
+            if type(pid) is not int or pid <= 0 or not isinstance(birth, str) or re.fullmatch(r"[1-9][0-9]{0,19}", birth) is None:
+                raise ValueError("collector_actor")
+            return {"pid": pid, "creationFileTime": int(birth), "image": image, "sha256": digest, "sid": sid, "sessionId": session}
+        task = {"ownerActor": actor(observed["owner"]["pid"], observed["owner"]["birth"], POWERSHELL_PATH, powershell["sha256"]),
+                "workerActor": actor(observed["worker"]["pid"], observed["worker"]["birth"], self.paths["pythonExe"], interpreter["sha256"]),
+                "ownerSourcePin": self.file_pins["owner"], "workerSourcePin": self.file_pins["worker"],
+                "bootstrapRequestPin": self.request_pin, "workerRequestPin": self.worker}
+        argv = contract.task_argv(task)
+        task.update(ownerArgv=argv["owner"], workerArgv=argv["worker"])
+        need = observed["need"]
+        serve = need.get("serve")
+        if (type(serve) is not dict or set(serve) != {"pid", "birthFileTimeUtc"}
+                or not all(isinstance(need.get(key), str) and _UUID.fullmatch(need[key]) for key in ("originRequestId", "controllerId"))):
+            raise ValueError("collector_tun_need")
+        cli = next(pin for pin in self.installed_tree["filePins"] if pin["path"] == self.paths["cli"])
+        actors, facts = tun_actors(observed["census"], serve=actor(serve.get("pid"), serve.get("birthFileTimeUtc"), self.paths["cli"], cli["sha256"]),
+                                   worker=task["workerActor"], cli={"path": self.paths["cli"], "sha256": cli["sha256"]}, broker=self.vpn_broker,
+                                   runtime_sha256=self.tun_runtime_sha256, administrator_sid=self.administrator_sid, sid=sid, session=session)
+        pin = observed["productPins"][0]
+        caller = self.file_pins["caller_hold"]
+        modules = {role: {"path": self.paths["file:" + name], "sha256": self.file_pins[name]["sha256"]} for role, name in TUN_COLLECTOR_MODULES.items()}
+        request = {"schemaVersion": 1, "operationId": collector, "ordinaryTaskOperationId": self.op, "scope": "tun",
+                   "operationRoot": root, "requestPath": root + "\\collector-request.json",
+                   "context": {"bootIdentifier": self.context["bootIdentifier"], "bootFileTimeUtc": self.context["bootFileTimeUtc"],
+                               "machineGuid": self.context["machineGuid"], "hardwareUuid": self.raw_context["boot"]["hardwareUuid"].lower(),
+                               "ordinarySid": sid, "ordinarySessionId": session, "systemSessionId": 0},
+                   "pythonRuntime": self._python_runtime(),
+                   "filePins": [*(self.file_pins[name] for name in TUN_COLLECTOR_MODULES.values()), *python["filePins"],
+                                self.file_pins["owner"], self.file_pins["worker"], self.request_pin, self.worker, caller],
+                   "directoryPins": [*self.directory_pins, *python["directoryPins"]], "treePins": [python["tree"]], "modules": modules,
+                   "collectorRequest": {"schemaVersion": 1, "ordinaryTaskOperationId": self.op, "productOperationId": need["productOperationId"],
+                                        "originRequestId": need["originRequestId"], "controllerId": need["controllerId"],
+                                        "collectorSourceSha256": self.file_pins["collector"]["sha256"], "sourceSha": self.plan["product"]["sourceSha"],
+                                        "context": {"ordinarySid": sid, "ordinarySessionId": session, "approvingAdminSid": self.administrator_sid,
+                                                    "bootIdentifier": self.context["bootIdentifier"], "programData": PROGRAM_DATA,
+                                                    "workspace": self.paths["productWorkspace"]},
+                                        "guiActor": None, **actors, "helperImagePath": self.vpn_broker["path"],
+                                        "helperImageSha256": self.vpn_broker["sha256"], "runtimeImagePath": actors["runtimeActor"]["image"],
+                                        "runtimeImageSha256": self.tun_runtime_sha256,
+                                        "configuration": {"path": pin["path"], "sha256": pin["sha256"], "sizeBytes": pin["nativeIdentity"]["sizeBytes"]}},
+                   "rawStreamLimitBytes": COLLECTOR_RAW_LIMIT, "ordinaryTask": task,
+                   "closeHold": {"schemaVersion": 1, "callerSourcePin": caller, "scope": "tun", "stage": "off",
+                                 "sourceSha": self.plan["product"]["sourceSha"],
+                                 "holdReadyPath": self.operation_root + "\\collector-hold-" + collector + ".ready.json",
+                                 "releasePath": root + "\\close-release.json"}}
+        contract.validate(request, {"contract": self.file_pins["collector_contract"]["sha256"], "worker": self.file_pins["system_worker"]["sha256"]},
+                          self._lower_context())
+        # The collector's own admission of the request it will read, before it is published: a refusal here starts nothing.
+        self._load("windows_tun_native_observer").validate(request["collectorRequest"], self._load("windows_public_updater/update_receipts"))
+        self.tun_facts = facts
+        self._keep("collectors/" + TUN_STAGE + "/census.json", (json.dumps(observed["census"], sort_keys=True) + "\n").encode())
+        return request
+
     def _lower_context(self):
         """The collector contract's guest context: canonical lowercase GUIDs, which the guest itself never reports."""
         boot = self.raw_context["boot"]
@@ -2718,7 +2963,9 @@ class Job:
         need(result["closing"].get("sourceClosing") is True and type(result["closing"].get("files")) is int
              and result["closing"]["files"] == len(r["filePins"]) + 1
              and re.fullmatch("[a-f0-9]{64}", result["closing"].get("completeFileDigestSha256", "")), "collector-child-complete-source-closing")
-        need(type(result["publications"]) is list and len(result["publications"]) == 1, "collector-finite-publication-count")
+        # An update stage publishes its one record; a TUN grant's collector its ready and then its off record.
+        need(type(result["publications"]) is list and len(result["publications"]) == (1 if r["scope"] == "update" else 2),
+             "collector-finite-publication-count")
         h, value = r["closeHold"], result["callerHold"]
         if h is None:
             need(value is None, "collector-unrequested-caller-hold")
@@ -2798,7 +3045,7 @@ class Job:
              "taskArguments": task["policyExpected"]["Arguments"], "deadlineSeconds": self.row["deadlineSeconds"],
              # A BSTR is UTF-16: the planner's UTF-8 declaration describes bytes COM never sees.
              "taskXml": re.sub(r"\A<\?xml[^>]*\?>\s*", "", task["xmlUtf8"]),
-             "uacKinds": [self.row["uac"]["event"]] if self.row.get("uac") else [], "nativeNeeds": bool(self.update)}
+             "uacKinds": [self.row["uac"]["event"]] if self.row.get("uac") else [], "nativeNeeds": bool(self.update) or self._tun_grant()}
         terminal, pid = self.guest_program("system-run", self._rendered(lambda: self._system_run_source(m)),
                                            budget=self.row["deadlineSeconds"] + RUN_MARGIN_SECONDS,
                                            poll=STATUS_POLL_SECONDS, on_poll=self._on_status)
@@ -2990,6 +3237,15 @@ class Job:
                         receipt["update"]["installer"] = self.install_facts
                     if self.backup_reads:
                         receipt["update"]["backupReads"] = len(self.backup_reads)
+                if self._tun_grant():
+                    # What the first native runs must show: the controller, the approved broker and its runtime as the
+                    # SYSTEM census found them, elevated as the approving administrator, and their parents as recorded.
+                    receipt["tun"] = {"variant": self.row["tun"]["variant"],
+                                      "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],
+                                                                                           "released": record["release"] is not None})
+                                                     for stage, record in sorted(self.collected.items())}}
+                    if self.tun_facts is not None:
+                        receipt["tun"]["broker"] = self.tun_facts
                 raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
                 if len(raw) > RECEIPT_BYTES:
                     raise ValueError("receipt_bound")

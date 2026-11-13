@@ -799,10 +799,10 @@ class PacketTests(unittest.TestCase):
                 self.assertIn(row["sidField"], source)
                 if source is cases:
                     self.assertIn(row["value"], cases)
-        self.assertEqual({"restart-deny"}, set(dedicated_driver.TUN_VARIANTS))
-        self.assertEqual({"windows-scoped-tun." + variant for variant in dedicated_driver.TUN_VARIANTS} | {"windows-scoped-tun.restart-grant"},
+        self.assertEqual({"restart-deny", "restart-grant"}, set(dedicated_driver.TUN_VARIANTS))
+        self.assertEqual({"windows-scoped-tun." + variant for variant in dedicated_driver.TUN_VARIANTS},
                          {name for name in decision.ROWS if name.startswith("windows-scoped-tun.")},
-                         "restart-grant has its answer, and the dispatcher admits it once the collector stage exists")
+                         "the driver runs exactly the TUN variants the table answers: the denial and, behind its collector, the grant")
         # A returned CANCELLED is a known failure only for the synchronous grants: the async waits and protected storage park.
         self.assertEqual(update_cases.GRANT_VARIANTS - {"transport-loss"},
                          {name.split(".", 1)[1] for name, row in decision.ROWS.items() if name.startswith("windows-public-update.") and row["decision"] == "approve"}
@@ -2296,7 +2296,7 @@ class CancelledGrantDriverTests(unittest.TestCase):
             dedicated_driver.run(self.owner, "windows-public-update")
         self.assertNotIn("dedicated-update-grant-cancelled-known", [call[0] for call in self.owner.calls if isinstance(call, tuple)])
 
-    def tun_owner(self, variant, *, finish, inner=None, begin=None, closing=None, **changes):
+    def tun_owner(self, variant, *, finish, inner=None, begin=None, closing=None, hold=True, **changes):
         state, _ = self.owner.lifecycle("find-best-success")
         self.owner.inputs["variant"] = variant
         runtime = self.owner.inputs["runtime"]
@@ -2306,12 +2306,16 @@ class CancelledGrantDriverTests(unittest.TestCase):
         # The join the driver checks; windows_tun_stages.begin checks the rest of the closed set.
         self.owner.inputs["tun"] = {"schemaVersion": 1, "variant": variant if inner is None else inner,
                                     "installedAdmissionArtifactId": runtime["installedAdmissionArtifactId"], "ordinaryContextArtifactId": "peer-context",
-                                    "runtimeConfigPath": str(PureWindowsPath(runtime["workspace"]) / "runtime-config.json"), **changes}
+                                    "runtimeConfigPath": str(PureWindowsPath(runtime["workspace"]) / "runtime-config.json"),
+                                    **({"collectorSourceSha256": dedicated_driver.TUN_COLLECTOR_SHA} if variant.endswith("grant") else {}), **changes}
         self.owner.modules[path] = types.SimpleNamespace(
             begin=begin or (lambda *args: self.owner.calls.append(("tun-begin", args[2]["variant"], args[5].WindowsNative())) or "lease"),
             finish=finish, closing=closing or (lambda *args: self.owner.calls.append(("tun-closing", args[1], args[2].WindowsNative()))),
             settled=lambda lease: tun_stages.settled(lease))
-        self.owner.harness({"LIFECYCLE_INPUTS": self.owner.inputs, "SYSTEM_COLLECTOR_CLOSE_HOLD": None})
+        # A grant's harness names its collector's close hold; no other row's does. The bundle holds its sources either way.
+        grant_hold = self.owner.tun_grant() if variant.endswith("grant") else None
+        close_hold = grant_hold if hold else None
+        self.owner.harness({"LIFECYCLE_INPUTS": self.owner.inputs, "SYSTEM_COLLECTOR_CLOSE_HOLD": close_hold})
         return state
 
     def sampler(self):
@@ -2348,15 +2352,17 @@ class CancelledGrantDriverTests(unittest.TestCase):
 
     def test_a_known_tun_end_that_is_not_the_variants_own_closes_by_its_census_and_exits_one(self):
         # Each end as the real finish leaves it, closed by the real closing: a denial's refused preparation, and a grant
-        # whose prompt expired, which brought no TUN up and so has no off of its own. The driver admits that grant here
-        # only to reach the path its collector stage will open.
+        # whose prompt expired, which brought no TUN up and so has no off of its own and asked no collector: its armed
+        # close hold retires unused.
         from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer
         for variant, code, outcome, known in (("restart-deny", "RUNTIME_FAILED", {"knownFailure": "RUNTIME_FAILED"}, "RUNTIME_FAILED"),
                                               ("restart-grant", "CANCELLED", {"cancelled": True}, "cancelled")):
-            with self.subTest(variant=variant), mock.patch.object(dedicated_driver, "TUN_VARIANTS", frozenset({"restart-deny", "restart-grant"})):
+            with self.subTest(variant=variant):
                 self.owner = DedicatedDispatchPeer(self.owner.root)
 
-                def finish(owner, lease, *args, code=code, outcome=outcome):
+                def finish(owner, lease, *args, code=code, outcome=outcome, **options):
+                    # A grant's finish gets the record handoff; no TUN came up, so it is never asked.
+                    self.assertEqual(variant.endswith("grant"), set(options) == {"handoff", "receipts"})
                     lease.update(finished=True, knownEnd=code)
                     return {"terminal": {"code": code}, "status": {}, "nativeRecord": None, **outcome}
                 self.tun_owner(variant, finish=finish, begin=lambda *args, variant=variant: self.lease(variant), closing=self.census_closing,
@@ -2370,6 +2376,13 @@ class CancelledGrantDriverTests(unittest.TestCase):
                 self.assertIn(("public", "quit"), calls)
                 closed = [call[1] for call in calls if isinstance(call, tuple) and call[0] == "dedicated-proxy-lifecycle-known-closed"]
                 self.assertEqual([known], [value.get("knownFailure") for value in closed])
+                grant = variant.endswith("grant")
+                self.assertEqual(grant, "arm" in calls)
+                self.assertNotIn("wait-release", calls)
+                self.assertFalse(any(isinstance(call, tuple) and call[0] == "driver-completed" for call in calls))
+                if grant:
+                    self.assertIsNone(self.owner.caller_collection_hold, "Owner.finish does not park on a hold no collector was asked to use")
+                    self.assertEqual("armed", self.owner.retired_collection_hold.state)
 
     def test_a_grant_runs_only_the_reviewed_sampler_beside_the_driver(self):
         # The sampler is the one helper a grant executes; like every other role it is held at its reviewed digest.
@@ -2380,16 +2393,16 @@ class CancelledGrantDriverTests(unittest.TestCase):
         cases = (("other-bytes", beside, b"print('another sampler')\n", "dedicated-reviewed-source-pin"),
                  ("elsewhere", elsewhere, reviewed.read_bytes(), "dedicated-tun-sampler-role"),
                  ("absent", None, None, "dedicated-tun-sampler-role"))
-        with mock.patch.object(dedicated_driver, "TUN_VARIANTS", frozenset({"restart-deny", "restart-grant"})):
-            for name, path, raw, reason in cases:
-                with self.subTest(case=name):
-                    self.owner = DedicatedDispatchPeer(self.owner.root)
-                    if path is not None:
-                        self.owner.by_path[path.casefold()] = DedicatedPinPeer(path, raw)
-                    self.tun_owner("restart-grant", finish=lambda *args: {}, **({} if path is None else {"samplerPath": path}))
-                    with self.assertRaisesRegex(ValueError, "^" + reason + "$"):
-                        dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
-                    self.assertNotIn("start-runtime", self.owner.calls)
+        for name, path, raw, reason in cases:
+            with self.subTest(case=name):
+                self.owner = DedicatedDispatchPeer(self.owner.root)
+                if path is not None:
+                    self.owner.by_path[path.casefold()] = DedicatedPinPeer(path, raw)
+                self.tun_owner("restart-grant", finish=lambda *args: {}, **({} if path is None else {"samplerPath": path}))
+                with self.assertRaisesRegex(ValueError, "^" + reason + "$"):
+                    dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
+                self.assertNotIn("start-runtime", self.owner.calls)
+                self.assertNotIn("arm", self.owner.calls)
         self.assertEqual(hashlib.sha256(reviewed.read_bytes()).hexdigest(), dedicated_driver.SAMPLER_SHA)
 
     def test_tun_inputs_naming_another_install_context_or_config_start_nothing(self):
@@ -2403,10 +2416,19 @@ class CancelledGrantDriverTests(unittest.TestCase):
                     dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
                 self.assertNotIn("start-runtime", self.owner.calls)
 
-    def test_a_tun_grant_waits_for_its_collector_and_starts_nothing(self):
-        # An approved grant ends only with its native ready record; without one it would park over VPN B and a live broker.
-        self.tun_owner("restart-grant", finish=lambda *args: {"cancelled": True})
-        with self.assertRaisesRegex(ValueError, "^dedicated-finite-proxy-variants-only$"):
+    def test_a_tun_grant_without_its_collectors_close_hold_starts_nothing(self):
+        # An approved grant ends only with its collector's ready and off records, behind that collector's close hold:
+        # a harness that names no hold would leave VPN B and a live broker with no collector to prove them. Until the
+        # collector route existed the driver refused every grant (dedicated-finite-proxy-variants-only).
+        from agent_tools.tests.test_windows_ordinary_task import DedicatedDispatchPeer
+        self.tun_owner("restart-grant", finish=lambda *args: {"cancelled": True}, hold=False, samplerPath=self.sampler())
+        with self.assertRaisesRegex(ValueError, "^hold-closed-input-schema$"):
+            dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
+        self.assertNotIn("start-runtime", self.owner.calls)
+        self.owner = DedicatedDispatchPeer(self.owner.root)
+        self.tun_owner("restart-deny", finish=lambda *args: {})
+        self.owner.harness({"LIFECYCLE_INPUTS": self.owner.inputs, "SYSTEM_COLLECTOR_CLOSE_HOLD": self.owner.tun_grant()})
+        with self.assertRaisesRegex(ValueError, "^proxy-has-no-system-collector$"):
             dedicated_driver.run(self.owner, "windows-proxy-lifecycle")
         self.assertNotIn("start-runtime", self.owner.calls)
 

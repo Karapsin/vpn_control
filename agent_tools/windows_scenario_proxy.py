@@ -4,8 +4,9 @@ Pure functions of the row's variant, the operation's guest paths and the install
 runtime's digest: the literal harness the dedicated driver reads, the TLS material of
 the in-guest loopback fixture and the traffic sampler's input. A TUN row's stage inputs
 come only from this job: its context stage's administrator SID, the one UAC decision
-of its operation and the pinned TUN collector source. The host job publishes
-what they return and pins it like any other file. Standard library only: no listener,
+of its operation and the pinned TUN collector source; a grant's harness also names the
+close hold of that collector, which the host job builds from its own pins. The host job
+publishes what they return and pins it like any other file. Standard library only: no listener,
 no process and no clock but the one passed in. The private key exists only in the job's
 memory and the guest workspace (ProgramData, read-only for the ordinary user): QGA wire
 files keep replies, never the write requests that carry it, so it never reaches host disk.
@@ -212,10 +213,16 @@ def tun_inputs(variant, *, paths, admissions, tun):
     return value
 
 
-def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions, tun=None):
-    """The literal harness: one docstring and the two constants the dedicated driver allows."""
+def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions, tun=None, hold=None):
+    """The literal harness: one docstring and the two constants the dedicated driver allows.
+
+    SYSTEM_COLLECTOR_CLOSE_HOLD is a TUN grant's close hold (the inputs hold_protocol.validate_inputs takes) and None
+    for every other row: only a grant has a SYSTEM collector, and only for it does the driver arm a hold.
+    """
     if variant not in VARIANTS + TUN_VARIANTS or (tun is not None) != (variant in TUN_VARIANTS):
         raise ValueError("proxy_variant")
+    if (type(hold) is dict) != (variant in TUN_GRANT_VARIANTS) or (hold is not None and type(hold) is not dict):
+        raise ValueError("proxy_collector_hold")
     workspace = paths["productWorkspace"]
     runtime = {"schemaVersion": 1, "workspace": workspace, "fixtureRoot": paths["operationRoot"] + "\\fixture",
                "operationId": operation, "fixtureWorkerPath": paths["file:fixture"], "socksSourcePath": paths["file:socks"],
@@ -255,14 +262,14 @@ def harness(variant, *, operation, paths, runtime_sha256, source_sha, admissions
         value["tun"] = tun_inputs(variant, paths=paths, admissions=admissions, tun=tun)
     family = "windows-scoped-tun." if variant in TUN_VARIANTS else "windows-proxy-lifecycle."
     text = ('"""Literal inputs of ' + family + variant + ' for one operation; no other statement runs."""\n'
-            "LIFECYCLE_INPUTS = " + ascii(value) + "\nSYSTEM_COLLECTOR_CLOSE_HOLD = None\n")
+            "LIFECYCLE_INPUTS = " + ascii(value) + "\nSYSTEM_COLLECTOR_CLOSE_HOLD = " + ascii(hold) + "\n")
     return text.encode("ascii")
 
 
-def files(variant, *, operation, paths, runtime_sha256, source_sha, admissions, tls, tun=None):
+def files(variant, *, operation, paths, runtime_sha256, source_sha, admissions, tls, tun=None, hold=None):
     """Every generated file of one row, by role, from material made once by ``material``."""
     found = {"harness": harness(variant, operation=operation, paths=paths, runtime_sha256=runtime_sha256,
-                                source_sha=source_sha, admissions=admissions, tun=tun),
+                                source_sha=source_sha, admissions=admissions, tun=tun, hold=hold),
              "certificate": tls["certificate"], "privateKey": tls["privateKey"], "trustStore": tls["trustStore"]}
     if variant in TRAFFIC_VARIANTS:
         found["trafficInput"] = traffic_input(variant, operation)

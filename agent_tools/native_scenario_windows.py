@@ -162,32 +162,41 @@ def _proxy_row(variant: str) -> dict[str, Any]:
 TUN_VARIANTS = ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant")
 _TUN_FILES = (("agent_tools/windows_tun_stages.py", "tun", "data"),)
 _TUN_SAMPLER = (("agent_tools/windows_tun_direct_sampler.py", "sampler", "data"),)
+# A grant's TUN SYSTEM collector: the read-only observer the pinned contract names for scope tun and the receipts module
+# it and the driver's record handoff read machine records with, beside the collector chain and the caller's close hold.
+_TUN_COLLECTOR = (("agent_tools/windows_public_updater/update_receipts.py", "receipts", "data"),
+                  ("agent_tools/windows_tun_native_observer.py", "collector", "data"))
 # Refused before any journal, each with what is missing.
 _TUN_REFUSED = {
-    # The approved broker runs elevated as the approving administrator, so only the TUN SYSTEM collector's ready and off
-    # records (windows_tun_native_observer) prove its image, its SID and its exact child. No stage of this job discovers the
-    # broker and its runtime for that collector's request, and the dedicated driver has no TUN close hold or record handoff.
-    "restart-grant": "windows_scenario_tun_grant_unproven",
-    "find-best-grant": "windows_scenario_tun_grant_unproven",
     # Find Best validates every candidate before it prepares the broker, so its prompt follows the pending event by an
-    # unmeasured time that the decision's 30 s gate may not cover; the decision table has no find-best row.
+    # unmeasured time that the decision's 30 s gate may not cover; the decision table has no find-best row, and which
+    # location a Find Best in VPN mode leaves selected after a denial is unread. The grant's collector route is the
+    # restart grant's own.
+    "find-best-grant": "windows_scenario_tun_find_best_unproven",
     "find-best-deny": "windows_scenario_tun_find_best_unproven",
 }
 
 
 def _tun_row(variant: str) -> dict[str, Any]:
-    """A proxy-lifecycle row plus the TUN stages, the decision of its prompt and, for a grant, the direct sampler."""
+    """A proxy-lifecycle row plus the TUN stages, the decision of its prompt and, for a grant, the direct sampler and the
+    TUN SYSTEM collector: the host job serves its one stage, tun, when the owner asks for the ready record, and the
+    driver holds the owner until that collector's release."""
     grant = variant.endswith("-grant")
     row = _worker_row("product", "windows-proxy-lifecycle", ("targetPackage",),
-                      _PROXY_FILES + _TUN_FILES + (_TUN_SAMPLER if grant else ()), prior=True, deadline=3600)
-    row.update(proxy={"variant": variant}, tun={"variant": variant},
+                      _PROXY_FILES + _TUN_FILES + ((*_TUN_SAMPLER, *_TUN_COLLECTOR, *_COLLECTOR_FILES) if grant else ()),
+                      prior=True, deadline=3600)
+    row.update(proxy={"variant": variant},
+               tun={"variant": variant, **({"collectorStages": ("tun",), "finalStage": "tun"} if grant else {})},
                generated=(("harness", "proxy-harness.py"), ("certificate", "proxy-localhost.pem"), ("privateKey", "proxy-localhost.key"),
                           ("trustStore", "proxy-trust.jks"), *((("samplerInput", "tun-direct-traffic.json"),) if grant else ())),
                extracted=(("runtimeTool", "sing-box.exe"),), refusal=_TUN_REFUSED.get(variant))
     if not variant.startswith("find-best"):
-        # windows_uac_decision.ROWS answers the restart prompt; collect joins a deny row's own input terminal.
+        # windows_uac_decision.ROWS answers the restart prompt. Collect joins the row's own decision terminal: a deny's,
+        # since an expired prompt is the same CANCELLED as Esc, and a grant's, so a pass names the reviewed approval.
         row["uac"] = {"prompt": "vpn-broker", "decision": "approve" if grant else "deny", "event": "scoped-tun-awaiting-current-input"}
         row["denyJoin"] = not grant
+        if grant:
+            row["approveJoin"] = True
     return row
 
 
@@ -613,12 +622,32 @@ def _admit(root: Path | str, request: Mapping[str, Any],
     plan = native_scenario_execution.ScenarioPlan.from_mapping(request)
     _canonical_uuid(plan.correlation_id, "windows_scenario_correlation_invalid")
     _canonical_uuid(plan.environment, "windows_scenario_environment_invalid")
+    # A TUN grant's prompt is answered only by windows-uac-decision, with this deployment's reviewed profile of that prompt.
+    # Without one its decision refuses and the prompt expires into the grant's CANCELLED, a failed run: the row fails
+    # closed here instead, before any journal. A deny row needs none to start: its run is the prompt windows-uac-review
+    # captures the profile's frame from, and an unanswered denial stays unsettled rather than failed.
+    _need(uac.get("decision") != "approve" or not row.get("tun") or _reviewed_profile(root, plan.environment, uac["prompt"]),
+          "windows_scenario_uac_profile_unreviewed")
     _need(set(plan.artifact_ids) == set(row["artifactKeys"]), "windows_scenario_artifacts_invalid")
     _need(plan.artifact_ids["bundleManifest"] == "sha256-" + plan.bundle_hash, "windows_scenario_bundle_artifact_invalid")
     _binding(root, plan)
     verified_bundle(root, plan, bundle_resolver)
     value = scenario_input(root, plan, row)
     return row, plan, value, admitted_packages(root, plan, row, value)
+
+
+def _reviewed_profile(root: Path | str, deployment: str, prompt: str) -> bool:
+    """Whether windows_uac_decision's own load admits the deployment's reviewed profile of this prompt: local files only,
+    with the same private-file rules and validation its decision applies before any key."""
+    try:
+        from . import windows_uac_decision as uac
+    except ImportError:  # pragma: no cover - MCP CLI fallback executes mcp_server.py as a script.
+        import windows_uac_decision as uac  # type: ignore[no-redef]
+    try:
+        uac._load_profile(Path(root).resolve(strict=True), deployment, prompt)
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def admit_start(root: Path | str, request: Mapping[str, Any],
@@ -1099,7 +1128,7 @@ class NativeScenarioWindowsDriver:
                 raw = base64.b64decode(reply["receipt"], validate=True)
                 summary = self._summary(plan, raw, reply.get("jobExit"))
                 if summary is not None and not self._decision_joined(config, plan, summary):
-                    return None  # A deny row passes only with its decision's own terminal; until then it is unknown.
+                    return None  # A deny row or a TUN grant passes only with its decision's own terminal; until then unknown.
                 if summary is not None:
                     self._pull_evidence(config, plan, data, json.loads(raw).get("evidence"))
         except (OSError, ValueError, KeyError, TypeError, ssh_transport.SshConfigError):
@@ -1107,23 +1136,28 @@ class NativeScenarioWindowsDriver:
         return summary
 
     def _decision_joined(self, config: Any, plan: native_scenario_execution.ScenarioPlan, summary: dict[str, Any]) -> bool:
-        """A passed deny row joins its decision's input terminal: input-ack-only, deny, the prompt closed.
+        """A passed deny row, or a passed TUN grant, joins its decision's input terminal: input-ack-only, its own answer,
+        the prompt closed.
 
         An expired prompt ends as the same public CANCELLED as Esc, so the receipt alone cannot tell a deny from no answer.
+        A grant's receipt proves the approved broker ran as the approving administrator, but not who typed the
+        credential: the join names the reviewed decision as the one approval.
         """
-        uac = _row(plan.scenario_id).get("uac") or {}
-        if uac.get("decision") != "deny" or summary["result"] != "passed":
+        row = _row(plan.scenario_id)
+        uac = row.get("uac") or {}
+        joined_answer = uac.get("decision") == "deny" or (uac.get("decision") == "approve" and row.get("approveJoin") is True)
+        if not joined_answer or summary["result"] != "passed":
             return True
         decision = str(uuid.uuid5(uuid.UUID(plan.correlation_id), "windows-uac-decision"))
         root = _binding(self.root, plan)["spec"]["root"]
         reply = self._send(config, plan.host, _py(_READ_DECISION, root, decision), seconds=_OBSERVE_SECONDS)
         value = reply.get("value") if isinstance(reply, Mapping) and reply.get("state") == "read" else None
         joined = (isinstance(value, Mapping) and set(value) == _DECISION_FIELDS and value["state"] == "input-ack-only"
-                  and value["operationId"] == decision and value["decision"] == "deny" and value["prompt"] == uac["prompt"]
+                  and value["operationId"] == decision and value["decision"] == uac["decision"] and value["prompt"] == uac["prompt"]
                   and value["promptClosed"] is True and value["approvalSucceeded"] is False and value["productOutcomeProved"] is False
                   and value["replayAllowed"] is False and type(value["attempt"]) is int)
         if joined:
-            summary["windows"]["uacDecision"] = "deny-acknowledged-prompt-closed"
+            summary["windows"]["uacDecision"] = uac["decision"] + "-acknowledged-prompt-closed"
         return joined
 
     def _summary(self, plan: native_scenario_execution.ScenarioPlan, raw: bytes, job_exit: Any) -> dict[str, Any] | None:
@@ -1173,7 +1207,7 @@ class NativeScenarioWindowsDriver:
 # each Windows-applicable requirement scenario and the rows whose passed direct and MCP runs together prove it.
 # () is a scenario no built row proves yet, which stays missing; its comment names what design.md wants.
 # windows-visual stays on visual_platform and visual_review; android-48m-heap is no Windows scenario.
-_U, _P = "windows-public-update.", "windows-proxy-lifecycle."
+_U, _P, _T = "windows-public-update.", "windows-proxy-lifecycle.", "windows-scoped-tun."
 _SMK, _CFG, _STR, _QRY = ("windows-packaged-cli-smoke", "windows-disconnected-cli-config", "windows-streaming-client-interrupt",
                           "windows-query-owner-gui-reconnect")
 _DOC, _RSP, _CLD = "windows-document-acceptance", "windows-document-responsive", "windows-document-cold."
@@ -1190,8 +1224,9 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         # RSP brings the owner-held refresh's status, cancel and wait; UPD(install-cancelled) is refused at admission today.
         "operation-progress-cancellation": (_CFG, _STR, _RSP, _P + "find-best-cancel", _U + "download-cancelled", _U + "install-cancelled"),
         "ordinary-user": (_CFG, _P + "find-best-success"),
-        # TUN(approve) and UPD(success-off). The TUN grant rows exist but are refused at admission (windows_scenario_tun_grant_unproven).
-        "scoped-elevation": (),
+        # TUN(approve) and UPD(success-off): each prompt is scoped to its one helper while the app stays unelevated. The
+        # update half counts as every update row does: with the target its job reads back after the task (Job._update_after).
+        "scoped-elevation": (_T + "restart-grant", _U + "success-off"),
         "headless-serve": (_SMK, _P + "find-best-success"),
         # design.md: PRX(gui-pending, no-tray-close). gui-pending proves an attach, a crash and the at-once re-attach under
         # one sampler and one runtime, but a crash is no detach (DESKTOP-001 names them apart). On Windows a GUI detaches
@@ -1219,10 +1254,14 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
     },
     "windows-scoped-vpn": {
         "standard-user-gui-proxy": (_P + "gui-pending",),
-        "scoped-uac-tun-traffic": (),  # TUN(approve): the grant rows are refused at admission (windows_scenario_tun_grant_unproven).
-        "denial-preserves-active-a": ("windows-scoped-tun.restart-deny",),
+        # TUN(approve): the reviewed approval, the broker and its runtime found elevated by the SYSTEM collector, traffic
+        # through the TUN only between its ready and off records.
+        "scoped-uac-tun-traffic": (_T + "restart-grant",),
+        "denial-preserves-active-a": (_T + "restart-deny",),
         "prepare-commit-recovery": (),  # PRX(prepare-failure, commit-readiness-failure) and TUN(fault), which has no row.
-        "exact-child-stop": (),  # PRX(sibling-off) and TUN(approve), whose grant rows are refused at admission.
+        # PRX(sibling-off) and TUN(approve): the product's own off ends exactly the approved broker and runtime, whose
+        # original handles the collector's off record shows signaled, with no broad process stop.
+        "exact-child-stop": (_P + "sibling-off", _T + "restart-grant"),
         "generated-custom-config": (),  # PRX(generated, custom) and TUN(config).
         "large-config": (),  # PRX(large) and TUN(config).
         "dns-ws-ssh-cache-resources": (),  # Reserved: no case module.

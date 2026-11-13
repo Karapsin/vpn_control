@@ -445,11 +445,16 @@ public static class VpnScenarioObserver {
    string image=Image(h);r["image"]=image;r["argv"]=Argv(CommandLine(h));r["token"]=Token(h);
    using(var file=new FileStream(image,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)){using(var sha=SHA256.Create()){r["imageSha256"]=BitConverter.ToString(sha.ComputeHash(file)).Replace("-","").ToLowerInvariant();}r["imageSizeBytes"]=file.Length;}
    r["parent"]=Parent(parent);r["alive"]=WaitForSingleObject(h,0)==258;}finally{CloseHandle(h);}return r;}
- public static List<Dictionary<string,object>> Census(string image){string leaf=Path.GetFileName(image);var rows=new List<uint[]>();
+ public static List<Dictionary<string,object>> Census(string image){return Census(image,false);}
+ // With children, every process the snapshot names as a child of a matched one too, whatever its image: the scoped
+ // broker's staged runtime and its console. A parent PID can outlive its process, so the reader checks birth order.
+ public static List<Dictionary<string,object>> Census(string image,bool children){string leaf=Path.GetFileName(image);var rows=new List<uint[]>();var all=new List<uint[]>();
   IntPtr s=CreateToolhelp32Snapshot(2,0);if(s==new IntPtr(-1))throw new Win32Exception(Marshal.GetLastWin32Error());
   try{var e=new Entry();e.size=(uint)Marshal.SizeOf(typeof(Entry));bool ok=Process32FirstW(s,ref e);
-   while(ok){if(String.Equals(e.name,leaf,StringComparison.OrdinalIgnoreCase))rows.Add(new uint[]{e.pid,e.parent});ok=Process32NextW(s,ref e);}
+   while(ok){all.Add(new uint[]{e.pid,e.parent});if(String.Equals(e.name,leaf,StringComparison.OrdinalIgnoreCase))rows.Add(new uint[]{e.pid,e.parent});ok=Process32NextW(s,ref e);}
    if(Marshal.GetLastWin32Error()!=18)throw new Win32Exception(Marshal.GetLastWin32Error());}finally{CloseHandle(s);}
+  if(children){var parents=new HashSet<uint>();foreach(uint[] row in rows)parents.Add(row[0]);
+   foreach(uint[] row in all){if(parents.Contains(row[1])&&!parents.Contains(row[0])&&row[0]!=0)rows.Add(row);}}
   if(rows.Count>16)throw new InvalidOperationException("PUB_CENSUS_BOUND");
   var found=new List<Dictionary<string,object>>();foreach(uint[] row in rows)found.Add(Describe(row[0],row[1]));return found;}
 }
@@ -475,34 +480,46 @@ function Read-BackupPin([string]$path) {
  }finally{foreach($stream in $streams){$stream.Dispose()};foreach($opened in @($first,$second)){if($null -ne $opened -and -not $opened.Handle.IsClosed){$opened.Handle.Dispose()}}}
 }
 function Get-ProcessCensus($census) {
- # Read only: every process of one exact installed image, each described through its own handle.
- $image=[string]$census.image
- if($image -cnotlike ($m.localAppData+'\vpn-control\*') -or $image.Contains('\..') -or $image -cnotmatch '\\vpn-control(?:-cli|-install-helper)?\.exe\z'){throw 'PUB_CENSUS_IMAGE'}
- Add-ObserverType
- return @([VpnScenarioObserver]::Census($image))
+ # Read only: every process of each exact installed image asked for, each described through its own handle, and for
+ # the scoped VPN broker alone also every process it started (the runtime it staged, its console).
+ $found=[Collections.Generic.List[object]]::new()
+ foreach($spec in @($census)){
+  $image=[string]$spec.image;$children=$spec.children -eq $true
+  if($image -cnotlike ($m.localAppData+'\vpn-control\*') -or $image.Contains('\..') -or $image -cnotmatch '\\vpn-control(?:-cli|-install-helper|-vpn-broker)?\.exe\z'){throw 'PUB_CENSUS_IMAGE'}
+  if($children -and $image -cnotmatch '\\vpn-control-vpn-broker\.exe\z'){throw 'PUB_CENSUS_CHILDREN'}
+  Add-ObserverType
+  foreach($row in @([VpnScenarioObserver]::Census($image,$children))){$found.Add($row)}
+ }
+ if($found.Count -gt 16){throw 'PUB_CENSUS_BOUND'}
+ return @($found.ToArray())
 }
 function Assert-ProductPin([string]$path) {
- # Only the job's own worker-ready record and its protected receipt, both readable by SYSTEM as the product writes them.
+ # Only the job's own worker-ready record and its protected receipt, both readable by SYSTEM as the product writes them,
+ # and the product's runtime config in this operation's own product workspace.
  $job='[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+ if($path -ceq ($m.operationRoot+'\workspace\runtime-config.json')){return}
  if($path -cnotmatch ('\A'+[regex]::Escape($m.localAppData+'\vpn-control-install-inputs\')+$job+'\\worker-ready\.json\z') -and $path -cnotmatch ('\AC:\\ProgramData\\vpn-control-install-jobs\\'+$job+'\\status\.json\z')){throw 'PUB_PRODUCT_PIN_PATH'}
 }
 function Get-CollectorObservation {
  # Read only: the task's first two events, every child intent and start, the stdout of closed children and, once
  # asked, the case's record of the returned actors, the product workspace's not-started disposition through
- # Read-BackupPin, a census of one installed image and the job's own product records with their pins.
+ # Read-BackupPin, a census of installed images and the job's own product records with their pins. A TUN grant's
+ # observation reads the owner's native-need events in place of its child events: a TUN row polls the public CLI
+ # through a whole prompt, so its children may number more than this read takes, and its need names the one it needs.
  $observed=[ordered]@{};$names=@(Get-ChildItem -LiteralPath $m.operationRoot -File -Force|ForEach-Object {$_.Name}|Sort-Object)
- $kinds='task-event-00000[01]-(?:submission-intent|submitted)|event-[0-9]{6}-child-(?:intent|started)'
+ $kinds='task-event-00000[01]-(?:submission-intent|submitted)'
+ if($m.tunNeed){$kinds+='|event-[0-9]{6}-update-native-observation-needed'}else{$kinds+='|event-[0-9]{6}-child-(?:intent|started)'}
  if($m.returnedActors){$kinds+='|event-[0-9]{6}-update-returned-cleanup-expected-actors'}
  $picked=@($names|Where-Object {$_ -cmatch ('\A(?:'+$kinds+')\.json\z')})
  if($picked.Count -gt 256){throw 'PUB_OBSERVE_COUNT'}
  foreach($name in $picked){$observed[$name]=Read-Bounded (Join-Path $m.operationRoot $name) 65536}
- foreach($name in @($names|Where-Object {$_ -cmatch '\Aevent-[0-9]{6}-child-intent\.json\z'})){
+ if(-not $m.tunNeed){foreach($name in @($names|Where-Object {$_ -cmatch '\Aevent-[0-9]{6}-child-intent\.json\z'})){
   $intent=[Text.UTF8Encoding]::new($false,$true).GetString([Convert]::FromBase64String($observed[$name]))|ConvertFrom-Json
   if(@($m.childStdoutLabels) -ccontains [string]$intent.value.label){
    $raw='child-{0:D4}.stdout.raw' -f [int]$intent.value.child
    if($names -ccontains $raw){$observed[$raw]=Read-Bounded (Join-Path $m.operationRoot $raw) 65536}
   }
- }
+ }}
  $dispositions=@()
  if($m.readDisposition -and [IO.Directory]::Exists($m.productWorkspace)){
   if($m.productWorkspace -cne ($m.operationRoot+'\workspace')){throw 'PUB_OBSERVE_WORKSPACE'}

@@ -1400,23 +1400,40 @@ class ScopedTunTableTests(unittest.TestCase):
             with self.subTest(variant=variant):
                 self.assertEqual(("product", "python-worker", "windows-proxy-lifecycle", True, None),
                                  (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"]))
-                self.assertEqual(({"variant": variant}, {"variant": variant}), (row["proxy"], row["tun"]))
+                grant = variant.endswith("-grant")
+                # A grant's one SYSTEM collector stage, tun, is also its final one: the driver's hold waits on it.
+                self.assertEqual(({"variant": variant}, {"variant": variant, **({"collectorStages": ("tun",), "finalStage": "tun"} if grant else {})}),
+                                 (row["proxy"], row["tun"]))
                 self.assertEqual(tuple((role, proxy.GENERATED[role]) for role in proxy.generated_roles(variant)), row["generated"])
                 files = {relative: role for relative, role, _ in row["guestFiles"]}
                 proxy_files = {relative: role for relative, role, _ in windows._PROXY_FILES}
-                grant = variant.endswith("-grant")
+                collector = {relative: role for relative, role, _ in (*windows._TUN_COLLECTOR, *windows._COLLECTOR_FILES)}
                 self.assertEqual({**proxy_files, "agent_tools/windows_tun_stages.py": "tun",
-                                  **({"agent_tools/windows_tun_direct_sampler.py": "sampler"} if grant else {}),
+                                  **({"agent_tools/windows_tun_direct_sampler.py": "sampler", **collector} if grant else {}),
                                   "agent_tools/windows_ordinary_task_owner.ps1": "owner", "agent_tools/windows_ordinary_process_owner.py": "worker"}, files)
                 self.assertNotIn("traffic", files.values(), "a TUN row samples only through its TUN, never through the SOCKS worker")
                 leaves = [relative.rsplit("/", 1)[1] for relative in files] + [leaf for _, leaf in row["generated"] + row["extracted"]]
                 self.assertEqual(len(leaves), len(set(leaves)))
 
-    def test_only_the_restart_denial_is_admitted_and_each_other_row_names_what_it_lacks(self):
+    def test_the_restart_rows_are_admitted_and_each_find_best_row_names_what_it_lacks(self):
+        # Until the grant's collector route existed every grant was refused windows_scenario_tun_grant_unproven.
         refusals = {variant: windows.RECIPES["windows-scoped-tun." + variant]["refusal"] for variant in windows.TUN_VARIANTS}
-        self.assertEqual({"restart-deny": None, "restart-grant": "windows_scenario_tun_grant_unproven",
-                          "find-best-grant": "windows_scenario_tun_grant_unproven",
+        self.assertEqual({"restart-deny": None, "restart-grant": None,
+                          "find-best-grant": "windows_scenario_tun_find_best_unproven",
                           "find-best-deny": "windows_scenario_tun_find_best_unproven"}, refusals)
+
+    def test_the_grant_collector_modules_are_the_contract_roles(self):
+        from agent_tools.windows_system_collector import collector_contract as contract
+        row = windows.RECIPES["windows-scoped-tun.restart-grant"]
+        files = {role: relative for relative, role, _ in row["guestFiles"]}
+        for role, name in host_job.TUN_COLLECTOR_MODULES.items():
+            digest = hashlib.sha256((ROOT / files[name]).read_bytes()).hexdigest()
+            expected = {**contract.FIXED, "collector": contract.COLLECTORS["tun"]}.get(role)
+            if expected is not None:
+                self.assertEqual(expected, digest, role)
+        self.assertEqual("agent_tools/windows_tun_native_observer.py", files["collector"])
+        for relative, _, _ in row["guestFiles"]:
+            self.assertTrue(host_job._BUNDLE_PATH.fullmatch(relative), relative)
 
     def test_each_prompt_is_the_decision_tables_and_a_denial_joins_its_terminal(self):
         from agent_tools import windows_ordinary_dedicated_driver as dedicated
@@ -1431,19 +1448,68 @@ class ScopedTunTableTests(unittest.TestCase):
                     self.assertEqual(("vpn-broker", table["decision"], table["event"]), (row["uac"]["prompt"], row["uac"]["decision"], row["uac"]["event"]))
                     self.assertEqual("deny" if variant.endswith("-deny") else "approve", row["uac"]["decision"])
                     self.assertEqual(variant.endswith("-deny"), row["denyJoin"])
-                # Only the admitted row reaches the dedicated driver, which takes no grant until the collector stage exists.
+                    self.assertEqual(variant.endswith("-grant"), row.get("approveJoin") is True, "a grant joins its approval too")
+                # Only the admitted rows reach the dedicated driver, which takes the grant whose collector stage exists.
                 self.assertEqual(row["refusal"] is None, variant in dedicated.TUN_VARIANTS)
+                self.assertEqual(row["refusal"] is None and variant.endswith("-grant"), variant in dedicated.TUN_GRANT_VARIANTS)
 
     def test_the_tun_files_and_the_collector_pin_are_in_the_bundle(self):
         from agent_tools.windows_system_collector import collector_contract as contract
         for relative in ("agent_tools/windows_tun_stages.py", "agent_tools/windows_tun_direct_sampler.py",
-                         "agent_tools/windows_system_collector/collector_contract.py"):
+                         "agent_tools/windows_tun_native_observer.py", "agent_tools/windows_system_collector/collector_contract.py"):
             self.assertIn(relative, bundles._SCENARIOS[windows.BUNDLE_SCENARIO_ID])
         self.assertEqual(contract.COLLECTORS["tun"], hashlib.sha256((ROOT / "agent_tools/windows_tun_native_observer.py").read_bytes()).hexdigest(),
                          "collectorSourceSha256 names the TUN observer the pinned contract admits")
 
 
 UPDATE = "windows-public-update."
+
+
+class TunGrantDecisionTests(FamilyDriverBase):
+    """The grant asks for its approval as a denial asks for its own, and a pass names the reviewed approval."""
+    GRANT = "windows-scoped-tun.restart-grant"
+
+    def setUp(self):
+        super().setUp()
+        write_vpn_broker_profile(self.root)
+        self.executor().start(self.family_request(self.GRANT))
+        self.decision = str(uuid.uuid5(uuid.UUID(self.operation), "windows-uac-decision"))
+
+    def job_receipt(self, exit_code=0):
+        plan = {"scenarioId": self.GRANT, "operationId": self.operation, "machine": MACHINE, "bundleHash": self.bundle_hash}
+        value = host_job.build_receipt(plan, exit_code=exit_code, stage="receipt", failure=None, guest_programs=40)
+        return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+
+    def terminal(self, **changes):
+        return {"state": "input-ack-only", "operationId": self.decision, "attempt": 1, "decision": "approve", "prompt": "vpn-broker",
+                "promptClosed": True, "approvalSucceeded": False, "productOutcomeProved": False, "replayAllowed": False, **changes}
+
+    def test_the_prompt_asks_for_its_approval_until_the_decision_is_known(self):
+        self.ssh.job_files["status.json"] = {"pendingKinds": [], "uacEvents": ["scoped-tun-awaiting-current-input"], "uacDecision": None}
+        self.assertEqual("uac-pending:vpn-broker:approve", self.executor().status(self.operation)["reason"])
+        self.ssh.job_files["status.json"]["uacDecision"] = {"state": "input-ack-only", "decision": "approve", "prompt": "vpn-broker", "promptClosed": True}
+        self.assertEqual("original_owner_running", self.executor().status(self.operation)["reason"])
+
+    def test_a_passed_grant_completes_only_with_its_approval_terminal(self):
+        self.finished(raw=self.job_receipt())
+        for decision in (None, self.terminal(promptClosed=False), self.terminal(decision="deny"), self.terminal(prompt="install-helper"),
+                         self.terminal(state="input-outcome-unknown"), self.terminal(approvalSucceeded=True), self.terminal(extra="x")):
+            with self.subTest(decision=decision):
+                self.ssh.decision = decision
+                result = self.executor().status(self.operation)
+                self.assertEqual(("unknown", "terminal_collection_unverified"), (result["state"], result["reason"]))
+                self.assertNotIn("scenarioEvidence", result)
+        self.ssh.decision = self.terminal()
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "passed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual("approve-acknowledged-prompt-closed", result["scenarioEvidence"]["windows"]["uacDecision"])
+        self.assertEqual(("/owned/vm", self.decision), self.ssh.decision_reads[-1])
+
+    def test_a_failed_grant_needs_no_join(self):
+        self.finished(exit_code=1, raw=self.job_receipt(exit_code=1))
+        result = self.executor().status(self.operation)
+        self.assertEqual(("terminal", "complete", "failed"), (result["state"], result["collectionState"], result["scenarioEvidence"]["result"]))
+        self.assertEqual([], self.ssh.decision_reads)
 
 
 class UpdateTableTests(unittest.TestCase):
@@ -1515,11 +1581,48 @@ class UpdateTableTests(unittest.TestCase):
         self.assertEqual(set(host_job.UPDATE_MODULE_ROLES), {role for role in files if role in host_job.UPDATE_MODULE_ROLES})
 
 
+def write_vpn_broker_profile(root, **changes):
+    """A reviewed vpn-broker profile as windows_uac_decision.reviewed_uac_profile writes it: private, create-only."""
+    profile = {"schemaVersion": 1, "deploymentId": MACHINE, "prompt": "vpn-broker", "width": 1280, "height": 800,
+               "crops": [{"rect": [0, 0, 100, 10], "sha256": "a" * 64}], "field": {"rect": [10, 300, 210, 320], "maxDarkPixels": 0},
+               "reviewedFrameSha256": "b" * 64, **changes}
+    directory = Path(root) / ".runtime/windows-uac-profiles" / MACHINE
+    directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+    path = directory / "vpn-broker.json"
+    path.write_text(json.dumps(profile))
+    path.chmod(0o600)
+    return path
+
+
 class ScopedTunAdmissionTests(FamilyDriverBase):
     def test_every_refused_row_is_refused_before_any_journal(self):
-        for variant in ("restart-grant", "find-best-grant", "find-best-deny"):
+        write_vpn_broker_profile(self.root)
+        for variant in ("find-best-grant", "find-best-deny"):
             with self.subTest(variant=variant):
                 self.assert_refused(self.family_request("windows-scoped-tun." + variant), windows.RECIPES["windows-scoped-tun." + variant]["refusal"])
+
+    def test_the_grant_is_admitted_only_with_the_deployments_reviewed_broker_profile(self):
+        """windows-uac-decision answers the grant's prompt only with this deployment's reviewed vpn-broker profile: without
+        one the prompt would expire into the grant's CANCELLED, a failed run, so the row fails closed before any journal.
+        At 1d9d239b every grant was refused windows_scenario_tun_grant_unproven."""
+        grant = "windows-scoped-tun.restart-grant"
+        self.assert_refused(self.family_request(grant), "windows_scenario_uac_profile_unreviewed")
+        for name, change in (("another-deployment", {"deploymentId": str(uuid.uuid4())}), ("another-prompt", {"prompt": "install-helper"}),
+                             ("caret-crop", {"crops": [{"rect": [10, 300, 210, 320], "sha256": "a" * 64}]})):
+            with self.subTest(profile=name):
+                path = write_vpn_broker_profile(self.root, **change)
+                self.assert_refused(self.family_request(grant), "windows_scenario_uac_profile_unreviewed")
+                path.unlink()
+        path = write_vpn_broker_profile(self.root)
+        path.chmod(0o644)
+        self.assert_refused(self.family_request(grant), "windows_scenario_uac_profile_unreviewed")
+        path.chmod(0o600)
+        self.assertEqual(windows.RECIPES[grant], windows.admit_start(self.root, self.family_request(grant), self.resolver))
+        self.assertFalse(self.journal.exists())
+        # A denial's run is the prompt a review captures the profile from: it needs none.
+        path.unlink()
+        self.assertEqual(windows.RECIPES["windows-scoped-tun.restart-deny"],
+                         windows.admit_start(self.root, self.family_request("windows-scoped-tun.restart-deny"), self.resolver))
 
     def test_a_deny_variant_without_a_decision_join_is_refused_whatever_its_refusal(self):
         # find-best-deny has no decision row: with its refusal lifted, an expired prompt's CANCELLED would pass as its denial.

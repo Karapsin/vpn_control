@@ -455,6 +455,57 @@ class FinishTests(StageWorld):
                 self.assertTrue(lease["closed"])
                 self.assertEqual("scoped-tun-closing-census", self.owner.events[-1][0])
 
+    def test_a_grant_asks_its_collector_for_the_ready_record_only_once_its_tun_came_up(self):
+        # The collector finds the broker and its runtime only while they run: finish asks the driver's handoff for the
+        # ready record after the product's own OK, once, and never for a grant that ended without its TUN.
+        asked, reads = [], []
+
+        def handoff(lease, stage):
+            asked.append((stage, lease["finished"]))
+            return {"path": "C:\\ProgramData\\tun-evidence-op\\ready.json", "sha256": "f" * 64, "sizeBytes": 9}
+
+        def terminal(code):
+            runtime = self.runtime()
+            runtime.finish_operation = lambda *args, **options: {"code": code, "final": True}
+            return runtime
+        for code in ("CANCELLED", "RUNTIME_FAILED"):
+            with self.subTest(code=code):
+                self.setUp()
+                asked.clear()
+                lease = self.begin(self.inputs("restart-grant"))
+                cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args, **options: None)
+                stages.finish(self.owner, lease, terminal(code), cases, self.observer, handoff=handoff, receipts=object())
+                self.assertEqual([], asked, "no TUN came up, so there is no collector to ask")
+        self.setUp()
+        asked.clear()
+        lease = self.begin(self.inputs("restart-grant"))
+        runtime = terminal("OK")
+        result = runtime.result
+
+        def vpn_status(owner, workspace, identity, *arguments, **options):
+            if arguments[-1] != "status":
+                return result(owner, workspace, identity, *arguments, **options)
+            return {"data": {**self.status, "activeMode": "vpn", "activeLocationId": "b", "configuredMode": "vpn"}, "restartRequired": False}
+        runtime.result = vpn_status
+        record = {"stage": "ready", "productOperationId": lease["accepted"]["operationId"], "observations": {"configuration": {"sha256": "9" * 64}}}
+
+        def read(owner, current, file_record, receipts, stage):
+            reads.append((file_record["path"], stage, current["finished"]))
+            return record
+        cases = types.SimpleNamespace(config_bytes=lambda path: dict(lease["activeConfig"].initial), exact_actor=lambda *args, **options: None)
+        with mock.patch.object(stages, "read_native_record", read):
+            outcome = stages.finish(self.owner, lease, runtime, cases, self.observer, handoff=handoff, receipts=object())
+        self.assertEqual([("ready", False)], asked, "asked once, after the product's OK and before the lease is final")
+        self.assertEqual([("C:\\ProgramData\\tun-evidence-op\\ready.json", "ready", False)], reads, "the stages read the handed record themselves")
+        self.assertIs(record, outcome["nativeRecord"])
+        self.assertIs(record, lease["nativeReady"])
+        self.assertTrue(lease["finished"])
+        self.assertFalse(stages.settled(lease), "a grant settles only at its exact off")
+        self.setUp()
+        lease = self.begin(self.inputs("restart-grant"))
+        with self.assertRaisesRegex(AssertionError, "^actual-tun-native-file-required$"):
+            stages.finish(self.owner, lease, runtime, cases, self.observer, receipts=object())
+
     def test_a_denial_that_connected_is_never_known(self):
         lease = self.begin()
         self.status.update(runtimeId="vpn-b")
@@ -465,6 +516,60 @@ class FinishTests(StageWorld):
         with self.assertRaisesRegex(AssertionError, "^uac-denial-lost-active-a-or-pending-b$"):
             stages.finish(self.owner, lease, runtime, cases, self.observer)
         self.assertFalse(lease["finished"])
+
+
+class NativeRecordSourceTests(unittest.TestCase):
+    """A collector record's source binds to the product source the row runs, which the driver keeps on the lease.
+
+    The ordinary worker request has no sourceSha (windows_ordinary_task.COMMON_FIELDS and the proxy action's five
+    inputs): a reader that took the source from it would fail with KeyError on the first grant's ready record and
+    park the owner over a live TUN, though the collector had written the right record."""
+
+    def record(self, **changes):
+        task, operation, request, controller, boot = (str(uuid.uuid4()) for _ in range(5))
+        workspace = "C:\\Users\\recovery\\AppData\\Local\\VpnControlOrdinary-" + task + "\\workspace"
+        # The worker request as windows_ordinary_task.worker_request builds it for windows-proxy-lifecycle.
+        self.owner = types.SimpleNamespace(request={
+            "schemaVersion": 1, "operationId": task, "operationRoot": "C:\\root", "filePins": [], "directoryPins": [], "treePins": [],
+            "rawStreamLimitBytes": 16777216, "context": {"bootIdentifier": boot, "ordinarySid": ORDINARY, "ordinarySessionId": 2},
+            "cliPath": CLI, "workspace": workspace, "productVersion": "2.2.15", "casesPath": "C:\\w\\windows_lifecycle_cases.py",
+            "harnessPath": "C:\\w\\proxy-harness.py"})
+        self.lease = {"inputs": {"programData": "C:\\ProgramData", "collectorSourceSha256": "b" * 64, "expectedApprovingAdminSid": ADMIN},
+                      "accepted": {"operationId": operation, "requestId": request}, "state": {"identity": controller, "workspace": Path(workspace)},
+                      "sourceSha": "a" * 40}
+        value = {"schemaVersion": 1, "stage": "ready", "ordinaryTaskOperationId": task, "productOperationId": operation,
+                 "originRequestId": request, "controllerId": controller, "collectorSourceSha256": "b" * 64, "sourceSha": "a" * 40,
+                 "context": {"bootIdentifier": boot, "ordinarySid": ORDINARY, "ordinarySessionId": 2, "approvingAdminSid": ADMIN,
+                             "workspace": workspace, "programData": "C:\\ProgramData"}, "observations": {}, **changes}
+        raw = (json.dumps(value, sort_keys=True) + "\n").encode()
+        path = "C:\\ProgramData\\tun-evidence-" + task + "\\ready.json"
+
+        class Observation:
+            def __init__(self, owner, actual):
+                self.opening = {"security": {"ownerSid": "S-1-5-32-544", "sddl": "O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;GR;;;BU)"}}
+
+            def read(self, maximum):
+                return raw
+
+            def close(self):
+                pass
+        receipts = types.SimpleNamespace(canonical_path=pathlib_windows, FileObservation=Observation, machine_security=lambda security, directory: None)
+        return value, {"path": path, "sha256": __import__("hashlib").sha256(raw).hexdigest(), "sizeBytes": len(raw)}, receipts
+
+    def test_the_record_joins_the_rows_own_source_on_a_worker_request_without_one(self):
+        value, record, receipts = self.record()
+        self.assertNotIn("sourceSha", self.owner.request)
+        self.assertEqual(value, stages.read_native_record(self.owner, self.lease, record, receipts, "ready"))
+
+    def test_a_record_of_another_source_is_never_joined(self):
+        value, record, receipts = self.record(sourceSha="c" * 40)
+        with self.assertRaisesRegex(AssertionError, "^scoped-tun-protected-native-operation-join$"):
+            stages.read_native_record(self.owner, self.lease, record, receipts, "ready")
+
+
+def pathlib_windows(value):
+    from pathlib import PureWindowsPath
+    return PureWindowsPath(value)
 
 
 class TrafficTests(StageWorld):
@@ -582,18 +687,39 @@ class GeneratedInputTests(unittest.TestCase):
              "file:tun": "C:\\w\\windows_tun_stages.py", "file:sampler": SAMPLER, "file:samplerInput": SAMPLER_INPUT}
     ADMISSIONS = {"installed": "sha256-" + "a" * 64, "material": "m", "context": "windows-context-" + "b" * 64, "fixture": "f", "source": "s"}
     TUN = {"administratorSid": ADMIN, "decisionId": str(uuid.uuid4()), "collectorSourceSha256": "c" * 64}
+    # The close hold the host job builds for a grant's one TUN collector (hold_protocol.validate_inputs' fields).
+    HOLD = {"schemaVersion": 1, "collectorOperationId": "f2217b3c-82c1-4862-bab8-09b8498e7929",
+            "collectorRoot": "C:\\ProgramData\\VpnControlOrdinaryTask-op\\system-collector-f2217b3c-82c1-4862-bab8-09b8498e7929",
+            "scope": "tun", "stage": "off", "sourceSha": "e" * 40, "systemContractSourceSha256": "1" * 64,
+            "systemWorkerSourceSha256": "2" * 64, "collectorSourceSha256": "c" * 64,
+            "receiptsPath": "C:\\ProgramData\\VpnControlOrdinaryTask-op\\windows_public_updater\\update_receipts.py"}
 
-    def harness(self, variant, tun):
+    def harness(self, variant, tun, hold=None):
+        if hold is None and variant in proxy.TUN_GRANT_VARIANTS:
+            hold = dict(self.HOLD)
         raw = proxy.harness(variant, operation="op", paths=self.PATHS, runtime_sha256="d" * 64, source_sha="e" * 40,
-                            admissions=self.ADMISSIONS, tun=tun)
+                            admissions=self.ADMISSIONS, tun=tun, hold=hold)
         tree = ast.parse(raw.decode("ascii"))
         return {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)}
+
+    def test_only_a_grant_names_its_collectors_close_hold(self):
+        # The driver arms a hold only for a grant, whose SYSTEM collector waits on it: no other row names one.
+        for variant in proxy.TUN_VARIANTS:
+            with self.subTest(variant=variant):
+                expected = dict(self.HOLD) if variant in proxy.TUN_GRANT_VARIANTS else None
+                self.assertEqual(expected, self.harness(variant, dict(self.TUN))["SYSTEM_COLLECTOR_CLOSE_HOLD"])
+        for variant, hold in (("restart-deny", dict(self.HOLD)), ("restart-grant", "hold"), ("restart-grant", [])):
+            with self.subTest(variant=variant, hold=hold), self.assertRaisesRegex(ValueError, "^proxy_collector_hold$"):
+                proxy.harness(variant, operation="op", paths=self.PATHS, runtime_sha256="d" * 64, source_sha="e" * 40,
+                              admissions=self.ADMISSIONS, tun=dict(self.TUN), hold=hold)
+        with self.assertRaisesRegex(ValueError, "^proxy_collector_hold$"):
+            proxy.harness("restart-grant", operation="op", paths=self.PATHS, runtime_sha256="d" * 64, source_sha="e" * 40,
+                          admissions=self.ADMISSIONS, tun=dict(self.TUN))
 
     def test_a_tun_harness_names_the_stages_and_the_route_inputs_only(self):
         for variant in proxy.TUN_VARIANTS:
             with self.subTest(variant=variant):
                 value = self.harness(variant, dict(self.TUN))["LIFECYCLE_INPUTS"]
-                self.assertIsNone(self.harness(variant, dict(self.TUN))["SYSTEM_COLLECTOR_CLOSE_HOLD"])
                 grant = variant in proxy.TUN_GRANT_VARIANTS
                 self.assertEqual(set(stages.FIELDS) | (set(stages.SAMPLER_FIELDS) if grant else set()), set(value["tun"]))
                 self.assertEqual((variant, ADMIN, self.TUN["decisionId"], "c" * 64, self.ADMISSIONS["installed"], self.ADMISSIONS["context"]),
@@ -622,7 +748,8 @@ class GeneratedInputTests(unittest.TestCase):
         self.assertEqual(0, sampler.run(value, lambda row: None, connect=lambda address, timeout: Stream(response(proxy.fixture_body("op-1").encode())),
                                         sleep=lambda seconds: None))
         files = proxy.files("restart-grant", operation="op-1", paths=self.PATHS, runtime_sha256="d" * 64, source_sha="e" * 40,
-                            admissions=self.ADMISSIONS, tls={"certificate": b"c", "privateKey": b"k", "trustStore": b"t"}, tun=dict(self.TUN))
+                            admissions=self.ADMISSIONS, tls={"certificate": b"c", "privateKey": b"k", "trustStore": b"t"}, tun=dict(self.TUN),
+                            hold=dict(self.HOLD))
         self.assertEqual(proxy.generated_roles("restart-grant"), tuple(files))
         self.assertEqual(proxy.sampler_input("op-1"), files["samplerInput"])
 
