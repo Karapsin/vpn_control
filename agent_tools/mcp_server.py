@@ -3008,6 +3008,7 @@ _VM_NATIVE_ADAPTERS = (
     'windows_guest_input',
     'windows_uac_decision',
     'windows_uac_visual',
+    'windows_desktop_test',
     'windows_credential_recovery_ssh',
     'windows_credential_probe_ssh',
     'native_review_source_closure',
@@ -3460,6 +3461,15 @@ def _deploy_frame_invalid(inputs):
     return set(inputs) != {"deploymentId", "operationId"} or any(type(v) is not str for v in inputs.values())
 
 
+def _desktop_test_invalid(action, inputs):
+    # Closed inputs only: no path, command, argument or toolchain choice crosses this boundary.
+    fields = {"deploymentId", "operationId", "sourceCommit"} if action.endswith("-start") else {"deploymentId", "operationId"}
+    return (set(inputs) != fields or any(type(v) is not str for v in inputs.values())
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["deploymentId"])
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["operationId"])
+            or ("sourceCommit" in fields and not re.fullmatch(r"[0-9a-f]{40}", inputs["sourceCommit"])))
+
+
 def _uac_decision_invalid(inputs):
     # The UUID pattern is exactly the canonical form _valid_uuid accepts. windows-uac-review takes the same five.
     return (set(inputs) != {"host", "environment", "correlationId", "prompt", "decision"}
@@ -3870,6 +3880,8 @@ def _vm_invalid_before_recovery(action, inputs):
         return _uac_decision_invalid(inputs)
     if action == "windows-uac-visual":
         return _uac_visual_invalid(inputs)
+    if action in {"windows-desktop-test-start", "windows-desktop-test-status"}:
+        return _desktop_test_invalid(action, inputs)
     if action in {"windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop",
                   "windows-vm-deploy-release"}:
         return _deploy_lifecycle_invalid(action, inputs)
@@ -4224,6 +4236,26 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
                 return _uac_reply(action, _agent_module("windows_uac_visual").prompt(REPO_ROOT, inputs))
             except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
                 return _uac_unavailable(action)
+        if action in {"windows-desktop-test-start", "windows-desktop-test-status"}:
+            if _desktop_test_invalid(action, inputs):
+                return _error("vm_workflow", "Desktop test start requires exactly deploymentId, operationId and a 40-hex sourceCommit; "
+                              "status requires exactly deploymentId and operationId.")
+            desktop = _agent_module("windows_desktop_test")
+            try:
+                if action == "windows-desktop-test-start":
+                    result = desktop.start(REPO_ROOT, inputs, route="mcp")
+                    accepted = result["state"] == "submitted"
+                else:
+                    result = desktop.status(REPO_ROOT, inputs)
+                    accepted = result["state"] == "submitted" or result.get("toolOutcome") == "completed"
+                return {"tool": "vm_workflow", **result, "ok": accepted, "nativeActionAllowed": False,
+                        "evidenceClass": "in-guest-desktop-test"}
+            except desktop.DesktopTestError as error:
+                return {"tool": "vm_workflow", "ok": False, "state": "refused", "reason": error.reason,
+                        "nativeActionAllowed": False, "replayAllowed": False, "productAction": False}
+            except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+                return {"tool": "vm_workflow", "ok": False, "state": "unknown", "reason": "desktop_test_unavailable",
+                        "nativeActionAllowed": False, "replayAllowed": False, "productAction": False}
         if action == "source-review-close":
             if _source_review_close_invalid(inputs):
                 return _error("vm_workflow", "Invalid source closure input fields.")
@@ -9697,7 +9729,7 @@ def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
             return retired
     if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
                   "windows-input-decision", "windows-input-finish", "windows-uac-decision", "windows-uac-review",
-                  "windows-uac-visual"}:
+                  "windows-uac-visual", "windows-desktop-test-start", "windows-desktop-test-status"}:
         return _vm_workflow_impl(action, inputs)
     if action in {"source-review-close", "baseline-source-inventory"}:
         # Metadata/source reads must not write native failure evidence on refusal.
@@ -9841,6 +9873,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-uac-decision",
                                       "windows-uac-review",
                                       "windows-uac-visual",
+                                      "windows-desktop-test-start",
+                                      "windows-desktop-test-status",
                                       "windows-vm-virt-firmware-install-preflight",
                                       "windows-vm-virt-firmware-install-start",
                                       "windows-vm-virt-firmware-install-status",

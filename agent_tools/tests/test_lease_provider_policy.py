@@ -98,6 +98,11 @@ class LeaseProviderPolicyTests(unittest.TestCase):
         owners = [group for group in actual['groups'] if 'windows-vm-deploy-release' in group.get('actions', {})]
         self.assertEqual(1, len(owners))
         self.assertEqual('vm_workflow:windows-vm-deploy-status', owners[0]['actions'].pop('windows-vm-deploy-release'))
+        # Later reviewed actions in the original-operation and remote-observation groups: the closed in-guest desktop test.
+        for action in ('windows-desktop-test-start', 'windows-desktop-test-status'):
+            owners = [group for group in actual['groups'] if action in group.get('actions', {})]
+            self.assertEqual(1, len(owners))
+            self.assertEqual('vm_workflow:windows-desktop-test-status', owners[0]['actions'].pop(action))
         self.assertEqual(before, actual)
         self.assertEqual(PROVIDERS, set(variants))
 

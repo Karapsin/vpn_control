@@ -179,7 +179,8 @@
         "2bb3629f16546472c7d5adee7f4db60f692998f57d6ebb03e8d50d64f8c4b145",
         "ddc0b780428760e9de644488ebbd024c7daa458d7f341b473c8f5a46ebec91fb",
         "64446372a3f60f0617776996b61bb3750860bee654028bb472934ede0cb1616f",
-        "cd7b80fe23ce17c92730e193a336b82ee62c6e72b4e285431524fa20a8be95df"
+        "cd7b80fe23ce17c92730e193a336b82ee62c6e72b4e285431524fa20a8be95df",
+        "9fc965df373aa3fd7f1753b0e8959b917eea91f44a737eda33628edb2a3f9003"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -8295,7 +8296,7 @@
       ]
     },
     "agent_tools/tests/test_lease_provider_policy.py": {
-      "reason": "Only authenticated literal old policy source/JSON are staged under fixed temp filenames; actual declared policy is read at fixed MANIFEST_PATH. Complete current facade fixture supplies controlled original socket/owner dependencies. The closed Windows deployment reservation release joins the same original-operation group and is popped like the UAC decision.",
+      "reason": "Only authenticated literal old policy source/JSON are staged under fixed temp filenames; actual declared policy is read at fixed MANIFEST_PATH. Complete current facade fixture supplies controlled original socket/owner dependencies. The closed Windows deployment reservation release joins the same original-operation group and is popped like the UAC decision. The closed in-guest desktop test start and status join the original-operation and remote-observation groups and are popped the same way.",
       "scopes": [
         "agent_tools/readiness_lease_workflow.py",
         "agent_tools/tool_action_policy.py",
@@ -8311,7 +8312,8 @@
         "7d909b47ffa61b670fe4cfb77590dea2160b1d839f08ca0190f1ab2d5a23efe9",
         "218b0b76c3a18ea80c219b4c935bd7e09ed60da395ec05bc9f4557f12a0416cf",
         "b2ff44ac4f7d6e9cbf607fa70d35d1ebf673ec1d6e2c1ca71239eaa223c9abd3",
-        "1bb0e332f5009d931521a1af927ab85131b7cb38ab87a6cadd78db1b21c336c2"
+        "1bb0e332f5009d931521a1af927ab85131b7cb38ab87a6cadd78db1b21c336c2",
+        "c6a5ada5860050c36344dca16ee6843c3878550fa71a00257ac3e5652dc6af06"
       ]
     },
     "agent_tools/tests/test_lease_provider_policy_runtime.py": {
@@ -13554,7 +13556,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "e6f6c8dedfdf4098db30998fc031515e72c2f556b49589b8c530aecc0b45ff37",
+    "agent_tools/readiness_vm_dispatch.json": "149280cf48197f0c516508afe8e4bbe4744b0da8d9f0e3526d85164d325009d4",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",
@@ -13756,7 +13758,7 @@
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.before.source": "21a0185c5bee3d0ec6045a64ba319ab396f4aceabd82f8b981cbd2aa503121b3",
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.fixed.source": "d761bc4c8e4c581af05559d27855562e9324d86b8839e5b63eac7eb9927cda5b",
     "agent_tools/tests/fixtures/windows_wts_info_class/observe.before.source": "6ea19c6ffd6e53190df564f4ec56bc9772d60a663ad2820ea08dc2a4ed0f5e50",
-    "agent_tools/tool_action_policy.json": "fabaf9dac33ee01d13f7b65a10a2edcf18a53702e9a78403a50c75088f630cea",
+    "agent_tools/tool_action_policy.json": "ec4092a366b6038e3a44346c74e6f33010e069d05f8ed5c9330c048611149acd",
     "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5",
     "scripts/tests/fixtures/visual_target_before/bootstrap_windows_visual_vm.sh.source": "855a6b625b00a5411cd8b9dd7832cf23a824fa5e52e7ef294d87447100a298ae",
     "scripts/tests/fixtures/visual_target_before/mark_windows_visual_vm_ready.sh.source": "4eeb3e2ee6d01e78503052a6ce2496195a02d55cb7fe120b723a136effea9a13",

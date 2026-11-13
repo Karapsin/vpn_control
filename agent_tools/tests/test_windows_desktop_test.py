@@ -1,0 +1,874 @@
+"""The desktop test coordinator: closed inputs, source and toolchain custody, the driver behind the real
+ScenarioExecutor, the results summary and the MCP twin.
+
+Nothing here reaches a VM, a host or the network. git runs on a temporary repository, FakeSsh answers the
+fixed carrier programs, a fake opener serves the downloads and a fake Gradle fills the export cache.
+"""
+import ast
+import base64
+from contextlib import nullcontext
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest import mock
+import uuid
+import zipfile
+
+from agent_tools import durable_remote_job
+from agent_tools import native_scenario_execution as execution
+from agent_tools import native_scenario_windows as windows
+# Before any transport patch below: its source guard refuses a patched ssh_transport at import.
+from agent_tools import readiness_windows_registration  # noqa: F401
+from agent_tools import ssh_program_execution_remote as carrier
+from agent_tools import ssh_transport as transport
+from agent_tools import windows_desktop_test as desktop
+from agent_tools import windows_desktop_test_guest as guest
+from agent_tools import windows_desktop_test_host_job as desktop_job
+from agent_tools import windows_scenario_host_job as host_job
+from agent_tools.tests.test_native_scenario_windows import TARGET, FakeSsh, setup_fields
+from agent_tools.tests.test_native_vm_spec import request as vm_request
+
+ROOT = Path(__file__).resolve().parents[2]
+MACHINE = "33333333-4444-4555-8666-777777777777"
+OTHER = "44444444-5555-4666-8777-888888888888"
+WRAPPER = ("distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\n"
+           "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip\n"
+           "networkTimeout=10000\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n")
+SOURCE = {"settings.gradle.kts": 'rootProject.name = "fixture"\ninclude(":desktopApp")\n',
+          "build.gradle.kts": "plugins {}\n",
+          "gradle.properties": "vpnControlVersion=2.2.15\norg.gradle.jvmargs=-Xmx2g\n",
+          "gradle/libs.versions.toml": '[versions]\nkotlin = "2.0.21"\n',
+          "gradle/wrapper/gradle-wrapper.properties": WRAPPER,
+          "desktopApp/build.gradle.kts": "plugins {}\n",
+          "desktopApp/src/main/kotlin/Main.kt": "fun main() {}\n",
+          "README.md": "readme\n"}
+GIT_ENVIRONMENT = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "fixture",
+                   "GIT_AUTHOR_EMAIL": "fixture@example.invalid", "GIT_COMMITTER_NAME": "fixture",
+                   "GIT_COMMITTER_EMAIL": "fixture@example.invalid", "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z",
+                   "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z"}
+XML_ALPHA = ('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="com.example.AlphaTest" tests="2" skipped="1" failures="0" '
+             'errors="0" timestamp="2026-11-13T10:00:00" hostname="fixture" time="1.25">\n<properties/>\n'
+             '<testcase name="works" classname="com.example.AlphaTest" time="1.0"/>\n'
+             '<testcase name="later" classname="com.example.AlphaTest" time="0.0">\n<skipped/>\n</testcase>\n'
+             '<system-out><![CDATA[]]></system-out>\n<system-err><![CDATA[]]></system-err>\n</testsuite>\n')
+XML_BETA = ('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="com.example.BetaTest" tests="1" skipped="0" failures="1" '
+            'errors="0" time="0.5">\n<testcase name="breaks" classname="com.example.BetaTest" time="0.5">\n'
+            '<failure message="expected" type="java.lang.AssertionError">trace</failure>\n</testcase>\n</testsuite>\n')
+ARTIFACTS = (("org.jetbrains.compose.desktop", "desktop-jvm-windows-x64", "1.7.0", "desktop-jvm-windows-x64-1.7.0.jar", b"compose windows"),
+             ("org.jetbrains.skiko", "skiko-awt-runtime-windows-x64", "0.8.18", "skiko-awt-runtime-windows-x64-0.8.18.jar", b"skiko windows"),
+             ("org.example", "lib", "1.0", "lib-1.0.pom", b"<project/>"))
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def zip_bytes(members):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, raw in members.items():
+            archive.writestr(name, raw)
+    return buffer.getvalue()
+
+
+def git(root, *arguments):
+    done = subprocess.run(["git", "-C", str(root), *arguments], env={**os.environ, **GIT_ENVIRONMENT}, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=60)
+    return done.stdout.decode().strip()
+
+
+def commit(root, files):
+    """One commit of the given files; None removes a path."""
+    for relative, text in files.items():
+        if text is None:
+            git(root, "rm", "-q", "--", relative)
+            continue
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(text if type(text) is bytes else text.encode())
+        git(root, "add", "--", relative)
+    git(root, "commit", "-q", "-m", "fixture")
+    return git(root, "rev-parse", "HEAD")
+
+
+def fake_gradle(argv, *, cwd, env, stdin, stdout, stderr, timeout, check):
+    """Stands where the commit's wrapper runs on the coordinator: it fills Gradle's own download cache."""
+    files = Path(env["GRADLE_USER_HOME"]) / "caches/modules-2/files-2.1"
+    for group, module, version, leaf, body in ARTIFACTS:
+        directory = files / group / module / version / hashlib.sha1(body).hexdigest()
+        directory.mkdir(parents=True)
+        (directory / leaf).write_bytes(body)
+    stdout.write(b"BUILD SUCCESSFUL in 1m\n")
+    fake_gradle.calls.append({"argv": list(argv), "cwd": cwd, "env": dict(env)})
+    return subprocess.CompletedProcess(argv, 0)
+
+
+class DesktopSsh(FakeSsh):
+    """The scenario tests' fake host, with each kept job file served by its own name."""
+
+    def __init__(self, directory):
+        super().__init__(directory)
+        self.kept = {}
+
+    def respond(self, command):
+        if command[:4] == ("python3", "-I", "-B", "-c") and command[4].startswith("exec(") and ast.literal_eval(command[4][5:-1]) == windows._PULL:
+            self.pulls += 1
+            raw = self.kept[command[6]]
+            offset, length = int(command[7]), int(command[8])
+            return "pull", {"size": len(raw), "data": base64.b64encode(raw[offset:offset + length]).decode()}
+        return super().respond(command)
+
+
+class InputTests(unittest.TestCase):
+    START = {"deploymentId": MACHINE, "operationId": "e314d08a-80eb-4d98-9abe-0c1b245a3807", "sourceCommit": "a" * 40}
+
+    def test_start_takes_exactly_three_closed_fields(self):
+        self.assertEqual((MACHINE, self.START["operationId"], "a" * 40), desktop.start_inputs(self.START))
+        for bad, reason in (({**self.START, "sourceCommit": "A" * 40}, "desktop_test_source_commit_invalid"),
+                            ({**self.START, "sourceCommit": "g" * 40}, "desktop_test_source_commit_invalid"),
+                            ({**self.START, "sourceCommit": "a" * 39}, "desktop_test_source_commit_invalid"),
+                            ({**self.START, "sourceCommit": "a" * 40 + "\n"}, "desktop_test_source_commit_invalid"),
+                            ({**self.START, "sourceCommit": "HEAD"}, "desktop_test_source_commit_invalid"),
+                            ({**self.START, "sourceCommit": 7}, "desktop_test_source_commit_invalid"),
+                            ({**self.START, "deploymentId": self.START["operationId"].upper()}, "desktop_test_deployment_invalid"),
+                            ({**self.START, "operationId": "x"}, "desktop_test_operation_invalid"),
+                            ({**self.START, "command": "gradlew"}, "desktop_test_inputs_invalid"),
+                            ({key: value for key, value in self.START.items() if key != "sourceCommit"}, "desktop_test_inputs_invalid"),
+                            ([], "desktop_test_inputs_invalid")):
+            with self.subTest(bad=bad), self.assertRaises(desktop.DesktopTestError) as caught:
+                desktop.start_inputs(bad)
+            self.assertEqual(reason, caught.exception.reason)
+
+    def test_status_takes_exactly_the_two_identities(self):
+        status = {key: self.START[key] for key in ("deploymentId", "operationId")}
+        self.assertEqual((MACHINE, self.START["operationId"]), desktop.status_inputs(status))
+        for bad in (self.START, {**status, "path": "/x"}, {"operationId": status["operationId"]}):
+            with self.subTest(bad=bad), self.assertRaisesRegex(desktop.DesktopTestError, "desktop_test_inputs_invalid"):
+                desktop.status_inputs(bad)
+
+    def test_the_journal_scenario_is_the_one_this_tool_names(self):
+        self.assertEqual(execution.DESKTOP_TEST_SCENARIO, desktop.SCENARIO_ID)
+        self.assertEqual(desktop_job.DESKTOP_SCENARIO, desktop.SCENARIO_ID)
+        self.assertNotIn(desktop.SCENARIO_ID, execution.WINDOWS_SCENARIOS, "scenario-start has no row for it")
+        self.assertNotIn(desktop.SCENARIO_ID, windows.RECIPES)
+
+    def test_the_whole_task_ends_before_its_owners_pending_events_reach_the_collectors_bound(self):
+        owner = (ROOT / "agent_tools/windows_ordinary_task_owner.ps1").read_text()
+        template = (ROOT / "agent_tools/windows_scenario_system_run.ps1.template").read_text()
+        cadence = int(re.search(r"Write-OwnedEvent 'pending' .*?\$next=\[DateTime\]::UtcNow\.AddSeconds\((\d+)\)", owner)[1])
+        bound = int(re.search(r"N \(\$ordinal -lt (\d+)\) 'RUN_EVENT_BOUND'", template)[1])
+        self.assertEqual((30, 512), (cadence, bound))
+        # Every other task event (intent, submitted, child records, terminal) fits in the last 32.
+        self.assertLess(desktop.ROW["deadlineSeconds"] // cadence + 32, bound)
+        self.assertGreaterEqual(desktop.ROW["deadlineSeconds"] - desktop.GRADLE_DEADLINE_SECONDS, 3600)
+
+    def test_the_pins_are_the_ci_toolchain(self):
+        self.assertEqual(("17.0.21+9", "17.0.21", "jdk-17.0.21+9"), (desktop.JDK["version"], desktop.JDK["javaVersion"], desktop.JDK["root"]))
+        self.assertEqual("https://services.gradle.org/distributions/gradle-8.10.2-bin.zip", desktop.GRADLE["url"])
+        properties = guest.wrapper_properties(str(ROOT / "gradle/wrapper/gradle-wrapper.properties"))
+        self.assertEqual(desktop.GRADLE["url"], properties["distributionUrl"], "this checkout's wrapper names the pinned distribution")
+        for pin in (desktop.JDK, desktop.GRADLE):
+            self.assertRegex(pin["sha256"], "^[0-9a-f]{64}$")
+            self.assertTrue(pin["url"].startswith("https://"))
+        # The wrapper's distribution directory: base 36 of the MD5 of the distribution URL.
+        number = int.from_bytes(hashlib.md5(desktop.GRADLE["url"].encode()).digest(), "big")
+        digits = ""
+        while number:
+            number, digit = divmod(number, 36)
+            digits = "0123456789abcdefghijklmnopqrstuvwxyz"[digit] + digits
+        self.assertEqual(desktop.GRADLE["wrapperHash"], digits)
+
+
+@unittest.skipUnless(os.name == "posix" and shutil.which("git"), "private storage is POSIX and a source is a git commit")
+class RepositoryBase(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.work = Path(temporary.name).resolve()
+        self.root = self.work / "repository"
+        self.root.mkdir()
+        git(self.root, "-c", "init.defaultBranch=main", "init", "-q")
+        self.commit = commit(self.root, {**SOURCE, "gradle/wrapper/gradle-wrapper.jar": b"PK\x05\x06" + bytes(18)})
+
+    def refused(self, reason, function, *arguments, **options):
+        with self.assertRaises(desktop.DesktopTestError) as caught:
+            function(*arguments, **options)
+        self.assertEqual(reason, caught.exception.reason)
+
+
+class SourceTests(RepositoryBase):
+    def test_a_commit_must_exist_here_and_be_a_commit(self):
+        self.assertEqual(self.commit, desktop.source_facts(self.root, self.commit)["sourceCommit"])
+        tree = git(self.root, "rev-parse", "HEAD^{tree}")
+        blob = git(self.root, "rev-parse", "HEAD:README.md")
+        for value in ("1" * 40, tree, blob):
+            with self.subTest(value=value):
+                self.refused("desktop_test_source_commit_unknown", desktop.source_facts, self.root, value)
+        for value in ("G" * 40, self.commit[:39], self.commit.upper(), "HEAD", "-" + self.commit[1:]):
+            with self.subTest(value=value):
+                self.refused("desktop_test_source_commit_invalid", desktop.source_facts, self.root, value)
+
+    def test_the_source_must_name_the_pinned_gradle_and_hold_the_desktop_project(self):
+        other = commit(self.root, {"gradle/wrapper/gradle-wrapper.properties": WRAPPER.replace("8.10.2", "8.9")})
+        self.refused("desktop_test_gradle_distribution_unpinned", desktop.source_facts, self.root, other)
+        checksum = commit(self.root, {"gradle/wrapper/gradle-wrapper.properties": WRAPPER + "distributionSha256Sum=" + "0" * 64 + "\n"})
+        self.refused("desktop_test_gradle_distribution_unpinned", desktop.source_facts, self.root, checksum)
+        pinned = commit(self.root, {"gradle/wrapper/gradle-wrapper.properties": WRAPPER + "distributionSha256Sum=" + desktop.GRADLE["sha256"] + "\n"})
+        self.assertEqual(pinned, desktop.source_facts(self.root, pinned)["sourceCommit"])
+        without = commit(self.root, {"desktopApp/build.gradle.kts": None})
+        self.refused("desktop_test_source_not_desktop", desktop.source_facts, self.root, without)
+        unwrapped = commit(self.root, {"desktopApp/build.gradle.kts": "plugins {}\n", "gradle/wrapper/gradle-wrapper.properties": None})
+        self.refused("desktop_test_source_not_desktop", desktop.source_facts, self.root, unwrapped)
+
+    def test_the_dependency_digest_follows_the_build_definition_only(self):
+        first = desktop.dependency_digest(self.root, self.commit)
+        unrelated = commit(self.root, {"gradle.properties": SOURCE["gradle.properties"].replace("2.2.15", "2.2.16"),
+                                       "README.md": "changed\n", "desktopApp/src/main/kotlin/Main.kt": "fun main() { }\n",
+                                       "gradle/wrapper/gradle-wrapper.jar": b"PK\x05\x06" + bytes(17) + b"\x01"})
+        self.assertEqual(first, desktop.dependency_digest(self.root, unrelated))
+        for change in ({"desktopApp/build.gradle.kts": "plugins { id(\"x\") }\n"}, {"gradle/libs.versions.toml": "[versions]\n"},
+                       {"gradle.properties": "vpnControlVersion=2.2.16\nkotlin.code.style=official\n"},
+                       {"shared/core/build.gradle.kts": "plugins {}\n"}):
+            with self.subTest(change=sorted(change)):
+                self.assertNotEqual(first, desktop.dependency_digest(self.root, commit(self.root, change)))
+
+    def test_the_source_archive_is_the_commit_made_once_and_checked_on_every_use(self):
+        record = desktop.source_archive(self.root, self.commit)
+        path = record["path"]
+        self.assertEqual(0o600, path.stat().st_mode & 0o777)
+        made = subprocess.run(["git", "-C", str(self.root), "archive", "--format=zip", self.commit], stdout=subprocess.PIPE, check=True).stdout
+        self.assertEqual(sha(made), record["sha256"], "exactly git archive of the commit")
+        with zipfile.ZipFile(path) as archive:
+            self.assertEqual(sorted([*SOURCE, "gradle/wrapper/gradle-wrapper.jar"]), sorted(name for name in archive.namelist() if not name.endswith("/")))
+        self.assertEqual(record["sha256"], desktop.source_archive(self.root, self.commit)["sha256"])
+        path.chmod(0o600)
+        path.write_bytes(b"PK changed")
+        self.refused("desktop_test_source_archive_changed", desktop.source_archive, self.root, self.commit)
+
+    def test_a_commit_windows_cannot_hold_is_refused_before_it_is_kept(self):
+        unsafe = commit(self.root, {"desktopApp/aux.txt": "x\n"})
+        self.refused("desktop_test_source_archive_refused:zip-entry-component", desktop.source_archive, self.root, unsafe)
+        self.assertEqual([], [path.name for path in (self.root / ".runtime/windows-desktop-test/sources").iterdir()])
+
+    def test_a_record_lost_before_it_was_written_makes_the_same_archive_again(self):
+        first = desktop.source_archive(self.root, self.commit)
+        (first["path"].parent / (self.commit + ".json")).unlink()
+        self.assertEqual(first["sha256"], desktop.source_archive(self.root, self.commit)["sha256"], "git archive is deterministic")
+
+
+class ToolchainTests(RepositoryBase):
+    def pin(self, raw, **changes):
+        return {"url": "https://downloads.example.invalid/tool.zip", "sha256": sha(raw), "bytes": len(raw), **changes}
+
+    def opener(self, raw, calls=None):
+        def open_url(request, timeout):
+            if calls is not None:
+                calls.append(request.full_url)
+            self.assertNotIn("vpn", json.dumps(request.header_items()).lower(), "no project name leaves this host")
+            return io.BytesIO(raw)
+        return open_url
+
+    def test_a_download_is_used_only_after_its_pinned_size_and_digest_match(self):
+        raw = b"distribution" * 1000
+        target = self.work / "tool.zip"
+        desktop.download(self.pin(raw), target, opener=self.opener(raw))
+        self.assertEqual(raw, target.read_bytes())
+        for pin, served in ((self.pin(raw, sha256="0" * 64), raw), (self.pin(raw), raw + b"x"), (self.pin(raw), raw[:-1])):
+            with self.subTest(served=len(served)):
+                target = self.work / ("tool-" + uuid.uuid4().hex)
+                self.refused("desktop_test_toolchain_digest", desktop.download, pin, target, opener=self.opener(served))
+                self.assertFalse(target.exists())
+        self.assertEqual([], [path.name for path in self.work.iterdir() if path.name.endswith(".partial")])
+
+    def test_a_start_never_downloads_and_a_changed_toolchain_is_refused(self):
+        raw = b"jdk" * 100
+        pin = self.pin(raw)
+        self.refused("desktop_test_toolchain_unprepared", desktop.ensure_toolchain, self.root, pin)
+        calls = []
+        path = desktop.ensure_toolchain(self.root, pin, opener=self.opener(raw, calls))
+        self.assertEqual((1, 0o600), (len(calls), path.stat().st_mode & 0o777))
+        self.assertEqual(path, desktop.ensure_toolchain(self.root, pin))
+        path.write_bytes(b"other")
+        self.refused("desktop_test_toolchain_changed", desktop.ensure_toolchain, self.root, pin)
+
+    def cache(self, rows):
+        files = self.work / ("files-" + uuid.uuid4().hex)
+        for group, module, version, leaf, body, *digest in rows:
+            directory = files / group / module / version / (digest[0] if digest else hashlib.sha1(body).hexdigest())
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / leaf).write_bytes(body)
+        return files
+
+    def test_gradles_cache_becomes_a_maven_layout_with_only_windows_natives(self):
+        body = next(b"x%d" % number for number in range(1000) if hashlib.sha1(b"x%d" % number).hexdigest().startswith("0"))
+        short = hashlib.sha1(body).hexdigest().lstrip("0")
+        rows = desktop.files_to_repository(self.cache([*ARTIFACTS, ("org.example", "zero", "1.0", "zero-1.0.jar", body, short)]),
+                                           self.work / "repository")
+        self.assertEqual(["org/example/lib/1.0/lib-1.0.pom", "org/example/zero/1.0/zero-1.0.jar",
+                          "org/jetbrains/compose/desktop/desktop-jvm-windows-x64/1.7.0/desktop-jvm-windows-x64-1.7.0.jar",
+                          "org/jetbrains/skiko/skiko-awt-runtime-windows-x64/0.8.18/skiko-awt-runtime-windows-x64-0.8.18.jar"],
+                         [row["path"] for row in rows])
+        self.assertEqual(b"<project/>", (self.work / "repository/org/example/lib/1.0/lib-1.0.pom").read_bytes())
+        for extra, reason in ((("org.jetbrains.skiko", "skiko-awt-runtime-macos-arm64", "0.8.18", "s.jar", b"mac"), "dependency_export_foreign_natives"),
+                              (("org.example", "bad", "1.0", "bad.jar", b"bytes", "1" * 40), "dependency_export_cache_digest"),
+                              (("org.example", "lib", "1.0", "LIB-1.0.POM", b"other"), "dependency_export_conflict")):
+            with self.subTest(reason=reason):
+                self.refused(reason, desktop.files_to_repository, self.cache([*ARTIFACTS, extra]), self.work / ("r-" + uuid.uuid4().hex))
+        self.refused("dependency_export_windows_natives_missing", desktop.files_to_repository, self.cache(ARTIFACTS[1:]),
+                     self.work / "r-missing")
+
+    def test_the_repository_archive_is_deterministic(self):
+        rows = desktop.files_to_repository(self.cache(ARTIFACTS), self.work / "repository")
+        first, second = self.work / "one.zip", self.work / "two.zip"
+        desktop.deterministic_zip(self.work / "repository", rows, first)
+        desktop.deterministic_zip(self.work / "repository", rows, second)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        with zipfile.ZipFile(first) as archive:
+            self.assertEqual([row["path"] for row in rows], archive.namelist())
+            self.assertTrue(all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist()))
+        self.assertEqual(guest.inspect_zip(str(first), guest.TOOL_LIMITS)["files"], len(rows))
+
+
+class PrepareTests(RepositoryBase):
+    def setUp(self):
+        super().setUp()
+        self.payloads = {}
+        for name, pin, root in (("JDK", desktop.JDK, "jdk-17.0.21+9"), ("GRADLE", desktop.GRADLE, "gradle-8.10.2")):
+            raw = zip_bytes({root + "/lib/x.jar": name.encode() * 50, root + "/bin/run": b"#!"})
+            patcher = mock.patch.dict(pin, {"sha256": sha(raw), "bytes": len(raw)})
+            patcher.start()
+            self.addCleanup(patcher.stop)
+            self.payloads[pin["url"]] = raw
+        self.downloads = []
+        fake_gradle.calls = []
+
+    def opener(self, request, timeout):
+        self.downloads.append(request.full_url)
+        return io.BytesIO(self.payloads[request.full_url])
+
+    def test_prepare_downloads_once_archives_the_commit_and_exports_its_windows_dependencies(self):
+        java = self.work / "coordinator-jdk"
+        result = desktop.prepare(self.root, {"sourceCommit": self.commit}, opener=self.opener, run=fake_gradle, java_home=str(java))
+        self.assertEqual(("prepared", True, False), (result["state"], result["dependenciesExported"], result["nativeActionAllowed"]))
+        self.assertEqual(sorted(self.payloads), sorted(self.downloads))
+        call = fake_gradle.calls[0]
+        self.assertEqual(str(java / "bin/java"), call["argv"][0])
+        self.assertEqual([*guest.WRAPPER_JVM_OPTIONS, "-jar"], call["argv"][1:5])
+        self.assertEqual(["--no-daemon", "--console=plain", "--init-script"], call["argv"][6:9])
+        self.assertEqual([*guest.GRADLE_PROPERTIES, desktop.EXPORT_TASK], call["argv"][10:])
+        self.assertNotIn("--offline", call["argv"])
+        self.assertEqual(str(java), call["env"]["JAVA_HOME"])
+        self.assertFalse(Path(call["env"]["ANDROID_HOME"]).exists())
+        self.assertNotEqual(str(Path.home() / ".gradle"), call["env"]["GRADLE_USER_HOME"])
+        cache = desktop.dependency_cache(self.root, result["dependencyDigest"])
+        with zipfile.ZipFile(cache["path"]) as archive:
+            self.assertIn("org/jetbrains/compose/desktop/desktop-jvm-windows-x64/1.7.0/desktop-jvm-windows-x64-1.7.0.jar", archive.namelist())
+        self.assertEqual([], list((self.root / ".runtime/windows-desktop-test/work").iterdir()), "the export work folder is removed")
+        again = desktop.prepare(self.root, {"sourceCommit": self.commit}, opener=self.opener, run=fake_gradle, java_home=str(java))
+        self.assertEqual((False, 2, 1), (again["dependenciesExported"], len(self.downloads), len(fake_gradle.calls)))
+        self.assertEqual(result["archives"], again["archives"])
+
+    def test_prepare_takes_only_the_commit(self):
+        self.refused("desktop_test_inputs_invalid", desktop.prepare, self.root, {"sourceCommit": self.commit, "javaHome": "/x"})
+        self.refused("desktop_test_source_commit_unknown", desktop.prepare, self.root, {"sourceCommit": "1" * 40}, opener=self.opener)
+        self.assertEqual([], self.downloads)
+
+    def test_an_archive_the_runner_would_refuse_stops_the_export_before_gradle(self):
+        raw = zip_bytes({"other-root/lib/x.jar": b"x"})
+        with mock.patch.dict(desktop.GRADLE, {"sha256": sha(raw), "bytes": len(raw)}):
+            self.payloads[desktop.GRADLE["url"]] = raw
+            self.refused("dependency_export_refused:zip-root", desktop.prepare, self.root, {"sourceCommit": self.commit},
+                         opener=self.opener, run=fake_gradle, java_home=str(self.work))
+        self.assertEqual([], fake_gradle.calls)
+        self.assertEqual([], list((self.root / ".runtime/windows-desktop-test").glob("work/*")))
+
+    def test_a_failed_export_keeps_no_repository(self):
+        def failing(argv, **options):
+            options["stdout"].write(b"Could not resolve all files\n")
+            return subprocess.CompletedProcess(argv, 1)
+        self.refused("dependency_export_gradle_failed", desktop.prepare, self.root, {"sourceCommit": self.commit}, opener=self.opener,
+                     run=failing, java_home=str(self.work))
+        store = self.root / ".runtime/windows-desktop-test"
+        self.assertEqual([], list(store.glob("dependencies/*")) + list(store.glob("work/*")))
+        digest = desktop.dependency_digest(self.root, self.commit)
+        self.refused("desktop_test_dependencies_unprepared", desktop.dependency_cache, self.root, digest)
+        kept = list(store.glob("export-failures/" + digest + "-*.log"))
+        self.assertEqual(1, len(kept), "the failed export's console log is kept for reading")
+        self.assertEqual((b"Could not resolve all files\n", 0o600), (kept[0].read_bytes(), kept[0].stat().st_mode & 0o777))
+
+
+@unittest.skipUnless(os.name == "posix" and shutil.which("git"), "private journals are POSIX and a source is a git commit")
+class DriverBase(RepositoryBase):
+    def setUp(self):
+        super().setUp()
+        for relative in desktop.BUNDLE_FILES:
+            target = self.root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / relative, target)
+        self.intent(MACHINE)
+        key, known = self.work / "key", self.work / "known"
+        for path in (key, known):
+            path.write_text(path.name)
+            path.chmod(0o600)
+        config = self.root / ".vm-hosts.local.json"
+        config.write_text(json.dumps({"schemaVersion": 1, "hosts": {"fixture": {"host": "fixture", "port": 22, "user": "tester",
+                                                                                "identityFile": str(key), "knownHostsFile": str(known)}}}))
+        config.chmod(0o600)
+        for name, pin in (("JDK", desktop.JDK), ("GRADLE", desktop.GRADLE)):
+            raw = (name + " distribution ").encode() * 64
+            patcher = mock.patch.dict(pin, {"sha256": sha(raw), "bytes": len(raw)})
+            patcher.start()
+            self.addCleanup(patcher.stop)
+            target = desktop.toolchain_path(self.root, pin)
+            target.write_bytes(raw)
+            target.chmod(0o600)
+        self.dependencies(self.commit)
+        self.ssh = DesktopSsh(self.work)
+        for patcher in (mock.patch.object(transport, "admitted_transport", return_value=nullcontext()),
+                        mock.patch.object(transport, "build_ssh_argv", side_effect=lambda config, host, timeout, command, ssh_binary: ["fake-ssh", *command]),
+                        mock.patch.object(transport, "run_ssh", side_effect=lambda argv, **options: self.ssh.run(argv, **options))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.operation = str(uuid.uuid4())
+
+    def intent(self, machine, *, setup=None, context=None):
+        spec = vm_request()
+        spec.update(deploymentId=machine, host="fixture", root="/owned/vm")
+        value = {"spec": spec, "setup": {**setup_fields(), **(setup or {})},
+                 "context": {"hostBootId": TARGET["bootId"], "pending": [], **(context or {})},
+                 "correlationId": str(uuid.uuid4()), "mode": "start", "callerSha256": "c" * 64}
+        directory = self.root / ".rag_index/windows-vm-deploy-intents"
+        directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+        path = directory / (machine + ".intent.json")
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+
+    def dependencies(self, source_commit):
+        digest = desktop.dependency_digest(self.root, source_commit)
+        directory = self.root / ".runtime/windows-desktop-test/dependencies" / digest
+        directory.mkdir(parents=True, mode=0o700)
+        raw = zip_bytes({"org/example/lib/1.0/lib-1.0.jar": b"PK repository"})
+        (directory / "repository.zip").write_bytes(raw)
+        manifest = {"schema": desktop.DEPENDENCY_SCHEMA, "schemaVersion": 1, "dependencyDigest": digest, "zipSha256": sha(raw),
+                    "zipBytes": len(raw), "entries": 1}
+        (directory / "manifest.json").write_text(json.dumps(manifest))
+        for path in directory.iterdir():
+            path.chmod(0o600)
+
+    def inputs(self, **changes):
+        return {"deploymentId": MACHINE, "operationId": self.operation, "sourceCommit": self.commit, **changes}
+
+    def status(self, **changes):
+        return desktop.status(self.root, {"deploymentId": MACHINE, "operationId": self.operation, **changes})
+
+    def operation_directory(self):
+        return self.root / ".runtime/windows-desktop-test/operations" / self.operation
+
+    def finished(self, *, exit_code=0, stage="receipt", failure=None, gradle_exit=0, xml=(XML_ALPHA,), console=b"BUILD SUCCESSFUL in 9m\n",
+                 runner_outcome="completed"):
+        results = zip_bytes({**{"test-results/TEST-%d.xml" % number: text.encode() for number, text in enumerate(xml)},
+                             guest.CONSOLE_LEAF: console})
+        runner = {"schema": guest.SUMMARY_SCHEMA, "schemaVersion": 1, "operationId": self.operation, "sourceCommit": self.commit,
+                  "outcome": runner_outcome, "failedStage": None, "failure": None,
+                  "stages": [{"name": name, "outcome": "passed", "seconds": 1.0, "code": None} for name in (*guest.STAGES, "cleanup")],
+                  "gradle": {"exitCode": gradle_exit, "seconds": 540.0, "deadline": False, "leftoverProcesses": [], "consoleBytes": len(console)},
+                  "results": {"name": guest.RESULTS_LEAF, "bytes": len(results), "sha256": sha(results), "xmlFiles": len(xml)},
+                  "jdkRelease": {"JAVA_VERSION": "17.0.21", "IMPLEMENTOR": "Eclipse Adoptium"}, "archives": {}, "freeBytesBefore": 30 * 1024 ** 3,
+                  "freeBytesAfter": 31 * 1024 ** 3, "productProcessesBefore": [], "productProcessesAfter": [],
+                  "productState": {".vpn-control-desktop": {"present": False, "unchanged": True}},
+                  "profileEntries": {"added": [".skiko"], "removed": []}, "seconds": 600.0,
+                  "workRoot": {"created": True, "deleted": True, "error": None}}
+        summary_raw = json.dumps(runner, sort_keys=True).encode()
+        evidence = b"PK" + b"evidence" * 100
+        record = json.loads((self.operation_directory() / "request.json").read_text())
+        block = {"sourceCommit": self.commit, "archives": {role: row["sha256"] for role, row in record["archives"].items()},
+                 "runnerOutcome": runner_outcome, "runnerFailedStage": None, "runnerFailure": None, "gradleExitCode": gradle_exit,
+                 "gradleDeadline": False, "gradleSeconds": 540.0, "summary": {"bytes": len(summary_raw), "sha256": sha(summary_raw)},
+                 "results": {"bytes": len(results), "sha256": sha(results), "xmlFiles": len(xml)}, "workRootDeleted": True,
+                 "disk": {"freeBytes": 40 * 1024 ** 3, "neededBytes": 11 * 1024 ** 3},
+                 "cleanup": {"state": "complete", "archives": ["deleted"] * 4, "freeBytes": 41 * 1024 ** 3}}
+        receipt = host_job.build_receipt({"scenarioId": desktop.SCENARIO_ID, "operationId": self.operation, "machine": MACHINE,
+                                          "bundleHash": record["plan"]["bundleHash"]}, exit_code=exit_code, stage=stage, failure=failure,
+                                         evidence={"name": "evidence-1.zip", "bytes": len(evidence), "sha256": sha(evidence), "entries": 3},
+                                         guest_programs=14, task={"state": "task-finished", "ownerExitCode": 0, "terminalExitCode": 0,
+                                                                  "events": [{}, {}, {}], "taskDeleted": True, "parkedFiles": []})
+        receipt["desktopTest"] = block
+        raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+        self.ssh.job, self.ssh.exit_code = "terminal", exit_code
+        self.ssh.collect_reply = {"state": "collected", "receipt": base64.b64encode(raw).decode(),
+                                  "jobExit": {"schemaVersion": 1, "operationId": self.operation, "exitCode": exit_code, "fenceAnchored": True}}
+        self.ssh.kept = {"evidence-1.zip": evidence, guest.SUMMARY_LEAF: summary_raw, guest.RESULTS_LEAF: results}
+        return raw
+
+
+class StartTests(DriverBase):
+    def test_start_stages_then_submits_one_job_and_records_its_inputs(self):
+        started = desktop.start(self.root, self.inputs())
+        self.assertEqual(("submitted", "submitted", False, False), (started["state"], started["reason"], started["replayAllowed"], started["productAction"]))
+        self.assertEqual(["stage-check", "stage-write"] * 4 + ["target", *["stage-check"] * 4, "prepare", "submit"], self.ssh.calls)
+        self.assertEqual(1, self.ssh.submits)
+        record = json.loads((self.operation_directory() / "request.json").read_text())
+        self.assertEqual((MACHINE, self.commit, "direct"), (record["deploymentId"], record["sourceCommit"], record["route"]))
+        self.assertEqual({"jdk": "17.0.21+9", "gradle": "8.10.2"}, record["toolchain"])
+        self.assertEqual(sha((self.root / ".runtime/windows-desktop-test/sources" / (self.commit + ".zip")).read_bytes()),
+                         record["archives"]["source"]["sha256"])
+        self.assertEqual(record["archives"]["source"]["sha256"], started["sourceArchiveSha256"])
+        program = json.loads((self.root / ".rag_index/windows-desktop-test" / self.operation / "program.json").read_text())
+        self.assertIn("class DesktopTestJob(Job)", program["program"]["source"])
+        self.assertEqual(sorted(row["sha256"] for row in record["archives"].values()), sorted(self.ssh.staged))
+
+    def test_a_second_start_of_one_operation_is_refused_and_submits_nothing(self):
+        desktop.start(self.root, self.inputs())
+        calls = list(self.ssh.calls)
+        for inputs in (self.inputs(), self.inputs(sourceCommit=commit(self.root, {"README.md": "again\n"}))):
+            with self.subTest(inputs=inputs):
+                self.refused("desktop_test_operation_exists", desktop.start, self.root, inputs)
+        self.assertEqual((calls, 1), (self.ssh.calls, self.ssh.submits))
+
+    def test_a_staged_archive_is_never_sent_again(self):
+        desktop.start(self.root, self.inputs())
+        self.operation = str(uuid.uuid4())
+        self.ssh.calls.clear()
+        self.assertEqual("submitted", desktop.start(self.root, self.inputs())["state"])
+        self.assertNotIn("stage-write", self.ssh.calls)
+
+    def test_refusals_before_any_contact_journal_or_record(self):
+        cases = (("desktop_test_source_commit_unknown", self.inputs(sourceCommit="1" * 40)),
+                 ("desktop_test_source_commit_invalid", self.inputs(sourceCommit=self.commit.upper())),
+                 ("desktop_test_deployment_unknown", self.inputs(deploymentId=OTHER)))
+        for reason, inputs in cases:
+            with self.subTest(reason=reason):
+                self.refused(reason, desktop.start, self.root, inputs)
+        for reason, setup, context in (("desktop_test_deployment_foreign", {"purpose": "windowsUacVisual"}, None),
+                                       ("desktop_test_deployment_foreign", None, {"network": "restricted"})):
+            with self.subTest(setup=setup, context=context):
+                self.intent(OTHER, setup=setup, context=context)
+                self.refused(reason, desktop.start, self.root, self.inputs(deploymentId=OTHER))
+        self.assertEqual([], self.ssh.calls)
+        self.assertFalse(self.operation_directory().exists())
+        self.assertFalse((self.root / ".rag_index/windows-desktop-test-executions" / (self.operation + ".json")).exists())
+
+    def test_an_unprepared_commit_is_refused_before_contact(self):
+        changed = commit(self.root, {"desktopApp/build.gradle.kts": "plugins { id(\"other\") }\n"})
+        self.refused("desktop_test_dependencies_unprepared", desktop.start, self.root, self.inputs(sourceCommit=changed))
+        self.assertEqual([], self.ssh.calls)
+
+    def test_a_staging_failure_leaves_nothing_so_the_operation_may_start(self):
+        self.ssh.lost = {"stage-write"}
+        self.refused("desktop_test_stage_unavailable", desktop.start, self.root, self.inputs())
+        self.assertFalse((self.operation_directory() / "request.json").exists())
+        self.assertEqual("submitted", desktop.start(self.root, self.inputs())["state"])
+        self.assertEqual(1, self.ssh.submits)
+
+    def test_a_lost_submit_reply_is_recovered_by_status_and_never_resubmitted(self):
+        self.ssh.lost = {"submit"}
+        started = desktop.start(self.root, self.inputs())
+        self.assertEqual(("submitting", "submit_response_unavailable", "windows-desktop-test-status"),
+                         (started["state"], started["reason"], started["nextAction"]))
+        self.assertEqual("submitted", self.status()["state"])
+        self.refused("desktop_test_operation_exists", desktop.start, self.root, self.inputs())
+        self.assertEqual(1, self.ssh.submits)
+
+
+class StatusTests(DriverBase):
+    def setUp(self):
+        super().setUp()
+        desktop.start(self.root, self.inputs())
+
+    def test_status_of_an_unknown_operation_or_another_deployment_is_refused_without_contact(self):
+        calls = list(self.ssh.calls)
+        self.refused("desktop_test_operation_unknown", desktop.status, self.root, {"deploymentId": MACHINE, "operationId": str(uuid.uuid4())})
+        self.refused("desktop_test_operation_deployment_mismatch", desktop.status, self.root, {"deploymentId": OTHER, "operationId": self.operation})
+        self.refused("desktop_test_inputs_invalid", desktop.status, self.root, self.inputs())
+        self.assertEqual(calls, self.ssh.calls)
+
+    def test_a_running_job_names_the_runners_last_stage(self):
+        self.assertEqual(("submitted", "original_owner_running"), (self.status()["state"], self.status()["reason"]))
+        self.ssh.job_files["desktop-progress.json"] = {"stage": "gradle", "elapsedSeconds": 754, "poll": 13}
+        self.assertEqual("desktop_test_running:gradle:754s", self.status()["reason"])
+        for bad in ({"stage": "Gradle"}, {"stage": "a" * 40}, ["gradle"]):
+            with self.subTest(bad=bad):
+                self.ssh.job_files["desktop-progress.json"] = bad
+                self.assertEqual("original_owner_running", self.status()["reason"])
+        self.assertEqual(1, self.ssh.submits)
+
+    def test_a_terminal_job_is_copied_back_and_summarized(self):
+        self.finished(xml=(XML_ALPHA,))
+        view = self.status()
+        self.assertEqual(("terminal", "completed", None, "passed"), (view["state"], view["toolOutcome"], view["failedStage"], view["testOutcome"]))
+        self.assertEqual({"classes": 1, "tests": 2, "failures": 0, "errors": 0, "skipped": 1, "timeSeconds": 1.25}, view["tests"])
+        self.assertEqual(("17.0.21+9", "8.10.2", 1), (view["jdk"], view["gradle"], view["skippedTests"]))
+        directory = self.operation_directory()
+        for name in ("receipt.json", "summary.json", "evidence-1.zip", guest.SUMMARY_LEAF, guest.RESULTS_LEAF):
+            self.assertEqual(0o600, (directory / name).stat().st_mode & 0o777, name)
+        self.assertEqual(XML_ALPHA.encode(), (directory / "results/test-results/TEST-0.xml").read_bytes())
+        summary = json.loads((directory / "summary.json").read_text())
+        self.assertEqual((self.commit, view["sourceArchiveSha256"], {"JAVA_VERSION": "17.0.21", "IMPLEMENTOR": "Eclipse Adoptium"}),
+                         (summary["sourceCommit"], summary["archives"]["source"]["sha256"], summary["toolchain"]["jdkRelease"]))
+        self.assertEqual([{"class": "com.example.AlphaTest", "name": "later"}], summary["skippedTests"])
+        self.assertEqual({"workRootDeleted": True, "archivesCleanup": "complete", "disk": {"freeBytes": 40 * 1024 ** 3, "neededBytes": 11 * 1024 ** 3},
+                          "profileEntriesAdded": [".skiko"]}, summary["hygiene"])
+        self.assertEqual(".runtime/windows-desktop-test/operations/" + self.operation + "/summary.json", view["summary"])
+        pulls = self.ssh.pulls
+        self.assertEqual(view, self.status(), "a terminal operation is read, never run again")
+        self.assertEqual((pulls, 1), (self.ssh.pulls, self.ssh.submits))
+
+    def test_failing_tests_are_a_completed_tool_with_a_failed_test_outcome(self):
+        self.finished(gradle_exit=1, xml=(XML_ALPHA, XML_BETA), console=b"There were failing tests.\nBUILD FAILED in 9m\n")
+        view = self.status()
+        self.assertEqual(("completed", "failed", 1), (view["toolOutcome"], view["testOutcome"], view["tests"]["failures"]))
+        self.assertEqual([{"class": "com.example.BetaTest", "name": "breaks", "kind": "failure", "type": "java.lang.AssertionError"}],
+                         view["failedTests"])
+
+    def test_a_tool_stage_failure_names_its_stage(self):
+        self.finished(exit_code=1, stage="cleanup", failure="desktop_cleanup_incomplete")
+        view = self.status()
+        self.assertEqual(("failed", "cleanup", "desktop_cleanup_incomplete", "passed"),
+                         (view["toolOutcome"], view["failedStage"], view["failure"], view["testOutcome"]))
+
+    def test_results_this_tool_cannot_read_are_its_own_failure(self):
+        self.finished(xml=('<!DOCTYPE x [<!ENTITY a "b">]><testsuite name="x" tests="1"/>',))
+        view = self.status()
+        self.assertEqual(("terminal", "failed", "results-read", "desktop_test_results_xml_declaration"),
+                         (view["state"], view["toolOutcome"], view["failedStage"], view["failure"]))
+        self.assertEqual(view, self.status(), "the summary is written once")
+        self.assertEqual([], list(self.operation_directory().glob("results.*.partial")))
+
+    def test_an_unknown_job_exit_is_read_but_stays_unknown(self):
+        self.finished(exit_code=3, stage="cleanup", failure="guest_exec_status_lost:desktop-cleanup")
+        view = self.status()
+        self.assertEqual(("unknown", "unknown", "cleanup"), (view["state"], view["toolOutcome"], view["failedStage"]))
+        self.assertTrue(view["reason"].startswith("job_exit_unknown:"))
+        self.assertEqual("passed", view["testOutcome"], "its results were still copied back")
+        self.assertEqual(1, self.ssh.submits)
+
+    def test_a_changed_results_file_is_never_kept(self):
+        self.finished()
+        self.ssh.kept[guest.RESULTS_LEAF] = self.ssh.kept[guest.RESULTS_LEAF][:-1] + b"!"
+        view = self.status()
+        self.assertEqual(("unknown", "terminal_collection_unverified"), (view["state"], view["reason"]))
+        self.assertFalse((self.operation_directory() / guest.RESULTS_LEAF).exists())
+        self.assertNotIn("toolOutcome", view)
+
+    def test_the_largest_desktop_receipt_fits_the_receipt_and_collection_bounds(self):
+        word = "x" * 120
+        task = {"state": word, "ownerExitCode": 2 ** 31, "terminalExitCode": 2 ** 31, "lastTaskResult": -2 ** 31, "events": [{}] * 512,
+                "workerEvents": 8192, "taskDeleted": True, "parkedFiles": ["task-owner-parked.json"], "commandLineMatched": True,
+                "enginePid": 2 ** 32, "ownerPid": 2 ** 32, "polls": 10 ** 6, "statusFailures": 10 ** 6,
+                "rawStreams": [{"name": name, "bytes": 64 * 1024 ** 2, "sha256": "f" * 64} for name in ("stdout", "stderr")]}
+        context = {"ordinarySid": "S-1-5-21-" + "-".join(["4294967295"] * 4), "ordinarySessionId": 2 ** 32, "profileRoot": "C:\\Users\\" + "u" * 32,
+                   "bootFileTimeUtc": "1" * 19, "bootIdentifier": "f" * 36, "hardwareUuid": "F" * 36, "machineGuid": "f" * 36}
+        plan = {"scenarioId": desktop.SCENARIO_ID, "operationId": self.operation, "machine": MACHINE, "bundleHash": "f" * 64}
+        receipt = host_job.build_receipt(plan, exit_code=1, stage="results", failure=word, context=context, task=task, guest_programs=4096,
+                                         evidence={"name": "evidence-999999.zip", "bytes": 32 * 1024 ** 2, "sha256": "f" * 64, "entries": 8192})
+        receipt["desktopTest"] = {
+            "sourceCommit": "f" * 40, "archives": {role: "f" * 64 for role in desktop.ARCHIVE_ROLES}, "runnerOutcome": "failed",
+            "runnerFailedStage": "extract-dependencies", "runnerFailure": word, "gradleExitCode": -2 ** 31, "gradleDeadline": True,
+            "gradleSeconds": 10800.123456789, "summary": {"bytes": 1024 ** 2, "sha256": "f" * 64},
+            "results": {"bytes": guest.RESULTS_ZIP_LIMIT, "sha256": "f" * 64, "xmlFiles": guest.RESULT_ENTRY_LIMIT}, "workRootDeleted": False,
+            "disk": {"freeBytes": 2 ** 63 - 1, "neededBytes": 2 ** 40},
+            "cleanup": {"state": "incomplete", "archives": ["not-the-published-file"] * 4, "freeBytes": 2 ** 63 - 1}}
+        raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+        self.assertLessEqual(len(raw), host_job.RECEIPT_BYTES)
+        driver = desktop.DesktopTestDriver(self.root)
+        plan = execution.ScenarioPlan.from_mapping(json.loads((self.operation_directory() / "request.json").read_text())["plan"])
+        summary = driver._summary(plan, raw, {"operationId": self.operation, "exitCode": 1})
+        payload = json.dumps(summary, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+        self.assertLessEqual(len(payload), execution._COLLECTION_LIMIT)
+        self.assertTrue(execution.ScenarioExecutor._collection_matches(plan, 1, json.loads(payload)))
+
+
+class RenderTests(DriverBase):
+    def rendered(self):
+        desktop.start(self.root, self.inputs())
+        program = json.loads((self.root / ".rag_index/windows-desktop-test" / self.operation / "program.json").read_text())
+        return program["program"]["source"], program["dataDirectory"]
+
+    def test_the_job_is_the_scenario_job_with_this_job_over_it(self):
+        source, data = self.rendered()
+        self.assertLess(len(source.encode()), carrier.MAX_SOURCE_BYTES)
+        tree = ast.parse(source)
+        self.assertIsInstance(tree.body[-1], ast.Raise)
+        functions = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)]
+        classes = [node.name for node in tree.body if isinstance(node, ast.ClassDef)]
+        self.assertEqual(2, functions.count("run_job"))
+        self.assertLess(classes.index("Job"), classes.index("DesktopTestJob"))
+        last = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "run_job"][-1]
+        self.assertIn("DesktopTestJob", ast.unparse(last))
+        last_job = max(index for index, node in enumerate(tree.body) if isinstance(node, ast.FunctionDef) and node.name == "run_job")
+        main = next(index for index, node in enumerate(tree.body) if isinstance(node, ast.FunctionDef) and node.name == "_host_main")
+        self.assertLess(main, last_job, "the base main finds this job's run_job when it runs")
+        plan = next(node.value for node in tree.body if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "PLAN")
+        value = ast.literal_eval(plan)
+        self.assertEqual((desktop.SCENARIO_ID, desktop.ROW["workerAction"], self.commit), (value["scenarioId"], value["row"]["workerAction"],
+                                                                                            value["desktopTest"]["sourceCommit"]))
+        self.assertEqual(sorted(desktop.BUNDLE_FILES), sorted(value["files"]))
+        self.assertTrue(data.endswith("/.cache/vpn-control-windows-scenarios/" + MACHINE + "/" + self.operation))
+
+    def test_the_rendered_program_runs_on_a_plain_python3_and_refuses_cleanly_without_a_vm(self):
+        source, data = self.rendered()
+        host = self.work / "isolated"
+        host.mkdir()
+        done = subprocess.run([sys.executable, "-I", "-B", "-c", "import sys;exec(compile(sys.stdin.buffer.read(),'job','exec'),{'__name__':'__main__'})"],
+                              input=source.encode(), cwd=host, capture_output=True, env={"PATH": os.defpath}, timeout=120)
+        self.assertEqual(2, done.returncode, done.stderr.decode("utf-8", "replace"))
+        marker = windows._exit_marker(done.stdout, self.operation)
+        self.assertTrue(marker["failure"].startswith("host_setup:"))
+        self.assertEqual(b"", done.stderr)
+        self.assertEqual([], list(host.iterdir()))
+
+    def test_a_carrier_accepts_the_rendered_program(self):
+        source, _ = self.rendered()
+        program = {"language": "python3", "source": source, "args": [], "cwd": TARGET["home"], "targetContext": TARGET}
+        self.assertEqual("python3", carrier.prepare_command(self.operation, program, durable_remote_job.owner_source())[0])
+
+
+class ResultTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.work = Path(temporary.name)
+
+    def test_every_suite_class_skip_and_failure_is_counted(self):
+        (self.work / "nested").mkdir()
+        (self.work / "TEST-com.example.AlphaTest.xml").write_text(XML_ALPHA)
+        (self.work / "nested/TEST-com.example.BetaTest.xml").write_text(XML_BETA)
+        (self.work / "notes.txt").write_text("ignored")
+        value = desktop.parse_results(self.work)
+        self.assertEqual({"classes": 2, "tests": 3, "failures": 1, "errors": 0, "skipped": 1, "timeSeconds": 1.75}, value["totals"])
+        self.assertEqual(["com.example.AlphaTest", "com.example.BetaTest"], [row["name"] for row in value["classes"]])
+        self.assertEqual("nested/TEST-com.example.BetaTest.xml", value["classes"][1]["file"])
+        self.assertEqual([{"class": "com.example.AlphaTest", "name": "later"}], value["skippedTests"])
+
+    def test_a_document_type_quoted_in_test_output_is_only_text(self):
+        (self.work / "TEST-com.example.HtmlTest.xml").write_text(XML_ALPHA.replace(
+            "<system-out><![CDATA[]]>", '<system-out><![CDATA[<!DOCTYPE html><!ENTITY a "b"><html/>]]>'))
+        self.assertEqual(2, desktop.parse_results(self.work)["totals"]["tests"])
+
+    def test_entities_and_broken_xml_are_refused(self):
+        for text, reason in (('<!DOCTYPE x [<!ENTITY a "b">]><testsuite name="x"/>', "desktop_test_results_xml_declaration"),
+                             ("<testsuite", "desktop_test_results_xml_invalid"),
+                             ('<testsuite name="x" tests="many"/>', "desktop_test_results_xml_invalid")):
+            with self.subTest(reason=reason):
+                path = self.work / ("TEST-" + uuid.uuid4().hex + ".xml")
+                path.write_text(text)
+                with self.assertRaises(desktop.DesktopTestError) as caught:
+                    desktop.parse_results(self.work)
+                self.assertEqual(reason, caught.exception.reason)
+                path.unlink()
+
+    def test_the_console_says_what_kind_of_build_failure_it_was(self):
+        self.assertEqual({"build": "successful", "failingTask": None, "offlineResolutionFailure": False, "failingTests": False},
+                         desktop.classify_console("> Task :desktopApp:test\nBUILD SUCCESSFUL in 9m\n"))
+        failed = desktop.classify_console("There were failing tests. See the report.\n* What went wrong:\nExecution failed for task ':desktopApp:test'.\nBUILD FAILED\n")
+        self.assertEqual(("failed", ":desktopApp:test", True), (failed["build"], failed["failingTask"], failed["failingTests"]))
+        offline = desktop.classify_console("Could not resolve all files for configuration ':desktopApp:testRuntimeClasspath'.\n"
+                                           "   > No cached version of org.example:lib:1.0 available for offline mode.\nBUILD FAILED\n")
+        self.assertTrue(offline["offlineResolutionFailure"])
+
+    def test_the_tool_outcome_and_the_test_outcome_are_apart(self):
+        passed = {"totals": {"failures": 0, "errors": 0}}
+        failing = {"totals": {"failures": 2, "errors": 0}}
+        rows = (
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 0}, {}, passed, ("completed", None, "passed")),
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTests": True}, failing, ("completed", None, "failed")),
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTask": ":desktopApp:compileTestKotlin"}, None, ("completed", None, "build-failed")),
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"offlineResolutionFailure": True}, None, ("failed", "gradle-dependencies", "not-run")),
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": None, "deadline": True}, {}, None, ("completed", None, "timed-out")),
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 0}, {}, None, ("completed", None, "inconsistent")),
+            ({"exitCode": 1, "stage": "results", "failure": "desktop_runner:extract-jdk:jdk-version"}, None, None, None,
+             ("failed", "runner:extract-jdk", "not-run")),
+            ({"exitCode": 1, "stage": "cleanup", "failure": "desktop_cleanup_incomplete"}, {"exitCode": 0}, {}, passed, ("failed", "cleanup", "passed")),
+            ({"exitCode": 2, "stage": "anchor", "failure": "prior_fence_open"}, None, None, None, ("refused", "anchor", "not-run")),
+            ({"exitCode": 3, "stage": "run", "failure": "task_child_outcome_unknown"}, None, None, None, ("unknown", "run", "not-run")))
+        for receipt, gradle, console, results, expected in rows:
+            with self.subTest(receipt=receipt, gradle=gradle):
+                value = desktop.outcome(receipt, None if gradle is None else {"gradle": gradle}, console, results)
+                self.assertEqual(expected, (value["toolOutcome"], value["failedStage"], value["testOutcome"]))
+                self.assertEqual(None if expected[0] == "completed" else receipt.get("failure"), value["failure"])
+
+
+class RouteTests(unittest.TestCase):
+    START = {"deploymentId": MACHINE, "operationId": "e314d08a-80eb-4d98-9abe-0c1b245a3807", "sourceCommit": "a" * 40}
+    STATUS = {"deploymentId": MACHINE, "operationId": "e314d08a-80eb-4d98-9abe-0c1b245a3807"}
+
+    def setUp(self):
+        from agent_tools import mcp_server
+        from agent_tools.tests.route_adapter import bind_cached_routes
+        self.server = mcp_server
+        bind_cached_routes(self, mcp_server, "windows_desktop_test")
+
+    def test_closed_inputs_refuse_before_the_adapter(self):
+        cases = [("windows-desktop-test-start", bad) for bad in (
+            {**self.START, "sourceCommit": "A" * 40}, {**self.START, "sourceCommit": "a" * 39}, {**self.START, "sourceCommit": "HEAD"},
+            {**self.START, "deploymentId": "fixture"}, {**self.START, "operationId": self.START["operationId"].upper()},
+            {**self.START, "command": "gradlew"},
+            {**self.START, "javaHome": "C:\\jdk"}, self.STATUS, {**self.START, "sourceCommit": 1}, {})]
+        cases += [("windows-desktop-test-status", bad) for bad in (self.START, {**self.STATUS, "path": "/x"}, {"operationId": MACHINE})]
+        for action, bad in cases:
+            with self.subTest(action=action, bad=bad), mock.patch.object(desktop, "start", side_effect=AssertionError("refused first")), \
+                    mock.patch.object(desktop, "status", side_effect=AssertionError("refused first")), \
+                    mock.patch.object(self.server, "_agent_module", side_effect=AssertionError("no adapter or admission load")):
+                result = self.server.vm_workflow(action, bad)
+                self.assertFalse(result["ok"])
+
+    def test_the_route_passes_exactly_the_inputs_with_the_mcp_route(self):
+        answer = {"state": "submitted", "reason": "submitted", "operationId": self.START["operationId"], "replayAllowed": False, "productAction": False}
+        with mock.patch.object(desktop, "start", return_value=answer) as called:
+            result = self.server.vm_workflow("windows-desktop-test-start", dict(self.START))
+        called.assert_called_once_with(self.server.REPO_ROOT, self.START, route="mcp")
+        self.assertEqual((True, False, "in-guest-desktop-test"), (result["ok"], result["nativeActionAllowed"], result["evidenceClass"]))
+        for view, ok in (({"state": "submitted", "reason": "desktop_test_running:gradle:60s"}, True),
+                         ({"state": "terminal", "toolOutcome": "completed", "testOutcome": "failed"}, True),
+                         ({"state": "terminal", "toolOutcome": "failed", "failedStage": "cleanup"}, False),
+                         ({"state": "unknown", "toolOutcome": "unknown"}, False)):
+            with self.subTest(view=view), mock.patch.object(desktop, "status", return_value=view) as called:
+                self.assertEqual(ok, self.server.vm_workflow("windows-desktop-test-status", dict(self.STATUS))["ok"])
+                called.assert_called_once_with(self.server.REPO_ROOT, self.STATUS)
+
+    def test_a_refusal_keeps_its_word_and_any_other_failure_is_finite(self):
+        with mock.patch.object(desktop, "start", side_effect=desktop.DesktopTestError("desktop_test_operation_exists")):
+            result = self.server.vm_workflow("windows-desktop-test-start", dict(self.START))
+        self.assertEqual((False, "refused", "desktop_test_operation_exists", False), (result["ok"], result["state"], result["reason"], result["replayAllowed"]))
+        secret = "C:\\Users\\private-account\\secret"
+        with mock.patch.object(desktop, "status", side_effect=OSError(secret)):
+            result = self.server.vm_workflow("windows-desktop-test-status", dict(self.STATUS))
+        self.assertEqual(("unknown", "desktop_test_unavailable"), (result["state"], result["reason"]))
+        self.assertNotIn("private-account", json.dumps(result))
+
+    def test_the_catalog_rows(self):
+        from agent_tools import readiness_vm_dispatch as dispatch, tool_action_policy as policy
+        for action, classification in (("windows-desktop-test-start", "original_operation"), ("windows-desktop-test-status", "remote_observation")):
+            with self.subTest(action=action):
+                row = policy.action_policy("vm_workflow", action)
+                self.assertEqual((frozenset({"transport"}), frozenset({"reconnect"}), classification),
+                                 (row.requirements, row.permitted_recoveries, row.classification))
+                route = dispatch.ROUTES[action]
+                self.assertEqual(("windows_deployment", ("windows_desktop_test",)), (route["kind"], tuple(route["modules"])))
+                for module in ("windows_desktop_test", "windows_desktop_test_host_job", "windows_desktop_test_guest", "windows_scenario_host_job",
+                               "windows_ordinary_task", "windows_ordinary_process_owner", "windows_artifact_transfer", "readiness_windows_guest",
+                               "native_scenario_windows", "native_scenario_execution", "readiness_windows_registration", "readiness_windows_remote",
+                               "windows_vm_deploy_remote", "durable_remote_job", "ssh_program_execution_remote"):
+                    self.assertIn(module, route["closure"])
+        self.assertTrue(dispatch.audit_sources()["ok"])
+
+    @unittest.skipUnless(os.name == "posix", "private intents are POSIX")
+    def test_the_dispatch_resolves_only_the_original_intents_host(self):
+        from agent_tools import readiness_vm_dispatch as dispatch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            with self.assertRaises(dispatch.DispatchBlocked) as caught:
+                dispatch.resolve(root, "windows-desktop-test-start", dict(self.START))
+            self.assertEqual("vm_readiness_original_metadata_unavailable", caught.exception.reason)
+
+
+if __name__ == "__main__":
+    unittest.main()

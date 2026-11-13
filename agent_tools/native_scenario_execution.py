@@ -48,8 +48,12 @@ WINDOWS_SCENARIOS = frozenset({  # Rows live in native_scenario_windows; a varia
     "windows-document-acceptance",
     *("windows-document-cold." + variant for variant in ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")),
     "windows-document-responsive"})
-_COLLECTED_SCENARIOS = {"linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
-_SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle", *WINDOWS_SCENARIOS}
+# One closed job outside the scenario table: a complete in-guest :desktopApp:test, admitted and driven only by
+# windows_desktop_test under its own journal directory. scenario-start has no artifact recipe for it.
+DESKTOP_TEST_SCENARIO = "windows-desktop-test"
+_COLLECTED_SCENARIOS = {"linux-scheduled-refresh", "linux-owner-gui-lifecycle", DESKTOP_TEST_SCENARIO, *WINDOWS_SCENARIOS}
+_SCENARIOS = {"linux-public-update-preflight", "linux-scheduled-refresh", "linux-owner-gui-lifecycle", DESKTOP_TEST_SCENARIO,
+              *WINDOWS_SCENARIOS}
 
 
 class ScenarioExecutionError(ValueError):
