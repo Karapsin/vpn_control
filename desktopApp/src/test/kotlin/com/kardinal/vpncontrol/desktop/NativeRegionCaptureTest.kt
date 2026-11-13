@@ -207,6 +207,30 @@ class NativeRegionCaptureTest {
     }
 
     @Test
+    fun aBackdropLeftAboveItsTargetIsRefusedInsteadOfPublishingTheBackdrop() {
+        // The occlusion guard trusted that the target lies above its backdrop. When stacking leaves
+        // the opaque backdrop on top, every region pixel is the flat #404040 backdrop; that is an
+        // occluded target and must never be published as the scene image.
+        val output = Files.createTempDirectory("vpn-control-region-buried")
+        try {
+            val refusal = assertFailsWith<RegionCaptureRefusedException> {
+                FakeDesktop().apply { stackingRefused = true }.captureWizard(output)
+            }
+            assertEquals(RegionCaptureRefusal.OCCLUDED, refusal.refusal)
+            assertTrue("backdrop" in refusal.detail)
+            assertFalse(Files.exists(output.resolve("windows-msi.png")), "the flat backdrop is never published")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+        val region = RegionRect(160, 60, 653, 446)
+        val target = nativeWindow(10, bounds = region)
+        val backdrop = nativeWindow(11, title = "backdrop", bounds = region.expanded(16))
+        val check = OcclusionCheck("installer-wizard", region, backdrop.handle, setOf(target.handle, backdrop.handle))
+        assertEquals(listOf(backdrop), findOccluders(listOf(backdrop, target), check))
+        assertNull(findOccluders(listOf(backdrop), check), "a surface missing from the census is never unoccluded")
+    }
+
+    @Test
     fun stableFrameNeedsTwoConsecutiveIdenticalCaptures() {
         var captures = 0
         val frames = listOf("loading", "painted", "painted")
@@ -424,6 +448,7 @@ class NativeRegionCaptureTest {
         var blinkingCaret = false
         var foregroundRefused = false
         var focusInside = true
+        var stackingRefused = false
         var captures = 0
         val cuesShown = mutableListOf<Long>()
         val stacked = mutableListOf<Pair<Long, Long>>()
@@ -453,6 +478,7 @@ class NativeRegionCaptureTest {
 
         override fun stackBelow(window: Long, above: Long): Boolean {
             stacked += window to above
+            if (stackingRefused) return false
             val moving = windows.first { it.handle == window }
             windows.remove(moving)
             windows.add(windows.indexOfFirst { it.handle == above } + 1, moving)

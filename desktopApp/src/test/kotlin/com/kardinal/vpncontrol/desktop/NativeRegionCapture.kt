@@ -273,14 +273,20 @@ internal data class OcclusionCheck(
 /**
  * Windows above [OcclusionCheck.referenceHandle] in z-order that paint into the region. The
  * reference is the target itself for opaque surfaces and the capture's own backdrop for a
- * translucent surface, whose pixels blend with everything stacked above that backdrop.
+ * translucent surface, whose pixels blend with everything stacked above that backdrop. Every
+ * surface paints the region from above the reference: a target stacked beneath its backdrop is
+ * hidden by it, so the reference itself is then an occluder. Null when the reference or a
+ * surface is absent from the census.
  */
 internal fun findOccluders(census: List<NativeWindow>, check: OcclusionCheck): List<NativeWindow>? {
     val reference = census.indexOfFirst { it.handle == check.referenceHandle }
     if (reference < 0) return null
-    return census.subList(0, reference).filter { window ->
+    val surfaces = check.surfaceHandles.map { handle -> census.indexOfFirst { it.handle == handle } }
+    if (surfaces.any { it < 0 }) return null
+    val above = census.subList(0, reference).filter { window ->
         window.handle !in check.surfaceHandles && window.paints && window.bounds.intersects(check.region)
     }
+    return if (surfaces.any { it > reference }) above + census[reference] else above
 }
 
 internal fun requireUnoccluded(sceneId: String, phase: String, census: List<NativeWindow>, checks: List<OcclusionCheck>) {
@@ -288,7 +294,8 @@ internal fun requireUnoccluded(sceneId: String, phase: String, census: List<Nati
         val occluders = findOccluders(census, check) ?: refuseRegion(
             sceneId,
             RegionCaptureRefusal.TARGET_MISSING,
-            "${check.label} reference window ${hexHandle(check.referenceHandle)} is absent $phase capture",
+            "${check.label} reference window ${hexHandle(check.referenceHandle)} or one of its surfaces " +
+                "${check.surfaceHandles.map(::hexHandle)} is absent $phase capture",
         )
         if (occluders.isNotEmpty()) {
             refuseRegion(

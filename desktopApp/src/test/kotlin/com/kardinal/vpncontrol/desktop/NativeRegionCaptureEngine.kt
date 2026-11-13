@@ -134,6 +134,8 @@ internal class RegionCaptureEngine(
             }
             parts.forEach { part ->
                 val backdrop = part.backdropHandle ?: return@forEach
+                // The occlusion guard verifies the resulting order: a backdrop left above its
+                // target hides it and is refused as an occluder, whatever this call returned.
                 desktop.stackBelow(backdrop, part.targetHandle)
                 val covered = desktop.window(backdrop)?.takeIf(NativeWindow::paints)?.bounds
                 if (covered == null || !covered.contains(part.rect)) {

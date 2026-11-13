@@ -194,7 +194,8 @@ fixture's helper window, is made foreground with keyboard focus inside it, and f
 access keys are shown on the target.
 
 A scene is refused when a visible, uncloaked, non-minimized top-level window above the part's
-backdrop, or above the target where there is none, intersects the region, checked before and after
+backdrop, or above the target where there is none, intersects the region, or when the target is not
+stacked above its own backdrop (the image would be the flat backdrop), checked before and after
 capture. The hosted paging-file `System Properties` warning is still dismissed first and refuses a
 scene only where it overlaps a region. The image is published once two consecutive captures of the
 region are identical, within 20 captures 250 ms apart; no fixed sleep is the readiness signal.
