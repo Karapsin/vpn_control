@@ -345,10 +345,11 @@ def check_source(source):
     return raw
 
 
-def context_source(guest, user, native, administrator=None):
+def context_source(guest, user, native, administrator=None, approving=None):
     """Read-only and not boot-bound: this is what the boot-bound programs are built from.
 
-    An update row also reads the SID of the fixture's administrator account, the one a grant would approve with.
+    An update row also reads the SID of the fixture's administrator account, the one a grant would approve with. A row
+    that another Administrators account approves (RECIPES approver) reads that account's SID as well: approving.
     """
     marker = "[Console]::WriteLine(($result|ConvertTo-Json -Depth 6 -Compress))"
     session = guest.powershell_source(user)
@@ -356,7 +357,12 @@ def context_source(guest, user, native, administrator=None):
         raise ValueError("windows_context_source")
     if administrator is not None and (type(administrator) is not str or _ACCOUNT.fullmatch(administrator) is None):
         raise ValueError("windows_context_administrator")
+    if approving is not None and (administrator is None or type(approving) is not str or _ACCOUNT.fullmatch(approving) is None
+                                  or approving.lower() == administrator.lower()):
+        raise ValueError("windows_context_administrator")
     admin = "" if administrator is None else "administratorSid=[string](Get-LocalUser -Name '" + administrator + "').SID.Value;"
+    if approving is not None:
+        admin += "approvingAdministratorSid=[string](Get-LocalUser -Name '" + approving + "').SID.Value;"
     body = session.replace(marker, "$sessionFacts=$result") + native + (
         "$scenarioOs=Get-CimInstance Win32_OperatingSystem\n"
         "$r=[ordered]@{sessionFacts=$sessionFacts;machineGuid=[string](Get-ItemProperty -LiteralPath 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography' -Name MachineGuid).MachineGuid;"
@@ -1284,6 +1290,9 @@ class Job:
         self.update = self.row.get("update")
         self.collected = {}
         self.target_install = self.update_pins = self.harness_pin = self.administrator_sid = None
+        # The fixture administrator's SID, beside administrator_sid, the account a grant approves with: the same account
+        # unless the row is approved by another Administrators account (RECIPES approver, plan approvingAdministrator).
+        self.fixture_administrator_sid = None
         # What an update row's task left installed, read back after it (_update_after): None until read.
         self.update_after = None
         # A grant row's installer helper, the product's controller process and the installer job's two live actors, each
@@ -1732,17 +1741,23 @@ class Job:
     def stage_context(self):
         guest = self._load("readiness_windows_guest")
         native = fragments(self._bundle_source(OWNER_SOURCE), self._load("windows_artifact_transfer"))["NATIVE"]
-        # An update or TUN row reads the SID of the account its prompt would be approved with.
+        # An update or TUN row reads the SID of the account its prompt would be approved with. A row approved by another
+        # Administrators account than the fixture's (RECIPES approver) reads both: it grants with the approving one.
         administrator = self.plan["administrator"] if self.update or self.row.get("tun") else None
-        terminal, _ = self.guest_program("context", self._rendered(lambda: context_source(guest, self.plan["user"], native, administrator)))
+        approving = self.plan.get("approvingAdministrator") if administrator else None
+        if (self.row.get("approver") is not None) != (approving is not None):
+            raise Refused("approving_administrator_unplanned")
+        terminal, _ = self.guest_program("context", self._rendered(lambda: context_source(guest, self.plan["user"], native, administrator, approving)))
         try:
             value = decode_stdout(terminal)
             if set(value) != {"sessionFacts", "machineGuid", "hardwareUuid", "bootIdentifier", "bootFileTimeUtc", "profileRoot", "systemToken",
-                              *(("administratorSid",) if administrator else ())}:
+                              *(("administratorSid",) if administrator else ()), *(("approvingAdministratorSid",) if approving else ())}:
                 raise ValueError("context_fields")
             if administrator:
-                self.administrator_sid = value["administratorSid"]
-                if type(self.administrator_sid) is not str or _ADMIN_SID.fullmatch(self.administrator_sid) is None:
+                self.administrator_sid = self.fixture_administrator_sid = value["administratorSid"]
+                if approving:
+                    self.administrator_sid = value["approvingAdministratorSid"]
+                if any(type(sid) is not str or _ADMIN_SID.fullmatch(sid) is None for sid in (self.administrator_sid, self.fixture_administrator_sid)):
                     raise ValueError("context_administrator")
             facts = value["sessionFacts"]
             state = guest.validate_session(facts, facts.get("expectedSid"), self.plan["user"], self.machine)["ordinary_session"]
@@ -1750,6 +1765,9 @@ class Job:
             raise KnownFailure("context_unreadable") from None
         if state != "ready":
             raise Refused("session_not_active:" + token(state))
+        if approving and (self.administrator_sid == self.fixture_administrator_sid or facts["expectedSid"] in (self.administrator_sid, self.fixture_administrator_sid)):
+            # Another administrator approves only if its SID is neither the fixture administrator's nor the ordinary user's.
+            raise KnownFailure("context_approving_administrator")
         token_row = value["systemToken"]
         if type(token_row) is not list or token_row[:2] != ["S-1-5-18", "0"]:
             raise KnownFailure("context_system_token")
@@ -3415,6 +3433,13 @@ class Job:
                     # their parents as recorded, and how many owner-only product files were read through SeBackupPrivilege.
                     if self.install_facts is not None:
                         receipt["update"]["installer"] = self.install_facts
+                    if self._grant():
+                        # Who approves the grant, as the context read it: the account the job granted with (the approving
+                        # administrator the collectors held the coordinator to) and the fixture administrator, the same
+                        # account unless another Administrators account approves (RECIPES approver).
+                        receipt["update"]["approval"] = {"approver": self.row.get("approver", "administrator"),
+                                                         "approvingAdminSid": self.administrator_sid,
+                                                         "administratorSid": self.fixture_administrator_sid}
                     if self.backup_reads:
                         receipt["update"]["backupReads"] = len(self.backup_reads)
                 if self._tun_grant():

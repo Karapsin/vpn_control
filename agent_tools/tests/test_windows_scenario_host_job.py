@@ -4016,6 +4016,124 @@ DOCUMENT_ROWS = ("windows-document-acceptance", "windows-document-cold.cold-reop
                  "windows-document-cold.gui-owner")
 
 
+SECOND_ADMIN_SID = "S-1-5-21-1-2-3-502"
+
+
+class SecondAdministratorQga(UpdateQga):
+    """A clone made with a second Administrators account: its context also reads that account's SID when the job asks."""
+
+    def __init__(self):
+        super().__init__()
+        self.approving_sid = SECOND_ADMIN_SID  # None: the guest read no such account.
+        self.approving_requested = False
+
+    def _guest_exec(self, arguments):
+        source = base64.b64decode(arguments["input-data"]).decode("ascii")
+        if "$RequestPinBase64=" not in source and "$releaseBytes=" not in source:
+            self.approving_requested = "approvingAdministratorSid=" in source
+        return super()._guest_exec(arguments)
+
+    def _context(self):
+        terminal = super()._context()
+        if not self.approving_requested or self.approving_sid is None:
+            return terminal
+        value = json.loads(gzip.decompress(base64.b64decode(base64.b64decode(terminal["out-data"]))))
+        value["approvingAdministratorSid"] = self.approving_sid
+        return {"exited": True, "exitcode": 0, "out-data": out_data(value)}
+
+
+class SecondAdministratorGrantTests(UpdateFamilyBase):
+    """T6: windows-public-update.different-admin, approved by the clone's second Administrators account.
+
+    Before, the job's context read only the fixture administrator's SID and granted with it, so nothing could prove that
+    another administrator approved, nor record who did beside the worker the original user ran."""
+
+    def setUp(self):
+        super().setUp()
+        self.qga = SecondAdministratorQga()
+        self.rt = FakeRuntime(self.vm, self.qga)
+
+    def harness(self, plan):
+        raw = self.qga.files[job.WORKSPACE_PREFIX + plan["operationId"] + "\\update-harness.py"]
+        return [ast.literal_eval(node.value) for node in ast.parse(raw.decode("utf-8")).body[1:]]
+
+    def grant_as(self, target, coordinator_sid):
+        """A grant whose installer coordinator the census finds elevated under coordinator_sid, its worker as the user."""
+        self.grant_guest(target)
+        self.qga.processes = grant_processes()
+        self.qga.processes[2]["token"]["sid"] = coordinator_sid
+
+    def test_the_different_admin_grant_is_approved_and_installed_as_its_context_read_them(self):
+        base, target = self.prepared()
+        self.grant_as(target, SECOND_ADMIN_SID)
+        plan, code, receipt = self.run_update("different-admin", base, target, approvingAdministrator="recoveryapprover")
+        self.assertIsNotNone(receipt)
+        self.assertEqual({"approver": "second-administrator", "approvingAdminSid": SECOND_ADMIN_SID, "administratorSid": ADMIN_SID},
+                         (receipt.get("update") or {}).get("approval"), "who approved, beside the fixture administrator, as the context read them")
+        self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
+        context = next(source for kind, source in self.qga.programs if kind == "context")
+        self.assertIn("administratorSid=[string](Get-LocalUser -Name 'recoveryadmin').SID.Value;", context)
+        self.assertIn("approvingAdministratorSid=[string](Get-LocalUser -Name 'recoveryapprover').SID.Value;", context)
+        inputs, hold = self.harness(plan)
+        self.assertEqual((SECOND_ADMIN_SID, SID, "returned-cleanup"), (inputs["approvingAdminSid"], inputs["ordinarySid"], hold["stage"]))
+        self.assertEqual(["before-install", "authorization", "terminal-actors", "returned-cleanup"],
+                         [request["collectorRequest"]["stage"] for request in self.qga.collectors])
+        self.assertEqual({SECOND_ADMIN_SID}, {request["collectorRequest"]["context"]["approvingAdminSid"] for request in self.qga.collectors})
+        installer = receipt["update"]["installer"]
+        self.assertEqual(((SECOND_ADMIN_SID, 1), (SID, 0)), tuple((installer[role]["sid"], installer[role]["elevated"]) for role in ("coordinator", "worker")),
+                         "the coordinator elevated as the second administrator, the worker unelevated as the original user")
+        self.assertEqual((True, self.packages["targetPackage"]["sha256"]), (receipt["windows"]["installedPackage"], receipt["windows"]["packageSha256"]))
+        self.assertLessEqual(len((Path(plan["dataDirectory"]) / "scenario-receipt.json").read_bytes()), job.RECEIPT_BYTES)
+
+    def test_every_grant_records_who_approved_it_and_no_other_row_does(self):
+        base, target = self.prepared()
+        self.grant_as(target, ADMIN_SID)
+        plan, code, receipt = self.run_update("success-off", base, target)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual({"approver": "administrator", "approvingAdminSid": ADMIN_SID, "administratorSid": ADMIN_SID}, receipt["update"].get("approval"))
+        self.assertNotIn("approvingAdministratorSid=", next(source for kind, source in self.qga.programs if kind == "context"))
+        self.qga.programs.clear()
+        self.qga.collectors.clear()
+        self.qga.needs = []
+        self.to_base()
+        self.qga.update_effect = None
+        _, code, receipt = self.run_update("public-ready", base, target)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertNotIn("approval", receipt["update"], "no prompt, no approval")
+
+    def test_an_approving_account_that_is_not_another_administrator_ends_before_any_task(self):
+        base, target = self.prepared()
+        for name, sid, reason in (("the-fixture-administrator", ADMIN_SID, "context_approving_administrator"),
+                                  ("the-ordinary-user", SID, "context_approving_administrator"),
+                                  ("unread", None, "context_unreadable"),
+                                  ("not-a-sid", "fixtureapprover", "context_unreadable")):
+            with self.subTest(case=name):
+                self.grant_as(target, SECOND_ADMIN_SID)
+                self.qga.programs.clear()
+                self.qga.approving_sid = sid
+                plan, code, receipt = self.run_update("different-admin", base, target, approvingAdministrator="recoveryapprover")
+                self.assertEqual((1, reason), (code, receipt["failure"]))
+                self.assertNotIn("system-run", self.qga.kinds(), "no task ran")
+                self.assertEqual([], self.qga.collectors)
+
+    def test_a_plan_and_row_that_disagree_on_the_approver_are_refused(self):
+        base, target = self.prepared()
+        for variant, changes in (("different-admin", {}), ("success-off", {"approvingAdministrator": "recoveryapprover"})):
+            with self.subTest(variant=variant):
+                self.grant_as(target, SECOND_ADMIN_SID)
+                self.qga.programs.clear()
+                plan, code, receipt = self.run_update(variant, base, target, **changes)
+                self.assertEqual((2, "approving_administrator_unplanned"), (code, receipt["failure"]))
+                self.assertNotIn("context", self.qga.kinds(), "nothing read in the guest")
+        session = mock.Mock(powershell_source=lambda user: "[Console]::WriteLine(($result|ConvertTo-Json -Depth 6 -Compress))")
+        for administrator, approving in (("recoveryadmin", "RecoveryAdmin"), (None, "recoveryapprover"), ("recoveryadmin", "x';calc")):
+            with self.subTest(approving=approving), self.assertRaisesRegex(ValueError, "^windows_context_administrator$"):
+                try:
+                    job.context_source(session, USER, "", administrator, approving)
+                except TypeError as error:
+                    self.fail("no approving account: " + str(error))
+
+
 class DocumentQga(FakeQga):
     """The same wire peer, plus what the document rows ask of it: the guest-made document, one operation-root folder,
     and the LOCAL SERVICE probe the job runs while the run's status names the owner's window."""

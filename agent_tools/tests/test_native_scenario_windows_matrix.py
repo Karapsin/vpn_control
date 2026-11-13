@@ -593,6 +593,32 @@ def ends(variant):
     return "target" if variant in update_cases.SUCCESS_VARIANTS else "base"
 
 
+# A grant's principals as its job's context reads them: the original user, the fixture administrator and the clone's
+# second Administrators account (windows_vm_unattend secondAdministrator), which approves the different-admin row.
+ORDINARY_SID, FIXTURE_ADMIN_SID, SECOND_ADMIN_SID = "S-1-5-21-1-2-3-1001", "S-1-5-21-1-2-3-1000", "S-1-5-21-1-2-3-1002"
+
+
+# The grant rows: each collector has an authorization stage, so its installer job's coordinator and worker are observed
+# (TableTests holds RECIPES to this set). A run of one names who approved it.
+GRANTS = frozenset({"success-off", "different-admin", "wait-client-loss", "installer-wait-client-loss"})
+
+
+def grant(variant):
+    return variant in GRANTS
+
+
+def approval_fields(variant, fields):
+    """What the fixed job adds to a grant row's receipt (host_job Job._finish): the context's ordinary user, who approved
+    as the context read it, and the coordinator and worker the authorization stage's SYSTEM census found."""
+    approver = windows.RECIPES[UPDATE + variant].get("approver", "administrator")
+    approving = SECOND_ADMIN_SID if approver == "second-administrator" else FIXTURE_ADMIN_SID
+    fields["context"] = {"ordinarySid": ORDINARY_SID, "ordinarySessionId": 2, "profileRoot": None, "bootFileTimeUtc": None, "bootIdentifier": None,
+                         "hardwareUuid": None, "machineGuid": None}
+    fields["update"]["approval"] = {"approver": approver, "approvingAdminSid": approving, "administratorSid": FIXTURE_ADMIN_SID}
+    fields["update"]["installer"] = {"coordinator": {"pid": 921, "sid": approving, "elevated": 1, "elevationType": 2, "sessionId": 2},
+                                     "worker": {"pid": 922, "sid": ORDINARY_SID, "elevated": 0, "elevationType": 1, "sessionId": 2}}
+
+
 def installed(digest, version, code, package_code, tree):
     """What an installer row records of the install it left (host_job Job.stage_installed)."""
     return {"packageSha256": digest, "productCode": code, "productVersion": version, "packageCode": package_code,
@@ -626,6 +652,8 @@ class UpdateBase(MatrixBase):
                   "update": {"variant": variant, "collectors": {}, "baseInstall": self.base_install, "targetInstall": self.target_install,
                              "installedAfter": None if after is None else {"role": role, **after}},
                   "windows": {"installedPackage": claim, "packageSha256": after["packageSha256"] if claim else None}}
+        if grant(variant):
+            approval_fields(variant, fields)
         if change is not None:
             change(fields)
         return self.row(UPDATE + variant, route, kind, machine=machine, extra=fields, artifacts={"fixtureReceipt": self.fixture},
@@ -654,8 +682,7 @@ class UpdateRowTests(UpdateBase):
     def test_the_update_scenarios_pass_matrix_status_once_their_rows_are_proven(self):
         """Every installer-lifecycle scenario, and the four native-cli scenarios naming update rows, pass once each named
         row has a proven direct and an MCP run on one package. Natively protected-storage-rejected always parks and the
-        fault, copy-lock, reconnect, second-administrator and cancel rows are refused at admission: only the matrix's own
-        rule is proven here."""
+        fault, copy-lock, reconnect and cancel rows are refused at admission: only the matrix's own rule is proven here."""
         lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
         rows = []
         for name in sorted({name for names in lifecycle.values() for name in names}):
@@ -762,6 +789,103 @@ class UpdateRowTests(UpdateBase):
         document = json.loads((self.root / observation["evidencePath"]).read_bytes())
         self.assertEqual([self.bound(self.base)], [entry.get("update") for entry in document["rows"]])
         matrix.matrix_record(self.root, observation)
+
+
+class ApprovalTests(UpdateBase):
+    """T6: different-approving-admin and original-user-worker had no row that proved them. different-admin was refused at
+    admission, and nothing a passed grant run recorded said who approved it or as whom its installer worker ran. A grant
+    row now counts only with its own receipt showing the approving account it should have (the clone's second
+    Administrators account for different-admin, the fixture's for the others), the coordinator elevated under it and
+    the worker unelevated as the original user."""
+
+    PROVEN = {"approver": "second-administrator", "approvedByAnotherAdministrator": True, "coordinatorIsApprover": True, "workerIsOriginalUser": True}
+
+    def review(self, rows):
+        return windows.matrix_review(self.root, "windows-installer-lifecycle", rows)
+
+    def test_the_different_admin_row_proves_its_two_scenarios_with_success_off(self):
+        rows = [self.update(variant, route) for variant in ("different-admin", "success-off") for route in ("direct", "mcp")]
+        review = self.review(rows)
+        self.assertEqual(["passed"] * 4, [row["classification"] for row in review["rows"]])
+        self.assertEqual([self.PROVEN] * 2 + [{**self.PROVEN, "approver": "administrator", "approvedByAnotherAdministrator": False}] * 2,
+                         [row.get("approval") for row in review["rows"]])
+        self.assertEqual(("passed", "passed"), tuple(review["scenarios"].get(name) for name in ("different-approving-admin", "original-user-worker")))
+        # Without success-off, original-user-worker misses its other row; without different-admin, both miss it.
+        self.assertEqual(("passed", "missing"), tuple(self.review(rows[:2])["scenarios"][name] for name in ("different-approving-admin", "original-user-worker")))
+        self.assertEqual(("missing", "missing"), tuple(self.review(rows[2:])["scenarios"][name] for name in ("different-approving-admin", "original-user-worker")))
+
+    def test_the_evidence_names_who_approved_each_grant(self):
+        rows = [self.update(variant, route) for variant in ("different-admin", "success-off", "uac-denied") for route in ("direct", "mcp")]
+        failed = self.update("different-admin", kind="failed", role="base")
+        with self.assertRaises(windows.NativeScenarioWindowsError):
+            self.observe(rows, "windows-installer-lifecycle")  # Incomplete: the other scenarios' rows are missing.
+        observation = self.observe([*rows, failed], "windows-installer-lifecycle")
+        self.assertEqual("failed", observation["result"])
+        document = json.loads((self.root / observation["evidencePath"]).read_bytes())
+        approvals = {entry["correlationId"]: entry.get("approval", "none") for entry in document["rows"]}
+        self.assertEqual([self.PROVEN, self.PROVEN, {**self.PROVEN, "approver": "administrator", "approvedByAnotherAdministrator": False},
+                          {**self.PROVEN, "approver": "administrator", "approvedByAnotherAdministrator": False}, "none", "none", self.PROVEN],
+                         [approvals[correlation] for correlation in [*rows, failed]], "a deny row has no approval; a failed grant names it")
+
+    def test_a_grant_run_without_its_approval_proven_never_counts(self):
+        def old_job(fields):  # What the job wrote before T6: the installer's actors, but no approval.
+            fields["update"].pop("approval")
+
+        def approval(**changes):
+            def change(fields):
+                fields["update"]["approval"].update(changes)
+            return change
+
+        def actor(role, **changes):
+            def change(fields):
+                fields["update"]["installer"][role].update(changes)
+            return change
+
+        def ordinary(sid):
+            def change(fields):
+                fields["context"]["ordinarySid"] = sid
+            return change
+
+        def both(*changes):
+            def change(fields):
+                for item in changes:
+                    item(fields)
+            return change
+        cases = [("different-admin", "old-job", old_job),
+                 ("different-admin", "fixture-administrator-approved", approval(approver="administrator", approvingAdminSid=FIXTURE_ADMIN_SID)),
+                 ("different-admin", "same-account", approval(approvingAdminSid=FIXTURE_ADMIN_SID)),
+                 # Consistent in itself, the fixture administrator approving and elevating: only who approved differs.
+                 ("different-admin", "the-fixture-administrator-throughout",
+                  both(approval(approvingAdminSid=FIXTURE_ADMIN_SID), actor("coordinator", sid=FIXTURE_ADMIN_SID))),
+                 ("different-admin", "unrecorded-fixture-administrator", approval(administratorSid=None)),
+                 ("different-admin", "coordinator-another-account", actor("coordinator", sid=FIXTURE_ADMIN_SID)),
+                 ("different-admin", "coordinator-not-elevated", actor("coordinator", elevated=0)),
+                 ("different-admin", "worker-as-the-approver", actor("worker", sid=SECOND_ADMIN_SID)),
+                 ("different-admin", "worker-elevated", actor("worker", elevated=1)),
+                 ("different-admin", "ordinary-user-approved", ordinary(SECOND_ADMIN_SID)),
+                 ("different-admin", "no-ordinary-user", ordinary(None)),
+                 ("success-off", "old-job", old_job),
+                 ("success-off", "another-administrator", approval(approvingAdminSid=SECOND_ADMIN_SID)),
+                 ("success-off", "another-administrator-throughout",
+                  both(approval(approvingAdminSid=SECOND_ADMIN_SID), actor("coordinator", sid=SECOND_ADMIN_SID))),
+                 ("success-off", "second-administrator-role", approval(approver="second-administrator")),
+                 ("success-off", "worker-as-the-administrator", actor("worker", sid=FIXTURE_ADMIN_SID)),
+                 ("wait-client-loss", "coordinator-another-account", actor("coordinator", sid=SECOND_ADMIN_SID))]
+        unproven = {}
+        for variant, name, change in cases:
+            correlation = self.update(variant, change=change)
+            unproven.setdefault(variant, []).append(correlation)
+            with self.subTest(variant=variant, case=name):
+                row = self.classified(correlation)
+                self.assertEqual("approval-unproven", row["classification"], "its package is proven, its approval is not")
+                self.assertEqual(self.bound(self.target), row.get("update"))
+        for variant in ("different-admin", "success-off"):
+            twins = [self.update(variant, change=old_job, route="mcp"), *unproven[variant]]
+            scenarios = self.review(twins)["scenarios"]
+            with self.subTest(variant=variant):
+                self.assertEqual("missing", scenarios["original-user-worker"])
+                if variant == "different-admin":
+                    self.assertEqual("missing", scenarios["different-approving-admin"])
 
 
 NATIVE_UPDATES = Path(__file__).parent / "fixtures/windows_update_native/st2-update-runs.json"
@@ -892,11 +1016,14 @@ class TableTests(unittest.TestCase):
                           "protected-storage-adversarial", "next-owner-recovery", "reconnect-off-preserved", "scoped-elevation"}, named)
         self.assertTrue(all("installed" in windows.RECIPES[row]["stages"] for table in MATRIX_REAL.values() for rows in table.values()
                             for row in rows if row.startswith("windows-public-update.")))
+        # A grant row observes its installer's coordinator and worker: only those runs name who approved them.
+        self.assertEqual(GRANTS, {variant for variant in windows.UPDATE_VARIANTS
+                                  if "authorization" in windows.RECIPES[UPDATE + variant]["update"]["collectorStages"]})
         # The installer lifecycle maps every scenario. The deny row and the grant rows whose stages are all tooled are
         # admitted, the others are refused at admission with what they lack.
         lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
         self.assertTrue(all(lifecycle.values()))
-        self.assertEqual({"windows-public-update." + variant for variant in ("uac-denied", "success-off", "wait-client-loss", "installer-wait-client-loss",
+        self.assertEqual({"windows-public-update." + variant for variant in ("uac-denied", "success-off", "different-admin", "wait-client-loss", "installer-wait-client-loss",
                                                                               "install-cancelled", "participating-copy-lock", "success-reconnect",
                                                                               "success-explicit-off")},
                          {row for rows in lifecycle.values() for row in rows

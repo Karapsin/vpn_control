@@ -8,24 +8,37 @@ def quiet_source(body):
     return "$ProgressPreference='SilentlyContinue'\n"+body
 
 
+# A setup with a second administrator (windows_vm_unattend) reads that account as well, in one line before the output: the
+# same facts as the fixture administrator's. A setup without one keeps its exact script.
+READ_SECOND_ADMINISTRATOR="$second=Get-LocalUser -Name $ExpectedSecondAdministrator\n$result['secondAdministrator']=[ordered]@{name=$second.Name;sid=$second.SID.Value;enabled=$second.Enabled;isAdministrator=($admins -contains $second.SID.Value)}\n"
+_SETUP_OUTPUT="[Console]::WriteLine(($result | ConvertTo-Json -Depth 8 -Compress))\n"
+
+
 def powershell_source(setup,operation_id):
     from .windows_vm_unattend import parse_setup
     setup=parse_setup(setup)
     if type(operation_id)is not str or str(uuid.UUID(operation_id))!=operation_id:raise ValueError("qualification_identity")
-    return quiet_source("$ExpectedUser="+repr(setup["user"])+"\n$ExpectedAdministrator="+repr(setup["administrator"])+"\n$OperationId="+repr(operation_id)+"\n"+READ_SETUP)
+    names="$ExpectedUser="+repr(setup["user"])+"\n$ExpectedAdministrator="+repr(setup["administrator"])+"\n";body=READ_SETUP
+    if 'secondAdministrator' in setup:
+        if body.count(_SETUP_OUTPUT)!=1 or not body.endswith(_SETUP_OUTPUT):raise ValueError('qualification_source')
+        names+="$ExpectedSecondAdministrator="+repr(setup["secondAdministrator"])+"\n";body=body[:-len(_SETUP_OUTPUT)]+READ_SECOND_ADMINISTRATOR+_SETUP_OUTPUT
+    return quiet_source(names+"$OperationId="+repr(operation_id)+"\n"+body)
 
 
 def validate_setup_result(value,operation_id,setup):
-    if (type(value)is not dict or set(value)!={'nonce','fixturePrincipal','os','computer','user','administrator','setup','guestAgent','updatePolicy'}
+    # A second administrator's facts come exactly when the setup names one.
+    second=('secondAdministrator',)if 'secondAdministrator' in setup else ()
+    if (type(value)is not dict or set(value)!={'nonce','fixturePrincipal','os','computer','user','administrator','setup','guestAgent','updatePolicy',*second}
             or value['nonce']!=operation_id or value['fixturePrincipal']!='S-1-5-18'
             or len(json.dumps(value))>16384):raise ValueError('instance_qualification_result')
     fields={'os':{'caption','version','bootTime','productName','editionId','displayVersion','build','ubr','locale'},
             'computer':{'name','loggedOn','partOfDomain'},'user':{'name','sid','enabled','isAdministrator','isUsersMember','profileRoot'},
             'administrator':{'name','sid','enabled','isAdministrator'},
             'setup':{'systemSetupInProgress','oobeInProgress','imageState','taskState','taskResult','ready'},
-            'guestAgent':{'state','startMode','path','pid'},'updatePolicy':{'noAutoUpdate','storeAutoDownload'}}
+            'guestAgent':{'state','startMode','path','pid'},'updatePolicy':{'noAutoUpdate','storeAutoDownload'},
+            **{role:{'name','sid','enabled','isAdministrator'} for role in second}}
     if any(type(value[k])is not dict or set(value[k])!=wanted for k,wanted in fields.items()):raise ValueError('instance_qualification_fields')
-    for role in ('user','administrator'):
+    for role in ('user','administrator',*second):
         item=value[role]
         if (item['name']!=setup[role] or type(item['sid'])is not str or re.fullmatch('S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+',item['sid'])is None
                 or any(type(item[k])is not bool for k in ('enabled','isAdministrator'))):raise ValueError('instance_qualification_account')
@@ -91,6 +104,10 @@ def qualify_instance(spec,setup,operation_id,status_only,root,read,save,process,
                          and result['setup']['imageState']=='IMAGE_STATE_COMPLETE' and user['enabled'] and not user['isAdministrator']
                          and user['isUsersMember'] and admin['enabled'] and admin['isAdministrator'] and result['guestAgent']['state']=='Running'
                          and result['updatePolicy']=={'noAutoUpdate':1,'storeAutoDownload':2})
+        if 'secondAdministrator' in setup:
+            # A second Administrators account of its own: enabled, an administrator, and neither fixture account.
+            second=result['secondAdministrator']
+            setup_ready=bool(setup_ready and second['enabled'] and second['isAdministrator'] and second['sid'] not in (user['sid'],admin['sid']))
         process(row);guard_epoch()
         return {'state':'setup-observed','operationId':operation_id,'setupReady':setup_ready,'imageMatchesRequest':image_matches,
                 'result':result,'productReady':False}
@@ -143,8 +160,10 @@ if((Get-ScheduledTask -TaskName 'VpnControlFixtureInitialize').State -ne 'Disabl
 def secure_source(setup,operation_id):
     # Reuse the exact validated, literal account/nonce bindings; no credentials
     # enter argv or executable source. QGA supplies them only through stdin.
-    from .windows_vm_unattend import UPDATE_POLICY
-    source=powershell_source(setup,operation_id)
+    # Secure rotates the fixture administrator's setup secret alone: a second administrator keeps its own secret, has no
+    # automatic logon, and its answer file leaves with the same media and caches. Its script is the one-administrator one.
+    from .windows_vm_unattend import UPDATE_POLICY,parse_setup
+    source=powershell_source({key:value for key,value in parse_setup(setup).items() if key!='secondAdministrator'},operation_id)
     return source[:source.index(READ_SETUP)]+SECURE_SETUP.replace('__UPDATE_POLICY__',UPDATE_POLICY)
 
 

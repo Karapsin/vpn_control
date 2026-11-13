@@ -4,8 +4,10 @@
 prompt and decision. Proof comes before any key: reviewed pixel crops read through QMP,
 and a SYSTEM census of consent.exe, the owner's pending event and the UAC policy.
 Nothing runs on the secure desktop. Deny is one Esc and opens no credential. Approve
-reads final-administrator.secret only through SecretFile and passes it over SSH stdin
-to a detached memory-only child. A create-only burn per prompt precedes the first key,
+reads the approving account's secret only through SecretFile and passes it over SSH
+stdin to a detached memory-only child: final-administrator.secret, or, for the one
+row of APPROVERS, the clone's second administrator's second-administrator.secret.
+A create-only burn per prompt precedes the first key,
 so a lost reply never types twice, and a repeat is a status packet with no key path.
 The reply is an acknowledgement: it never claims that the approval or the product
 outcome succeeded. This module is a leaf; no sign-in packet embeds it, and
@@ -69,6 +71,17 @@ REVIEW_REPLY_BYTES = 24 * 1024 ** 2
 _REVIEW_TERMINAL = frozenset({"state", "operationId", "attempt", "decision", "prompt", "consent", "frameSha256", "frameBytes", "width", "height",
                               "pointerMoved", "wakeMilliseconds", "promptAnswered", "replayAllowed"})
 _PROFILE_FIELDS = frozenset({"schemaVersion", "deploymentId", "prompt", "width", "height", "crops", "field", "reviewedFrameSha256"})
+# On a clone with a second Administrators account (windows_vm_unattend secondAdministrator) a credential prompt offers more
+# than one account. An approve profile there also names its approver and one more crop, the account name the prompt shows
+# selected, so a key is typed only into the account whose secret it is. Each approver has its own profile.
+_ACCOUNT_FIELDS = frozenset({"approver", "account"})
+# The account each approve row types. Closed: the different-admin row answers with the second administrator, whose
+# secret windows_vm_deploy.start made beside the fixture's own; every other approve row with the fixture administrator,
+# whose secret secure rotated to final-administrator.secret. The census reads the SID of the same account by name.
+APPROVERS = {"windows-public-update.different-admin": "second-administrator"}
+APPROVER_ROLES = ("administrator", "second-administrator")
+_APPROVER_ACCOUNT = {"administrator": "administrator", "second-administrator": "secondAdministrator"}
+_APPROVER_SECRET = {"administrator": "final-administrator.secret", "second-administrator": "second-administrator.secret"}
 _ATTEMPT_INTENT = re.compile(r"attempt-([0-9]{4})\.intent\.json\Z")
 _ROOT_FORM = r"C:\\Users\\[A-Za-z0-9_.-]{1,64}\\AppData\\Local\\VpnControlOrdinary-"
 _SID_FORM = re.compile(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+\Z")
@@ -171,6 +184,15 @@ def _ps_literal(value):
     if type(value) is not str or _LITERAL.fullmatch(value) is None:
         raise ValueError("windows_uac_literal")
     return "'" + value + "'"
+
+
+def approver_of(scenario):
+    """The account an approve row's answer types: its APPROVERS role, otherwise the fixture administrator."""
+    return APPROVERS.get(scenario, "administrator")
+
+
+def _profile_name(prompt, approver):
+    return prompt + (".json" if approver == "administrator" else "." + approver + ".json")
 
 
 def census_source(row, context, administrator):
@@ -730,13 +752,16 @@ def _replace_once(source, marker, replacement):
 
 
 def program(binding, mode, decision, *, attempt=None, answer=None, prompt=None, row=None, context=None, profile=None, profile_sha=None,
-            scenario_operation=None, decision_operation=None):
+            scenario_operation=None, decision_operation=None, approver="administrator"):
     """A fixed packet patched from the observe producer, as readiness_windows_login does; no pinned source moves.
 
     uac-status embeds no input code at all: its source holds no key path and it reads no stdin. Neither review
     mode does either: decision is then the review's own operation, and decision_operation names the decision whose
-    pointer journal the review shares.
+    pointer journal the review shares. approver names the account whose SID the census expects in the pending event
+    (approver_of): the setup's second administrator, or its administrator.
     """
+    if approver not in APPROVER_ROLES or _APPROVER_ACCOUNT[approver] not in binding.get("setup", {}):
+        raise ValueError("windows_uac_action")
     if (mode not in {"uac-decide", "uac-status", "uac-review", "uac-review-status"} or type(decision) is not str
             or str(UUID(decision)) != decision):
         raise ValueError("windows_uac_action")
@@ -760,7 +785,7 @@ def program(binding, mode, decision, *, attempt=None, answer=None, prompt=None, 
                 or decision != review_id(scenario_operation) or decision_operation != decision_id(scenario_operation)):
             raise ValueError("windows_uac_action")
         _validate_context(context)
-        census = census_source(row, context, binding["setup"]["administrator"])
+        census = census_source(row, context, binding["setup"][_APPROVER_ACCOUNT[approver]])
         bindings = {"UAC_DECISION": answer, "UAC_PROMPT": prompt, "UAC_ATTEMPT": attempt, "UAC_ROW": row, "UAC_CONTEXT": context,
                     "UAC_SCENARIO_OPERATION": scenario_operation, "UAC_DECISION_ID": decision_operation, "UAC_CENSUS_SCRIPT": census,
                     "UAC_GATE_SECONDS": GATE_SECONDS, "UAC_PROMPT_AGE": PROMPT_AGE_SECONDS, "UAC_REVIEW_SETTLE": REVIEW_SETTLE_SECONDS}
@@ -794,8 +819,11 @@ def program(binding, mode, decision, *, attempt=None, answer=None, prompt=None, 
                 or row.get("decision") != answer or row.get("prompt") != prompt or not _canonical(scenario_operation)):
             raise ValueError("windows_uac_action")
         _validate_context(context)
-        screen = {"width": profile["width"], "height": profile["height"], "crops": profile["crops"]}
-        census = census_source(row, context, binding["setup"]["administrator"])
+        if approver != "administrator" and "account" not in profile:
+            raise ValueError("windows_uac_action")
+        # The account crop is one more reviewed region: the frame must show the approver's account selected.
+        screen = {"width": profile["width"], "height": profile["height"], "crops": profile["crops"] + ([profile["account"]] if "account" in profile else [])}
+        census = census_source(row, context, binding["setup"][_APPROVER_ACCOUNT[approver]])
         bindings = {"UAC_DECISION": answer, "UAC_PROMPT": prompt, "UAC_ATTEMPT": attempt, "UAC_ROW": row, "UAC_CONTEXT": context, "UAC_SCREEN": screen,
                     "UAC_FIELD": profile["field"], "UAC_PROFILE_SHA": profile_sha, "UAC_SCENARIO_OPERATION": scenario_operation, "UAC_CENSUS_SCRIPT": census,
                     "UAC_GATE_SECONDS": GATE_SECONDS, "UAC_PROMPT_AGE": PROMPT_AGE_SECONDS, "UAC_CLOSE_WAIT": CLOSE_WAIT_MILLISECONDS, "UAC_DARK_LEVEL": DARK_LEVEL}
@@ -873,8 +901,13 @@ def _validate_context(context):
     return context
 
 
-def validate_profile(profile, deployment, prompt):
-    """A reviewed profile: exact crops that leave out the caret's field and the pointer's parking place."""
+def validate_profile(profile, deployment, prompt, approver="administrator", *, account_required=False):
+    """A reviewed profile: exact crops that leave out the caret's field and the pointer's parking place.
+
+    A profile of the second administrator, and any approve profile on a clone that has one (account_required), names
+    its approver and the account crop that shows that account selected; a fixture administrator's profile elsewhere has
+    neither.
+    """
     def rect(value, width, height):
         if type(value) is not list or len(value) != 4 or any(type(item) is not int for item in value):
             raise ValueError("windows_uac_profile")
@@ -885,10 +918,13 @@ def validate_profile(profile, deployment, prompt):
 
     def overlaps(left, right):
         return left[0] < right[2] and right[0] < left[2] and left[1] < right[3] and right[1] < left[3]
-    if (type(profile) is not dict or set(profile) != _PROFILE_FIELDS or type(profile["schemaVersion"]) is not int or profile["schemaVersion"] != 1 or profile["deploymentId"] != deployment
+    named = type(profile) is dict and set(profile) == _PROFILE_FIELDS | _ACCOUNT_FIELDS
+    if (type(profile) is not dict or set(profile) not in (_PROFILE_FIELDS, _PROFILE_FIELDS | _ACCOUNT_FIELDS) or approver not in APPROVER_ROLES
+            or not named and (account_required or approver != "administrator") or named and profile["approver"] != approver
+            or type(profile["schemaVersion"]) is not int or profile["schemaVersion"] != 1 or profile["deploymentId"] != deployment
             or profile["prompt"] != prompt or type(profile["width"]) is not int or type(profile["height"]) is not int
             or not 320 <= profile["width"] <= 4096 or not 200 <= profile["height"] <= 2160
-            or type(profile["crops"]) is not list or not 1 <= len(profile["crops"]) <= 8
+            or type(profile["crops"]) is not list or not 1 <= len(profile["crops"]) <= (7 if named else 8)  # screen_gate reads at most eight
             or type(profile["reviewedFrameSha256"]) is not str or re.fullmatch("[0-9a-f]{64}", profile["reviewedFrameSha256"]) is None):
         raise ValueError("windows_uac_profile")
     width, height = profile["width"], profile["height"]
@@ -900,7 +936,7 @@ def validate_profile(profile, deployment, prompt):
     pointer = [width // 2 - 4, height // 2 - 4, width // 2 + 24, height // 2 + 40]
     if overlaps(box, pointer):
         raise ValueError("windows_uac_profile_pointer_gap")
-    for row in profile["crops"]:
+    for row in profile["crops"] + ([profile["account"]] if named else []):
         if type(row) is not dict or set(row) != {"rect", "sha256"} or type(row["sha256"]) is not str or re.fullmatch("[0-9a-f]{64}", row["sha256"]) is None:
             raise ValueError("windows_uac_profile")
         crop = rect(row["rect"], width, height)
@@ -967,14 +1003,18 @@ def _png_pixels(raw):
     return width, height, bytes(pixels)
 
 
-def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark_pixels, *, direct=False):
+def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark_pixels, *, direct=False, approver="administrator", account=None):
     """Hash the reviewed regions of a frame the reviewer opened, with the prompt up and unanswered.
 
     Direct setup only, with no MCP route. The frame shows public pixels and an empty field, and
     the profile is create-only: a changed layout is a new review of a new clone. The frame a
     windows-uac-review retained is such a frame: pass the bytes retained_review_frame returns.
+
+    account is the region of the account name the prompt shows selected, which must be approver's: needed for the
+    second administrator (an install-helper prompt of APPROVERS) and for any approve profile on a clone that has one.
     """
-    if type(deployment) is not str or not _canonical(deployment) or prompt not in (*PROMPTS, *(("qualification",) if direct else ())):
+    if (type(deployment) is not str or not _canonical(deployment) or prompt not in (*PROMPTS, *(("qualification",) if direct else ()))
+            or approver not in APPROVER_ROLES or approver != "administrator" and (account is None or prompt != "install-helper")):
         raise ValueError("windows_uac_profile")
     width, height, pixels = _png_pixels(frame) if frame.startswith(b"\x89PNG") else ppm(frame)
 
@@ -983,7 +1023,9 @@ def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark
     rows = [{"rect": list(rect), "sha256": hashlib.sha256(region(rect)).hexdigest()} for rect in crops]
     profile = {"schemaVersion": 1, "deploymentId": deployment, "prompt": prompt, "width": width, "height": height, "crops": rows,
                "field": {"rect": list(field), "maxDarkPixels": max_dark_pixels}, "reviewedFrameSha256": hashlib.sha256(frame).hexdigest()}
-    validate_profile(profile, deployment, prompt)
+    if account is not None:
+        profile.update(approver=approver, account={"rect": list(account), "sha256": hashlib.sha256(region(account)).hexdigest()})
+    validate_profile(profile, deployment, prompt, approver, account_required=account is not None)
     inside = region(field)
     if sum(max(inside[at:at + 3]) < DARK_LEVEL for at in range(0, len(inside), 3)) > max_dark_pixels:
         raise ValueError("windows_uac_profile_field_not_empty")
@@ -991,7 +1033,7 @@ def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     for path in (directory.parent, directory):
         os.chmod(path, 0o700)
-    login._retain_local(directory, prompt + ".json", profile)
+    login._retain_local(directory, _profile_name(prompt, approver), profile)
     return profile
 
 
@@ -1049,9 +1091,9 @@ def retained_review_frame(root, correlation_id):
         raise ValueError("windows_uac_review_frame_unavailable") from None
 
 
-def _load_profile(root, deployment, prompt):
-    raw = _read_private(root / ".runtime/windows-uac-profiles" / deployment / (prompt + ".json"))
-    return validate_profile(json.loads(raw), deployment, prompt), hashlib.sha256(raw).hexdigest()
+def _load_profile(root, deployment, prompt, approver="administrator", account_required=False):
+    raw = _read_private(root / ".runtime/windows-uac-profiles" / deployment / _profile_name(prompt, approver))
+    return validate_profile(json.loads(raw), deployment, prompt, approver, account_required=account_required), hashlib.sha256(raw).hexdigest()
 
 
 def _scenario_record(root, correlation):
@@ -1299,9 +1341,16 @@ def _gates(root, inputs, *, direct, review):
         binding = _binding(root, plan)
     except ValueError:
         return refused("uac_environment_unavailable"), None
+    # The account the answer types, and whose SID the census expects in the pending event: a clone without the second
+    # administrator a row of APPROVERS needs can never answer it. On a clone with one, an approve profile names its account.
+    approver = approver_of(plan.scenario_id) if row["decision"] == "approve" else "administrator"
+    if _APPROVER_ACCOUNT[approver] not in binding["setup"]:
+        return refused("uac_second_administrator_absent"), None
+    account_required = row["decision"] == "approve" and _APPROVER_ACCOUNT["second-administrator"] in binding["setup"]
     directory = root / (_REVIEWS if review else _DECISIONS) / operation
     admitted = SimpleNamespace(root=root, correlation=correlation, decision=decision, operation=operation, plan=plan, row=row,
-                               binding=binding, directory=directory, attempt=None, original=None, profile=None, profile_sha=None)
+                               binding=binding, directory=directory, attempt=None, original=None, profile=None, profile_sha=None,
+                               approver=approver)
     if review:
         known = _review_known(directory)
         if known is not None:
@@ -1319,7 +1368,7 @@ def _gates(root, inputs, *, direct, review):
         return refused("uac_scenario_not_running"), None
     if not review:
         try:
-            admitted.profile, admitted.profile_sha = _load_profile(root, inputs["environment"], inputs["prompt"])
+            admitted.profile, admitted.profile_sha = _load_profile(root, inputs["environment"], inputs["prompt"], approver, account_required)
         except (OSError, ValueError):
             return refused("uac_profile_unreviewed"), None
     admitted.attempt = attempt
@@ -1356,7 +1405,7 @@ def execute(root, inputs, *, deadline=None, direct=False):
     if re.fullmatch(_ROOT_FORM + re.escape(correlation), context["operationRoot"]) is None:
         return _refused("uac_context_unavailable", decision, inputs)
     source = program(binding, "uac-decide", decision, attempt=attempt, answer=inputs["decision"], prompt=inputs["prompt"], row=row, context=context,
-                     profile=profile, profile_sha=profile_sha, scenario_operation=correlation)
+                     profile=profile, profile_sha=profile_sha, scenario_operation=correlation, approver=admitted.approver)
     directory = _journal_directory(root, decision)
     intended = {"decisionId": decision, "correlationId": correlation, "host": inputs["host"], "environment": inputs["environment"],
                 "scenarioId": plan.scenario_id, "prompt": inputs["prompt"], "decision": inputs["decision"], "replayAllowed": False}
@@ -1375,7 +1424,7 @@ def execute(root, inputs, *, deadline=None, direct=False):
     private = frame = secret = None
     try:
         if inputs["decision"] == "approve":
-            path = root / ".runtime/windows-vm-credentials" / inputs["environment"] / "final-administrator.secret"
+            path = root / ".runtime/windows-vm-credentials" / inputs["environment"] / _APPROVER_SECRET[admitted.approver]
             try:
                 secret = SecretFile(str(path))
                 private = secret.text.encode("ascii")
@@ -1546,7 +1595,8 @@ def review(root, inputs, *, deadline=None, direct=False):
     if re.fullmatch(_ROOT_FORM + re.escape(correlation), context["operationRoot"]) is None:
         return _review_refused("uac_context_unavailable", review_operation, decision, inputs)
     source = program(admitted.binding, "uac-review", review_operation, attempt=admitted.attempt, answer=inputs["decision"],
-                     prompt=inputs["prompt"], row=admitted.row, context=context, scenario_operation=correlation, decision_operation=decision)
+                     prompt=inputs["prompt"], row=admitted.row, context=context, scenario_operation=correlation, decision_operation=decision,
+                     approver=admitted.approver)
     directory = _journal_directory(root, review_operation, _REVIEWS)
     intended = {"reviewId": review_operation, "decisionId": decision, "correlationId": correlation, "host": inputs["host"],
                 "environment": inputs["environment"], "scenarioId": admitted.plan.scenario_id, "prompt": inputs["prompt"],

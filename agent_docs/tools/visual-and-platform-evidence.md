@@ -1267,7 +1267,7 @@ enumeration of every user and context, by `InstalledProductName`), which also
 reports each row's package code. Admitted: `public-ready`, `download-cancelled` and
 `checksum-rejected`, which raise no prompt and need no SYSTEM collector;
 `uac-denied`, whose collector serves `before-install` and `terminal-actors`; and
-the grant rows `success-off`, `success-reconnect`, `success-explicit-off`,
+the grant rows `success-off`, `different-admin`, `success-reconnect`, `success-explicit-off`,
 `wait-client-loss` and `installer-wait-client-loss`, whose collector serves
 `before-install`, `authorization`, `terminal-actors` and `returned-cleanup`. Also
 admitted:
@@ -1319,13 +1319,30 @@ admitted:
   workspace has no location, so it never tests whether an off intent survives the
   update.
 
+`different-admin` is approved by another Administrators account than the
+fixture's own. Only a clone whose setup names `secondAdministrator` has one (see
+the reusable images in `lifecycle-and-api.md`), and any other clone refuses the row
+before any journal with `windows_scenario_update_second_administrator_absent`. Its
+job plan names that account (`approvingAdministrator`) beside the fixture
+`administrator`. The context reads both SIDs and grants with the second one: the
+case's `approvingAdminSid`, every collector request's and the coordinator the
+authorization stage must find elevated. It ends `context_approving_administrator`
+before any task if that SID is the fixture administrator's or the ordinary user's,
+and `approving_administrator_unplanned` if row and plan disagree. Every grant
+receipt records `update.approval`: `approver` (`administrator` or
+`second-administrator`), `approvingAdminSid` and the fixture `administratorSid`.
+The matrix counts a grant run only with that approval proven from its own receipt
+(`_approval_facts`): the recorded approver is the row's own, the coordinator ran
+elevated under the approving SID, the worker ran unelevated as the ordinary user,
+and the approving SID differs from the fixture administrator's exactly for
+`different-admin`. A run whose package is proven but whose approval is not is
+`approval-unproven` and never counts. Its evidence entry names `approval` as the
+approver and those three facts. So `different-approving-admin` needs the
+`different-admin` pair, and `original-user-worker` needs it and the `success-off`
+pair.
+
 Refused before any journal, each with what it still lacks:
 
-- `different-admin` with `windows_scenario_update_second_administrator_unavailable`.
-  The fixture has one administrator account, the decision approves only with
-  `final-administrator.secret`, and the context reads only that account's SID. It
-  needs a second Administrators account, its credential and a decision row that
-  types it.
 - `native-install-failed` and `protected-storage-rejected` with
   `windows_scenario_update_fault_unavailable`. Nothing produces their faults: the
   product's MSIs carry no LaunchCondition table to fault, and nothing creates or
@@ -1759,8 +1776,11 @@ through each route, and every row named for a scenario must. The observation rea
 `scenario-status` for every row first, then it classifies each row:
 
 - `passed`: terminal, collection complete, unstopped, and installed-package by the
-  rule above.
-- `installed-package-unproven`, `stopped`, `refused` (exit 2, no receipt), `setup`,
+  rule above; a grant row also with its approval proven (the update rows above).
+- `approval-unproven`: a grant run whose package is proven but whose receipt does
+  not prove its approving account, the coordinator elevated under it and the worker
+  as the original user.
+- `installed-package-unproven`, `approval-unproven`, `stopped`, `refused` (exit 2, no receipt), `setup`,
   `failed-before-task` (a known failure before the owner's task ran) and
   `failed-after-task` never count. `failed-after-task` is a known failure of the
   harness once the task finished: the task journal (`task_events`), the command line
@@ -1868,14 +1888,24 @@ census of `consent.exe` (one, System32, signed by Microsoft Windows, parent
 Appinfo, younger than 90 s), the owner's pending event and the UAC policy. The
 90 s rule holds at the burn, counting frames read after the census, and a dark
 field is read again within the gate, since the caret blinks there. Deny is
-one Esc and opens no credential. Approve reads `final-administrator.secret` through
-`SecretFile` and passes it on SSH stdin to a detached child. A create-only burn per
+one Esc and opens no credential. Approve reads the approving account's secret through
+`SecretFile` and passes it on SSH stdin to a detached child: `final-administrator.secret`,
+or for the one row of the closed table `APPROVERS`, `different-admin`, the clone's
+`second-administrator.secret`. The census then expects that account's SID, read by
+its name in the setup, in the pending event, and a clone without the account
+refuses the row before contact (`uac_second_administrator_absent`). A create-only burn per
 prompt and the input journal precede the first key, so a lost reply never types
 twice; a repeat is a status packet with no key path. The reply is an
 acknowledgement only: `approvalSucceeded` and `productOutcomeProved` are always
 false, and the scenario's own collection proves the product outcome. Profiles are
 private, under `.runtime/windows-uac-profiles/<deployment>/<prompt>.json`, made by
-`reviewed_uac_profile` from a frame the reviewer opened. Guest files stay under the
+`reviewed_uac_profile` from a frame the reviewer opened. The second administrator's
+is `install-helper.second-administrator.json`. On a clone with two administrators a
+credential prompt offers both, so every approve profile there also names its
+`approver` and an `account` crop, the account name the prompt shows selected, with
+at most seven other crops: the decision types a secret only into a frame that shows
+its own account selected, and refuses `uac_profile_unreviewed` for a profile
+without one. Guest files stay under the
 VM-root subdirectory `windows-uac/`, published whole, and the fence is a flat
 `direct-guest-*` journal, so `readiness-reboot` refuses while input is open and
 sign-in history never sees them. A known input closes the fence, and status
@@ -1942,7 +1972,12 @@ A profile for a clone, by one operator, with no other guest action in between:
 5. `frame, record = retained_review_frame(root, correlationId)`, then
    `reviewed_uac_profile(root, record["environment"], record["prompt"], frame,
    crops, field, max_dark_pixels)` writes the create-only profile under
-   `.runtime/windows-uac-profiles/`.
+   `.runtime/windows-uac-profiles/`. On a clone with a second administrator, add
+   `approver` and `account`, the region of the selected account's name, after
+   checking the frame shows that account selected: `approver="second-administrator"`
+   from a `different-admin` run, `approver="administrator"` from any other approve
+   row. A frame that shows the other account selected makes no profile: the
+   decision types only into the account the prompt offers first.
 6. Answer the prompt of a later run with `windows-uac-decision`.
 
 The decision and the review need a running scenario of the ordinary user. A

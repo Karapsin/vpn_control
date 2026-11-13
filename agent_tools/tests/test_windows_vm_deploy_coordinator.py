@@ -225,4 +225,81 @@ class CoordinatorTests(unittest.TestCase):
                 self.assertEqual(0o600,(private/'user.secret').stat().st_mode&0o777)
 
 
+@unittest.skipUnless(os.name=='posix','POSIX coordinator state')
+class SecondAdministratorStartTests(unittest.TestCase):
+    """T6: a clone start makes the second administrator's own secret and sends it with the other two; a blank install,
+    the next image template, and a generalize of such a clone refuse it before any effect."""
+    image={'imageId':'0b0b0b0b-1c1c-4d4d-8e8e-2f2f2f2f2f2f','manifestSha256':'a'*64}
+
+    def setUp(self):
+        temporary=tempfile.TemporaryDirectory(dir=Path('/tmp').resolve());self.addCleanup(temporary.cleanup)
+        self.root=Path(temporary.name);self.root.chmod(0o700)
+        self.spec=FreshWindowsVmSpec.parse(specs.request())
+        self.setup={'imageName':'Windows 11 Pro','locale':'en-US','user':'ordinary','administrator':'fixtureAdmin','secondAdministrator':'fixtureApprover'}
+        self.context={'hostBootId':'ff6b5d84-f546-4a96-baf7-f9c801c743c0','pending':[]}
+        self.credential=self.root/'sudo.secret';self.credential.write_text('INERT_LOCAL_FIXTURE\n');self.credential.chmod(0o600)
+        patcher=mock.patch.object(deploy,'installer_media',return_value={'state':'media-observed','images':[{'name':'Windows 11 Pro','languages':['en-US']}]})
+        patcher.start();self.addCleanup(patcher.stop)
+
+    def start(self,setup,*,image):
+        sent=[]
+        def prepare(*_):
+            request={'hostAlias':self.spec.host,'environment':'owned-unit-vm','operator':'windows-vm-deploy',
+                     'requestedMemoryBytes':self.spec.memory_mib*1024**2,'headroomBytes':8*1024**3,
+                     'measurement':{'physicalMemoryBytes':32*1024**3,'runningConfiguredMemoryBytes':0,'pressure':'normal','swapUsedBytes':0},
+                     'allocationState':'pending'}
+            return {'reservation':environments.reserve_environment(self.root,request),'request':request,'hostBootId':self.context['hostBootId'],'pending':[]}
+        def native(_root,_spec,mode,**kwargs):
+            self.assertEqual(('start',setup),(mode,kwargs['setup']))
+            sent.append(dict(kwargs['payload']));kwargs['before_submit']()
+            return {'state':'unknown','nativeActionAllowed':False,'replayAllowed':False}
+        with mock.patch.object(deploy,'_prepare_reservation',side_effect=prepare),mock.patch.object(deploy,'_execute',side_effect=native):
+            try:result=deploy.start(self.root,self.spec.as_dict(),setup,str(self.credential),image=image)
+            except ValueError as error:self.fail('the clone start was refused: '+str(error))
+        return result,sent
+
+    def test_a_clone_start_makes_the_second_administrator_secret_and_sends_it_on_stdin_only(self):
+        result,sent=self.start(self.setup,image=self.image)
+        self.assertEqual('unknown',result['state'])
+        private=self.root/'.runtime/windows-vm-credentials'/self.spec.deployment_id
+        names={'user':'user','administrator':'administrator','secondAdministrator':'second-administrator'}
+        self.assertEqual([set(names)],[set(payload)for payload in sent],'one secret per account the answer file creates')
+        for role,name in names.items():
+            path=private/(name+'.secret')
+            self.assertEqual(0o600,path.stat().st_mode&0o777)
+            self.assertEqual(path.read_text().strip(),sent[0][role],role)
+        self.assertTrue(sent[0]['secondAdministrator'].startswith('Second8!'))
+        self.assertEqual(len(set(sent[0].values())),3,'each account has its own secret')
+        self.assertTrue((private/'final-administrator.secret').exists(),'secure still rotates the fixture administrator alone')
+        for path in self.root.rglob('*'):
+            if path.is_file() and not path.name.endswith('.secret'):
+                self.assertNotIn(sent[0]['secondAdministrator'].encode(),path.read_bytes(),str(path))
+        # A setup without one makes and sends exactly the two it always did.
+        self.root=self.root/'one';self.root.mkdir(mode=0o700)
+        one={key:value for key,value in self.setup.items() if key!='secondAdministrator'}
+        _,sent=self.start(one,image=self.image)
+        self.assertEqual([{'user','administrator'}],[set(payload)for payload in sent])
+        self.assertFalse((self.root/'.runtime/windows-vm-credentials'/self.spec.deployment_id/'second-administrator.secret').exists())
+
+    def test_a_blank_install_refuses_a_second_administrator_before_any_preparation(self):
+        with mock.patch.object(deploy,'_prepare_reservation',side_effect=AssertionError('no preparation')),\
+             mock.patch.object(deploy,'_execute',side_effect=AssertionError('no program')),\
+             self.assertRaisesRegex(ValueError,'^deployment_second_administrator_clone_only$'):
+            deploy.start(self.root,self.spec.as_dict(),self.setup,str(self.credential))
+        self.assertFalse((self.root/'.rag_index').exists())
+        self.assertFalse((self.root/'.runtime/windows-vm-credentials').exists())
+
+    def test_a_generalize_of_such_a_clone_refuses_before_any_program(self):
+        correlation='b'*32;directory=deploy._runtime_group(self.root,'windows-vm-deploy')/correlation;directory.mkdir(mode=0o700)
+        context={**self.context,'image':self.image}
+        source=('SPEC='+repr(self.spec.as_dict())+'\nSETUP='+repr(self.setup)+'\nCONTEXT='+repr(context)+"\nMODE='start'\n").encode()
+        deploy.stage._retain(directory,'caller.py',source)
+        parent=self.root/'.rag_index/windows-vm-deploy-intents';parent.mkdir(mode=0o700,parents=True)
+        deploy.stage._retain(parent,self.spec.deployment_id+'.intent.json',{'spec':self.spec.as_dict(),'setup':self.setup,'context':context,'mode':'start',
+                                                                             'correlationId':correlation,'callerSha256':hashlib.sha256(source).hexdigest()})
+        with mock.patch.object(deploy,'_execute',side_effect=AssertionError('no generalize program')):
+            with self.assertRaisesRegex(ValueError,'^generalize_second_administrator$'):
+                deploy.generalize(self.root,self.spec.deployment_id,'5c5c5c5c-6d6d-4e4e-8f8f-7a7a7a7a7a7a',str(self.credential))
+
+
 if __name__=='__main__':unittest.main()

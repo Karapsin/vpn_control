@@ -529,7 +529,7 @@ class ReleaseRouteTests(unittest.TestCase):
     def test_deployment_reservation_and_resource_sources_stay_unchanged(self):
         # The sources pinned by readiness_windows._source_pins() (frozen sign-in packets and
         # enrollment evidence bind them) are only read and called by the release module.
-        frozen = {'windows_vm_deploy.py': 'bca2bba738ae3ee277f8190b2ca8c35b4f0e7c2ee5f0e5db68a7eb40a356fc76',
+        frozen = {'windows_vm_deploy.py': 'b4639cd3a91aa3be64f2d7fa6dfc5b854626aa5f1b512ef915dd47554eb98893',
                   'native_environment.py': 'e842650c8308d5b2cd8d9770afcd86d930556c0ae0836dea9b76d4cb864147cf',
                   'windows_vm_resources.py': '7cc0abe35919350e7309e3ec21136892fe68728bdc65259bfc7590c7a32570c7',
                   'windows_vm_deploy_remote.py': '36d39cca455244445f1c4d654d96b0f7634f99e6545af8e0464aa5f486eb101a'}

@@ -1562,9 +1562,8 @@ class UpdateTableTests(unittest.TestCase):
         """Each refused row names exactly what it still lacks; every stage of an admitted row is tooled."""
         refusals = {variant: windows.RECIPES[UPDATE + variant]["refusal"] for variant in windows.UPDATE_VARIANTS}
         self.assertEqual({**dict.fromkeys(("public-ready", "download-cancelled", "checksum-rejected", "uac-denied", "success-off",
-                                           "wait-client-loss", "installer-wait-client-loss", "install-cancelled",
+                                           "different-admin", "wait-client-loss", "installer-wait-client-loss", "install-cancelled",
                                            "participating-copy-lock", "success-reconnect", "success-explicit-off")),
-                          "different-admin": "windows_scenario_update_second_administrator_unavailable",
                           "native-install-failed": "windows_scenario_update_fault_unavailable",
                           "protected-storage-rejected": "windows_scenario_update_fault_unavailable"}, refusals)
 
@@ -1590,7 +1589,7 @@ class UpdateTableTests(unittest.TestCase):
                     self.assertTrue(host_job._BUNDLE_PATH.fullmatch(relative), relative)
         self.assertEqual((("before-install", "terminal-actors"), "terminal-actors"),
                          tuple(windows.RECIPES[UPDATE + "uac-denied"]["update"][key] for key in ("collectorStages", "finalStage")))
-        for variant in ("success-off", "success-reconnect", "success-explicit-off", "wait-client-loss", "installer-wait-client-loss"):
+        for variant in ("success-off", "different-admin", "success-reconnect", "success-explicit-off", "wait-client-loss", "installer-wait-client-loss"):
             self.assertEqual((("before-install", "authorization", "terminal-actors", "returned-cleanup"), "returned-cleanup"),
                              tuple(windows.RECIPES[UPDATE + variant]["update"][key] for key in ("collectorStages", "finalStage")))
             self.assertEqual("approve", windows.RECIPES[UPDATE + variant]["uac"]["decision"])
@@ -1601,6 +1600,11 @@ class UpdateTableTests(unittest.TestCase):
         # A running participating copy: fault-ready names its actor before the install is asked for.
         self.assertEqual((("before-install", "fault-ready", "authorization", "terminal-actors", "returned-cleanup"), "returned-cleanup"),
                          tuple(windows.RECIPES[UPDATE + "participating-copy-lock"]["update"][key] for key in ("collectorStages", "finalStage")))
+        # Only different-admin is approved by another account than the fixture administrator, as the decision table says.
+        self.assertEqual({UPDATE + "different-admin": "second-administrator"},
+                         {UPDATE + variant: windows.RECIPES[UPDATE + variant]["approver"] for variant in windows.UPDATE_VARIANTS
+                          if "approver" in windows.RECIPES[UPDATE + variant]})
+        self.assertEqual(uac.APPROVERS, {name: row["approver"] for name, row in windows.RECIPES.items() if "approver" in row})
 
     def test_only_the_connected_rows_carry_their_upstream_and_only_the_cancelled_install_watches(self):
         """success-reconnect and its explicit-off twin alone carry the in-guest SOCKS upstream and the traffic sampler and
@@ -1832,6 +1836,51 @@ class UpdateAdmissionTests(UpdateBase):
         row = dict(windows.RECIPES[UPDATE + "uac-denied"], denyJoin=False, refusal=None)
         with mock.patch.dict(windows.RECIPES, {UPDATE + "uac-denied": row}):
             self.assert_refused(self.update_request("uac-denied"), "windows_scenario_deny_needs_decision_join")
+
+
+class SecondAdministratorAdmissionTests(UpdateBase):
+    """T6: different-admin was refused at admission (windows_scenario_update_second_administrator_unavailable): the fixture
+    had one administrator account. A clone whose setup names a second Administrators account now admits it, and its job
+    plan names that account beside the fixture administrator; any other clone refuses it before any journal."""
+
+    def second_administrator(self, name="recoveryapprover"):
+        path = self.root / ".rag_index/windows-vm-deploy-intents" / (MACHINE + ".intent.json")
+        intent = json.loads(path.read_text())
+        intent["setup"]["secondAdministrator"] = name
+        path.write_text(json.dumps(intent))
+
+    def admitted(self, variant):
+        try:
+            return windows.admit_start(self.root, self.update_request(variant), self.resolver)
+        except ValueError as error:
+            self.fail("refused: " + str(error))
+
+    def test_a_clone_with_a_second_administrator_admits_the_different_admin_row(self):
+        self.second_administrator()
+        self.assertEqual(windows.RECIPES[UPDATE + "different-admin"], self.admitted("different-admin"))
+        self.assertFalse(self.journal.exists())
+        for variant in ("success-off", "uac-denied", "public-ready"):
+            with self.subTest(variant=variant):
+                self.assertEqual(windows.RECIPES[UPDATE + variant], self.admitted(variant), "the clone's other rows stay admitted")
+
+    def test_a_clone_without_one_refuses_it_before_any_journal(self):
+        self.assert_refused(self.update_request("different-admin"), "windows_scenario_update_second_administrator_absent")
+
+    def test_its_job_grants_with_the_second_administrator_and_names_the_fixture_one(self):
+        self.second_administrator()
+        self.admitted("different-admin")
+        plans = {}
+        for variant in ("different-admin", "success-off"):
+            plan = execution.ScenarioPlan.from_mapping(self.update_request(variant))
+            bundle, verified = windows.verified_bundle(self.root, plan, self.resolver)
+            value = windows.scenario_input(self.root, plan, windows.RECIPES[UPDATE + variant])
+            source, _ = windows.render_program(plan, windows._binding(self.root, plan), bundle, verified, TARGET, value=value, packages={})
+            plans[variant] = ast.literal_eval(re.search(r"^PLAN=(.*)$", source, re.M)[1])
+        self.assertEqual(("recoveryadmin", "recoveryapprover", "second-administrator"),
+                         tuple(plans["different-admin"].get(key) for key in ("administrator", "approvingAdministrator"))
+                         + (plans["different-admin"]["row"].get("approver"),))
+        self.assertEqual(("recoveryadmin", None, None), tuple(plans["success-off"].get(key) for key in ("administrator", "approvingAdministrator"))
+                         + (plans["success-off"]["row"].get("approver"),), "the fixture administrator approves every other grant")
 
 
 class UpdateSubmitTests(UpdateBase):

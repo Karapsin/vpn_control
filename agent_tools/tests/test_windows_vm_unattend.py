@@ -62,4 +62,68 @@ class UnattendedTests(unittest.TestCase):
         self.assertEqual('unknown',json.loads(result.stdout)['state'])
 
 
+class SecondAdministratorTests(unittest.TestCase):
+    """T6: a new clone may carry a second Administrators account, the different approving administrator of
+    windows-public-update.different-admin. Until then a setup naming one was refused (setup_fields)."""
+    ns={'w':'urn:schemas-microsoft-com:unattend'}
+    one={'imageName':'Windows 11 Enterprise Evaluation','locale':'en-US','user':'fixtureuser','administrator':'fixtureadmin'}
+    credentials={'user':'User8!'+'a'*24,'administrator':'Admin8!'+'b'*24}
+    second='Second8!'+'c'*32
+
+    def two(self,**changes):
+        return {**self.one,'secondAdministrator':'fixtureapprover',**changes}
+
+    def parsed(self,value):
+        try:return setup.parse_setup(value)
+        except ValueError as error:self.fail('the setup was refused: '+str(error))
+
+    def answer(self,module,value,credentials):
+        try:return ET.fromstring(module['answer_file'](value,credentials)if type(module)is dict else module.answer_file(value,credentials))
+        except ValueError as error:self.fail('no answer file: '+str(error))
+
+    def accounts(self,xml):
+        return [(a.find('w:Name',self.ns).text,a.find('w:Group',self.ns).text,a.find('w:Password/w:Value',self.ns).text)
+                for a in xml.findall('.//w:LocalAccount',self.ns)]
+
+    def test_a_clone_setup_names_a_second_administrator_with_its_own_secret(self):
+        self.assertEqual(self.two(),self.parsed(self.two()))
+        xml=self.answer(setup,self.two(),{**self.credentials,'secondAdministrator':self.second})
+        self.assertEqual([('fixtureuser','Users',self.credentials['user']),('fixtureapprover','Administrators',self.second),
+                          ('fixtureadmin','Administrators',self.credentials['administrator'])],self.accounts(xml),
+                         'the second administrator with its own secret, created before the fixture administrator')
+        self.assertEqual('fixtureuser',xml.find('.//w:AutoLogon/w:Username',self.ns).text,'it never signs in: the ordinary user does')
+        self.assertEqual(self.credentials['user'],xml.find('.//w:AutoLogon/w:Password/w:Value',self.ns).text)
+        # A setup without one keeps its exact answer file: the three-account file less that account.
+        plain=ET.tostring(self.answer(setup,self.one,self.credentials))
+        accounts=xml.find('.//w:LocalAccounts',self.ns);accounts.remove(accounts.findall('w:LocalAccount',self.ns)[1])
+        self.assertEqual(plain,ET.tostring(xml))
+
+    def test_a_second_administrator_needs_its_own_name_and_secret_and_no_visual_purpose(self):
+        for value in (self.two(secondAdministrator='FixtureAdmin'),self.two(secondAdministrator='FIXTUREUSER'),self.two(secondAdministrator='Administrator'),
+                      self.two(secondAdministrator='Guest'),self.two(secondAdministrator='../x'),self.two(secondAdministrator=''),self.two(secondAdministrator=7)):
+            with self.subTest(name=value['secondAdministrator']),self.assertRaisesRegex(ValueError,'^setup_accounts$'):setup.parse_setup(value)
+        with self.assertRaisesRegex(ValueError,'^setup_fields$'):setup.parse_setup(self.two(purpose='windowsUacVisual'))
+        with self.assertRaisesRegex(ValueError,'^setup_fields$'):setup.parse_setup({**self.one,'thirdAdministrator':'x'})
+        for credentials in (self.credentials,{**self.credentials,'secondAdministrator':'short'},{**self.credentials,'secondAdministrator':self.second,'extra':self.second}):
+            with self.subTest(credentials=sorted(credentials)),self.assertRaisesRegex(ValueError,'^setup_credentials$'):
+                setup.answer_file(self.two(),credentials)
+        with self.assertRaisesRegex(ValueError,'^setup_credentials$'):setup.answer_file(self.one,{**self.credentials,'secondAdministrator':self.second})
+
+    def test_the_start_and_creator_programs_compile_the_same_answer_with_only_their_own_names(self):
+        """Both programs compile parse_setup and answer_file from source beside FIELDS, re and ET alone: a second
+        administrator must need no other module name there."""
+        spec=FreshWindowsVmSpec.parse(specs.request())
+        try:source=producer.program(spec,'start',setup=self.two(),context={'hostBootId':'ff6b5d84-f546-4a96-baf7-f9c801c743c0','pending':[],
+                                                                          'image':{'imageId':'0b0b0b0b-1c1c-4d4d-8e8e-2f2f2f2f2f2f','manifestSha256':'a'*64}})
+        except ValueError as error:self.fail('no clone start program: '+str(error))
+        import inspect,re
+        for name in ('parse_setup','answer_file'):
+            self.assertIn(inspect.getsource(getattr(setup,name)),source.decode())
+        namespace={'FIELDS':set(setup.FIELDS),'re':re,'ET':ET}
+        exec(compile(inspect.getsource(setup.parse_setup)+'\n'+inspect.getsource(setup.answer_file),'compiled setup','exec'),namespace)
+        credentials={**self.credentials,'secondAdministrator':self.second}
+        self.assertEqual(ET.tostring(self.answer(setup,self.two(),credentials)),ET.tostring(self.answer(namespace,self.two(),credentials)))
+        self.assertEqual(ET.tostring(self.answer(setup,self.one,self.credentials)),ET.tostring(self.answer(namespace,self.one,self.credentials)))
+
+
 if __name__=='__main__':unittest.main()

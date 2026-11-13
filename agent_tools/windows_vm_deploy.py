@@ -498,10 +498,15 @@ def start(root,request,setup,credential_file,*,image=None,network=None):
     Without image the disk is blank and Windows installs from the pinned media.
     With one exact published image ({imageId, manifestSha256}) the disk is a
     copy-on-write clone that reruns the same answer file and setup.
+    A setup naming secondAdministrator is a clone's only: the answer file adds
+    that Administrators account with its own generated second-administrator.secret,
+    and a blank install, which becomes an image template, refuses it here first.
     """
     if not direct.coordinator_capable():raise ValueError('unsupported_deployment_coordinator')
     from . import windows_vm_unattend as unattended,native_environment as environments
     root=Path(root).resolve(strict=True);spec=FreshWindowsVmSpec.parse(request);setup=unattended.parse_setup(setup)
+    second='secondAdministrator' in setup
+    if second and image is None:raise ValueError('deployment_second_administrator_clone_only')
     if image is not None:
         from .windows_vm_image import validate_context_image
         image=validate_context_image(image)
@@ -532,18 +537,21 @@ def start(root,request,setup,credential_file,*,image=None,network=None):
                 'vmSubmitted':False,'nativeActionAllowed':False,'replayAllowed':False}
     parent=_runtime_group(root,'windows-vm-credentials')
     directory=parent/spec.deployment_id;directory.mkdir(mode=0o700)
-    for name,prefix in (('user','User8!'),('administrator','Admin8!'),('final-administrator','Final8!')):
+    for name,prefix in (('user','User8!'),('administrator','Admin8!'),('final-administrator','Final8!'),*((('second-administrator','Second8!'),)if second else ())):
         stage._retain(directory,name+'.secret',(prefix+secrets.token_urlsafe(24)+'\n').encode())
     stage._retain(directory,'reservation.private.json',prepared)
     def submitting():
         update=dict(prepared['request']);update.pop('expectedInventorySha256',None)
         update['observations']=[_lease_receipt(prepared,'unknown')]
         environments.reserve_environment(root,update)
-    with SecretFile(str(directory/'user.secret')) as user,SecretFile(str(directory/'administrator.secret')) as administrator:
+    with ExitStack() as held:
+        # Each account's secret reaches the guest's answer file only on protected stdin, as the payload.
+        opened={role:held.enter_context(SecretFile(str(directory/(name+'.secret'))))for role,name in
+                (('user','user'),('administrator','administrator'),*((('secondAdministrator','second-administrator'),)if second else ()))}
         result=_execute(root,spec,'start',credential_file=credential_file,setup=setup,
                         context={'hostBootId':prepared['hostBootId'],'pending':prepared['pending'],**({}if image is None else {'image':image}),**({}if network is None else {'network':network})},
-                        payload={'user':user.text,'administrator':administrator.text},before_submit=submitting)
-        user.guard();administrator.guard()
+                        payload={role:secret.text for role,secret in opened.items()},before_submit=submitting)
+        for secret in opened.values():secret.guard()
     stage._retain(directory,'boot-result.private.json',result)
     if result['state']=='booted-observed':
         bound=_mark_running(root,spec,prepared,credential_file)
@@ -683,6 +691,8 @@ def _original_operation(root,deployment_id,credential_file,mode,*,operation_id=N
                 if name in bindings:raise ValueError('deployment_source_binding')
                 bindings[name]=ast.literal_eval(node.value)
         if bindings!=wanted:raise ValueError('deployment_source_binding')
+        # A second administrator is a clone's only, and generalize removes only the two fixture accounts: no template carries it.
+        if mode=='generalize' and type(value['setup'])is dict and 'secondAdministrator' in value['setup']:raise ValueError('generalize_second_administrator')
         options={'operation_id':operation_id} if operation_id is not None else {}
         if payload is not None:options['payload']=payload
         result=_execute(root,spec,mode,credential_file=credential_file,setup=value['setup'],context=value['context'],**options)

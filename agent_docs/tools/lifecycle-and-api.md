@@ -299,6 +299,25 @@ boots its disk with normal networking and without the installer key press.
 Images never auto-encrypt. Release a template's own claim only after its
 `generalized-stopped` absence.
 
+A new clone may carry a second Administrators account, the approving
+administrator of `windows-public-update.different-admin`: its setup adds
+`secondAdministrator`, a name distinct from `user` and `administrator`, and no
+`purpose`. `start` makes its own `second-administrator.secret` beside the other
+credential files and sends it with them only on stdin. The clone's answer file
+creates it in Administrators before the fixture administrator, so a credential
+prompt that lists the members in the order they joined offers it first, and it
+never signs in. A setup without it keeps its exact answer file, credentials and
+scripts. A
+blank install refuses it (`deployment_second_administrator_clone_only`), because a
+blank install becomes the next image template, and `generalize` of such a clone
+refuses it too (`generalize_second_administrator`). Existing clones and images are
+unchanged. Qualification reads the account like the fixture administrator, and
+`setupReady` also needs it enabled, in Administrators and distinct from both
+fixture accounts. Secure rotates the fixture administrator's secret alone: the
+second account has no automatic logon, and its setup secret leaves the seed media
+and answer caches with the rest. Its secret stays `second-administrator.secret`,
+which only `windows-uac-decision` reads.
+
 Fixtures take no unexpected updates. `windows_vm_unattend.UPDATE_POLICY` runs
 in the fixture's first-boot initialize script and sets the machine policies for
 Windows Update (`NoAutoUpdate=1`, `NoAutoRebootWithLoggedOnUsers=1`) and the

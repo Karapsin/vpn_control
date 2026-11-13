@@ -4,6 +4,7 @@ No VM, host or guest. The real screen_gate, private_keys and enter_private run a
 the real host_work classifier and sign-in block_prior judge the files over a real directory. Nothing here
 proves a Windows, PowerShell or secure desktop behaviour: only a direct native run does.
 """
+import ast
 import base64
 from contextlib import nullcontext
 import hashlib
@@ -1920,6 +1921,147 @@ class ReviewExecuteTests(ExecuteBase):
                 reader(self.root, plan)
         intent.write_text(json.dumps(original))
         intent.chmod(0o600)
+
+
+SECOND_SECRET = b"FIXTURE_SECOND_ADMIN_SENTINEL_B!7"
+SECOND_SETUP = {**SETUP, "secondAdministrator": "recoveryapprover"}
+DIFFERENT = "windows-public-update.different-admin"
+ACCOUNT = [0, 20, 100, 30]
+
+
+def account_crop(fill=200):
+    """The reviewed region of the account name the credential prompt shows selected (a uniform synthetic frame here)."""
+    return {"rect": list(ACCOUNT), "sha256": hashlib.sha256(bytes((fill, fill, fill)) * ((ACCOUNT[2] - ACCOUNT[0]) * (ACCOUNT[3] - ACCOUNT[1]))).hexdigest()}
+
+
+def packet_binding(source, name):
+    """One UAC_* binding of a packet, as the packet's own source holds it."""
+    found = re.search(rb"^" + name.encode() + rb"=(.*)$", source, re.M)
+    return None if found is None else ast.literal_eval(found[1].decode())
+
+
+@unittest.skipUnless(POSIX, "private journals and the credential custody are POSIX")
+class SecondAdministratorExecuteTests(ExecuteBase):
+    """T6: windows-public-update.different-admin's prompt is answered with the clone's second Administrators account.
+
+    Before, the decision typed final-administrator.secret for every approve row, its census expected the fixture
+    administrator's SID in the pending event, and one profile per prompt could not say which account the prompt showed."""
+
+    def setUp(self):
+        super().setUp()
+        self.clone(SECOND_SETUP)
+        self.second = self.root / ".runtime/windows-vm-credentials" / MACHINE / "second-administrator.secret"
+        self.second.write_bytes(SECOND_SECRET + b"\n")
+        self.second.chmod(0o600)
+        self.write_approver_profile("second-administrator")
+        self.journal(DIFFERENT)
+
+    def clone(self, setup):
+        path = self.root / ".rag_index/windows-vm-deploy-intents" / (MACHINE + ".intent.json")
+        intent = json.loads(path.read_text())
+        intent["setup"] = dict(setup)
+        path.write_text(json.dumps(intent))
+
+    def write_approver_profile(self, approver, *, account=True):
+        name = "install-helper" + ("" if approver == "administrator" else "." + approver) + ".json"
+        path = self.root / ".runtime/windows-uac-profiles" / MACHINE / name
+        value = profile_value("install-helper", **({"approver": approver, "account": account_crop()} if account else {}))
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+
+    def approve(self):
+        return self.execute(prompt="install-helper")
+
+    def opened(self):
+        seen = []
+        real = decision.SecretFile
+
+        def opened(path):
+            seen.append(path)
+            return real(path)
+        return seen, mock.patch.object(decision, "SecretFile", side_effect=opened)
+
+    def test_the_different_admin_prompt_is_answered_with_the_second_administrator_secret(self):
+        self.replies = [self.ack(prompt="install-helper")]
+        seen, patcher = self.opened()
+        with patcher:
+            result = self.approve()
+        self.assertEqual(("input-ack-only", False, False), (result.get("state"), result.get("approvalSucceeded"), result.get("productOutcomeProved")), result)
+        self.assertEqual([str(self.second.resolve())], seen, "its own secret, and no other")
+        self.assertEqual(len(SECOND_SECRET).to_bytes(4, "big") + SECOND_SECRET, self.packets[0]["options"]["input"])
+        census = packet_binding(self.packets[0]["source"], "UAC_CENSUS_SCRIPT")
+        self.assertIn("$administrator='recoveryapprover'", census, "the pending event must name the second administrator's SID")
+        self.assertIn(account_crop(), packet_binding(self.packets[0]["source"], "UAC_SCREEN")["crops"], "the frame must show its account selected")
+        for path in self.root.rglob("*"):
+            if path.is_file() and path != self.second:
+                self.assertNotIn(SECOND_SECRET, path.read_bytes(), str(path))
+        for packet in self.packets:
+            self.assertNotIn(SECOND_SECRET, packet["source"])
+            self.assertNotIn(SECOND_SECRET.decode(), " ".join(packet["argv"]))
+
+    def test_a_clone_without_a_second_administrator_refuses_the_row_before_contact(self):
+        self.clone(SETUP)
+        self.write_approver_profile("administrator", account=False)
+        with mock.patch.object(decision, "SecretFile", side_effect=AssertionError("no credential")):
+            result = self.approve()
+        self.assertEqual(("refused", "uac_second_administrator_absent"), (result["state"], result["reason"]))
+        self.assertEqual(([], [], []), (self.packets, self.reads, self.journal_files()))
+
+    def test_a_profile_must_name_the_approver_and_its_account(self):
+        path = self.root / ".runtime/windows-uac-profiles" / MACHINE / "install-helper.second-administrator.json"
+        for value in (profile_value("install-helper"), profile_value("install-helper", approver="administrator", account=account_crop()),
+                      profile_value("install-helper", approver="second-administrator", account={"rect": [300, 190, 340, 210], "sha256": "a" * 64}),
+                      profile_value("install-helper", approver="second-administrator", account=account_crop(),
+                                    crops=[{"rect": list(CROP), "sha256": crop_hash()}] * 8)):
+            with self.subTest(value=sorted(value)):
+                path.write_text(json.dumps(value))
+                self.assertEqual(("refused", "uac_profile_unreviewed"), (lambda r: (r["state"], r.get("reason")))(self.approve()))
+        path.unlink()
+        self.write_approver_profile("administrator")  # The fixture administrator's own profile is not the second one's.
+        self.assertEqual("uac_profile_unreviewed", self.approve().get("reason"))
+        self.assertEqual([], self.packets)
+
+    def test_every_other_approve_row_on_such_a_clone_names_the_fixture_administrator(self):
+        self.journal("windows-public-update.success-off")
+        self.write_approver_profile("administrator", account=False)
+        self.assertEqual(("refused", "uac_profile_unreviewed"), (lambda r: (r["state"], r.get("reason")))(self.approve()),
+                         "two administrators: a profile without its account proves nothing")
+        (self.root / ".runtime/windows-uac-profiles" / MACHINE / "install-helper.json").unlink()
+        self.write_approver_profile("administrator")
+        self.replies = [self.ack(prompt="install-helper")]
+        seen, patcher = self.opened()
+        with patcher:
+            self.assertEqual("input-ack-only", self.approve().get("state"))
+        self.assertEqual([str(self.credential.resolve())], seen)
+        self.assertIn("$administrator='recoveryadmin'", packet_binding(self.packets[0]["source"], "UAC_CENSUS_SCRIPT"))
+        self.assertIn(account_crop(), packet_binding(self.packets[0]["source"], "UAC_SCREEN")["crops"])
+
+    def test_a_review_of_the_prompt_expects_the_second_administrator_too(self):
+        self.replies = [review_terminal(prompt="install-helper")]
+        with mock.patch.object(decision, "SecretFile", side_effect=AssertionError("a review opens no credential")):
+            result = decision.review(self.root, self.inputs(prompt="install-helper"))
+        self.assertEqual("review-frame-retained", result.get("state"), result)
+        self.assertIn("$administrator='recoveryapprover'", packet_binding(self.packets[0]["source"], "UAC_CENSUS_SCRIPT"))
+        retained, record = decision.retained_review_frame(self.root, CORRELATION)
+        (self.root / ".runtime/windows-uac-profiles" / MACHINE / "install-helper.second-administrator.json").unlink()
+        for prompt, options in (("install-helper", {"approver": "second-administrator"}),  # No account crop.
+                                ("vpn-broker", {"approver": "second-administrator", "account": ACCOUNT}),  # Not its prompt.
+                                ("install-helper", {"approver": "third-administrator", "account": ACCOUNT})):
+            with self.subTest(prompt=prompt, options=options), self.assertRaisesRegex(ValueError, "^windows_uac_profile$"):
+                try:
+                    decision.reviewed_uac_profile(self.root, record["environment"], prompt, retained, crops=[CROP], field=FIELD, max_dark_pixels=4,
+                                                  **options)
+                except TypeError as error:
+                    self.fail("no approver profile: " + str(error))
+        try:
+            profile = decision.reviewed_uac_profile(self.root, record["environment"], record["prompt"], retained, crops=[CROP], field=FIELD,
+                                                    max_dark_pixels=4, approver="second-administrator", account=ACCOUNT)
+        except TypeError as error:
+            self.fail("no approver profile: " + str(error))
+        self.assertEqual(("second-administrator", account_crop()), (profile["approver"], profile["account"]))
+        self.assertTrue((self.root / ".runtime/windows-uac-profiles" / MACHINE / "install-helper.second-administrator.json").exists())
+        self.replies = [self.ack(prompt="install-helper")]
+        self.assertEqual("input-ack-only", self.approve().get("state"), "the reviewed profile admits the decision on a later prompt")
 
 
 class RouteAdmissionTests(ExecuteBase):

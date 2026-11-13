@@ -112,6 +112,70 @@ class GuestQualificationTests(unittest.TestCase):
         self.assertEqual(['guest-exec'],executions);self.assertEqual(['eject'],ejections)
 
 
+@unittest.skipUnless(os.name=='posix','POSIX host receipt fixture')
+class SecondAdministratorQualificationTests(GuestQualificationTests):
+    """T6: a clone with a second Administrators account is ready only with that account read and ready too.
+
+    The inherited collect, replay, output and policy checks run on such a clone as well; before T6 its setup was refused."""
+    def setUp(self):
+        super().setUp()
+        self.one=dict(self.setup)
+        self.setup={**self.setup,'secondAdministrator':'fixtureApprover'}
+        self.result['secondAdministrator']={'name':'fixtureApprover','sid':'S-1-5-21-1-2-3-1002','enabled':True,'isAdministrator':True}
+        self.terminal['out-data']=base64.b64encode(json.dumps(self.result).encode()).decode()
+        try:script=guest.powershell_source(self.setup,self.operation)
+        except ValueError as error:script='REFUSED:'+str(error)
+        namespace={'CONTEXT':{'hostBootId':'FIXTURE_BOOT'},'PS_SCRIPT':script,'call':self.call,'validate_setup_result':guest.validate_setup_result}
+        exec(compile(inspect.getsource(guest.qualify_instance),'actual qualification','exec'),namespace)
+        self.subject=namespace['qualify_instance']
+        self.script=script
+
+    def answer(self,**second):
+        self.result['secondAdministrator'].update(second)
+        self.terminal['out-data']=base64.b64encode(json.dumps(self.result).encode()).decode()
+        try:return self.run_subject()
+        finally:
+            for path in self.root.glob('qualification-*'):path.unlink()
+            for name in [name for name in self.records if name.startswith('qualification-')]:del self.records[name]
+
+    def test_the_script_reads_the_second_administrator_as_it_reads_the_fixture_administrator(self):
+        self.assertFalse(self.script.startswith('REFUSED:'),self.script)
+        self.assertIn("$ExpectedSecondAdministrator='fixtureApprover'\n",self.script)
+        self.assertIn(guest.READ_SECOND_ADMINISTRATOR+"[Console]::WriteLine(($result | ConvertTo-Json -Depth 8 -Compress))\n",self.script)
+        self.assertTrue(self.script.endswith("[Console]::WriteLine(($result | ConvertTo-Json -Depth 8 -Compress))\n"))
+        self.assertEqual(guest.powershell_source(self.one,self.operation),
+                         self.script.replace("$ExpectedSecondAdministrator='fixtureApprover'\n","").replace(guest.READ_SECOND_ADMINISTRATOR,""),
+                         'a setup without one keeps its exact script')
+
+    def test_ready_only_with_an_enabled_administrator_of_its_own(self):
+        try:ready=self.answer()
+        except ValueError as error:self.fail('its qualification was refused: '+str(error))
+        self.assertTrue(ready['setupReady'])
+        for change in ({'enabled':False},{'isAdministrator':False},{'sid':'S-1-5-21-1-2-3-1000'},{'sid':'S-1-5-21-1-2-3-1001'}):
+            with self.subTest(change=change):
+                self.assertFalse(self.answer(**change)['setupReady'])
+                self.result['secondAdministrator'].update(enabled=True,isAdministrator=True,sid='S-1-5-21-1-2-3-1002')
+        for change in ({'name':'fixtureAdmin'},{'sid':'S-1-5-18'},{'enabled':'yes'}):
+            with self.subTest(change=change),self.assertRaisesRegex(ValueError,'instance_qualification_account'):self.answer(**change)
+            self.result['secondAdministrator'].update(name='fixtureApprover',enabled=True,sid='S-1-5-21-1-2-3-1002')
+
+    def test_its_facts_come_exactly_when_the_setup_names_it(self):
+        value=json.loads(json.dumps(self.result))
+        try:self.assertEqual(value,guest.validate_setup_result(value,self.operation,self.setup))
+        except ValueError as error:self.fail('its facts were refused: '+str(error))
+        with self.assertRaisesRegex(ValueError,'instance_qualification_result'):guest.validate_setup_result(value,self.operation,self.one)
+        del value['secondAdministrator']
+        with self.assertRaisesRegex(ValueError,'instance_qualification_result'):guest.validate_setup_result(value,self.operation,self.setup)
+        value['secondAdministrator']={'name':'fixtureApprover','sid':'S-1-5-21-1-2-3-1002','enabled':True}
+        with self.assertRaisesRegex(ValueError,'instance_qualification_fields'):guest.validate_setup_result(value,self.operation,self.setup)
+
+    def test_secure_rotates_the_fixture_administrator_alone(self):
+        try:secure=guest.secure_source(self.setup,self.operation)
+        except ValueError as error:self.fail('no secure script: '+str(error))
+        self.assertEqual(guest.secure_source(self.one,self.operation),secure)
+        self.assertNotIn('fixtureApprover',secure)
+
+
 class FixedPowerShellTests(unittest.TestCase):
     def test_validated_binding_and_secret_stdin_are_distinct_from_executable_credentials(self):
         folder=Path(__file__).parent/'fixtures/guest_progress';raw=(folder/'before.source').read_bytes()

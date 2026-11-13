@@ -3,14 +3,21 @@ import re
 from xml.etree import ElementTree as ET
 
 FIELDS={'imageName','locale','user','administrator'}
+# A setup may name a second Administrators account, secondAdministrator: the different approving administrator of the
+# windows-public-update.different-admin row, whose UAC answer alone types its secret. Only a new clone of a published
+# image gets one (windows_vm_deploy.start refuses it on a blank install, which becomes an image template), never a
+# windowsUacVisual fixture, and it never signs in. Its secret is second-administrator.secret beside the fixture's own.
+# parse_setup and answer_file are also compiled from their source into the start and managed-create programs, where
+# only FIELDS, re and ET are defined: they name that key literally and need no other module name.
 def parse_setup(value):
     if type(value)is not dict:raise ValueError('setup_fields')
-    if set(value)!=FIELDS:
-        if set(value)!=FIELDS|{'purpose'} or type(value['purpose'])is not str or value['purpose']!='windowsUacVisual':raise ValueError('setup_fields')
+    extra=set(value)-FIELDS
+    if not FIELDS<=set(value) or extra not in (set(),{'purpose'},{'secondAdministrator'}):raise ValueError('setup_fields')
+    if 'purpose' in value and (type(value['purpose'])is not str or value['purpose']!='windowsUacVisual'):raise ValueError('setup_fields')
     if type(value['imageName'])is not str or not re.fullmatch(r'[A-Za-z0-9 ()_-]{1,80}',value['imageName']):raise ValueError('setup_image')
     if type(value['locale'])is not str or not re.fullmatch('[a-z]{2}-[A-Z]{2}',value['locale']):raise ValueError('setup_locale')
-    names=[value[k] for k in ('user','administrator')]
-    if any(type(n)is not str or not re.fullmatch('[A-Za-z][A-Za-z0-9_-]{0,19}',n) or n.lower() in ('administrator','guest','defaultaccount','wdagutilityaccount') for n in names) or names[0].lower()==names[1].lower():raise ValueError('setup_accounts')
+    names=[value[k] for k in ('user','administrator','secondAdministrator') if k in value]
+    if any(type(n)is not str or not re.fullmatch('[A-Za-z][A-Za-z0-9_-]{0,19}',n) or n.lower() in ('administrator','guest','defaultaccount','wdagutilityaccount') for n in names) or len({n.lower() for n in names})!=len(names):raise ValueError('setup_accounts')
     return dict(value)
 
 # A test fixture never takes an update unannounced: no automatic Windows Update
@@ -102,7 +109,11 @@ Stop-Transcript
 
 def answer_file(setup,credentials):
     setup=parse_setup(setup)
-    if type(credentials)is not dict or set(credentials)!={'user','administrator'} or any(type(p)is not str or not re.fullmatch('[A-Za-z0-9!_-]{24,64}',p) for p in credentials.values()):raise ValueError('setup_credentials')
+    # One secret per account the setup names: a second administrator's comes only with its name, so a setup without one
+    # keeps its exact answer file. It is created before the fixture administrator: a credential prompt that lists the
+    # Administrators members in the order they joined then offers it first, for the one row it approves.
+    roles=[('user','Users'),*((('secondAdministrator','Administrators'),) if 'secondAdministrator' in setup else ()),('administrator','Administrators')]
+    if type(credentials)is not dict or set(credentials)!={role for role,_ in roles} or any(type(p)is not str or not re.fullmatch('[A-Za-z0-9!_-]{24,64}',p) for p in credentials.values()):raise ValueError('setup_credentials')
     ns='urn:schemas-microsoft-com:unattend';wcm='http://schemas.microsoft.com/WMIConfig/2002/State'
     ET.register_namespace('',ns);ET.register_namespace('wcm',wcm)
     def node(parent,tag,text=None,**attrs):
@@ -142,7 +153,7 @@ def answer_file(setup,credentials):
     for name in ('HideEULAPage','HideOnlineAccountScreens','HideWirelessSetupInOOBE'):node(screen,name,'true')
     node(screen,'ProtectYourPC',3)
     accounts=node(node(shell,'UserAccounts'),'LocalAccounts')
-    for role,group in (('user','Users'),('administrator','Administrators')):
+    for role,group in roles:
         account=node(accounts,'LocalAccount',**{'{'+wcm+'}action':'add'});node(account,'Name',setup[role]);node(account,'Group',group)
         password=node(account,'Password');node(password,'Value',credentials[role]);node(password,'PlainText','true')
     role='administrator' if setup.get('purpose')=='windowsUacVisual' else 'user'

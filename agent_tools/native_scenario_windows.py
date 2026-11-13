@@ -227,10 +227,6 @@ UPDATE_VARIANTS = ("public-ready", "download-cancelled", "checksum-rejected", "u
 _NO_SYSTEM = ("public-ready", "download-cancelled", "checksum-rejected")
 # Refused before any journal, each with exactly what is still missing.
 _UPDATE_REFUSED = {
-    # The fixture has one administrator account (windows_vm_unattend: user and administrator), the decision approves
-    # only with final-administrator.secret, and the context reads only that account's SID. A second approving
-    # administrator needs a second Administrators account, its credential and a decision row that types it.
-    "different-admin": "windows_scenario_update_second_administrator_unavailable",
     # No producer: the product's MSIs carry no LaunchCondition table for the failing-MSI derivation, and nothing
     # creates or removes a counterfeit protected-storage root.
     "native-install-failed": "windows_scenario_update_fault_unavailable",
@@ -250,7 +246,7 @@ _UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "ter
                       "participating-copy-lock": (("before-install", "fault-ready", "authorization", "terminal-actors", "returned-cleanup"),
                                                   "returned-cleanup"),
                       **{variant: (_GRANT_STAGES, "returned-cleanup")
-                         for variant in ("success-off", "success-reconnect", "success-explicit-off", "wait-client-loss",
+                         for variant in ("success-off", "different-admin", "success-reconnect", "success-explicit-off", "wait-client-loss",
                                          "installer-wait-client-loss")}}
 # A connected row's own in-guest SOCKS upstream on its fixed loopback port and the sampler the case runs through the
 # product's mixed listener before the update and, where the returned owner reconnects, after it; the job writes the
@@ -263,6 +259,11 @@ _UPDATE_RECONNECT = frozenset({"success-reconnect"})
 _UPDATE_CONNECTION_FILES = (("scripts/integration/socks_http_fixture.py", "upstreamFixture", "data"),
                             ("agent_tools/windows_lifecycle_traffic_worker.py", "trafficWorker", "data"))
 _UPDATE_CONNECTION_GENERATED = (("connectionProfile", "update-connection-profile.txt"), ("trafficInput", "update-traffic-input.json"))
+# A grant answered by another Administrators account than the fixture's own: a clone whose setup names secondAdministrator
+# (windows_vm_unattend; windows_vm_deploy makes its secret), which windows_uac_decision.APPROVERS types. The job reads that
+# account's SID beside the fixture administrator's and grants with it, so its collectors prove the coordinator ran elevated
+# under it and the worker unelevated as the original user; the matrix counts the run only with that proof (_approval_facts).
+_UPDATE_APPROVERS = {"different-admin": "second-administrator"}
 # What a passed update row leaves installed: its target only after a granted install that succeeded
 # (update_cases.SUCCESS_VARIANTS less transport-loss, which the case refuses), otherwise the base it started from.
 # The job reads which after the task and claims installed-package for that one alone (host_job Job._update_after);
@@ -285,6 +286,8 @@ def _update_row(variant: str) -> dict[str, Any]:
         row["generated"] = _UPDATE_CONNECTION_GENERATED
     row["stages"] = _ALL_STAGES  # "installed": the registration and tree the task left, read back as an installer row's are.
     row["refusal"] = _UPDATE_REFUSED.get(variant)
+    if variant in _UPDATE_APPROVERS:
+        row["approver"] = _UPDATE_APPROVERS[variant]
     if variant not in _NO_SYSTEM:
         deny = variant == "uac-denied"
         # windows_uac_decision.ROWS answers each prompt; collect joins a deny row's own input terminal.
@@ -650,7 +653,9 @@ def _admit(root: Path | str, request: Mapping[str, Any],
           "windows_scenario_uac_profile_unreviewed")
     _need(set(plan.artifact_ids) == set(row["artifactKeys"]), "windows_scenario_artifacts_invalid")
     _need(plan.artifact_ids["bundleManifest"] == "sha256-" + plan.bundle_hash, "windows_scenario_bundle_artifact_invalid")
-    _binding(root, plan)
+    binding = _binding(root, plan)
+    # Only a clone made with a second Administrators account can be approved by one: any other is refused before a journal.
+    _need(row.get("approver") is None or "secondAdministrator" in binding["setup"], "windows_scenario_update_second_administrator_absent")
     verified_bundle(root, plan, bundle_resolver)
     value = scenario_input(root, plan, row)
     return row, plan, value, admitted_packages(root, plan, row, value)
@@ -738,6 +743,9 @@ def render_program(plan: native_scenario_execution.ScenarioPlan, binding: Mappin
                           **({"preboot": value["priorPreboot"]} if value is not None and "priorPreboot" in value else {})}}
     if row.get("update") or row.get("tun"):
         job_plan["administrator"] = binding["setup"]["administrator"]  # The account a grant approves with; its SID is read in the guest.
+        if row.get("approver") == "second-administrator":
+            # Another Administrators account approves this grant: the job reads its SID too and grants with it.
+            job_plan["approvingAdministrator"] = binding["setup"]["secondAdministrator"]
     payload = gzip.compress(json.dumps({path: base64.b64encode(raw).decode("ascii") for path, raw in raw_files.items()},
                                        sort_keys=True).encode("ascii"), mtime=0)
     text = raw_files[_HOST_JOB_PATH].decode("utf-8")
@@ -1273,6 +1281,9 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
     "windows-installer-lifecycle": {
         "msi-uac-grant-denial": (_U + "success-off", _U + "uac-denied", _U + "install-cancelled"),
         "ordinary-elevated-owner": (_U + "success-off", _U + "success-reconnect"),
+        # different-admin is approved by the clone's second Administrators account; success-off by the fixture's own. Each
+        # counts only with its approval proven (_approval_facts): the coordinator elevated under the approving account,
+        # that account the second one or the fixture's as the row says, and the installer worker as the original user.
         "different-approving-admin": (_U + "different-admin",),
         "original-user-worker": (_U + "success-off", _U + "different-admin"),
         "participating-copy-locks": (_U + "participating-copy-lock",),
@@ -1451,11 +1462,51 @@ def _update_facts(root: Path, plan: native_scenario_execution.ScenarioPlan, row:
             "installedPackage": installed, "proven": proven}
 
 
+_APPROVAL_SID = re.compile(r"S-1-5-21-[0-9]+-[0-9]+-[0-9]+-[0-9]+\Z")
+_APPROVAL_FACTS = ("approver", "approvedByAnotherAdministrator", "coordinatorIsApprover", "workerIsOriginalUser")
+
+
+def _approval_facts(row: Mapping[str, Any], receipt: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Who approved a grant run and who installed, as its own receipt records them (host_job Job._finish).
+
+    approver is the account the job granted with. approvedByAnotherAdministrator: that account's SID is not the fixture
+    administrator's, both read by the job's context. coordinatorIsApprover: the installer coordinator the authorization
+    stage's SYSTEM census found ran elevated under that SID. workerIsOriginalUser: its worker ran unelevated as the
+    ordinary user, who is neither administrator. proven is all of that for the row's own approver (RECIPES approver, the
+    fixture administrator otherwise), with another administrator exactly when the row is approved by one.
+    """
+    approver = row.get("approver", "administrator")
+    receipt = receipt if isinstance(receipt, Mapping) else {}
+    update = receipt.get("update") if isinstance(receipt.get("update"), Mapping) else {}
+    approval = update.get("approval") if isinstance(update.get("approval"), Mapping) else {}
+    installer = update.get("installer") if isinstance(update.get("installer"), Mapping) else {}
+    context = receipt.get("context") if isinstance(receipt.get("context"), Mapping) else {}
+
+    def sid(value: Any) -> bool:
+        return isinstance(value, str) and _APPROVAL_SID.fullmatch(value) is not None
+
+    def actor(role: str) -> Mapping[str, Any]:
+        value = installer.get(role)
+        return value if isinstance(value, Mapping) else {}
+    approving, fixture, ordinary = approval.get("approvingAdminSid"), approval.get("administratorSid"), context.get("ordinarySid")
+    known = sid(approving) and sid(fixture) and sid(ordinary) and ordinary not in (approving, fixture)
+    recorded = approval.get("approver")
+    facts = {"approver": recorded if recorded in ("administrator", "second-administrator") else None,
+             "approvedByAnotherAdministrator": bool(known and approving != fixture),
+             "coordinatorIsApprover": bool(known and actor("coordinator").get("sid") == approving and actor("coordinator").get("elevated") == 1),
+             "workerIsOriginalUser": bool(known and actor("worker").get("sid") == ordinary and actor("worker").get("elevated") == 0)}
+    proven = (facts["approver"] == approver and facts["coordinatorIsApprover"] and facts["workerIsOriginalUser"]
+              and facts["approvedByAnotherAdministrator"] is (approver == "second-administrator"))
+    return {**facts, "proven": proven}
+
+
 def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
     """One row as the matrix reads it, from its journal, its input and its route only; nothing is collected.
 
     An update row also names its base install, the package that install admitted, its target's install and the package
-    the job read installed after the task (_update_facts); it passes only with that last one bound and its own.
+    the job read installed after the task (_update_facts); it passes only with that last one bound and its own. A grant
+    row (its collector has an authorization stage) also names who approved and who installed (_approval_facts) and passes
+    only with that proven; a run whose package is proven but whose approval is not is approval-unproven.
     """
     try:
         record = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), None)._read(correlation)
@@ -1478,6 +1529,7 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
                  packages=sorted(plan.artifact_ids[key] for key in ("targetPackage", "fixtureReceipt") if key in plan.artifact_ids),
                  targetPackage=plan.artifact_ids["targetPackage"])
     update = _update_facts(root, plan, row, value, None) if row.get("update") else None
+    approval = _approval_facts(row, None) if row.get("update") and "authorization" in row["update"]["collectorStages"] else None
     collection = record.get("collection") or {}
     if record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and collection.get("state") == "complete":
         summary = json.loads(collection["rawJson"])
@@ -1491,11 +1543,13 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
         public = public_evidence(native_scenario_execution.ScenarioExecutor._public(record))
         if update is not None:
             update = _update_facts(root, plan, row, value, receipt)
+        if approval is not None:
+            approval = _approval_facts(row, receipt)
         if receipt.get("stoppedAfter") is not None:
             kind = "stopped"
         elif receipt.get("result") == "passed":
             proven = public["evidenceClass"] == "installed-package" and (update is None or update["proven"])
-            kind = "passed" if proven else "installed-package-unproven"
+            kind = ("passed" if approval is None or approval["proven"] else "approval-unproven") if proven else "installed-package-unproven"
         elif receipt.get("result") == "failed":
             # A verdict on the installed product needs its task to have run, and is the owner's own: its exit 1, which a
             # case oracle failure ends with. An earlier stop is the row's setup; a failure after the task (the task journal,
@@ -1526,6 +1580,8 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
     facts["classification"] = kind
     if update is not None:
         facts["update"] = {key: update[key] for key in ("baseInstall", "basePackage", "targetInstall", "installedPackage")}
+    if approval is not None:
+        facts["approval"] = {key: approval[key] for key in _APPROVAL_FACTS}
     return facts
 
 
@@ -1648,10 +1704,11 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
     A passed observation needs every scenario of the requirement passed: each of its rows passed directly and through
     MCP, all on one package, and every settled failed or unknown run of those rows on that package, named or not,
     already in a recorded observation of the requirement. A failed or unknown row yields a failed or unknown
-    observation at once. Setup, stopped, refused, installed-package-unproven, failed-before-task and failed-after-task
-    rows never count. A failed-principal run is a failed one of its MATRIX_PRINCIPAL scenario alone, and of no other.
-    An update run counts only with the package read after its task bound to an install journal of its clone (the
-    target after a granted install, otherwise the base it started from), and its entry names both installs.
+    observation at once. Setup, stopped, refused, installed-package-unproven, approval-unproven, failed-before-task and
+    failed-after-task rows never count. A failed-principal run is a failed one of its MATRIX_PRINCIPAL scenario alone,
+    and of no other. An update run counts only with the package read after its task bound to an install journal of its clone (the
+    target after a granted install, otherwise the base it started from), and its entry names both installs. A grant
+    run also counts only with its approval proven, and its entry names it (approval-unproven otherwise).
     The attestation is the coordinator's, never this code's.
     """
     _need(isinstance(reviewer_attestation, str) and reviewer_attestation.strip() and len(reviewer_attestation) <= 240,
@@ -1706,7 +1763,8 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
                 "rowsByScenario": {name: list(MATRIX_SCENARIOS[requirement_id][name]) for name in results},
                 "rows": [{**{key: row.get(key) for key in ("correlationId", "scenarioId", "deploymentId", "route", "classification",
                                                            "receiptSha256", "exitCode", "stage", "failure")},
-                          **({"update": row["update"]} if "update" in row else {})} for row in review["rows"]]}
+                          **({"update": row["update"]} if "update" in row else {}),
+                          **({"approval": row["approval"]} if "approval" in row else {})} for row in review["rows"]]}
     path, digest = _matrix_evidence(root, requirement_id, document)
     observation = {"requirementId": requirement_id, "platform": requirement["platform"], "originalSourceSHA": source,
                    "immutableArtifactIDs": artifacts, "evidencePath": path, "evidenceHash": digest, "environment": environment,

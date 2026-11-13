@@ -13203,7 +13203,8 @@
         "a1ee6e7f9bfcda2e6f304576ff2cc3c0fb6d9a81065f7bedf96f638f291e506e",
         "0b35ba3e9df190ab11162407dfb30fa1363809b2f3c740ef3ab5582a0b677cb0",
         "090384afade55304f4cd34f7225b73d886f663a6e6680102150b965bdc461e5f",
-        "48472708c99e1dc11dcc7de419528985e1e211d6bbc2a247ee9aca104c41c90d"
+        "48472708c99e1dc11dcc7de419528985e1e211d6bbc2a247ee9aca104c41c90d",
+        "a549da9012234b82d34b849f94cf1146ee532c260ff6b5368d22a5a7beb6193c"
       ]
     },
     "agent_tools/tests/test_windows_vm_deploy_release.py": {
@@ -13222,7 +13223,8 @@
         "agent_tools/windows_vm_resources.py"
       ],
       "sourceSha256": [
-        "706c705f4a21fa82e006139b9a117cdf47a4c8a397a4b6d1694c4233a328ea99"
+        "706c705f4a21fa82e006139b9a117cdf47a4c8a397a4b6d1694c4233a328ea99",
+        "52a7fd645a459934d433742372770b952e0c60e50ad34d2178a24a41ce3342dc"
       ]
     },
     "agent_tools/tests/test_windows_vm_guest.py": {
@@ -13237,7 +13239,8 @@
         "2d01970c0f3729b8966daf3feaf73e9847a985c02bd73f3010bfdf6ae3e0db5f",
         "e28435133db779e4d536d82597d54ba97dd5d0da91f3c4daa17747d1d2e5ffe7",
         "bb2a9e2e150d1fcaf2a2170bafbf314e7d00b118f3ce8b7b9794756bb322626a",
-        "3eb10beeb823e0989d8981899c10454e2d4a55d94a771a95dab91731e2d0a409"
+        "3eb10beeb823e0989d8981899c10454e2d4a55d94a771a95dab91731e2d0a409",
+        "1227f69990dbfb7f0e7afb55463e085b0199c6f2ce5c5527ce66cd5c10f68147"
       ]
     },
     "agent_tools/tests/test_windows_vm_inspection.py": {
@@ -13359,7 +13362,8 @@
       "sourceSha256": [
         "c8bfe04ac32a9d89064ee4492af558d3ec3294479575d9e010ea5dbbc194203c",
         "7a954fc0d73bff6717e78de2309b9da957d7dca41e4f2b7268bb67f2902c3f2f",
-        "0037f773af93f455b402541e356ae3726129229895ddb31ab8619c94ff03075a"
+        "0037f773af93f455b402541e356ae3726129229895ddb31ab8619c94ff03075a",
+        "776388cb2aaba2c20b0a3965c7dc0d342e4a0b64a3e5a3acabd876ec46e7c16a"
       ]
     },
     "agent_tools/tests/test_workflow_jdk_order.py": {
@@ -13575,7 +13579,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "7043c0db4c89e66818b1afd5485991c4dcdbc50dee53db8700f5460d243e75f7",
+    "agent_tools/readiness_vm_dispatch.json": "f4520a6a43049ad5f8177289d99191d7e830914e1106ade9f38f4f67308e5060",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",
