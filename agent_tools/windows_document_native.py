@@ -329,6 +329,57 @@ def rename_control(owner, fixture, token, directory):
     return value
 
 
+# The product's private transfer folder in its spool parent (java.io.tmpdir, the row's document-temp).
+# DesktopWindowsTransferPins pins the spool parent and every ancestor before it creates this folder, and
+# a transfer's erase removes the folder before it releases them: while the folder exists, the pins hold.
+TRANSFER_LEAF = re.compile(r"vpn-control-transfer-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
+ROOT_CONTROL_STEPS = ["mkdir", "rename-away", "rename-back", "rmdir"]
+
+
+def live_transfers(spool):
+    """The names of the product's private transfer folders now in its dedicated spool parent."""
+    return sorted(path.name for path in Path(spool).iterdir() if TRANSFER_LEAF.match(path.name))
+
+
+def root_rename_gate(owner, fixture, token, directory, spool):
+    """A gate on the product: while it holds a transfer, a fresh direct child of directory renames by path.
+
+    The serve pins its spool parent and every ancestor, directory among them, while a transfer lives. Its
+    pins must keep those folders from being renamed or deleted, and must let every other program create,
+    rename and hard-link entries into them (native row 83484649: the 2.2.17 serve refused them all). The
+    control is rename_control's, journaled with the census of directory when a rename is refused as held.
+    document-fixture-rename-gate then records whether one transfer folder of the product existed before
+    and after it, and a gate that does not pass raises one finite code:
+
+      document-<fixture>-root-rename-refused:<step>:<winerror>  refused as held: the product's pins
+      document-<fixture>-root-control-failed:<step>:<code>      the control's own step failed otherwise
+      document-<fixture>-root-control-without-transfer          no transfer held throughout: nothing shown
+    """
+    before = live_transfers(spool) if spool is not None else []
+    control = rename_control(owner, fixture, token, directory)
+    after = live_transfers(spool) if spool is not None else []
+    held = sorted(set(before) & set(after))
+    failed = next((row for row in control["steps"] if row["errorClass"] is not None), None)
+    if failed is not None and failed["step"].startswith("rename-") and failed["winerror"] in HELD_WIN32:
+        code = "document-%s-root-rename-refused:%s:%d" % (fixture, failed["step"], failed["winerror"])
+    elif control["controlError"] is not None:
+        code = "document-%s-root-control-failed:control:%s" % (fixture, control["controlError"])
+    elif failed is not None or [row["step"] for row in control["steps"]] != ROOT_CONTROL_STEPS:
+        step = failed["step"] if failed is not None else "steps"
+        winerror, number = (failed["winerror"], failed["errno"]) if failed is not None else (None, None)
+        code = "document-%s-root-control-failed:%s:%s" % (fixture, step, winerror if winerror is not None
+                                                          else "errno-%d" % number if number is not None else "none")
+    elif not held:
+        code = "document-%s-root-control-without-transfer" % fixture
+    else:
+        code = None
+    owner.event("document-fixture-rename-gate", {"fixture": fixture, "token": token, "leaf": Path(directory).name,
+                "spoolKnown": spool is not None, "transfersBefore": len(before), "transfersAfter": len(after),
+                "transferHeldThroughout": bool(held), "passed": code is None, "code": code})
+    need(code is None, code)
+    return control
+
+
 def refusal_evidence(owner, fixture, step, error, subject, token=None):
     """The evidence of one fixture step refused as held: the holder census and, with a token, the rename differential."""
     winerror = os_codes(error)[0]

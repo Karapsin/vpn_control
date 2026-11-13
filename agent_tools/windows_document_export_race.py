@@ -208,10 +208,12 @@ def prepare_fixture(owner, client, module, windows, mode, stage, parent, renamed
         step, subject = "probe-reopen", parent
         probe = windows.Held(owner.native, parent, directory=True)
         need(probe.current() == initial, "document-race-rename-positive-identity"); probe.close()
-        # Recorded, never a gate: whether a direct child of the operation root can be renamed by path
-        # now, and who holds the root if not. It shows why the fixture has a stage of its own.
+        # A gate on the product (native row 83484649): the serve holds the row's retained transfer, so it
+        # pins the operation root, an ancestor of its spool. A fresh direct child of the root must still
+        # rename by path; a refusal journals who holds the root and ends the row with its finite code.
         step, subject = "root-control", None
-        windows.rename_control(owner, "race", "race-" + mode, stage.parent)
+        windows.root_rename_gate(owner, "race", "race-" + mode, stage.parent,
+                                 getattr(getattr(owner, "document_temp_pin", None), "path", None))
         step = "relay-listen"
         relay = ExportRelay(owner, client, module)
         descriptor = dict(client._endpoint, schemaVersion=1, port=relay.port)
@@ -248,13 +250,13 @@ def run_public_export_race(owner, workspace, identity, client, module, windows, 
     base = Path(owner.root)
     # The destination parent lies in a stage folder of its own, never directly in the operation root.
     # A rename by path makes Windows open the folder of the new name for write access. The product
-    # pins every ancestor of its transfer spool, the operation root among them, with LIST_DIRECTORY
-    # and read sharing only for as long as any transfer lives (DesktopWindowsTransferPins), and one
-    # is retained here for the idle expiry. So no direct child of the operation root can be renamed
-    # by path meanwhile. That is read from the product source and fits native runs 2df348bd and
-    # 83484649, whose probe renamed such a child and was refused (the second: a sharing violation on
-    # all six attempts); the recorded root control is there to show it on a guest. In the stage,
-    # only the public writer's own pins can refuse the rename, which is what the race is there to show.
+    # pins every ancestor of its transfer spool, the operation root among them, for as long as any
+    # transfer lives (DesktopWindowsTransferPins), and one is retained here for the idle expiry. The
+    # 2.2.17 package pinned them with read sharing only, so no direct child of the operation root could
+    # be renamed by path meanwhile: native runs 2df348bd and 83484649, whose probe renamed such a child
+    # and was refused (the second: a sharing violation on all six attempts). The product now shares
+    # writes on those pins, and the root gate in prepare_fixture holds it to that. In the stage, only the
+    # public writer's own pins can refuse the rename, which is what the race is there to show.
     stage = base / ("document-race-" + mode)
     parent = stage / "parent"
     renamed = stage / "moved"

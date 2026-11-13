@@ -1563,7 +1563,9 @@ Finding for the product, not changed here: with the default `java.io.tmpdir`, th
 transfer lives. By the source that is until its discard, or until its 300 s idle expiry is pruned,
 for up to 32 transfers. Meanwhile a rename or hard link by path into any of those folders, by any
 program, would end in a sharing violation. This is read from the source, not observed; the control
-above would be its first native witness. Whether that is acceptable is the product's decision.
+above would be its first native witness. Whether that is acceptable is the product's decision. It is
+changed in "Folder pins refused other programs' renames into the user's folders" below, which also
+turned that control into a gate.
 
 No retry policy changes. The probe's bounded retry stays, although neither native run showed a
 holder that left. Evidence that would justify changing it: a first-refusal census that names a
@@ -1834,6 +1836,46 @@ there also the subtitles and the unchecked switch), the eight `update-*` scenes 
 grows). The local macOS render of the Windows scene list changed in exactly these 20 scenes and in
 no other of the 50. On Android the same holds for the update dialog, the import and export menus,
 the two QR-too-large dialogs and every unchecked switch; that is unproven until a capture.
+
+### Folder pins refused other programs' renames into the user's folders (product, from 83484649, 2026-11-13)
+
+The product finding of the second native document row. Run `83484649` (package 2.2.17 of `f31ab987`,
+whose `desktopApp/src/main` equals `245b61a7`) had six renames of a direct child of the operation root
+refused with `WinError` 32 while the serve retained one transfer: event 2631 of
+`.runtime/windows-parity-20261107/family/diag/evidence-83484649/`, unpacked from
+`.runtime/windows-scenarios/83484649-990b-44ef-a66f-cf77392eef10/evidence-1.zip`. Microsoft's file
+system specification confirms the reading. A rename or hard link by path opens the folder of the new
+name for `FILE_ADD_FILE` (a folder: `FILE_ADD_SUBDIRECTORY`), sharing read and write ([MS-FSA]
+2.1.5.15.12 and 2.1.5.15.7 with Appendix A <185> and <183>); only `READ_DATA`, `EXECUTE`, `WRITE_DATA`,
+`APPEND_DATA` and `DELETE` take part in sharing ([MS-FSA] 2.1.5.1.2.2). Every product folder pin was
+`CreateFile(0x00120081, share 1)`, so it refused every such open, while creating an entry opens no folder
+and was never refused. The same mode reached further than transfers: the installer's pins of
+`%LOCALAPPDATA%` and its ancestors during an installation, its cleanup, the workspace registry and
+exports, the installer store's `C:\` and `C:\ProgramData`, and the process admission, which every
+packaged process holds until it exits over every folder down to its own image. The per-user package
+lives in `%LOCALAPPDATA%\vpn-control`, so while the GUI or the serve ran, no program could rename into the
+home folder (`git config --global` replaces `.gitconfig` that way), `AppData`, `%LOCALAPPDATA%`,
+`C:\Users` or `C:\`. Folder pins now share writes and never delete: `WindowsInstallNative.PINNED_DIRECTORY`,
+taken by the transfer pins, the installer store's ancestry and witnesses and the admission's folders
+(`WindowsAdmissionNative.openDirectory`). Images, helpers and manifests (`openFile`) keep `INSPECT` and
+deny writers: the coordinator's readiness probe (`TryReady`, a write open of each image) and the
+elevated launch of a digest-checked helper rely on that. `READ`, `PINNED_READ` and the private transfer
+folder's `DELETE` handle are unchanged. The old comment that folder pins denied reparse mutation was
+wrong: `FSCTL_SET_REPARSE_POINT` needs only `FILE_WRITE_ATTRIBUTES` ([MS-FSA] 2.1.5.10.37), which takes
+no part in sharing. A pinned folder keeps its identity because it cannot be renamed or deleted and,
+kept non-empty by its retained child or witness, cannot become a junction. Logs, JUnit reports and the
+RED tree are under `.runtime/transfer-pins/` of the fix clone (`builders/fix-transfer-pins`).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Folder pins denied write sharing, so other programs' renames and hard links into the pinned folders failed | `DesktopWindowsPinSharingTest` (transfer chain with a witness and the private folder, the installer's three input pin sets, the installer store's chain), `DesktopWindowsAdmissionPinSharingTest`, `DesktopWindowsVpnHelperAdmissionTest.imagesHelperAndManifestDenyWritersWhileTheirFoldersOnlyDenyDeletion` (`:desktopApp:test`); Windows-only: `DesktopWindowsTransferParentNativeTest` (three tests) and `DesktopWindowsInstallAdmissionNativeTest.admissionLetsOtherProgramsRenameIntoItsFoldersButKeepsItsImageFromWritersAndMoves` | `SharingVolume` judges every open as [MS-FSA] 2.1.5.1.2.2 does, the product's own through the real `windowsInstallOpenOptions`, and models a rename or link destination as Windows 11 opens it and a rename or deletion of a pinned object as an open with `DELETE` sharing everything. The tests require the destination admitted in every pinned folder, `DELETE` refused on every pinned folder, witness and private folder, a retained undeletable child in every pinned folder, and the running image refusing the readiness probe's write open. RED on `245b61a7`: 3 tests, 3 failures, each `refused by open(C:\, access=0, rights=0x120081, share=1)`. The admission tests need the fix's `openFile` and the `JnaWindowsInstallAdmission(pins)` seam, so their RED is the fix with the preserved unfixed mapping line (`INSPECT`) restored: 1 failure at `C:\`; and with the unfixed routing restored, images opened as folders: 2 failures. Mutants of the fix, each failing named tests: folder pins sharing delete (7), folder pins without `READ_DATA` (6), object pins sharing writes (3). GREEN: 62 focused Windows classes, 415 tests, 0 failures (96 Windows-only skipped on macOS). Native only: the OS behaviour itself, run by the Windows-only tests in the Windows package workflow's `:desktopApp:test`, and the document row on a package built from the fix. |
+| The root control recorded a refused rename into the operation root and the row passed | `test_windows_document_fixture_holders.RootGateTests` (5 tests) | After a passed probe, `windows_document_native.root_rename_gate` journals the control (with the census of the root on a refusal as held) and `document-fixture-rename-gate`, whether the product's private transfer folder existed before and after it, and ends the row known with `document-race-root-rename-refused:<step>:<winerror>`, `document-race-root-control-failed:<step>:<code>` or `document-race-root-control-without-transfer`. The races stay in their stage folders. The world models the package that ran (folder pins share read) and the fix (read and write). RED on the `245b61a7` race and native module: 22 tests, 6 failures (5 tests, one with two subtests), on Python 3.14 and 3.12; the package that refused every rename into the root, and a row with no live transfer, both passed with exit 0. GREEN: 22 OK on both. Native only: the gate on a guest. |
+
+Not changed: the native helpers. `VpnInstallNative.OpenDirectory` (`windows-install-native.cs`) opens with
+share read only, for folders and, in the broker's admission (`windows-vpn-helper-admission.cs`), for its
+image too. While VPN mode runs, the elevated broker holds its image's ancestry, the home folder of a
+per-user installation included, so renames into those folders still fail then. The same split is due
+there, with a Windows build and its native tests; it was not compiled here.
 
 ## Historical coverage rule
 

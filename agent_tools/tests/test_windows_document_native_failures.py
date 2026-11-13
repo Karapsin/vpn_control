@@ -180,7 +180,8 @@ class World:
             endpoint_private_acl=lambda native, handle, sid: {"ownerSid": sid, "aces": [], "ownerRead": True,
                                                               "otherPrincipalAllow": False},
             **{name: getattr(native, name, None) for name in ("fixture_refused", "refusal_evidence", "holder_census",
-                                                              "rename_differential", "rename_control")})
+                                                              "rename_differential", "rename_control",
+                                                              "root_rename_gate")})
 
     def create(self, native, path, data, sid):
         if self.on_create is not None:
@@ -220,12 +221,26 @@ class OwnParkGuest(RaceGuest):
         return owner
 
 
+TRANSFER_LEAF = "vpn-control-transfer-11111111-2222-4333-8444-555555555555"
+
+
+def retained_transfer(owner):
+    """The transfer the row retains for its idle expiry, as the races find it: the serve's private transfer folder in
+    the row's spool parent, <operation root>\\document-temp, which configure_launch pinned as owner.document_temp_pin."""
+    spool = Path(owner.root) / "document-temp"
+    spool.mkdir(exist_ok=True)
+    (spool / TRANSFER_LEAF).mkdir(exist_ok=True)
+    owner.document_temp_pin = types.SimpleNamespace(directory=True, path=spool, access=0x20080, share=3)
+    return spool
+
+
 def race_situation(world, race, mode="parent"):
-    """The CLI cases' own call of one export race, with their client and their two observers."""
+    """The CLI cases' own call of one export race, with their client, their two observers and the retained transfer."""
     def situation(owner, workspace, identity, harness):
         document_state(owner)
         owner.document_client = world.client
         owner.request["context"]["ordinarySid"] = SID
+        retained_transfer(owner)
         race.run_public_export_race(owner, workspace, identity, world.client, client_module, world.windows, harness, mode)
     return situation
 

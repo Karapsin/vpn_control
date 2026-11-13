@@ -1386,10 +1386,17 @@ race's positive rename probe retries only access denied (5) and sharing violatio
 race's destination parent lies in a stage folder of its own,
 `<operation root>\document-race-<mode>\parent`. A rename by path makes Windows open
 the folder of the new name for write access, and the product pins every ancestor of
-its transfer spool, the operation root among them, with read sharing only while any
-transfer lives; the row retains one for its idle expiry. After a passed probe the
-race journals `document-fixture-rename-control`, a control that is never a gate: one
-fresh direct child of the operation root renamed by path. A fixture step refused as
+its transfer spool, the operation root among them, while any transfer lives; the row
+retains one for its idle expiry. The 2.2.17 package pinned them with read sharing
+only. After a passed probe the race's root gate holds the product to sharing writes:
+`document-fixture-rename-control` renames one fresh direct child of the operation
+root away and back by path and removes it, and `document-fixture-rename-gate` records
+whether the product's private transfer folder (`vpn-control-transfer-<uuid>` in the
+row's `document-temp`) existed before and after it. The row then ends known with
+`document-race-root-rename-refused:<step>:<winerror>` for a rename refused as held,
+`document-race-root-control-failed:<step>:<code>` for any other failed step of the
+control, or `document-race-root-control-without-transfer` when no transfer was held
+throughout, because a rename that passes then shows nothing. A fixture step refused as
 held (5 or 32) journals `document-fixture-holder-census` before its known failure,
 and the rename probe also at its first refusal, before it waits: for the refused
 path and for its folder, the PIDs that have it open (`NtQueryInformationFile`,
@@ -1397,8 +1404,9 @@ path and for its folder, the PIDs that have it open (`NtQueryInformationFile`,
 role (`worker`, `task-owner`, `serve`, `work-fixture`, `cli-child`, `<role>-child` for
 a launcher's own restart child, `other`), and the harness's own open handles with path,
 access and share mode: its document observers, the owner's directory pins and an owned
-fixture's data leases. No command line is read and no process list is walked. A control refused
-as held journals the census of its folder. A refused rename probe also journals
+fixture's data leases. No command line is read and no process list is walked. A root
+control refused as held journals the census of its folder before the gate ends the
+row. A refused rename probe also journals
 `document-fixture-rename-differential`: a fresh folder that no handle opened and one
 opened and closed as the probe does, each renamed away and back beside the refused
 folder, in the operation root and in the worker's own temp folder, and removed

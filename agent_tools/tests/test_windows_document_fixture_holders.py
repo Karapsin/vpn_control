@@ -19,6 +19,10 @@ IoCheckShareAccess judges them, and the kernel's answers to a holder census from
 oracle runs the real owner main() and race with the inert guest. Each is RED on the preserved 529cc610
 bytes (fixtures/windows_document_fixture_holders/*.before.source), the bytes that ran, and GREEN on the
 fix. No process, listener, Win32 call or VM is involved.
+
+The product has since been changed to share writes on those folder pins, and the root control became a
+gate on that (RootGateTests, RED on the race and native module of 245b61a7, which let the row pass). The
+world models both: folder_share PACKAGE_SHARE as the package that ran, FIXED_SHARE with the fix.
 """
 from __future__ import annotations
 
@@ -40,8 +44,8 @@ from agent_tools import windows_document_native as document_native
 from agent_tools import windows_ordinary_process_owner as process_owner
 from agent_tools.tests.test_windows_cli_native_failures import Clock, held_harness
 from agent_tools.tests.test_windows_document_acceptance import CONTEXT, DocumentGuest, document_state
-from agent_tools.tests.test_windows_document_native_failures import (NT_OS, REAL_RENAME, SID, Runs, World, exports,
-                                                                    os_error, quits)
+from agent_tools.tests.test_windows_document_native_failures import (NT_OS, REAL_RENAME, SID, TRANSFER_LEAF, Runs, World,
+                                                                    exports, os_error, quits, retained_transfer)
 
 FIXTURES = Path(__file__).parent / "fixtures/windows_document_fixture_holders"
 PROVENANCE = FIXTURES / "provenance.json"
@@ -51,8 +55,12 @@ OWNER_SHA256 = "565131c840e6ceccbde67bc01981c05a00eafb49663a2767c5f34f3696d97a00
 WORKER, TASK_OWNER, SCANNER = 4321, 4000, 7777
 LAUNCHER = "vpn-control-cli.exe"
 REFUSED = "document-race-fixture-refused:rename-away:32"
+ROOT_REFUSED = "document-race-root-rename-refused:rename-away:32"
 OK = {"errorClass": None, "winerror": None, "errno": None}
 SHARING = {"errorClass": "PermissionError", "winerror": 32, "errno": 13}
+# How the serve's pins share a folder they hold: the 2.2.17 package of runs 2df348bd and 83484649 shared
+# read only; the product with the folder-pin fix shares read and write. Neither ever shares delete.
+PACKAGE_SHARE, FIXED_SHARE = 1, 3
 
 
 def _load(test, raw, fixture, digest, name):
@@ -88,10 +96,15 @@ def steps(*rows):
 
 
 class PinnedWorld(World):
-    """The first world plus Windows' share rules for a rename by path and the kernel's answers to a holder census."""
+    """The first world plus Windows' share rules for a rename by path and the kernel's answers to a holder census.
 
-    def __init__(self, user_temp):
+    folder_share is how the product's folder pins share: PACKAGE_SHARE as the package that ran, FIXED_SHARE with
+    the folder-pin fix.
+    """
+
+    def __init__(self, user_temp, folder_share=PACKAGE_SHARE):
         super().__init__()
+        self.folder_share = folder_share
         self.opens, self.processes, self.renames = [], {}, []
         self.os = types.SimpleNamespace(name="nt", fsync=os.fsync, environ={"TEMP": str(user_temp)},
                                         getpid=lambda: WORKER, getppid=lambda: TASK_OWNER)
@@ -150,7 +163,8 @@ class PinnedWorld(World):
         """The row as the races find it. The worker, the serve's launcher and its JVM have the operation root
         as their current directory (traverse access, sharing read and write); the task parent and the worker
         pin it with attribute access only. While a transfer lives, the serve's JVM also pins it as
-        DesktopWindowsTransferPins does: LIST_DIRECTORY, sharing read only."""
+        DesktopWindowsTransferPins does: LIST_DIRECTORY, sharing as folder_share says, and its private
+        transfer folder exists in the row's spool parent, <operation root>\\document-temp."""
         root = Path(owner.root)
         serve = next(child for child in owner.children if child.label == "serve")
         jvm = serve.pid + 1
@@ -164,7 +178,12 @@ class PinnedWorld(World):
         for pid in (WORKER, serve.pid, jvm):
             self.hold(root, pid, "r", 3)
         if transfer:
-            self.hold(root, jvm, "r", 1)
+            self.hold(root, jvm, "r", self.folder_share)
+            retained_transfer(owner)
+        else:
+            spool = root / "document-temp"
+            spool.mkdir(exist_ok=True)
+            owner.document_temp_pin = types.SimpleNamespace(directory=True, path=spool, access=0x20080, share=3)
         owner.pins = [types.SimpleNamespace(directory=True, path=root, access=0x20080, share=3),
                       types.SimpleNamespace(directory=False, path=root / "worker-request.json", access=0x80020000, share=1)]
         return serve, jvm
@@ -193,7 +212,7 @@ class WriterGuest(DocumentGuest):
                 child.pid: {"image": LAUNCHER, "parentPid": WORKER, "birth": child.birth, "openError": None},
                 jvm: {"image": LAUNCHER, "parentPid": child.pid, "birth": "300", "openError": None}})
             for folder in (destination.parent, destination.parent.parent, self.root):
-                self.world.hold(folder, jvm, "r", 1)
+                self.world.hold(folder, jvm, "r", self.world.folder_share)
             partial = destination.parent / ".vpn-export-11111111-2222-4333-8444-555555555555.partial"
             partial.write_bytes(b"{}")
             writer.update(jvm=jvm, partial=partial)
@@ -234,8 +253,8 @@ class HolderRuns(Runs):
         self.temp = self.root / "user temp"
         self.temp.mkdir()
 
-    def run_world(self, owner_module, race, native, situation_for, *, world=None, **options):
-        world = world or PinnedWorld(self.temp)
+    def run_world(self, owner_module, race, native, situation_for, *, world=None, folder_share=PACKAGE_SHARE, **options):
+        world = world or PinnedWorld(self.temp, folder_share)
         patches = [mock.patch.object(race, "os", NT_OS), mock.patch.object(race, "socket", world.socket),
                    mock.patch.object(race, "time", Clock()), mock.patch("os.rename", world.rename),
                    mock.patch.object(native, "os", world.os), mock.patch.object(native, "Held", world.Held)]
@@ -269,8 +288,9 @@ class NestedStageTests(HolderRuns, unittest.TestCase):
         # The same bytes pass when no transfer lives: the serve's pin is what refuses them.
         guest, world, code = self.run_world(*self.base(), race_row, transfer=False)
         self.assertEqual((0, [], [0, 1]), (code, guest.parks, [child.terminal["exitCode"] for child in exports(guest)]))
-        # GREEN: with the transfer retained, both probes pass at once and both races run to their ends.
-        guest, world, code = self.run_world(*self.fixed(), race_row)
+        # GREEN: with the transfer retained, both probes pass at once and both races run to their ends (with a
+        # product whose pins share writes: RootGateTests shows the row on the package that ran).
+        guest, world, code = self.run_world(*self.fixed(), race_row, folder_share=FIXED_SHARE)
         self.assertEqual((0, [], [(0, "NoneType", "None")]), (code, guest.parks, guest.finished))
         probes = events(guest, "document-race-rename-probe")
         self.assertEqual([("parent", True, True), ("destination", True, True)],
@@ -291,7 +311,7 @@ class NestedStageTests(HolderRuns, unittest.TestCase):
                          "the two parent probes pass, the race's own rename is refused, the destination probes pass")
 
     def test_the_stage_keeps_the_fixture_out_of_every_folder_the_serve_pins(self):
-        guest, world, code = self.run_world(*self.fixed(), race_row)
+        guest, world, code = self.run_world(*self.fixed(), race_row, folder_share=FIXED_SHARE)
         root = guest.root
         for mode in ("parent", "destination"):
             stage = root / ("document-race-" + mode)
@@ -300,33 +320,98 @@ class NestedStageTests(HolderRuns, unittest.TestCase):
             self.assertEqual(["activation.port"], sorted(path.name for path in (root / ("document-export-client-" + mode)).iterdir()))
         self.assertEqual([], sorted(path.name for path in root.iterdir() if "control" in path.name or "differential" in path.name))
 
-    def test_the_root_control_records_the_refusal_and_who_holds_the_operation_root(self):
-        guest, world, code = self.run_world(*self.base(), race_row, transfer=False)
-        self.assertEqual(([], []), (events(guest, "document-fixture-rename-control"), events(guest, "document-fixture-holder-census")))  # RED
-        guest, world, code = self.run_world(*self.fixed(), race_row)
+class RootGateTests(HolderRuns, unittest.TestCase):
+    """The root control is a gate on the product: while the serve holds its transfer, the root takes renames.
+
+    The serve pins its spool parent and every ancestor, the operation root among them, while a transfer lives.
+    The 2.2.17 package pinned them with read sharing only, so every rename by path into them failed, by any
+    program. RED on the bytes before the gate (245b61a7): the control was recorded and the row went on, so a
+    package that refused every rename into the root passed the row (exit 0), and one with no live transfer
+    passed it too, having shown nothing.
+    """
+
+    def test_the_root_gate_ends_the_row_known_when_the_serve_refuses_renames_into_the_operation_root(self):
+        guest, world, code = self.run_world(*self.fixed(), race_row)  # the package that ran: read sharing only
+        self.assertEqual((1, [], [(1, "RuntimeError", ROOT_REFUSED)]), (code, guest.parks, guest.finished))
+        probe, = events(guest, "document-race-rename-probe")
+        self.assertEqual((True, True), (probe["renamed"], probe["restored"]), "the stage's own probe passed first")
+        self.assertEqual([{"fixture": "race", "token": "race-parent", "leaf": guest.root.name, "controlError": None,
+                           "steps": steps("mkdir", ("rename-away", SHARING), "rmdir")}],
+                         events(guest, "document-fixture-rename-control"))
         serve = next(child for child in guest.owner_object.children if child.label == "serve")
-        controls = events(guest, "document-fixture-rename-control")
-        self.assertEqual([{"fixture": "race", "token": "race-" + mode, "leaf": guest.root.name, "controlError": None,
-                           "steps": steps("mkdir", ("rename-away", SHARING), "rmdir")} for mode in ("parent", "destination")],
-                         controls)
-        census = events(guest, "document-fixture-holder-census")
-        self.assertEqual([("race", "rename-control", "control", 32, None)] * 2,
-                         [(row["fixture"], row["step"], row["moment"], row["winerror"], row["censusError"]) for row in census])
+        census, = events(guest, "document-fixture-holder-census")
+        self.assertEqual(("race", "rename-control", "control", 32, None),
+                         (census["fixture"], census["step"], census["moment"], census["winerror"], census["censusError"]))
         self.assertEqual([{"role": "parent", "leaf": guest.root.name, "status": "ok", "holderCount": 4, "holders": [
             {"pid": TASK_OWNER, "image": "powershell.exe", "role": "task-owner", "child": None, "parentPid": 900, "openError": None},
             {"pid": WORKER, "image": "python.exe", "role": "worker", "child": None, "parentPid": TASK_OWNER, "openError": None},
             {"pid": serve.pid, "image": LAUNCHER, "role": "serve", "child": serve.ordinal, "parentPid": WORKER, "openError": None},
             {"pid": serve.pid + 1, "image": LAUNCHER, "role": "serve-child", "child": serve.ordinal, "parentPid": serve.pid,
-             "openError": None}]}], census[0]["targets"])
-        handles = census[0]["harnessHandles"]
+             "openError": None}]}], census["targets"])
+        handles = census["harnessHandles"]
         self.assertEqual((0, 1, [{"path": str(guest.root), "access": 0x20080, "share": 3}]),
                          (handles["retainedOpen"], handles["directoryPinCount"], handles["directoryPins"]))
         self.assertNotIn("command", json.dumps(census).lower())
-        # With no transfer alive nothing pins the root: the control renames, and no census is taken.
-        guest, world, code = self.run_world(*self.fixed(), race_row, transfer=False)
+        self.assertEqual([{"fixture": "race", "token": "race-parent", "leaf": guest.root.name, "spoolKnown": True,
+                           "transfersBefore": 1, "transfersAfter": 1, "transferHeldThroughout": True, "passed": False,
+                           "code": ROOT_REFUSED}], events(guest, "document-fixture-rename-gate"))
+        self.assertEqual([], exports(guest), "the product's race never started")
+        self.assertEqual(1, len(quits(guest)), "the known failure's closing quit the serve")
+        self.assertEqual([], [path.name for path in guest.root.iterdir() if "control" in path.name])
+
+    def test_the_root_gate_passes_while_the_serve_holds_its_transfer_and_shares_writes(self):
+        guest, world, code = self.run_world(*self.fixed(), race_row, folder_share=FIXED_SHARE)
+        self.assertEqual((0, [], [(0, "NoneType", "None")]), (code, guest.parks, guest.finished))
         self.assertEqual([steps("mkdir", "rename-away", "rename-back", "rmdir")] * 2,
                          [row["steps"] for row in events(guest, "document-fixture-rename-control")])
-        self.assertEqual(([], 0), (events(guest, "document-fixture-holder-census"), code))
+        self.assertEqual([("race-" + mode, 1, 1, True, True, None) for mode in ("parent", "destination")],
+                         [(row["token"], row["transfersBefore"], row["transfersAfter"], row["transferHeldThroughout"],
+                           row["passed"], row["code"]) for row in events(guest, "document-fixture-rename-gate")])
+        self.assertEqual([], events(guest, "document-fixture-holder-census"))
+        self.assertEqual([("parent", "OK"), ("destination", "PERSISTENCE_FAILED")],
+                         [(row["mode"], row["code"]) for row in events(guest, "document-public-export-race-complete")])
+        self.assertEqual([(name + suffix, guest.root.name, False) for name in ("document-race-parent-control",
+                          "document-race-destination-control") for suffix in ("", "-moved")],
+                         [row for row in world.renames if "control" in row[0]], "renamed away and back into the root")
+
+    def test_a_root_that_renames_without_a_live_transfer_proves_nothing(self):
+        for share in (PACKAGE_SHARE, FIXED_SHARE):
+            with self.subTest(folder_share=share):
+                guest, world, code = self.run_world(*self.fixed(), race_row, transfer=False, folder_share=share)
+                self.assertEqual((1, [], [(1, "RuntimeError", "document-race-root-control-without-transfer")]),
+                                 (code, guest.parks, guest.finished))
+                self.assertEqual([steps("mkdir", "rename-away", "rename-back", "rmdir")],
+                                 [row["steps"] for row in events(guest, "document-fixture-rename-control")])
+                gate, = events(guest, "document-fixture-rename-gate")
+                self.assertEqual((0, 0, False, False), (gate["transfersBefore"], gate["transfersAfter"],
+                                                        gate["transferHeldThroughout"], gate["passed"]))
+                self.assertEqual(([], []), (events(guest, "document-fixture-holder-census"), exports(guest)))
+
+    def test_a_transfer_that_ended_during_the_control_proves_nothing(self):
+        def end_transfer(owner):
+            original = document_native.rename_control
+
+            def control(*args):
+                try:
+                    return original(*args)
+                finally:
+                    (Path(owner.root) / "document-temp" / TRANSFER_LEAF).rmdir()
+            patch = mock.patch.object(document_native, "rename_control", control)
+            patch.start()
+            self.addCleanup(patch.stop)
+        guest, world, code = self.run_world(*self.fixed(), race_row, folder_share=FIXED_SHARE, before=end_transfer)
+        self.assertEqual("document-race-root-control-without-transfer", guest.finished[0][2])
+        self.assertEqual((1, 0, False), tuple(events(guest, "document-fixture-rename-gate")[0][key] for key in (
+            "transfersBefore", "transfersAfter", "transferHeldThroughout")))
+
+    def test_a_control_step_failing_otherwise_is_its_own_known_failure(self):
+        def taken(owner):
+            (Path(owner.root) / "document-race-parent-control").mkdir()
+        guest, world, code = self.run_world(*self.fixed(), race_row, folder_share=FIXED_SHARE, before=taken)
+        self.assertEqual((1, [], [(1, "RuntimeError", "document-race-root-control-failed:mkdir:errno-17")]),
+                         (code, guest.parks, guest.finished))
+        self.assertTrue((guest.root / "document-race-parent-control").is_dir(), "a folder it did not make stays")
+        self.assertEqual(([], []), (events(guest, "document-fixture-holder-census"), exports(guest)))
 
 
 class RefusalEvidenceTests(HolderRuns, unittest.TestCase):
@@ -337,8 +422,8 @@ class RefusalEvidenceTests(HolderRuns, unittest.TestCase):
             self.world.hold(Path(owner.root) / "document-race-parent", SCANNER, "r", 1, checks)
         return before
 
-    def run_scanned(self, modules, *, checks=None, transfer=True, modes=("parent",)):
-        self.world = PinnedWorld(self.temp)
+    def run_scanned(self, modules, *, checks=None, transfer=True, modes=("parent",), folder_share=PACKAGE_SHARE):
+        self.world = PinnedWorld(self.temp, folder_share)
         return self.run_world(*modules, race_row, world=self.world, modes=modes, transfer=transfer,
                               before=self.scanner(checks))
 
@@ -363,7 +448,7 @@ class RefusalEvidenceTests(HolderRuns, unittest.TestCase):
                           "document-fixture-rename-differential"], order, "the first census is taken before any wait")
 
     def test_a_holder_that_was_only_passing_is_named_and_the_probe_goes_on(self):
-        guest, world, code = self.run_scanned(self.fixed(), checks=2)
+        guest, world, code = self.run_scanned(self.fixed(), checks=2, folder_share=FIXED_SHARE)
         self.assertEqual((0, []), (code, guest.parks))
         probe, = events(guest, "document-race-rename-probe")
         self.assertEqual([("rename-away", 1, 32), ("rename-away", 2, 32), ("rename-away", 3, None), ("rename-back", 1, None)],
@@ -420,13 +505,14 @@ class RefusalEvidenceTests(HolderRuns, unittest.TestCase):
         def before(owner):
             self.scanner()(owner)
             spool = Path(owner.root) / "document-temp"
-            spool.mkdir()
+            spool.mkdir(exist_ok=True)
             self.world.os.environ["TEMP"] = str(spool)  # As the product's own children are given it.
         guest, world, code = self.run_world(*self.fixed(), race_row, world=self.world, modes=("parent",), before=before)
         differential, = events(guest, "document-fixture-rename-differential")
         self.assertEqual({"location": "user-temp", "available": False, "container": [], "variants": []},
                          differential["locations"][2])
-        self.assertEqual([], list((guest.root / "document-temp").iterdir()))
+        self.assertEqual([TRANSFER_LEAF], [path.name for path in (guest.root / "document-temp").iterdir()],
+                         "nothing of its own beside the product's transfer folder")
 
     def persistence(self, world, race, provider, *, refusal, leaf="workspace.json"):
         def situation(owner, workspace, identity, harness):
