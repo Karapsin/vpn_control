@@ -863,9 +863,9 @@ def product_declaration(op, machine, context, paths, hashes, events, scenario):
     """The allowance a passed preboot owner earned, checked here before any SYSTEM file declares it.
 
     Its checkpoint names the product it started through the autostart task: one tree of the GUI
-    launcher, its JVM, the controller launcher the GUI started, that JVM, and for reconnect the
-    runtime. Each is this boot's, the installed or runtime image and hash, the ordinary account and
-    session, and no process the owner itself started or was.
+    launcher, its JVM, the controller the GUI started, that controller's own JVM when it relaunched,
+    and for reconnect the runtime. Each is this boot's, the installed or runtime image and hash, the
+    ordinary account and session, born after its parent, and no process the owner itself started or was.
     """
     def need(condition, code):
         if not condition:
@@ -883,8 +883,11 @@ def product_declaration(op, machine, context, paths, hashes, events, scenario):
          and checkpoint["workspace"] == paths["productWorkspace"], "declaration_checkpoint")
     owner_pids = {starts[0][1]["value"]["pid"], *(value["value"]["pid"] for _, value in kinds.get("child-started", []))}
     rows = checkpoint["declaredProduct"]
-    need(type(rows) is list and [row.get("role") for row in rows] == list(DECLARED_ROLES[:len(rows)])
-         and len(rows) == (5 if scenario == "reconnect" else 4), "declaration_tree")
+    # A controller that did not relaunch is its own JVM: only a relaunched one adds a controllerLauncher row.
+    present = [row.get("role") for row in rows] if type(rows) is list and all(type(row) is dict for row in rows) else None
+    need(present is not None and present == [role for role in DECLARED_ROLES if role in present]
+         and {"guiLauncher", "gui", "controller"} <= set(present) and ("runtime" in present) == (scenario == "reconnect"),
+         "declaration_tree")
     runtime_image = paths["productWorkspace"] + "\\runtime\\tools\\" + RUNTIME_LEAF
     for row in rows:
         runtime = row["role"] == "runtime"
@@ -896,10 +899,12 @@ def product_declaration(op, machine, context, paths, hashes, events, scenario):
              and int(row["creationFileTime"]) > int(context["bootFileTimeUtc"])
              and row["pid"] not in owner_pids and row["parentPid"] not in owner_pids, "declaration_row")
     roles = {row["role"]: row for row in rows}
+    pairs = (("gui", "guiLauncher"), ("controllerLauncher", "gui"),
+             ("controller", "controllerLauncher" if "controllerLauncher" in roles else "gui"), ("runtime", "controller"))
     need(len({row["pid"] for row in rows}) == len(rows) and roles["guiLauncher"]["parentPid"] not in {row["pid"] for row in rows}
-         and all(roles[child]["parentPid"] == roles[parent]["pid"] for child, parent in
-                 (("gui", "guiLauncher"), ("controllerLauncher", "gui"), ("controller", "controllerLauncher"), ("runtime", "controller"))
-                 if child in roles), "declaration_parentage")
+         and all(roles[child]["parentPid"] == roles[parent]["pid"]
+                 and int(roles[child]["creationFileTime"]) >= int(roles[parent]["creationFileTime"])
+                 for child, parent in pairs if child in roles), "declaration_parentage")
     declaration = {"schema": ALLOWANCE_SCHEMA, "schemaVersion": 1, "operationId": op, "machine": machine,
                    "bootFileTimeUtc": context["bootFileTimeUtc"], "ordinarySid": context["ordinarySid"],
                    "sessionId": context["ordinarySessionId"],

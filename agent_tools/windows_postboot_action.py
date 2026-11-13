@@ -1,11 +1,12 @@
 """Whole ordinary postboot action and the helpers the preboot action shares; no import-time effects.
 
 The at-logon GUI, its controller and runtime are retained native actors, never
-fabricated Child objects: the product's launcher re-executes itself, so each role
-is a launcher parent with one JVM child of the same image, and the controller is
-the GUI's own vpn-control.exe --headless-controller --state-dir <workspace>. Their
-known OFF/QUIT retirement is an explicit test boundary. A refusal with no effect
-pending is a known failure; only a live or uncertain effect parks the owner.
+fabricated Child objects: the GUI launcher re-executes itself into one JVM child of
+the same image, and the controller is the GUI's own vpn-control.exe
+--headless-controller --state-dir <workspace>, which runs its own JVM unless it
+relaunched too (own_jvm). Their known OFF/QUIT retirement is an explicit test
+boundary. A refusal with no effect pending is a known failure; only a live or
+uncertain effect parks the owner.
 """
 from pathlib import Path, PureWindowsPath
 import hashlib
@@ -132,12 +133,17 @@ class Actor:
              and actual['token']['sessionId']==ctx['ordinarySessionId']==e['sessionId']
              and actual['token']['elevated']==0,'actual-startup-generation-image-token')
         return actual
-    def await_exit(self,label,seconds=30):
+    def await_exit(self,label,seconds=30,*,until=None,refusal=None):
+        """Wait on the retained handle. At the bound a pending effect parks; with refusal, the caller has already
+        observed its effect, so a generation still running is journaled and refused as a known failure."""
         need(not self.closed and self.process is not None,'original-startup-exit-handle')
-        until=time.monotonic()+seconds
+        until=time.monotonic()+seconds if until is None else until
         while self.process.wait()==258:
             self.owner.guard()
-            if time.monotonic()>=until:self.owner.park('postboot-original-'+self.role+'-exit-unknown-no-replay')
+            if time.monotonic()>=until:
+                if refusal is None:self.owner.park('postboot-original-'+self.role+'-exit-unknown-no-replay')
+                self.owner.event(refusal,{'actor':self.expected,'role':self.role,'replayAllowed':False})
+                raise ValueError(refusal)
             time.sleep(.05)
         times=self.process.times();need(self.process.wait()==0 and times['creationFileTime']==self.expected['creationFileTime'],
             'positive-original-startup-handle-exit')
@@ -194,26 +200,46 @@ def census(owner,lease,label):
     return record,rows,collector
 
 
-def product_tree(owner,lease,rows,running,*,root_parent=None):
-    """The product's own start: launcher parent and JVM child for the GUI and for its controller, and the runtime.
+def born_children(rows,parent,image):
+    """A parent PID outlives its process: only a census row born at or after its parent is that parent's child."""
+    return [row for row in rows if row['parentPid']==parent['pid'] and row['image'].casefold()==image.casefold()
+            and int(row['creationFileTime'])>=int(parent['creationFileTime'])]
 
-    The GUI launcher's parent is no product process; the controller launcher is the GUI JVM's child with
-    the real owner argv. Every product image in the census belongs to this one tree, nothing else.
+
+def own_jvm(rows,launcher,image,code):
+    """The process that runs a launcher's JVM: its one same-image child born after it, or the launcher itself.
+
+    jpackage relaunches a launcher only while PATH lacks <image>\\app, so a launcher that a product JVM starts,
+    itself such a relaunch, runs its JVM in place: in f56f4a4c the controller the query CLI started had no
+    same-image child and was the runtime's parent. capture_proxy_actors follows the same rule.
+    """
+    relaunched=born_children(rows,launcher,image);need(len(relaunched)<=1,code)
+    return relaunched[0] if relaunched else launcher
+
+
+def product_tree(owner,lease,rows,running,*,root_parent=None):
+    """The product's own start: the GUI launcher and its JVM, the controller that JVM started, and the runtime.
+
+    The GUI launcher's parent is no product process, and its one same-image child is its JVM. The controller is
+    that JVM's child with the real owner argv and runs its own JVM unless it relaunched (own_jvm); only then is
+    there a controllerLauncher role. The GUI starts it through the same DesktopHeadlessController.startForCliCommand
+    as the query CLI did in f56f4a4c, so the GUI-started shape is inferred from that census, not recorded.
+    Every product image in the census belongs to this one tree, nothing else.
     """
     workspace=owner.request['workspace'];roles=lease.paths;ctx=owner.request['context']
     gui=roles['gui'];runtime_image=str(PureWindowsPath(workspace)/'runtime'/'tools'/'sing-box.exe')
     same=lambda row,image:row['image'].casefold()==image.casefold()
-    children=lambda pid,image:[row for row in rows if row['parentPid']==pid and same(row,image)]
     launchers=[row for row in rows if same(row,gui) and row['argv']==[gui,'--autostart','--state-dir',workspace]
                and not any(other['pid']==row['parentPid'] for other in rows)]
     need(len(launchers)==1 and (root_parent is None or launchers[0]['parentPid']==root_parent),'one-actual-autostart-gui-launcher')
-    jvm=children(launchers[0]['pid'],gui);need(len(jvm)==1,'one-gui-jvm-child')
-    controllers=[row for row in children(jvm[0]['pid'],gui) if row['argv']==[gui,'--headless-controller','--state-dir',workspace]]
+    jvm=born_children(rows,launchers[0],gui);need(len(jvm)==1,'one-gui-jvm-child')
+    controllers=[row for row in born_children(rows,jvm[0],gui) if row['argv']==[gui,'--headless-controller','--state-dir',workspace]]
     need(len(controllers)==1,'one-gui-started-controller-launcher')
-    controller=children(controllers[0]['pid'],gui);need(len(controller)==1,'one-controller-jvm-child')
-    runtimes=children(controller[0]['pid'],runtime_image)
+    controller=own_jvm(rows,controllers[0],gui,'one-controller-jvm-child')
+    runtimes=born_children(rows,controller,runtime_image)
     need(len(runtimes)==(1 if running else 0),'reconnect-or-off-native-runtime-census')
-    tree={'guiLauncher':launchers[0],'gui':jvm[0],'controllerLauncher':controllers[0],'controller':controller[0]}
+    tree={'guiLauncher':launchers[0],'gui':jvm[0],'controller':controller}
+    if controller is not controllers[0]:tree['controllerLauncher']=controllers[0]
     if runtimes:tree['runtime']=runtimes[0]
     need({row['pid'] for row in tree.values()}=={row['pid'] for row in rows if same(row,gui) or same(row,runtime_image)},
          'every-product-process-in-the-one-autostart-tree')
@@ -376,7 +402,8 @@ def _run_postboot(owner,config,source_roles):
         for _ in range(2):
             current,_=public(owner,workspace,identity,'status');need(current['data']['runtimeRunning'] is False,'postboot-off-query-never-reconnects')
     auto.closing_off(owner,state,config['autostartInputs'])
-    quit_and_wait(owner,workspace,identity,[held[role] for role in ('gui','guiLauncher','controller','controllerLauncher')],'postboot-startup')
+    quit_and_wait(owner,workspace,identity,[held[role] for role in ('gui','guiLauncher','controller','controllerLauncher') if role in held],
+                  'postboot-startup')
     for endpoint in endpoints:endpoint.close_after_known_actor_exit()
     lease.guard()
     need(all(child.terminal is not None for child in owner.children),'whole-postboot-all-original-children-terminal')
@@ -419,23 +446,23 @@ def query_then_gui(owner,lease,source_roles,auto,life,branches,observer,state):
     need(current['data']['activeMode']=='proxy-only' and current['controllerId']==transient,'gui-restores-intent-on-the-query-owner')
     _,rows,_=census(owner,lease,'query-first-census')
     same=lambda row,image:row['image'].casefold()==image.casefold()
-    # A parent PID outlives its process: only a row born at or after the parent is its child.
-    children=lambda parent,image:[row for row in rows if row['parentPid']==parent['pid'] and same(row,image)
-                                  and int(row['creationFileTime'])>=int(parent['creationFileTime'])]
     controllers=[row for row in rows if same(row,gui_path) and row['argv']==[gui_path,'--headless-controller','--state-dir',ws]]
     # A launcher and its same-image JVM child may share the argv: the launcher is the one whose parent is neither.
     controllers=[row for row in controllers if not any(other['pid']==row['parentPid'] for other in controllers)]
     need(len(controllers)==1,'one-query-started-controller')
-    # jpackage relaunches a launcher only while PATH lacks <image>\app. The query CLI's own JVM is such a relaunch and
-    # starts the controller with that PATH, so natively (f56f4a4c) the controller is its own JVM and the runtime's parent.
-    relaunched=children(controllers[0],gui_path);need(len(relaunched)<=1,'one-query-controller-jvm')
-    jvm=relaunched[0] if relaunched else controllers[0]
+    jvm=own_jvm(rows,controllers[0],gui_path,'one-query-controller-jvm')
     runtime_image=str(PureWindowsPath(ws)/'runtime'/'tools'/'sing-box.exe')
-    runtimes=children(jvm,runtime_image);need(len(runtimes)==1,'one-reconnected-runtime')
-    ctx=owner.request['context'];row=runtimes[0]
+    runtimes=born_children(rows,jvm,runtime_image);need(len(runtimes)==1,'one-reconnected-runtime')
+    ctx=owner.request['context'];row=runtimes[0];native=observer.WindowsNative()
     actor={'pid':row['pid'],'creationFileTime':row['creationFileTime'],'image':runtime_image,'sha256':lease.runtime_sha256(),
            'sid':ctx['ordinarySid'],'sessionId':ctx['ordinarySessionId']}
-    runtime=Actor(owner,observer.WindowsNative(),actor,'runtime')
+    runtime=Actor(owner,native,actor,'runtime')
+    # Every other product generation of this census is held from here, the controller included: the product ends its
+    # controller only after the GUI acknowledged the quit, so the GUI child's end alone never closes the operation.
+    held=[Actor(owner,native,{'pid':row['pid'],'creationFileTime':row['creationFileTime'],'image':gui_path,
+                              'sha256':lease.pins['gui'].record['sha256'],'sid':ctx['ordinarySid'],'sessionId':ctx['ordinarySessionId']},
+                'controller' if row is jvm else 'controllerLauncher' if row is controllers[0] else 'gui')
+          for row in rows if same(row,gui_path) and row['pid']!=gui.pid]
     traffic(owner,lease,life,branches,actor,'query-first',source_roles)
     durable_off(owner,workspace,transient,'query-first-explicit-off-observed')
     runtime.await_exit('query-first-runtime-exit-observed')
@@ -443,6 +470,11 @@ def query_then_gui(owner,lease,source_roles,auto,life,branches,observer,state):
     public(owner,workspace,transient,'quit');closing=gui.wait()
     observed(owner)
     need(closing['exitCode']==0,'query-first-gui-known-exit')
+    # The quit's reply and the GUI child's end are observed, so a held generation still running at the bound is a
+    # known failure that names it, never a park; the closing census runs only once every one has ended.
+    until=time.monotonic()+60
+    for generation in held:
+        generation.await_exit('query-first-'+generation.role+'-exit-observed',until=until,refusal='query-first-product-exit-timeout')
     _,after,_=census(owner,lease,'query-first-closing-census')
     need(not any(same(row,gui_path) or same(row,runtime_image) for row in after),'query-first-product-fully-retired')
     result={'queryControllerId':transient,'originalControllerId':identity,'queryConnected':False,'guiRestoredIntentOnce':True,

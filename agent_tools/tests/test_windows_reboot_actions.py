@@ -21,6 +21,7 @@ from agent_tools import windows_ordinary_process_owner as process_owner
 from agent_tools import windows_postboot_action as postboot
 from agent_tools import windows_postboot_source_roles as source_roles
 from agent_tools import windows_preboot_action as preboot
+from agent_tools import windows_scenario_host_job as job
 from agent_tools.tests import product_link_schemes as product_links
 
 SID = "S-1-5-21-1-2-3-1000"
@@ -102,6 +103,64 @@ class RecordedOwner:
         return child
 
 
+def recorded_roles():
+    """The four product generations of the f56f4a4c census (child 26), checked for the facts the trees below keep."""
+    record = json.loads(NATIVE_QUERY_FIRST.read_text(encoding="utf-8"))
+    census = next(child for child in record["children"] if child["label"] == "query-first-census")
+    query = next(child for child in record["children"] if child["argv"][-2:] == ["locations", "list"])
+    gui = census["argv"][census["argv"].index("-GuiPath") + 1]
+    rows = json.loads(census["stdout"])["rows"]
+    pids = {row["pid"] for row in rows}
+
+    def one(found, fact):
+        if len(found) != 1:
+            raise AssertionError(("the recorded census changed", fact, found))
+        return found[0]
+    controller = one([row for row in rows if row["argv"][1:2] == ["--headless-controller"]], "one controller")
+    launcher = one([row for row in rows if row["image"] == gui and row is not controller and row["parentPid"] not in pids], "one GUI launcher")
+    jvm = one([row for row in rows if row["image"] == gui and row["parentPid"] == launcher["pid"]], "one GUI relaunch")
+    runtime = one([row for row in rows if row["image"].endswith("sing-box.exe")], "one runtime")
+    facts = {"the GUI relaunched once with its own argv": jvm["argv"] == launcher["argv"] and jvm["creationFileTime"] > launcher["creationFileTime"],
+             "the controller has no same-image child": not [row for row in rows if row["image"] == gui and row["parentPid"] == controller["pid"]],
+             "the runtime is the controller's child": runtime["parentPid"] == controller["pid"] and runtime["creationFileTime"] > controller["creationFileTime"],
+             "the controller's parent is no process of the census": controller["parentPid"] not in pids}
+    if not all(facts.values()):
+        raise AssertionError(("the recorded census changed", facts))
+    return {"guiLauncher": launcher, "gui": jvm, "controller": controller, "runtime": runtime, "queryLaunch": int(query["birthFileTimeUtc"])}
+
+
+def recorded_product_tree(workspace, scheduler, running, relaunch=False):
+    """The autostart product tree, as census rows, built from the recorded census of f56f4a4c.
+
+    Kept from the record: the four pids, the GUI launcher's one relaunch with its own argv (3576 to 1068) and both
+    births, a controller (3676) with no same-image child, and the runtime (2528) as that controller's child at its
+    recorded birth. Substituted: this test's GUI and workspace paths, the argv the autostart task runs and the
+    scheduler's pid as the launcher's parent. Inferred, not recorded: the GUI JVM as the controller's parent, born
+    after that JVM by the 1.144 s the query CLI's start took to its controller's birth. In f56f4a4c the controller
+    was the query CLI's, whose parent had ended; the GUI starts its own through the same startForCliCommand, but no
+    GUI-started controller has been recorded. relaunch models a same-image JVM child under the controller.
+    """
+    recorded = recorded_roles()
+    autostart_argv = [GUI, "--autostart", "--state-dir", workspace]
+    headless_argv = [GUI, "--headless-controller", "--state-dir", workspace]
+
+    def row(pid, parent, image, argv, born):
+        return {"pid": pid, "parentPid": parent, "image": image, "argv": argv, "sessionId": 2, "creationFileTime": born}
+    launcher = row(recorded["guiLauncher"]["pid"], scheduler, GUI, autostart_argv, recorded["guiLauncher"]["creationFileTime"])
+    gui = row(recorded["gui"]["pid"], launcher["pid"], GUI, autostart_argv, recorded["gui"]["creationFileTime"])
+    controller = row(recorded["controller"]["pid"], gui["pid"], GUI, headless_argv,
+                     gui["creationFileTime"] + recorded["controller"]["creationFileTime"] - recorded["queryLaunch"])
+    tree = {"guiLauncher": launcher, "gui": gui, "controller": controller}
+    if relaunch:
+        tree["controllerLauncher"] = controller
+        tree["controller"] = row(controller["pid"] + 1, controller["pid"], GUI, headless_argv,
+                                 controller["creationFileTime"] + gui["creationFileTime"] - launcher["creationFileTime"])
+    if running:
+        tree["runtime"] = row(recorded["runtime"]["pid"], tree["controller"]["pid"], str(PureWindowsPath(workspace) / "runtime" / "tools" / "sing-box.exe"),
+                              ["sing-box.exe", "run"], recorded["runtime"]["creationFileTime"])
+    return tree
+
+
 class Pin:
     def __init__(self, path, raw=b"declared", directory=False):
         self.path, self.raw, self.directory = Path(path), raw, directory
@@ -149,6 +208,10 @@ class World:
         self.owner, self.scenario, self.trace = owner, scenario, []
         self.task, self.processes, self.intent, self.running, self.controller = "absent", {}, False, False, None
         self.controller_jvm, self.relaunch_transient, self.censuses = None, False, []
+        # relaunch_controller models a GUI-started controller that relaunched anyway; controller_linger is how long,
+        # in the world clock's seconds, the controller still runs after the GUI that acknowledged the quit has ended.
+        self.relaunch_controller, self.controller_linger, self.controller_pids, self.exiting = False, 0.0, set(), {}
+        self.clock = None
         self.fixture_refused = False  # The first native gate: a standard user may not register the legacy task.
         self.locations, self.revision, self.settings = [], 0, {"autostart": False}
         self.next_pid, self.visible, self.last_run = 500, True, None
@@ -164,22 +227,32 @@ class World:
         return {"runtimeRunning": self.running, "activeMode": "proxy-only" if self.running else None, "activeLocationId": active,
                 "runtimeId": "runtime" if self.running else None, "runtimeStartedAt": "now" if self.running else None}
 
-    def spawn(self, image, argv, parent):
+    def spawn(self, image, argv, parent, pid=None, born=None):
         self.next_pid += 1
-        self.processes[self.next_pid] = {"pid": self.next_pid, "parentPid": parent, "image": image, "argv": argv, "sessionId": 2,
-                                         "creationFileTime": int(self.owner.request["context"]["bootFileTimeUtc"]) + 1000 + self.next_pid}
-        return self.next_pid
+        pid = self.next_pid if pid is None else pid
+        born = int(self.owner.request["context"]["bootFileTimeUtc"]) + 1000 + self.next_pid if born is None else born
+        self.processes[pid] = {"pid": pid, "parentPid": parent, "image": image, "argv": argv, "sessionId": 2, "creationFileTime": born}
+        return pid
+
+    def settle(self):
+        """A lingering controller ends once the world's clock passes its time."""
+        now = self.clock.monotonic() if self.clock is not None else 0
+        for pid, at in list(self.exiting.items()):
+            if now >= at:
+                self.processes.pop(pid, None)
+                del self.exiting[pid]
 
     def start_product(self, parent):
+        """The product's own start through its autostart task: the recorded tree of f56f4a4c (recorded_product_tree)."""
         workspace = self.owner.request["workspace"]
         self.last_run = int(self.owner.request["context"]["bootFileTimeUtc"]) + 500
-        launcher = self.spawn(GUI, [GUI, "--autostart", "--state-dir", workspace], parent)
-        gui = self.spawn(GUI, [GUI, "--autostart", "--state-dir", workspace], launcher)
-        controller_launcher = self.spawn(GUI, [GUI, "--headless-controller", "--state-dir", workspace], gui)
-        controller = self.spawn(GUI, [GUI, "--headless-controller", "--state-dir", workspace], controller_launcher)
-        self.controller, self.running, self.controller_jvm = "controller-" + str(controller), self.intent, controller
-        if self.running:
-            self.spawn(str(PureWindowsPath(workspace) / "runtime" / "tools" / "sing-box.exe"), ["sing-box.exe", "run"], controller)
+        tree = recorded_product_tree(workspace, parent, self.intent, relaunch=self.relaunch_controller)
+        for row in tree.values():
+            self.processes[row["pid"]] = dict(row)
+        controller = tree["controller"]["pid"]
+        self.controller_pids = {controller, tree.get("controllerLauncher", tree["controller"])["pid"]}
+        # Each boot reuses the recorded pids; a controller ID is fresh per owner, as the product's random UUID is.
+        self.controller, self.running, self.controller_jvm = "controller-" + str(uuid.uuid4()), self.intent, controller
         (Path(workspace) / "activation.port").write_text("{}")
         self.owner.native.ports[controller] = 41000
 
@@ -196,13 +269,16 @@ class World:
         cli_jvm = self.spawn(CLI, list(cli.argv), cli.pid)
         launcher = self.spawn(GUI, argv, cli_jvm)
         self.controller_jvm = self.spawn(GUI, argv, launcher) if self.relaunch_transient else launcher
+        self.controller_pids = {launcher, self.controller_jvm}
         del self.processes[cli_jvm]
         self.controller, self.running = "transient-" + str(self.controller_jvm), False  # A transient owner never resumes.
         (Path(workspace) / "activation.port").write_text("{}")
 
     def start_gui(self, child):
-        """The GUI joins the workspace's owner and restores the remembered intent once."""
-        launcher = self.spawn(GUI, list(child.argv), 41)
+        """The GUI joins the workspace's owner and restores the remembered intent once.
+
+        Its launcher is the owner's own child (3576 under the owner in f56f4a4c) and relaunches once."""
+        launcher = self.spawn(GUI, list(child.argv), 41, pid=child.pid)
         self.spawn(GUI, list(child.argv), launcher)
         if self.intent and self.controller is not None and not self.running:
             self.running = True
@@ -288,6 +364,7 @@ class World:
             self.start_product(40)
             return child.end(0, json.dumps({"schemaVersion": 1, "taskPath": autostart.TASK, "instanceGuid": "{instance}"}))
         if script.endswith("startupCollector.data"):
+            self.settle()
             rows = [dict(row) for row in self.processes.values()]
             self.censuses.append((child.label, rows))
             return child.end(0, json.dumps({"schemaVersion": 1, "collector": "prequery-native-startup-census", "pid": child.pid,
@@ -312,7 +389,13 @@ class World:
         for child in self.owner.children:
             if child.terminal is None and (child.label == "serve" or child.argv[0] == GUI):
                 child.end(0)
-        self.processes.clear()
+        # The owner releases its own exit once the GUI acknowledged the quit (DesktopOwnerExitGate.releaseQuit), so the
+        # GUI ends first and the controller may still run for controller_linger seconds of the world's clock.
+        lingering = {pid for pid in self.controller_pids if pid in self.processes} if self.controller_linger else set()
+        for pid in [pid for pid in self.processes if pid not in lingering]:
+            del self.processes[pid]
+        now = self.clock.monotonic() if self.clock is not None else 0
+        self.exiting.update({pid: now + self.controller_linger for pid in lingering})
 
     def waited(self, child):
         raise AssertionError(("a live child was waited on", child.label))
@@ -329,6 +412,7 @@ class Native:
 
         class Process:
             def describe(self):
+                world.settle()
                 row = world.processes.get(pid)
                 if row is None:
                     raise AssertionError("absent process")
@@ -337,6 +421,7 @@ class Native:
                         "token": {"sid": SID, "sessionId": 2, "elevated": 0}}
 
             def wait(self):
+                world.settle()
                 return 258 if pid in world.processes else 0
 
             def times(self):
@@ -436,7 +521,7 @@ class Clock:
 
 class WorldCase(unittest.TestCase):
     def setUp(self):
-        clock = Clock()
+        clock = self.clock = Clock()
         for module in (preboot, postboot):
             patcher = mock.patch.object(module, "time", clock)
             patcher.start()
@@ -452,6 +537,7 @@ class WorldCase(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         owner = Owner(directory.name, scenario, "preboot-reboot")
         owner.modules = fakes(owner)
+        owner.world.clock = self.clock
         return owner
 
     def after_reboot(self, scenario):
@@ -512,7 +598,8 @@ class PrebootActionTests(WorldCase):
                 checkpoint = [value for kind, value in owner.events if kind == "reboot-checkpoint"]
                 self.assertEqual(1, len(checkpoint))
                 rows = checkpoint[0]["declaredProduct"]
-                self.assertEqual(["guiLauncher", "gui", "controllerLauncher", "controller", *(["runtime"] if running else [])],
+                # The recorded shape: the GUI-started controller is its own JVM, so no controllerLauncher row.
+                self.assertEqual(["guiLauncher", "gui", "controller", *(["runtime"] if running else [])],
                                  [row["role"] for row in rows])
                 self.assertEqual(40, rows[0]["parentPid"], "the root was started by the task scheduler")
                 self.assertEqual([RUNTIME] if running else [], [row["sha256"] for row in rows if row["role"] == "runtime"],
@@ -692,6 +779,161 @@ class QueryControllerCensusTests(WorldCase):
                     preboot.run_preboot(owner, owner.config, source_roles, postboot)
                 self.assertEqual([], [child.label for child in owner.children if child.terminal is None], "a known refusal retires the GUI")
                 self.assertNotIn("postboot-query-first-traffic-observed", [kind for kind, _ in owner.events])
+
+    def test_the_closing_census_follows_a_controller_that_ends_after_the_gui(self):
+        # The owner releases its exit only once the GUI acknowledged the quit, and polls for it at most every second
+        # (DesktopOwnerExitGate.releaseQuit, HeadlessLifecycle.awaitExit): the GUI child ends while the controller runs.
+        owner = self.owner("query-first")
+        owner.world.controller_linger = 1.5
+        self.assertEqual(0, preboot.run_preboot(owner, owner.config, source_roles, postboot))
+        kinds = [kind for kind, _ in owner.events]
+        self.assertIn("query-first-controller-exit-observed", kinds)
+        self.assertNotIn("query-first-product-exit-timeout", kinds)
+        closing = next(rows for label, rows in owner.world.censuses if label == "query-first-closing-census")
+        self.assertEqual([], closing, "the closing census ran once every product generation had ended")
+        self.assertEqual({}, owner.world.exiting, "the controller had still been running after the GUI child ended")
+
+    def test_a_product_generation_past_the_bound_is_a_known_failure_never_a_park(self):
+        owner = self.owner("query-first")
+        owner.world.controller_linger = 3600.0  # Still running at the bound.
+        result, finished = self.main(owner, "windows-preboot-reboot")
+        self.assertEqual((1, [1]), (result, finished), "a known failure finishes; it never parks")
+        timeouts = [value for kind, value in owner.events if kind == "query-first-product-exit-timeout"]
+        self.assertEqual(["controller"], [value["role"] for value in timeouts], "the generation still running is named")
+        self.assertEqual(owner.world.controller_jvm, timeouts[0]["actor"]["pid"])
+        self.assertNotIn("query-first-closing-census", [child.label for child in owner.children], "no census after a refusal")
+        self.assertEqual([], [child.label for child in owner.children if child.terminal is None])
+
+
+class RebootTreeTests(WorldCase):
+    """The reboot rows' autostart tree over the recorded census shape of f56f4a4c (recorded_product_tree).
+
+    On 529cc610 product_tree wanted a controller launcher with one JVM child, so a controller that is its own JVM
+    was refused as one-controller-jvm-child, which the preboot retries and then parks on after 120 s, and the host
+    job refused any declaration without a controllerLauncher row. The GUI-started controller's own shape at a
+    reboot is inferred from that census, not recorded.
+    """
+    WORKSPACE = r"C:\Users\recovery\AppData\Local\VpnControlOrdinary-00000000-0000-4000-8000-000000000000\workspace"
+
+    def tree_owner(self):
+        context = dict(CONTEXT, bootFileTimeUtc=BOOT)
+        owner = types.SimpleNamespace(request={"workspace": self.WORKSPACE, "context": context})
+        lease = types.SimpleNamespace(paths={"gui": GUI}, pins={"gui": Pin(GUI)}, runtime_sha256=lambda: RUNTIME)
+        return owner, lease
+
+    def declare(self, declared, scenario):
+        """The host job's own check of a preboot checkpoint, before any SYSTEM file declares it."""
+        op = "00000000-0000-4000-8000-000000000000"
+        checkpoint = {"operationId": op, "scenario": scenario, "deploymentId": CONTEXT["deploymentId"], "ordinarySid": SID,
+                      "oldSessionId": 2, "oldBootFileTimeUtc": BOOT, "workspace": self.WORKSPACE, "declaredProduct": declared}
+        events = [("event-000000-owner-started.json", {"kind": "owner-started", "operationId": op, "value": {"pid": 4408}}),
+                  ("event-000001-child-started.json", {"kind": "child-started", "operationId": op, "value": {"pid": 7684}}),
+                  ("event-000002-reboot-checkpoint.json", {"kind": "reboot-checkpoint", "operationId": op, "value": checkpoint})]
+        paths = {"productWorkspace": self.WORKSPACE, "gui": GUI}
+        return job.product_declaration(op, CONTEXT["deploymentId"], dict(CONTEXT, bootFileTimeUtc=BOOT), paths,
+                                       {"gui": Pin(GUI).record["sha256"], "runtime": RUNTIME}, events, scenario)
+
+    def declared_rows(self, tree):
+        return [{"role": role, "pid": row["pid"], "parentPid": row["parentPid"], "creationFileTime": str(row["creationFileTime"]),
+                 "image": row["image"], "sha256": RUNTIME if role == "runtime" else Pin(GUI).record["sha256"], "sid": SID, "sessionId": 2}
+                for role, row in sorted(tree.items(), key=lambda item: job.DECLARED_ROLES.index(item[0]))]
+
+    def test_a_preboot_over_the_recorded_shape_declares_its_own_jvm_controller_and_never_parks(self):
+        recorded = recorded_roles()
+        for scenario, running in (("reconnect", True), ("explicit-off", False), ("autostart-migration", False)):
+            with self.subTest(scenario=scenario):
+                owner = self.owner(scenario)
+                try:
+                    self.assertEqual(0, preboot.run_preboot(owner, owner.config, source_roles, postboot))
+                except Parked as parked:
+                    self.fail("the preboot parked over the recorded shape: " + str(parked))
+                rows = next(value for kind, value in owner.events if kind == "reboot-checkpoint")["declaredProduct"]
+                roles = {row["role"]: row for row in rows}
+                self.assertEqual([recorded["guiLauncher"]["pid"], recorded["gui"]["pid"], recorded["controller"]["pid"],
+                                  *([recorded["runtime"]["pid"]] if running else [])], [row["pid"] for row in rows])
+                self.assertNotIn("controllerLauncher", roles)
+                self.assertEqual(roles["gui"]["pid"], roles["controller"]["parentPid"])
+                if running:
+                    self.assertEqual(roles["controller"]["pid"], roles["runtime"]["parentPid"])
+
+    def test_a_postboot_over_the_recorded_shape_retires_its_own_jvm_controller(self):
+        for scenario, running in (("reconnect", True), ("explicit-off", False)):
+            with self.subTest(scenario=scenario):
+                try:
+                    owner = self.after_reboot(scenario)
+                    self.assertEqual(0, postboot.run_postboot(owner, owner.config, source_roles))
+                except Parked as parked:
+                    self.fail("parked over the recorded shape: " + str(parked))
+                kinds = [kind for kind, _ in owner.events]
+                self.assertEqual(["postboot-startup-gui-exit-observed", "postboot-startup-guiLauncher-exit-observed",
+                                  "postboot-startup-controller-exit-observed"], [kind for kind in kinds if kind.endswith("-exit-observed")
+                                                                                    and kind.startswith("postboot-startup-") and "runtime" not in kind])
+                self.assertFalse(owner.world.processes)
+
+    def test_the_recorded_tree_is_declared_and_the_host_job_allows_it(self):
+        for running, scenario in ((True, "reconnect"), (False, "explicit-off")):
+            with self.subTest(scenario=scenario):
+                owner, lease = self.tree_owner()
+                tree = recorded_product_tree(self.WORKSPACE, 40, running)
+                actors = postboot.product_tree(owner, lease, list(tree.values()), running)
+                self.assertEqual({role: row["pid"] for role, row in tree.items()}, {role: actor["pid"] for role, actor in actors.items()})
+                declared = autostart.product_rows(actors)
+                declaration, _ = self.declare(declared, scenario)
+                self.assertEqual([row["pid"] for row in declared], [row["pid"] for row in declaration["processes"]])
+
+    def test_the_host_job_allows_a_declared_controller_that_is_its_own_jvm(self):
+        for running, scenario in ((True, "reconnect"), (False, "explicit-off")):
+            with self.subTest(scenario=scenario):
+                declared = self.declared_rows(recorded_product_tree(self.WORKSPACE, 40, running))
+                declaration, _ = self.declare(declared, scenario)
+                self.assertEqual(3 + running, len(declaration["processes"]))
+
+    def test_a_relaunched_controller_is_still_taken_with_its_launcher_row(self):
+        owner, lease = self.tree_owner()
+        tree = recorded_product_tree(self.WORKSPACE, 40, True, relaunch=True)
+        actors = postboot.product_tree(owner, lease, list(tree.values()), True)
+        declared = autostart.product_rows(actors)
+        self.assertEqual(list(job.DECLARED_ROLES), [row["role"] for row in declared])
+        self.declare(declared, "reconnect")
+
+    def test_a_second_relaunch_or_a_child_born_before_its_claimed_parent_is_never_taken(self):
+        def second_relaunch(tree):
+            extra = dict(tree["controller"], pid=tree["controller"]["pid"] + 1, creationFileTime=tree["controller"]["creationFileTime"] + 2)
+            return {**tree, "extra": extra, "controller": dict(tree["controller"], parentPid=tree["controllerLauncher"]["pid"])}
+
+        def stale_runtime(tree):
+            return {**tree, "runtime": dict(tree["runtime"], creationFileTime=tree["controller"]["creationFileTime"] - 1)}
+
+        def recorded_controller_birth(tree):
+            # 3676 at its recorded birth predates the GUI JVM it would be the child of: no GUI started that controller.
+            return {**tree, "controller": dict(tree["controller"], creationFileTime=recorded_roles()["controller"]["creationFileTime"])}
+        cases = ((second_relaunch, True, "one-controller-jvm-child"), (stale_runtime, False, "reconnect-or-off-native-runtime-census"),
+                 (recorded_controller_birth, False, "one-gui-started-controller-launcher"))
+        for change, relaunch, code in cases:
+            with self.subTest(code=code):
+                owner, lease = self.tree_owner()
+                rows = list(change(recorded_product_tree(self.WORKSPACE, 40, True, relaunch=relaunch)).values())
+                with self.assertRaisesRegex(ValueError, "^" + code + "$"):
+                    postboot.product_tree(owner, lease, rows, True)
+
+    def test_the_host_job_refuses_a_declared_tree_out_of_shape(self):
+        def without(role):
+            return lambda rows: [row for row in rows if row["role"] != role]
+
+        def parent(role, value):
+            return lambda rows: [dict(row, parentPid=value(rows)) if row["role"] == role else row for row in rows]
+        pid = lambda role: lambda rows: next(row["pid"] for row in rows if row["role"] == role)
+        cases = {"no-runtime-on-reconnect": (without("runtime"), "declaration_tree"),
+                 "no-controller": (without("controller"), "declaration_tree"),
+                 "out-of-order": (lambda rows: [rows[1], rows[0], *rows[2:]], "declaration_tree"),
+                 "controller-not-under-the-gui": (parent("controller", pid("guiLauncher")), "declaration_parentage"),
+                 "controller-born-before-the-gui": (lambda rows: [dict(row, creationFileTime=str(recorded_roles()["controller"]["creationFileTime"]))
+                                                                  if row["role"] == "controller" else row for row in rows], "declaration_parentage")}
+        for name, (change, code) in cases.items():
+            with self.subTest(case=name):
+                declared = change(self.declared_rows(recorded_product_tree(self.WORKSPACE, 40, True)))
+                with self.assertRaisesRegex(ValueError, "^" + code + "$"):
+                    self.declare(declared, "reconnect")
 
 
 class PostbootActionTests(WorldCase):

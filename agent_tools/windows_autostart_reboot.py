@@ -226,7 +226,10 @@ def location_name(owner, state, status):
 
 
 def product_rows(actors):
-    """The declared product generations a reboot may find running: exact facts only."""
+    """The declared product generations a reboot may find running: exact facts only.
+
+    A controller that did not relaunch is its own JVM, so only a relaunched one adds a controllerLauncher row.
+    """
     rows = []
     for role in ("guiLauncher", "gui", "controllerLauncher", "controller", "runtime"):
         actor = actors.get(role)
@@ -235,7 +238,8 @@ def product_rows(actors):
         rows.append({"role": role, "pid": actor["pid"], "parentPid": actor["parentPid"],
                      "creationFileTime": str(actor["creationFileTime"]), "image": actor["image"],
                      "sha256": actor["sha256"], "sid": actor["sid"], "sessionId": actor["sessionId"]})
-    require(len({row["pid"] for row in rows}) == len(rows) and 4 <= len(rows) <= 5, "declared-product-tree-shape")
+    require(len({row["pid"] for row in rows}) == len(rows) and {"guiLauncher", "gui", "controller"} <= {row["role"] for row in rows}
+            and 3 <= len(rows) <= 5, "declared-product-tree-shape")
     return rows
 
 

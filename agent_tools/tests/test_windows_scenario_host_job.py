@@ -2267,6 +2267,28 @@ class RebootFamilyTests(FamilyBase):
                 plan, code, receipt, kinds = self.run_reboot("windows-reboot-explicit-off.pre")
                 self.assertEqual((1, "product_declaration_refused"), (code, receipt["failure"]))
 
+    def test_a_controller_that_is_its_own_jvm_is_declared_and_admits_its_postboot(self):
+        # The shape the native census of f56f4a4c recorded for the query CLI's controller, and inferred, not recorded,
+        # for the GUI's: no controllerLauncher row, the controller the GUI JVM's child. Before, declaration_tree.
+        def own_jvm(rows):
+            launcher = next(row for row in rows if row["role"] == "controllerLauncher")
+            rows.remove(launcher)
+            next(row for row in rows if row["role"] == "controller")["parentPid"] = launcher["parentPid"]
+        self.change_rows = own_jvm
+        for name, count in (("windows-reboot-reconnect", 4), ("windows-reboot-explicit-off", 3)):
+            with self.subTest(name=name):
+                self.fresh_history()
+                pre, code, receipt, kinds = self.run_reboot(name + ".pre")
+                self.assertEqual((0, None), (code, receipt["failure"]))
+                self.assertEqual(count, receipt["preboot"]["declaredProcesses"])
+                allowance = json.loads(self.qga.files[job.WORKSPACE_PREFIX + pre["operationId"] + "\\product-allowance.json"])
+                processes = {row["pid"]: row for row in allowance["processes"]}
+                self.assertEqual(501, processes[503]["parentPid"], "the controller is declared as the GUI JVM's child")
+                self.reboot(receipt)
+                post, code, passed, kinds = self.run_reboot(name + ".post", preboot=pre["operationId"])
+                self.assertEqual((0, None), (code, passed["failure"]))
+        self.change_rows = None
+
     def test_a_postboot_without_its_own_passed_preboot_claims_nothing(self):
         def refused(prior, name="windows-reboot-reconnect.post"):
             plan, code, receipt, kinds = self.run_reboot(name, preboot=prior)
