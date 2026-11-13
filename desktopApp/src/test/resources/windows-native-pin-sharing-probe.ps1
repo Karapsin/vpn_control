@@ -4,6 +4,8 @@
 # lets the folder move; a witness lets its own writer write and refuses deletion; an image pin refuses
 # writers. The pin the helpers took before (listing access, read sharing only) refuses renames into the
 # folder: Windows opens the folder of the new name for FILE_ADD_FILE ([MS-FSA] 2.1.5.15.12).
+# Sharing writes also admits FILE_WRITE_DATA, with which an empty pinned folder becomes a junction ([MS-FSA]
+# 2.1.5.10.37): the broker's publication must find a temporary created by path behind it (Linked) and delete it.
 Add-Type -TypeDefinition @'
 using System; using System.Text; using System.Runtime.InteropServices; using Microsoft.Win32.SafeHandles;
 public static class NativePinSharingFixture {
@@ -24,6 +26,24 @@ public static class NativePinSharingFixture {
   StringBuilder buffer=new StringBuilder(32768); uint length=GetLongPathNameW(path,buffer,32768);
   if (length==0 || length>=32768) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
   return buffer.ToString();
+ }
+ [DllImport("kernel32.dll",SetLastError=true)] static extern bool DeviceIoControl(SafeFileHandle h,uint code,byte[] input,uint size,IntPtr output,uint outputSize,out uint returned,IntPtr overlapped);
+ static SafeFileHandle Opened(SafeFileHandle file) { if (file.IsInvalid) { int code=Marshal.GetLastWin32Error(); file.Dispose(); throw new System.ComponentModel.Win32Exception(code); } return file; }
+ // Another program's FILE_WRITE_DATA handle on the folder itself, sharing all.
+ public static SafeFileHandle WriteData(string path) { return Opened(CreateFileW(path,0x2,7,IntPtr.Zero,3,0x02200000,IntPtr.Zero)); }
+ // An exclusive creation by path with delete access, as the publication's temporary file.
+ public static SafeFileHandle CreateNew(string path) { return Opened(CreateFileW(path,0xC0010000,1,IntPtr.Zero,1,0x80,IntPtr.Zero)); }
+ public static int Mount(SafeFileHandle folder,string target) {
+  byte[] sub=Encoding.Unicode.GetBytes(@"\??\"+target), print=Encoding.Unicode.GetBytes(target);
+  var m=new System.IO.MemoryStream(); var w=new System.IO.BinaryWriter(m);
+  w.Write(0xA0000003u); w.Write((ushort)(8+sub.Length+2+print.Length+2)); w.Write((ushort)0);
+  w.Write((ushort)0); w.Write((ushort)sub.Length); w.Write((ushort)(sub.Length+2)); w.Write((ushort)print.Length);
+  w.Write(sub); w.Write((ushort)0); w.Write(print); w.Write((ushort)0); w.Flush(); byte[] b=m.ToArray(); uint n;
+  return DeviceIoControl(folder,0x900A4,b,(uint)b.Length,IntPtr.Zero,0,out n,IntPtr.Zero) ? 0 : Marshal.GetLastWin32Error();
+ }
+ public static int Unmount(SafeFileHandle folder) {
+  byte[] b=new byte[8]; Array.Copy(BitConverter.GetBytes(0xA0000003u),b,4); uint n;
+  return DeviceIoControl(folder,0x900AC,b,8,IntPtr.Zero,0,out n,IntPtr.Zero) ? 0 : Marshal.GetLastWin32Error();
  }
  public static SafeFileHandle DenyingWriteSharing(string path) {
   SafeFileHandle file=CreateFileW(path,0x20081,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
@@ -46,7 +66,7 @@ foreach ($folder in @($pinned,$outside,(Join-Path $outside 'folder'))) { [IO.Dir
 $held=Join-Path $pinned 'held.txt'; [IO.File]::WriteAllText($held,'witness')
 $image=Join-Path $pinned 'vpn-control.exe'; [IO.File]::WriteAllBytes($image,[byte[]]@(77,90))
 foreach ($name in @('file','link','resource','unfixed')) { [IO.File]::WriteAllText((Join-Path $outside $name),$name) }
-$pin=$null; $witness=$null; $file=$null; $parents=$null; $unfixed=$null
+$pin=$null; $witness=$null; $file=$null; $parents=$null; $unfixed=$null; $writer=$null; $child=$null; $mounted=$false
 try {
  # VpnInstallNative.OpenDirectory and PinNonEmptyAncestor: the install helper's and the broker admission's folder pins.
  $pin=[VpnInstallNative]::OpenDirectory($pinned)
@@ -70,6 +90,27 @@ try {
  Expect 'rename-file-into-resource-folder' ([NativePinSharingFixture]::Move((Join-Path $outside 'resource'),(Join-Path $pinned 'resource'))) 0
  Expect 'rename-resource-folder' ([NativePinSharingFixture]::Move($pinned,$moved)) 32
  [IDisposable].GetMethod('Dispose').Invoke($parents,$null); $parents=$null
+ # Linked: a publication's temporary created by path in the folder PinParents holds stays only if it is that folder's child.
+ $empty=Join-Path $base 'empty'; $hideout=Join-Path $base 'hideout'
+ foreach ($folder in @($empty,$hideout)) { [IO.Directory]::CreateDirectory($folder) | Out-Null }
+ $linked=[VpnScopedStorage.OriginalUser].GetMethod('Linked',[Reflection.BindingFlags]'NonPublic,Static')
+ $parents=$method.Invoke($null,[object[]]@($empty,$null))
+ $child=[NativePinSharingFixture]::CreateNew((Join-Path $empty 'inside.tmp'))
+ $linked.Invoke($null,[object[]]@($parents,$child)) | Out-Null
+ $results.Add('linked-child-in-pinned-folder=0')
+ $child.Dispose(); $child=$null; [IO.File]::Delete((Join-Path $empty 'inside.tmp'))
+ # The empty pinned folder shares writes: another program's FILE_WRITE_DATA handle turns it into a junction.
+ $writer=[NativePinSharingFixture]::WriteData($empty)
+ Expect 'junction-on-empty-pinned-folder-by-write-data' ([NativePinSharingFixture]::Mount($writer,$hideout)) 0
+ $mounted=$true
+ $child=[NativePinSharingFixture]::CreateNew((Join-Path $empty 'behind.tmp'))
+ $refused=0; try { $linked.Invoke($null,[object[]]@($parents,$child)) | Out-Null } catch { $refused=1 }
+ Expect 'linked-refuses-child-behind-junction' $refused 1
+ $child.Dispose(); $child=$null
+ Expect 'children-left-behind-junction' (@([IO.Directory]::GetFileSystemEntries($hideout)).Count) 0
+ Expect 'remove-junction' ([NativePinSharingFixture]::Unmount($writer)) 0
+ $mounted=$false; $writer.Dispose(); $writer=$null
+ [IDisposable].GetMethod('Dispose').Invoke($parents,$null); $parents=$null
  # The rule itself, on any source: the pin the helpers took before refuses a rename into its folder.
  $unfixed=[NativePinSharingFixture]::DenyingWriteSharing($pinned)
  Expect 'rename-into-folder-pinned-without-write-sharing' ([NativePinSharingFixture]::Move((Join-Path $outside 'unfixed'),(Join-Path $pinned 'unfixed'))) 32
@@ -77,7 +118,8 @@ try {
  Expect 'rename-released-folder' ([NativePinSharingFixture]::Move($pinned,$moved)) 0
  'NATIVE_PIN_SHARING_OK '+($results -join ' ')
 } finally {
- foreach ($handle in @($unfixed,$file,$witness,$pin)) { if ($null -ne $handle) { $handle.Dispose() } }
+ if ($mounted) { [NativePinSharingFixture]::Unmount($writer) | Out-Null }
+ foreach ($handle in @($child,$writer,$unfixed,$file,$witness,$pin)) { if ($null -ne $handle) { $handle.Dispose() } }
  if ($null -ne $parents) { [IDisposable].GetMethod('Dispose').Invoke($parents,$null) }
  [IO.Directory]::Delete($base,$true)
 }

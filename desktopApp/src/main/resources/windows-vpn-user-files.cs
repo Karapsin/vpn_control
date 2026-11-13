@@ -161,7 +161,8 @@ namespace VpnScopedStorage {
    try {
     foreach(string path in paths) {
      // Listing access without delete sharing: no ancestor is renamed or deleted meanwhile. Writes stay shared, so
-     // other programs keep renaming into these folders ([MS-FSA] 2.1.5.15.12); no share mode stops reparse mutation.
+     // other programs keep renaming into these folders ([MS-FSA] 2.1.5.15.12), and FILE_WRITE_DATA or attribute
+     // writes can turn an empty one into a junction ([MS-FSA] 2.1.5.10.37): a child created by path is Linked.
      var file=Open(path,0x81,3); pins.Handles.Add(file); Inspect(file,true);
     }
     Need(expected==null||Identity(Inspect(pins.Handles[pins.Handles.Count-1],true))==expected,"CONFLICT");
@@ -252,6 +253,17 @@ namespace VpnScopedStorage {
     return file;
    } finally { Marshal.FreeHGlobal(address); LocalFree(descriptor); }
   }
+  // A child created by path in the last folder PinParents holds: that folder may have been empty and become a junction
+  // since. The child must be its child, and the folder still no reparse point now that the child (no delete sharing)
+  // keeps it non-empty; otherwise the child is deleted.
+  static void Linked(Parents pins,SafeFileHandle child) {
+   try {
+    var parent=pins.Handles[pins.Handles.Count-1];
+    // Both are final paths: compare exactly, so distinct case-sensitive folders never alias.
+    Need(String.Equals(System.IO.Path.GetDirectoryName(Final(child)),Final(parent),StringComparison.Ordinal),"CONFLICT");
+    Inspect(parent,true);
+   } catch { try { Delete(child); } catch { } throw; }
+  }
   static void Rename(SafeFileHandle file,string destination) {
    Need(IntPtr.Size==8,"UNSUPPORTED"); string leaf=System.IO.Path.GetFileName(destination);
    Need(leaf.Length>0&&leaf!="."&&leaf!=".."&&leaf.IndexOfAny(new[]{'\\','/',':','\0'})<0,"INVALID_ARGUMENT");
@@ -336,6 +348,7 @@ namespace VpnScopedStorage {
    string temporaryName=".vpn-control-resource-"+id+".tmp",backupName=".vpn-control-resource-"+id+".backup";
    using(var pins=PinParents(parent,target.ParentIdentity)) using(var original=Match(target,0xc0010000))
    using(var temporary=CreatePrivate(System.IO.Path.Combine(parent,temporaryName))) {
+    Linked(pins,temporary);
     string next=Identity(Inspect(temporary,false));
     // The journal callback writes through a previously admitted private handle; it must not open
     // privileged paths while this thread deliberately retains the original user's token.

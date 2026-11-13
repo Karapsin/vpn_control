@@ -145,7 +145,8 @@ public static class VpnRuntimeBroker {
     AdmissionNeed(entry.AceType==AceType.AccessAllowed||entry.AceType==AceType.AccessDenied);
     var ace=entry as CommonAce;AdmissionNeed(ace!=null);
     if(entry.AceType==AceType.AccessDenied||(entry.AceFlags&AceFlags.InheritOnly)!=0||Trusted(ace.SecurityIdentifier.Value)) continue;
-    uint allowed=0xA01200A9U|(!leaf?6U:0U)|(!leaf&&witnessed?0x110U:0U);
+    // FILE_ADD_FILE (WRITE_DATA) or attribute writes can make an empty folder a junction: a witness admits them.
+    uint allowed=0xA01200A9U|(!leaf?4U:0U)|(!leaf&&witnessed?0x112U:0U);
     AdmissionNeed((unchecked((uint)ace.AccessMask)&~allowed)==0);
    }
   } finally { LocalFree(descriptor); }
@@ -175,7 +176,7 @@ public static class VpnRuntimeBroker {
    try { VerifyDirectory(h,leaf,false); }
    catch(UnauthorizedAccessException) {
     if(leaf) throw;
-    // Validate all other rights first. A retained linked child alone permits attribute/EA writes.
+    // Validate all other rights first. A retained linked child alone permits file, attribute and EA writes.
     VerifyDirectory(h,false,true);PinWitness(path,h,retained);
    }
    return h;

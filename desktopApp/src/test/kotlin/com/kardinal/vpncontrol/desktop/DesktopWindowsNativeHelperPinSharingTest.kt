@@ -158,6 +158,66 @@ class DesktopWindowsNativeHelperPinSharingTest {
         assertNoProblems(problems)
     }
 
+    /**
+     * Review of the folder-pin fix: a folder pin that shares writes admits another principal's FILE_ADD_FILE handle on the
+     * folder, which is FILE_WRITE_DATA, and FSCTL_SET_REPARSE_POINT accepts FILE_WRITE_DATA as it accepts attribute
+     * writes ([MS-FSA] 2.1.5.10.37): an empty pinned folder can become a junction. The helpers' own ancestor policies,
+     * like WindowsInstallTrust, may admit another principal's FILE_ADD_FILE, attribute or EA writes on a pinned folder
+     * only while a retained child keeps it non-empty. FILE_ADD_SUBDIRECTORY alone stays harmless: C:\ grants it to
+     * Authenticated Users, and C:\ProgramData grants Users all four beside its witness.
+     */
+    @Test fun theHelpersAdmitAnotherPrincipalsAddFileOnAPinnedFolderOnlyBesideANonEmptyWitness() {
+        val native = source("windows-install-native.cs")
+        val validate = native.assignment("ancestorRights", native.body(VALIDATE_SECURITY_DESCRIPTOR))
+        val broker = source("windows-vpn-broker.cs")
+        val verify = broker.assignment("allowed", broker.body(BROKER_VERIFY_DIRECTORY))
+        val policies = listOf(
+            "VpnInstallNative.ValidateSecurityDescriptor (install helper, broker admission)" to { witnessed: Boolean ->
+                evaluate(validate, mapOf("ancestor" to true, "pinnedNonEmpty" to witnessed)) as Long },
+            "VPN broker runtime VerifyDirectory (C:\\ and C:\\ProgramData)" to { witnessed: Boolean ->
+                evaluate(verify, mapOf("leaf" to false, "witnessed" to witnessed)) as Long },
+        )
+        val problems = mutableListOf<String>()
+        for ((what, rights) in policies) {
+            val alone = rights(false)
+            val witnessed = rights(true)
+            if (alone and FILE_ADD_FILE.toLong() != 0L) problems += "$what admits another principal's FILE_ADD_FILE on a folder " +
+                "without a witness (rights 0x${alone.toString(16)}): an empty pinned folder can become a junction"
+            if (alone and 0x110L != 0L) problems += "$what admits attribute or EA writes without a witness (0x${alone.toString(16)})"
+            if (alone and FILE_ADD_SUBDIRECTORY.toLong() == 0L) problems += "$what refuses FILE_ADD_SUBDIRECTORY (C:\\ grants it)"
+            if (witnessed and 0x116L != 0x116L) problems += "$what refuses FILE_ADD_FILE, attribute or EA writes beside a witness " +
+                "(C:\\ProgramData grants Users all four; rights 0x${witnessed.toString(16)})"
+        }
+        assertNoProblems(problems)
+    }
+
+    /**
+     * The broker publishes a runtime resource through a private temporary file created by path in the resource's folder,
+     * which PinParents holds sharing writes and checks no ACL of; a new resource's folder may be empty, and the folder is
+     * the user's choice for a custom profile. Another principal with FILE_ADD_FILE there can turn it into a junction
+     * between PinParents and the creation. Before a byte is written, the temporary must be proven by handle a child of
+     * the folder PinParents holds, and that folder still no reparse point, or the temporary is deleted.
+     */
+    @Test fun aRuntimeResourcePublicationProvesItsTemporaryIsInThePinnedFolderBeforeWritingIt() {
+        val files = source("windows-vpn-user-files.cs")
+        val user = files.body(ORIGINAL_USER)
+        val publish = files.body(PUBLISH, user)
+        val created = files.calls("CreatePrivate", publish).single()
+        val block = files.masked.indexOf('{', created.at)
+        assertTrue(Regex("""^\s*Linked\s*\(\s*pins\s*,\s*temporary\s*\)\s*;""").containsMatchIn(files.masked.substring(block + 1)),
+            "Publish must prove its temporary linked to the pinned folder before using it")
+        val linked = assertNotNull(files.bodyOrNull(LINKED, user), "windows-vpn-user-files.cs has no Linked(Parents, SafeFileHandle)")
+        val code = files.masked.substring(linked.first, linked.last + 1)
+        val required = listOf(
+            "the last folder PinParents holds" to Regex("""pins\.Handles\s*\[\s*pins\.Handles\.Count\s*-\s*1\s*]"""),
+            "the child's final folder" to Regex("""GetDirectoryName\s*\(\s*Final\s*\(\s*child\s*\)\s*\)"""),
+            "the pinned folder's final path" to Regex("""Final\s*\(\s*parent\s*\)"""),
+            "the pinned folder still a plain folder" to Regex("""Inspect\s*\(\s*parent\s*,\s*true\s*\)"""),
+            "deletion of an unlinked child" to Regex("""catch\s*\{[^}]*Delete\s*\(\s*child\s*\)"""),
+        )
+        assertNoProblems(required.filterNot { (_, pattern) -> pattern.containsMatchIn(code) }.map { "Linked does not check ${it.first}" })
+    }
+
     private fun resource(name: String) = requireNotNull(javaClass.getResource("/$name")) { "Missing resource $name" }.readText()
     private fun source(name: String) = CSharpSource(name, resource(name))
     private fun assertNoProblems(problems: List<String>) =
@@ -216,6 +276,14 @@ class DesktopWindowsNativeHelperPinSharingTest {
         }
         fun body(declaration: Regex, within: IntRange = masked.indices) =
             requireNotNull(bodyOrNull(declaration, within)) { "$name: no ${declaration.pattern}" }
+
+        /** The expression of the single assignment `[variable]=expression;` inside [within]. */
+        fun assignment(variable: String, within: IntRange): String {
+            val found = Regex("""(?<![\w.])${Regex.escape(variable)}\s*=(?!=)""").findAll(masked).filter { it.range.first in within }.toList()
+            check(found.size == 1) { "$name: ${found.size} assignments of $variable" }
+            val start = found.single().range.last + 1
+            return text.substring(start, masked.indexOf(';', start)).trim()
+        }
 
         /** Calls of [callee] (as written: "VpnInstallNative.OpenRead", "native.Open", "OpenRead") inside [within]. */
         fun calls(callee: String, within: IntRange = masked.indices): List<Call> =
@@ -352,6 +420,10 @@ class DesktopWindowsNativeHelperPinSharingTest {
         val PIN_PARENTS = Regex("""static\s+Parents\s+PinParents\s*\([^)]*\)""")
         val MATCH = Regex("""static\s+SafeFileHandle\s+Match\s*\(\s*Target\s+target\s*,\s*uint\s+access\s*\)""")
         val CREATE_PRIVATE = Regex("""SafeFileHandle\s+CreatePrivate\s*\(\s*string\s+path\s*\)""")
+        val PUBLISH = Regex("""public\s+Target\s+Publish\s*\(\s*Target\s+target\s*,[^)]*\)""")
+        val LINKED = Regex("""static\s+void\s+Linked\s*\(\s*Parents\s+pins\s*,\s*SafeFileHandle\s+child\s*\)""")
+        val VALIDATE_SECURITY_DESCRIPTOR = Regex("""static\s+void\s+ValidateSecurityDescriptor\s*\([^)]*\)""")
+        val BROKER_VERIFY_DIRECTORY = Regex("""static\s+void\s+VerifyDirectory\s*\([^)]*\)""")
         val BROKER_PIN = Regex("""static\s+SafeFileHandle\s+Pin\s*\(\s*string\s+path\s*,\s*bool\s+leaf\s*,[^)]*\)""")
         val BROKER_PIN_WITNESS = Regex("""static\s+void\s+PinWitness\s*\([^)]*\)""")
         val BROKER_PRIVATE_RESOURCE = Regex("""static\s+FileStream\s+OpenPrivateResource\s*\([^)]*\)""")

@@ -764,7 +764,7 @@ public static class VpnInstallNative {
                 if (ace == null) throw new IOException("Installer ACE rejected");
                 if ((ace.AceFlags & AceFlags.InheritOnly) != 0 || ace.AceType == AceType.AccessDenied ||
                     Trusted(ace.SecurityIdentifier.Value) || (inputPrincipal != null && ace.SecurityIdentifier.Value == inputPrincipal)) continue;
-                uint ancestorRights=ancestor ? (pinnedNonEmpty ? 0x116u : 6u) : 0u;
+                uint ancestorRights=ancestor ? (pinnedNonEmpty ? 0x116u : 4u) : 0u;
                 uint mask = unchecked((uint)ace.AccessMask), allowed = 0xA01200A9u | ancestorRights;
                 if ((mask & ~allowed) != 0 || (mask & 0x500D0156u & ~ancestorRights) != 0)
                     throw new IOException("Installer mutation rights rejected");
