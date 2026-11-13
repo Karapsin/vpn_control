@@ -2948,6 +2948,90 @@ stands and the fake now models that layout and the broker's argv (pipe, owner, r
 digest), with the stage listing and the argv read as inert seams, and asserts the ready
 record's stage path and pipe. Its provenance records the adjustment and keeps the
 historical digests (fixture adjustment only, no product change, no regression).
+### Update fault rows: a failing MSI and a counterfeit storage root, offline (2026-11-13)
+
+Built offline in the clone `build-update-faults` on `9a8db1e5` (the 1113 wave with T1); nothing here has run
+natively. Track T5 of the 2026-11-13 coverage audit. Both rows were refused
+`windows_scenario_update_fault_unavailable`, so msi-installer (windows-native-cli) and
+protected-storage-adversarial (windows-installer-lifecycle) could never pass. `native-install-failed` had no
+failing MSI to serve: the product's MSIs carry no LaunchCondition table (`FailingMsiProof`), and the paused
+in-guest derivation (`windows_failing_msi/failing_msi_fixture.py`) refuses them. `protected-storage-rejected` had
+no counterfeit root, and its case and the dedicated driver each parked it whatever the product answered, so a
+run of it was always `unknown`. RED ran in a worktree of `9a8db1e5` holding only the new regression module and the
+changed workflow contract test, one unittest process per failure type, on Python 3.14 and 3.12 with identical
+counts (subtests included); the before-images of the seven changed sources are under
+`.runtime/update-faults/before/` of the clone, beside the RED, GREEN, mutant, pin and selector logs.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| `native-install-failed` had no failing-MSI producer (refused `windows_scenario_update_fault_unavailable`) | `test_windows_update_faults.FailingMsiAdmissionTests.test_the_failing_msi_row_is_admitted_with_the_package_its_pair_derived`, `test_a_failing_msi_that_is_not_this_pairs_declared_one_is_refused`; `FailingMsiJobTests.test_the_failing_msi_is_served_in_the_targets_place_and_its_grant_stages_are_tooled`, `test_a_failing_msi_receipt_that_names_another_target_or_package_stops_before_any_task`; `scripts/test_windows_update_fixture_workflow.WindowsUpdateFixtureWorkflowTest.test_the_failing_msi_is_derived_from_the_verified_pair_and_uploaded_beside_it` | The fixture workflow derives the pair's failing MSI after the pair is built and verified (`scripts/windows_native_failure_msi.py`, msi.dll's database API only). It is a copy of the target with one change set: a new LaunchCondition table whose one row has the condition `0`; its action at InstallExecuteSequence 100, after FindRelatedProducts and AppSearch and before RemoveExistingProducts (798) and InstallInitialize; and a new package code. The builder reads every table, user stream and summary property back and refuses any other difference, then uploads the MSI with `native-install-failure.json` and both snapshots. The row takes them as `faultPackage` (kind `desktop-update-fault-package`: a frozen set holds one package per kind) and `faultReceipt` (`desktop-update-fault-receipt`) of the pair's frozen set. Admission joins the receipt to the target, to the failing MSI and to the declared delta (`fault_receipt`). The job serves the pair's receipt with that one asset in the target's place and never stages the target's bytes (`served_fault_receipt`). Its stages are `before-install`, `fault-ready` (the derivation receipt, which the owner holds pinned), `authorization`, `terminal-actors` (also the worker's own `worker-result.json`) and `returned-cleanup`. The case was already written for this variant: FAILED with the worker's MSI result neither 0 nor 3010, the base in place, `--version` of the base, the next owner answering the same RUNTIME_FAILED. RED (4 tests): `FAILED (failures=11)`; workflow RED (1 test): `FAILED (failures=1)`. GREEN: OK. `scripts/test_windows_native_failure_msi.py` (10 tests) checks the producer itself against the product's real execute sequence through a database-API peer that applies the three statements as the engine does; it has no RED, since the producer did not exist. Release hygiene runs it. |
+| `protected-storage-rejected` had no counterfeit-root producer (refused `windows_scenario_update_fault_unavailable`) | `FailingMsiAdmissionTests.test_the_counterfeit_root_row_is_admitted`; `CounterfeitJobTests.test_a_clone_whose_product_made_its_own_root_stops_before_any_task`; `CounterfeitCaseTests.test_a_root_that_already_exists_is_never_taken_for_the_counterfeit`, `test_the_binding_must_be_the_jobs_fixed_form` | The job binds the counterfeit: the product's machine root `ProgramData\vpn-control-install-jobs`, owned by the ordinary user with full control (`O:<user>G:<user>D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;<user>)`), and one canary file naming the operation. The case refuses any other binding with its inputs, before any effect, and plants both create-only as the ordinary user right before `fault-ready` (`plant_counterfeit_root`, `CounterfeitNative`). A root that already exists is never taken for the counterfeit. A clone whose own grant made the real root stops at publish, from a SYSTEM listing (`protected_root_present`), before any task. `fault-ready` (the unchanged pinned collector) proves the root user-owned and refused by the machine policy, and the canary's bytes; the case joins SYSTEM's openings to the objects it made. RED (4 tests): `FAILED (failures=6)`. GREEN: OK. |
+| `protected-storage-rejected` parked unconditionally, in its case and again in the dedicated driver, so every run was `unknown` | `CounterfeitCaseTests.test_a_refused_counterfeit_root_settles_passed_with_proof_and_leaves_nothing`, `test_each_refusal_passes_and_any_other_definite_answer_is_a_known_failure`, `test_an_accepted_install_parks_with_the_counterfeit_kept`, `test_a_root_or_canary_that_changed_parks_and_is_never_removed`, `test_a_counterfeit_that_could_not_be_removed_parks_even_with_everything_else_closed`; `CounterfeitJobTests.test_terminal_actors_waits_for_every_helper_process_then_serves_the_counterfeit_as_system_saw_it`, `test_a_helper_process_that_never_leaves_keeps_the_outcome_unknown`, `test_a_root_still_there_or_changed_after_a_passed_task_is_this_rows_failure`, `test_a_known_failure_keeps_what_system_listed_after_the_task`; `CounterfeitDriverTests.test_a_settled_counterfeit_ends_with_its_own_result`, `test_without_its_own_proof_the_row_still_parks` | The job serves `terminal-actors` only once a SYSTEM census of the installed helper image finds no process left. From the product's code: its coordinator exits on the refused root, and its original-user worker polls until its ten-minute authorization deadline. Past 900 s the job ends UNKNOWN `counterfeit_installer_actors_live:<n>`, with the fence open. That stage proves the root and canary as `fault-ready` saw them, and the job lists the root as SYSTEM for the receipt. The case settles (`settle_counterfeit`): passed for a refusal (OUTCOME_UNKNOWN, RUNTIME_FAILED, PERMISSION_DENIED); failed for any other definite answer, an expired prompt's CANCELLED among them. Either needs SYSTEM's view and its own unchanged, the root holding the canary alone, the same owner, configuration and disconnected runtime, the base registration and pinned files, then the serve quit, the fixture closed and the counterfeit removed through handles of its recorded volume and file index. An accepted install, an unreadable reply, a changed root or canary and any failing step park, and a counterfeit made but not removed parks (`update-counterfeit-root-retained`). The driver accepts 0 or 1 only beside that settlement proof (`dedicated-counterfeit-settlement-unproven` otherwise). The row takes no close hold, which releases a driver result of 0 alone. For a pass, the job also needs the root it listed at `terminal-actors` to hold the canary alone and the root absent after the task (`counterfeit_root_changed`, `counterfeit_root_left`). RED (11 tests): `FAILED (failures=24)`; on `9a8db1e5` every outcome parked, first as `protected-storage-scenario-cannot-return-known-success` or `update-scenario-failed-with-retained-owned-resources`, and the job ended `collector_stage_unserved:before-install`. GREEN: OK. |
+| A failed grant's next owner was checked against the target's files (predicted; no row reached it before) | `FailingMsiJobTests.test_the_failing_msi_is_served_in_the_targets_place_and_its_grant_stages_are_tooled` | `returned-cleanup` validated the returned owner's image against the target install's inventory. After a failed install, the next owner the case starts runs the base's CLI, so every native-install-failed run would have ended UNKNOWN at its last stage. It is now checked against the files the variant leaves. RED on `c8d69090` less this one hunk (the unfixed lines of `9a8db1e5`, `.runtime/update-faults/red-returned-owner.hunk.txt`), since on `9a8db1e5` no row reaches the stage: `FAILED (failures=1)`, the job ending `collector_stage_failed:returned-cleanup:collector_returned_actor`. GREEN: OK. |
+
+Fifteen loosenings of the fix (`.runtime/update-faults/mutants.py`, a worktree of `c8d69090`, Python 3.14) each turn
+their named regression red: a settlement that passes any answer, accepts a handoff, ignores SYSTEM's view or its own,
+ends known with the counterfeit kept, or never plants it; a job that serves `terminal-actors` while a helper lives,
+trusts the case alone, skips the publish listing, serves another parent's MSI or binds no worker result; a driver
+that takes any result; an admission that takes any delta; and a builder that allows an early change or takes any
+delta.
+
+Changed expectations, not new failure types: `test_native_scenario_windows.UpdateTableTests` and
+`TableTests.test_the_closed_names_agree_everywhere` (via `native_scenario_ssh.SCENARIO_ARTIFACT_KEYS`) admit the two
+rows and name the failing MSI's two artifacts; `test_native_scenario_windows_matrix.TableTests` counts the
+counterfeit row among the admitted installer-lifecycle rows; `test_windows_uac_decision.CancelledGrantUpdateTests`
+and `CancelledGrantDriverTests` and `test_windows_ordinary_task.DedicatedDriverControls` keep the earlier rule that
+the counterfeit row never ends known on a grant's cancellation proof, now through the settlement proof.
+
+Why the settlement cannot hide a real failure:
+
+- A pass needs positive proof of every safety fact, from SYSTEM and from the case: the product's answer is a
+  refusal from the original controller; no process of the installed helper image is left; the root and canary are
+  the very objects the case made, unchanged, the root holding the canary alone; the base registration and every
+  pinned base file are in place, and SYSTEM reads the base back after the task; the counterfeit is gone. A missing
+  fact keeps the owner waiting or fails a check; it never counts as a pass.
+- Any other definite answer, an expired prompt's CANCELLED included, ends `failed`: the matrix records it, and a
+  settled failed run on the evidence package blocks the scenario for that package (TEST-007).
+- An accepted install (an installer job exists somewhere), an unreadable reply, a changed root or canary, a helper
+  process that never leaves and any failing closing step still park: `unknown`, which blocks the scenario too and
+  is never replayed; the fence stays open and reconciliation reads the original's status.
+- The case removes only what it created alone, through handles whose volume and file index it recorded at
+  creation; a root that existed before is never taken for the counterfeit, and a clone whose grant made the real
+  root stops at publish from a SYSTEM listing, before any task.
+- Before this change every run was `unknown` whatever the product did, so a wrong product answer could never be
+  told from a right one; now each lands in the class its evidence proves.
+
+Pins renewed to a fixpoint with `.runtime/update-faults/renew_pins_t5.py` (T1's chain plus the case module's
+links): the dedicated driver's `CASE_SHA`, the planner's `DEDICATED_CASES` and `DEDICATED_DRIVER_SHA`, the
+owner's held-driver literal, `test_windows_public_updater.ROWS`, the selector's reviewed versions of the driver,
+the case module and the changed declared test loaders (appended), the `readiness_vm_dispatch.json` `sourcePins` of
+`windows_ordinary_task`, `windows_scenario_host_job`, `native_scenario_windows` and `native_scenario_ssh`, and the
+selector's entry for that manifest. No file of `readiness_windows._source_pins()` and no SYSTEM collector source
+changed.
+
+Native only:
+
+- The msi.dll derivation runs first on the Windows fixture builder; its read-back check refuses any change beyond
+  the declared one (a summary property msi.dll might stamp on commit would stop the dispatch there, before any VM).
+- That Windows Installer ends the failing MSI with 1603 at LaunchConditions under UI level NONE, before
+  RemoveExistingProducts, so the base stays; that the coordinator then publishes FAILED with RUNTIME_FAILED and the
+  next owner answers the same.
+- What the product answers to the counterfeit root (OUTCOME_UNKNOWN expected from the code: its owner can no longer
+  read its job store), and that its coordinator exits and its worker leaves within its ten-minute deadline.
+- That the ordinary user can create `ProgramData\vpn-control-install-jobs` (Users may create folders there by
+  default) and delete its own canary and root.
+- Every grant stage of both rows.
+
+Ported onto the integrated wave (2026-11-16) in the clone `reconcile-update-faults`, on top of update-variants,
+which had already made `participating-copy-lock` pass its fault through `Job._fault_inputs()`. That method is now
+the one fault-input value for all three fault rows: it carries `native-install-failed`'s derivation receipt (the
+published pin's path, digest and size) and `protected-storage-rejected`'s counterfeit binding, and the case's
+`faultInputs`, the `fault-ready` collector's `faultBinding` and the counterfeit row's `terminal-actors` binding are
+that value. No new failure type: every regression above runs unchanged against it. Changed expectations only:
+`test_native_scenario_windows_matrix.GRANTS` names `native-install-failed` (its authorization stage observes the
+approver), the faults case inputs carry update-variants' `upstreamFixture` key, and
+`test_workflow_jdk_order.GRADLE_TEXT_ONLY` reviews `scripts/windows_native_failure_msi.py` and its test, which name
+the fixture build in docstrings only.
 
 ## Historical coverage rule
 
