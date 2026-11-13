@@ -212,8 +212,9 @@ screen at the moment of refusal taken before the scene closes its surfaces, and
 `<scene>.refusal.json` with its named reason: `non-canonical-display`, `target-missing`,
 `target-ambiguous`, `placement-not-converged`, `outside-work-area`, `target-not-foreground`,
 `cursor-not-parked`, `occluded`, `target-moved`, `unstable-frame`, `tray-icon-unavailable`,
-`session-setting-failed` or `secure-desktop-not-capturable`. Every refusal is an
-`infrastructure_failure`.
+`session-setting-failed` or `secure-desktop-not-capturable`. A refusal is an
+`infrastructure_failure` unless its kept frame shows a product defect, for example an installer
+error dialog where the wizard should be (`target-missing`).
 
 `windows-uac` cannot be captured from the user session. Its route reports the consent window's
 rectangle in framebuffer pixels with the census identity of its `consent.exe` (region input, schema 1),
