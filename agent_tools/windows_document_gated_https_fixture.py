@@ -3,9 +3,12 @@
 No import-time listener/action. No upstream Internet, proxy/runtime/VM control.
 The original ordinary Owner holds every script/TLS/input file before its Child
 starts this source. Unknown retains the same fixture/thread/socket; no restart.
+A start says each step on stdout before entering it. One that fails before the
+ready file is published has served nobody: it says the step and the error in a
+finite record, stops its own listeners and ends with START_FAILED.
 """
 from __future__ import annotations
-import hashlib,json,os,ssl,stat,sys,threading,time,types,uuid
+import hashlib,json,os,ssl,stat,sys,threading,time,traceback,types,uuid
 from pathlib import Path
 
 PHASES=('responsive','client-loss')
@@ -15,9 +18,24 @@ GATE_SECONDS=600
 TLS_HANDSHAKE_SECONDS=5
 SOURCES={'https':'e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4',
          'socks':'50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210'}
+# A start's steps in order. The owner reads them from this child's stdout when the ready file does not appear.
+STEPS=('input','sources','tls-context','https-listen','relay-listen','listening','certificate-digest','ready-create','ready-rename')
+START_FAILED=3
+CURRENT=['none']
 
+class Refusal(ValueError):
+    """One of this source's own finite codes."""
 def need(ok,reason):
-    if not ok:raise ValueError(reason)
+    if not ok:raise Refusal(reason)
+def step(name):
+    """Said before the step is entered, so a start that stops or stays there has named it."""
+    need(name in STEPS,'finite-work-step');CURRENT[0]=name
+    print(json.dumps({'kind':'owned-work-fixture-step','step':name}),flush=True)
+def failure(error):
+    """What stopped the fixture, finite and private-safe: its step, the error class, an OS error's codes, one of this source's codes."""
+    codes=[getattr(error,name,None) for name in ('winerror','errno')]
+    return {'step':CURRENT[0],'errorClass':type(error).__name__,'winerror':codes[0] if type(codes[0])is int else None,
+            'errno':codes[1] if type(codes[1])is int else None,'reason':str(error) if type(error)is Refusal else None}
 def encoded(v):return (json.dumps(v,sort_keys=True,separators=(',',':'))+'\n').encode()
 def sha(raw):return hashlib.sha256(raw).hexdigest()
 def unchanged(opened,held,named,count,reason):
@@ -45,9 +63,10 @@ def read_exact(path,limit):
         return raw
     finally:os.close(fd)
 
-def publish(path,value):
+def publish(path,value,entering=None):
     raw=encoded(value);need(len(raw)<=16384,'work-event-bound')
     temporary=path.with_name(path.name+'.publishing')
+    if entering:entering('ready-create')
     fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0),0o600)
     # Register fd in caller before calling if native source qualification needs
     # recovery. Here a failed publication parks the same handler stack below.
@@ -55,6 +74,7 @@ def publish(path,value):
     while at<len(raw):
         n=os.write(fd,raw[at:]);need(n>0,'work-event-short-write');at+=n
     os.fsync(fd);os.close(fd)
+    if entering:entering('ready-rename')
     if os.name=='nt':os.rename(temporary,path)  # Windows refuses replacement.
     else:os.link(temporary,path);temporary.unlink()
 
@@ -113,34 +133,75 @@ def fixture_class(source):
             except BaseException as error:
                 server.work_primary=error
                 while True:time.sleep(1)  # retain same handler/socket/frame
+    def entered(name,call):
+        def enter(*args,**kwargs):
+            step(name);return call(*args,**kwargs)
+        return enter
+    if not getattr(source,'work_steps_named',False):
+        # Private loaded module only, before start: the unchanged start() names its two listeners as it makes them.
+        source._localhost_tls_server=entered('https-listen',source._localhost_tls_server)
+        source.FixtureServer=entered('relay-listen',source.FixtureServer)
+        source.work_steps_named=True
     class Fixture(source.HttpsSubscriptionRelayFixture):
         def __init__(self,value):
-            self.work_value=value
+            self.work_value=value;self.work_failure=None
             super().__init__(Path(value['certificatePath']),Path(value['privateKeyPath']),Path(value['readyFile']),value['token'])
+        def start(self):
+            step('tls-context')
+            ready=super().start()
+            # A failed publication is raised here, after the unchanged start() returned with both listeners
+            # serving: that start() closes a listening socket under its serving thread when its own body fails.
+            if self.work_failure is not None:raise self.work_failure
+            return ready
         def _publish_readiness(self,ready):
-            s=self.https_server;v=self.work_value;s.work_operation=v['operationId'];s.work_root=Path(v['readyFile']).parent
-            s.work_lock=threading.Lock();s.work_states={};s.work_primary=None;s.RequestHandlerClass=Handler
-            publish(Path(v['readyFile']),{**ready,'operationId':v['operationId'],'pid':os.getpid(),
-                'workUrls':{p:f"https://localhost:{ready['httpsPort']}/subscription/{p}/{v['operationId']}" for p in PHASES},
-                'certificateSha256':sha(read_exact(v['certificatePath'],1024*1024)),
-                'scope':'only-two-owned-subscription-requests','nativeAcceptance':False})
+            try:
+                step('listening')
+                s=self.https_server;v=self.work_value;s.work_operation=v['operationId'];s.work_root=Path(v['readyFile']).parent
+                s.work_lock=threading.Lock();s.work_states={};s.work_primary=None;s.RequestHandlerClass=Handler
+                step('certificate-digest');digest=sha(read_exact(v['certificatePath'],1024*1024))
+                publish(Path(v['readyFile']),{**ready,'operationId':v['operationId'],'pid':os.getpid(),
+                    'workUrls':{p:f"https://localhost:{ready['httpsPort']}/subscription/{p}/{v['operationId']}" for p in PHASES},
+                    'certificateSha256':digest,'scope':'only-two-owned-subscription-requests','nativeAcceptance':False},step)
+            except BaseException as error:self.work_failure=error
     return Fixture
 
 
-def main(argv):
-    need(len(argv)==2 and argv[0]=='--input','finite-work-entry')
-    v=json.loads(read_exact(argv[1],16384))
-    need(type(v)is dict and set(v)=={'schemaVersion','operationId','socksSourcePath','httpsSourcePath','certificatePath',
-        'privateKeyPath','readyFile','controlFile','token'} and v['schemaVersion']==1,'finite-work-input-schema')
-    need(str(uuid.UUID(v['operationId']))==v['operationId'] and type(v['token'])is str
-         and 0<len(v['token'].encode())<=4096,'finite-work-input-identity')
-    root=Path(v['readyFile']).parent
-    need(root==Path(v['controlFile']).parent and not Path(v['readyFile']).exists() and not Path(v['controlFile']).exists(),'fresh-owned-work-root')
-    load(v['socksSourcePath'],'socks');source=load(v['httpsSourcePath'],'https')
-    source.TLS_HANDSHAKE_TIMEOUT_SECONDS=TLS_HANDSHAKE_SECONDS
-    fixture=fixture_class(source)(v)
+def start_failed(fixture,error):
+    """A start that failed before its ready file was published: no request can have reached it.
+
+    Its own listeners are shut down in order if they serve, the step and the error go to stdout as one
+    finite record and the traceback to stderr, and the process ends with START_FAILED."""
+    stopped=True
     try:
+        if fixture is not None and (fixture.https_server is not None or fixture.relay_server is not None):fixture.stop()
+    except BaseException:stopped=False
+    try:
+        print(json.dumps({'kind':'owned-work-fixture-failed',**failure(error),'listenersStopped':stopped}),flush=True)
+        traceback.print_exception(type(error),error,error.__traceback__)
+    except BaseException:pass
+    return START_FAILED
+
+
+def main(argv):
+    fixture=None
+    try:
+        step('input')
+        need(len(argv)==2 and argv[0]=='--input','finite-work-entry')
+        v=json.loads(read_exact(argv[1],16384))
+        need(type(v)is dict and set(v)=={'schemaVersion','operationId','socksSourcePath','httpsSourcePath','certificatePath',
+            'privateKeyPath','readyFile','controlFile','token'} and v['schemaVersion']==1,'finite-work-input-schema')
+        need(str(uuid.UUID(v['operationId']))==v['operationId'] and type(v['token'])is str
+             and 0<len(v['token'].encode())<=4096,'finite-work-input-identity')
+        root=Path(v['readyFile']).parent
+        need(root==Path(v['controlFile']).parent and not Path(v['readyFile']).exists() and not Path(v['controlFile']).exists(),'fresh-owned-work-root')
+        step('sources')
+        load(v['socksSourcePath'],'socks');source=load(v['httpsSourcePath'],'https')
+        source.TLS_HANDSHAKE_TIMEOUT_SECONDS=TLS_HANDSHAKE_SECONDS
+        fixture=fixture_class(source)(v)
         ready=fixture.start()
+    except BaseException as error:
+        return start_failed(fixture,error)
+    try:
         print(json.dumps({'kind':'owned-work-fixture-ready','operationId':v['operationId'],'ready':ready}),flush=True)
         while True:
             if Path(v['controlFile']).exists():
@@ -155,8 +216,12 @@ def main(argv):
     except BaseException as error:
         # Preserve original fixture/threads/sockets, primary traceback and the
         # same lifecycle frame. No restart or second stop follows uncertainty.
+        # After readiness a request may be in flight, so this stays; it says why once.
         fixture.work_lifetime_primary=error
         fixture.work_lifetime_unknown=True
+        CURRENT[0]='serving'
+        try:print(json.dumps({'kind':'owned-work-fixture-retained',**failure(error)}),flush=True)
+        except BaseException:pass
         while True:time.sleep(1)
     return 0
 if __name__=='__main__':raise SystemExit(main(sys.argv[1:]))

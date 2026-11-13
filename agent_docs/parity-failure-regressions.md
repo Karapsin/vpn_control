@@ -1524,6 +1524,123 @@ the clone's `.runtime/flaky-logs/`.
 | The preparation core's disk-budget case compares two samples in the same way | `test_hosted_environment_races.LowDiskCaseTests.test_unfixed_budget_peer_misses_its_refusal_when_the_filesystem_gains_space_and_the_current_case_passes` | Not a hosted failure: found by looping the peer of the row above. `QemuPreparationTest.test_source_drift_and_disk_budget_refuse_before_any_namespace` reserved every available byte it had sampled, so a gain of the 198144-byte source between the samples passes the budget gate and the core stops later with `source-lock-birth`. Here 150 runs of the unfixed case fail 2 to 5 times beside a thread deleting files and 0 or 1 time without it; the fixed case fails 0 of 600. It takes the same two refusals as the row above, and the core is unchanged. RED with this row (5 tests): failures=4. GREEN: OK. |
 | The free-space regression compares two samples of the live filesystem itself | `test_hosted_environment_race_neighbours.NeighbourCaseTests` | Not a hosted failure: found by reviewing `68d59e2a`. `test_hosted_environment_races.LowDiskCaseTests` proved its real gain with two `statvfs` samples around each deleted megabyte. A neighbour that took the space back in between failed the current-case arm, let the unfixed case pass and failed that arm, or skipped the unfixed arm. Here 400 runs of the low-disk regression at `68d59e2a` fail 2 times with nothing injected (`False is not true : [1101824, 1040384, -4349952]` and `(1, 1, 0, 2) != (1, 0, 0, 2)`), and 300 runs beside a thread writing 512 KiB files fail 1 time and skip 1 time. An attempt whose own samples show no gain, or whose gain the unfixed case did not meet, is now repeated, at most four times, and named on stderr; the current case must still pass in every attempt. The fixed regression fails 0 of 600 runs beside that thread, with 8 attempts repeated, and 0 of 400 without it. The new cases write one real 4 MiB neighbour file at one chosen moment and compare no samples themselves; a fourth puts the unfixed case in place of the current one and requires the regression to fail still. RED ran in a worktree of `68d59e2a` plus only the new module, GREEN in the clone, on Python 3.12 and 3.14; the logs are the clone's `.runtime/review/`. RED (4 tests): failures=3. GREEN: OK. |
 
+### Second native document row: the rename probe was refused on every attempt (native, 2026-11-09)
+
+`windows-document-acceptance` (direct run `83484649`, clone `ea86866f`, package 2.2.17 discovery
+build) ran the fix of the section above and no longer parked. Its job ended `task_exit_code` with
+owner exit 1 after 393 s. `document-race-rename-probe` recorded six attempts over 3.9 s at
+`rename-away`, each `PermissionError`, errno 13, `winerror` 32. The row closed as
+`document-race-fixture-refused:rename-away:32` with frames `windows_document_export_race.py:192` and
+`:154`, and the serve was quit. Evidence:
+`.runtime/windows-parity-20261107/family/diag/evidence-83484649/`, events 2631 to 2644; the bundle
+that ran, `family/bundle-83484649-990b-44ef-a66f-cf77392eef10/`, holds the `529cc610` race, Windows
+module and owner. The first run (`2df348bd`, another clone) stopped at the same rename, so the refusal
+is deterministic, and it was the rename, not the relay listener the section above left open.
+
+The cause is read from the product source and not yet shown on a guest.
+`DesktopControlTransferSpool.create` spools every transfer under `java.io.tmpdir`, which the document
+rows set to `<operation root>\document-temp`, and keeps a `DesktopWindowsTransferPins` until the
+transfer is erased: one handle on every ancestor of that folder, the operation root among them, opened
+as `CreateFile(0x00120081, share 1, OPEN_EXISTING, 0x02200000)`. `FILE_LIST_DIRECTORY` makes the handle
+take part in share checks, and it shares read only. The row begins one transfer for its 301 s idle
+expiry before its exports and races and retains it. A rename by path (`os.rename`, `MoveFileExW`) has
+the I/O manager open the folder of the new name for write access, sharing read and write; the pin does
+not share write, so that open ends in a sharing violation. The probe renamed `document-race-parent`,
+a direct child of the operation root. The product renames by leaf for this reason
+(`JnaWindowsInstallNative.publishExportNoReplace`: "without reopening a directory for write access,
+which would conflict with our strict ancestry pins"). No harness handle takes part: its directory
+pins and its closed probe hold attributes and `READ_CONTROL` only (`0x20080`). So, by this reading,
+the holder is the product's own serve, neither a scanner nor the harness, and no retry could have
+helped.
+
+Before-images (the bytes that ran) and provenance: `fixtures/windows_document_fixture_holders/`. The
+regressions are in `test_windows_document_fixture_holders`, whose world is that reading as a model:
+directory opens judged as `IoCheckShareAccess` judges them. RED is that module and the updated
+`test_windows_document_native_failures` on the `529cc610` production bytes
+(`.runtime/red-529cc610` of the fix clone, `builders/build-docs-holders`): 18 tests with 12 failures
+and 7 errors (subtests counted), and 12 tests with 2 failures, on Python 3.14 and 3.12. GREEN is the
+same two modules on the fix: 18 and 12 tests, OK on both. 30 mutants of the fix each fail their named
+tests. The logs are under `.runtime/logs/` of the fix clone.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The race's fixture lay where the serve's transfer pins refuse every rename by path | `NestedStageTests.test_the_probe_passes_in_its_stage_while_the_serve_pins_the_operation_root`, `test_the_stage_keeps_the_fixture_out_of_every_folder_the_serve_pins` | The destination parent and its renamed name were direct children of the operation root, so the positive probe could never pass while a transfer lived, and a refusal in the race itself would not have been the public writer's own. Each race now has a stage folder, `<operation root>\document-race-<mode>`, holding `parent` and `moved`; the serve pins neither the stage nor what is in it. The race step is unchanged and stays one attempt: there only the public writer's own pins can refuse it. RED on the bytes that ran, with the retained transfer modelled: six refusals at 0, 100, 350, 850, 1850 and 3850 ms and `document-race-fixture-refused:rename-away:32`, the native record; the same bytes pass when no transfer lives. GREEN: both probes pass at their first attempt, the parent race is refused by the writer's pin (32), the destination race ends `PERSISTENCE_FAILED`, and the owner exits 0. Native only: that the installed product accepts a destination under a stage of the harness's own, and that its writer pins it. |
+| A fixture step refused as held named its code but not its holders | `RefusalEvidenceTests.test_a_refused_rename_names_its_holders_at_the_first_refusal_and_at_the_last`, `test_a_holder_that_was_only_passing_is_named_and_the_probe_goes_on`, `test_every_fixture_refused_as_held_gets_its_census_and_no_other_refusal_does`; `HolderNativeTests`, `CensusRecordTests`, `HeldModeTests`, `PinModeTests` | Every `document-<fixture>-fixture-refused` step that has a path and was refused with 5 or 32 journals `document-fixture-holder-census` before the fixture releases anything; the rename probe journals one at its first refusal too, before it waits, so a holder that is only passing by is still there. For the refused path and its folder it records the PIDs that have it open (`NtQueryInformationFile` class 47 on a handle that shares everything), each with its image leaf name, parent PID and role: `worker`, `task-owner`, `serve`, `work-fixture`, `cli-child`, `<role>-child` for a live known child's own child (the launcher's JVM), else `other`. A known PID counts only with its recorded birth. The image comes from `QueryFullProcessImageNameW` where the ordinary token may open the process, and from `NtQuerySystemInformation` class 88 where it may not, which is the case that matters for a scanner. It also lists the harness's own open handles (`document_retained_handles` and the owner's directory pins) with path, access and share mode; `Held` and the owner's `Pin` now keep the modes they were opened with. No command line is read and no process list is walked. The record is bounded (64 holders and 32 handles per list, with counts) and never raises: what fails inside is named in `censusError`. A refusal with any other code, or without a path (the relay listener), gets none. RED on `529cc610`: no census anywhere. Native only: every native read (class 47 on a folder, class 88, what an ordinary token may open). |
+| A refused rename did not show where a rename by path works | `RefusalEvidenceTests.test_the_differential_tells_the_folder_of_the_new_name_from_the_probes_handle_and_the_place`, `test_a_differential_never_removes_a_folder_it_did_not_make`, `test_the_differential_never_uses_a_temp_folder_inside_the_operation_root`; `NestedStageTests.test_the_root_control_records_the_refusal_and_who_holds_the_operation_root` | A refused rename probe journals `document-fixture-rename-differential`: beside the refused folder, in the operation root and in a folder of its own in the worker's temp folder, one fresh folder that no handle opened and one opened, inspected and closed as the probe does are each renamed away and back, every step recorded and every folder removed by its exact name; a name that exists is left alone, and a temp folder inside the operation root is not used. It tells the probe's own handle, the folder of the new name and the place apart. A passed probe is followed by `document-fixture-rename-control`, never a gate: one fresh direct child of the operation root renamed by path, with the census of the root if that is refused as held. It is how the next native run shows the cause: the control refused with 32 while the probe passed one folder down, and the serve's JVM (`serve-child`) among the root's holders. RED on `529cc610`: neither is journaled. |
+
+Finding for the product, not changed here: with the default `java.io.tmpdir`, the same pins hold
+`%TEMP%` and each of its ancestors up to the volume root with read sharing only for as long as any
+transfer lives. By the source that is until its discard, or until its 300 s idle expiry is pruned,
+for up to 32 transfers. Meanwhile a rename or hard link by path into any of those folders, by any
+program, would end in a sharing violation. This is read from the source, not observed; the control
+above would be its first native witness. Whether that is acceptable is the product's decision.
+
+No retry policy changes. The probe's bounded retry stays, although neither native run showed a
+holder that left. Evidence that would justify changing it: a first-refusal census that names a
+process that is neither the harness's nor the product's, a later attempt of the same probe that
+succeeds with nothing changed, and a differential whose fresh folders rename in the same place.
+
+### Third native document row: the work fixture never became ready (native, 2026-11-13)
+
+`windows-document-responsive` (direct run `b9aa4616`, fresh clone `07831787`, package 2.2.17
+discovery build of `f31ab987`) was the row's first native run and ended UNKNOWN,
+`job_exit_unknown:owner-parked`. The worker ran `--help` and `--version`, published
+`document-work-input.json` (908 bytes) and started child 2, the gated HTTPS work fixture (pid 6416),
+13.3 s after its own start. `read_ready` parked 30 s later with
+`runtime-fixture-readiness-unknown-no-replay`. `owner-parked.json` has `errorClass` and `failure`
+null and child 2 without EOF. The evidence zip was made about 37 s after the fixture's start, and
+`child-0002.stdout.raw` and `child-0002.stderr.raw` are empty in it. Evidence:
+`.runtime/windows-parity-20261107/family/diag/evidence-b9aa4616/` (10 events); the bundle that ran,
+`family/bundle-b9aa4616-fc57-4aaa-bbf7-f8864a32f44a/`, holds the `529cc610` fixture and cases.
+
+The cause is not identified. The unfixed fixture wrapped its whole start in
+`except BaseException` and slept forever without a word, so a start that failed and one that stalled
+leave the same record; the evidence zip lists the operation root only, so whether
+`fixture\ready.json.publishing` existed is not recorded. What reading rules out:
+
+- The ready file is written and read at one path, `<operation root>\fixture\ready.json`, through
+  `ready.json.publishing` and a rename inside that folder.
+- The fixture blocks on nothing: its stdin is NUL and never read, and its input is a regular file
+  read once.
+- Share modes. The owner holds the input and every source and TLS file for reading with read
+  sharing (`0x80020000`, share 1). The fixture opens them through the CRT, for reading while
+  sharing read and write, which that admits; the input and both producer sources were read that way
+  before the swallowed part, where a refusal would have ended the child with a traceback. The owner
+  holds the fixture folder for attributes only (`0x20080`), which takes no part in share checks, and
+  no serve exists yet, so no product pin does either. This is not the rename probe's class.
+- Slow first-run work. The key and certificate are made by the job on the host. The proxy rows'
+  fixture runs the same unchanged `start()` (TLS context, two loopback listeners) and was ready 1.2
+  to 2.0 s after its start on three native runs, one of them the first run of a cold clone
+  (`6a0a73b8`, `90dd6d45`, `b3d71dca`). The 30 s was a literal, never measured.
+
+What is this fixture's own between the listeners and readiness is the certificate's re-read
+(`read_exact`, with its link-count and before-and-after checks) and the ready file's creation and
+rename. If one of them had raised, the unchanged `start()` would have closed its HTTPS socket under
+the serving thread, which on Windows ends that thread with a `WinError 10038` traceback on stderr,
+and stderr was empty. That is a reading of CPython and Winsock, not an observation. It speaks for a
+stall, or for a failure before the listeners in code the proxy rows share, and shows neither. The
+next native run names the step: the fixture now says each one before entering it.
+
+Before-images (the bytes that ran) and provenance: `fixtures/windows_document_work_fixture/`. The
+regressions are in `test_windows_document_work_fixture`: the fixture's `main` over a declared peer
+of its producer sources, and the cases over the real `Child`, real pipes and the runtime stages' real
+`read_ready`. RED is that module and the updated `test_windows_document_responsive` on the
+`529cc610` production bytes (`.runtime/red-529cc610` of the fix clone, `builders/build-docs-holders`):
+28 tests with 7 failures and 25 errors (subtests counted), and 12 tests with 1 error, on Python
+3.14 and 3.12. GREEN is the same two modules on the fix: 28 and 12 tests, OK on both. 40 mutants of
+the fix each fail their named tests. The logs are under `.runtime/logs/` of the fix clone.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The work fixture kept a failed start to itself and slept | `FixtureStartTests.test_a_failure_while_the_listeners_are_made_is_said_and_ends_the_fixture`, `test_a_failure_of_the_publication_stops_the_listeners_in_order_and_says_its_step`, `test_a_refused_input_is_said_too`, `test_a_start_names_every_step_in_order_before_its_ready_line`, `test_a_failure_after_readiness_stays_and_says_why_once`, `test_only_this_sources_own_codes_are_copied_as_a_reason` | The fixture prints `owned-work-fixture-step` before each of `input`, `sources`, `tls-context`, `https-listen`, `relay-listen`, `listening`, `certificate-digest`, `ready-create` and `ready-rename`; the two listener steps are named by wrapping the producer's two constructors in the privately loaded module, as the proxy rows' worker substitutes its relay there, so the producer source and its pins are unchanged. A start that fails before the ready file is published has served nobody: it prints `owned-work-fixture-failed` (step, error class, `winerror`, `errno`, and a reason only for this source's own `Refusal` codes), puts the traceback on stderr, shuts its listeners down in order and exits 3. A failed publication is raised only after the unchanged `start()` returned, so no socket is closed under its serving thread. A failure after readiness stays, as before, since a request may be in flight, and now prints `owned-work-fixture-retained` once. RED on the bytes that ran: every start failure sleeps with empty stdout and stderr, the native record; a failed publication also closes the HTTPS socket under its serving thread; a start prints no step; a refused input is raised; a failure after readiness is silent. |
+| A fixture that was not ready parked the owner although no serve existed | `ReadinessTests.test_a_fixture_that_never_becomes_ready_is_journaled_ended_and_known`, `test_the_unfixed_cases_park_over_a_fixture_that_never_becomes_ready`, `test_a_silent_fixture_is_known_by_no_step`, `test_a_fixture_that_ended_before_ready_is_read_to_its_end_and_known`, `test_a_ready_record_an_oracle_refuses_ends_the_fixture`, `test_a_fixture_that_outlives_its_one_termination_parks`, `test_another_generation_of_the_child_is_never_terminated`, `test_only_the_finite_fields_of_what_the_fixture_said_are_kept`, `test_a_ready_fixture_is_journaled_with_its_measured_wait_and_no_census`; `CensusRoleTests` | `prepare_before_serve` runs before the serve, so the product has no part in it. The cases now wait for the ready file themselves for `READY_SECONDS` (30, stated as a bound) and call the stages' `read_ready` only once the file exists, so its park is not reached; the stages module is unchanged, and the proxy rows' start still parks there. A fixture that is not ready in time, ended first, or published a ready record an oracle refuses is journaled, ended and awaited, and the owner finishes with exit 1 and `document-work-fixture-not-ready:timeout:<last step>`, `:ended:<exit>:<failed step>` or `:refused:<code>`. Journaled first: `document-fixture-holder-census` (fixture `work`, step `readiness`) over the fixture folder, the ready file, its `.publishing` name, the input, the fixture script, both producer sources, the certificate and the key, with the fixture named by role `work-fixture` and the owner's data leases listed with their modes; then `document-work-fixture-not-ready` with the child's pid, `alive`, exit code, `readyExists`, `publishingExists`, the folder's names, the steps and failure the fixture said (finite fields only), the waited seconds and `heldByFixture`. A live child gets one termination of its original Popen handle after its birth is checked again (`document-work-fixture-terminate-intent`), and 15 s to reach its terminal and EOF (`document-work-fixture-closed`); one that outlives it parks (`document-work-fixture-end-unknown`), and any other doubt parks as `document-work-fixture-closing-unknown`. A ready fixture journals its measured wait (`document-work-fixture-ready`). RED on the bytes that ran, over the stages' real `read_ready`: the park `runtime-fixture-readiness-unknown-no-replay` with the fixture alive and nothing journaled, the native record; a fixture that ended, and a refused ready record, escape as the oracle's error with the child unobserved, which the owner's `main` parks. Native only: the census calls and `TerminateProcess` on the fixture, and what the step lines show. |
+| The responsive row had no closing after its serve started | `ClosingTests`; `LongWorkTests.test_each_phase_is_open_from_its_refresh_until_it_is_known_final`, `test_an_oracle_failure_before_any_refresh_is_left_to_the_closing`, `test_an_oracle_failure_between_the_phases_is_left_to_the_closing`, `test_a_failure_while_a_refresh_is_open_still_parks`, `test_an_error_no_oracle_raised_still_parks`; `test_windows_document_responsive.Qualification.test_a_child_after_serve_that_inherited_the_trust_options_is_refused` | `windows_document_responsive_cli_cases.close_known` now closes an `AssertionError` of the harness or the cases on a completed public call, and the module's own `document-` and `responsive-` codes, when every exchange closed its socket and no refresh is open: the work fixture is ended as above (`document-work-fixture-ending`), the endpoint and workspace observers are released, and the owner's closing quits the serve and exits 1. The lease marks a phase open before its refresh client starts and clears it when the work is known final and the handler's end was read; `run` parks only for a failure in that window or an error that is no oracle's. An open phase, open sockets, a client termination whose end was not observed and any other error type still keep every original. RED on the bytes that ran: no `close_known` exists, and `run` parks over a failed status call before any refresh. Native only: the quit after a terminated fixture, and every step of the long-work cases. |
+
+Not changed: the proxy rows' fixture start. `start_runtime` uses the same `read_ready`, which still
+parks a fixture that is not ready after 30 s, also before any serve. Their worker does not swallow
+a start failure, and no native run failed there. The same closing would need the runtime stages and
+the dedicated driver, which the proxy, reboot and TUN rows pin.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

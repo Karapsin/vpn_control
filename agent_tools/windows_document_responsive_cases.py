@@ -2,6 +2,9 @@
 
 No import-time effect. No new product API/transport or SSH interruption. Reached only
 through the planner's closed responsiveWork input and the owner's document action.
+The work fixture is the owner's own child. While no refresh of the product is in
+flight with it, a failure is known: the fixture is ended by one termination of its
+original handle and awaited. Only an open refresh keeps every original for a park.
 """
 from __future__ import annotations
 import base64,hashlib,json,os,stat,time,uuid
@@ -11,6 +14,14 @@ CAP=1024*1024
 NOTICE_SECONDS=30
 TERMINATE_SECONDS=15
 PHASES=('responsive','client-loss')
+# How long the work fixture's ready file is awaited. It is a bound, not a measurement of this fixture: the proxy
+# rows' fixture, which makes the same two listeners, was ready 1.2 to 2.0 s after its start on three native runs.
+READY_SECONDS=30
+FIXTURE_LABEL='owned-document-work-fixture'
+# The fixture names each start step on its stdout before entering it (windows_document_gated_https_fixture.STEPS).
+FIXTURE_STEPS=('input','sources','tls-context','https-listen','relay-listen','listening','certificate-digest','ready-create','ready-rename')
+CODE_CHARACTERS=frozenset('abcdefghijklmnopqrstuvwxyz0123456789:_-')
+NAME_CHARACTERS=frozenset('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_')
 
 def need(ok,reason):
     if not ok:raise AssertionError(reason)
@@ -150,11 +161,125 @@ def terminate_original_sync_refresh(owner,client,serve,workspace,identity,subscr
         raise
 
 
+def finite(value,characters=CODE_CHARACTERS,limit=80):
+    """A code or name the fixture or an oracle said, or None: never free text."""
+    return value if type(value)is str and 0<len(value)<=limit and set(value)<=characters else None
+
+def fixture_said(owner,child):
+    """What the work fixture said on its stdout so far: its start steps in order and its own failure record.
+
+    Only complete lines count, and only the finite fields of each are kept."""
+    said={'steps':[],'failure':None,'readySaid':False,'stdoutBytes':child.counts['stdout'],'stderrBytes':child.counts['stderr'],
+          'unreadable':None}
+    try:
+        with (owner.root/f'child-{child.ordinal:04d}.stdout.raw').open('rb')as stream:raw=stream.read(65536)
+        for line in raw.split(b'\n')[:-1]:
+            try:row=json.loads(line)
+            except ValueError:continue
+            if type(row)is not dict:continue
+            if row.get('kind')=='owned-work-fixture-step' and row.get('step')in FIXTURE_STEPS and len(said['steps'])<2*len(FIXTURE_STEPS):
+                said['steps'].append(row['step'])
+            elif row.get('kind')=='owned-work-fixture-failed':
+                said['failure']={'step':row.get('step')if row.get('step')in FIXTURE_STEPS else None,
+                    'errorClass':finite(row.get('errorClass'),NAME_CHARACTERS,64),
+                    **{name:row.get(name)if type(row.get(name))is int else None for name in ('winerror','errno')},
+                    'reason':finite(row.get('reason')),'listenersStopped':row.get('listenersStopped')is True}
+            elif row.get('kind')=='owned-work-fixture-ready':said['readySaid']=True
+    except Exception as error:said['unreadable']=type(error).__name__
+    said['lastStep']=said['steps'][-1]if said['steps']else None
+    return said
+
+def await_ready(owner,child,ready):
+    """The fixture's ready file within READY_SECONDS, or why the wait stopped: 'ended' or 'timeout'. Nothing parks here."""
+    started=time.monotonic()
+    while not ready.exists():
+        if child.process.poll()is not None:return 'ended',time.monotonic()-started
+        if time.monotonic()-started>=READY_SECONDS:return 'timeout',time.monotonic()-started
+        time.sleep(.1)
+    return None,time.monotonic()-started
+
+def end_work_fixture(owner,child,error,reason,config,windows=None,waited=None,kind='document-work-fixture-ending'):
+    """End the owner's own work fixture while no request of the product is in flight with it.
+
+    What is there is journaled first: the child's pid and whether it lives, whether the ready file and its
+    publishing name exist, the fixture folder's names, the steps and the failure the fixture itself said and,
+    with the document native module, who holds each of the fixture's files, the fixture among them. A live
+    child then gets exactly one termination of its original Popen handle, never a tree, job or group signal,
+    and is awaited to its terminal and EOF. What cannot be known parks, keeping every original."""
+    try:
+        need(child.owner is owner and owner.children[child.ordinal]is child and child.label==FIXTURE_LABEL,
+             'same-original-work-fixture-child')
+        alive=child.terminal is None and child.process.poll()is None
+        def ended():
+            deadline=time.monotonic()+TERMINATE_SECONDS
+            while child.observe()is None:
+                if time.monotonic()>=deadline:
+                    owner.park('document-work-fixture-end-unknown',{'child':child.ordinal,'pid':child.pid,
+                        'birthFileTimeUtc':child.birth,'terminated':alive,'replayAllowed':False})
+                time.sleep(.05)
+            return fixture_said(owner,child)
+        # A child that already ended is first read to its EOF, so everything it said is in its raw files.
+        said=fixture_said(owner,child)if alive else ended();ready=Path(config['readyFile']);root=ready.parent
+        publishing=ready.with_name(ready.name+'.publishing')
+        names=sorted(entry.name for entry in root.iterdir())if root.is_dir()else[]
+        value={'reason':reason,'child':child.ordinal,'pid':child.pid,'birthFileTimeUtc':child.birth,'alive':alive,
+               'exitCode':child.process.poll(),'waitedSeconds':None if waited is None else round(waited,3),
+               'boundSeconds':READY_SECONDS,'errorClass':type(error).__name__,**said,
+               'readyExists':ready.exists(),'publishingExists':publishing.exists(),'folderCount':len(names),
+               'folder':names[:16],'heldByFixture':None,'censusError':None,'replayAllowed':False}
+        if windows is not None:
+            # While the child is still as it was found: the kernel's own list of who has each of its files open.
+            targets=[('fixture-folder',root),('ready',ready),('ready-publishing',publishing),
+                     ('input',Path(child.argv[-1])),('fixture-source',Path(child.argv[3])),
+                     *((role,Path(config[key]))for role,key in (('socks-source','socksSourcePath'),('https-source','httpsSourcePath'),
+                                                               ('certificate','certificatePath'),('private-key','privateKeyPath')))]
+            census=windows.holder_census(owner,'work','readiness',reason,None,targets)
+            value['heldByFixture']=[target['role']for target in census['targets']
+                                    if any(holder['pid']==child.pid for holder in target['holders'])]
+            value['censusError']=census['censusError']
+        owner.event(kind,value)
+        if alive:
+            need(owner.native.birth(int(child.process._handle))==child.birth,'original-work-fixture-live-birth')
+            owner.event('document-work-fixture-terminate-intent',{'child':child.ordinal,'pid':child.pid,
+                'birthFileTimeUtc':child.birth,'effect':'one-original-Popen.terminate','groupOrJobSignal':False,
+                'replayAllowed':False})
+            child.process.terminate()  # Existing original Windows Popen handle only.
+            said=ended()
+        owner.event('document-work-fixture-closed',{'child':child.ordinal,'pid':child.pid,'reason':reason,'terminated':alive,
+            'terminal':child.terminal,'steps':said['steps'],'failure':said['failure'],'replayAllowed':False})
+        return said
+    except Exception as closing:
+        owner.park('document-work-fixture-closing-unknown',closing)
+        raise
+
+def not_ready(owner,child,config,windows,reason,waited,error):
+    """The known failure of a work fixture that failed before the serve existed, once the fixture is ended."""
+    said=end_work_fixture(owner,child,error,reason,config,windows,waited,'document-work-fixture-not-ready')
+    if reason=='timeout':code='timeout:'+(said['lastStep']or'none')
+    elif reason=='ended':code='ended:%s:%s'%(child.terminal['exitCode'],(said['failure']or{}).get('step')or'none')
+    else:code='refused:'+(finite(str(error))or type(error).__name__)
+    return AssertionError('document-work-fixture-not-ready:'+code)
+
+def close_known_work(owner,lease,error):
+    """For the case module's known-failure closing: end the work fixture unless a refresh may be in flight.
+
+    False keeps every original for the park: a phase whose refresh started and is not yet known final, or a
+    client termination whose end was not observed."""
+    if lease is not getattr(owner,'document_work_lease',None) or lease.open_phase is not None:return False
+    if any(state['stage']!='known-client-terminal'for state in getattr(owner,'responsive_client_effects',{}).values()):return False
+    if lease.child.terminal is None:
+        end_work_fixture(owner,lease.child,error,'known-failure',lease.config,lease.windows)
+    lease.closed=True
+    return True
+
+
 class WorkLease:
     """Original fixture Child + immutable native event files, two phases only."""
     def __init__(self,owner,child,ready,config,runtime):
         self.owner,self.child,self.ready,self.config,self.runtime=owner,child,ready,config,runtime
         self.events={};self.releases={};self.completed=set();self.subscriptions={};self.closed=False
+        # The phase whose refresh the owner may still be working on: set before its client starts, cleared when known final.
+        self.open_phase=None;self.windows=None
         need(ready['pid']==child.pid and ready['operationId']==owner.operation,'actual-original-fixture-child-ready')
     def guard(self):
         self.runtime.data_guard(self.owner)
@@ -189,11 +314,16 @@ class WorkLease:
         need(phase in self.releases and terminal['final']is True and terminal['code']in ('OK','CANCELLED'),
              'known-original-work-before-fixture-completion')
         ended=self.event(phase,'ended');need(ended['result']in ('response-written','peer-closed'),'original-http-handler-result')
-        self.completed.add(phase)
+        self.completed.add(phase);self.open_phase=None
 
 
-def prepare_before_serve(owner,workspace,inputs,runtime):
-    """Finite existing Owner.child/publish fixture hook, BEFORE original serve."""
+def prepare_before_serve(owner,workspace,inputs,runtime,windows=None):
+    """Finite existing Owner.child/publish fixture hook, BEFORE original serve.
+
+    No serve exists yet, so the product has no part in anything here. A fixture that does not become ready
+    within READY_SECONDS, ends first, or publishes a ready record an oracle refuses is journaled, ended and
+    awaited (end_work_fixture, with the holder census if the document native module is given), and the
+    failure raised is known: document-work-fixture-not-ready:<timeout|ended|refused>:..."""
     required={'schemaVersion','fixtureWorkerPath','socksSourcePath','httpsSourcePath','certificatePath','privateKeyPath',
               'trustStorePath','contexts','largeRoutingInputPath'}
     need(type(inputs)is dict and set(inputs)==required and inputs['schemaVersion']==1,'responsive-input-schema')
@@ -210,16 +340,26 @@ def prepare_before_serve(owner,workspace,inputs,runtime):
         ('socksSourcePath','httpsSourcePath','certificatePath','privateKeyPath')},'readyFile':str(root/'ready.json'),
         'controlFile':str(root/'stop.json'),'token':'owned-document-work-'+owner.operation}
     source=runtime.publish(owner,owner.root/'document-work-input.json',config)
-    child=owner.child('owned-document-work-fixture',[owner.request['pythonRuntime']['interpreterPath'],'-I','-B',
+    child=owner.child(FIXTURE_LABEL,[owner.request['pythonRuntime']['interpreterPath'],'-I','-B',
         inputs['fixtureWorkerPath'],'--input',str(source)])
-    ready=runtime.read_ready(owner,child,Path(config['readyFile']),owner.operation)
-    need(ready['certificateSha256']==owner.by_path[str(Path(inputs['certificatePath'])).casefold()].record['sha256']
-         and ready['workUrls']=={p:f"https://localhost:{ready['httpsPort']}/subscription/{p}/{owner.operation}" for p in PHASES},
-         'actual-work-tls-endpoints')
-    need('JAVA_TOOL_OPTIONS'not in owner.environment,'no-preexisting-owner-jvm-options')
+    reason=waited=None
+    try:
+        reason,waited=await_ready(owner,child,Path(config['readyFile']))
+        need(reason is None,'work-fixture-'+str(reason))
+        ready=runtime.read_ready(owner,child,Path(config['readyFile']),owner.operation)
+        need(ready['certificateSha256']==owner.by_path[str(Path(inputs['certificatePath'])).casefold()].record['sha256']
+             and ready['workUrls']=={p:f"https://localhost:{ready['httpsPort']}/subscription/{p}/{owner.operation}" for p in PHASES},
+             'actual-work-tls-endpoints')
+        need('JAVA_TOOL_OPTIONS'not in owner.environment,'no-preexisting-owner-jvm-options')
+        lease=WorkLease(owner,child,ready,config,runtime)
+    except Exception as error:
+        raise not_ready(owner,child,config,windows,reason or'refused',waited,error) from error
     owner.environment['JAVA_TOOL_OPTIONS']=runtime.scoped_trust_options(inputs['trustStorePath'])
-    lease=WorkLease(owner,child,ready,config,runtime);lease.inputs=inputs
+    lease.inputs=inputs;lease.windows=windows
     owner.document_work_lease=lease
+    # The measured wait: what the bound is next judged by.
+    owner.event('document-work-fixture-ready',{'child':child.ordinal,'pid':child.pid,'readySeconds':round(waited,3),
+        'boundSeconds':READY_SECONDS})
     return lease
 
 
@@ -233,7 +373,10 @@ def run(owner,workspace,identity,client,document,lease):
     """Two cases; caller supplies SAME admitted document client and Owner."""
     try:return _run(owner,workspace,identity,client,document,lease)
     except BaseException as error:
-        owner.park('document-responsive-longwork-unqualified-originals-retained',error)
+        # A refresh the owner may still be working on keeps every original, and so does an error that is no
+        # oracle's. A finite oracle failure with no phase open is the case module's to close (close_known_work).
+        if lease.open_phase is not None or not isinstance(error,AssertionError):
+            owner.park('document-responsive-longwork-unqualified-originals-retained',error)
         raise
 
 
@@ -272,6 +415,7 @@ def _run(owner,workspace,identity,client,document,lease):
             'manifest':client.transfers[context],'referenceSha256':sha(reference.encode()),'subscriptionId':subscription})
         args=[owner.request['cliPath'],'--state-dir',str(workspace),'--json','--controller-id',identity,
               *(['--async']if phase=='responsive' else []),'subscriptions','refresh',subscription]
+        lease.open_phase=phase
         original=owner.child('original-'+phase+'-refresh',args)
         accepted=None
         if phase=='responsive':

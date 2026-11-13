@@ -3,6 +3,10 @@
 No action runs on import. Native is the admitted ordinary Owner's existing Win32
 provider. Filesystem actions are restricted to one observed operation/workspace
 and exact files, with no recursive removal, process search or process termination.
+The evidence of a refused fixture step keeps to that: its holder census reads only
+the PIDs the kernel names for one exact file, and its rename differential makes and
+removes exact empty folders of its own, one of them in the ordinary user's own temp
+folder.
 """
 import base64
 import ctypes
@@ -46,8 +50,13 @@ def fixture_refused(fixture, step, error):
     return RuntimeError("document-%s-fixture-refused:%s:%s" % (fixture, step, code))
 
 
-def release_refused(owner, held, error, fixture, step):
-    """Close the fixture's own handles that opened, then raise its known failure, or park if one cannot close."""
+def release_refused(owner, held, error, fixture, step, subject=None):
+    """Close the fixture's own handles that opened, then raise its known failure, or park if one cannot close.
+
+    The evidence of an access-denied or sharing refusal of subject is journaled first, while the
+    fixture's handles are still as the refusal found them.
+    """
+    refusal_evidence(owner, fixture, step, error, subject)
     try:
         for value in held:
             if value is not None and not value.closed:
@@ -58,6 +67,277 @@ def release_refused(owner, held, error, fixture, step):
     if known is error:
         raise error
     raise known from error
+
+
+# ---- Evidence of a refused fixture step: who holds it, and where a rename by path works ---------
+
+# Access denied and sharing violation: the two refusals another open handle can cause.
+HELD_WIN32 = (5, 32)
+CENSUS_PIDS, CENSUS_HOLDERS, CENSUS_HANDLES = 4096, 64, 32
+# The responsive row's own work fixture child (windows_document_responsive_cases.FIXTURE_LABEL).
+WORK_FIXTURE_LABEL = "owned-document-work-fixture"
+# windows_lifecycle_runtime_stages.OwnedData opens a folder for attributes with read and write sharing, and a file
+# for reading with read sharing only.
+DATA_LEASE_MODES = {True: (0x20080, 3), False: (0x80020000, 1)}
+
+
+def os_codes(error):
+    winerror, number = getattr(error, "winerror", None), getattr(error, "errno", None)
+    return winerror if type(winerror) is int else None, number if type(number) is int else None
+
+
+def process_ids(raw):
+    """The PIDs of a FILE_PROCESS_IDS_USING_FILE_INFORMATION: a ULONG count, then pointer-sized IDs."""
+    size = ctypes.sizeof(ctypes.c_void_p)
+    count = int.from_bytes(raw[:4], "little")
+    need(count <= (len(raw) - size) // size, "document-census-pid-count")
+    return [int.from_bytes(raw[size * (index + 1):size * (index + 2)], "little") for index in range(count)]
+
+
+class _ProcessName(ctypes.Structure):
+    """SYSTEM_PROCESS_ID_INFORMATION: one PID in, its image name out into the caller's own buffer."""
+    _fields_ = [("pid", ctypes.c_void_p), ("length", ctypes.c_ushort), ("maximum", ctypes.c_ushort),
+                ("buffer", ctypes.c_void_p)]
+
+
+class HolderNative:
+    """The native reads of a holder census, each over one exact path or one PID the kernel named.
+
+    NtQueryInformationFile(FileProcessIdsUsingFileInformation, class 47) names the PIDs that have one
+    file open. Each named PID is then read by itself: its image leaf, parent PID and creation time
+    where this ordinary token may open it (PROCESS_QUERY_LIMITED_INFORMATION), else its image leaf
+    alone by NtQuerySystemInformation(SystemProcessIdInformation, class 88). No process list is
+    walked, no command line is read, and every call writes only into a buffer made here.
+    """
+
+    def __init__(self, native):
+        self.k, self.n = native.k, native.n
+        self.k.OpenProcess.argtypes = (W.DWORD, W.BOOL, W.DWORD)
+        self.k.OpenProcess.restype = W.HANDLE
+        self.k.QueryFullProcessImageNameW.argtypes = (W.HANDLE, W.DWORD, W.LPWSTR, ctypes.POINTER(W.DWORD))
+        self.n.NtQueryInformationFile.argtypes = (W.HANDLE, W.LPVOID, W.LPVOID, W.ULONG, ctypes.c_int)
+        self.n.NtQueryInformationFile.restype = ctypes.c_long
+        self.n.NtQueryInformationProcess.argtypes = (W.HANDLE, ctypes.c_int, W.LPVOID, W.ULONG, W.LPVOID)
+        self.n.NtQueryInformationProcess.restype = ctypes.c_long
+
+    def holders(self, path):
+        """("ok", PIDs) of the processes that have this exact path open; this read shares everything."""
+        handle = self.k.CreateFileW(str(path), 0x80, 7, None, 3, 0x02200000, None)
+        if handle == ctypes.c_void_p(-1).value:
+            return "open-refused:%d" % ctypes.get_last_error(), []
+        try:
+            block = ctypes.create_string_buffer(16)
+            buffer = ctypes.create_string_buffer(ctypes.sizeof(ctypes.c_void_p) * (CENSUS_PIDS + 1))
+            status = self.n.NtQueryInformationFile(handle, block, buffer, len(buffer), 47)
+            if status != 0:
+                return "query-refused:0x%08x" % (status & 0xFFFFFFFF), []
+            return "ok", process_ids(buffer.raw)
+        finally:
+            self.k.CloseHandle(handle)
+
+    def process(self, pid):
+        """One named PID: image leaf, parent PID and creation time, or the image leaf alone if it cannot be opened."""
+        facts = {"image": None, "parentPid": None, "birth": None, "openError": None}
+        text = ctypes.create_unicode_buffer(1024)
+        handle = self.k.OpenProcess(0x1000, False, pid)
+        if not handle:
+            facts["openError"] = ctypes.get_last_error()
+            named = _ProcessName(pid, 0, ctypes.sizeof(text) - ctypes.sizeof(ctypes.c_wchar), ctypes.addressof(text))
+            if self.n.NtQuerySystemInformation(88, ctypes.pointer(named), ctypes.sizeof(named), None) == 0:
+                facts["image"] = PureWindowsPath(text.value).name or None
+            return facts
+        try:
+            if self.k.QueryFullProcessImageNameW(handle, 0, text, ctypes.byref(W.DWORD(1024))):
+                facts["image"] = PureWindowsPath(text.value).name or None
+            basic = ctypes.create_string_buffer(48)
+            if self.n.NtQueryInformationProcess(handle, 0, basic, len(basic), None) == 0:
+                facts["parentPid"] = int.from_bytes(basic.raw[40:48], "little")
+            times = [W.FILETIME() for _ in range(4)]
+            if self.k.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)):
+                facts["birth"] = str(times[0].dwHighDateTime << 32 | times[0].dwLowDateTime)
+            return facts
+        finally:
+            self.k.CloseHandle(handle)
+
+
+def known_processes(owner):
+    """The PIDs this harness knows: this worker, its task parent and the children the owner started."""
+    known = {os.getppid(): {"role": "task-owner", "child": None, "birth": None, "live": True},
+             os.getpid(): {"role": "worker", "child": None, "birth": None, "live": True}}
+    for child in getattr(owner, "children", ()):
+        live = child.terminal is None
+        if type(child.pid) is int and (child.pid not in known or live and known[child.pid]["child"] is not None):
+            role = ("serve" if tuple(child.argv[-1:]) == ("serve",)
+                    else "work-fixture" if getattr(child, "label", None) == WORK_FIXTURE_LABEL else "cli-child")
+            known[child.pid] = {"role": role, "child": child.ordinal, "birth": child.birth, "live": live}
+    return known
+
+
+def holder_role(pid, facts, known):
+    """A holder's role: a known PID of the same birth, the direct child of a live known child, or other."""
+    entry = known.get(pid)
+    if entry is not None and (entry["birth"] is None or facts["birth"] is None or entry["birth"] == facts["birth"]):
+        return entry["role"], entry["child"]
+    parent = known.get(facts["parentPid"])
+    if parent is not None and parent["child"] is not None and parent["live"]:
+        # The installed launcher restarts itself: the JVM that does the work is its own child.
+        return parent["role"] + "-child", parent["child"]
+    return "other", None
+
+
+def harness_handles(owner):
+    """This harness's own handles that are still open: its document observers, the owner's directory pins and the
+    data leases of an owned fixture (its folder, its input and what it published)."""
+    retained = getattr(owner.native, "document_retained_handles", [])
+    opened = [held for held in retained if getattr(held, "open_error", True) is None and not held.closed]
+    pins = [pin for pin in getattr(owner, "pins", ()) if getattr(pin, "directory", False)]
+    leases = [lease for lease in getattr(owner, "fixture_data_leases", ()) if getattr(lease, "handle", None) is not None]
+    return {"dataLeaseCount": len(leases),
+            "dataLeases": [{"path": str(lease.path), "directory": bool(lease.directory),
+                            "access": DATA_LEASE_MODES[bool(lease.directory)][0],
+                            "share": DATA_LEASE_MODES[bool(lease.directory)][1]} for lease in leases[:CENSUS_HANDLES]],
+            "retainedTotal": len(retained), "retainedOpen": len(opened),
+            "retained": [{"path": str(held.path), "directory": held.directory, "access": getattr(held, "access", None),
+                          "share": held.share} for held in opened[:CENSUS_HANDLES]],
+            "directoryPinCount": len(pins),
+            "directoryPins": [{"path": str(pin.path), "access": getattr(pin, "access", None),
+                               "share": getattr(pin, "share", None)} for pin in pins[:CENSUS_HANDLES]]}
+
+
+def holder_census(owner, fixture, step, moment, winerror, targets):
+    """Journal who has each exact target open, and which handles this harness itself still holds.
+
+    targets are (role, path) pairs. The record holds PIDs, image leaf names, roles and counts, and the
+    paths, access and share mode of the harness's own handles: no command line and nothing else of
+    another process. It is evidence only: it changes nothing, and whatever fails inside it is named in
+    the record and never raised.
+    """
+    value = {"fixture": fixture, "step": step, "moment": moment, "winerror": winerror, "targets": [],
+             "harnessHandles": None, "censusError": None}
+    try:
+        value["harnessHandles"] = harness_handles(owner)
+        reader, known, read = HolderNative(owner.native), known_processes(owner), {}
+        for role, path in targets:
+            status, pids = reader.holders(path)
+            holders = []
+            for pid in pids[:CENSUS_HOLDERS]:
+                if pid not in read:
+                    read[pid] = reader.process(pid)
+                facts = read[pid]
+                name, child = holder_role(pid, facts, known)
+                holders.append({"pid": pid, "image": facts["image"], "role": name, "child": child,
+                                "parentPid": facts["parentPid"], "openError": facts["openError"]})
+            value["targets"].append({"role": role, "leaf": Path(path).name, "status": status,
+                                     "holderCount": len(pids), "holders": holders})
+    except Exception as failure:
+        value["censusError"] = type(failure).__name__
+    owner.event("document-fixture-holder-census", value)
+    return value
+
+
+def _attempt(rows, name, action):
+    try:
+        result = action()
+    except Exception as error:
+        winerror, number = os_codes(error)
+        rows.append({"step": name, "errorClass": type(error).__name__, "winerror": winerror, "errno": number})
+        return False, None
+    rows.append({"step": name, "errorClass": None, "winerror": None, "errno": None})
+    return True, result
+
+
+def rename_variant(owner, directory, leaf, held):
+    """One fresh empty folder of the harness's own, renamed away and back by path and removed again.
+
+    With held, the folder is first opened, inspected and closed exactly as the race's rename probe does.
+    Every step is recorded; a folder that already has the name is left alone.
+    """
+    rows, original, moved = [], Path(directory) / leaf, Path(directory) / (leaf + "-moved")
+    if _attempt(rows, "mkdir", original.mkdir)[0]:
+        usable = True
+        if held:
+            usable, probe = _attempt(rows, "held-open", lambda: Held(owner.native, original, directory=True))
+            if usable:
+                _attempt(rows, "held-current", probe.current)
+                usable = _attempt(rows, "held-close", probe.close)[0]
+        if usable and _attempt(rows, "rename-away", lambda: original.rename(moved))[0]:
+            _attempt(rows, "rename-back", lambda: moved.rename(original))
+        _attempt(rows, "rmdir", lambda: (moved if moved.is_dir() and not original.is_dir() else original).rmdir())
+    return {"held": held, "steps": rows}
+
+
+def user_temp(owner):
+    """The ordinary user's own temp folder as this worker inherited it, never inside the operation root."""
+    root = Path(owner.root)
+    for name in ("TEMP", "TMP"):
+        value = os.environ.get(name)
+        if value and Path(value).is_absolute() and Path(value).is_dir() and root != Path(value) \
+                and root not in Path(value).parents:
+            return Path(value)
+    return None
+
+
+def rename_differential(owner, fixture, step, token, refused):
+    """Where this ordinary context can rename a folder by path: beside the refused one, in the operation root, in its own temp.
+
+    In each place one fresh folder that no handle ever opened, and one opened, inspected and closed as
+    the rename probe does, are renamed away and back. It tells the probe's own handle, the folder the new
+    name lies in and the location apart. Every step is journaled and each folder made here is removed by
+    its exact name. Nothing of the product is touched, nothing is retried and nothing is raised.
+    """
+    value = {"fixture": fixture, "step": step, "locations": [], "differentialError": None}
+    try:
+        def variants(directory):
+            return [rename_variant(owner, directory, "document-%s-differential-%s" % (token, kind), kind == "held")
+                    for kind in ("plain", "held")]
+        beside, root = Path(refused).parent, Path(owner.root)
+        value["locations"].append({"location": "sibling", "leaf": beside.name, "variants": variants(beside)})
+        if beside != root:
+            value["locations"].append({"location": "operation-root", "leaf": root.name, "variants": variants(root)})
+        temp, rows, inside = user_temp(owner), [], []
+        if temp is not None:
+            container = temp / ("vpn-control-harness-%s-%s" % (owner.operation, token))
+            if _attempt(rows, "mkdir", container.mkdir)[0]:
+                inside = variants(container)
+                _attempt(rows, "rmdir", container.rmdir)
+        value["locations"].append({"location": "user-temp", "available": temp is not None, "container": rows,
+                                   "variants": inside})
+    except Exception as failure:
+        value["differentialError"] = type(failure).__name__
+    owner.event("document-fixture-rename-differential", value)
+    return value
+
+
+def rename_control(owner, fixture, token, directory):
+    """A recorded control, never a gate: can a fresh direct child of this folder be renamed by path now.
+
+    If the rename is refused as held, the census of the folder is journaled too: the new name would lie
+    in it, and its holders decide. The control makes one empty folder of its own and removes it again;
+    nothing is raised.
+    """
+    value = {"fixture": fixture, "token": token, "leaf": Path(directory).name, "steps": [], "controlError": None}
+    refusal = None
+    try:
+        value["steps"] = rename_variant(owner, directory, "document-%s-control" % token, False)["steps"]
+        refusal = next((row["winerror"] for row in value["steps"]
+                        if row["step"].startswith("rename-") and row["winerror"] in HELD_WIN32), None)
+    except Exception as failure:
+        value["controlError"] = type(failure).__name__
+    owner.event("document-fixture-rename-control", value)
+    if refusal is not None:
+        holder_census(owner, fixture, "rename-control", "control", refusal, [("parent", Path(directory))])
+    return value
+
+
+def refusal_evidence(owner, fixture, step, error, subject, token=None):
+    """The evidence of one fixture step refused as held: the holder census and, with a token, the rename differential."""
+    winerror = os_codes(error)[0]
+    if subject is None or not isinstance(error, (OSError, NativeOpenError)) or winerror not in HELD_WIN32:
+        return
+    holder_census(owner, fixture, step, "refusal", winerror,
+                  [("refused", Path(subject)), ("parent", Path(subject).parent)])
+    if token is not None:
+        rename_differential(owner, fixture, step, token, subject)
 
 
 class Held:
@@ -71,7 +351,8 @@ class Held:
         if not hasattr(native, "document_retained_handles"):
             native.document_retained_handles = []
         native.document_retained_handles.append(self)
-        access = 0x20080 if directory else 0x80020000 | (0x40000000 if write else 0)
+        # A directory observer holds attributes and READ_CONTROL only, so it takes no part in share checks.
+        self.access = access = 0x20080 if directory else 0x80020000 | (0x40000000 if write else 0)
         self.handle = native.k.CreateFileW(str(self.path), access, share, None, 3, 0x02200000, None)
         if self.handle == ctypes.c_void_p(-1).value:
             self.open_error = ctypes.get_last_error()  # Capture before any other native call.
@@ -285,17 +566,17 @@ def persistence_fault(owner, workspace, client, module, request_id, context, bef
     # The fixture before the request is the harness's own: an OS refusal there releases what it
     # holds, so the product can persist at the closing's quit, and is a known failure.
     primary = reserve = None
-    step = "primary-hold"
+    step, subject = "primary-hold", workspace / "workspace.json"
     try:
-        primary = Held(owner.native, workspace / "workspace.json")
+        primary = Held(owner.native, subject)
         before = primary.pin()
-        step = "recovery-create"
+        step, subject = "recovery-create", recovery
         with recovery.open("xb") as target:
             target.flush(); os.fsync(target.fileno())
         step = "recovery-hold"
         reserve = Held(owner.native, recovery)
     except BaseException as error:
-        release_refused(owner, (reserve, primary), error, "persistence", step)
+        release_refused(owner, (reserve, primary), error, "persistence", step, subject)
     owner.document_persistence_fault = {"primary": primary, "recovery": reserve}
     try:
         request = module.request_document(client.owner, request_id, "settings.set",
@@ -485,7 +766,7 @@ def private_export_no_overwrite(owner, workspace, identity, destination, harness
     try:
         parent = Held(owner.native, destination.parent, directory=True, share=3)
     except BaseException as error:
-        release_refused(owner, (), error, "export", "parent-hold")
+        release_refused(owner, (), error, "export", "parent-hold", destination.parent)
     first = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity,
         "routing", "export", "--output", str(destination)))
     need(first["controllerId"] == identity and first["final"] is True, "document-export-owner-result")

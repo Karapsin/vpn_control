@@ -1,0 +1,34 @@
+{
+ "cause": "Not identified from the native evidence. The unfixed fixture catches every failure of its start and sleeps without a word, the evidence zip does not enter the fixture folder, and the park record names no step: a failed start and a stalled one look the same. The proxy rows' fixture makes the same two listeners with the same unchanged start() and was ready 1.2 to 2.0 s after its start on three native runs, so the step that stopped is one of this fixture's own (the certificate re-read, the ready file's creation, its rename) or a stall. The next native run names it: the fixture now says each step on stdout before entering it.",
+ "execution": "The unfixed sources are run in the offline world by test_windows_document_work_fixture: the fixture's main over a declared producer peer, the cases over the real Child, real pipes and the runtime stages' real read_ready.",
+ "fixtures": {
+  "gated-fixture-silent-start.before.source": {
+   "sha256": "205a1bdd79fa3c2d0df3d3f3cf4746132ed78d09500d4947a4ab6bb177f63e9c",
+   "sizeBytes": 10046,
+   "source": "git show 529cc6106160bd5b85a25d261ad2f9a68570306d:agent_tools/windows_document_gated_https_fixture.py"
+  },
+  "responsive-cases-readiness-park.before.source": {
+   "sha256": "750bf3925e867c7560fd869ce523b9fd95ca7d7d51de451bb208b771ae8995a5",
+   "sizeBytes": 25173,
+   "source": "git show 529cc6106160bd5b85a25d261ad2f9a68570306d:agent_tools/windows_document_responsive_cases.py"
+  },
+  "responsive-cli-no-closing.before.source": {
+   "sha256": "f02bd180210568a7219f33bd22e7c72d8fde5dbab560ce2b6a5803de21338705",
+   "sizeBytes": 6950,
+   "source": "git show 529cc6106160bd5b85a25d261ad2f9a68570306d:agent_tools/windows_document_responsive_cli_cases.py"
+  }
+ },
+ "nativeFailures": [
+  {
+   "clone": "07831787",
+   "date": "2026-11-13",
+   "evidence": ".runtime/windows-parity-20261107/family/diag/evidence-b9aa4616/",
+   "observed": "Ten owner events, the last child-started for child 2 (the work fixture, pid 6416). owner-parked.json: reason runtime-fixture-readiness-unknown-no-replay, errorClass and failure null, child 2 without EOF on either stream. child-0002.stdout.raw and child-0002.stderr.raw are empty about 37 s after the child's start.",
+   "operation": "b9aa4616-fc57-4aaa-bbf7-f8864a32f44a",
+   "package": "2.2.17 (discovery build of f31ab987)",
+   "ranBytes": "family/bundle-b9aa4616-fc57-4aaa-bbf7-f8864a32f44a/agent_tools: the three sources equal these before-images byte for byte",
+   "row": "windows-document-responsive"
+  }
+ ],
+ "schemaVersion": 1
+}

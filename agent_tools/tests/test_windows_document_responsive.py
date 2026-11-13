@@ -312,8 +312,9 @@ class Qualification(unittest.TestCase):
         lease=cases.prepare_before_serve(o,workspace,inputs,w.runtime)
         serve=o.child('serve',[o.request['cliPath'],'--state-dir',str(workspace),'serve']);workspace.mkdir()
         cases.after_original_serve_started(o,lease,serve)  # Without the owner's removal the options leak to every later JVM.
-        with self.assertRaises(Parked):cases.run(o,workspace,w.controller,DocumentPeer(o),documents,lease)
-        self.assertEqual('document-responsive-longwork-unqualified-originals-retained',o.parked[0])
+        with self.assertRaisesRegex(AssertionError,'same-owner-public-envelope'):cases.run(o,workspace,w.controller,DocumentPeer(o),documents,lease)
+        # The call completed and no refresh was open: the failure is the case module's to close, and nothing parked here.
+        self.assertFalse(hasattr(o,'parked'));self.assertIsNone(lease.open_phase)
 
     def test_the_owner_removes_the_trust_options_right_after_serve(self):
         source=Path(ordinary.__file__).read_text()

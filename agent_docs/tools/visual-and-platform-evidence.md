@@ -1317,9 +1317,28 @@ recovery leaf (`persistence`; released first, so the product can persist at the
 quit) and the no-overwrite export's observer of the operation root (`export`). The
 race's positive rename probe retries only access denied (5) and sharing violations
 (32), at most six attempts in under 4 s, and journals each attempt in
-`document-race-rename-probe`; the product's own race step stays one attempt. The
-case module releases its endpoint and workspace observers, so the product removes
-its descriptor at the quit. A reopened serve is quit like the original. On a known
+`document-race-rename-probe`; the product's own race step stays one attempt. Each
+race's destination parent lies in a stage folder of its own,
+`<operation root>\document-race-<mode>\parent`. A rename by path makes Windows open
+the folder of the new name for write access, and the product pins every ancestor of
+its transfer spool, the operation root among them, with read sharing only while any
+transfer lives; the row retains one for its idle expiry. After a passed probe the
+race journals `document-fixture-rename-control`, a control that is never a gate: one
+fresh direct child of the operation root renamed by path. A fixture step refused as
+held (5 or 32) journals `document-fixture-holder-census` before its known failure,
+and the rename probe also at its first refusal, before it waits: for the refused
+path and for its folder, the PIDs that have it open (`NtQueryInformationFile`,
+`FileProcessIdsUsingFileInformation`), each with its image leaf name, parent PID and
+role (`worker`, `task-owner`, `serve`, `work-fixture`, `cli-child`, `<role>-child` for
+a launcher's own restart child, `other`), and the harness's own open handles with path,
+access and share mode: its document observers, the owner's directory pins and an owned
+fixture's data leases. No command line is read and no process list is walked. A control refused
+as held journals the census of its folder. A refused rename probe also journals
+`document-fixture-rename-differential`: a fresh folder that no handle opened and one
+opened and closed as the probe does, each renamed away and back beside the refused
+folder, in the operation root and in the worker's own temp folder, and removed
+again. The case module releases its endpoint and workspace observers, so the product
+removes its descriptor at the quit. A reopened serve is quit like the original. On a known
 failure and on a pass alike, a GUI-started owner is ended by one journaled quit
 and must exit within 120 s, or the owner parks (`document-gui-owner-exit-unknown`).
 Anything else parks as before. The shared worker's `owner-parked.json` and its
@@ -1356,11 +1375,44 @@ timeout and cancel end `CANCELLED` (responsive-status-cancel), and a synchronous
 refresh whose own client is terminated once while the owner's work goes on to `OK`
 and caches its location (cli-disconnect-long-work). The row has no principal probe,
 and its receipt's `document` part is `{variant: responsive, principal: null}`.
-Evidence is that of every product row. The responsive cases define no
-`close_known`, so any failure in them parks the owner (inside the long-work cases as
-`document-responsive-longwork-unqualified-originals-retained`), the job ends UNKNOWN
-and the clone is blocked. Run it only after the document rows that close their
-known failures, on a clone that can be spared. Known before any native run: the work
+Evidence is that of every product row.
+
+The work fixture is the owner's own child, and the row closes what it knows. The
+fixture prints one line before each step of its start (`owned-work-fixture-step`:
+`input`, `sources`, `tls-context`, `https-listen`, `relay-listen`, `listening`,
+`certificate-digest`, `ready-create`, `ready-rename`), so `child-<n>.stdout.raw` of a
+start that stops names the step it reached. A start that fails before its ready file
+is published has served nobody: it prints `owned-work-fixture-failed` (the step, the
+error class, an OS error's `winerror` and `errno`, one of its own finite codes, never
+a message or path), puts the traceback on stderr, shuts its own listeners down in
+order and exits 3. A failure after readiness still stays, as before, and says why once
+(`owned-work-fixture-retained`). The owner waits 30 s for the ready file
+(`READY_SECONDS`, a bound and not a measurement of this fixture; the proxy rows'
+fixture was ready 1.2 to 2.0 s after its start on three native runs) and journals the
+measured wait as `document-work-fixture-ready`. No serve exists before the fixture is
+ready, so a fixture that does not become ready, ends first, or publishes a ready
+record an oracle refuses is a known failure,
+`document-work-fixture-not-ready:<timeout:<last step>|ended:<exit>:<failed step>|refused:<code>>`.
+Before it the owner journals `document-fixture-holder-census` (fixture `work`, step
+`readiness`) for the fixture folder, the ready file and its `.publishing` name, the
+fixture's input, script, two producer sources, certificate and key, and
+`document-work-fixture-not-ready`: the child's pid, whether it lives, its exit code,
+whether the ready file and its publishing name exist, the folder's names, the steps
+and the failure the fixture said, the waited seconds and `heldByFixture`, the census
+roles the fixture's PID has open. A live fixture then gets one termination of its
+original Popen handle (`document-work-fixture-terminate-intent`), is awaited to its
+terminal and EOF for 15 s (`document-work-fixture-closed`), and the owner finishes
+with exit 1; a fixture that outlives it parks (`document-work-fixture-end-unknown`).
+After the serve started, `close_known` closes a finite oracle failure while no
+refresh is open: the fixture is ended the same way (`document-work-fixture-ending`),
+the endpoint and workspace observers are released, and the owner quits the serve.
+A phase is open from the start of its refresh client until its work is known final
+and its handler's end is read. A failure in that window, an error that is no
+oracle's, open client sockets, or a client termination whose end was not observed
+still park (`document-responsive-longwork-unqualified-originals-retained`), the job
+ends UNKNOWN and the clone is blocked. The proxy rows' fixture start is unchanged:
+`read_ready` in `windows_lifecycle_runtime_stages.py` still parks a fixture that is
+not ready after 30 s. Known before any native run: the work
 fixture under the ordinary user, the product's trust of the generated store through
 the scoped JVM options, the refreshes through the gated fixture, the cancel's
 `CANCELLED` with exit 130, the terminated client's exit and the owner's surviving

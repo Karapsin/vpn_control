@@ -8,6 +8,9 @@ The separate real-principal, GUI and cold-owner actions remain required.
 from pathlib import Path
 import uuid
 
+# The error types of this module's own finite codes; the harness's and the responsive cases' AssertionError is known too.
+KNOWN_ERRORS = ("RuntimeError", "Refused")
+
 
 def need(value, code):
     if not value:
@@ -62,7 +65,9 @@ def configure_launch(owner, workspace):
     need(len(pins) == 1, "document-admitted-prelaunch-temp-directory-pin")
     pins[0].current()
     responsive, runtime, work_inputs = _responsive_modules(owner)
-    lease = responsive.prepare_before_serve(owner, workspace, work_inputs, runtime)
+    # Loaded before the fixture starts: if it does not become ready, the census of who holds its files is journaled.
+    owner.document_windows_module = owner.module(inputs["windowsPath"], "document_windows_" + owner.operation.replace("-", ""))
+    lease = responsive.prepare_before_serve(owner, workspace, work_inputs, runtime, owner.document_windows_module)
     owner.document_responsive_modules = (responsive, runtime, lease)
     owner.document_temp_pin = pins[0]
     owner.environment["TEMP"] = str(temp)
@@ -93,7 +98,7 @@ def run(owner, workspace, identity, harness):
     owner.document_temp_pin.current()
     suffix = owner.operation.replace("-", "")
     module = owner.module(inputs["clientPath"], "document_client_" + suffix)
-    windows = owner.module(inputs["windowsPath"], "document_windows_" + suffix)
+    windows = owner.document_windows_module
     race = owner.module(inputs["racePath"], "document_export_race_" + suffix)
     for context in contexts: module.canonical_id(context)
     need(identity not in contexts, "document-context-owner-id-disjoint")
@@ -103,6 +108,7 @@ def run(owner, workspace, identity, harness):
          "document-same-disconnected-installed-owner")
     native_endpoint_pin = windows.observe_endpoint(owner, workspace, identity)
     client = windows.admit_endpoint(owner, workspace, identity, native_endpoint_pin, module)
+    owner.document_client = client  # Its open sockets decide whether a later failure is known.
     responsive, runtime, lease = owner.document_responsive_modules
     responsive.after_original_serve_started(owner, lease, serves[0])
     responsive_result = responsive.run(owner, workspace, identity, client, module, lease)
@@ -118,3 +124,39 @@ def run(owner, workspace, identity, harness):
         "productProtobufStoreOnWindows": False}
     owner.event("document-authenticated-segment-finished", outcome)
     return outcome
+
+
+def _held_open(value):
+    return value is not None and not getattr(value, "closed", True)
+
+
+def close_known(owner, error, serve, identity):
+    """A finite failure of this row with no refresh in flight: end the work fixture, release the observers, name the owner.
+
+    Known only for an AssertionError of the harness or the responsive cases on a completed public call and
+    this module's own document- and responsive- codes raised as RuntimeError (need) or the client's Refused,
+    after every exchange closed its socket, and only while no phase's refresh is open (close_known_work).
+    The owner's work fixture is then ended by one termination of its original child and awaited, and the
+    open endpoint and workspace observers are closed so the product removes its descriptor on quit.
+    Returns (serve, identity) for the owner's closing, which quits the serve, or None to keep every
+    original for the park.
+    """
+    try:
+        modules = getattr(owner, "document_responsive_modules", None)
+        client = getattr(owner, "document_client", None)
+        name = type(error).__name__
+        if (modules is None
+                or not (name == "AssertionError" or name in KNOWN_ERRORS and str(error).startswith(("document-", "responsive-")))
+                or (client is not None and (client.original_sockets or (client.last_exchange or {}).get("secondary")))):
+            return None
+        if not modules[0].close_known_work(owner, modules[2], error):
+            return None
+        for name in ("document_endpoint_handle", "document_workspace_handle"):
+            held = getattr(owner, name, None)
+            if _held_open(held):
+                held.close()
+        owner.event("document-known-failure-observers-released", {"reason": str(error)[:120],
+            "socketsOpen": 0, "workFixtureEnded": True, "replayAllowed": False})
+        return serve, identity
+    except Exception as closing:
+        owner.park("document-known-failure-release-unknown", closing)

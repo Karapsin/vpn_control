@@ -59,13 +59,13 @@ POSTBOOT_ROLES = frozenset(['autostart', 'gui', 'lifecycle', 'listenerScript', '
 
 DOCUMENT_RESPONSIVE_CASE = (
     "windows_document_responsive_cli_cases.py",
-    "f02bd180210568a7219f33bd22e7c72d8fde5dbab560ce2b6a5803de21338705",
+    "e68261ac8d8a18a8a5d1e86ad83331a8374315d2ef2ce7e482e3a4f9cfeb8367",
 )
 
 DOCUMENT_RESPONSIVE_SOURCES = {
-    "casesPath": ("windows_document_responsive_cases.py", "750bf3925e867c7560fd869ce523b9fd95ca7d7d51de451bb208b771ae8995a5"),
+    "casesPath": ("windows_document_responsive_cases.py", "1ae4bea2eac10bfae57846871587e4c4004f3dfbcf2711cdf96f93c998f6eea6"),
     "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"),
-    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "205a1bdd79fa3c2d0df3d3f3cf4746132ed78d09500d4947a4ab6bb177f63e9c"),
+    "fixtureWorkerPath": ("windows_document_gated_https_fixture.py", "c74b153072e4b4ce464eb483b759bc38e02e208195aa6a5bd076feb17b42f971"),
     "socksSourcePath": ("socks_http_fixture.py", "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"),
     "httpsSourcePath": ("https_subscription_relay_fixture.py", "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"),
 }

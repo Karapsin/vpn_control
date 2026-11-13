@@ -139,14 +139,14 @@ class ExportRelay:
 
 
 # The harness's positive rename probe is retried only while the OS reports its own just-created
-# folder held (access denied or a sharing violation, as a short-lived scanner handle can cause):
-# at most six attempts in under 4 s, each recorded. The product is not running yet. The product's
-# race step below stays one attempt.
+# folder held (access denied or a sharing violation): at most six attempts in under 4 s, each
+# recorded, with a holder census at the first refusal, while whoever holds it is still there. The
+# product's export child is not running yet. The product's race step below stays one attempt.
 RENAME_PROBE_DELAYS = (0.1, 0.25, 0.5, 1.0, 2.0)
 HELD_WIN32 = (5, 32)
 
 
-def rename_probe(source, target, step, attempts):
+def rename_probe(source, target, step, attempts, refused=None):
     """One rename of the harness's own fixture; another attempt only while the OS reports it held."""
     started = time.monotonic()
     for attempt, delay in enumerate((*RENAME_PROBE_DELAYS, None), 1):
@@ -161,6 +161,8 @@ def rename_probe(source, target, step, attempts):
                              "errno": number if type(number) is int else None})
             if delay is None or winerror not in HELD_WIN32:
                 raise
+            if attempt == 1 and refused is not None:
+                refused(error)
             time.sleep(delay)
         else:
             attempts.append({"step": step, "attempt": attempt,
@@ -169,42 +171,53 @@ def rename_probe(source, target, step, attempts):
             return
 
 
-def prepare_fixture(owner, client, module, windows, mode, parent, renamed, proxy):
+def prepare_fixture(owner, client, module, windows, mode, stage, parent, renamed, proxy):
     """The harness's own fixture, before the product takes part: folders, rename probe, relay, descriptor.
 
     An OS refusal of any of these steps (an OSError, or the Win32 open refusal NativeOpenError) is the
-    known failure document-race-fixture-refused:<step>:<code> (windows.fixture_refused). First an open
-    descriptor handle and a listening relay are closed: the product's child has not started, so the
-    relay has accepted nothing of it. A relay that cannot be closed parks. Any other error propagates
-    as before, after the same closing.
+    known failure document-race-fixture-refused:<step>:<code> (windows.fixture_refused). A step refused
+    as held (access denied, sharing violation) first journals who holds it, and a refused rename also
+    where a rename by path works (windows.refusal_evidence). Then an open descriptor handle and a
+    listening relay are closed: the product's child has not started, so the relay has accepted nothing
+    of it. A relay that cannot be closed parks. Any other error propagates as before, after the same
+    closing.
     """
-    step, relay, held, attempts = "absences", None, None, []
+    step, subject, relay, held, attempts = "absences", stage, None, None, []
+
+    def first_refusal(error):
+        windows.holder_census(owner, "race", step, "first-refusal", getattr(error, "winerror", None),
+                              [("refused", subject), ("parent", subject.parent)])
     try:
-        need(not parent.exists() and not renamed.exists() and not proxy.exists(), "document-race-before-absences")
-        step = "mkdir-parent"; parent.mkdir()
-        step = "mkdir-proxy"; proxy.mkdir()
+        need(not stage.exists() and not proxy.exists(), "document-race-before-absences")
+        step, subject = "mkdir-stage", stage; stage.mkdir()
+        step, subject = "mkdir-parent", parent; parent.mkdir()
+        step, subject = "mkdir-proxy", proxy; proxy.mkdir()
         # Prove this actual ordinary context can rename this fixture before the
         # product opens it. The temporary witness handle must be closed first.
-        step = "probe-open"
+        step, subject = "probe-open", parent
         probe = windows.Held(owner.native, parent, directory=True)
         initial = probe.current(); probe.close()
         try:
-            step = "rename-away"; rename_probe(parent, renamed, step, attempts)
-            step = "rename-back"; rename_probe(renamed, parent, step, attempts)
+            step, subject = "rename-away", parent; rename_probe(parent, renamed, step, attempts, first_refusal)
+            step, subject = "rename-back", renamed; rename_probe(renamed, parent, step, attempts, first_refusal)
         finally:
             owner.event("document-race-rename-probe", {"mode": mode, "attempts": attempts,
                 "renamed": any(row["step"] == "rename-away" and row["errorClass"] is None for row in attempts),
                 "restored": any(row["step"] == "rename-back" and row["errorClass"] is None for row in attempts),
                 "productStarted": False})
-        step = "probe-reopen"
+        step, subject = "probe-reopen", parent
         probe = windows.Held(owner.native, parent, directory=True)
         need(probe.current() == initial, "document-race-rename-positive-identity"); probe.close()
+        # Recorded, never a gate: whether a direct child of the operation root can be renamed by path
+        # now, and who holds the root if not. It shows why the fixture has a stage of its own.
+        step, subject = "root-control", None
+        windows.rename_control(owner, "race", "race-" + mode, stage.parent)
         step = "relay-listen"
         relay = ExportRelay(owner, client, module)
         descriptor = dict(client._endpoint, schemaVersion=1, port=relay.port)
         descriptor_path = proxy / "activation.port"
         raw = module.dump(descriptor).encode()
-        step = "descriptor-create"
+        step, subject = "descriptor-create", descriptor_path
         windows.create_sid_private_new(owner.native, descriptor_path, raw,
                                        owner.request["context"]["ordinarySid"])
         step = "descriptor-hold"
@@ -214,6 +227,8 @@ def prepare_fixture(owner, client, module, windows, mode, parent, renamed, proxy
                                      owner.request["context"]["ordinarySid"])
         return relay, held, descriptor_pin
     except BaseException as error:
+        windows.refusal_evidence(owner, "race", step, error, subject,
+                                 "race-" + mode if step in ("rename-away", "rename-back") else None)
         try:
             if held is not None and not held.closed:
                 held.close()
@@ -231,12 +246,22 @@ def run_public_export_race(owner, workspace, identity, client, module, windows, 
     need(os.name == "nt" and mode in ("parent", "destination"), "document-race-finite-mode")
     owner.guard(); client.guard()
     base = Path(owner.root)
-    parent = base / ("document-race-" + mode)
-    renamed = base / ("document-race-" + mode + "-moved")
+    # The destination parent lies in a stage folder of its own, never directly in the operation root.
+    # A rename by path makes Windows open the folder of the new name for write access. The product
+    # pins every ancestor of its transfer spool, the operation root among them, with LIST_DIRECTORY
+    # and read sharing only for as long as any transfer lives (DesktopWindowsTransferPins), and one
+    # is retained here for the idle expiry. So no direct child of the operation root can be renamed
+    # by path meanwhile. That is read from the product source and fits native runs 2df348bd and
+    # 83484649, whose probe renamed such a child and was refused (the second: a sharing violation on
+    # all six attempts); the recorded root control is there to show it on a guest. In the stage,
+    # only the public writer's own pins can refuse the rename, which is what the race is there to show.
+    stage = base / ("document-race-" + mode)
+    parent = stage / "parent"
+    renamed = stage / "moved"
     proxy = base / ("document-export-client-" + mode)
     destination = parent / "routing 東京 export.json"
     relay, held_descriptor, descriptor_pin = prepare_fixture(owner, client, module, windows, mode,
-                                                             parent, renamed, proxy)
+                                                             stage, parent, renamed, proxy)
     owner.document_export_relay = relay
     owner.document_export_descriptor = held_descriptor
     child = owner.child("document-public-export-race-" + mode, [owner.request["cliPath"],

@@ -1,0 +1,51 @@
+{
+  "cause": "Read from the product source; not yet shown on a guest. DesktopControlTransferSpool.create spools every transfer under java.io.tmpdir, which the document rows set to <operation root>\\document-temp. DesktopControlTransferParent.windows keeps a DesktopWindowsTransferPins for that spool until the transfer is erased: one handle on every ancestor of the folder, the operation root among them, opened by windowsInstallOpenOptions(INSPECT, shareDelete = false) as CreateFile(rights 0x00120081, share 1, OPEN_EXISTING, flags 0x02200000). FILE_LIST_DIRECTORY makes the handle take part in share checks, and it shares read only. The row begins one transfer for its 301 s idle expiry (begin_expiry) before its exports and races and retains it. A rename by path (os.rename, MoveFileExW) opens the old name with DELETE and then, because the new name is fully qualified, has the I/O manager open the folder of the new name for write access (FILE_ADD_SUBDIRECTORY for a folder), sharing read and write: that open asks for write access the pin does not share and ends STATUS_SHARING_VIOLATION, Win32 error 32. The probe renamed document-race-parent to document-race-parent-moved, both direct children of the operation root. The product knows the conflict and renames by leaf for that reason: JnaWindowsInstallNative.publishExportNoReplace says the leaf-only form resolves 'without reopening a directory for write access, which would conflict with our strict ancestry pins'. Neither the harness's directory pins (0x20080, attributes and READ_CONTROL only) nor its closed probe handle take part in share checks.",
+  "execution": "Only module definitions run. The owner runs with the inert guest of test_windows_cli_native_failures and test_windows_document_acceptance. Directory opens are a table judged as IoCheckShareAccess judges them, and the kernel's answers to the holder census come from the same table or from logical kernel exports. No process, listener, Win32 call or VM is involved.",
+  "fixtures": {
+    "document-native-no-holders.before.source": {
+      "defect": "A fixture step refused as held (access denied, sharing violation) named its code only: not who had the folder open, which handles the harness itself still held, or where a rename by path would work.",
+      "origin": "agent_tools/windows_document_native.py at 529cc6106160bd5b85a25d261ad2f9a68570306d, the same bytes native run 83484649 ran (bundle-83484649).",
+      "sha256": "92b31869334d61ff4899c42d34328176bf41718c1d65c12fd87dc328c7e4281b",
+      "sizeBytes": 32180
+    },
+    "export-race-root-fixture.before.source": {
+      "defect": "The race's destination parent and its renamed name were direct children of the operation root. A rename by path of such a child opens the operation root for write access, which the serve's transfer pins refuse while any transfer lives, so the positive rename probe could never pass during the retained expiry transfer, and a refusal in the race itself would not have been the public writer's own.",
+      "origin": "agent_tools/windows_document_export_race.py at 529cc6106160bd5b85a25d261ad2f9a68570306d, the same bytes native run 83484649 ran (bundle-83484649).",
+      "sha256": "c7f8fa9b67804f20e1c0957fff33a468d0a6e3f40af72915251db9523deb6ac9",
+      "sizeBytes": 15359
+    },
+    "owner-pin-modes.before.source": {
+      "defect": "A pin did not keep the access and share mode its handle was opened with, so a census could not report them.",
+      "origin": "agent_tools/windows_ordinary_process_owner.py at 529cc6106160bd5b85a25d261ad2f9a68570306d, the same bytes native run 83484649 ran (bundle-83484649).",
+      "sha256": "565131c840e6ceccbde67bc01981c05a00eafb49663a2767c5f34f3696d97a00",
+      "sizeBytes": 64238
+    }
+  },
+  "nativeFailures": [
+    {
+      "attempts": [
+        {"attempt": 1, "elapsedMs": 0, "winerror": 32},
+        {"attempt": 2, "elapsedMs": 100, "winerror": 32},
+        {"attempt": 3, "elapsedMs": 352, "winerror": 32},
+        {"attempt": 4, "elapsedMs": 853, "winerror": 32},
+        {"attempt": 5, "elapsedMs": 1854, "winerror": 32},
+        {"attempt": 6, "elapsedMs": 3855, "winerror": 32}
+      ],
+      "clone": "ea86866f",
+      "date": "2026-11-09",
+      "events": "event-002631-document-race-rename-probe to event-002644-owner-terminal",
+      "failingFrames": [
+        "windows_document_export_race.py:192",
+        "windows_document_export_race.py:154"
+      ],
+      "jobOutcome": "failed: task_exit_code, owner exit 1, nothing parked",
+      "knownFailure": "document-race-fixture-refused:rename-away:32",
+      "operation": "83484649-990b-44ef-a66f-cf77392eef10",
+      "package": "2.2.17 discovery build",
+      "route": "direct",
+      "scenario": "windows-document-acceptance",
+      "sameStepAs": "2df348bd-6878-41c8-8061-60c87f7e301e (clone be766f0c), recorded in fixtures/windows_document_native_failures"
+    }
+  ],
+  "schemaVersion": 1
+}

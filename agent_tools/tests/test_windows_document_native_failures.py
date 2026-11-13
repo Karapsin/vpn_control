@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -45,6 +46,7 @@ OWNER_SHA256 = "6f3b9e77d72c89e2167d427eebde0373e90bd00ac725a4f8aadcf0309e1b755d
 NATIVE_SHA256 = "ba23df4d014d0b131e2c7bb7b41b49816df3ca4b13fd8ff1430c293c1729bec9"
 SID = "S-1-5-21-3748955661-2212578811-923230929-1004"
 NT_OS = types.SimpleNamespace(name="nt", fsync=os.fsync)
+REAL_RENAME = os.rename
 SECRET = r"C:\Users\fixtureuser\private message text"
 
 
@@ -109,8 +111,14 @@ class World:
                     raise world.refused_opens[str(path)]
                 info = path.lstat()
                 self.path, self.directory, self.closed, self.handle = path, directory, False, len(world.held)
+                self.access, self.share = 0x20080 if directory else 0x80020000 | (0x40000000 if write else 0), share
+                self.open_error = None
                 self.identity = {"volumeSerial": info.st_dev, "fileIndex": info.st_ino, "attributes": 16 if directory else 32}
                 world.held.append(self)
+                if native is not None:  # As the real Held retains itself on the owner's native provider.
+                    if not hasattr(native, "document_retained_handles"):
+                        native.document_retained_handles = []
+                    native.document_retained_handles.append(self)
 
             def current(self, stable_content=True):
                 return dict(self.identity)
@@ -158,14 +166,21 @@ class World:
                 self.closed = True
 
         self.Held = Held
-        # The unfixed tree has no fixture_refused; its race never asks for one.
-        self.windows = types.SimpleNamespace(
-            Held=Held, NativeOpenError=document_native.NativeOpenError,
-            fixture_refused=getattr(document_native, "fixture_refused", None), create_sid_private_new=self.create,
-            endpoint_private_acl=lambda native, handle, sid: {"ownerSid": sid, "aces": [], "ownerRead": True,
-                                                              "otherPrincipalAllow": False})
+        self.windows = self.provider(document_native)
         self.socket = types.SimpleNamespace(AF_INET=socket.AF_INET, SOCK_STREAM=socket.SOCK_STREAM, SOL_SOCKET=1,
                                             SO_EXCLUSIVEADDRUSE=-5, timeout=socket.timeout, socket=Listener)
+
+    def provider(self, native):
+        """The Windows module a race is handed: this world's handles and descriptor, that module's own refusal code.
+
+        An unfixed module lacks the later functions; its race never asks for them.
+        """
+        return types.SimpleNamespace(
+            Held=self.Held, NativeOpenError=document_native.NativeOpenError, create_sid_private_new=self.create,
+            endpoint_private_acl=lambda native, handle, sid: {"ownerSid": sid, "aces": [], "ownerRead": True,
+                                                              "otherPrincipalAllow": False},
+            **{name: getattr(native, name, None) for name in ("fixture_refused", "refusal_evidence", "holder_census",
+                                                              "rename_differential", "rename_control")})
 
     def create(self, native, path, data, sid):
         if self.on_create is not None:
@@ -250,8 +265,12 @@ class Runs:
     def run_race(self, owner_module, race, renames, *, world=None, mode="parent", guest_class=RaceGuest, prepare=None):
         world = world or World()
         clock = Clock()
+        # The script answers the probe's renames (an error is raised from the mock, None is a rename that took
+        # place); every rename after it, such as the control's and the differential's, is the real one.
         patches = (mock.patch.object(race, "os", NT_OS), mock.patch.object(race, "socket", world.socket),
-                   mock.patch.object(race, "time", clock), mock.patch("os.rename", side_effect=renames))
+                   mock.patch.object(race, "time", clock),
+                   mock.patch("os.rename", wraps=REAL_RENAME,
+                              side_effect=itertools.chain(renames, itertools.repeat(mock.DEFAULT))))
         situation = race_situation(world, race, mode)
         if prepare is not None:
             inner = situation
@@ -374,7 +393,8 @@ class HarnessFixtureFailureTests(Runs, unittest.TestCase):
         world = World()
 
         def refused_identity(owner, world):
-            world.refused_opens[str(Path(owner.root) / "document-race-parent")] = process_owner.Refused("native-file-information")
+            world.refused_opens[str(Path(owner.root) / "document-race-parent" / "parent")] = \
+                process_owner.Refused("native-file-information")
         guest, _, code = self.run_race(process_owner, export_race, [], world=world, prepare=refused_identity)
         self.assertEqual((None, "scenario-failure-with-retained-child"), (code, guest.parks[0][0]))
         self.assertEqual([], quits(guest))
@@ -491,7 +511,7 @@ class FailureDetailTests(Runs, unittest.TestCase):
             self.assertEqual(("RuntimeError", None, None), (failure["errorClass"], failure["winerror"], failure["errno"]))
             self.assertEqual("%s:%d" % (race_file, line_of(export_race.__file__, "raise known from error")), failure["frames"][-1])
             self.assertEqual({"errorClass": "PermissionError", "winerror": 32, "errno": 13,
-                              "frames": ["%s:%d" % (race_file, line_of(export_race.__file__, 'step = "rename-away"; rename_probe(')),
+                              "frames": ["%s:%d" % (race_file, line_of(export_race.__file__, '"rename-away", parent; rename_probe(')),
                                          "%s:%d" % (race_file, line_of(export_race.__file__, "source.rename(target)"))]},
                              failure["cause"])
             self.assertNotIn("private message text", json.dumps(closing))
