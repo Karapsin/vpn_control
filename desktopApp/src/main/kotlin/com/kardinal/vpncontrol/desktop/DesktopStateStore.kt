@@ -25,9 +25,11 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.DirectoryIteratorException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
@@ -35,6 +37,7 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.APPEND
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.attribute.PosixFilePermissions
 import java.time.Instant
@@ -103,8 +106,12 @@ class DesktopStateStore(
 
     fun updateDirectory(): Path = baseDir.resolve("updates")
 
-    /** Names of unreadable saved workspaces kept in the state folder, as found by the last load. */
-    fun keptUnreadableWorkspaces(): List<String> = keptUnreadable
+    /**
+     * Names of unreadable saved workspaces kept in the state folder. The folder is listed again on every call,
+     * so `status` stops warning once they are gone; the last known names are used when it cannot be listed.
+     */
+    fun keptUnreadableWorkspaces(): List<String> =
+        listKeptCopies()?.map { it.fileName.toString() }?.also { keptUnreadable = it } ?: keptUnreadable
 
     fun loadWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
         val stored = loadStoredWorkspace(defaultWorkspace)
@@ -112,7 +119,7 @@ class DesktopStateStore(
         if (stored.unsaved || workspace != stored.workspace) {
             writeWorkspace(workspace).getOrThrow()
         }
-        keptUnreadable = findKeptUnreadableWorkspaces(stored.kept)
+        keptUnreadable = (listKeptCopies() ?: stored.kept).map { it.fileName.toString() }
         stateFlow.value = workspace.persistedState
         return workspace
     }
@@ -135,28 +142,64 @@ class DesktopStateStore(
 
     private class StoredWorkspace(val workspace: DesktopWorkspace, val unsaved: Boolean, val kept: List<Path>)
 
+    private class SavedCopy(val file: Path, val modifiedMillis: Long)
+
     /**
      * The newest readable copy wins and older copies stay superseded, as before. A newer copy that exists
-     * but cannot be read or decoded (corrupt, unopenable, or written by an incompatible newer build) is kept
-     * aside before anything is written, so neither the defaults nor the next save can replace it, and the
-     * result carries a typed notice. No saved copy at all is a first run: defaults without a notice.
+     * but cannot be read or decoded (corrupt, unopenable, or of another format) is kept aside before anything
+     * is written, so neither the defaults nor the next save can replace it, and the result carries a typed
+     * notice. A copy kept by an earlier load whose save never completed (a full disk, a crash) holds data newer
+     * than the copy that loads, or than the defaults, so the notice names it too; once a save follows, the
+     * loaded copy is newer and it is not named again. No saved or kept copy at all is a first run: defaults
+     * without a notice.
      */
     private fun loadStoredWorkspace(defaultWorkspace: DesktopWorkspace): StoredWorkspace {
-        val candidates = listOf(workspaceFile, workspaceRecoveryFile)
-            .filter { Files.exists(it, NOFOLLOW_LINKS) }
-            .sortedByDescending { runCatching { Files.getLastModifiedTime(it).toMillis() }.getOrDefault(0L) }
+        val keptEarlier = listKeptCopies().orEmpty()
+        val candidates = listOfNotNull(savedCopy(workspaceFile), savedCopy(workspaceRecoveryFile))
+            .sortedByDescending { it.modifiedMillis }
         val kept = mutableListOf<Path>()
-        for (file in candidates) {
-            val workspace = readWorkspace(file)
+        for (candidate in candidates) {
+            val workspace = readWorkspace(candidate.file)
             if (workspace != null) {
-                return if (kept.isEmpty()) StoredWorkspace(workspace, unsaved = false, kept)
-                else StoredWorkspace(workspace.withUnreadableNotice(kept, olderCopyLoaded = true), unsaved = true, kept)
+                val unreported = kept + keptEarlier.filter { modifiedMillis(it) > candidate.modifiedMillis }
+                return if (unreported.isEmpty()) StoredWorkspace(workspace, unsaved = false, kept)
+                else StoredWorkspace(workspace.withUnreadableNotice(unreported, olderCopyLoaded = true), unsaved = true, kept)
             }
-            kept.add(keepUnreadable(file)) // Path is Iterable<Path>: never `+=` a single path.
+            kept.add(keepUnreadable(candidate.file)) // Path is Iterable<Path>: never `+=` a single path.
         }
-        val workspace = if (kept.isEmpty()) defaultWorkspace
-            else defaultWorkspace.withUnreadableNotice(kept, olderCopyLoaded = false)
+        val unreported = kept + keptEarlier
+        val workspace = if (unreported.isEmpty()) defaultWorkspace
+            else defaultWorkspace.withUnreadableNotice(unreported, olderCopyLoaded = false)
         return StoredWorkspace(workspace, unsaved = true, kept)
+    }
+
+    /**
+     * Null only when [file] does not exist. Metadata that cannot be read (an I/O error, a stale network handle)
+     * is retried like a read; if it stays unreadable the load fails without writing anything, because a copy
+     * that may exist must never be replaced as if it were missing.
+     */
+    private fun savedCopy(file: Path): SavedCopy? {
+        var failure: IOException? = null
+        repeat(WORKSPACE_WRITE_ATTEMPTS) { attempt ->
+            try {
+                Files.readAttributes(file, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+                return SavedCopy(file, modifiedMillis(file))
+            } catch (_: NoSuchFileException) {
+                return null
+            } catch (error: IOException) {
+                failure = error
+                if (attempt < WORKSPACE_WRITE_ATTEMPTS - 1) Thread.sleep(WORKSPACE_WRITE_RETRY_DELAY_MILLIS)
+            }
+        }
+        logWorkspaceWriteError(failure ?: IOException())
+        throw DesktopPersistenceException()
+    }
+
+    /** Modification time through a link, as copies were always ordered; the entry's own time if that fails. */
+    private fun modifiedMillis(file: Path): Long = try {
+        Files.getLastModifiedTime(file).toMillis()
+    } catch (_: IOException) {
+        runCatching { Files.getLastModifiedTime(file, NOFOLLOW_LINKS).toMillis() }.getOrDefault(0L)
     }
 
     /** Null when the file cannot be read or is not a valid UTF-8 workspace; IO failures are retried first. */
@@ -243,14 +286,23 @@ class DesktopStateStore(
         }
     }
 
-    /** Kept copies in the folder, older ones included; a failed listing never fails the load. */
-    private fun findKeptUnreadableWorkspaces(keptNow: List<Path>): List<String> = runCatching {
+    /**
+     * Kept copies in the folder sorted by name, older ones included, or null when the folder cannot be listed
+     * (a missing folder holds none). A failed listing never fails a load.
+     */
+    private fun listKeptCopies(): List<Path>? = try {
         Files.newDirectoryStream(baseDir) { entry ->
             val name = entry.fileName.toString()
             name.startsWith("${workspaceFile.fileName}$KEPT_INFIX") ||
                 name.startsWith("${workspaceRecoveryFile.fileName}$KEPT_INFIX")
-        }.use { entries -> entries.map { it.fileName.toString() }.sorted() }
-    }.getOrElse { keptNow.map { it.fileName.toString() } }
+        }.use { entries -> entries.sortedBy { it.fileName.toString() } }
+    } catch (_: NoSuchFileException) {
+        emptyList()
+    } catch (_: IOException) {
+        null
+    } catch (_: DirectoryIteratorException) {
+        null
+    }
 
     private fun writeWorkspaceAtomically(content: String) {
         var primaryError: IOException? = null
@@ -348,6 +400,8 @@ class DesktopStateStore(
             prettyPrint = true
             prettyPrintIndent = "  "
         }
+        /** Raised only by a change that older builds would misread; they then keep the workspace aside. */
+        private const val WORKSPACE_FORMAT = 1
         private const val WORKSPACE_WRITE_ATTEMPTS = 5
         private const val WORKSPACE_WRITE_RETRY_DELAY_MILLIS = 100L
         private const val KEPT_INFIX = ".unreadable-"
@@ -361,6 +415,7 @@ class DesktopStateStore(
 
     private fun encodeWorkspace(workspace: DesktopWorkspace): JsonObject {
         return buildJsonObject {
+            put("format", JsonPrimitive(WORKSPACE_FORMAT))
             put("persisted_state", encodePersistedState(workspace.persistedState))
             put("resume_connection_on_launch", JsonPrimitive(workspace.resumeConnectionOnLaunch))
             put("locations", buildJsonArray {
@@ -387,6 +442,11 @@ class DesktopStateStore(
 
     private fun decodeWorkspace(raw: String): DesktopWorkspace {
         val root = json.parseToJsonElement(raw).jsonObject
+        // No format is an older build's workspace. Any other format is a newer build's change that this build
+        // would misread, so it is not decoded: the load keeps it aside instead of overwriting it.
+        root["format"]?.let { format ->
+            require(format is JsonPrimitive && !format.isString && format.intOrNull == WORKSPACE_FORMAT) { "FORMAT" }
+        }
         val persisted = decodePersistedState(root["persisted_state"]?.jsonObject ?: JsonObject(emptyMap()))
         val locations = root["locations"]?.jsonArray.orEmpty().mapNotNull { element ->
             val item = element as? JsonObject ?: return@mapNotNull null
