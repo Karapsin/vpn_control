@@ -64,7 +64,9 @@ try {
  $file.Dispose(); $file=$null; $witness.Dispose(); $witness=$null; $pin.Dispose(); $pin=$null
  # windows-vpn-user-files.cs PinParents: every folder from the volume root to a resource's folder.
  $method=[VpnScopedStorage.OriginalUser].GetMethod('PinParents',[Reflection.BindingFlags]'NonPublic,Static')
- $parents=$method.Invoke($null,[object[]]@($pinned,$null))
+ # Invoke hands the array's elements to the method as they are, and Join-Path's output is a PSObject
+ # that reflection cannot convert to the string parameter: pass the string itself.
+ $parents=$method.Invoke($null,[object[]]@([string]$pinned,$null))
  Expect 'rename-file-into-resource-folder' ([NativePinSharingFixture]::Move((Join-Path $outside 'resource'),(Join-Path $pinned 'resource'))) 0
  Expect 'rename-resource-folder' ([NativePinSharingFixture]::Move($pinned,$moved)) 32
  [IDisposable].GetMethod('Dispose').Invoke($parents,$null); $parents=$null
