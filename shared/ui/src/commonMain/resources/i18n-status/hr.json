@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Spremljene postavke nije bilo moguće pročitati pa su zamijenjene zadanima. Nečitljivi podaci zadržani su u mapi postavki pod nazivom {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Najnovije spremljene postavke nije bilo moguće pročitati pa je učitana starija spremljena kopija. Nečitljivi podaci zadržani su u mapi postavki pod nazivom {0}"
   },
   "freeformReplacements": [
     {

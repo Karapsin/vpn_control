@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "저장된 설정을 읽을 수 없어 기본 설정으로 바꿨습니다. 읽을 수 없는 데이터는 설정 폴더에 {0}(으)로 보관되었습니다",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "가장 최근에 저장된 설정을 읽을 수 없어 이전에 저장된 사본을 불러왔습니다. 읽을 수 없는 데이터는 설정 폴더에 {0}(으)로 보관되었습니다"
   },
   "freeformReplacements": [
     {

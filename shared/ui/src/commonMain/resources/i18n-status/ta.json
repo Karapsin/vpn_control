@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "சேமித்த அமைப்புகளைப் படிக்க முடியவில்லை, எனவே அவை இயல்புநிலை அமைப்புகளால் மாற்றப்பட்டன. படிக்க முடியாத தரவு அமைப்புகள் கோப்புறையில் {0} என்ற பெயரில் வைக்கப்பட்டுள்ளது",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "சமீபத்தில் சேமித்த அமைப்புகளைப் படிக்க முடியவில்லை, எனவே பழைய சேமித்த நகல் ஏற்றப்பட்டது. படிக்க முடியாத தரவு அமைப்புகள் கோப்புறையில் {0} என்ற பெயரில் வைக்கப்பட்டுள்ளது"
   },
   "freeformReplacements": [
     {

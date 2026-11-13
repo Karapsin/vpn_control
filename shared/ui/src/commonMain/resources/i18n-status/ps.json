@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "خوندي شوې امستنې ونه لوستل شوې، نو د ډیفالټ امستنو په واسطه بدلې شوې. نه لوستونکي معلومات د امستنو په فولډر کې د {0} په نوم وساتل شول",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "وروستۍ خوندي شوې امستنې ونه لوستل شوې، نو یوه زړه خوندي شوې کاپي پورته شوه. نه لوستونکي معلومات د امستنو په فولډر کې د {0} په نوم وساتل شول"
   },
   "freeformReplacements": [
     {

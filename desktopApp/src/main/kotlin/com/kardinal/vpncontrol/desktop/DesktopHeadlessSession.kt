@@ -35,6 +35,7 @@ internal class DesktopHeadlessSession(
     private val quitOwner: (suspend (String, Long?) -> DesktopControlWriteResponse)? = null,
     private val install: DesktopControlInstallActions? = null,
     private val probeUpdateTransport: (suspend (String) -> Result<DesktopUpdateTransportProbe>)? = null,
+    private val statusWarnings: () -> List<String> = { emptyList() },
 ) : AutoCloseable {
     private val mutations = Mutex()
     private val operations = DesktopOperationRunner(scope, controllerId, metadataProvider = metadataProvider,
@@ -256,7 +257,8 @@ internal class DesktopHeadlessSession(
             val snapshot = inspectStatus?.invoke(controllerId) ?: return DesktopCliResponse.failure("UNSUPPORTED")
             val result = com.kardinal.vpncontrol.model.ControlResult(controllerId, request.requestId,
                 com.kardinal.vpncontrol.model.ControlCode.OK, snapshot.configurationRevision,
-                restartRequired = snapshot.restartRequired, data = snapshot.toControlValues())
+                restartRequired = snapshot.restartRequired, data = snapshot.toControlValues(),
+                warnings = statusWarnings())
             return DesktopCliResponse.success(com.kardinal.vpncontrol.control.ControlDocumentCodec.encodeResult(result))
         }
         if (request.command.operation == com.kardinal.vpncontrol.model.ControlOperationId.CAPABILITIES) {

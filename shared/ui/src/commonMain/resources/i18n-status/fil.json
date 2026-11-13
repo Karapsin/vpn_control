@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Hindi mabasa ang mga naka-save na setting kaya pinalitan ang mga ito ng mga default. Itinago ang hindi mabasang data sa folder ng mga setting bilang {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Hindi mabasa ang pinakabagong naka-save na mga setting kaya nag-load ng mas lumang naka-save na kopya. Itinago ang hindi mabasang data sa folder ng mga setting bilang {0}"
   },
   "freeformReplacements": [
     {

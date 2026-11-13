@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Não foi possível ler as configurações salvas, então elas foram substituídas pelas configurações padrão. Os dados ilegíveis foram mantidos na pasta de configurações com o nome {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Não foi possível ler as configurações salvas mais recentes, então uma cópia salva mais antiga foi carregada. Os dados ilegíveis foram mantidos na pasta de configurações com o nome {0}"
   },
   "freeformReplacements": [
     {

@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "לא ניתן היה לקרוא את ההגדרות השמורות, ולכן הן הוחלפו בהגדרות ברירת המחדל. הנתונים שלא ניתן לקרוא נשמרו בתיקיית ההגדרות בשם {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "לא ניתן היה לקרוא את ההגדרות השמורות האחרונות, ולכן נטען עותק שמור ישן יותר. הנתונים שלא ניתן לקרוא נשמרו בתיקיית ההגדרות בשם {0}"
   },
   "freeformReplacements": [
     {

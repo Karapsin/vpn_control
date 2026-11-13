@@ -2160,6 +2160,73 @@ Fast Checks and every desktop package workflow, and `test_windows_ssh_relay_case
 agent tier. Logs, JUnit reports, the mutant summary and the beforeimages are under
 `.runtime/windows-parity-20261107/evidence/ssh-bootstrap-cleanup/`.
 
+### An unreadable saved workspace was replaced with defaults (product, offline, 2026-11-13)
+
+Found by reviewing `DesktopStateStore.loadWorkspace` on `00d1e64b`, not by a native run. The load read
+`workspace.json` and `workspace-recovery.json` newest first and, when neither decoded, wrote the defaults:
+that replaced `workspace.json` and deleted the recovery file, so every subscription, location, rule and
+setting was gone and neither the GUI nor `status` said so. The same path took a file that exists but cannot
+be opened (an owner-only file of another account, for example after a `sudo` run) and a workspace of a newer
+build that this build cannot decode, so a downgrade destroyed it (`PRODUCT-003`). A newer unreadable copy
+beside an older readable one survived the load and was replaced by the next ordinary save. A first run and an
+additive newer workspace were already right.
+
+The load now keeps every copy it tried and could not read before anything is written. It renames it to
+`<name>.unreadable-<UTC yyyyMMddTHHmmssZ>-<8 hex>` in the same private folder (bytes, owner and Windows ACL
+unchanged; POSIX group and other bits removed, never added); when a rename is refused, as by a Windows sharing
+lock, it writes an owner-only copy and the original is superseded like any older copy. If neither works,
+nothing is written and the load fails with `PERSISTENCE_FAILED`, as an unwritable first run already did. Reads
+are retried like writes, invalid UTF-8 counts as unreadable, and an older copy that was never tried stays
+superseded as before. The loaded workspace gets the typed status `SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED`
+or `SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED` naming the kept files, as its status line and one log entry,
+and is saved at once, so a GUI attaching to a later owner still shows it. Both templates are translated in all
+66 status catalogs (`check_localization.py` reports the same 4987 warnings before and after, none for them).
+While a kept copy remains, desktop `status` adds warning `UNREADABLE_WORKSPACE_KEPT`; the folder is scanned
+when an owner starts, so a later transient CLI owner reports it too. When the older copy that loads had a
+reconnect intent, the status line first shows the pending restore; the log entry and the warning remain.
+`PRODUCT-003` now states the rule.
+
+RED: `DesktopStateStoreUnreadableWorkspaceTest` uses only API the unfixed store had. On the production sources
+of `00d1e64b` with only the new tests added, `./gradlew --offline --continue
+-Pcompose.desktop.packaging.checkJdkVendor=false :desktopApp:test --tests
+com.kardinal.vpncontrol.desktop.DesktopStateStoreUnreadableWorkspaceTest` ran 12 tests with 9 failures, each
+"not kept", "replaced", "deleted", "destroyed" or "status warnings were []"; the 3 guards passed. GREEN on the
+fix: 12 tests, no failure; with 18 neighbouring classes (store durability, service, headless session, status
+clients, owner, guarded persistence failures) 120 tests, no failure; `:shared:model:desktopTest` 30 and
+`:shared:ui:desktopTest` 54 tests, no failure. Logs and JUnit XML are in
+`.runtime/windows-parity-20261107/evidence/workspace-corruption/` of the recovery checkout.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| An existing workspace that does not decode was overwritten with defaults, silently | `DesktopStateStoreUnreadableWorkspaceTest`: `undecodableWorkspaceIsKeptAsideAndReportedInsteadOfBeingReplacedWithDefaults`, `undecodableRecoveryFileIsKeptWhenNoReadableCopyExists`, `bothUnreadableCopiesAreKeptAndNamed` (`:desktopApp:test`) | The kept bytes equal the original and are owner-only; the notice survives a restart and is logged once; a readable reload keeps nothing more. |
+| A newer unreadable copy beside an older readable one was replaced by the next save | `newerUnreadablePrimaryIsKeptWhileTheOlderReadableRecoveryLoads`, `newerUnreadableRecoveryIsKeptWhileTheOlderReadablePrimaryLoads` | The older copy loads with the older-copy notice; each test saves once more, as the next mutation would. |
+| A workspace that exists but cannot be opened was replaced | `workspaceThatCannotBeOpenedIsKeptWithoutWideningItsPermissions` (POSIX, not root) | Mode `000` stays `000` on the kept copy. |
+| A newer build's workspace that this build cannot decode was destroyed (downgrade) | `workspaceFromANewerIncompatibleBuildIsKeptForThatBuild` | An object where this build expects a list. |
+| The loss was reported neither to the GUI nor to the control status | `guiPresentationCarriesTheNoticeWithTheKeptName`, `controlStatusWarnsWhileAKeptUnreadableWorkspaceRemains`; facade: `StatusMessageDomainFacadesTest.settingsDomainEncodesExpectedKeysAndArgs` (`:shared:model:desktopTest`) | The presentation carries the key with the name unredacted and English renders it; a second owner still warns, and the warning ends when the copy is gone. |
+
+Guards that pass on both trees: `firstRunStartsFromDefaultsWithoutKeepingOrReportingAnything`,
+`newerAdditiveFieldsStillLoadWithoutBeingKeptOrReported`, and
+`workspaceThatCannotBeKeptIsNeitherReplacedNorReportedAsLoaded` (read-only folder: `PERSISTENCE_FAILED`, the
+original unchanged, nothing else written).
+
+Android (`PRODUCT-002`) differs and is not changed. Its DataStore (`vpn_control.preferences_pb`,
+`AndroidPreferencesSerializer`) has no corruption handler, so an undecodable file fails every committed read and
+write with `CorruptionException` and is never replaced:
+`AndroidConfigurationStoreTest.undecodableProductionStoreFailsReadsAndWritesAndKeepsItsBytes` pins it
+(`:app:testDebugUnitTest`: that class 14 tests and `AndroidPreferencesSerializerTest` 20, no failure). By code
+reading only: `MainViewModel` collects that failing flow in `viewModelScope` without a handler, so the app is
+expected to stop at launch; the legacy `ProfileStorage.state` maps the failure to empty defaults; ADB control
+reads fail. Android keeps the data but neither stays usable nor says why. That is a separate Android defect
+that needs its own product decision and causal regression; it is unproven natively, as no emulator was used.
+
+Downgrade residuals, pre-existing and not changed: this build's next save drops fields it does not know and
+saves the default for an enum value it does not know; builds before this fix still overwrite a workspace they
+cannot decode. Older builds ignore the kept files and cannot render this build's two new status keys (an empty
+status line through the owner presentation, the raw encoded text elsewhere); nothing is lost.
+Not proven here: the Windows sharing-lock path (the copy fallback), ACL preservation, and any native or
+packaged run. Routine coverage: `:desktopApp:test`, `:shared:model:desktopTest`, `:shared:ui:desktopTest` and
+`:app:testDebugUnitTest` in Fast Checks and the managed pre-push tier.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

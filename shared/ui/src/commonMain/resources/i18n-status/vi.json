@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Không thể đọc cài đặt đã lưu nên cài đặt đã được thay bằng cài đặt mặc định. Dữ liệu không đọc được đã được giữ lại trong thư mục cài đặt với tên {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Không thể đọc cài đặt đã lưu gần nhất nên một bản sao đã lưu cũ hơn đã được tải. Dữ liệu không đọc được đã được giữ lại trong thư mục cài đặt với tên {0}"
   },
   "freeformReplacements": [
     {

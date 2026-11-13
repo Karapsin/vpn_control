@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Не ўдалося прачытаць захаваныя налады, таму іх заменена наладамі па змаўчанні. Нечытэльныя даныя пакінуты ў папцы налад пад назвай {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Не ўдалося прачытаць апошнія захаваныя налады, таму загружана больш старая захаваная копія. Нечытэльныя даныя пакінуты ў папцы налад пад назвай {0}"
   },
   "freeformReplacements": [
     {

@@ -60,7 +60,8 @@ internal class DesktopControllerOwner(
             } }),
         inspectStatus = service::controlSnapshot, inspectRead = service::controlReadSnapshot,
         inspectPresentation = service::controlPresentationSnapshot,
-        probeUpdateTransport = service::probeControlUpdateTransport)
+        probeUpdateTransport = service::probeControlUpdateTransport,
+        statusWarnings = service::controlStatusWarnings)
 
     internal val frontends = DesktopOwnerFrontendLifecycle(controllerId, scope,
         initialize = { session.initialize { service.resumePreviousConnectionIfNeeded() } },

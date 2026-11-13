@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "មិនអាចអានការកំណត់ដែលបានរក្សាទុកបានទេ ដូច្នេះវាត្រូវបានជំនួសដោយការកំណត់លំនាំដើម។ ទិន្នន័យដែលមិនអាចអានបានត្រូវបានរក្សាទុកក្នុងថតការកំណត់ក្នុងឈ្មោះ {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "មិនអាចអានការកំណត់ដែលបានរក្សាទុកចុងក្រោយបានទេ ដូច្នេះច្បាប់ចម្លងដែលបានរក្សាទុកចាស់ជាងនេះត្រូវបានផ្ទុក។ ទិន្នន័យដែលមិនអាចអានបានត្រូវបានរក្សាទុកក្នុងថតការកំណត់ក្នុងឈ្មោះ {0}"
   },
   "freeformReplacements": [
     {

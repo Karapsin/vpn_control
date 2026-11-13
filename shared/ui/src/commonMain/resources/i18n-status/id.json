@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Pengaturan tersimpan tidak dapat dibaca dan telah diganti dengan pengaturan bawaan. Data yang tidak terbaca disimpan di folder pengaturan dengan nama {0}",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Pengaturan tersimpan terbaru tidak dapat dibaca, sehingga salinan tersimpan yang lebih lama dimuat. Data yang tidak terbaca disimpan di folder pengaturan dengan nama {0}"
   },
   "freeformReplacements": [
     {

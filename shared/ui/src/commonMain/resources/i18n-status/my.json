@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "သိမ်းထားသော ဆက်တင်များကို ဖတ်၍မရသဖြင့် မူလဆက်တင်များဖြင့် အစားထိုးလိုက်သည်။ ဖတ်၍မရသော ဒေတာကို ဆက်တင်ဖိုင်တွဲတွင် {0} အမည်ဖြင့် သိမ်းထားသည်",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "နောက်ဆုံးသိမ်းထားသော ဆက်တင်များကို ဖတ်၍မရသဖြင့် ယခင်သိမ်းထားသော မိတ္တူကို ဖွင့်လိုက်သည်။ ဖတ်၍မရသော ဒေတာကို ဆက်တင်ဖိုင်တွဲတွင် {0} အမည်ဖြင့် သိမ်းထားသည်"
   },
   "freeformReplacements": [
     {

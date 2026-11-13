@@ -14,6 +14,7 @@ import com.kardinal.vpncontrol.model.PersistedState
 import com.kardinal.vpncontrol.model.ProfileSourceMode
 import com.kardinal.vpncontrol.model.ProfileTrafficTotal
 import com.kardinal.vpncontrol.model.RoutingRules
+import com.kardinal.vpncontrol.model.SettingsStatusMessages
 import com.kardinal.vpncontrol.model.SubscriptionRefreshPolicy
 import com.kardinal.vpncontrol.model.SubscriptionSource
 import com.kardinal.vpncontrol.model.normalizeSubscriptionRefreshCustomHours
@@ -21,9 +22,12 @@ import com.kardinal.vpncontrol.model.restoreDnsSettings
 import com.kardinal.vpncontrol.shared.storageapi.PersistedStateStore
 import com.kardinal.vpncontrol.shared.storageapi.RuntimeConfigStore
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
@@ -31,7 +35,12 @@ import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.APPEND
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import kotlin.random.Random
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +80,9 @@ data class DesktopWorkspace(
 /** Safe across the command boundary: filesystem exceptions may contain private paths. */
 class DesktopPersistenceException : IOException("PERSISTENCE_FAILED")
 
+/** Control `status` warning while an unreadable saved workspace is kept beside the current one. */
+internal const val DESKTOP_UNREADABLE_WORKSPACE_KEPT_WARNING = "UNREADABLE_WORKSPACE_KEPT"
+
 class DesktopStateStore(
     private val baseDir: Path,
 ) : PersistedStateStore, RuntimeConfigStore {
@@ -79,6 +91,7 @@ class DesktopStateStore(
     private val workspaceWriteErrorFile = baseDir.resolve("workspace-write-error.log")
     private val runtimeConfigFile = baseDir.resolve("runtime-config.json")
     private val stateFlow = MutableStateFlow(PersistedState())
+    @Volatile private var keptUnreadable: List<String> = emptyList()
 
     override val state: Flow<PersistedState> = stateFlow.asStateFlow()
 
@@ -90,12 +103,16 @@ class DesktopStateStore(
 
     fun updateDirectory(): Path = baseDir.resolve("updates")
 
+    /** Names of unreadable saved workspaces kept in the state folder, as found by the last load. */
+    fun keptUnreadableWorkspaces(): List<String> = keptUnreadable
+
     fun loadWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
-        val loadedWorkspace = loadStoredWorkspace(defaultWorkspace)
-        val workspace = loadedWorkspace.migrateLegacyDesktopDefaults()
-        if (workspace != loadedWorkspace) {
+        val stored = loadStoredWorkspace(defaultWorkspace)
+        val workspace = stored.workspace.migrateLegacyDesktopDefaults()
+        if (stored.unsaved || workspace != stored.workspace) {
             writeWorkspace(workspace).getOrThrow()
         }
+        keptUnreadable = findKeptUnreadableWorkspaces(stored.kept)
         stateFlow.value = workspace.persistedState
         return workspace
     }
@@ -116,19 +133,124 @@ class DesktopStateStore(
         )
     }
 
-    private fun loadStoredWorkspace(defaultWorkspace: DesktopWorkspace): DesktopWorkspace {
-        val workspace = listOf(workspaceFile, workspaceRecoveryFile)
-            .filter(Files::exists)
+    private class StoredWorkspace(val workspace: DesktopWorkspace, val unsaved: Boolean, val kept: List<Path>)
+
+    /**
+     * The newest readable copy wins and older copies stay superseded, as before. A newer copy that exists
+     * but cannot be read or decoded (corrupt, unopenable, or written by an incompatible newer build) is kept
+     * aside before anything is written, so neither the defaults nor the next save can replace it, and the
+     * result carries a typed notice. No saved copy at all is a first run: defaults without a notice.
+     */
+    private fun loadStoredWorkspace(defaultWorkspace: DesktopWorkspace): StoredWorkspace {
+        val candidates = listOf(workspaceFile, workspaceRecoveryFile)
+            .filter { Files.exists(it, NOFOLLOW_LINKS) }
             .sortedByDescending { runCatching { Files.getLastModifiedTime(it).toMillis() }.getOrDefault(0L) }
-            .firstNotNullOfOrNull { file ->
-                runCatching { decodeWorkspace(Files.readString(file)) }.getOrNull()
+        val kept = mutableListOf<Path>()
+        for (file in candidates) {
+            val workspace = readWorkspace(file)
+            if (workspace != null) {
+                return if (kept.isEmpty()) StoredWorkspace(workspace, unsaved = false, kept)
+                else StoredWorkspace(workspace.withUnreadableNotice(kept, olderCopyLoaded = true), unsaved = true, kept)
             }
-        if (workspace != null) {
-            return workspace
+            kept.add(keepUnreadable(file)) // Path is Iterable<Path>: never `+=` a single path.
         }
-        writeWorkspace(defaultWorkspace).getOrThrow()
-        return defaultWorkspace
+        val workspace = if (kept.isEmpty()) defaultWorkspace
+            else defaultWorkspace.withUnreadableNotice(kept, olderCopyLoaded = false)
+        return StoredWorkspace(workspace, unsaved = true, kept)
     }
+
+    /** Null when the file cannot be read or is not a valid UTF-8 workspace; IO failures are retried first. */
+    private fun readWorkspace(file: Path): DesktopWorkspace? {
+        val bytes = readWithRetries(file) ?: return null
+        return runCatching {
+            decodeWorkspace(Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString())
+        }.getOrNull()
+    }
+
+    private fun readWithRetries(file: Path): ByteArray? {
+        repeat(WORKSPACE_WRITE_ATTEMPTS) { attempt ->
+            try {
+                return Files.readAllBytes(file)
+            } catch (_: IOException) {
+                if (attempt < WORKSPACE_WRITE_ATTEMPTS - 1) Thread.sleep(WORKSPACE_WRITE_RETRY_DELAY_MILLIS)
+            } catch (_: OutOfMemoryError) {
+                return null
+            }
+        }
+        return null
+    }
+
+    /**
+     * Renames [file] to a unique name in the same private folder; a rename keeps its bytes, owner and Windows
+     * ACL, and group/other access is only ever removed. When the rename is refused, for example by a Windows
+     * sharing lock, an owner-only copy is made instead and the original is superseded like any older copy.
+     * If neither succeeds nothing is written and the load fails.
+     */
+    private fun keepUnreadable(file: Path): Path {
+        var failure: IOException? = null
+        repeat(WORKSPACE_WRITE_ATTEMPTS) { attempt ->
+            val target = keptPath(file)
+            try {
+                Files.move(file, target)
+                removeGroupAndOtherAccess(target)
+                return target
+            } catch (error: FileAlreadyExistsException) {
+                failure = error
+            } catch (error: IOException) {
+                failure = error
+                if (attempt < WORKSPACE_WRITE_ATTEMPTS - 1) Thread.sleep(WORKSPACE_WRITE_RETRY_DELAY_MILLIS)
+            }
+        }
+        val copy = keptPath(file)
+        try {
+            copyPrivately(file, copy)
+            return copy
+        } catch (error: IOException) {
+            failure?.addSuppressed(error) ?: run { failure = error }
+        }
+        logWorkspaceWriteError(failure ?: IOException())
+        throw DesktopPersistenceException()
+    }
+
+    private fun keptPath(file: Path): Path = baseDir.resolve(
+        "${file.fileName}$KEPT_INFIX${KEPT_STAMP.format(Instant.now())}-${"%08x".format(Random.nextInt())}",
+    )
+
+    private fun removeGroupAndOtherAccess(file: Path) {
+        if ("posix" !in file.fileSystem.supportedFileAttributeViews()) return
+        runCatching {
+            if (!Files.isRegularFile(file, NOFOLLOW_LINKS)) return
+            val permissions = Files.getPosixFilePermissions(file, NOFOLLOW_LINKS)
+            val ownerOnly = permissions.filterTo(mutableSetOf()) { it in OWNER_PERMISSIONS }
+            if (ownerOnly != permissions) Files.setPosixFilePermissions(file, ownerOnly)
+        }
+    }
+
+    private fun copyPrivately(source: Path, target: Path) {
+        if ("posix" in target.fileSystem.supportedFileAttributeViews()) {
+            Files.createFile(target, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+        } else {
+            Files.createFile(target)
+        }
+        try {
+            Files.newInputStream(source).use { input ->
+                Files.newOutputStream(target, WRITE).use { output -> input.copyTo(output) }
+            }
+            FileChannel.open(target, WRITE).use { it.force(true) }
+        } catch (error: IOException) {
+            runCatching { Files.deleteIfExists(target) }
+            throw error
+        }
+    }
+
+    /** Kept copies in the folder, older ones included; a failed listing never fails the load. */
+    private fun findKeptUnreadableWorkspaces(keptNow: List<Path>): List<String> = runCatching {
+        Files.newDirectoryStream(baseDir) { entry ->
+            val name = entry.fileName.toString()
+            name.startsWith("${workspaceFile.fileName}$KEPT_INFIX") ||
+                name.startsWith("${workspaceRecoveryFile.fileName}$KEPT_INFIX")
+        }.use { entries -> entries.map { it.fileName.toString() }.sorted() }
+    }.getOrElse { keptNow.map { it.fileName.toString() } }
 
     private fun writeWorkspaceAtomically(content: String) {
         var primaryError: IOException? = null
@@ -228,6 +350,13 @@ class DesktopStateStore(
         }
         private const val WORKSPACE_WRITE_ATTEMPTS = 5
         private const val WORKSPACE_WRITE_RETRY_DELAY_MILLIS = 100L
+        private const val KEPT_INFIX = ".unreadable-"
+        private val KEPT_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+        private val OWNER_PERMISSIONS = setOf(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE,
+            PosixFilePermission.OWNER_EXECUTE,
+        )
     }
 
     private fun encodeWorkspace(workspace: DesktopWorkspace): JsonObject {
@@ -512,6 +641,12 @@ class DesktopStateStore(
         )
     }
 }
+
+private fun DesktopWorkspace.withUnreadableNotice(kept: List<Path>, olderCopyLoaded: Boolean): DesktopWorkspace = copy(
+    persistedState = persistedState.withStatus(
+        SettingsStatusMessages.savedSettingsUnreadable(kept.map { it.fileName.toString() }, olderCopyLoaded),
+    ),
+)
 
 private fun DesktopWorkspace.migrateLegacyDesktopDefaults(): DesktopWorkspace {
     val migratedState = persistedState.migrateLegacyDesktopDefaults()

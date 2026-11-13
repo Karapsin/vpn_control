@@ -36,6 +36,16 @@ object SettingsStatusMessages {
     fun customDnsEndpointInvalid(): String =
         StatusMessageCodec.encode(StatusMessageKey.CUSTOM_DNS_ENDPOINT_INVALID)
 
+    /** Saved settings that could not be read; [keptNames] are the unreadable files kept beside them. */
+    fun savedSettingsUnreadable(keptNames: List<String>, olderCopyLoaded: Boolean): String = StatusMessageCodec.encode(
+        if (olderCopyLoaded) {
+            StatusMessageKey.SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED
+        } else {
+            StatusMessageKey.SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED
+        },
+        keptNames.joinToString(", "),
+    )
+
     fun homeSshPrivateKeyImported(): String =
         StatusMessageCodec.encode(StatusMessageKey.HOME_SSH_PRIVATE_KEY_IMPORTED)
 

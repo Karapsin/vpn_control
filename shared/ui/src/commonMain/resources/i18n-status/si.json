@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "සුරැකි සැකසුම් කියවිය නොහැකි වූ නිසා ඒවා පෙරනිමි සැකසුම් මගින් ප්‍රතිස්ථාපනය කරන ලදී. කියවිය නොහැකි දත්ත සැකසුම් ෆෝල්ඩරයේ {0} නමින් තබා ඇත",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "නවතම සුරැකි සැකසුම් කියවිය නොහැකි වූ නිසා පැරණි සුරැකි පිටපතක් පූරණය කරන ලදී. කියවිය නොහැකි දත්ත සැකසුම් ෆෝල්ඩරයේ {0} නමින් තබා ඇත"
   },
   "freeformReplacements": [
     {

@@ -1022,6 +1022,11 @@ class DesktopAppService internal constructor(
     @Synchronized internal fun controlMetadata(): DesktopControlMetadata =
         DesktopControlMetadata(configurationRevision, hasPendingRuntimeChanges())
 
+    /** `status` keeps reporting the persistence failure while an unreadable saved workspace is kept. */
+    internal fun controlStatusWarnings(): List<String> =
+        if (desktopStore.keptUnreadableWorkspaces().isEmpty()) emptyList()
+        else listOf(DESKTOP_UNREADABLE_WORKSPACE_KEPT_WARNING)
+
     @Synchronized internal fun controlSettingsSnapshot(): DesktopControlSettingsSnapshot =
         DesktopControlSettingsSnapshot(controlMetadata(), inspectControlSettings())
 

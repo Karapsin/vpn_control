@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "সংরক্ষিত সেটিংস পড়া যায়নি, তাই সেগুলো ডিফল্ট সেটিংস দিয়ে প্রতিস্থাপন করা হয়েছে। পড়া যায়নি এমন ডেটা সেটিংস ফোল্ডারে {0} নামে রাখা হয়েছে",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "সর্বশেষ সংরক্ষিত সেটিংস পড়া যায়নি, তাই একটি পুরোনো সংরক্ষিত কপি লোড করা হয়েছে। পড়া যায়নি এমন ডেটা সেটিংস ফোল্ডারে {0} নামে রাখা হয়েছে"
   },
   "freeformReplacements": [
     {

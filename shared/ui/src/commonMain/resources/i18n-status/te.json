@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "సేవ్ చేసిన సెట్టింగ్‌లను చదవలేకపోయాము, కాబట్టి వాటిని డిఫాల్ట్ సెట్టింగ్‌లతో భర్తీ చేశాము. చదవలేని డేటాను సెట్టింగ్‌ల ఫోల్డర్‌లో {0} పేరుతో ఉంచాము",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "తాజాగా సేవ్ చేసిన సెట్టింగ్‌లను చదవలేకపోయాము, కాబట్టి పాత సేవ్ చేసిన కాపీని లోడ్ చేశాము. చదవలేని డేటాను సెట్టింగ్‌ల ఫోల్డర్‌లో {0} పేరుతో ఉంచాము"
   },
   "freeformReplacements": [
     {

@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "محفوظ کردہ ترتیبات پڑھی نہیں جا سکیں، اس لیے انہیں ڈیفالٹ ترتیبات سے بدل دیا گیا۔ نہ پڑھا جا سکنے والا ڈیٹا ترتیبات کے فولڈر میں {0} کے نام سے رکھا گیا ہے",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "تازہ ترین محفوظ کردہ ترتیبات پڑھی نہیں جا سکیں، اس لیے ایک پرانی محفوظ کاپی لوڈ کی گئی۔ نہ پڑھا جا سکنے والا ڈیٹا ترتیبات کے فولڈر میں {0} کے نام سے رکھا گیا ہے"
   },
   "freeformReplacements": [
     {

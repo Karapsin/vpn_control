@@ -150,6 +150,16 @@ class StatusMessageDomainFacadesTest {
             key = StatusMessageKey.CONNECTION_STOPPED_FOR_APP_MODE,
             args = listOf(AppMode.VPN.name, AppMode.PROXY_ONLY.name),
         )
+        assertStructured(
+            message = SettingsStatusMessages.savedSettingsUnreadable(listOf("a|b", "c:d"), olderCopyLoaded = false),
+            key = StatusMessageKey.SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED,
+            args = listOf("a|b, c:d"),
+        )
+        assertStructured(
+            message = SettingsStatusMessages.savedSettingsUnreadable(listOf("kept"), olderCopyLoaded = true),
+            key = StatusMessageKey.SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED,
+            args = listOf("kept"),
+        )
     }
 
     private fun assertStructured(

@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "जतन केलेल्या सेटिंग्ज वाचता आल्या नाहीत, म्हणून त्या डीफॉल्ट सेटिंग्जने बदलल्या. न वाचता येणारा डेटा सेटिंग्ज फोल्डरमध्ये {0} या नावाने ठेवला आहे",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "सर्वात अलीकडे जतन केलेल्या सेटिंग्ज वाचता आल्या नाहीत, म्हणून जुनी जतन केलेली प्रत लोड केली. न वाचता येणारा डेटा सेटिंग्ज फोल्डरमध्ये {0} या नावाने ठेवला आहे"
   },
   "freeformReplacements": [
     {

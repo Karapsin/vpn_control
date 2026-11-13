@@ -319,7 +319,9 @@
     "HOME_SSH_SETTINGS_INVALID": "SSH Routing settings are invalid: {0}",
     "HOME_SSH_ROUTE_SAVED": "SSH route saved",
     "HOME_SSH_ROUTE_SAVED_RESTART_REQUIRED": "SSH route saved; restart required",
-    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route..."
+    "HOME_SSH_ROUTE_RESTARTING": "Restarting the connection with the SSH route...",
+    "SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED": "Saxlanılmış ayarları oxumaq mümkün olmadı, ona görə də onlar standart ayarlarla əvəz edildi. Oxunmayan məlumatlar ayarlar qovluğunda {0} adı ilə saxlanıldı",
+    "SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED": "Son saxlanılmış ayarları oxumaq mümkün olmadı, ona görə də daha köhnə saxlanılmış nüsxə yükləndi. Oxunmayan məlumatlar ayarlar qovluğunda {0} adı ilə saxlanıldı"
   },
   "freeformReplacements": [
     {
