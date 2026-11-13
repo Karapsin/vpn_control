@@ -63,7 +63,13 @@ deployment twice (`--target` and `--deployment-id`), so a mismatch stops with no
 output. `python3 scripts/visual_platform.py capture-local --platform windows
 --target deployment:<id> --driver "python3 scripts/capture_visual_windows_remote.py
 --deployment-id <id> --operation-id <frame-op> --journal-id <journal>" --output
-build/visual-actual/windows --scene windows-uac`.
+build/visual-actual/windows --scene windows-uac`. The frame it collects is one
+`windows-vm-deploy-frame` took while the consent prompt was up. On an owned clone
+the closed setup route `vm_workflow windows-uac-visual` puts it there: `raise`
+wakes the display, raises the prompt and leaves it open, the frame route captures
+it, and `cancel` closes it with one `Esc` and proves it closed. The operator
+sequence, direct first, is in
+[the tool reference](tools/visual-and-platform-evidence.md#windows-uac-visual-prompt).
 The selector must match the configured provider and current
 owned instance; a missing or conflicting selector blocks before recovery or
 input. There is no fallback to another provider. A QMP mutation additionally

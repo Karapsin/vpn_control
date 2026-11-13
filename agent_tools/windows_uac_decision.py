@@ -10,6 +10,11 @@ so a lost reply never types twice, and a repeat is a status packet with no key p
 The reply is an acknowledgement: it never claims that the approval or the product
 outcome succeeded. This module is a leaf; no sign-in packet embeds it, and
 readiness_windows._source_pins does not list it.
+
+``vm_workflow windows-uac-review`` takes the same five fields and needs no profile. It runs
+the same admission, makes the decision's own single journaled pointer move when the display
+is black, retains the post-wake frame privately for review and stops: no burn, no key, no
+credential and no decision journal, so the prompt stays open for a decision within the gate.
 """
 from __future__ import annotations
 
@@ -27,11 +32,11 @@ import struct
 import subprocess
 import tempfile
 import time
+from types import SimpleNamespace
 from uuid import UUID, uuid5
 import zlib
 
 from . import native_scenario_execution as execution
-from . import native_scenario_windows as windows
 from . import readiness_windows_login as login
 from . import readiness_windows_remote as packets
 from . import ssh_transport as transport
@@ -53,6 +58,16 @@ DARK_LEVEL = 110
 _HELPER_IMAGE = {"install-helper": "vpn-control-install-helper.exe", "vpn-broker": "vpn-control-vpn-broker.exe",
                  "qualification": "whoami.exe"}
 _DECISION_NAMESPACE = "windows-uac-decision"
+_REVIEW_NAMESPACE = "windows-uac-review"
+_DECISIONS = ".runtime/windows-uac-decisions"
+_REVIEWS = ".runtime/windows-uac-reviews"
+# After the one pointer move, frames are read for this long before a black display refuses. Reading moves nothing.
+REVIEW_SETTLE_SECONDS = 10
+REVIEW_FRAME_BYTES = 16 * 1024 ** 2
+# A review reply carries its frame: base64 of the deflated PPM, which is never larger than the frame bound plus framing.
+REVIEW_REPLY_BYTES = 24 * 1024 ** 2
+_REVIEW_TERMINAL = frozenset({"state", "operationId", "attempt", "decision", "prompt", "consent", "frameSha256", "frameBytes", "width", "height",
+                              "pointerMoved", "wakeMilliseconds", "promptAnswered", "replayAllowed"})
 _PROFILE_FIELDS = frozenset({"schemaVersion", "deploymentId", "prompt", "width", "height", "crops", "field", "reviewedFrameSha256"})
 _ATTEMPT_INTENT = re.compile(r"attempt-([0-9]{4})\.intent\.json\Z")
 _ROOT_FORM = r"C:\\Users\\[A-Za-z0-9_.-]{1,64}\\AppData\\Local\\VpnControlOrdinary-"
@@ -67,6 +82,9 @@ _RETRY_REASONS = frozenset({"instance_uac_event_not_pending", "instance_uac_cens
                             "instance_guest_program_failed", "instance_original_guest_pending", "instance_guest_output",
                             "instance_guest_output_bound", "instance_guest_exec_ack", "uac_transport_unsubmitted",
                             "uac_credential_unavailable"})
+# A review may also follow one that saw the display still black. The pointer journal forbids a second move, so a
+# later review only reads the census and frames: a slow wake costs a call, not the run. The decision keeps its rule.
+_REVIEW_RETRY_REASONS = _RETRY_REASONS | {"instance_uac_display_black"}
 
 
 def _update_row(decision, event, field, value, variant=None):
@@ -168,7 +186,7 @@ def census_source(row, context, administrator):
     return source
 
 
-# Everything from here to _uac_status_open runs on the VM host, embedded by inspect.getsource.
+# Everything from here to _uac_review_status_open runs on the VM host, embedded by inspect.getsource.
 def _uac_load(path):
     """One bounded private receipt, read once."""
     import json,os,stat
@@ -518,10 +536,191 @@ def _uac_status_open(root,save,guard,script):
     guard();_uac_create(directory/'input.terminal.json',terminal)
     return terminal
 
+def _uac_directory(path):
+    """One private folder, made once: owned, 0700 and never a link."""
+    import os,stat
+    try:os.mkdir(path,0o700)
+    except FileExistsError:pass
+    s=os.lstat(path)
+    if not stat.S_ISDIR(s.st_mode)or s.st_uid!=os.geteuid()or stat.S_IMODE(s.st_mode)!=0o700:raise ValueError('instance_uac_directory')
+
+def _uac_publish(path,raw):
+    """_uac_create for bytes: the retained frame appears whole and durable, under a name that never existed."""
+    import os,uuid
+    view=memoryview(raw);offset=0
+    directory=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW);temporary='.'+path.name+'.'+uuid.uuid4().hex+'.tmp'
+    try:
+        descriptor=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+        try:
+            while offset<len(view):offset+=os.write(descriptor,view[offset:])
+            os.fsync(descriptor)
+        finally:os.close(descriptor)
+        os.link(temporary,path.name,src_dir_fd=directory,dst_dir_fd=directory,follow_symlinks=False)
+    finally:
+        try:
+            try:os.unlink(temporary,dir_fd=directory)
+            except FileNotFoundError:pass
+        finally:
+            try:os.fsync(directory)
+            finally:os.close(directory)
+
+def _uac_review_frame(directory,terminal):
+    """A review terminal as a reply carries it: a retained frame comes with its exact bytes, read back and checked."""
+    import base64,os,stat,zlib
+    if terminal.get('state')!='review-frame-retained':return terminal
+    descriptor=os.open(directory/('attempt-%04d.frame.ppm'%terminal['attempt']),os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        info=os.fstat(descriptor);raw=bytearray()
+        if (not stat.S_ISREG(info.st_mode)or info.st_uid!=os.geteuid()or stat.S_IMODE(info.st_mode)!=0o600
+                or info.st_size!=terminal['frameBytes']or not 0<info.st_size<=16*1024**2):raise ValueError('instance_uac_review_frame')
+        while len(raw)<info.st_size:
+            chunk=os.read(descriptor,min(1048576,info.st_size-len(raw)))
+            if not chunk:raise ValueError('instance_uac_review_frame')
+            raw+=chunk
+    finally:os.close(descriptor)
+    if hashlib.sha256(raw).hexdigest()!=terminal['frameSha256']:raise ValueError('instance_uac_review_frame')
+    return {**terminal,'frame':base64.b64encode(zlib.compress(bytes(raw),6)).decode()}
+
+class _UacReview:
+    """One attempt of a review-only capture, in its own folder of windows-uac.
+
+    The one file it shares is the decision's pointer journal, so a review and the decision of the same scenario move
+    the pointer once between them. It never writes a burn, an input journal, a fence or a decision terminal.
+    """
+    def __init__(self,root,review,attempt):
+        self.root=root;self.review=review;self.attempt=attempt;self.begun=False;self.moved=False
+        self.parent=root/'windows-uac';self.directory=self.parent/review;self.prefix='attempt-%04d'%attempt
+        self.pointer=self.parent/UAC_DECISION_ID/'pointer.intent.json'
+    def begin(self):
+        """This packet holds the root lock, so no earlier attempt lives: each must have ended refused."""
+        import os
+        for path in (self.parent,self.directory,self.pointer.parent):_uac_directory(path)
+        for path in (self.parent,self.root):
+            descriptor=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+            try:os.fsync(descriptor)
+            finally:os.close(descriptor)
+        names=os.listdir(self.directory)
+        if len(names)>256:raise ValueError('instance_uac_history_bound')
+        for name in names:
+            found=re.fullmatch(r'attempt-([0-9]{4})\.intent\.json',name)
+            if found is None:continue
+            closed=self.directory/('attempt-'+found[1]+'.terminal.json')
+            if not os.path.lexists(closed)or _uac_load(closed).get('state')!='review-refused':raise ValueError('instance_uac_original_unresolved')
+        _uac_create(self.directory/(self.prefix+'.intent.json'),{'operationId':self.review,'attempt':self.attempt,'decisionId':UAC_DECISION_ID,'replayAllowed':False})
+        self.begun=True
+    def finish(self,value):
+        """The first terminal of an attempt wins, and the reply is always that terminal."""
+        import os
+        path=self.directory/(self.prefix+'.terminal.json')
+        if not os.path.lexists(path):_uac_create(path,value)
+        return _uac_review_frame(self.directory,_uac_load(path))
+    def reply(self,reason):
+        """The packet's failure path: a begun attempt ends refused unless it already has a terminal."""
+        if not self.begun:return None
+        return self.finish({'state':'review-refused','operationId':self.review,'attempt':self.attempt,'reason':reason,'pointerMoved':self.moved,'replayAllowed':False})
+
+def _uac_review_flow(review,root,monitor,guard,script,fresh):
+    """The decision's own admission, its single journaled pointer move for a black display, one retained frame, and stop.
+
+    No profile, burn, input journal, fence, key or click: the prompt stays open, and a decision may follow within its gate.
+    """
+    import os,stat,time
+    def need(ok,code):
+        if not ok:raise ValueError(code)
+    context=UAC_CONTEXT;session=fresh['session'];limit=time.monotonic()+UAC_GATE_SECONDS;kept=[];shots=[0]
+    need(fresh['machine'].lower()==SPEC['deploymentId']and fresh['ordinary']is True and fresh['expectedSid']==context['ordinarySid']and fresh['tokenSid']==context['ordinarySid']
+         and fresh['console']==context['ordinarySessionId']and session['SessionId']==fresh['console']and session['State']==0,'instance_uac_session_changed')
+    review.begin()
+    def census():
+        """The decision's census loop: only reads are retried, and only within the bound."""
+        while True:
+            guard()
+            try:value=script('login-admission-'+os.urandom(6).hex(),UAC_CENSUS_SCRIPT)
+            except OSError:value=None
+            except ValueError as error:
+                if re.fullmatch('instance_[a-z_]{1,64}',str(error))and str(error)not in {'instance_guest_program_failed','instance_original_guest_pending','instance_guest_output','instance_guest_output_bound','instance_guest_exec_ack'}:raise
+                value=None
+            if value is not None:
+                found=_uac_census(value,fresh)
+                if found is not None:return found
+            need(time.monotonic()<limit,'instance_uac_consent_absent'if value is not None else'instance_uac_census_unavailable')
+            time.sleep(1)
+    def shot():
+        shots[0]+=1;path=review.directory/('frame-%04d-%02d.ppm'%(review.attempt,shots[0]))
+        guard();monitor('screendump',{'filename':str(path),'format':'ppm'});s=os.lstat(path)
+        need(stat.S_ISREG(s.st_mode)and s.st_uid==os.geteuid()and s.st_nlink==1 and s.st_size<=16*1024**2,'instance_uac_frame_identity')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+        try:
+            raw=b''
+            while len(raw)<=16*1024**2:
+                chunk=os.read(fd,65536)
+                if not chunk:break
+                raw+=chunk
+        finally:os.close(fd)
+        need(len(raw)==s.st_size,'instance_uac_frame_changed')
+        kept.append(path)
+        if len(kept)>2:os.unlink(kept.pop(0))
+        guard();return raw
+    def dark(raw):return not any(ppm(raw)[2])
+    woke=0;first=census()
+    # A prompt a decision burned, or began to answer, is never touched: a review only ever comes before an answer.
+    once=hashlib.sha256(json.dumps([SPEC['deploymentId'],context['bootFileTimeUtc'],first['pid'],first['birth']],separators=(',',':')).encode()).hexdigest()
+    need(not os.path.lexists(review.parent/('once-'+once+'.json')),'instance_uac_prompt_burned')
+    _uac_prior_open(root,first)
+    raw=shot()
+    if dark(raw):
+        need(not os.path.lexists(review.pointer),'instance_uac_display_black')
+        mice=monitor('query-mice',None);selected=[x for x in mice if type(x)is dict and x.get('current')is True]
+        need(len(selected)==1 and type(selected[0].get('absolute'))is bool,'instance_uac_mouse_unrecognized')
+        events=([{'type':'abs','data':{'axis':'x','value':16384}},{'type':'abs','data':{'axis':'y','value':16384}}]if selected[0]['absolute']else[{'type':'rel','data':{'axis':'x','value':1}}])
+        guard();_uac_create(review.pointer,{'operationId':OPERATION,'decisionId':UAC_DECISION_ID,'mode':'uac-review','replayAllowed':False});review.moved=True
+        monitor('input-send-event',{'events':events});guard()
+        sent=time.monotonic();settle=min(limit,sent+UAC_REVIEW_SETTLE)
+        while True:
+            time.sleep(.5);raw=shot()
+            if not dark(raw):break
+            need(time.monotonic()<settle,'instance_uac_display_black')
+        # How long after the move the first lit frame was read, in half-second reads: the decision gives its own move one second.
+        woke=max(1,int((time.monotonic()-sent)*1000))
+        # A display that just woke may still be drawing: the frame kept is read a second later, and it is not dark either.
+        time.sleep(1);raw=shot();need(not dark(raw),'instance_uac_display_black')
+    second=census();need((second['pid'],second['birth'])==(first['pid'],first['birth']),'instance_uac_consent_changed')
+    width,height,_=ppm(raw)
+    _uac_publish(review.directory/(review.prefix+'.frame.ppm'),raw)
+    return review.finish({'state':'review-frame-retained','operationId':OPERATION,'attempt':review.attempt,'decision':UAC_DECISION,'prompt':UAC_PROMPT,
+                          'consent':{key:second[key]for key in ('pid','birth','sessionId','ageSeconds')},'frameSha256':hashlib.sha256(raw).hexdigest(),
+                          'frameBytes':len(raw),'width':width,'height':height,'pointerMoved':review.moved,'wakeMilliseconds':woke,
+                          'promptAnswered':False,'replayAllowed':False})
+
+def _uac_review_receipts(root,review):
+    """What the review's own receipts say: files only, with no guest, monitor, lock, pointer or key."""
+    import os
+    directory=root/'windows-uac'/review;public={'operationId':review,'replayAllowed':False}
+    if not os.path.lexists(directory):return {'state':'no-review-recorded',**public}
+    numbers=sorted(found[1]for found in (re.fullmatch(r'attempt-([0-9]{4})\.intent\.json',name)for name in os.listdir(directory))if found)
+    if not numbers:return {'state':'no-review-recorded',**public}
+    closed=directory/('attempt-'+numbers[-1]+'.terminal.json')
+    return _uac_review_frame(directory,_uac_load(closed))if os.path.lexists(closed)else None
+
+def _uac_review_status_open(root,review):
+    """Under the root lock no attempt of this review lives: a begun attempt that left no terminal ended unknown."""
+    import os
+    known=_uac_review_receipts(root,review)
+    if known is not None:return known
+    directory=root/'windows-uac'/review
+    number=sorted(found[1]for found in (re.fullmatch(r'attempt-([0-9]{4})\.intent\.json',name)for name in os.listdir(directory))if found)[-1]
+    terminal={'state':'review-outcome-unknown','operationId':review,'attempt':int(number),'promptAnswered':False,'replayAllowed':False}
+    _uac_create(directory/('attempt-'+number+'.terminal.json'),terminal)
+    return terminal
+
 
 _DECIDE_SOURCES = (PrivateInputUnknown, private_keys, enter_private, ppm, screen_gate, _uac_load, _uac_create, _uac_birth, _uac_exit_source,
                    _uac_close_fence, _UacOwner, _uac_census, _uac_field_empty, _uac_prior_open, _uac_gate, _uac_flow)
 _STATUS_SOURCES = (_uac_load, _uac_create, _uac_birth, _uac_exit_source, _uac_close_fence, _uac_receipts, _uac_status_open)
+# The review embeds no input code: no key encoder, no secret, no owner fork and no stdin.
+_REVIEW_SOURCES = (ppm, _uac_load, _uac_create, _uac_directory, _uac_publish, _uac_review_frame, _UacReview, _uac_census, _uac_prior_open,
+                   _uac_review_flow)
+_REVIEW_STATUS_SOURCES = (_uac_load, _uac_create, _uac_review_frame, _uac_review_receipts, _uac_review_status_open)
 
 
 def _replace_once(source, marker, replacement):
@@ -531,19 +730,56 @@ def _replace_once(source, marker, replacement):
 
 
 def program(binding, mode, decision, *, attempt=None, answer=None, prompt=None, row=None, context=None, profile=None, profile_sha=None,
-            scenario_operation=None):
+            scenario_operation=None, decision_operation=None):
     """A fixed packet patched from the observe producer, as readiness_windows_login does; no pinned source moves.
 
-    uac-status embeds no input code at all: its source holds no key path and it reads no stdin.
+    uac-status embeds no input code at all: its source holds no key path and it reads no stdin. Neither review
+    mode does either: decision is then the review's own operation, and decision_operation names the decision whose
+    pointer journal the review shares.
     """
-    if mode not in {"uac-decide", "uac-status"} or type(decision) is not str or str(UUID(decision)) != decision:
+    if (mode not in {"uac-decide", "uac-status", "uac-review", "uac-review-status"} or type(decision) is not str
+            or str(UUID(decision)) != decision):
         raise ValueError("windows_uac_action")
     helpers = "import hashlib,json,os,re\n"
     helpers += "UAC_PRELUDE=" + repr(_PRELUDE) + "\nUAC_EXIT=" + repr(_EXIT) + "\n"
     source = packets.program(binding, "observe", decision).decode()
     source = _replace_once(source, "MODE='observe'", "MODE=" + repr(mode))
     marker = "        elif MODE in {'observe','idle-inventory','reboot'}:\n"
-    if mode == "uac-status":
+    if mode == "uac-review-status":
+        helpers += "".join(inspect.getsource(item) + "\n" for item in _REVIEW_STATUS_SOURCES)
+        source = _replace_once(source, "        epoch();chain()",
+                               "        epoch();chain()\n"
+                               "        uac_known=_uac_review_receipts(root,OPERATION)\n"
+                               "        if uac_known is not None:print(json.dumps(uac_known));return")
+        source = _replace_once(source, marker,
+                               "        elif MODE=='uac-review-status':\n"
+                               "            result=_uac_review_status_open(root,OPERATION)\n" + marker)
+    elif mode == "uac-review":
+        if (answer not in DECISIONS or type(attempt) is not int or not 1 <= attempt <= ATTEMPT_LIMIT or type(row) is not dict
+                or row.get("decision") != answer or row.get("prompt") != prompt or not _canonical(scenario_operation)
+                or decision != review_id(scenario_operation) or decision_operation != decision_id(scenario_operation)):
+            raise ValueError("windows_uac_action")
+        _validate_context(context)
+        census = census_source(row, context, binding["setup"]["administrator"])
+        bindings = {"UAC_DECISION": answer, "UAC_PROMPT": prompt, "UAC_ATTEMPT": attempt, "UAC_ROW": row, "UAC_CONTEXT": context,
+                    "UAC_SCENARIO_OPERATION": scenario_operation, "UAC_DECISION_ID": decision_operation, "UAC_CENSUS_SCRIPT": census,
+                    "UAC_GATE_SECONDS": GATE_SECONDS, "UAC_PROMPT_AGE": PROMPT_AGE_SECONDS, "UAC_REVIEW_SETTLE": REVIEW_SETTLE_SECONDS}
+        helpers += "".join(key + "=" + repr(value) + "\n" for key, value in bindings.items())
+        helpers += "".join(inspect.getsource(item) + "\n" for item in _REVIEW_SOURCES)
+        source = _replace_once(source, marker,
+                               "        elif MODE=='uac-review':\n"
+                               "            require(state=='running','instance_guest_not_ready')\n"
+                               "            fresh=script('login-session-'+os.urandom(6).hex(),SESSION_SCRIPT)\n"
+                               "            uac_review=_UacReview(root,OPERATION,UAC_ATTEMPT)\n"
+                               "            result=_uac_review_flow(uac_review,root,monitor,vm_guard,script,fresh)\n" + marker)
+        # A begun attempt always ends with a terminal, and a terminal it already has is the reply, not this refusal.
+        source = _replace_once(source, "        print(json.dumps({'state':'blocked','operationId':OPERATION,'reason':reason,'errorClass':type(error).__name__,'replayAllowed':False}))",
+                               "        failed={'state':'blocked','operationId':OPERATION,'reason':reason,'errorClass':type(error).__name__,'replayAllowed':False}\n"
+                               "        if locals().get('uac_review')is not None:\n"
+                               "            try:failed=uac_review.reply(reason)or failed\n"
+                               "            except BaseException:pass\n"
+                               "        print(json.dumps(failed))")
+    elif mode == "uac-status":
         helpers += "".join(inspect.getsource(item) + "\n" for item in _STATUS_SOURCES)
         source = _replace_once(source, "        epoch();chain()",
                                "        epoch();chain()\n"
@@ -601,6 +837,11 @@ def program(binding, mode, decision, *, attempt=None, answer=None, prompt=None, 
 def decision_id(correlation_id):
     """One decision per scenario: a repeat of the same inputs reads the same journal."""
     return str(uuid5(UUID(correlation_id), _DECISION_NAMESPACE))
+
+
+def review_id(correlation_id):
+    """One review per scenario, beside its decision and never in its journal."""
+    return str(uuid5(UUID(correlation_id), _REVIEW_NAMESPACE))
 
 
 def _canonical(value):
@@ -730,7 +971,8 @@ def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark
     """Hash the reviewed regions of a frame the reviewer opened, with the prompt up and unanswered.
 
     Direct setup only, with no MCP route. The frame shows public pixels and an empty field, and
-    the profile is create-only: a changed layout is a new review of a new clone.
+    the profile is create-only: a changed layout is a new review of a new clone. The frame a
+    windows-uac-review retained is such a frame: pass the bytes retained_review_frame returns.
     """
     if type(deployment) is not str or not _canonical(deployment) or prompt not in (*PROMPTS, *(("qualification",) if direct else ())):
         raise ValueError("windows_uac_profile")
@@ -753,19 +995,58 @@ def reviewed_uac_profile(root, deployment, prompt, frame, crops, field, max_dark
     return profile
 
 
-def _read_private(path):
+def _read_private(path, limit=65536):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(descriptor)
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600
-                or not 0 < info.st_size <= 65536):
+                or not 0 < info.st_size <= limit):
             raise ValueError("windows_uac_private_file")
-        raw = os.read(descriptor, 65537)
+        raw = bytearray()
+        while len(raw) <= info.st_size:
+            chunk = os.read(descriptor, min(1048576, info.st_size + 1 - len(raw)))
+            if not chunk:
+                break
+            raw += chunk
     finally:
         os.close(descriptor)
     if len(raw) != info.st_size:
         raise ValueError("windows_uac_private_file")
-    return raw
+    return bytes(raw)
+
+
+def _png(frame):
+    """A PNG of a PPM frame's exact pixels for an image viewer; _png_pixels reads the same pixels back."""
+    width, height, pixels = ppm(frame)
+    stride = width * 3
+    rows = b"".join(b"\x00" + pixels[y * stride:(y + 1) * stride] for y in range(height))
+
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xffffffff)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows, 6)) + chunk(b"IEND", b""))
+
+
+def retained_review_frame(root, correlation_id):
+    """The frame a windows-uac-review kept for this scenario, and what it shows, for reviewed_uac_profile.
+
+    Only a retained result counts, and the private copy must still be the frame that result names.
+    """
+    root = Path(root).resolve(strict=True)
+    directory = root / _REVIEWS / review_id(correlation_id)
+    try:
+        known = _review_known(directory)
+        intended = json.loads(_read_private(directory / "intent.json"))
+        if known is None or known.get("state") != "review-frame-retained" or intended.get("correlationId") != correlation_id:
+            raise ValueError("windows_uac_review_frame_unavailable")
+        raw = _read_private(directory / "frame.ppm", REVIEW_FRAME_BYTES)
+        if hashlib.sha256(raw).hexdigest() != known["frameSha256"] or ppm(raw)[:2] != (known["width"], known["height"]):
+            raise ValueError("windows_uac_review_frame_unavailable")
+        return raw, {"environment": intended["environment"], "prompt": intended["prompt"], "frameSha256": known["frameSha256"],
+                     "width": known["width"], "height": known["height"], "pointerMoved": known["pointerMoved"],
+                     "wakeMilliseconds": known["wakeMilliseconds"]}
+    except (OSError, ValueError, KeyError):
+        raise ValueError("windows_uac_review_frame_unavailable") from None
 
 
 def _load_profile(root, deployment, prompt):
@@ -780,8 +1061,44 @@ def _scenario_record(root, correlation):
     return execution.ScenarioExecutor(journal, None)._read(correlation)
 
 
-def _journal_directory(root, decision):
-    parent = root / ".runtime/windows-uac-decisions"
+def _binding(root, plan):
+    """The deployment's original start intent, read as native_scenario_windows._binding reads it.
+
+    That reader imports readiness_windows_registration and with it the whole sign-in stack, which on a loaded
+    coordinator took longer than every other local gate of this action together. The file, its reader and each
+    check are the same; test_windows_uac_decision holds both to the same binding and the same refusals.
+    """
+    from . import readiness_fixture_registry as registry
+    try:
+        machine = plan.environment
+        if not _canonical(machine):
+            raise ValueError("windows_uac_environment")
+        value, _ = registry._json(Path(root).resolve(strict=True) / ".rag_index/windows-vm-deploy-intents" / (machine + ".intent.json"))
+        if (set(value) != {"spec", "setup", "context", "correlationId", "mode", "callerSha256"} or value["mode"] != "start"
+                or type(value["spec"]) is not dict or value["spec"].get("deploymentId") != machine):
+            raise ValueError("windows_uac_environment")
+        binding = {"provider": "raw-qemu-windows", "spec": value["spec"], "setup": value["setup"], "context": value["context"],
+                   "uri": None, "domain": None, "xmlSha256": None}
+        provider, spec, _, _ = packets.validate_binding(binding)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        raise ValueError("windows_uac_environment_unavailable") from None
+    if provider != "raw-qemu-windows" or spec.deployment_id != plan.environment or spec.host != plan.host:
+        raise ValueError("windows_uac_environment_mismatch")
+    return binding
+
+
+def _job_context(root, plan):
+    """What the job's context stage retained, read through the scenario driver.
+
+    The driver and the host job it imports are loaded here and nowhere earlier: this is the first contact, after
+    every local gate, so a refusal that local files decide never loads them.
+    """
+    from . import native_scenario_windows as windows
+    return _validate_context(windows.NativeScenarioWindowsDriver(root, lambda _plan: None).uac_context(plan))
+
+
+def _journal_directory(root, decision, journal=_DECISIONS):
+    parent = root / journal
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     for path, mask in ((root / ".runtime", 0o022), (parent, 0o077)):
         info = path.lstat()
@@ -810,12 +1127,12 @@ def _next_attempt(directory):
     return (numbers[-1] + 1 if numbers else 1), None
 
 
-def _final_refusal(directory, number):
-    """The retained refusal of that attempt when it ends this decision's submits, else None."""
+def _final_refusal(directory, number, retry=_RETRY_REASONS):
+    """The retained refusal of that attempt when it ends this operation's submits, else None."""
     if number < 1:
         return None
     value = json.loads(_read_private(directory / ("attempt-%04d.result.json" % number)))
-    return value if value.get("reason") not in _RETRY_REASONS else None
+    return value if value.get("reason") not in retry else None
 
 
 def _retain_once(directory, name, value):
@@ -946,54 +1263,94 @@ def _status(root, binding, decision, inputs, directory, attempt, deadline):
     return value
 
 
-def execute(root, inputs, *, deadline=None, direct=False):
-    """Gates, then one journaled packet. A repeat is a status packet, forever, unless a known refusal was retained:
-    one that proved nothing yet permits another submit, and any other is returned again with no packet."""
+def _gates(root, inputs, *, direct, review):
+    """execute's and review's gates before their first contact, in their order, on local files alone; nothing is written.
+
+    (reply, None) ends the call with no contact. (None, admitted) goes on: admitted.original names an earlier attempt
+    whose reply was lost, which only a status packet may read, and otherwise admitted.attempt is the next submit.
+    """
     validate_inputs(inputs, direct=direct)
     root = Path(root).resolve(strict=True)
-    if deadline is None:
-        deadline = time.monotonic() + SUBMIT_SECONDS + 10
     current = Path(__file__)
     if _EXECUTING_CODE != compile(current.read_bytes(), str(current), "exec", dont_inherit=True):
         raise ValueError("windows_uac_source_changed")
     correlation = inputs["correlationId"]
     decision = decision_id(correlation)
+    operation = review_id(correlation) if review else decision
+
+    def refused(reason):
+        return _review_refused(reason, operation, decision, inputs) if review else _refused(reason, decision, inputs)
     try:
         record = _scenario_record(root, correlation)
     except ValueError:
-        return _refused("uac_scenario_journal_invalid", decision, inputs)
+        return refused("uac_scenario_journal_invalid"), None
     if record is None:
-        return _refused("uac_scenario_unknown", decision, inputs)
+        return refused("uac_scenario_unknown"), None
     plan = execution.ScenarioPlan.from_mapping(record["plan"])
     table = {**ROWS, **(DIRECT_ROWS if direct else {})}
     row = table.get(plan.scenario_id)
     if (plan.host, plan.environment) != (inputs["host"], inputs["environment"]) or plan.correlation_id != correlation:
-        return _refused("uac_scenario_mismatch", decision, inputs)
+        return refused("uac_scenario_mismatch"), None
     if row is None:
-        return _refused("uac_scenario_not_in_table", decision, inputs)
+        return refused("uac_scenario_not_in_table"), None
     if row["prompt"] != inputs["prompt"] or row["decision"] != inputs["decision"]:
-        return _refused("uac_row_mismatch", decision, inputs)
+        return refused("uac_row_mismatch"), None
     try:
-        binding = windows._binding(root, plan)
+        binding = _binding(root, plan)
     except ValueError:
-        return _refused("uac_environment_unavailable", decision, inputs)
-    directory = root / ".runtime/windows-uac-decisions" / decision
+        return refused("uac_environment_unavailable"), None
+    directory = root / (_REVIEWS if review else _DECISIONS) / operation
+    admitted = SimpleNamespace(root=root, correlation=correlation, decision=decision, operation=operation, plan=plan, row=row,
+                               binding=binding, directory=directory, attempt=None, original=None, profile=None, profile_sha=None)
+    if review:
+        known = _review_known(directory)
+        if known is not None:
+            return known, None
     attempt, original = _next_attempt(directory)
     if attempt is None:
-        return _status(root, binding, decision, inputs, directory, original, deadline)
-    final = _final_refusal(directory, attempt - 1)
+        admitted.original = original
+        return None, admitted
+    final = _final_refusal(directory, attempt - 1, _REVIEW_RETRY_REASONS if review else _RETRY_REASONS)
     if final is not None:
-        return final
+        return final, None
     if attempt > ATTEMPT_LIMIT:
-        return _refused("uac_attempts_exhausted", decision, inputs)
+        return refused("uac_attempts_exhausted"), None
     if record["state"] != execution.ExecutionState.SUBMITTED.value:
-        return _refused("uac_scenario_not_running", decision, inputs)
+        return refused("uac_scenario_not_running"), None
+    if not review:
+        try:
+            admitted.profile, admitted.profile_sha = _load_profile(root, inputs["environment"], inputs["prompt"])
+        except (OSError, ValueError):
+            return refused("uac_profile_unreviewed"), None
+    admitted.attempt = attempt
+    return None, admitted
+
+
+def before_contact(root, inputs, *, review=False):
+    """The reply execute or review gives from local files alone, or None when it must reach the host.
+
+    The public route asks this before the host's transport admission, so a local refusal never waits on SSH.
+    The admitted call runs every gate again.
+    """
+    reply, _ = _gates(root, inputs, direct=False, review=review)
+    return reply
+
+
+def execute(root, inputs, *, deadline=None, direct=False):
+    """Gates, then one journaled packet. A repeat is a status packet, forever, unless a known refusal was retained:
+    one that proved nothing yet permits another submit, and any other is returned again with no packet."""
+    if deadline is None:
+        deadline = time.monotonic() + SUBMIT_SECONDS + 10
+    reply, admitted = _gates(root, inputs, direct=direct, review=False)
+    if reply is not None:
+        return reply
+    root, correlation, decision, plan, row, binding = (admitted.root, admitted.correlation, admitted.decision, admitted.plan, admitted.row,
+                                                         admitted.binding)
+    if admitted.original is not None:
+        return _status(root, binding, decision, inputs, admitted.directory, admitted.original, deadline)
+    attempt, profile, profile_sha = admitted.attempt, admitted.profile, admitted.profile_sha
     try:
-        profile, profile_sha = _load_profile(root, inputs["environment"], inputs["prompt"])
-    except (OSError, ValueError):
-        return _refused("uac_profile_unreviewed", decision, inputs)
-    try:
-        context = _validate_context(windows.NativeScenarioWindowsDriver(root, lambda _plan: None).uac_context(plan))
+        context = _job_context(root, plan)
     except (OSError, ValueError):
         return _refused("uac_context_unavailable", decision, inputs)
     if re.fullmatch(_ROOT_FORM + re.escape(correlation), context["operationRoot"]) is None:
@@ -1048,3 +1405,169 @@ def execute(root, inputs, *, deadline=None, direct=False):
         frame = None
         if secret is not None:
             secret.close()
+
+
+def _review_refused(reason, review, decision, inputs):
+    return {"state": "refused", "reason": reason, "reviewId": review, "decisionId": decision, "correlationId": inputs["correlationId"],
+            "prompt": inputs["prompt"], "decision": inputs["decision"], "replayAllowed": False}
+
+
+def _review_reply(result):
+    """A finite parse of a review reply, which carries its frame. Stdin was empty, so no secret can echo."""
+    if result.returncode or result.stderr or len(result.stdout) > REVIEW_REPLY_BYTES:
+        return None
+    try:
+        value = json.loads(result.stdout, object_pairs_hook=transport._reject_duplicate_keys)
+    except ValueError:
+        return None
+    return value if type(value) is dict else None
+
+
+def _review_frame_bytes(payload, terminal):
+    """The exact frame the terminal names, inflated within its bound, or None."""
+    try:
+        inflater = zlib.decompressobj()
+        raw = inflater.decompress(base64.b64decode(payload, validate=True), REVIEW_FRAME_BYTES + 1)
+        if not inflater.eof or inflater.unconsumed_tail or inflater.unused_data or len(raw) > REVIEW_FRAME_BYTES:
+            return None
+        width, height, _ = ppm(raw)
+    except (ValueError, TypeError, zlib.error):
+        return None
+    if (len(raw) != terminal["frameBytes"] or hashlib.sha256(raw).hexdigest() != terminal["frameSha256"]
+            or (width, height) != (terminal["width"], terminal["height"])):
+        return None
+    return raw
+
+
+def _project_review(value, review, decision, inputs, *, submitted):
+    """(public reply, frame bytes or None). Only closed fields cross, and a review never claims an answer."""
+    public = {"reviewId": review, "decisionId": decision, "correlationId": inputs["correlationId"], "prompt": inputs["prompt"],
+              "decision": inputs["decision"], "replayAllowed": False}
+    unknown = {"state": "unknown", "reason": "uac_reply_rejected", **public}
+    if value is None or value.get("operationId") != review or value.get("replayAllowed") is not False:
+        return unknown, None
+    state = value.get("state")
+    reason = value.get("reason")
+    if state == "review-frame-retained":
+        terminal = {key: item for key, item in value.items() if key != "frame"}
+        consent = terminal.get("consent")
+        if (set(terminal) != _REVIEW_TERMINAL or type(value.get("frame")) is not str or type(terminal["attempt"]) is not int
+                or terminal["decision"] != inputs["decision"] or terminal["prompt"] != inputs["prompt"] or terminal["promptAnswered"] is not False
+                or type(terminal["pointerMoved"]) is not bool or type(terminal["wakeMilliseconds"]) is not int
+                or not 0 <= terminal["wakeMilliseconds"] <= 600000 or (terminal["wakeMilliseconds"] > 0) is not terminal["pointerMoved"]
+                or type(terminal["frameSha256"]) is not str
+                or re.fullmatch("[0-9a-f]{64}", terminal["frameSha256"]) is None or type(terminal["frameBytes"]) is not int
+                or not 0 < terminal["frameBytes"] <= REVIEW_FRAME_BYTES or type(terminal["width"]) is not int or type(terminal["height"]) is not int
+                or type(consent) is not dict or set(consent) != {"pid", "birth", "sessionId", "ageSeconds"}
+                or type(consent["ageSeconds"]) is not int or not 0 <= consent["ageSeconds"] < PROMPT_AGE_SECONDS):
+            return unknown, None
+        raw = _review_frame_bytes(value["frame"], terminal)
+        if raw is None:
+            return unknown, None
+        return {"state": "review-frame-retained", "attempt": terminal["attempt"], "frameSha256": terminal["frameSha256"],
+                "frameBytes": terminal["frameBytes"], "width": terminal["width"], "height": terminal["height"],
+                "pointerMoved": terminal["pointerMoved"], "wakeMilliseconds": terminal["wakeMilliseconds"],
+                "consentAgeSeconds": consent["ageSeconds"], "promptAnswered": False, **public}, raw
+    if state == "review-refused":
+        if (set(value) != {"state", "operationId", "attempt", "reason", "pointerMoved", "replayAllowed"} or type(value["attempt"]) is not int
+                or type(value["pointerMoved"]) is not bool or type(reason) is not str or _PUBLIC_REASON.fullmatch(reason) is None):
+            return unknown, None
+        return {"state": "refused", "reason": reason, "attempt": value["attempt"], "pointerMoved": value["pointerMoved"], **public}, None
+    if state == "blocked" and type(reason) is str and _PUBLIC_REASON.fullmatch(reason) is not None:
+        # Printed only before an attempt begins: no review file exists. Status proves nothing by it.
+        return ({"state": "refused", "reason": reason, **public} if submitted else {"state": "unknown", "reason": reason, **public}), None
+    if state == "review-outcome-unknown":
+        if set(value) != {"state", "operationId", "attempt", "promptAnswered", "replayAllowed"} or type(value["attempt"]) is not int:
+            return unknown, None
+        return {"state": "review-outcome-unknown", "attempt": value["attempt"], "promptAnswered": False, **public}, None
+    if state == "no-review-recorded":
+        return {"state": "unknown", "reason": "uac_original_submission_unknown", **public}, None
+    return unknown, None
+
+
+def _settle_review(directory, attempt, projected, raw):
+    """Keep a known result; a retained frame is kept first, so a kept result always has its frame beside it."""
+    if raw is not None:
+        for name, body in (("frame.ppm", raw), ("frame.png", _png(raw))):
+            try:
+                login._retain_local(directory, name, body)
+            except FileExistsError:
+                if _read_private(directory / name, 2 * REVIEW_FRAME_BYTES) != body:
+                    return {**projected, "state": "unknown", "reason": "uac_review_frame_changed"}
+        projected = {**projected, "framePath": str(directory / "frame.ppm"), "pngPath": str(directory / "frame.png")}
+    if type(attempt) is int and projected["state"] in {"refused", "review-frame-retained", "review-outcome-unknown"}:
+        _retain_once(directory, "attempt-%04d.result.json" % attempt, projected)
+    return projected
+
+
+def _review_known(directory):
+    """A retained frame or an unknown end of this review: returned again with no packet."""
+    if not os.path.lexists(directory):
+        return None
+    numbers = sorted(int(found[1]) for found in (_ATTEMPT_INTENT.fullmatch(name) for name in os.listdir(directory)) if found)
+    path = directory / ("attempt-%04d.result.json" % numbers[-1]) if numbers else None
+    if path is None or not os.path.lexists(path):
+        return None
+    value = json.loads(_read_private(path))
+    return value if value.get("state") in {"review-frame-retained", "review-outcome-unknown"} else None
+
+
+def _review_status(root, binding, review, decision, inputs, directory, attempt, deadline):
+    source = program(binding, "uac-review-status", review)
+    try:
+        result = _send(root, inputs["host"], review, source, None, deadline)
+    except Exception:  # A status read proves nothing by failing, and it is only ever read again.
+        return {**_review_refused("uac_status_unavailable", review, decision, inputs), "state": "unknown"}
+    projected, raw = _project_review(_review_reply(result), review, decision, inputs, submitted=False)
+    # Status may name another attempt only if this client lost that reply; the journal says which one is open.
+    return _settle_review(directory, attempt if projected.get("attempt") == attempt else None, projected, raw)
+
+
+def review(root, inputs, *, deadline=None, direct=False):
+    """One review-only capture of the open prompt: execute's admission without a profile, then one packet that makes the
+    decision's single journaled pointer move for a black display, keeps the post-wake frame and stops.
+
+    It never answers: no burn, no key, no credential, no decision journal. A retained frame is returned again with
+    no packet, a lost reply is only read by status, and as for execute only a "not yet" refusal permits another
+    submit. For a review a display still black is one: the next attempt cannot move the pointer and only reads.
+    """
+    if deadline is None:
+        deadline = time.monotonic() + SUBMIT_SECONDS + 10
+    reply, admitted = _gates(root, inputs, direct=direct, review=True)
+    if reply is not None:
+        return reply
+    root, correlation, decision, review_operation = admitted.root, admitted.correlation, admitted.decision, admitted.operation
+    if admitted.original is not None:
+        return _review_status(root, admitted.binding, review_operation, decision, inputs, admitted.directory, admitted.original, deadline)
+    try:
+        context = _job_context(root, admitted.plan)
+    except (OSError, ValueError):
+        return _review_refused("uac_context_unavailable", review_operation, decision, inputs)
+    if re.fullmatch(_ROOT_FORM + re.escape(correlation), context["operationRoot"]) is None:
+        return _review_refused("uac_context_unavailable", review_operation, decision, inputs)
+    source = program(admitted.binding, "uac-review", review_operation, attempt=admitted.attempt, answer=inputs["decision"],
+                     prompt=inputs["prompt"], row=admitted.row, context=context, scenario_operation=correlation, decision_operation=decision)
+    directory = _journal_directory(root, review_operation, _REVIEWS)
+    intended = {"reviewId": review_operation, "decisionId": decision, "correlationId": correlation, "host": inputs["host"],
+                "environment": inputs["environment"], "scenarioId": admitted.plan.scenario_id, "prompt": inputs["prompt"],
+                "decision": inputs["decision"], "replayAllowed": False}
+    try:
+        login._retain_local(directory, "intent.json", intended)
+    except FileExistsError:
+        if json.loads(_read_private(directory / "intent.json")) != intended:
+            raise ValueError("windows_uac_original_changed") from None
+    label = "attempt-%04d" % admitted.attempt
+    try:
+        login._retain_local(directory, label + ".intent.json", {"reviewId": review_operation, "attempt": admitted.attempt,
+                                                                "sourceSha256": hashlib.sha256(source).hexdigest(), "replayAllowed": False})
+    except FileExistsError:
+        return _review_status(root, admitted.binding, review_operation, decision, inputs, directory, admitted.attempt, deadline)
+    login._retain_local(directory, label + ".py", source)
+    try:
+        result = _send(root, inputs["host"], review_operation, source, None, deadline)
+    except _Unsubmitted:
+        return _settle_review(directory, admitted.attempt, _review_refused("uac_transport_unsubmitted", review_operation, decision, inputs), None)
+    except Exception:  # A lost reply: the packet may still be running, so this review only reads from now on.
+        return {**_review_refused("uac_review_unresolved", review_operation, decision, inputs), "state": "unknown"}
+    projected, raw = _project_review(_review_reply(result), review_operation, decision, inputs, submitted=True)
+    return _settle_review(directory, admitted.attempt, projected, raw)

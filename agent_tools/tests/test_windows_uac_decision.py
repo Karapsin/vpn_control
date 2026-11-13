@@ -8,6 +8,7 @@ import base64
 from contextlib import nullcontext
 import hashlib
 import importlib
+import importlib.util
 import inspect
 import io
 import json
@@ -994,7 +995,7 @@ class ExecuteBase(unittest.TestCase):
             self.reads.append(command[-1])
             return subprocess.CompletedProcess(argv, 0, json.dumps({"state": "read", "value": self.context_reply}).encode(), b"")
         source = base64.b64decode(command[4][len("import base64;exec(base64.b64decode('"):-len("'))")])
-        self.packets.append({"mode": "uac-status" if b"MODE='uac-status'" in source else "uac-decide", "source": source, "argv": list(argv), "options": dict(options)})
+        self.packets.append({"mode": re.search(rb"\nMODE='([a-z-]+)'\n", source)[1].decode(), "source": source, "argv": list(argv), "options": dict(options)})
         reply = self.replies.pop(0)
         if isinstance(reply, BaseException):
             raise reply
@@ -1427,7 +1428,11 @@ class RouteTests(unittest.TestCase):
         from agent_tools import mcp_server
         from agent_tools.tests.route_adapter import bind_cached_routes
         self.server = mcp_server
-        bind_cached_routes(self, mcp_server, "windows_uac_decision")
+        self.genuine = bind_cached_routes(self, mcp_server, "windows_uac_decision")
+        # These route units fake the action itself; its local gates run against a real journal in RouteAdmissionTests.
+        patcher = mock.patch.object(decision, "before_contact", return_value=None, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_closed_inputs_refuse_before_the_adapter(self):
         for bad in ({**self.INPUTS, "extra": "x"}, {**self.INPUTS, "prompt": "qualification"}, {**self.INPUTS, "decision": "maybe"}, {**self.INPUTS, "host": "a b"},
@@ -1461,6 +1466,500 @@ class RouteTests(unittest.TestCase):
         for module in ("windows_uac_decision", "readiness_windows_login", "readiness_windows_remote", "private_credential_file"):
             self.assertIn(module, route["closure"])
         self.assertEqual("fixture", dispatch._selected_host(Path("/nonexistent"), self.INPUTS, route, CORRELATION))
+
+    def test_the_review_is_a_sibling_closed_route_with_the_decisions_admission(self):
+        from agent_tools import readiness_vm_dispatch as dispatch, tool_action_policy as policy
+        decide, review = (policy.action_policy("vm_workflow", action) for action in ("windows-uac-decision", "windows-uac-review"))
+        self.assertEqual((decide.requirements, decide.permitted_recoveries, decide.classification),
+                         (review.requirements, review.permitted_recoveries, review.classification))
+        self.assertEqual(dict(dispatch.ROUTES["windows-uac-decision"]), dict(dispatch.ROUTES["windows-uac-review"]))
+        for bad in ({**self.INPUTS, "extra": "x"}, {**self.INPUTS, "prompt": "qualification"}, {**self.INPUTS, "decision": "review"}, {}):
+            with self.subTest(bad=bad), mock.patch.object(decision, "review", side_effect=AssertionError("refused first"), create=True):
+                self.assertFalse(self.server.vm_workflow("windows-uac-review", bad)["ok"])
+
+    def test_a_review_route_reply_is_never_an_answer(self):
+        retained = {"state": "review-frame-retained", "frameSha256": "a" * 64, "pointerMoved": True, "promptAnswered": False, "replayAllowed": False}
+        with mock.patch.object(decision, "review", return_value=retained, create=True) as called:
+            result = self.server.vm_workflow("windows-uac-review", dict(self.INPUTS))
+        called.assert_called_once_with(self.server.REPO_ROOT, self.INPUTS)
+        self.assertEqual((True, False, False, "uac-review-frame", False), (result["ok"], result["productAction"], result["nativeActionAllowed"],
+                                                                         result["evidenceClass"], result["promptAnswered"]))
+        self.assertNotIn("approvalSucceeded", result)
+        with mock.patch.object(decision, "review", side_effect=ValueError(SECRET.decode()), create=True):
+            failed = self.server.vm_workflow("windows-uac-review", dict(self.INPUTS))
+        self.assertEqual(("unknown", "uac_review_unavailable", False), (failed["state"], failed["reason"], failed["ok"]))
+        self.assertNotIn(SECRET.decode(), json.dumps(failed))
+
+    @unittest.skipUnless(POSIX, "the server's own source custody is read through POSIX descriptors")
+    def test_the_server_source_is_compiled_once_and_still_checked_on_every_adapter_load(self):
+        """Each request loads several adapters, and each load compiled this 10k-line file again: over 1 s each under load."""
+        import builtins
+        real, compiled = builtins.compile, []
+
+        def counting(source, filename, *args, **kwargs):
+            if filename == self.server.__file__:
+                compiled.append(filename)
+            return real(source, filename, *args, **kwargs)
+        genuine = self.genuine  # bind_cached_routes hands back the genuine loader
+        with mock.patch.object(builtins, "compile", counting):
+            for _ in range(3):
+                genuine("tool_action_policy").close()
+        self.assertLessEqual(len(compiled), 1)
+        with mock.patch.object(self.server, "_MCP_EXECUTING_CODE", None), self.assertRaisesRegex(ValueError, "MCP source changed"):
+            genuine("tool_action_policy")
+        with mock.patch.dict(self.server._CHECK_RUNNER_SOURCE_DIGESTS, {Path(self.server.__file__).resolve(): "0" * 64}), \
+                self.assertRaisesRegex(ValueError, "MCP source changed"):
+            genuine("tool_action_policy")
+
+    @unittest.skipUnless(importlib.util.find_spec("mcp") is not None, "this interpreter has no MCP package to leave out")
+    def test_a_one_shot_cli_command_never_imports_the_mcp_package(self):
+        """mcp_tool.sh execs the server once per native call; only `serve` ever serves."""
+        done = subprocess.run([sys.executable, "-X", "importtime", self.server.__file__, "vm-workflow", "--help"], stdin=subprocess.DEVNULL,
+                              capture_output=True, timeout=600)
+        self.assertEqual(0, done.returncode, done.stderr[-2000:])
+        self.assertIn(b"windows-uac-decision", done.stdout)
+        self.assertNotIn(b"mcp.server.fastmcp", done.stderr, "a one-shot CLI command imported the MCP server package")
+        self.assertIsNotNone(self.server.FastMCP, "an importer, like `serve`, still gets it")
+
+
+DENY_ROW = "windows-scoped-tun.restart-deny"
+DENY_EVENTS = [{"name": "event-000009-scoped-tun-awaiting-current-input.json", "operationId": CORRELATION, "value": "restart-deny", "variant": "restart-deny"}]
+CENSUS_REFUSALS = (({"policy": {**census()["policy"], "enableLua": 0}}, "instance_uac_policy"),
+                   ({"policy": {**census()["policy"], "promptOnSecureDesktop": 0}}, "instance_uac_policy"),
+                   ({"preload": "00000419"}, "instance_uac_keyboard"), ({"bootFileTimeUtc": "134368653065000001"}, "instance_uac_boot_changed"),
+                   ({"parked": ["owner-parked.json"]}, "instance_uac_owner_parked"), ({"events": []}, "instance_uac_event_not_pending"),
+                   ({"events": [{**census()["events"][0], "value": "restart-deny"}]}, "instance_uac_event_mismatch"),
+                   ({"events": [{**census()["events"][0], "operationId": str(uuid.uuid4())}]}, "instance_uac_event_mismatch"),
+                   ({"adminSid": SID, "sidValues": [SID]}, "instance_uac_administrator"), ({"helpers": 1}, "instance_uac_helper_present"),
+                   ({"consents": [consent(), consent(pid=4243)]}, "instance_uac_consent_not_unique"),
+                   ({"consents": [consent(sessionId=1)]}, "instance_uac_consent_identity"),
+                   ({"consents": [consent(image="C:\\Windows\\Temp\\consent.exe")]}, "instance_uac_consent_identity"),
+                   ({"consents": [consent(signature="HashMismatch")]}, "instance_uac_consent_identity"),
+                   ({"consents": [consent(parentIsAppinfo=False)]}, "instance_uac_consent_identity"),
+                   ({"consents": [consent(ageSeconds=90)]}, "instance_uac_prompt_age"), ({"consents": []}, "instance_uac_consent_absent"),
+                   ({"extra": 1}, "instance_uac_census_shape"))
+
+
+def review_terminal(raw=None, *, attempt=1, answer="approve", **changes):
+    """What a review packet prints for a retained frame: its terminal and the frame's exact bytes."""
+    raw = frame() if raw is None else raw
+    return {"state": "review-frame-retained", "operationId": decision.review_id(CORRELATION), "attempt": attempt, "decision": answer,
+            "prompt": "vpn-broker", "consent": {"pid": 4242, "birth": "134368653100000000", "sessionId": 2, "ageSeconds": 5},
+            "frameSha256": hashlib.sha256(raw).hexdigest(), "frameBytes": len(raw), "width": WIDTH, "height": HEIGHT, "pointerMoved": True,
+            "wakeMilliseconds": 1000, "promptAnswered": False, "replayAllowed": False, "frame": base64.b64encode(zlib.compress(raw)).decode(), **changes}
+
+
+class ReviewFlowTests(FlowBase):
+    """The review packet's flow over a fake monitor: the decision's census, its one pointer move, one kept frame, no answer."""
+
+    def review_values(self, answer, scenario, review, attempt):
+        row = decision.ROWS[scenario]
+        return {"SPEC": {"deploymentId": MACHINE}, "OPERATION": review, "UAC_DECISION": answer, "UAC_PROMPT": row["prompt"], "UAC_ROW": row,
+                "UAC_CONTEXT": CONTEXT, "UAC_ATTEMPT": attempt, "UAC_SCENARIO_OPERATION": CORRELATION, "UAC_DECISION_ID": self.decision,
+                "UAC_CENSUS_SCRIPT": "fixed census", "UAC_GATE_SECONDS": decision.GATE_SECONDS, "UAC_PROMPT_AGE": decision.PROMPT_AGE_SECONDS,
+                "UAC_REVIEW_SETTLE": decision.REVIEW_SETTLE_SECONDS}
+
+    def run_review(self, answer="approve", *, scenario=SCENARIO, attempt=1, fresh=FRESH, frames=None, censuses=None):
+        """As the packet runs it: the flow, then the producer's failure path for any refusal."""
+        review = decision.review_id(CORRELATION)
+        self.frames = list(frames) if frames is not None else [frame()]
+        self.censuses = list(censuses) if censuses is not None else [census()]
+
+        def sleep(seconds):
+            self.clock[0] += seconds
+        with mock.patch.dict(decision.__dict__, self.review_values(answer, scenario, review, attempt)), \
+                mock.patch.object(time, "sleep", sleep), mock.patch.object(time, "monotonic", lambda: self.clock[0]):
+            owner = decision._UacReview(self.root, review, attempt)
+            try:
+                return decision._uac_review_flow(owner, self.root, self.monitor, self.guard, self.script, fresh)
+            except BaseException as error:
+                reason = str(error) if type(error) is ValueError and re.fullmatch("instance_[a-z_]{1,64}", str(error)) else "instance_observation_unknown"
+                return owner.reply(reason) or {"state": "blocked", "reason": reason}
+
+    def moves(self):
+        return [arguments for command, arguments in self.monitor_calls if command == "input-send-event"]
+
+    def answered(self):
+        return [name for name in self.tree() if "once-" in name or "/input." in name or name.startswith("direct-guest")]
+
+    def clear(self):
+        for path in self.root.iterdir():
+            shutil.rmtree(path) if path.is_dir() else path.unlink()
+        self.monitor_calls.clear()
+        self.keys.clear()
+
+    def test_a_sleeping_display_with_no_profile_gets_one_post_wake_frame_and_no_key_or_burn(self):
+        """NV7, run 73974d99: the vpn-broker prompt did not wake a sleeping display, and the clone had no reviewed profile."""
+        black, prompt = frame(fill=0), frame()
+        reply = self.run_review("deny", scenario=DENY_ROW, frames=[black, black, prompt, prompt], censuses=[census(events=DENY_EVENTS)])
+        self.assertEqual(("review-frame-retained", True, False, "deny"), (reply["state"], reply["pointerMoved"], reply["promptAnswered"], reply["decision"]))
+        self.assertEqual(1000, reply["wakeMilliseconds"], "the second half-second read after the move was the first lit one")
+        self.assertEqual(1, len(self.moves()))
+        self.assertEqual({"abs"}, {event["type"] for event in self.moves()[0]["events"]}, "a move, never a button")
+        self.assertEqual([], self.keys)
+        self.assertEqual(prompt, zlib.decompress(base64.b64decode(reply["frame"])), "the post-wake frame, not a black one")
+        self.assertEqual(hashlib.sha256(prompt).hexdigest(), reply["frameSha256"])
+        self.assertEqual([], self.answered(), "no burn, no input journal and no fence")
+        self.assertIn("windows-uac/" + self.decision + "/pointer.intent.json", self.tree(), "the decision's own pointer journal")
+        self.assertEqual("no-input-recorded", decision._uac_receipts(self.root, self.decision)["state"])
+
+    def test_an_awake_display_is_kept_as_it_is_with_no_pointer_move(self):
+        reply = self.run_review(frames=[frame()])
+        self.assertEqual(("review-frame-retained", False, 0), (reply["state"], reply["pointerMoved"], reply["wakeMilliseconds"]))
+        self.assertEqual([], self.moves())
+        self.assertFalse((self.root / "windows-uac" / self.decision / "pointer.intent.json").exists())
+
+    def test_a_repeat_never_moves_the_pointer_twice(self):
+        first = self.run_review(frames=[frame(fill=0)])
+        self.assertEqual(("review-refused", "instance_uac_display_black", True), (first["state"], first["reason"], first["pointerMoved"]))
+        self.assertLessEqual(self.clock[0] - 100.0, decision.GATE_SECONDS + 2, "reading frames after the move is bounded")
+        second = self.run_review(attempt=2, frames=[frame(fill=0)])
+        self.assertEqual(("review-refused", "instance_uac_display_black", False), (second["state"], second["reason"], second["pointerMoved"]))
+        third = self.run_review(attempt=3, frames=[frame()])
+        self.assertEqual(("review-frame-retained", False, 0), (third["state"], third["pointerMoved"], third["wakeMilliseconds"]))
+        self.assertEqual(1, len(self.moves()))
+        self.assertEqual([], self.keys)
+
+    def test_a_review_and_its_decision_move_the_pointer_once_between_them(self):
+        self.assertTrue(self.run_review(frames=[frame(fill=0), frame(), frame()])["pointerMoved"])
+        # The display went dark again before the decision: it refuses rather than move a second time.
+        terminal = self.run_owner(frames=[frame(fill=0)])
+        self.assertEqual(("input-refused", "instance_uac_display_black"), (terminal["state"], terminal["reason"]))
+        self.assertEqual((1, []), (len(self.moves()), self.keys))
+        self.clear()
+        terminal = self.run_owner(frames=[frame(fill=0)])
+        self.assertEqual("instance_uac_display_black", terminal["reason"], "the decision moved once and saw black again")
+        reply = self.run_review(frames=[frame(fill=0)])
+        self.assertEqual(("review-refused", "instance_uac_display_black", False), (reply["state"], reply["reason"], reply["pointerMoved"]))
+        self.assertEqual(1, len(self.moves()))
+
+    def test_the_review_never_answers_and_the_decision_then_answers_the_same_prompt(self):
+        self.assertEqual("review-frame-retained", self.run_review(frames=[frame(fill=0), frame(), frame()])["state"])
+        self.assertEqual([], self.keys)
+        self.assertEqual((0, []), self.classified(), "nothing flat: no fence or input that a reboot or a new job waits on")
+        self.assertEqual("no-input-recorded", decision._uac_receipts(self.root, self.decision)["state"])
+        terminal = self.run_owner()
+        self.assertEqual("input-ack-only", terminal["state"], "the same consent process: the prompt was still open")
+        self.assertEqual(len(SECRET) + 1, len(self.keys))
+
+    def test_every_census_refusal_of_the_decision_refuses_the_review_alike(self):
+        cases = CENSUS_REFUSALS + tuple(({"session": changes}, "instance_uac_session_changed")
+                                        for changes in ({"console": 3}, {"tokenSid": ADMIN}, {"ordinary": False}))
+        for changes, reason in cases:
+            with self.subTest(changes=changes):
+                fresh = {**FRESH, **changes["session"]} if "session" in changes else FRESH
+                censuses = [census()] if "session" in changes else [census(**changes)]
+                self.clear()
+                reply = self.run_review(frames=[frame(fill=0)], fresh=fresh, censuses=censuses)
+                # A changed session refuses before the attempt begins, so the packet prints its plain refusal and no review file exists.
+                expected = ("blocked", reason, None) if "session" in changes else ("review-refused", reason, False)
+                self.assertEqual(expected, (reply.get("state"), reply.get("reason"), reply.get("pointerMoved")))
+                self.assertEqual(([], []), (self.moves(), self.answered()))
+                self.clear()
+                self.assertEqual(reason, self.run_owner(fresh=fresh, censuses=censuses)["reason"], "the decision's own refusal")
+
+    def test_a_prompt_its_decision_burned_is_never_reviewed(self):
+        self.assertEqual("input-ack-only", self.run_owner()["state"])
+        typed = len(self.keys)
+        reply = self.run_review(frames=[frame(fill=0)])
+        self.assertEqual(("review-refused", "instance_uac_prompt_burned", False), (reply["state"], reply["reason"], reply["pointerMoved"]))
+        self.assertEqual((typed, []), (len(self.keys), self.moves()))
+
+    def test_status_reads_files_only_and_an_attempt_that_left_nothing_ends_unknown(self):
+        review = decision.review_id(CORRELATION)
+        with mock.patch.dict(decision.__dict__, self.review_values("approve", SCENARIO, review, 1)):
+            self.assertEqual("no-review-recorded", decision._uac_review_receipts(self.root, review)["state"])
+            decision._UacReview(self.root, review, 1).begin()
+            self.assertIsNone(decision._uac_review_receipts(self.root, review), "begun with no terminal: only the lock can say more")
+            unknown = decision._uac_review_status_open(self.root, review)
+            self.assertEqual(("review-outcome-unknown", 1, False), (unknown["state"], unknown["attempt"], unknown["promptAnswered"]))
+            self.assertEqual(unknown, decision._uac_review_receipts(self.root, review))
+        self.assertEqual([], self.monitor_calls)
+
+    def test_a_kept_frame_is_read_back_whole_and_wins_over_a_late_failure(self):
+        reply = self.run_review(frames=[frame()])
+        review = decision.review_id(CORRELATION)
+        with mock.patch.dict(decision.__dict__, self.review_values("approve", SCENARIO, review, 1)):
+            self.assertEqual(reply, decision._uac_review_receipts(self.root, review))
+            late = decision._UacReview(self.root, review, 1)
+            late.begun = True
+            self.assertEqual(reply, late.reply("instance_host_epoch"), "a terminal the attempt already has is its reply")
+            frame_path = self.root / "windows-uac" / review / "attempt-0001.frame.ppm"
+            self.assertEqual(0o600, frame_path.stat().st_mode & 0o777)
+            frame_path.chmod(0o644)
+            with self.assertRaisesRegex(ValueError, "^instance_uac_review_frame$"):
+                decision._uac_review_receipts(self.root, review)
+
+    def test_an_attempt_after_a_refusal_is_admitted_and_an_open_one_is_not(self):
+        review = decision.review_id(CORRELATION)
+        with mock.patch.dict(decision.__dict__, self.review_values("approve", SCENARIO, review, 1)):
+            first = decision._UacReview(self.root, review, 1)
+            first.begin()
+            with self.assertRaisesRegex(ValueError, "^instance_uac_original_unresolved$"):
+                decision._UacReview(self.root, review, 2).begin()
+            first.reply("instance_uac_event_not_pending")
+            decision._UacReview(self.root, review, 2).begin()
+
+
+class ReviewPacketTests(unittest.TestCase):
+    def review_packet(self, **changes):
+        options = dict(attempt=1, answer="deny", prompt="vpn-broker", row=decision.ROWS[DENY_ROW], context=CONTEXT, scenario_operation=CORRELATION,
+                       decision_operation=decision.decision_id(CORRELATION))
+        options.update(changes)
+        return decision.program(binding(), "uac-review", decision.review_id(CORRELATION), **options)
+
+    def test_the_review_packets_compile_and_hold_no_key_secret_or_stdin(self):
+        text = self.review_packet().decode()
+        compile(text, "whole review packet", "exec")
+        for word in ("send-key", "enter_private", "private_keys", "sys.stdin", "UAC_SECRET", "_uac_flow", "_UacOwner", "uac_owner.", "uac_owner=",
+                     "final-administrator", "UAC_SCREEN", "UAC_FIELD", "UAC_PROFILE_SHA"):
+            self.assertNotIn(word, text, word)
+        self.assertIn("MODE='uac-review'", text)
+        # The observe producer's own wake_display branch is in every packet; the review adds exactly one move of its own.
+        helpers = text.split("\nSPEC=")[0]
+        self.assertEqual(1, helpers.count("monitor('input-send-event'"), "one pointer move, the decision's")
+        self.assertIn("UAC_DECISION_ID=" + repr(decision.decision_id(CORRELATION)), helpers)
+        status = decision.program(binding(), "uac-review-status", decision.review_id(CORRELATION)).decode()
+        compile(status, "whole review status packet", "exec")
+        for word in ("send-key", "screendump", "sys.stdin", "UAC_SECRET", "enter_private"):
+            self.assertNotIn(word, status, word)
+        for word in ("monitor(", "script(", "input-send-event", "query-mice"):
+            self.assertNotIn(word, status.split("\nSPEC=")[0], word)
+        self.assertLess(status.index("uac_known=_uac_review_receipts("), status.index("lock=os.open(root/'intent.json'"),
+                        "receipts answer without taking the lock")
+
+    def test_the_review_packet_is_bound_to_its_own_scenario(self):
+        for changes in ({"decision_operation": str(uuid.uuid4())}, {"scenario_operation": str(uuid.uuid4())}, {"answer": "approve"},
+                        {"prompt": "install-helper"}, {"attempt": 0}, {"context": {**CONTEXT, "ordinarySid": "S-1-5-18"}}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.review_packet(**changes)
+        with self.assertRaises(ValueError):
+            decision.program(binding(), "uac-review", decision.decision_id(CORRELATION), attempt=1, answer="deny", prompt="vpn-broker",
+                             row=decision.ROWS[DENY_ROW], context=CONTEXT, scenario_operation=CORRELATION,
+                             decision_operation=decision.decision_id(CORRELATION))
+
+    @unittest.skipUnless(POSIX, "the fresh source loader's custody is POSIX here")
+    def test_the_production_source_loader_renders_the_review_packets(self):
+        from agent_tools import source_module_loader
+        directory = Path(decision.__file__).parent
+        with source_module_loader.request_scope(directory):
+            adapter = source_module_loader.adapter(directory, "windows_uac_decision")
+            packet = adapter.program(binding(), "uac-review", decision.review_id(CORRELATION), attempt=1, answer="deny", prompt="vpn-broker",
+                                     row=decision.ROWS[DENY_ROW], context=CONTEXT, scenario_operation=CORRELATION,
+                                     decision_operation=decision.decision_id(CORRELATION))
+        self.assertIn(b"class _UacReview", packet)
+        self.assertIn(b"def _uac_review_flow(", packet)
+
+
+class ReviewExecuteTests(ExecuteBase):
+    def review(self, **changes):
+        return decision.review(self.root, self.inputs(**changes))
+
+    def review_files(self):
+        directory = self.root / ".runtime/windows-uac-reviews" / decision.review_id(CORRELATION)
+        return sorted(path.name for path in directory.iterdir()) if directory.exists() else []
+
+    def modes(self):
+        return [packet["mode"] for packet in self.packets]
+
+    def test_a_clone_with_no_profile_gets_a_reviewed_frame_without_key_burn_or_credential(self):
+        """NV7, run 73974d99: the decision refused uac_profile_unreviewed three times before contact, and the prompt expired."""
+        (self.root / ".runtime/windows-uac-profiles" / MACHINE / "vpn-broker.json").unlink()
+        self.assertEqual("uac_profile_unreviewed", self.execute()["reason"])
+        self.replies = [review_terminal()]
+        with mock.patch.object(decision, "SecretFile", side_effect=AssertionError("a review opens no credential")):
+            result = self.review()
+        self.assertEqual(("review-frame-retained", True, False), (result["state"], result["pointerMoved"], result["promptAnswered"]))
+        self.assertEqual(1000, result["wakeMilliseconds"], "how long the display took to light: the decision gives its own move one second")
+        self.assertEqual(["uac-review"], self.modes())
+        self.assertEqual(subprocess.DEVNULL, self.packets[0]["options"]["stdin"])
+        self.assertNotIn("input", self.packets[0]["options"])
+        retained, record = decision.retained_review_frame(self.root, CORRELATION)
+        self.assertEqual(frame(), retained)
+        self.assertEqual((MACHINE, "vpn-broker", True, 1000), (record["environment"], record["prompt"], record["pointerMoved"], record["wakeMilliseconds"]))
+        self.assertEqual((WIDTH, HEIGHT, login.ppm(frame())[2]), decision._png_pixels(Path(result["pngPath"]).read_bytes()))
+        for name in ("framePath", "pngPath"):
+            self.assertEqual(0o600, Path(result[name]).stat().st_mode & 0o777)
+        self.assertFalse((self.root / ".runtime/windows-uac-decisions").exists(), "no decision journal")
+        profile = decision.reviewed_uac_profile(self.root, record["environment"], record["prompt"], retained, crops=[CROP], field=FIELD,
+                                                max_dark_pixels=4, direct=True)
+        self.assertEqual(hashlib.sha256(retained).hexdigest(), profile["reviewedFrameSha256"])
+        self.replies = [self.ack()]
+        self.assertEqual("input-ack-only", self.execute()["state"], "the reviewed profile admits the decision on a later prompt")
+        self.assertEqual(["uac-review", "uac-decide"], self.modes())
+        self.assert_secret_nowhere()
+
+    def test_a_lost_review_reply_never_sends_a_second_review_packet(self):
+        self.replies = [subprocess.TimeoutExpired("ssh", 1), {"state": "blocked", "operationId": decision.review_id(CORRELATION),
+                                                              "reason": "instance_operator_busy", "errorClass": "ValueError", "replayAllowed": False},
+                        review_terminal()]
+        first = self.review()
+        self.assertEqual(("unknown", "uac_review_unresolved"), (first["state"], first["reason"]))
+        busy = self.review()
+        self.assertEqual(("unknown", "instance_operator_busy"), (busy["state"], busy["reason"]), "a status that saw nothing proves nothing")
+        second = self.review()
+        self.assertEqual("review-frame-retained", second["state"])
+        self.assertEqual(second, self.review(), "a kept frame is returned again with no packet")
+        self.assertEqual(["uac-review", "uac-review-status", "uac-review-status"], self.modes())
+
+    def test_a_not_yet_refusal_permits_another_review_and_any_other_ends_them(self):
+        review = decision.review_id(CORRELATION)
+
+        def refused(reason, attempt=1, moved=False):
+            return {"state": "review-refused", "operationId": review, "attempt": attempt, "reason": reason, "pointerMoved": moved, "replayAllowed": False}
+        self.replies = [refused("instance_uac_event_not_pending"), review_terminal(attempt=2)]
+        early = self.review()
+        self.assertEqual(("refused", "instance_uac_event_not_pending"), (early["state"], early["reason"]))
+        self.assertEqual("review-frame-retained", self.review()["state"])
+        self.assertIn("UAC_ATTEMPT=2", self.packets[1]["source"].decode())
+        for reason in ("instance_uac_consent_absent", "instance_uac_prompt_burned", "instance_uac_event_mismatch"):
+            with self.subTest(reason=reason):
+                shutil.rmtree(self.root / ".runtime/windows-uac-reviews")
+                self.packets.clear()
+                self.replies = [refused(reason)]
+                first = self.review()
+                self.assertEqual(("refused", reason), (first["state"], first["reason"]))
+                self.assertEqual(first, self.review())
+                self.assertEqual(["uac-review"], self.modes(), "no second packet")
+
+    def test_a_display_still_black_permits_a_later_review_and_still_ends_the_decision(self):
+        """A slow wake costs a call, not the run: the pointer journal on the VM host forbids the second move, not this client."""
+        review = decision.review_id(CORRELATION)
+        black = {"state": "review-refused", "operationId": review, "attempt": 1, "reason": "instance_uac_display_black", "pointerMoved": True,
+                 "replayAllowed": False}
+        self.replies = [black, {**black, "attempt": 2, "pointerMoved": False}, review_terminal(attempt=3, pointerMoved=False, wakeMilliseconds=0)]
+        first = self.review()
+        self.assertEqual(("refused", "instance_uac_display_black", True), (first["state"], first["reason"], first["pointerMoved"]))
+        second = self.review()
+        self.assertEqual(("refused", "instance_uac_display_black", False), (second["state"], second["reason"], second["pointerMoved"]))
+        third = self.review()
+        self.assertEqual(("review-frame-retained", False, 0, 3), (third["state"], third["pointerMoved"], third["wakeMilliseconds"], third["attempt"]))
+        self.assertEqual(["uac-review"] * 3, self.modes())
+        self.assertEqual(["UAC_ATTEMPT=%d" % number in packet["source"].decode() for number, packet in enumerate(self.packets, 1)], [True] * 3)
+        self.assertEqual(third, self.review(), "the kept frame ends the reviews")
+        self.assertEqual(3, len(self.packets))
+        self.packets.clear()
+        self.replies = [self.refused("instance_uac_display_black")]
+        ended = self.execute()
+        self.assertEqual(("refused", "instance_uac_display_black"), (ended["state"], ended["reason"]))
+        self.assertEqual(ended, self.execute(), "the decision's own rule is unchanged: black after its move ends its submits")
+        self.assertEqual(["uac-decide"], self.modes())
+
+    def test_every_local_refusal_of_the_decision_refuses_the_review_before_contact(self):
+        cases = ((lambda: self.journal(SCENARIO, host="other"), "uac_scenario_mismatch"),
+                 (lambda: self.journal("windows-ordinary-qualification"), "uac_scenario_not_in_table"),
+                 (lambda: self.journal(DENY_ROW), "uac_row_mismatch"),
+                 (lambda: self.journal(SCENARIO, state="unknown"), "uac_scenario_not_running"),
+                 (lambda: (self.root / ".rag_index/native-scenario-executions" / (CORRELATION + ".json")).unlink(), "uac_scenario_unknown"),
+                 (lambda: (self.root / ".rag_index/windows-vm-deploy-intents" / (MACHINE + ".intent.json")).chmod(0o644), "uac_environment_unavailable"))
+        for change, reason in cases:
+            with self.subTest(reason=reason):
+                self.journal(SCENARIO)
+                (self.root / ".rag_index/windows-vm-deploy-intents" / (MACHINE + ".intent.json")).chmod(0o600)
+                change()
+                refused = self.review()
+                self.assertEqual(("refused", reason, decision.review_id(CORRELATION)), (refused["state"], refused["reason"], refused["reviewId"]))
+                self.assertEqual(reason, self.execute()["reason"], "the decision refuses alike")
+                self.assertEqual(([], [], []), (self.packets, self.reads, self.review_files()))
+        self.journal(SCENARIO)
+        (self.root / ".rag_index/windows-vm-deploy-intents" / (MACHINE + ".intent.json")).chmod(0o600)
+        self.context_reply = {**CONTEXT, "ordinarySid": "S-1-5-18"}
+        self.assertEqual("uac_context_unavailable", self.review()["reason"])
+        self.assertEqual(([], []), (self.packets, self.review_files()))
+
+    def test_a_review_reply_cannot_claim_an_answer_or_carry_another_frame(self):
+        consent_too_old = {"pid": 4242, "birth": "134368653100000000", "sessionId": 2, "ageSeconds": 90}
+        for changes in ({"promptAnswered": True}, {"replayAllowed": True}, {"operationId": decision.decision_id(CORRELATION)}, {"frameSha256": "0" * 64},
+                        {"frameBytes": 1}, {"width": WIDTH + 1}, {"frame": "not base64!"}, {"extra": 1}, {"decision": "deny"},
+                        {"state": "input-ack-only"}, {"consent": consent_too_old}, {"wakeMilliseconds": 0}, {"wakeMilliseconds": -1},
+                        {"wakeMilliseconds": True}, {"pointerMoved": False},
+                        {"frame": base64.b64encode(zlib.compress(frame(fill=199))).decode()}):
+            with self.subTest(changes=changes):
+                shutil.rmtree(self.root / ".runtime/windows-uac-reviews", ignore_errors=True)
+                self.replies = [review_terminal(**changes)]
+                result = self.review()
+                self.assertEqual(("unknown", "uac_reply_rejected"), (result["state"], result["reason"]))
+                self.assertEqual([], [name for name in self.review_files() if name.startswith("frame.")])
+        for correlation in (CORRELATION, str(uuid.uuid4())):
+            with self.subTest(correlation=correlation), self.assertRaisesRegex(ValueError, "^windows_uac_review_frame_unavailable$"):
+                decision.retained_review_frame(self.root, correlation)
+
+    def test_the_binding_is_the_drivers_binding_without_the_sign_in_stack(self):
+        profile = self.root / ".runtime/windows-uac-profiles" / MACHINE / "vpn-broker.json"
+        kept = profile.read_bytes()
+        profile.unlink()
+        program = ("import json,sys\nfrom agent_tools import windows_uac_decision as decision\n"
+                   "reason=decision.execute(sys.argv[1],json.loads(sys.argv[2]))['reason']\n"
+                   "print(json.dumps([reason,sorted(name for name in ('agent_tools.readiness_windows','agent_tools.native_scenario_windows',"
+                   "'agent_tools.windows_scenario_host_job')if name in sys.modules)]))\n")
+        done = subprocess.run([sys.executable, "-B", "-c", program, str(self.root), json.dumps(self.inputs())], cwd=Path(decision.__file__).parents[1],
+                              stdin=subprocess.DEVNULL, capture_output=True, timeout=600)
+        self.assertEqual((0, b""), (done.returncode, done.stderr))
+        self.assertEqual(["uac_profile_unreviewed", []], json.loads(done.stdout),
+                         "a refusal local files decide loads neither the sign-in stack nor the scenario driver and its host job")
+        profile.write_bytes(kept)
+        profile.chmod(0o600)
+        record = json.loads((self.root / ".rag_index/native-scenario-executions" / (CORRELATION + ".json")).read_text())
+        plan = execution.ScenarioPlan.from_mapping(record["plan"])
+        self.assertEqual(windows._binding(self.root, plan), decision._binding(self.root, plan))
+        intent = self.root / ".rag_index/windows-vm-deploy-intents" / (MACHINE + ".intent.json")
+        original = json.loads(intent.read_text())
+        for change in (lambda value: value.update(mode="stop"), lambda value: value["spec"].update(deploymentId=str(uuid.uuid4())),
+                       lambda value: value.update(extra=1), lambda value: value["spec"].update(host="other"), lambda value: value.pop("callerSha256")):
+            value = json.loads(json.dumps(original))
+            change(value)
+            intent.write_text(json.dumps(value))
+            with self.subTest(value=value):
+                for reader in (windows._binding, decision._binding):
+                    with self.assertRaises(ValueError):
+                        reader(self.root, plan)
+        intent.unlink()
+        for reader in (windows._binding, decision._binding):
+            with self.assertRaises(ValueError):
+                reader(self.root, plan)
+        intent.write_text(json.dumps(original))
+        intent.chmod(0o600)
+
+
+class RouteAdmissionTests(ExecuteBase):
+    """The public route over a real journal: local refusals answer before the host's transport admission."""
+
+    def setUp(self):
+        super().setUp()
+        from agent_tools import mcp_server
+        self.server = mcp_server
+        self.admissions = []
+        original = mcp_server._agent_module
+
+        def admitted(root, action, inputs, **options):
+            self.admissions.append(action)
+            return nullcontext()
+        dispatch = types.SimpleNamespace(admitted_dispatch=admitted)
+
+        def route(name):
+            return dispatch if name == "readiness_vm_dispatch" else decision if name == "windows_uac_decision" else original(name)
+        for patcher in (mock.patch.object(mcp_server, "_agent_module", side_effect=route), mock.patch.object(mcp_server, "REPO_ROOT", self.root)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_a_local_refusal_never_waits_on_the_transport_admission(self):
+        (self.root / ".runtime/windows-uac-profiles" / MACHINE / "vpn-broker.json").unlink()
+        result = self.server.vm_workflow("windows-uac-decision", self.inputs())
+        self.assertEqual(("refused", "uac_profile_unreviewed", False), (result["state"], result["reason"], result["ok"]))
+        self.assertEqual(([], [], []), (self.admissions, self.packets, self.reads),
+                         "NV7, run 73974d99: this refusal waited on the host's transport admission three times")
+        self.journal(SCENARIO, state="unknown")
+        self.assertEqual("uac_scenario_not_running", self.server.vm_workflow("windows-uac-review", self.inputs())["reason"])
+        self.assertEqual(([], [], []), (self.admissions, self.packets, self.reads), "no transport admission, context read or packet")
+
+    def test_a_call_that_must_reach_the_host_is_admitted_first(self):
+        self.replies = [self.ack(), review_terminal()]
+        self.assertEqual("input-ack-only", self.server.vm_workflow("windows-uac-decision", self.inputs())["state"])
+        reviewed = self.server.vm_workflow("windows-uac-review", self.inputs())
+        self.assertEqual(("review-frame-retained", True, "uac-review-frame"), (reviewed["state"], reviewed["ok"], reviewed["evidenceClass"]))
+        self.assertEqual(["windows-uac-decision", "windows-uac-review"], self.admissions)
+        self.assertEqual(reviewed, self.server.vm_workflow("windows-uac-review", self.inputs()), "a kept frame comes back with no admission")
+        self.assertEqual(["windows-uac-decision", "windows-uac-review"], self.admissions)
 
 
 class FakeCli:

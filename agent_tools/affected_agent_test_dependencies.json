@@ -178,7 +178,8 @@
         "902afbf12b0fb1fc9b3900f7f1af63abac658517f90c3c830e4e71946590621a",
         "2bb3629f16546472c7d5adee7f4db60f692998f57d6ebb03e8d50d64f8c4b145",
         "ddc0b780428760e9de644488ebbd024c7daa458d7f341b473c8f5a46ebec91fb",
-        "64446372a3f60f0617776996b61bb3750860bee654028bb472934ede0cb1616f"
+        "64446372a3f60f0617776996b61bb3750860bee654028bb472934ede0cb1616f",
+        "cd7b80fe23ce17c92730e193a336b82ee62c6e72b4e285431524fa20a8be95df"
       ]
     },
     "agent_tools/readiness_tart_macos_legacy_public_resolution.py": {
@@ -8306,7 +8307,8 @@
         "d5d9a7d74bba18f01a09df695a3730ac062d3cea1bab0bb557f72335d3112f5f",
         "7d909b47ffa61b670fe4cfb77590dea2160b1d839f08ca0190f1ab2d5a23efe9",
         "218b0b76c3a18ea80c219b4c935bd7e09ed60da395ec05bc9f4557f12a0416cf",
-        "b2ff44ac4f7d6e9cbf607fa70d35d1ebf673ec1d6e2c1ca71239eaa223c9abd3"
+        "b2ff44ac4f7d6e9cbf607fa70d35d1ebf673ec1d6e2c1ca71239eaa223c9abd3",
+        "1bb0e332f5009d931521a1af927ab85131b7cb38ab87a6cadd78db1b21c336c2"
       ]
     },
     "agent_tools/tests/test_lease_provider_policy_runtime.py": {
@@ -13529,7 +13531,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "3823781c7a25233f9d4441157f4ea10fd18a2054de5d1d7046e3fc18b3341ef5",
+    "agent_tools/readiness_vm_dispatch.json": "1f54453782ecc31fe3a2f1ba33247df2a5f7cbd2a0ea5fe2a6ab634ae5410dcc",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",
@@ -13731,7 +13733,7 @@
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.before.source": "21a0185c5bee3d0ec6045a64ba319ab396f4aceabd82f8b981cbd2aa503121b3",
     "agent_tools/tests/fixtures/windows_system_image_inquiry/native.fixed.source": "d761bc4c8e4c581af05559d27855562e9324d86b8839e5b63eac7eb9927cda5b",
     "agent_tools/tests/fixtures/windows_wts_info_class/observe.before.source": "6ea19c6ffd6e53190df564f4ec56bc9772d60a663ad2820ea08dc2a4ed0f5e50",
-    "agent_tools/tool_action_policy.json": "0d34ce4cbcf981da22d5b39cf0bb18718db1912eed792cd704a7fb8165af4821",
+    "agent_tools/tool_action_policy.json": "fabaf9dac33ee01d13f7b65a10a2edcf18a53702e9a78403a50c75088f630cea",
     "scripts/testdata/macos-vm-resource-monitor-dispatch/stop-timeout.before.fragment": "995464bf10a441029a7e8124eaeb4832bbd8d92d875fc2f022adab8063c639b5",
     "scripts/tests/fixtures/visual_target_before/bootstrap_windows_visual_vm.sh.source": "855a6b625b00a5411cd8b9dd7832cf23a824fa5e52e7ef294d87447100a298ae",
     "scripts/tests/fixtures/visual_target_before/mark_windows_visual_vm_ready.sh.source": "4eeb3e2ee6d01e78503052a6ce2496195a02d55cb7fe120b723a136effea9a13",

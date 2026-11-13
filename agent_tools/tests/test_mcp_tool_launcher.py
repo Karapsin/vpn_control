@@ -33,13 +33,13 @@ class McpToolLauncherTest(unittest.TestCase):
         path.write_text("#!/bin/sh\n" + body)
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
-    def _run(self) -> subprocess.CompletedProcess[str]:
+    def _run(self, command: str = "prepare_start") -> subprocess.CompletedProcess[str]:
         environment = {
             "PATH": f"{self.bin_dir}{os.pathsep}{os.environ['PATH']}",
             "LC_ALL": "C",
         }
         return subprocess.run(
-            ["/bin/bash", str(self.root / "agent_tools" / "mcp_tool.sh"), "prepare_start"],
+            ["/bin/bash", str(self.root / "agent_tools" / "mcp_tool.sh"), command],
             capture_output=True,
             text=True,
             env=environment,
@@ -79,6 +79,23 @@ class McpToolLauncherTest(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("system:", result.stdout)
+
+    def test_only_serve_pays_for_importing_the_mcp_package(self) -> None:
+        """Each native call is one launcher run; under load the import probe alone took 4 to 9 s of it."""
+        probe = self.root / "probe.txt"
+        self._write_executable(
+            self.root / ".agent_venv" / "bin" / "python",
+            'if [ "$1" = "-c" ]; then printf "%s\\n" "$2" >>"' + str(probe) + '"; exit 0; fi\nprintf "venv:%s\\n" "$*"\n',
+        )
+        for command in ("vm-workflow", "serve"):
+            result = self._run(command)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("venv:", result.stdout)
+        one_shot, serve = probe.read_text().splitlines()
+        self.assertEqual("import cryptography, mcp", serve)
+        self.assertIn("import cryptography", one_shot, "cryptography is still imported")
+        self.assertIn('find_spec("mcp")', one_shot, "the MCP package must still be installed")
+        self.assertNotRegex(one_shot, r"import [^;]*\bmcp\b", "a one-shot command never imports it")
 
 
 if __name__ == "__main__":

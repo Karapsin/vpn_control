@@ -15,7 +15,14 @@ if [[ ! -x "$venv_python" && -x "$repo_root/.agent_venv/Scripts/python.exe" ]]; 
   venv_python="$repo_root/.agent_venv/Scripts/python.exe"
 fi
 if [[ -x "$venv_python" ]]; then
-  if ! "$venv_python" -c 'import cryptography, mcp' >/dev/null 2>&1; then
+  # Only `serve` imports the MCP package. A one-shot command pays for the probe on every native call, and on a
+  # loaded coordinator that import alone took 4 to 9 s: it still imports cryptography and still requires the
+  # MCP package to be installed, without importing what the command itself never does.
+  probe='import cryptography, mcp'
+  if [[ "${1:-}" != "serve" ]]; then
+    probe='import cryptography, importlib.util, sys; sys.exit(0 if importlib.util.find_spec("mcp") else 1)'
+  fi
+  if ! "$venv_python" -c "$probe" >/dev/null 2>&1; then
     echo "Repository MCP environment is missing required dependencies. Run ./agent_tools/mcp_server.sh to repair .agent_venv." >&2
     exit 1
   fi

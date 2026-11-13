@@ -141,6 +141,10 @@ def _core_source_request(function):
     return call
 
 try:  # The repository tests intentionally run without the optional MCP package.
+    # A one-shot CLI command never serves, so it neither imports that package nor builds a server: on a loaded
+    # coordinator the import alone took seconds of every native call. `serve` and every importer still get it.
+    if __name__ == "__main__" and sys.argv[1:2] != ["serve"]:
+        raise ImportError("one-shot CLI command")
     from mcp.server.fastmcp import FastMCP
 except ImportError:  # pragma: no cover - covered by launcher/integration smoke checks.
     FastMCP = None  # type: ignore[assignment]
@@ -3003,6 +3007,7 @@ _VM_NATIVE_ADAPTERS = (
     'ssh_transport',
     'windows_guest_input',
     'windows_uac_decision',
+    'windows_uac_visual',
     'windows_credential_recovery_ssh',
     'windows_credential_probe_ssh',
     'native_review_source_closure',
@@ -3169,13 +3174,25 @@ _VM_NATIVE_ADAPTERS = (
 )
 
 
+_MCP_COMPILED = {}
+
+
 def _agent_module(name: str) -> Any:
-    """Load a fixed native adapter from this repository's package."""
+    """Load a fixed native adapter from this repository's package.
+
+    Every call reads the server's bytes and compares their digest with the loaded one and their code with the
+    executing code. Equal bytes compile to an equal code object, so the loaded bytes are compiled once per process:
+    a request loads several adapters, and on a loaded coordinator each compile of this file took over a second.
+    """
     if name not in _VM_NATIVE_ADAPTERS:
         raise ValueError("Unknown fixed native adapter.")
-    current=Path(__file__).read_bytes()
-    if (_MCP_EXECUTING_CODE!=compile(current,__file__,"exec",dont_inherit=True,optimize=sys.flags.optimize)
-            or hashlib.sha256(current).hexdigest()!=_CHECK_RUNNER_SOURCE_DIGESTS[Path(__file__).resolve()]):
+    current=Path(__file__).read_bytes();digest=hashlib.sha256(current).hexdigest()
+    loaded=digest==_CHECK_RUNNER_SOURCE_DIGESTS[Path(__file__).resolve()]
+    compiled=_MCP_COMPILED.get(digest) if loaded else None
+    if compiled is None:
+        compiled=compile(current,__file__,"exec",dont_inherit=True,optimize=sys.flags.optimize)
+        if loaded:_MCP_COMPILED[digest]=compiled
+    if _MCP_EXECUTING_CODE!=compiled or not loaded:
         raise ValueError("MCP source changed; use the fresh-process route or restart MCP.")
     loader=_SOURCE_MODULE_LOADER
     return loader.adapter(Path(__file__).resolve().parent,name)
@@ -3444,13 +3461,60 @@ def _deploy_frame_invalid(inputs):
 
 
 def _uac_decision_invalid(inputs):
-    # The UUID pattern is exactly the canonical form _valid_uuid accepts.
+    # The UUID pattern is exactly the canonical form _valid_uuid accepts. windows-uac-review takes the same five.
     return (set(inputs) != {"host", "environment", "correlationId", "prompt", "decision"}
             or any(type(v) is not str for v in inputs.values())
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", inputs["host"])
             or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["environment"])
             or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["correlationId"])
             or inputs["prompt"] not in {"install-helper", "vpn-broker"} or inputs["decision"] not in {"approve", "deny"})
+
+
+def _uac_visual_invalid(inputs):
+    return (set(inputs) != {"deploymentId", "operationId", "step"} or any(type(v) is not str for v in inputs.values())
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["deploymentId"])
+            or not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", inputs["operationId"])
+            or inputs["step"] not in {"raise", "cancel"})
+
+
+# The closed UAC routes' replies: the states that are ok, the evidence class, and the reason when the adapter cannot
+# answer. Only an acknowledged answer, a retained review frame, or a visual prompt raised or proven closed is ok.
+_UAC_REPLIES = {
+    "windows-uac-decision": (frozenset({"input-ack-only"}), "uac-input-ack-only", "uac_decision_unavailable"),
+    "windows-uac-review": (frozenset({"review-frame-retained"}), "uac-review-frame", "uac_review_unavailable"),
+    "windows-uac-visual": (frozenset({"visual-prompt-raised", "visual-prompt-closed"}), "uac-visual-setup", "uac_visual_unavailable"),
+}
+
+
+def _uac_reply(route, result):
+    """One closed UAC route's public reply, by that route's fixed name. None is a product action, and neither a
+    review's frame nor a visual prompt is an answer. These two helpers format a reply and select nothing: the action
+    catalog audit follows every function that takes the action itself, and each one it follows costs it a pass."""
+    accepted, evidence, _ = _UAC_REPLIES[route]
+    return {"tool": "vm_workflow", **result, "ok": result["state"] in accepted, "nativeActionAllowed": False,
+            "productAction": False, "evidenceClass": evidence}
+
+
+def _uac_unavailable(route):
+    return {"tool": "vm_workflow", "ok": False, "state": "unknown", "reason": _UAC_REPLIES[route][2],
+            "nativeActionAllowed": False, "replayAllowed": False, "productAction": False}
+
+
+def _uac_before_contact(action, inputs):
+    """A UAC reply decided by local files alone: the journal, the table, the binding, the profile and retained results,
+    or for the visual prompt the deployment's purpose, the step order and retained results.
+
+    It never waits on the host's transport admission; None sends the call through that admission, where it runs every
+    gate again.
+    """
+    try:
+        if action == "windows-uac-visual":
+            local = _agent_module("windows_uac_visual").before_contact(REPO_ROOT, inputs)
+        else:
+            local = _agent_module("windows_uac_decision").before_contact(REPO_ROOT, inputs, review=action == "windows-uac-review")
+    except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+        return _uac_unavailable(action)
+    return None if local is None else _uac_reply(action, local)
 
 
 def _deploy_lifecycle_invalid(action, inputs):
@@ -3802,8 +3866,10 @@ def _vm_invalid_before_recovery(action, inputs):
                 or any(type(v) is not str for v in inputs.values()))
     if action in {"windows-vm-deploy-frame", "windows-vm-deploy-frame-collect"}:
         return _deploy_frame_invalid(inputs)
-    if action == "windows-uac-decision":
+    if action in {"windows-uac-decision", "windows-uac-review"}:
         return _uac_decision_invalid(inputs)
+    if action == "windows-uac-visual":
+        return _uac_visual_invalid(inputs)
     if action in {"windows-vm-deploy-start", "windows-vm-deploy-status", "windows-vm-deploy-stop",
                   "windows-vm-deploy-release"}:
         return _deploy_lifecycle_invalid(action, inputs)
@@ -3998,6 +4064,10 @@ def _vm_workflow_impl(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         policy = _agent_module("tool_action_policy").action_policy("vm_workflow", action)
         if not policy.requirements:
             return _vm_workflow_dispatch(action, inputs)
+        if action in {"windows-uac-decision", "windows-uac-review", "windows-uac-visual"}:
+            local = _uac_before_contact(action, inputs)
+            if local is not None:
+                return local
         with _agent_module("readiness_vm_dispatch").admitted_dispatch(REPO_ROOT, action, inputs):
             return _vm_workflow_dispatch(action, inputs)
     except Exception as error:
@@ -4137,12 +4207,23 @@ def _vm_workflow_dispatch(action: str, inputs: dict[str, Any]) -> dict[str, Any]
             if _uac_decision_invalid(inputs):
                 return _error("vm_workflow", "UAC decision requires exactly host, environment, correlationId, prompt and decision.")
             try:
-                result = _agent_module("windows_uac_decision").execute(REPO_ROOT, inputs)
-                return {"tool": "vm_workflow", **result, "ok": result["state"] == "input-ack-only", "nativeActionAllowed": False,
-                        "productAction": False, "evidenceClass": "uac-input-ack-only"}
+                return _uac_reply(action, _agent_module("windows_uac_decision").execute(REPO_ROOT, inputs))
             except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
-                return {"tool": "vm_workflow", "ok": False, "state": "unknown", "reason": "uac_decision_unavailable",
-                        "nativeActionAllowed": False, "replayAllowed": False, "productAction": False}
+                return _uac_unavailable(action)
+        if action == "windows-uac-review":
+            if _uac_decision_invalid(inputs):
+                return _error("vm_workflow", "UAC review requires exactly host, environment, correlationId, prompt and decision.")
+            try:
+                return _uac_reply(action, _agent_module("windows_uac_decision").review(REPO_ROOT, inputs))
+            except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+                return _uac_unavailable(action)
+        if action == "windows-uac-visual":
+            if _uac_visual_invalid(inputs):
+                return _error("vm_workflow", "UAC visual prompt requires exactly deploymentId, operationId and step.")
+            try:
+                return _uac_reply(action, _agent_module("windows_uac_visual").prompt(REPO_ROOT, inputs))
+            except (ValueError, OSError, KeyError, TypeError, subprocess.SubprocessError):
+                return _uac_unavailable(action)
         if action == "source-review-close":
             if _source_review_close_invalid(inputs):
                 return _error("vm_workflow", "Invalid source closure input fields.")
@@ -9615,7 +9696,8 @@ def vm_workflow(action: str, inputs: dict[str, Any]) -> dict[str, Any]:
         if retired is not None:
             return retired
     if action in {"windows-input-start", "windows-input-observe", "windows-input-join",
-                  "windows-input-decision", "windows-input-finish", "windows-uac-decision"}:
+                  "windows-input-decision", "windows-input-finish", "windows-uac-decision", "windows-uac-review",
+                  "windows-uac-visual"}:
         return _vm_workflow_impl(action, inputs)
     if action in {"source-review-close", "baseline-source-inventory"}:
         # Metadata/source reads must not write native failure evidence on refusal.
@@ -9757,6 +9839,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                                       "windows-input-decision",
                                       "windows-input-finish",
                                       "windows-uac-decision",
+                                      "windows-uac-review",
+                                      "windows-uac-visual",
                                       "windows-vm-virt-firmware-install-preflight",
                                       "windows-vm-virt-firmware-install-start",
                                       "windows-vm-virt-firmware-install-status",

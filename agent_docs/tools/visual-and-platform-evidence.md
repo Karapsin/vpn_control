@@ -1627,4 +1627,126 @@ status records `input-outcome-unknown` once the prompt is gone but never closes
 the fence, so reboots and new jobs on that clone refuse until the original is
 read. No sign-in source pin moves, and the module is not alias-pinned.
 
+`vm_workflow windows-uac-review` is the sibling closed action that gives a clone
+its first reviewed frame. It takes the same five fields, route, transport
+admission and closure, and needs no profile. It runs the decision's admission:
+the scenario journal and that row's pending event, the SYSTEM census of
+`consent.exe` and the UAC policy. A black frame gets the decision's own single
+journaled pointer move: the journal is the decision's `pointer.intent.json`, so a
+review and the decision of one scenario move the pointer once between them, and
+a later packet that still sees black refuses `instance_uac_display_black` instead
+of moving again. Frames are then read for up to 10 s until the display shows
+something, the frame read a second later is kept, the same consent process is
+checked again, and the review stops. It writes no burn, input journal, fence or
+decision terminal, opens no credential, sends no key or click and reads no
+stdin. A prompt its decision burned or began to answer is refused. The reply
+names `pointerMoved` and `wakeMilliseconds`, the time from that attempt's move to
+the first lit frame in half-second reads. The decision gives its own move one
+second: on a clone that needs longer, review the prompt first in the run that
+answers it, and the decision then finds the display lit. Its reply is
+`review-frame-retained`, class
+`uac-review-frame`, never an answer: the prompt and the status token stay open,
+and a decision may follow within its gate. Its journal is
+`.runtime/windows-uac-reviews/<reviewId>/` beside the decision's, with the frame as
+`frame.ppm` and a lossless `frame.png` for viewing. A kept frame is returned again
+with no packet, a lost reply is only read by a status packet, and as for the
+decision only a "not yet" refusal permits another submit. For a review
+`instance_uac_display_black` is one as well: the pointer journal forbids a second
+move, so the next review only reads the census and frames, and a slow wake costs
+a call, not the run. The decision keeps its own rule, and black ends its submits.
+
+Both UAC actions answer what local files decide (the journal, the table, the
+binding, the profile and retained results) before the transport admission, so
+such a refusal never waits on SSH; the admitted call runs every gate again. The
+binding is read without the sign-in stack, the scenario driver loads at the first
+contact, and the server compiles its own source once per process instead of once
+per adapter load. Each of those checks is unchanged. A one-shot CLI command no
+longer imports the MCP package: the server imports it for `serve` and for
+importers only, and `mcp_tool.sh` imports it in its probe for `serve` only, while
+a one-shot command still imports `cryptography` and still requires the MCP
+package to be installed. A client that polls for a prompt should call the server
+through that launcher or directly, once per poll.
+
+A profile for a clone, by one operator, with no other guest action in between:
+
+1. Start a run of a row whose prompt the profile is for (`vpn-broker` from
+   `windows-scoped-tun.restart-deny`, `install-helper` from an update row), on
+   the discovery package, and poll until `uac-pending:<prompt>:<decision>`.
+2. Call `windows-uac-review` with that run's five fields. Call again on a later
+   poll only after a "not yet" refusal or `instance_uac_display_black`; the prompt
+   then expires unanswered.
+3. Open `pngPath` and check it: the prompt up and the password box empty. After a
+   move an absolute pointer is at the centre of the frame, and a relative one is
+   a pixel to the right of where it was.
+4. Choose one to eight crops of fixed dialog pixels and the field, the part of the
+   password box where characters appear. None may meet the pointer's parking place
+   `[w/2-4, h/2-4, w/2+24, h/2+40]`, no crop may meet the field, and a crop holds
+   no pointer. `max_dark_pixels` admits the caret if the frame shows it.
+5. `frame, record = retained_review_frame(root, correlationId)`, then
+   `reviewed_uac_profile(root, record["environment"], record["prompt"], frame,
+   crops, field, max_dark_pixels)` writes the create-only profile under
+   `.runtime/windows-uac-profiles/`.
+6. Answer the prompt of a later run with `windows-uac-decision`.
+
+The decision and the review need a running scenario of the ordinary user. A
+`windowsUacVisual` clone has none: its console is its filtered administrator, and
+it runs no scenario job. `windows-uac-qualification.<answer>` therefore stays a
+direct table rung with no scenario row. A row would need the scenario bundle, the
+ordinary root and a producer no file has, and its prompt would not stand in for a
+product prompt's profile.
+
+##### Windows UAC visual prompt
+
+`vm_workflow windows-uac-visual` is the closed route for the `windows-uac` scene
+on such a clone (`agent_tools/windows_uac_visual.py`). It takes exactly
+`deploymentId`, `operationId` (a new UUID per prompt) and `step` (`raise` or
+`cancel`). The host comes from the deployment's own start intent, which must be a
+`windowsUacVisual`, `en-US` one. It is setup class, `uac-visual-setup`: never
+product evidence, never an approval, with no credential and no profile.
+
+`raise` reads `visual-session-qualified.json`, which that deployment's qualification
+left in its VM root, and proves in a SYSTEM census that the console is still that
+session: the administrator's SID, the same explorer by pid and birth, the boot, the
+UAC policy, the administrator's `en-US` layout, an unlocked session, no prompt and
+no shell on that desktop. It then opens its fence and parks the pointer once, with
+no button: an absolute device jumps to the top right corner, a relative one gets a
+bounded run of steps towards it. The park wakes a sleeping display and keeps the
+arrow out of the scene. Frames are read until the display shows something. Then
+come `Esc`, `Esc` and `Win+R`, and the frame must change in the Run dialog's corner
+and almost nowhere else; otherwise one `Esc` closes whatever opened and nothing is
+typed. The command is the visual driver's own, `powershell start powershell -verb
+runas`. The prompt is proven twice: one signed `consent.exe` of that session under
+Appinfo with exactly one requesting shell, and a frame that changed in at least
+half its pixels, because the secure desktop dims the whole screen while a prompt
+waiting as a taskbar button does not. `raise` stops there with the prompt open.
+
+`cancel` sends one `Esc`, burned before it is sent, and only to the prompt that
+`raise` proved shown, while that same consent process is younger than 90 s. An
+older one is left to expire, which is the same denial, and a prompt the operation
+never recorded is waited out and never keyed. It then proves the prompt gone and
+no shell left on that desktop, which an approval would have left, closes the
+fence and names the frame operations whose result was written while that prompt
+was still up. A prompt still up after two exit reads is reported
+`visual-prompt-open`, and the next call goes on. Every repeat of a step is a settle
+packet that embeds no pointer, key or frame code: a raise is never typed twice and
+the `Esc` is never sent twice. A raise that began and failed says `cancelRequired`.
+
+The scene, by one operator, direct first (TEST-002):
+
+1. The clone is started, qualified (`visualFilteredAdminReady`) and secured.
+2. Direct: call `windows_uac_visual.prompt(root, {"deploymentId": <id>,
+   "operationId": <new uuid>, "step": "raise"})` from a private helper, outside MCP.
+3. At `visual-prompt-raised`, at once: `vm_workflow windows-vm-deploy-frame` with
+   that `deploymentId` and a new frame `operationId`. Its journal is the folder of
+   the reply's `framePath`.
+4. Then the same call as step 2 with `"step": "cancel"`, repeated while it answers
+   `visual-prompt-open`, until `visual-prompt-closed`. `framesDuringPrompt` should
+   name the frame operation of step 3.
+5. Open the frame: the consent prompt for Windows PowerShell, `No` focused, the
+   whole screen dimmed, no arrow in the dialog.
+6. MCP: repeat steps 2 to 4 through `vm_workflow windows-uac-visual` with a new
+   `operationId` and a new frame operation, then collect that frame with
+   `capture-local --target deployment:<id>` as
+   [visual regression](../visual-regression.md) describes, and review it.
+
 Return to [the tool entry point](../../agent_tools/README.md) for current task routing.

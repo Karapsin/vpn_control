@@ -522,6 +522,8 @@
         "windows-msi-stale-lock-reconcile-close": "vm_workflow:windows-msi-stale-lock-reconcile-status",
         "windows-msi-stale-lock-recover": "vm_workflow:windows-msi-stale-lock-reconciliation-status",
         "windows-uac-decision": "vm_workflow:windows-uac-decision",
+        "windows-uac-review": "vm_workflow:windows-uac-review",
+        "windows-uac-visual": "vm_workflow:windows-uac-visual",
         "windows-update-fixture-download-abort": "vm_workflow:windows-update-fixture-download-abort-status",
         "windows-update-fixture-download-abort-current": "vm_workflow:windows-update-fixture-download-abort-current-status",
         "windows-update-fixture-download-abort-current-task-cleanup": "vm_workflow:windows-update-fixture-download-abort-current-task-cleanup-status",
