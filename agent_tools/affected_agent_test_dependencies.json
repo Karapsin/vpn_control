@@ -9090,7 +9090,8 @@
       ],
       "sourceSha256": [
         "e273a97d275c514e98c709b0dbc07cdf16955a33827b426558e9507c14f6188d",
-        "d07e88dfc55bdf814bc0bcf102ff5879c76a652a345a9f5c4a4d5b0793621a31"
+        "d07e88dfc55bdf814bc0bcf102ff5879c76a652a345a9f5c4a4d5b0793621a31",
+        "1d1e33dc30ca2bee29c494e5f7bbe217be27358f03c45f887f8e9a2a31dbe4ae"
       ]
     },
     "agent_tools/tests/test_readiness_submission.py": {
@@ -13579,7 +13580,7 @@
     }
   },
   "nonPythonResources": {
-    "agent_tools/readiness_vm_dispatch.json": "d1edd7d0add311f011c99c7823455858af0702738f7bb3ec0420e67f6285e276",
+    "agent_tools/readiness_vm_dispatch.json": "dfc079769c22aa70fd257544ca51a0221d2fb3aba0015eb31ffdae47e3ca25b8",
     "agent_tools/tests/fixtures/android_api35_routing_emitted_before.source": "9fe95bed277ae1ba0a86368e1224628d105565c2f371d3850c2c9f6059f0ea10",
     "agent_tools/tests/fixtures/android_component_continuity/provenance.json": "7bf975e62bf454f000a5509a3781d3877f0699196d71ab97817568ac9639ac29",
     "agent_tools/tests/fixtures/android_component_successor/provenance.json": "7c887643dec788c0f77f0781f0c2782d4ba0eb2ce29ac07d797c6dd4606a8324",

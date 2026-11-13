@@ -155,11 +155,44 @@ A registration whose pinned sources or lifecycle spec changed since it was
 qualified returns `fixture_registration_stale`: re-enroll the fixture against the
 current source. Other unclassified failures stay `readiness_admission_unavailable`.
 
+Readiness recovery normally has 180 s and start, reboot and sign-in 600 s. A
+display wake gets 420 s (`WAKE_BUDGET`), measured as three observations and one
+wake packet on a loaded host; a shorter caller deadline still wins. If the display
+falls asleep while readiness finishes its bookkeeping, the same call wakes it
+again; another boot, account, session or connection still refuses
+`prepared_context_stale`. When the backend proves from its own retained reply that
+a wake was delivered (`submitted`, input submitted), the journal records the
+delivery at once, even if the call then runs out of budget. The next interactive
+observation of the same boot, account and session settles it, by an awake display
+or by a display asleep again; a later sleep then gets a new wake. A lost or
+missing reply settles nothing and is never replayed. `recoveryStatus` shows such a
+wake as `acknowledged`, then `acknowledged_complete`. Only the Windows aliases'
+adapter (`readiness_windows.WindowsAdapter`) accepts that delivery proof.
+
+`readiness.py` also travels in the SSH channel keeper's child bundle, one argv string
+of at most 131,072 bytes that `test_ssh_channel_keeper_entry` builds. On 2026-11-13
+it held about 360 bytes of headroom, so keep changes to `readiness.py` compact and
+put their explanations in the docs.
+
 `readiness-reboot` takes the same two inputs and requests one graceful reboot
 of an already running, positively idle fixture. It checks reservations, running
 and UNKNOWN jobs, installers, lifecycle phases, other operators and protected
 processes. Repeating the operation observes its original reboot. This action
 does not start or resume a stopped or paused fixture.
+
+On Windows two results of that census need no repair, only another observation. A
+`reservations` blocker with complete visibility means another claim on the same host
+is still pending or has an unknown job, usually another clone whose start is in
+flight; its VM being live does not settle it, and the blocker clears when that start
+marks its own claim running. Missing `reservations` visibility is different: the
+proof itself failed, for example because running claims exceed the live VMs' memory.
+A setup qualification (`windows-vm-deploy-qualify`) whose reply was lost no longer
+keeps `original_guest_work_unresolved` open: the census closes it like the other
+read-only guest programs, but only when its retained `.ps1` is exactly the reviewed
+`windows_vm_guest.READ_SETUP` text for this fixture's accounts and that operation.
+A change to `READ_SETUP` therefore needs its new hash in
+`readiness_windows_remote.py`. Any other program under a `qualification-` name
+stays open.
 
 `readiness-sleep-capability` takes the same two inputs and answers from one
 fixed read-only `powercfg /a` query on a registered Windows fixture. An S3 sleep
@@ -182,8 +215,9 @@ The same registered identities admit `readiness-lease-acquire` (also
 `ttlSeconds`), `readiness-lease-status` and `readiness-lease-cancel`. Expiry,
 cancellation and fresh-client reconciliation observe the original lease owner
 and restore its original settings. Restoration and the owner's terminal receipt
-are separate facts; continue status until both are proved. Credentials are never
-included in these public payloads.
+are separate facts; continue status until both are proved. A repeated cancel reads
+the retained cancel record and writes nothing. Credentials are never included in
+these public payloads.
 
 New long-running Python jobs use `ssh_workflow`'s `program-start` with
 `transfer={"operationId": "<canonical UUID>", "program": <validated program>}`.
@@ -200,7 +234,11 @@ and `guest-program-collect` take just the first two fields. Android has the same
 four `android-program-*` actions with a fixed counter and those two fields for
 every action. These routes accept no source, executable or guest path. Status
 and collect use retained local observations; reconcile observes the original
-owner and may restore transport without powering or unlocking its VM.
+owner and may restore transport without powering or unlocking its VM. Once a
+Windows start has recorded its admission, a spent readiness or transport budget
+answers with the original's retained status under the caller's operation
+(`unknown`, then `reconcile_original`), not as a refusal; any other refusal names
+the caller's operation, never an internal packet identity.
 
 The fresh client `agent_tools/ssh_program_mcp_client.py` follows a start through
 same-operation status/reconciliation/collection automatically. Use `--host` for

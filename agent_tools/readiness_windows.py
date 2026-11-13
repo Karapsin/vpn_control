@@ -397,6 +397,40 @@ class WindowsBackend:
         if action=='login':return self._recover_login(recovery_identity,observed,deadline,attempt,dispatch_digest)
         return self.recover(action,recovery_identity,observed,deadline)
 
+    def reconcile_recovery(self,action,recovery_identity,observed,deadline,attempt,dispatch_digest):
+        """Prove a delivered display wake from this backend's own retained packet reply.
+
+        Local files only: no packet, connection, input or power. Only the exact
+        original wake packet's positive reply with its input submitted is a proof;
+        a missing, lost, refused or altered reply proves nothing.
+        """
+        self._guard()
+        if action!='wake_display':return None
+        _need(type(recovery_identity)is str and re.fullmatch('[0-9a-f]{64}',recovery_identity)is not None,'windows_recovery_identity')
+        operation=str(uuid5(UUID(self.machine),recovery_identity));directory=self.root/'.runtime/readiness-windows'/operation
+        if directory.is_symlink()or not directory.is_dir():return None
+        for result in sorted(directory.glob('wake_display-*.result.json'))[:8]:
+            label=result.name[:-len('.result.json')]
+            if re.fullmatch('wake_display-[0-9a-f]{32}',label)is None:continue
+            try:
+                source,_=registry._body(directory/(label+'.py'));stdout,_=registry._body(directory/(label+'.stdout.private'))
+                callback,_=registry._json(directory/(label+'.callback.json'));value,_=registry._json(result);reply=json.loads(stdout)
+                bound={}
+                for node in ast.parse(source).body:
+                    if isinstance(node,ast.Assign)and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)and node.targets[0].id in {'MODE','OPERATION','RECOVERY_ID'}:
+                        _need(node.targets[0].id not in bound,'windows_wake_packet_invalid');bound[node.targets[0].id]=ast.literal_eval(node.value)
+            except (OSError,ValueError,SyntaxError):continue
+            if (bound!={'MODE':'wake_display','OPERATION':operation,'RECOVERY_ID':recovery_identity}
+                    or callback!={'returnCode':0,'stdoutBytes':len(stdout),'stderrBytes':0,'sourceSha256':hashlib.sha256(source).hexdigest()}
+                    or reply!=value or value.get('state')!='submitted'or value.get('guest')!='running'
+                    or value.get('wakeInputSubmitted')is not True or value.get('machine')!=self.machine
+                    or value.get('provider')!=self.provider or value.get('operationId')!=operation
+                    or value.get('hostBoot')!=self.binding['context']['hostBootId']):continue
+            proof=hashlib.sha256(json.dumps({'operationId':operation,'recoveryId':recovery_identity,'sourceSha256':callback['sourceSha256'],
+                'replySha256':hashlib.sha256(stdout).hexdigest()},sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            return readiness.RecoveryAcknowledged(recovery_identity,attempt,dispatch_digest,proof)
+        return None
+
     def reconcile_ready(self,ready,deadline):
         """Close sign-ins whose reply was lost; status types nothing and failure is harmless."""
         if 'login'not in self.capabilities:return
@@ -645,6 +679,27 @@ class RegisteredWindowsFixture(registry.RegisteredFixture):
     required_readiness:frozenset=frozenset({'interactive_desktop'})
 
 
+class WindowsAdapter(providers.ProviderAdapter):
+    """The generic provider facade; only a display wake may also return the delivery proof
+    that WindowsBackend.reconcile_recovery reads from its own retained packet reply.
+
+    It lives here, not in readiness_providers, so the shared provider source (pinned by the
+    Android and macOS lanes too) keeps its bytes.
+    """
+    def reconcile_recovery(self,action,recovery_identity,observed,deadline,attempt,dispatch_digest):
+        if action!='wake_display':
+            return super().reconcile_recovery(action,recovery_identity,observed,deadline,attempt,dispatch_digest)
+        self._admit_recovery(action,recovery_identity,observed)
+        _need(type(attempt)is int and 1<=attempt<=readiness.MAX_DISPATCH_ATTEMPTS and type(dispatch_digest)is str
+              and re.fullmatch('[0-9a-f]{64}',dispatch_digest)is not None,'provider_dispatch_identity_invalid')
+        result=self.backend.reconcile_recovery(action,recovery_identity,observed,deadline,attempt,dispatch_digest)
+        _need(result is None or type(result)is readiness.RecoveryAcknowledged
+              and set(vars(result))=={'attempt','recovery_id','dispatch_digest','proof_sha256'}
+              and result.matches({'attempt':attempt,'recoveryId':recovery_identity,'dispatchDigest':dispatch_digest}),
+              'provider_recovery_outcome_invalid')
+        return result
+
+
 def load_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
     if type(descriptor)is dict and descriptor.get('schemaVersion')==2:
         return _load_managed_registered_fixture(root,fixture_id,descriptor,descriptor_pin)
@@ -684,7 +739,7 @@ def load_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
             lease_root_generation=descriptor['leaseRootGeneration'],credential_file=credential['path']if credential is not None else None,
             login_profiles=login_profiles,login_credential=login_credential)
     digest=hashlib.sha256(json.dumps([backend.target,backend.machine],separators=(',',':')).encode()).hexdigest()
-    return RegisteredWindowsFixture(backend.target,backend.machine,providers.ProviderAdapter(descriptor['provider'],backend.target,backend.machine,backend),root/'.rag_index/readiness-targets'/digest)
+    return RegisteredWindowsFixture(backend.target,backend.machine,WindowsAdapter(descriptor['provider'],backend.target,backend.machine,backend),root/'.rag_index/readiness-targets'/digest)
 
 
 def _load_managed_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
@@ -721,5 +776,5 @@ def _load_managed_registered_fixture(root,fixture_id,descriptor,descriptor_pin):
         lease_root_generation=descriptor['leaseRootGeneration'],credential_file=credential['path'],credential_metadata_only=True)
     backend._managed_original=original
     digest=hashlib.sha256(json.dumps([backend.target,backend.machine],separators=(',',':')).encode()).hexdigest()
-    return RegisteredWindowsFixture(backend.target,backend.machine,providers.ProviderAdapter('libvirt-windows',backend.target,backend.machine,backend),
+    return RegisteredWindowsFixture(backend.target,backend.machine,WindowsAdapter('libvirt-windows',backend.target,backend.machine,backend),
         root/'.rag_index/readiness-targets'/digest)

@@ -303,6 +303,28 @@ class ReservationObservationTests(unittest.TestCase):
                 self.assertTrue(proof.visibility_complete);self.assertEqual(['reservations'],proof.as_dict()['blockers'])
                 with self.assertRaises(ValueError):proof.guard()
 
+    def test_f1a9c53a_another_clones_start_in_flight_blocks_by_name_until_its_own_start_marks_it_running(self):
+        # Native, idle census f1a9c53a of clone 9059be98 on 2026-11-09. At 13:40:39 another clone's start was in
+        # flight: its VM was already live, its claim still pending with an unknown job, exactly as
+        # windows_vm_deploy.start records it before it submits. The proof named the blocker with complete
+        # visibility. At 13:41:57 that start had marked its own claim running and the same proof passed.
+        # A decision, not a defect: a live VM of the right size does not settle another start's unknown outcome.
+        other={**self.record,'id':'env-'+'d'*32,'token':'OTHER','environment':'windows-'+str(uuid4()),
+               'allocationState':'pending','activeJob':'unknown','requestedMemoryBytes':6*GIB,
+               'activeJobEvidence':{'kind':'active-job','source':'windows-vm-deploy','outcome':'unknown',
+                                    'reservationId':'env-'+'d'*32,'reservationToken':'OTHER'}}
+        self.census['vms']=[self.row,{**self.row,'pid':19,'startTicks':779,'configuredMemoryBytes':6*GIB}]
+        self.write(self.inventory_path,{'version':1,'reservations':[self.record,other]})
+        before=(self.root/self.inventory_path).read_bytes()
+        with self.observe()as proof:
+            self.assertTrue(proof.visibility_complete);self.assertEqual(['reservations'],proof.as_dict()['blockers'])
+            with self.assertRaises(ValueError):proof.guard()
+        self.assertEqual(before,(self.root/self.inventory_path).read_bytes())
+        settled={**other,'allocationState':'running','activeJob':'active',
+                 'activeJobEvidence':{**other['activeJobEvidence'],'outcome':'active'}}
+        self.write(self.inventory_path,{'version':1,'reservations':[self.record,settled]})
+        self.assert_visible()
+
     def test_wrong_epoch_actor_or_memory_blocks_visibility(self):
         original=copy.deepcopy(self.census)
         for field,value in [('hostBootId',str(uuid4())),('vms',[]),('vms',[{**self.row,'configuredMemoryBytes':7*GIB}])]:

@@ -34,6 +34,7 @@ REQUIREMENTS = frozenset({"transport", "guest", "guest_agent", "ordinary_session
 RECOVERIES = frozenset({"reconnect", "start", "resume", "wake_display", "login", "reboot"})
 NORMAL_BUDGET = 180.0
 COLD_BUDGET = 600.0
+WAKE_BUDGET = 420.0
 TRANSPORT_BACKOFF = (1.0, 2.0, 4.0)
 IDLE_VISIBILITY = frozenset({"reservations", "running_jobs", "unknown_jobs", "installers",
                              "lifecycle_phases", "operators", "protected_processes"})
@@ -79,6 +80,18 @@ class RecoveryEnded(RecoveryUnsubmitted):
     def __init__(self, recovery_id, attempt, dispatch_digest, proof_sha256):
         super().__init__(recovery_id, attempt, dispatch_digest, proof_sha256)
         Exception.__init__(self, "recovery_terminal_failed")
+
+
+class RecoveryAcknowledged:
+    def __init__(self, recovery_id, attempt, dispatch_digest, proof_sha256):
+        if (type(attempt) is not int or not 1 <= attempt <= MAX_DISPATCH_ATTEMPTS or
+                any(type(value) is not str or _SHA256.fullmatch(value) is None
+                    for value in (recovery_id, dispatch_digest, proof_sha256))):
+            raise ValueError("invalid_recovery_acknowledgement")
+        self.recovery_id, self.attempt = recovery_id, attempt
+        self.dispatch_digest, self.proof_sha256 = dispatch_digest, proof_sha256
+
+    matches = RecoveryUnsubmitted.matches
 
 
 class AdapterBlocked(ValueError):
@@ -370,6 +383,8 @@ class RecoveryJournal:
     def record_unsubmitted(self, dispatch, error):
         if type(error) is not RecoveryUnsubmitted or not error.matches(dispatch):
             return False
+        if self._read_named("acknowledged-" + dispatch["recoveryId"] + "-" + str(dispatch["attempt"]) + ".json") is not None:
+            return False
         for attempt in range(1, dispatch["attempt"]):
             prior = self._read_named("unsubmitted-" + dispatch["recoveryId"] + "-" + str(attempt) + ".json")
             if prior is None or prior.get("proofSha256") == error.proof_sha256:
@@ -379,13 +394,40 @@ class RecoveryJournal:
         self._publish_named("unsubmitted-" + dispatch["recoveryId"] + "-" + str(dispatch["attempt"]) + ".json", value)
         return True
 
+    def record_acknowledged(self, dispatch, outcome):
+        name = dispatch["recoveryId"] + "-" + str(dispatch["attempt"]) + ".json"
+        if (dispatch.get("action") != "wake_display" or type(outcome) is not RecoveryAcknowledged or not outcome.matches(dispatch)
+                or not _same_record(self._read_named("dispatch-" + name), dispatch) or self._read_named("unsubmitted-" + name) is not None):
+            return False
+        self._publish_named("acknowledged-" + name, {"version": 2, "recoveryId": dispatch["recoveryId"], "attempt": dispatch["attempt"],
+                                                    "dispatchDigest": dispatch["dispatchDigest"], "proofSha256": outcome.proof_sha256})
+        return True
+
+    def _acknowledgement(self, recovery_id):
+        for attempt in range(MAX_DISPATCH_ATTEMPTS, 0, -1):
+            name = recovery_id + "-" + str(attempt) + ".json"
+            dispatch = self._read_named("dispatch-" + name)
+            if dispatch is None:
+                continue
+            value = None if self._read_named("unsubmitted-" + name) is not None else self._read_named("acknowledged-" + name)
+            if value is not None and not (dispatch.get("action") == "wake_display" and _same_record(value, {
+                    "version": 2, "recoveryId": recovery_id, "attempt": attempt,
+                    "dispatchDigest": dispatch.get("dispatchDigest"), "proofSha256": str(value.get("proofSha256"))})):
+                raise ValueError("recovery_acknowledgement_invalid")
+            return value
+        return None
+
     def _completed(self, recovery_id):
         private = _private_dependency()
         try:
             with private.Snapshot(self.directory, "completed-" + recovery_id + ".json") as snapshot:
-                return _same_record(json.loads(snapshot.body), {"version": 1, "recoveryId": recovery_id, "state": "observed"})
+                value = json.loads(snapshot.body)
         except FileNotFoundError:
             return False
+        if _same_record(value, {"version": 1, "recoveryId": recovery_id, "state": "observed"}):
+            return True
+        acknowledged = self._acknowledgement(recovery_id)
+        return acknowledged is not None and _same_record(value, {**acknowledged, "state": "acknowledged"})
 
     def recovery_key(self, key):
         # Completed phases retain history and admit a later, distinct lock or
@@ -420,12 +462,18 @@ class RecoveryJournal:
                       "login": ready_guest and observed.ordinary_session == "ready"
                                and observed.account is not None and observed.session is not None,
                       "wake_display": ready_guest and observed.display == "ready"}[action]
+            completion = {"version": 1, "recoveryId": recovery_id, "state": "observed"}
+            if (not closed and action == "wake_display" and value["version"] == 2 and ready_guest and observed.display == "sleeping"
+                    and (observed.boot, observed.account, observed.session) == (value["boot"], value["account"], value["session"])):
+                acknowledged = self._acknowledgement(recovery_id)
+                if acknowledged is not None:
+                    closed, completion = True, {**acknowledged, "state": "acknowledged"}
             if closed:
                 recovery_id = value["recoveryId"]
                 name = "completed-" + recovery_id + ".json"
                 if self._completed(recovery_id):
                     continue
-                body = json.dumps({"version": 1, "recoveryId": recovery_id, "state": "observed"}, sort_keys=True).encode()
+                body = json.dumps(completion, sort_keys=True).encode()
                 fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                              0o600, dir_fd=self.directory.fd)
                 with os.fdopen(fd, "wb") as stream:
@@ -577,13 +625,14 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
     pending_effect = False
     inspected_outcomes = set()
     reconciled_outcomes = set()
+    carried = None
     try:
         scope = getattr(context.adapter, "operation_scope", None)
         with (scope(deadline=deadline, cancelled=context.cancelled) if scope is not None else nullcontext()), context.journal.locked(
                 deadline=deadline, clock=context.clock, sleep=context.sleep,
                 cancelled=context.cancelled) as journal:
             while True:
-                observed = _observe(context, requirements, deadline, operation_identity)
+                observed, carried = carried or _observe(context, requirements, deadline, operation_identity), None
                 journal.reconcile(observed)
                 reconciler = getattr(context.adapter, "reconcile_recovery", None)
                 outcome_observer = getattr(context.adapter, "observe_recovery", None)
@@ -607,7 +656,9 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
                                 transport_key = None
                                 publication_changed = True
                                 continue
-                            if changed is True:
+                            if type(changed) is RecoveryAcknowledged and not journal.record_acknowledged(dispatch, changed):
+                                raise ReadinessBlocked("recovery_acknowledgement_invalid", operation_identity)
+                            if changed is True or type(changed) is RecoveryAcknowledged:
                                 publication_changed = True
                                 continue
                         if not callable(outcome_observer):
@@ -641,11 +692,15 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
                             reconcile(ready, deadline=deadline)
                         except Exception:
                             raise ReadinessBlocked("recovery_bookkeeping_unresolved", operation_identity) from None
-                        revalidate(context, ready)
+                        carried = revalidate(context, ready, True)
+                        if _next(carried, requirements, operation_identity) is not None:
+                            continue
                     return ready
                 if action in {"start", "reboot", "login"} or (observed.transport == "ready" and observed.guest == "booting" and
                         requirements.required & {"guest", "guest_agent", "ordinary_session", "interactive_desktop"}):
                     deadline = min(started + COLD_BUDGET, context.deadline if context.deadline is not None else float("inf"))
+                elif action == "wake_display":
+                    deadline = max(deadline, min(started + WAKE_BUDGET, context.deadline if context.deadline is not None else float("inf")))
                 if action == "wait":
                     context.progress("waiting_for_guest")
                     context.sleep(min(1.0, max(0.0, deadline - context.clock())))
@@ -740,6 +795,14 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
                     # The once record survives lost acknowledgements and secret
                     # bearing provider exceptions are never projected publicly.
                     pending_effect = True
+                else:
+                    if action == "wake_display" and callable(reconciler):
+                        try:
+                            acknowledged = reconciler(action, recovery_id, observed, deadline, dispatch["attempt"], dispatch["dispatchDigest"])
+                        except Exception:
+                            acknowledged = None
+                        if type(acknowledged) is RecoveryAcknowledged and not journal.record_acknowledged(dispatch, acknowledged):
+                            raise ReadinessBlocked("recovery_acknowledgement_invalid", operation_identity)
     except ReadinessBlocked as error:
         if pending_effect and error.reason == "readiness_deadline":
             raise ReadinessBlocked("recovery_outcome_unknown", operation_identity) from None
@@ -754,14 +817,15 @@ def _ensure_ready(context: Context, requirements: Requirements, operation_identi
         raise ReadinessBlocked("readiness_journal_unavailable", operation_identity) from None
 
 
-def revalidate(context: Context, ready: ReadyContext) -> None:
+def revalidate(context: Context, ready: ReadyContext, identities_only=False) -> Observation:
     """Immediately before dispatch or GUI input; never regenerate submitted work."""
     deadline = min(context.clock() + NORMAL_BUDGET, context.deadline if context.deadline is not None else float("inf"))
     observed = _observe(context, ready.requirements, deadline, ready.operation_identity)
     current = ReadyContext(ready.operation_identity, observed.target, observed.machine, observed.connection,
                            observed.boot, observed.account, observed.session, ready.requirements)
-    if current.identities() != ready.identities() or _next(observed, ready.requirements, ready.operation_identity):
+    if current.identities() != ready.identities() or not identities_only and _next(observed, ready.requirements, ready.operation_identity):
         raise ReadinessBlocked("prepared_context_stale", ready.operation_identity)
+    return observed
 
 
 def reconcile_original(context: Context, operation_identity: str, observer: Callable[[ReadyContext], dict]) -> dict:

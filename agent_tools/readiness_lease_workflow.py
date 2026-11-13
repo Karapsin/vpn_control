@@ -308,11 +308,16 @@ def _external_original(root, state, action, value, inputs, *, deadline=None):
                                               separators=(",", ":")).encode()).hexdigest()}
     first_cancel = False
     if action == "cancel":
-        try:
-            jobs._publish(marker, request)
-            first_cancel = True
-        except FileExistsError:
+        # Callers hold the admission lock: a repeat reads the retained marker and
+        # never starts another publication, which would leave its temporary file.
+        if marker.exists() or marker.is_symlink():
             _need(jobs._record(marker) == request, "lease_cancel_record_invalid")
+        else:
+            try:
+                jobs._publish(marker, request)
+                first_cancel = True
+            except FileExistsError:
+                _need(jobs._record(marker) == request, "lease_cancel_record_invalid")
     cancelled = marker.exists() or marker.is_symlink()
     if cancelled:
         _need(jobs._record(marker) == request, "lease_cancel_record_invalid")
@@ -455,10 +460,13 @@ def workflow(root: Path | str, action: str, inputs: dict[str, Any], *, deadline=
                     return result
                 request = {"schemaVersion": 1, "fixtureId": fixture_id, "operationId": operation,
                            "programSha256": value["programSha256"]}
-                try:
-                    jobs._publish(cancelled, request)
-                except FileExistsError:
+                if cancelled.exists() or cancelled.is_symlink():
                     _need(jobs._record(cancelled) == request, "lease_cancel_record_invalid")
+                else:
+                    try:
+                        jobs._publish(cancelled, request)
+                    except FileExistsError:
+                        _need(jobs._record(cancelled) == request, "lease_cancel_record_invalid")
                 result = _status(admission)
                 if result["state"] == "unsubmitted":
                     return {**result, "state": "cancelled", "reason": "lease_cancelled_before_dispatch",

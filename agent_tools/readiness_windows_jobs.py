@@ -826,6 +826,23 @@ def _observe_original(executor, operation, spec, deadline, cached, *, readonly_f
     return {"state": "unknown", "reason": last, "identity": validated["identity"]}
 
 
+# Readiness refusals that only say the admission ran out of time, transport or
+# journal. They say nothing about an admitted original, so its retained status
+# answers instead; any other refusal still escapes, under the caller's operation.
+_ORIGINAL_UNSETTLED = frozenset({"readiness_deadline", "readiness_cancelled", "recovery_outcome_unknown",
+                                 "transport_attempts_exhausted", "connection_generation_changed",
+                                 "prepared_context_stale", "readiness_journal_unavailable",
+                                 "readiness_observation_unavailable"})
+
+
+def _caller_refusal(error, operation):
+    """A refusal carries the public operation, never an internal packet identity."""
+    from . import readiness
+    if error.operation_identity == operation:
+        return error
+    return readiness.ReadinessBlocked(error.reason, operation)
+
+
 def workflow(root, action, inputs, *, deadline=None):
     """Finite normal tool facade; status/collect never resolve any fixture."""
     import subprocess, time
@@ -859,6 +876,10 @@ def workflow(root, action, inputs, *, deadline=None):
             observed = _observe_original(executor, operation, intent["spec"], deadline, cached)
         except (subprocess.SubprocessError, TimeoutError, ConnectionError):
             return cached  # Nothing new was read; the same original stays the only route.
+        except readiness.ReadinessBlocked as error:
+            if error.reason in _ORIGINAL_UNSETTLED:
+                return cached  # The admission ran out, not the original.
+            raise _caller_refusal(error, operation) from None
         return _save_observation(path, intent, observed)
     _need(action == "start", "windows_job_original_missing")
     spec = {"count": inputs["count"], "intervalSeconds": inputs["intervalSeconds"]}
@@ -869,13 +890,17 @@ def workflow(root, action, inputs, *, deadline=None):
     backend = registered.adapter.backend
     _need(getattr(backend, "provider", None) in {"raw-qemu-windows", "libvirt-windows"}, "windows_job_provider_invalid")
     context = registered.context(deadline=deadline)
-    ready = readiness.ensure_ready(context, readiness.Requirements(frozenset({"guest_agent"}), frozenset({"reconnect", "resume", "start"})), operation)
-    factory = getattr(backend, "windows_job_executor", None)
-    _need(callable(factory), "windows_job_provider_unavailable")
-    executor = factory(deadline=deadline)
-    _need(type(executor) is WindowsJobExecutor and executor.target == registered.target and executor.machine == registered.machine,
-          "windows_job_executor_binding")
-    readiness.revalidate(context, ready)
+    try:
+        ready = readiness.ensure_ready(context, readiness.Requirements(frozenset({"guest_agent"}), frozenset({"reconnect", "resume", "start"})), operation)
+        factory = getattr(backend, "windows_job_executor", None)
+        _need(callable(factory), "windows_job_provider_unavailable")
+        executor = factory(deadline=deadline)
+        _need(type(executor) is WindowsJobExecutor and executor.target == registered.target and executor.machine == registered.machine,
+              "windows_job_executor_binding")
+        readiness.revalidate(context, ready)
+    except readiness.ReadinessBlocked as error:
+        # Nothing is recorded yet: a true refusal, named by the caller's operation.
+        raise _caller_refusal(error, operation) from None
     # Refuse while nothing is recorded: a transport timeout after this point can
     # only leave an unknown attempt that is never replayed.
     _need(deadline - time.monotonic() >= _START_MINIMUM_SECONDS, "windows_job_budget_insufficient")
@@ -886,14 +911,27 @@ def workflow(root, action, inputs, *, deadline=None):
         windows._save(path / "intent.json", intent)
     except FileExistsError:
         _need(registry._json(path / "intent.json")[0] == intent, "windows_job_local_identity_changed")
+    submission_unknown = _public(fixture, operation, {"state": "unknown", "reason": "windows_job_submission_unknown"}, intent["executor"]["provider"])
     try:
         observed = executor.submit(operation, count=spec["count"], interval_seconds=spec["intervalSeconds"], deadline=deadline)
     except (subprocess.SubprocessError, TimeoutError, ConnectionError):
         # The packet may already have reached the guest: unknown, never a refusal or a replay.
-        return _public(fixture, operation, {"state": "unknown", "reason": "windows_job_submission_unknown"}, intent["executor"]["provider"])
+        return submission_unknown
+    except readiness.ReadinessBlocked as error:
+        # After the admission a spent readiness budget is no refusal of the original.
+        if error.reason in _ORIGINAL_UNSETTLED:
+            return submission_unknown
+        raise _caller_refusal(error, operation) from None
     if observed["state"] == "unknown" and observed["reason"] == "original_owner_ack_pending":
-        observed = _observe_original(executor, operation, spec, deadline,
-                    {"identity": observed["identity"]}, readonly_first=True)
+        try:
+            observed = _observe_original(executor, operation, spec, deadline,
+                        {"identity": observed["identity"]}, readonly_first=True)
+        except (subprocess.SubprocessError, TimeoutError, ConnectionError):
+            pass  # The submit's own admitted answer stays the original's retained status.
+        except readiness.ReadinessBlocked as error:
+            if error.reason not in _ORIGINAL_UNSETTLED:
+                _save_observation(path, intent, observed)
+                raise _caller_refusal(error, operation) from None
     return _save_observation(path, intent, observed)
 
 

@@ -224,8 +224,9 @@ process generation. Controlled causal checks pass for these gates and the two
 credential routes. The scoped audit covers all 407 VM routes; final native
 source qualification remains required before a delivery claim.
 
-Normal readiness budget is 180 seconds, cold start/reboot 600 seconds, bounded
-by a shorter caller deadline. Transport attempts are limited to three with
+Normal readiness budget is 180 seconds, a display wake 420 seconds (three
+observations and one wake packet as measured on 2026-11-09), cold
+start/reboot/sign-in 600 seconds, all bounded by a shorter caller deadline. Transport attempts are limited to three with
 1/2/4-second backoff. Trust, ownership, credential and integrity failures remain
 specific blockers. No rebuild, force reset or disk restoration is authorized.
 

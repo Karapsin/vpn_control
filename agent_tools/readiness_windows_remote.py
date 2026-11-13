@@ -229,6 +229,27 @@ def _main():
         # from this same complete census, closes it. Effectful labels stay open.
         read_only=r'readiness-'+identifier+r'-(?:session|interactive|display|wake-admission|sleep-capability|lease-status|idle|(?:job-namespace-status|job-status|job-inventory)-[0-9a-f]{16}|(?:login-session|login-account|login-admission|login-after)-[0-9a-f]{12})'
         collections=[8]
+        def setup_qualification(prefix):
+            """The deployment's setup qualification (windows_vm_guest.READ_SETUP) only reads too.
+
+            Its name carries no label, so only its exact retained source proves which
+            program ran: this deployment's accounts, its own operation, the reviewed
+            text. Any other program under that name stays open.
+            """
+            operation=prefix.removeprefix('qualification-')
+            if operation==prefix or re.fullmatch(identifier,operation)is None:return False
+            intent=read(prefix+'.intent.json');leaf=prefix+'.ps1';info=private(root/leaf)
+            fd=os.open(root/leaf,os.O_RDONLY|os.O_NOFOLLOW)
+            try:
+                raw=os.read(fd,65537)
+                if len(raw)!=info.st_size or generation(os.fstat(fd))!=generation(info):return False
+            finally:os.close(fd)
+            head=("$ProgressPreference='SilentlyContinue'\n$ExpectedUser="+repr(SETUP['user'])+"\n$ExpectedAdministrator="+repr(SETUP['administrator'])
+                  +"\n$OperationId="+repr(operation)+"\n").encode()
+            return (intent.get('operationId')==operation and intent.get('readOnly')is True
+                    and intent.get('powerShellSha256')==hashlib.sha256(raw).hexdigest()and raw.startswith(head)
+                    and hashlib.sha256(raw[len(head):]).hexdigest()=='9ca4ce27b2eef2574d547391465450e5c97a8a4ce27b184778f5c6e704d4c575')
+        def only_reads(prefix):return re.fullmatch(read_only,prefix)is not None or setup_qualification(prefix)
         def guest_ended(value):
             return type(value)is dict and value.get('exited')is True and (type(value.get('exitcode'))is int or type(value.get('signal'))is int)
         def retained_guest_terminal(prefix):
@@ -237,7 +258,7 @@ def _main():
             return None
         def read_only_closed(prefix,ack):
             """Collect once through the original pid; absence alone proves nothing."""
-            if re.fullmatch(read_only,prefix)is None:return False
+            if not only_reads(prefix):return False
             closed=prefix+'.orphan-closed.json';pid=ack['ack']['pid']
             if os.path.lexists(root/closed):
                 value=read(closed);return value.get('pid')==pid and value.get('replayAllowed')is False
@@ -252,13 +273,15 @@ def _main():
                 terminal=None
             if terminal is not None:
                 if not guest_ended(terminal):return False
-                save(prefix+'.observed-terminal.json',terminal);return True
+                # A qualification's owner reads only its own terminal receipt: retain the
+                # collected one under that name, as its owner would, so its status still answers.
+                save(prefix+('.terminal.json'if prefix.startswith('qualification-')else'.observed-terminal.json'),terminal);return True
             if any(type(row)is not dict or row.get('pid')==pid and row.get('name')=='powershell.exe' for row in rows):return False
             save(closed,{'pid':pid,'state':'guest-agent-no-longer-tracks-absent-read-only-program','replayAllowed':False})
             return True
         def read_only_unacknowledged(prefix):
             """A lost guest-exec reply: this census's own later request proves it is over."""
-            if re.fullmatch(read_only,prefix)is None:return False
+            if not only_reads(prefix):return False
             closed=prefix+'.orphan-closed.json'
             if os.path.lexists(root/closed):return read(closed).get('pid')is None and read(closed).get('replayAllowed')is False
             rows=(result.get('idleFacts')or{}).get('processes')

@@ -117,14 +117,16 @@ def _project(reader,intent):
     recovery = intent['recoveryId']
     result = {'recoveryId':recovery,'originalOperationId':intent.get('originalOperationId'),
               'action':intent['action'],'journalVersion':intent['version'],'consumedAttempts':0,'provenUnsubmittedAttempts':0,
-              'completionObserved':False,'terminalFailureObserved':False}
+              'completionObserved':False,'deliveryAcknowledged':False,'completionAcknowledged':False,'terminalFailureObserved':False}
     completed = reader.read('completed-'+recovery+'.json')
     ended = reader.read('ended-'+recovery+'.json')
-    if completed is not None:
+    acknowledged_completion = completed is not None and completed.get('state')=='acknowledged'
+    if completed is not None and not acknowledged_completion:
         _need(type(completed.get('version')) is int and completed=={'version':1,'recoveryId':recovery,'state':'observed'})
         result['completionObserved'] = True
     if intent['version']==1:
-        _need(ended is None)
+        _need(ended is None and not acknowledged_completion)
+        _need(all(reader.read('acknowledged-'+recovery+'-'+str(attempt)+'.json') is None for attempt in range(1,4)))
         return {**result,'consumedAttempts':None,'provenUnsubmittedAttempts':None,
                 'state':'observed_complete' if completed is not None else 'legacy_unknown'}
     previous = None
@@ -156,6 +158,24 @@ def _project(reader,intent):
         _hex(proof['proofSha256']); _need(proof['proofSha256'] not in unsubmitted)
         previous = proof['proofSha256']; unsubmitted.append(previous)
     result.update(consumedAttempts=len(dispatches),provenUnsubmittedAttempts=len(unsubmitted))
+    # Only the last consumed wake dispatch can carry a delivery acknowledgement:
+    # an acknowledged attempt is never proven unsubmitted, so none follows it.
+    acknowledgement = None
+    for attempt in range(1,4):
+        value = reader.read('acknowledged-'+recovery+'-'+str(attempt)+'.json')
+        if value is None:
+            continue
+        _need(acknowledgement is None and intent['action']=='wake_display' and dispatches and attempt==len(dispatches)
+              and len(unsubmitted)<len(dispatches))
+        _need(set(value)=={'version','recoveryId','attempt','dispatchDigest','proofSha256'} and type(value['version']) is int
+              and value['version']==2 and value['recoveryId']==recovery and type(value['attempt']) is int
+              and value['attempt']==attempt and value['dispatchDigest']==dispatches[-1]['dispatchDigest'])
+        _hex(value['proofSha256'])
+        acknowledgement = value
+    if acknowledged_completion:
+        _need(acknowledgement is not None and completed=={**acknowledgement,'state':'acknowledged'})
+        result['completionAcknowledged'] = True
+    result['deliveryAcknowledged'] = acknowledgement is not None
     if ended is not None:
         _need(set(ended)=={'version','recoveryId','attempt','dispatchDigest','proofSha256','state'}
               and type(ended['version']) is int and ended['version']==2 and ended['state']=='failed'
@@ -165,7 +185,10 @@ def _project(reader,intent):
         _hex(ended['proofSha256'])
         return {**result,'state':'ended','terminalFailureObserved':True}
     if completed is not None:
-        return {**result,'state':'observed_complete'}
+        return {**result,'state':'acknowledged_complete' if acknowledged_completion else 'observed_complete'}
+    if acknowledgement is not None:
+        # Delivered; the next interactive observation of its session settles it.
+        return {**result,'state':'acknowledged'}
     state = ('prepared' if not dispatches else 'outcome_unknown' if len(unsubmitted)<len(dispatches) else
              'attempts_exhausted' if len(dispatches)==3 else 'proven_unsubmitted')
     return {**result,'state':state}
@@ -205,7 +228,7 @@ def inspect(directory,*,target,machine):
                 else:
                     _need(original.get('originalOperationId')==value['operationId'])
             for name in names:
-                marker = re.fullmatch(r'(?:completed-|ended-|dispatch-|unsubmitted-)([0-9a-f]{64})(?:-[1-3])?\.json',name)
+                marker = re.fullmatch(r'(?:completed-|ended-|dispatch-|unsubmitted-|acknowledged-)([0-9a-f]{64})(?:-[1-3])?\.json',name)
                 if marker:
                     _need(marker[1] in intents)
             result = [_project(reader,value) for value in rows]
