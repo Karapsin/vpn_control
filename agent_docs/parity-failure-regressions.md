@@ -1964,6 +1964,78 @@ region-capture series have no rows here yet; their RED and GREEN are in
 | The installer readiness gate accepted WixUI's PrepareDlg | `NativeRegionCaptureTest.aStablePreparingWizardPageIsRefusedInsteadOfPublishedAsTheInstaller`, `theWelcomePageThatReplacesThePreparingPageIsPublished`, `aWizardPageWhoseNextIsDisabledFailsTheReadinessGate` | With `dirChooser = true` jpackage uses WixUI_InstallDir, which shows PrepareDlg before the Welcome page. It is titled `[ProductName] Setup` and shows the same visible Back, Next and Cancel, with Back and Next disabled while the installer costs. `NativeControl` had no enabled flag and `ControlRule.matches` compared class, caption and visibility, so the target rule (the started `msiexec` pid plus ` Setup`) and the readiness gate before the stable-frame loop and before publishing accepted it, and its static page gave the first stable, painted pair: `windows-msi` and `windows-update-installer` could publish the "please wait" page, or refuse once it closed under the capture. The census now records `IsWindowEnabled`, the wizard's Next must be enabled, and `placeWindow` waits past a window that lacks its role's controls (`awaitTarget` takes an `unready` reason), so the Welcome page, which MSI creates as a new window, is the one placed and published. A last census that still shows such a page refuses `target-controls-missing`, and its detail marks hidden and disabled controls. `FakeDesktop` models PrepareDlg replaced by the Welcome page after a number of censuses. RED on `8a5602e3`: the stable PrepareDlg and the page handed straight to `capture()` were published ("completed successfully"), and the replaced one was refused `target-missing` once PrepareDlg closed under the capture. GREEN: the stable PrepareDlg is refused at location with its own frame and is never placed, the Welcome page `0x2A` is published, and the gate refuses a disabled Next before the stable-frame loop. Native only: the `IsWindowEnabled` glue, the WiX captions, and how long PrepareDlg shows on a VM or hosted runner. |
 | A rerun kept an earlier run's refusal and evidence | `NativeRegionCaptureTest.aRerunRefusedBeforeCaptureRecordsItsOwnReasonAndFrame`, `aRefusalIsRecordedUnlessThisRunAlreadyRecordedIt`, `aSceneKeepsNoEvidenceOfAnEarlierRunBesideItsNewOutcome` | `recordRefusal` wrote a refusal raised before `capture()` only when `<scene>.refusal.json` was absent, taking an existing file for one that `capture()` had written in this run. Nothing clears the output between runs: `captureRequestedNativeScenes`, `capture_visual_desktop.ps1` and `visual_platform.run_local_driver` only create it. So a rerun refused before capture kept the earlier run's reason and frame, a scene published on a rerun kept its earlier refusal beside the image, and one refused on a rerun kept the earlier image and region record. A refusal now carries `recorded`, set once its record and frame are written, and `recordRefusal` checks that flag. `runRegionCaptureScenes` removes a requested scene's `.png`, `.frame.png`, `.region.json` and `.refusal.json` before the scene runs, and before a session refusal names `capture-session.frame.png`; the files of scenes the run does not request stay. RED on `8a5602e3` and on `051fc195`: the rerun kept `outside-work-area` instead of its own `target-missing`, the engine kept an earlier `occluded` record instead of `target-ambiguous`, and the published rerun kept its earlier refusal. GREEN: each holds, a refused rerun keeps no earlier image or record, and a session refusal keeps no earlier scene frame. Hosted jobs start from a fresh checkout and were not affected. |
 
+### First native no-tray close row: the GUI hid into a tray its desktop did not have (product, from 6c7250f6, 2026-11-13)
+
+`windows-proxy-lifecycle.no-tray-close`, direct operation `6c7250f6` on the 2.2.17 package of `f31ab987`,
+ended exit 1 through its known-failure closing (`dedicated-proxy-lifecycle-known-failure`, event 146) with
+`gui-hidden-without-usable-tray` at stage `decision-probe`. The evidence is kept unchanged at
+`.runtime/windows-scenarios/6c7250f6-7fc6-4c3f-ab0f-42a5ef1c1bef/evidence-1.zip`. The row worked up to its
+decision: the GUI started on the owned desktop through `CreateProcessW` (events 102 and 103), its relaunched JVM
+showed its main window there and nothing of it on Default (event 104). That desktop has no `Shell_TrayWnd`, yet the
+JVM's windows there included AWT's `SunAwtTrayIcon` message window and a hidden 136x39 `SunAwtFrame`, the tray
+peer's popup parent: AWT had taken the icon. After the 75 s settle `gui hide` answered OK with exit 0 (event 112) and
+the main window was hidden (event 113): a live GUI with no window and no tray icon. The census of Default in
+event 104 found no `Shell_TrayWnd` there either (no tray host among 69 windows).
+
+Cause, product. `AwtTrayRegistrationTarget.install` took an icon that `SystemTray.add` accepted and
+`getTrayIcons` listed for installed, and `AwtTrayHandle.installTrayIcon` marked every tray but Linux's available
+at once, so `canHideToTray` turned true at the first attempt; `Main.kt`'s close and `gui hide` read nothing else.
+`DesktopTray.kt` of `f31ab987` and `450b8764` are byte-identical, and `Main.kt` differs only in colours. Cause,
+JDK 17, the bundled runtime: `SystemTray.isSupported` is the toolkit's `isTraySupported`, which `WToolkit` answers
+true, and `SystemTray.add` fails only when `TrayIcon.addNotify` throws (`java/awt/SystemTray.java` lines 212 to 279
+and `java/awt/TrayIcon.java` lines 695 to 709 of the local JDK 17.0.20.1 `src.zip`). `WTrayIconPeer`'s native
+`create` (`awt_TrayIcon.cpp`, `AwtTrayIcon::Create`) sends `NIM_ADD` through `SendTrayMessage`, which returns
+`Shell_NotifyIcon`'s BOOL, and drops it; `Shell_NotifyIcon` hands an icon to the `Shell_TrayWnd` window of the
+caller's desktop and fails where there is none. The Windows sources are cited from OpenJDK
+(`src/java.desktop/windows/`), with no local copy on this Mac; the run shows the behaviour they describe. The JDK
+does read `TaskbarCreated`: `AwtTrayIcon::WmTaskbarCreated` adds every icon again when a new Explorer starts.
+Linux has no such gap: X11 `isTraySupported` needs a `_NET_SYSTEM_TRAY_S<n>` owner, `XSystemTrayPeer.addTrayIcon`
+throws without one, and the product waits for AWT's embedded frame to show (PLATFORM-006); the native Linux
+backend keeps dorkbox's own detection, and macOS always has its status bar. Neither changed.
+
+Fix. `WindowsNotificationArea` asks `FindWindowW` for `Shell_TrayWnd`, which searches the calling thread's
+desktop, and every thread of the GUI is on the desktop it started on. On Windows `NotificationAreaTrayRegistration`
+offers the icon only while that window exists, keeps the 60 attempts a second apart (`unavailable` at the last),
+and once the icon is in reads it every second: the tray is lost while it is gone, which shows a hidden window
+(`withTrayLost`), and available again once it is back, when AWT has added its icon again. The close and `gui hide`
+ask for it at that moment too (`canHideToTrayNow`): without it a close detaches and `gui hide` answers UNSUPPORTED.
+`AwtTrayHandle.installTrayIcon` no longer marks a Windows tray available. The answer to the icon itself, the BOOL AWT
+drops, is still not read: `Shell_NotifyIconGetRect` needs `TrayIcon.id`, package-private, which the packaged JVM
+cannot read without opening `java.awt`, and its launcher configuration is pinned by tools. `TaskbarCreated` is not
+received by the product either; the one-second read sees the new taskbar instead, and AWT's own window takes the
+message. DESKTOP-002 now states the Windows rule. Logs, JUnit reports and the RED patch are under
+`.runtime/tray-detection/` of the fix clone (`builders/fix-tray-detection`) and in
+`.runtime/windows-parity-20261107/evidence/tray-detection/` of the recovery checkout, with the beforeimages of both
+Kotlin files and of the world's test module.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A Windows tray was taken for usable because AWT accepted its icon, so `gui hide` and a close hid the only window on a desktop with no notification area | `DesktopTrayNotificationAreaTest` (`:desktopApp:test`): `aGuiOnADesktopWithoutANotificationAreaNeverHidesItsWindowAndItsCloseDetaches`, `anAutostartedGuiStaysVisibleUntilTheNotificationAreaExistsAndHidesOnlyThen`, `aCloseOrAGuiHideReadsTheNotificationAreaAtThatMoment`, and `DesktopTrayWindowStateTest.closeOrHideNeedsTheTrayHostAtThatMoment`; controls `aDesktopWithANotificationAreaHasItsTrayAtTheFirstAttempt`, `anIconRefusedWhileTheNotificationAreaExistsEndsUnavailableAfterTheLastAttempt`, `disposeStopsTheWatchAndRemovesTheIcon`, `onlyWindowsAsksTheNotificationArea`; Windows-only `DesktopTrayNotificationAreaNativeTest` (3) | The world is that desktop on a virtual clock: AWT takes and lists every icon, the notification area is a switch, and the product's callbacks drive `Main.kt`'s window state. The decisive test asks, every second of the row's 75 s settle, what `gui hide` and a close would do. The decision needs the fix's seams, so RED is the fix with the decision of `450b8764` restored in its three places (`red-unfixed-decision.patch`: no gate before an attempt, available at install with no watch, the host not asked at a close): `DesktopTray*`, 40 tests, 5 failures, 3 skipped (the native class), the first `expected:<[]> but was:<[0, 1, 2, ... 75]>`. GREEN: 40 tests, 0 failures, 3 skipped. The native class runs in the Windows package workflow's `:desktopApp:test`: on a private desktop of its own, `WindowsNotificationArea` must find nothing while a census of this thread's desktop agrees with it, and the product's AWT backend in a child JVM started there with `lpDesktop` must report `unavailable` with no AWT icon offered; started on the session's desktop it must be available exactly when that desktop has `Shell_TrayWnd`. Native only: a package built from the fix on the no-tray row, below. |
+| A window hidden in the tray stayed hidden after the notification area went away (Explorer ended or is restarting): predicted from the same cause, not met natively | `DesktopTrayNotificationAreaTest.aWindowHiddenInTheTrayIsShownWhenTheNotificationAreaGoesAwayAndTheTrayComesBackWithIt`, `DesktopTrayWindowStateTest.lostTrayShowsTheWindowAndComesBackWithoutHidingIt` | Before the fix nothing read the tray again after the first attempt. RED: in the run above (the first test). GREEN: both pass. Native only: an Explorer restart under a hidden GUI; nothing here ends Explorer. |
+
+The offline world of `test_windows_no_tray_close` reads the product's decision from the source, so it was
+reviewed with it: `tray_rules()` now requires the Windows rule (`Shell_TrayWnd`, the gate, the watch, `installTrayIcon`
+leaving Windows alone) and the world's `Main.kt` facts the moment check; AWT taking the icon is the default answer of
+the JDK switch, as the run saw it, and the decision of 2.2.17 stays the product switch `tray_decision = "awt-list"`
+for the oracle's controls, whose first control now also checks the run's decision answer (OK, exit 0). Three new row
+tests pass the row whatever AWT answers. On an isolated tree holding the fix's tools, Python 3.14 and 3.12 alike: the
+new module on the `450b8764` Kotlin files `Ran 32 tests`, `FAILED (failures=28)`: 27 `the tray decision is not where
+the fake GUI reads it` and the close's regex; on the fix's, OK. The `450b8764` module passes 29 on its own sources
+and fails 25 on the fix's, which is the review this change made. `windows_no_tray_desktop.py` is unchanged, so no pin
+moved; its docstring still describes the decision of 2.2.17.
+
+What the next direct discovery run of `windows-proxy-lifecycle.no-tray-close` must show on a package built from
+this fix: `no-tray-gui-desktop-observed` as in `6c7250f6`, but the private desktop lists no `SunAwtTrayIcon` window
+and no hidden 136x39 `SunAwtFrame`, since no icon is offered there; the main window visible at every settle
+observation; no `no-tray-decision-probe-answer` (the probe got UNSUPPORTED, exit 1, and left the window visible);
+`no-tray-wm-close-posted` with `posted` true, the GUI terminal exit 0 with both EOFs within 30 s, `no-tray-lease-read`
+NOT_FOUND with `secondsFromPost` under 9, the JVM's exit observed, the desktop empty, status, actors and the one
+runtime unchanged, and `no-tray-close-detach-observed`, the row closing through its own off and quit with exit 0. The
+same run's census found no `Shell_TrayWnd` on Default either. On such a session the fixed product also has no tray
+on Default: `gui-pending`'s `hide` and `wm-close-to-tray` steps, which passed in `90dd6d45` on 2.2.16, would then get
+UNSUPPORTED and a detach. Those steps need Explorer's taskbar on the fixture session's Default desktop, which no row
+records yet.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

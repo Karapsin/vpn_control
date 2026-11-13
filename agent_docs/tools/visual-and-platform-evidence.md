@@ -1079,14 +1079,18 @@ not, and then the desktop closes. A GUI that exited
 nonzero after the close keeps that terminal, so the closing ends on
 `dedicated-known-failure-terminal-and-eof` with every child terminal and the owner
 finishes 1; the desktop handle then closes with the owner process. A window still
-unresolved at its bound parks. Unknown before any native
-run: whether AWT takes a tray icon where no `Shell_TrayWnd` exists; `installTrayIcon`
-would then mark the tray available at once, and the row fails
-`gui-hidden-without-usable-tray`. Java and Compose on a desktop that never takes
-input, `CreateProcessW` with that `lpDesktop`, the relaunched JVM's inheritance of it,
-and the window reads and posted close from a thread of that desktop are proved only
-offline. A guest too slow to answer the lease read inside its 9 s ends
-`no-tray-close-release-unproven`, never a pass.
+unresolved at its bound parks. The first direct run, `6c7250f6` on 2.2.17,
+answered what was unknown before it: AWT takes a tray icon where no `Shell_TrayWnd`
+exists (the GUI's `SunAwtTrayIcon` window was listed on the private desktop), the
+product marked its tray available, and the row failed `gui-hidden-without-usable-tray`
+at `decision-probe`. That run also proved `CreateProcessW` with the `lpDesktop`, the
+relaunched JVM on the private desktop, Java and Compose showing their window there and
+the window reads from a thread of that desktop. The product now offers no icon and
+reports no tray where the GUI's own desktop has no `Shell_TrayWnd` (see the parity
+failure ledger), so on a package with that fix the private desktop lists no
+`SunAwtTrayIcon` window and `gui hide` answers UNSUPPORTED. The posted close, the
+detach and the lease read remain proved only offline. A guest too slow to answer the
+lease read inside its 9 s ends `no-tray-close-release-unproven`, never a pass.
 
 `windows-scoped-tun.<variant>` has one row per variant `windows_tun_stages.py`
 accepts: `restart-deny`, `restart-grant`, `find-best-deny` and `find-best-grant`.
