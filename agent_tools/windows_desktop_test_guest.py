@@ -4,10 +4,12 @@ The ordinary task worker (windows_ordinary_process_owner, action ``qualification
 with the admitted Python 3.13.15 and ``-I -S -B``. It uses the standard library only, accepts no
 argument but its pinned request, never elevates and never contacts the network:
 
-1. verifies the request bytes and the four pushed archives (source, JDK, Gradle, dependency repository);
-2. extracts them into a short work folder in the ordinary user's profile;
+1. verifies the request bytes and the six pushed archives (source, JDK, Gradle, dependency repository,
+   CI's .NET SDK and the offline NuGet seed);
+2. extracts them into a short work folder in the ordinary user's profile and runs the SDK once to check it;
 3. runs the source's own Gradle wrapper exactly as ``gradlew.bat`` does, offline, against the extracted
-   repository, inside a job object, with a deadline;
+   repository, with the SDK and a NuGet configuration that allows only the seed folder, inside a job
+   object, with a deadline;
 4. keeps the complete ``desktopApp/build/test-results/test`` XML set and the console log in one zip
    beside its summary in the operation root;
 5. deletes the work folder it created.
@@ -28,6 +30,7 @@ import shutil
 import stat
 import subprocess
 import time
+from xml.sax.saxutils import quoteattr
 import zipfile
 
 REQUEST_SCHEMA = "vpn-control.windows-desktop-test.runner-request"
@@ -38,12 +41,15 @@ WORK_PREFIX = "vcdt-"
 OPERATION_PREFIX = "VpnControlOrdinary-"
 WORKSPACE_PREFIX = "C:\\ProgramData\\VpnControlOrdinaryTask-"
 ARCHIVE_LEAVES = {"source": "desktop-test-source.zip", "jdk": "desktop-test-jdk.zip",
-                  "gradle": "desktop-test-gradle.zip", "dependencies": "desktop-test-dependencies.zip"}
+                  "gradle": "desktop-test-gradle.zip", "dependencies": "desktop-test-dependencies.zip",
+                  "dotnet": "desktop-test-dotnet.zip", "nuget": "desktop-test-nuget.zip"}
 REQUEST_LEAF = "desktop-test-request.json"
 SUMMARY_LEAF = "desktop-test-summary.json"
 RESULTS_LEAF = "desktop-test-results.zip"
 PROGRESS_LEAF = "desktop-test-progress.json"
 CONSOLE_LEAF = "gradle-console.log"
+DOTNET_CHECK_LEAF = "dotnet-check.log"
+NUGET_CONFIG_LEAF = "NuGet.Config"
 INIT_LEAF = "offline-repositories.gradle"
 RESULTS_DIRECTORY = ("desktopApp", "build", "test-results", "test")
 WRAPPER_PROPERTIES = ("gradle", "wrapper", "gradle-wrapper.properties")
@@ -56,12 +62,29 @@ GRADLE_PROPERTIES = ("-Pkotlin.compiler.execution.strategy=in-process", "-Porg.g
 GRADLE_ARGUMENTS = ("--offline", "--no-daemon", "--console=plain", *GRADLE_PROPERTIES, ":desktopApp:test")
 REPOSITORY_VARIABLE = "VPN_CONTROL_DESKTOP_TEST_REPOSITORY"
 HOME_VARIABLE = "VPN_CONTROL_DESKTOP_TEST_HOME"
-# CI installs the pinned .NET SDK before :desktopApp:test; the guest gets none. The desktop tests that build their
-# native probes start the program this variable names (else dotnet.exe from PATH), so the runner names one that does
-# not exist in its work folder: those tests then fail to start it, the same way on every fixture, and no SDK the
-# fixture may have restores NuGet packages from the network. The coordinator reports exactly those failures apart.
+# CI installs the .NET SDK desktopApp/native/windows/toolchain.lock.json pins before :desktopApp:test. The desktop tests
+# that build native .NET probes start the program this variable names (else dotnet.exe from PATH); the runner extracts
+# that SDK into its work folder and names its dotnet there, with DOTNET_ROOT for the probes' own apphosts.
 DOTNET_VARIABLE = "VPN_CONTROL_TEST_DOTNET"
-DOTNET_ABSENT = ("no-dotnet", "dotnet.exe")
+# The folder of the source's global.json, which those tests copy into every probe (rollForward disable).
+GLOBAL_JSON_DIRECTORY = ("desktopApp", "native", "windows")
+DOTNET_CHECK_SECONDS = 300
+# Two of those probes restore the SDK's ILLink pack (EnableAotAnalyzer) with a NuGet.Config of their own that adds
+# nuget.org. MSBuild reads every environment variable as a property, and NuGet then loads only the RestoreConfigFile it
+# names: this one local folder holding the pinned seed. A package the seed lacks fails that restore (NU1101 naming this
+# source) instead of being downloaded; the coordinator reports such a failure as its own (dotnet-packages).
+NUGET_SOURCE = "vpnControlDesktopTestOffline"
+NUGET_CONFIG_VARIABLE = "RestoreConfigFile"
+# The SDK's first run would otherwise make an HTTPS development certificate in the user's store and add a tools folder
+# to the user's PATH. Its CLI also looks for workload manifest updates in the probe's own sources: one test sets
+# DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=1, which the SDK does not read as true, so every HTTP client that honours
+# the proxy variables (the SDK's and NuGet's do) is sent to a refused loopback port. Revocation is read offline.
+REFUSED_PROXY = "http://127.0.0.1:9"
+PROXY_VARIABLES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+DOTNET_ENVIRONMENT = {"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+                      "DOTNET_GENERATE_ASPNET_CERTIFICATE": "false", "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH": "false",
+                      "DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE": "true", "DOTNET_MULTILEVEL_LOOKUP": "0",
+                      "NUGET_CERT_REVOCATION_MODE": "offline", **{name: REFUSED_PROXY for name in PROXY_VARIABLES}}
 # Read by Gradle before any build script: every settings repository becomes the one extracted
 # repository (the build forbids project repositories). --offline then refuses any remote one a plugin
 # could still add. Test JVMs get user.home in the work folder, so what they write there (Skiko's
@@ -83,10 +106,21 @@ REMOVED_ENVIRONMENT = frozenset({"JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA
                                  "GRADLE_USER_HOME", "CLASSPATH", "ANDROID_HOME", "ANDROID_SDK_ROOT", "PYTHONPATH",
                                  "PYTHONHOME", REPOSITORY_VARIABLE, HOME_VARIABLE, DOTNET_VARIABLE,
                                  "VPN_CONTROL_TEST_DOTNET_ROOT"})
+# Nothing of another SDK, MSBuild or NuGet location, source or proxy (a bypass list included) reaches the guest build
+# from the fixture user's environment; the runner sets its own where the build needs one.
+BUILD_REMOVED_ENVIRONMENT = REMOVED_ENVIRONMENT | frozenset({
+    *DOTNET_ENVIRONMENT, "DOTNET_ROOT", "DOTNET_ROOT_X64", "DOTNET_ROOT_X86", "DOTNET_ROOT_ARM64", "DOTNET_ROOT(X86)",
+    "DOTNET_HOST_PATH", "DOTNET_CLI_HOME", "DOTNET_INSTALL_DIR", "MSBUILD_EXE_PATH", "MSBUILDSDKSPATH", "MSBUILDEXTENSIONSPATH",
+    "NUGET_PACKAGES", "NUGET_FALLBACK_PACKAGES", "NUGET_HTTP_CACHE_PATH", "NUGET_PLUGINS_CACHE_PATH", "NUGET_PLUGIN_PATHS",
+    "NUGET_SCRATCH", NUGET_CONFIG_VARIABLE.upper(), "RESTORESOURCES", "RESTOREPACKAGESPATH", "NO_PROXY"})
 PRODUCT_IMAGES = frozenset({"vpn-control.exe", "vpn-control-cli.exe", "sing-box.exe"})
 STATE_ROOTS = ((".vpn-control-desktop",), ("AppData", "Local", "vpn-control"))
+# The fixture user's own NuGet folders, observed before and after: NuGet records its once-per-user migration under
+# %LOCALAPPDATA%\NuGet\Migrations, which no variable moves without moving LOCALAPPDATA for every test.
+TOOL_STATE_ROOTS = (("AppData", "Local", "NuGet"), ("AppData", "Roaming", "NuGet"))
 SOURCE_LIMITS = {"entries": 20000, "bytes": 2 * 1024 ** 3, "file": 512 * 1024 ** 2}
 TOOL_LIMITS = {"entries": 40000, "bytes": 4 * 1024 ** 3, "file": 1024 ** 3}
+SEED_LIMITS = {"entries": 64, "bytes": 512 * 1024 ** 2, "file": 256 * 1024 ** 2}
 ARCHIVE_LIMIT = 1024 ** 3
 RESULT_FILE_LIMIT = 128 * 1024 ** 2
 RESULT_TOTAL_LIMIT = 512 * 1024 ** 2
@@ -98,9 +132,14 @@ HEARTBEAT_SECONDS = 60
 TERMINATE_SECONDS = 60
 CLEANUP_ATTEMPTS = 6
 STAGES = ("preflight", "verify-archives", "extract-source", "source-wrapper", "extract-jdk", "extract-gradle",
-          "extract-dependencies", "init-script", "gradle", "collect", "state-check")
+          "extract-dependencies", "extract-dotnet", "extract-nuget", "dotnet-check", "init-script", "gradle", "collect",
+          "state-check")
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_SHA512 = re.compile(r"[0-9a-f]{128}\Z")
+_NUPKG = re.compile(r"[a-z0-9][a-z0-9._-]{0,150}\.nupkg\Z")
+_SDK_VERSION = re.compile(r"[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{3}\Z")
+_RUNTIME_VERSION = re.compile(r"[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,3}\Z")
 _COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}\Z")
 _JAVA_VERSION = re.compile(r"[1-9][0-9]?(?:\.[0-9]{1,3}){0,3}\Z")
@@ -138,7 +177,11 @@ def native_code(prefix, error):
 
 
 def sha256_file(path, limit=None):
-    digest, total = hashlib.sha256(), 0
+    return file_digest(path, "sha256", limit)
+
+
+def file_digest(path, algorithm, limit=None):
+    digest, total = hashlib.new(algorithm), 0
     with open(path, "rb") as stream:
         while True:
             block = stream.read(1024 * 1024)
@@ -159,7 +202,7 @@ def validate_request(value, *, windows=True):
     paths = ntpath if windows else posixpath
     need(type(value) is dict and set(value) == {"schema", "schemaVersion", "operationId", "sourceCommit", "profileRoot",
                                                 "operationRoot", "workspace", "workRoot", "archives", "jdk", "gradle",
-                                                "gradleDeadlineSeconds", "minimumFreeBytes"}, "request-fields")
+                                                "dotnet", "nuget", "gradleDeadlineSeconds", "minimumFreeBytes"}, "request-fields")
     need(value["schema"] == REQUEST_SCHEMA and type(value["schemaVersion"]) is int and value["schemaVersion"] == 1, "request-schema")
     operation = value["operationId"]
     need(type(operation) is str and _UUID.fullmatch(operation) is not None, "request-operation")
@@ -191,6 +234,18 @@ def validate_request(value, *, windows=True):
          and gradle["root"] == "gradle-" + gradle["version"]
          and gradle["distributionUrl"] == "https://services.gradle.org/distributions/gradle-" + gradle["version"] + "-bin.zip"
          and type(gradle["wrapperHash"]) is str and re.fullmatch(r"[0-9a-z]{1,32}", gradle["wrapperHash"]) is not None, "request-gradle")
+    dotnet = value["dotnet"]
+    need(type(dotnet) is dict and set(dotnet) == {"sdkVersion", "runtimeVersion"}
+         and type(dotnet["sdkVersion"]) is str and _SDK_VERSION.fullmatch(dotnet["sdkVersion"]) is not None
+         and type(dotnet["runtimeVersion"]) is str and _RUNTIME_VERSION.fullmatch(dotnet["runtimeVersion"]) is not None, "request-dotnet")
+    nuget = value["nuget"]
+    need(type(nuget) is dict and set(nuget) == {"packages"} and type(nuget["packages"]) is list
+         and 0 < len(nuget["packages"]) <= SEED_LIMITS["entries"], "request-nuget")
+    for row in nuget["packages"]:
+        need(type(row) is dict and set(row) == {"file", "sha512", "bytes"} and type(row["file"]) is str
+             and _NUPKG.fullmatch(row["file"]) is not None and type(row["sha512"]) is str and _SHA512.fullmatch(row["sha512"]) is not None
+             and type(row["bytes"]) is int and 0 < row["bytes"] <= SEED_LIMITS["file"], "request-nuget")
+    need(len({row["file"] for row in nuget["packages"]}) == len(nuget["packages"]), "request-nuget")
     need(type(value["gradleDeadlineSeconds"]) is int and 600 <= value["gradleDeadlineSeconds"] <= 6 * 3600, "request-deadline")
     need(type(value["minimumFreeBytes"]) is int and 1024 ** 3 <= value["minimumFreeBytes"] <= 256 * 1024 ** 3, "request-free-space")
     return value
@@ -304,6 +359,19 @@ def java_release(path):
     return values
 
 
+def nuget_config(feed, packages):
+    """The only NuGet configuration the build's restores read: one local folder source, packages in the work folder."""
+    return ('<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <packageSources>\n    <clear />\n'
+            '    <add key="' + NUGET_SOURCE + '" value=' + quoteattr(feed) + ' />\n  </packageSources>\n'
+            '  <config>\n    <add key="globalPackagesFolder" value=' + quoteattr(packages) + ' />\n  </config>\n</configuration>\n')
+
+
+def last_line(raw, limit=64):
+    """The last nonempty line of a small program output, printable ASCII only and bounded."""
+    lines = [line.strip() for line in raw.decode("utf-8", "replace").splitlines() if line.strip()]
+    return "".join(c for c in lines[-1] if 32 <= ord(c) < 127)[:limit] if lines else ""
+
+
 def fingerprint(root, local=lambda value: value):
     """Names, sizes and write times under one product folder, never following a link or junction."""
     if not os.path.lexists(local(root)):
@@ -339,8 +407,10 @@ def compare_state(before, after):
         unchanged = (old.get("present") == new.get("present") and old.get("complete", True) is True
                      and new.get("complete", True) is True and old.get("sha256") == new.get("sha256"))
         changed = []
-        if not unchanged and old.get("rows") is not None and new.get("rows") is not None:
-            left, right = ({row[0]: row[1:] for row in side["rows"]} for side in (old, new))
+        # An absent folder has no names: everything in one that appeared during the run is named.
+        sides = [side.get("rows") if side.get("present") else [] for side in (old, new)]
+        if not unchanged and None not in sides:
+            left, right = ({row[0]: row[1:] for row in rows} for rows in sides)
             changed = sorted(key for key in set(left) | set(right) if left.get(key) != right.get(key))[:20]
         result[name] = {"unchanged": unchanged, "presentBefore": old.get("present"), "presentAfter": new.get("present"),
                         "entriesBefore": old.get("entries"), "entriesAfter": new.get("entries"), "changedNames": changed}
@@ -399,6 +469,10 @@ class PosixPlatform:
     @staticmethod
     def java(jdk_home):
         return os.path.join(jdk_home, "bin", "java")
+
+    @staticmethod
+    def dotnet(dotnet_home):
+        return os.path.join(dotnet_home, "dotnet")
 
     @staticmethod
     def launch(argv, environment, cwd, output):
@@ -561,6 +635,10 @@ class WindowsPlatform:
     def java(jdk_home):
         return ntpath.join(jdk_home, "bin", "java.exe")
 
+    @staticmethod
+    def dotnet(dotnet_home):
+        return ntpath.join(dotnet_home, "dotnet.exe")
+
     def _snapshot(self, flags):
         handle = self.k.CreateToolhelp32Snapshot(flags, 0)
         if handle is None or handle == self.ctypes.c_void_p(-1).value:
@@ -643,15 +721,15 @@ class Runner:
         self.request, self.platform, self.clock, self.sleep = request, platform, clock, sleep
         self.local = platform.long_path
         self.operation, self.work, self.root = request["operationId"], request["workRoot"], request["operationRoot"]
-        self.jdk_home = None
-        self.state_before = {}
+        self.jdk_home = self.dotnet_home = None
+        self.state_before, self.tool_state_before = {}, {}
         self.stages, self.started = [], clock()
         self.summary = {"schema": SUMMARY_SCHEMA, "schemaVersion": 1, "operationId": self.operation,
                         "sourceCommit": request["sourceCommit"], "outcome": "failed", "failedStage": None, "failure": None,
-                        "stages": self.stages, "gradle": None, "results": None, "jdkRelease": None, "archives": {},
-                        "freeBytesBefore": None, "freeBytesAfter": None, "productProcessesBefore": None,
-                        "productProcessesAfter": None, "productState": None, "profileEntries": None, "seconds": None,
-                        "workRoot": {"created": False, "deleted": False, "error": None}}
+                        "stages": self.stages, "gradle": None, "results": None, "jdkRelease": None, "dotnet": None, "nuget": None,
+                        "archives": {}, "freeBytesBefore": None, "freeBytesAfter": None, "productProcessesBefore": None,
+                        "productProcessesAfter": None, "productState": None, "userToolState": None, "profileEntries": None,
+                        "seconds": None, "workRoot": {"created": False, "deleted": False, "error": None}}
         self.profile_before = None
 
     def path(self, *parts):
@@ -713,6 +791,8 @@ class Runner:
         self.summary["productProcessesBefore"] = self.platform.product_processes()
         self.state_before = {"/".join(parts): fingerprint(os.path.join(self.request["profileRoot"], *parts), self.local)
                              for parts in STATE_ROOTS}
+        self.tool_state_before = {"/".join(parts): fingerprint(os.path.join(self.request["profileRoot"], *parts), self.local)
+                                  for parts in TOOL_STATE_ROOTS}
         self.profile_before = self._profile_names()
 
     def _profile_names(self):
@@ -770,22 +850,84 @@ class Runner:
     def _extract_dependencies(self):
         self._extract("dependencies", self.path("m"), TOOL_LIMITS)
 
+    def _extract_dotnet(self):
+        """CI's SDK: its muxer, the SDK the source pins and the runtime it bundles, as the archive holds them."""
+        dotnet = self.request["dotnet"]
+        home = self.path("d")
+        self._extract("dotnet", home, TOOL_LIMITS)
+        layout = (self.platform.dotnet(home), os.path.join(home, "sdk", dotnet["sdkVersion"], "dotnet.dll"),
+                  os.path.join(home, "shared", "Microsoft.NETCore.App", dotnet["runtimeVersion"], "System.Private.CoreLib.dll"))
+        need(all(os.path.isfile(self.local(path)) for path in layout), "dotnet-layout")
+        self.dotnet_home = home
+        self.summary["dotnet"] = {"sdkVersion": dotnet["sdkVersion"], "runtimeVersion": dotnet["runtimeVersion"], "reported": None,
+                                  "exitCode": None}
+
+    def _extract_nuget(self):
+        """The seed is exactly the requested packages, each by its SHA-512, and the NuGet configuration names only it."""
+        feed = self.path("n", "feed")
+        self._extract("nuget", feed, SEED_LIMITS)
+        expected = {row["file"]: row for row in self.request["nuget"]["packages"]}
+        found = sorted(os.listdir(self.local(feed)))
+        need(found == sorted(expected), "nuget-seed-mismatch")
+        for name in found:
+            path = self.local(os.path.join(feed, name))
+            need(os.path.isfile(path), "nuget-seed-mismatch")
+            digest, size = file_digest(path, "sha512", SEED_LIMITS["file"])
+            need(size == expected[name]["bytes"] and digest == expected[name]["sha512"], "nuget-seed-mismatch")
+        os.makedirs(self.local(self.path("n", "packages")), exist_ok=False)
+        with open(self.local(self.path("n", NUGET_CONFIG_LEAF)), "x", encoding="utf-8") as stream:
+            stream.write(nuget_config(feed, self.path("n", "packages")))
+        self.summary["nuget"] = {"source": NUGET_SOURCE, "packages": found}
+
+    def _dotnet_check(self):
+        """The SDK runs, offline, from the folder of the source's own global.json and reports the version it pins."""
+        directory = self.path("s", *GLOBAL_JSON_DIRECTORY)
+        need(os.path.isfile(self.local(os.path.join(directory, "global.json"))), "dotnet-global-json-missing")
+        for leaf in ("t", "dh"):  # Temporary files, and the SDK's home for the runs that do not name their own.
+            os.makedirs(self.local(self.path(leaf)), exist_ok=False)
+        facts = self.summary["dotnet"]
+        with open(self.local(self.path(DOTNET_CHECK_LEAF)), "xb") as output:
+            try:
+                group = self.platform.launch([self.platform.dotnet(self.dotnet_home), "--version"], self.environment(), directory, output)
+            except OSError as error:
+                raise StageFailure(native_code("dotnet-start", error)) from None
+            try:
+                try:
+                    facts["exitCode"] = group.wait(DOTNET_CHECK_SECONDS)
+                except subprocess.TimeoutExpired:
+                    group.terminate()
+                    raise StageFailure("dotnet-check-deadline") from None
+                if group.members():
+                    need(group.terminate(), "dotnet-processes-survived")
+            finally:
+                group.close()
+        with open(self.local(self.path(DOTNET_CHECK_LEAF)), "rb") as stream:
+            facts["reported"] = last_line(stream.read(65536))
+        need(facts["exitCode"] == 0 and facts["reported"] == self.request["dotnet"]["sdkVersion"], "dotnet-sdk-version")
+
     def _init_script(self):
         with open(self.local(self.path(INIT_LEAF)), "x", encoding="ascii") as stream:
             stream.write(OFFLINE_INIT_SCRIPT)
-        for leaf in ("t", "h"):  # Temporary files, and user.home of the test JVMs.
-            os.makedirs(self.local(self.path(leaf)), exist_ok=False)
+        os.makedirs(self.local(self.path("h")), exist_ok=False)  # user.home of the test JVMs; dotnet-check made "t".
 
     def environment(self):
-        environment = {key: value for key, value in os.environ.items() if key.upper() not in REMOVED_ENVIRONMENT}
+        environment = {key: value for key, value in os.environ.items() if key.upper() not in BUILD_REMOVED_ENVIRONMENT}
         environment.update(JAVA_HOME=self.jdk_home, GRADLE_USER_HOME=self.path("g"), TEMP=self.path("t"), TMP=self.path("t"),
                            # An explicit unavailable SDK, as scripts/test_desktop_sdk_independence.py configures the desktop graph.
                            ANDROID_HOME=self.path("no-android-sdk"), ANDROID_SDK_ROOT=self.path("no-android-sdk"))
         environment[REPOSITORY_VARIABLE] = self.path("m")
         environment[HOME_VARIABLE] = self.path("h")
-        environment[DOTNET_VARIABLE] = self.path(*DOTNET_ABSENT)  # Never created: see DOTNET_VARIABLE.
+        # CI's .NET SDK and the seed's offline NuGet configuration: see DOTNET_VARIABLE, NUGET_SOURCE and REFUSED_PROXY.
+        environment.update(DOTNET_ENVIRONMENT)
+        environment.update({DOTNET_VARIABLE: self.platform.dotnet(self.dotnet_home), "DOTNET_ROOT": self.dotnet_home,
+                            "DOTNET_CLI_HOME": self.path("dh"), NUGET_CONFIG_VARIABLE: self.path("n", NUGET_CONFIG_LEAF),
+                            "NUGET_PACKAGES": self.path("n", "packages"), "NUGET_HTTP_CACHE_PATH": self.path("n", "http-cache"),
+                            "NUGET_PLUGINS_CACHE_PATH": self.path("n", "plugins-cache")})
+        if not self.platform.windows:  # POSIX names are case-sensitive; on Windows each pair is one variable.
+            environment.update({name.lower(): REFUSED_PROXY for name in PROXY_VARIABLES})
         key = next((name for name in environment if name.upper() == "PATH"), "PATH")
-        environment[key] = os.path.dirname(self.platform.java(self.jdk_home)) + os.pathsep + environment.get(key, "")
+        # As CI: the JDK and the pinned SDK come first on PATH.
+        environment[key] = os.pathsep.join((os.path.dirname(self.platform.java(self.jdk_home)), self.dotnet_home, environment.get(key, "")))
         return environment
 
     def argv(self):
@@ -877,6 +1019,8 @@ class Runner:
         after = {"/".join(parts): fingerprint(os.path.join(self.request["profileRoot"], *parts), self.local)
                  for parts in STATE_ROOTS}
         self.summary["productState"] = compare_state(self.state_before, after)
+        tools = {"/".join(parts): fingerprint(os.path.join(self.request["profileRoot"], *parts), self.local) for parts in TOOL_STATE_ROOTS}
+        self.summary["userToolState"] = compare_state(self.tool_state_before, tools)
         names = self._profile_names()
         self.summary["profileEntries"] = {"added": sorted(names - self.profile_before - {WORK_PREFIX + self.operation[:8]})[:64],
                                           "removed": sorted(self.profile_before - names)[:64]}

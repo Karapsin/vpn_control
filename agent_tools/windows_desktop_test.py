@@ -1,9 +1,9 @@
 """Closed actions that run one complete ``./gradlew :desktopApp:test`` in an owned Windows fixture VM.
 
 ``start`` takes exactly ``deploymentId``, ``operationId`` and a 40-hex ``sourceCommit`` that exists in
-this repository. It makes the source archive itself (``git archive``), takes the pinned Temurin JDK and
-Gradle distribution and the prepared offline dependency repository from private coordinator storage,
-stages all four into the VM host's artifact cache and submits one durable host job
+this repository. It makes the source archive itself (``git archive``), takes the pinned Temurin JDK, the
+Gradle distribution, CI's .NET SDK, the offline NuGet seed and the prepared offline dependency repository
+from private coordinator storage, stages all six into the VM host's artifact cache and submits one durable host job
 (windows_desktop_test_host_job over windows_scenario_host_job) under ScenarioExecutor. In the guest the
 job runs the pinned runner (windows_desktop_test_guest) as the fixture's ordinary user in its interactive
 session, through the existing ordinary-user task (windows_ordinary_task and its owner). Nothing is elevated.
@@ -13,8 +13,9 @@ once it is terminal, copies back the runner summary, the complete XML result set
 and the job evidence into ``.runtime/windows-desktop-test/operations/<operationId>/`` and summarizes them.
 A start is never submitted twice; a lost reply is recovered by ``status`` on the same operation.
 
-``prepare`` (direct only, coordinator network, no VM) downloads and verifies the pinned JDK and Gradle and
-exports the dependency repository for the commit's build definition with Windows Compose/Skiko natives.
+``prepare`` (direct only, coordinator network, no VM) downloads and verifies the pinned JDK, Gradle, .NET
+SDK and NuGet packages, builds the NuGet seed and exports the dependency repository for the commit's build
+definition with Windows Compose/Skiko natives.
 """
 from __future__ import annotations
 
@@ -62,11 +63,34 @@ GRADLE = {"version": "8.10.2", "root": "gradle-8.10.2", "fileName": "gradle-8.10
           "sha256": "31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26", "bytes": 136715430,
           # The wrapper's own directory name: base 36 of the MD5 of the distribution URL (PathAssembler).
           "wrapperHash": "a04bxjujx95o3nb99gddekhwo"}
+# CI's third toolchain: windows-desktop.yml installs the SDK desktopApp/native/windows/toolchain.lock.json names before
+# :desktopApp:test. The url and sha512 are the lock's (Microsoft's published hash, which the current release manifest
+# still lists for this file); size and sha256 were read from the download verified against it. Runtime 10.0.14 ships in it.
+DOTNET = {"version": "10.0.403", "runtimeVersion": "10.0.14", "fileName": "dotnet-sdk-10.0.403-win-x64.zip",
+          "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-win-x64.zip",
+          "sha512": "7a114c318fa7f1d9822991b534b2814d0e78386ceda816b371f5141acefe741d87ccb606ede06cadac8f9ac5070e32b708a67bbd1619ff5e5a7858a27874ef48",
+          "sha256": "f398979a9cac2dba760771c4e01f16e431dcd6bcfb2213e3e8f5b3d354095cc0", "bytes": 300745255}
+# What a source must pin to be run with that SDK (its lock and global.json): fixed here, apart from the download pin.
+DOTNET_SOURCE_PIN = {"sdkVersion": DOTNET["version"], "url": DOTNET["url"], "sha512": DOTNET["sha512"]}
+DOTNET_LOCK = "desktopApp/native/windows/toolchain.lock.json"
+DOTNET_GLOBAL_JSON = "desktopApp/native/windows/global.json"
+# Exactly what the desktop tests restore from nuget.org with that SDK: EnableAotAnalyzer (the CoordinatorAdapter fixture
+# and the OriginalUserLaunch probe) adds the SDK's KnownILLinkPack for net10.0, Microsoft.NET.ILLink.Tasks 10.0.14
+# (sdk/10.0.403/Microsoft.NETCoreSdk.BundledVersions.props). Every other package those probes use ships in the SDK's
+# packs folder. Each is pinned by the SHA-512 and size nuget.org publishes for it (its catalog entry's packageHash and
+# packageSize); sha256 was read from the download verified against them.
+NUGET_PACKAGES = ({"id": "Microsoft.NET.ILLink.Tasks", "version": "10.0.14", "file": "microsoft.net.illink.tasks.10.0.14.nupkg",
+                   "url": "https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/10.0.14/microsoft.net.illink.tasks.10.0.14.nupkg",
+                   "sha512": "6203bf1a4c7b11b6ffd0522342835176a9f67b522ecc265a893dcaccf90821b4ef435ed04467d83460420f091c30eb71d893b35a7d0ac2a9ee87a49d6d27d9ab",
+                   "sha256": "e2a71b32b5c135dc2b0c87ea8fba6c9e677332e00bf959fbcdced239b825b75c", "bytes": 1535193},)
+SEED_SCHEMA = "vpn-control.windows-desktop-test.nuget-seed"
+TOOLCHAIN = {"jdk": JDK["version"], "gradle": GRADLE["version"], "dotnet": DOTNET["version"]}
 # The ordinary task's owner writes a pending task event every 30 seconds and the run collector refuses a
 # 512th, so a task that ran past about 4 h 15 min would end UNKNOWN. Gradle gets 2.5 h; the whole task 3.5 h.
 GRADLE_DEADLINE_SECONDS = 150 * 60
 TASK_MARGIN_SECONDS = 3600  # Verification, extraction, collection and work-folder cleanup around Gradle.
-MINIMUM_FREE_BYTES = 10 * 1024 ** 3
+# Free space the work folder may use beyond the pushed archives: Gradle's margin as before, plus the extracted SDK.
+MINIMUM_FREE_BYTES = 11 * 1024 ** 3
 ARCHIVE_ROLES = desktop_job.ARCHIVE_ROLES
 ROW = {"evidenceClass": "test", "bootstrapMode": "python-worker", "workerAction": "qualification",
        "guestFiles": (("agent_tools/windows_ordinary_task_owner.ps1", "owner", "powershell"),
@@ -95,8 +119,10 @@ DEPENDENCY_SCHEMA = "vpn-control.windows-desktop-test.dependencies"
 SUMMARY_LEAF = "summary.json"
 UNKNOWN_SUMMARY_LEAF = "summary-unknown.json"
 COPY_BACK_LOCK = ".copy-back.lock"
-# Test failures the guest environment causes by design (see guest.DOTNET_VARIABLE), reported apart from the source's.
-EXCLUDED_DOTNET = "dotnet-sdk-not-provisioned"
+# A desktop test whose .NET probe asked the offline seed for a package it does not hold: the tool's failure, not the
+# source's. Only the guest's NuGet configuration names that source (guest.NUGET_SOURCE).
+DOTNET_PACKAGES_STAGE = "dotnet-packages"
+_SEED_RESTORE_FAILURE = re.compile(r"\berror NU110[123]\b")
 # Build-definition files: the dependency repository of one digest serves every commit that shares them.
 _DEFINITION = re.compile(r"(?:.*/)?(?:[^/]+\.gradle\.kts|[^/]+\.gradle|gradle\.properties)\Z|gradle/(?!wrapper/gradle-wrapper\.jar\Z).+")
 _VERSION_LINE = re.compile(r"(?m)^vpnControlVersion=.*$")
@@ -252,7 +278,23 @@ def source_facts(root: Path, commit: str) -> dict[str, Any]:
     _need(not values.get("distributionSha256Sum") or values["distributionSha256Sum"] == GRADLE["sha256"],
           "desktop_test_gradle_distribution_unpinned")
     _need(_git(root, "cat-file", "-e", commit + ":desktopApp/build.gradle.kts").returncode == 0, "desktop_test_source_not_desktop")
+    _need(dotnet_pinned(root, commit), "desktop_test_dotnet_sdk_unpinned")
     return {"sourceCommit": commit, "dependencyDigest": dependency_digest(root, commit)}
+
+
+def dotnet_pinned(root: Path, commit: str) -> bool:
+    """The commit's own SDK pin is the one this tool carries: its toolchain lock (version, archive url and sha512) and
+    the global.json its tests copy into every probe. Another pin needs a tool change, never a different download."""
+    shown = [_git(root, "cat-file", "-p", commit + ":" + path) for path in (DOTNET_LOCK, DOTNET_GLOBAL_JSON)]
+    if any(done.returncode != 0 or len(done.stdout) > 65536 for done in shown):
+        return False
+    try:
+        lock, pin = (json.loads(done.stdout.decode("utf-8")) for done in shown)
+        archive, sdk = lock["sdkArchive"], pin["sdk"]
+        return (lock["sdkVersion"] == DOTNET_SOURCE_PIN["sdkVersion"] and archive["url"] == DOTNET_SOURCE_PIN["url"]
+                and archive["sha512"] == DOTNET_SOURCE_PIN["sha512"] and sdk["version"] == DOTNET_SOURCE_PIN["sdkVersion"])
+    except (UnicodeDecodeError, ValueError, KeyError, TypeError):
+        return False
 
 
 def dependency_digest(root: Path, commit: str) -> str:
@@ -316,9 +358,11 @@ def toolchain_path(root: Path, pin: Mapping[str, Any]) -> Path:
 
 
 def download(pin: Mapping[str, Any], target: Path, *, opener: Callable[..., Any] = urllib.request.urlopen, timeout: int = 120) -> None:
-    """The publisher's file, verified against its pinned size and digest before it may be used."""
+    """The publisher's file, verified against its pinned size and digests (sha256, and sha512 where the publisher's own
+    hash is a SHA-512) before it may be used."""
     temporary = target.with_name(target.name + "." + uuid.uuid4().hex + ".partial")
-    digest, total = hashlib.sha256(), 0
+    digests = {name: hashlib.new(name) for name in ("sha256", "sha512") if name in pin}
+    total = 0
     try:
         request = urllib.request.Request(pin["url"])  # urllib's generic User-Agent: nothing names this project to the publisher.
         with opener(request, timeout=timeout) as response, open(temporary, "xb") as output:
@@ -329,11 +373,13 @@ def download(pin: Mapping[str, Any], target: Path, *, opener: Callable[..., Any]
                     break
                 total += len(block)
                 _need(total <= pin["bytes"], "desktop_test_toolchain_digest")
-                digest.update(block)
+                for digest in digests.values():
+                    digest.update(block)
                 output.write(block)
             output.flush()
             os.fsync(output.fileno())
-        _need(total == pin["bytes"] and digest.hexdigest() == pin["sha256"], "desktop_test_toolchain_digest")
+        _need(total == pin["bytes"] and "sha256" in digests and all(digest.hexdigest() == pin[name] for name, digest in digests.items()),
+              "desktop_test_toolchain_digest")
         os.link(temporary, target)
     finally:
         if temporary.exists():
@@ -347,6 +393,70 @@ def ensure_toolchain(root: Path, pin: Mapping[str, Any], *, opener: Callable[...
         download(pin, target, opener=opener)
     _need(verify_file(target, pin["sha256"], pin["bytes"]), "desktop_test_toolchain_changed")
     return target
+
+
+def dotnet_archive(path: Path) -> dict[str, Any]:
+    """The SDK zip is one the runner extracts (a tree Windows can hold, within its bounds) and holds what it checks:
+    the muxer, the pinned SDK and the runtime that SDK ships."""
+    layout = ("dotnet.exe", "sdk/" + DOTNET["version"] + "/dotnet.dll",
+              "shared/Microsoft.NETCore.App/" + DOTNET["runtimeVersion"] + "/System.Private.CoreLib.dll")
+    try:
+        facts = guest.inspect_zip(str(path), guest.TOOL_LIMITS)
+        with zipfile.ZipFile(path) as archive:
+            names = set(archive.namelist())
+    except guest.StageFailure as failure:
+        raise DesktopTestError("desktop_test_dotnet_archive_refused:" + failure.code) from None
+    _need(set(layout) <= names, "desktop_test_dotnet_archive_refused:dotnet-layout")
+    return facts
+
+
+# The offline NuGet seed: one flat local folder of exactly the pinned packages, as the guest's NuGet reads it.
+def _seed_rows() -> list[dict[str, Any]]:
+    return [{key: pin[key] for key in ("id", "version", "file", "sha512", "bytes")} for pin in NUGET_PACKAGES]
+
+
+def seed_zip(files: Mapping[str, Path], target: Path) -> None:
+    """Each verified .nupkg stored as it is (it is a zip already), in name order, with fixed metadata: the same
+    packages always make the same bytes."""
+    with zipfile.ZipFile(target, "x", compression=zipfile.ZIP_STORED) as archive:
+        for name in sorted(files):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type, info.create_system, info.external_attr = zipfile.ZIP_STORED, 3, 0o100644 << 16
+            archive.writestr(info, Path(files[name]).read_bytes())
+    os.chmod(target, 0o600)
+
+
+def nuget_seed(root: Path, *, opener: Callable[..., Any] | None = None) -> dict[str, Any]:
+    """Made once from the verified packages (downloaded only with an opener, that is by prepare) and re-verified on
+    every use; its identity is the pinned package list."""
+    directory = _store(root, "nuget-seed")
+    identity = hashlib.sha256(_canonical(_seed_rows())).hexdigest()
+    target, record_path = directory / (identity + ".zip"), directory / (identity + ".json")
+    if record_path.exists():
+        record = json.loads(_read_private(record_path))
+        _need(type(record) is dict and record.get("schema") == SEED_SCHEMA and record.get("seedIdentity") == identity
+              and verify_file(target, record.get("sha256"), record.get("bytes")), "desktop_test_nuget_seed_changed")
+        return {"path": target, **record}
+    files = {pin["file"]: ensure_toolchain(root, pin, opener=opener) for pin in NUGET_PACKAGES}
+    if target.exists():  # A seed whose record was never written is derived data: make it again.
+        target.unlink()
+    temporary = directory / (identity + "." + uuid.uuid4().hex + ".partial")
+    try:
+        seed_zip(files, temporary)
+        try:  # The runner's own bounds and names.
+            guest.inspect_zip(str(temporary), guest.SEED_LIMITS)
+            digest, size = guest.sha256_file(str(temporary))
+        except guest.StageFailure as failure:
+            raise DesktopTestError("desktop_test_nuget_seed_refused:" + failure.code) from None
+        _need(size <= guest.ARCHIVE_LIMIT, "desktop_test_nuget_seed_refused:bound")
+        os.link(temporary, target)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    record = {"schema": SEED_SCHEMA, "schemaVersion": 1, "seedIdentity": identity, "sha256": digest, "bytes": size,
+              "source": guest.NUGET_SOURCE, "packages": _seed_rows()}
+    _create_private(record_path, _canonical(record))
+    return {"path": target, **record}
 
 
 # The offline dependency repository: Gradle's own download cache, in Maven layout, verified file by file.
@@ -470,11 +580,14 @@ def export_dependencies(root: Path, commit: str, digest: str, archive: Path, gra
 
 def prepare(root: Path | str, inputs: Any, *, opener: Callable[..., Any] = urllib.request.urlopen,
             run: Callable[..., Any] = subprocess.run, java_home: str | None = None) -> dict[str, Any]:
-    """Direct coordinator step before a start: toolchain downloads, source archive and dependency export."""
+    """Direct coordinator step before a start: toolchain and package downloads, the NuGet seed, the source archive and
+    the dependency export."""
     _need(isinstance(inputs, Mapping) and set(inputs) == {"sourceCommit"}, "desktop_test_inputs_invalid")
     root = Path(root).resolve(strict=True)
     facts = source_facts(root, inputs["sourceCommit"])
     jdk, gradle = ensure_toolchain(root, JDK, opener=opener), ensure_toolchain(root, GRADLE, opener=opener)
+    sdk = dotnet_archive(ensure_toolchain(root, DOTNET, opener=opener))
+    seed = nuget_seed(root, opener=opener)
     archive = source_archive(root, facts["sourceCommit"])
     try:
         dependencies = dependency_cache(root, facts["dependencyDigest"])
@@ -489,18 +602,25 @@ def prepare(root: Path | str, inputs: Any, *, opener: Callable[..., Any] = urlli
                 "source": {"sha256": archive["sha256"], "bytes": archive["bytes"]},
                 "jdk": {"sha256": JDK["sha256"], "bytes": JDK["bytes"], "version": JDK["version"]},
                 "gradle": {"sha256": GRADLE["sha256"], "bytes": GRADLE["bytes"], "version": GRADLE["version"]},
-                "dependencies": {"sha256": dependencies["sha256"], "bytes": dependencies["bytes"], "entries": dependencies["entries"]}},
+                "dependencies": {"sha256": dependencies["sha256"], "bytes": dependencies["bytes"], "entries": dependencies["entries"]},
+                "dotnet": {"sha256": DOTNET["sha256"], "sha512": DOTNET["sha512"], "bytes": DOTNET["bytes"], "version": DOTNET["version"],
+                           "entries": sdk["entries"], "uncompressedBytes": sdk["bytes"]},
+                "nuget": {"sha256": seed["sha256"], "bytes": seed["bytes"],
+                          "packages": [{key: row[key] for key in ("id", "version", "sha512", "bytes")} for row in seed["packages"]]}},
             "productAction": False, "nativeActionAllowed": False}
 
 
 def prepared_archives(root: Path, facts: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """The four archives of one run, re-verified now; nothing is downloaded or exported here."""
+    """The six archives of one run, re-verified now; nothing is downloaded or exported here."""
     source = source_archive(root, facts["sourceCommit"])
     dependencies = dependency_cache(root, facts["dependencyDigest"])
+    seed = nuget_seed(root)
     archives = {"source": {"sha256": source["sha256"], "bytes": source["bytes"], "localPath": str(source["path"])},
                 "jdk": {"sha256": JDK["sha256"], "bytes": JDK["bytes"], "localPath": str(ensure_toolchain(root, JDK))},
                 "gradle": {"sha256": GRADLE["sha256"], "bytes": GRADLE["bytes"], "localPath": str(ensure_toolchain(root, GRADLE))},
-                "dependencies": {"sha256": dependencies["sha256"], "bytes": dependencies["bytes"], "localPath": str(dependencies["path"])}}
+                "dependencies": {"sha256": dependencies["sha256"], "bytes": dependencies["bytes"], "localPath": str(dependencies["path"])},
+                "dotnet": {"sha256": DOTNET["sha256"], "bytes": DOTNET["bytes"], "localPath": str(ensure_toolchain(root, DOTNET))},
+                "nuget": {"sha256": seed["sha256"], "bytes": seed["bytes"], "localPath": str(seed["path"])}}
     _need(len({row["sha256"] for row in archives.values()}) == len(archives), "desktop_test_archives_alias")
     return archives
 
@@ -804,11 +924,13 @@ def start(root: Path | str, inputs: Any, *, route: str = "direct", driver: Deskt
     staged = driver.stage_archives(plan, archives)
     desktop = {"sourceCommit": commit, "jdk": {"root": JDK["root"], "javaVersion": JDK["javaVersion"]},
                "gradle": {key: GRADLE[key] for key in ("version", "root", "wrapperHash")} | {"distributionUrl": GRADLE["url"]},
+               "dotnet": {"sdkVersion": DOTNET["version"], "runtimeVersion": DOTNET["runtimeVersion"]},
+               "nuget": {"packages": [{key: pin[key] for key in ("file", "sha512", "bytes")} for pin in NUGET_PACKAGES]},
                "gradleDeadlineSeconds": GRADLE_DEADLINE_SECONDS, "minimumFreeBytes": MINIMUM_FREE_BYTES}
     record = {"schema": REQUEST_SCHEMA, "schemaVersion": 1, "operationId": operation, "deploymentId": deployment, "sourceCommit": commit,
               "dependencyDigest": facts["dependencyDigest"], "route": driver.route, "plan": plan.as_dict(), "desktopTest": desktop,
               "archives": {role: {"sha256": row["sha256"], "bytes": row["bytes"]} for role, row in archives.items()},
-              "toolchain": {"jdk": JDK["version"], "gradle": GRADLE["version"]}, "staged": staged}
+              "toolchain": dict(TOOLCHAIN), "staged": staged}
     directory = _private_directory(_operation_directory(root, operation))
     try:
         _create_private(directory / "request.json", _canonical(record))
@@ -822,18 +944,16 @@ def start(root: Path | str, inputs: Any, *, route: str = "direct", driver: Deskt
 
 
 # Results: the XML set as Gradle wrote it, the console log and the runner's summary, read back here.
-def dotnet_absent(operation: str) -> re.Pattern:
-    """Gradle's failure message (Throwable.toString) of a test that could not start the runner's absent dotnet:
-    exactly that program in this operation's work folder, and Windows' file-not-found, nothing else."""
-    leaf = "\\".join((guest.WORK_PREFIX + operation[:8], *guest.DOTNET_ABSENT))
-    return re.compile(r'java\.io\.IOException: Cannot run program "[A-Za-z]:\\(?:[^"\\\r\n]+\\)*' + re.escape(leaf)
-                      + r'"(?: \(in directory "[^"\r\n]*"\))?: CreateProcess error=2, [^\r\n]*')
+def seed_restore_failure(element: ET.Element) -> bool:
+    """A failure that carries a .NET probe's restore error (NU1101 to NU1103) naming the guest's offline seed source:
+    the probe's build output is in the assertion message Gradle keeps (message attribute and trace)."""
+    text = (element.get("message") or "") + "\n" + (element.text or "")
+    return guest.NUGET_SOURCE in text and _SEED_RESTORE_FAILURE.search(text) is not None
 
 
-def parse_results(directory: Path, operation: str | None = None) -> dict[str, Any]:
-    """Totals, classes, skips and failures. With the operation, a failure to start its absent dotnet is excluded."""
-    absent = dotnet_absent(operation) if operation is not None else None
-    classes, skipped, failed, excluded = [], [], [], []
+def parse_results(directory: Path) -> dict[str, Any]:
+    """Totals, classes, skips and failures; a failure the offline seed caused is marked as the tool's."""
+    classes, skipped, failed = [], [], []
     totals = {"classes": 0, "tests": 0, "failures": 0, "errors": 0, "skipped": 0, "timeSeconds": 0.0}
     for path in sorted(directory.rglob("*.xml")):
         raw = path.read_bytes()
@@ -866,13 +986,12 @@ def parse_results(directory: Path, operation: str | None = None) -> dict[str, An
                     element = case.find(kind)
                     if element is None:
                         continue
-                    if (absent is not None and element.get("type") == "java.io.IOException"
-                            and absent.fullmatch(element.get("message") or "") is not None):
-                        excluded.append({**identity, "reason": EXCLUDED_DOTNET})
-                    else:
-                        failed.append({**identity, "kind": kind, "type": element.get("type")})
+                    row = {**identity, "kind": kind, "type": element.get("type")}
+                    if seed_restore_failure(element):
+                        row["toolCause"] = DOTNET_PACKAGES_STAGE
+                    failed.append(row)
     totals["timeSeconds"] = round(totals["timeSeconds"], 3)
-    return {"totals": totals, "classes": classes, "skippedTests": skipped, "failedTests": failed, "excludedTests": excluded}
+    return {"totals": totals, "classes": classes, "skippedTests": skipped, "failedTests": failed}
 
 
 # A dependency the offline repository lacks. The pinned Gradle 8.10.2 heads every such failure "Could not resolve
@@ -904,7 +1023,6 @@ def outcome(receipt: Mapping[str, Any], runner: Mapping[str, Any] | None, consol
         failed_stage = "runner:" + failure.split(":")[1]
     tests = (results or {}).get("totals")
     failures = (results or {}).get("failedTests") or []
-    excluded = (results or {}).get("excludedTests") or []
     console = console or {}
     if gradle.get("exitCode") is None and not gradle.get("deadline"):
         test_outcome = "not-run"
@@ -913,11 +1031,11 @@ def outcome(receipt: Mapping[str, Any], runner: Mapping[str, Any] | None, consol
     elif gradle["exitCode"] == 0:
         test_outcome = "passed" if tests is not None and tests["failures"] == 0 and tests["errors"] == 0 else "inconsistent"
     elif console.get("failingTests") or (tests is not None and tests["failures"] + tests["errors"] > 0):
-        # Tests ran and failed. When Gradle says so and every counted failure is a test that could not start the
-        # guest's absent .NET SDK, the source passed everything this guest can run.
-        only_excluded = (console.get("failingTests") and tests is not None and not failures and excluded
-                         and len(excluded) == tests["failures"] + tests["errors"])
-        test_outcome = "passed-except-excluded" if only_excluded else "failed"
+        test_outcome = "failed"
+        if tool == "completed" and any(row.get("toolCause") == DOTNET_PACKAGES_STAGE for row in failures):
+            # A .NET probe asked the offline seed for a package it does not hold: this run did not give the tests CI's
+            # packages, so it is the tool's failure, whatever else failed. The tests' own outcome stays Gradle's.
+            tool, failed_stage = "failed", DOTNET_PACKAGES_STAGE
     elif console.get("offlineResolutionFailure"):
         # No test ran: a dependency the prepared repository lacks is this tool's failure, not the source's, even
         # when Gradle reports it as the test task's (its runtime classpath is resolved as the task starts).
@@ -962,7 +1080,7 @@ def _summarize(directory: Path, record: Mapping[str, Any], receipt_raw: bytes, *
                 finally:
                     shutil.rmtree(partial, ignore_errors=True)
             if (extracted / "test-results").exists():
-                results = parse_results(extracted / "test-results", record["operationId"])
+                results = parse_results(extracted / "test-results")
             log = extracted / guest.CONSOLE_LEAF
             if log.exists():
                 console = classify_console(log.read_text(encoding="utf-8", errors="replace"))
@@ -979,18 +1097,22 @@ def _summarize(directory: Path, record: Mapping[str, Any], receipt_raw: bytes, *
     summary = {"schema": SUMMARY_SCHEMA, "schemaVersion": 1, "operationId": record["operationId"], "deploymentId": record["deploymentId"],
                "sourceCommit": record["sourceCommit"], "route": record["route"], "dependencyDigest": record["dependencyDigest"],
                "archives": record["archives"], "toolchain": {"jdk": JDK["version"], "jdkRelease": (runner or {}).get("jdkRelease"),
-                                                             "gradle": GRADLE["version"]},
+                                                             "gradle": GRADLE["version"], "dotnet": DOTNET["version"],
+                                                             "dotnetReported": ((runner or {}).get("dotnet") or {}).get("reported")},
                **decided, "jobExitCode": receipt.get("exitCode"), "jobStage": receipt.get("stage"),
                "gradle": {key: gradle.get(key) for key in ("exitCode", "seconds", "deadline", "leftoverProcesses", "consoleBytes")},
                "console": console, "tests": (results or {}).get("totals"), "classes": (results or {}).get("classes"),
                "skippedTests": (results or {}).get("skippedTests"), "failedTests": (results or {}).get("failedTests"),
-               "excludedTests": (results or {}).get("excludedTests"),
                "runner": {key: (runner or {}).get(key) for key in ("outcome", "failedStage", "failure", "stages", "seconds",
                                                                    "freeBytesBefore", "freeBytesAfter", "productProcessesBefore",
-                                                                   "productProcessesAfter", "productState", "workRoot")},
+                                                                   "productProcessesAfter", "productState", "userToolState",
+                                                                   "dotnet", "nuget", "workRoot")},
                "hygiene": {"workRootDeleted": ((runner or {}).get("workRoot") or {}).get("deleted"),
                            "archivesCleanup": (desktop.get("cleanup") or {}).get("state"), "disk": desktop.get("disk"),
-                           "profileEntriesAdded": ((runner or {}).get("profileEntries") or {}).get("added")},
+                           "profileEntriesAdded": ((runner or {}).get("profileEntries") or {}).get("added"),
+                           # NuGet's own folders of the fixture user that the run changed (its once-per-user migration).
+                           "userToolStateChanged": sorted(name for name, row in ((runner or {}).get("userToolState") or {}).items()
+                                                          if isinstance(row, Mapping) and row.get("unchanged") is False)},
                "files": {"receipt": "receipt.json", "runnerSummary": runner_path.name if runner else None,
                          "resultsZip": results_path.name if results_path.exists() else None,
                          "resultsDirectory": "results/test-results" if results else None,
@@ -1054,8 +1176,9 @@ def status(root: Path | str, inputs: Any, *, driver: DesktopTestDriver | None = 
         view.update(toolOutcome=summary["toolOutcome"], failedStage=summary["failedStage"], failure=summary["failure"],
                     testOutcome=summary["testOutcome"], tests=summary["tests"],
                     skippedTests=len(summary["skippedTests"] or []), failedTests=(summary["failedTests"] or [])[:20],
-                    excludedTests=len(summary.get("excludedTests") or []),
-                    jdk=JDK["version"], gradle=GRADLE["version"], sourceArchiveSha256=record["archives"]["source"]["sha256"],
+                    toolCausedTests=sum(1 for row in summary["failedTests"] or [] if row.get("toolCause")),
+                    jdk=JDK["version"], gradle=GRADLE["version"], dotnet=DOTNET["version"],
+                    sourceArchiveSha256=record["archives"]["source"]["sha256"],
                     hygiene=summary["hygiene"],
                     files={key: (_relative(root, directory / value) if value else None) for key, value in summary["files"].items()},
                     summary=_relative(root, directory / leaf))

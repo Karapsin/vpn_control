@@ -6,9 +6,9 @@ ordinary-user task and evidence stages unchanged. Imported as a module (tests), 
 names from windows_scenario_host_job.
 
 Differences from a scenario row, all closed here:
-- the four admitted archives (source, JDK, Gradle, dependency repository) are pushed as pinned
-  publisher endpoints, in larger QGA chunks, after a read-only free-space check and after the
-  Python tree the worker needs is listed and bounded;
+- the six admitted archives (source, JDK, Gradle, dependency repository, CI's .NET SDK and the
+  offline NuGet seed) are pushed as pinned publisher endpoints, in larger QGA chunks, after a
+  read-only free-space check and after the Python tree the worker needs is listed and bounded;
 - the worker runs the pinned in-guest runner (windows_desktop_test_guest) through its existing
   ``qualification`` action, with the one argv built here;
 - after the task, the runner's summary and results zip are read back and kept beside the receipt;
@@ -29,9 +29,9 @@ import os as _desktop_os
 import re as _desktop_re
 
 DESKTOP_SCENARIO = "windows-desktop-test"
-ARCHIVE_ROLES = ("source", "jdk", "gradle", "dependencies")
-# The proven route writes 32,768 bytes per guest-file-write; the archives are about a gigabyte, so they
-# use four times that. A QGA reply limit there would end the job at publish as guest_file_push_lost.
+ARCHIVE_ROLES = ("source", "jdk", "gradle", "dependencies", "dotnet", "nuget")
+# The proven route writes 32,768 bytes per guest-file-write; the archives are one to one and a half gigabytes,
+# so they use four times that. A QGA reply limit there would end the job at publish as guest_file_push_lost.
 ARCHIVE_CHUNK_BYTES = 131072
 SUMMARY_READ_LIMIT = 1024 * 1024
 PROGRESS_READ_LIMIT = 4096
@@ -96,8 +96,8 @@ def desktop_summary(raw, plan, guest):
         raise KnownFailure("desktop_runner_summary_invalid") from None
     desktop = plan["desktopTest"]
     fields = {"schema", "schemaVersion", "operationId", "sourceCommit", "outcome", "failedStage", "failure", "stages", "gradle",
-              "results", "jdkRelease", "archives", "freeBytesBefore", "freeBytesAfter", "productProcessesBefore",
-              "productProcessesAfter", "productState", "profileEntries", "seconds", "workRoot"}
+              "results", "jdkRelease", "dotnet", "nuget", "archives", "freeBytesBefore", "freeBytesAfter", "productProcessesBefore",
+              "productProcessesAfter", "productState", "userToolState", "profileEntries", "seconds", "workRoot"}
     stages = {*guest.STAGES, "cleanup"}
     results, gradle, work = value.get("results"), value.get("gradle"), value.get("workRoot")
     valid = (type(value) is dict and set(value) == fields and value["schema"] == guest.SUMMARY_SCHEMA and value["schemaVersion"] == 1
@@ -269,7 +269,8 @@ class DesktopTestJob(Job):
                    "workspace": self.workspace, "workRoot": profile + "\\" + guest.WORK_PREFIX + self.op[:8],
                    "archives": {role: {"path": self.paths["file:" + role], "sha256": self.plan["packages"][role]["sha256"],
                                        "bytes": self.plan["packages"][role]["bytes"]} for role in ARCHIVE_ROLES},
-                   "jdk": dict(self.desktop["jdk"]), "gradle": dict(self.desktop["gradle"]),
+                   "jdk": dict(self.desktop["jdk"]), "gradle": dict(self.desktop["gradle"]), "dotnet": dict(self.desktop["dotnet"]),
+                   "nuget": {"packages": [dict(row) for row in self.desktop["nuget"]["packages"]]},
                    "gradleDeadlineSeconds": self.desktop["gradleDeadlineSeconds"], "minimumFreeBytes": self.desktop["minimumFreeBytes"]}
         try:
             guest.validate_request(request, windows=True)  # The validator the guest itself runs.

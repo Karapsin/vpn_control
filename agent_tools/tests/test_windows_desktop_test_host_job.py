@@ -25,6 +25,7 @@ from agent_tools.tests.test_windows_scenario_host_job import (MACHINE, PROFILE, 
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMIT = "c" * 40
+ROLES = len(desktop_job.ARCHIVE_ROLES)
 # The coordinator's bundle, literally: a test below keeps the two equal.
 BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows_desktop_test_host_job.py",
                 "agent_tools/windows_ordinary_task.py", "agent_tools/windows_ordinary_process_owner.py",
@@ -115,6 +116,9 @@ class DesktopQga(FakeQga):
                    "failedStage": "gradle" if failed else None, "failure": "gradle-processes-survived" if failed else None,
                    "stages": [{"name": name, "outcome": "passed", "seconds": 1.0, "code": None} for name in guest.STAGES],
                    "gradle": {"exitCode": 0, "deadline": False, "seconds": 540.0}, "jdkRelease": {"JAVA_VERSION": "17.0.21"},
+                   "dotnet": {"sdkVersion": "10.0.403", "runtimeVersion": "10.0.14", "reported": "10.0.403", "exitCode": 0},
+                   "nuget": {"source": guest.NUGET_SOURCE, "packages": [row["file"] for row in runner_request["nuget"]["packages"]]},
+                   "userToolState": {},
                    "results": {"name": guest.RESULTS_LEAF, "bytes": len(results), "sha256": digest, "xmlFiles": 1},
                    "archives": {}, "freeBytesBefore": 1, "freeBytesAfter": 2, "productProcessesBefore": [], "productProcessesAfter": [],
                    "productState": {}, "profileEntries": {"added": [], "removed": []}, "seconds": 600.0,
@@ -153,6 +157,8 @@ class DesktopJobTests(unittest.TestCase):
         desktop_test = {"sourceCommit": COMMIT, "jdk": {"root": desktop.JDK["root"], "javaVersion": desktop.JDK["javaVersion"]},
                         "gradle": {"version": "8.10.2", "root": "gradle-8.10.2", "wrapperHash": desktop.GRADLE["wrapperHash"],
                                    "distributionUrl": desktop.GRADLE["url"]},
+                        "dotnet": {"sdkVersion": "10.0.403", "runtimeVersion": "10.0.14"},
+                        "nuget": {"packages": [{"file": "microsoft.net.illink.tasks.10.0.14.nupkg", "sha512": "e" * 128, "bytes": 1535193}]},
                         "gradleDeadlineSeconds": desktop.GRADLE_DEADLINE_SECONDS, "minimumFreeBytes": desktop.MINIMUM_FREE_BYTES}
         return json.loads(json.dumps({
             "schemaVersion": 1, "operationId": operation, "scenarioId": desktop.SCENARIO_ID, "machine": MACHINE, "bundleHash": "b" * 64,
@@ -228,6 +234,23 @@ class DesktopJobTests(unittest.TestCase):
                                  root + "\\" + guest.REQUEST_LEAF}),
                          sorted(pin["path"] for pin in worker["filePins"]), "the worker request's whole file closure")
 
+    def test_cis_sdk_and_the_nuget_seed_are_pushed_pinned_by_the_worker_and_named_in_the_runner_request(self):
+        self.assertEqual(("source", "jdk", "gradle", "dependencies", "dotnet", "nuget"), desktop_job.ARCHIVE_ROLES)
+        plan, code, receipt = self.run_job()
+        self.assertEqual(0, code, receipt["failure"])
+        workspace = self.workspace(plan)
+        pushed = {workspace + "\\" + guest.ARCHIVE_LEAVES[role]: self.packages[role]["sha256"] for role in ("dotnet", "nuget")}
+        worker = self.qga.requests_seen[-1]["worker"]
+        self.assertEqual(pushed, {pin["path"]: pin["sha256"] for pin in worker["filePins"] if pin["path"] in pushed},
+                         "the worker holds both archives by their pinned digests for the whole run")
+        root = PROFILE + "\\AppData\\Local\\VpnControlOrdinary-" + plan["operationId"]
+        runner = guest.validate_request(json.loads(self.qga.files[root + "\\" + guest.REQUEST_LEAF]), windows=True)
+        self.assertEqual((plan["desktopTest"]["dotnet"], plan["desktopTest"]["nuget"]), (runner["dotnet"], runner["nuget"]))
+        self.assertEqual({role: self.packages[role]["sha256"] for role in desktop_job.ARCHIVE_ROLES}, receipt["desktopTest"]["archives"])
+        self.assertEqual(sum(package["bytes"] for package in self.packages.values()) + desktop.MINIMUM_FREE_BYTES,
+                         receipt["desktopTest"]["disk"]["neededBytes"], "the disk check counts all six archives")
+        self.assertEqual([], self.archives_left(plan))
+
     def test_the_worker_runs_only_the_pinned_runner_with_its_pinned_request(self):
         plan, code, _ = self.run_job()
         self.assertEqual(0, code)
@@ -299,7 +322,7 @@ class DesktopJobTests(unittest.TestCase):
         plan, code, receipt = self.run_job()
         self.assertEqual((1, "run", "refused_before_launch:RUN_SYNTHETIC_CODE"), (code, receipt["stage"], receipt["failure"]))
         self.assertEqual(["system-run", "evidence-zip", "desktop-cleanup"], self.qga.kinds()[-3:])
-        self.assertEqual(("complete", ["deleted"] * 4), (receipt["desktopTest"]["cleanup"]["state"], receipt["desktopTest"]["cleanup"]["archives"]))
+        self.assertEqual(("complete", ["deleted"] * ROLES), (receipt["desktopTest"]["cleanup"]["state"], receipt["desktopTest"]["cleanup"]["archives"]))
         self.assertTrue(all(target["sizeKnown"] for target in self.qga.cleanup_requests[-1]), "every archive was verified")
         self.assertEqual([], self.archives_left(plan))
         self.assertTrue(self.fence(plan).exists(), "a known failure still closes the fence")
@@ -315,8 +338,8 @@ class DesktopJobTests(unittest.TestCase):
         targets = self.qga.cleanup_requests[-1]
         self.assertEqual([self.workspace(plan) + "\\" + guest.ARCHIVE_LEAVES[role] for role in desktop_job.ARCHIVE_ROLES],
                          [target["path"] for target in targets])
-        self.assertEqual([False] * 4, [target["sizeKnown"] for target in targets], "no archive was verified: identity alone")
-        self.assertEqual(("complete", ["deleted"] * 4), (receipt["desktopTest"]["cleanup"]["state"], receipt["desktopTest"]["cleanup"]["archives"]))
+        self.assertEqual([False] * ROLES, [target["sizeKnown"] for target in targets], "no archive was verified: identity alone")
+        self.assertEqual(("complete", ["deleted"] * ROLES), (receipt["desktopTest"]["cleanup"]["state"], receipt["desktopTest"]["cleanup"]["archives"]))
         self.assertEqual([], self.archives_left(plan))
 
     def test_too_little_guest_disk_refuses_before_anything_is_published(self):
@@ -331,7 +354,7 @@ class DesktopJobTests(unittest.TestCase):
         self.qga.cleanup_state = "held"
         _, code, receipt = self.run_job()
         self.assertEqual((1, "cleanup", "desktop_cleanup_incomplete"), (code, receipt["stage"], receipt["failure"]))
-        self.assertEqual(["held"] * 4, receipt["desktopTest"]["cleanup"]["archives"])
+        self.assertEqual(["held"] * ROLES, receipt["desktopTest"]["cleanup"]["archives"])
         self.assertIsNotNone(receipt["desktopTest"]["results"])
 
     def test_a_lost_cleanup_reply_is_unknown_with_the_results_still_in_its_receipt(self):

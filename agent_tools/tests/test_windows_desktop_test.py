@@ -43,6 +43,8 @@ OTHER = "44444444-5555-4666-8777-888888888888"
 WRAPPER = ("distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\n"
            "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip\n"
            "networkTimeout=10000\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n")
+# The SDK pin of this checkout, which a source must carry: CI reads the lock, its tests copy the global.json.
+DOTNET_LOCK, DOTNET_GLOBAL_JSON = "desktopApp/native/windows/toolchain.lock.json", "desktopApp/native/windows/global.json"
 SOURCE = {"settings.gradle.kts": 'rootProject.name = "fixture"\ninclude(":desktopApp")\n',
           "build.gradle.kts": "plugins {}\n",
           "gradle.properties": "vpnControlVersion=2.2.15\norg.gradle.jvmargs=-Xmx2g\n",
@@ -50,6 +52,7 @@ SOURCE = {"settings.gradle.kts": 'rootProject.name = "fixture"\ninclude(":deskto
           "gradle/wrapper/gradle-wrapper.properties": WRAPPER,
           "desktopApp/build.gradle.kts": "plugins {}\n",
           "desktopApp/src/main/kotlin/Main.kt": "fun main() {}\n",
+          **{path: (ROOT / path).read_text(encoding="utf-8") for path in (DOTNET_LOCK, DOTNET_GLOBAL_JSON)},
           "README.md": "readme\n"}
 GIT_ENVIRONMENT = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "fixture",
                    "GIT_AUTHOR_EMAIL": "fixture@example.invalid", "GIT_COMMITTER_NAME": "fixture",
@@ -94,6 +97,28 @@ def dotnet_xml(operation, program=None, error="CreateProcess error=2, The system
             + '</testsuite>\n')
 
 
+# What `dotnet build` of a desktop test's AOT probe prints when the offline seed lacks its ILLink pack: SDK 10.0.403's own
+# wording, captured offline with the guest's NuGet configuration (.runtime/followup2/experiments/adapter-empty/build.log
+# of the build clone), the probe folder shortened to a guest path.
+SEED_MISSING_BUILD = ("  Determining projects to restore...\n"
+                      "C:\\Users\\fixture\\vcdt-0f1e2d3c\\t\\vpn-install-coordinator-adapter-1\\CoordinatorAdapterProbe.csproj : error NU1101: "
+                      "Unable to find package Microsoft.NET.ILLink.Tasks. No packages exist with this id in source(s): vpnControlDesktopTestOffline\n"
+                      "  Failed to restore C:\\Users\\fixture\\vcdt-0f1e2d3c\\t\\vpn-install-coordinator-adapter-1\\CoordinatorAdapterProbe.csproj"
+                      " (in 769 ms).\n\nBuild FAILED.\n")
+
+
+def build_failure_xml(output, name="completedInputCleanupAndRetentionKeepKnownOutcomeAndExactCustody"):
+    """Gradle's XML for a desktop .NET test whose probe build failed: the assertion carries the build's output."""
+    message = ("Coordinator adapter build failed; evidence: C:\\Users\\fixture\\vcdt-0f1e2d3c\\t\\vpn-install-coordinator-adapter-1\n"
+               + output + "\n expected:<0> but was:<1>")
+    quoted = message.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace("\n", "&#10;")
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<testsuite name="com.kardinal.vpncontrol.desktop.DesktopWindowsCoordinatorAdapterTest" '
+            'tests="1" skipped="0" failures="1" errors="0" time="9.5">\n<testcase name="' + name + '" '
+            'classname="com.kardinal.vpncontrol.desktop.DesktopWindowsCoordinatorAdapterTest" time="9.5">\n<failure message="' + quoted
+            + '" type="java.lang.AssertionError">java.lang.AssertionError: ' + message.replace("&", "&amp;").replace("<", "&lt;")
+            + '\n\tat org.junit.Assert.fail(Assert.java:89)</failure>\n</testcase>\n</testsuite>\n')
+
+
 ARTIFACTS = (("org.jetbrains.compose.desktop", "desktop-jvm-windows-x64", "1.7.0", "desktop-jvm-windows-x64-1.7.0.jar", b"compose windows"),
              ("org.jetbrains.skiko", "skiko-awt-runtime-windows-x64", "0.8.18", "skiko-awt-runtime-windows-x64-0.8.18.jar", b"skiko windows"),
              ("org.example", "lib", "1.0", "lib-1.0.pom", b"<project/>"))
@@ -109,6 +134,24 @@ def zip_bytes(members):
         for name, raw in members.items():
             archive.writestr(name, raw)
     return buffer.getvalue()
+
+
+# The SDK zip's layout as the runner checks it: its muxer, the pinned SDK and the runtime it ships.
+FAKE_SDK = {"dotnet.exe": b"MZ", "sdk/10.0.403/dotnet.dll": b"MZ", "shared/Microsoft.NETCore.App/10.0.14/System.Private.CoreLib.dll": b"MZ"}
+
+
+def patch_dotnet_pins(case):
+    """Small stand-ins for CI's SDK and the seed's packages, each pin patched to its size and digests; the returned
+    payloads are what a download of each url serves. A tree without these pins gets nothing patched."""
+    payloads = {}
+    sdk = getattr(desktop, "DOTNET", None)
+    for number, pin in enumerate(([sdk] if sdk is not None else []) + list(getattr(desktop, "NUGET_PACKAGES", ()))):
+        raw = zip_bytes(FAKE_SDK) if pin is sdk else b"PK nupkg %d" % number
+        patcher = mock.patch.dict(pin, {"sha256": sha(raw), "sha512": hashlib.sha512(raw).hexdigest(), "bytes": len(raw)})
+        patcher.start()
+        case.addCleanup(patcher.stop)
+        payloads[pin["url"]] = raw
+    return payloads
 
 
 def git(root, *arguments):
@@ -221,6 +264,30 @@ class InputTests(unittest.TestCase):
             digits = "0123456789abcdefghijklmnopqrstuvwxyz"[digit] + digits
         self.assertEqual(desktop.GRADLE["wrapperHash"], digits)
 
+    def test_the_dotnet_pin_is_this_checkouts_toolchain_lock_and_global_json(self):
+        lock = json.loads((ROOT / DOTNET_LOCK).read_text())
+        sdk = json.loads((ROOT / DOTNET_GLOBAL_JSON).read_text())["sdk"]
+        self.assertEqual((lock["sdkVersion"], lock["runtimeFrameworkVersion"], lock["sdkArchive"]["url"], lock["sdkArchive"]["sha512"]),
+                         (desktop.DOTNET["version"], desktop.DOTNET["runtimeVersion"], desktop.DOTNET["url"], desktop.DOTNET["sha512"]))
+        self.assertEqual((desktop.DOTNET["version"], "disable"), (sdk["version"], sdk["rollForward"]))
+        self.assertEqual({"sdkVersion": desktop.DOTNET["version"], "url": desktop.DOTNET["url"], "sha512": desktop.DOTNET["sha512"]},
+                         desktop.DOTNET_SOURCE_PIN, "a source must pin exactly the SDK this tool ships")
+        self.assertTrue(desktop.DOTNET["url"].startswith("https://builds.dotnet.microsoft.com/"))
+        self.assertEqual(desktop.DOTNET["fileName"], desktop.DOTNET["url"].rsplit("/", 1)[1])
+        self.assertRegex(desktop.DOTNET["sha256"], "^[0-9a-f]{64}$")
+        self.assertEqual({"jdk": desktop.JDK["version"], "gradle": desktop.GRADLE["version"], "dotnet": "10.0.403"}, desktop.TOOLCHAIN)
+        # The seed: the SDK's ILLink pack for net10.0 (its version is the runtime's), from nuget.org's flat container.
+        self.assertEqual([("Microsoft.NET.ILLink.Tasks", desktop.DOTNET["runtimeVersion"])],
+                         [(pin["id"], pin["version"]) for pin in desktop.NUGET_PACKAGES])
+        for pin in desktop.NUGET_PACKAGES:
+            with self.subTest(pin=pin["id"]):
+                self.assertEqual(pin["id"].lower() + "." + pin["version"] + ".nupkg", pin["file"])
+                self.assertEqual("https://api.nuget.org/v3-flatcontainer/" + pin["id"].lower() + "/" + pin["version"] + "/" + pin["file"], pin["url"])
+                self.assertRegex(pin["sha512"], "^[0-9a-f]{128}$")
+                self.assertRegex(pin["sha256"], "^[0-9a-f]{64}$")
+                self.assertLessEqual(pin["bytes"], guest.SEED_LIMITS["file"])
+        self.assertEqual(11 * 1024 ** 3, desktop.MINIMUM_FREE_BYTES, "Gradle's margin as before, plus the extracted SDK")
+
 
 @unittest.skipUnless(os.name == "posix" and shutil.which("git"), "private storage is POSIX and a source is a git commit")
 class RepositoryBase(unittest.TestCase):
@@ -262,6 +329,23 @@ class SourceTests(RepositoryBase):
         self.refused("desktop_test_source_not_desktop", desktop.source_facts, self.root, without)
         unwrapped = commit(self.root, {"desktopApp/build.gradle.kts": "plugins {}\n", "gradle/wrapper/gradle-wrapper.properties": None})
         self.refused("desktop_test_source_not_desktop", desktop.source_facts, self.root, unwrapped)
+
+    def test_a_commit_whose_dotnet_sdk_pin_is_not_the_tools_is_refused_before_anything_else(self):
+        lock = json.loads(SOURCE[DOTNET_LOCK])
+        for name, change in (
+                ("another SDK", {DOTNET_LOCK: json.dumps({**lock, "sdkVersion": "10.0.404"})}),
+                ("another archive digest", {DOTNET_LOCK: json.dumps({**lock, "sdkArchive": {**lock["sdkArchive"], "sha512": "0" * 128}})}),
+                ("another archive url", {DOTNET_LOCK: json.dumps({**lock, "sdkArchive": {**lock["sdkArchive"], "url": "https://example.invalid/sdk.zip"}})}),
+                ("another global.json", {DOTNET_GLOBAL_JSON: '{"sdk": {"version": "10.0.404", "rollForward": "disable"}}'}),
+                ("no global.json", {DOTNET_GLOBAL_JSON: None}), ("no lock", {DOTNET_LOCK: None}),
+                ("a lock that is not JSON", {DOTNET_LOCK: "sdkVersion=10.0.403\n"})):
+            with self.subTest(name=name):
+                changed = commit(self.root, change)
+                self.refused("desktop_test_dotnet_sdk_unpinned", desktop.source_facts, self.root, changed)
+                self.refused("desktop_test_dotnet_sdk_unpinned", desktop.prepare, self.root, {"sourceCommit": changed},
+                             opener=lambda *_, **__: self.fail("nothing is downloaded for a refused commit"))
+                commit(self.root, {path: SOURCE[path] for path in (DOTNET_LOCK, DOTNET_GLOBAL_JSON)})
+        self.assertEqual(self.commit, desktop.source_facts(self.root, self.commit)["sourceCommit"])
 
     def test_the_dependency_digest_follows_the_build_definition_only(self):
         first = desktop.dependency_digest(self.root, self.commit)
@@ -323,6 +407,17 @@ class ToolchainTests(RepositoryBase):
                 self.assertFalse(target.exists())
         self.assertEqual([], [path.name for path in self.work.iterdir() if path.name.endswith(".partial")])
 
+    def test_a_publisher_sha512_is_checked_with_the_size_and_sha256(self):
+        raw = b"sdk" * 1000
+        pin = self.pin(raw, sha512=hashlib.sha512(raw).hexdigest())
+        target = self.work / "sdk.zip"
+        desktop.download(pin, target, opener=self.opener(raw))
+        self.assertEqual(raw, target.read_bytes())
+        # Bytes that match the recorded sha256 and size but not the publisher's own SHA-512 are never kept.
+        wrong = self.pin(raw, sha512="0" * 128)
+        self.refused("desktop_test_toolchain_digest", desktop.download, wrong, self.work / "other.zip", opener=self.opener(raw))
+        self.assertFalse((self.work / "other.zip").exists())
+
     def test_a_start_never_downloads_and_a_changed_toolchain_is_refused(self):
         raw = b"jdk" * 100
         pin = self.pin(raw)
@@ -372,6 +467,51 @@ class ToolchainTests(RepositoryBase):
         self.assertEqual(guest.inspect_zip(str(first), guest.TOOL_LIMITS)["files"], len(rows))
 
 
+class SeedTests(RepositoryBase):
+    def setUp(self):
+        super().setUp()
+        self.payloads = patch_dotnet_pins(self)
+        self.calls = []
+
+    def opener(self, request, timeout):
+        self.calls.append(request.full_url)
+        return io.BytesIO(self.payloads[request.full_url])
+
+    def test_the_seed_is_exactly_the_pinned_packages_stored_flat_and_made_the_same_every_time(self):
+        seed = desktop.nuget_seed(self.root, opener=self.opener)
+        self.assertEqual(sorted(pin["url"] for pin in desktop.NUGET_PACKAGES), sorted(self.calls))
+        with zipfile.ZipFile(seed["path"]) as archive:
+            infos = archive.infolist()
+            self.assertEqual(sorted(pin["file"] for pin in desktop.NUGET_PACKAGES), [info.filename for info in infos])
+            self.assertTrue(all(info.compress_type == zipfile.ZIP_STORED and info.date_time == (1980, 1, 1, 0, 0, 0) for info in infos))
+            for pin in desktop.NUGET_PACKAGES:
+                self.assertEqual(pin["sha512"], hashlib.sha512(archive.read(pin["file"])).hexdigest())
+        self.assertEqual(len(desktop.NUGET_PACKAGES), guest.inspect_zip(str(seed["path"]), guest.SEED_LIMITS)["files"])
+        self.assertEqual((0o600, guest.NUGET_SOURCE), (seed["path"].stat().st_mode & 0o777, seed["source"]))
+        self.assertEqual(seed["sha256"], desktop.nuget_seed(self.root)["sha256"], "kept and re-verified, never downloaded again")
+        self.assertEqual(len(desktop.NUGET_PACKAGES), len(self.calls))
+        # Made again from the same packages (its record lost), the seed is byte for byte the same.
+        first = seed["path"].read_bytes()
+        (seed["path"].parent / (seed["seedIdentity"] + ".json")).unlink()
+        self.assertEqual(first, desktop.nuget_seed(self.root)["path"].read_bytes())
+
+    def test_a_changed_package_or_seed_is_refused_and_only_prepare_downloads(self):
+        self.refused("desktop_test_toolchain_unprepared", desktop.nuget_seed, self.root)
+        seed = desktop.nuget_seed(self.root, opener=self.opener)
+        seed["path"].write_bytes(b"PK changed")
+        self.refused("desktop_test_nuget_seed_changed", desktop.nuget_seed, self.root)
+        for path in seed["path"].parent.iterdir():
+            path.unlink()
+        pin = desktop.NUGET_PACKAGES[0]
+        desktop.toolchain_path(self.root, pin).write_bytes(b"other")
+        self.refused("desktop_test_toolchain_changed", desktop.nuget_seed, self.root)
+        # A package whose bytes are not the ones nuget.org publishes is never kept.
+        desktop.toolchain_path(self.root, pin).unlink()
+        self.payloads[pin["url"]] = self.payloads[pin["url"]][:-1] + b"!"
+        self.refused("desktop_test_toolchain_digest", desktop.nuget_seed, self.root, opener=self.opener)
+        self.assertEqual([], list(seed["path"].parent.iterdir()))
+
+
 class PrepareTests(RepositoryBase):
     def setUp(self):
         super().setUp()
@@ -382,6 +522,7 @@ class PrepareTests(RepositoryBase):
             patcher.start()
             self.addCleanup(patcher.stop)
             self.payloads[pin["url"]] = raw
+        self.payloads.update(patch_dotnet_pins(self))
         self.downloads = []
         fake_gradle.calls = []
 
@@ -408,8 +549,25 @@ class PrepareTests(RepositoryBase):
             self.assertIn("org/jetbrains/compose/desktop/desktop-jvm-windows-x64/1.7.0/desktop-jvm-windows-x64-1.7.0.jar", archive.namelist())
         self.assertEqual([], list((self.root / ".runtime/windows-desktop-test/work").iterdir()), "the export work folder is removed")
         again = desktop.prepare(self.root, {"sourceCommit": self.commit}, opener=self.opener, run=fake_gradle, java_home=str(java))
-        self.assertEqual((False, 2, 1), (again["dependenciesExported"], len(self.downloads), len(fake_gradle.calls)))
+        self.assertEqual((False, len(self.payloads), 1), (again["dependenciesExported"], len(self.downloads), len(fake_gradle.calls)))
         self.assertEqual(result["archives"], again["archives"])
+
+    def test_prepare_keeps_cis_sdk_and_the_nuget_seed_as_the_fifth_and_sixth_archives(self):
+        result = desktop.prepare(self.root, {"sourceCommit": self.commit}, opener=self.opener, run=fake_gradle, java_home=str(self.work))
+        self.assertEqual(["dependencies", "dotnet", "gradle", "jdk", "nuget", "source"], sorted(result["archives"]))
+        self.assertEqual({"sha256": desktop.DOTNET["sha256"], "sha512": desktop.DOTNET["sha512"], "bytes": desktop.DOTNET["bytes"],
+                          "version": "10.0.403", "entries": len(FAKE_SDK), "uncompressedBytes": sum(map(len, FAKE_SDK.values()))},
+                         result["archives"]["dotnet"])
+        self.assertEqual([{key: pin[key] for key in ("id", "version", "sha512", "bytes")} for pin in desktop.NUGET_PACKAGES],
+                         result["archives"]["nuget"]["packages"])
+        self.assertEqual(self.payloads[desktop.DOTNET["url"]], desktop.toolchain_path(self.root, desktop.DOTNET).read_bytes())
+        seed = desktop.nuget_seed(self.root)
+        self.assertEqual((seed["sha256"], seed["bytes"]), (result["archives"]["nuget"]["sha256"], result["archives"]["nuget"]["bytes"]))
+        facts = desktop.source_facts(self.root, self.commit)
+        archives = desktop.prepared_archives(self.root, facts)
+        self.assertEqual(list(desktop.ARCHIVE_ROLES), list(archives))
+        self.assertEqual((str(desktop.toolchain_path(self.root, desktop.DOTNET)), str(seed["path"])),
+                         (archives["dotnet"]["localPath"], archives["nuget"]["localPath"]))
 
     def test_prepare_takes_only_the_commit(self):
         self.refused("desktop_test_inputs_invalid", desktop.prepare, self.root, {"sourceCommit": self.commit, "javaHome": "/x"})
@@ -424,6 +582,19 @@ class PrepareTests(RepositoryBase):
                          opener=self.opener, run=fake_gradle, java_home=str(self.work))
         self.assertEqual([], fake_gradle.calls)
         self.assertEqual([], list((self.root / ".runtime/windows-desktop-test").glob("work/*")))
+
+    def test_an_sdk_zip_the_runner_could_not_use_is_refused_by_prepare(self):
+        for name, members, reason in (("without the runtime", {key: value for key, value in FAKE_SDK.items() if "shared/" not in key},
+                                       "desktop_test_dotnet_archive_refused:dotnet-layout"),
+                                      ("with a name Windows aliases", {**FAKE_SDK, "packs/aux.txt": b"x"},
+                                       "desktop_test_dotnet_archive_refused:zip-entry-component")):
+            with self.subTest(name=name):
+                raw = zip_bytes(members)
+                with mock.patch.dict(desktop.DOTNET, {"sha256": sha(raw), "sha512": hashlib.sha512(raw).hexdigest(), "bytes": len(raw)}):
+                    self.payloads[desktop.DOTNET["url"]] = raw
+                    self.refused(reason, desktop.prepare, self.root, {"sourceCommit": self.commit}, opener=self.opener, run=fake_gradle,
+                                 java_home=str(self.work))
+        self.assertEqual([], fake_gradle.calls, "refused before any export")
 
     def test_a_failed_export_keeps_no_repository(self):
         def failing(argv, **options):
@@ -486,6 +657,106 @@ class ExportSelectionTests(unittest.TestCase):
         self.assertIn("> Task " + desktop.EXPORT_TASK + "\n", output)
 
 
+# The seed package the real-NuGet regression restores: nuget.org's own SHA-512, as windows_desktop_test pins it.
+ILLINK = {"file": "microsoft.net.illink.tasks.10.0.14.nupkg",
+          "sha256": "e2a71b32b5c135dc2b0c87ea8fba6c9e677332e00bf959fbcdced239b825b75c",
+          "sha512": "6203bf1a4c7b11b6ffd0522342835176a9f67b522ecc265a893dcaccf90821b4ef435ed04467d83460420f091c30eb71d893b35a7d0ac2a9ee87a49d6d27d9ab"}
+
+
+def offline_sdk():
+    """The real-NuGet regression's inputs: an SDK of the pinned version for this host, named by VPN_CONTROL_TEST_DOTNET
+    (as the desktop tests name theirs), and the pinned ILLink package where prepare keeps it, checked by its SHA-512."""
+    program = os.environ.get("VPN_CONTROL_TEST_DOTNET")
+    package = ROOT.joinpath(".runtime", "windows-desktop-test", "toolchain", ILLINK["sha256"])
+    if os.name != "posix" or not program or not os.access(program, os.X_OK) or not package.is_file():
+        return None, None
+    if hashlib.sha512(package.read_bytes()).hexdigest() != ILLINK["sha512"]:
+        return None, None
+    return program, package
+
+
+class OfflineRestoreTests(unittest.TestCase):
+    """The guest build's .NET environment under a real SDK of the pinned version: an EnableAotAnalyzer probe whose own
+    NuGet.Config adds a remote source (as two desktop tests' do) restores from the seed folder alone, fails rather than
+    downloads without it, and nothing reaches that remote source, here a loopback recorder. It skips without the SDK
+    and the prepared package; the build clone's evidence ran it with the verified osx-arm64 SDK 10.0.403."""
+
+    def recorder(self):
+        import http.server
+        requests = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(self.path)
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *arguments):
+                pass
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return "http://127.0.0.1:%d/v3/index.json" % server.server_address[1], requests
+
+    def test_a_probe_restores_only_from_the_seed_folder_and_nothing_reaches_its_own_remote_source(self):
+        program, package = offline_sdk()
+        if program is None:
+            self.skipTest("needs VPN_CONTROL_TEST_DOTNET (an SDK 10.0.403 for this host) and the pinned ILLink package from prepare")
+        remote, requests = self.recorder()
+        with tempfile.TemporaryDirectory(prefix="vcdt-nuget-") as directory:
+            work, home, probe = Path(directory) / "w", Path(directory) / "home", Path(directory) / "probe"
+            for path in (work / "n" / "feed", work / "t", work / "dh", home, probe):
+                path.mkdir(parents=True)
+            runner = guest.Runner({"operationId": "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e", "workRoot": str(work), "sourceCommit": "a" * 40,
+                                   "operationRoot": str(Path(directory) / "operation")}, guest.PosixPlatform())
+            runner.jdk_home, runner.dotnet_home = str(Path(directory) / "jdk"), str(Path(program).parent)
+            if hasattr(guest, "nuget_config"):
+                (work / "n" / "NuGet.Config").write_text(guest.nuget_config(str(work / "n" / "feed"), str(work / "n" / "packages")))
+            environment = runner.environment()
+            # This host's own home stays untouched: NuGet's once-per-user marker lands in the temporary home.
+            environment.update(HOME=str(home), XDG_DATA_HOME=str(home / ".local" / "share"), TMPDIR=str(work / "t"))
+            # What DesktopWindowsCoordinatorAdapterTest gives its dotnet, the "1" the SDK does not read as true included.
+            environment.update(DOTNET_CLI_HOME=str(probe / "dotnet-home"), DOTNET_SKIP_FIRST_TIME_EXPERIENCE="1", DOTNET_CLI_TELEMETRY_OPTOUT="1",
+                               DOTNET_MULTILEVEL_LOOKUP="0", DOTNET_NOLOGO="1", DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE="1",
+                               MSBUILDDISABLENODEREUSE="1")
+            shutil.copyfile(ROOT / DOTNET_GLOBAL_JSON, probe / "global.json")
+            (probe / "NuGet.Config").write_text('<configuration><packageSources><clear /><add key="nuget.org" value="' + remote
+                                                + '" protocolVersion="3" allowInsecureConnections="true" /></packageSources></configuration>')
+            (probe / "Probe.csproj").write_text(
+                '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType>'
+                '<UseAppHost>false</UseAppHost><Nullable>disable</Nullable><ImplicitUsings>disable</ImplicitUsings>'
+                '<TreatWarningsAsErrors>true</TreatWarningsAsErrors><EnableAotAnalyzer>true</EnableAotAnalyzer></PropertyGroup></Project>')
+            (probe / "Program.cs").write_text("internal static class P { public static void Main() { System.Console.WriteLine(1); } }\n")
+
+            def dotnet(*arguments):
+                done = subprocess.run([program, *arguments], cwd=probe, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, timeout=600, check=False)
+                return done.returncode, done.stdout.decode("utf-8", "replace")
+            code, output = dotnet("--version")
+            if code != 0 or output.strip().splitlines()[-1:] != [json.loads((ROOT / DOTNET_GLOBAL_JSON).read_text())["sdk"]["version"]]:
+                self.skipTest("VPN_CONTROL_TEST_DOTNET is not the pinned SDK version")
+            build = ("build", "Probe.csproj", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false")
+            code, output = dotnet(*build)
+            self.assertNotEqual(0, code, output[-3000:])
+            self.assertIn("error NU1101: Unable to find package Microsoft.NET.ILLink.Tasks. No packages exist with this id in source(s): "
+                          "vpnControlDesktopTestOffline\n", output, "an empty seed fails the restore; nothing is downloaded")
+            shutil.copyfile(package, work / "n" / "feed" / ILLINK["file"])
+            shutil.rmtree(probe / "obj", ignore_errors=True)
+            code, output = dotnet(*build)
+            self.assertEqual(0, code, output[-3000:])
+            assets = json.loads((probe / "obj" / "project.assets.json").read_text())
+            self.assertEqual((["Microsoft.NET.ILLink.Tasks/10.0.14"], [str(work / "n" / "feed")], [str(work / "n" / "NuGet.Config")]),
+                             (sorted(assets["libraries"]), sorted(assets["project"]["restore"]["sources"]),
+                              assets["project"]["restore"]["configFilePaths"]))
+            self.assertTrue((work / "n" / "packages" / "microsoft.net.illink.tasks" / "10.0.14" / ".nupkg.metadata").is_file())
+            sentinels = sorted(path.name for path in (probe / "dotnet-home" / ".dotnet").iterdir())
+        self.assertEqual([], requests, "nothing reached the probe's own remote source, the SDK's workload check included")
+        self.assertEqual(["10.0.403.dotnetFirstUseSentinel"], sentinels, "no development certificate and no tools PATH entry")
+
+
 @unittest.skipUnless(os.name == "posix" and shutil.which("git"), "private journals are POSIX and a source is a git commit")
 class DriverBase(RepositoryBase):
     def setUp(self):
@@ -509,6 +780,10 @@ class DriverBase(RepositoryBase):
             patcher.start()
             self.addCleanup(patcher.stop)
             target = desktop.toolchain_path(self.root, pin)
+            target.write_bytes(raw)
+            target.chmod(0o600)
+        for url, raw in patch_dotnet_pins(self).items():  # As prepare keeps them; the seed is made from these at start.
+            target = desktop.toolchain_path(self.root, next(pin for pin in (desktop.DOTNET, *desktop.NUGET_PACKAGES) if pin["url"] == url))
             target.write_bytes(raw)
             target.chmod(0o600)
         self.dependencies(self.commit)
@@ -563,8 +838,13 @@ class DriverBase(RepositoryBase):
                   "gradle": {"exitCode": gradle_exit, "seconds": 540.0, "deadline": False, "leftoverProcesses": [], "consoleBytes": len(console)},
                   "results": {"name": guest.RESULTS_LEAF, "bytes": len(results), "sha256": sha(results), "xmlFiles": len(xml)},
                   "jdkRelease": {"JAVA_VERSION": "17.0.21", "IMPLEMENTOR": "Eclipse Adoptium"}, "archives": {}, "freeBytesBefore": 30 * 1024 ** 3,
+                  "dotnet": {"sdkVersion": "10.0.403", "runtimeVersion": "10.0.14", "reported": "10.0.403", "exitCode": 0},
+                  "nuget": {"source": "vpnControlDesktopTestOffline", "packages": ["microsoft.net.illink.tasks.10.0.14.nupkg"]},
                   "freeBytesAfter": 31 * 1024 ** 3, "productProcessesBefore": [], "productProcessesAfter": [],
                   "productState": {".vpn-control-desktop": {"present": False, "unchanged": True}},
+                  "userToolState": {"AppData/Local/NuGet": {"presentBefore": False, "presentAfter": True, "unchanged": False,
+                                                            "changedNames": ["Migrations/1"]},
+                                    "AppData/Roaming/NuGet": {"presentBefore": False, "presentAfter": False, "unchanged": True}},
                   "profileEntries": {"added": [".skiko"], "removed": []}, "seconds": 600.0,
                   "workRoot": {"created": True, "deleted": True, "error": None}}
         summary_raw = json.dumps(runner, sort_keys=True).encode()
@@ -575,7 +855,7 @@ class DriverBase(RepositoryBase):
                  "gradleDeadline": False, "gradleSeconds": 540.0, "summary": {"bytes": len(summary_raw), "sha256": sha(summary_raw)},
                  "results": {"bytes": len(results), "sha256": sha(results), "xmlFiles": len(xml)}, "workRootDeleted": True,
                  "disk": {"freeBytes": 40 * 1024 ** 3, "neededBytes": 11 * 1024 ** 3},
-                 "cleanup": {"state": "complete", "archives": ["deleted"] * 4, "freeBytes": 41 * 1024 ** 3}}
+                 "cleanup": {"state": "complete", "archives": ["deleted"] * len(desktop.ARCHIVE_ROLES), "freeBytes": 41 * 1024 ** 3}}
         receipt = host_job.build_receipt({"scenarioId": desktop.SCENARIO_ID, "operationId": self.operation, "machine": MACHINE,
                                           "bundleHash": record["plan"]["bundleHash"]}, exit_code=exit_code, stage=stage, failure=failure,
                                          evidence={"name": "evidence-1.zip", "bytes": len(evidence), "sha256": sha(evidence), "entries": 3},
@@ -594,17 +874,38 @@ class StartTests(DriverBase):
     def test_start_stages_then_submits_one_job_and_records_its_inputs(self):
         started = desktop.start(self.root, self.inputs())
         self.assertEqual(("submitted", "submitted", False, False), (started["state"], started["reason"], started["replayAllowed"], started["productAction"]))
-        self.assertEqual(["stage-check", "stage-write"] * 4 + ["target", *["stage-check"] * 4, "prepare", "submit"], self.ssh.calls)
+        roles = len(desktop.ARCHIVE_ROLES)
+        self.assertEqual(["stage-check", "stage-write"] * roles + ["target", *["stage-check"] * roles, "prepare", "submit"], self.ssh.calls)
         self.assertEqual(1, self.ssh.submits)
         record = json.loads((self.operation_directory() / "request.json").read_text())
         self.assertEqual((MACHINE, self.commit, "direct"), (record["deploymentId"], record["sourceCommit"], record["route"]))
-        self.assertEqual({"jdk": "17.0.21+9", "gradle": "8.10.2"}, record["toolchain"])
+        self.assertEqual(desktop.TOOLCHAIN, record["toolchain"])
         self.assertEqual(sha((self.root / ".runtime/windows-desktop-test/sources" / (self.commit + ".zip")).read_bytes()),
                          record["archives"]["source"]["sha256"])
         self.assertEqual(record["archives"]["source"]["sha256"], started["sourceArchiveSha256"])
         program = json.loads((self.root / ".rag_index/windows-desktop-test" / self.operation / "program.json").read_text())
         self.assertIn("class DesktopTestJob(Job)", program["program"]["source"])
         self.assertEqual(sorted(row["sha256"] for row in record["archives"].values()), sorted(self.ssh.staged))
+
+    def test_cis_sdk_and_the_nuget_seed_are_staged_and_given_to_the_job_with_their_pins(self):
+        started = desktop.start(self.root, self.inputs())
+        self.assertEqual({role: "staged" for role in ("source", "jdk", "gradle", "dependencies", "dotnet", "nuget")}, started["staged"])
+        self.assertEqual("10.0.403", started["toolchain"]["dotnet"])
+        record = json.loads((self.operation_directory() / "request.json").read_text())
+        seed = desktop.nuget_seed(self.root)
+        self.assertEqual(({"sha256": desktop.DOTNET["sha256"], "bytes": desktop.DOTNET["bytes"]}, {"sha256": seed["sha256"], "bytes": seed["bytes"]}),
+                         (record["archives"]["dotnet"], record["archives"]["nuget"]))
+        self.assertEqual({"sdkVersion": "10.0.403", "runtimeVersion": "10.0.14"}, record["desktopTest"]["dotnet"])
+        self.assertEqual([{"file": pin["file"], "sha512": pin["sha512"], "bytes": pin["bytes"]} for pin in desktop.NUGET_PACKAGES],
+                         record["desktopTest"]["nuget"]["packages"])
+        self.assertEqual({"dotnetArchive": "sha256-" + desktop.DOTNET["sha256"], "nugetArchive": "sha256-" + seed["sha256"]},
+                         {key: value for key, value in record["plan"]["artifactIds"].items() if key in ("dotnetArchive", "nugetArchive")})
+        self.assertEqual(desktop.MINIMUM_FREE_BYTES, record["desktopTest"]["minimumFreeBytes"])
+        program = json.loads((self.root / ".rag_index/windows-desktop-test" / self.operation / "program.json").read_text())
+        tree = ast.parse(program["program"]["source"])
+        plan = ast.literal_eval(next(node.value for node in tree.body if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "PLAN"))
+        self.assertEqual((record["desktopTest"], {role: record["archives"][role] for role in desktop.ARCHIVE_ROLES}),
+                         (plan["desktopTest"], plan["packages"]))
 
     def test_a_second_start_of_one_operation_is_refused_and_submits_nothing(self):
         desktop.start(self.root, self.inputs())
@@ -696,7 +997,7 @@ class StatusTests(DriverBase):
                          (summary["sourceCommit"], summary["archives"]["source"]["sha256"], summary["toolchain"]["jdkRelease"]))
         self.assertEqual([{"class": "com.example.AlphaTest", "name": "later"}], summary["skippedTests"])
         self.assertEqual({"workRootDeleted": True, "archivesCleanup": "complete", "disk": {"freeBytes": 40 * 1024 ** 3, "neededBytes": 11 * 1024 ** 3},
-                          "profileEntriesAdded": [".skiko"]}, summary["hygiene"])
+                          "profileEntriesAdded": [".skiko"], "userToolStateChanged": ["AppData/Local/NuGet"]}, summary["hygiene"])
         self.assertEqual(".runtime/windows-desktop-test/operations/" + self.operation + "/summary.json", view["summary"])
         pulls = self.ssh.pulls
         self.assertEqual(view, self.status(), "a terminal operation is read, never run again")
@@ -740,16 +1041,40 @@ class StatusTests(DriverBase):
                 self.assertEqual(("terminal", "failed", "gradle-dependencies", "not-run"),
                                  (view["state"], view["toolOutcome"], view["failedStage"], view["testOutcome"]))
 
-    def test_tests_that_could_not_start_the_guests_absent_dotnet_are_reported_apart(self):
+    def test_a_test_that_could_not_start_dotnet_is_a_failure_like_any_other(self):
+        # What the guest's missing dotnet.exe used to produce: the guest now has CI's SDK, and no failure is excluded.
         console = b"There were failing tests. See the report at: file:///C:/x/index.html\nBUILD FAILED in 9m\n"
         self.finished(gradle_exit=1, xml=(XML_ALPHA, dotnet_xml(self.operation)), console=console)
         view = self.status()
-        self.assertEqual(("completed", "passed-except-excluded", [], 2), (view["toolOutcome"], view["testOutcome"], view["failedTests"],
-                                                                          view.get("excludedTests")))
+        self.assertEqual(("completed", None, "failed", 2, 0), (view["toolOutcome"], view["failedStage"], view["testOutcome"],
+                                                               len(view["failedTests"]), view["toolCausedTests"]))
         summary = json.loads((self.operation_directory() / "summary.json").read_text())
-        self.assertEqual([{"class": "com.kardinal.vpncontrol.desktop.DesktopWindowsOutputNativeTest", "name": name,
-                           "reason": "dotnet-sdk-not-provisioned"} for name in ("first", "second")], summary["excludedTests"])
+        self.assertNotIn("excludedTests", view)
+        self.assertNotIn("excludedTests", summary)
         self.assertEqual(2, summary["tests"]["failures"], "the totals stay Gradle's own")
+        self.assertEqual(("10.0.403", "10.0.403"), (view["dotnet"], summary["toolchain"]["dotnetReported"]))
+
+    def test_a_package_the_offline_seed_lacks_is_the_tools_failure_not_the_sources(self):
+        console = b"There were failing tests. See the report at: file:///C:/x/index.html\nBUILD FAILED in 9m\n"
+        self.finished(gradle_exit=1, xml=(XML_ALPHA, XML_BETA, build_failure_xml(SEED_MISSING_BUILD)), console=console)
+        view = self.status()
+        self.assertEqual(("terminal", "failed", "dotnet-packages", "failed", 1),
+                         (view["state"], view["toolOutcome"], view["failedStage"], view["testOutcome"], view["toolCausedTests"]))
+        summary = json.loads((self.operation_directory() / "summary.json").read_text())
+        self.assertEqual([("com.example.BetaTest", None), ("com.kardinal.vpncontrol.desktop.DesktopWindowsCoordinatorAdapterTest", "dotnet-packages")],
+                         [(row["class"], row.get("toolCause")) for row in summary["failedTests"]], "the source's own failure stays its own")
+        self.assertEqual((2, ["AppData/Local/NuGet"]), (summary["tests"]["failures"], summary["hygiene"]["userToolStateChanged"]))
+
+    def test_restore_words_that_do_not_name_the_seed_stay_the_sources_failure(self):
+        console = b"There were failing tests. See the report at: file:///C:/x/index.html\nBUILD FAILED in 9m\n"
+        for output in (SEED_MISSING_BUILD.replace("vpnControlDesktopTestOffline", "nuget.org"),
+                       "  warning: package source vpnControlDesktopTestOffline is local\nerror CS1002: ; expected\n"):
+            with self.subTest(output=output[:60]):
+                self.setUp()
+                self.finished(gradle_exit=1, xml=(XML_ALPHA, build_failure_xml(output)), console=console)
+                view = self.status()
+                self.assertEqual(("completed", "failed", 1, 0), (view["toolOutcome"], view["testOutcome"], len(view["failedTests"]),
+                                                                 view.get("toolCausedTests", 0)))
 
     def test_any_other_failure_to_start_a_program_still_fails_the_source(self):
         console = b"There were failing tests. See the report at: file:///C:/x/index.html\nBUILD FAILED in 9m\n"
@@ -843,7 +1168,7 @@ class StatusTests(DriverBase):
             "gradleSeconds": 10800.123456789, "summary": {"bytes": 1024 ** 2, "sha256": "f" * 64},
             "results": {"bytes": guest.RESULTS_ZIP_LIMIT, "sha256": "f" * 64, "xmlFiles": guest.RESULT_ENTRY_LIMIT}, "workRootDeleted": False,
             "disk": {"freeBytes": 2 ** 63 - 1, "neededBytes": 2 ** 40},
-            "cleanup": {"state": "incomplete", "archives": ["not-the-published-file"] * 4, "freeBytes": 2 ** 63 - 1}}
+            "cleanup": {"state": "incomplete", "archives": ["not-the-published-file"] * len(desktop.ARCHIVE_ROLES), "freeBytes": 2 ** 63 - 1}}
         raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
         self.assertLessEqual(len(raw), host_job.RECEIPT_BYTES)
         driver = desktop.DesktopTestDriver(self.root)
@@ -947,10 +1272,28 @@ class ResultTests(unittest.TestCase):
                 self.assertEqual({"build": "failed", "failingTask": ":desktopApp:test", "offlineResolutionFailure": True, "failingTests": False},
                                  desktop.classify_console(console))
 
+    def test_only_a_restore_error_naming_the_seed_marks_a_failure_as_the_tools(self):
+        nu1102 = ("C:\\p\\Probe.csproj : error NU1102: Unable to find package Microsoft.NET.ILLink.Tasks with version (>= 10.0.15)\n"
+                  "  - Found 1 version(s) in vpnControlDesktopTestOffline [ Nearest version: 10.0.14 ]\n")
+        for number, (output, cause) in enumerate(((SEED_MISSING_BUILD, "dotnet-packages"), (nu1102, "dotnet-packages"),
+                                                  (SEED_MISSING_BUILD.replace("vpnControlDesktopTestOffline", "nuget.org"), None),
+                                                  ("vpnControlDesktopTestOffline\nerror NU1201: incompatible project\n", None),
+                                                  ("error CS0246: The type or namespace name could not be found\n", None))):
+            with self.subTest(output=output[-60:]):
+                (self.work / ("TEST-%d.xml" % number)).write_text(build_failure_xml(output, name="case%d" % number))
+                row = next(row for row in desktop.parse_results(self.work)["failedTests"] if row["name"] == "case%d" % number)
+                self.assertEqual(cause, row.get("toolCause"))
+
     def test_the_tool_outcome_and_the_test_outcome_are_apart(self):
         passed = {"totals": {"failures": 0, "errors": 0}}
         failing = {"totals": {"failures": 2, "errors": 0}}
+        seed = {"totals": {"failures": 2, "errors": 0}, "failedTests": [{"kind": "failure"}, {"kind": "failure", "toolCause": "dotnet-packages"}]}
         rows = (
+            # A probe asked the offline seed for a package it does not hold: the tool's failure; the tests' own outcome stays.
+            ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTests": True}, seed, ("failed", "dotnet-packages", "failed")),
+            # A job that failed on its own keeps its stage.
+            ({"exitCode": 1, "stage": "cleanup", "failure": "desktop_cleanup_incomplete"}, {"exitCode": 1}, {"failingTests": True}, seed,
+             ("failed", "cleanup", "failed")),
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 0}, {}, passed, ("completed", None, "passed")),
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTests": True}, failing, ("completed", None, "failed")),
             ({"exitCode": 0, "stage": "receipt"}, {"exitCode": 1}, {"failingTask": ":desktopApp:compileTestKotlin"}, None, ("completed", None, "build-failed")),
