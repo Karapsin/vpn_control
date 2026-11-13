@@ -1786,6 +1786,55 @@ again, no root check, no GUI-to-launcher pair, and `product_rows` needing three 
 renewed to a fixpoint on the same chain as before; no file of `readiness_windows._source_pins()`
 changed.
 
+### Windows visual review of `f31ab987`: Material default surfaces, stale mode copy, catalog typo (2026-11-13)
+
+The agent review of the hosted Windows capture of `f31ab987` recorded four product defects
+(`.runtime/windows-parity-20261107/evidence/visual-f31ab987-verdicts.json`: scenes
+`routing-import-menu-desktop`, `routing-export-menu-desktop`, `update-checking` and
+`settings-app-mode`). All four predate that SHA: the 2.0.0 baselines of `602ea10d` hold the same
+pixels and the same sentence, so the comparator passed them. Checking the claims against the
+sources of `529cc610` widened two of them and added a fifth finding. Every `DropdownMenu` and
+`AlertDialog` without a `containerColor` was affected, not only the routing menus and the update
+dialog: the Locations menus, the desktop settings menu, the desktop rename-subscription dialog
+(`profile-rename-dialog`, the same `#2B2930` in its Windows baseline), two desktop failure dialogs,
+and on Android the import and export menus and three dialogs. The direct-domain hint is one
+English sentence in all 66 catalogs, so each carried the typo. The desktop settings menu's
+subtitles were `#4A6070`, which the review did not record.
+
+Three unfixed sources are kept as `scripts/testdata/ui-theme/*.before.kt`. RED ran the tests of the
+fix on the production bytes of `529cc610` (`app/src/main`, `desktopApp/src/main` and
+`shared/ui/src/commonMain` checked out from it): 10 Kotlin tests, 10 failures. GREEN on the fix: 10
+tests, no failure. The guard and its test ran on exports of both trees. Logs, JUnit reports, the
+theme defaults Material resolves before and after, and local before/after captures of the 50 desktop
+app scenes are in `.runtime/windows-parity-20261107/evidence/visual-defects/`.
+
+Whole suites on the fix: `:shared:core:desktopTest` 238 tests, `:shared:ui:desktopTest` 54 and
+`:app:testDebugUnitTest` 594 without a failure, `:app:compileDebugKotlin` and
+`:app:compileDebugAndroidTestKotlin` passed, and `:desktopApp:test` 1309 tests, 111 skipped, 5
+failed. The five are `DesktopAndroidAdbClientTest` cases whose fake-adb exchanges ran past their
+deadlines on a host at load 17 to 25. Two reruns of the class alone failed 1 and then 3 of them, and
+four of the five passed in a rerun. The fifth,
+`interactiveFindBestPollsDelayedConsentForSynchronousAndAsynchronousRequests`, failed in all seven
+runs on the fix and in 3 of 4 runs on the production bytes of `529cc610`, at 21 to 24 s against its
+20-second deadline, so it follows the host and not this change.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Dropdown menus and dialogs painted Material's default dark surfaces | `VpnControlThemeColorSchemeTest` (`:shared:ui:desktopTest`); `VisualCaptureTest.menusAndDialogsPaintTheContractSurfaces` (`:desktopApp:test`); `scripts/test_check_ui_theme.py` with the extended `scripts/check_ui_theme.py` (release hygiene) | `VpnControlColorScheme` assigned 23 of Material's 36 color roles and let `surfaceTint` follow `primary`. The other 12 kept Material's dark defaults: `surfaceContainer` `#211F26` (dropdown menus), `surfaceContainerHigh` `#2B2930` (dialogs), `surfaceContainerHighest` `#36343B` (the track of an unchecked `Switch`), the two other surface containers, `surfaceDim`, `surfaceBright`, the three inverse roles and the tertiary container pair. A menu or dialog that set no `containerColor` showed them, and `check_ui_theme.py` looked only at the palette literals. The scheme now assigns all 36 roles from `VpnControlColors`. Dropdown menus resolve to the elevated surface `#1D2B3B` and dialogs to the base surface `#141F2D`, by default and through an explicit `containerColor` at the twelve call sites that had none; UI-002 now says so. An unchecked `Switch` track becomes `#1D2B3B`. The theme test reads the scheme, `MenuDefaults`, `AlertDialogDefaults` and `SwitchDefaults` in a composition under `VpnControlTheme`, lists the color properties of `ColorScheme` by reflection and takes the defaults from Material's own `darkColorScheme()`, so a role that a later Material adds is compared too. The desktop test renders five real scenes and reads the dominant color behind a tagged element. The script refuses a surface role on the other surface, an unassigned role, and a dialog or dropdown menu that does not name its surface; its test runs it on the three before sources. RED: theme test 4 tests, 4 failures (the 12 roles; menu `#211F26` and dialog `#2B2930`; switch track `#36343B`); desktop test 1 failure (`#211F26` three times, `#2B2930` twice); script test 19 tests, 8 failures on Python 3.14 and 3.12, and the guard itself 25 findings. GREEN: all pass. Native only: the same surfaces in hosted Windows, Linux and macOS captures and in an Android capture. Nothing was rendered on Android here; Android's Material 1.3.1 has the same 36 roles and the same menu, dialog and switch tokens. |
+| The mode dialog said that changing mode stops the session | `DesktopPendingConnectionCliTest.liveModeSaveKeepsTheSessionAndTheWarningSaysSo` (`:desktopApp:test`); `CatalogCopyRegressionTest.modeChangeWarningSaysTheSessionContinuesUntilARestart`, `noCatalogKeepsItsRetiredModeChangeWarning` (`:shared:ui:desktopTest`) | `APP_MODE_DESKTOP_CHANGE_WARNING` dates from `f2657326` (2026-04-30). `4d8a2e7a` (2026-09-06) made a mode save keep the live runtime, commit the next mode and leave a restart pending (STATE-005), and the sentence stayed. The desktop test starts a recording runtime through the public CLI path, saves `mode vpn` with `settings set` and asserts one start, no stop, the same runtime id, the committed VPN mode beside the active proxy-only one and `restartRequired`; then the sentence; then that `restart` applies the mode. RED on `529cc610`: every behavior assertion passes and the test fails at the sentence, "Changing mode while connected stops the current session first."; all 66 catalogs still carry their retired sentence. GREEN: both pass. Each translation is derived from that catalog's own retired sentence and its `CONNECTION_RESTART_PENDING` text; no native speaker has read them. |
+| `some_stie.com` in the direct-domain hint | `CatalogCopyRegressionTest.noCatalogContainsTheDirectDomainExampleTypo` (`:shared:ui:desktopTest`) | `21804192` (2026-05-04) replaced the translated hint with one English sentence in every catalog, typo included. It now reads `some_site.com`. The test reads every generated UI and status catalog. RED: 66 entries. GREEN: none. The hint itself is still untranslated in 65 catalogs; `check_localization.py` reports the same 4987 warnings before and after. |
+| Desktop settings-menu subtitles at 2.48:1 | `VisualCaptureTest.settingsMenuSubtitlesMeetNormalTextContrast` (`:desktopApp:test`) | The second line of each item was `#4A6070`, on no palette text color; the Android menu uses `#D3E3EE`. The geometry gate measures only the first text of an item, so it reported 16.3. The subtitles now use `VpnControlColors.TextSecondary`. RED on `529cc610`: all nine at 2.48. GREEN: none below 4.5 (10.95 measured in the local capture). Found while verifying the menu container, not by the review. |
+
+Scenes expected to differ from the baselines because of these fixes, beyond the changes the review
+already listed: the four import and export menus and `main-settings-menu-desktop` (menu surface;
+there also the subtitles and the unchecked switch), the eight `update-*` scenes and
+`profile-rename-dialog` (dialog surface), `settings-ssh-disabled`, `settings-ssh-key` and
+`profile-current-locations` (unchecked switch track), `routing-domains` and `routing-desktop-note`
+(the corrected example), and `settings-app-mode` (the sentence wraps to two lines and the dialog
+grows). The local macOS render of the Windows scene list changed in exactly these 20 scenes and in
+no other of the 50. On Android the same holds for the update dialog, the import and export menus,
+the two QR-too-large dialogs and every unchecked switch; that is unproven until a capture.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals
