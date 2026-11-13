@@ -281,6 +281,109 @@ class NativeRegionCaptureTest {
     }
 
     @Test
+    fun aHungOrSilentTargetIsRefusedInsteadOfPublishingItsLastFrame() {
+        // Two identical captures 250 ms apart show a quiet frame, not a ready target: a wizard whose
+        // thread is blocked keeps showing its last frame, and that frame was published.
+        val output = Files.createTempDirectory("vpn-control-region-hung")
+        try {
+            val desktop = FakeDesktop().apply { hung += WIZARD }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { desktop.captureWizard(output) }
+            assertEquals("target-not-responding", refusal.refusal.reason)
+            assertTrue("IsHungAppWindow" in refusal.detail && "before the stable-frame loop" in refusal.detail, refusal.detail)
+            assertFalse(Files.exists(output.resolve("windows-msi.png")), "a frozen frame is never published")
+            assertEquals("target-not-responding", refusalReason(output, "windows-msi"))
+            assertEquals(1, desktop.captures, "no stable-frame capture is taken, only the refused moment's frame")
+
+            val quiet = FakeDesktop().apply { silent += WIZARD }
+            val silentRefusal = assertFailsWith<RegionCaptureRefusedException> { quiet.captureWizard(output.resolve("silent")) }
+            assertEquals("target-not-responding", silentRefusal.refusal.reason)
+            assertTrue("did not answer WM_NULL within 2000 ms" in silentRefusal.detail, silentRefusal.detail)
+            assertFalse(Files.exists(output.resolve("silent/windows-msi.png")))
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aTargetThatStopsAnsweringWhileThePairIsTakenIsNotPublished() {
+        val output = Files.createTempDirectory("vpn-control-region-hangs-later")
+        try {
+            val desktop = FakeDesktop().apply { wizardHangsAfterCapture = 1 }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { desktop.captureWizard(output) }
+            assertEquals("target-not-responding", refusal.refusal.reason)
+            assertTrue("before publishing" in refusal.detail, refusal.detail)
+            assertEquals(2, desktop.captures, "the stable pair was taken and then refused before publishing")
+            assertFalse(Files.exists(output.resolve("windows-msi.png")))
+            assertTrue(Files.exists(output.resolve("windows-msi.frame.png")))
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aTargetThatHasNotPaintedIsNotPublished() {
+        // A window that has not handled its first WM_PAINT gives identical captures as well: its
+        // region is the flat backdrop beneath it, or DWM's caption above a flat client area.
+        val output = Files.createTempDirectory("vpn-control-region-unpainted")
+        try {
+            val blank = FakeDesktop().apply { wizardPaintsFromCapture = Int.MAX_VALUE }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { blank.captureWizard(output) }
+            assertEquals("target-not-painted", refusal.refusal.reason)
+            assertTrue("is entirely the capture backdrop colour #404040" in refusal.detail, refusal.detail)
+            assertEquals(REGION_STABLE_MAX_ATTEMPTS, blank.captures, "a flat pair keeps the loop capturing")
+            assertFalse(Files.exists(output.resolve("windows-msi.png")))
+
+            val frameOnly = FakeDesktop().apply { wizardClientPainted = false }
+            val clientRefusal = assertFailsWith<RegionCaptureRefusedException> { frameOnly.captureWizard(output.resolve("client")) }
+            assertEquals("target-not-painted", clientRefusal.refusal.reason)
+            assertTrue("client area" in clientRefusal.detail && "one colour #FFFFFF" in clientRefusal.detail, clientRefusal.detail)
+            assertFalse(Files.exists(output.resolve("client/windows-msi.png")))
+
+            // A target that paints late is waited for, not refused.
+            val late = FakeDesktop().apply { wizardPaintsFromCapture = 3 }
+            val record = late.captureWizard(output.resolve("late"))
+            assertEquals(4, record["stable_frame"]!!.jsonObject["attempts"]!!.jsonPrimitive.int)
+            assertEquals(WIZARD_RGB, ImageIO.read(output.resolve("late/windows-msi.png").toFile()).getRGB(10, 10) and 0xFFFFFF)
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aDialogOrWizardWithoutItsExpectedControlsIsNotPublished() {
+        val output = Files.createTempDirectory("vpn-control-region-controls")
+        try {
+            val noCancel = FakeDesktop().apply { children[WIZARD] = WIZARD_BUTTONS.filterNot { it.text == "Cancel" } }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { noCancel.captureWizard(output) }
+            assertEquals("target-controls-missing", refusal.refusal.reason)
+            assertTrue("cancel-button (Button 'Cancel')" in refusal.detail, refusal.detail)
+            assertTrue("Button id=701 '&Next'" in refusal.detail, "the refusal lists the child-window census")
+            assertFalse(Files.exists(output.resolve("windows-msi.png")))
+
+            val hiddenNext = FakeDesktop().apply {
+                children[WIZARD] = WIZARD_BUTTONS.map { if (it.text == "&Next") it.copy(visible = false) else it }
+            }
+            val hidden = assertFailsWith<RegionCaptureRefusedException> { hiddenNext.captureWizard(output.resolve("hidden")) }
+            assertEquals("target-controls-missing", hidden.refusal.reason)
+
+            val dialog = FakeDesktop().apply { children[DIALOG] = DIALOG_BUTTONS.filterNot { it.controlId == 2 } }
+            val dialogRefusal = assertFailsWith<RegionCaptureRefusedException> { dialog.captureDialog(output.resolve("dialog")) }
+            assertEquals("target-controls-missing", dialogRefusal.refusal.reason)
+            assertTrue("cancel-button (Button id=2)" in dialogRefusal.detail, dialogRefusal.detail)
+            assertFalse(Files.exists(output.resolve("dialog/windows-open-dialog.png")))
+
+            val complete = output.resolve("complete")
+            FakeDesktop().captureDialog(complete)
+            assertTrue(Files.exists(complete.resolve("windows-open-dialog.png")), "a dialog showing IDOK and IDCANCEL is published")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    private fun refusalReason(output: Path, sceneId: String): String =
+        Json.parseToJsonElement(Files.readString(output.resolve("$sceneId.refusal.json"))).jsonObject["reason"]!!.jsonPrimitive.content
+
+    @Test
     fun stableFrameNeedsTwoConsecutiveIdenticalCaptures() {
         var captures = 0
         val frames = listOf("loading", "painted", "painted")
@@ -536,11 +639,29 @@ class NativeRegionCaptureTest {
         var focusInside = true
         var stackingRefused = false
         var transientDuringStablePair = false
+        val hung = mutableSetOf<Long>()
+        val silent = mutableSetOf<Long>()
+        /** The wizard's thread stops answering once this many captures were taken. */
+        var wizardHangsAfterCapture: Int? = null
+        /** The wizard draws nothing before this capture (its region shows what lies beneath it). */
+        var wizardPaintsFromCapture = 1
+        /** False: DWM draws the wizard's caption, but its client area stays flat white. */
+        var wizardClientPainted = true
+        val children = mutableMapOf<Long, List<NativeControl>>()
         var captures = 0
         val cuesShown = mutableListOf<Long>()
         val stacked = mutableListOf<Pair<Long, Long>>()
         private var foreground = 0L
         private var transient: NativeWindow? = null
+
+        override fun isHungAppWindow(handle: Long) =
+            handle in hung || (handle == WIZARD && wizardHangsAfterCapture?.let { captures >= it } == true)
+        override fun answersWithin(handle: Long, timeoutMillis: Int) = handle !in silent && !isHungAppWindow(handle)
+        override fun childWindows(handle: Long) = children[handle].orEmpty()
+        override fun clientArea(handle: Long): RegionRect? = window(handle)?.let { window ->
+            val bounds = window.bounds
+            if (window.title in FRAMED_TITLES) RegionRect(bounds.left, bounds.top + CAPTION, bounds.right, bounds.bottom) else bounds
+        }
 
         override fun screen() = screen
         override fun workArea() = workArea
@@ -587,18 +708,23 @@ class NativeRegionCaptureTest {
             fill(image, RegionRect(1180, 760, 1240, 796), 0x0F0F0F * (captures % 16))
             // Stacked from the bottom: everything below the backdrop is hidden inside the region.
             for (window in census().asReversed()) {
-                val color = when (window.title) {
-                    "vpn-control Setup" -> WIZARD_RGB
-                    "backdrop" -> WindowsRegionScenes.BACKDROP_RGB
-                    "menu" -> MENU_RGB
-                    "System Properties" -> 0xF0F0F0
-                    "tooltip" -> TOOLTIP_RGB
-                    else -> continue
+                when (window.title) {
+                    "vpn-control Setup" -> paintWizard(image, window.bounds)
+                    DIALOG_TITLE -> paintFramed(image, window.bounds, DIALOG_RGB)
+                    "backdrop" -> fill(image, window.bounds, WindowsRegionScenes.BACKDROP_RGB)
+                    "menu" -> {
+                        fill(image, window.bounds, MENU_RGB)
+                        fill(image, RegionRect.sized(window.bounds.left + 20, window.bounds.top + 20, 120, 6), TEXT_RGB)
+                    }
+                    "System Properties" -> fill(image, window.bounds, 0xF0F0F0)
+                    "tooltip" -> fill(image, window.bounds, TOOLTIP_RGB)
                 }
-                fill(image, window.bounds, color)
             }
             if (blinkingCaret) fill(image, RegionRect(200, 100, 201, 116), if (captures % 2 == 0) 0 else 0xFFFFFF)
-            if (windows.any { it.title == "taskbar" }) fill(image, ICON_RECT, ICON_RGB)
+            if (windows.any { it.title == "taskbar" }) {
+                fill(image, ICON_RECT, ICON_RGB)
+                fill(image, RegionRect.sized(ICON_RECT.left + 8, ICON_RECT.top + 16, 8, 8), TEXT_RGB)
+            }
             if (transientDuringStablePair && captures == 2) transient = null
             return image
         }
@@ -606,6 +732,7 @@ class NativeRegionCaptureTest {
         fun captureWizard(output: Path): JsonObject {
             windows += nativeWindow(0x2A, pid = 700, className = "MsiDialogCloseClass", title = "vpn-control Setup",
                 bounds = RegionRect(393, 181, 886, 567))
+            children.putIfAbsent(WIZARD, WIZARD_BUTTONS)
             val engine = RegionCaptureEngine(this, "windows", sessionJson())
             val part = engine.placeWindow(
                 "windows-msi", "installer-wizard",
@@ -615,6 +742,38 @@ class NativeRegionCaptureTest {
             )
             windows.add(0, nativeWindow(0x2B, pid = 100, title = "backdrop", bounds = part.rect.expanded(WindowsRegionScenes.BACKDROP_MARGIN)))
             return engine.capture("windows-msi", output, listOf(part.copy(backdropHandle = 0x2B)), part.targetHandle)
+        }
+
+        /** The import dialog of this process, owned by the application window, sized canonically. */
+        fun captureDialog(output: Path): JsonObject {
+            windows += nativeWindow(DIALOG, className = "#32770", title = DIALOG_TITLE, bounds = RegionRect(15, 31, 571, 447), owner = 0x400)
+            children.putIfAbsent(DIALOG, DIALOG_BUTTONS)
+            val engine = RegionCaptureEngine(this, "windows", sessionJson())
+            val part = engine.placeWindow(
+                "windows-open-dialog", "file-dialog",
+                TargetRule("file-dialog", processId = 100, className = "#32770", title = DIALOG_TITLE, ownerHandle = 0x400),
+                WindowsRegionScenes.fileDialog,
+                { handle, move, _ -> moveWindow(handle, move.windowRect) },
+            )
+            windows.add(0, nativeWindow(0x41, pid = 100, title = "backdrop", bounds = part.rect.expanded(WindowsRegionScenes.BACKDROP_MARGIN)))
+            return engine.capture("windows-open-dialog", output, listOf(part.copy(backdropHandle = 0x41)), part.targetHandle)
+        }
+
+        private fun paintWizard(image: BufferedImage, bounds: RegionRect) {
+            if (captures < wizardPaintsFromCapture) return
+            if (wizardClientPainted) {
+                paintFramed(image, bounds, WIZARD_RGB)
+            } else {
+                fill(image, RegionRect(bounds.left, bounds.top, bounds.right, bounds.top + CAPTION), CAPTION_RGB)
+                fill(image, RegionRect(bounds.left, bounds.top + CAPTION, bounds.right, bounds.bottom), 0xFFFFFF)
+            }
+        }
+
+        /** A caption band that DWM draws above a client area showing a line of text. */
+        private fun paintFramed(image: BufferedImage, bounds: RegionRect, rgb: Int) {
+            fill(image, RegionRect(bounds.left, bounds.top, bounds.right, bounds.top + CAPTION), CAPTION_RGB)
+            fill(image, RegionRect(bounds.left, bounds.top + CAPTION, bounds.right, bounds.bottom), rgb)
+            fill(image, RegionRect.sized(bounds.left + 40, bounds.top + 30, 120, 6), TEXT_RGB)
         }
 
         fun captureTray(output: Path): JsonObject {
@@ -665,9 +824,29 @@ class NativeRegionCaptureTest {
 
     private companion object {
         const val WIZARD_RGB = 0xF3F3F3
+        const val DIALOG_RGB = 0xF5F6F7
+        const val CAPTION_RGB = 0xDDE3EA
+        const val TEXT_RGB = 0x1B1B1B
         const val MENU_RGB = 0x121F2D
         const val ICON_RGB = 0x2A8FD0
         const val TOOLTIP_RGB = 0xFFFFE1
+        const val CAPTION = 8
+        const val WIZARD = 0x2AL
+        const val DIALOG = 0x40L
+        const val DIALOG_TITLE = "Import VPN Control configuration"
+        val FRAMED_TITLES = setOf("vpn-control Setup", DIALOG_TITLE)
+        val WIZARD_BUTTONS = listOf(
+            NativeControl(0x2A01, "Button", "&Back", 700, true),
+            NativeControl(0x2A02, "Button", "&Next", 701, true),
+            NativeControl(0x2A03, "Button", "Cancel", 702, true),
+            NativeControl(0x2A04, "Static", "Welcome to the vpn-control Setup Wizard", 703, true),
+        )
+        val DIALOG_BUTTONS = listOf(
+            NativeControl(0x4001, "Button", "&Open", 1, true),
+            NativeControl(0x4002, "Button", "Cancel", 2, true),
+            NativeControl(0x4003, "Button", "&Help", 0x40E, false),
+            NativeControl(0x4004, "ComboBoxEx32", "", 0x47C, true),
+        )
         val ICON_RECT = RegionRect(1092, 756, 1116, 796)
         const val GOLDEN_TRAY_RECORD = "scripts/testdata/visual_region/windows-tray-connected.region.json"
     }

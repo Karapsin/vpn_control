@@ -202,19 +202,29 @@ stacked above its own backdrop (the image would be the flat backdrop). The censu
 the first capture, after every capture and after the last one, so a window shown only while the
 published pair was taken is refused as well. The hosted paging-file `System Properties` warning is still dismissed first and refuses a
 scene only where it overlaps a region. The image is published once two consecutive captures of the
-region are identical, within 20 captures 250 ms apart; no fixed sleep is the readiness signal.
+region are identical and painted, within 20 captures 250 ms apart; no fixed sleep is the readiness signal.
+
+A quiet frame is not a ready target. Before the stable-frame loop (up to 12 checks 250 ms apart)
+and again before publishing, every part's window must answer: `IsHungAppWindow` is false and a
+`WM_NULL` `SendMessageTimeout` with `SMTO_ABORTIFHUNG` returns within 2 s (`target-not-responding`;
+for the notification icon this is the taskbar). File dialogs must show their `IDOK` and `IDCANCEL`
+buttons, and the installer wizard its Next and Cancel buttons, in the native child-window census
+(`target-controls-missing`, whose detail lists that census). A pair in which a part's region, or a
+window's client area, is one flat colour (for example only the `#404040` backdrop) has not painted:
+the loop keeps capturing and refuses `target-not-painted` if it ends on such a pair.
 
 Each scene writes `<scene>.png` (compared), `<scene>.frame.png` (the full screen of the same moment,
 never compared) and `<scene>.region.json` (target identity, rectangle, image offset, canonical
-placement, backdrop, stable-frame attempts, occlusion checks, cursor, foreground and focus, session
-settings). `capture-local` checks the record, the fixed stacked layout, and that every part equals
+placement, backdrop, stable-frame attempts, occlusion checks, readiness checks, cursor, foreground
+and focus, session settings). `capture-local` checks the record, the fixed stacked layout, and that every part equals
 its rectangle in the frame, then stamps both files' hashes and the record into
 `capture-<provider>.json`; `verify` refuses a
 Windows OS-owned scene without that evidence. A refused scene keeps `<scene>.frame.png`, the full
 screen at the moment of refusal taken before the scene closes its surfaces, and
 `<scene>.refusal.json` with its named reason: `non-canonical-display`, `target-missing`,
 `target-ambiguous`, `placement-not-converged`, `outside-work-area`, `target-not-foreground`,
-`cursor-not-parked`, `occluded`, `target-moved`, `unstable-frame`, `tray-icon-unavailable`,
+`cursor-not-parked`, `occluded`, `target-moved`, `unstable-frame`, `target-not-responding`,
+`target-not-painted`, `target-controls-missing`, `tray-icon-unavailable`,
 `session-setting-failed` (its records name the shared `capture-session.frame.png`) or
 `secure-desktop-not-capturable`. A refusal is an
 `infrastructure_failure` unless its kept frame shows a product defect, for example an installer

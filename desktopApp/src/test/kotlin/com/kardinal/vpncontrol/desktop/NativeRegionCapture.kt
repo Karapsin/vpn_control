@@ -26,6 +26,13 @@ internal const val REGION_STABLE_INTERVAL_MILLIS = 250L
 /** The full frame of a capture session that could not be applied; every scene's refusal names it. */
 internal const val SESSION_REFUSAL_FRAME = "capture-session.frame.png"
 
+/** Readiness checks before the stable-frame loop, [REGION_READY_INTERVAL_MILLIS] apart. */
+internal const val REGION_READY_MAX_POLLS = 12
+internal const val REGION_READY_INTERVAL_MILLIS = 250L
+
+/** Bound of the WM_NULL round trip that shows a target window's thread is answering. */
+internal const val REGION_RESPONSE_TIMEOUT_MILLIS = 2_000
+
 /** Named infrastructure-failure reasons of a refused region capture. */
 internal enum class RegionCaptureRefusal(val reason: String) {
     NON_CANONICAL_DISPLAY("non-canonical-display"),
@@ -38,6 +45,9 @@ internal enum class RegionCaptureRefusal(val reason: String) {
     OCCLUDED("occluded"),
     TARGET_MOVED("target-moved"),
     UNSTABLE_FRAME("unstable-frame"),
+    TARGET_NOT_RESPONDING("target-not-responding"),
+    TARGET_NOT_PAINTED("target-not-painted"),
+    CONTROLS_MISSING("target-controls-missing"),
     TRAY_ICON_UNAVAILABLE("tray-icon-unavailable"),
     SESSION_SETTING_FAILED("session-setting-failed"),
     SECURE_DESKTOP("secure-desktop-not-capturable"),
@@ -70,6 +80,10 @@ internal data class RegionRect(val left: Int, val top: Int, val right: Int, val 
     fun contains(x: Int, y: Int): Boolean = x >= left && x < right && y >= top && y < bottom
 
     fun expanded(margin: Int): RegionRect = RegionRect(left - margin, top - margin, right + margin, bottom + margin)
+
+    /** The overlap of both rectangles; empty when they do not intersect. */
+    fun intersect(other: RegionRect): RegionRect =
+        RegionRect(maxOf(left, other.left), maxOf(top, other.top), minOf(right, other.right), minOf(bottom, other.bottom))
 
     fun json(): JsonArray = JsonArray(listOf(left, top, right, bottom).map { JsonPrimitive(it) })
 
@@ -316,28 +330,93 @@ internal fun requireUnoccluded(sceneId: String, phase: String, census: List<Nati
 
 internal class StableFrame<T>(val frame: T, val attempts: Int)
 
-/** Captures until two consecutive captures are identical; the second of that pair is published. */
+/**
+ * Captures until two consecutive captures are identical and the later one has painted
+ * ([unpainted] returns null); that later capture is published. An identical pair that has not
+ * painted keeps the loop capturing, and is refused as target-not-painted if the loop ends on one.
+ */
 internal fun <T> awaitStableFrame(
     sceneId: String,
     maxAttempts: Int,
     capture: () -> T,
     identical: (T, T) -> Boolean,
+    unpainted: (T) -> String? = { null },
     pause: () -> Unit,
 ): StableFrame<T> {
     require(maxAttempts >= 2) { "a stable frame needs at least two captures" }
     var previous = capture()
+    var flat: String? = null
     for (attempt in 2..maxAttempts) {
         pause()
         val current = capture()
-        if (identical(previous, current)) return StableFrame(current, attempt)
+        if (identical(previous, current)) {
+            flat = unpainted(current) ?: return StableFrame(current, attempt)
+        } else {
+            flat = null
+        }
         previous = current
     }
+    flat?.let { refuseRegion(sceneId, RegionCaptureRefusal.TARGET_NOT_PAINTED, "$it in all $maxAttempts captures") }
     refuseRegion(
         sceneId,
         RegionCaptureRefusal.UNSTABLE_FRAME,
         "no two consecutive region captures were identical in $maxAttempts attempts",
     )
 }
+
+/** The single colour of [rect] in [frame], or null when the rectangle shows more than one colour. */
+internal fun flatColour(frame: BufferedImage, screen: RegionRect, rect: RegionRect): Int? {
+    require(screen.contains(rect)) { "rect $rect lies outside the captured screen $screen" }
+    val pixels = frame.getRGB(rect.left - screen.left, rect.top - screen.top, rect.width, rect.height, null, 0, rect.width)
+    val first = pixels[0] and 0xFFFFFF
+    return if (pixels.all { (it and 0xFFFFFF) == first }) first else null
+}
+
+internal fun rgbHex(rgb: Int): String = "#%06X".format(rgb and 0xFFFFFF)
+
+/** One descendant window of a target, from its native child-window census. */
+internal data class NativeControl(
+    val handle: Long,
+    val className: String,
+    val text: String,
+    val controlId: Int,
+    val visible: Boolean,
+) {
+    fun describe(): String = "$className id=$controlId '$text'" + if (visible) "" else " (hidden)"
+}
+
+/** A visible child control a dialog must show: its window class plus its control ID or caption. */
+internal data class ControlRule(
+    val label: String,
+    val className: String,
+    val controlId: Int? = null,
+    val caption: String? = null,
+) {
+    init {
+        require((controlId == null) != (caption == null)) { "a control rule names either a control ID or a caption" }
+    }
+
+    /** Captions compare without their access-key ampersand ("&Next" is Next). */
+    fun matches(control: NativeControl): Boolean =
+        control.visible && control.className.equals(className, ignoreCase = true) &&
+            (controlId == null || control.controlId == controlId) &&
+            (caption == null || control.text.replace("&", "").trim().equals(caption, ignoreCase = true))
+
+    fun describe(): String = "$label ($className ${controlId?.let { "id=$it" } ?: "'$caption'"})"
+}
+
+/**
+ * What must hold for a part before the stable-frame loop and again before its image is published.
+ * Two identical captures show only that nothing changed, not that the target is ready.
+ */
+internal data class PartReadiness(
+    /** The window's thread answers: IsHungAppWindow is false and WM_NULL returns within the bound. */
+    val responsive: Boolean = true,
+    /** The window's client area, not only the frame DWM draws around it, shows more than one colour. */
+    val clientPainted: Boolean = true,
+    /** Visible child controls the native child-window census must show. */
+    val controls: List<ControlRule> = emptyList(),
+)
 
 internal data class PartOffset(val x: Int, val y: Int) {
     fun json(): JsonArray = JsonArray(listOf(JsonPrimitive(x), JsonPrimitive(y)))
@@ -575,6 +654,7 @@ internal fun regionRecord(
     maxAttempts: Int,
     intervalMillis: Long,
     occlusion: JsonObject,
+    readiness: JsonObject,
     cursor: Pair<Int, Int>,
     foreground: JsonObject,
     session: JsonObject,
@@ -608,6 +688,7 @@ internal fun regionRecord(
         put("interval_ms", intervalMillis)
     })
     put("occlusion", occlusion)
+    put("readiness", readiness)
     put("cursor", sizeJson(cursor.first, cursor.second))
     put("foreground", foreground)
     put("session", session)
@@ -644,6 +725,27 @@ internal object WindowsRegionScenes {
     /** Opaque capture backdrop beneath every window part: borders and translucent pixels blend with it. */
     const val BACKDROP_MARGIN = 16
     const val BACKDROP_RGB = 0x404040
+
+    /** The common file dialog's Open or Save button (IDOK) and its Cancel button (IDCANCEL). */
+    val fileDialogControls = listOf(
+        ControlRule("ok-button", "Button", controlId = 1),
+        ControlRule("cancel-button", "Button", controlId = 2),
+    )
+
+    /** WixUI's welcome page offers Next and Cancel; MSI assigns no fixed control IDs. */
+    val installerWizardControls = listOf(
+        ControlRule("next-button", "Button", caption = "Next"),
+        ControlRule("cancel-button", "Button", caption = "Cancel"),
+    )
+
+    /** Readiness each part role must show before its region is captured and again before it is published. */
+    fun readiness(role: String): PartReadiness = when (role) {
+        "file-dialog" -> PartReadiness(controls = fileDialogControls)
+        "installer-wizard" -> PartReadiness(controls = installerWizardControls)
+        // The icon's window is the taskbar: its thread must answer, but its client area is the whole bar.
+        "tray-icon" -> PartReadiness(clientPainted = false)
+        else -> PartReadiness()
+    }
 
     /** WixUI titles every wizard page "[ProductName] Setup". */
     const val INSTALLER_TITLE_SUFFIX = " Setup"

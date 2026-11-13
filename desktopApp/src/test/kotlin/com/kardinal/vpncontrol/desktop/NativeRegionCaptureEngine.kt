@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -13,8 +14,23 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
+/** Native probes of whether a located window is ready for its region to be published. */
+internal interface RegionReadinessProbes {
+    /** IsHungAppWindow: the window's thread has not taken a message for about five seconds. */
+    fun isHungAppWindow(handle: Long): Boolean
+
+    /** SendMessageTimeout(WM_NULL, SMTO_ABORTIFHUNG) returned within [timeoutMillis]. */
+    fun answersWithin(handle: Long, timeoutMillis: Int): Boolean
+
+    /** Every descendant window (EnumChildWindows) with its class, caption, control ID and visibility. */
+    fun childWindows(handle: Long): List<NativeControl>
+
+    /** The client rectangle in screen coordinates, or null when it cannot be read. */
+    fun clientArea(handle: Long): RegionRect?
+}
+
 /** Native desktop operations the region capture needs; WindowsRegionDesktop is the only real one. */
-internal interface RegionDesktop {
+internal interface RegionDesktop : RegionReadinessProbes {
     fun screen(): RegionRect
     fun workArea(): RegionRect
     fun scale(): Pair<Double, Double>
@@ -46,6 +62,7 @@ internal data class LocatedPart(
     val keyboardCues: Boolean,
     val current: () -> RegionRect?,
     val backdropHandle: Long? = null,
+    val readiness: PartReadiness = WindowsRegionScenes.readiness(role),
 ) {
     /** Everything stacked above the backdrop (or above the target without one) blends into the region. */
     val occlusion: OcclusionCheck
@@ -169,6 +186,11 @@ internal class RegionCaptureEngine(
             val residue = desktop.dismissHostedSystemProperties { desktop.pause(250) }
             val checks = parts.map { it.occlusion }
             requireUnoccluded(sceneId, "before", desktop.census(), checks)
+            // Two identical captures show only a quiet frame, not a ready target: before the loop
+            // and again before publishing, every part's thread must answer and its expected
+            // controls exist, and the published pair must have painted.
+            val readyPolls = awaitReady(sceneId, parts)
+            val clients = parts.map { clientRegion(sceneId, it) }
             val layout = stackLayout(parts.map { it.rect.width to it.rect.height })
             val stable = awaitStableFrame(
                 sceneId,
@@ -184,6 +206,7 @@ internal class RegionCaptureEngine(
                 },
                 identical = { first, second -> first.pixels.contentEquals(second.pixels) },
                 pause = { desktop.pause(REGION_STABLE_INTERVAL_MILLIS) },
+                unpainted = { captured -> unpainted(captured.frame, screen, parts, clients) },
             )
             requireUnoccluded(sceneId, "after", desktop.census(), checks)
             parts.forEach { part ->
@@ -195,6 +218,7 @@ internal class RegionCaptureEngine(
             if (desktop.foregroundHandle() != foregroundHandle) {
                 refuseRegion(sceneId, RegionCaptureRefusal.NOT_FOREGROUND, "foreground changed to ${hexHandle(desktop.foregroundHandle())} during capture")
             }
+            val ready = parts.map { requireReady(sceneId, it, "before publishing") }
             val record = regionRecord(
                 platform = platform,
                 sceneId = sceneId,
@@ -209,6 +233,15 @@ internal class RegionCaptureEngine(
                 maxAttempts = REGION_STABLE_MAX_ATTEMPTS,
                 intervalMillis = REGION_STABLE_INTERVAL_MILLIS,
                 occlusion = occlusionJson(checks),
+                readiness = buildJsonObject {
+                    put("phases", JsonArray(listOf(JsonPrimitive("before-stable-frame"), JsonPrimitive("before-publish"))))
+                    put("polls", readyPolls)
+                    put("max_polls", REGION_READY_MAX_POLLS)
+                    put("response_timeout_ms", REGION_RESPONSE_TIMEOUT_MILLIS)
+                    put("parts", JsonArray(ready.mapIndexed { index, evidence ->
+                        JsonObject(evidence + ("client_area" to (clients[index]?.json() ?: JsonNull)) + ("painted" to JsonPrimitive(true)))
+                    }))
+                },
                 cursor = cursor,
                 foreground = buildJsonObject {
                     put("handle", hexHandle(foregroundHandle))
@@ -229,6 +262,90 @@ internal class RegionCaptureEngine(
             throw refusal
         }
     }
+
+    /**
+     * Evidence that [part] is ready now, or the named refusal of the first check it fails: its
+     * thread answers (not hung, WM_NULL within the bound) and its expected child controls show.
+     */
+    private fun requireReady(sceneId: String, part: LocatedPart, phase: String): JsonObject {
+        val rule = part.readiness
+        val window = "${part.role} ${hexHandle(part.targetHandle)}"
+        if (rule.responsive) {
+            if (desktop.isHungAppWindow(part.targetHandle)) {
+                refuseRegion(sceneId, RegionCaptureRefusal.TARGET_NOT_RESPONDING, "$window is hung (IsHungAppWindow) $phase")
+            }
+            if (!desktop.answersWithin(part.targetHandle, REGION_RESPONSE_TIMEOUT_MILLIS)) {
+                refuseRegion(
+                    sceneId, RegionCaptureRefusal.TARGET_NOT_RESPONDING,
+                    "$window did not answer WM_NULL within $REGION_RESPONSE_TIMEOUT_MILLIS ms $phase",
+                )
+            }
+        }
+        val controls = if (rule.controls.isEmpty()) emptyList() else {
+            val census = desktop.childWindows(part.targetHandle)
+            val missing = rule.controls.filter { wanted -> census.none(wanted::matches) }
+            if (missing.isNotEmpty()) {
+                refuseRegion(
+                    sceneId, RegionCaptureRefusal.CONTROLS_MISSING,
+                    "$window lacks ${missing.joinToString { it.describe() }} $phase; its child windows: " +
+                        census.joinToString("; ") { it.describe() }.ifEmpty { "none" },
+                )
+            }
+            rule.controls.map { wanted -> census.first(wanted::matches) }
+        }
+        return buildJsonObject {
+            put("role", part.role)
+            put("responsive", rule.responsive)
+            put("controls", JsonArray(controls.map { JsonPrimitive(it.describe()) }))
+        }
+    }
+
+    /** Bounded wait until every part is ready; returns the number of checks it took. */
+    private fun awaitReady(sceneId: String, parts: List<LocatedPart>): Int {
+        for (poll in 1 until REGION_READY_MAX_POLLS) {
+            val ready = try {
+                parts.forEach { requireReady(sceneId, it, "before the stable-frame loop") }
+                true
+            } catch (notYet: RegionCaptureRefusedException) {
+                false
+            }
+            if (ready) return poll
+            desktop.pause(REGION_READY_INTERVAL_MILLIS)
+        }
+        val phase = "before the stable-frame loop after $REGION_READY_MAX_POLLS checks $REGION_READY_INTERVAL_MILLIS ms apart"
+        parts.forEach { requireReady(sceneId, it, phase) }
+        return REGION_READY_MAX_POLLS
+    }
+
+    /** A window part's client area inside its region: the window must paint it, not only DWM its frame. */
+    private fun clientRegion(sceneId: String, part: LocatedPart): RegionRect? {
+        if (!part.readiness.clientPainted) return null
+        val client = desktop.clientArea(part.targetHandle)?.intersect(part.rect)
+        if (client == null || client.isEmpty) {
+            refuseRegion(
+                sceneId, RegionCaptureRefusal.TARGET_NOT_PAINTED,
+                "${part.role} ${hexHandle(part.targetHandle)} has no client area inside its region ${part.rect}",
+            )
+        }
+        return client
+    }
+
+    /** Why a capture has not painted, or null: no part's region and no window's client area is one flat colour. */
+    private fun unpainted(frame: BufferedImage, screen: RegionRect, parts: List<LocatedPart>, clients: List<RegionRect?>): String? {
+        parts.forEachIndexed { index, part ->
+            flatColour(frame, screen, part.rect)?.let { return "${part.role} region ${part.rect} is entirely ${flatColourName(it, part)}" }
+            val client = clients[index] ?: return@forEachIndexed
+            flatColour(frame, screen, client)?.let { return "${part.role} client area $client is entirely ${flatColourName(it, part)}" }
+        }
+        return null
+    }
+
+    private fun flatColourName(rgb: Int, part: LocatedPart): String =
+        if (part.backdropHandle != null && rgb == WindowsRegionScenes.BACKDROP_RGB) {
+            "the capture backdrop colour ${rgbHex(rgb)}"
+        } else {
+            "one colour ${rgbHex(rgb)}"
+        }
 
     private fun placementWithBackdrop(part: LocatedPart): JsonObject = JsonObject(
         part.placement + ("backdrop" to if (part.backdropHandle == null) JsonNull else buildJsonObject {

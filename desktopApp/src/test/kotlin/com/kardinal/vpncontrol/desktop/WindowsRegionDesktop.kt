@@ -45,6 +45,9 @@ internal interface VisualUserLibrary : StdCallLibrary {
     fun GetCaretBlinkTime(): Int
     fun SetCaretBlinkTime(milliseconds: Int): Boolean
     fun IsChild(parent: WinDef.HWND, window: WinDef.HWND): Boolean
+    fun IsHungAppWindow(window: WinDef.HWND): Boolean
+    fun GetDlgCtrlID(window: WinDef.HWND): Int
+    fun ClientToScreen(window: WinDef.HWND, point: WinDef.POINT): Boolean
     fun SendMessageTimeout(
         window: WinDef.HWND,
         message: Int,
@@ -115,19 +118,47 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
 
     override fun window(handle: Long): NativeWindow? = describe(hwnd(handle))
 
+    private fun className(window: WinDef.HWND): String {
+        val buffer = CharArray(256)
+        return String(buffer, 0, user32.GetClassName(window, buffer, buffer.size).coerceAtLeast(0))
+    }
+
+    private fun windowText(window: WinDef.HWND): String {
+        val length = user32.GetWindowTextLength(window)
+        if (length <= 0) return ""
+        val buffer = CharArray(length + 1)
+        return String(buffer, 0, user32.GetWindowText(window, buffer, buffer.size).coerceAtLeast(0))
+    }
+
+    override fun isHungAppWindow(handle: Long): Boolean = user.IsHungAppWindow(hwnd(handle))
+
+    /** A WM_NULL round trip through the window's thread; SMTO_ABORTIFHUNG returns at once for a hung one. */
+    override fun answersWithin(handle: Long, timeoutMillis: Int): Boolean =
+        user32.SendMessageTimeout(
+            hwnd(handle), WM_NULL, WinDef.WPARAM(0), WinDef.LPARAM(0), SMTO_ABORTIFHUNG, timeoutMillis, WinDef.DWORDByReference(),
+        ).toLong() != 0L
+
+    override fun childWindows(handle: Long): List<NativeControl> {
+        val children = mutableListOf<WinDef.HWND>()
+        user32.EnumChildWindows(hwnd(handle), WinUser.WNDENUMPROC { child, _ -> children += child; true }, null)
+        return children.map { child ->
+            NativeControl(handleOf(child), className(child), windowText(child), user.GetDlgCtrlID(child), user32.IsWindowVisible(child))
+        }
+    }
+
+    override fun clientArea(handle: Long): RegionRect? {
+        val window = hwnd(handle)
+        val client = WinDef.RECT()
+        val origin = WinDef.POINT(0, 0)
+        if (!user32.GetClientRect(window, client) || !user.ClientToScreen(window, origin)) return null
+        return RegionRect(origin.x + client.left, origin.y + client.top, origin.x + client.right, origin.y + client.bottom)
+    }
+
     private fun describe(window: WinDef.HWND): NativeWindow? {
         if (!user32.IsWindow(window)) return null
         val process = IntByReference()
         user32.GetWindowThreadProcessId(window, process)
-        val classBuffer = CharArray(256)
-        val classLength = user32.GetClassName(window, classBuffer, classBuffer.size).coerceAtLeast(0)
-        val titleLength = user32.GetWindowTextLength(window)
-        val title = if (titleLength > 0) {
-            val buffer = CharArray(titleLength + 1)
-            String(buffer, 0, user32.GetWindowText(window, buffer, buffer.size).coerceAtLeast(0))
-        } else {
-            ""
-        }
+        val title = windowText(window)
         val visible = user32.IsWindowVisible(window)
         val style = user32.GetWindowLong(window, WinUser.GWL_STYLE)
         val windowRect = WinDef.RECT().also { user32.GetWindowRect(window, it) }.region()
@@ -147,7 +178,7 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
         return NativeWindow(
             handle = handleOf(window),
             processId = process.value,
-            className = String(classBuffer, 0, classLength),
+            className = className(window),
             title = title,
             visible = visible,
             cloaked = cloaked,
@@ -400,6 +431,7 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
         private const val SWP_NOZORDER = 0x0004
         private const val SWP_NOACTIVATE = 0x0010
         private const val SWP_NOOWNERZORDER = 0x0200
+        private const val WM_NULL = 0x0000
         private const val WM_SETTINGCHANGE = 0x001A
         private const val WM_UPDATEUISTATE = 0x0128
         private const val UIS_CLEAR = 2

@@ -218,7 +218,10 @@ dialog refuses only where it covers the region (before any image is published),
 a backdrop left above its target and a window shown only while the published pair
 was taken are refused as occluded, and caret-like changes, lost foreground or focus,
 unconverged placement, ambiguous or missing targets and unstable icons are refused
-with named reasons; a refusal keeps the frame of its own moment, not the desktop
+with named reasons. A stable pair is not taken as readiness: a hung or silent
+target (before the loop or only while the pair was taken), a region that is only
+the backdrop or a flat client area, and a dialog or wizard without its expected
+child controls are refused, not published. A refusal keeps the frame of its own moment, not the desktop
 left after the scene closed its surfaces, and a capture session that cannot be
 applied refuses every requested scene with `session-setting-failed` beside one
 full frame instead of ending the task with only a log line. It also pins
