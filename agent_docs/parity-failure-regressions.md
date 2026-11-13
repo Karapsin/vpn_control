@@ -1861,10 +1861,11 @@ taken by the transfer pins, the installer store's ancestry and witnesses and the
 deny writers: the coordinator's readiness probe (`TryReady`, a write open of each image) and the
 elevated launch of a digest-checked helper rely on that. `READ`, `PINNED_READ` and the private transfer
 folder's `DELETE` handle are unchanged. The old comment that folder pins denied reparse mutation was
-wrong: `FSCTL_SET_REPARSE_POINT` needs only `FILE_WRITE_ATTRIBUTES` ([MS-FSA] 2.1.5.10.37), which takes
-no part in sharing. A pinned folder keeps its identity because it cannot be renamed or deleted and,
-kept non-empty by its retained child or witness, cannot become a junction. Logs, JUnit reports and the
-RED tree are under `.runtime/transfer-pins/` of the fix clone (`builders/fix-transfer-pins`).
+half right: `FSCTL_SET_REPARSE_POINT` accepts `FILE_WRITE_ATTRIBUTES`, which takes no part in sharing,
+or `FILE_WRITE_DATA` ([MS-FSA] 2.1.5.10.37), which a pin denying write sharing refused and a pin sharing
+writes admits (the hardening below). A pinned folder keeps its identity because it cannot be renamed or
+deleted and, kept non-empty by its retained child or witness, cannot become a junction. Logs, JUnit
+reports and the RED tree are under `.runtime/transfer-pins/` of the fix clone (`builders/fix-transfer-pins`).
 
 | Failure type | Regression | Notes |
 | --- | --- | --- |
@@ -1891,6 +1892,36 @@ writes, are unchanged. No native pin relied on denied write sharing of a folder:
 in the protected store, and every publication into a user folder creates its file exclusively and renames by
 leaf without replacement, which opens no folder. The JVM's twin of `PinParents`,
 `DesktopWindowsResourceAdmission` (missed by the change above), now shares writes as well.
+
+The review of these changes (pins-security, confirmed by two skeptics) found the price of sharing writes
+(`builders/fix-pins-hardening`, logs, JUnit reports and mutant overlays under its `.runtime/pins-hardening/`).
+A pin that shares writes also admits another principal's `FILE_ADD_FILE` open of the folder, which is
+`FILE_WRITE_DATA`, and `FSCTL_SET_REPARSE_POINT` accepts `FILE_WRITE_DATA` as it accepts
+`FILE_WRITE_ATTRIBUTES`. The ancestor policies still took another principal's `FILE_ADD_FILE` for harmless
+child creation and asked for a witness only for attribute or EA writes, and the last folder of a transfer pin
+chain (the spool parent, an export's folder) holds no product child until the product creates one by path. A
+local user granted `FILE_ADD_FILE` on an empty export folder (a drop box) or spool parent (`C:\Windows\Temp`
+for a CLI run as SYSTEM) could make it a junction between the pins and the creation, and the transfer folder
+or export partial was created, and the export published, in that user's folder; the share-read pins of
+`529cc610` had refused that open. Two independent layers close it. `WindowsInstallTrust`,
+`VpnInstallNative.ValidateSecurityDescriptor` and the VPN broker runtime's `VerifyDirectory` admit another
+principal's `FILE_ADD_FILE`, attribute or EA writes on a pinned folder only beside a retained witness;
+`FILE_ADD_SUBDIRECTORY` alone stays harmless (`C:\` grants it to Authenticated Users). An empty last folder
+that grants them fails closed (`Transfer folder is empty and writable by another account`), while per-user
+folders (`%TEMP%`, `%LOCALAPPDATA%`, the home folder) grant no such right and keep their share-write pins with
+no witness. And what the product creates by path in a pinned folder is proven by handle to be its child, the
+folder still no reparse point, before it is used, or it is deleted and the operation fails:
+`DesktopWindowsTransferPins.requireLinkedChild` after the private transfer folder and after an export's
+partial, and `Linked` in the broker's runtime resource publication, whose `PinParents` checks no ACL. The
+helpers' other creations are in folders no other principal can write (the installer store and job folders,
+the broker's private stage, the original user's private input folder) or already prove their linkage
+(`InspectLinkedAncestor`, the stage's final path). The review's second finding, `DesktopWindowsResourceAdmission`
+denying write sharing, was fixed by `e0dcfcb9` on every folder it holds; it creates nothing by path.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| Folder pins sharing writes let another principal granted `FILE_ADD_FILE` turn an empty pinned last folder (a transfer's spool parent, an export's folder) into a junction between the pins and the product's creation by path, which then landed in that principal's folder | `DesktopWindowsPinSharingTest` (`anotherUserCannotRedirectATransferOutOfAnEmptyPinnedFolderThroughAJunction`, `aFolderGrantingAnotherPrincipalAddFileIsPinnedOnlyWhileAWitnessKeepsItNonEmpty`, `aTransferFolderCreatedByPathIsProvenInsideThePinnedFolderOrDeleted`), `DesktopWindowsTransferPinsTest.aPrivateDirectoryCreatedOutsideThePinnedFolderIsDeletedAndRefused`, `DesktopWindowsInstallJobBackendTest.unrelatedAncestorChildCreationIsAllowedButProductDirectoryMutationIsNot`, `DesktopWindowsExportPinSharingTest` (3 tests); Windows-only: `DesktopWindowsPinnedFolderJunctionNativeTest` (3 tests) | `SharingVolume` models mount points: another principal's open with only the rights its DACL grants, `FSCTL_SET_REPARSE_POINT` with `FILE_WRITE_DATA` or `FILE_WRITE_ATTRIBUTES` on an empty folder, path resolution through mount points, and a hook as the product creates by path. The race is a drop box granting Users `0x1200AF` and an emptied `C:\Windows\Temp` (Users `0x100026`, the CLI as SYSTEM). RED on `480700c8`'s product bytes with the final test bytes (the two files that need the fix's `WindowsExportNative` seam set aside): 4 classes, 38 tests, 5 of these failures; the drop box race left the transfer folder in `C:\Users\mallory\hideout` while the product reported `C:\drop`. The export tests' RED is the fix with the policy and both linkage checks put back to `480700c8`'s behaviour: 34 tests, 8 failures, the export reporting success while `routing.json` was published in `C:\Users\mallory\hideout`. One layer removed at a time, each mutant fails its own tests while the race tests still pass through the other layer: `FILE_ADD_FILE` harmless again 3 failures (the witness rule, the trust policy, the drop box export's retained entry); no linkage after the private folder 2, after the export's partial 1; no recheck of the pinned folder 1; an unlinked folder kept 2. GREEN: 72 focused classes (`DesktopWindows*` and the export, transfer, endpoint, correlation and installer consumers), 473 tests, 0 failures (100 Windows-only skipped). Native only: a `FILE_WRITE_DATA` handle setting a mount point on an empty folder the product pins (32 under the old share-read pin, 145 once the folder holds an entry), `createDirectory` and an export racing a real junction, in the Windows package workflow's `:desktopApp:test`. |
+| The native helpers' ancestor policies admitted another principal's `FILE_ADD_FILE` on a pinned folder without a witness, and the broker's runtime resource publication wrote its temporary, created by path in a folder `PinParents` holds sharing writes, before proving it was there | `DesktopWindowsNativeHelperPinSharingTest` (`theHelpersAdmitAnotherPrincipalsAddFileOnAPinnedFolderOnlyBesideANonEmptyWitness`, `aRuntimeResourcePublicationProvesItsTemporaryIsInThePinnedFolderBeforeWritingIt`); Windows-only: the `Linked` case of `windows-native-pin-sharing-probe.ps1` (`DesktopWindowsNativeHelperPinSharingNativeTest`) | No C# compiler on the Mac: the test evaluates both policies' ancestor rights with and without a witness, and reads `Publish` and `Linked`. RED on `480700c8`'s C# sources: 2 failures in that class (both policies admit `FILE_ADD_FILE` without a witness; `Publish` proves nothing); the same with those sources as a classpath overlay of the compiled test. Six source mutants, each failing the intended test once: either policy admitting `FILE_ADD_FILE` without a witness, the broker refusing it beside one (`C:\ProgramData`), `Publish` without `Linked`, `Linked` keeping the child or skipping the folder's recheck. `windows-install-native.cs` changed by one character: its compressed command lines keep 29224 (LF) and 29272 (CRLF) of 30000 characters. Native only: compilation and the probe's junction case in the Windows package workflow. |
 
 ## Historical coverage rule
 
