@@ -153,6 +153,10 @@ def run_update(owner, cases, harness):
                      for name in ("caller_hold.py", "hold_protocol.py")]
     require(all(value != app and app not in value.parents and value not in app.parents
                 for value in internal), "dedicated-driver-and-hold-outside-retiring-app-role")
+    # The installed base's own --version under this ordinary token, before any update state or hold: what the
+    # host job's installed-package claim of a row that ends with that base rests on (the request's productVersion
+    # is the base version). A row that ends with its target has the case ask the target after the update.
+    installed_version(owner)
     hold = update_hold(owner, inputs, harness.SYSTEM_COLLECTOR_CLOSE_HOLD)
     try:
         result = cases.run_update(owner, harness.__dict__)
@@ -304,7 +308,7 @@ def installed_version(owner):
 
     The owner's own static probe, which its dedicated route does not reach. The host job
     claims installed-package only for a passed row, so a launcher that reports another
-    version ends the row 1 before its runtime starts.
+    version ends the row 1 before its runtime starts or its update begins.
     """
     workspace = Path(owner.request["workspace"])
     for label, argv, text in (("help", ["--help"], "Usage:"),

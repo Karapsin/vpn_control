@@ -22,6 +22,7 @@ from agent_tools import native_artifact_registry as registry
 from agent_tools import native_scenario_execution as execution
 from agent_tools import native_scenario_windows as windows
 from agent_tools import windows_scenario_host_job as host_job
+from agent_tools.windows_public_updater import update_cases
 
 MACHINE = "33333333-4444-4555-8666-777777777777"
 OTHER_MACHINE = "33333333-4444-4555-8666-888888888888"
@@ -75,6 +76,7 @@ class FakeDriver:
 
     def __init__(self, case):
         self.case, self.outcomes = case, {}
+        self.extra = {}  # Receipt fields a row's job wrote beyond these (an install's record, an update's names and claim).
 
     @staticmethod
     def identity(plan):
@@ -124,6 +126,7 @@ class FakeDriver:
         if document:  # As the job's _finish adds it: the row's variant and what its probe showed (None: never served).
             receipt["document"] = {"variant": document["variant"],
                                    "principal": PROBE.get(kind, probe_outcome() if kind == "passed" else None) if document["principalProbe"] else None}
+        receipt.update(json.loads(json.dumps(self.extra.get(plan.correlation_id, {}))))
         raw = (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode()
         return windows.NativeScenarioWindowsDriver(self.case.root, lambda value: self.case.root)._summary(
             plan, raw, {"schemaVersion": 1, "operationId": plan.correlation_id, "exitCode": code})
@@ -163,19 +166,24 @@ class MatrixBase(unittest.TestCase):
         self.packages[artifact] = digest
         return artifact
 
-    def row(self, scenario, route="direct", kind="passed", *, target=None, source=None, machine=MACHINE):
+    def row(self, scenario, route="direct", kind="passed", *, target=None, source=None, machine=MACHINE, extra=None, value=None,
+            artifacts=None):
+        """One run journaled by the real executor; extra, value and artifacts add receipt fields, input fields and artifact IDs."""
         correlation = str(uuid.uuid4())
         recipe = windows.RECIPES[scenario]
-        artifacts = {"bundleManifest": "sha256-" + self.bundle_hash}
+        named = {"bundleManifest": "sha256-" + self.bundle_hash}
         if "scenarioInput" in recipe["artifactKeys"]:
-            value = {"schema": windows.INPUT_SCHEMA, "schemaVersion": 1, "scenarioId": scenario, "correlationId": correlation,
-                     "deploymentId": machine, "sourceSha": source or self.source, "productVersion": "2.2.17", "artifactSetId": self.set_id,
-                     "priorInstall": self.prior if recipe["priorInstall"] else None}
-            artifacts["scenarioInput"] = self.register(json.dumps(value, sort_keys=True).encode(), "input.json", "scenario-input")
+            fields = {"schema": windows.INPUT_SCHEMA, "schemaVersion": 1, "scenarioId": scenario, "correlationId": correlation,
+                      "deploymentId": machine, "sourceSha": source or self.source, "productVersion": "2.2.17", "artifactSetId": self.set_id,
+                      "priorInstall": self.prior if recipe["priorInstall"] else None, **(value or {})}
+            named["scenarioInput"] = self.register(json.dumps(fields, sort_keys=True).encode(), "input.json", "scenario-input")
         for role in recipe["artifactKeys"]:
             if role in windows.PACKAGE_KINDS:
-                artifacts[role] = target or self.target
+                named[role] = target or self.target
+        artifacts = {**named, **(artifacts or {})}
         self.driver.outcomes[correlation] = kind
+        if extra is not None:
+            self.driver.extra[correlation] = extra
         self.executor.start({"scenarioId": scenario, "host": "fixture", "environment": machine, "bundleHash": self.bundle_hash,
                              "artifactIds": artifacts, "correlationId": correlation})
         if kind != "submitted":
@@ -556,6 +564,274 @@ class InputTests(MatrixBase):
         self.assertIn('"refused": "windows_matrix_incomplete:15"', stderr.getvalue())
 
 
+UPDATE = "windows-public-update."
+BASE_VERSION = "2.2.15"
+# The product and package codes the recorded S_B and S_T2 installs registered (c3da662a, c693352b): a real pair's, two of each.
+BASE_CODE, BASE_PACKAGE_CODE = "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}", "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}"
+TARGET_CODE, TARGET_PACKAGE_CODE = "{BC56AE4E-BF90-3BF6-9E5A-6599CE80CD3B}", "{BA63AD1C-479F-4ACD-B878-E62F8EA82FDC}"
+
+
+def ends(variant):
+    """The package a passed case of this variant leaves: the target only after a granted install that succeeded."""
+    return "target" if variant in update_cases.SUCCESS_VARIANTS else "base"
+
+
+def installed(digest, version, code, package_code, tree):
+    """What an installer row records of the install it left (host_job Job.stage_installed)."""
+    return {"packageSha256": digest, "productCode": code, "productVersion": version, "packageCode": package_code,
+            "treeSha256": tree, "treeFiles": 209}
+
+
+class UpdateBase(MatrixBase):
+    """One clone: the target's own install recorded its tree, then a reset installed the older base, of another source,
+    that every update row starts from. Each update row's input names both installs, as a real one does."""
+
+    def setUp(self):
+        super().setUp()
+        self.base = self.register(b"MSI base " * 2000, "vpn-control-2.2.15.msi", "desktop-package", "5" * 40)
+        self.fixture = self.register(b'{"testOnly": true}\n', "fixture-receipt.json", "desktop-update-fixture-receipt", self.source)
+        self.base_facts = installed(self.packages[self.base], BASE_VERSION, BASE_CODE, BASE_PACKAGE_CODE, "a" * 64)
+        self.target_facts = installed(self.packages[self.target], "2.2.17", TARGET_CODE, TARGET_PACKAGE_CODE, "b" * 64)
+        self.target_install = self.install("windows-msi-base-install", self.target, self.target_facts)
+        self.base_install = self.install("windows-msi-base-reset", self.base, self.base_facts)
+
+    def install(self, scenario, package, facts, *, machine=MACHINE, kind="passed"):
+        return self.row(scenario, "direct", kind, target=package, machine=machine, extra={"installed": facts})
+
+    def update(self, variant, route="direct", kind="passed", *, role="ends", change=None, value=None, machine=MACHINE):
+        """One update run as the fixed job records it: the base it found before its task, the two installs it names and the
+        package read installed after the task (role: its variant's own end unless named), claimed when it passed with its
+        variant's own. change edits the receipt fields first."""
+        role = ends(variant) if role == "ends" else role
+        after = {"base": self.base_facts, "target": self.target_facts}.get(role)
+        claim = kind == "passed" and role == ends(variant)
+        fields = {"installed": dict(self.base_facts),
+                  "update": {"variant": variant, "collectors": {}, "baseInstall": self.base_install, "targetInstall": self.target_install,
+                             "installedAfter": None if after is None else {"role": role, **after}},
+                  "windows": {"installedPackage": claim, "packageSha256": after["packageSha256"] if claim else None}}
+        if change is not None:
+            change(fields)
+        return self.row(UPDATE + variant, route, kind, machine=machine, extra=fields, artifacts={"fixtureReceipt": self.fixture},
+                        value={"priorInstall": self.base_install, "baseVersion": BASE_VERSION, "targetInstall": self.target_install,
+                               **(value or {})})
+
+    def classified(self, correlation):
+        return windows.matrix_review(self.root, "windows-installer-lifecycle", [correlation])["rows"][0]
+
+    def bound(self, installed_package, base=None):
+        return {"baseInstall": self.base_install, "basePackage": self.base if base is None else base, "targetInstall": self.target_install,
+                "installedPackage": installed_package}
+
+
+class UpdateRowTests(UpdateBase):
+    """GAP-UPD: the host job never claimed installed-package for an update row, so no update scenario could pass."""
+
+    def test_a_passed_update_run_counts_with_the_package_read_after_its_task(self):
+        for variant in windows.UPDATE_VARIANTS:
+            with self.subTest(variant=variant):
+                row = self.classified(self.update(variant))
+                self.assertEqual("passed", row["classification"])
+                self.assertEqual(self.bound(self.base if ends(variant) == "base" else self.target), row.get("update"),
+                                 "the record names the base install, its package, the target's install and what was left")
+
+    def test_the_update_scenarios_pass_matrix_status_once_their_rows_are_proven(self):
+        """Every installer-lifecycle scenario, and the four native-cli scenarios naming update rows, pass once each named
+        row has a proven direct and an MCP run on one package. Natively protected-storage-rejected always parks and the
+        fault, copy-lock, reconnect, second-administrator and cancel rows are refused at admission: only the matrix's own
+        rule is proven here."""
+        lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
+        rows = []
+        for name in sorted({name for names in lifecycle.values() for name in names}):
+            for route in ("direct", "mcp"):
+                if name.startswith(UPDATE):
+                    rows.append(self.update(name[len(UPDATE):], route))
+                else:  # The reboot pair of reconnect-off-preserved: a postboot names its preboot.
+                    rows.append(self.row(name, route, value={"priorPreboot": str(uuid.uuid4())} if name.endswith(".post") else None))
+        self.assertEqual({name: "passed" for name in lifecycle}, windows.matrix_review(self.root, "windows-installer-lifecycle", rows)["scenarios"])
+        observation = self.observe(rows, "windows-installer-lifecycle")
+        self.assertEqual(("passed", {name: "passed" for name in lifecycle}, sorted([self.fixture, self.target]), []),
+                         (observation["result"], observation["scenarioResults"], observation["immutableArtifactIDs"],
+                          observation["missingEvidence"]), "the base, of another source, is no artifact of the record")
+        document = json.loads((self.root / observation["evidencePath"]).read_bytes())
+        for entry in document["rows"]:
+            with self.subTest(row=entry["scenarioId"]):
+                if entry["scenarioId"].startswith(UPDATE):
+                    self.assertEqual(self.bound(self.base if ends(entry["scenarioId"][len(UPDATE):]) == "base" else self.target), entry.get("update"))
+                else:
+                    self.assertNotIn("update", entry)
+        matrix.matrix_record(self.root, observation)
+        status = next(row for row in matrix.matrix_status(self.root, self.source)["requirements"]
+                      if row["requirementId"] == "windows-installer-lifecycle")
+        self.assertEqual("passed", status["status"])
+        native = ("msi-installer", "public-update", "operation-progress-cancellation", "traffic-continuity")
+        with mock.patch.dict(windows.MATRIX_SCENARIOS, {"windows-native-cli": MATRIX_REAL["windows-native-cli"]}):
+            named = sorted({name for scenario in native for name in MATRIX_REAL["windows-native-cli"][scenario]})
+            rows = [self.update(name[len(UPDATE):], route) if name.startswith(UPDATE) else self.row(name, route)
+                    for name in named for route in ("direct", "mcp")]
+            scenarios = windows.matrix_review(self.root, "windows-native-cli", rows)["scenarios"]
+        self.assertEqual({scenario: "passed" for scenario in native}, {scenario: scenarios[scenario] for scenario in native})
+
+    def test_an_update_run_without_its_bound_proof_never_counts(self):
+        """Still refused: what the job wrote before this, and every claim with a part missing, another install's or an
+        install no journal of this clone binds."""
+        def old_job(fields):  # The receipt of every recorded native update run: the base matched before the task, no claim.
+            fields["update"] = {"variant": fields["update"]["variant"], "collectors": {}}
+            fields["windows"] = {"installedPackage": False, "packageSha256": None}
+
+        def claim_unread(fields):
+            fields["update"].pop("installedAfter")
+            fields["windows"] = {"installedPackage": True, "packageSha256": self.base_facts["packageSha256"]}
+
+        def claim(fields):  # The package read after the task, claimed although the variant ends with the other one.
+            fields["windows"] = {"installedPackage": True, "packageSha256": fields["update"]["installedAfter"]["packageSha256"]}
+
+        def other_tree(fields):
+            fields["update"]["installedAfter"]["treeSha256"] = "c" * 64
+
+        def started_elsewhere(fields):
+            fields["installed"] = dict(fields["installed"], treeSha256="c" * 64)
+
+        def other_base_install(fields):
+            fields["update"]["baseInstall"] = self.target_install
+
+        def other_digest(fields):
+            fields["windows"]["packageSha256"] = "c" * 64
+
+        cases = [("public-ready", "old-job", {"change": old_job}, None),
+                 ("uac-denied", "claim-unread", {"change": claim_unread}, None),
+                 ("public-ready", "the-other-install", {"role": "target", "change": claim}, self.target),
+                 ("success-off", "the-other-install", {"role": "base", "change": claim}, self.base),
+                 ("checksum-rejected", "no-install-s-tree", {"change": other_tree}, None),
+                 ("download-cancelled", "started-elsewhere", {"change": started_elsewhere}, None),
+                 ("public-ready", "another-base-install", {"change": other_base_install}, None),
+                 ("uac-denied", "another-digest", {"change": other_digest}, self.base)]
+        for variant, name, options, left in cases:
+            with self.subTest(variant=variant, case=name):
+                row = self.classified(self.update(variant, **options))
+                self.assertEqual(("installed-package-unproven", left), (row["classification"], (row.get("update") or {}).get("installedPackage")))
+        absent = str(uuid.uuid4())
+        other_clone = self.install("windows-msi-base-reset", self.base, self.base_facts, machine=OTHER_MACHINE)
+        failed = self.install("windows-msi-base-reset", self.base, self.base_facts, kind="failed")
+        product = self.row("windows-packaged-cli-smoke", extra={"installed": self.base_facts})
+        mislabeled = self.install("windows-msi-base-reset", self.target, self.base_facts)
+        for name, prior in (("absent", absent), ("another-clone", other_clone), ("failed", failed), ("not-an-install", product),
+                            ("another-package", mislabeled)):
+            with self.subTest(base=name):
+                def renamed(fields, prior=prior):
+                    fields["update"]["baseInstall"] = prior
+                row = self.classified(self.update("public-ready", change=renamed, value={"priorInstall": prior}))
+                self.assertEqual(("installed-package-unproven", {"baseInstall": prior, "basePackage": None, "targetInstall": self.target_install,
+                                                                 "installedPackage": None}), (row["classification"], row.get("update")))
+        older = self.classified(self.update("public-ready", value={"baseVersion": "2.2.14"}))
+        self.assertEqual(("installed-package-unproven", None, None),
+                         (older["classification"], (older.get("update") or {}).get("basePackage", "unnamed"), (older.get("update") or {}).get("installedPackage")), "a base of another version")
+        other = self.register(b"MSI other " * 2000, "vpn-control-2.2.17.msi", "desktop-package", self.source)
+        elsewhere = self.install("windows-msi-base-install", other, installed(self.packages[other], "2.2.17", TARGET_CODE, TARGET_PACKAGE_CODE, "b" * 64))
+        for variant in ("success-off", "wait-client-loss"):
+            with self.subTest(target=variant):
+                def target_renamed(fields):
+                    fields["update"]["targetInstall"] = elsewhere
+                row = self.classified(self.update(variant, change=target_renamed, value={"targetInstall": elsewhere}))
+                self.assertEqual(("installed-package-unproven", None), (row["classification"], (row.get("update") or {}).get("installedPackage")))
+
+    def test_a_failed_update_run_names_the_package_it_left(self):
+        """A grant whose prompt ended CANCELLED is the case's own known failure: no claim, and the base read back after it
+        stands in its record, so the failed record says which package is installed."""
+        failed = self.update("success-off", kind="failed", role="base")
+        row = self.classified(failed)
+        self.assertEqual(("failed", "task_exit_code", self.bound(self.base)), (row["classification"], row["failure"], row.get("update")))
+        observation = self.observe([failed], "windows-installer-lifecycle")
+        self.assertEqual(("failed", "inspect-evidence"), (observation["result"], observation["nextFixedCommand"]))
+        document = json.loads((self.root / observation["evidencePath"]).read_bytes())
+        self.assertEqual([self.bound(self.base)], [entry.get("update") for entry in document["rows"]])
+        matrix.matrix_record(self.root, observation)
+
+
+NATIVE_UPDATES = Path(__file__).parent / "fixtures/windows_update_native/st2-update-runs.json"
+S_B = "sha256-eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427"
+
+
+class RecordedDriver(FakeDriver):
+    """The VM as the recorded journals left it: each correlation's own collected receipt, replayed as it was."""
+
+    def __init__(self, case):
+        super().__init__(case)
+        self.receipts = {}
+
+    def observe(self, plan, identity):
+        receipt = {**plan.as_dict(), "jobId": identity.job_id, "pid": identity.pid, "startTicks": identity.start_ticks,
+                   "exitCode": self.receipts[plan.correlation_id]["exitCode"]}
+        return execution.DriverObservation(execution.ObservationStatus.TERMINAL, "remote_receipt", identity, receipt, (identity.receipt_path,))
+
+    def collect(self, plan, identity):
+        value = self.receipts[plan.correlation_id]
+        raw = (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+        return windows.NativeScenarioWindowsDriver(self.case.root, lambda _: self.case.root)._summary(
+            plan, raw, {"schemaVersion": 1, "operationId": plan.correlation_id, "exitCode": value["exitCode"]})
+
+
+class RecordedNativeUpdateTests(MatrixBase):
+    """The six recorded native S_T2 update runs (public-ready, download-cancelled and checksum-rejected, each direct and
+    MCP) and the two installs they name, from fixtures/windows_update_native, replayed through the real executor."""
+
+    def setUp(self):
+        super().setUp()
+        self.recorded = json.loads(NATIVE_UPDATES.read_bytes())
+        self.replayer = RecordedDriver(self)
+        self.replay_executor = execution.ScenarioExecutor(self.root.joinpath(*windows._JOURNALS), self.replayer)
+
+    def replay(self, change=None):
+        """Every recorded install and run, each receipt changed by change(run, receipt) first; the run correlations."""
+        for item in self.recorded["installs"] + self.recorded["runs"]:
+            receipt = json.loads(json.dumps(item["receipt"]))
+            if change is not None and "input" in item:
+                change(item, receipt)
+            self.replayer.receipts[item["correlationId"]] = receipt
+            if "input" in item:
+                raw = item["input"].encode("ascii")
+                self.assertEqual(item["artifactIds"]["scenarioInput"], "sha256-" + hashlib.sha256(raw).hexdigest(), "the recorded input, byte for byte")
+                self.assertEqual(item["artifactIds"]["scenarioInput"], self.register(raw, "scenario-input.json", "scenario-input"))
+            self.replay_executor.start({"scenarioId": item["scenarioId"], "host": "fixture", "environment": item["environment"],
+                                        "bundleHash": item["bundleHash"], "artifactIds": item["artifactIds"], "correlationId": item["correlationId"]})
+            self.assertEqual("terminal", self.replay_executor.status(item["correlationId"])["state"])
+            if "route" in item:
+                local = self.root.joinpath(*windows._LOCAL_STATE, item["correlationId"])
+                local.mkdir(mode=0o700, parents=True)
+                windows._create_private(local / windows.ROUTE_NAME, json.dumps(
+                    {"schemaVersion": 1, "correlationId": item["correlationId"], "route": item["route"]}, sort_keys=True).encode())
+        return [item["correlationId"] for item in self.recorded["runs"]]
+
+    def names(self):
+        value = json.loads(self.recorded["runs"][0]["input"])
+        return {"baseInstall": value["priorInstall"], "basePackage": S_B, "targetInstall": value["targetInstall"]}
+
+    def test_the_recorded_runs_stay_unproven_and_their_record_names_the_base_they_started_from(self):
+        """Natively they passed and found S_B before the task, but nothing read what the task left and no --version
+        ran: each stays installed-package-unproven, and public-update stays missing."""
+        runs = self.replay()
+        with mock.patch.dict(windows.MATRIX_SCENARIOS, {"windows-native-cli": MATRIX_REAL["windows-native-cli"]}):
+            review = windows.matrix_review(self.root, "windows-native-cli", runs)
+        self.assertEqual(["installed-package-unproven"] * 6, [row["classification"] for row in review["rows"]])
+        self.assertEqual([{**self.names(), "installedPackage": None}] * 6, [row.get("update") for row in review["rows"]])
+        self.assertEqual("missing", review["scenarios"]["public-update"])
+
+    def test_the_recorded_runs_count_with_what_the_fixed_job_writes_after_the_task(self):
+        """The same receipts with the fixed job's additions: both installs named, the base read back after the task as the
+        base reset recorded it, and the claim of that base. Each recorded pair then proves its row."""
+        base = next(item for item in self.recorded["installs"] if item["correlationId"] == self.names()["baseInstall"])["receipt"]["installed"]
+
+        def after(item, receipt):
+            value = json.loads(item["input"])
+            receipt["update"].update(baseInstall=value["priorInstall"], targetInstall=value["targetInstall"], installedAfter={"role": "base", **base})
+            receipt["windows"] = {"installedPackage": True, "packageSha256": base["packageSha256"]}
+        runs = self.replay(after)
+        review = windows.matrix_review(self.root, "windows-native-cli", runs)
+        self.assertEqual(["passed"] * 6, [row["classification"] for row in review["rows"]])
+        self.assertEqual([{**self.names(), "installedPackage": S_B}] * 6, [row.get("update") for row in review["rows"]])
+        for variant in ("public-ready", "download-cancelled", "checksum-rejected"):
+            self.assertEqual("passed", windows._matrix_row_state(review["rows"], UPDATE + variant), variant)
+
+
 MATRIX_REAL = {key: dict(value) for key, value in windows.MATRIX_SCENARIOS.items()}
 
 
@@ -590,15 +866,18 @@ class TableTests(unittest.TestCase):
                           for row in (SSH, RLY)})
         self.assertEqual([None, None], [windows.RECIPES[row].get("refusal") for row in (SSH, RLY)])
 
-    def test_no_update_row_can_prove_a_scenario_today(self):
-        # The host job never claims installed-package for an update row, so a scenario naming one stays unproven.
+    def test_the_update_rows_prove_their_scenarios_through_what_they_read_back(self):
+        # Twelve scenarios name update rows. Each update row reads back what its task left (its installed stage) and
+        # counts only with that package bound to its clone's install journal (UpdateRowTests).
         named = {scenario for table in MATRIX_REAL.values() for scenario, rows in table.items()
                  if any(row.startswith("windows-public-update.") for row in rows)}
         self.assertEqual({"msi-installer", "public-update", "operation-progress-cancellation", "traffic-continuity", "msi-uac-grant-denial",
                           "ordinary-elevated-owner", "different-approving-admin", "original-user-worker", "participating-copy-locks",
                           "protected-storage-adversarial", "next-owner-recovery", "reconnect-off-preserved"}, named)
+        self.assertTrue(all("installed" in windows.RECIPES[row]["stages"] for table in MATRIX_REAL.values() for rows in table.values()
+                            for row in rows if row.startswith("windows-public-update.")))
         # The installer lifecycle maps every scenario. The deny row and the grant rows whose stages are all tooled are
-        # admitted, the others are refused at admission, and an admitted one still proves nothing: no installed-package.
+        # admitted, the others are refused at admission with what they lack.
         lifecycle = MATRIX_REAL["windows-installer-lifecycle"]
         self.assertTrue(all(lifecycle.values()))
         self.assertEqual({"windows-public-update." + variant for variant in ("uac-denied", "success-off", "wait-client-loss", "installer-wait-client-loss")},
@@ -633,7 +912,7 @@ class TableTests(unittest.TestCase):
         probes = {row for row, recipe in windows.RECIPES.items() if (recipe.get("document") or {}).get("principalProbe")}
         self.assertEqual(({DOC}, {DOCUMENTS: PRINCIPAL}), (probes, windows.MATRIX_PRINCIPAL))
         self.assertEqual((DOC,), documents[PRINCIPAL])
-        # Every row the table names outside the update family is admitted today; the update rows stay unproven (above).
+        # Every row the table names outside the update family is admitted today; the update rows' refusals are above.
         self.assertEqual(set(), {row for row, scenarios in named.items() if scenarios and not row.startswith("windows-public-update.")
                                  and (windows.RECIPES[row].get("refusal") is not None or windows.RECIPES[row]["evidenceClass"] != "product")})
 

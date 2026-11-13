@@ -1,0 +1,737 @@
+{
+ "description": "The six recorded native update runs on S_T2 (windows-public-update public-ready, download-cancelled and checksum-rejected, a direct and an MCP run of each, tools of f31ab987, clone f452f353) and the two installs they name: c3da662a, the base reset that installed S_B (2.2.15 of 32d32706), and c693352b, the install of S_T2 that recorded its tree. Copied from the recovery checkout's journals: plan fields less the host alias, the exact scenario input, the route marker and the collected receipt with its context (guest SID, session, profile, boot and machine identity) set to null. The test replays them through the real executor. provenance names each original by digest; the whole originals are kept privately under .runtime/update-counting/native/ of the build clone build-update-counting.",
+ "installs": [
+  {
+   "artifactIds": {
+    "basePackage": "sha256-eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "scenarioInput": "sha256-79dc2119b7f01c9e83396dbc64af948a312d379911e910f5085b16ec8fce211b"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "c3da662a-d63c-4725-a504-0348293b174c",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "c3da662a-d63c-4725-a504-0348293b174c",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 140283,
+     "entries": 21,
+     "name": "evidence-1.zip",
+     "sha256": "c62d08cea0d95b779666b98681392c903946827f0c11351f4f89af531f09c58d"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 25,
+    "installed": {
+     "packageCode": "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}",
+     "packageSha256": "eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+     "productCode": "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}",
+     "productVersion": "2.2.15",
+     "treeFiles": 209,
+     "treeSha256": "ab51153207e245ec096193583613bb75611df3ac481b25da9c7d6d5499799830"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-msi-base-reset",
+    "schema": "vpn-control.windows-msi-base-reset.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 10076,
+     "events": 3,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 10076,
+     "parked": false,
+     "polls": 30,
+     "state": "task-finished",
+     "statusFailures": 0,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 10
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "scenarioId": "windows-msi-base-reset"
+  },
+  {
+   "artifactIds": {
+    "basePackage": "sha256-b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47",
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "scenarioInput": "sha256-5fd3ae6a833ef8dac72252fef89ae24b809cb02039c511bd3aaf41b9a18bcb8f"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "c693352b-96a0-4ecb-838a-bcf3aab96d06",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "c693352b-96a0-4ecb-838a-bcf3aab96d06",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 73847,
+     "entries": 14,
+     "name": "evidence-1.zip",
+     "sha256": "800c2f14867a313321adb80a076de11e6bca61bcfc2711d3fa7a8c20c83ffe47"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 26,
+    "installed": {
+     "packageCode": "{BA63AD1C-479F-4ACD-B878-E62F8EA82FDC}",
+     "packageSha256": "b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47",
+     "productCode": "{BC56AE4E-BF90-3BF6-9E5A-6599CE80CD3B}",
+     "productVersion": "2.2.17",
+     "treeFiles": 209,
+     "treeSha256": "4aeea132fce6d7f324f53671ed6fcb06b6e1181c126c469ee3bfcc6685208052"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-msi-base-install",
+    "schema": "vpn-control.windows-msi-base-install.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 6948,
+     "events": 3,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 6948,
+     "parked": false,
+     "polls": 32,
+     "state": "task-finished",
+     "statusFailures": 0,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 6
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "scenarioId": "windows-msi-base-install"
+  }
+ ],
+ "provenance": {
+  "4557f81d-a2b9-4fc4-9f0e-721840029302": {
+   "inputSha256": "516c75f309e3af6e43772242d25d64a476cbea5a461daceb2580151cf98aad67",
+   "journalSha256": "7ef4448ac312841329dbd25f43e9dea552022d84cc80a2a7b3161fcab1bac1c5",
+   "recordedReceiptSha256": "e2456e38180fb7169cc0494544ef1978d001d375f9316470f3e4a682a3e5847a",
+   "routeSha256": "7cbd3f46c267e057552759788ecab93dd9f17ba9a4eec5a3992d7dda96bd43f2"
+  },
+  "4d3094a0-7b9a-4632-926e-c0212df2395e": {
+   "inputSha256": "06fe524e49d544835c3344fe42ab7214c14d7ae77564bf96ab269bb36b3743f5",
+   "journalSha256": "5d9a0306e7a0b3f05dff87b2774e7ca365fea610a4484584ce199c1cdaa7dcbd",
+   "recordedReceiptSha256": "c529520a8683c768c890ea189347d34957e131a497bd8ef6bf50b96034ba740e",
+   "routeSha256": "4e6b0f5d25f9607121e2bf89b1db003f6a0bab61660db529baf011def79bdc68"
+  },
+  "a1841a85-271d-400e-a9cb-3710307a4c33": {
+   "inputSha256": "486c78970fc02a5a68a6bee852ed984e03a147777248ef598a6674b50df82d16",
+   "journalSha256": "9130e55bff1ffe1fa6d8903c19de31dbe90c8fc2239e15d9ed537ee3ab9e7743",
+   "recordedReceiptSha256": "67f434e7da0d9c1682a5236ec50999bff4ac8cfb689e48af137aa505680017a3",
+   "routeSha256": "8d17de881ee51b0fc80eb0b639307a14a2ee74405bf72bbcb696e6ea5b0540ee"
+  },
+  "c3da662a-d63c-4725-a504-0348293b174c": {
+   "journalSha256": "7f50bb342715d002d5e8952cd931f7fbfca8e079c79950a8e179b2c311510021",
+   "recordedReceiptSha256": "7bc183001628178e251eeb371bfba1d24b2e5674dc9fb42b50170873a4f7459a"
+  },
+  "c693352b-96a0-4ecb-838a-bcf3aab96d06": {
+   "journalSha256": "b778aa46cc353c46a466138f077fd6dca64570ada3d31a2dd896e1f4020e29b1",
+   "recordedReceiptSha256": "0cd238c93e3d30f25b2fac3f01b79ae34b9e5773328a2ea6b43c21c1bf40fcb4"
+  },
+  "eb8f8e87-57af-432f-924c-b4a719d8d7e2": {
+   "inputSha256": "810bd40cbd7a9ef695c40f73bebaddba5563ba46687ce7ae8f2352e33e000aad",
+   "journalSha256": "c752a1615e2fe008f634a8b19a27aad8f1b5f9541292c1b592ab4ac4a3166951",
+   "recordedReceiptSha256": "24789e9df8eb845b6792de4bf645d3f74a2ad3b2ad6ae64ecb07c5ab44f31da3",
+   "routeSha256": "481b37ec98f912ca1dee76aa62ab3d0dba58ed7dbecc1e022a54f91236d8b5c6"
+  },
+  "f60b4a1f-e161-4f9f-bdc5-be31ee5f712e": {
+   "inputSha256": "9941e174a0f6d571c0e74efb50a687537b98425065a774775e88c5f69ffc833b",
+   "journalSha256": "2e9a05a44a9b2a269e1e20f041a4bc58282564032c4061b4d356c0c78b45f843",
+   "recordedReceiptSha256": "e206607852494a3aa402d081ed2c3ae8dbf63ce3f7da766ab5eaa8a775b000b2",
+   "routeSha256": "b73b50c96ff7d3cefb7b1730b9530efb3db188c788a9ca836cf8a80a1e7bdbbb"
+  },
+  "f929e2a1-4258-4b98-8d01-8d5b64869b0b": {
+   "inputSha256": "cd049b5857b9f739c39a4c72254769b180b51192394ebe38cb7b4d125ff31c56",
+   "journalSha256": "4dc3b2884789b3c38319ae440a076af2dfdd8336ec6b9f03d52a83dc9697c70f",
+   "recordedReceiptSha256": "adff48713d40eee3019806494392977754d59715c0780d40e16c5c89bbf6667b",
+   "routeSha256": "e7bf8f3b8c3d29391f9dd50a3c16a371a03c0c974928fbc20358ca1879e0daed"
+  }
+ },
+ "redactedReceiptFields": [
+  "context.ordinarySid",
+  "context.ordinarySessionId",
+  "context.profileRoot",
+  "context.bootFileTimeUtc",
+  "context.bootIdentifier",
+  "context.hardwareUuid",
+  "context.machineGuid"
+ ],
+ "runs": [
+  {
+   "artifactIds": {
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "fixtureReceipt": "sha256-196b46eb80210237b8d5d3ade9b2360383cc17c43ef7654ba82a9366417cbcbf",
+    "scenarioInput": "sha256-cd049b5857b9f739c39a4c72254769b180b51192394ebe38cb7b4d125ff31c56",
+    "targetPackage": "sha256-b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "f929e2a1-4258-4b98-8d01-8d5b64869b0b",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "input": "{\"artifactSetId\": \"artifact-set-de6b1136bc8f731c4c968060325d2279a9ae82d2df9d04a15e8f280b40f32a68\", \"baseVersion\": \"2.2.15\", \"correlationId\": \"f929e2a1-4258-4b98-8d01-8d5b64869b0b\", \"deploymentId\": \"f452f353-b92e-4b4f-b95c-d7ca3efb964d\", \"priorInstall\": \"c3da662a-d63c-4725-a504-0348293b174c\", \"productVersion\": \"2.2.17\", \"scenarioId\": \"windows-public-update.public-ready\", \"schema\": \"vpn-control.windows-scenario.input\", \"schemaVersion\": 1, \"sourceSha\": \"f31ab98788959ee092bb01314020dd75a7162c93\", \"targetInstall\": \"c693352b-96a0-4ecb-838a-bcf3aab96d06\"}",
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "f929e2a1-4258-4b98-8d01-8d5b64869b0b",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 30872,
+     "entries": 84,
+     "name": "evidence-1.zip",
+     "sha256": "ab6df764316de0a4142041828d5a59717fb6c240d38b320a2d67272238fd2b4e"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 31,
+    "installed": {
+     "packageCode": "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}",
+     "packageSha256": "eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+     "productCode": "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}",
+     "productVersion": "2.2.15",
+     "treeFiles": 209,
+     "treeSha256": "ab51153207e245ec096193583613bb75611df3ac481b25da9c7d6d5499799830"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-public-update.public-ready",
+    "schema": "vpn-control.windows-public-update.public-ready.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 1992,
+     "events": 4,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 1992,
+     "parked": false,
+     "polls": 38,
+     "state": "task-finished",
+     "statusFailures": 0,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 49
+    },
+    "update": {
+     "collectors": {},
+     "variant": "public-ready"
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "route": "direct",
+   "scenarioId": "windows-public-update.public-ready"
+  },
+  {
+   "artifactIds": {
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "fixtureReceipt": "sha256-196b46eb80210237b8d5d3ade9b2360383cc17c43ef7654ba82a9366417cbcbf",
+    "scenarioInput": "sha256-516c75f309e3af6e43772242d25d64a476cbea5a461daceb2580151cf98aad67",
+    "targetPackage": "sha256-b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "4557f81d-a2b9-4fc4-9f0e-721840029302",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "input": "{\"artifactSetId\": \"artifact-set-de6b1136bc8f731c4c968060325d2279a9ae82d2df9d04a15e8f280b40f32a68\", \"baseVersion\": \"2.2.15\", \"correlationId\": \"4557f81d-a2b9-4fc4-9f0e-721840029302\", \"deploymentId\": \"f452f353-b92e-4b4f-b95c-d7ca3efb964d\", \"priorInstall\": \"c3da662a-d63c-4725-a504-0348293b174c\", \"productVersion\": \"2.2.17\", \"scenarioId\": \"windows-public-update.public-ready\", \"schema\": \"vpn-control.windows-scenario.input\", \"schemaVersion\": 1, \"sourceSha\": \"f31ab98788959ee092bb01314020dd75a7162c93\", \"targetInstall\": \"c693352b-96a0-4ecb-838a-bcf3aab96d06\"}",
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "4557f81d-a2b9-4fc4-9f0e-721840029302",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 29218,
+     "entries": 79,
+     "name": "evidence-1.zip",
+     "sha256": "81732db651548ced9bc53cf89c73f3478cc909ccef987c29a97565767c803dbd"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 31,
+    "installed": {
+     "packageCode": "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}",
+     "packageSha256": "eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+     "productCode": "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}",
+     "productVersion": "2.2.15",
+     "treeFiles": 209,
+     "treeSha256": "ab51153207e245ec096193583613bb75611df3ac481b25da9c7d6d5499799830"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-public-update.public-ready",
+    "schema": "vpn-control.windows-public-update.public-ready.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 6684,
+     "events": 4,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 6684,
+     "parked": false,
+     "polls": 36,
+     "state": "task-finished",
+     "statusFailures": 0,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 46
+    },
+    "update": {
+     "collectors": {},
+     "variant": "public-ready"
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "route": "mcp",
+   "scenarioId": "windows-public-update.public-ready"
+  },
+  {
+   "artifactIds": {
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "fixtureReceipt": "sha256-196b46eb80210237b8d5d3ade9b2360383cc17c43ef7654ba82a9366417cbcbf",
+    "scenarioInput": "sha256-9941e174a0f6d571c0e74efb50a687537b98425065a774775e88c5f69ffc833b",
+    "targetPackage": "sha256-b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "f60b4a1f-e161-4f9f-bdc5-be31ee5f712e",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "input": "{\"artifactSetId\": \"artifact-set-de6b1136bc8f731c4c968060325d2279a9ae82d2df9d04a15e8f280b40f32a68\", \"baseVersion\": \"2.2.15\", \"correlationId\": \"f60b4a1f-e161-4f9f-bdc5-be31ee5f712e\", \"deploymentId\": \"f452f353-b92e-4b4f-b95c-d7ca3efb964d\", \"priorInstall\": \"c3da662a-d63c-4725-a504-0348293b174c\", \"productVersion\": \"2.2.17\", \"scenarioId\": \"windows-public-update.download-cancelled\", \"schema\": \"vpn-control.windows-scenario.input\", \"schemaVersion\": 1, \"sourceSha\": \"f31ab98788959ee092bb01314020dd75a7162c93\", \"targetInstall\": \"c693352b-96a0-4ecb-838a-bcf3aab96d06\"}",
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "f60b4a1f-e161-4f9f-bdc5-be31ee5f712e",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 32460,
+     "entries": 89,
+     "name": "evidence-1.zip",
+     "sha256": "96d045aecb091e12adaf4764e2d7a009b6d3faa998bf5f2f7322458d3a2ec0c7"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 31,
+    "installed": {
+     "packageCode": "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}",
+     "packageSha256": "eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+     "productCode": "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}",
+     "productVersion": "2.2.15",
+     "treeFiles": 209,
+     "treeSha256": "ab51153207e245ec096193583613bb75611df3ac481b25da9c7d6d5499799830"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-public-update.download-cancelled",
+    "schema": "vpn-control.windows-public-update.download-cancelled.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 9308,
+     "events": 4,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 9308,
+     "parked": false,
+     "polls": 37,
+     "state": "task-finished",
+     "statusFailures": 0,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 52
+    },
+    "update": {
+     "collectors": {},
+     "variant": "download-cancelled"
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "route": "direct",
+   "scenarioId": "windows-public-update.download-cancelled"
+  },
+  {
+   "artifactIds": {
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "fixtureReceipt": "sha256-196b46eb80210237b8d5d3ade9b2360383cc17c43ef7654ba82a9366417cbcbf",
+    "scenarioInput": "sha256-06fe524e49d544835c3344fe42ab7214c14d7ae77564bf96ab269bb36b3743f5",
+    "targetPackage": "sha256-b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "4d3094a0-7b9a-4632-926e-c0212df2395e",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "input": "{\"artifactSetId\": \"artifact-set-de6b1136bc8f731c4c968060325d2279a9ae82d2df9d04a15e8f280b40f32a68\", \"baseVersion\": \"2.2.15\", \"correlationId\": \"4d3094a0-7b9a-4632-926e-c0212df2395e\", \"deploymentId\": \"f452f353-b92e-4b4f-b95c-d7ca3efb964d\", \"priorInstall\": \"c3da662a-d63c-4725-a504-0348293b174c\", \"productVersion\": \"2.2.17\", \"scenarioId\": \"windows-public-update.download-cancelled\", \"schema\": \"vpn-control.windows-scenario.input\", \"schemaVersion\": 1, \"sourceSha\": \"f31ab98788959ee092bb01314020dd75a7162c93\", \"targetInstall\": \"c693352b-96a0-4ecb-838a-bcf3aab96d06\"}",
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "4d3094a0-7b9a-4632-926e-c0212df2395e",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 32471,
+     "entries": 89,
+     "name": "evidence-1.zip",
+     "sha256": "6ec2e5d0ce10e2cef96cf42eb53a5508678585147ae6516b29cfb3114b654391"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 31,
+    "installed": {
+     "packageCode": "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}",
+     "packageSha256": "eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+     "productCode": "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}",
+     "productVersion": "2.2.15",
+     "treeFiles": 209,
+     "treeSha256": "ab51153207e245ec096193583613bb75611df3ac481b25da9c7d6d5499799830"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-public-update.download-cancelled",
+    "schema": "vpn-control.windows-public-update.download-cancelled.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 7408,
+     "events": 4,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 7408,
+     "parked": false,
+     "polls": 36,
+     "state": "task-finished",
+     "statusFailures": 1,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 52
+    },
+    "update": {
+     "collectors": {},
+     "variant": "download-cancelled"
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "route": "mcp",
+   "scenarioId": "windows-public-update.download-cancelled"
+  },
+  {
+   "artifactIds": {
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "fixtureReceipt": "sha256-196b46eb80210237b8d5d3ade9b2360383cc17c43ef7654ba82a9366417cbcbf",
+    "scenarioInput": "sha256-810bd40cbd7a9ef695c40f73bebaddba5563ba46687ce7ae8f2352e33e000aad",
+    "targetPackage": "sha256-b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "eb8f8e87-57af-432f-924c-b4a719d8d7e2",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "input": "{\"artifactSetId\": \"artifact-set-de6b1136bc8f731c4c968060325d2279a9ae82d2df9d04a15e8f280b40f32a68\", \"baseVersion\": \"2.2.15\", \"correlationId\": \"eb8f8e87-57af-432f-924c-b4a719d8d7e2\", \"deploymentId\": \"f452f353-b92e-4b4f-b95c-d7ca3efb964d\", \"priorInstall\": \"c3da662a-d63c-4725-a504-0348293b174c\", \"productVersion\": \"2.2.17\", \"scenarioId\": \"windows-public-update.checksum-rejected\", \"schema\": \"vpn-control.windows-scenario.input\", \"schemaVersion\": 1, \"sourceSha\": \"f31ab98788959ee092bb01314020dd75a7162c93\", \"targetInstall\": \"c693352b-96a0-4ecb-838a-bcf3aab96d06\"}",
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "eb8f8e87-57af-432f-924c-b4a719d8d7e2",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 29759,
+     "entries": 80,
+     "name": "evidence-1.zip",
+     "sha256": "cdf401ca8b8d4367545053c293c81654b9ca06132e029b5e4599c52545a2c531"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 31,
+    "installed": {
+     "packageCode": "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}",
+     "packageSha256": "eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+     "productCode": "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}",
+     "productVersion": "2.2.15",
+     "treeFiles": 209,
+     "treeSha256": "ab51153207e245ec096193583613bb75611df3ac481b25da9c7d6d5499799830"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-public-update.checksum-rejected",
+    "schema": "vpn-control.windows-public-update.checksum-rejected.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 1608,
+     "events": 4,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 1608,
+     "parked": false,
+     "polls": 37,
+     "state": "task-finished",
+     "statusFailures": 0,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 47
+    },
+    "update": {
+     "collectors": {},
+     "variant": "checksum-rejected"
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "route": "direct",
+   "scenarioId": "windows-public-update.checksum-rejected"
+  },
+  {
+   "artifactIds": {
+    "bundleManifest": "sha256-77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "fixtureReceipt": "sha256-196b46eb80210237b8d5d3ade9b2360383cc17c43ef7654ba82a9366417cbcbf",
+    "scenarioInput": "sha256-486c78970fc02a5a68a6bee852ed984e03a147777248ef598a6674b50df82d16",
+    "targetPackage": "sha256-b2055b75b6b648008d2e823aef324b3ded1c11a55a8cd61f17b3d65c163e2a47"
+   },
+   "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+   "correlationId": "a1841a85-271d-400e-a9cb-3710307a4c33",
+   "environment": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+   "exitCode": 0,
+   "input": "{\"artifactSetId\": \"artifact-set-de6b1136bc8f731c4c968060325d2279a9ae82d2df9d04a15e8f280b40f32a68\", \"baseVersion\": \"2.2.15\", \"correlationId\": \"a1841a85-271d-400e-a9cb-3710307a4c33\", \"deploymentId\": \"f452f353-b92e-4b4f-b95c-d7ca3efb964d\", \"priorInstall\": \"c3da662a-d63c-4725-a504-0348293b174c\", \"productVersion\": \"2.2.17\", \"scenarioId\": \"windows-public-update.checksum-rejected\", \"schema\": \"vpn-control.windows-scenario.input\", \"schemaVersion\": 1, \"sourceSha\": \"f31ab98788959ee092bb01314020dd75a7162c93\", \"targetInstall\": \"c693352b-96a0-4ecb-838a-bcf3aab96d06\"}",
+   "receipt": {
+    "bundleHash": "77ee22a68373b84a2076b26dacc5947ada59d49a6050651a34d607a725b855ac",
+    "context": {
+     "bootFileTimeUtc": null,
+     "bootIdentifier": null,
+     "hardwareUuid": null,
+     "machineGuid": null,
+     "ordinarySessionId": null,
+     "ordinarySid": null,
+     "profileRoot": null
+    },
+    "correlationId": "a1841a85-271d-400e-a9cb-3710307a4c33",
+    "deploymentId": "f452f353-b92e-4b4f-b95c-d7ca3efb964d",
+    "evidence": {
+     "bytes": 29745,
+     "entries": 80,
+     "name": "evidence-1.zip",
+     "sha256": "0d7897d48b6774bcae3d11a455657347b49f7ba849ea9fae210e648c03d0e778"
+    },
+    "exitCode": 0,
+    "failure": null,
+    "guestPrograms": 31,
+    "installed": {
+     "packageCode": "{5EE5EE4E-6EE5-41CE-BB9C-E263F4C09442}",
+     "packageSha256": "eec83f388f38ef1bf3448dc90f26b3d4dbfe4e795e886ddddf42c788b2881427",
+     "productCode": "{C9C4D717-A81A-3E7D-A67A-2A350331CFB9}",
+     "productVersion": "2.2.15",
+     "treeFiles": 209,
+     "treeSha256": "ab51153207e245ec096193583613bb75611df3ac481b25da9c7d6d5499799830"
+    },
+    "preboot": null,
+    "python": null,
+    "reboot": null,
+    "result": "passed",
+    "scenarioId": "windows-public-update.checksum-rejected",
+    "schema": "vpn-control.windows-public-update.checksum-rejected.receipt",
+    "schemaVersion": 1,
+    "stage": "receipt",
+    "stoppedAfter": null,
+    "task": {
+     "commandLineMatched": true,
+     "enginePid": 8772,
+     "events": 4,
+     "lastTaskResult": 0,
+     "ownerExitCode": 0,
+     "ownerPid": 8772,
+     "parked": false,
+     "polls": 34,
+     "state": "task-finished",
+     "statusFailures": 0,
+     "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+     },
+     "taskDeleted": true,
+     "terminalExitCode": 0,
+     "workerEvents": 47
+    },
+    "update": {
+     "collectors": {},
+     "variant": "checksum-rejected"
+    },
+    "windows": {
+     "installedPackage": false,
+     "packageSha256": null
+    }
+   },
+   "route": "mcp",
+   "scenarioId": "windows-public-update.checksum-rejected"
+  }
+ ],
+ "schemaVersion": 1
+}

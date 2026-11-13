@@ -2830,6 +2830,22 @@ class UpdateQga(FakeQga):
         self.processes = grant_processes()
         self.product_files = {}
         self.returned = None  # The case's record of the actors it expects gone before returned-cleanup.
+        self.update_effect = None  # What the product's own update leaves once a passed update task ends: None leaves the base.
+        self.effect_pending = False
+
+    def install(self, worker):
+        """An update task's own effect is the product's installer, not msiexec's: whatever update_effect leaves, once the
+        SYSTEM run returns. A run that never returns leaves the guest as it was."""
+        if worker["action"] != "windows-public-update":
+            return super().install(worker)
+        self.effect_pending = self.update_effect is not None
+
+    def _guest_exec_status(self, arguments):
+        terminal = super()._guest_exec_status(arguments)
+        if arguments["pid"] == self.run_pid and terminal.get("exited") is True and self.effect_pending:
+            self.effect_pending = False
+            self.update_effect()
+        return terminal
 
     def _guest_exec(self, arguments):
         source = base64.b64decode(arguments["input-data"]).decode("ascii")
@@ -3048,12 +3064,28 @@ class UpdateFamilyBase(FamilyBase):
         return plan["operationId"]
 
     def prepared(self):
-        """The target's own install records its tree; the reset leaves the older base the update starts from."""
+        """The target's own install records its tree; the reset leaves the older base the update starts from. As a real
+        pair's, the two packages register two product codes."""
         target = self.install("windows-msi-base-install", "targetPackage", VERSION)
+        self.qga.msi_properties["ProductCode"] = OLD_CODE
         base = self.install("windows-msi-base-reset", "basePackage", BASE)
         self.qga.programs.clear()
         self.qga.requests_seen.clear()
         return base, target
+
+    def to_target(self, code=NEW_CODE, version=VERSION):
+        """The product's own update that succeeded: the target's registration and files replace the base's."""
+        self.qga.msi_properties.update(ProductCode=code, ProductVersion=version)
+        self.qga.registration = [{"productCode": code, "context": 2, "productName": "vpn-control", "version": version,
+                                  "installLocation": INSTALLED_ROOT + "\\", "packageCode": PACKAGE_CODE}]
+
+    def to_base(self):
+        """The base the reset left, as it registered it: what every update starts from."""
+        self.to_target(OLD_CODE, BASE)
+
+    def installed_record(self, operation):
+        """What an install job recorded of the install it left: its receipt's installed facts."""
+        return json.loads((self.machine_data / operation / "scenario-receipt.json").read_bytes())["installed"]
 
     def update_plan(self, variant, base, target, **changes):
         row = json.loads(json.dumps(driver.RECIPES["windows-public-update." + variant]))
@@ -3078,6 +3110,7 @@ class UpdateFamilyBase(FamilyBase):
         and the case's own record of the returned owner, whose image is the target install's GUI."""
         ready = {"version": 2, "jobId": JOB_ID, "pid": WORKER_PID, "creationFileTime": WORKER_BIRTH, "principalSid": SID,
                  "helperSha256": hashlib.sha256(HELPER_BYTES).hexdigest()}
+        self.to_base()  # An earlier grant that passed left its target: this one starts from the base again.
         self.qga.needs = ["before-install", "authorization", "terminal-actors", "returned-cleanup"]
         self.qga.product_files = {WORKER_READY: json.dumps(ready, separators=(",", ":")).encode(),
                                   PROTECTED_RECEIPT: ('{"version":1,"jobId":"' + JOB_ID + '","sequence":6,"phase":"Succeeded","code":"OK"}').encode()}
@@ -3085,6 +3118,7 @@ class UpdateFamilyBase(FamilyBase):
         self.qga.returned = {"actors": {"owner": {"pid": RETURNED_PID, "creationFileTime": 134368653065000040, "image": INSTALLED_ROOT + "\\vpn-control.exe",
                                                   "sha256": files["vpn-control.exe"]["sha256"], "sid": SID, "sessionId": SESSION}},
                              "jobId": JOB_ID, "operationId": PRODUCT_OPERATION}
+        self.qga.update_effect = self.to_target  # A grant that succeeded leaves the target installed.
 
     def forget(self, plan):
         """An UNKNOWN job keeps the fake VM refusing new ones: a subtest's own job, its fence and open programs go."""
@@ -3110,8 +3144,10 @@ class UpdateFamilyTests(UpdateFamilyBase):
         self.qga.needs = []
         plan, code, receipt = self.run_update("public-ready", base, target)
         self.assertEqual((0, None, "passed"), (code, receipt["failure"], receipt["result"]))
-        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"], "no --version ran: no installed-package claim")
-        self.assertEqual({"variant": "public-ready", "collectors": {}}, receipt["update"])
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["basePackage"]["sha256"]}, receipt["windows"],
+                         "the base it started from, read back unchanged after the task")
+        self.assertEqual({"variant": "public-ready", "collectors": {}, "baseInstall": base, "targetInstall": target,
+                          "installedAfter": {"role": "base", **self.installed_record(base)}}, receipt["update"])
         kinds = self.qga.kinds()
         self.assertNotIn("collector", kinds)
         self.assertLess(kinds.index("seal-readonly"), kinds.index("system-run"))
@@ -3581,6 +3617,123 @@ class UpdateFamilyTests(UpdateFamilyBase):
                     self.assertTrue(all(item["originalAbsent"] for item in observations["actorExitObservations"]))
                 else:
                     self.assertTrue(observations["ownerOriginalAbsent"])
+
+
+class UpdateInstalledTests(UpdateFamilyBase):
+    """GAP-UPD: _finish claimed nothing for an update row (not self.update), so no update run could pass the matrix. The job
+    now reads back, after the task, what the task left installed, as an installer row reads what it installed, and claims
+    that package only when it is the one its variant ends with: the target after a granted install, otherwise the base."""
+
+    AFTER = ["msi-registration", "list-tree", "read-directories", "read-pins"]
+
+    def fresh(self):
+        self.qga.programs.clear()
+        self.qga.collectors.clear()
+        self.qga.releases.clear()
+
+    def test_a_row_that_ends_with_its_base_claims_it_from_reads_after_its_task(self):
+        base, target = self.prepared()
+        record = self.installed_record(base)
+        for variant in ("public-ready", "download-cancelled", "checksum-rejected", "uac-denied"):
+            with self.subTest(variant=variant):
+                self.fresh()
+                self.qga.needs = ["before-install", "terminal-actors"] if variant == "uac-denied" else []
+                plan, code, receipt = self.run_update(variant, base, target)
+                self.assertEqual((0, None, "receipt"), (code, receipt["failure"], receipt["stage"]))
+                self.assertEqual({"installedPackage": True, "packageSha256": self.packages["basePackage"]["sha256"]}, receipt["windows"])
+                self.assertEqual({"baseInstall": base, "targetInstall": target, "installedAfter": {"role": "base", **record}},
+                                 {key: receipt["update"].get(key) for key in ("baseInstall", "targetInstall", "installedAfter")})
+                self.assertEqual(record, receipt["installed"], "what it found before its task: the base install's own record")
+                self.assertEqual(self.AFTER + ["evidence-zip"], self.qga.kinds()[-5:], "read back once the task ended, before the copy")
+        self.assertEqual([], self.classify()["unresolved"])
+
+    def test_a_granted_update_claims_the_target_from_reads_after_its_task(self):
+        base, target = self.prepared()
+        record = self.installed_record(target)
+        for variant in ("success-off", "wait-client-loss", "installer-wait-client-loss"):
+            with self.subTest(variant=variant):
+                self.fresh()
+                self.grant_guest(target)
+                plan, code, receipt = self.run_update(variant, base, target)
+                self.assertEqual((0, None, "receipt"), (code, receipt["failure"], receipt["stage"]))
+                self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+                self.assertEqual({"role": "target", **record}, receipt["update"].get("installedAfter"), "the target install's own record")
+                self.assertEqual(self.installed_record(base), receipt["installed"], "it started from the base")
+                self.assertEqual(self.AFTER + ["evidence-zip"], self.qga.kinds()[-5:])
+                self.assertLessEqual(len((Path(plan["dataDirectory"]) / "scenario-receipt.json").read_bytes()), job.RECEIPT_BYTES)
+
+    def test_a_passed_row_that_left_another_package_claims_nothing(self):
+        base, target = self.prepared()
+        tree = self.qga.trees[INSTALLED_ROOT]
+
+        def extra_file():
+            self.qga.trees[INSTALLED_ROOT] = (sorted(tree[0] + ["app/extra.jar"]), tree[1])
+        cases = (("public-ready", self.to_target, "update_installed_differs:target", "target"),
+                 ("success-off", None, "update_installed_differs:base", "base"),
+                 ("public-ready", lambda: self.to_target(OLD_CODE, "2.2.13"), "update_installed_differs:base_version", None),
+                 ("checksum-rejected", extra_file, "update_installed_differs:base_tree", None))
+        for variant, effect, failure, role in cases:
+            with self.subTest(variant=variant, failure=failure):
+                self.fresh()
+                if variant == "success-off":
+                    self.grant_guest(target)
+                else:
+                    self.to_base()
+                    self.qga.needs = []
+                self.qga.update_effect = effect
+                try:
+                    plan, code, receipt = self.run_update(variant, base, target)
+                    self.assertEqual((1, failure, "installed"), (code, receipt["failure"], receipt["stage"]))
+                    self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+                    self.assertEqual(role, (receipt["update"].get("installedAfter") or {}).get("role"))
+                    self.assertTrue(self.fence(plan, ".terminal.json").exists(), "a known failure closes the fence")
+                finally:
+                    self.qga.trees[INSTALLED_ROOT] = tree
+
+    def test_a_cancelled_grant_names_the_base_it_left_beside_its_failure(self):
+        """An expired prompt reaches a grant as the product's CANCELLED: the case closes what it started after before-install
+        and ends 1. The base it left is read back the same way and stands beside the failure; nothing is claimed."""
+        base, target = self.prepared()
+        self.grant_guest(target)
+        self.qga.needs = ["before-install"]
+        self.qga.task_exit = 1
+        plan, code, receipt = self.run_update("success-off", base, target)
+        self.assertEqual((1, "task_exit_code", "run"), (code, receipt["failure"], receipt["stage"]))
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+        self.assertEqual({"role": "base", **self.installed_record(base)}, receipt["update"].get("installedAfter"))
+        self.assertEqual(self.AFTER + ["evidence-zip"], self.qga.kinds()[-5:])
+        self.assertTrue(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_lost_read_after_a_failed_task_leaves_the_outcome_unknown(self):
+        base, target = self.prepared()
+        self.qga.needs = []
+        self.qga.task_exit = 1
+
+        def lose(command, kind, ordinal):
+            if command == "guest-exec" and kind == "msi-registration" and "system-run" in self.qga.kinds():
+                return TimeoutError("reply lost")
+        self.qga.lose = lose
+        plan, code, receipt = self.run_update("public-ready", base, target)
+        self.assertEqual((3, "task_exit_code"), (code, receipt["failure"]))
+        self.assertEqual({"role": None, "check": "unread"}, receipt["update"].get("installedAfter"))
+        kinds = self.qga.kinds()
+        self.assertEqual(["system-run", "msi-registration"], kinds[kinds.index("system-run"):], "nothing follows a program that may still run")
+        self.assertFalse(self.fence(plan, ".terminal.json").exists())
+
+    def test_a_task_that_never_finished_or_never_ran_is_never_read_back(self):
+        base, target = self.prepared()
+        self.qga.needs, self.qga.parked_files = ["before-install"], ["owner-parked.json"]
+        self.qga.run_state, self.qga.run_polls = "owner-parked", 2
+        plan, code, receipt = self.run_update("uac-denied", base, target)
+        self.assertEqual((3, "owner-parked", None), (code, receipt["failure"], receipt["update"].get("installedAfter")))
+        kinds = self.qga.kinds()
+        self.assertEqual(["system-run", "evidence-zip"], kinds[kinds.index("system-run"):])
+        self.forget(plan)
+        self.qga.run_state, self.qga.run_polls, self.qga.parked_files = None, None, []
+        plan, code, receipt = self.run_update("public-ready", base, target, stopAfter="publish")
+        self.assertEqual((0, "publish", None), (code, receipt["stoppedAfter"], receipt["update"].get("installedAfter")))
+        self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+        self.assertNotIn("system-run", self.qga.kinds())
 
 
 DOCUMENT_ROWS = ("windows-document-acceptance", "windows-document-cold.cold-reopen", "windows-document-cold.legacy-newline",

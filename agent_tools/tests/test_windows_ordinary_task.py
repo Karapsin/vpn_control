@@ -1461,6 +1461,33 @@ class DedicatedDriverControls(unittest.TestCase):
                 self.assertEqual(0, dedicated_driver.run(owner, "windows-public-update"))
                 self.assertNotIn("arm", owner.calls); self.assertNotIn("wait-release", owner.calls)
 
+    def test_an_update_asks_the_installed_base_for_its_version_before_any_hold_or_case(self):
+        """installed-package of an update row that ends with its base needs --version under this ordinary token: the
+        driver asks the installed launcher, whose request names the base version, before it arms a hold or runs the case."""
+        for variant in sorted(dedicated_driver.NO_SYSTEM | dedicated_driver.FINAL_TERMINAL | dedicated_driver.FINAL_RETURNED):
+            with self.subTest(variant=variant):
+                owner = DedicatedDispatchPeer(Path(self.temp.name)); owner.update(variant, hold=variant not in dedicated_driver.NO_SYSTEM)
+                self.assertEqual(0, dedicated_driver.run(owner, "windows-public-update"))
+                probes = [call for call in owner.calls if isinstance(call, tuple) and call[0] == "child"]
+                self.assertEqual([("child", "help"), ("child", "version")], probes)
+                self.assertLess(owner.calls.index(probes[-1]), owner.calls.index("cases"))
+                if variant not in dedicated_driver.NO_SYSTEM:
+                    self.assertLess(owner.calls.index(probes[-1]), owner.calls.index("arm"))
+
+    def test_an_update_whose_launcher_reports_another_version_never_arms_or_runs_its_case(self):
+        self.owner.update()
+        original = self.owner.child
+
+        def child(label, argv):
+            if argv[-1] != "--version":
+                return original(label, argv)
+            self.owner.calls.append(("child", label))
+            return types.SimpleNamespace(completed=lambda: subprocess.CompletedProcess(argv, 0, "VPN Control 2.2.13\n", ""))
+        self.owner.child = child
+        with self.assertRaisesRegex(ValueError, "^dedicated-static-public-launcher-probe$"):
+            dedicated_driver.run(self.owner, "windows-public-update")
+        self.assertNotIn("arm", self.owner.calls); self.assertNotIn("cases", self.owner.calls)
+
     def test_armed_case_failure_and_release_unknown_park_without_unwinding_hold(self):
         for role in ("case_error", "release_error"):
             with self.subTest(role=role):

@@ -75,7 +75,8 @@ _OWNER = ("agent_tools/windows_ordinary_task_owner.ps1", "owner", "powershell")
 _WORKER = ("agent_tools/windows_ordinary_process_owner.py", "worker", "data")
 _HARNESS = (("scripts/test_packaged_cli.py", "harness", "data"),
             ("scripts/windows_install_admission_diagnostic.py", "diagnostic", "data"))
-# "declare" belongs to a reboot preboot alone, "installed" to the installer rows.
+# "declare" belongs to a reboot preboot alone, "installed" to the installer rows and to the update rows, whose
+# product installs or leaves a package the job reads back after the task.
 _ALL_STAGES = tuple(stage for stage in host_job.STAGE_ORDER if stage != "declare")
 _STAGES = tuple(stage for stage in _ALL_STAGES if stage != "installed")
 
@@ -241,13 +242,20 @@ _UPDATE_REFUSED = {
 _GRANT_STAGES = ("before-install", "authorization", "terminal-actors", "returned-cleanup")
 _UPDATE_COLLECTORS = {"uac-denied": (("before-install", "terminal-actors"), "terminal-actors"),
                       **{variant: (_GRANT_STAGES, "returned-cleanup") for variant in ("success-off", "wait-client-loss", "installer-wait-client-loss")}}
+# What a passed update row leaves installed: its target only after a granted install that succeeded
+# (update_cases.SUCCESS_VARIANTS less transport-loss, which the case refuses), otherwise the base it started from.
+# The job reads which after the task and claims installed-package for that one alone (host_job Job._update_after);
+# the matrix binds the claim to that install's own journal (_update_facts).
+_UPDATE_ENDS_WITH_TARGET = frozenset({"success-off", "success-reconnect", "different-admin", "wait-client-loss", "installer-wait-client-loss"})
 
 
 def _update_row(variant: str) -> dict[str, Any]:
     stages, final = _UPDATE_COLLECTORS.get(variant, ((), None))
     row = _worker_row("product", "windows-public-update", ("targetPackage", "fixtureReceipt"),
                       (*_UPDATE_FILES, *(_COLLECTOR_FILES if stages else ())), prior=True, deadline=3600)
-    row["update"] = {"variant": variant, "collectorStages": stages, "finalStage": final}
+    row["update"] = {"variant": variant, "collectorStages": stages, "finalStage": final,
+                     "ends": "target" if variant in _UPDATE_ENDS_WITH_TARGET else "base"}
+    row["stages"] = _ALL_STAGES  # "installed": the registration and tree the task left, read back as an installer row's are.
     row["refusal"] = _UPDATE_REFUSED.get(variant)
     if variant not in _NO_SYSTEM:
         deny = variant == "uac-denied"
@@ -622,7 +630,10 @@ def admit_start(root: Path | str, request: Mapping[str, Any],
 def public_evidence(result: Mapping[str, Any]) -> dict[str, Any]:
     """A setup or component row never claims installed-package, whatever its receipt says.
 
-    Nor does a job the direct script stopped early: no task ran, so --version never held.
+    Nor does a job the direct script stopped early: no task ran, so --version never held. An update row claims the
+    package its variant ends with (RECIPES update.ends): its target after a granted install, otherwise the base it
+    started from. The public result names no base artifact, so here a base claim is only a digest other than the
+    target's; the matrix binds it to the base install's own journal (_update_facts).
     """
     row = _row(result.get("scenarioId"))
     if row["evidenceClass"] in SETUP_OR_COMPONENT:
@@ -632,7 +643,12 @@ def public_evidence(result: Mapping[str, Any]) -> dict[str, Any]:
     proven = (result.get("state") == "terminal" and result.get("collectionState") == "complete" and isinstance(windows, Mapping)
               and windows.get("stoppedAfter") is None
               and windows.get("installedPackage") is True and isinstance(windows.get("packageSha256"), str)
-              and isinstance(target, str) and target == "sha256-" + windows["packageSha256"])
+              and isinstance(target, str))
+    if proven and row.get("update"):
+        proven = (re.fullmatch(r"[0-9a-f]{64}", windows["packageSha256"]) is not None
+                  and (target == "sha256-" + windows["packageSha256"]) is (row["update"]["ends"] == "target"))
+    elif proven:
+        proven = target == "sha256-" + windows["packageSha256"]
     return {"evidenceClass": "installed-package" if proven else "installed-package-unproven", "productAction": True}
 
 
@@ -1299,8 +1315,75 @@ def _route(root: Path, correlation: str) -> str | None:
     return None
 
 
+_INSTALL_ROWS = frozenset({"windows-msi-base-install", "windows-msi-base-reset"})
+# What an installer row records of what it left (host_job Job.stage_installed), and what an update row names after its task.
+_INSTALLED_FACTS = frozenset({"packageSha256", "productCode", "productVersion", "packageCode", "treeSha256", "treeFiles"})
+
+
+def _install_journal(root: Path, correlation: Any, environment: str) -> tuple[str, dict[str, Any]] | None:
+    """A passed install on this clone, as its own collected journal records it: the package it admitted and the install
+    it read back (registration and complete tree). None for anything else; this never refuses."""
+    try:
+        _canonical_uuid(correlation, "windows_matrix_install_unbound")
+        record = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), None)._read(correlation)
+        plan = native_scenario_execution.ScenarioPlan.from_mapping(record["plan"])
+        collection = record.get("collection") or {}
+        summary = json.loads(collection["rawJson"])
+        raw = summary["actualReceiptRaw"]
+        receipt = json.loads(raw)
+        installed = receipt["installed"]
+        package = plan.artifact_ids.get("basePackage")
+        bound = (plan.scenario_id in _INSTALL_ROWS and plan.environment == environment
+                 and record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and record.get("exitCode") == host_job.EXIT_PASSED
+                 and collection.get("state") == "complete" and hashlib.sha256(raw.encode("utf-8")).hexdigest() == summary["actualReceiptSha256"]
+                 and receipt.get("scenarioId") == plan.scenario_id and receipt.get("correlationId") == correlation
+                 and receipt.get("deploymentId") == environment and receipt.get("result") == "passed" and receipt.get("exitCode") == host_job.EXIT_PASSED
+                 and type(installed) is dict and set(installed) == _INSTALLED_FACTS and isinstance(package, str)
+                 and package == "sha256-" + str(installed["packageSha256"]))
+    except (NativeScenarioWindowsError, native_scenario_execution.ScenarioExecutionError, OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return (package, installed) if bound else None
+
+
+def _update_facts(root: Path, plan: native_scenario_execution.ScenarioPlan, row: Mapping[str, Any], value: Mapping[str, Any],
+                  receipt: Mapping[str, Any] | None) -> dict[str, Any]:
+    """What an update run's record says it started from and ended with, each only when bound to an install's own journal.
+
+    baseInstall is the base install the input names, basePackage the package that install admitted once its journal
+    binds; targetInstall is the earlier install of this target that recorded its tree. installedPackage is the package
+    the job read installed after the task (Job._update_after), when that read is one of those two journals' installs
+    exactly and the run started from the base: what the job found before its task is the base install's own record.
+    proven is the claim a passed run counts with: that package is the one its variant ends with, and the receipt
+    claims exactly it.
+    """
+    base = _install_journal(root, value["priorInstall"], plan.environment)
+    if base is not None and base[1]["productVersion"] != value["baseVersion"]:
+        base = None
+    target = _install_journal(root, value["targetInstall"], plan.environment)
+    if target is not None and (target[0] != plan.artifact_ids["targetPackage"] or target[1]["productVersion"] != value["productVersion"]):
+        target = None
+    receipt = receipt if isinstance(receipt, Mapping) else {}
+    update = receipt.get("update") if isinstance(receipt.get("update"), Mapping) else {}
+    after = update.get("installedAfter")
+    installs = {"base": base, "target": target}
+    named = (base is not None and receipt.get("installed") == base[1]
+             and update.get("baseInstall") == value["priorInstall"] and update.get("targetInstall") == value["targetInstall"]
+             and isinstance(after, Mapping) and set(after) == _INSTALLED_FACTS | {"role"} and after["role"] in installs
+             and installs[after["role"]] is not None and {key: after[key] for key in _INSTALLED_FACTS} == installs[after["role"]][1])
+    installed = installs[after["role"]][0] if named else None
+    claim = receipt.get("windows") if isinstance(receipt.get("windows"), Mapping) else {}
+    proven = (named and after["role"] == row["update"]["ends"] and claim.get("installedPackage") is True
+              and isinstance(claim.get("packageSha256"), str) and installed == "sha256-" + claim["packageSha256"])
+    return {"baseInstall": value["priorInstall"], "basePackage": None if base is None else base[0], "targetInstall": value["targetInstall"],
+            "installedPackage": installed, "proven": proven}
+
+
 def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
-    """One row as the matrix reads it, from its journal, its input and its route only; nothing is collected."""
+    """One row as the matrix reads it, from its journal, its input and its route only; nothing is collected.
+
+    An update row also names its base install, the package that install admitted, its target's install and the package
+    the job read installed after the task (_update_facts); it passes only with that last one bound and its own.
+    """
     try:
         record = native_scenario_execution.ScenarioExecutor(root.joinpath(*_JOURNALS), None)._read(correlation)
     except (native_scenario_execution.ScenarioExecutionError, OSError, ValueError):
@@ -1321,6 +1404,7 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
     facts.update(sourceSha=value["sourceSha"], productVersion=value["productVersion"], artifactSetId=value["artifactSetId"],
                  packages=sorted(plan.artifact_ids[key] for key in ("targetPackage", "fixtureReceipt") if key in plan.artifact_ids),
                  targetPackage=plan.artifact_ids["targetPackage"])
+    update = _update_facts(root, plan, row, value, None) if row.get("update") else None
     collection = record.get("collection") or {}
     if record["state"] == native_scenario_execution.ExecutionState.TERMINAL.value and collection.get("state") == "complete":
         summary = json.loads(collection["rawJson"])
@@ -1332,10 +1416,13 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
         facts.update(receiptSha256=digest, stage=host_job.token(receipt.get("stage")) if receipt.get("stage") else None,
                      failure=host_job.token(receipt.get("failure")) if receipt.get("failure") else None)
         public = public_evidence(native_scenario_execution.ScenarioExecutor._public(record))
+        if update is not None:
+            update = _update_facts(root, plan, row, value, receipt)
         if receipt.get("stoppedAfter") is not None:
             kind = "stopped"
         elif receipt.get("result") == "passed":
-            kind = "passed" if public["evidenceClass"] == "installed-package" else "installed-package-unproven"
+            proven = public["evidenceClass"] == "installed-package" and (update is None or update["proven"])
+            kind = "passed" if proven else "installed-package-unproven"
         elif receipt.get("result") == "failed":
             # A verdict on the installed product needs its task to have run, and is the owner's own: its exit 1, which a
             # case oracle failure ends with. An earlier stop is the row's setup; a failure after the task (the task journal,
@@ -1364,6 +1451,8 @@ def _matrix_row(root: Path, correlation: str) -> dict[str, Any]:
     else:
         raise NativeScenarioWindowsError("windows_matrix_row_unsettled:" + correlation)
     facts["classification"] = kind
+    if update is not None:
+        facts["update"] = {key: update[key] for key in ("baseInstall", "basePackage", "targetInstall", "installedPackage")}
     return facts
 
 
@@ -1488,6 +1577,8 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
     already in a recorded observation of the requirement. A failed or unknown row yields a failed or unknown
     observation at once. Setup, stopped, refused, installed-package-unproven, failed-before-task and failed-after-task
     rows never count. A failed-principal run is a failed one of its MATRIX_PRINCIPAL scenario alone, and of no other.
+    An update run counts only with the package read after its task bound to an install journal of its clone (the
+    target after a granted install, otherwise the base it started from), and its entry names both installs.
     The attestation is the coordinator's, never this code's.
     """
     _need(isinstance(reviewer_attestation, str) and reviewer_attestation.strip() and len(reviewer_attestation) <= 240,
@@ -1533,12 +1624,16 @@ def matrix_observation(root: Path | str, requirement_id: str, correlation_ids: A
     deployments = sorted({row["deploymentId"] for row in rows})
     environment = "windows-qemu-" + (deployments[0] if len(deployments) == 1 else
                                      str(len(deployments)) + "-clones-" + hashlib.sha256(",".join(deployments).encode()).hexdigest()[:12])
+    # An update row's entry also names the base install it started from, the package that install admitted, its target's
+    # install and the package read installed after its task: the base is a package of another source, so it is bound here
+    # and never among the record's artifacts.
     document = {"schema": "vpn-control.windows-matrix-evidence", "schemaVersion": 1, "requirementId": requirement_id,
                 "platform": requirement["platform"], "result": result, "evidenceScope": scope, "package": package,
                 "immutableArtifactIDs": artifacts, "scenarios": states,
                 "rowsByScenario": {name: list(MATRIX_SCENARIOS[requirement_id][name]) for name in results},
-                "rows": [{key: row.get(key) for key in ("correlationId", "scenarioId", "deploymentId", "route", "classification",
-                                                        "receiptSha256", "exitCode", "stage", "failure")} for row in review["rows"]]}
+                "rows": [{**{key: row.get(key) for key in ("correlationId", "scenarioId", "deploymentId", "route", "classification",
+                                                           "receiptSha256", "exitCode", "stage", "failure")},
+                          **({"update": row["update"]} if "update" in row else {})} for row in review["rows"]]}
     path, digest = _matrix_evidence(root, requirement_id, document)
     observation = {"requirementId": requirement_id, "platform": requirement["platform"], "originalSourceSHA": source,
                    "immutableArtifactIDs": artifacts, "evidencePath": path, "evidenceHash": digest, "environment": environment,

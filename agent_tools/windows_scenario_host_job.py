@@ -94,6 +94,8 @@ TRUSTSTORE_ALIAS = "vpn-control-fixture-github"
 TRUSTSTORE_PASSWORD = "fixture"  # update_fixture_server.owner_jvm_environment names this store password.
 FIXTURE_RELEASE = "disposable-desktop-fixture"
 INVENTORY_NAME = "installed-inventory.json"
+# What an installer row records of the install it left; an update row names the same facts of what its task left.
+INSTALLED_FACTS = ("packageSha256", "productCode", "productVersion", "packageCode", "treeSha256", "treeFiles")
 # The bootstrap's terminal event and its reply each carry the child's stdout as base64, and QGA encodes
 # the reply again: 64 KiB of child output stays far below the 256 KiB event cap and MAX_TERMINAL_BYTES.
 COLLECTOR_RAW_LIMIT = 65536
@@ -1086,6 +1088,8 @@ class Job:
         self.update = self.row.get("update")
         self.collected = {}
         self.target_install = self.update_pins = self.harness_pin = self.administrator_sid = None
+        # What an update row's task left installed, read back after it (_update_after): None until read.
+        self.update_after = None
         # A grant row's installer helper, the product's controller process and the installer job's two live actors, each
         # as a SYSTEM census found it; and every SeBackupPrivilege read of an owner-only product file, as journaled.
         self.install_helper = self.update_owner = self.install_actors = self.install_facts = None
@@ -2843,6 +2847,12 @@ class Job:
 
     # Stage 5b: what an installer row left behind, read after its owner finished.
     def stage_installed(self):
+        if self.update:
+            # The product's own update installs its target, or leaves the base: the variant names which a pass leaves.
+            found = self._update_after()
+            if found["role"] != self.update["ends"]:
+                raise KnownFailure("update_installed_differs:" + (found["role"] or found["check"]))
+            return
         if self.row["bootstrapMode"] == "python-install":
             listing = self._listing("after-python", self.paths["python"])
             if not listing["present"] or not set(PYTHON_REQUIRED) <= set(listing["files"]):
@@ -2867,6 +2877,34 @@ class Job:
         self._keep(INVENTORY_NAME, (json.dumps({"schemaVersion": 1, "operationId": self.op, "installed": self.installed,
                                                  "installLocation": self.paths["installed"], "files": inventory},
                                                 sort_keys=True, separators=(",", ":")) + "\n").encode())
+
+    def _update_after(self):
+        """What an update row's task left installed, read as an installer row reads what it installed: the registration and
+        the complete installed tree, here after the task was deleted. Named by the one declared install it exactly is: the
+        target, whose earlier install recorded its tree, or the base this row started from; otherwise by the first check
+        the variant's own install failed. Read only. A read that fails leaves no name and raises its own known failure."""
+        self.update_after = {"role": None, "check": "unread"}  # Set before any program: never read twice.
+        try:
+            rows = self._registration("after-registration")
+            tree = self._tree("after-installed", self.paths["installed"], "installed-app",
+                              self._listed("after-installed", self.paths["installed"], INSTALLED_REQUIRED))
+        except KnownFailure as error:
+            self.update_after["check"] = token(error)
+            raise
+        found = {"treeSha256": tree["sha256"], "treeFiles": len(tree["tree"]["files"])}
+        checks = {}
+        for role, installed in (("target", self.target_install["installed"]), ("base", self.prior_installed)):
+            check = self._registration_check(rows, installed["productCode"], installed["productVersion"])
+            if check is None and rows[0]["packageCode"] != installed["packageCode"]:
+                check = "package_code"
+            if check is None and found != {key: installed[key] for key in found}:
+                check = "tree"
+            if check is None:
+                self.update_after = {"role": role, **{key: installed[key] for key in INSTALLED_FACTS}}
+                return self.update_after
+            checks[role] = check
+        self.update_after = {"role": None, "check": self.update["ends"] + "_" + checks[self.update["ends"]]}
+        return self.update_after
 
     # Stage 6.
     def stage_evidence(self):
@@ -2919,13 +2957,17 @@ class Job:
                     "hardwareUuid": self.raw_context["boot"]["hardwareUuid"], "machineGuid": self.raw_context["boot"]["machineGuid"]}}
                 # Installed-package evidence: a passed product row whose MSI registration, complete
                 # installed tree and --version under the ordinary token (the worker's own static probe,
-                # the dedicated driver's before a proxy row's runtime, or the harness) all held.
+                # the dedicated driver's before a proxy row's runtime or an update's case, or the harness) all held.
                 # A job stopped before its task matched the first two but never ran --version.
-                # An update row claims none: the job matched the base's tree before the run, never the target's after
-                # a grant's install; the case's own registration and --version checks stay in its evidence.
+                # An update row claims the package its task left, read back after the task as an installer row reads what
+                # it installed (_update_after), and only the one its variant ends with: the target after a granted install,
+                # whose --version the case asked after the update, or else the base it started from, unchanged, whose
+                # --version the driver asked before the case. That the start was the base is the match before the task.
                 claimed = (code == EXIT_PASSED and self.row["evidenceClass"] == "product" and self.installed_matched
-                           and self.task_checked and self.plan.get("stopAfter") is None and not self.update)
-                windows = {"installedPackage": claimed, "packageSha256": self.package_target()["sha256"] if claimed else None}
+                           and self.task_checked and self.plan.get("stopAfter") is None
+                           and (not self.update or (self.update_after or {}).get("role") == self.update["ends"]))
+                package = None if not claimed else self.update_after["packageSha256"] if self.update else self.package_target()["sha256"]
+                windows = {"installedPackage": claimed, "packageSha256": package}
                 receipt = build_receipt(self.plan, exit_code=code, stage=self.stage, failure=failure, context=context,
                                         task=self.task, evidence=self.evidence, guest_programs=self.programs,
                                         installed=self.installed, python=self.python_facts, windows=windows, preboot=self.preboot,
@@ -2933,10 +2975,15 @@ class Job:
                 if self.document:
                     receipt["document"] = {"variant": self.document["variant"], "principal": self.principal}
                 if self.update:
+                    prior = self.plan.get("prior") or {}
+                    # The base install this row started from (installed above is what it found there before its task), the
+                    # earlier install of its target that recorded the target's tree, and what its task left installed.
                     receipt["update"] = {"variant": self.update["variant"],
                                          "collectors": {stage: (None if record is None else {"requestSha256": record["requestSha256"],
                                                                                               "released": record["release"] is not None})
-                                                        for stage, record in sorted(self.collected.items())}}
+                                                        for stage, record in sorted(self.collected.items())},
+                                         "baseInstall": prior.get("install"), "targetInstall": prior.get("targetInstall"),
+                                         "installedAfter": self.update_after}
                     # What the first native runs must show: the installer's live actors as a SYSTEM census found them,
                     # their parents as recorded, and how many owner-only product files were read through SeBackupPrivilege.
                     if self.install_facts is not None:
@@ -2981,6 +3028,18 @@ class Job:
                 code, failure = EXIT_UNKNOWN, "unexpected:" + type(error).__name__
             else:  # Only guest-ping went out. A partly saved intent still blocks through prior_fence_open.
                 code, failure = EXIT_REFUSED, "host_prepare:" + type(error).__name__
+        if (code == EXIT_FAILED and self.update and self.update_after is None and stop is None and not self.program_open
+                and (self.task or {}).get("state") == "task-finished" and self.task.get("taskDeleted") is True):
+            # A known failure once the update task was deleted, such as a grant whose prompt ended CANCELLED: what the
+            # task left installed is read the same way and stands beside the failure, which it never changes. Only a
+            # lost reply of that read leaves the outcome unknown.
+            try:
+                self._update_after()
+            except KnownFailure:
+                pass  # Its own check is kept in update_after.
+            except Exception as error:
+                code = EXIT_UNKNOWN
+                failure = failure or token(error if isinstance(error, Unknown) else "unexpected:" + type(error).__name__)
         if self.published and not self.program_open and stop is None and "evidence" in self.row["stages"]:
             # Only after the last program returned: a lost ack or terminal ends the job here. This copy
             # stops and deletes nothing and leaves a parked owner's live files as they are; its one

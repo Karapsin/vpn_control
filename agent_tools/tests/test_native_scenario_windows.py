@@ -37,6 +37,7 @@ from agent_tools import ssh_transport as transport
 from agent_tools import windows_ordinary_task as planner
 from agent_tools import windows_scenario_host_job as host_job
 from agent_tools.tests.test_native_vm_spec import request as vm_request
+from agent_tools.windows_public_updater import update_cases
 
 ROOT = Path(__file__).resolve().parents[2]
 MACHINE = "33333333-4444-4555-8666-777777777777"
@@ -320,7 +321,8 @@ class TableTests(unittest.TestCase):
                 expected = ["targetPackage", "fixtureReceipt"] if row.get("update") else ["targetPackage"]
                 self.assertEqual(row["evidenceClass"] == "product", packages == expected and row["priorInstall"] is True)
                 self.assertEqual(row["package"] is not None, row["evidenceClass"] == "setup")
-                self.assertEqual("installed" in row["stages"], row["evidenceClass"] == "setup")
+                # An update row reads back what its task left installed, as an installer row reads what it installed.
+                self.assertEqual("installed" in row["stages"], row["evidenceClass"] == "setup" or bool(row.get("update")))
                 self.assertEqual("declare" in row["stages"], (row.get("reboot") or {}).get("phase") == "pre")
 
     def test_reboot_rows_pair_each_postboot_with_its_preboot(self):
@@ -507,6 +509,27 @@ class PublicEvidenceTests(unittest.TestCase):
             claim = {"scenarioId": scenario, "state": "terminal", "collectionState": "complete", "artifactIds": {"basePackage": "sha256-" + "b" * 64},
                      "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": "b" * 64}}}
             self.assertEqual({"evidenceClass": "setup", "productAction": False}, windows.public_evidence(claim))
+
+    def test_an_update_row_claims_the_package_its_variant_ends_with(self):
+        """A granted update that succeeded claims its target; every other update row claims the base it started from,
+        which the public result does not name: any digest but the target's, bound by the matrix alone."""
+        target, base = "b" * 64, "e" * 64
+
+        def claim(variant, digest, **changes):
+            return {"scenarioId": UPDATE + variant, "state": "terminal", "collectionState": "complete",
+                    "artifactIds": {"bundleManifest": "sha256-" + "a" * 64, "scenarioInput": "sha256-" + "c" * 64,
+                                    "targetPackage": "sha256-" + target, "fixtureReceipt": "sha256-" + "d" * 64},
+                    "scenarioEvidence": {"windows": {"installedPackage": True, "packageSha256": digest, **changes}}}
+        proven, unproven = {"evidenceClass": "installed-package", "productAction": True}, {"evidenceClass": "installed-package-unproven",
+                                                                                           "productAction": True}
+        for variant in windows.UPDATE_VARIANTS:
+            # The case module says which: the target only after a granted install that succeeded.
+            own, other = (target, base) if variant in update_cases.SUCCESS_VARIANTS else (base, target)
+            with self.subTest(variant=variant):
+                self.assertEqual(proven, windows.public_evidence(claim(variant, own)))
+                self.assertEqual(unproven, windows.public_evidence(claim(variant, other)), "the package another variant ends with")
+                for change in ({"installedPackage": False}, {"stoppedAfter": "publish"}, {"packageSha256": None}, {"packageSha256": "E" * 64}):
+                    self.assertEqual(unproven, windows.public_evidence(claim(variant, own, **change)))
 
     def test_a_job_stopped_before_its_task_never_proves_an_installed_package(self):
         digest = "b" * 64
@@ -1428,6 +1451,18 @@ class UpdateTableTests(unittest.TestCase):
         from agent_tools.windows_public_updater import update_cases
         self.assertEqual(set(update_cases.VARIANTS) - {"transport-loss"}, set(windows.UPDATE_VARIANTS))
         self.assertIn("transport-loss", update_cases.VARIANTS, "the case module refuses it itself")
+
+    def test_each_row_ends_with_the_package_its_case_leaves_and_reads_it_back(self):
+        """A passed case leaves the target only after a granted install that succeeded (SUCCESS_VARIANTS); every other
+        variant leaves the base it started from. The job reads which in its installed stage and claims only that one."""
+        ends = {variant: windows.RECIPES[UPDATE + variant]["update"].get("ends") for variant in windows.UPDATE_VARIANTS}
+        self.assertEqual({variant for variant in windows.UPDATE_VARIANTS if variant in update_cases.SUCCESS_VARIANTS},
+                         {variant for variant, end in ends.items() if end == "target"})
+        self.assertEqual({"base", "target"}, set(ends.values()))
+        for variant in windows.UPDATE_VARIANTS:
+            with self.subTest(variant=variant):
+                stages = windows.RECIPES[UPDATE + variant]["stages"]
+                self.assertEqual(("run", "installed", "evidence"), stages[stages.index("run"):stages.index("run") + 3])
 
     def test_only_rows_with_a_producer_for_their_evidence_are_admitted(self):
         """Each refused row names exactly what it still lacks; every stage of an admitted row is tooled."""
