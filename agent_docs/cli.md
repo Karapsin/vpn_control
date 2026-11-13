@@ -351,7 +351,8 @@ restart. Configuration IDs are owner-local, not persistent location row IDs or
 selectors; they do not expose profile content. Status does not start an owner.
 While the owner's state folder holds an unreadable saved workspace that the store
 kept aside at load (`workspace.json.unreadable-*`, `PRODUCT-003`), desktop `status`
-adds warning `UNREADABLE_WORKSPACE_KEPT`; the folder is scanned when an owner starts.
+adds warning `UNREADABLE_WORKSPACE_KEPT`; every `status` lists the folder again, so the
+warning ends once no such file remains, also in a long-running owner.
 Normal GUI startup now registers a separate frontend, discovers or starts a
 headless owner, and attaches through an authenticated owner-pinned lease. Production
 Main no longer constructs a service/controller graph. Heartbeats preserve an idle

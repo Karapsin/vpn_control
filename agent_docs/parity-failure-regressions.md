@@ -2181,9 +2181,10 @@ superseded as before. The loaded workspace gets the typed status `SAVED_SETTINGS
 or `SAVED_SETTINGS_UNREADABLE_OLDER_COPY_LOADED` naming the kept files, as its status line and one log entry,
 and is saved at once, so a GUI attaching to a later owner still shows it. Both templates are translated in all
 66 status catalogs (`check_localization.py` reports the same 4987 warnings before and after, none for them).
-While a kept copy remains, desktop `status` adds warning `UNREADABLE_WORKSPACE_KEPT`; the folder is scanned
-when an owner starts, so a later transient CLI owner reports it too. When the older copy that loads had a
-reconnect intent, the status line first shows the pending restore; the log entry and the warning remain.
+While a kept copy remains, desktop `status` adds warning `UNREADABLE_WORKSPACE_KEPT`; every `status` lists
+the folder (since the follow-up below), so later owners report it too and the warning ends when the copy is
+gone. When the older copy that loads had a reconnect intent, the status line shows the pending restore instead;
+the warning remains, and the GUI log shows the entry only as its raw key (open, see the follow-up).
 `PRODUCT-003` now states the rule.
 
 RED: `DesktopStateStoreUnreadableWorkspaceTest` uses only API the unfixed store had. On the production sources
@@ -2212,20 +2213,93 @@ original unchanged, nothing else written).
 Android (`PRODUCT-002`) differs and is not changed. Its DataStore (`vpn_control.preferences_pb`,
 `AndroidPreferencesSerializer`) has no corruption handler, so an undecodable file fails every committed read and
 write with `CorruptionException` and is never replaced:
-`AndroidConfigurationStoreTest.undecodableProductionStoreFailsReadsAndWritesAndKeepsItsBytes` pins it
-(`:app:testDebugUnitTest`: that class 14 tests and `AndroidPreferencesSerializerTest` 20, no failure). By code
+`AndroidConfigurationStoreTest.undecodableProductionStoreFailsReadsAndWritesAndKeepsItsBytes` pins it, through
+the production construction since the follow-up below (`:app:testDebugUnitTest`: that class 14 tests and
+`AndroidPreferencesSerializerTest` 20, no failure). By code
 reading only: `MainViewModel` collects that failing flow in `viewModelScope` without a handler, so the app is
 expected to stop at launch; the legacy `ProfileStorage.state` maps the failure to empty defaults; ADB control
 reads fail. Android keeps the data but neither stays usable nor says why. That is a separate Android defect
 that needs its own product decision and causal regression; it is unproven natively, as no emulator was used.
 
 Downgrade residuals, pre-existing and not changed: this build's next save drops fields it does not know and
-saves the default for an enum value it does not know; builds before this fix still overwrite a workspace they
+saves the default for an enum value it does not know; a newer build's structural change is kept aside only when
+that build raises `format` (follow-up below), otherwise it is read like an additive one and the next save loses
+what this build cannot represent; builds before this fix ignore `format` and still overwrite a workspace they
 cannot decode. Older builds ignore the kept files and cannot render this build's two new status keys (an empty
 status line through the owner presentation, the raw encoded text elsewhere); nothing is lost.
-Not proven here: the Windows sharing-lock path (the copy fallback), ACL preservation, and any native or
-packaged run. Routine coverage: `:desktopApp:test`, `:shared:model:desktopTest`, `:shared:ui:desktopTest` and
-`:app:testDebugUnitTest` in Fast Checks and the managed pre-push tier.
+Not proven natively: the Windows sharing-lock path (its decision is covered by a fault-injection regression since
+the follow-up), ACL preservation, and any native or packaged run. Routine coverage: `:desktopApp:test`,
+`:shared:model:desktopTest`, `:shared:ui:desktopTest` and `:app:testDebugUnitTest` in Fast Checks and the
+managed pre-push tier.
+
+### Review follow-up to the unreadable-workspace keep (product, offline, 2026-11-13)
+
+Independent review of `5ba8efaa` found four product defects and four test gaps. Each was verified by reading
+the code and by a regression with an actual RED on the production sources of `5ba8efaa`. Faults that a real
+folder cannot produce on demand come from `FaultInjectingFileSystem`, a test-only view of the default file
+system that fails chosen operations (a sharing lock, a full disk, a flaky mount) under the unchanged store.
+
+Product defects, all in `DesktopStateStore`:
+
+- Interrupted keep. The keep renames the unreadable file before the save that carries the notice. When that
+  save failed (a full disk) or the process died in between, the next start found no saved copy and loaded the
+  defaults as a first run, or silently loaded an older recovery file; only `status` named the kept file. The
+  load now lists the kept copies first. A kept copy whose data (its modification time, which the rename keeps)
+  is newer than the copy that loads, or any kept copy when the defaults load, is named in the same typed notice,
+  saved at once; after that save the loaded copy is newer, so nothing is named twice.
+- Unknown existence. `Files.exists` is also false when existence cannot be determined, so a brief I/O or
+  stale-handle error on `workspace.json` took the first-run branch and the save atomically replaced the real
+  file with defaults (the gate was unchanged from `00d1e64b`). Each saved copy is now classified with
+  `readAttributes`: only `NoSuchFileException` means absent; other errors are retried like reads and then fail
+  the load with `PERSISTENCE_FAILED` without writing.
+- Downgrade structure. Protection held only when decoding threw; a newer structure that decodes without an
+  exception was read as empty and overwritten by the next save. `workspace.json` now records `format` 1; any
+  other `format` is not decoded and is kept aside with the notice, and no `format` (every earlier build) still
+  loads. `PRODUCT-003` states the rule, including that a change older builds would misread raises `format`.
+- Cached warning. `UNREADABLE_WORKSPACE_KEPT` was computed once per owner, so a long-running owner kept warning
+  after the kept file was deleted. Every `status` now lists the folder again.
+
+Test gaps, where `5ba8efaa` was already right but no test would notice a regression: the fail-closed keep
+(the read-only-folder guard also failed the later save, so carrying on after rename and copy failed passed),
+the copy fallback (never run), the save of the older-copy notice by the load itself (both tests saved
+explicitly), strict UTF-8 and read retries (all fixtures ASCII, no transient failure), and the Android pin (it
+built its own DataStore, not the one `ProfileStorage` builds).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| A kept copy whose load stopped before saving was not reported on the next start | `DesktopStateStoreUnreadableWorkspaceTest`: `keptCopyIsReportedOnTheNextStartWhenTheSaveAfterKeepingFails` (temp-file creation fails as on a full disk), `keptCopyOfAnInterruptedLoadIsReportedWhenNoSavedCopyRemains`, `keptCopyOfAnInterruptedLoadIsReportedWhenAnOlderCopyLoads` | The notice survives a reload and is logged once. |
+| A saved copy whose existence could not be determined was replaced with defaults | `workspaceWhoseExistenceCannotBeDeterminedIsNeitherReplacedNorKept`, `briefMetadataFailureIsRetriedAndTheWorkspaceLoads` | Bytes unchanged; only the error class is logged. |
+| A newer build's workspace that decodes without an error was misread and overwritten | `workspaceOfAnotherFormatIsKeptEvenWhenItsFieldsWouldDecode`, `savedWorkspaceRecordsItsFormatAndOneWithoutAFormatStillLoads` | `format` 2 with compatible shapes is kept byte for byte; a workspace without `format` still loads. |
+| A running owner kept warning about a deleted kept copy | `runningOwnerStopsWarningOnceTheKeptCopyIsDeleted` | The same owner, before and after the delete. |
+| Fail-closed keep and copy fallback were unguarded | `workspaceThatCanNeitherBeRenamedNorCopiedFailsClosedWhileTheFolderStaysWritable`, `workspaceThatCannotBeRenamedIsCopiedPrivatelyBeforeTheDefaultsReplaceIt` | The copy is byte-identical, named, and requested owner-only at creation, so a umask-dependent copy fails even under umask `077`. |
+| The load's own save of the older-copy notice was unguarded | `newerUnreadablePrimaryIsKeptWhileTheOlderReadableRecoveryLoads`, `newerUnreadableRecoveryIsKeptWhileTheOlderReadablePrimaryLoads` (now check the disk and a reload before any explicit save) | |
+| Strict UTF-8 and read retries were unguarded | `workspaceThatIsNotValidUtf8IsKeptByteForByte`, `briefReadFailureIsRetriedInsteadOfKeepingAReadableWorkspace` | One raw `0xFF` inside a string value. |
+| The Android pin did not run the production store | `AndroidConfigurationStoreTest.undecodableProductionStoreFailsReadsAndWritesAndKeepsItsBytes` (`:app:testDebugUnitTest`) | Clears the application singleton so `ProfileStorage` builds the production DataStore, then restores it. |
+
+RED on the production sources of `5ba8efaa` with the final tests, `./gradlew --offline --continue
+-Pcompose.desktop.packaging.checkJdkVendor=false :desktopApp:test --tests
+com.kardinal.vpncontrol.desktop.DesktopStateStoreUnreadableWorkspaceTest`: 24 tests, 8 failures, exactly the
+four product defects ("status was not a typed notice", "expected SAVED_SETTINGS_UNREADABLE_DEFAULTS_LOADED but
+was CONNECTION_READY_ON_COMPUTER", "Expected ... DesktopPersistenceException ... completed successfully", the
+saved subscription replaced by `[]`, "read as this build's", "does not record its format", "still warned about a
+deleted copy"); the gap tests pass there. Mutants of `5ba8efaa`, run with the 12 tests of `5ba8efaa` under
+another class name: carrying on after rename and copy failed, a copy with umask permissions, an older copy not
+saved, lenient UTF-8 and a single read attempt together gave 14 failures (the 8 plus each gap test); a copy
+without bytes gave 9; the 12 tests of `5ba8efaa` passed on both runs. GREEN on the fix: 24 of 24, and 226 tests
+in 53 store-related desktop classes with no failure. Android: with `ReplaceFileCorruptionHandler` added to the
+production factory the new pin fails ("expected CorruptionException but was null") while the replica pin of
+`ffa03e94` passes; on the unchanged Android sources `AndroidConfigurationStoreTest` passes 14 of 14.
+
+Open, deferred for a product decision: when the older copy that loads carries a reconnect intent, the status
+line shows the pending restore and then the restore results, so the GUI status never shows the older-copy
+notice; any later status that replaces the notice before a GUI looks has the same effect. The log entry is no
+fallback in the GUI: the desktop GUI reads `logs`, whose messages pass `DiagnosticsSanitizer.redactText`, which
+turns every typed status into `KEY(args)` that `AppStrings.statusMessage` cannot decode, so the Stats screen
+shows every typed status untranslated (pre-existing, every key). Deciding needs the user: whether a load notice
+outranks the launch restore (shown again after it, held until seen, or no automatic reconnect after an older
+copy loaded), and how `logs` carries typed statuses to the GUI (the typed key with redacted arguments as an
+additive field, or decoding in the frontend), a control-protocol change shared with the CLI and Android.
+`status` keeps warning meanwhile.
 
 ## Historical coverage rule
 
