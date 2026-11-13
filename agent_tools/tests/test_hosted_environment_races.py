@@ -18,8 +18,14 @@ The unfixed case must fail with the hosted trace itself. The preparation core's
 disk-budget case compared two samples in the same way; no hosted failure of it
 is on record, so its unfixed case must miss exactly that refusal. No SSH, VM,
 guest or network.
+
+The free-space gain is real, so the filesystem stays live for this harness too:
+its two samples around a deleted megabyte show no gain when a neighbour takes
+the space back in between. Such an attempt proves nothing about either case and
+is repeated, at most ATTEMPTS times; a failure of the current case is never
+repeated away. test_hosted_environment_race_neighbours holds that causal case.
 """
-import contextlib,gc,hashlib,io,json,os,re,shutil,subprocess,tempfile,time,types,unittest,uuid
+import contextlib,gc,hashlib,io,json,os,re,shutil,subprocess,sys,tempfile,time,types,unittest,uuid
 from pathlib import Path
 from unittest import mock
 from agent_tools import private_config_custody,windows_parallel_vm_prepare as prepare,windows_parallel_vm_source_inventory as inventory
@@ -36,6 +42,8 @@ DIAGNOSTIC=re.compile(r'descriptor window: pre-baseline collection finalized (\d
 BEFOREIMAGES={'test_ssh_owned_channel_retirement.py':'test_ssh_owned_channel_retirement.py.before.source',
               'test_windows_parallel_vm_prepare.py':'test_windows_parallel_vm_prepare.py.before.source',
               'test_windows_parallel_vm_source_inventory.py':'test_windows_parallel_vm_source_inventory.py.before.source'}
+ATTEMPTS=4
+REPEATED=re.compile(r'free-space gain: attempt (\d+) of (\d+) inconclusive, measured gains (\[.*\]); repeating\n')
 
 
 def provenance():
@@ -149,6 +157,24 @@ def run_while_space_grows(module,case,target,entry,sampled_root,*,files=3,size=1
     return types.SimpleNamespace(result=result,entries=len(entries),grown=grown,devices=devices)
 
 
+def disturbed(run):
+    """No deletion of this attempt showed its megabyte in the harness's own next sample."""
+    return not run.grown or min(run.grown)<=0
+
+
+def attempt(start,conclusive):
+    """The first conclusive attempt, or the last of ATTEMPTS.
+
+    `conclusive` sees every attempt, so it can fail the test at once. An attempt
+    is repeated only for what the harness itself measured on the live filesystem.
+    """
+    for number in range(1,ATTEMPTS+1):
+        run=start()
+        if conclusive(run) or number==ATTEMPTS:return run
+        # One line even when the test passes, so a hosted run names its neighbour.
+        sys.stderr.write('free-space gain: attempt %d of %d inconclusive, measured gains %r; repeating\n'%(number,ATTEMPTS,run.grown))
+
+
 def run_low_disk(module):
     return run_while_space_grows(module,LOW_DISK,inventory,'observe_source',lambda source,root,*rest:root)
 
@@ -203,29 +229,40 @@ class LowDiskCaseTests(unittest.TestCase):
             self.assertTrue(run.grown and all(gain>0 for gain in run.grown),run.grown)
             self.assertTrue(all(ballast==root for ballast,root in run.devices),run.devices)
 
-    def unfixed(self,run):
+    def unfixed(self,start):
+        # Inconclusive, and repeated: no gain between the harness's own samples, or a gain the
+        # unfixed case did not meet because a neighbour took it back before the case's entry sampled.
+        run=attempt(start,lambda run:bool(run.result.skipped) or not disturbed(run) and not run.result.wasSuccessful())
         text=failures(run.result)
         if run.result.skipped:self.skipTest(text)
-        if not run.grown or min(run.grown)<=0:
+        if disturbed(run):
             self.skipTest('this filesystem did not return a deleted megabyte before the next sample: %r'%run.grown)
         self.assertEqual((1,1,0,2),(run.result.testsRun,len(run.result.failures),len(run.result.errors),run.entries),text)
-        return text
+        return run,text
+
+    def current(self,start):
+        # The current case passes in every attempt; one whose gain a neighbour took back is repeated, never excused.
+        def conclusive(run):
+            text=failures(run.result)
+            self.assertTrue(run.result.wasSuccessful(),text);self.assertEqual((1,[]),(run.result.testsRun,run.result.skipped),text)
+            return not disturbed(run)
+        run=attempt(start,conclusive)
+        if disturbed(run):self.skipTest('neighbours of this filesystem took a deleted megabyte back in every attempt: %r'%run.grown)
+        return run
 
     def test_unfixed_case_fails_when_the_filesystem_gains_space_between_samples_and_the_current_case_passes(self):
-        old=run_low_disk(before(source_inventory));text=self.unfixed(old)
+        unfixed=before(source_inventory);old,text=self.unfixed(lambda:run_low_disk(unfixed))
         self.assertEqual(hosted('lowDisk'),frames(text),text)
-        new=run_low_disk(source_inventory);text=failures(new.result)
-        self.assertTrue(new.result.wasSuccessful(),text);self.assertEqual(1,new.result.testsRun,text)
+        new=self.current(lambda:run_low_disk(source_inventory))
         self.assert_gain_reached_both(old,new);self.assertGreater(len(new.grown),len(old.grown))
 
     @unittest.skipUnless(shutil.which('qemu-img') and shutil.which('qemu-io'),'the preparation case needs qemu-img and qemu-io')
     def test_unfixed_budget_peer_misses_its_refusal_when_the_filesystem_gains_space_and_the_current_case_passes(self):
-        old=run_disk_budget(before(preparation));text=self.unfixed(old)
+        unfixed=before(preparation);old,text=self.unfixed(lambda:run_disk_budget(unfixed))
         # The budget gate passed on the gain; whatever stopped the core later is not the disk budget.
         self.assertIn('    with self.assertRaisesRegex(ValueError, "copy-disk-budget"):\n',text)
         self.assertRegex(text.rstrip('\n').splitlines()[-1],r'\AAssertionError: (ValueError not raised|"copy-disk-budget" does not match "[a-z-]+")\Z')
-        new=run_disk_budget(preparation);text=failures(new.result)
-        self.assertTrue(new.result.wasSuccessful(),text);self.assertEqual((1,[]),(new.result.testsRun,new.result.skipped),text)
+        new=self.current(lambda:run_disk_budget(preparation))
         self.assert_gain_reached_both(old,new)
 
 

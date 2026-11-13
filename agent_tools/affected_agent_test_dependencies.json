@@ -8244,7 +8244,8 @@
       ],
       "sourceSha256": [
         "39a6bb4ac66aa33bd235679aae0aa4cf0697aef22a21d9048963fa2f9490b4d9",
-        "969a0503bd1f55806f2a876b27dbd8fe1db5c303b4a554ec801208f8b8572dca"
+        "969a0503bd1f55806f2a876b27dbd8fe1db5c303b4a554ec801208f8b8572dca",
+        "addf67b0c4df69cd0ee960999b862dd74464ea190ad078930b449c3732d08bd3"
       ]
     },
     "agent_tools/tests/test_inventory_fd_baseline.py": {
