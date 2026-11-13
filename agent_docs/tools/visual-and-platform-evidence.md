@@ -1496,8 +1496,10 @@ module in `document-cold-input.json`.
   `/subscription/cache/<operation>` with the body the job made from a fixed recipe
   (256 SOCKS links over documentation addresses, eight shapes: ASCII, Cyrillic, CJK
   and a supplementary-plane remark, credentials, a quote and backslash, a bracketed
-  IPv6 host, a query part, no fragment) and journals each request before its
-  answer. Only the original serve gets the scoped trust store; the owner removes it
+  IPv6 host, a query part, no fragment), to a GET, and journals each request its
+  HTTPS listener answers before the answer, the standard library's own answers to
+  another method or a request it cannot parse included (those carry no body). Only
+  the original serve gets the scoped trust store; the owner removes it
   right after starting that serve. Policy off and no Find Best after refresh, the
   case adds the source, makes it the visible source and refreshes it once. The
   stored locations the refresh must commit come from the same recipe
@@ -1511,7 +1513,7 @@ module in `document-cold-input.json`.
   rebuilds the cache; both must equal the recipe entry for entry. The product's own
   `locations export` of the visible locations must equal them too, warm and cold.
   The source is stopped by its own record before the quit, so nothing can be
-  fetched again: its journal must hold only the product's fetches of the one path,
+  fetched again: its journal must hold only the product's GETs of the one path,
   each answered whole. Windows keeps this cache in `workspace.json` with no
   product digest of its own (the Android preference store's verified reuse has
   one), so the digest is the harness's over the committed bytes. The case does not

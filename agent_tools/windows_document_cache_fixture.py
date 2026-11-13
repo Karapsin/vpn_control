@@ -4,10 +4,14 @@ No import-time listener or action. No upstream Internet, proxy, runtime or VM co
 the producer's own localhost TLS listener and its relay inside the guest. The original ordinary Owner
 holds every script, TLS and input file before its Child starts this source.
 
-It serves exactly one path, /subscription/cache/<operationId>, with the exact body the host job made
-from its recipe (bodyPath, checked against bodySha256 before any listener), and journals every request
-before it answers it and how the answer ended. The installed product's own refresh is its only expected
-client. A start says each step on stdout before entering it, as the gated work fixture does; one that
+It serves exactly one path, /subscription/cache/<operationId>, to a GET, with the exact body the host job
+made from its recipe (bodyPath, checked against bodySha256 before any listener). From its listening step
+on, before the ready file names its port, it journals every request its HTTPS listener answers before the
+answer goes, and how the answer ended: the stdlib's own answers to another method, or to a request line
+or headers it cannot parse, too, and those never carry a body. The producer's relay beside it answers no
+request itself: with forwarding set, it refuses every destination but that listener. The installed
+product's own refresh is its only expected client. A start says each step on stdout before entering it,
+as the gated work fixture does; one that
 fails before the ready file is published has served nobody: it says the step and the error in a finite
 record, stops its own listeners and ends with START_FAILED. After readiness it serves until the owner's
 exact stop record, then stops only its own listeners and says so. Anything else after readiness keeps
@@ -27,6 +31,7 @@ INPUT_FIELDS = frozenset({'schemaVersion', 'operationId', 'socksSourcePath', 'ht
 BODY_LIMIT = 1024 * 1024
 JOURNAL_LIMIT = 1024 * 1024
 AGENT_LIMIT = 128
+METHOD_LIMIT = 16
 # The gated work fixture's handshake wait: a JVM's first handshake is not cut at the producer's 0.25 s.
 TLS_HANDSHAKE_SECONDS = 5
 START_FAILED = 3
@@ -152,11 +157,14 @@ class Journal:
             os.close(self.fd)
 
 
-def answer(server, path, agent, send):
-    """One request: journaled before its answer, then how the answer ended. Only the one owned path is served."""
-    status = 200 if path == server.cache_path else 404
-    request = {'event': 'request', 'path': path if len(path) <= 256 else path[:256], 'status': status,
-               'userAgent': agent[:AGENT_LIMIT], 'agentTruncated': len(agent) > AGENT_LIMIT}
+def answer(server, method, path, agent, send, status=None):
+    """One request: journaled before its answer, then how the answer ended. Only a GET of the one owned path is served.
+
+    A status is given only for the stdlib's own answer to a request no do_ method reached; it never carries the body."""
+    if status is None:
+        status = 200 if method == 'GET' and path == server.cache_path else 404
+    request = {'event': 'request', 'method': method[:METHOD_LIMIT], 'path': path if len(path) <= 256 else path[:256],
+               'status': status, 'userAgent': agent[:AGENT_LIMIT], 'agentTruncated': len(agent) > AGENT_LIMIT}
     server.cache_journal.write(request)
     try:
         send(status, server.cache_body if status == 200 else b'')
@@ -170,18 +178,31 @@ def answer(server, path, agent, send):
 
 def fixture_class(source):
     class Handler(source._SubscriptionHandler):
-        def do_GET(self):
-            def send(status, body):
-                if status != 200:
-                    self.send_error(status)
-                    return
-                self.send_response(200)
+        def cache_request(self):
+            """The method, path and User-Agent as far as the stdlib parsed them: a request it refused may have none yet."""
+            headers = getattr(self, 'headers', None)
+            agent = headers.get('User-Agent', '') if headers is not None else ''
+            return str(getattr(self, 'command', None) or ''), str(getattr(self, 'path', None) or ''), str(agent)
+
+        def cache_send(self, status, body):
+            self.send_response(status)
+            if status == 200:
                 self.send_header('Content-Type', 'text/plain; charset=utf-8')
-                self.send_header('Content-Length', str(len(body)))
-                self.end_headers()
+            else:
+                self.send_header('Connection', 'close')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            if body:
                 self.wfile.write(body)
-                self.wfile.flush()
-            answer(self.server, self.path, self.headers.get('User-Agent', ''), send)
+            self.wfile.flush()
+
+        def do_GET(self):
+            answer(self.server, *self.cache_request(), self.cache_send)
+
+        def send_error(self, code, message=None, explain=None):
+            # Only the stdlib calls this, for a request no do_ method reached: another method (501), a request line
+            # or headers it cannot parse (400, 431, 505) or a line too long (414). This handler's own answers never do.
+            answer(self.server, *self.cache_request(), self.cache_send, status=code)
 
     def entered(name, call):
         def enter(*args, **kwargs):

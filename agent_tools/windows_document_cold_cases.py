@@ -45,7 +45,7 @@ CACHE_FIELDS = {"fixtureWorkerPath", "runtimeStagesPath", "socksSourcePath", "ht
                 "expectedNewlineBytes", "expectedNewlineSha256"}
 # The cache source's code roles, held by name and digest as the owner and the planner hold the responsive work's.
 CACHE_SOURCES = {
-    "fixtureWorkerPath": ("windows_document_cache_fixture.py", "f414be754ade88a291ed38141e7f81da448f5bafd47e1026e2133dd10c6bc8e9"),
+    "fixtureWorkerPath": ("windows_document_cache_fixture.py", "86731933d0db39fce1e88b98d1c5143c4aa3a1f7cc65a9973f488058094a6482"),
     "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"),
     "socksSourcePath": ("socks_http_fixture.py", "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"),
     "httpsSourcePath": ("https_subscription_relay_fixture.py", "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"),
@@ -307,7 +307,8 @@ def start_cache_source(owner, cache):
 def stop_cache_source(owner, lease):
     """After the refresh is known final: the exact stop record, the source's own terminal, and its complete journal.
 
-    Every request it answered must be the product's own fetch of the one owned path, answered whole with the recipe body."""
+    Every request it answered, the stdlib's own answers to other methods and malformed requests included, must be the
+    product's own GET of the one owned path, answered whole with the recipe body."""
     lease.guard()
     need(not lease.refresh_open, "document-cache-refresh-open-at-stop")
     child, path = lease.child, "/subscription/cache/" + owner.operation
@@ -333,7 +334,8 @@ def stop_cache_source(owner, lease):
     requests = [row for row in rows if row.get("event") == "request"]
     answers = [row for row in rows if row.get("event") == "answer"]
     need(requests and len(requests) + len(answers) == len(rows) and len(answers) == len(requests)
-         and all(row.get("path") == path and row.get("status") == 200 and row.get("userAgent") == PRODUCT_AGENT for row in requests)
+         and all(row.get("method") == "GET" and row.get("path") == path and row.get("status") == 200
+                 and row.get("userAgent") == PRODUCT_AGENT for row in requests)
          and all(row.get("status") == 200 and row.get("sent") is True and row.get("bodySha256") == lease.config["bodySha256"]
                  for row in answers), "document-cache-fixture-fetches")
     owner.event("document-cache-fixture-stopped", {"child": child.ordinal, "terminal": terminal, "productFetches": len(requests),

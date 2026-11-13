@@ -231,18 +231,23 @@ class SourceTests(unittest.TestCase):
             time.sleep(0.05)
         return json.loads((self.root / "fixture/ready.json").read_bytes())
 
-    def fetch(self, ready, path, agent=PRODUCT_AGENT):
+    def exchange(self, ready, raw):
+        """Bytes over the source's TLS, as any local client could send them, and everything it answered."""
         context = ssl.create_default_context(cafile=str(self.root / "c.pem"))
         with socket.create_connection(("127.0.0.1", ready["httpsPort"]), timeout=10) as connection:
             with context.wrap_socket(connection, server_hostname="localhost") as stream:
-                stream.sendall(("GET %s HTTP/1.1\r\nHost: localhost:%d\r\nUser-Agent: %s\r\nConnection: close\r\n\r\n"
-                                % (path, ready["httpsPort"], agent)).encode("ascii"))
+                stream.sendall(raw)
                 data = b""
                 while True:
                     part = stream.recv(65536)
                     if not part:
                         break
                     data += part
+        return data
+
+    def fetch(self, ready, path, agent=PRODUCT_AGENT):
+        data = self.exchange(ready, ("GET %s HTTP/1.1\r\nHost: localhost:%d\r\nUser-Agent: %s\r\nConnection: close\r\n\r\n"
+                                     % (path, ready["httpsPort"], agent)).encode("ascii"))
         head, _, payload = data.partition(b"\r\n\r\n")
         return head.split(b"\r\n")[0], payload
 
@@ -271,15 +276,45 @@ class SourceTests(unittest.TestCase):
         self.assertEqual({"kind": "owned-cache-fixture-terminal", "operationId": self.operation, "journalEntries": 4,
                           "onlyOriginalObjectsStopped": True}, rows[-1])
         journal = [json.loads(line) for line in (self.root / "fixture/journal.jsonl").read_bytes().splitlines()]
-        self.assertEqual([{"ordinal": 0, "event": "request", "path": path, "status": 200, "userAgent": PRODUCT_AGENT,
+        self.assertEqual([{"ordinal": 0, "event": "request", "method": "GET", "path": path, "status": 200, "userAgent": PRODUCT_AGENT,
                            "agentTruncated": False},
                           {"ordinal": 1, "event": "answer", "status": 200, "sent": True, "bodyBytes": RECIPE_BODY[0],
                            "bodySha256": RECIPE_BODY[1]},
-                          {"ordinal": 2, "event": "request", "path": "/subscription", "status": 404, "userAgent": "other",
-                           "agentTruncated": False},
+                          {"ordinal": 2, "event": "request", "method": "GET", "path": "/subscription", "status": 404,
+                           "userAgent": "other", "agentTruncated": False},
                           {"ordinal": 3, "event": "answer", "status": 404, "sent": True, "bodyBytes": 0, "bodySha256": None}], journal)
         with self.assertRaises(OSError):
             socket.create_connection(("127.0.0.1", ready["httpsPort"]), timeout=2).close()
+
+    def test_a_request_the_stdlib_answers_itself_is_journaled_too_and_gets_no_body(self):
+        # RED on 7e6ee369: only what reached do_GET was journaled. The stdlib answered another method (501) and a request
+        # line or headers it could not parse (400, 431) itself, with no journal line, while the owner's stop oracle reads
+        # the journal as the complete record of who reached the source. A request line too long (414) takes the same path.
+        child = self.start()
+        ready = self.ready(child)
+        path = "/subscription/cache/" + self.operation
+        sent = (("HEAD", "HEAD %s HTTP/1.0\r\nUser-Agent: probe\r\n\r\n" % path, 501, path, "probe"),
+                ("POST", "POST %s HTTP/1.0\r\nUser-Agent: probe\r\nContent-Length: 0\r\n\r\n" % path, 501, path, "probe"),
+                ("", "BAD\r\n\r\n", 400, "", ""),
+                ("GET", "GET %s HTTP/1.0\r\n%s\r\n" % (path, "X-Many: 1\r\n" * 101), 431, path, ""))
+        answered = [self.exchange(ready, raw.encode("ascii")) for _, raw, _, _, _ in sent]
+        rows, err = self.stop(child)
+        self.assertEqual((0, b""), (child.returncode, err), "no request ended in a traceback")
+        expected = []
+        for method, _, status, journaled, agent in sent:
+            expected.append({"ordinal": len(expected), "event": "request", "method": method, "path": journaled, "status": status,
+                             "userAgent": agent, "agentTruncated": False})
+            expected.append({"ordinal": len(expected), "event": "answer", "status": status, "sent": True, "bodyBytes": 0,
+                             "bodySha256": None})
+        journal = [json.loads(line) for line in (self.root / "fixture/journal.jsonl").read_bytes().splitlines()]
+        self.assertEqual(expected, journal)
+        self.assertEqual({"kind": "owned-cache-fixture-terminal", "operationId": self.operation, "journalEntries": len(expected),
+                          "onlyOriginalObjectsStopped": True}, rows[-1])
+        for answer, status in ((answered[0], 501), (answered[1], 501), (answered[3], 431)):
+            head, _, body = answer.partition(b"\r\n\r\n")
+            self.assertEqual((("HTTP/1.0 %d" % status).encode(), b""), (head.split(b"\r\n")[0][:12], body), "a status and no body")
+            self.assertIn(b"\r\nContent-Length: 0", head)
+        self.assertEqual(b"", answered[2], "a request line with no version gets no status line, and no body either")
 
     def test_a_body_other_than_the_recipe_ends_the_start_before_any_listener(self):
         child = self.start(body=host_job.cache_body() + b"socks://192.0.2.9:9#extra\n")
@@ -356,7 +391,12 @@ class CacheGuest(ColdGuest):
         self.commit_change = None  # cached list -> committed list
         self.reopen_change = None  # workspace document -> document, as the reopened owner rewrites it
         self.export_change = None
-        self.extra_fetch = None  # another request the source answers
+        self.extra_fetch = None  # another request the source answers: (path, agent, status[, method])
+        self.ready_change = None  # ready record -> the record the source publishes
+        self.answer_change = None  # the answer row the source journals for the product's fetch -> row
+        # How the source ends on its stop record: its exit code, its stderr, its terminal line, the journal it leaves,
+        # and how many entries its terminal line claims beyond the journal's lines.
+        self.stop_exit, self.stop_stderr, self.terminal_change, self.journal_change, self.entries_delta = 0, "", None, None, 0
 
     def outcome(self, child):
         if child.label == cold.CACHE_FIXTURE_LABEL:
@@ -380,10 +420,17 @@ class CacheGuest(ColdGuest):
         record = json.loads(control.read_bytes())
         if record != {"schemaVersion": 1, "operationId": self.fixture_input["operationId"], "action": "stop-owned-fixture"}:
             return None
-        entries = len(Path(self.fixture_input["journalFile"]).read_bytes().splitlines())
+        journal = Path(self.fixture_input["journalFile"])
+        if self.journal_change is not None:
+            journal.write_bytes(self.journal_change(journal.read_bytes()))
+            self.journal_change = None  # The outcome is read once; the journal is left changed once.
+        entries = len(journal.read_bytes().splitlines()) + self.entries_delta
         terminal = {"kind": "owned-cache-fixture-terminal", "operationId": self.fixture_input["operationId"], "journalEntries": entries,
                     "onlyOriginalObjectsStopped": True}
-        return 0, steps + json.dumps({"kind": "owned-cache-fixture-ready"}) + "\n" + json.dumps(terminal) + "\n", ""
+        if self.terminal_change is not None:
+            terminal = self.terminal_change(terminal)
+        return (self.stop_exit, steps + json.dumps({"kind": "owned-cache-fixture-ready"}) + "\n" + json.dumps(terminal) + "\n",
+                self.stop_stderr)
 
     def start_fixture(self, child):
         """What the source does on its start, as the real one does it: its journal, then its ready record."""
@@ -399,15 +446,22 @@ class CacheGuest(ColdGuest):
                  "certificateSha256": sha(b"certificate"), "bodySha256": self.fixture_input["bodySha256"],
                  "bodyBytes": len(Path(self.fixture_input["bodyPath"]).read_bytes()), "scope": "one-owned-subscription-source",
                  "nativeAcceptance": False}
+        if self.ready_change is not None:
+            ready = self.ready_change(ready)
         Path(self.fixture_input["readyFile"]).write_bytes((json.dumps(ready) + "\n").encode())
 
-    def journal(self, path, agent=PRODUCT_AGENT, status=200):
+    def journal(self, path, agent=PRODUCT_AGENT, status=200, method="GET"):
         rows = Path(self.fixture_input["journalFile"]).read_bytes().splitlines()
         body = Path(self.fixture_input["bodyPath"]).read_bytes()
+        # As the source answers: the recipe body for a 200 only, and no body for anything else.
+        answer = {"ordinal": len(rows) + 1, "event": "answer", "status": status, "sent": True,
+                  "bodyBytes": len(body) if status == 200 else 0, "bodySha256": sha(body) if status == 200 else None}
+        if self.answer_change is not None and (path, agent, method) == ("/subscription/cache/" + self.fixture_input["operationId"],
+                                                                        PRODUCT_AGENT, "GET"):
+            answer = self.answer_change(answer)
         with Path(self.fixture_input["journalFile"]).open("ab") as stream:
-            for row in ({"ordinal": len(rows), "event": "request", "path": path, "status": status, "userAgent": agent, "agentTruncated": False},
-                        {"ordinal": len(rows) + 1, "event": "answer", "status": status, "sent": True, "bodyBytes": len(body),
-                         "bodySha256": sha(body)}):
+            for row in ({"ordinal": len(rows), "event": "request", "method": method, "path": path, "status": status, "userAgent": agent,
+                         "agentTruncated": False}, answer):
                 stream.write((json.dumps(row) + "\n").encode())
         return body
 
@@ -597,13 +651,17 @@ class CacheFlowTests(unittest.TestCase):
         literal = {"schemaVersion": 1, "variant": "cache-bytes", "operationId": OPERATION, "cache": cache}
         if change is not None:
             change(literal)
-        raw = (json.dumps(literal, sort_keys=True) + "\n").encode()
+        raw = self.literal_raw = (json.dumps(literal, sort_keys=True) + "\n").encode()
         if guest_change is not None:
             guest_change(guest)
 
         def pin(data, path, digest=None):
-            return types.SimpleNamespace(path=path, record={"sha256": digest or sha(data)}, current=lambda: None,
-                                         digest=lambda return_bytes=False, maximum=0: data)
+            def read(return_bytes=False, maximum=8 * 1024 * 1024):
+                # As the owner's Pin.digest: a held file read for its bytes refuses beyond the caller's own maximum.
+                if return_bytes and len(data) > maximum:
+                    raise process_owner.Refused("held-source-bound")
+                return data if return_bytes else digest or sha(data)
+            return types.SimpleNamespace(path=path, record={"sha256": digest or sha(data)}, current=lambda: None, digest=read)
         windows_peer = types.SimpleNamespace(Held=FakeHeld, cache_bytes=native_module.cache_bytes)
         harness = types.SimpleNamespace(**held_harness())
         original_owner = guest.owner
@@ -688,6 +746,36 @@ class CacheFlowTests(unittest.TestCase):
         self.assertLess(labels.index(cold.CACHE_FIXTURE_LABEL), labels.index("serve"), "the source is ready before the serve exists")
         self.assertNotIn("JAVA_TOOL_OPTIONS", guest.owner_object.environment)
 
+    def test_the_closed_read_is_of_the_file_the_original_serve_left_after_its_exit(self):
+        # RED on the mutant closed-early (the closed read moved before the quit): the moments kept their order, but the
+        # "closed" cache was read while the original serve still ran. The review found nothing placed that read.
+        guest, code = self.run_cache()
+        self.assertEqual(0, code)
+        trace = guest.trace
+        committed = [index for index, entry in enumerate(trace) if entry == ("event", "document-cache-committed")]
+        self.assertEqual(["warm", "closed", "reopened"], [value["moment"] for kind, value in guest.events if kind == "document-cache-committed"])
+        quit_intent, exited = trace.index(("event", "document-cold-quit-intent")), trace.index(("terminal", "serve", 0))
+        cold_serve = next(index for index, entry in enumerate(trace) if entry[:2] == ("submit", "document-cold-serve"))
+        reopened = trace.index(("event", "document-cold-reopened"))
+        self.assertLess(committed[0], quit_intent, "warm: read while the original serve runs")
+        self.assertLess(quit_intent, exited)
+        self.assertLess(exited, committed[1], "closed: read only after the original serve's own exit")
+        self.assertLess(committed[1], cold_serve, "and before any later owner of the workspace exists")
+        self.assertLess(cold_serve, reopened)
+        self.assertLess(reopened, committed[2], "reopened: read once the independent serve answered")
+
+    def test_the_cache_literal_is_read_within_the_cases_own_bound(self):
+        # RED on the mutant bound-64k: the case read its literal input at the base's 64 KiB, which the owner's Pin.digest
+        # refuses (held-source-bound) for the 256-entry literal. The flow tests' pin used to ignore the bound, so no test saw it.
+        guest, code = self.run_cache()
+        self.assertEqual((0, []), (code, guest.parks))
+        self.assertLess(65536, len(self.literal_raw), "the cache literal is larger than the routing variants' bound")
+        self.assertLessEqual(len(self.literal_raw), cold.INPUT_LIMIT)
+        with mock.patch.object(cold, "INPUT_LIMIT", len(self.literal_raw) - 1):
+            guest, code = self.run_cache()
+        self.assertEqual((1, [], "Refused", "held-source-bound"), (code, guest.parks, *guest.finished[0][1:]))
+        self.assertIsNone(guest.fixture_child, "refused before any source or serve")
+
     def test_a_cache_committed_with_any_byte_or_entry_changed_is_a_known_failure(self):
         changes = {"truncated": lambda cached: cached[:-1], "one-byte": lambda cached: [cached[0].replace("Cache 000", "Cache 001")] + cached[1:],
                    "reordered": lambda cached: cached[1:] + cached[:1], "empty": lambda cached: []}
@@ -755,15 +843,78 @@ class CacheFlowTests(unittest.TestCase):
         self.assertIsNone(guest.fixture_child.terminal)
 
     def test_a_fetch_other_than_the_products_own_of_the_one_path_is_a_known_failure(self):
-        for name, extra in (("other-path", ("/subscription", PRODUCT_AGENT, 404)), ("other-agent", (None, "curl/8", 200))):
+        # stdlib-answer: a HEAD the stdlib refused (501), which the source now journals. not-a-get: a row no source writes
+        # (a 200 for a POST); RED on 7e6ee369, whose oracle read no method.
+        for name, extra in (("other-path", ("/subscription", PRODUCT_AGENT, 404)), ("other-agent", (None, "curl/8", 200)),
+                            ("stdlib-answer", (None, PRODUCT_AGENT, 501, "HEAD")), ("not-a-get", (None, PRODUCT_AGENT, 200, "POST"))):
             with self.subTest(case=name):
                 def change(guest, extra=extra):
                     guest.extra_fetch = extra
                     if extra[0] is None:
-                        guest.extra_fetch = ("/subscription/cache/" + OPERATION, extra[1], extra[2])
+                        guest.extra_fetch = ("/subscription/cache/" + OPERATION, *extra[1:])
                 guest, code = self.run_cache(guest_change=change)
                 self.assertEqual((1, [], "document-cache-fixture-fetches"), (code, guest.parks, guest.finished[0][2]))
                 self.assertEqual([], guest.terminations, "it had stopped by its own record")
+
+    def test_a_ready_record_an_oracle_refuses_ends_the_source_before_any_serve(self):
+        # RED on the mutant ready-unchecked: a record that misnamed the source's process, certificate, URL, body or scope
+        # was taken, and the serve started with trust in it. The review found no test reached the refused branch.
+        for field, value in (("pid", 1), ("certificateSha256", "0" * 64), ("cacheUrl", "https://localhost:50443/subscription"),
+                             ("bodySha256", "0" * 64), ("bodyBytes", 1), ("scope", "any-source")):
+            with self.subTest(field=field):
+                guest, code = self.run_cache(guest_change=lambda guest, field=field, value=value: setattr(
+                    guest, "ready_change", lambda ready: {**ready, field: value}))
+                self.assertEqual((1, [], "document-cache-fixture-not-ready:refused:document-cache-fixture-ready-record"),
+                                 (code, guest.parks, guest.finished[0][2]))
+                self.assertFalse([child for child in guest.owner_object.children if child.label == "serve"], "no serve was started")
+                self.assertEqual([guest.fixture_child.ordinal], guest.terminations, "one termination of the live source")
+                ending = dict(guest.events)["document-cache-fixture-ending"]
+                self.assertEqual(("not-ready", True, True), (ending["reason"], ending["alive"], ending["readyExists"]))
+                self.assertNotIn("document-cache-fixture-ready", self.kinds(guest))
+                self.assertNotIn("JAVA_TOOL_OPTIONS", guest.owner_object.environment)
+
+    def test_a_stop_receipt_other_than_the_sources_clean_end_is_a_known_failure(self):
+        # RED on the mutant stop-unchecked for exit-1 and stderr: the source's exit code and stderr were not part of its
+        # receipt. terminal is the receipt's other clause, which that mutant keeps.
+        for name, change in (("exit-1", {"stop_exit": 1}), ("stderr", {"stop_stderr": "Traceback (most recent call last):\n"}),
+                             ("terminal", {"terminal_change": lambda terminal: {**terminal, "onlyOriginalObjectsStopped": False}})):
+            with self.subTest(case=name):
+                guest, code = self.run_cache(guest_change=lambda guest, change=change: guest.__dict__.update(change))
+                self.assertEqual((1, [], "document-cache-fixture-stop-receipt"), (code, guest.parks, guest.finished[0][2]))
+                self.assertEqual([], guest.terminations, "it had ended on its own stop record")
+                self.assertNotIn("document-cache-fixture-stopped", self.kinds(guest))
+                self.assertEqual(1, len(guest.owners(str(guest.root / "workspace"))), "no owner was reopened")
+                self.assertEqual(["known-failure-closing", "known-failure-quit-intent", "known-failure-serve-closed", "known-failure-closed"],
+                                 [kind for kind in self.kinds(guest) if kind.startswith("known-failure")], "the original serve is quit")
+
+    def test_a_journal_other_than_the_sources_own_count_and_order_is_a_known_failure(self):
+        # RED on the mutant count-unchecked for count and ordinal: a journal with a line missing or out of order passed.
+        # torn and unreadable are the journal's other clauses, which that mutant keeps.
+        def skip_an_ordinal(raw):
+            lines = raw.splitlines(keepends=True)
+            row = json.loads(lines[1])
+            lines[1] = (json.dumps({**row, "ordinal": 2}) + "\n").encode()
+            return b"".join(lines)
+        for name, change, failure in (("count", {"entries_delta": 1}, "document-cache-journal-complete"),
+                                      ("ordinal", {"journal_change": skip_an_ordinal}, "document-cache-journal-complete"),
+                                      ("torn", {"journal_change": lambda raw: raw + b'{"ordinal": 2'}, "document-cache-journal-bound"),
+                                      ("unreadable", {"journal_change": lambda raw: raw + b"{\n"}, "document-cache-journal-complete")):
+            with self.subTest(case=name):
+                guest, code = self.run_cache(guest_change=lambda guest, change=change: guest.__dict__.update(change))
+                self.assertEqual((1, [], failure), (code, guest.parks, guest.finished[0][2]))
+                self.assertEqual([], guest.terminations)
+                self.assertNotIn("document-cache-fixture-stopped", self.kinds(guest))
+
+    def test_an_answer_the_source_did_not_send_whole_is_a_known_failure(self):
+        # RED on the mutant sent-unchecked for unsent-recipe: an answer row whose send failed passed when it still named
+        # the recipe body. failed-send is the row the source writes when its send raises: no body fields at all.
+        for name, change in (("unsent-recipe", lambda row: {**row, "sent": False}),
+                             ("failed-send", lambda row: {"ordinal": row["ordinal"], "event": "answer", "status": 200, "sent": False,
+                                                          "errorClass": "ConnectionResetError"})):
+            with self.subTest(case=name):
+                guest, code = self.run_cache(guest_change=lambda guest, change=change: setattr(guest, "answer_change", change))
+                self.assertEqual((1, [], "document-cache-fixture-fetches"), (code, guest.parks, guest.finished[0][2]))
+                self.assertEqual([], guest.terminations)
 
     def test_a_source_that_is_not_ready_is_ended_before_any_serve_exists(self):
         for name, change, failure in (("timeout", lambda guest: setattr(guest, "fixture_ready", False),
