@@ -769,7 +769,7 @@ class CacheFlowTests(unittest.TestCase):
         # refuses (held-source-bound) for the 256-entry literal. The flow tests' pin used to ignore the bound, so no test saw it.
         guest, code = self.run_cache()
         self.assertEqual((0, []), (code, guest.parks))
-        self.assertLess(65536, len(self.literal_raw), "the cache literal is larger than the routing variants' bound")
+        self.assertLess(65536, len(self.literal_raw), "the cache literal is larger than the 64 KiB the base read")
         self.assertLessEqual(len(self.literal_raw), cold.INPUT_LIMIT)
         with mock.patch.object(cold, "INPUT_LIMIT", len(self.literal_raw) - 1):
             guest, code = self.run_cache()
