@@ -32,7 +32,7 @@ else:
 
 
 # Equal to the planner's tables; regenerated after every leaf edit.
-_POSTBOOT_ENTRY_SOURCES = {'sourceRoles': {'sha256': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'sizeBytes': 6945}, 'postbootAction': {'sha256': 'c0ebd9e687f8698501cd43fab0ef912a8ea314d1f2f126ec01e6bc2ab57bd6be', 'sizeBytes': 31907}, 'prebootAction': {'sha256': '6c6e73890c0502ef983ea9155087a98f3c3a643f116d2ae813c05b7b2f17d18e', 'sizeBytes': 9455}, 'startupCollector': {'sha256': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'sizeBytes': 2875}}
+_POSTBOOT_ENTRY_SOURCES = {'sourceRoles': {'sha256': '20935673ed2dcc58c6a2214136dda371782a76e4084b46fa611088fafd7c601b', 'sizeBytes': 6945}, 'postbootAction': {'sha256': 'fc4bb5c44e34fba4239c4798462d650492be224d644491836af9c6e6ebd97b5f', 'sizeBytes': 32173}, 'prebootAction': {'sha256': '6c6e73890c0502ef983ea9155087a98f3c3a643f116d2ae813c05b7b2f17d18e', 'sizeBytes': 9455}, 'startupCollector': {'sha256': '3f8f198fde10df843c69a2c1ead1beb05ed59f4d26c097dece6448f5f40d1723', 'sizeBytes': 2875}}
 _POSTBOOT_ACTION_PHASES = {"windows-preboot-reboot": "preboot-reboot", "windows-postboot-final": "postboot-final"}
 
 DOCUMENT_RESPONSIVE_CASE = (

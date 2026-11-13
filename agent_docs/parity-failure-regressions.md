@@ -1768,6 +1768,24 @@ the owner's and planner's `postbootAction`, the planner's `autostart`,
 `sourcePins.windows_scenario_host_job`, and the selector's entry for that manifest. No file of
 `readiness_windows._source_pins()` changed.
 
+### An autostart GUI that runs its own JVM, offline (2026-11-13)
+
+The tree check still required the GUI launcher the autostart task starts to relaunch exactly once.
+Recorded in `f56f4a4c`: an owner-started GUI that relaunched (3576 to 1068, the same argv).
+Inferred, not recorded: what the GUI the task starts does, since its PATH comes from the task's
+environment. A `.pre` must not park on whichever it is. The logs are under `.runtime/logs/c3/` of
+the fix clone.
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The reboot tree required the autostart GUI launcher to relaunch | `test_windows_reboot_actions.AutostartGuiShapeTests`: `test_a_preboot_over_a_gui_that_is_its_own_jvm_declares_it_as_the_root_and_never_parks`, `test_a_postboot_over_a_gui_that_is_its_own_jvm_retires_it`, `test_every_gui_and_controller_shape_is_declared_with_its_row_count`; `test_windows_scenario_host_job.RebootFamilyTests.test_a_gui_that_is_its_own_jvm_is_declared_and_admits_its_postboot`; controls `test_a_second_gui_relaunch_or_a_gui_child_born_before_its_parent_is_never_taken`, `test_the_host_job_refuses_a_gui_root_out_of_shape` | `product_tree` now takes the GUI by the controller's rule: a GUI launcher that did not relaunch is its own JVM, at most one child born after it is its relaunch, and a child born before its claimed parent is never taken. `own_jvm` now takes as a relaunch only a same-image child with the launcher's own argv, as jpackage relaunches it: a GUI that runs its own JVM has its controller as a same-image child. On `5b5bca8e` that controller was taken as the GUI's JVM: a GUI and controller that both ran their own JVMs were refused (`one-gui-started-controller-launcher`, which the preboot retries and parks on), and a GUI that did not relaunch with a controller that did was declared wrongly, its controller launcher as `gui`. The `guiLauncher` role exists only for a GUI that relaunched; otherwise the GUI is the tree's root. Declared rows: `gui` and `controller` always, `runtime` exactly for reconnect, and a launcher row for each of the GUI and the controller that relaunched: `product_rows` 2 to 5, the host job reconnect 3 to 5 and explicit-off and autostart-migration 2 to 4; the root (`guiLauncher`, else `gui`) has no declared parent. The offline world gains `relaunch_gui`; `recorded_product_tree(gui_relaunch=False)` drops 1068 and hangs the controller under 3576. RED on `5b5bca8e`, an isolated copy holding only the new test modules and fixture, Python 3.14 and 3.12: the module `Ran 31 tests`, `FAILED (failures=10, errors=2)`: every preboot over a GUI that runs its own JVM parks, the shapes test fails for each such GUI, and the host job refuses (`declaration_tree`); its host-job test `FAILED (failures=2)`, `product_declaration_refused`. GREEN: 31 OK and 2 OK on both. Native only: the autostart GUI's own shape, which the first `.pre` records. |
+
+Fourteen loosenings over the three commits each turn named tests red; the six new ones are a GUI
+that must relaunch again, a relaunch matched by image alone, a host job that needs `guiLauncher`
+again, no root check, no GUI-to-launcher pair, and `product_rows` needing three rows again. Pins
+renewed to a fixpoint on the same chain as before; no file of `readiness_windows._source_pins()`
+changed.
+
 ## Historical coverage rule
 
 All older unresolved keeper/source/installer/resource/SSH/visual/protocol proposals

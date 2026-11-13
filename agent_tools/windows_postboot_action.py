@@ -1,12 +1,11 @@
 """Whole ordinary postboot action and the helpers the preboot action shares; no import-time effects.
 
 The at-logon GUI, its controller and runtime are retained native actors, never
-fabricated Child objects: the GUI launcher re-executes itself into one JVM child of
-the same image, and the controller is the GUI's own vpn-control.exe
---headless-controller --state-dir <workspace>, which runs its own JVM unless it
-relaunched too (own_jvm). Their known OFF/QUIT retirement is an explicit test
-boundary. A refusal with no effect pending is a known failure; only a live or
-uncertain effect parks the owner.
+fabricated Child objects. The GUI and its controller, the GUI's own vpn-control.exe
+--headless-controller --state-dir <workspace>, each run their own JVM unless their
+launcher relaunched into one child of the same image (own_jvm). Their known OFF/QUIT
+retirement is an explicit test boundary. A refusal with no effect pending is a known
+failure; only a live or uncertain effect parks the owner.
 """
 from pathlib import Path, PureWindowsPath
 import hashlib
@@ -207,24 +206,28 @@ def born_children(rows,parent,image):
 
 
 def own_jvm(rows,launcher,image,code):
-    """The process that runs a launcher's JVM: its one same-image child born after it, or the launcher itself.
+    """The process that runs a launcher's JVM: its one relaunch, or the launcher itself.
 
-    jpackage relaunches a launcher only while PATH lacks <image>\\app, so a launcher that a product JVM starts,
-    itself such a relaunch, runs its JVM in place: in f56f4a4c the controller the query CLI started had no
-    same-image child and was the runtime's parent. capture_proxy_actors follows the same rule.
+    jpackage relaunches a launcher only while PATH lacks <image>\\app, into one same-image child with the
+    launcher's own argv (3576 to 1068 in f56f4a4c); a launcher whose PATH holds it runs its JVM in place, as
+    the query CLI's controller did there. Other same-image children, such as the controller a GUI that did not
+    relaunch starts, are no relaunch. capture_proxy_actors follows the same rule.
     """
-    relaunched=born_children(rows,launcher,image);need(len(relaunched)<=1,code)
+    relaunched=[row for row in born_children(rows,launcher,image) if row['argv']==launcher['argv']]
+    need(len(relaunched)<=1,code)
     return relaunched[0] if relaunched else launcher
 
 
 def product_tree(owner,lease,rows,running,*,root_parent=None):
-    """The product's own start: the GUI launcher and its JVM, the controller that JVM started, and the runtime.
+    """The product's own start: the GUI, the controller its JVM started, and the runtime.
 
-    The GUI launcher's parent is no product process, and its one same-image child is its JVM. The controller is
-    that JVM's child with the real owner argv and runs its own JVM unless it relaunched (own_jvm); only then is
-    there a controllerLauncher role. The GUI starts it through the same DesktopHeadlessController.startForCliCommand
-    as the query CLI did in f56f4a4c, so the GUI-started shape is inferred from that census, not recorded.
-    Every product image in the census belongs to this one tree, nothing else.
+    The autostart GUI launcher's parent is no product process. It and the controller its JVM starts with the
+    real owner argv each run their own JVM unless they relaunched (own_jvm), and only a launcher that relaunched
+    adds a guiLauncher or controllerLauncher role beside its gui or controller. Natively recorded, in f56f4a4c:
+    an owner-started GUI that relaunched and a CLI-started controller that did not. Inferred, not recorded: the
+    shapes of the GUI the autostart task starts and of the controller that GUI starts through the same
+    DesktopHeadlessController.startForCliCommand, so every combination is taken. Every product image in the
+    census belongs to this one tree, nothing else.
     """
     workspace=owner.request['workspace'];roles=lease.paths;ctx=owner.request['context']
     gui=roles['gui'];runtime_image=str(PureWindowsPath(workspace)/'runtime'/'tools'/'sing-box.exe')
@@ -232,13 +235,14 @@ def product_tree(owner,lease,rows,running,*,root_parent=None):
     launchers=[row for row in rows if same(row,gui) and row['argv']==[gui,'--autostart','--state-dir',workspace]
                and not any(other['pid']==row['parentPid'] for other in rows)]
     need(len(launchers)==1 and (root_parent is None or launchers[0]['parentPid']==root_parent),'one-actual-autostart-gui-launcher')
-    jvm=born_children(rows,launchers[0],gui);need(len(jvm)==1,'one-gui-jvm-child')
-    controllers=[row for row in born_children(rows,jvm[0],gui) if row['argv']==[gui,'--headless-controller','--state-dir',workspace]]
+    jvm=own_jvm(rows,launchers[0],gui,'one-gui-jvm-child')
+    controllers=[row for row in born_children(rows,jvm,gui) if row['argv']==[gui,'--headless-controller','--state-dir',workspace]]
     need(len(controllers)==1,'one-gui-started-controller-launcher')
     controller=own_jvm(rows,controllers[0],gui,'one-controller-jvm-child')
     runtimes=born_children(rows,controller,runtime_image)
     need(len(runtimes)==(1 if running else 0),'reconnect-or-off-native-runtime-census')
-    tree={'guiLauncher':launchers[0],'gui':jvm[0],'controller':controller}
+    tree={'gui':jvm,'controller':controller}
+    if jvm is not launchers[0]:tree['guiLauncher']=launchers[0]
     if controller is not controllers[0]:tree['controllerLauncher']=controllers[0]
     if runtimes:tree['runtime']=runtimes[0]
     need({row['pid'] for row in tree.values()}=={row['pid'] for row in rows if same(row,gui) or same(row,runtime_image)},

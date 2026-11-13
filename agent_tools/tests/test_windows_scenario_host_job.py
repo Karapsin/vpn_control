@@ -2289,6 +2289,30 @@ class RebootFamilyTests(FamilyBase):
                 self.assertEqual((0, None), (code, passed["failure"]))
         self.change_rows = None
 
+    def test_a_gui_that_is_its_own_jvm_is_declared_and_admits_its_postboot(self):
+        # An autostart GUI that did not relaunch, and a controller that did not either: neither launcher row, the GUI
+        # the tree's root under the scheduler. No such GUI has been recorded. Before, declaration_tree.
+        def both_own_jvm(rows):
+            launchers = {row["role"]: row for row in rows if row["role"] in ("guiLauncher", "controllerLauncher")}
+            rows[:] = [row for row in rows if row["role"] not in launchers]
+            roles = {row["role"]: row for row in rows}
+            roles["gui"]["parentPid"] = launchers["guiLauncher"]["parentPid"]
+            roles["controller"]["parentPid"] = roles["gui"]["pid"]
+        self.change_rows = both_own_jvm
+        for name, count in (("windows-reboot-reconnect", 3), ("windows-reboot-explicit-off", 2)):
+            with self.subTest(name=name):
+                self.fresh_history()
+                pre, code, receipt, kinds = self.run_reboot(name + ".pre")
+                self.assertEqual((0, None), (code, receipt["failure"]))
+                self.assertEqual(count, receipt["preboot"]["declaredProcesses"])
+                allowance = json.loads(self.qga.files[job.WORKSPACE_PREFIX + pre["operationId"] + "\\product-allowance.json"])
+                processes = {row["pid"]: row for row in allowance["processes"]}
+                self.assertEqual((40, 501), (processes[501]["parentPid"], processes[503]["parentPid"]), "the GUI is the root")
+                self.reboot(receipt)
+                post, code, passed, kinds = self.run_reboot(name + ".post", preboot=pre["operationId"])
+                self.assertEqual((0, None), (code, passed["failure"]))
+        self.change_rows = None
+
     def test_a_postboot_without_its_own_passed_preboot_claims_nothing(self):
         def refused(prior, name="windows-reboot-reconnect.post"):
             plan, code, receipt, kinds = self.run_reboot(name, preboot=prior)
