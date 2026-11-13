@@ -7,6 +7,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeout
 import com.kardinal.vpncontrol.control.ControlProtocolCodec
+import com.kardinal.vpncontrol.shared.ui.AppStrings
+import com.kardinal.vpncontrol.shared.ui.UiText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -179,6 +181,76 @@ class DesktopPendingConnectionCliTest {
             server.close()
             session.close()
             scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * STATE-005 for the mode setting, and the sentence the VPN / Proxy Mode dialog shows beside
+     * its switch. The copy used to say that changing mode "stops the current session first".
+     */
+    @Test
+    fun liveModeSaveKeepsTheSessionAndTheWarningSaysSo() {
+        val directory = Files.createTempDirectory("vpn-control-pending-mode")
+        val records = listOf("socks://127.0.0.1:1080#First").toDesktopLocationRecords(1)
+        val runtime = RecordingRuntime()
+        val service = DesktopAppServiceFactory.createForTesting(
+            store = DesktopStateStore(directory), runtimeController = runtime, controlPlatform = ControlPlatform.LINUX,
+            initialWorkspace = DesktopWorkspace(PersistedState(
+                appMode = AppMode.PROXY_ONLY, profileSourceMode = ProfileSourceMode.CURRENT_LOCATIONS,
+                savedLocations = records.map { it.rawLink }, currentLocations = records.map { it.rawLink },
+                selectedProfileRawLink = records[0].rawLink, selectedProfileName = records[0].name,
+                selectedProfileServer = records[0].server,
+            ), records),
+        )
+        val endpoint = directory.resolve("activation.port")
+        val owner = DesktopControllerOwner(service)
+        val server = assertNotNull(DesktopActivationServer.start(
+            onShowWindow = { DesktopActivationShowResult.HEADLESS },
+            onCliCommand = { runBlocking { owner.execute(it) } }, portFile = endpoint, controllerId = owner.controllerId,
+        ))
+        try {
+            fun invoke(vararg args: String): Pair<Int?, String> {
+                val lines = mutableListOf<String>()
+                return DesktopCli.handleArgs(arrayOf(*args), lines::add,
+                    requestCommand = { DesktopActivationServer.requestCliCommand(it, endpoint) },
+                    startHeadlessController = { error("Existing controller required") }) to lines.joinToString("\n")
+            }
+            fun jsonStatus(): ControlResult {
+                val response = invoke("--json", "status")
+                assertEquals(0, response.first, response.second)
+                return ControlProtocolCodec.decodeResult(response.second)
+            }
+            assertEquals(0, invoke("on").first)
+            val started = jsonStatus()
+            assertFalse(started.restartRequired)
+            assertEquals(AppMode.PROXY_ONLY, runtime.currentMode())
+
+            val saved = invoke("settings", "set", "mode", "vpn")
+            assertEquals(0, saved.first, saved.second)
+            val pending = jsonStatus()
+            assertEquals(AppMode.VPN, service.state.appMode)
+            assertEquals(AppMode.PROXY_ONLY, runtime.currentMode())
+            assertEquals(1, runtime.starts)
+            assertEquals(0, runtime.stops)
+            assertTrue(service.state.isVpnRunning)
+            assertEquals(started.data["runtimeId"], pending.data["runtimeId"])
+            assertEquals(started.data["runtimeStartedAt"], pending.data["runtimeStartedAt"])
+            assertTrue(pending.restartRequired)
+
+            val warning = AppStrings(AppLanguage.ENGLISH).get(UiText.APP_MODE_DESKTOP_CHANGE_WARNING)
+            assertFalse(warning.contains("stops the current session"), warning)
+            assertTrue(warning.contains("does not stop the current session"), warning)
+            assertTrue(warning.contains("Restart the connection"), warning)
+
+            val restart = invoke("restart")
+            assertEquals(0, restart.first, restart.second)
+            assertEquals(AppMode.VPN, runtime.currentMode())
+            assertEquals(2, runtime.starts)
+            assertFalse(jsonStatus().restartRequired)
+        } finally {
+            server.close()
+            owner.close()
             directory.toFile().deleteRecursively()
         }
     }
