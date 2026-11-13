@@ -916,8 +916,10 @@ server gate for admission.
 ### Windows update collector stages
 
 The scenario job (`agent_tools/windows_scenario_host_job.py`) serves the SYSTEM
-collector stages of `windows-public-update.uac-denied` and of the grant rows
-`success-off`, `wait-client-loss` and `installer-wait-client-loss` inside its run.
+collector stages of `windows-public-update.uac-denied`, `install-cancelled` and
+`participating-copy-lock`, and of the grant rows `success-off`, `success-reconnect`,
+`success-explicit-off`, `wait-client-loss` and `installer-wait-client-loss`, inside
+its run.
 `visual-and-platform-evidence.md` lists the rows, their refusals and the receipt's
 `update.installer` and `update.backupReads` fields. The only privilege these tools
 use is `SeBackupPrivilege`, for the product's owner-only not-started disposition:

@@ -1267,22 +1267,60 @@ enumeration of every user and context, by `InstalledProductName`), which also
 reports each row's package code. Admitted: `public-ready`, `download-cancelled` and
 `checksum-rejected`, which raise no prompt and need no SYSTEM collector;
 `uac-denied`, whose collector serves `before-install` and `terminal-actors`; and
-the grant rows `success-off`, `wait-client-loss` and `installer-wait-client-loss`,
-whose collector serves `before-install`, `authorization`, `terminal-actors` and
-`returned-cleanup`. Refused before any journal, each with what it still lacks:
+the grant rows `success-off`, `success-reconnect`, `success-explicit-off`,
+`wait-client-loss` and `installer-wait-client-loss`, whose collector serves
+`before-install`, `authorization`, `terminal-actors` and `returned-cleanup`. Also
+admitted:
 
-- `install-cancelled` with `windows_scenario_update_cancel_actors_unobserved`. The
-  cancelled job's coordinator and worker live only from the approval to the
-  product's own `CANCELLED`, which follows the cancel the owner already sent, and
-  the product keeps no record of the coordinator (its `input-custody.json` is
-  written on success alone), so no stage can name the actors `terminal-actors`
-  needs.
-- `participating-copy-lock` with
-  `windows_scenario_update_copy_lock_fixture_unavailable`. The job passes no fault
-  inputs, so the case refuses its blocking copy, and no stage serves `fault-ready`.
-- `success-reconnect` with `windows_scenario_update_reconnect_fixture_unavailable`.
-  The job passes `initialIntent` off with no loopback connection profile and no
-  traffic inputs.
+- `install-cancelled`, whose collector serves `before-install` and
+  `terminal-actors`. The case cancels its install while the prompt is up, and the
+  decision then approves the prompt
+  (`update-install-cancel-requested-before-authorization`). The job's coordinator
+  and worker live only from the approval to the product's own `CANCELLED`, and the
+  product keeps no record of the coordinator. So `before-install`, after it
+  publishes the owner and the controller it saw, stays as a read-only SYSTEM watch
+  of the installed helper image (`native_collector.watch_cancelled_installer`).
+  Every process of that image is described once through its own handle. The
+  handle of any process that names the controller as its owner, or is elevated, is
+  kept, and that process's exit is read from it. Once both of the job's actors are
+  gone, or after 900 seconds, the watch publishes `cancel-actors.json` beside
+  `before-install.json`. The job keeps it in `collectors/before-install/` and takes
+  it whole (`cancelled_install_actors`): one job, its coordinator elevated as the
+  approving administrator and its worker unelevated and born after it, both running
+  the admitted helper, seen live and then gone, the watch armed before either
+  existed, and no other elevated helper left running. A record that proves less
+  leaves the owner waiting, and the row ends UNKNOWN. The case waits for the
+  cancelled operation at most 420 seconds. It needs `CANCELLED`, the watched
+  pair's exits again at `terminal-actors`, and the base registration and tree
+  unchanged. Anything the product leaves unended parks with its reply kept.
+- `participating-copy-lock`, whose collector also serves `fault-ready` between
+  `before-install` and `authorization`. The job's fault inputs name a second
+  workspace, where the case starts a disconnected copy of the installed CLI.
+  `fault-ready` names that copy, born unelevated as the ordinary user and running
+  the installed CLI, before the install is asked for. The case then requires the
+  coordinator's documented outcome: `FAILED` `RUNTIME_FAILED`, the protected
+  `preinstall-diagnostic.json` `{"version":1,"stage":"INVENTORY","kind":"OTHER"}`,
+  and the copy still running. The coordinator never stops a copy (it waits out its
+  exit deadline). `returned-cleanup` then checks the case's recovery owner against
+  the base's files.
+- `success-reconnect` and `success-explicit-off`, the connected rows. The job
+  writes `update-connection-profile.txt` (`socks://127.0.0.1:41082#Update%20fixture`,
+  the scheme `ProxyLinkParser` dispatches) and the sampler input. It ships the
+  in-guest SOCKS upstream (`scripts/integration/socks_http_fixture.py`) and the
+  traffic worker, which the dedicated driver holds to their reviewed bytes. The
+  case starts the upstream, adds and selects the loopback location in proxy-only
+  mode, turns it on and samples traffic through the product's mixed listener.
+  `success-reconnect` updates that connected owner. Its returned owner must
+  reconnect by itself to the same location within 180 seconds of first answering,
+  and within 900 seconds of the handoff, and then carry traffic again.
+  `success-explicit-off` turns the connected owner off with the public `off`
+  before the update. Its returned owner must stay off, with that location still
+  selected in proxy-only mode, for the same 180 seconds. `success-off`'s fresh
+  workspace has no location, so it never tests whether an off intent survives the
+  update.
+
+Refused before any journal, each with what it still lacks:
+
 - `different-admin` with `windows_scenario_update_second_administrator_unavailable`.
   The fixture has one administrator account, the decision approves only with
   `final-administrator.secret`, and the context reads only that account's SID. It
@@ -1352,8 +1390,10 @@ returns, ends UNKNOWN with the fence open. The status keeps
 decision's input terminal exists, however many events follow it. Collect passes
 a deny row only when that terminal reads `input-ack-only`, `deny`,
 `install-helper` and `promptClosed: true`. Without it the collection stays
-`unknown`. Update rows never claim installed-package evidence: the job matches only
-the base's installed tree before the run, never the tree a grant leaves.
+`unknown`. After the task, an update row reads back the registration and the
+installed tree, as an installer row does. It claims installed-package only for the
+package its variant ends with (`update.ends`): the target after a granted install
+that succeeded, otherwise the base it started from.
 
 Nothing in this family has reached a guest yet. The guest's Windows PowerShell
 5.1 still has to prove the TLS pair (`CertificateRequest`, `RSACng` export), and
@@ -1774,11 +1814,11 @@ and the row review on stderr, or exits 1 with a finite refusal, including
 `windows_matrix_evidence_unavailable` for evidence it cannot write; record by passing
 the printed object to `matrix-record`. Today no Windows requirement can pass.
 `windows-installer-lifecycle` maps all eight scenarios, but only to update and reboot
-rows: each update variant it names is refused at admission or, where admitted
-(`uac-denied`, `success-off`, `wait-client-loss`, `installer-wait-client-loss`),
-claims no installed-package evidence. The other Windows requirements each have an unmapped
-scenario, and the 12 scenarios naming an update row, `operation-progress-cancellation`
-among them, cannot pass either.
+rows. `different-admin` and `protected-storage-rejected` are still refused at
+admission, so `different-approving-admin`, `original-user-worker` and
+`protected-storage-adversarial` cannot pass. Neither can `msi-installer`, whose
+`native-install-failed` is refused too. The other Windows requirements each have an
+unmapped scenario.
 
 `matrix-status` counts a record only when its `originalSourceSHA`, the package's
 source commit, is the checked-out HEAD, or through an equivalence link to HEAD. A link
