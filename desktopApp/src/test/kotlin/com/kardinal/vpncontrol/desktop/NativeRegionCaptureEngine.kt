@@ -393,10 +393,12 @@ internal class RegionCaptureEngine(
 
     /**
      * Records a refusal raised before [capture] (for example while locating or placing a target),
-     * with the frame [keepingRefusedMoment] kept before the scene closed its surfaces.
+     * with the frame [keepingRefusedMoment] kept before the scene closed its surfaces. A refusal that
+     * [capture] already recorded is not written again; a record that an earlier run left in [output]
+     * is never taken for this refusal's.
      */
     fun recordRefusal(output: Path, refusal: RegionCaptureRefusedException) {
-        if (!Files.exists(output.resolve("${refusal.sceneId}.refusal.json"))) writeRefusal(output, refusal.sceneId, refusal)
+        if (!refusal.recorded) writeRefusal(output, refusal.sceneId, refusal)
     }
 
     /**
@@ -411,7 +413,10 @@ internal class RegionCaptureEngine(
             SESSION_REFUSAL_FRAME
         }.onFailure(refusal::addSuppressed).getOrNull()
         scenes.forEach { sceneId ->
-            runCatching { writeRefusalRecord(output, sceneId, refusal, frame) }.exceptionOrNull()?.let(refusal::addSuppressed)
+            runCatching {
+                clearRegionEvidence(output, sceneId)
+                writeRefusalRecord(output, sceneId, refusal, frame)
+            }.exceptionOrNull()?.let(refusal::addSuppressed)
         }
     }
 
@@ -422,13 +427,14 @@ internal class RegionCaptureEngine(
             val diagnostic = refusal.frame ?: desktop.captureScreen(desktop.screen()).also { refusal.frame = it }
             writePng(diagnostic, output.resolve(regionFrameName(sceneId)))
             writeRefusalRecord(output, sceneId, refusal, regionFrameName(sceneId))
+            refusal.recorded = true
         }.exceptionOrNull()?.let(refusal::addSuppressed)
     }
 
     private fun writeRefusalRecord(output: Path, sceneId: String, refusal: RegionCaptureRefusedException, frame: String?) {
         Files.createDirectories(output)
         Files.writeString(
-            output.resolve("$sceneId.refusal.json"),
+            output.resolve(regionRefusalName(sceneId)),
             regionJson.encodeToString(JsonObject.serializer(), buildJsonObject {
                 put("schema_version", REGION_RECORD_SCHEMA)
                 put("scene", sceneId)
@@ -448,7 +454,9 @@ internal class RegionCaptureEngine(
  * Runs every requested scene under one capture session (VISUAL-002). A refused scene keeps its
  * frame and named reason while the remaining scenes still run. A session that cannot be applied
  * runs no scene: every requested scene is refused with session-setting-failed beside one full
- * frame of that moment. The run fails when any scene failed.
+ * frame of that moment. The run fails when any scene failed. A requested scene's files from an
+ * earlier run in [output] are removed before the scene runs or is refused, so none of them stays
+ * beside this run's outcome; the files of scenes this run does not request are left alone.
  */
 internal fun runRegionCaptureScenes(
     desktop: RegionDesktop,
@@ -469,6 +477,7 @@ internal fun runRegionCaptureScenes(
         val engine = RegionCaptureEngine(desktop, platform, applied.json())
         scenes.forEach { sceneId ->
             try {
+                clearRegionEvidence(output, sceneId)
                 captureScene(engine, sceneId)
             } catch (refusal: RegionCaptureRefusedException) {
                 engine.recordRefusal(output, refusal)
@@ -484,6 +493,11 @@ internal fun runRegionCaptureScenes(
                 failures.joinToString("; ") { it.message.orEmpty() },
         ).apply { failures.forEach(::addSuppressed) }
     }
+}
+
+/** Removes a scene's image, frame, region record and refusal record; a missing file is fine. */
+internal fun clearRegionEvidence(output: Path, sceneId: String) {
+    regionEvidenceNames(sceneId).forEach { name -> Files.deleteIfExists(output.resolve(name)) }
 }
 
 /** One promotion of this process's notification icon; closing it restores every value it wrote. */

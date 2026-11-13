@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
@@ -448,6 +449,99 @@ class NativeRegionCaptureTest {
         } finally {
             output.toFile().deleteRecursively()
         }
+    }
+
+    @Test
+    fun aRerunRefusedBeforeCaptureRecordsItsOwnReasonAndFrame() {
+        // recordRefusal took an existing <scene>.refusal.json for one written in this run, and
+        // nothing clears the output between runs: a rerun refused before capture kept the earlier
+        // run's reason and frame, so the reviewer judged the wrong moment.
+        val output = Files.createTempDirectory("vpn-control-region-rerun")
+        try {
+            assertFailsWith<IllegalStateException> { runInstallerScene(oversizedWizardDesktop(), output) }
+            assertEquals("outside-work-area", refusalReason(output, "windows-msi"))
+
+            // The rerun finds no wizard at all: its own reason, and its own frame without the wizard.
+            assertFailsWith<IllegalStateException> { runInstallerScene(FakeDesktop(), output) }
+            assertEquals("target-missing", refusalReason(output, "windows-msi"))
+            val frame = ImageIO.read(output.resolve("windows-msi.frame.png").toFile())
+            assertNotEquals(WIZARD_RGB, frame.getRGB(600, 400) and 0xFFFFFF, "the kept frame is the rerun's own moment")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aRefusalIsRecordedUnlessThisRunAlreadyRecordedIt() {
+        // The engine took a record that an earlier run left for the scene as this refusal's own.
+        val output = Files.createTempDirectory("vpn-control-region-recorded")
+        try {
+            Files.writeString(output.resolve("windows-msi.refusal.json"), """{"scene": "windows-msi", "reason": "occluded"}""")
+            val engine = RegionCaptureEngine(FakeDesktop(), "windows", buildJsonObject {})
+            engine.recordRefusal(output, RegionCaptureRefusedException("windows-msi", RegionCaptureRefusal.TARGET_AMBIGUOUS, "two wizards"))
+            assertEquals("target-ambiguous", refusalReason(output, "windows-msi"))
+            assertTrue(Files.exists(output.resolve("windows-msi.frame.png")))
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aSceneKeepsNoEvidenceOfAnEarlierRunBesideItsNewOutcome() {
+        // A scene published on a rerun kept the earlier run's refusal beside its image, and a scene
+        // refused on a rerun kept the earlier image and region record beside its refusal.
+        val output = Files.createTempDirectory("vpn-control-region-rerun-evidence")
+        try {
+            assertFailsWith<IllegalStateException> { runInstallerScene(oversizedWizardDesktop(), output) }
+            assertTrue(Files.exists(output.resolve("windows-msi.refusal.json")))
+
+            val published = FakeDesktop()
+            runRegionCaptureScenes(published, "windows", emptyList(), listOf("windows-msi"), output) { _, _ -> published.captureWizard(output) }
+            assertTrue(Files.exists(output.resolve("windows-msi.png")))
+            assertFalse(Files.exists(output.resolve("windows-msi.refusal.json")), "a published scene keeps no earlier refusal")
+
+            val unfocused = FakeDesktop().apply { focusInside = false }
+            assertFailsWith<IllegalStateException> {
+                runRegionCaptureScenes(unfocused, "windows", emptyList(), listOf("windows-msi"), output) { _, _ -> unfocused.captureWizard(output) }
+            }
+            assertEquals("target-not-foreground", refusalReason(output, "windows-msi"))
+            assertFalse(Files.exists(output.resolve("windows-msi.png")), "a refused scene keeps no earlier image")
+            assertFalse(Files.exists(output.resolve("windows-msi.region.json")), "nor the earlier region record")
+
+            // A session refusal names capture-session.frame.png, so no earlier scene frame may stay
+            // beside it; a scene this run does not request keeps its files.
+            Files.writeString(output.resolve("windows-tray-connected.refusal.json"), "{}")
+            assertFailsWith<IllegalStateException> {
+                runRegionCaptureScenes(
+                    FakeDesktop(), "windows", listOf("transparency" to sessionSetting("transparency", 0, { 1 }) {}),
+                    listOf("windows-msi"), output,
+                ) { _, _ -> error("no scene runs without its capture session") }
+            }
+            assertEquals("session-setting-failed", refusalReason(output, "windows-msi"))
+            assertFalse(Files.exists(output.resolve("windows-msi.frame.png")), "the session refusal keeps no earlier scene frame")
+            assertTrue(Files.exists(output.resolve("windows-tray-connected.refusal.json")), "an unrequested scene keeps its files")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    /** The windows-msi scene through the scene loop, as far as locating and placing its wizard. */
+    private fun runInstallerScene(desktop: FakeDesktop, output: Path) =
+        runRegionCaptureScenes(desktop, "windows", emptyList(), listOf("windows-msi"), output) { engine, sceneId ->
+            engine.placeWindow(
+                sceneId, "installer-wizard",
+                TargetRule("installer-wizard", processId = 700, titleSuffix = WindowsRegionScenes.INSTALLER_TITLE_SUFFIX),
+                WindowsRegionScenes.installerWizard,
+                { _, _, _ -> error("an oversized wizard is refused before it is moved") },
+                maxPolls = 3,
+            )
+        }
+
+    /** A wizard larger than the work area: refused as outside-work-area, with the wizard in its frame. */
+    private fun oversizedWizardDesktop() = FakeDesktop().apply {
+        windows += nativeWindow(WIZARD, pid = 700, className = "MsiDialogCloseClass", title = "vpn-control Setup",
+            bounds = RegionRect(40, 20, 1240, 740))
+        children[WIZARD] = WIZARD_BUTTONS
     }
 
     private fun refusalReason(output: Path, sceneId: String): String =

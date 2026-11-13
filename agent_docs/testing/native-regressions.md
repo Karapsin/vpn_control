@@ -228,7 +228,8 @@ readiness gate, and the Welcome page that replaces it is published. Tray promoti
 rectangle on the overflow chevron, in the flyout or outside the visible
 notification area are refused as `tray-icon-not-promoted`, with the promotion
 restored. A refusal keeps the frame of its own moment, not the desktop
-left after the scene closed its surfaces, and a capture session that cannot be
+left after the scene closed its surfaces; a rerun into the same output records
+its own reason and frame and keeps none of the scene's earlier files; and a capture session that cannot be
 applied refuses every requested scene with `session-setting-failed` beside one
 full frame instead of ending the task with only a log line. It also pins
 the region record to the golden file that `scripts/test_visual_platform.py`

@@ -245,7 +245,10 @@ screen at the moment of refusal taken before the scene closes its surfaces, and
 `session-setting-failed` (its records name the shared `capture-session.frame.png`) or
 `secure-desktop-not-capturable`. A refusal is an
 `infrastructure_failure` unless its kept frame shows a product defect, for example an installer
-error dialog where the wizard should be (`target-missing`).
+error dialog where the wizard should be (`target-missing`). Before a requested scene runs, or is
+refused with its session, the capture removes that scene's four files left in the output by an
+earlier run, so a rerun never shows an earlier image, frame, record or refusal beside its own
+outcome; the files of scenes the run does not request stay.
 
 `windows-uac` cannot be captured from the user session. Its route reports the consent window's
 rectangle in framebuffer pixels with the census identity of its `consent.exe` (region input, schema 1),

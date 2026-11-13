@@ -67,6 +67,9 @@ internal class RegionCaptureRefusedException(
 ) : IllegalStateException("$sceneId: infrastructure failure [${refusal.reason}]: $detail") {
     /** Full screen of the refused moment, taken before the scene closes its surfaces. */
     var frame: BufferedImage? = null
+
+    /** Set once this refusal's record and frame are written; a file an earlier run left never counts. */
+    var recorded: Boolean = false
 }
 
 internal fun refuseRegion(sceneId: String, refusal: RegionCaptureRefusal, detail: String): Nothing =
@@ -735,6 +738,11 @@ internal data class RegionPart(
 internal fun regionImageName(sceneId: String): String = "$sceneId.png"
 internal fun regionFrameName(sceneId: String): String = "$sceneId.frame.png"
 internal fun regionRecordName(sceneId: String): String = "$sceneId.region.json"
+internal fun regionRefusalName(sceneId: String): String = "$sceneId.refusal.json"
+
+/** Every file a scene's region capture writes; a run that captures the scene replaces all of them. */
+internal fun regionEvidenceNames(sceneId: String): List<String> =
+    listOf(regionImageName(sceneId), regionFrameName(sceneId), regionRecordName(sceneId), regionRefusalName(sceneId))
 
 /** Region provenance, validated by scripts/visual_region.py and embedded by capture stamping. */
 internal fun regionRecord(
