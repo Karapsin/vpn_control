@@ -258,6 +258,33 @@ class AndroidConfigurationStoreTest {
         assertEquals(Long.MAX_VALUE, owner.snapshot().revision)
     }
 
+    /**
+     * Differs from the desktop workspace store on purpose of record: the production DataStore has no
+     * corruption handler, so an undecodable file fails every committed read and write and is never
+     * replaced with defaults. Pins that no Android write path silently resets it (PRODUCT-002/003).
+     */
+    @Test fun undecodableProductionStoreFailsReadsAndWritesAndKeepsItsBytes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val file = File(temporary.newFolder(), "vpn_control.preferences_pb")
+            val corrupt = byteArrayOf(-1, -1, -1)
+            file.writeBytes(corrupt)
+            val store = androidx.datastore.core.DataStoreFactory.create(
+                serializer = AndroidPreferencesSerializer(file.parentFile.toPath()), scope = scope) { file }
+            val owner = wrapper(store)
+            val corruption = androidx.datastore.core.CorruptionException::class
+            assertEquals(corruption, runCatching { owner.snapshot() }.exceptionOrNull()?.let { it::class })
+            assertEquals(corruption, runCatching { owner.state.first() }.exceptionOrNull()?.let { it::class })
+            assertEquals(corruption, runCatching { owner.edit { it[status] = "written" } }.exceptionOrNull()?.let { it::class })
+            assertEquals(corruption, runCatching {
+                store.updateData { androidx.datastore.preferences.core.emptyPreferences() }
+            }.exceptionOrNull()?.let { it::class })
+            assertArrayEquals(corrupt, file.readBytes())
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun wrapper(store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>, epoch: String = "owner") =
         AndroidConfigurationStore(store, { preferences -> PersistedState(
             appMode = preferences[mode]?.let(AppMode::valueOf) ?: AppMode.VPN,
