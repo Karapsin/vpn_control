@@ -1485,7 +1485,8 @@ module in `document-cold-input.json`.
   GUI-started owner. It needs no UI input. It is only the CLI half of
   gui-cli-transfer: the GUI's own file picker import and export have no tool, so
   gui-cli-transfer stays open and a passed `gui-owner` never counts for it.
-- `cache-bytes` (cache-digest-bytes): the committed subscription cache. The
+- `cache-bytes`: the committed subscription cache, the readback half of
+  cache-digest-bytes only (the matrix names it for no scenario, below). The
   committed cache is filled only by a refresh from a subscription source, so before
   the serve exists the owner starts its own one,
   `windows_document_cache_fixture.py`: loopback only, the two producers' TLS
@@ -1513,9 +1514,15 @@ module in `document-cold-input.json`.
   fetched again: its journal must hold only the product's fetches of the one path,
   each answered whole. Windows keeps this cache in `workspace.json` with no
   product digest of its own (the Android preference store's verified reuse has
-  one), so the digest is the harness's over the committed bytes; no contract asks
-  the desktop store to detect a changed or truncated file, and the case does not
-  corrupt it. A source that is not ready in 30 s, ends first or publishes a record
+  one), so the digest is the harness's over the committed bytes. The case does not
+  change or truncate the closed file, and that is the scenario's other half: its
+  Android anchor (`AndroidPreferencesSerializerTest`) decodes changed bytes but
+  fails a read of bytes truncated by one, where the desktop store
+  (`DesktopStateStore.loadStoredWorkspace`) writes its default workspace over a
+  `workspace.json` that does not decode, with no notice and no copy kept. Until the
+  product keeps such a file aside and reports the failure, and this case corrupts
+  the closed file and restores it before the reopen, cache-digest-bytes maps to no
+  row. A source that is not ready in 30 s, ends first or publishes a record
   an oracle refuses is journaled, ended by one termination of its original handle
   and awaited before any serve exists: `document-cache-fixture-not-ready:<timeout
   |ended|refused>:...`. A refresh whose answer is not final keeps every original
@@ -1786,11 +1793,13 @@ all built, or whose only row declares procedures still to do, maps to `()` and s
 missing: the TUN fault and config rows (no variant exists), `exact-child-stop` (no grant variant keeps a sibling
 runtime through its off, so its TUN half has no row), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
-scenario), and `windows-visual`, which stays on `visual_platform` and
-`visual_review`. `ssh-import-routing` names the SSH row and the SSH relay row
-together. The other
-document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`, `cache-bytes` for
-`cache-digest-bytes`) or RSP, with CFG
+scenario), the undecodable-workspace half of `cache-digest-bytes`
+(`windows-document-cold.cache-bytes` reads the committed cache back but corrupts
+nothing, and the desktop store replaces a `workspace.json` that does not decode
+with defaults, so it is named for no scenario either), and
+`windows-visual`, which stays on `visual_platform` and `visual_review`.
+`ssh-import-routing` names the SSH row and the SSH relay row together. The other
+document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`) or RSP, with CFG
 where design.md step 8 adds it; the second real principal of
 `wrong-principal-owner-context-kind` is the DOC row's own LOCAL SERVICE probe: a DOC
 run passes only with it observed denied, and one whose probe proved no denial fails

@@ -15,7 +15,7 @@ expected semantic digest from the same fixed recipe that produced the document.
   controller; the CLI then imports and exports it through that GUI-started owner. This is only
   the CLI half of gui-cli-transfer: the GUI's own import and export are not exercised, so it
   never stands for that scenario.
-- cache-bytes (cache-digest-bytes): the committed subscription cache. Before the serve exists the
+- cache-bytes: the committed subscription cache. Before the serve exists the
   owner starts its own in-guest subscription source (windows_document_cache_fixture, loopback
   only), and the serve alone trusts its localhost certificate. The product adds that source and
   refreshes it through its normal subscription path; its committed cache in workspace.json is
@@ -24,7 +24,10 @@ expected semantic digest from the same fixed recipe that produced the document.
   source is stopped, so nothing can be fetched again, the serve quit, the closed file read, and an
   independent serve must read the same cache back. Windows keeps this cache in the workspace JSON,
   with no product digest of its own (unlike the Android preference store's verified reuse), so the
-  digest here is the harness's, over the committed bytes.
+  digest here is the harness's, over the committed bytes. This is only the readback half of
+  cache-digest-bytes: the scenario's Android anchor also fails a read of truncated bytes rather than
+  serve a substitute, while the desktop store writes its default workspace over a workspace.json
+  that does not decode, and nothing here corrupts one. The matrix names this row for no scenario.
 """
 import hashlib
 import json

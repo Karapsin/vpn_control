@@ -80,10 +80,13 @@ Android and macOS native and visual work stay deferred and open, never passed.
    relay, a stdin key import and refreshes through the relay, connected and
    disconnected; the matrix maps ssh-import-routing to the two SSH rows.
    Built offline on 2026-11-13, not yet run natively: the in-guest subscription
-   source of `windows-document-cold.cache-bytes`, now admitted and mapped to
-   cache-digest-bytes.
-   Still to add: the TUN grant collector route, dns-ws-ssh-cache-resources, pipe-storage-races, the GUI
-   half of gui-cli-transfer, and an in-guest build for the complete
+   source of `windows-document-cold.cache-bytes`, now admitted. It proves the
+   committed cache's readback only, so cache-digest-bytes maps to no row yet.
+   Still to add: the TUN grant collector route, the closed-state corruption step of
+   cache-digest-bytes (after the product keeps an undecodable `workspace.json`
+   aside instead of writing defaults over it), dns-ws-ssh-cache-resources,
+   pipe-storage-races, the GUI half of gui-cli-transfer, and an in-guest build
+   for the complete
    `:desktopApp:test` and the local visual capture. Fix the tool defects
    the review predicted, each with RED and GREEN when proven.
 3. Build the same-source package pair, enroll the fixture and re-prove status,

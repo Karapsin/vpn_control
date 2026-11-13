@@ -854,7 +854,7 @@ class OwnerTrustTests(unittest.TestCase):
 
 
 class RowTests(unittest.TestCase):
-    def test_the_row_is_admitted_with_its_sources_and_generated_files_and_maps_cache_digest_bytes(self):
+    def test_the_row_is_admitted_with_its_sources_and_generated_files_and_proves_no_scenario_alone(self):
         row = windows.RECIPES[ROW]
         self.assertIsNone(row["refusal"])
         self.assertEqual({"variant": "cache-bytes", "principalProbe": False, "rootSubfolders": ("document-temp",)}, row["document"])
@@ -862,7 +862,11 @@ class RowTests(unittest.TestCase):
                           "socks", "https"], [role for _, role, _ in row["guestFiles"]])
         self.assertEqual((*host_job.CACHE_TLS, ("cacheBody", "document-cache-subscription.txt"), ("coldInput", "document-cold-input.json")),
                          row["generated"])
-        self.assertEqual(("windows-document-cold.cache-bytes",), windows.MATRIX_SCENARIOS["document-persistence-transfer"]["cache-digest-bytes"])
+        # RED on 7e6ee369, which named this row for cache-digest-bytes: it proves the committed cache's readback only, while
+        # the scenario's Android anchor also fails a read of truncated bytes, and the desktop store writes its default
+        # workspace over a workspace.json that does not decode. No row corrupts one yet, so the scenario maps to no row.
+        self.assertEqual((), windows.MATRIX_SCENARIOS["document-persistence-transfer"]["cache-digest-bytes"])
+        self.assertEqual([], [scenario for table in windows.MATRIX_SCENARIOS.values() for scenario, rows in table.items() if ROW in rows])
         self.assertIn("agent_tools/windows_document_cache_fixture.py", bundles._SCENARIOS["windows-scenario-driver"])
 
 

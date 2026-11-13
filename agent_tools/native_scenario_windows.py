@@ -310,7 +310,8 @@ DOCUMENT_COLD_VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-b
 # cache-bytes fills the committed subscription cache by a refresh from the owner's own in-guest subscription source
 # (windows_document_cache_fixture, loopback only). The source, the runtime stages it borrows (publish, ready, scoped trust)
 # and its two producers are bundle files; the job makes the source's body from a fixed recipe and its localhost TLS files,
-# and places them, with the stored locations the refresh must commit, beside the cold module.
+# and places them, with the stored locations the refresh must commit, beside the cold module. It proves the cache's
+# readback only, so the matrix names it for no scenario (MATRIX_SCENARIOS, cache-digest-bytes).
 _CACHE_FILES = (("agent_tools/windows_document_cache_fixture.py", "cacheFixture", "data"),
                 ("agent_tools/windows_lifecycle_runtime_stages.py", "runtime", "data"),
                 ("scripts/integration/socks_http_fixture.py", "socks", "data"),
@@ -1345,8 +1346,11 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         "retained-result-export": (_DOC, _CFG),
         "cold-independent-reopen": (_CLD + "cold-reopen",),
         "protobuf-newline-compatibility": (_CLD + "legacy-newline",),
-        # The committed subscription cache, filled by a refresh from the owned in-guest source and read back cold.
-        "cache-digest-bytes": (_CLD + "cache-bytes",),
+        # CLD(cache-bytes) proves only the committed cache's readback, warm, closed and cold. The scenario's Android anchor
+        # (AndroidPreferencesSerializerTest) also fails a read of truncated bytes rather than serve a substitute, while
+        # DesktopStateStore.loadStoredWorkspace writes the default workspace over a workspace.json that does not decode,
+        # and no row corrupts one while the product is closed: no row yet, until the product keeps such a file aside.
+        "cache-digest-bytes": (),
         "failed-persistence": (_DOC,),
         "mutable-input-resource-failure": (_DOC,),
         # The second real principal is DOC's own LOCAL SERVICE probe: a DOC row passes only with it observed denied, and
