@@ -21,7 +21,7 @@ class DesktopWindowsTransferPinsTest {
                 WindowsInstallAce(0, flags, 0x1f01ff, "S-1-3-4"),
             ))
             val native = Fake().also { it.hostile = info }
-            val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native)
+            val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native, witnessPaths(emptyList()))
             val child = pins.createDirectory()
             assertEquals(1, native.creates) // Fake also verifies an explicit current-SID-only private SDDL.
             assertTrue(native.opened.all { !it.shareDelete && !it.closed })
@@ -47,7 +47,7 @@ class DesktopWindowsTransferPinsTest {
                 WindowsInstallAce(0, flags, 0x1f01ff, "S-1-3-4"),
             ))
             val native = Fake().also { it.hostile = info }
-            val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native)
+            val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native, witnessPaths(emptyList()))
             val child = pins.createDirectory()
             assertEquals(1, native.creates)
             assertTrue(native.opened.all { !it.shareDelete && !it.closed })
@@ -130,6 +130,30 @@ class DesktopWindowsTransferPinsTest {
         }
     }
 
+    /**
+     * The spool parent stays pinned sharing writes, so an empty one may become a junction between the pins and the
+     * creation of the private folder by path (review of the folder-pin fix). The new folder must be the pinned
+     * folder's child, and that folder still no reparse point; otherwise the product deletes what it created.
+     */
+    @Test fun aPrivateDirectoryCreatedOutsideThePinnedFolderIsDeletedAndRefused() {
+        for (mode in listOf("unlinked", "parent-reparse")) {
+            val native = Fake()
+            val ancestry = witnessPaths(emptyList()) { path ->
+                if (mode == "unlinked" && "\\vpn-control-transfer-" in path) "C:\\Users\\mallory\\hideout\\" + path.substringAfterLast('\\') else path
+            }
+            val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native, ancestry)
+            if (mode == "parent-reparse") native.temp = directory(SID).copy(attributes = 0x410, reparseTag = 0xA0000003.toInt())
+            assertFails(mode) { pins.createDirectory() }
+            assertEquals(1, native.creates)
+            val created = native.opened.last()
+            assertEquals(WindowsInstallNative.DELETE, created.access, mode)
+            assertEquals(listOf(created.path), native.deleted, mode)
+            assertTrue(created.closed, mode)
+            pins.close()
+            assertTrue(native.opened.all { it.closed }, mode)
+        }
+    }
+
     private fun witnessPaths(names: List<String> = listOf("witness"), transform: (String) -> String = { it }) =
         object : WindowsAdmissionNative by JnaWindowsInstallAdmission() {
             override fun children(path: String) = names
@@ -138,7 +162,7 @@ class DesktopWindowsTransferPinsTest {
 
     @Test fun pinsEveryAncestorAndPrivateDirectoryUntilExactHandleDeletion() {
         val native = Fake()
-        val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native)
+        val pins = DesktopWindowsTransferPins.open("C:\\Users\\東京\\Temp", SID, native, witnessPaths(emptyList()))
         val child = pins.createDirectory()
         assertEquals(listOf("C:\\", "C:\\Users", "C:\\Users\\東京", "C:\\Users\\東京\\Temp", child), native.opened.map { it.path })
         assertTrue(native.opened.all { !it.shareDelete && !it.closed })
@@ -182,12 +206,14 @@ class DesktopWindowsTransferPinsTest {
         var creates = 0
         var hostile: WindowsInstallInfo? = null
         var witness: WindowsInstallInfo? = null
+        var temp: WindowsInstallInfo? = null
         override fun programData() = error("Not an installer store")
         override fun open(path: String, access: Int, shareDelete: Boolean, createSddl: String?) = Pin(path, access, shareDelete).also { opened += it }
         override fun inspect(handle: WindowsInstallNative.Handle): WindowsInstallInfo {
             val path = (handle as Pin).path
             return if (path.endsWith("\\witness")) witness ?: directory(SID)
                 else if (path == "C:\\Users\\東京") hostile ?: directory(SID)
+                else if (path == "C:\\Users\\東京\\Temp") temp ?: directory(SID)
                 else directory(if (path == "C:\\" || path == "C:\\Users") "S-1-5-18" else SID)
         }
         override fun createDirectory(path: String, sddl: String, allowExisting: Boolean) {

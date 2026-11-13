@@ -180,7 +180,16 @@ class DesktopWindowsInstallJobBackendTest {
     }
 
     @Test fun unrelatedAncestorChildCreationIsAllowedButProductDirectoryMutationIsNot() {
-        WindowsInstallTrust.verify(directory().copy(dacl = listOf(allow(CLIENT, 6))), WindowsInstallTrust.Kind.ANCESTOR)
+        WindowsInstallTrust.verify(directory().copy(dacl = listOf(allow(CLIENT, 4))), WindowsInstallTrust.Kind.ANCESTOR)
+        // FILE_ADD_FILE is FILE_WRITE_DATA, which FSCTL_SET_REPARSE_POINT accepts as it accepts attribute writes
+        // ([MS-FSA] 2.1.5.10.37), and folder pins share writes: like those, it needs a retained non-empty witness.
+        for (mask in listOf(2, 6, 0x100, 0x10, 0x116)) {
+            assertFailsWith<IllegalArgumentException>("mask 0x${mask.toString(16)}") {
+                WindowsInstallTrust.verify(directory().copy(dacl = listOf(allow(CLIENT, mask))), WindowsInstallTrust.Kind.ANCESTOR)
+            }
+            WindowsInstallTrust.verify(directory().copy(dacl = listOf(allow(CLIENT, mask))), WindowsInstallTrust.Kind.ANCESTOR,
+                ancestorPinnedNonEmpty = true)
+        }
         for (mask in listOf(2, 4, 0x10, 0x40, 0x100, 0x10000, 0x40000, 0x80000, 0x10000000, 0x40000000, 0x02000000, 0x01000000)) {
             assertFailsWith<IllegalArgumentException> {
                 WindowsInstallTrust.verify(directory().copy(dacl = listOf(allow(CLIENT, mask))), WindowsInstallTrust.Kind.DIRECTORY)
@@ -245,7 +254,8 @@ class DesktopWindowsInstallJobBackendTest {
     private class FakeNative : WindowsInstallNative {
         class Node(var info: WindowsInstallInfo, var data: ByteArray = byteArrayOf())
         class Open(val path: String, val node: Node, val shareDelete: Boolean) : WindowsInstallNative.Handle { var closed = false }
-        val nodes = mutableMapOf("C:\\" to Node(directory()), "C:\\ProgramData" to Node(directory().copy(dacl = listOf(allow(CLIENT, 6)))))
+        // Clients may create folders in this ProgramData; the witness cases are DesktopWindowsPinSharingTest's.
+        val nodes = mutableMapOf("C:\\" to Node(directory()), "C:\\ProgramData" to Node(directory().copy(dacl = listOf(allow(CLIENT, 4)))))
         val handles = mutableListOf<Open>()
         var creates = 0
         var syncs = 0

@@ -4,17 +4,35 @@ import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
 import java.nio.file.Path
 
+/** The native calls of one export: [JnaWindowsInstallNative] in production; deterministic tests pass a model. */
+internal interface WindowsExportNative : WindowsInstallNative {
+    fun retainedExportDirectory(directory: WindowsInstallNative.Handle): String
+    fun createExportPartial(path: String, owner: String): WindowsInstallNative.Handle
+    fun requirePrivateExport(handle: WindowsInstallNative.Handle, owner: String)
+    fun readExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int
+    fun writeExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int
+    fun syncExport(value: WindowsInstallNative.Handle)
+    fun publishExportNoReplace(value: WindowsInstallNative.Handle, leaf: String)
+}
+
 /** Export publication retains the verified file handle through the no-replace native rename. */
 internal object DesktopWindowsExportFile {
     fun create(parent: Path): DesktopControlTransferFile {
-        val native = JnaWindowsInstallNative()
-        val owner = JnaWindowsInstallAdmission().currentSid()
-        val pins = DesktopWindowsTransferPins.open(parent.toAbsolutePath().toString(), owner, native)
+        val ancestry = JnaWindowsInstallAdmission()
+        return create(parent.toAbsolutePath().toString(), JnaWindowsInstallNative(), ancestry, ancestry.currentSid())
+    }
+
+    internal fun create(parent: String, native: WindowsExportNative, ancestry: WindowsAdmissionNative,
+                        owner: String): DesktopControlTransferFile {
+        val pins = DesktopWindowsTransferPins.open(parent, owner, native, ancestry)
         var handle: WindowsInstallNative.Handle? = null
         try {
             val directory = native.retainedExportDirectory(pins.parentHandle)
             // Keep the native volume-GUID namespace intact; java.nio rejects this form.
             handle = native.createExportPartial(directory.trimEnd('\\') + "\\.vpn-export-${java.util.UUID.randomUUID()}.partial", owner)
+            // Created by path, so the export folder may have been a junction by then: before a byte is written,
+            // prove the partial is the pinned folder's child, or the failure path below deletes it.
+            pins.requireLinkedChild(handle)
             native.requirePrivateExport(handle, owner)
             val file = handle
             val channel = object : SeekableByteChannel {

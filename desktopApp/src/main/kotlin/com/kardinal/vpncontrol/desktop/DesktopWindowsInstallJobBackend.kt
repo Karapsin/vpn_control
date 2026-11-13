@@ -46,7 +46,7 @@ internal class DesktopWindowsInstallJobBackend(
                 return Pin(handle)
             } catch (rejection: IllegalArgumentException) {
                 if (strict) throw rejection
-                // Only the existing attribute/EA exception can request a witness.
+                // Only another principal's file, attribute or EA writes can request a witness.
                 WindowsInstallTrust.verify(info, kind, ancestorPinnedNonEmpty = true)
                 return Pin(handle, pinAncestorWitness(path, handle))
             }
@@ -211,7 +211,12 @@ internal object WindowsInstallTrust {
     // exception grants neither product-object ownership nor additional ACE rights.
     private const val TRUSTED_INSTALLER = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
     private const val WRITE_DATA = 0x2
-    private const val CHILD_CREATION = 0x6
+    // FILE_ADD_SUBDIRECTORY (FILE_APPEND_DATA): another principal may only add folders, and cannot set a reparse point.
+    private const val ADD_SUBDIRECTORY = 0x4
+    // FILE_ADD_FILE (= FILE_WRITE_DATA), FILE_WRITE_EA and FILE_WRITE_ATTRIBUTES. FSCTL_SET_REPARSE_POINT accepts a
+    // handle with FILE_WRITE_DATA or FILE_WRITE_ATTRIBUTES on an empty folder ([MS-FSA] 2.1.5.10.37), and folder pins
+    // share writes, so these are harmless on an ancestor only beside a retained child that keeps it non-empty.
+    private const val NON_EMPTY_ONLY = 0x112
     private const val MUTATION = 0x500D0156 // GENERIC_WRITE/ALL, DELETE, WRITE_DAC/OWNER, write/append/EA/attributes/delete-child
     private const val INHERIT_ONLY = 0x8
     private const val CLIENT_MASK = 0x00120083 // Read/write data, read attributes/control, synchronize; nothing else.
@@ -238,10 +243,11 @@ internal object WindowsInstallTrust {
         for (ace in acl) {
             require(ace.type == 0 || ace.type == 1) { "Unsupported installer ACE" }
             if (ace.flags and INHERIT_ONLY != 0 || ace.type == 1 || ace.sid in trusted) continue
-            // FILE_WRITE_ATTRIBUTES can set a reparse point. Allow ancestor attribute/EA writes
-            // only after a retained non-delete-sharing child proves this directory cannot empty.
-            // Caller must also verify child/parent canonical linkage and re-inspect the parent.
-            val harmlessAncestor = CHILD_CREATION or if (ancestorPinnedNonEmpty) 0x110 else 0
+            // FILE_WRITE_DATA (FILE_ADD_FILE) and FILE_WRITE_ATTRIBUTES can set a reparse point. Allow another
+            // principal those and EA writes on an ancestor only after a retained non-delete-sharing child proves
+            // this directory cannot empty. Caller must also verify child/parent canonical linkage and re-inspect
+            // the parent.
+            val harmlessAncestor = ADD_SUBDIRECTORY or if (ancestorPinnedNonEmpty) NON_EMPTY_ONLY else 0
             val allowed = READ_MASK or when (kind) { Kind.ANCESTOR -> harmlessAncestor; Kind.CANCEL -> WRITE_DATA; else -> 0 }
             require(ace.mask and allowed.inv() == 0) { "Unsupported installer access mask" }
             val dangerous = ace.mask and MUTATION

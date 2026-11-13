@@ -224,6 +224,7 @@ internal object DesktopControlTransferParent {
 /** Spool-specific current-token trust; installer trust itself remains strictly administrator-owned. */
 internal class DesktopWindowsTransferPins private constructor(
     private val path: String, private val sid: String, private val native: WindowsInstallNative,
+    private val ancestry: WindowsAdmissionNative,
     private val handles: MutableList<WindowsInstallNative.Handle>,
     internal val parentHandle: WindowsInstallNative.Handle,
 ) : AutoCloseable {
@@ -235,9 +236,30 @@ internal class DesktopWindowsTransferPins private constructor(
         val handle = native.open(target, WindowsInstallNative.DELETE, shareDelete = false)
         try { verify(native.inspect(handle), sid, private = true) }
         catch (error: Throwable) { native.close(handle); throw error }
+        // Our own new folder, found by path: unless it is the pinned folder's child, delete it.
+        try { requireLinkedChild(handle) }
+        catch (error: Throwable) {
+            runCatching { native.delete(handle) }.exceptionOrNull()?.let(error::addSuppressed)
+            runCatching { native.close(handle) }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
+        }
         directory = handle
         handles += handle
         return target
+    }
+    /**
+     * Proves by handle that [child], which the product created by path in the pinned folder (the last of the
+     * chain), is that folder's child. The pins share writes, and FSCTL_SET_REPARSE_POINT accepts another
+     * principal's FILE_WRITE_DATA (FILE_ADD_FILE) or FILE_WRITE_ATTRIBUTES handle ([MS-FSA] 2.1.5.10.37), so an
+     * empty pinned folder may have become a junction before the creation. The folder must also still be no
+     * reparse point now that the child, which shares no deletion, keeps it non-empty. The caller deletes an
+     * unlinked child it created.
+     */
+    internal fun requireLinkedChild(child: WindowsInstallNative.Handle) {
+        val folder = ancestry.canonicalPath(parentHandle).trimEnd('\\')
+        require(ancestry.canonicalPath(child).substringBeforeLast('\\') == folder) { "Unlinked transfer entry" }
+        verify(native.inspect(parentHandle), sid, ancestorPinnedNonEmpty = true)
+        require(ancestry.canonicalPath(parentHandle).trimEnd('\\') == folder) { "Unlinked transfer entry" }
     }
     fun deleteDirectory() { directory?.let { native.delete(it) } }
     override fun close() { handles.asReversed().forEach(native::close); handles.clear() }
@@ -250,10 +272,12 @@ internal class DesktopWindowsTransferPins private constructor(
             val handles = mutableListOf<WindowsInstallNative.Handle>()
             try {
                 var prefix = path.substring(0, 3)
-                fun witness(parentPath: String, parentHandle: WindowsInstallNative.Handle): WindowsInstallNative.Handle {
+                fun witness(parentPath: String, parentHandle: WindowsInstallNative.Handle, last: Boolean): WindowsInstallNative.Handle {
                     val canonicalParent = ancestry.canonicalPath(parentHandle).trimEnd('\\')
+                    var entries = 0
                     for (name in ancestry.children(parentPath).take(4096)) {
                         if (name.isBlank() || name in setOf(".", "..") || name.any { it in "\\/:\u0000" }) continue
+                        entries++
                         val child = runCatching {
                             native.open(parentPath.trimEnd('\\') + "\\" + name, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
                         }.getOrNull() ?: continue
@@ -272,9 +296,11 @@ internal class DesktopWindowsTransferPins private constructor(
                             // A raced or unsuitable child proves nothing.
                         } finally { if (!retained) native.close(child) }
                     }
-                    error("Unpinned mutable transfer ancestor")
+                    // Nothing keeps this folder from becoming a junction while the transfer lives: fail closed.
+                    error(if (last && entries == 0) "Transfer folder is empty and writable by another account"
+                        else "Unpinned mutable transfer ancestor")
                 }
-                fun pin(): WindowsInstallNative.Handle {
+                fun pin(last: Boolean): WindowsInstallNative.Handle {
                     // Every folder from the volume root to the spool parent (%TEMP% by default) stays pinned
                     // while the transfer lives. It shares writes: other programs keep renaming into them.
                     val handle = native.open(prefix, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
@@ -282,19 +308,21 @@ internal class DesktopWindowsTransferPins private constructor(
                     val info = native.inspect(handle)
                     try { verify(info, sid) }
                     catch (rejection: IllegalArgumentException) {
-                        // This second policy check allows only the established attribute/EA
-                        // exception. Unknown masks, mutation rights and principals still fail.
+                        // This second policy check allows only the established exception: another principal's
+                        // FILE_ADD_FILE, attribute or EA writes, with which it could turn the folder into a
+                        // junction once empty. Unknown masks, other mutation rights and principals still fail.
                         verify(info, sid, ancestorPinnedNonEmpty = true)
-                        handles += witness(prefix, handle)
+                        handles += witness(prefix, handle, last)
                     }
                     return handle
                 }
-                var parentHandle = pin()
-                for (name in path.substring(3).split('\\')) {
+                val names = path.substring(3).split('\\')
+                var parentHandle = pin(last = false)
+                for ((index, name) in names.withIndex()) {
                     prefix = prefix.trimEnd('\\') + "\\" + name
-                    parentHandle = pin()
+                    parentHandle = pin(last = index == names.lastIndex)
                 }
-                return DesktopWindowsTransferPins(path, sid, native, handles, parentHandle)
+                return DesktopWindowsTransferPins(path, sid, native, ancestry, handles, parentHandle)
             } catch (error: Throwable) { handles.asReversed().forEach(native::close); throw error }
         }
         internal fun verify(info: WindowsInstallInfo, sid: String, private: Boolean = false,

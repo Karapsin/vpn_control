@@ -54,7 +54,7 @@ internal object DesktopWindowsProtectedAncestors {
             val info = native.inspect(handle)
             try { WindowsInstallTrust.verify(info, WindowsInstallTrust.Kind.ANCESTOR) }
             catch (rejection: IllegalArgumentException) {
-                // No rights other than the established ancestor attribute/EA exception may change.
+                // No rights other than the established ancestor file/attribute/EA write exception may change.
                 WindowsInstallTrust.verify(info, WindowsInstallTrust.Kind.ANCESTOR, ancestorPinnedNonEmpty = true)
                 witness(path, handle, canonical)
             }

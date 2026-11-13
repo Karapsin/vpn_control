@@ -15,7 +15,8 @@ import com.sun.jna.win32.W32APIOptions
 import java.io.ByteArrayOutputStream
 
 /** Lazy bindings: constructing a backend or running fake-native tests never loads Windows DLLs. */
-internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInputNative, WindowsCompletedInputNative {
+internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInputNative, WindowsCompletedInputNative,
+    WindowsExportNative {
     private val kernel by lazy { check(Platform.isWindows()); Native.load("kernel32", Kernel32::class.java, W32APIOptions.UNICODE_OPTIONS) }
     private val advapi by lazy { check(Platform.isWindows()); Native.load("advapi32", Advapi32::class.java, W32APIOptions.UNICODE_OPTIONS) }
     private val extraKernel by lazy { check(Platform.isWindows()); Native.load("kernel32", ExtraKernel::class.java) }
@@ -177,7 +178,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
         checked(kernel.FlushFileBuffers(opened))
     }
 
-    internal fun requirePrivateExport(handle: WindowsInstallNative.Handle, owner: String) {
+    override fun requirePrivateExport(handle: WindowsInstallNative.Handle, owner: String) {
         val flags = IntByReference()
         checked(extraKernel.GetVolumeInformationByHandleW(handle(handle), null, 0, null, null, flags, null, 0))
         requireWindowsPrivateExport(flags.value, inspect(handle), owner)
@@ -263,7 +264,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
     }
 
     /** Export-only retained RW+DELETE handle: private at creation, no competing writer/deleter. */
-    internal fun createExportPartial(path: String, owner: String): WindowsInstallNative.Handle =
+    override fun createExportPartial(path: String, owner: String): WindowsInstallNative.Handle =
         withSecurity("O:${owner}G:${owner}D:P(A;;FA;;;$owner)") { security ->
             val value = kernel.CreateFile(path, 0x40130083, 1, security, 1, 0x02200000, null)
             if (value == WinBase.INVALID_HANDLE_VALUE || value.pointer == WinBase.INVALID_HANDLE_VALUE.pointer)
@@ -271,7 +272,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
             Handle(value, false)
         }
 
-    internal fun readExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int {
+    override fun readExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int {
         require(offset >= 0 && count in 1..8192 && count <= bytes.size)
         checked(extraKernel.SetFilePointerEx(handle(value), offset, null, 0))
         val received = IntByReference()
@@ -280,7 +281,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
         return received.value
     }
 
-    internal fun writeExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int {
+    override fun writeExportChunk(value: WindowsInstallNative.Handle, offset: Long, bytes: ByteArray, count: Int): Int {
         require(offset >= 0 && count in 1..8192 && count <= bytes.size)
         checked(extraKernel.SetFilePointerEx(handle(value), offset, null, 0))
         val written = IntByReference()
@@ -289,9 +290,9 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
         return written.value
     }
 
-    internal fun syncExport(value: WindowsInstallNative.Handle) { checked(kernel.FlushFileBuffers(handle(value))) }
+    override fun syncExport(value: WindowsInstallNative.Handle) { checked(kernel.FlushFileBuffers(handle(value))) }
 
-    internal fun retainedExportDirectory(directory: WindowsInstallNative.Handle): String {
+    override fun retainedExportDirectory(directory: WindowsInstallNative.Handle): String {
         val buffer = CharArray(32768)
         val length = extraKernel.GetFinalPathNameByHandleW(handle(directory), buffer, buffer.size, 1)
         if (length == 0) throw WindowsInstallNativeFailure(kernel.GetLastError())
@@ -299,7 +300,7 @@ internal class JnaWindowsInstallNative : WindowsInstallNative, WindowsDeniedInpu
         return String(buffer, 0, length)
     }
 
-    internal fun publishExportNoReplace(value: WindowsInstallNative.Handle, leaf: String) {
+    override fun publishExportNoReplace(value: WindowsInstallNative.Handle, leaf: String) {
         // The partial is already a sibling of the destination. NT's leaf-only form
         // resolves against that file's retained parent and opens no folder by path.
         windowsExportRenameInfo(leaf, Native.POINTER_SIZE).use { info ->
@@ -394,10 +395,13 @@ internal fun windowsInstallOpenOptions(access: Int, shareDelete: Boolean, create
     // Object pins (INSPECT, PINNED_READ) also deny writers. Folder pins share writes: a rename or hard link
     // by path opens the folder of the new name for FILE_ADD_FILE or FILE_ADD_SUBDIRECTORY ([MS-FSA]
     // 2.1.5.15.12, 2.1.5.15.7), so a folder pin that denied write sharing refused every other program's
-    // rename into %TEMP%, the home folder or C:\, and kept no part of the folder's identity: creating an
-    // entry opens no folder, and FSCTL_SET_REPARSE_POINT needs only FILE_WRITE_ATTRIBUTES, which takes no
-    // part in sharing. What keeps a pinned folder from becoming a junction is its retained child: a
-    // non-empty folder takes none ([MS-FSA] 2.1.5.10.37).
+    // rename into %TEMP%, the home folder or C:\. Sharing writes has a price: FILE_ADD_FILE is
+    // FILE_WRITE_DATA, and FSCTL_SET_REPARSE_POINT accepts a handle with FILE_WRITE_DATA or
+    // FILE_WRITE_ATTRIBUTES ([MS-FSA] 2.1.5.10.37), so anyone the folder's DACL grants either can turn it
+    // into a junction while it is empty (attribute writes never took part in sharing). A non-empty folder
+    // takes none: WindowsInstallTrust admits another principal's file, attribute or EA writes on a pinned
+    // folder only beside a retained child, and what the product creates by path in a pinned folder is
+    // proven by handle to be its child (DesktopWindowsTransferPins.requireLinkedChild).
     // Cancellation readers/writers must share data writes with their cooperating retained handle.
     val immutable = access == WindowsInstallNative.INSPECT || access == WindowsInstallNative.PINNED_READ
     return WindowsInstallOpenOptions(rights, 1 or (if (immutable) 0 else 2) or

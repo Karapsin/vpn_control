@@ -122,7 +122,7 @@ internal object DesktopWindowsInstallAdmission {
             try { WindowsInstallTrust.verify(policyInfo, kind) }
             catch (rejection: IllegalArgumentException) {
                 if (finalProductRoot) throw rejection
-                // First reject every unsafe permission other than the specific attribute/EA rights.
+                // First reject every unsafe permission other than the specific file, attribute and EA writes.
                 WindowsInstallTrust.verify(policyInfo, kind, ancestorPinnedNonEmpty = true)
                 pinNonEmptyWitness(path, handle)
                 val current = native.inspect(handle)
