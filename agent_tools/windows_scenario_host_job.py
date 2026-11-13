@@ -201,6 +201,15 @@ RESPONSIVE_TLS = (("certificate", "document-work-localhost.pem"), ("privateKey",
 # same way and published beside the bundle files. The case module names them by these leaves.
 SSH_RELAY_TLS = (("certificate", "ssh-relay-localhost.pem"), ("privateKey", "ssh-relay-localhost.key"),
                  ("trustStore", "ssh-relay-trust.jks"))
+# windows-document-cold.cache-bytes: the cold module with an owned in-guest subscription source. The job makes the source's
+# body from a fixed recipe, its localhost certificate, key and trust store as it does the responsive row's, and the stored
+# locations the product must commit for that body, from the same recipe; none of them crosses back.
+DOCUMENT_CACHE = "cache-bytes"
+CACHE_ENTRIES = 256
+CACHE_BODY_LEAF = "document-cache-subscription.txt"
+CACHE_TLS = (("certificate", "document-cache-localhost.pem"), ("privateKey", "document-cache-localhost.key"),
+             ("trustStore", "document-cache-trust.jks"))
+CACHE_SUBSCRIPTION_NAME = "Owned cache"
 PRINCIPAL_WINDOW = "document-principal-window"
 LOCAL_SERVICE = "S-1-5-19"
 _DOMAIN_BOUNDARY = re.compile(r"[,\n\r\t ]")
@@ -650,9 +659,109 @@ def document_inputs(row, paths, product, operation):
     return inputs
 
 
+def cache_lines(entries=CACHE_ENTRIES):
+    """The cache source's subscription lines: SOCKS links over documentation addresses and names that nothing contacts.
+
+    Eight shapes in turn: ASCII, Cyrillic, CJK and a supplementary-plane remark, credentials and a quote, backslash and
+    slash percent-encoded, a bracketed IPv6 host, a query part and no fragment at all (the remark is then the host)."""
+    lines = []
+    for number in range(entries):
+        a, b = 1 + number % 254, 1 + (number * 7) % 254
+        lines.append((
+            "socks://192.0.2.%d:%d#Cache%%20%03d" % (a, 1080 + number, number),
+            "socks://cache-%03d.document.invalid:%d#%%D0%%9A%%D1%%8D%%D1%%88%%20%d" % (number, 2000 + number, number),
+            "socks://user%d:p%%40ss%d@198.51.100.%d:%d#cred-%d" % (number, number, b, 3000 + number, number),
+            "socks://[2001:db8::%x]:%d#v6-%d" % (number + 1, 4000 + number, number),
+            "socks://203.0.113.%d:%d" % (a, 5000 + number),
+            "socks://cache-%d.document.invalid:%d?note=x#%%E7%%BC%%93%%E5%%AD%%98-%d" % (number, 6000 + number, number),
+            "socks://192.0.2.%d:%d#%%F0%%9F%%93%%A6%%20box%%20%d" % (b, 7000 + number, number),
+            "socks://198.51.100.%d:%d#quote%%22back%%5Cslash%%2F%d" % (a, 8000 + number, number),
+        )[number % 8])
+    return lines
+
+
+def cache_body(entries=CACHE_ENTRIES):
+    """What the cache source serves: the lines, LF-joined, UTF-8, ending in LF."""
+    return ("\n".join(cache_lines(entries)) + "\n").encode("utf-8")
+
+
+def _url_component(value):
+    """ProxyParserTextCodec.decodeUrlComponent over this recipe's well-formed escapes: %XX bytes as UTF-8, + as a space."""
+    if "%" not in value and "+" not in value:
+        return value
+    output, pending, index = [], bytearray(), 0
+    while index < len(value):
+        char = value[index]
+        if char == "%" and index + 2 < len(value) and all(item in "0123456789abcdefABCDEF" for item in value[index + 1:index + 3]):
+            pending.append(int(value[index + 1:index + 3], 16))
+            index += 3
+            continue
+        if pending:
+            output.append(pending.decode("utf-8", "strict"))
+            pending.clear()
+        output.append(" " if char == "+" else char)
+        index += 1
+    if pending:
+        output.append(pending.decode("utf-8", "strict"))
+    return "".join(output)
+
+
+def stored_socks_location(line):
+    """The product's stored location for one recipe line: LocationConfigs.encodeStoredLocation of
+    ProxyLinkParser.parseSocksLink, profileToJson's 25 keys in order, written as CompactJson writes them.
+
+    A model of the product's encoding for this recipe's shapes only; checked offline against the product's compiled
+    encoder (the document cache tests record the strings it wrote)."""
+    trimmed = line.strip()
+    if not trimmed.startswith("socks://"):
+        raise ValueError("cache_recipe_shape")
+    rest = trimmed[len("socks://"):]
+    head, _, fragment = rest.partition("#")
+    remark = _url_component(fragment)
+    authority = head.partition("?")[0]
+    credentials, at, host_port = authority.partition("@")
+    if not at:
+        credentials, host_port = "", authority
+    if host_port.startswith("["):
+        host, _, port = host_port[1:].partition("]")
+        port = port[1:] if port.startswith(":") else port
+    else:
+        host, _, port = host_port.rpartition(":")
+    if not host or not port.isdigit() or host_port.count(":") > 1 and not host_port.startswith("["):
+        raise ValueError("cache_recipe_shape")
+    username, _, password = credentials.partition(":")
+    value = {"type": "socks", "protocol": "socks", "remarks": remark if remark.strip() else host, "uuid": "",
+             "username": _url_component(username), "server": host, "server_port": int(port), "password": _url_component(password),
+             "method": "", "network": "tcp", "flow": "", "security": "", "sni": "", "fingerprint": "chrome", "public_key": "",
+             "short_id": "", "path": "", "host_header": "", "service_name": "", "header_type": "none", "alter_id": 0,
+             "vmess_security": "auto", "plugin": "", "plugin_options": "", "raw_link": trimmed}
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def cache_stored_locations(entries=CACHE_ENTRIES):
+    """The committed cache the product must hold after refreshing the recipe's body: one stored location per line, in order."""
+    return [stored_socks_location(line) for line in cache_lines(entries)]
+
+
+def cache_input(paths):
+    """The cache variant's part of the cold module's literal input: its held roles and the recipe's own digests."""
+    body, stored = cache_body(), cache_stored_locations()
+    newline = "\n".join(stored).encode("utf-8")
+    return {"fixtureWorkerPath": paths["file:cacheFixture"], "runtimeStagesPath": paths["file:runtime"],
+            "socksSourcePath": paths["file:socks"], "httpsSourcePath": paths["file:https"],
+            "certificatePath": paths["file:certificate"], "privateKeyPath": paths["file:privateKey"],
+            "trustStorePath": paths["file:trustStore"], "bodyPath": paths["file:cacheBody"], "bodySha256": _sha(body),
+            "bodyBytes": len(body), "subscriptionName": CACHE_SUBSCRIPTION_NAME, "expectedLocations": stored,
+            "expectedCount": len(stored), "expectedNewlineBytes": len(newline), "expectedNewlineSha256": _sha(newline)}
+
+
 def cold_input(row, paths, operation):
-    """The cold module's literal input: its variant, the document it imports and the digest its export must have."""
+    """The cold module's literal input: its variant, the document it imports and the digest its export must have.
+    The cache variant's names its source's roles and the stored locations its refresh must commit instead."""
     variant = row["document"]["variant"]
+    if variant == DOCUMENT_CACHE:
+        value = {"schemaVersion": 1, "variant": variant, "operationId": operation, "cache": cache_input(paths)}
+        return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
     if variant == "legacy-newline":
         source, suffixes = paths["file:legacyInput"], normalized_suffixes(LEGACY_ENTRIES)
     else:
@@ -2442,8 +2551,8 @@ class Job:
 
     def _document_files(self):
         """The guest-made large document, checked against the job's own recipe, a cold row's literal inputs, and the
-        responsive row's TLS material, made here as the proxy rows' is: the key lives only in this job's memory and the
-        guest workspace."""
+        responsive and cache rows' TLS material, made here as the proxy rows' is: the key lives only in this job's memory
+        and the guest workspace. The cache row's source body comes from its fixed recipe beside its literal input."""
         planner = self._load("windows_ordinary_task")
         value, required = self._publisher("publish-document-input", "document-input")
         pin = value.get("filePin")
@@ -2469,6 +2578,9 @@ class Job:
         else:
             if variant == "legacy-newline":
                 targets.append(("legacyInput", legacy_newline_input()))
+            if variant == DOCUMENT_CACHE:
+                tls = self._load("windows_scenario_proxy").material(secrets.randbits, time.time())
+                targets += [(role, tls[role]) for role, _ in CACHE_TLS] + [("cacheBody", cache_body())]
             targets.append(("coldInput", cold_input(self.row, self.paths, self.op)))
         if [role for role, _ in self.row["generated"]] != [role for role, _ in targets]:
             raise KnownFailure("document_files_not_the_row")

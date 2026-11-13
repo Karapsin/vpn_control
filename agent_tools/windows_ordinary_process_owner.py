@@ -1085,7 +1085,7 @@ class Owner:
         try:
             serve = self.child("serve", [launcher, "--state-dir", str(workspace), "serve"])
         finally:
-            if "responsiveWork" in self.request or launch is not None:
+            if "responsiveWork" in self.request or launch is not None or action == "document-acceptance":
                 # The scoped trust options reach only this serve: no later child ever inherits them.
                 self.environment.pop("JAVA_TOOL_OPTIONS", None)
         identity = None

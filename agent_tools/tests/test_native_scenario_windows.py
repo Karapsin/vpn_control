@@ -47,9 +47,9 @@ PROXY_ROWS = tuple("windows-proxy-lifecycle." + variant for variant in (
     "prepare-failure", "commit-readiness-failure", "sibling-off", "scheduled-refresh", "no-tray-close"))
 DOCUMENT_ROWS = ("windows-document-acceptance", *("windows-document-cold." + variant for variant in (
     "cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")))
-# The responsive row runs the same document action with its responsiveWork; cache-bytes is refused before any journal.
+# The responsive row runs the same document action with its responsiveWork; cache-bytes with its own cache source.
 RESPONSIVE_ROW = "windows-document-responsive"
-ADMITTED_DOCUMENT_ROWS = (*DOCUMENT_ROWS[:-1], RESPONSIVE_ROW)
+ADMITTED_DOCUMENT_ROWS = (*DOCUMENT_ROWS, RESPONSIVE_ROW)
 TUN_ROWS = tuple("windows-scoped-tun." + variant for variant in ("restart-deny", "restart-grant", "find-best-deny", "find-best-grant"))
 HOME = "/home/fixture-owner"
 TARGET = {"kind": "ssh", "uid": 1000, "principal": "fixture-owner", "home": HOME, "bootId": "22222222-3333-4444-8555-666666666666"}
@@ -429,22 +429,30 @@ class TableTests(unittest.TestCase):
 class DocumentTableTests(unittest.TestCase):
     def test_the_document_rows_are_the_document_action_with_one_fixed_case_module_each(self):
         from agent_tools import windows_document_cold_cases as cold
-        self.assertEqual(set(cold.VARIANTS) | {"cache-bytes"}, set(windows.DOCUMENT_COLD_VARIANTS))
+        self.assertEqual(set(cold.VARIANTS), set(windows.DOCUMENT_COLD_VARIANTS))
         for name in DOCUMENT_ROWS:
             with self.subTest(name=name):
                 row = windows.RECIPES[name]
                 variant = None if name == "windows-document-acceptance" else name.split(".", 1)[1]
+                cache = variant == "cache-bytes"
                 self.assertEqual(("product", "python-worker", "document-acceptance", True, None),
                                  (row["evidenceClass"], row["bootstrapMode"], row["workerAction"], row["priorInstall"], row["package"]))
                 self.assertEqual({"variant": variant, "principalProbe": variant is None, "rootSubfolders": ("document-temp",)}, row["document"])
-                self.assertEqual(["owner", "worker", "cases", "client", "windows", "race", "harness", "diagnostic"],
+                self.assertEqual(["owner", "worker", "cases", "client", "windows", "race", "harness", "diagnostic"]
+                                 + (["cacheFixture", "runtime", "socks", "https"] if cache else []),
                                  [role for _, role, _ in row["guestFiles"]])
                 self.assertEqual((host_job.POWERSHELL_PATH,), row["readPins"])
-                self.assertEqual("windows_scenario_document_cache_fixture_unavailable" if variant == "cache-bytes" else None, row["refusal"])
+                self.assertIsNone(row["refusal"])
                 generated = dict(row.get("generated", ()))
                 self.assertEqual({} if variant is None else {"coldInput": "document-cold-input.json",
-                                                            **({"legacyInput": "document-legacy-newline.json"} if variant == "legacy-newline" else {})},
+                                                            **({"legacyInput": "document-legacy-newline.json"} if variant == "legacy-newline" else {}),
+                                                            **({"certificate": "document-cache-localhost.pem",
+                                                                "privateKey": "document-cache-localhost.key",
+                                                                "trustStore": "document-cache-trust.jks",
+                                                                "cacheBody": "document-cache-subscription.txt"} if cache else {})},
                                  generated)
+                leaves = [relative.rsplit("/", 1)[1] for relative, _, _ in row["guestFiles"]] + [leaf for _, leaf in row.get("generated", ())]
+                self.assertEqual(len(leaves), len(set(leaves)), "every guest file of the row has its own name in the workspace")
                 self.assertNotIn("qualificationArguments", row)
                 self.assertNotIn("uac", row)
 
@@ -1066,8 +1074,7 @@ class PackageAdmissionTests(FamilyDriverBase):
                                         "windows_scenario_package_version")
         self.assertEqual("2.2.15", reuse.artifact_set_verify_readonly(self.root, self.set_id).get("productVersion"))
 
-    def test_a_document_row_needs_its_prior_install_and_cache_bytes_says_what_it_lacks(self):
-        self.assert_refused(self.family_request("windows-document-cold.cache-bytes"), "windows_scenario_document_cache_fixture_unavailable")
+    def test_a_document_row_needs_its_prior_install(self):
         for scenario in ADMITTED_DOCUMENT_ROWS:
             for name, change in (("no-prior", {"priorInstall": None}), ("own-prior", {"priorInstall": self.operation}),
                                  ("bad-prior", {"priorInstall": "prior"}), ("other-row", {"scenarioId": "windows-packaged-cli-smoke"}),

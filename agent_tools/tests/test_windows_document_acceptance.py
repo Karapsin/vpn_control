@@ -543,6 +543,9 @@ class ColdGuest(DocumentGuest):
 
 
 LAUNCHER_PATH = r"C:\Users\fixture\AppData\Local\vpn-control\vpn-control-cli.exe"
+# The variants that import and export a routing document; the cache variant has its own source and module of tests
+# (test_windows_document_cache).
+ROUTING_VARIANTS = tuple(variant for variant in cold_cases.VARIANTS if variant != "cache-bytes")
 
 
 class ColdCaseTests(unittest.TestCase):
@@ -619,7 +622,7 @@ class ColdCaseTests(unittest.TestCase):
         return guest, code
 
     def test_each_variant_reopens_the_workspace_by_an_independent_owner_and_compares_its_export(self):
-        for variant in cold_cases.VARIANTS:
+        for variant in ROUTING_VARIANTS:
             with self.subTest(variant=variant):
                 guest, code = self.run_cold(variant)
                 self.assertEqual((0, [], [(0, "NoneType", "None")]), (code, guest.parks, guest.finished))
@@ -646,7 +649,7 @@ class ColdCaseTests(unittest.TestCase):
                          json.loads(Path(guest.exports[-1][1]).read_bytes())["rules"]["direct_domain_suffixes"])
 
     def test_an_export_that_differs_from_the_recipe_is_a_known_failure_that_closes_the_reopened_owner(self):
-        for variant in cold_cases.VARIANTS:
+        for variant in ROUTING_VARIANTS:
             with self.subTest(variant=variant):
                 def guest_change(guest):
                     guest.export_change = lambda raw, guest=guest: raw if len(guest.exports) < 1 else raw.replace(b'"d0000001', b'"d9999999').replace(

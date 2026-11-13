@@ -88,7 +88,8 @@ BUNDLE_FILES = ("agent_tools/windows_scenario_host_job.py", "agent_tools/windows
                 "agent_tools/windows_document_cli_cases.py", "agent_tools/windows_document_cold_cases.py",
                 "agent_tools/windows_document_client.py", "agent_tools/windows_document_native.py",
                 "agent_tools/windows_document_export_race.py", "agent_tools/windows_document_responsive_cli_cases.py",
-                "agent_tools/windows_document_responsive_cases.py", "agent_tools/windows_document_gated_https_fixture.py")
+                "agent_tools/windows_document_responsive_cases.py", "agent_tools/windows_document_gated_https_fixture.py",
+                "agent_tools/windows_document_cache_fixture.py")
 PYTHON_ROOT = PROFILE + "\\AppData\\Local\\Programs\\Python\\Python313"
 INSTALLED_ROOT = PROFILE + "\\AppData\\Local\\vpn-control"
 OLD_CODE = "{11111111-2222-4333-8444-555555555555}"
@@ -4609,6 +4610,94 @@ class ResponsiveFamilyTests(DocumentFamilyBase):
         self.assertNotIn("system-run", kinds)
         self.assertEqual([], self.material_calls, "the document is checked before the TLS material is made")
         self.assertEqual({"installedPackage": False, "packageSha256": None}, receipt["windows"])
+
+
+CACHE_ROW = "windows-document-cold.cache-bytes"
+
+
+class CacheFamilyTests(DocumentFamilyBase):
+    """windows-document-cold.cache-bytes on the document peer: the cold module with its own subscription source, whose
+    TLS material, recipe body and literal input with the expected stored locations the job makes."""
+
+    def setUp(self):
+        super().setUp()
+        self.material_calls = []
+        loaded = job.Job._load
+
+        def load(instance, name):
+            module = loaded(instance, name)
+            if name == "windows_scenario_proxy":
+                module.material = lambda randbits, now: self.material_calls.append((randbits, now)) or proxy_tls()
+            return module
+        patcher = mock.patch.object(job.Job, "_load", load)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_cache_row_runs_on_one_installed_base_with_its_source_and_refuses_each_mutated_request(self):
+        install, base = self.install_base()
+        tls, calls, original = proxy_tls(), [], job.assert_closed
+
+        def record(row, requests, expected):
+            calls.append(json.loads(json.dumps([row, requests, expected])))
+            return original(row, requests, expected)
+        with mock.patch.object(job, "assert_closed", record):
+            plan, code, receipt, kinds = self.run_family(CACHE_ROW, prior=install)
+        self.assertEqual((0, None), (code, receipt["failure"]))
+        self.assertEqual({"installedPackage": True, "packageSha256": self.packages["targetPackage"]["sha256"]}, receipt["windows"])
+        self.assertEqual(base["installed"]["treeSha256"], receipt["installed"]["treeSha256"], "the row leaves the one base as it found it")
+        self.assertEqual({"variant": "cache-bytes", "principal": None}, receipt["document"])
+        self.assertEqual([], self.qga.probes, "only the acceptance row probes a second principal")
+        self.assertLess(kinds.index("document-input"), kinds.index("system-run"), "the document and the source's files exist before any task")
+        self.assertEqual(1, len(self.material_calls))
+        self.assertIs(job.secrets.randbits, self.material_calls[-1][0], "the key comes from the host's own CSPRNG")
+        seen = self.qga.requests_seen[-1]
+        worker, workspace = seen["worker"], job.WORKSPACE_PREFIX + plan["operationId"]
+        self.assertEqual(("document-acceptance", workspace + "\\windows_document_cold_cases.py"), (worker["action"], worker["casesPath"]))
+        self.assertNotIn("responsiveWork", worker, "the cache source is the cold module's, named by its literal input")
+        pins = {pin["path"]: pin for pin in worker["filePins"]}
+        for role, leaf in job.CACHE_TLS:
+            self.assertEqual(tls[role], self.qga.files[workspace + "\\" + leaf])
+            self.assertEqual(hashlib.sha256(tls[role]).hexdigest(), pins[workspace + "\\" + leaf]["sha256"])
+        self.assertEqual(job.cache_body(), self.qga.files[workspace + "\\" + job.CACHE_BODY_LEAF])
+        literal = json.loads(self.qga.files[workspace + "\\" + job.DOCUMENT_COLD_INPUT])
+        row = driver.RECIPES[CACHE_ROW]
+        paths = job.layout(plan["operationId"], {"localAppData": PROFILE + "\\AppData\\Local"}, row)
+        self.assertEqual(json.loads(job.cold_input(row, paths, plan["operationId"])), literal)
+        cache = literal["cache"]
+        from agent_tools import windows_document_cold_cases as cold
+        # The worker holds the very sources the cold module pins by name and digest, and the body its literal names.
+        for key, expected in cold.CACHE_SOURCES.items():
+            self.assertEqual(expected, (cache[key].rsplit("\\", 1)[1], pins[cache[key]]["sha256"]), key)
+        self.assertEqual((cache["bodySha256"], cache["bodyBytes"]), (pins[cache["bodyPath"]]["sha256"],
+                                                                     pins[cache["bodyPath"]]["nativeIdentity"]["sizeBytes"]))
+        self.assertTrue({cache[key] for key in ("certificatePath", "privateKeyPath", "trustStorePath")} <= set(pins))
+        planner.validate_closure(worker)
+        self.assertNotIn(cache["privateKeyPath"], {pin["path"] for pin in seen["bootstrap"]["filePins"]}, "only the worker holds the key")
+        self.assertEqual([], self.classify()["unresolved"])
+        captured = calls[-1]
+        job.assert_closed(*captured)
+        for name, change in DocumentFamilyTests.mutations().items():
+            with self.subTest(change=name):
+                row, requests, expected = json.loads(json.dumps(captured))
+                change(row, requests, expected)
+                with self.assertRaisesRegex(job.KnownFailure, "requests_not_closed"):
+                    job.assert_closed(row, requests, expected)
+
+    def test_the_cache_row_needs_a_passed_install_of_its_own_package_before_any_key(self):
+        foreign = self.run_family("windows-ordinary-qualification")[0]["operationId"]
+        for name, prior in (("missing", None), ("unknown", str(uuid.uuid4())), ("foreign", foreign)):
+            with self.subTest(prior=name):
+                plan, code, receipt, kinds = self.run_family(CACHE_ROW, prior=prior)
+                self.assertEqual((2, "prior_install_unavailable", []), (code, receipt["failure"], kinds))
+        self.assertEqual([], self.material_calls, "a refused row makes no key")
+
+    def test_a_guest_document_other_than_the_recipe_is_a_known_failure_before_any_key_or_task(self):
+        install, _ = self.install_base()
+        self.qga.document_bytes = job.document_input(entries=10)
+        plan, code, receipt, kinds = self.run_family(CACHE_ROW, prior=install)
+        self.assertEqual((1, "document_input_recipe"), (code, receipt["failure"]))
+        self.assertNotIn("system-run", kinds)
+        self.assertEqual([], self.material_calls, "the document is checked before the TLS material is made")
 
 
 # The publisher's probe function under PowerShell, against a fake Task Scheduler. Each fake call does what its

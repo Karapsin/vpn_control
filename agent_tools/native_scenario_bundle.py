@@ -122,6 +122,8 @@ _SCENARIOS = {
         "agent_tools/windows_document_responsive_cli_cases.py",
         "agent_tools/windows_document_responsive_cases.py",
         "agent_tools/windows_document_gated_https_fixture.py",
+        # The cold cache variant's own in-guest subscription source; the runtime stages and both producers are above.
+        "agent_tools/windows_document_cache_fixture.py",
     ),
 }
 

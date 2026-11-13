@@ -1485,10 +1485,41 @@ module in `document-cold-input.json`.
   GUI-started owner. It needs no UI input. It is only the CLI half of
   gui-cli-transfer: the GUI's own file picker import and export have no tool, so
   gui-cli-transfer stays open and a passed `gui-owner` never counts for it.
-- `cache-bytes` is refused before any journal
-  (`windows_scenario_document_cache_fixture_unavailable`). The committed
-  subscription cache is filled only by a refresh from a subscription source, and no
-  in-guest subscription fixture serves a document row yet.
+- `cache-bytes` (cache-digest-bytes): the committed subscription cache. The
+  committed cache is filled only by a refresh from a subscription source, so before
+  the serve exists the owner starts its own one,
+  `windows_document_cache_fixture.py`: loopback only, the two producers' TLS
+  listener and relay with the gated work fixture's patterns (pinned producer bytes,
+  TLS material the job makes, a ready file written whole, each start step said on
+  stdout, a failed start that says its step and ends 3). It serves exactly
+  `/subscription/cache/<operation>` with the body the job made from a fixed recipe
+  (256 SOCKS links over documentation addresses, eight shapes: ASCII, Cyrillic, CJK
+  and a supplementary-plane remark, credentials, a quote and backslash, a bracketed
+  IPv6 host, a query part, no fragment) and journals each request before its
+  answer. Only the original serve gets the scoped trust store; the owner removes it
+  right after starting that serve. Policy off and no Find Best after refresh, the
+  case adds the source, makes it the visible source and refreshes it once. The
+  stored locations the refresh must commit come from the same recipe
+  (`windows_scenario_host_job.stored_socks_location`, a model of
+  `LocationConfigs.encodeStoredLocation` checked offline against the product's
+  compiled encoder) and travel in the literal input, with their LF-joined UTF-8
+  bytes and sha256. The case reads the committed cache three times, warm, with
+  the product closed and after the reopen: the document rows' own reader
+  (`windows_document_native.cache_bytes`, the subscription's `cached_locations`)
+  and the workspace's location records of that source, from which a cold owner
+  rebuilds the cache; both must equal the recipe entry for entry. The product's own
+  `locations export` of the visible locations must equal them too, warm and cold.
+  The source is stopped by its own record before the quit, so nothing can be
+  fetched again: its journal must hold only the product's fetches of the one path,
+  each answered whole. Windows keeps this cache in `workspace.json` with no
+  product digest of its own (the Android preference store's verified reuse has
+  one), so the digest is the harness's over the committed bytes; no contract asks
+  the desktop store to detect a changed or truncated file, and the case does not
+  corrupt it. A source that is not ready in 30 s, ends first or publishes a record
+  an oracle refuses is journaled, ended by one termination of its original handle
+  and awaited before any serve exists: `document-cache-fixture-not-ready:<timeout
+  |ended|refused>:...`. A refresh whose answer is not final keeps every original
+  for the park.
 
 A known case failure in these rows closes what the owner started and ends 1. The
 harness's oracle failure and the modules' own `document-` codes count only after
@@ -1753,13 +1784,13 @@ design.md adapter steps 4-8 with the names the code accepts: all 48 Windows
 scenarios and the 16 Windows document scenarios. A scenario whose design rows are not
 all built, or whose only row declares procedures still to do, maps to `()` and stays
 missing: the TUN fault and config rows (no variant exists), `exact-child-stop` (no grant variant keeps a sibling
-runtime through its off, so its TUN half has no row), `cache-digest-bytes` (`windows-document-cold.cache-bytes`
-is refused before any journal), the GUI half of `gui-cli-transfer`
+runtime through its off, so its TUN half has no row), the GUI half of `gui-cli-transfer`
 (`windows-document-cold.gui-owner` is only its CLI half and is named for no
 scenario), and `windows-visual`, which stays on `visual_platform` and
 `visual_review`. `ssh-import-routing` names the SSH row and the SSH relay row
 together. The other
-document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`) or RSP, with CFG
+document scenarios name DOC, CLD (`cold-reopen`, `legacy-newline`, `cache-bytes` for
+`cache-digest-bytes`) or RSP, with CFG
 where design.md step 8 adds it; the second real principal of
 `wrong-principal-owner-context-kind` is the DOC row's own LOCAL SERVICE probe: a DOC
 run passes only with it observed denied, and one whose probe proved no denial fails

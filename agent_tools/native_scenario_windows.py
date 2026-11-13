@@ -304,23 +304,31 @@ def _update_row(variant: str) -> dict[str, Any]:
 _DOCUMENT_FILES = (("agent_tools/windows_document_client.py", "client", "data"),
                    ("agent_tools/windows_document_native.py", "windows", "data"),
                    ("agent_tools/windows_document_export_race.py", "race", "data"), *_HARNESS)
-# windows-document-cold.<variant>: the cold module's variants, and cache-bytes, which has no producer yet. gui-owner is
-# the CLI's transfer through a GUI-started owner, never gui-cli-transfer: the GUI's own import and export have no tool.
+# windows-document-cold.<variant>: the cold module's variants. gui-owner is the CLI's transfer through a GUI-started
+# owner, never gui-cli-transfer: the GUI's own import and export have no tool.
 DOCUMENT_COLD_VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")
-# The committed subscription cache is filled only by a refresh from a subscription source, and this route has no
-# in-guest subscription fixture for a document row: refused before any journal, with what is missing.
-_DOCUMENT_REFUSED = {"cache-bytes": "windows_scenario_document_cache_fixture_unavailable"}
+# cache-bytes fills the committed subscription cache by a refresh from the owner's own in-guest subscription source
+# (windows_document_cache_fixture, loopback only). The source, the runtime stages it borrows (publish, ready, scoped trust)
+# and its two producers are bundle files; the job makes the source's body from a fixed recipe and its localhost TLS files,
+# and places them, with the stored locations the refresh must commit, beside the cold module.
+_CACHE_FILES = (("agent_tools/windows_document_cache_fixture.py", "cacheFixture", "data"),
+                ("agent_tools/windows_lifecycle_runtime_stages.py", "runtime", "data"),
+                ("scripts/integration/socks_http_fixture.py", "socks", "data"),
+                ("scripts/integration/https_subscription_relay_fixture.py", "https", "data"))
 
 
 def _document_row(cases: str, variant: str | None = None) -> dict[str, Any]:
-    row = _worker_row("product", "document-acceptance", ("targetPackage",), ((cases, "cases", "data"), *_DOCUMENT_FILES),
+    cache = variant == host_job.DOCUMENT_CACHE
+    row = _worker_row("product", "document-acceptance", ("targetPackage",),
+                      ((cases, "cases", "data"), *_DOCUMENT_FILES, *(_CACHE_FILES if cache else ())),
                       prior=True, deadline=7200 if variant is None else 3600)
     # Only the acceptance row probes a second principal: its owner opens the window during the expiry wait.
     row["document"] = {"variant": variant, "principalProbe": variant is None, "rootSubfolders": (host_job.DOCUMENT_TEMP,)}
     if variant is not None:
         row["generated"] = (*((("legacyInput", host_job.DOCUMENT_LEGACY_INPUT),) if variant == "legacy-newline" else ()),
+                            *((*host_job.CACHE_TLS, ("cacheBody", host_job.CACHE_BODY_LEAF)) if cache else ()),
                             ("coldInput", host_job.DOCUMENT_COLD_INPUT))
-    row["refusal"] = _DOCUMENT_REFUSED.get(variant)
+    row["refusal"] = None
     return row
 
 
@@ -1337,8 +1345,8 @@ MATRIX_SCENARIOS: dict[str, dict[str, tuple[str, ...]]] = {
         "retained-result-export": (_DOC, _CFG),
         "cold-independent-reopen": (_CLD + "cold-reopen",),
         "protobuf-newline-compatibility": (_CLD + "legacy-newline",),
-        # CLD(cache-bytes) is a closed name refused before any journal: no in-guest subscription fixture fills the cache.
-        "cache-digest-bytes": (),
+        # The committed subscription cache, filled by a refresh from the owned in-guest source and read back cold.
+        "cache-digest-bytes": (_CLD + "cache-bytes",),
         "failed-persistence": (_DOC,),
         "mutable-input-resource-failure": (_DOC,),
         # The second real principal is DOC's own LOCAL SERVICE probe: a DOC row passes only with it observed denied, and

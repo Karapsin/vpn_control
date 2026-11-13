@@ -15,6 +15,16 @@ expected semantic digest from the same fixed recipe that produced the document.
   controller; the CLI then imports and exports it through that GUI-started owner. This is only
   the CLI half of gui-cli-transfer: the GUI's own import and export are not exercised, so it
   never stands for that scenario.
+- cache-bytes (cache-digest-bytes): the committed subscription cache. Before the serve exists the
+  owner starts its own in-guest subscription source (windows_document_cache_fixture, loopback
+  only), and the serve alone trusts its localhost certificate. The product adds that source and
+  refreshes it through its normal subscription path; its committed cache in workspace.json is
+  then compared, entry by entry and by newline digest, with the stored locations the job derived
+  from the same recipe that made the source's body, and the product's own export of it too. The
+  source is stopped, so nothing can be fetched again, the serve quit, the closed file read, and an
+  independent serve must read the same cache back. Windows keeps this cache in the workspace JSON,
+  with no product digest of its own (unlike the Android preference store's verified reuse), so the
+  digest here is the harness's, over the committed bytes.
 """
 import hashlib
 import json
@@ -22,16 +32,46 @@ from pathlib import Path
 import time
 import uuid
 
-VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner")
+VARIANTS = ("cold-reopen", "legacy-newline", "gui-owner", "cache-bytes")
+CACHE = "cache-bytes"
 INPUT_LEAF = "document-cold-input.json"
 INPUT_FIELDS = {"schemaVersion", "variant", "operationId", "routingInputPath", "expectedSemanticSha256", "expectedSuffixCount"}
+CACHE_INPUT_FIELDS = {"schemaVersion", "variant", "operationId", "cache"}
+CACHE_FIELDS = {"fixtureWorkerPath", "runtimeStagesPath", "socksSourcePath", "httpsSourcePath", "certificatePath", "privateKeyPath",
+                "trustStorePath", "bodyPath", "bodySha256", "bodyBytes", "subscriptionName", "expectedLocations", "expectedCount",
+                "expectedNewlineBytes", "expectedNewlineSha256"}
+# The cache source's code roles, held by name and digest as the owner and the planner hold the responsive work's.
+CACHE_SOURCES = {
+    "fixtureWorkerPath": ("windows_document_cache_fixture.py", "f414be754ade88a291ed38141e7f81da448f5bafd47e1026e2133dd10c6bc8e9"),
+    "runtimeStagesPath": ("windows_lifecycle_runtime_stages.py", "0b6b6c7c4c261a8996c140661b7631fb234115ed215e3d3a4a72fd60e25e676e"),
+    "socksSourcePath": ("socks_http_fixture.py", "50239b25bb1c63e7c86baaea8683f188426e87d6a1c6090b505c38d567e70210"),
+    "httpsSourcePath": ("https_subscription_relay_fixture.py", "e62f262d9703eb63c0eeca9b823eaae9d1a5780aefdedadf8aebe211492651d4"),
+}
+# The cache variant's literal input carries the expected stored locations, so its bound is the cache's, not 64 KiB.
+INPUT_LIMIT = 1024 * 1024
 READY_SECONDS = {"serve": 30, "gui": 90}
 CLOSE_SECONDS = 120
+CACHE_FIXTURE_LABEL = "owned-document-cache-fixture"
+# The source names each start step on its stdout before entering it (windows_document_cache_fixture.STEPS).
+CACHE_STEPS = ("input", "sources", "body", "tls-context", "https-listen", "relay-listen", "listening", "certificate-digest",
+               "ready-create", "ready-rename")
+# Bounds, not measurements: the proxy rows' fixture, which makes the same two listeners, was ready 1.2 to 2.0 s after its start.
+CACHE_READY_SECONDS = 30
+CACHE_STOP_SECONDS = 30
+CACHE_TERMINATE_SECONDS = 15
+CACHE_JOURNAL_LIMIT = 1024 * 1024
+PRODUCT_AGENT = "VPNControlDesktop/1.0"  # DesktopSubscriptionDownloadClient's own User-Agent.
+CODE_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789:_-")
+NAME_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
 
 
 def need(value, code):
     if not value:
         raise RuntimeError(code)
+
+
+def sha256(raw):
+    return hashlib.sha256(raw).hexdigest()
 
 
 def semantic_sha256(raw):
@@ -46,12 +86,48 @@ def semantic_sha256(raw):
     return hashlib.sha256(canonical).hexdigest(), len(suffixes)
 
 
+def newline_bytes(locations):
+    """The cache's bytes as the document rows compare them: its stored locations joined by LF, UTF-8."""
+    return "\n".join(locations).encode("utf-8", "strict")
+
+
+def _held(owner, path):
+    return str(Path(path)).casefold() in owner.by_path
+
+
+def _cache_case(owner, cache):
+    """Every path a held file in its fixed role, and the recipe's stored locations equal to their own digests."""
+    need(type(cache) is dict and set(cache) == CACHE_FIELDS, "document-cold-input-schema")
+    roles = ("fixtureWorkerPath", "runtimeStagesPath", "socksSourcePath", "httpsSourcePath", "certificatePath", "privateKeyPath",
+             "trustStorePath", "bodyPath")
+    need(all(type(cache[key]) is str and _held(owner, cache[key]) for key in roles)
+         and len({str(Path(cache[key])).casefold() for key in roles}) == len(roles), "document-cold-input-schema")
+    for key, (name, digest) in CACHE_SOURCES.items():
+        pin = owner.by_path[str(Path(cache[key])).casefold()]
+        need(Path(cache[key]).name == name and pin.record["sha256"] == digest, "document-cache-fixed-source-" + key)
+    expected = cache["expectedLocations"]
+    need(type(expected) is list and expected and all(type(item) is str and item for item in expected)
+         and len(set(expected)) == len(expected) == cache["expectedCount"], "document-cold-input-schema")
+    raw = newline_bytes(expected)
+    need(cache["expectedNewlineBytes"] == len(raw) and cache["expectedNewlineSha256"] == sha256(raw)
+         and owner.by_path[str(Path(cache["bodyPath"])).casefold()].record["sha256"] == cache["bodySha256"]
+         and type(cache["bodyBytes"]) is int and cache["bodyBytes"] > 0
+         and type(cache["subscriptionName"]) is str and 0 < len(cache["subscriptionName"]) <= 64
+         and cache["subscriptionName"].isascii() and cache["subscriptionName"].isprintable(), "document-cold-input-schema")
+    return cache
+
+
 def literal_input(owner):
     path = Path(__file__).with_name(INPUT_LEAF)
     pin = owner.by_path[str(path).casefold()]
-    value = json.loads(pin.digest(True, maximum=65536).decode("utf-8", "strict"))
-    need(type(value) is dict and set(value) == INPUT_FIELDS and value["schemaVersion"] == 1 and value["variant"] in VARIANTS
-         and value["operationId"] == owner.operation and type(value["expectedSuffixCount"]) is int
+    value = json.loads(pin.digest(True, maximum=INPUT_LIMIT).decode("utf-8", "strict"))
+    need(type(value) is dict and value.get("schemaVersion") == 1 and value.get("variant") in VARIANTS
+         and value.get("operationId") == owner.operation, "document-cold-input-schema")
+    if value["variant"] == CACHE:
+        need(set(value) == CACHE_INPUT_FIELDS, "document-cold-input-schema")
+        _cache_case(owner, value["cache"])
+        return value
+    need(set(value) == INPUT_FIELDS and type(value["expectedSuffixCount"]) is int
          and type(value["expectedSemanticSha256"]) is str and len(value["expectedSemanticSha256"]) == 64
          and str(value["routingInputPath"]).casefold() in owner.by_path, "document-cold-input-schema")
     return value
@@ -66,8 +142,332 @@ def _inputs(owner):
     return inputs
 
 
+# ---- The cache source: the owner's own child, started before the serve and ended by the owner -------------------------
+
+class CacheLease:
+    """The original source child, its published input and ready record, and whether a refresh may still be fetching."""
+
+    def __init__(self, owner, child, config, runtime):
+        self.owner, self.child, self.config, self.runtime = owner, child, config, runtime
+        self.ready, self.closed = None, False
+        # Set before the product's refresh starts, cleared once its answer is known final: while set, the product may
+        # still be fetching from this source, so a failure keeps every original for the park.
+        self.refresh_open = False
+
+    def guard(self):
+        self.runtime.data_guard(self.owner)
+        need(not self.closed and self.child.process.poll() is None
+             and self.owner.native.birth(int(self.child.process._handle)) == self.child.birth, "document-cache-fixture-live")
+
+
+def _finite(value, characters=CODE_CHARACTERS, limit=80):
+    """A code or name the source said, or None: never free text."""
+    return value if type(value) is str and 0 < len(value) <= limit and set(value) <= characters else None
+
+
+def fixture_said(owner, child):
+    """What the cache source said on its stdout so far: its start steps in order, its own failure record, its terminal."""
+    said = {"steps": [], "failure": None, "readySaid": False, "terminal": None, "stdoutBytes": child.counts["stdout"],
+            "stderrBytes": child.counts["stderr"], "unreadable": None}
+    try:
+        with (Path(owner.root) / f"child-{child.ordinal:04d}.stdout.raw").open("rb") as stream:
+            raw = stream.read(65536)
+        for line in raw.split(b"\n")[:-1]:  # Only complete lines count.
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if type(row) is not dict:
+                continue
+            if row.get("kind") == "owned-cache-fixture-step" and row.get("step") in CACHE_STEPS and len(said["steps"]) < 2 * len(CACHE_STEPS):
+                said["steps"].append(row["step"])
+            elif row.get("kind") == "owned-cache-fixture-failed":
+                said["failure"] = {"step": row.get("step") if row.get("step") in CACHE_STEPS else None,
+                                   "errorClass": _finite(row.get("errorClass"), NAME_CHARACTERS, 64),
+                                   **{name: row.get(name) if type(row.get(name)) is int else None for name in ("winerror", "errno")},
+                                   "reason": _finite(row.get("reason")), "listenersStopped": row.get("listenersStopped") is True}
+            elif row.get("kind") == "owned-cache-fixture-ready":
+                said["readySaid"] = True
+            elif row.get("kind") == "owned-cache-fixture-terminal":
+                said["terminal"] = row
+    except Exception as error:
+        said["unreadable"] = type(error).__name__
+    said["lastStep"] = said["steps"][-1] if said["steps"] else None
+    return said
+
+
+def _await_end(owner, child, seconds, reason):
+    """The child's terminal and EOF within its bound, or a park that keeps every original."""
+    until = time.monotonic() + seconds
+    while child.observe() is None:
+        if time.monotonic() >= until:
+            owner.park(reason, {"child": child.ordinal, "pid": child.pid, "birthFileTimeUtc": child.birth, "replayAllowed": False})
+        time.sleep(0.05)
+    return child.terminal
+
+
+def end_cache_source(owner, lease, error, reason):
+    """End the owner's own cache source while no refresh of the product is fetching from it.
+
+    What is there is journaled first: the child's pid and whether it lives, the ready file, the steps and the failure
+    the source itself said. A live child then gets exactly one termination of its original Popen handle, never a tree,
+    job or group signal, and is awaited to its terminal and EOF. What cannot be known parks, keeping every original."""
+    child = lease.child
+    need(child.owner is owner and owner.children[child.ordinal] is child and child.label == CACHE_FIXTURE_LABEL
+         and not lease.refresh_open, "document-cache-same-original-fixture")
+    alive = child.terminal is None and child.process.poll() is None
+    if not alive:
+        # A child that already ended is first read to its EOF, so everything it said is in its raw files.
+        _await_end(owner, child, CACHE_TERMINATE_SECONDS, "document-cache-fixture-end-unknown")
+    said = fixture_said(owner, child)
+    ready = Path(lease.config["readyFile"])
+    owner.event("document-cache-fixture-ending", {"reason": reason, "child": child.ordinal, "pid": child.pid,
+        "birthFileTimeUtc": child.birth, "alive": alive, "exitCode": child.process.poll(), "errorClass": type(error).__name__,
+        **{key: said[key] for key in ("steps", "lastStep", "failure", "readySaid", "stdoutBytes", "stderrBytes", "unreadable")},
+        "readyExists": ready.exists(), "publishingExists": ready.with_name(ready.name + ".publishing").exists(), "replayAllowed": False})
+    if alive:
+        need(owner.native.birth(int(child.process._handle)) == child.birth, "document-cache-fixture-live-birth")
+        owner.event("document-cache-fixture-terminate-intent", {"child": child.ordinal, "pid": child.pid,
+            "birthFileTimeUtc": child.birth, "effect": "one-original-Popen.terminate", "groupOrJobSignal": False, "replayAllowed": False})
+        child.process.terminate()  # Existing original Windows Popen handle only.
+        _await_end(owner, child, CACHE_TERMINATE_SECONDS, "document-cache-fixture-end-unknown")
+        said = fixture_said(owner, child)
+    lease.closed = True
+    owner.event("document-cache-fixture-closed", {"child": child.ordinal, "pid": child.pid, "reason": reason, "terminated": alive,
+        "terminal": child.terminal, "steps": said["steps"], "failure": said["failure"], "replayAllowed": False})
+    return said
+
+
+def _await_ready(child, ready):
+    """The source's ready file within its bound, or why the wait stopped: 'ended' or 'timeout'. Nothing parks here."""
+    started = time.monotonic()
+    while not ready.exists():
+        if child.process.poll() is not None:
+            return "ended", time.monotonic() - started
+        if time.monotonic() - started >= CACHE_READY_SECONDS:
+            return "timeout", time.monotonic() - started
+        time.sleep(0.1)
+    return None, time.monotonic() - started
+
+
+def start_cache_source(owner, cache):
+    """Before the serve exists: start the source, await its ready record, and give the coming serve alone its trust.
+
+    The product takes no part in anything here. A source that is not ready within its bound, ends first or publishes a
+    record an oracle refuses is journaled, ended and awaited, and the failure raised is known:
+    document-cache-fixture-not-ready:<timeout|ended|refused>:..."""
+    owner.guard()
+    need("JAVA_TOOL_OPTIONS" not in owner.environment and not any(child.label == "serve" for child in owner.children),
+         "document-cache-before-original-serve")
+    suffix = owner.operation.replace("-", "")
+    runtime = owner.module(cache["runtimeStagesPath"], "document_cache_runtime_" + suffix)
+    root = Path(owner.root) / "fixture"
+    need(not root.exists(), "document-cache-fresh-fixture-root")
+    root.mkdir()
+    runtime.OwnedData(owner, root, directory=True)
+    config = {"schemaVersion": 1, "operationId": owner.operation,
+              **{key: cache[key] for key in ("socksSourcePath", "httpsSourcePath", "certificatePath", "privateKeyPath", "bodyPath",
+                                             "bodySha256")},
+              "readyFile": str(root / "ready.json"), "controlFile": str(root / "stop.json"),
+              "journalFile": str(root / "journal.jsonl"), "token": "owned-document-cache-" + owner.operation}
+    source = runtime.publish(owner, Path(owner.root) / "document-cache-input.json", config)
+    child = owner.child(CACHE_FIXTURE_LABEL, [owner.request["pythonRuntime"]["interpreterPath"], "-I", "-B",
+                                              cache["fixtureWorkerPath"], "--input", str(source)])
+    lease = owner.document_cache_lease = CacheLease(owner, child, config, runtime)
+    reason, waited = _await_ready(child, Path(config["readyFile"]))
+    try:
+        need(reason is None, "document-cache-fixture-" + str(reason))
+        ready = runtime.read_ready(owner, child, Path(config["readyFile"]), owner.operation)
+        certificate = owner.by_path[str(Path(cache["certificatePath"])).casefold()].record["sha256"]
+        need(ready.get("pid") == child.pid and ready.get("certificateSha256") == certificate
+             and ready.get("cacheUrl") == "https://localhost:%d/subscription/cache/%s" % (ready["httpsPort"], owner.operation)
+             and ready.get("bodySha256") == cache["bodySha256"] and ready.get("bodyBytes") == cache["bodyBytes"]
+             and ready.get("scope") == "one-owned-subscription-source", "document-cache-fixture-ready-record")
+    except Exception as error:
+        said = end_cache_source(owner, lease, error, "not-ready")
+        if reason == "timeout":
+            code = "timeout:" + (said["lastStep"] or "none")
+        elif reason == "ended":
+            code = "ended:%s:%s" % (child.terminal["exitCode"], (said["failure"] or {}).get("step") or "none")
+        else:
+            code = "refused:" + (_finite(str(error)) or type(error).__name__)
+        raise RuntimeError("document-cache-fixture-not-ready:" + code) from error
+    lease.ready = ready
+    # The owner removes these right after starting its original serve: no later child ever inherits them.
+    owner.environment["JAVA_TOOL_OPTIONS"] = runtime.scoped_trust_options(cache["trustStorePath"])
+    owner.event("document-cache-fixture-ready", {"child": child.ordinal, "pid": child.pid, "readySeconds": round(waited, 3),
+        "boundSeconds": CACHE_READY_SECONDS, "cacheUrl": ready["cacheUrl"], "bodySha256": ready["bodySha256"],
+        "bodyBytes": ready["bodyBytes"], "certificateSha256": ready["certificateSha256"]})
+    return lease
+
+
+def stop_cache_source(owner, lease):
+    """After the refresh is known final: the exact stop record, the source's own terminal, and its complete journal.
+
+    Every request it answered must be the product's own fetch of the one owned path, answered whole with the recipe body."""
+    lease.guard()
+    need(not lease.refresh_open, "document-cache-refresh-open-at-stop")
+    child, path = lease.child, "/subscription/cache/" + owner.operation
+    lease.runtime.publish(owner, Path(lease.config["controlFile"]),
+                          {"schemaVersion": 1, "operationId": owner.operation, "action": "stop-owned-fixture"})
+    terminal = _await_end(owner, child, CACHE_STOP_SECONDS, "document-cache-fixture-stop-unknown")
+    lease.closed = True
+    said = fixture_said(owner, child)
+    stderr = (Path(owner.root) / f"child-{child.ordinal:04d}.stderr.raw").read_bytes()
+    entries = (said["terminal"] or {}).get("journalEntries")
+    need(terminal["exitCode"] == 0 and stderr == b"" and type(entries) is int and said["terminal"] == {
+         "kind": "owned-cache-fixture-terminal", "operationId": owner.operation, "journalEntries": entries,
+         "onlyOriginalObjectsStopped": True}, "document-cache-fixture-stop-receipt")
+    with Path(lease.config["journalFile"]).open("rb") as stream:
+        raw = stream.read(CACHE_JOURNAL_LIMIT + 1)
+    need(len(raw) <= CACHE_JOURNAL_LIMIT and (raw == b"" or raw.endswith(b"\n")), "document-cache-journal-bound")
+    try:
+        rows = [json.loads(line) for line in raw.split(b"\n")[:-1]]
+    except ValueError:
+        rows = None  # The source's own journal, read after its end: a line it did not write whole is its failure, known.
+    need(rows is not None and len(rows) == entries and all(type(row) is dict for row in rows)
+         and [row.get("ordinal") for row in rows] == list(range(len(rows))), "document-cache-journal-complete")
+    requests = [row for row in rows if row.get("event") == "request"]
+    answers = [row for row in rows if row.get("event") == "answer"]
+    need(requests and len(requests) + len(answers) == len(rows) and len(answers) == len(requests)
+         and all(row.get("path") == path and row.get("status") == 200 and row.get("userAgent") == PRODUCT_AGENT for row in requests)
+         and all(row.get("status") == 200 and row.get("sent") is True and row.get("bodySha256") == lease.config["bodySha256"]
+                 for row in answers), "document-cache-fixture-fetches")
+    owner.event("document-cache-fixture-stopped", {"child": child.ordinal, "terminal": terminal, "productFetches": len(requests),
+        "journalEntries": len(rows), "journalSha256": sha256(raw), "onlyOwnedListenersStopped": True})
+    return len(requests)
+
+
+def _show(call, subscription, url, name, count, status):
+    shown = call("subscriptions", "show", subscription)["data"]
+    need((shown.get("id"), shown.get("source"), shown.get("name"), shown.get("cachedLocations"), shown.get("refreshStatus"),
+          shown.get("failureReason")) == (subscription, url, name, count, status, None), "document-cache-subscription-row")
+    return shown
+
+
+def committed_cache(owner, windows, workspace, subscription, url, cache, moment):
+    """The committed cache in workspace.json, read by the document rows' own reader and by the location records.
+
+    windows.cache_bytes reads the subscription's cached_locations and journals document-cache-bytes. A cold owner rebuilds
+    that cache from the workspace's location records of the same source, so those are read too, from the same generation."""
+    expected = cache["expectedLocations"]
+    value = windows.cache_bytes(owner, workspace, subscription, expected)
+    held = windows.Held(owner.native, Path(workspace) / "workspace.json")
+    try:
+        raw = held.bytes()
+        held.current()
+    finally:
+        held.close()
+    need(sha256(raw) == value["workspace"]["sha256"], "document-cache-workspace-generation")
+    document = json.loads(raw.decode("utf-8", "strict"))
+    state = document["persisted_state"]
+    rows = [row for row in state["subscriptions"] if row.get("id") == subscription]
+    need(len(rows) == 1 and rows[0].get("url") == url, "document-cache-committed-subscription")
+    records = [row.get("raw_link") for row in document.get("locations", []) if type(row) is dict and row.get("source_url") == url]
+    need(records == expected, "document-cache-location-records")
+    need((value["cacheCount"], value["newlineBytes"], value["newlineSha256"])
+         == (cache["expectedCount"], cache["expectedNewlineBytes"], cache["expectedNewlineSha256"]), "document-cache-recipe-digest")
+    current = state.get("current_locations")
+    observed = {"moment": moment, "subscriptionId": subscription, "cacheCount": value["cacheCount"],
+                "newlineBytes": value["newlineBytes"], "newlineSha256": value["newlineSha256"],
+                "recordsNewlineSha256": sha256(newline_bytes(records)), "workspaceSha256": sha256(raw), "workspaceBytes": len(raw),
+                # Recorded, not compared: the visible list the GUI shows, derived from the same records.
+                "currentLocations": None if type(current) is not list else {"count": len(current),
+                    "newlineSha256": sha256(newline_bytes([str(item) for item in current]))}}
+    owner.event("document-cache-committed", observed)
+    return observed
+
+
+def locations_export(owner, workspace, controller, harness, windows, leaf, expected):
+    """The product's own export of the visible locations, which a cold owner reads from the cache; exported_at never counts."""
+    destination = Path(owner.root) / leaf
+    need(not destination.exists(), "document-cache-export-new-leaf")
+    result = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", controller,
+                                              "locations", "export", "--output", str(destination)))
+    need(result["controllerId"] == controller and result["final"] is True, "document-cache-export-owner")
+    held = windows.Held(owner.native, destination)
+    try:
+        raw = held.bytes(64 * 1024 * 1024)
+    finally:
+        held.close()
+    value = json.loads(raw.decode("utf-8", "strict"))
+    need(type(value) is dict and value.get("type") == "vpn_control_locations" and value.get("version") == 1
+         and value.get("locations") == [json.loads(item) for item in expected]
+         and result["data"].get("bytes") == len(raw), "document-cache-export-readback")
+    semantic = {key: value[key] for key in ("type", "version", "locations")}
+    return {"exportBytes": len(raw), "count": len(value["locations"]),
+            "semanticSha256": sha256(json.dumps(semantic, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii"))}
+
+
+def _run_cache(owner, workspace, identity, harness, windows, case, original):
+    cache, lease = case["cache"], owner.document_cache_lease
+    expected, name = cache["expectedLocations"], cache["subscriptionName"]
+    url = lease.ready["cacheUrl"]
+    lease.guard()
+
+    def call(*tail, controller=identity):
+        body = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", controller, *tail))
+        need(body["controllerId"] == controller and body["final"] is True, "document-cache-owner-answer")
+        return body
+
+    def guarded(*tail):
+        return call("--if-revision", str(call("status")["configurationRevision"]), *tail)
+    before = call("status")
+    need(before["data"]["runtimeRunning"] is False, "document-cold-disconnected-owner")
+    need(call("subscriptions", "list")["data"]["subscriptions"] == [], "document-cache-fresh-subscriptions")
+    # No policy or Find Best runs on this source: the one refresh below is the only fetch the product makes.
+    for key, value in (("refresh.policy", "off"), ("refresh.find-best-after-refresh", "false")):
+        guarded("settings", "set", key, value)
+    subscription = guarded("subscriptions", "add", "--source", url, "--name", name)["data"].get("id")
+    need(type(subscription) is str and subscription, "document-cache-subscription-identity")
+    guarded("source", "set", "subscription", subscription)
+    _show(call, subscription, url, name, 0, "")
+    owner.event("document-cache-refresh-intent", {"subscriptionId": subscription, "cacheUrl": url, "controllerId": identity,
+                                                  "replayAllowed": False})
+    lease.refresh_open = True
+    refreshed = owner.invoke(workspace, "--json", "--controller-id", identity, "subscriptions", "refresh", subscription)
+    try:
+        answer = json.loads(refreshed.stdout)
+    except ValueError:
+        answer = None
+    if type(answer) is dict and answer.get("final") is True and answer.get("controllerId") == identity:
+        lease.refresh_open = False  # The product's refresh has ended, whatever it answered.
+    refreshed = harness["envelope"](refreshed)
+    need(refreshed["controllerId"] == identity and refreshed["final"] is True, "document-cache-refresh-owner")
+    _show(call, subscription, url, name, len(expected), "OK")
+    warm = committed_cache(owner, windows, workspace, subscription, url, cache, "warm")
+    warm_export = locations_export(owner, workspace, identity, harness, windows, "document-cache-export-warm.json", expected)
+    # Nothing can be fetched again: whatever a later owner shows is read from the committed cache.
+    fetches = stop_cache_source(owner, lease)
+    # Cold: the original owner ends through the same public quit a pass sends, and its descriptor goes with it.
+    owner.event("document-cold-quit-intent", {"child": original.ordinal, "controllerId": identity, "replayAllowed": False})
+    call("quit")
+    terminal = original.wait()
+    need(terminal["exitCode"] == 0 and not (Path(workspace) / "activation.port").exists(), "document-cold-original-closed")
+    closed = committed_cache(owner, windows, workspace, subscription, url, cache, "closed")
+    child = owner.child("document-cold-serve", [owner.request["cliPath"], "--state-dir", str(workspace), "serve"])
+    reopened = _ready(owner, workspace, child, READY_SECONDS["serve"], identity)
+    owner.document_reopened_owner = {"child": child, "controllerId": reopened, "gui": False}
+    owner.event("document-cold-reopened", {"variant": CACHE, "child": child.ordinal, "controllerId": reopened,
+                                           "byInstalledGui": False, "originalControllerId": identity})
+    _show(lambda *tail: call(*tail, controller=reopened), subscription, url, name, len(expected), "OK")
+    cold = committed_cache(owner, windows, workspace, subscription, url, cache, "reopened")
+    cold_export = locations_export(owner, workspace, reopened, harness, windows, "document-cache-export-reopened.json", expected)
+    need(cold_export["semanticSha256"] == warm_export["semanticSha256"], "document-cache-reopened-export")
+    result = {"variant": CACHE, "subscriptionId": subscription, "cacheCount": cold["cacheCount"], "newlineBytes": cold["newlineBytes"],
+              "newlineSha256": cold["newlineSha256"], "warm": warm, "closed": closed, "reopened": cold, "warmExport": warm_export,
+              "reopenedExport": cold_export, "productFetches": fetches, "controllerId": reopened, "independentOwner": True,
+              "windowsStoreFormat": "workspace-json-array", "productDigestOfCache": False}
+    owner.event("document-cold-observed", {**result, "nativeAcceptanceComplete": False})
+    return result
+
+
+# ---- The routing variants and the shared closing ----------------------------------------------------------------------
+
 def configure_launch(owner, workspace):
-    """The serve and any later owner of this workspace spool transfers in the admitted temp parent only."""
+    """The serve and any later owner of this workspace spool transfers in the admitted temp parent only.
+
+    The cache variant also starts its own subscription source here, before the serve exists."""
     owner.guard()
     inputs = _inputs(owner)
     workspace, temp = Path(workspace), Path(inputs["spoolTempParent"])
@@ -77,6 +477,9 @@ def configure_launch(owner, workspace):
     pins = [pin for pin in owner.pins if getattr(pin, "directory", False) and pin.path == temp]
     need(len(pins) == 1, "document-cold-admitted-temp-directory-pin")
     pins[0].current()
+    case = literal_input(owner)
+    if case["variant"] == CACHE:
+        start_cache_source(owner, case["cache"])
     owner.environment["TEMP"] = str(temp)
     owner.environment["TMP"] = str(temp)
     owner.document_launch_marker = {"tempParent": str(temp), "workspace": str(workspace),
@@ -118,7 +521,7 @@ def _ready(owner, workspace, child, seconds, previous):
 def run(owner, workspace, identity, harness):
     _inputs(owner)
     case = literal_input(owner)
-    variant, expected = case["variant"], (case["expectedSemanticSha256"], case["expectedSuffixCount"])
+    variant = case["variant"]
     need(type(harness) is dict and callable(harness.get("envelope")), "document-cold-shared-harness-dict-api")
     marker = owner.document_launch_marker
     cli = owner.request["cliPath"]
@@ -128,6 +531,9 @@ def run(owner, workspace, identity, harness):
          "document-cold-original-serve")
     original = serves[0]
     windows = owner.module(owner.request["documentAcceptance"]["windowsPath"], "document_cold_windows_" + owner.operation.replace("-", ""))
+    if variant == CACHE:
+        return _run_cache(owner, workspace, identity, harness, windows, case, original)
+    expected = (case["expectedSemanticSha256"], case["expectedSuffixCount"])
     before = harness["envelope"](owner.invoke(workspace, "--json", "--controller-id", identity, "status"))
     need(before["controllerId"] == identity and before["data"]["runtimeRunning"] is False, "document-cold-disconnected-owner")
     source = case["routingInputPath"]
@@ -176,14 +582,21 @@ def run(owner, workspace, identity, harness):
 def close_known(owner, error, serve, identity):
     """A finite oracle failure with nothing in flight names the owner still running; anything else returns None.
 
-    Known: the harness's AssertionError, or this module's own document- codes. A GUI-started owner is
-    closed here by one journaled public quit and its exit, because the owner's closing knows only
-    serves; a reopened serve is returned for that closing, and before any reopen the original is.
+    Known: the harness's AssertionError, or this module's own document- codes. The cache variant's source is ended
+    first, by one termination of its original handle, unless a refresh may still be fetching from it: then every
+    original stays for the park. A GUI-started owner is closed here by one journaled public quit and its exit, because
+    the owner's closing knows only serves; a reopened serve is returned for that closing, and before any reopen the
+    original is.
     """
     try:
         name = type(error).__name__
         if not (name == "AssertionError" or name in ("RuntimeError", "Refused") and str(error).startswith("document-")):
             return None
+        lease = getattr(owner, "document_cache_lease", None)
+        if lease is not None and not lease.closed:
+            if lease.refresh_open:
+                return None
+            end_cache_source(owner, lease, error, "known-failure")
         reopened = getattr(owner, "document_reopened_owner", None)
         if reopened is None or reopened["child"].terminal is not None:
             return serve, identity
