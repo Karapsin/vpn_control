@@ -221,7 +221,11 @@ unconverged placement, ambiguous or missing targets and unstable icons are refus
 with named reasons. A stable pair is not taken as readiness: a hung or silent
 target (before the loop or only while the pair was taken), a region that is only
 the backdrop or a flat client area, and a dialog or wizard without its expected
-child controls are refused, not published. A refusal keeps the frame of its own moment, not the desktop
+child controls are refused, not published. Tray promotion fails closed: a missing
+`NotifyIconSettings` key or entry, a value that does not read back, and an icon
+rectangle on the overflow chevron, in the flyout or outside the visible
+notification area are refused as `tray-icon-not-promoted`, with the promotion
+restored. A refusal keeps the frame of its own moment, not the desktop
 left after the scene closed its surfaces, and a capture session that cannot be
 applied refuses every requested scene with `session-setting-failed` beside one
 full frame instead of ending the task with only a log line. It also pins

@@ -34,10 +34,42 @@
     },
     {
       "role": "tray-icon",
-      "target": {"kind": "notification-icon", "locator": "Shell_NotifyIconGetRect", "uid": 1},
+      "target": {
+        "kind": "notification-icon",
+        "locator": "Shell_NotifyIconGetRect",
+        "uid": 1,
+        "taskbar": {
+          "kind": "taskbar",
+          "locator": "class=Shell_TrayWnd",
+          "handle": "0x33",
+          "process_id": 9,
+          "class": "Shell_TrayWnd",
+          "title": "taskbar",
+          "owner": "0x0",
+          "bounds_source": "dwm-extended-frame-bounds"
+        }
+      },
       "rect": [1092, 756, 1116, 796],
       "offset": [0, 217],
-      "placement": {"policy": "shell-placed", "backdrop": null}
+      "placement": {
+        "policy": "shell-placed",
+        "promotion": {
+          "setting": "HKCU\\Control Panel\\NotifyIconSettings\\<key>\\IsPromoted",
+          "entries": [{"key": "1", "original": null, "capture": 1, "read_back": 1}],
+          "rect_before_promotion": [1032, 756, 1056, 796]
+        },
+        "notification_area": {
+          "taskbar": "0x33",
+          "taskbar_rect": [0, 752, 1280, 800],
+          "visible": [1060, 752, 1180, 800],
+          "source": "TrayNotifyWnd/SysPager/ToolbarWindow32",
+          "chevron": [1032, 756, 1056, 796],
+          "excludes_chevron": true,
+          "overflow": []
+        },
+        "reads": 2,
+        "backdrop": null
+      }
     }
   ],
   "stable_frame": {"attempts": 2, "max_attempts": 20, "interval_ms": 250},
@@ -55,7 +87,10 @@
     "response_timeout_ms": 2000,
     "parts": [
       {"role": "tray-menu", "responsive": true, "controls": [], "client_area": [320, 160, 512, 369], "painted": true},
-      {"role": "tray-icon", "responsive": true, "controls": [], "client_area": null, "painted": true}
+      {
+        "role": "tray-icon", "responsive": true, "controls": [],
+        "notification_area": "TrayNotifyWnd/SysPager/ToolbarWindow32", "client_area": null, "painted": true
+      }
     ]
   },
   "cursor": [1279, 751],

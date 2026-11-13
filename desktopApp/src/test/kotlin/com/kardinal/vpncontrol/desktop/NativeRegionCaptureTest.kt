@@ -530,6 +530,112 @@ class NativeRegionCaptureTest {
     }
 
     @Test
+    fun aTrayIconOffTheVisibleNotificationAreaIsNotPublished() {
+        // Shell_NotifyIconGetRect reports the overflow chevron for an icon left in the Windows 11
+        // overflow. That rectangle lies inside the taskbar, is icon-sized and stable, so the chevron
+        // was published as the VPN Control icon.
+        val output = Files.createTempDirectory("vpn-control-region-chevron")
+        try {
+            val onChevron = assertFailsWith<RegionCaptureRefusedException> { FakeDesktop().captureTrayIconAt(output, CHEVRON_RECT) }
+            assertEquals("tray-icon-not-promoted", onChevron.refusal.reason)
+            assertTrue("is the overflow chevron" in onChevron.detail && "before the stable-frame loop" in onChevron.detail, onChevron.detail)
+            assertFalse(Files.exists(output.resolve("windows-tray-connected.png")), "the chevron is never published as the icon")
+            assertEquals("tray-icon-not-promoted", refusalReason(output, "windows-tray-connected"))
+
+            val flyout = FakeDesktop().apply {
+                overflowFlyout = nativeWindow(0x60, pid = 9, className = "TopLevelWindowForOverflowXamlIsland", bounds = RegionRect(1000, 560, 1200, 744))
+            }
+            val inFlyout = assertFailsWith<RegionCaptureRefusedException> {
+                flyout.captureTrayIconAt(output.resolve("flyout"), RegionRect(1092, 600, 1116, 640))
+            }
+            assertEquals("tray-icon-not-promoted", inFlyout.refusal.reason)
+            assertTrue("in the overflow flyout" in inFlyout.detail, inFlyout.detail)
+
+            val beside = assertFailsWith<RegionCaptureRefusedException> {
+                FakeDesktop().captureTrayIconAt(output.resolve("beside"), RegionRect(1188, 756, 1212, 796))
+            }
+            assertTrue("outside the visible notification area" in beside.detail, beside.detail)
+
+            // A shell that exposes no promoted-icon area, or no chevron window beside a whole-tray
+            // area, cannot show the icon is promoted: that refuses rather than passes.
+            val unlocated = FakeDesktop().apply {
+                visibleArea = null
+                areaSource = "no visible TrayNotifyWnd inside the taskbar"
+            }
+            val notLocated = assertFailsWith<RegionCaptureRefusedException> { unlocated.captureTrayIconAt(output.resolve("unlocated"), ICON_RECT) }
+            assertEquals("tray-icon-not-promoted", notLocated.refusal.reason)
+            assertTrue("visible notification area was not located" in notLocated.detail, notLocated.detail)
+
+            val wholeTray = FakeDesktop().apply {
+                visibleArea = RegionRect(1000, 752, 1180, 800)
+                areaSource = "TrayNotifyWnd"
+                areaExcludesChevron = false
+                chevron = null
+            }
+            val noChevron = assertFailsWith<RegionCaptureRefusedException> { wholeTray.captureTrayIconAt(output.resolve("whole"), ICON_RECT) }
+            assertEquals("tray-icon-not-promoted", noChevron.refusal.reason)
+            assertTrue("overflow chevron was not located" in noChevron.detail, noChevron.detail)
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aTrayIconWhosePromotionCannotBeAppliedIsRefused() {
+        // Without a NotifyIconSettings key or entry the promotion returned null and the scene went
+        // on with "promotion: not-applied", publishing whatever rectangle the overflow reported.
+        val output = Files.createTempDirectory("vpn-control-region-not-promoted")
+        try {
+            val noKey = FakeDesktop().apply { notifyIconKeyAbsent = true }
+            val keyRefusal = assertFailsWith<RegionCaptureRefusedException> { noKey.captureTray(output) }
+            assertEquals("tray-icon-not-promoted", keyRefusal.refusal.reason)
+            assertTrue("NotifyIconSettings is absent" in keyRefusal.detail, keyRefusal.detail)
+            assertFalse(Files.exists(output.resolve("windows-tray-connected.png")))
+            assertEquals(emptyList(), noKey.notifyIconWrites)
+
+            val noEntry = FakeDesktop().apply { notifyIconEntryHidden = true }
+            val entryRefusal = assertFailsWith<RegionCaptureRefusedException> { noEntry.captureTray(output.resolve("entry")) }
+            assertEquals("tray-icon-not-promoted", entryRefusal.refusal.reason)
+            assertTrue("no NotifyIconSettings entry for '$JAVA' uid=1" in entryRefusal.detail, entryRefusal.detail)
+            assertEquals(emptyList(), noEntry.notifyIconWrites, "another executable's entry is never touched")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aPromotionThatDoesNotReadBackIsRefusedAndRestored() {
+        val output = Files.createTempDirectory("vpn-control-region-read-back")
+        try {
+            val desktop = FakeDesktop().apply { promotionWritesIgnored = true }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { desktop.captureTray(output) }
+            assertEquals("tray-icon-not-promoted", refusal.refusal.reason)
+            assertTrue("IsPromoted does not read back 1 after promotion: 1=absent" in refusal.detail, refusal.detail)
+            assertEquals(listOf("1=1", "1=absent"), desktop.notifyIconWrites, "the value written is restored")
+            assertNull(desktop.isPromotedValue("1"))
+            assertFalse(Files.exists(output.resolve("windows-tray-connected.png")))
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aPromotionThatLeavesTheIconOnTheChevronIsRefusedAndRestored() {
+        val output = Files.createTempDirectory("vpn-control-region-no-effect")
+        try {
+            val desktop = FakeDesktop().apply { promotionTakesEffect = false }
+            val refusal = assertFailsWith<RegionCaptureRefusedException> { desktop.captureTray(output) }
+            assertEquals("tray-icon-not-promoted", refusal.refusal.reason)
+            assertTrue("is the overflow chevron" in refusal.detail && "after 40 reads" in refusal.detail, refusal.detail)
+            assertEquals(listOf("1=1", "1=absent"), desktop.notifyIconWrites, "the promotion is restored when the scene is refused")
+            assertNull(desktop.isPromotedValue("1"))
+            assertFalse(Files.exists(output.resolve("windows-tray-connected.png")))
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun regionCaptureExcludesTheClockDesktopIconsAndWallpaperFromTheComparedImage() {
         val output = Files.createTempDirectory("vpn-control-region-capture")
         try {
@@ -604,6 +710,8 @@ class NativeRegionCaptureTest {
             assertEquals(ICON_RGB, image.getRGB(3, 220) and 0xFFFFFF)
             val golden = Json.parseToJsonElement(Files.readString(repositoryRoot().resolve(GOLDEN_TRAY_RECORD)))
             assertEquals(golden, record)
+            assertEquals(listOf("1=1", "1=absent"), desktop.notifyIconWrites, "promoted for the capture, then restored")
+            assertNull(desktop.isPromotedValue("1"))
         } finally {
             output.toFile().deleteRecursively()
         }
@@ -662,6 +770,47 @@ class NativeRegionCaptureTest {
             val bounds = window.bounds
             if (window.title in FRAMED_TITLES) RegionRect(bounds.left, bounds.top + CAPTION, bounds.right, bounds.bottom) else bounds
         }
+
+        // Windows 11 notification area: the icon leaves the overflow (where Shell_NotifyIconGetRect
+        // reports the chevron) once its NotifyIconSettings entry reads IsPromoted 1 and Explorer applies it.
+        var notifyIconKeyAbsent = false
+        var notifyIconEntryHidden = false
+        /** IsPromoted writes do not stick: the entry keeps reading its original value. */
+        var promotionWritesIgnored = false
+        var promotionTakesEffect = true
+        var visibleArea: RegionRect? = VISIBLE_AREA
+        var areaSource = "TrayNotifyWnd/SysPager/ToolbarWindow32"
+        var chevron: RegionRect? = CHEVRON_RECT
+        var areaExcludesChevron = true
+        var overflowFlyout: NativeWindow? = null
+        val notifyIconWrites = mutableListOf<String>()
+        private val isPromoted = mutableMapOf<String, Int?>("1" to null, "2" to 1)
+        private val iconShown get() = promotionTakesEffect && isPromoted["1"] == 1
+
+        fun isPromotedValue(key: String): Int? = isPromoted[key]
+
+        override fun notificationArea(): NotificationArea? {
+            val taskbar = windows.firstOrNull { it.className == WindowsRegionScenes.TASKBAR_CLASS } ?: return null
+            return NotificationArea(taskbar, visibleArea, areaSource, chevron, areaExcludesChevron, listOfNotNull(overflowFlyout))
+        }
+        override fun notifyIcon(uid: Int) = NotifyIconLocation(
+            if (iconShown) ICON_RECT else CHEVRON_RECT,
+            buildJsonObject {
+                put("kind", "notification-icon")
+                put("locator", "Shell_NotifyIconGetRect")
+                put("uid", uid)
+            },
+        )
+        override fun notifyIconSettings(): List<NotifyIconEntry>? = if (notifyIconKeyAbsent) null else listOfNotNull(
+            NotifyIconEntry("1", JAVA, uid = 1, promoted = isPromoted["1"]).takeUnless { notifyIconEntryHidden },
+            NotifyIconEntry("2", "C:\\Windows\\explorer.exe", uid = 1, promoted = isPromoted["2"]),
+        )
+        override fun setNotifyIconPromoted(key: String, value: Int?) {
+            notifyIconWrites += "$key=${value ?: "absent"}"
+            if (!promotionWritesIgnored) isPromoted[key] = value
+        }
+        override fun processExecutable() = JAVA
+        override fun knownFolderPath(guid: String): String? = null
 
         override fun screen() = screen
         override fun workArea() = workArea
@@ -722,8 +871,11 @@ class NativeRegionCaptureTest {
             }
             if (blinkingCaret) fill(image, RegionRect(200, 100, 201, 116), if (captures % 2 == 0) 0 else 0xFFFFFF)
             if (windows.any { it.title == "taskbar" }) {
-                fill(image, ICON_RECT, ICON_RGB)
-                fill(image, RegionRect.sized(ICON_RECT.left + 8, ICON_RECT.top + 16, 8, 8), TEXT_RGB)
+                fill(image, RegionRect.sized(CHEVRON_RECT.left + 8, CHEVRON_RECT.top + 18, 8, 4), TEXT_RGB)
+                if (iconShown) {
+                    fill(image, ICON_RECT, ICON_RGB)
+                    fill(image, RegionRect.sized(ICON_RECT.left + 8, ICON_RECT.top + 16, 8, 8), TEXT_RGB)
+                }
             }
             if (transientDuringStablePair && captures == 2) transient = null
             return image
@@ -776,17 +928,20 @@ class NativeRegionCaptureTest {
             fill(image, RegionRect.sized(bounds.left + 40, bounds.top + 30, 120, 6), TEXT_RGB)
         }
 
+        /** The tray scene as the Windows harness runs it: promote the icon, locate it, capture both parts. */
         fun captureTray(output: Path): JsonObject {
-            windows += nativeWindow(0x30, pid = 100, title = "menu", bounds = RegionRect(544, 168, 736, 377))
-            windows += nativeWindow(0x31, pid = 100, title = "helper", bounds = RegionRect(0, 0, 136, 39))
-            windows += nativeWindow(0x33, pid = 9, className = WindowsRegionScenes.TASKBAR_CLASS, title = "taskbar", bounds = RegionRect(0, 752, 1280, 800))
             val engine = RegionCaptureEngine(this, "windows", sessionJson())
-            val menu = engine.placeWindow(
-                "windows-tray-connected", "tray-menu", TargetRule("tray-menu", handle = 0x30, processId = 100),
-                WindowsRegionScenes.trayMenu, { handle, move, _ -> moveWindow(handle, move.windowRect) },
-            )
-            windows.add(windows.indexOfFirst { it.handle == 0x31L }, nativeWindow(0x32, pid = 100, title = "backdrop",
-                bounds = menu.rect.expanded(WindowsRegionScenes.BACKDROP_MARGIN)))
+            val menu = openTrayMenu(engine)
+            return promoteNotifyIcon(this, "windows-tray-connected", 1).use { promotion ->
+                val icon = locateNotifyIcon(this, "windows-tray-connected", 1, promotion)
+                engine.capture("windows-tray-connected", output, listOf(menu, icon), 0x31)
+            }
+        }
+
+        /** The tray scene with an icon part at the rectangle the shell reported, without promotion. */
+        fun captureTrayIconAt(output: Path, iconRect: RegionRect): JsonObject {
+            val engine = RegionCaptureEngine(this, "windows", sessionJson())
+            val menu = openTrayMenu(engine)
             val icon = LocatedPart(
                 role = "tray-icon",
                 target = buildJsonObject {
@@ -794,13 +949,26 @@ class NativeRegionCaptureTest {
                     put("locator", "Shell_NotifyIconGetRect")
                     put("uid", 1)
                 },
-                rect = ICON_RECT,
+                rect = iconRect,
                 placement = buildJsonObject { put("policy", "shell-placed") },
                 targetHandle = 0x33,
                 keyboardCues = false,
-                current = { ICON_RECT },
+                current = { iconRect },
             )
-            return engine.capture("windows-tray-connected", output, listOf(menu.copy(backdropHandle = 0x32), icon), 0x31)
+            return engine.capture("windows-tray-connected", output, listOf(menu, icon), 0x31)
+        }
+
+        private fun openTrayMenu(engine: RegionCaptureEngine): LocatedPart {
+            windows += nativeWindow(0x30, pid = 100, title = "menu", bounds = RegionRect(544, 168, 736, 377))
+            windows += nativeWindow(0x31, pid = 100, title = "helper", bounds = RegionRect(0, 0, 136, 39))
+            windows += nativeWindow(0x33, pid = 9, className = WindowsRegionScenes.TASKBAR_CLASS, title = "taskbar", bounds = RegionRect(0, 752, 1280, 800))
+            val menu = engine.placeWindow(
+                "windows-tray-connected", "tray-menu", TargetRule("tray-menu", handle = 0x30, processId = 100),
+                WindowsRegionScenes.trayMenu, { handle, move, _ -> moveWindow(handle, move.windowRect) },
+            )
+            windows.add(windows.indexOfFirst { it.handle == 0x31L }, nativeWindow(0x32, pid = 100, title = "backdrop",
+                bounds = menu.rect.expanded(WindowsRegionScenes.BACKDROP_MARGIN)))
+            return menu.copy(backdropHandle = 0x32)
         }
 
         private fun moveWindow(handle: Long, rect: RegionRect) {
@@ -848,6 +1016,10 @@ class NativeRegionCaptureTest {
             NativeControl(0x4004, "ComboBoxEx32", "", 0x47C, true),
         )
         val ICON_RECT = RegionRect(1092, 756, 1116, 796)
+        /** The promoted-icon toolbar; the overflow chevron sits just left of it, the clock right of it. */
+        val VISIBLE_AREA = RegionRect(1060, 752, 1180, 800)
+        val CHEVRON_RECT = RegionRect(1032, 756, 1056, 796)
+        const val JAVA = "C:\\hostedtoolcache\\windows\\Java_Temurin-Hotspot_jdk\\17.0.16-8\\x64\\bin\\java.exe"
         const val GOLDEN_TRAY_RECORD = "scripts/testdata/visual_region/windows-tray-connected.region.json"
     }
 }

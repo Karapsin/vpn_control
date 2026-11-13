@@ -33,6 +33,12 @@ internal const val REGION_READY_INTERVAL_MILLIS = 250L
 /** Bound of the WM_NULL round trip that shows a target window's thread is answering. */
 internal const val REGION_RESPONSE_TIMEOUT_MILLIS = 2_000
 
+/** Reads, 250 ms apart, of NotifyIconSettings (Explorer records a new icon's entry asynchronously). */
+internal const val NOTIFY_ICON_ENTRY_POLLS = 20
+
+/** Reads, 250 ms apart, of the promoted icon's rectangle. */
+internal const val NOTIFY_ICON_RECT_POLLS = 40
+
 /** Named infrastructure-failure reasons of a refused region capture. */
 internal enum class RegionCaptureRefusal(val reason: String) {
     NON_CANONICAL_DISPLAY("non-canonical-display"),
@@ -49,6 +55,7 @@ internal enum class RegionCaptureRefusal(val reason: String) {
     TARGET_NOT_PAINTED("target-not-painted"),
     CONTROLS_MISSING("target-controls-missing"),
     TRAY_ICON_UNAVAILABLE("tray-icon-unavailable"),
+    TRAY_ICON_NOT_PROMOTED("tray-icon-not-promoted"),
     SESSION_SETTING_FAILED("session-setting-failed"),
     SECURE_DESKTOP("secure-desktop-not-capturable"),
 }
@@ -416,6 +423,8 @@ internal data class PartReadiness(
     val clientPainted: Boolean = true,
     /** Visible child controls the native child-window census must show. */
     val controls: List<ControlRule> = emptyList(),
+    /** A notification icon, which must lie in the visible notification area (notifyIconPlacementFailure). */
+    val notificationIcon: Boolean = false,
 )
 
 internal data class PartOffset(val x: Int, val y: Int) {
@@ -499,6 +508,53 @@ internal fun resolveKnownFolderPath(raw: String, knownFolder: (String) -> String
 }
 
 internal fun normalizeWindowsPath(path: String): String = path.replace('/', '\\').trimEnd('\\').lowercase()
+
+/** Shell_NotifyIconGetRect for this process's notification icon, with the identity it was asked for. */
+internal data class NotifyIconLocation(val rect: RegionRect?, val identity: JsonObject)
+
+/** The taskbar's notification area as the shell exposes it in native windows. */
+internal data class NotificationArea(
+    val taskbar: NativeWindow,
+    /** Where promoted icons show; null when the shell exposes no such visible window. */
+    val visible: RegionRect?,
+    /** How [visible] was located, or what the taskbar showed instead. */
+    val source: String,
+    /** The overflow chevron, when the shell exposes it as a visible window. */
+    val chevron: RegionRect?,
+    /** True when [visible] is the promoted-icon area itself, which never holds the chevron. */
+    val excludesChevron: Boolean,
+    /** Open overflow flyout windows. */
+    val overflow: List<NativeWindow> = emptyList(),
+) {
+    fun json(): JsonObject = buildJsonObject {
+        put("taskbar", hexHandle(taskbar.handle))
+        put("taskbar_rect", taskbar.bounds.json())
+        put("visible", visible?.json() ?: JsonNull)
+        put("source", source)
+        put("chevron", chevron?.json() ?: JsonNull)
+        put("excludes_chevron", excludesChevron)
+        put("overflow", JsonArray(overflow.map { JsonPrimitive(it.describe()) }))
+    }
+}
+
+/**
+ * Why [icon] is not a promoted notification icon on the taskbar, or null when it is: inside the
+ * visible notification area, off the overflow chevron and outside any open overflow flyout. An
+ * area or a chevron the shell does not expose as a window refuses rather than passes, because
+ * Shell_NotifyIconGetRect reports the chevron's rectangle for an icon left in the overflow.
+ */
+internal fun notifyIconPlacementFailure(icon: RegionRect, area: NotificationArea?): String? = when {
+    area == null -> "no visible ${WindowsRegionScenes.TASKBAR_CLASS} holds the icon rect $icon"
+    area.overflow.any { it.bounds.intersects(icon) } ->
+        "icon rect $icon lies in the overflow flyout ${area.overflow.joinToString("; ") { it.describe() }}"
+    !area.taskbar.bounds.contains(icon) -> "icon rect $icon lies outside the taskbar ${area.taskbar.bounds}"
+    area.chevron != null && area.chevron.intersects(icon) -> "icon rect $icon is the overflow chevron ${area.chevron}"
+    area.visible == null -> "the visible notification area was not located: ${area.source}"
+    !area.visible.contains(icon) -> "icon rect $icon lies outside the visible notification area ${area.visible} (${area.source})"
+    area.chevron == null && !area.excludesChevron ->
+        "the overflow chevron was not located, so icon rect $icon in ${area.source} ${area.visible} cannot be told apart from it"
+    else -> null
+}
 
 /**
  * Waits for the notification icon's own rectangle: inside the taskbar, of icon size and equal on
@@ -743,7 +799,7 @@ internal object WindowsRegionScenes {
         "file-dialog" -> PartReadiness(controls = fileDialogControls)
         "installer-wizard" -> PartReadiness(controls = installerWizardControls)
         // The icon's window is the taskbar: its thread must answer, but its client area is the whole bar.
-        "tray-icon" -> PartReadiness(clientPainted = false)
+        "tray-icon" -> PartReadiness(clientPainted = false, notificationIcon = true)
         else -> PartReadiness()
     }
 
@@ -752,6 +808,12 @@ internal object WindowsRegionScenes {
     const val FILE_DIALOG_CLASS = "#32770"
     const val AWT_TRAY_MESSAGE_WINDOW_CLASS = "SunAwtTrayIcon"
     const val TASKBAR_CLASS = "Shell_TrayWnd"
+
+    /** HKCU key whose entries Windows 11 keeps per notification icon, with IsPromoted. */
+    const val NOTIFY_ICON_SETTINGS = "Control Panel\\NotifyIconSettings"
+
+    /** Overflow flyouts of the Windows 10 and the Windows 11 notification area. */
+    val NOTIFY_ICON_OVERFLOW_CLASSES = setOf("NotifyIconOverflowWindow", "TopLevelWindowForOverflowXamlIsland")
 
     fun isRegionCaptured(sceneId: String): Boolean = sceneId.startsWith("windows-")
 }

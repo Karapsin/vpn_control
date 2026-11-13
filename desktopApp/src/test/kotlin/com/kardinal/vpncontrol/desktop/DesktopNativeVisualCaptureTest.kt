@@ -22,13 +22,9 @@ import javax.imageio.ImageIO
 import javax.swing.JWindow
 import javax.swing.SwingUtilities
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 import org.junit.Test
 
 /**
@@ -313,38 +309,16 @@ class DesktopNativeVisualCaptureTest {
         val id = runCatching { WindowsRegionDesktop.awtTrayIconId(icon) }.getOrElse { error ->
             refuseRegion(sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "TrayIcon.id is unreadable: ${error.message}")
         }
-        val (before, identity) = desktop.trayIconRect(icon)
-        val promotion = desktop.promoteTrayIcon(id)
-        try {
-            // A refusal keeps the frame of its moment before the icon's promotion is restored.
+        // Promotion fails closed and is restored in every outcome; a refusal keeps the frame of its
+        // moment before the promotion is restored.
+        promoteNotifyIcon(desktop, sceneId, id).use { promotion ->
             region.engine.keepingRefusedMoment {
-                val taskbar = desktop.taskbar() ?: refuseRegion(
-                    sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "no visible ${WindowsRegionScenes.TASKBAR_CLASS}",
-                )
-                val (iconRect, reads) = awaitIconRect(sceneId, 40, taskbar.bounds, { desktop.trayIconRect(icon).first }) {
-                    desktop.pause(250)
-                }
-                val iconPart = LocatedPart(
-                    role = "tray-icon",
-                    target = JsonObject(identity + ("taskbar" to taskbar.identity("taskbar", "class=${WindowsRegionScenes.TASKBAR_CLASS}"))),
-                    rect = iconRect,
-                    placement = buildJsonObject {
-                        put("policy", "shell-placed")
-                        put("rect_before_promotion", before?.json() ?: JsonNull)
-                        put("promotion", promotion?.let { "${it.original} -> ${it.capture}" } ?: "not-applied")
-                        put("reads", reads)
-                    },
-                    targetHandle = taskbar.handle,
-                    keyboardCues = false,
-                    current = { desktop.trayIconRect(icon).first },
-                )
+                val iconPart = locateNotifyIcon(desktop, sceneId, id, promotion)
                 withRegionBackdrop(region, sceneId, menu) { backedMenu ->
                     // The helper window takes focus so neither the menu nor the taskbar shows focus.
                     region.engine.capture(sceneId, output, listOf(backedMenu, iconPart), awtHandle(helper))
                 }
             }
-        } finally {
-            promotion?.restore?.invoke()
         }
     }
 

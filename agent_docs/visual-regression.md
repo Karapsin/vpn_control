@@ -178,11 +178,23 @@ surface's own region (`VISUAL-002`). The decisions live in `NativeRegionCapture.
 | `windows-window-frame` | The app's own top-level window (its AWT handle, this process), frame included | DWM extended frame bounds | Visible frame 1000x720 at 140,16 |
 | `windows-open-dialog`, `windows-save-dialog` | The `#32770` dialog of this process with the fixture title, owned by the app window | DWM extended frame bounds | Visible frame 640x460 at 160,60 |
 | `windows-msi`, `windows-update-installer` | The visible top-level `... Setup` window of the `msiexec` process the test started | DWM extended frame bounds | Moved to 160,60; intrinsic size |
-| `windows-tray-disconnected`, `windows-tray-connected` | The AWT tray popup window, then the notification icon from `Shell_NotifyIconGetRect` (AWT message window and `TrayIcon.id`) | Menu region, 8 px gap, icon rectangle, stacked left-aligned on black | Menu moved to 320,160; icon promoted out of the Windows 11 overflow, shell-placed |
+| `windows-tray-disconnected`, `windows-tray-connected` | The AWT tray popup window, then the notification icon from `Shell_NotifyIconGetRect` (AWT message window and `TrayIcon.id`) | Menu region, 8 px gap, icon rectangle, stacked left-aligned on black | Menu moved to 320,160; icon promoted out of the Windows 11 overflow and verified in the visible notification area, shell-placed |
 | `windows-uac` | The consent window on the secure desktop, located in the guest by the prompt route | Crop of the retained full VM frame | Placed by Windows |
 
 The tray image is two parts, not their union: the union would take in the taskbar between them,
 other notification icons and possibly the clock.
+
+The icon's promotion fails closed. This process's `NotifyIconSettings` entry (same executable, same
+UID) is set to `IsPromoted` 1 and must read it back; a missing key, an entry that does not appear
+within 20 reads 250 ms apart, or a value that does not read back refuses the scene as
+`tray-icon-not-promoted`, and every value written is restored in every outcome. Because
+`Shell_NotifyIconGetRect` reports the overflow chevron's rectangle for an icon left in the overflow,
+the icon rectangle must then be stable inside the visible notification area, off the chevron and
+outside any open overflow flyout (`NotifyIconOverflowWindow`, `TopLevelWindowForOverflowXamlIsland`):
+when it is located, before the stable-frame loop and before publishing. The visible area is
+`TrayNotifyWnd/SysPager/ToolbarWindow32`, or `TrayNotifyWnd` when its chevron `Button` is located
+too. A shell that exposes neither as a window refuses rather than passes (`tray-icon-not-promoted`,
+whose detail lists the taskbar's child windows).
 
 Before the first scene the capture turns caret blink, window, menu, tooltip, combo box, list box,
 selection and client-area animations and transparency off, keyboard cues on and the light theme on,
@@ -224,7 +236,7 @@ screen at the moment of refusal taken before the scene closes its surfaces, and
 `<scene>.refusal.json` with its named reason: `non-canonical-display`, `target-missing`,
 `target-ambiguous`, `placement-not-converged`, `outside-work-area`, `target-not-foreground`,
 `cursor-not-parked`, `occluded`, `target-moved`, `unstable-frame`, `target-not-responding`,
-`target-not-painted`, `target-controls-missing`, `tray-icon-unavailable`,
+`target-not-painted`, `target-controls-missing`, `tray-icon-unavailable`, `tray-icon-not-promoted`,
 `session-setting-failed` (its records name the shared `capture-session.frame.png`) or
 `secure-desktop-not-capturable`. A refusal is an
 `infrastructure_failure` unless its kept frame shows a product defect, for example an installer

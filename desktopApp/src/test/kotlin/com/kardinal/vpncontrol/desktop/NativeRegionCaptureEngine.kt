@@ -29,8 +29,29 @@ internal interface RegionReadinessProbes {
     fun clientArea(handle: Long): RegionRect?
 }
 
+/** The notification area and this process's notification icon, as the Windows shell exposes them. */
+internal interface NotificationAreaShell {
+    /** The visible taskbar's notification area, or null without a visible taskbar. */
+    fun notificationArea(): NotificationArea?
+
+    /** Shell_NotifyIconGetRect for icon [uid] of this process's AWT tray message window. */
+    fun notifyIcon(uid: Int): NotifyIconLocation
+
+    /** HKCU\Control Panel\NotifyIconSettings entries, or null when that key is absent. */
+    fun notifyIconSettings(): List<NotifyIconEntry>?
+
+    /** Writes IsPromoted of one NotifyIconSettings entry; null deletes the value. */
+    fun setNotifyIconPromoted(key: String, value: Int?)
+
+    /** This process's executable, as Explorer records it. */
+    fun processExecutable(): String
+
+    /** A known folder's path by its GUID (no braces), for "{FOLDERID}\rest" entry paths. */
+    fun knownFolderPath(guid: String): String?
+}
+
 /** Native desktop operations the region capture needs; WindowsRegionDesktop is the only real one. */
-internal interface RegionDesktop : RegionReadinessProbes {
+internal interface RegionDesktop : RegionReadinessProbes, NotificationAreaShell {
     fun screen(): RegionRect
     fun workArea(): RegionRect
     fun scale(): Pair<Double, Double>
@@ -293,10 +314,17 @@ internal class RegionCaptureEngine(
             }
             rule.controls.map { wanted -> census.first(wanted::matches) }
         }
+        val area = if (rule.notificationIcon) desktop.notificationArea() else null
+        if (rule.notificationIcon) {
+            notifyIconPlacementFailure(part.rect, area)?.let {
+                refuseRegion(sceneId, RegionCaptureRefusal.TRAY_ICON_NOT_PROMOTED, "$it $phase")
+            }
+        }
         return buildJsonObject {
             put("role", part.role)
             put("responsive", rule.responsive)
             put("controls", JsonArray(controls.map { JsonPrimitive(it.describe()) }))
+            if (area != null) put("notification_area", area.source)
         }
     }
 
@@ -448,4 +476,142 @@ internal fun runRegionCaptureScenes(
                 failures.joinToString("; ") { it.message.orEmpty() },
         ).apply { failures.forEach(::addSuppressed) }
     }
+}
+
+/** One promotion of this process's notification icon; closing it restores every value it wrote. */
+internal class NotifyIconPromotion(
+    val entries: List<NotifyIconEntry>,
+    val rectBefore: RegionRect?,
+    private val restore: () -> Unit,
+) : AutoCloseable {
+    fun json(): JsonObject = buildJsonObject {
+        put("setting", "HKCU\\${WindowsRegionScenes.NOTIFY_ICON_SETTINGS}\\<key>\\IsPromoted")
+        put("entries", JsonArray(entries.map { entry ->
+            buildJsonObject {
+                put("key", entry.key)
+                put("original", entry.promoted?.let(::JsonPrimitive) ?: JsonNull)
+                put("capture", 1)
+                put("read_back", 1)
+            }
+        }))
+        put("rect_before_promotion", rectBefore?.json() ?: JsonNull)
+    }
+
+    override fun close() = restore()
+}
+
+/**
+ * Promotes this process's notification icon out of the Windows 11 overflow for the scene, failing
+ * closed: an absent NotifyIconSettings key, no entry for this executable and icon within the bound,
+ * or a value that does not read back as promoted refuses the scene as tray-icon-not-promoted. Values
+ * written before a refusal are restored before it is raised; the caller closes the promotion.
+ */
+internal fun promoteNotifyIcon(
+    desktop: RegionDesktop,
+    sceneId: String,
+    uid: Int,
+    maxPolls: Int = NOTIFY_ICON_ENTRY_POLLS,
+): NotifyIconPromotion {
+    val executable = desktop.processExecutable()
+    val rectBefore = desktop.notifyIcon(uid).rect
+    var settings: List<NotifyIconEntry>? = null
+    var selected = emptyList<NotifyIconEntry>()
+    for (poll in 1..maxPolls) {
+        // Explorer records a newly added icon's entry asynchronously.
+        settings = desktop.notifyIconSettings()
+        selected = settings?.let { selectNotifyIconEntries(it, executable, uid, desktop::knownFolderPath) }.orEmpty()
+        if (selected.isNotEmpty()) break
+        if (poll < maxPolls) desktop.pause(250)
+    }
+    if (settings == null) {
+        refuseRegion(
+            sceneId, RegionCaptureRefusal.TRAY_ICON_NOT_PROMOTED,
+            "HKCU\\${WindowsRegionScenes.NOTIFY_ICON_SETTINGS} is absent after $maxPolls reads, so the icon cannot be promoted out of the overflow",
+        )
+    }
+    if (selected.isEmpty()) {
+        refuseRegion(
+            sceneId, RegionCaptureRefusal.TRAY_ICON_NOT_PROMOTED,
+            "no NotifyIconSettings entry for '$executable' uid=$uid appeared in $maxPolls reads of ${settings.size} entries",
+        )
+    }
+    val written = mutableListOf<NotifyIconEntry>()
+    fun restore(): IllegalStateException? {
+        val failures = written.asReversed().mapNotNull { entry ->
+            runCatching { desktop.setNotifyIconPromoted(entry.key, entry.promoted) }.exceptionOrNull()?.let { entry.key to it }
+        }
+        if (failures.isEmpty()) return null
+        return IllegalStateException(
+            "NotifyIconSettings IsPromoted was not restored for " + failures.joinToString { (key, error) -> "$key (${error.message})" },
+        ).apply { failures.forEach { addSuppressed(it.second) } }
+    }
+    try {
+        selected.forEach { entry ->
+            desktop.setNotifyIconPromoted(entry.key, 1)
+            written += entry
+        }
+        val readBack = desktop.notifyIconSettings().orEmpty().associateBy(NotifyIconEntry::key)
+        val unverified = selected.filter { readBack[it.key]?.promoted != 1 }
+        if (unverified.isNotEmpty()) {
+            refuseRegion(
+                sceneId, RegionCaptureRefusal.TRAY_ICON_NOT_PROMOTED,
+                "IsPromoted does not read back 1 after promotion: " +
+                    unverified.joinToString { "${it.key}=${readBack[it.key]?.promoted ?: "absent"}" },
+            )
+        }
+    } catch (error: Exception) {
+        val refusal = error as? RegionCaptureRefusedException
+            ?: RegionCaptureRefusedException(
+                sceneId, RegionCaptureRefusal.TRAY_ICON_NOT_PROMOTED, "promoting the notification icon failed: ${error.message}",
+            ).apply { addSuppressed(error) }
+        restore()?.let(refusal::addSuppressed)
+        throw refusal
+    }
+    return NotifyIconPromotion(selected, rectBefore) { restore()?.let { throw it } }
+}
+
+/**
+ * The promoted icon's own region: a stable, icon-sized Shell_NotifyIconGetRect result inside the
+ * visible notification area, off the overflow chevron and outside any open overflow flyout. An
+ * icon that never gets there is refused as tray-icon-not-promoted; no rectangle at all is
+ * tray-icon-unavailable.
+ */
+internal fun locateNotifyIcon(
+    desktop: RegionDesktop,
+    sceneId: String,
+    uid: Int,
+    promotion: NotifyIconPromotion,
+    maxPolls: Int = NOTIFY_ICON_RECT_POLLS,
+): LocatedPart {
+    var area = desktop.notificationArea() ?: refuseRegion(
+        sceneId, RegionCaptureRefusal.TRAY_ICON_UNAVAILABLE, "no visible ${WindowsRegionScenes.TASKBAR_CLASS}",
+    )
+    var location = desktop.notifyIcon(uid)
+    var misplaced: String? = null
+    val (rect, reads) = try {
+        awaitIconRect(sceneId, maxPolls, area.taskbar.bounds, read = {
+            location = desktop.notifyIcon(uid)
+            val now = desktop.notificationArea()
+            if (now != null) area = now
+            misplaced = location.rect?.let { notifyIconPlacementFailure(it, now) }
+            location.rect.takeIf { misplaced == null }
+        }) { desktop.pause(250) }
+    } catch (unavailable: RegionCaptureRefusedException) {
+        val detail = misplaced ?: throw unavailable
+        refuseRegion(sceneId, RegionCaptureRefusal.TRAY_ICON_NOT_PROMOTED, "$detail after $maxPolls reads")
+    }
+    return LocatedPart(
+        role = "tray-icon",
+        target = JsonObject(location.identity + ("taskbar" to area.taskbar.identity("taskbar", "class=${WindowsRegionScenes.TASKBAR_CLASS}"))),
+        rect = rect,
+        placement = buildJsonObject {
+            put("policy", "shell-placed")
+            put("promotion", promotion.json())
+            put("notification_area", area.json())
+            put("reads", reads)
+        },
+        targetHandle = area.taskbar.handle,
+        keyboardCues = false,
+        current = { desktop.notifyIcon(uid).rect },
+    )
 }

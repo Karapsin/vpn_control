@@ -78,8 +78,6 @@ internal class VisualNotifyIconIdentifier : Structure() {
     @JvmField var guidItem: Guid.GUID = Guid.GUID()
 }
 
-internal class TrayIconLocation(val rect: RegionRect, val identity: JsonObject)
-
 internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
     private val user32 = User32.INSTANCE
     private val user by lazy { Native.load("user32", VisualUserLibrary::class.java, W32APIOptions.DEFAULT_OPTIONS) }
@@ -280,11 +278,50 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
         )
     }
 
-    fun taskbar(): NativeWindow? = census().firstOrNull { it.className == WindowsRegionScenes.TASKBAR_CLASS && it.visible }
+    /**
+     * The visible taskbar's notification area. Promoted icons show in TrayNotifyWnd's
+     * SysPager/ToolbarWindow32; without it, TrayNotifyWnd counts only when its overflow chevron
+     * (a Button child) is located too. Windows inside the taskbar only; a shell that exposes
+     * neither yields no visible area, and the capture refuses rather than guesses.
+     */
+    override fun notificationArea(): NotificationArea? {
+        val windows = census()
+        val taskbar = windows.firstOrNull { it.className == WindowsRegionScenes.TASKBAR_CLASS && it.paints } ?: return null
+        val bar = hwnd(taskbar.handle)
+        val tray = child(bar, "TrayNotifyWnd")
+        val promoted = tray?.let { child(it, "SysPager") }?.let { child(it, "ToolbarWindow32") }
+        val chevron = tray?.let { child(it, "Button") }
+        fun shown(window: WinDef.HWND?): RegionRect? =
+            window?.let(::describe)?.takeIf { it.paints && taskbar.bounds.contains(it.bounds) }?.bounds
+        val overflow = windows.filter { it.className in WindowsRegionScenes.NOTIFY_ICON_OVERFLOW_CLASSES && it.paints }
+        val chevronRect = shown(chevron)
+        shown(promoted)?.let { return NotificationArea(taskbar, it, "TrayNotifyWnd/SysPager/ToolbarWindow32", chevronRect, true, overflow) }
+        shown(tray)?.let { return NotificationArea(taskbar, it, "TrayNotifyWnd", chevronRect, false, overflow) }
+        val children = directChildren(bar).joinToString { window ->
+            window.className + if (window.paints) window.bounds.toString() else "(hidden)"
+        }
+        return NotificationArea(
+            taskbar, null,
+            "no visible TrayNotifyWnd inside the taskbar; its child windows: ${children.ifEmpty { "none" }}",
+            chevronRect, false, overflow,
+        )
+    }
 
-    /** The notification-area rectangle of this process's AWT tray icon (hWnd + uID identity). */
-    fun trayIconRect(icon: TrayIcon): Pair<RegionRect?, JsonObject> {
-        val id = awtTrayIconId(icon)
+    private fun child(parent: WinDef.HWND, className: String): WinDef.HWND? = user32.FindWindowEx(parent, null, className, null)
+
+    private fun directChildren(parent: WinDef.HWND): List<NativeWindow> {
+        val children = mutableListOf<NativeWindow>()
+        var after: WinDef.HWND? = null
+        while (children.size < 64) {
+            val next = user32.FindWindowEx(parent, after, null, null) ?: break
+            describe(next)?.let(children::add)
+            after = next
+        }
+        return children
+    }
+
+    /** Shell_NotifyIconGetRect for this process's AWT tray icon (message window plus uID identity). */
+    override fun notifyIcon(uid: Int): NotifyIconLocation {
         val messageWindows = census().filter {
             it.processId == processId && it.className == WindowsRegionScenes.AWT_TRAY_MESSAGE_WINDOW_CLASS
         }
@@ -292,64 +329,47 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
             put("kind", "notification-icon")
             put("locator", "Shell_NotifyIconGetRect")
             put("process_id", processId)
-            put("uid", id)
+            put("uid", uid)
             put("message_window", messageWindows.singleOrNull()?.let { hexHandle(it.handle) } ?: "")
             put("message_windows", messageWindows.size)
         }
-        val messageWindow = messageWindows.singleOrNull() ?: return null to identity
+        val messageWindow = messageWindows.singleOrNull() ?: return NotifyIconLocation(null, identity)
         val identifier = VisualNotifyIconIdentifier().apply {
             hWnd = hwnd(messageWindow.handle)
-            uID = id
+            uID = uid
             cbSize = size()
         }
         val rect = WinDef.RECT()
-        val result = shell.Shell_NotifyIconGetRect(identifier, rect)
-        return (if (result == 0) rect.region() else null) to identity
+        return NotifyIconLocation(if (shell.Shell_NotifyIconGetRect(identifier, rect) == 0) rect.region() else null, identity)
     }
 
-    /**
-     * Windows 11 keeps new notification icons in the overflow; promote this process's icon.
-     * Explorer records the icon's entry asynchronously after it is added, so wait (bounded) for it.
-     */
-    fun promoteTrayIcon(id: Int): AppliedSessionSetting? {
-        if (!Advapi32Util.registryKeyExists(WinReg.HKEY_CURRENT_USER, NOTIFY_ICON_SETTINGS)) return null
-        val executable = ProcessHandle.current().info().command().orElse("")
-        var selected = emptyList<NotifyIconEntry>()
-        for (poll in 1..NOTIFY_ICON_ENTRY_POLLS) {
-            selected = selectNotifyIconEntries(notifyIconEntries(), executable, id, ::knownFolderPath)
-            if (selected.isNotEmpty()) break
-            pause(250)
-        }
-        if (selected.isEmpty()) return null
-        selected.forEach { entry ->
-            Advapi32Util.registrySetIntValue(WinReg.HKEY_CURRENT_USER, "$NOTIFY_ICON_SETTINGS\\${entry.key}", "IsPromoted", 1)
-        }
-        return AppliedSessionSetting(
-            "notify-icon-promoted",
-            selected.joinToString { "${it.key}=${it.promoted ?: "absent"}" },
-            "1",
-        ) {
-            selected.forEach { entry ->
-                val path = "$NOTIFY_ICON_SETTINGS\\${entry.key}"
-                if (entry.promoted == null) {
-                    Advapi32Util.registryDeleteValue(WinReg.HKEY_CURRENT_USER, path, "IsPromoted")
-                } else {
-                    Advapi32Util.registrySetIntValue(WinReg.HKEY_CURRENT_USER, path, "IsPromoted", entry.promoted)
-                }
-            }
+    override fun notifyIconSettings(): List<NotifyIconEntry>? {
+        val key = WindowsRegionScenes.NOTIFY_ICON_SETTINGS
+        if (!Advapi32Util.registryKeyExists(WinReg.HKEY_CURRENT_USER, key)) return null
+        // Explorer adds and removes entries while it runs; an entry that vanishes mid-read is skipped.
+        return Advapi32Util.registryGetKeys(WinReg.HKEY_CURRENT_USER, key).mapNotNull { name ->
+            runCatching {
+                val path = "$key\\$name"
+                NotifyIconEntry(
+                    key = name,
+                    executablePath = registryString(path, "ExecutablePath").orEmpty(),
+                    uid = registryInt(path, "UID"),
+                    promoted = registryInt(path, "IsPromoted"),
+                )
+            }.getOrNull()
         }
     }
 
-    private fun notifyIconEntries(): List<NotifyIconEntry> =
-        Advapi32Util.registryGetKeys(WinReg.HKEY_CURRENT_USER, NOTIFY_ICON_SETTINGS).map { key ->
-            val path = "$NOTIFY_ICON_SETTINGS\\$key"
-            NotifyIconEntry(
-                key = key,
-                executablePath = registryString(path, "ExecutablePath").orEmpty(),
-                uid = registryInt(path, "UID"),
-                promoted = registryInt(path, "IsPromoted"),
-            )
+    override fun setNotifyIconPromoted(key: String, value: Int?) {
+        val path = "${WindowsRegionScenes.NOTIFY_ICON_SETTINGS}\\$key"
+        if (value == null) {
+            Advapi32Util.registryDeleteValue(WinReg.HKEY_CURRENT_USER, path, "IsPromoted")
+        } else {
+            Advapi32Util.registrySetIntValue(WinReg.HKEY_CURRENT_USER, path, "IsPromoted", value)
         }
+    }
+
+    override fun processExecutable(): String = ProcessHandle.current().info().command().orElse("")
 
     /** Caret blink, animations, keyboard cues, transparency and theme for the capture session. */
     fun sessionSettings(): List<Pair<String, SessionSetting>> = listOf(
@@ -415,7 +435,7 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
             null
         }
 
-    private fun knownFolderPath(guid: String): String? =
+    override fun knownFolderPath(guid: String): String? =
         runCatching { Shell32Util.getKnownFolderPath(Guid.GUID.fromString("{$guid}")) }.getOrNull()
 
     private fun WinDef.RECT.region(): RegionRect = RegionRect(left, top, right, bottom)
@@ -457,9 +477,7 @@ internal class WindowsRegionDesktop(private val robot: Robot) : RegionDesktop {
         private const val SPI_GETCLIENTAREAANIMATION = 0x1042
         private const val SPI_SETCLIENTAREAANIMATION = 0x1043
         private const val FOREGROUND_ATTEMPTS = 10
-        private const val NOTIFY_ICON_ENTRY_POLLS = 20
         private const val PERSONALIZE = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
-        private const val NOTIFY_ICON_SETTINGS = "Control Panel\\NotifyIconSettings"
 
         /** GetCaretBlinkTime/SetCaretBlinkTime use INFINITE (0xFFFFFFFF) for "does not blink". */
         const val INFINITE_BLINK = -1
