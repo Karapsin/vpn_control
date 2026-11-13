@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "450b8764d25e038fb4815e751c618b83a9121811",
+  "lastGreenCommit": "529cc6106160bd5b85a25d261ad2f9a68570306d",
+  "failedRuns": {
+    "Fast Checks": 43474297086,
+    "Android Release APK": 43474297145,
+    "Linux Desktop Package": 43474296887
+  },
+  "failedStep": "Check release hygiene",
+  "failure": "scripts/test_gradle_configuration_cache.py started Gradle 8.10.2 on the runner image default JDK 25.0.5: \"What went wrong: 25.0.5\". These four workflows, scripts/test_gradle_configuration_cache.py and the Gradle wrapper are unchanged since the green lastGreenCommit, so the default JDK of the runner image changed.",
+  "files": [
+    {
+      "path": "android-release.before.yml",
+      "workflow": ".github/workflows/android-release.yml",
+      "gitBlob": "0e2da2d49f75c71f9674f3e766198008013c443d",
+      "sourceBytes": 4781,
+      "sourceSha256": "e284f1aa211242523a01591935ac77cbd776afa0c2e6e1223489990e04c0208b"
+    },
+    {
+      "path": "fast-checks.before.yml",
+      "workflow": ".github/workflows/fast-checks.yml",
+      "gitBlob": "1674174cf02bbb7d0e91d11494365a7911bdf16a",
+      "sourceBytes": 25510,
+      "sourceSha256": "f62e2ee2cae12f96de33973dc8b041ae5b5cb829f5b1a87a17e0521d1ba0ae63"
+    },
+    {
+      "path": "linux-desktop.before.yml",
+      "workflow": ".github/workflows/linux-desktop.yml",
+      "gitBlob": "cc1c8491e4d3223e11953b34394bdf8e15141879",
+      "sourceBytes": 8461,
+      "sourceSha256": "485d0f3d5b18a6f1b77b5ba1208898859ba0c7ae3ac5bbbe6ba1920998d7f09d"
+    },
+    {
+      "path": "macos-desktop.before.yml",
+      "workflow": ".github/workflows/macos-desktop.yml",
+      "gitBlob": "5d043c099867dbe62efe05eff60e1307d31aa2f8",
+      "sourceBytes": 5000,
+      "sourceSha256": "447befbe3f0cd8d56583fc020faafbca2e1810023ba33738b5360f47f98aa10a"
+    }
+  ]
+}

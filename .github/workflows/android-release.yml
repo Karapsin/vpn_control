@@ -33,15 +33,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check release hygiene
-        run: ./scripts/check_release_hygiene.sh
-
       - name: Set up JDK 17
         if: ${{ !cancelled() }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Check release hygiene
+        run: ./scripts/check_release_hygiene.sh
 
       - name: Install pinned Android native build tools
         if: ${{ !cancelled() }}

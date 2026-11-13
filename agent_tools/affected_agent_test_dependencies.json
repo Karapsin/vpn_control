@@ -7937,7 +7937,8 @@
         "a370eae9d81cf38e14c306ee4bd816d21336f8582e719932e725319eff2cef57",
         "fb5788387d21e0eff51fa965a8894cbd54295b0f5df3e36a38fe28f1d2e35c40",
         "7e8a719c3c62d501a96e06c12eb5ded6959e34cabe13766acea8dbc8ff2f16ca",
-        "6b256a3ec752d8cd9b5385ea93bafe66d3e8030ea3a4b417312b1ddace77b1d5"
+        "6b256a3ec752d8cd9b5385ea93bafe66d3e8030ea3a4b417312b1ddace77b1d5",
+        "5e7965fd6ae0fd99aa54efa50139dd03914937f1934a0562443b6a44c85b4171"
       ]
     },
     "agent_tools/tests/test_fast_workflow_budget.py": {
@@ -7958,7 +7959,8 @@
         "d9af6ce627c06d7d186cf9e42324fc9ad1a749c9a2a6210954d6dcfe56e17bed",
         "1e7985f1c1ae168b3887eda7ad9ec348fd4c039bfe8b002711a0e508b36b7a62",
         "8867140e0c41e838e8e44a7af19684b0076d72854796f2dedbf6bece34ecb1f0",
-        "625834f7469a997e821a88bc1ac4daa89529c31472add134044e842f11060574"
+        "625834f7469a997e821a88bc1ac4daa89529c31472add134044e842f11060574",
+        "37897f9d53d7de767df585574cd079e8b963c856b1180cdf2b0be23bd22a959c"
       ]
     },
     "agent_tools/tests/test_fast_workflow_interpreter_order.py": {
@@ -13344,6 +13346,17 @@
         "c8bfe04ac32a9d89064ee4492af558d3ec3294479575d9e010ea5dbbc194203c",
         "7a954fc0d73bff6717e78de2309b9da957d7dca41e4f2b7268bb67f2902c3f2f",
         "0037f773af93f455b402541e356ae3726129229895ddb31ab8619c94ff03075a"
+      ]
+    },
+    "agent_tools/tests/test_workflow_jdk_order.py": {
+      "reason": "Text-only workflow-order regression: reads every current .github/workflows/*.yml file, every program under scripts/ (only for wrapper calls and the program names it contains) and the four preserved 450b8764 workflows bound by their provenance digests. No program, workflow, Gradle, CI, native or SSH action runs; a finite reviewed list decides which Python programs start Gradle.",
+      "scopes": [
+        ".github/workflows/",
+        "agent_tools/tests/fixtures/workflow_jdk_order/",
+        "scripts/"
+      ],
+      "sourceSha256": [
+        "9518f24b5d0190adefd22c6aa31646e7f86769c18a81224b129d3fabde9f0abc"
       ]
     },
     "agent_tools/windows_document_cli_cases.py": {

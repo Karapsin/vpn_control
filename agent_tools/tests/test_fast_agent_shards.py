@@ -179,7 +179,10 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
     def test_entire_original_build_tail_remains_once_in_its_original_job(self):
         original = workflow_jobs(fixture.retained('workflow.before.yml'))['fast-checks']['steps']
         start = next(index for index, step in enumerate(original) if step.get('name') == 'Test affected agent tools')
-        tail = original[start + 1:]
+        # The pinned JDK moved ahead of release hygiene, the first step that can start Gradle
+        # (test_workflow_jdk_order); it keeps its exact action, once, in this job.
+        moved = [step for step in original[start + 1:] if step.get('name') == 'Set up JDK 17']
+        tail = [step for step in original[start + 1:] if step not in moved]
         jobs = self.workflow()['jobs']
         current = jobs['fast-checks']['steps']
         def without_failure_discovery(step):
@@ -193,7 +196,11 @@ class FastAgentShardWorkflowTests(unittest.TestCase):
             return step
         self.assertEqual(tail, [without_failure_discovery(step) for step in current
                                 if any(step.get('name') == old.get('name') for old in tail)])
-        for old in tail:
+        names = [step.get('name') for step in current]
+        self.assertEqual(1, len(moved))
+        self.assertEqual(moved, [without_failure_discovery(step) for step in current if step.get('name') == 'Set up JDK 17'])
+        self.assertLess(names.index('Set up JDK 17'), names.index('Check release hygiene'))
+        for old in tail + moved:
             owners = [name for name, job in jobs.items() for step in job['steps'] if step.get('name') == old.get('name')]
             self.assertEqual(['fast-checks'], owners)
 

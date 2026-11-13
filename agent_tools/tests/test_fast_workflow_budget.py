@@ -38,6 +38,8 @@ TWO_SHARD_BEFORE = shards.FIXTURE / 'hosted-capacity.workflow.before.yml'
 MANAGED_SOURCE = ROOT / 'agent_tools/mcp_server.py'
 SCALE_SECONDS_PER_MINUTE = 0.08
 MAX_OUTPUT_BYTES = 65536
+# Tail steps that now run before release hygiene, ahead of every step that can start Gradle.
+MOVED_BEFORE_GRADLE = ('Set up JDK 17',)
 
 PRODUCER = r'''import json,sys,time
 from pathlib import Path
@@ -361,7 +363,10 @@ class FastWorkflowBudgetTests(unittest.TestCase):
     def test_existing_build_and_validation_tail_stays_after_agent_phase(self):
         current = workflow_limits(CURRENT)
         before = workflow_limits(BEFORE)
-        self.assertEqual(before['tailSteps'], current['tailSteps'])
+        # The pinned JDK moved ahead of release hygiene, the first step that can start Gradle
+        # (test_workflow_jdk_order); every other tail step stays, in its order.
+        self.assertEqual([name for name in before['tailSteps'] if name not in MOVED_BEFORE_GRADLE],
+                         current['tailSteps'])
         self.assertIn('Run fast unit tests', current['tailSteps'])
         self.assertIn('Verify Android instrumentation signature guard', current['tailSteps'])
 

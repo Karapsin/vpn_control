@@ -171,6 +171,13 @@ jobs:
       - name: Install agent tool dependencies
         run: python -m pip install --disable-pip-version-check -r agent_tools/requirements-mcp.txt
 
+      - name: Set up JDK 17
+        if: ${{ !cancelled() }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Check release hygiene
         run: ./scripts/check_release_hygiene.sh
 
@@ -264,13 +271,6 @@ jobs:
           bash -n scripts/capture_visual_android.sh
           bash -n scripts/capture_visual_desktop.sh
           python -m py_compile scripts/capture_visual_macos_tart.py scripts/capture_visual_windows_qemu.py
-
-      - name: Set up JDK 17
-        if: ${{ !cancelled() }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
 
       - name: Install pinned Android native build tools
         if: ${{ !cancelled() }}

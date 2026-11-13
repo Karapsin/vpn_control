@@ -51,6 +51,7 @@ run_check python3 scripts/check_workflow_syntax.py
 run_check python3 scripts/test_check_workflow_syntax.py
 run_check python3 scripts/check_ci_failure_discovery.py
 run_check python3 scripts/test_ci_failure_discovery.py
+run_check python3 -m unittest agent_tools.tests.test_workflow_jdk_order
 run_check python3 scripts/test_release_hygiene_runner.py
 run_check bash scripts/check_docs_hygiene.sh
 run_check bash scripts/test_arch_install_hygiene.sh
