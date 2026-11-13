@@ -23,6 +23,9 @@ internal const val REGION_FILL_RGB = 0x000000
 internal const val REGION_STABLE_MAX_ATTEMPTS = 20
 internal const val REGION_STABLE_INTERVAL_MILLIS = 250L
 
+/** The full frame of a capture session that could not be applied; every scene's refusal names it. */
+internal const val SESSION_REFUSAL_FRAME = "capture-session.frame.png"
+
 /** Named infrastructure-failure reasons of a refused region capture. */
 internal enum class RegionCaptureRefusal(val reason: String) {
     NON_CANONICAL_DISPLAY("non-canonical-display"),

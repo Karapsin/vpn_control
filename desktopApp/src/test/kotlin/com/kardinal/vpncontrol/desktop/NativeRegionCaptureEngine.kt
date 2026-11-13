@@ -246,26 +246,89 @@ internal class RegionCaptureEngine(
         if (!Files.exists(output.resolve("${refusal.sceneId}.refusal.json"))) writeRefusal(output, refusal.sceneId, refusal)
     }
 
+    /**
+     * A capture session that cannot be applied refuses every requested scene like any other
+     * refusal: each scene gets its named reason, and all of them name one full frame of that moment.
+     */
+    fun recordSessionRefusal(output: Path, scenes: List<String>, refusal: RegionCaptureRefusedException) {
+        val frame = runCatching {
+            Files.createDirectories(output)
+            val diagnostic = refusal.frame ?: desktop.captureScreen(desktop.screen()).also { refusal.frame = it }
+            writePng(diagnostic, output.resolve(SESSION_REFUSAL_FRAME))
+            SESSION_REFUSAL_FRAME
+        }.onFailure(refusal::addSuppressed).getOrNull()
+        scenes.forEach { sceneId ->
+            runCatching { writeRefusalRecord(output, sceneId, refusal, frame) }.exceptionOrNull()?.let(refusal::addSuppressed)
+        }
+    }
+
     /** Keeps the frame of the refused moment and the named reason for the reviewer. */
     private fun writeRefusal(output: Path, sceneId: String, refusal: RegionCaptureRefusedException) {
         runCatching {
             Files.createDirectories(output)
             val diagnostic = refusal.frame ?: desktop.captureScreen(desktop.screen()).also { refusal.frame = it }
             writePng(diagnostic, output.resolve(regionFrameName(sceneId)))
-            Files.writeString(
-                output.resolve("$sceneId.refusal.json"),
-                regionJson.encodeToString(JsonObject.serializer(), buildJsonObject {
-                    put("schema_version", REGION_RECORD_SCHEMA)
-                    put("scene", sceneId)
-                    put("reason", refusal.refusal.reason)
-                    put("detail", JsonPrimitive(refusal.detail))
-                    put("frame", regionFrameName(sceneId))
-                }) + "\n",
-            )
+            writeRefusalRecord(output, sceneId, refusal, regionFrameName(sceneId))
         }.exceptionOrNull()?.let(refusal::addSuppressed)
+    }
+
+    private fun writeRefusalRecord(output: Path, sceneId: String, refusal: RegionCaptureRefusedException, frame: String?) {
+        Files.createDirectories(output)
+        Files.writeString(
+            output.resolve("$sceneId.refusal.json"),
+            regionJson.encodeToString(JsonObject.serializer(), buildJsonObject {
+                put("schema_version", REGION_RECORD_SCHEMA)
+                put("scene", sceneId)
+                put("reason", refusal.refusal.reason)
+                put("detail", JsonPrimitive(refusal.detail))
+                put("frame", frame?.let(::JsonPrimitive) ?: JsonNull)
+            }) + "\n",
+        )
     }
 
     private fun writePng(image: BufferedImage, path: Path) {
         check(ImageIO.write(image, "png", path.toFile())) { "no PNG writer for $path" }
+    }
+}
+
+/**
+ * Runs every requested scene under one capture session (VISUAL-002). A refused scene keeps its
+ * frame and named reason while the remaining scenes still run. A session that cannot be applied
+ * runs no scene: every requested scene is refused with session-setting-failed beside one full
+ * frame of that moment. The run fails when any scene failed.
+ */
+internal fun runRegionCaptureScenes(
+    desktop: RegionDesktop,
+    platform: String,
+    settings: List<Pair<String, SessionSetting>>,
+    scenes: List<String>,
+    output: Path,
+    captureScene: (RegionCaptureEngine, String) -> Unit,
+) {
+    val session = try {
+        CaptureSessionSettings.applyAll(settings)
+    } catch (refusal: RegionCaptureRefusedException) {
+        RegionCaptureEngine(desktop, platform, JsonObject(emptyMap())).recordSessionRefusal(output, scenes, refusal)
+        throw IllegalStateException("Windows region capture failed for ${scenes.size} scene(s): ${refusal.message}", refusal)
+    }
+    val failures = mutableListOf<Throwable>()
+    session.use { applied ->
+        val engine = RegionCaptureEngine(desktop, platform, applied.json())
+        scenes.forEach { sceneId ->
+            try {
+                captureScene(engine, sceneId)
+            } catch (refusal: RegionCaptureRefusedException) {
+                engine.recordRefusal(output, refusal)
+                failures += refusal
+            } catch (error: Exception) {
+                failures += error
+            }
+        }
+    }
+    if (failures.isNotEmpty()) {
+        throw IllegalStateException(
+            "Windows region capture failed for ${failures.size} scene(s): " +
+                failures.joinToString("; ") { it.message.orEmpty() },
+        ).apply { failures.forEach(::addSuppressed) }
     }
 }

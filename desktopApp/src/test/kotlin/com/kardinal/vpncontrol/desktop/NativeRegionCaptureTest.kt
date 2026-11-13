@@ -355,6 +355,42 @@ class NativeRegionCaptureTest {
     }
 
     @Test
+    fun aCaptureSessionThatCannotBeAppliedRefusesEveryRequestedScene() {
+        // The session was applied outside the per-scene loop: a failed setting ended the task with
+        // only a log line, so no scene had the refusal record and frame the evidence list promises.
+        val output = Files.createTempDirectory("vpn-control-region-session")
+        try {
+            val desktop = FakeDesktop()
+            val scenes = listOf("windows-msi", "windows-tray-connected")
+            val ran = mutableListOf<String>()
+            var animation = 1
+            val failure = assertFailsWith<IllegalStateException> {
+                runRegionCaptureScenes(desktop, "windows", listOf(
+                    "window-animation" to sessionSetting("window-animation", 0, { animation }) { animation = it },
+                    "transparency" to sessionSetting("transparency", 0, { 1 }) {},
+                ), scenes, output) { _, sceneId -> ran += sceneId }
+            }
+            assertTrue("session-setting-failed" in failure.message.orEmpty())
+            assertEquals(emptyList(), ran, "no scene runs without its capture session")
+            assertEquals(1, animation, "the settings applied before the failure are restored")
+            for (sceneId in scenes) {
+                val path = output.resolve("$sceneId.refusal.json")
+                assertTrue(Files.exists(path), "$sceneId is refused like any other scene")
+                val refusal = Json.parseToJsonElement(Files.readString(path)).jsonObject
+                assertEquals("session-setting-failed", refusal["reason"]!!.jsonPrimitive.content)
+                assertTrue("transparency reads 1 after setting 0" in refusal["detail"]!!.jsonPrimitive.content)
+                assertEquals("capture-session.frame.png", refusal["frame"]!!.jsonPrimitive.content)
+                assertFalse(Files.exists(output.resolve("$sceneId.png")))
+            }
+            val frame = ImageIO.read(output.resolve("capture-session.frame.png").toFile())
+            assertEquals(1280 to 800, frame.width to frame.height)
+            assertEquals(1, desktop.captures, "one full frame of the refused session")
+        } finally {
+            output.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun notifyIconPromotionSelectsOnlyThisExecutablesIcon() {
         val java = "C:\\hostedtoolcache\\windows\\Java_Temurin-Hotspot_jdk\\17.0.16-8\\x64\\bin\\java.exe"
         val entries = listOf(

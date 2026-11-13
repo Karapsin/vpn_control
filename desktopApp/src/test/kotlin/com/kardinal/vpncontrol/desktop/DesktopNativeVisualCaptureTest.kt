@@ -130,32 +130,16 @@ class DesktopNativeVisualCaptureTest {
     /**
      * Every Windows scene runs under one capture session (caret blink, animations, keyboard cues,
      * transparency and theme pinned, then restored). A refused scene keeps its diagnostic frame
-     * and named reason, and the remaining scenes still run before the task fails.
+     * and named reason, and the remaining scenes still run before the task fails; a session that
+     * cannot be applied refuses every requested scene the same way (runRegionCaptureScenes).
      */
     private fun captureWindowsRegionScenes(scenes: List<String>, output: Path, bounds: Rectangle) {
         require(System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
             "Windows region capture requires a Windows desktop"
         }
         val desktop = WindowsRegionDesktop(robot)
-        val failures = mutableListOf<Throwable>()
-        CaptureSessionSettings.applyAll(desktop.sessionSettings()).use { session ->
-            val region = WindowsRegion(desktop, RegionCaptureEngine(desktop, "windows", session.json()))
-            scenes.forEach { sceneId ->
-                try {
-                    captureWindowsRegionScene(region, sceneId, output, bounds)
-                } catch (refusal: RegionCaptureRefusedException) {
-                    region.engine.recordRefusal(output, refusal)
-                    failures += refusal
-                } catch (error: Exception) {
-                    failures += error
-                }
-            }
-        }
-        if (failures.isNotEmpty()) {
-            throw IllegalStateException(
-                "Windows region capture failed for ${failures.size} scene(s): " +
-                    failures.joinToString("; ") { it.message.orEmpty() },
-            ).apply { failures.forEach(::addSuppressed) }
+        runRegionCaptureScenes(desktop, "windows", desktop.sessionSettings(), scenes, output) { engine, sceneId ->
+            captureWindowsRegionScene(WindowsRegion(desktop, engine), sceneId, output, bounds)
         }
     }
 

@@ -186,7 +186,10 @@ other notification icons and possibly the clock.
 
 Before the first scene the capture turns caret blink, window, menu, tooltip, combo box, list box,
 selection and client-area animations and transparency off, keyboard cues on and the light theme on,
-reads each value back, and restores all of them in reverse order afterwards. Every window part gets
+reads each value back, and restores all of them in reverse order afterwards. If a setting cannot be
+applied or does not read back, the values already applied are restored and no scene runs: every
+requested scene gets `<scene>.refusal.json` with `session-setting-failed`, all naming one full frame
+of that moment, `capture-session.frame.png`, and the task fails. Every window part gets
 an opaque `#404040` backdrop stacked directly beneath it: Windows blends a window's 1 px border and
 any translucent pixel with whatever lies behind it, which in the full-screen baselines was the
 runner wallpaper. The cursor is parked in a work-area corner clear of every region. The target, or the tray
@@ -212,7 +215,8 @@ screen at the moment of refusal taken before the scene closes its surfaces, and
 `<scene>.refusal.json` with its named reason: `non-canonical-display`, `target-missing`,
 `target-ambiguous`, `placement-not-converged`, `outside-work-area`, `target-not-foreground`,
 `cursor-not-parked`, `occluded`, `target-moved`, `unstable-frame`, `tray-icon-unavailable`,
-`session-setting-failed` or `secure-desktop-not-capturable`. A refusal is an
+`session-setting-failed` (its records name the shared `capture-session.frame.png`) or
+`secure-desktop-not-capturable`. A refusal is an
 `infrastructure_failure` unless its kept frame shows a product defect, for example an installer
 error dialog where the wizard should be (`target-missing`).
 
