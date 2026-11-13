@@ -4,6 +4,8 @@ The fake models the wire, not Windows: nothing here proves a PowerShell behaviou
 Windows. The flat journals are judged by the real host_work classifier, and the real
 emitter and planner build and read every program and request. PrincipalProbeProgramTests
 alone runs one template function's control flow under PowerShell, against a fake scheduler.
+The parsing tests need PowerShell. On any host, here_strings reads only where the strings
+and here-strings of each rendered program open and close.
 """
 import ast
 import importlib.util
@@ -100,6 +102,113 @@ def out_data(value):
 def program_input(source):
     found = re.search(r"FromBase64String\('([A-Za-z0-9+/=]+)'\)", source)
     return None if found is None else json.loads(gzip.decompress(base64.b64decode(found[1])))
+
+
+_CODE_MARK = re.compile("[`#<@'\"()]")
+_EXPANDABLE_MARK = re.compile('[`"$]')
+_TYPE_DEFINITION = "Add-Type -TypeDefinition @'"
+_TYPE_TERMINATOR = re.compile(r"'@(?: -ReferencedAssemblies @\('[A-Za-z.]+'(?:,'[A-Za-z.]+')*\))?\Z")
+_DECLARED_TYPE = re.compile(r"^public (?:static |sealed )?(?:class|struct|enum) (\w+)", re.M)
+
+
+def here_strings(source):
+    """Where a PowerShell program's here-strings open and close, by its tokenizer's rules as modelled here.
+
+    A host without PowerShell can check this much of a rendered program; where a runner has PowerShell, the
+    parsing tests remain the proof. Only the quote layer is read: quoted strings, comments and here-strings. A
+    header is @' or @" ending its line outside any string or comment, and its body runs to the first later line
+    that begins with the matching '@ or "@, whatever that body holds: a here-string never holds another of its
+    own kind. Returns [(header line, terminator line, body)]. Raises ValueError naming the line of a string,
+    comment or here-string left open, of text after a header, and of a terminator that begins a line outside
+    any here-string, which PowerShell would read as the start of a quoted string and no rendered program means.
+    """
+    found, end = [], len(source)
+
+    def line(offset):
+        return source.count("\n", 0, offset) + 1
+
+    def literal(at):
+        opened = at
+        while True:
+            at = source.find("'", at + 1)
+            if at < 0:
+                raise ValueError("string_open:line %d" % line(opened))
+            if not source.startswith("'", at + 1):
+                return at + 1
+            at += 1  # A doubled quote is one quote character of the string.
+
+    def expandable(at):
+        opened, at = at, at + 1
+        while True:
+            mark = _EXPANDABLE_MARK.search(source, at)
+            if mark is None:
+                raise ValueError("string_open:line %d" % line(opened))
+            at = mark.start()
+            if source[at] == "`" or source.startswith('""', at):
+                at += 2
+            elif source[at] == '"':
+                return at + 1
+            else:  # $( ... ) inside the string is code again, with quotes of its own.
+                at = code(at + 2, opened) if source.startswith("$(", at) else at + 1
+
+    def code(at, string=None):
+        """Reads code to the end of the program, or to the parenthesis that closes a $( ... ) of the string given."""
+        depth = 0
+        while True:
+            mark = _CODE_MARK.search(source, at)
+            if mark is None:
+                if string is not None:
+                    raise ValueError("string_open:line %d" % line(string))
+                return end
+            at = mark.start()
+            character, starts_line = source[at], at == 0 or source[at - 1] == "\n"
+            if character in "'\"" and starts_line and source.startswith("@", at + 1):
+                before = "none was open before it" if not found else "the one opened at line %d ended at line %d" % found[-1][:2]
+                raise ValueError("here_string_terminator_outside:line %d:%s" % (line(at), before))
+            if character == "`":
+                at += 2
+            elif character == "#" and (starts_line or source[at - 1] in " \t;{}()"):
+                stop = source.find("\n", at)
+                at = end if stop < 0 else stop
+            elif character == "<" and source.startswith("#", at + 1):
+                close = source.find("#>", at + 2)
+                if close < 0:
+                    raise ValueError("comment_open:line %d" % line(at))
+                at = close + 2
+            elif character == "@" and source[at + 1:at + 2] in ("'", '"'):
+                stop = source.find("\n", at)
+                if stop < 0 or source[at + 2:stop].strip(" \t\r"):
+                    raise ValueError("here_string_header_text:line %d" % line(at))
+                close = source.find("\n" + source[at + 1] + "@", stop)
+                if close < 0:
+                    raise ValueError("here_string_open:line %d" % line(at))
+                found.append((line(at), line(close + 1), source[stop + 1:close]))
+                at = close + 3
+            elif character == "'":
+                at = literal(at)
+            elif character == '"':
+                at = expandable(at)
+            elif string is not None and character == ")" and depth == 0:
+                return at + 1
+            else:
+                depth += {"(": 1, ")": -1}.get(character, 0)
+                at += 1
+
+    code(0)
+    return found
+
+
+def compiled_types(source):
+    """The C# types each here-string of a rendered guest program declares at its top level, one list per here-string.
+
+    Every here-string of such a program is one Add-Type statement's type definition, from its header to the
+    terminator that ends the statement; any other is refused."""
+    lines, declared = source.split("\n"), []
+    for opened, closed, body in here_strings(source):
+        if lines[opened - 1].strip() != _TYPE_DEFINITION or _TYPE_TERMINATOR.match(lines[closed - 1]) is None:
+            raise ValueError("here_string_not_a_type_definition:line %d" % opened)
+        declared.append(_DECLARED_TYPE.findall(body))
+    return declared
 
 
 class FakeQga:
@@ -1245,6 +1354,62 @@ class ClosedDoorTests(unittest.TestCase):
         self.assertIn("state=$(if($unknown){'post-launch-unknown'}else{'refused-before-launch'})", run)
 
 
+class HereStringTests(unittest.TestCase):
+    """The quote-layer reader a host without PowerShell checks rendered programs with: what it finds and what it refuses."""
+
+    def test_here_strings_are_found_past_quoted_strings_and_comments(self):
+        source = "\n".join((
+            "$a='it''s quoted';$b='@@PATH@@'",  # A quoted string that ends in @' opens nothing.
+            " # the task's comment may hold an apostrophe",
+            "$c=\"a `\" kept and $(Join-Path \"x)\" 'y') done\";$d=1 # and so may the last one's",
+            "Add-Type -TypeDefinition @'",
+            "public static class One {}",
+            "\"@ belongs to the other kind",
+            "'@ -ReferencedAssemblies @('System')",
+            "$e=@\"  ",
+            "'@ is text in this one",
+            "\"@",
+            "$f=@'",
+            "'@",
+            ""))
+        self.assertEqual([(4, 7, "public static class One {}\n\"@ belongs to the other kind"), (8, 10, "'@ is text in this one"), (11, 12, "")],
+                         here_strings(source))
+
+    def test_a_here_string_wrapped_in_one_of_its_own_kind_is_refused_where_powershell_stopped(self):
+        # Run 42656925414, in small: the inner terminator ends the outer here-string, and PowerShell stops at what follows it.
+        source = "\n".join((
+            ". ([scriptblock]::Create(@'",
+            "function Add-ObserverType {",
+            " Add-Type -TypeDefinition @'",
+            "public static class VpnScenarioObserver {}",
+            "'@ -ReferencedAssemblies @('System','System.Core')",
+            "}",
+            "'@))",
+            ""))
+        with self.assertRaisesRegex(ValueError, r"\Ahere_string_terminator_outside:line 7:the one opened at line 1 ended at line 5\Z"):
+            here_strings(source)
+
+    def test_what_is_left_open_or_misplaced_is_refused_with_its_line(self):
+        for source, refusal in (("$a=1\n$b=@'\nbody\n", "here_string_open:line 2"),
+                                ("$b=@'\nbody\n '@\n", "here_string_open:line 1"),  # A terminator begins its line.
+                                ("$b=@' text\n'@\n", "here_string_header_text:line 1"),
+                                ("$a=1\n'@\n", "here_string_terminator_outside:line 2:none was open before it"),
+                                ("\n$a='open\n$b=2\n", "string_open:line 2"),
+                                ("$a=\"open\n", "string_open:line 1"),
+                                ("$a=\"x $(Get-Item 'y'\n", "string_open:line 1"),
+                                ("$a=1 <# open\n", "comment_open:line 1")):
+            with self.subTest(source=source), self.assertRaisesRegex(ValueError, r"\A" + re.escape(refusal) + r"\Z"):
+                here_strings(source)
+
+    def test_only_a_type_definition_counts_as_a_here_string_of_a_rendered_program(self):
+        program = ("Add-Type -TypeDefinition @'\nusing System;\npublic static class One {\n public sealed class Nested {}\n}\n"
+                   "public sealed class Two {}\n'@ -ReferencedAssemblies @('System','System.Core')\n $x=1\n Add-Type -TypeDefinition @'\n'@\n")
+        self.assertEqual([["One", "Two"], []], compiled_types(program))
+        for other in ("$text=@'\npublic static class One {}\n'@\n", program.replace(" -ReferencedAssemblies @('System','System.Core')", "|Out-Null")):
+            with self.subTest(other=other), self.assertRaisesRegex(ValueError, r"\Ahere_string_not_a_type_definition:line 1\Z"):
+                compiled_types(other)
+
+
 class SourceTests(Base):
     def job_with_context(self, **changes):
         plan = self.plan(**changes)
@@ -1338,6 +1503,18 @@ class SourceTests(Base):
                 result = subprocess.run([str(POWERSHELL), "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
                                         stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
                 self.assertEqual(0, result.returncode, name + ": " + result.stderr.decode("utf-8", "replace"))
+
+    def test_every_rendered_source_keeps_its_here_strings_whole(self):
+        # What a host without PowerShell can prove of the same programs: every here-string opens and closes where
+        # PowerShell would read it, and each is the type definition its program means to compile, in order.
+        boot, native = ["VpnArtifactToken"], ["OrdinaryNativeFacts"]
+        publisher = [boot, native, ["VpnCreateArtifactDirectory"], ["VpnPublisherFile"], ["VpnScenarioMsiRegistration"], ["VpnScenarioObserver"]]
+        expected = {"context": [["SessionFacts"], native], "run": [boot, native]}
+        sources = self.rendered()
+        self.assertLessEqual({"context", "run", "msi-registration", "principal-probe", "collector-observe"}, set(sources))
+        for name, source in sources.items():
+            with self.subTest(name=name):
+                self.assertEqual(expected.get(name, publisher), compiled_types(source))
 
     @unittest.skipUnless(POWERSHELL, "PowerShell unavailable; hosted Windows and Linux runners have one")
     def test_the_status_file_is_really_replaced_on_every_poll(self):
@@ -2945,6 +3122,8 @@ class UpdateFamilyTests(UpdateFamilyBase):
                     self.assertLess(defined, source.index("[VpnHeldProgram]::Identity("), "the launcher's type exists before the template calls it")
                     self.assertIn("$expectedHardware='" + MACHINE.upper() + "'", source, "the prelude compares what WMI reports")
                     self.assertIn("$protocolResult= & {", source)
+                    self.assertEqual([["VpnHeldProgram"], ["VpnArtifactToken"]], compiled_types(source),
+                                     "the launcher's type and the prelude's are the only here-strings, each whole")
 
     @unittest.skipUnless(POWERSHELL, "PowerShell parser unavailable; hosted Windows and Linux runners have one")
     def test_the_collector_and_release_programs_parse(self):
@@ -3900,14 +4079,36 @@ PROBE_OBSERVED = ("[ordered]@{state='observed';actualSid='S-1-5-19';actualSessio
                   "credentialBytesRead=0;socketOpened=$false;authenticatedCommandSent=$false;win32Error=5}|ConvertTo-Json -Compress")
 
 
+PROBE_FUNCTIONS = ("Read-Bounded", "Get-EndpointFacts", "Is-TaskAbsent", "Invoke-PrincipalProbe")
+
+
+def template_function(template, name):
+    """One whole top-level function of a template, selected by its own name.
+
+    It ends where the next top-level statement begins, so nothing added beside it is ever taken with it. A line
+    of a here-string is never a statement, whatever it begins with."""
+    lines = template.split("\n")
+    inside = {number for opened, closed, _ in here_strings(template) for number in range(opened + 1, closed + 1)}
+    statements = [index for index, line in enumerate(lines) if index + 1 not in inside and line[:1] not in ("", " ", "\t", "}")]
+    named = [index for index in statements if re.match("function " + re.escape(name) + r"(?![A-Za-z0-9_-])", lines[index])]
+    if len(named) != 1:
+        raise ValueError("template_function_not_one:" + name)
+    following = next((index for index in statements if index > named[0]), None)
+    text = "\n".join(lines[named[0]:following]) + ("" if following is None else "\n")
+    if not text.endswith("}\n"):
+        raise ValueError("template_function_open:" + name)
+    return text
+
+
 def principal_probe_program(template, modes, base):
-    """The template's own probe function, Read-Bounded and Get-EndpointFacts, compiled after the stand-ins exist."""
-    def between(start, end):
-        return template[template.index(start):template.index(end)]
+    """The template's own probe function and the three it calls, each selected by its own name, compiled after the stand-ins exist.
+
+    The compiled body sits in a here-string, which cannot hold another of its kind. On run 42656925414 the body
+    was every function from Get-EndpointFacts to Get-CollectorObservation: that took the new Add-ObserverType
+    with it, whose own terminator ended this here-string."""
     quoted = lambda value: "'" + value.replace("'", "''") + "'"
     body = ("$modes=@(" + ",".join(quoted(mode) for mode in modes) + ");$base=" + quoted(str(base)) + ";$probeSource=" + quoted(PROBE_OBSERVED) + "\n"
-            + between("function Read-Bounded(", "function New-DocumentInput") + between("function Get-EndpointFacts(", "function Get-CollectorObservation")
-            + PROBE_DRIVER)
+            + "".join(template_function(template, name) for name in PROBE_FUNCTIONS) + PROBE_DRIVER)
     return ("$ErrorActionPreference='Stop'\nAdd-Type -TypeDefinition @'\n" + PROBE_FAKES + "\n'@\n"
             "$accelerators=[psobject].Assembly.GetType('System.Management.Automation.TypeAccelerators')\n"
             "$accelerators::Add('Security.Principal.SecurityIdentifier',[ProbeFakeSid]);$accelerators::Add('Security.Principal.NTAccount',[ProbeFakeAccount])\n"
@@ -3960,6 +4161,41 @@ class PrincipalProbeProgramTests(unittest.TestCase):
                         job.principal_outcome(row["reply"])
                 else:
                     self.assertEqual(reading, job.principal_outcome(row["reply"]))
+
+    def test_the_program_is_two_whole_here_strings_and_compiles_only_what_the_probe_needs(self):
+        # What a host without PowerShell can prove of the program above. On run 42656925414 PowerShell stopped at its
+        # line 212, the terminator of a here-string the compiled body had brought along.
+        template = (ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text(encoding="ascii")
+        program = principal_probe_program(template, ["observed", "delete-throws"], Path("cases"))
+        try:
+            found = here_strings(program)
+        except ValueError as error:
+            raise self.failureException("PowerShell cannot read the probe program as it is written: " + str(error)) from None
+        lines = program.split("\n")
+        self.assertEqual([("Add-Type -TypeDefinition @'", "'@"), (". ([scriptblock]::Create(@'", "'@))")],
+                         [(lines[opened - 1], lines[closed - 1]) for opened, closed, _ in found])
+        stand_ins, body = found[0][2], found[1][2]
+        self.assertEqual(PROBE_FAKES, stand_ins)
+        self.assertEqual([], here_strings(body), "the body is compiled on its own, and holds no here-string")
+        self.assertEqual([*PROBE_FUNCTIONS, "New-Object"], re.findall(r"^function ([A-Za-z-]+)", body, re.M))
+        self.assertTrue(body.endswith(PROBE_DRIVER))
+
+    def test_every_function_of_the_template_is_selected_whole_by_its_own_name(self):
+        template = (ROOT / "agent_tools/windows_scenario_publisher.ps1.template").read_text(encoding="ascii")
+        names = re.findall(r"^function ([A-Za-z-]+)", template, re.M)
+        self.assertLessEqual(set(PROBE_FUNCTIONS), set(names))
+        self.assertEqual(len(names), len(set(names)))
+        # Selected one by one and joined again, the functions are the template's own text from the first to the main program.
+        self.assertEqual(template[template.index("function " + names[0]):template.index("$r=$null\n")],
+                         "".join(template_function(template, name) for name in names))
+        # A function is taken with the here-string it holds, and never with the function after it.
+        observer = template_function(template, "Add-ObserverType")
+        self.assertEqual(["VpnScenarioObserver"], _DECLARED_TYPE.findall(here_strings(observer)[0][2]))
+        self.assertTrue(observer.endswith("\n'@ -ReferencedAssemblies @('System','System.Core')\n}\n"))
+        self.assertNotIn("Add-ObserverType", "".join(template_function(template, name) for name in PROBE_FUNCTIONS))
+        for name in ("Read-Bound", "Invoke-PrincipalProbe2", "VpnScenarioObserver"):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, r"\Atemplate_function_not_one:" + name + r"\Z"):
+                template_function(template, name)
 
 
 class TrustStoreTests(unittest.TestCase):

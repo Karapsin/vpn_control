@@ -1251,6 +1251,43 @@ a real scheduler. The same review renamed the cold variant `gui-transfer` to
 | On a pass the owner awaited a GUI-started owner's exit without a bound | `test_windows_document_acceptance.ColdCaseTests.test_a_gui_owner_that_stays_after_its_acknowledged_quit_parks_within_the_bound` | After the acknowledged quit, the owner called the unbounded `wait()`, so a GUI that stayed would hold it until the row deadline. It now gets the closing's 120 s, then the owner parks with `document-gui-owner-exit-unknown`. RED: the inert peer refuses an unbounded wait on a live child, so the first bytes parked with `scenario-failure-with-retained-child`. |
 | The joint pin bound missed a document row's guest-made document | `test_windows_scenario_host_job.DocumentPinBoundTests.test_the_document_input_counts_toward_the_joint_bound_before_any_tree_pin` | The document joins the worker's pins after the bound is checked. RED: one pin over the bound passed, both trees were pinned, and the planner refused (`planner_refused:pin-list-schema-or-bound`). GREEN: `worker_pin_bound` before any tree pin, and exactly 4,096 pins still run. |
 
+### The document probe harness on the first CI run of `529cc610` (run 42656925414, 2026-11-09)
+
+Fast Checks, job `Agent Tools Shard 5` (Linux, Python 3.12, PowerShell):
+`PrincipalProbeProgramTests.test_the_reply_names_every_task_that_may_still_exist_and_only_an_absent_one_is_known`
+failed with `ParserError` at `probe.ps1:212`, the line
+`'@ -ReferencedAssemblies @('System','System.Core')`: `Unexpected token '-ReferencedAssemblies' in
+expression or statement`. The log is kept privately as
+`.runtime/windows-parity-20261107/ci/failed-42656925414.log`. The Mac has no PowerShell, so the test
+skipped there and CI was the first to run it against the changed template.
+
+The defect is in the test's helper, not in a guest program. `principal_probe_program` compiles its
+body from a single-quoted here-string, and it took that body from the publisher template as
+everything between `function Get-EndpointFacts(` and `function Get-CollectorObservation`. `957cab0e`
+added four functions between those two, and one of them, `Add-ObserverType`, holds an
+`Add-Type -TypeDefinition @'` here-string of its own. A here-string cannot hold another of its kind:
+the inner terminator on line 212 ended the helper's here-string, opened on line 41, and the helper's
+own terminator on line 275 was left over.
+
+Production is not affected. No production code slices the publisher template: the job fills the
+whole template. Its three slicers (`fragments`, its `block` and `held_program_type`) read the owner
+script and the emitter's bodies. The native slice is the owner's one here-string cut before
+`RetainedRawPump`; `CREATE_DIRECTORY` and the held type are, byte for byte, the whole here-strings of
+the emitter that hold the class each needs; `READONLY` is the held type without `Identity`, renamed.
+Checked offline with the reader named below, on the production sources of `529cc610`: the 6,035
+distinct guest programs the module's tests render from the templates (every publisher action, among
+them `principal-probe` and `collector-observe` of all four stages, the SYSTEM run, the context
+program, the collectors and their releases) close every here-string, hold no terminator outside one,
+and compile only their intended types. On the same CI run
+`SourceTests.test_every_rendered_source_parses` and
+`UpdateFamilyTests.test_the_collector_and_release_programs_parse` passed under PowerShell. The sweep
+and comparison scripts, the RED worktree and the logs are under `.runtime/probe-parse/` of the fix
+clone (`fix-ci-probe`).
+
+| Failure type | Regression | Notes |
+| --- | --- | --- |
+| The probe test's helper wrapped a template function that holds a here-string in a here-string of the same kind | `test_windows_scenario_host_job`: `PrincipalProbeProgramTests.test_the_program_is_two_whole_here_strings_and_compiles_only_what_the_probe_needs`, `test_every_function_of_the_template_is_selected_whole_by_its_own_name`; `HereStringTests` (4); controls on the rendered guest programs: `SourceTests.test_every_rendered_source_keeps_its_here_strings_whole`, `UpdateFamilyTests.test_the_collector_program_is_the_rendered_template_on_the_stdin_route` | The helper now takes the four functions the probe needs (`Read-Bounded`, `Get-EndpointFacts`, `Is-TaskAbsent`, `Invoke-PrincipalProbe`), each by its own name: `template_function` ends a function where the next top-level statement begins and never takes a line of a here-string for a statement. The program it renders is byte for byte the one the unfixed helper rendered before `957cab0e`. The probe code and those four functions are unchanged since `70ed16cc`, and CI run 42598475217 passed that program under PowerShell. `here_strings` is a pure-Python model of how PowerShell delimits quoted strings, comments and here-strings, so this defect shows where no PowerShell is installed. It reads only that layer and is not a parser. On the 71 PowerShell files of the repository it agrees with a plain line scan everywhere except three lines where a quoted string ends in `@'`, which the line scan misreads as a header. RED is the fixed module with only the helper of `529cc610` put back (235 lines added to the `529cc610` module, none removed), in a worktree of `529cc610`: 17 tests, 1 failure, 3 skipped, on Python 3.14 and 3.12 alike, `here_string_terminator_outside:line 275:the one opened at line 41 ended at line 212`, the line PowerShell named. GREEN on the fix: the same 17 OK, 3 skipped, and the whole module, 172 tests OK, 4 skipped, on both. Six mutants of the host job's slicers and of the template (a terminator taken from the wrong place, a lost header, a lost terminator) each turn one of the two controls RED. Only CI proves the PowerShell run itself: the module's four PowerShell tests still skip on the Mac. |
+
 ### Windows scoped-TUN family, offline build (2026-11-09)
 
 `windows-scoped-tun.<variant>` rows adapt `windows_tun_stages` to the scenario route; only `restart-deny` is admitted (see `agent_docs/tools/visual-and-platform-evidence.md`). Nothing here has run natively. Two existing behaviors would have parked a clone over a known outcome, the class the spec predicted as "parking on known failures". The unfixed bytes are `.runtime/tun-before/windows_ordinary_dedicated_driver.py.before` and `.runtime/tun-before/windows_tun_stages.py.before` in the build clone; RED ran in an isolated worktree at `ea670fe4` (`.runtime/red-base`), and the RED and GREEN output is under `.runtime/tun-logs/`. Review of the build found six more defects, RED on its first bytes (`ffad8f0e`, which never landed): the unfixed bytes are in `.runtime/review-before/` of the build clone, RED ran in an isolated worktree at `ffad8f0e` (`.runtime/red-review`, removed after use), and the RED and GREEN output is under `.runtime/review-logs/`. The review also found that the fixture provenance of `stages/controls.source` still named its historical original without recording that the bytes differ; the entry now records `originalSourceBytes`, `originalSourceSha256` and `currentRoleAdjustment` (metadata only, no regression).
