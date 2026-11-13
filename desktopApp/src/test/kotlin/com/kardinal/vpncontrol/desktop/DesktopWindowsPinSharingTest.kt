@@ -14,8 +14,8 @@ import kotlin.test.*
  * violation (WinError 32) meanwhile.
  *
  * [SharingVolume] judges each open as [MS-FSA] 2.1.5.1.2.2 does; each product open is judged with the
- * real [windowsInstallOpenOptions] for the access the product passes. A pin must keep refusing every
- * open with DELETE of the folder it pins (no rename, no deletion), and only that.
+ * real [windowsInstallOpenOptions] for the access the product passes, after its token's access check. A
+ * pin must keep refusing every open with DELETE of the folder it pins (no rename, no deletion), and only that.
  */
 class DesktopWindowsPinSharingTest {
     @Test fun aRetainedTransferLetsOtherProgramsRenameAndLinkIntoTheSpoolParentAndEveryAncestor() {
@@ -54,7 +54,8 @@ class DesktopWindowsPinSharingTest {
     }
 
     @Test fun protectedInstallerStorePinsLetOtherProgramsRenameIntoTheVolumeRootAndProgramData() {
-        val volume = SharingVolume(SID).apply {
+        // The installer store belongs to BUILTIN\Administrators: its backend runs elevated.
+        val volume = SharingVolume(SID, SharingVolume.token(SID, elevated = true)).apply {
             nodes["C:\\"] = root()
             // BUILTIN\Users may create and write attributes in C:\ProgramData: its pin keeps a witness.
             nodes["C:\\ProgramData"] = directory(SYSTEM, ace(USERS, 0x116))
@@ -111,12 +112,15 @@ class DesktopWindowsPinSharingTest {
     /** The trust policy's half: FILE_ADD_FILE, like attribute and EA writes, is admitted only beside a retained witness. */
     @Test fun aFolderGrantingAnotherPrincipalAddFileIsPinnedOnlyWhileAWitnessKeepsItNonEmpty() {
         for ((sid, volume, folder) in listOf(Triple(SID, dropVolume(), DROP), Triple(SYSTEM, systemTempVolume(), WINDOWS_TEMP))) {
-            // Empty: no child can keep it from becoming a junction, so it is refused before anything is created.
-            assertFails { DesktopWindowsTransferPins.open(folder, sid, volume, volume.ancestry()) }
+            // Empty: no child can keep it from becoming a junction, so it is refused before anything is created,
+            // with a message that names the folder and what helps.
+            val refused = assertFailsWith<IllegalStateException> { DesktopWindowsTransferPins.open(folder, sid, volume, volume.ancestry()) }
+            assertEquals(lastFolderRefusal(folder), refused.message)
             assertTrue(volume.live().isEmpty())
             assertTrue(volume.created.isEmpty())
-            // Not empty: another program's entry is retained as the witness, and the junction can no longer be set.
-            volume.nodes["$folder\\witness"] = WindowsInstallInfo(false, owner = MALLORY, dacl = listOf(ace(MALLORY, 0x1f01ff)))
+            // Not empty: an entry the token can open is retained as the witness, and the junction can no longer be set.
+            // In the drop box the user's own file; in C:\Windows\Temp another program's, which inherits SYSTEM's access.
+            volume.nodes["$folder\\witness"] = if (sid == SYSTEM) inheritedFile(MALLORY) else ownFile(sid)
             volume.witnessParents += folder
             val pins = DesktopWindowsTransferPins.open(folder, sid, volume, volume.ancestry())
             assertEquals(145, volume.mountAs(MALLORY_GROUPS, folder, HIDEOUT, FILE_ADD_FILE)) // ERROR_DIR_NOT_EMPTY
@@ -137,6 +141,43 @@ class DesktopWindowsPinSharingTest {
             assertEquals(listOf("C:\\", DROP), volume.live().map { it.path })
             volume.assertOthersMayAddEntries(listOf(DROP))
         }
+    }
+
+    /**
+     * Review of the hardening: the product opens a witness as it opens anything, without privileges, so an entry
+     * private to another user is none (5). A last folder that others may write and that holds only such entries (the
+     * files other users dropped in a drop box; a private file in C:\Windows\Temp) is refused before anything is created,
+     * with the message an empty one gets; an entry the token can open beside them is retained and the transfer goes on.
+     * An intermediate folder without a witness keeps the ancestor message: it is not the folder the user named.
+     */
+    @Test fun aLastFolderHoldingOnlyEntriesTheUserCannotOpenIsRefusedWithAClearMessage() {
+        for ((sid, volume, folder) in listOf(Triple(SID, dropVolume(), DROP), Triple(SYSTEM, systemTempVolume(), WINDOWS_TEMP))) {
+            volume.addEntry(folder, "dropped.txt", privateTo(MALLORY))
+            assertEquals(5, assertFailsWith<WindowsInstallNativeFailure> {
+                volume.open("$folder\\dropped.txt", WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false) }.code)
+            val refused = assertFailsWith<IllegalStateException> { DesktopWindowsTransferPins.open(folder, sid, volume, volume.ancestry()) }
+            assertEquals(lastFolderRefusal(folder), refused.message)
+            assertTrue(volume.live().isEmpty(), "$folder: ${volume.live()}")
+            assertTrue(volume.created.isEmpty())
+            volume.addEntry(folder, "mine.txt", if (sid == SYSTEM) inheritedFile(MALLORY) else ownFile(sid))
+            DesktopWindowsTransferPins.open(folder, sid, volume, volume.ancestry()).use { pins ->
+                assertEquals(listOf("$folder\\mine.txt"), volume.live().map { it.path }.filter { volume.isChild(it, folder) })
+                assertEquals(145, volume.mountAs(MALLORY_GROUPS, folder, HIDEOUT, FILE_ADD_FILE))
+                val private = pins.createDirectory()
+                assertTrue(volume.isChild(private, folder), private)
+                assertEquals(private, volume.resolve(private))
+                pins.deleteDirectory()
+            }
+            assertTrue(volume.live().isEmpty(), "$folder: ${volume.live()}")
+        }
+        // In a real folder the next folder of the chain would be a witness, unless 4096 entries came first.
+        val volume = dropVolume().apply {
+            nodes["$DROP\\inbox"] = directory(SID)
+            addEntry(DROP, "dropped.txt", privateTo(MALLORY))
+        }
+        val refused = assertFailsWith<IllegalStateException> { DesktopWindowsTransferPins.open("$DROP\\inbox", SID, volume, volume.ancestry()) }
+        assertEquals("Unpinned mutable transfer ancestor", refused.message)
+        assertTrue(volume.live().isEmpty())
     }
 
     /**
@@ -192,6 +233,16 @@ class DesktopWindowsPinSharingTest {
         internal fun ace(sid: String, mask: Int, flags: Int = 0) = WindowsInstallAce(0, flags, mask, sid)
         internal fun directory(owner: String, vararg extra: WindowsInstallAce) = WindowsInstallInfo(true, owner = owner,
             dacl = listOf(ace(SYSTEM, 0x1f01ff, 3), ace(ADMINISTRATORS, 0x1f01ff, 3), ace(owner, 0x1f01ff)) + extra)
+        /** A file another user dropped with a DACL of their own: no other token, SYSTEM included, may read it. */
+        internal fun privateTo(owner: String) = WindowsInstallInfo(false, owner = owner, dacl = listOf(ace(owner, 0x1f01ff)))
+        /** A file [owner] created where CREATOR OWNER is granted full control: theirs to open. */
+        internal fun ownFile(owner: String) = WindowsInstallInfo(false, owner = owner, dacl = listOf(ace(owner, 0x1f01ff, 0x10)))
+        /** A file [owner] created in C:\Windows\Temp: SYSTEM and Administrators inherit full control, as its creator does. */
+        internal fun inheritedFile(owner: String) = WindowsInstallInfo(false, owner = owner,
+            dacl = listOf(ace(SYSTEM, 0x1f01ff, 0x10), ace(ADMINISTRATORS, 0x1f01ff, 0x10), ace(owner, 0x1f01ff, 0x10)))
+        /** What a refused last folder reports: the GUI shows it as an export's status. */
+        internal fun lastFolderRefusal(folder: String) = "Cannot use $folder: other accounts can write to it and it holds " +
+            "nothing you can open. Add a file of your own to it, or choose a folder only you can change."
         /** C:\ as Windows ships it: Authenticated Users may create folders there (append data). */
         internal fun root() = directory(SYSTEM, ace("S-1-5-11", 0x4), ace(USERS, 0x1200a9, 3))
 
@@ -240,12 +291,16 @@ class DesktopWindowsPinSharingTest {
  * Existing Stream or Directory"): only READ_DATA, EXECUTE, WRITE_DATA, APPEND_DATA and DELETE take part,
  * in both directions, so a metadata-only handle neither refuses nor is refused.
  *
+ * Every open of an existing object, the product's (its token holds [principals]) as another principal's,
+ * first passes the access check of [granted]: the product enables no privilege, so an entry private to
+ * another user refuses it (5) as on Windows.
+ *
  * Mount points follow [MS-FSA] 2.1.5.10.37: another principal's open must hold FILE_WRITE_DATA or
  * FILE_WRITE_ATTRIBUTES, as the folder's DACL grants it, and the folder must be empty. A path then
  * resolves through every mount point but in its last component (the product opens with
  * FILE_FLAG_OPEN_REPARSE_POINT), so an entry created by path lands in the mount point's target.
  */
-internal class SharingVolume(private val sid: String) : WindowsInstallNative {
+internal class SharingVolume(private val sid: String, val principals: Set<String> = token(sid)) : WindowsInstallNative {
     class Open(val path: String, val access: Int, val rights: Int, val share: Int) : WindowsInstallNative.Handle {
         var closed = false
         override fun toString() = "open($path, access=$access, rights=0x${rights.toString(16)}, share=$share)"
@@ -254,6 +309,8 @@ internal class SharingVolume(private val sid: String) : WindowsInstallNative {
     val opens = mutableListOf<Open>()
     val deleted = mutableListOf<String>()
     val witnessParents = mutableSetOf<String>()
+    /** More entries an enumeration of a folder lists (after `witness`), by folder key, in order: see [addEntry]. */
+    val entries = linkedMapOf<String, MutableList<String>>()
     /** Every entry the product created, at the path where it actually landed. */
     val created = mutableListOf<String>()
     /** Mount points by folder key: their targets. */
@@ -275,13 +332,44 @@ internal class SharingVolume(private val sid: String) : WindowsInstallNative {
         return folder.trimEnd('\\') + "\\" + path.trimEnd('\\').substringAfterLast('\\')
     }
 
-    /** Another principal's open: only the rights the DACL allows [principals], then judged for sharing like any other. */
+    /** [info] as the entry [name] of [folder], which an enumeration of [folder] lists. */
+    fun addEntry(folder: String, name: String, info: WindowsInstallInfo) {
+        nodes[folder.trimEnd('\\') + "\\" + name] = info
+        entries.getOrPut(key(folder)) { mutableListOf() } += name
+    }
+
+    /**
+     * The rights a token holding [principals] gets on the object at [actual], with no privilege enabled (so
+     * FILE_FLAG_BACKUP_SEMANTICS bypasses nothing): its owner's implicit READ_CONTROL and WRITE_DAC unless an
+     * OWNER RIGHTS ACE stands for them, then the DACL's ACEs that apply to the object (not inherit-only) in order,
+     * each granting or denying only what is not decided yet; FILE_READ_ATTRIBUTES where the folder grants
+     * FILE_LIST_DIRECTORY, DELETE where it grants FILE_DELETE_CHILD. No DACL grants everything.
+     */
+    fun granted(actual: String, principals: Set<String>): Int {
+        val info = nodes.getValue(actual)
+        val dacl = info.dacl ?: return 0x1f01ff
+        val owner = info.owner in principals
+        var allowed = if (owner && dacl.none { it.flags and 8 == 0 && it.sid == OWNER_RIGHTS }) 0x60000 else 0
+        var denied = 0
+        for (ace in dacl) {
+            if (ace.flags and 8 != 0 || !(ace.sid in principals || owner && ace.sid == OWNER_RIGHTS)) continue
+            val mask = fileRights(ace.mask)
+            if (ace.type == 0) allowed = allowed or (mask and denied.inv()) else denied = denied or (mask and allowed.inv())
+        }
+        val folder = parent(actual)
+        if (key(folder) != key(actual) && folder in nodes) {
+            val inFolder = granted(folder, principals)
+            if (inFolder and 0x1 != 0) allowed = allowed or 0x80 // FILE_LIST_DIRECTORY: FILE_READ_ATTRIBUTES
+            if (inFolder and 0x40 != 0) allowed = allowed or DELETE // FILE_DELETE_CHILD: DELETE
+        }
+        return allowed
+    }
+
+    /** Another principal's open: only the rights [granted] gives [principals], then judged for sharing like any other. */
     fun foreignOpen(path: String, principals: Set<String>, rights: Int, share: Int): Open {
         val actual = resolve(path)
-        val info = nodes[actual] ?: throw WindowsInstallNativeFailure(2)
-        val granted = info.dacl.orEmpty().filter { it.type == 0 && it.flags and 8 == 0 && it.sid in principals }
-            .fold(0) { all, ace -> all or fileRights(ace.mask) }
-        if (rights and granted.inv() != 0) throw WindowsInstallNativeFailure(5)
+        if (actual !in nodes) throw WindowsInstallNativeFailure(2)
+        if (rights and granted(actual, principals).inv() != 0) throw WindowsInstallNativeFailure(5)
         if (live().any { key(it.path) == key(actual) && refuses(it, rights, share) }) throw WindowsInstallNativeFailure(32)
         return Open(actual, -1, rights, share).also { opens += it }
     }
@@ -339,7 +427,8 @@ internal class SharingVolume(private val sid: String) : WindowsInstallNative {
     }
 
     fun ancestry(): WindowsAdmissionNative = object : WindowsAdmissionNative by JnaWindowsInstallAdmission() {
-        override fun children(path: String) = if (path in witnessParents) listOf("witness") else emptyList()
+        override fun children(path: String) =
+            (if (path in witnessParents) listOf("witness") else emptyList()) + entries[key(path)].orEmpty()
         override fun canonicalPath(handle: WindowsInstallNative.Handle) = "\\\\?\\" + (handle as Open).path
     }
 
@@ -355,6 +444,8 @@ internal class SharingVolume(private val sid: String) : WindowsInstallNative {
         }
         if (actual !in nodes) throw WindowsInstallNativeFailure(2)
         val rights = fileRights(options.rights)
+        // The creator of an object is granted what it asked for; an existing object's DACL decides.
+        if (createSddl == null && rights and granted(actual, principals).inv() != 0) throw WindowsInstallNativeFailure(5)
         if (live().any { key(it.path) == key(actual) && refuses(it, rights, options.share) }) throw WindowsInstallNativeFailure(32)
         return Open(actual, access, rights, options.share).also { opens += it }
     }
@@ -383,10 +474,22 @@ internal class SharingVolume(private val sid: String) : WindowsInstallNative {
 
     companion object {
         private const val ADMINISTRATORS = "S-1-5-32-544"
+        private const val OWNER_RIGHTS = "S-1-3-4"
         private const val READ = 0x1 or 0x20 // FILE_READ_DATA, FILE_EXECUTE
         private const val WRITE = 0x2 or 0x4 // FILE_WRITE_DATA, FILE_APPEND_DATA
         private const val DELETE = 0x10000
         const val SHARING_RIGHTS = READ or WRITE or DELETE
+
+        /**
+         * The principals an allow ACE may name in [sid]'s token: LocalSystem's (with BUILTIN\Administrators), or a
+         * user's with BUILTIN\Users; an administrator's BUILTIN\Administrators only when [elevated] (UAC leaves it
+         * deny-only otherwise).
+         */
+        fun token(sid: String, elevated: Boolean = false): Set<String> = when {
+            sid == "S-1-5-18" -> setOf(sid, ADMINISTRATORS, "S-1-1-0", "S-1-5-11")
+            elevated -> setOf(sid, "S-1-5-32-545", ADMINISTRATORS, "S-1-1-0", "S-1-5-11")
+            else -> setOf(sid, "S-1-5-32-545", "S-1-1-0", "S-1-5-11")
+        }
 
         /** Generic rights as files map them ([MS-SMB2] 2.2.13.1.1, FILE_GENERIC_*). */
         fun fileRights(mask: Int): Int {

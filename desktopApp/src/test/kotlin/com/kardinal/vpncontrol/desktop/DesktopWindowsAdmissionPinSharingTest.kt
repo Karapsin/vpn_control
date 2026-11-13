@@ -26,9 +26,10 @@ class DesktopWindowsAdmissionPinSharingTest {
             for (path in FOLDERS.drop(2)) nodes[path] = directory(SID)
             nodes[IMAGE] = WindowsInstallInfo(false, owner = SID,
                 dacl = listOf(ace(SYSTEM, 0x1f01ff), ace(ADMINISTRATORS, 0x1f01ff), ace(SID, 0x1f01ff)))
-            // BUILTIN\Users may create and write attributes in C:\ProgramData: its pin keeps a witness.
-            nodes[PROGRAM_DATA] = directory(SYSTEM, ace(USERS, 0x116))
-            nodes["$PROGRAM_DATA\\witness"] = directory(SYSTEM)
+            // BUILTIN\Users may read C:\ProgramData, and create and write attributes in it: its pin keeps a witness,
+            // which the user's token opens through the read access every entry inherits, as on Windows.
+            nodes[PROGRAM_DATA] = directory(SYSTEM, ace(USERS, 0x1200a9, 3), ace(USERS, 0x116, 2))
+            nodes["$PROGRAM_DATA\\witness"] = directory(SYSTEM, ace(USERS, 0x1200a9, 0x13))
             witnessParents += PROGRAM_DATA
         }
         // No installer gate exists yet: the admission returns its lease with every pin retained.

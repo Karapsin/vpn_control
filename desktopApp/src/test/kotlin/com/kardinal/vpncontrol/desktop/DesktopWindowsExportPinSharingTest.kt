@@ -6,11 +6,16 @@ import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.HI
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.MALLORY
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.MALLORY_GROUPS
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.SID
+import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.SYSTEM
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.TEMP
-import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.ace
+import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.WINDOWS_TEMP
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.directory
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.dropVolume
+import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.lastFolderRefusal
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.mountAs
+import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.ownFile
+import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.privateTo
+import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.systemTempVolume
 import com.kardinal.vpncontrol.desktop.DesktopWindowsPinSharingTest.Companion.transferVolume
 import java.nio.ByteBuffer
 import kotlin.test.*
@@ -21,7 +26,9 @@ import kotlin.test.*
  * leaf rename relative to the partial's actual parent. Review of the folder-pin fix: if the folder lets another
  * local user add files (a drop box) and is empty, that user may turn it into a junction between the pins and the
  * creation, and the export would be published in their folder. Nothing an export creates may stay outside the
- * folder the user chose, and an export that succeeds is published there. Judged by [SharingVolume].
+ * folder the user chose, and an export that succeeds is published there. Such a folder is used only beside an entry
+ * the user can open; otherwise the export is refused with a message that says what helps. Judged by [SharingVolume],
+ * which applies each object's DACL to the export's own opens as Windows does.
  */
 class DesktopWindowsExportPinSharingTest {
     @Test fun anotherUserCannotRedirectAnExportOutOfAnEmptyDropBoxThroughAJunction() {
@@ -36,11 +43,29 @@ class DesktopWindowsExportPinSharingTest {
         assertTrue(volume.live().isEmpty(), volume.live().toString())
     }
 
-    @Test fun anExportIntoADropBoxHoldingAnotherProgramsEntryStaysInThePinnedFolder() {
-        // Another program's file in the drop box ([SharingVolume.ancestry] lists it as "witness").
+    /**
+     * Review of the hardening: a drop box usually holds other users' files, private to them, which the export cannot
+     * open and so cannot retain. A drop box holding only such files, the empty drop box and an emptied C:\Windows\Temp
+     * (the CLI as SYSTEM) are all refused before anything is created, with a message that says what helps.
+     */
+    @Test fun anExportIntoAFolderOthersMayWriteIsRefusedWithAClearMessageWhenItHoldsNothingTheUserCanOpen() {
+        val held = dropVolume().apply { addEntry(DROP, "dropped.txt", privateTo(MALLORY)) }
+        for ((owner, volume, folder) in listOf(Triple(SID, held, DROP), Triple(SID, dropVolume(), DROP),
+                Triple(SYSTEM, systemTempVolume(), WINDOWS_TEMP))) {
+            val exports = ExportVolume(volume)
+            val refused = assertFailsWith<IllegalStateException> { export(exports, folder, "routing.json", "secret", owner) }
+            assertEquals(lastFolderRefusal(folder), refused.message)
+            assertEquals(emptyList(), volume.created)
+            assertEquals(emptyList(), exports.written)
+            assertTrue(volume.live().isEmpty(), volume.live().toString())
+        }
+    }
+
+    @Test fun anExportIntoADropBoxHoldingAFileOfTheUsersStaysInThePinnedFolder() {
+        // Another user's private file comes first and cannot be opened; the user's own file is retained as the witness.
         val volume = dropVolume().apply {
-            nodes["$DROP\\witness"] = WindowsInstallInfo(false, owner = MALLORY, dacl = listOf(ace(MALLORY, 0x1f01ff)))
-            witnessParents += DROP
+            addEntry(DROP, "dropped.txt", privateTo(MALLORY))
+            addEntry(DROP, "mine.txt", ownFile(SID))
         }
         val raced = mutableListOf<Int>()
         volume.beforeCreate = { path -> if (volume.isChild(path, DROP)) raced += volume.mountAs(MALLORY_GROUPS, DROP, HIDEOUT, FILE_ADD_FILE) }
@@ -49,7 +74,9 @@ class DesktopWindowsExportPinSharingTest {
         try {
             assertEquals(listOf(145), raced) // ERROR_DIR_NOT_EMPTY: the retained entry keeps the folder from becoming a junction
             volume.assertOthersMayAddEntries(listOf(DROP))
-            volume.assertPinnedAgainstRenameAndDeletion(listOf(DROP, "$DROP\\witness"))
+            volume.assertPinnedAgainstRenameAndDeletion(listOf(DROP, "$DROP\\mine.txt"))
+            // The witness is the user's file; the other user's stays unheld (beside them only the export's partial).
+            assertEquals(listOf("$DROP\\mine.txt"), volume.live().map { it.path }.filter { it.endsWith(".txt") })
             file.channel.write(ByteBuffer.wrap("secret".toByteArray()))
             file.force()
             file.publish("routing.json")
@@ -76,8 +103,8 @@ class DesktopWindowsExportPinSharingTest {
         assertTrue(volume.live().isEmpty(), volume.live().toString())
     }
 
-    private fun export(exports: ExportVolume, folder: String, leaf: String, text: String) {
-        val file = DesktopWindowsExportFile.create(folder, exports, exports.volume.ancestry(), SID)
+    private fun export(exports: ExportVolume, folder: String, leaf: String, text: String, owner: String = SID) {
+        val file = DesktopWindowsExportFile.create(folder, exports, exports.volume.ancestry(), owner)
         try {
             file.channel.write(ByteBuffer.wrap(text.toByteArray()))
             file.force()

@@ -19,7 +19,8 @@ import kotlin.test.*
  * handle on the folder, and FSCTL_SET_REPARSE_POINT accepts it ([MS-FSA] 2.1.5.10.37), so an empty pinned folder can
  * become a junction; the pin before the fix (read sharing only) refused that open. What the product then creates by path
  * in the pinned folder must be proven its child, or be deleted. DesktopWindowsPinSharingTest and
- * DesktopWindowsExportPinSharingTest model the same on every platform, with another user's DACL rights.
+ * DesktopWindowsExportPinSharingTest model the same on every platform, with another user's DACL rights and the access
+ * check of the product's own opens.
  */
 class DesktopWindowsPinnedFolderJunctionNativeTest {
     private fun fixture(block: (Path, Path) -> Unit) {
@@ -86,6 +87,41 @@ class DesktopWindowsPinnedFolderJunctionNativeTest {
             writer?.let { assertEquals(0, Junction.unmount(it)); assertTrue(Kernel32.INSTANCE.CloseHandle(it)) }
         }
         assertEquals(emptyList(), Files.list(pinned).use { it.toList() })
+    }
+
+    /**
+     * The witness is opened as the product opens anything, with no privilege enabled: an entry its token cannot read
+     * (another account's private file; here one only an unrelated SID may read, owned by this user, who keeps
+     * READ_CONTROL and DELETE but neither FILE_READ_DATA nor SYNCHRONIZE) refuses the open with 5, and a folder Users
+     * may add files to that holds only such entries is refused with the clear message. A file of the user's own is
+     * retained: it cannot be deleted while the pins live, and the transfer folder is created in place.
+     */
+    @Test fun nativeFolderOthersMayWriteIsUsedOnlyBesideAnEntryTheUserCanOpen() {
+        assumeTrue(Platform.isWindows())
+        val ancestry = JnaWindowsInstallAdmission()
+        val sid = ancestry.currentSid()
+        val native = JnaWindowsInstallNative()
+        val root = Files.createTempDirectory("pinned-witness-東京")
+        try {
+            val drop = root.resolve("drop")
+            native.createDirectory(drop.toString(), "O:${sid}G:${sid}D:P(A;OICI;FA;;;$sid)(A;;0x1200af;;;BU)", allowExisting = false)
+            val dropped = drop.resolve("dropped.txt")
+            native.close(native.open(dropped.toString(), WindowsInstallNative.READ_WRITE, shareDelete = true,
+                createSddl = "O:${sid}G:${sid}D:P(A;;FA;;;S-1-5-21-1-2-3-1002)(A;;SD;;;$sid)"))
+            assertEquals(5, assertFailsWith<WindowsInstallNativeFailure> {
+                native.open(dropped.toString(), WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false) }.code)
+            val refused = assertFailsWith<IllegalStateException> { DesktopWindowsTransferPins.open(drop.toString(), sid, native, ancestry) }
+            assertEquals("Cannot use $drop: other accounts can write to it and it holds nothing you can open. " +
+                "Add a file of your own to it, or choose a folder only you can change.", refused.message)
+            val mine = Files.writeString(drop.resolve("mine.txt"), "mine")
+            DesktopWindowsTransferPins.open(drop.toString(), sid, native, ancestry).use { pins ->
+                assertFails { Files.delete(mine) } // the retained witness shares no deletion
+                val private = Path.of(pins.createDirectory())
+                assertTrue(Files.isDirectory(drop.resolve(private.fileName)), "$private")
+                pins.deleteDirectory()
+            }
+            assertEquals(listOf(dropped, mine), Files.list(drop).use { it.sorted().toList() })
+        } finally { Files.walk(root).use { it.sorted(Comparator.reverseOrder()).forEach(Files::delete) } }
     }
 
     /** Another program's view of a folder: FILE_WRITE_DATA only, and the mount point it may set ([MS-FSCC] 2.1.2.5). */

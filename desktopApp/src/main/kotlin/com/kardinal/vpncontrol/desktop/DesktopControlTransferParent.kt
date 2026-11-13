@@ -274,10 +274,10 @@ internal class DesktopWindowsTransferPins private constructor(
                 var prefix = path.substring(0, 3)
                 fun witness(parentPath: String, parentHandle: WindowsInstallNative.Handle, last: Boolean): WindowsInstallNative.Handle {
                     val canonicalParent = ancestry.canonicalPath(parentHandle).trimEnd('\\')
-                    var entries = 0
                     for (name in ancestry.children(parentPath).take(4096)) {
                         if (name.isBlank() || name in setOf(".", "..") || name.any { it in "\\/:\u0000" }) continue
-                        entries++
+                        // An entry this token cannot read refuses the open (no backup privilege is enabled):
+                        // another user's private file in a drop box is never a witness.
                         val child = runCatching {
                             native.open(parentPath.trimEnd('\\') + "\\" + name, WindowsInstallNative.PINNED_DIRECTORY, shareDelete = false)
                         }.getOrNull() ?: continue
@@ -296,9 +296,12 @@ internal class DesktopWindowsTransferPins private constructor(
                             // A raced or unsuitable child proves nothing.
                         } finally { if (!retained) native.close(child) }
                     }
-                    // Nothing keeps this folder from becoming a junction while the transfer lives: fail closed.
-                    error(if (last && entries == 0) "Transfer folder is empty and writable by another account"
-                        else "Unpinned mutable transfer ancestor")
+                    // Nothing keeps this folder from becoming a junction while the transfer lives: fail closed. The
+                    // last folder is the one an export names (or the spool parent): say why, whether it is empty or
+                    // holds only entries this token cannot open, and what lets the operation go on.
+                    if (last) error("Cannot use $parentPath: other accounts can write to it and it holds nothing you " +
+                        "can open. Add a file of your own to it, or choose a folder only you can change.")
+                    error("Unpinned mutable transfer ancestor")
                 }
                 fun pin(last: Boolean): WindowsInstallNative.Handle {
                     // Every folder from the volume root to the spool parent (%TEMP% by default) stays pinned
